@@ -95,8 +95,20 @@ void StillingerWeberSi::forceImpl(const ForceInput &in, ForceOut *out) const {
     throw std::invalid_argument("StillingerWeberSi: null force buffer");
   }
   double strain[6] = {};
-  evaluate(in.pos, in.box, in.nAtoms, &out->energy, out->F, 1.0, nullptr,
-           strain);
+  evaluate<false>(in.pos, in.box, in.nAtoms, &out->energy, out->F, 1.0, nullptr,
+                  strain, nullptr);
+  publishCauchyStress(out, strain, cellVolume(in.box));
+}
+
+void StillingerWeberSi::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                                          double *energies) const {
+  if (in.nAtoms > 0 &&
+      (in.pos == nullptr || in.box == nullptr || out->F == nullptr)) {
+    throw std::invalid_argument("StillingerWeberSi: null force buffer");
+  }
+  double strain[6] = {};
+  evaluate<true>(in.pos, in.box, in.nAtoms, &out->energy, out->F, 1.0, nullptr,
+                 strain, energies);
   publishCauchyStress(out, strain, cellVolume(in.box));
 }
 
@@ -111,7 +123,8 @@ void StillingerWeberSi::energyAndGradient(
     throw std::invalid_argument("StillingerWeberSi: null energy buffer");
   }
   // Gradient is dE/dx, the negation of the force written by forceImpl.
-  evaluate(positions, box, n_atoms, energy, gradient, -1.0, neighbors, nullptr);
+  evaluate<false>(positions, box, n_atoms, energy, gradient, -1.0, neighbors, nullptr,
+                  nullptr);
 }
 
 void StillingerWeberSi::energyAndGradientBatch(
@@ -133,11 +146,12 @@ void StillingerWeberSi::energyAndGradientBatch(
   }
 }
 
+template <bool PerAtom>
 void StillingerWeberSi::evaluate(const double *positions, const double *box,
                                  std::size_t n_atoms, double *energy,
                                  double *acc, double scale,
                                  nlist::NeighborList *neighbors,
-                                 double *strain) const {
+                                 double *strain, double *site) const {
   *energy = 0.0;
   const std::size_t n3 = n_atoms * 3;
   for (std::size_t i = 0; i < n3; ++i) {
@@ -194,7 +208,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) { return a.j < b.j; });
   };
   auto pairForces = [&](int i, const std::vector<Bond> &nb, double *force,
-                        double &local_e, double *local_strain) {
+                        double &local_e, double *local_strain, double *local_site) {
     for (const Bond &bj : nb) {
       if (bj.j < i) {
         continue;
@@ -206,6 +220,10 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       // A periodic self image is a bond at both of its shifts.
       const double share = bj.j == i ? 0.5 : 1.0;
       local_e += share * kEpsilon * t.f2;
+      if constexpr (PerAtom) {
+        local_site[i] += 0.5 * share * kEpsilon * t.f2;
+        local_site[bj.j] += 0.5 * share * kEpsilon * t.f2;
+      }
       const double inv_r = 1.0 / bj.r;
       const double sx = scale * t.dedr * bj.x * inv_r;
       const double sy = scale * t.dedr * bj.y * inv_r;
@@ -230,7 +248,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
   std::vector<Bond> nb;
   for (int i = 0; i < n; ++i) {
     load(i, nb);
-    pairForces(i, nb, acc, *energy, strain);
+    pairForces(i, nb, acc, *energy, strain, site);
     const int m = static_cast<int>(nb.size());
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
@@ -248,6 +266,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
         const double ang = cth + (1.0 / 3.0);
         const double ang2 = ang * ang;
         *energy += kEpsilon * kLambda * bj.gexp * bk.gexp * ang2;
+        if constexpr (PerAtom) {
+          site[i] += kEpsilon * kLambda * bj.gexp * bk.gexp * ang2;
+        }
         const double pref = kEpsilon * kLambda;
         const double d_edcth = pref * bj.gexp * bk.gexp * 2.0 * ang;
         const double d_edr1 = pref * bj.dgdr * bk.gexp * ang2;
@@ -292,6 +313,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     std::vector<double> owned(static_cast<std::size_t>(nt) * n3, 0.0);
     std::vector<double> energies(static_cast<std::size_t>(nt), 0.0);
     std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
+    std::vector<double> sites(PerAtom ? static_cast<std::size_t>(nt) * n_atoms : 0, 0.0);
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
 #endif
@@ -306,10 +328,12 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       double local_e = 0.0;
       double *local_strain =
           strain == nullptr ? nullptr : vir.data() + static_cast<std::size_t>(t) * 6;
+      double *local_site =
+          PerAtom ? sites.data() + static_cast<std::size_t>(t) * n_atoms : nullptr;
       std::vector<Bond> nb;
   for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
     load(i, nb);
-    pairForces(i, nb, local, local_e, local_strain);
+    pairForces(i, nb, local, local_e, local_strain, local_site);
     const int m = static_cast<int>(nb.size());
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
@@ -327,6 +351,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
         const double ang = cth + (1.0 / 3.0);
         const double ang2 = ang * ang;
         local_e += kEpsilon * kLambda * bj.gexp * bk.gexp * ang2;
+        if constexpr (PerAtom) {
+          local_site[i] += kEpsilon * kLambda * bj.gexp * bk.gexp * ang2;
+        }
         const double pref = kEpsilon * kLambda;
         const double d_edcth = pref * bj.gexp * bk.gexp * 2.0 * ang;
         const double d_edr1 = pref * bj.dgdr * bk.gexp * ang2;
@@ -373,6 +400,12 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       const double *local = owned.data() + static_cast<std::size_t>(t) * n3;
       for (std::size_t k = 0; k < n3; ++k) {
         acc[k] += local[k];
+      }
+      if constexpr (PerAtom) {
+        const double *row = sites.data() + static_cast<std::size_t>(t) * n_atoms;
+        for (std::size_t k = 0; k < n_atoms; ++k) {
+          site[k] += row[k];
+        }
       }
       if (strain != nullptr) {
         for (int k = 0; k < 6; ++k) {

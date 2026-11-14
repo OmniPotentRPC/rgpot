@@ -62,6 +62,12 @@ public:
   /// folded bond vector times the energy gradient with respect to it.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// forceImpl plus each atom's share of the energy: half of every pair
+  /// term to each partner and each three-body term on its centre atom.
+  /// See Potential::forceEnergies.
+  void forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                         double *energies) const;
+
   /// Auto, Stored and Stream all use the shared neighbour layer. One
   /// thread agrees with the old ordered walk to within 1e-12.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
@@ -103,10 +109,13 @@ public:
 
 private:
   /// scale +1 writes forces, scale -1 writes dE/dx. A non-null strain
-  /// gains dE/dε in eV, in the Voigt order of stress.hpp.
+  /// gains dE/dε in eV, in the Voigt order of stress.hpp. With PerAtom,
+  /// @p site gains each atom's share of the energy.
+  template <bool PerAtom>
   void evaluate(const double *positions, const double *box, std::size_t n_atoms,
                 double *energy, double *acc, double scale,
-                nlist::NeighborList *neighbors, double *strain) const;
+                nlist::NeighborList *neighbors, double *strain,
+                double *site) const;
 
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
