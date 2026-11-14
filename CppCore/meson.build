@@ -150,6 +150,7 @@ rgpot_halfshell = static_library(
         'rgpot/nlist/HalfShellWalk.cc',
         'rgpot/nlist/NeighbourList.cc',
         'rgpot/nlist/Neighbours.cc',
+        'rgpot/nlist/FortranListSpan.cc',
     ),
     include_directories: _incdirs,
     cpp_args: _args + (get_option('with_eam_al_openmp') ? ['-DRGPOT_EAM_AL_OPENMP'] : []),

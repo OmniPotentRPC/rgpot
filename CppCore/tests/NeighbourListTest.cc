@@ -12,10 +12,15 @@
 #include <tuple>
 #include <vector>
 
+#include <omp.h>
+
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/nlist/rgpot_nlist.h"
+
+extern "C" __attribute__((visibility("hidden"))) std::size_t
+rgpot_nlist_fortran_slot_count(const rgpot_nlist_fortran_list *list);
 
 namespace {
 
@@ -597,4 +602,105 @@ TEST_CASE("eight threads match the serial list", "[nlist][api]") {
   REQUIRE(pos.size() / 3 >= 8192);
   REQUIRE(serial.size() == threaded.size());
   REQUIRE(from_table(serial) == from_table(threaded));
+}
+
+TEST_CASE("a sentinel past the written prefix stays out of the output", "[nlist][api]") {
+  // Shell at a*sqrt(2.5) sits between the cutoff and the cutoff plus the
+  // skin, so the stored candidates outrun the pairs the filter publishes.
+  constexpr int ncell = 6;
+  constexpr double lattice = 4.05;
+  constexpr double cutoff = 6.0;
+  constexpr double skin = 1.0;
+  constexpr int32_t mark = 0x7f7f7f7f;
+  constexpr double mark_real = 1.0e300;
+  const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  std::vector<double> pos;
+  for (int ix = 0; ix < ncell; ++ix) {
+    for (int iy = 0; iy < ncell; ++iy) {
+      for (int iz = 0; iz < ncell; ++iz) {
+        for (const auto &b : basis) {
+          pos.push_back((ix + b[0]) * lattice);
+          pos.push_back((iy + b[1]) * lattice);
+          pos.push_back((iz + b[2]) * lattice);
+        }
+      }
+    }
+  }
+  const double edge = ncell * lattice;
+  const double box[9] = {edge, 0, 0, 0, edge, 0, 0, 0, edge};
+  const int32_t periodic[3] = {1, 1, 1};
+  const auto natoms = pos.size() / 3;
+
+  for (const int threads : {1, 8}) {
+    omp_set_num_threads(threads);
+    set_omp_threads(threads == 1 ? "1" : "8");
+    auto moved = pos;
+    auto *list = rgpot_nlist_fortran_open();
+    REQUIRE(list != nullptr);
+    size_t kept = 0;
+    int32_t reused = 1;
+    int32_t *idx = nullptr;
+    int32_t *row = nullptr;
+    double *vec = nullptr;
+    double *dist = nullptr;
+    REQUIRE(rgpot_nlist_fortran_build(list, moved.data(), natoms, box, cutoff, skin, periodic,
+                                      &idx, &vec, &dist, &row, &kept, &reused) == RGPOT_NLIST_OK);
+    const auto slots = rgpot_nlist_fortran_slot_count(list);
+    REQUIRE(kept > 0);
+    REQUIRE(slots > kept);
+    REQUIRE(idx != nullptr);
+    REQUIRE(vec != nullptr);
+    REQUIRE(dist != nullptr);
+    REQUIRE(row != nullptr);
+    for (std::size_t s = 0; s < slots; ++s) {
+      idx[s] = mark;
+      dist[s] = mark_real;
+      vec[3 * s] = mark_real;
+      vec[3 * s + 1] = mark_real;
+      vec[3 * s + 2] = mark_real;
+    }
+    // Inside half the skin, so the candidate storage stays and the filter
+    // rewrites only the pairs that are still inside the cutoff.
+    moved[0] += 0.02;
+    REQUIRE(rgpot_nlist_fortran_build(list, moved.data(), natoms, box, cutoff, skin, periodic,
+                                      &idx, &vec, &dist, &row, &kept, &reused) == RGPOT_NLIST_OK);
+    REQUIRE(reused == 1);
+    REQUIRE(kept > 0);
+    REQUIRE(rgpot_nlist_fortran_slot_count(list) == slots);
+    REQUIRE(slots > kept);
+    for (std::size_t s = 0; s < kept; ++s) {
+      REQUIRE(idx[s] != mark);
+      REQUIRE(idx[s] >= 1);
+      REQUIRE(static_cast<std::size_t>(idx[s]) <= natoms);
+      REQUIRE(dist[s] != mark_real);
+      REQUIRE(dist[s] > 0.0);
+      REQUIRE(dist[s] < cutoff);
+      REQUIRE(vec[3 * s] != mark_real);
+      REQUIRE(vec[3 * s + 1] != mark_real);
+      REQUIRE(vec[3 * s + 2] != mark_real);
+    }
+    for (std::size_t s = kept; s < slots; ++s) {
+      REQUIRE(idx[s] == mark);
+      REQUIRE(dist[s] == mark_real);
+      REQUIRE(vec[3 * s] == mark_real);
+      REQUIRE(vec[3 * s + 1] == mark_real);
+      REQUIRE(vec[3 * s + 2] == mark_real);
+    }
+    REQUIRE(row[0] == 1);
+    REQUIRE(static_cast<std::size_t>(row[natoms]) == kept + 1);
+    for (std::size_t a = 0; a < natoms; ++a) {
+      REQUIRE(row[a] >= 1);
+      REQUIRE(row[a + 1] >= row[a]);
+      REQUIRE(static_cast<std::size_t>(row[a + 1]) <= kept + 1);
+      for (int32_t s = row[a]; s < row[a + 1]; ++s) {
+        const auto at = static_cast<std::size_t>(s - 1);
+        REQUIRE(idx[at] != mark);
+        REQUIRE(dist[at] != mark_real);
+        REQUIRE(vec[3 * at] != mark_real);
+      }
+    }
+    rgpot_nlist_fortran_close(list);
+  }
+  omp_set_num_threads(1);
+  set_omp_threads("1");
 }
