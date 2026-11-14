@@ -29,6 +29,12 @@ public:
                     const double b[]);
   void computeHH_O_(const int nAtoms, const double R[], double F[], double &U,
                     const double b[], const bool fixed[]);
+  /// As computeHH_O_, and @p energies (one per atom, same order) gains each
+  /// atom's share of @p U: half of every site-site term to each site, the
+  /// M site's half spread over O, H, H with the weights that place it, and
+  /// the intramolecular term on the oxygen.
+  void computeHH_O_(const int nAtoms, const double R[], double F[], double &U,
+                    const double b[], const bool fixed[], double energies[]);
   static char const *getName();
 
 private:
@@ -41,7 +47,7 @@ private:
                        double (*const fo)[O * 3], double &energy,
                        double const b[], bool const (*const xh1)[H] = 0,
                        bool const (*const xh2)[H] = 0,
-                       bool const (*const xo)[O] = 0);
+                       bool const (*const xo)[O] = 0, double *ea = nullptr);
   void coulombWithCutoff(Water &w1, Water &w2, double &U);
   void coulombFull(Water &w1, Water &w2, double &U);
   void lennardJonesWithCutoff(Water &w1, Water &w2, double &U);

@@ -89,6 +89,24 @@ void TIP4PPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   out->energy = energy;
 }
 
+void TIP4PPot::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                                 double *energies) const {
+  const int n = static_cast<int>(in.nAtoms);
+  prepare(in, out);
+  if (n == 0) {
+    return;
+  }
+  if (n % 3 != 0) {
+    throw std::invalid_argument(
+        "TIP4PPot expects atoms ordered as hydrogen pairs then oxygens");
+  }
+  double diag[3];
+  diagonalBox(in.box, diag);
+  double energy = 0.0;
+  m_impl->kernel.computeHH_O_(n, in.pos, out->F, energy, diag, nullptr, energies);
+  out->energy = energy;
+}
+
 SPCEPot::SPCEPot() : SPCEPot(WaterConfig{}) {}
 
 SPCEPot::SPCEPot(const WaterConfig &config)
@@ -114,6 +132,24 @@ void SPCEPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   out->energy = energy;
 }
 
+void SPCEPot::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                                double *energies) const {
+  const int n = static_cast<int>(in.nAtoms);
+  prepare(in, out);
+  if (n == 0) {
+    return;
+  }
+  if (n % 3 != 0) {
+    throw std::invalid_argument(
+        "SPCEPot expects atoms ordered as hydrogen pairs then oxygens");
+  }
+  double diag[3];
+  diagonalBox(in.box, diag);
+  double energy = 0.0;
+  m_impl->kernel.computeHH_O_(n, in.pos, out->F, energy, diag, nullptr, energies);
+  out->energy = energy;
+}
+
 TIP4PPtPot::TIP4PPtPot() : TIP4PPtPot(WaterConfig{}) {}
 
 TIP4PPtPot::TIP4PPtPot(const WaterConfig &config)
@@ -123,6 +159,16 @@ TIP4PPtPot::TIP4PPtPot(const WaterConfig &config)
 TIP4PPtPot::~TIP4PPtPot() = default;
 
 void TIP4PPtPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  evaluate(in, out, nullptr);
+}
+
+void TIP4PPtPot::forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                                   double *energies) const {
+  evaluate(in, out, energies);
+}
+
+void TIP4PPtPot::evaluate(const ForceInput &in, ForceOut *out,
+                          double *energies) const {
   const int n = static_cast<int>(in.nAtoms);
   prepare(in, out);
   if (n == 0) {
@@ -149,7 +195,7 @@ void TIP4PPtPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   diagonalBox(in.box, diag);
   double energy = 0.0;
   m_impl->kernel.computeHH_O_Pt_(nWater, nPt, in.pos, out->F, energy, diag,
-                                 nullptr);
+                                 nullptr, energies);
   out->energy = energy;
 }
 

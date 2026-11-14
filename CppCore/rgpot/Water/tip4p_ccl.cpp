@@ -119,6 +119,25 @@ void Tip4p::computeHH_O_(const int nAtoms, const double R[], double F[],
   computeTemplate(nMolecules, rh1, rh2, ro, fh1, fh2, fo, U, b, xh1, xh2, xo);
 }
 
+void Tip4p::computeHH_O_(const int nAtoms, const double R[], double F[],
+                         double &U, const double b[], const bool fixed[],
+                         double energies[]) {
+  int const nMolecules = nAtoms / 3;
+  const double (*const rh1)[6] = reinterpret_cast<const double (*)[6]>(R);
+  const double (*const rh2)[6] = reinterpret_cast<const double (*)[6]>(&R[3]);
+  const double (*const ro)[3] =
+      reinterpret_cast<const double (*)[3]>(&R[nMolecules * 6]);
+  double (*const fh1)[6] = reinterpret_cast<double (*)[6]>(F);
+  double (*const fh2)[6] = reinterpret_cast<double (*)[6]>(&F[3]);
+  double (*const fo)[3] = reinterpret_cast<double (*)[3]>(&F[nMolecules * 6]);
+  bool const(*const xh1)[2] = reinterpret_cast<bool const(*)[2]>(fixed);
+  bool const(*const xh2)[2] = reinterpret_cast<bool const(*)[2]>(&fixed[1]);
+  bool const(*const xo)[1] =
+      reinterpret_cast<bool const(*)[1]>(&fixed[nMolecules * 2]);
+  computeTemplate(nMolecules, rh1, rh2, ro, fh1, fh2, fo, U, b, xh1, xh2, xo,
+                  energies);
+}
+
 /// Name of the potential.
 char const *Tip4p::getName() { return "Tip4p"; }
 
@@ -135,6 +154,9 @@ struct Tip4p::Water {
   double *const fh2_;
   double *const fo_;
   double *const fn_;
+  /// Null, or the energies of sites H1, H2, O, N, which the pair terms
+  /// add their halves to.
+  double *e_;
 };
 
 /** Compute forces and energy.
@@ -162,7 +184,7 @@ void Tip4p::computeTemplate(
     double (*const fh1)[H * 3], double (*const fh2)[H * 3],
     double (*const fo)[O * 3], double &energy, double const b[],
     bool const (*const xh1)[H], bool const (*const xh2)[H],
-    bool const (*const xo)[O]) {
+    bool const (*const xo)[O], double *ea) {
   for (int i = 0; i < nMolecules; ++i) {
     for (int a = 0; a < 3; a++) {
       fh1[i][a] = 0.0;
@@ -181,8 +203,19 @@ void Tip4p::computeTemplate(
     centres[static_cast<std::size_t>(3 * i)] = rc[0];
     centres[static_cast<std::size_t>(3 * i + 1)] = rc[1];
     centres[static_cast<std::size_t>(3 * i + 2)] = rc[2];
+    double const before = energy;
     intramolecular(rh1[i], rh2[i], ro[i], fh1[i], fh2[i], fo[i], energy);
+    if (ea != nullptr) {
+      ea[2 * nMolecules + i] += energy - before;
+    }
   }
+  // The M site sits at wo O + wh H1 + wh H2, so its energy goes back to
+  // those atoms with the same weights, as its force does.
+  auto tally = [&](int i, double const *e) {
+    ea[2 * i] += e[0] + wh_ * e[3];
+    ea[2 * i + 1] += e[1] + wh_ * e[3];
+    ea[2 * nMolecules + i] += e[2] + wo_ * e[3];
+  };
   // Each pair spreads the massless-site force of both molecules. The old
   // loop spread one molecule per pair and the other after its pairs. The
   // spread is a sum, so once per pair on each molecule is the same total.
@@ -226,12 +259,19 @@ void Tip4p::computeTemplate(
     double rn2[3] = {0};
     double fn2[3] = {0};
     calculateWeightedCentre(wo_, wh_, wh_, oj, h1j, h2j, rn2);
-    Water w1 = {h1i, h2i, oi, rn1, rc1, fh1[i], fh2[i], fo[i], fn1};
-    Water w2 = {h1j, h2j, oj, rn2, rc2, fh1[j], fh2[j], fo[j], fn2};
+    double e1[4] = {0}, e2[4] = {0};
+    Water w1 = {h1i,    h2i,    oi,    rn1, rc1,
+                fh1[i], fh2[i], fo[i], fn1, ea != nullptr ? e1 : nullptr};
+    Water w2 = {h1j,    h2j,    oj,    rn2, rc2,
+                fh1[j], fh2[j], fo[j], fn2, ea != nullptr ? e2 : nullptr};
     coulombWithCutoff(w1, w2, energy);
     spreadWeightedForce(wo_, wh_, wh_, w1.fo_, w1.fh1_, w1.fh2_, w1.fn_);
     spreadWeightedForce(wo_, wh_, wh_, w2.fo_, w2.fh1_, w2.fh2_, w2.fn_);
     lennardJonesWithCutoff(w1, w2, energy);
+    if (ea != nullptr) {
+      tally(i, e1);
+      tally(j, e2);
+    }
   });
   assert(not std::isnan(energy) and not std::isinf(energy));
 }
@@ -251,10 +291,12 @@ void Tip4p::coulombWithCutoff(Water &w1, Water &w2, double &U) {
     double f1[3][3] = {{0}}, f2[3][3] = {{0}};
     // f1[0], f1[1], 0, f1[2] are respectively, H1, H2, O, N. There is no charge
     // on O.
+    double e1[4] = {0}, e2[4] = {0};
+    bool const sites = w1.e_ != nullptr;
     Water v1 = {w1.rh1_, w1.rh2_, w1.ro_, w1.rn_, w1.rc_,
-                f1[0],   f1[1],   0,      f1[2]};
+                f1[0],   f1[1],   0,      f1[2], sites ? e1 : nullptr};
     Water v2 = {w2.rh1_, w2.rh2_, w2.ro_, w2.rn_, w2.rc_,
-                f2[0],   f2[1],   0,      f2[2]};
+                f2[0],   f2[1],   0,      f2[2], sites ? e2 : nullptr};
     double energy = 0.0;
     coulombFull(v1, v2, energy);
     ChargeGroup<3> g1 = {v1.rc_, 0, f1};
@@ -263,6 +305,13 @@ void Tip4p::coulombWithCutoff(Water &w1, Water &w2, double &U) {
     switching(g1, g2, energy, cutoff_, switchingWidth_);
     // add weakened force and energy to those of other interactions.
     U += energy;
+    if (sites) {
+      double const s = switchFactor(z1, cutoff_, switchingWidth_);
+      for (int k = 0; k < 4; ++k) {
+        w1.e_[k] += s * e1[k];
+        w2.e_[k] += s * e2[k];
+      }
+    }
     for (int i = 0; i < 3; ++i) {
       w1.fh1_[i] += v1.fh1_[i];
       w1.fh2_[i] += v1.fh2_[i];
@@ -285,6 +334,25 @@ it to Water::fh1_, etc ...
 @see spreadN().
 */
 void Tip4p::coulombFull(Water &w1, Water &w2, double &U) {
+  if (w1.e_ != nullptr) {
+    const double *r1[3] = {w1.rh1_, w1.rh2_, w1.rn_};
+    const double *r2[3] = {w2.rh1_, w2.rh2_, w2.rn_};
+    double *f1[3] = {w1.fh1_, w1.fh2_, w1.fn_};
+    double *f2[3] = {w2.fh1_, w2.fh2_, w2.fn_};
+    double const q[3] = {1.0, 1.0, -2.0};
+    // Slots H1, H2, N of e_. The nine terms in the order below.
+    static constexpr int slot[3] = {0, 1, 3};
+    static constexpr int order[9][2] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}, {2, 0},
+                                        {2, 1}, {0, 2}, {1, 2}, {2, 2}};
+    for (auto const &p : order) {
+      double u = 0.0;
+      coulomb(r1[p[0]], r2[p[1]], f1[p[0]], f2[p[1]], u, q[p[0]] * q[p[1]] * charge2_);
+      U += u;
+      w1.e_[slot[p[0]]] += 0.5 * u;
+      w2.e_[slot[p[1]]] += 0.5 * u;
+    }
+    return;
+  }
   // Coulomb interactions between hydrogens
   coulomb(w1.rh1_, w2.rh1_, w1.fh1_, w2.fh1_, U, charge2_);
   coulomb(w1.rh1_, w2.rh2_, w1.fh1_, w2.fh2_, U, charge2_);
@@ -309,6 +377,7 @@ Lennard Jones between oxygen only with cutoff
 void Tip4p::lennardJonesWithCutoff(Water &w1, Water &w2, double &U) {
   double z[3], z1;
   distance(w1.ro_, w2.ro_, z, z1);
+  double const before = U;
   if (z1 <= cutoff_ - switchingWidth_) {
     lennardJones(w1.ro_, w2.ro_, w1.fo_, w2.fo_, U, epsilon_, sigma_);
   } else if (z1 < cutoff_) {
@@ -322,5 +391,9 @@ void Tip4p::lennardJonesWithCutoff(Water &w1, Water &w2, double &U) {
       w2.fo_[i] += f2[i];
     };
   };
+  if (w1.e_ != nullptr) {
+    w1.e_[2] += 0.5 * (U - before);
+    w2.e_[2] += 0.5 * (U - before);
+  }
 }
 } // namespace forcefields

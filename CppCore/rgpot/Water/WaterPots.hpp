@@ -45,6 +45,13 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// forceImpl plus each atom's share of the energy: half of every
+  /// site-site term to each site, the M site's half spread over O, H, H
+  /// with the weights that place it, and the intramolecular term on the
+  /// oxygen. See Potential::forceEnergies.
+  void forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                         double *energies) const;
+
 private:
   struct Impl;
   WaterConfig m_config;
@@ -73,6 +80,12 @@ public:
   }
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
+
+  /// forceImpl plus each atom's share of the energy: half of every
+  /// site-site term to each site, the intramolecular and polarisation
+  /// terms on the oxygen. See Potential::forceEnergies.
+  void forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                         double *energies) const;
 
 private:
   struct Impl;
@@ -104,7 +117,16 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// forceImpl plus each atom's share of the energy: half of every
+  /// site-site, site-platinum and site-mirror-image term to each end (an
+  /// image's half to the atom it mirrors), the intramolecular term on the
+  /// oxygen. See Potential::forceEnergies.
+  void forceEnergiesImpl(const ForceInput &in, ForceOut *out,
+                         double *energies) const;
+
 private:
+  void evaluate(const ForceInput &in, ForceOut *out, double *energies) const;
+
   struct Impl;
   WaterConfig m_config;
   uint64_t m_paramsKey = 0;

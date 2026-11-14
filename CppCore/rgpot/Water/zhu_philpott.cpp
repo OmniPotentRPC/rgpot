@@ -114,7 +114,7 @@ template <class P>
 void ZhuPhilpott<P>::computeHH_O_Pt_(const int nWater, const int nPt,
                                      const double r[], double f[],
                                      double &energy, double const b[],
-                                     bool const fixed[]) {
+                                     bool const fixed[], double energies[]) {
   const double (*const rh1)[6] = reinterpret_cast<const double (*)[6]>(r);
   const double (*const rh2)[6] = reinterpret_cast<const double (*)[6]>(&r[3]);
   const double (*const ro)[3] =
@@ -134,13 +134,13 @@ void ZhuPhilpott<P>::computeHH_O_Pt_(const int nWater, const int nPt,
         reinterpret_cast<bool const(*)[1]>(&fixed[nWater * 2]);
     bool const *const xPt = &fixed[nWater * 3];
     computeTemplate(nWater, rh1, rh2, ro, fh1, fh2, fo, nPt, rPt, fPt, energy,
-                    b, xh1, xh2, xo, xPt);
+                    b, xh1, xh2, xo, xPt, energies);
   } else {
     bool const(*const xh1)[2] = 0;
     bool const(*const xh2)[2] = 0;
     bool const(*const xo)[1] = 0;
     computeTemplate(nWater, rh1, rh2, ro, fh1, fh2, fo, nPt, rPt, fPt, energy,
-                    b, xh1, xh2, xo, 0);
+                    b, xh1, xh2, xo, 0, energies);
   };
 }
 
@@ -221,7 +221,7 @@ void ZhuPhilpott<P>::computeTemplate(
     double (*const fh1)[H3], double (*const fh2)[H3], double (*const fo)[O3],
     const int nPt, const double rPt[][3], double fPt[][3], double &energy,
     double const b[], bool const (*const xh1)[H], bool const (*const xh2)[H],
-    bool const (*const xo)[O], bool const xPt[]) {
+    bool const (*const xo)[O], bool const xPt[], double *ea) {
   for (int i = 0; i < nWater; ++i) {
     for (int a = 0; a < 3; ++a) {
       fh1[i][a] = 0.0;
@@ -235,21 +235,37 @@ void ZhuPhilpott<P>::computeTemplate(
   };
   energy = 0.0;
   setPeriodicity(b);
+  // Site energies H1, H2, O of one molecule, added to its atoms.
+  auto tally = [&](int i, double const *e) {
+    ea[2 * i] += e[0];
+    ea[2 * i + 1] += e[1];
+    ea[2 * nWater + i] += e[2];
+  };
   for (int i = nWater - 1; i >= 0; --i) {
     double centre1[3] = {0};
     calculateCentre(rh1[i], rh2[i], ro[i], centre1);
     Water w1(rh1[i], rh2[i], ro[i], centre1, fh1[i], fh2[i], fo[i]);
+    double e1[3] = {0};
+    if (ea != nullptr) {
+      w1.e_ = e1;
+    }
+    double const before = energy;
     intramolecular(w1, energy);
+    e1[2] += energy - before;
     assert(not std::isnan(energy));
     DEBUG_LEVEL_RETURN(0)
     // Two next lines for interaction with platinum
-    interactWithCorePt(w1, nPt, rPt, fPt,
-                       energy); // called Vw-core in Zhu and Philpott
+    interactWithCorePt(w1, nPt, rPt, fPt, energy,
+                       ea != nullptr ? ea + 3 * nWater
+                                     : nullptr); // called Vw-core in Zhu and Philpott
     assert(not std::isnan(energy));
     DEBUG_LEVEL_RETURN(1)
     interactWithImage(w1, w1, energy); // called Vw-cond in Zhu and Philpott
     DEBUG_LEVEL_RETURN(2)
     assert(not std::isnan(energy));
+    if (ea != nullptr) {
+      tally(i, e1);
+    }
   }
   std::vector<double> centres(static_cast<std::size_t>(nWater) * 3, 0.0);
   for (int i = 0; i < nWater; ++i) {
@@ -295,10 +311,19 @@ void ZhuPhilpott<P>::computeTemplate(
     }
     Water w1(h1i, h2i, oi, centre1, fh1[i], fh2[i], fo[i]);
     Water w2(h1j, h2j, oj, centre2, fh1[j], fh2[j], fo[j]);
+    double e1[3] = {0}, e2[3] = {0};
+    if (ea != nullptr) {
+      w1.e_ = e1;
+      w2.e_ = e2;
+    }
     lennardJonesWithCutoff(w1, w2, energy);
     coulombWithCutoff(w1, w2, energy, 1.0);
     interactWithImage(w1, w2, energy);
     interactWithImage(w2, w1, energy);
+    if (ea != nullptr) {
+      tally(i, e1);
+      tally(j, e2);
+    }
   });
 #ifndef NDEBUG
   for (int i = 0; i < nWater; ++i) {
@@ -324,14 +349,14 @@ atom inside the cutoff, not only the nearest.
 template <class P>
 void ZhuPhilpott<P>::interactWithCorePt(Water &water, int const nPt,
                                         double const rPt[][3], double fPt[][3],
-                                        double &energy) {
+                                        double &energy, double *ePt) {
   bool thin = false;
   for (int a = 0; a < 3; ++a) {
     thin |= std::isfinite(periods_[a]) and periods_[a] < 2.0 * cutoff_;
   }
   if (not thin) {
     for (int i = 0; i < nPt; ++i) {
-      interactWithPt(water, rPt[i], fPt[i], energy);
+      interactWithPt(water, rPt[i], fPt[i], energy, ePt != nullptr ? ePt + i : nullptr);
     }
     return;
   }
@@ -339,6 +364,7 @@ void ZhuPhilpott<P>::interactWithCorePt(Water &water, int const nPt,
   carrySite(water.rh1_, water.ro_, water.ro_, h1);
   carrySite(water.rh2_, water.ro_, water.ro_, h2);
   Water whole(h1, h2, water.ro_, water.rc_, water.fh1_, water.fh2_, water.fo_);
+  whole.e_ = water.e_;
   double spread = 0.0;
   for (int a = 0; a < 3; ++a) {
     spread = std::fmax(spread, std::fabs(h1[a] - water.ro_[a]));
@@ -364,7 +390,8 @@ void ZhuPhilpott<P>::interactWithCorePt(Water &water, int const nPt,
           double const image[3] = {nearest[0] + sa * open.period(0),
                                    nearest[1] + sb * open.period(1),
                                    nearest[2] + sc * open.period(2)};
-          interactWithPt(whole, image, fPt[i], energy);
+          interactWithPt(whole, image, fPt[i], energy,
+                         ePt != nullptr ? ePt + i : nullptr);
         }
       }
     }
@@ -374,7 +401,17 @@ void ZhuPhilpott<P>::interactWithCorePt(Water &water, int const nPt,
 /// Interaction of one molecule of water with one platinum atom.
 template <class P>
 void ZhuPhilpott<P>::interactWithPt(Water &water, double const pt[], double fpt[],
-                                    double &energy) {
+                                    double &energy, double *ept) {
+  // Half of each site's term to the site, half to the platinum atom.
+  double mark = energy;
+  auto share = [&](int site) {
+    if (ept != nullptr) {
+      double const du = energy - mark;
+      water.e_[site] += 0.5 * du;
+      *ept += 0.5 * du;
+      mark = energy;
+    }
+  };
   double r[3], r1; // for distance between two atoms
                    // Pt - O
   distance(water.ro_, pt, r, r1);
@@ -391,6 +428,7 @@ void ZhuPhilpott<P>::interactWithPt(Water &water, double const pt[], double fpt[
       fpt[j] += fPtTmp[j];
     };
   };
+  share(2);
   // Pt - H1
   distance(water.rh1_, pt, r, r1);
   if (r1 <= cutoff_ - switchingWidth_) {
@@ -406,6 +444,7 @@ void ZhuPhilpott<P>::interactWithPt(Water &water, double const pt[], double fpt[
       fpt[j] += fPtTmp[j];
     };
   };
+  share(0);
   // Pt - H2
   distance(water.rh2_, pt, r, r1);
   if (r1 <= cutoff_ - switchingWidth_) {
@@ -421,6 +460,7 @@ void ZhuPhilpott<P>::interactWithPt(Water &water, double const pt[], double fpt[
       fpt[j] += fPtTmp[j];
     };
   };
+  share(1);
 }
 
 template <class P>
@@ -544,6 +584,8 @@ void ZhuPhilpott<P>::interactWithImage(Water &w1, Water &w2, double &U) {
   r[2][2] = -w2.ro_[2];
   r[3][2] = -w2.rc_[2];
   Water w2m(r[0], r[1], r[2], r[3], f[0], f[1], f[2]);
+  // The image's half of each term belongs to the atom it mirrors.
+  w2m.e_ = w2.e_;
   // -2 is given as the relative permittivity. This value is not the
   // permittivity of the metal which is infinite in the case of a perfect metal.
   // It is the value (1+epsilon_r)/(1-epsilon_r) which is equal to -1 for a
@@ -584,12 +626,24 @@ void ZhuPhilpott<P>::coulombWithCutoff(Water &w1, Water &w2, double &U,
     double f1[3][3] = {{0}}, f2[3][3] = {{0}};
     Water v1(w1, f1[0], f1[1], f1[2]);
     Water v2(w2, f2[0], f2[1], f2[2]);
+    double e1[3] = {0}, e2[3] = {0};
+    if (w1.e_ != nullptr) {
+      v1.e_ = e1;
+      v2.e_ = e2;
+    }
     double energy = 0.0;
     coulombFull(v1, v2, energy, relativePermittivity);
     ChargeGroup<3> g1 = {v1.rc_, 0, f1};
     ChargeGroup<3> g2 = {v2.rc_, 0, f2};
     switching(g1, g2, energy, cutoff_, switchingWidth_);
     U += energy;
+    if (w1.e_ != nullptr) {
+      double const s = switchFactor(z1, cutoff_, switchingWidth_);
+      for (int k = 0; k < 3; ++k) {
+        w1.e_[k] += s * e1[k];
+        w2.e_[k] += s * e2[k];
+      }
+    }
     w1.addForces(v1);
     w2.addForces(v2);
   };
@@ -605,6 +659,10 @@ Coulomb interaction between two molecules of water.
 template <class P>
 void ZhuPhilpott<P>::coulombFull(Water &w1, Water &w2, double &U,
                                  double const relativePermittivity) {
+  if (w1.e_ != nullptr) {
+    coulombSites(w1, w2, U, relativePermittivity);
+    return;
+  }
   // q^2/relativePermittivity;
   const double qq2overEr = charge2_ / relativePermittivity;
   // Coulomb interactions between hydrogens
