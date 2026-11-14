@@ -64,6 +64,12 @@ public:
     return m_paramsKey;
   }
 
+  /// Energy and forces. Stress is not formed; @c forceImpl is the call
+  /// that asks for the Cauchy stress.
+  std::tuple<double, types::AtomMatrix, double>
+  operator()(const types::AtomMatrix &positions, const std::vector<int> &atmtypes,
+             const std::array<std::array<double, 3>, 3> &box) override;
+
   /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
   /// eV/Angstrom^3, the convention of stress.hpp. The virial sums each
   /// folded bond vector times the energy gradient with respect to it.

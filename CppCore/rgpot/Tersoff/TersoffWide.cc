@@ -196,19 +196,20 @@ void TersoffSiC::runOwned(const int *kind, int n, int nt, double cut2, double sc
       if (static_cast<int>(eterm.size()) < nenergy) {
         eterm.resize(static_cast<std::size_t>(nenergy));
       }
-      const int strain_on = strain != nullptr ? 1 : 0;
-      strain_at.resize(static_cast<std::size_t>(n) + 1);
-      strain_n.assign(static_cast<std::size_t>(n), 0);
-      strain_used.assign(static_cast<std::size_t>(n), 0);
-      strain_at[0] = 0;
-      for (int i = 0; i < n; ++i) {
-        const int m = bond_n[static_cast<std::size_t>(i)];
-        strain_n[static_cast<std::size_t>(i)] = strain_on * (m + 2 * m * (m > 0 ? m - 1 : 0));
-        strain_at[static_cast<std::size_t>(i) + 1] =
-            strain_at[static_cast<std::size_t>(i)] + strain_n[static_cast<std::size_t>(i)];
-      }
-      if (static_cast<int>(strain_hit.size()) < strain_at[static_cast<std::size_t>(n)]) {
-        strain_hit.resize(static_cast<std::size_t>(strain_at[static_cast<std::size_t>(n)]));
+      if (strain != nullptr) {
+        strain_at.resize(static_cast<std::size_t>(n) + 1);
+        strain_n.assign(static_cast<std::size_t>(n), 0);
+        strain_used.assign(static_cast<std::size_t>(n), 0);
+        strain_at[0] = 0;
+        for (int i = 0; i < n; ++i) {
+          const int m = bond_n[static_cast<std::size_t>(i)];
+          strain_n[static_cast<std::size_t>(i)] = m + 2 * m * (m > 0 ? m - 1 : 0);
+          strain_at[static_cast<std::size_t>(i) + 1] =
+              strain_at[static_cast<std::size_t>(i)] + strain_n[static_cast<std::size_t>(i)];
+        }
+        if (static_cast<int>(strain_hit.size()) < strain_at[static_cast<std::size_t>(n)]) {
+          strain_hit.resize(static_cast<std::size_t>(strain_at[static_cast<std::size_t>(n)]));
+        }
       }
     }
 #if defined(_OPENMP)
@@ -336,7 +337,7 @@ void TersoffSiC::runOwned(const int *kind, int n, int nt, double cut2, double sc
           }
         }
       }
-      if (mine) {
+      if (mine && strain != nullptr) {
         strain_used[static_cast<std::size_t>(c)] = ns;
       }
     }
@@ -479,19 +480,20 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
       if (static_cast<int>(cursor.size()) < nt * n) {
         cursor.resize(static_cast<std::size_t>(nt) * static_cast<std::size_t>(n));
       }
-      const int strain_on = strain != nullptr ? 1 : 0;
-      strain_at.resize(static_cast<std::size_t>(n) + 1);
-      strain_n.assign(static_cast<std::size_t>(n), 0);
-      strain_used.assign(static_cast<std::size_t>(n), 0);
-      strain_at[0] = 0;
-      for (int i = 0; i < n; ++i) {
-        const int m = bond_n[static_cast<std::size_t>(i)];
-        strain_n[static_cast<std::size_t>(i)] = strain_on * (m + 2 * m * (m - 1));
-        strain_at[static_cast<std::size_t>(i) + 1] =
-            strain_at[static_cast<std::size_t>(i)] + strain_n[static_cast<std::size_t>(i)];
-      }
-      if (static_cast<int>(strain_hit.size()) < strain_at[static_cast<std::size_t>(n)]) {
-        strain_hit.resize(static_cast<std::size_t>(strain_at[static_cast<std::size_t>(n)]));
+      if (strain != nullptr) {
+        strain_at.resize(static_cast<std::size_t>(n) + 1);
+        strain_n.assign(static_cast<std::size_t>(n), 0);
+        strain_used.assign(static_cast<std::size_t>(n), 0);
+        strain_at[0] = 0;
+        for (int i = 0; i < n; ++i) {
+          const int m = bond_n[static_cast<std::size_t>(i)];
+          strain_n[static_cast<std::size_t>(i)] = m + 2 * m * (m - 1);
+          strain_at[static_cast<std::size_t>(i) + 1] =
+              strain_at[static_cast<std::size_t>(i)] + strain_n[static_cast<std::size_t>(i)];
+        }
+        if (static_cast<int>(strain_hit.size()) < strain_at[static_cast<std::size_t>(n)]) {
+          strain_hit.resize(static_cast<std::size_t>(strain_at[static_cast<std::size_t>(n)]));
+        }
       }
     }
 #if defined(_OPENMP)
@@ -515,7 +517,10 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
         ang.resize(static_cast<std::size_t>(m) * static_cast<std::size_t>(m));
       }
       double *steps = eterm.data() + energy_at[static_cast<std::size_t>(i)];
-      StrainHit *s_steps = strain_hit.data() + strain_at[static_cast<std::size_t>(i)];
+      StrainHit *s_steps = nullptr;
+      if (strain != nullptr) {
+        s_steps = strain_hit.data() + strain_at[static_cast<std::size_t>(i)];
+      }
       int ns = 0;
       for (int a = 0; a < m; ++a) {
         const Bond &bj = nb[a];
@@ -589,7 +594,9 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
           }
         }
       }
-      strain_used[static_cast<std::size_t>(i)] = ns;
+      if (strain != nullptr) {
+        strain_used[static_cast<std::size_t>(i)] = ns;
+      }
     }
 #if defined(_OPENMP)
 #pragma omp barrier

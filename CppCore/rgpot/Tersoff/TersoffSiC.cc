@@ -186,6 +186,21 @@ TersoffSiC::TersoffSiC() : Potential(PotType::TersoffSi) {
   m_paramsKey = fp.h;
 }
 
+std::tuple<double, types::AtomMatrix, double>
+TersoffSiC::operator()(const types::AtomMatrix &positions,
+                       const std::vector<int> &atmtypes,
+                       const std::array<std::array<double, 3>, 3> &box) {
+  const std::size_t n_atoms = positions.rows();
+  types::AtomMatrix forces = types::AtomMatrix::Zero(n_atoms, 3);
+  double flat[9];
+  static_assert(sizeof(box) == sizeof(flat));
+  std::memcpy(flat, static_cast<const void *>(&box), sizeof(flat));
+  double energy = 0.0;
+  evaluate(positions.data(), atmtypes.empty() ? nullptr : atmtypes.data(), flat, n_atoms,
+           &energy, forces.data(), 1.0, m_held.skin > 0.0 ? &m_held : nullptr, nullptr);
+  return {energy, std::move(forces), 0.0};
+}
+
 void TersoffSiC::forceImpl(const ForceInput &in, ForceOut *out) const {
   if (out == nullptr) {
     throw std::invalid_argument("TersoffSiC: null ForceOut");

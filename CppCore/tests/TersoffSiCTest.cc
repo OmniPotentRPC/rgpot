@@ -14,10 +14,14 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <random>
+#include <string>
 #include <vector>
+
+#include <omp.h>
 
 #include <catch2/catch_all.hpp>
 
@@ -572,4 +576,44 @@ TEST_CASE("Tersoff 1989 stress with a held list and without a pair",
   for (double component : out.stress) {
     REQUIRE(component == 0.0);
   }
+}
+
+TEST_CASE("Tersoff energy and forces match with and without stress",
+          "[TersoffSiC][stress][threads]") {
+  auto bits_of = [](double x) {
+    std::uint64_t u = 0;
+    std::memcpy(&u, &x, sizeof(u));
+    return u;
+  };
+  for (int nrep : {4, 8}) {
+    const double a = 5.432;
+    const auto raw = diamond(nrep, a);
+    const std::size_t n = raw.size() / 3;
+    AtomMatrix positions(n, 3);
+    std::copy(raw.begin(), raw.end(), positions.data());
+    const std::vector<int> types(n, 14);
+    const auto box = cubic(nrep * a);
+    double flat[9];
+    std::memcpy(flat, &box, sizeof(flat));
+    for (int threads : {1, 2, 4, 8}) {
+      const std::string text = std::to_string(threads);
+      setenv("OMP_NUM_THREADS", text.c_str(), 1);
+      omp_set_num_threads(threads);
+      TersoffSiC pot;
+      pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+      const auto [energy, forces, variance] = pot(positions, types, box);
+      (void)variance;
+      std::vector<double> stressed(forces.size());
+      rgpot::ForceOut out{stressed.data(), 0.0, 0.0, {}, 0};
+      pot.forceImpl({n, positions.data(), types.data(), flat}, &out);
+      REQUIRE(out.has_stress == 1);
+      REQUIRE(bits_of(out.energy) == bits_of(energy));
+      REQUIRE(stressed.size() == static_cast<std::size_t>(forces.size()));
+      for (std::size_t i = 0; i < stressed.size(); ++i) {
+        REQUIRE(bits_of(stressed[i]) == bits_of(forces.data()[i]));
+      }
+    }
+  }
+  setenv("OMP_NUM_THREADS", "1", 1);
+  omp_set_num_threads(1);
 }
