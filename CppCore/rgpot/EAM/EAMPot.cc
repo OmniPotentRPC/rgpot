@@ -68,24 +68,28 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
   // through the reverse slot: lower neighbours, this atom's pair terms,
   // this atom's embedding, then the higher neighbours. That is the order
   // the serial walk adds into this atom, so the bits do not depend on
-  // which thread owns the atom.
+  // which thread owns the atom. The pair record sits in one struct so the
+  // reverse read is one line, and each thread's energy steps are already
+  // in atom order so the final sum is one contiguous add per thread.
   const auto nslot = neighbours_.slots();
-  if (gdx_.size() != nslot) {
-    gdx_.resize(nslot);
-    gdy_.resize(nslot);
-    gdz_.resize(nslot);
-    fscale_.resize(nslot);
-    morse_.resize(nslot);
-  }
+  struct Term {
+    double x;
+    double y;
+    double z;
+    double fscale;
+    double morse;
+  };
   struct Scratch {
     std::vector<double> dix;
     std::vector<double> diy;
     std::vector<double> diz;
     std::vector<double> df;
-    std::vector<double> eterm;
     std::vector<int> e_at;
-    std::vector<int> e_used;
     std::vector<char> live;
+    std::vector<double> packed;
+    std::vector<int> pack_at;
+    std::vector<int> pack_used;
+    std::vector<Term> term;
   };
   static Scratch scratch;
   if (static_cast<long>(scratch.df.size()) < N) {
@@ -97,10 +101,12 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
   if (scratch.live.size() < nslot) {
     scratch.live.resize(nslot);
   }
+  if (scratch.term.size() < nslot) {
+    scratch.term.resize(nslot);
+  }
   const auto &off = neighbours_.offsets();
   const auto &nbr = neighbours_.neighbours();
   scratch.e_at.resize(static_cast<std::size_t>(N) + 1);
-  scratch.e_used.assign(static_cast<std::size_t>(N), 0);
   scratch.e_at[0] = 0;
   for (long i = 0; i < N; ++i) {
     const int deg = static_cast<int>(off[static_cast<std::size_t>(i) + 1] -
@@ -108,10 +114,20 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
     scratch.e_at[static_cast<std::size_t>(i) + 1] =
         scratch.e_at[static_cast<std::size_t>(i)] + deg + 1;
   }
-  if (static_cast<int>(scratch.eterm.size()) < scratch.e_at[static_cast<std::size_t>(N)]) {
-    scratch.eterm.resize(static_cast<std::size_t>(scratch.e_at[static_cast<std::size_t>(N)]));
-  }
   const int nt = threads_used_;
+  scratch.pack_at.resize(static_cast<std::size_t>(nt) + 1);
+  scratch.pack_used.assign(static_cast<std::size_t>(nt), 0);
+  scratch.pack_at[0] = 0;
+  for (int t = 0; t < nt; ++t) {
+    const auto range = rgpot::nlist::partition(N, t, nt);
+    const int room = scratch.e_at[static_cast<std::size_t>(range.end)] -
+                     scratch.e_at[static_cast<std::size_t>(range.begin)];
+    scratch.pack_at[static_cast<std::size_t>(t) + 1] =
+        scratch.pack_at[static_cast<std::size_t>(t)] + room;
+  }
+  if (static_cast<int>(scratch.packed.size()) < scratch.pack_at[static_cast<std::size_t>(nt)]) {
+    scratch.packed.resize(static_cast<std::size_t>(scratch.pack_at[static_cast<std::size_t>(nt)]));
+  }
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
 #endif
@@ -122,6 +138,8 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
     const int thread = 0;
 #endif
     const auto range = rgpot::nlist::partition(N, thread, nt);
+    double *steps = scratch.packed.data() + scratch.pack_at[static_cast<std::size_t>(thread)];
+    int ne = 0;
     for (long i = range.begin; i < range.end; ++i) {
       const element_parameters epar = get_element_parameters(atomicNrs[i]);
       const double cutoff2 = epar.r_cut * epar.r_cut;
@@ -129,8 +147,6 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
       double dix = 0.0;
       double diy = 0.0;
       double diz = 0.0;
-      double *steps = scratch.eterm.data() + scratch.e_at[static_cast<std::size_t>(i)];
-      int ne = 0;
       const long begin = static_cast<long>(off[static_cast<std::size_t>(i)]);
       const long end = static_cast<long>(off[static_cast<std::size_t>(i) + 1]);
       for (long p = begin; p < end; ++p) {
@@ -141,9 +157,10 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
         double dz = 0.0;
         double r2 = 0.0;
         geometry(i, j, dx, dy, dz, r2);
-        gdx_[slot] = dx;
-        gdy_[slot] = dy;
-        gdz_[slot] = dz;
+        Term &term = scratch.term[slot];
+        term.x = dx;
+        term.y = dy;
+        term.z = dz;
         if (r2 > cutoff2) {
           scratch.live[slot] = 0;
           continue;
@@ -161,7 +178,7 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
             r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
         const double invR = 1.0 / r;
         const double fscale = -mag_force_den * invR;
-        fscale_[slot] = fscale;
+        term.fscale = fscale;
         dens += rho_term;
         dix += fscale * dx;
         diy += fscale * dy;
@@ -171,21 +188,21 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
           const double d = 1.0 - expArg;
           const double phi_r = epar.Dm * d * d - epar.Dm;
           const double mag_force = 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0);
-          morse_[slot] = mag_force * invR;
+          term.morse = mag_force * invR;
           steps[ne] = phi_r;
           ++ne;
         } else {
-          morse_[slot] = 0.0;
+          term.morse = 0.0;
         }
       }
       steps[ne] = embedding_function(epar.func_coeff, dens);
       ++ne;
-      scratch.e_used[static_cast<std::size_t>(i)] = ne;
       scratch.dix[static_cast<std::size_t>(i)] = dix;
       scratch.diy[static_cast<std::size_t>(i)] = diy;
       scratch.diz[static_cast<std::size_t>(i)] = diz;
       scratch.df[static_cast<std::size_t>(i)] = embedding_force(epar.func_coeff, dens);
     }
+    scratch.pack_used[static_cast<std::size_t>(thread)] = ne;
 #if defined(_OPENMP)
 #pragma omp barrier
 #endif
@@ -208,15 +225,16 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
           continue;
         }
         const auto rs = static_cast<std::size_t>(rev);
-        const double pdx = gdx_[rs];
-        const double pdy = gdy_[rs];
-        const double pdz = gdz_[rs];
-        fx -= morse_[rs] * pdx;
-        fy -= morse_[rs] * pdy;
-        fz -= morse_[rs] * pdz;
-        const double sx = -fscale_[rs] * pdx;
-        const double sy = -fscale_[rs] * pdy;
-        const double sz = -fscale_[rs] * pdz;
+        const Term &back = scratch.term[rs];
+        const double pdx = back.x;
+        const double pdy = back.y;
+        const double pdz = back.z;
+        fx -= back.morse * pdx;
+        fy -= back.morse * pdy;
+        fz -= back.morse * pdz;
+        const double sx = -back.fscale * pdx;
+        const double sy = -back.fscale * pdy;
+        const double sz = -back.fscale * pdz;
         const double dFj = scratch.df[static_cast<std::size_t>(j)];
         fx -= dFj * sx;
         fy -= dFj * sy;
@@ -236,9 +254,10 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
         if (j <= i || scratch.live[slot] == 0) {
           continue;
         }
-        fx += morse_[slot] * gdx_[slot];
-        fy += morse_[slot] * gdy_[slot];
-        fz += morse_[slot] * gdz_[slot];
+        const Term &here = scratch.term[slot];
+        fx += here.morse * here.x;
+        fy += here.morse * here.y;
+        fz += here.morse * here.z;
         if (!stash || static_cast<std::size_t>(p) >= rev_.size()) {
           continue;
         }
@@ -247,10 +266,11 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
           continue;
         }
         const auto rs = static_cast<std::size_t>(rev);
+        const Term &back = scratch.term[rs];
         const double dFj = scratch.df[static_cast<std::size_t>(j)];
-        const double sx = -fscale_[rs] * gdx_[rs];
-        const double sy = -fscale_[rs] * gdy_[rs];
-        const double sz = -fscale_[rs] * gdz_[rs];
+        const double sx = -back.fscale * back.x;
+        const double sy = -back.fscale * back.y;
+        const double sz = -back.fscale * back.z;
         held[nh] = Held{dFj * sx, dFj * sy, dFj * sz};
         ++nh;
       }
@@ -279,9 +299,10 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
             continue;
           }
           const auto rs = static_cast<std::size_t>(rev);
-          const double sx = -fscale_[rs] * gdx_[rs];
-          const double sy = -fscale_[rs] * gdy_[rs];
-          const double sz = -fscale_[rs] * gdz_[rs];
+          const Term &back = scratch.term[rs];
+          const double sx = -back.fscale * back.x;
+          const double sy = -back.fscale * back.y;
+          const double sz = -back.fscale * back.z;
           const double dFj = scratch.df[static_cast<std::size_t>(j)];
           fx -= dFj * sx;
           fy -= dFj * sy;
@@ -294,9 +315,9 @@ void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
     }
   }
   double total = 0.0;
-  for (long i = 0; i < N; ++i) {
-    const double *steps = scratch.eterm.data() + scratch.e_at[static_cast<std::size_t>(i)];
-    const int ne = scratch.e_used[static_cast<std::size_t>(i)];
+  for (int t = 0; t < nt; ++t) {
+    const double *steps = scratch.packed.data() + scratch.pack_at[static_cast<std::size_t>(t)];
+    const int ne = scratch.pack_used[static_cast<std::size_t>(t)];
     for (int k = 0; k < ne; ++k) {
       total += steps[k];
     }
