@@ -9,6 +9,7 @@
 #include <cstring>
 #include <limits>
 #include <new>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -126,21 +127,8 @@ bool keep_half(std::int32_t first, std::int32_t second, int sa, int sb, int sc) 
 
 void shift_bounds(const double *box, const std::array<bool, 3> &periodic,
                   double search, int nmax[3]) {
-  const double a[3] = {box[0], box[1], box[2]};
-  const double b[3] = {box[3], box[4], box[5]};
-  const double c[3] = {box[6], box[7], box[8]};
-  const double bx[3] = {b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2],
-                        b[0] * c[1] - b[1] * c[0]};
-  const double cx[3] = {c[1] * a[2] - c[2] * a[1], c[2] * a[0] - c[0] * a[2],
-                        c[0] * a[1] - c[1] * a[0]};
-  const double ax[3] = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
-                        a[0] * b[1] - a[1] * b[0]};
-  const double vol = std::fabs(a[0] * bx[0] + a[1] * bx[1] + a[2] * bx[2]);
-  const double nb = std::sqrt(bx[0] * bx[0] + bx[1] * bx[1] + bx[2] * bx[2]);
-  const double nc = std::sqrt(cx[0] * cx[0] + cx[1] * cx[1] + cx[2] * cx[2]);
-  const double na = std::sqrt(ax[0] * ax[0] + ax[1] * ax[1] + ax[2] * ax[2]);
-  const double height[3] = {nb > 0.0 ? vol / nb : 0.0, nc > 0.0 ? vol / nc : 0.0,
-                            na > 0.0 ? vol / na : 0.0};
+  double height[3];
+  perpendicularWidths(box, height);
   for (int k = 0; k < 3; ++k) {
     if (!periodic[static_cast<std::size_t>(k)] || !(height[k] > 0.0) ||
         !(search > 0.0)) {
@@ -1064,6 +1052,147 @@ void build(Batch &batch, const Systems &systems, const Query &query) {
   out.pairs.stored = true;
   out.pairs.device = 0;
   batch = std::move(out);
+}
+
+void perpendicularWidths(const double *box9, double width[3]) {
+  const double a[3] = {box9[0], box9[1], box9[2]};
+  const double b[3] = {box9[3], box9[4], box9[5]};
+  const double c[3] = {box9[6], box9[7], box9[8]};
+  const double bx[3] = {b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2],
+                        b[0] * c[1] - b[1] * c[0]};
+  const double cx[3] = {c[1] * a[2] - c[2] * a[1], c[2] * a[0] - c[0] * a[2],
+                        c[0] * a[1] - c[1] * a[0]};
+  const double ax[3] = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+                        a[0] * b[1] - a[1] * b[0]};
+  const double vol = std::fabs(a[0] * bx[0] + a[1] * bx[1] + a[2] * bx[2]);
+  const double nb = std::sqrt(bx[0] * bx[0] + bx[1] * bx[1] + bx[2] * bx[2]);
+  const double nc = std::sqrt(cx[0] * cx[0] + cx[1] * cx[1] + cx[2] * cx[2]);
+  const double na = std::sqrt(ax[0] * ax[0] + ax[1] * ax[1] + ax[2] * ax[2]);
+  width[0] = nb > 0.0 ? vol / nb : 0.0;
+  width[1] = nc > 0.0 ? vol / nc : 0.0;
+  width[2] = na > 0.0 ? vol / na : 0.0;
+}
+
+bool beyondHalfWidth(const double *box9, double cutoff,
+                     const std::array<bool, 3> &periodic) {
+  if (box9 == nullptr || !(cutoff > 0.0)) {
+    return false;
+  }
+  double width[3];
+  perpendicularWidths(box9, width);
+  for (int k = 0; k < 3; ++k) {
+    if (periodic[static_cast<std::size_t>(k)] && width[k] > 0.0 && 2.0 * cutoff > width[k]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void ImagePairs::update(const double *positions, std::size_t n, const double *box9,
+                        double cutoff, double skin, const std::array<bool, 3> &periodic) {
+  Query query;
+  query.cutoff = cutoff;
+  query.skin = skin;
+  query.shape = Pairs{Shell::Half};
+  query.cut = Cut::Loose;
+  query.periodic = periodic;
+  query.fields.shifts = true;
+  query.fields.vectors = false;
+  query.fields.distances = false;
+  // Fractional coordinates f = r H^-1 for the rows of H; k = floor(f) on
+  // the periodic axes. Builder's shift range assumes wrapped positions.
+  const double *h = box9;
+  const double det = h[0] * (h[4] * h[8] - h[5] * h[7]) - h[1] * (h[3] * h[8] - h[5] * h[6]) +
+                     h[2] * (h[3] * h[7] - h[4] * h[6]);
+  const double inv[9] = {(h[4] * h[8] - h[5] * h[7]) / det, (h[2] * h[7] - h[1] * h[8]) / det,
+                         (h[1] * h[5] - h[2] * h[4]) / det, (h[5] * h[6] - h[3] * h[8]) / det,
+                         (h[0] * h[8] - h[2] * h[6]) / det, (h[2] * h[3] - h[0] * h[5]) / det,
+                         (h[3] * h[7] - h[4] * h[6]) / det, (h[1] * h[6] - h[0] * h[7]) / det,
+                         (h[0] * h[4] - h[1] * h[3]) / det};
+  const bool invertible = std::isfinite(det) && det != 0.0;
+  wrapped_.assign(positions, positions + 3 * n);
+  next_.assign(3 * n, 0);
+  for (std::size_t i = 0; invertible && i < n; ++i) {
+    const double *r = positions + 3 * i;
+    std::int64_t k[3] = {0, 0, 0};
+    for (int a = 0; a < 3; ++a) {
+      if (!periodic[static_cast<std::size_t>(a)]) {
+        continue;
+      }
+      const double f = r[0] * inv[a] + r[1] * inv[3 + a] + r[2] * inv[6 + a];
+      if (std::isfinite(f)) {
+        k[a] = static_cast<std::int64_t>(std::floor(f));
+      }
+    }
+    for (int c = 0; c < 3; ++c) {
+      wrapped_[3 * i + c] -= static_cast<double>(k[0]) * h[c] +
+                             static_cast<double>(k[1]) * h[3 + c] +
+                             static_cast<double>(k[2]) * h[6 + c];
+      next_[3 * i + static_cast<std::size_t>(c)] = k[c];
+    }
+  }
+  // Builder drops pairs at zero distance. Two atoms on one point wrap to
+  // the same coordinates; they are reported, and the table is built without
+  // a skin so the next call does not reuse a table that lacks the pair.
+  std::vector<std::size_t> order(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    order[i] = i;
+  }
+  const double *w = wrapped_.data();
+  auto less = [w](std::size_t p, std::size_t q) {
+    return std::lexicographical_compare(w + 3 * p, w + 3 * p + 3, w + 3 * q, w + 3 * q + 3);
+  };
+  std::sort(order.begin(), order.end(), less);
+  coincident_ = false;
+  for (std::size_t k = 1; k < n && !coincident_; ++k) {
+    coincident_ = std::equal(w + 3 * order[k - 1], w + 3 * order[k - 1] + 3, w + 3 * order[k]);
+  }
+  if (coincident_) {
+    query.skin = 0.0;
+  }
+  // A reused table is still right for the wrapped positions; the offsets
+  // of this call carry it to the positions given.
+  builder_.update(wrapped_.data(), n, box9, query);
+  cell_.swap(next_);
+  pos_ = positions;
+  std::memcpy(box_, box9, sizeof(box_));
+}
+
+void ImagePairs::requireSingleImage(const char *who, double cutoff) const {
+  const double cutoff2 = cutoff * cutoff;
+  std::vector<std::uint64_t> keys;
+  keys.reserve(size());
+  std::string clash;
+  forHalf([&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+    // A term exactly at the cutoff is ignored here, as it is by the
+    // kernels whose energy goes to zero there.
+    if (!clash.empty() || !(r2 < cutoff2)) {
+      return;
+    }
+    if (i == j) {
+      clash = "atom " + std::to_string(i) + " is inside the cutoff of its own periodic image";
+      return;
+    }
+    const auto lo = static_cast<std::uint64_t>(std::min(i, j));
+    const auto hi = static_cast<std::uint64_t>(std::max(i, j));
+    keys.push_back((lo << 32) | hi);
+  });
+  if (clash.empty()) {
+    std::sort(keys.begin(), keys.end());
+    const auto twice = std::adjacent_find(keys.begin(), keys.end());
+    if (twice != keys.end()) {
+      clash = "atoms " + std::to_string(*twice >> 32) + " and " +
+              std::to_string(*twice & 0xffffffffu) +
+              " have two periodic images inside the cutoff";
+    }
+  }
+  if (!clash.empty()) {
+    throw std::invalid_argument(std::string(who) + ": with cutoff " + std::to_string(cutoff) +
+                                ", " + clash +
+                                ". The cutoff is more than half a width of the cell, so "
+                                "the minimum image would drop pairs. Use the all-images "
+                                "mode or a larger cell.");
+  }
 }
 
 } // namespace rgpot::nlist

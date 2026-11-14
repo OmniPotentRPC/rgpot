@@ -280,4 +280,84 @@ inline void visitHalf(const Neighbours &cells, std::int64_t begin, std::int64_t 
   cells.forHalf(begin, end, std::forward<Fn>(fn));
 }
 
+/// Which periodic images a pair kernel sums. Minimum keeps the nearest
+/// image of each partner. That is exact only while the cutoff is at most
+/// half of every perpendicular width of the cell. All sums every image
+/// inside the cutoff, an atom's own images included, as ASE and LAMMPS do.
+enum class Images : std::uint8_t { Minimum, All };
+
+/// Perpendicular widths V / |b x c|, V / |c x a| and V / |a x b| of the
+/// rows of `box9`. A cell with zero volume gives zeros.
+void perpendicularWidths(const double *box9, double width[3]);
+
+/// True when `cutoff` is more than half the perpendicular width of a
+/// periodic axis of `box9`. Past that, the minimum image can be one of
+/// several images inside the cutoff. A null box or zero widths give false.
+bool beyondHalfWidth(const double *box9, double cutoff, const std::array<bool, 3> &periodic);
+
+/// Every image of every pair inside the cutoff for the pair kernels:
+/// (i, j, n) with |r_j + n H - r_i| inside the cutoff, i <= j, and one of
+/// n and -n when i == j. The shift range comes from the perpendicular
+/// widths. The pairs are the half table of `Builder` with the lattice
+/// shifts only, built on the positions wrapped into the cell, so the
+/// vectors are rebuilt from the positions of each call and a table kept
+/// out to cutoff + skin is reused while every atom moves by at most half
+/// the skin. Positions need not lie inside the cell.
+class ImagePairs {
+public:
+  void update(const double *positions, std::size_t n, const double *box9, double cutoff,
+              double skin, const std::array<bool, 3> &periodic);
+
+  /// `fn(i, j, dx, dy, dz, r2)` with `d = r_i - r_j - n H`, the sign of
+  /// `visitHalf`. A self image has `i == j`; its force on the atom cancels,
+  /// and the pair term counts once, which is the half of the two shifts
+  /// n and -n. Pairs up to the cutoff plus the skin are visited; the
+  /// caller drops those past the cutoff.
+  template <typename Fn> void forHalf(Fn &&fn) const {
+    const Table &t = builder_.table();
+    const double *pos = pos_;
+    const double *h = box_;
+    const std::int64_t *cell = cell_.data();
+    for (std::size_t p = 0; p < t.size(); ++p) {
+      const auto i = t.first[p];
+      const auto j = t.second[p];
+      const auto ui = 3 * static_cast<std::size_t>(i);
+      const auto uj = 3 * static_cast<std::size_t>(j);
+      // The table was built on wrapped positions w = r - k H. Its shift n
+      // on w is n + k_i - k_j on the positions of this call.
+      const auto a = static_cast<double>(t.shift[3 * p] + cell[ui] - cell[uj]);
+      const auto b = static_cast<double>(t.shift[3 * p + 1] + cell[ui + 1] - cell[uj + 1]);
+      const auto c = static_cast<double>(t.shift[3 * p + 2] + cell[ui + 2] - cell[uj + 2]);
+      const double dx = pos[ui] - pos[uj] - (a * h[0] + b * h[3] + c * h[6]);
+      const double dy = pos[ui + 1] - pos[uj + 1] - (a * h[1] + b * h[4] + c * h[7]);
+      const double dz = pos[ui + 2] - pos[uj + 2] - (a * h[2] + b * h[5] + c * h[8]);
+      fn(i, j, dx, dy, dz, dx * dx + dy * dy + dz * dz);
+    }
+  }
+
+  /// Throws std::invalid_argument naming `who` when an atom is inside
+  /// `cutoff` of its own image, or a pair has two images inside it. The
+  /// minimum image would drop those terms. Otherwise the table holds one
+  /// image per pair inside the cutoff, the minimum image.
+  void requireSingleImage(const char *who, double cutoff) const;
+
+  /// True when two atoms of the last update share a point (an image at
+  /// zero distance). The table holds no pair for them.
+  [[nodiscard]] bool coincident() const noexcept { return coincident_; }
+
+  /// True when the last update kept the previous table.
+  [[nodiscard]] bool reused() const noexcept { return builder_.reused(); }
+  /// Pair images in the table, self images included.
+  [[nodiscard]] std::size_t size() const noexcept { return builder_.table().size(); }
+
+private:
+  Builder builder_;
+  const double *pos_ = nullptr;
+  double box_[9]{};
+  std::vector<double> wrapped_;
+  std::vector<std::int64_t> cell_; //!< k of each atom in the last update.
+  std::vector<std::int64_t> next_;
+  bool coincident_ = false;
+};
+
 } // namespace rgpot::nlist
