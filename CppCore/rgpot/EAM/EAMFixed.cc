@@ -87,13 +87,17 @@ void EAM::evaluateFixed(long N, const int *atomicNrs, double *F, double *U) {
         const auto slotp = static_cast<std::size_t>(p);
         const bool pure = atomicNrs[j] == epar.Z && slotp < reuse_ok_.size() &&
                           rev_.size() == reuse_ok_.size();
-        const bool earlier = j >= range.begin && j < i;
+        // One thread walks chunks in order, so a lower atom has already
+        // stored this pair. Several threads only trust a store from the
+        // same chunk. The stored value is the lower atom's evaluation,
+        // which matches a fresh one when both atoms share coefficients.
+        const bool ready = nt == 1 ? j < i : (j >= range.begin && j < i);
         double rho_term = 0.0;
         double fscale = 0.0;
         double r = 0.0;
         double invR = 0.0;
         bool reused = false;
-        if (pure && earlier && reuse_ok_[slotp] != 0 && reuse_r2_[slotp] == r2) {
+        if (pure && ready && reuse_ok_[slotp] != 0 && reuse_r2_[slotp] == r2) {
           rho_term = reuse_rho_[slotp];
           fscale = reuse_fs_[slotp];
           reused = true;
@@ -111,7 +115,7 @@ void EAM::evaluateFixed(long N, const int *atomicNrs, double *F, double *U) {
               r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
           invR = 1.0 / r;
           fscale = -mag_force_den * invR;
-          if (pure && j > i && j < range.end) {
+          if (pure && j > i && (nt == 1 || j < range.end)) {
             const auto rev = rev_[slotp];
             if (rev >= 0) {
               const auto rs = static_cast<std::size_t>(rev);
