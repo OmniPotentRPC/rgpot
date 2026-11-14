@@ -55,27 +55,48 @@ _KINDS: dict[str, str] = {
     "lj": "LJPot",
     "lennard-jones": "LJPot",
     "lennardjones": "LJPot",
+    "lj_cluster": "LJClusterPot",
+    "lj-cluster": "LJClusterPot",
+    "ljcluster": "LJClusterPot",
+    "morse": "MorsePot",
     "eam_al": "EAMAlPot",
     "eam-al": "EAMAlPot",
     "sw": "SWPot",
+    "stillinger_weber_si": "StillingerWeberSi",
+    "sw_si": "StillingerWeberSi",
     "edip": "EDIPPot",
     "lenosky": "LenoskyPot",
     "tersoff": "TersoffPot",
+    "tersoff_sic": "TersoffSiC",
     "fehe": "FeHePot",
     "cuh2": "CuH2Pot",
     "water_h": "WaterHPot",
     "d3": "D3Pot",
     "d4": "D4Pot",
+    "expr": "ExprPot",
+    "lammps": "rgpot_lammps_potential",
+    "gromacs": "rgpot_gromacs_potential",
+    "openmm": "rgpot_openmm_potential",
 }
 
 _LJ_DEFAULTS = {"u0": 1.0, "cutoff": 15.0, "psi": 1.0, "switch_width": 0.0}
+_MD_LJ_DEFAULTS = {"u0": 1.0, "cutoff": 8.0, "psi": 1.0, "engine_path": ""}
 
 # Factory name -> (label used in error messages, default parameters).
-# A factory missing here takes no parameters.
+# A factory missing here takes no parameters. A None default is required.
 _FACTORY_PARAMETERS: dict[str, tuple[str, dict[str, Any]]] = {
     "LJPot": ("LJ", _LJ_DEFAULTS),
+    "LJClusterPot": ("LJ", _LJ_DEFAULTS),
+    "MorsePot": (
+        "Morse",
+        {"De": 0.7102, "a": 1.6047, "re": 2.8970, "cutoff": 9.5, "switch_width": 0.0},
+    ),
     "D3Pot": ("D3", {"damping": "bj", "functional": "pbe", "atm": True}),
     "D4Pot": ("D4", {"functional": "pbe", "charge": 0.0, "atm": True}),
+    "ExprPot": ("ExprPot", {"expression": None, "terms": None}),
+    "rgpot_lammps_potential": ("LAMMPS LJ", _MD_LJ_DEFAULTS),
+    "rgpot_gromacs_potential": ("GROMACS LJ", _MD_LJ_DEFAULTS),
+    "rgpot_openmm_potential": ("OpenMM LJ", _MD_LJ_DEFAULTS),
 }
 
 # Classes whose objects carry no parameters, so type(obj)() rebuilds them.
@@ -88,6 +109,8 @@ _PARAMETERLESS = {
     "FeHePot",
     "CuH2Pot",
     "WaterHPot",
+    "StillingerWeberSi",
+    "TersoffSiC",
 }
 
 # Neighbour cutoffs of the bound kernels, in Angstrom. LJ reads
@@ -99,6 +122,7 @@ _KERNEL_CUTOFF_ANGSTROM = {
     "EDIPPot": 3.1213820,
     "LenoskyPot": 4.5,
     "TersoffPot": 3.0,
+    "TersoffSiC": 3.0,
     "EAMAlPot": 7.1,
     "FeHePot": 5.4,
     "CuH2Pot": 6.1,
@@ -136,6 +160,11 @@ def _build(factory: str, params: dict[str, Any]) -> Any:
         raise ValueError(f"potential {factory!r} is not in this build")
     _check_parameters(factory, params)
     _, defaults = _FACTORY_PARAMETERS.get(factory, (factory, {}))
+    if factory == "ExprPot":
+        missing = [k for k in ("expression", "terms") if params.get(k) is None]
+        if missing:
+            raise ValueError(f"ExprPot needs {' and '.join(missing)}")
+        return make(str(params["expression"]), dict(params["terms"]))
     kwargs = {k: _coerce(d, params.get(k, d)) for k, d in defaults.items()}
     return make(**kwargs)
 
@@ -157,7 +186,7 @@ def _resolve_potential(
         defaults = dict(_FACTORY_PARAMETERS.get(factory, (factory, {}))[1])
         full = {**defaults, **params}
         return _build(factory, full), factory, defaults, full
-    if not hasattr(potential, "evaluate"):
+    if not (hasattr(potential, "evaluate") or callable(potential)):
         raise TypeError("potential must be an rgpot potential or a kind string")
     name = type(potential).__name__
     if name in _PARAMETERLESS:
@@ -180,13 +209,60 @@ def _resolve_potential(
     return potential, None, {}, {}
 
 
-def _kernel_cutoff(potential: Any) -> float:
+class _CallAdapter:
+    """``evaluate`` for a potential that has only ``__call__``.
+
+    ``__call__`` returns (energy, forces, variance). These potentials do
+    not report stress.
+    """
+
+    def __init__(self, potential: Any) -> None:
+        self.potential = potential
+
+    def caps(self) -> dict[str, Any]:
+        return {"periodic": True, "stress": False}
+
+    def evaluate(self, positions: Any, numbers: Any, box: Any) -> dict[str, Any]:
+        energy, forces, _variance = self.potential(positions, numbers, box)
+        return {"energy": float(energy), "forces": forces, "stress": None}
+
+    def evaluate_batch(
+        self, positions: Any, numbers: Any, boxes: Any, threads: int = 0
+    ) -> list[dict[str, Any]]:
+        del threads
+        return [
+            self.evaluate(p, n, b) for p, n, b in zip(positions, numbers, boxes)
+        ]
+
+
+def _kernel_of(potential: Any) -> Any:
+    if hasattr(potential, "evaluate"):
+        return potential
+    return _CallAdapter(potential)
+
+
+def _caps_of(kernel: Any) -> dict[str, Any]:
+    caps = getattr(kernel, "caps", None)
+    return dict(caps()) if callable(caps) else {}
+
+
+def _kernel_cutoff(potential: Any, params: dict[str, Any] | None = None) -> float:
     """Cutoff the open-cell box has to clear, in Angstrom."""
     config = getattr(potential, "config", None)
     if callable(config):
         cfg = config()
         if isinstance(cfg, dict) and "cutoff" in cfg:
             return float(cfg["cutoff"])
+    params = params or {}
+    cutoffs = [
+        float(term["cutoff"])
+        for term in dict(params.get("terms") or {}).values()
+        if isinstance(term, dict) and "cutoff" in term
+    ]
+    if "cutoff" in params:
+        cutoffs.append(float(params["cutoff"]))
+    if cutoffs:
+        return max(cutoffs)
     return float(_KERNEL_CUTOFF_ANGSTROM.get(type(potential).__name__, 0.0))
 
 
@@ -311,14 +387,15 @@ class RgpotCalculator(Calculator):
         built, factory, defaults, params = _resolve_potential(potential, pot_kw)
         self._factory = factory
         self.default_parameters = defaults
-        self._install(built)
+        self._install(built, params)
         Calculator.__init__(self, **ase_kw)
         self.parameters.update(params)
 
-    def _install(self, potential: Any) -> None:
+    def _install(self, potential: Any, params: dict[str, Any]) -> None:
         self._potential = potential
-        self._cutoff = _kernel_cutoff(potential)
-        caps = dict(potential.caps())
+        self._kernel = _kernel_of(potential)
+        self._cutoff = _kernel_cutoff(potential, params)
+        caps = _caps_of(self._kernel)
         props = ["energy", "free_energy", "forces"]
         if bool(caps.get("stress")):
             props.append("stress")
@@ -350,7 +427,7 @@ class RgpotCalculator(Calculator):
         new = {**self.parameters, **kwargs}
         changed = Calculator.set(self, **kwargs)
         if changed:
-            self._install(_build(self._factory, new))
+            self._install(_build(self._factory, new), new)
             self.reset()
         return changed
 
@@ -362,12 +439,14 @@ class RgpotCalculator(Calculator):
                 "without config(); build it from a kind string"
             )
         state = self.__dict__.copy()
-        state.pop("_potential", None)
+        for key in ("_potential", "_kernel"):
+            state.pop(key, None)
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
-        self._install(_build(self._factory, dict(self.parameters)))
+        params = dict(self.parameters)
+        self._install(_build(self._factory, params), params)
 
     def _check_periodic(self, pbc: Any) -> None:
         if bool(_pbc_flags(pbc).any()) and self._caps.get("periodic") is False:
@@ -417,7 +496,7 @@ class RgpotCalculator(Calculator):
         user_cell = np.asarray(cell, dtype=np.float64).reshape(3, 3)
         self._check_periodic(pbc)
         box = _box(pos, user_cell, pbc, self._cutoff)
-        raw = self._potential.evaluate(pos, num, box)
+        raw = self._kernel.evaluate(pos, num, box)
         energy = float(raw["energy"])
         forces = np.ascontiguousarray(raw["forces"], dtype=np.float64)
         out: dict[str, Any] = {
@@ -484,9 +563,14 @@ class RgpotCalculator(Calculator):
             boxes.append(
                 _box(positions[-1], user_cells[-1], atoms.pbc, self._cutoff)
             )
-        raw_rows = self._potential.evaluate_batch(
-            positions, numbers, boxes, int(threads)
-        )
+        batch = getattr(self._kernel, "evaluate_batch", None)
+        if batch is not None:
+            raw_rows = batch(positions, numbers, boxes, int(threads))
+        else:
+            raw_rows = [
+                self._kernel.evaluate(p, n, b)
+                for p, n, b in zip(positions, numbers, boxes)
+            ]
         rows: list[dict[str, Any]] = []
         for index, (atoms, raw) in enumerate(zip(frames_list, raw_rows)):
             energy = float(raw["energy"])
@@ -500,7 +584,7 @@ class RgpotCalculator(Calculator):
             if "stress" in wanted and "stress" in self.implemented_properties:
                 # BatchEvaluator returns energy and forces. Stress comes
                 # from the same kernel on the copied geometry.
-                stress_eval = self._potential.evaluate(
+                stress_eval = self._kernel.evaluate(
                     positions[index], numbers[index], boxes[index]
                 )
                 if stress_eval.get("stress") is not None:
