@@ -25,6 +25,11 @@ cluster virial divided by the caller's cell volume, which is what
 ``calculate_numerical_stress`` differentiates. A caller with no cell
 keeps the padded cube's stress. A mixed periodic flag raises
 ``ValueError`` and names the non-periodic axes.
+
+Periodic kernels use the minimum image. A cell narrower than twice the
+cutoff, where a pair has a second image inside the cutoff, raises
+``ValueError``. ``RgpotCalculator("lj", all_images=True)`` sums every
+image inside the cutoff, as ``ase.calculators.lj.LennardJones`` does.
 """
 
 from __future__ import annotations
@@ -62,7 +67,7 @@ _KINDS: dict[str, str] = {
     "d4": "D4Pot",
 }
 
-_LJ_KEYS = {"u0", "cutoff", "psi", "switch_width"}
+_LJ_KEYS = {"u0", "cutoff", "psi", "switch_width", "all_images"}
 _D3_KEYS = {"damping", "functional", "atm"}
 _D4_KEYS = {"functional", "charge", "atm"}
 
@@ -111,6 +116,7 @@ def _resolve_potential(potential: Any, params: dict[str, Any]) -> Any:
             cutoff=float(params.get("cutoff", 15.0)),
             psi=float(params.get("psi", 1.0)),
             switch_width=float(params.get("switch_width", 0.0)),
+            all_images=bool(params.get("all_images", False)),
         )
     if class_name == "D3Pot":
         unknown = set(params) - _D3_KEYS
@@ -245,7 +251,7 @@ class RgpotCalculator(Calculator):
         An rgpot potential object, or a kind string such as ``"lj"`` or
         ``"eam_al"``. Keyword arguments that are not ASE calculator
         arguments are potential parameters (``u0``, ``cutoff``, ``psi``,
-        ``switch_width`` for LJ).
+        ``switch_width`` and ``all_images`` for LJ).
     """
 
     implemented_properties = ["energy", "free_energy", "forces"]

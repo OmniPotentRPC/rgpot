@@ -47,6 +47,28 @@ cell =calculate_numerical_stress= strains.
 A caller with no cell keeps the padded cube's stress.
 A mixed =pbc= raises =ValueError= and names the non-periodic axes.
 
+Periodic kernels use the minimum image by default.
+A cell narrower than twice the cutoff, where a pair has a second image inside
+the cutoff, raises =ValueError=.
+=all_images=True= sums every image inside the cutoff, an atom's own images
+included, as =ase.calculators.lj.LennardJones= does.
+
+#+begin_src python
+from ase.build import bulk
+from rgpot import LJPot
+from rgpot.ase import RgpotCalculator
+
+atoms = bulk("Ar", "fcc", a=1.56)  # one atom, sigma = 1 units
+atoms.calc = RgpotCalculator("lj", cutoff=2.5, all_images=True)
+print(atoms.get_potential_energy(), atoms.get_stress())
+
+atoms.calc = RgpotCalculator(LJPot(cutoff=2.5, all_images=True))
+#+end_src
+
+With =smooth=False=, ASE =LennardJones(sigma=1, epsilon=1, rc=2.5)= gives the
+same energy, forces and stress to 1e-11.
+=MorsePot= takes the same =all_images= argument.
+
 =calculate_many= evaluates a list of =Atoms= in one batch.
 The default properties are energy and forces.
 Pass =attach=True= to store a =SinglePointCalculator= on each structure.

@@ -82,6 +82,11 @@ A positive
 Angstrom below the cutoff, so the energy, the force and the curvature reach zero
 there.
 A width above the cutoff raises =ValueError=.
+=all_images=True= sums every periodic image inside the cutoff, for cells
+narrower than twice the cutoff.
+Without it such a cell raises =ValueError= when a pair has a second image inside
+the cutoff.
+=rgpot.MorsePot= takes the same =all_images= keyword.
 
 #+begin_src python
 pot = rgpot.LJPot(cutoff=2.5, switch_width=0.5)

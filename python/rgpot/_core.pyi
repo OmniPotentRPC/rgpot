@@ -37,9 +37,9 @@ def evaluate_metatomic_dlopen(positions: Annotated[NDArray[numpy.float64], dict(
     """
 
 class LJPot:
-    def __init__(self, u0: float = 1.0, cutoff: float = 15.0, psi: float = 1.0, switch_width: float = 0.0) -> None:
+    def __init__(self, u0: float = 1.0, cutoff: float = 15.0, psi: float = 1.0, switch_width: float = 0.0, all_images: bool = False) -> None:
         """
-        Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff and psi are Angstrom. A positive switch_width (Angstrom) replaces the shift with the C^2 quintic switch over [cutoff - switch_width, cutoff]; it must not exceed cutoff.
+        Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff and psi are Angstrom. A positive switch_width (Angstrom) replaces the shift with the C^2 quintic switch over [cutoff - switch_width, cutoff]; it must not exceed cutoff. all_images sums every periodic image inside the cutoff, an atom's own images included; the default minimum image raises ValueError when a pair has a second image inside the cutoff.
         """
 
     def config(self) -> dict: ...
@@ -81,9 +81,9 @@ class LJClusterPot:
         """
 
 class MorsePot:
-    def __init__(self, De: float = 0.7102, a: float = 1.6047, re: float = 2.897, cutoff: float = 9.5, switch_width: float = 0.0) -> None:
+    def __init__(self, De: float = 0.7102, a: float = 1.6047, re: float = 2.897, cutoff: float = 9.5, switch_width: float = 0.0, all_images: bool = False) -> None:
         """
-        Shifted Morse pair potential. De is the well depth (eV), a is 1/Angstrom, re and cutoff are Angstrom. Defaults are the platinum parameters. A positive switch_width (Angstrom) replaces the shift with the C^2 quintic switch over [cutoff - switch_width, cutoff]; it must not exceed cutoff.
+        Shifted Morse pair potential. De is the well depth (eV), a is 1/Angstrom, re and cutoff are Angstrom. Defaults are the platinum parameters. A positive switch_width (Angstrom) replaces the shift with the C^2 quintic switch over [cutoff - switch_width, cutoff]; it must not exceed cutoff. all_images sums every periodic image inside the cutoff, an atom's own images included; the default minimum image raises ValueError when a pair has a second image inside the cutoff.
         """
 
     def config(self) -> dict: ...

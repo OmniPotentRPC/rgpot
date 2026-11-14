@@ -592,22 +592,26 @@ NB_MODULE(_core, m) {
   lj.def(
       "__init__",
       [](PotHolder<rgpot::LJPot> *self, double u0, double cutoff, double psi,
-         double switch_width) {
+         double switch_width, bool all_images) {
         new (self) PotHolder<rgpot::LJPot>([=] {
           rgpot::LJConfig cfg;
           cfg.u0 = u0;
           cfg.cutoff = cutoff;
           cfg.psi = psi;
           cfg.switch_width = switch_width;
-          return std::make_unique<rgpot::LJPot>(cfg);
+          return std::make_unique<rgpot::LJPot>(
+              cfg, all_images ? rgpot::nlist::Images::All : rgpot::nlist::Images::Minimum);
         });
       },
       nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
-      nb::arg("switch_width") = 0.0,
+      nb::arg("switch_width") = 0.0, nb::arg("all_images") = false,
       "Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff "
       "and psi are Angstrom. A positive switch_width (Angstrom) "
       "replaces the shift with the C^2 quintic switch over "
-      "[cutoff - switch_width, cutoff]; it must not exceed cutoff.");
+      "[cutoff - switch_width, cutoff]; it must not exceed cutoff. "
+      "all_images sums every periodic image inside the cutoff, an "
+      "atom's own images included; the default minimum image raises "
+      "ValueError when a pair has a second image inside the cutoff.");
   lj.def("config", [](const PotHolder<rgpot::LJPot> &self) {
     const rgpot::LJConfig &cfg = self.primary().config();
     nb::dict out;
@@ -615,6 +619,7 @@ NB_MODULE(_core, m) {
     out["cutoff"] = cfg.cutoff;
     out["psi"] = cfg.psi;
     out["switch_width"] = cfg.switch_width;
+    out["all_images"] = self.primary().images() == rgpot::nlist::Images::All;
     return out;
   });
 #ifdef RGPOT_HAS_CACHE
@@ -665,7 +670,7 @@ NB_MODULE(_core, m) {
   morse_cls.def(
       "__init__",
       [](PotHolder<rgpot::MorsePot> *self, double De, double a, double re,
-         double cutoff, double switch_width) {
+         double cutoff, double switch_width, bool all_images) {
         new (self) PotHolder<rgpot::MorsePot>([=] {
           rgpot::MorseConfig cfg;
           cfg.De = De;
@@ -673,16 +678,21 @@ NB_MODULE(_core, m) {
           cfg.re = re;
           cfg.cutoff = cutoff;
           cfg.switch_width = switch_width;
-          return std::make_unique<rgpot::MorsePot>(cfg);
+          return std::make_unique<rgpot::MorsePot>(
+              cfg, all_images ? rgpot::nlist::Images::All : rgpot::nlist::Images::Minimum);
         });
       },
       nb::arg("De") = 0.7102, nb::arg("a") = 1.6047, nb::arg("re") = 2.8970,
       nb::arg("cutoff") = 9.5, nb::arg("switch_width") = 0.0,
+      nb::arg("all_images") = false,
       "Shifted Morse pair potential. De is the well depth (eV), a is "
       "1/Angstrom, re and cutoff are Angstrom. Defaults are the platinum "
       "parameters. A positive switch_width (Angstrom) replaces the shift "
       "with the C^2 quintic switch over [cutoff - switch_width, cutoff]; "
-      "it must not exceed cutoff.");
+      "it must not exceed cutoff. all_images sums every periodic image "
+      "inside the cutoff, an atom's own images included; the default "
+      "minimum image raises ValueError when a pair has a second image "
+      "inside the cutoff.");
   morse_cls.def("config", [](const PotHolder<rgpot::MorsePot> &self) {
     const rgpot::MorseConfig &cfg = self.primary().config();
     nb::dict out;
@@ -691,6 +701,7 @@ NB_MODULE(_core, m) {
     out["re"] = cfg.re;
     out["cutoff"] = cfg.cutoff;
     out["switch_width"] = cfg.switch_width;
+    out["all_images"] = self.primary().images() == rgpot::nlist::Images::All;
     return out;
   });
   rgpot::pybind::bind_calls(morse_cls);
