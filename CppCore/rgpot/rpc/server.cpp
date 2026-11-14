@@ -283,6 +283,9 @@ int runServer(int argc, char *argv[]
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
     std::cerr << "  Available PotentialTypes: CuH2, LJ, LJCluster, Morse, ZBL"
+#ifdef RGPOT_HAS_FORTRAN_POTS
+              << ", EAMAl"
+#endif
 #ifdef RGPOT_HAS_IPI
               << ", IPI:unix:<path>, IPI:tcp:<host>:<port>"
 #endif
@@ -336,6 +339,9 @@ int runServer(int argc, char *argv[]
   if (pot_type == "CuH2") {
     std::cout << "Loading CuH2 potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::fortranpots::CuH2Pot>();
+  } else if (pot_type == "EAMAl") {
+    std::cout << "Loading EAM aluminium potential..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::fortranpots::EAMAlPot>();
   } else
 #endif // RGPOT_HAS_FORTRAN_POTS
       if (pot_type == "LJ") {
