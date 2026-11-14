@@ -15,7 +15,9 @@
 #include "StreamSpline.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -25,6 +27,24 @@
 #if defined(_OPENMP)
 #include <omp.h>
 #endif
+
+#ifndef EAM_STANDALONE
+EAM::EAM(const eonc::Parameters &params)
+    : eonc::Potential(eonc::PotType::EAM_AL, params) {}
+
+EAM::~EAM() = default;
+#else
+EAM::EAM() = default;
+EAM::EAM(const EAM &) = default;
+EAM::EAM(EAM &&) noexcept = default;
+EAM &EAM::operator=(const EAM &) = default;
+EAM &EAM::operator=(EAM &&) noexcept = default;
+EAM::~EAM() = default;
+#endif
+
+// The bytes of this class as this translation unit compiled them. A caller
+// built from another header compares its own sizeof(EAM) with this.
+extern "C" std::size_t rgpot_eam_object_bytes() { return sizeof(EAM); }
 
 void EAM::cleanMemory() {
   std::vector<double>().swap(wrapped_);
@@ -101,13 +121,10 @@ void EAM::prepare(long N, const double *R, const double *box) {
 }
 
 void EAM::buildList(long N) {
-  // A mode byte that is not one of the three enumerators is not a request
-  // to stream. Leaving it that way made some processes take the spline
-  // walk and some the stored list.
-  if (mode_ != rgpot::nlist::Mode::Auto && mode_ != rgpot::nlist::Mode::Stored &&
-      mode_ != rgpot::nlist::Mode::Stream) {
-    mode_ = rgpot::nlist::Mode::Auto;
-  }
+  // Auto, Stored, and Stream are the only values the constructor writes.
+  // Anything else means this object was not built by that constructor.
+  assert(mode_ == rgpot::nlist::Mode::Auto || mode_ == rgpot::nlist::Mode::Stored ||
+         mode_ == rgpot::nlist::Mode::Stream);
   double widest = 0.0;
   for (int i = 0; i < NPARAMS; i++) {
     widest = std::max(widest, el_params[i].r_cut);

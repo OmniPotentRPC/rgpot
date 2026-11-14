@@ -465,20 +465,25 @@ TEST_CASE("EAM pure-metal reuse agrees across threads", "[eam][threads]") {
   setThreads("");
 }
 
-TEST_CASE("a neighbour mode outside the enumerators stays stored", "[eam][mode]") {
-  // A mode byte that is not Auto, Stored, or Stream used to select the
-  // spline walk. That walk is a different energy, and on a 1024-atom cell
-  // it was several times slower than the stored list.
+extern "C" std::size_t rgpot_eam_object_bytes();
+
+TEST_CASE("EAM construction uses the same layout as the library", "[eam][mode]") {
+  // bench-base left mode_ uninitialised: its constructor was compiled
+  // against an EAM that did not yet have the four density-reuse vectors,
+  // and the force object file read mode_ 96 bytes further on. A default
+  // object and an explicit Auto object are the stored list, and this
+  // translation unit's sizeof matches the one compiled into the library.
   setThreads("");
+  REQUIRE(rgpot_eam_object_bytes() == sizeof(EAM));
   std::vector<int> z;
   std::vector<double> pos = fcc(2, 4.05, z, 13);
   const double length = 2 * 4.05;
-  rgpot::EAMPot automatic;
-  const Outcome stored = evaluate(automatic, pos, z, length);
-  REQUIRE(automatic.neighborSlots() > 0);
-  rgpot::EAMPot garbage;
-  garbage.setNeighbourMode(static_cast<rgpot::nlist::Mode>(47));
-  const Outcome other = evaluate(garbage, pos, z, length);
-  REQUIRE(garbage.neighborSlots() == automatic.neighborSlots());
+  rgpot::EAMPot plain;
+  const Outcome stored = evaluate(plain, pos, z, length);
+  REQUIRE(plain.neighborSlots() > 0);
+  rgpot::EAMPot named;
+  named.setNeighbourMode(rgpot::nlist::Mode::Auto);
+  const Outcome other = evaluate(named, pos, z, length);
+  REQUIRE(named.neighborSlots() == plain.neighborSlots());
   expectBits(other, stored);
 }

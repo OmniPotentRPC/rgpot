@@ -52,13 +52,18 @@ class EAM
 {
 public:
 #ifdef EAM_STANDALONE
-  EAM() = default;
-  ~EAM() = default;
+  // Defined in EAM.cpp, next to the methods that read mode_. The default
+  // constructor used to be inline, so a caller compiled against a shorter
+  // EAM left that byte uninitialised when linked with a newer object file.
+  EAM();
+  EAM(const EAM &);
+  EAM(EAM &&) noexcept;
+  EAM &operator=(const EAM &);
+  EAM &operator=(EAM &&) noexcept;
+  ~EAM();
 #else
-  explicit EAM(const eonc::Parameters &params)
-      : eonc::Potential(eonc::PotType::EAM_AL, params) {}
-
-  ~EAM() override = default;
+  explicit EAM(const eonc::Parameters &params);
+  ~EAM() override;
 #endif
 
   void cleanMemory();
