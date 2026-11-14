@@ -27,7 +27,8 @@ lj_lib = static_library(
     'rgpot_lj_eval',
     files('lj_eval.cpp'),
     include_directories: [engines_inc, rgpot_inc],
-    dependencies: dl_dep,
+    # LJPot.hpp reaches fmt through base_types.hpp unless pure_lib.
+    dependencies: [dl_dep] + (has_fmt ? [fmt_dep] : []),
     cpp_args: _args,
     pic: true,
 )
