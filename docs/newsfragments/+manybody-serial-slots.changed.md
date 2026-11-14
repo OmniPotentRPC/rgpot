@@ -1,0 +1,1 @@
+Threaded Stillinger-Weber and Tersoff record each force update at its place in the one-thread scatter and add those updates back in that order. One thread is unchanged, and 2, 4 and 8 threads still match it bit for bit.

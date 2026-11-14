@@ -408,6 +408,8 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     }
   }
   } else {
+    // Slots are indexed by the one-thread scatter position and summed
+    // in that order.
     struct Hit {
       int atom;
       double x;
@@ -418,9 +420,149 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       int kind;
       double p0, p1, p2, p3, p4, p5;
     };
-    std::vector<std::vector<double>> energy_of(static_cast<std::size_t>(n));
-    std::vector<std::vector<Hit>> force_of(static_cast<std::size_t>(n));
-    std::vector<std::vector<StrainHit>> strain_of(static_cast<std::size_t>(n));
+    struct Slots {
+      std::vector<Bond> bonds;
+      std::vector<int> bond_at;
+      std::vector<int> bond_n;
+      std::vector<int> energy_at;
+      std::vector<int> energy_n;
+      std::vector<int> force_at;
+      std::vector<int> force_n;
+      std::vector<int> force_used;
+      std::vector<int> strain_at;
+      std::vector<int> strain_n;
+      std::vector<int> strain_used;
+      std::vector<double> energy;
+      std::vector<Hit> force;
+      std::vector<StrainHit> strain_hit;
+    };
+    thread_local Slots slots;
+    auto &bonds = slots.bonds;
+    auto &bond_at = slots.bond_at;
+    auto &bond_n = slots.bond_n;
+    auto &energy_at = slots.energy_at;
+    auto &energy_n = slots.energy_n;
+    auto &force_at = slots.force_at;
+    auto &force_n = slots.force_n;
+    auto &force_used = slots.force_used;
+    auto &strain_at = slots.strain_at;
+    auto &strain_n = slots.strain_n;
+    auto &strain_used = slots.strain_used;
+    auto &energy_slot = slots.energy;
+    auto &force = slots.force;
+    auto &strain_hit = slots.strain_hit;
+    const auto &row = neighbours_.offsets();
+    const bool stored = !neighbours_.streaming() &&
+                        row.size() == static_cast<std::size_t>(n) + 1;
+    bond_at.resize(static_cast<std::size_t>(n) + 1);
+    bond_n.assign(static_cast<std::size_t>(n), 0);
+    bond_at[0] = 0;
+    if (stored) {
+      for (int i = 0; i < n; ++i) {
+        const int deg = row[static_cast<std::size_t>(i) + 1] - row[static_cast<std::size_t>(i)];
+        bond_at[static_cast<std::size_t>(i) + 1] = bond_at[static_cast<std::size_t>(i)] + deg;
+      }
+      if (static_cast<int>(bonds.size()) < bond_at[static_cast<std::size_t>(n)]) {
+        bonds.resize(static_cast<std::size_t>(bond_at[static_cast<std::size_t>(n)]));
+      }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+      {
+#if defined(_OPENMP)
+        const int t = omp_get_thread_num();
+#else
+        const int t = 0;
+#endif
+        const auto range = nlist::partition(n, t, nt);
+        std::vector<Bond> nb;
+        for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
+          load(i, nb);
+          const int room = bond_at[static_cast<std::size_t>(i) + 1] - bond_at[static_cast<std::size_t>(i)];
+          const int m = std::min(static_cast<int>(nb.size()), room);
+          std::copy(nb.begin(), nb.begin() + m, bonds.begin() + bond_at[static_cast<std::size_t>(i)]);
+          bond_n[static_cast<std::size_t>(i)] = m;
+        }
+      }
+    } else {
+      bond_at[static_cast<std::size_t>(n)] = 0;
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+      {
+#if defined(_OPENMP)
+        const int t = omp_get_thread_num();
+#else
+        const int t = 0;
+#endif
+        const auto range = nlist::partition(n, t, nt);
+        std::vector<Bond> nb;
+        for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
+          load(i, nb);
+          bond_n[static_cast<std::size_t>(i)] = static_cast<int>(nb.size());
+        }
+      }
+      for (int i = 0; i < n; ++i) {
+        bond_at[static_cast<std::size_t>(i) + 1] =
+            bond_at[static_cast<std::size_t>(i)] + bond_n[static_cast<std::size_t>(i)];
+      }
+      if (static_cast<int>(bonds.size()) < bond_at[static_cast<std::size_t>(n)]) {
+        bonds.resize(static_cast<std::size_t>(bond_at[static_cast<std::size_t>(n)]));
+      }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+      {
+#if defined(_OPENMP)
+        const int t = omp_get_thread_num();
+#else
+        const int t = 0;
+#endif
+        const auto range = nlist::partition(n, t, nt);
+        std::vector<Bond> nb;
+        for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
+          load(i, nb);
+          const int m = bond_n[static_cast<std::size_t>(i)];
+          std::copy(nb.begin(), nb.begin() + m, bonds.begin() + bond_at[static_cast<std::size_t>(i)]);
+        }
+      }
+    }
+    energy_at.resize(static_cast<std::size_t>(n) + 1);
+    force_at.resize(static_cast<std::size_t>(n) + 1);
+    strain_at.resize(static_cast<std::size_t>(n) + 1);
+    energy_n.assign(static_cast<std::size_t>(n), 0);
+    force_n.assign(static_cast<std::size_t>(n), 0);
+    force_used.assign(static_cast<std::size_t>(n), 0);
+    strain_n.assign(static_cast<std::size_t>(n), 0);
+    strain_used.assign(static_cast<std::size_t>(n), 0);
+    energy_at[0] = 0;
+    force_at[0] = 0;
+    strain_at[0] = 0;
+    const int strain_on = strain != nullptr ? 1 : 0;
+    for (int i = 0; i < n; ++i) {
+      const int m = bond_n[static_cast<std::size_t>(i)];
+      const int angles = m * (m - 1);
+      energy_n[static_cast<std::size_t>(i)] = m;
+      force_n[static_cast<std::size_t>(i)] = 2 * m + 3 * angles;
+      strain_n[static_cast<std::size_t>(i)] = strain_on * (m + 2 * angles);
+      energy_at[static_cast<std::size_t>(i) + 1] = energy_at[static_cast<std::size_t>(i)] + m;
+      force_at[static_cast<std::size_t>(i) + 1] =
+          force_at[static_cast<std::size_t>(i)] + 2 * m + 3 * angles;
+      strain_at[static_cast<std::size_t>(i) + 1] =
+          strain_at[static_cast<std::size_t>(i)] + strain_n[static_cast<std::size_t>(i)];
+    }
+    const int nenergy = energy_at[static_cast<std::size_t>(n)];
+    const int nforce = force_at[static_cast<std::size_t>(n)];
+    const int nstrain = strain_at[static_cast<std::size_t>(n)];
+    if (static_cast<int>(energy_slot.size()) < nenergy) {
+      energy_slot.resize(static_cast<std::size_t>(nenergy));
+    }
+    if (static_cast<int>(force.size()) < nforce) {
+      force.resize(static_cast<std::size_t>(nforce));
+    }
+    if (static_cast<int>(strain_hit.size()) < nstrain) {
+      strain_hit.resize(static_cast<std::size_t>(nstrain));
+    }
 #if defined(_OPENMP)
 #pragma omp parallel num_threads(nt)
 #endif
@@ -431,44 +573,48 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
       const int t = 0;
 #endif
       const auto range = nlist::partition(n, t, nt);
-      std::vector<Bond> nb;
       std::vector<Angle> ang;
       for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
-        load(i, nb);
+        const Bond *nb = bonds.data() + bond_at[static_cast<std::size_t>(i)];
         const Species &sp = m_species[kind[i]];
-        const int m = static_cast<int>(nb.size());
+        const int m = bond_n[static_cast<std::size_t>(i)];
         if (static_cast<int>(ang.size()) < m * m) {
           ang.resize(static_cast<std::size_t>(m) * static_cast<std::size_t>(m));
         }
-        auto &e_steps = energy_of[static_cast<std::size_t>(i)];
-        auto &f_steps = force_of[static_cast<std::size_t>(i)];
-        auto &s_steps = strain_of[static_cast<std::size_t>(i)];
+        double *e_steps = energy_slot.data() + energy_at[static_cast<std::size_t>(i)];
+        Hit *f_steps = force.data() + force_at[static_cast<std::size_t>(i)];
+        StrainHit *s_steps = strain_hit.data() + strain_at[static_cast<std::size_t>(i)];
+        int nf = 0;
+        int ns = 0;
         for (int a = 0; a < m; ++a) {
-          const Bond &bj = nb[static_cast<std::size_t>(a)];
+          const Bond &bj = nb[a];
           double zeta = 0.0;
           for (int k = 0; k < m; ++k) {
             if (k == a) {
               continue;
             }
             Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
-            slot.cth = cosine(bj, nb[static_cast<std::size_t>(k)]);
+            slot.cth = cosine(bj, nb[k]);
             angular(sp, slot.cth, slot.g, slot.dg);
-            zeta += nb[static_cast<std::size_t>(k)].fc * slot.g;
+            zeta += nb[k].fc * slot.g;
           }
           double bij = 0.0;
           double db = 0.0;
           bondOrder(sp, zeta, bij, db);
-          e_steps.push_back(0.5 * bj.fc * (bj.f_r + bij * bj.f_a));
+          e_steps[a] = 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
           const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) +
                                      bj.fc * (bj.df_r + bij * bj.df_a));
           const double inv_r = 1.0 / bj.r;
           const double sx = scale * dedr * bj.x * inv_r;
           const double sy = scale * dedr * bj.y * inv_r;
           const double sz = scale * dedr * bj.z * inv_r;
-          f_steps.push_back(Hit{i, sx, sy, sz});
-          f_steps.push_back(Hit{bj.j, -sx, -sy, -sz});
+          f_steps[nf] = Hit{i, sx, sy, sz};
+          ++nf;
+          f_steps[nf] = Hit{bj.j, -sx, -sy, -sz};
+          ++nf;
           if (strain != nullptr) {
-            s_steps.push_back(StrainHit{0, -dedr * inv_r, bj.x, bj.y, bj.z, 0, 0});
+            s_steps[ns] = StrainHit{0, -dedr * inv_r, bj.x, bj.y, bj.z, 0, 0};
+            ++ns;
           }
           const double dedz = 0.5 * bj.fc * bj.f_a * db;
           if (dedz == 0.0) {
@@ -478,7 +624,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
             if (k == a) {
               continue;
             }
-            const Bond &bk = nb[static_cast<std::size_t>(k)];
+            const Bond &bk = nb[k];
             const Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
             const double cth = slot.cth;
             const double g = slot.g;
@@ -491,35 +637,56 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
             const double g1x = d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
             const double g1y = d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
             const double g1z = d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
-            const double g2x = d_edr2 * bk.x * inv_r2 + d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
-            const double g2y = d_edr2 * bk.y * inv_r2 + d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
-            const double g2z = d_edr2 * bk.z * inv_r2 + d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
-            f_steps.push_back(Hit{bj.j, -scale * g1x, -scale * g1y, -scale * g1z});
-            f_steps.push_back(Hit{bk.j, -scale * g2x, -scale * g2y, -scale * g2z});
-            f_steps.push_back(Hit{i, scale * (g1x + g2x), scale * (g1y + g2y), scale * (g1z + g2z)});
+            const double g2x =
+                d_edr2 * bk.x * inv_r2 + d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
+            const double g2y =
+                d_edr2 * bk.y * inv_r2 + d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
+            const double g2z =
+                d_edr2 * bk.z * inv_r2 + d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
+            f_steps[nf] = Hit{bj.j, -scale * g1x, -scale * g1y, -scale * g1z};
+            ++nf;
+            f_steps[nf] = Hit{bk.j, -scale * g2x, -scale * g2y, -scale * g2z};
+            ++nf;
+            f_steps[nf] = Hit{i, scale * (g1x + g2x), scale * (g1y + g2y), scale * (g1z + g2z)};
+            ++nf;
             if (strain != nullptr) {
-              s_steps.push_back(StrainHit{1, bj.x, bj.y, bj.z, g1x, g1y, g1z});
-              s_steps.push_back(StrainHit{1, bk.x, bk.y, bk.z, g2x, g2y, g2z});
+              s_steps[ns] = StrainHit{1, bj.x, bj.y, bj.z, g1x, g1y, g1z};
+              ++ns;
+              s_steps[ns] = StrainHit{1, bk.x, bk.y, bk.z, g2x, g2y, g2z};
+              ++ns;
             }
           }
         }
+        force_used[static_cast<std::size_t>(i)] = nf;
+        strain_used[static_cast<std::size_t>(i)] = ns;
       }
     }
     for (int i = 0; i < n; ++i) {
-      for (double step : energy_of[static_cast<std::size_t>(i)]) {
-        *energy += step;
+      const double *step = energy_slot.data() + energy_at[static_cast<std::size_t>(i)];
+      const int ne = energy_n[static_cast<std::size_t>(i)];
+      for (int k = 0; k < ne; ++k) {
+        *energy += step[k];
       }
-      for (const Hit &hit : force_of[static_cast<std::size_t>(i)]) {
-        acc[3 * hit.atom] += hit.x;
-        acc[3 * hit.atom + 1] += hit.y;
-        acc[3 * hit.atom + 2] += hit.z;
+    }
+    for (int i = 0; i < n; ++i) {
+      const Hit *hit = force.data() + force_at[static_cast<std::size_t>(i)];
+      const int nf = force_used[static_cast<std::size_t>(i)];
+      for (int k = 0; k < nf; ++k) {
+        acc[3 * hit[k].atom] += hit[k].x;
+        acc[3 * hit[k].atom + 1] += hit[k].y;
+        acc[3 * hit[k].atom + 2] += hit[k].z;
       }
-      if (strain != nullptr) {
-        for (const StrainHit &hit : strain_of[static_cast<std::size_t>(i)]) {
-          if (hit.kind == 0) {
-            accumulatePairStrain(strain, hit.p0, hit.p1, hit.p2, hit.p3);
+    }
+    if (strain != nullptr) {
+      for (int i = 0; i < n; ++i) {
+        const StrainHit *hit = strain_hit.data() + strain_at[static_cast<std::size_t>(i)];
+        const int ns = strain_used[static_cast<std::size_t>(i)];
+        for (int k = 0; k < ns; ++k) {
+          if (hit[k].kind == 0) {
+            accumulatePairStrain(strain, hit[k].p0, hit[k].p1, hit[k].p2, hit[k].p3);
           } else {
-            accumulateBondStrain(strain, hit.p0, hit.p1, hit.p2, hit.p3, hit.p4, hit.p5);
+            accumulateBondStrain(strain, hit[k].p0, hit[k].p1, hit[k].p2, hit[k].p3, hit[k].p4,
+                                 hit[k].p5);
           }
         }
       }
