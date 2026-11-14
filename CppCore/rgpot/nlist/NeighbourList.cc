@@ -12,6 +12,10 @@
 #include <string>
 #include <utility>
 
+// 20-step Verlet cells: 16 atoms matches the plain walk at every cutoff,
+// 32 atoms is faster with the skip, and 64 and 128 tie the plain walk.
+constexpr std::size_t kOutsideSkipMinAtoms = 32;
+
 #if defined(_OPENMP)
 #include <omp.h>
 #endif
@@ -569,7 +573,7 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
       std::memcmp(box_, box9, sizeof(box_)) == 0) {
     if (withinSkin(ref_.data(), positions, n, query.skin)) {
       reused_ = true;
-      if (n >= 64) {
+      if (n >= kOutsideSkipMinAtoms) {
         double furthest = 0;
         for (std::size_t a = 0; a < n; ++a) {
           const double dx = positions[3 * a] - ref_[3 * a];
@@ -1569,7 +1573,8 @@ int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list, const double *
     // disagreeing in the last digits. Small systems take the plain walk;
     // the test does not pay for itself there.
     const bool skip_outside =
-        natoms >= 64 && list->builder.reused() && !table.distance.empty();
+        natoms >= kOutsideSkipMinAtoms &&
+        list->builder.reused() && !table.distance.empty();
     const double outside = skip_outside ? cutoff + 2.0 * std::sqrt(list->builder.maxMove2()) +
                                               1.0e-8 * (1.0 + cutoff)
                                         : 0.0;
