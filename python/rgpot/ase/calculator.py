@@ -7,6 +7,12 @@ ASE's sign, ``sigma = (1/V) dE/dstrain``.
 ``free_energy`` equals ``energy``. The classical potentials have no
 electronic entropy, so the two results are the same value.
 
+``energies`` (``get_potential_energies``) is implemented only for a
+potential whose ``caps()["energies"]`` is true. Pair terms are split half
+and half, an embedding term sits on the embedded atom and a three-body
+term on its centre atom, and the shares sum to ``energy``. They are
+computed only for a call that asks for them.
+
 The ASE calculator contract is that of
 Hjorth Larsen et al., J. Phys.: Condens. Matter 29, 273002 (2017),
 doi:10.1088/1361-648X/aa680e.
@@ -486,6 +492,8 @@ class RgpotCalculator(Calculator):
             self.atoms.get_atomic_numbers(),
             np.asarray(self.atoms.cell.array),
             self.atoms.pbc,
+            energies="energies" in properties
+            and "energies" in self.implemented_properties,
         )
         self.results["energy"] = evaluated["energy"]
         self.results["free_energy"] = evaluated["energy"]
@@ -501,19 +509,34 @@ class RgpotCalculator(Calculator):
         numbers: Any,
         cell: Any,
         pbc: Any,
+        energies: bool = False,
     ) -> dict[str, Any]:
         """Pure evaluation. Does not read or write ``self`` state (F5).
 
         Returns energy (eV), free_energy (equal to energy), forces
         (eV/Angstrom, shape (N, 3)), and stress in ASE Voigt order when
-        the potential reports it.
+        the potential reports it. ``energies=True`` adds the energy of
+        each atom (eV, shape (N,)), which sums to ``energy``. The kernel
+        computes them only when asked. A potential without them raises
+        ``PropertyNotImplementedError``.
         """
         pos = _as_f64(positions, "positions")
         num = np.ascontiguousarray(np.asarray(numbers, dtype=np.int32))
         user_cell = np.asarray(cell, dtype=np.float64).reshape(3, 3)
         kernel_in = self._kernel_input(pos, num, user_cell, pbc)
-        raw = self._kernel.evaluate(*kernel_in[:3])
+        raw = self._evaluate(kernel_in, energies)
         return self._from_kernel(raw, len(num), kernel_in[2], user_cell, pbc)
+
+    def _evaluate(
+        self, kernel_in: tuple[np.ndarray, np.ndarray, np.ndarray], energies: bool
+    ) -> dict[str, Any]:
+        if not energies:
+            return self._kernel.evaluate(*kernel_in)
+        if not bool(self._caps.get("energies")):
+            raise PropertyNotImplementedError(
+                f"{type(self._potential).__name__} has no per-atom energies"
+            )
+        return self._kernel.evaluate(*kernel_in, energies=True)
 
     def _kernel_input(
         self, pos: np.ndarray, num: np.ndarray, user_cell: np.ndarray, pbc: Any
@@ -609,14 +632,22 @@ class RgpotCalculator(Calculator):
                 for p, n, b in zip(positions, numbers, boxes)
             ]
         rows: list[dict[str, Any]] = []
+        props = self.implemented_properties
+        want_stress = "stress" in wanted and "stress" in props
+        want_energies = "energies" in wanted and "energies" in props
         for index, (atoms, raw) in enumerate(zip(frames_list, raw_rows)):
-            if "stress" in wanted and "stress" in self.implemented_properties:
-                # BatchEvaluator returns energy and forces. Stress comes
-                # from the same kernel on the copied geometry.
-                stress_eval = self._kernel.evaluate(
-                    positions[index], numbers[index], boxes[index]
+            if want_stress or want_energies:
+                # BatchEvaluator returns energy and forces. Stress and
+                # per-atom energies come from the same kernel on the
+                # copied geometry.
+                extra = self._evaluate(
+                    (positions[index], numbers[index], boxes[index]), want_energies
                 )
-                raw = {**raw, "stress": stress_eval.get("stress")}
+                raw = {
+                    **raw,
+                    "stress": extra.get("stress"),
+                    "energies": extra.get("energies"),
+                }
             result = self._from_kernel(
                 raw, len(atoms), boxes[index], user_cells[index], pbcs[index]
             )
@@ -628,6 +659,8 @@ class RgpotCalculator(Calculator):
                 row["forces"] = result["forces"]
             if "stress" in wanted and "stress" in result:
                 row["stress"] = result["stress"]
+            if "energies" in wanted and "energies" in result:
+                row["energies"] = result["energies"]
             rows.append(row)
             if attach:
                 spc_kw: dict[str, Any] = {}
@@ -637,5 +670,7 @@ class RgpotCalculator(Calculator):
                     spc_kw["forces"] = row["forces"]
                 if "stress" in row:
                     spc_kw["stress"] = row["stress"]
+                if "energies" in row:
+                    spc_kw["energies"] = row["energies"]
                 atoms.calc = SinglePointCalculator(atoms, **spc_kw)
         return rows
