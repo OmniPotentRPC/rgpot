@@ -5,37 +5,117 @@
 * GROMACS
 
 GROMACS 2026's NNPot module loads a TorchScript model.
-The conda-forge build used here has no NNPot.
-It does accept =gmx mdrun -plumed=.
-The collective variable =RGPOT= calls the same Lennard-Jones evaluator as the
-other engines, and =BIASVALUE= applies that energy as the bias.
-A topology with zero charge and zero Lennard-Jones leaves the bias as the only
-potential.
+The conda-forge GROMACS 2026.3 used here reports Torch support disabled and
+Plumed support enabled, so it has no NNPot.
+The route into =gmx mdrun= is therefore =-plumed=: the PLUMED action =RGPOT=
+evaluates a named rgpot potential and =BIASVALUE= applies it.
+With a topology of zero charges and zero Lennard-Jones parameters the bias is
+the whole potential, and the forces in the trajectory are the rgpot forces.
+The PLUMED page describes the action and its keywords.
 
-Parameters in the PLUMED file are in GROMACS units: nanometres and kJ/mol.
-=U0= for a 1 eV well is the factor =rgpot-lj --kJ-per-eV= prints.
-=CUTOFF= 0.8 and =PSI= 0.1 are 8 Angstrom and 1 Angstrom.
+** Run mdrun
 
 #+begin_src text
-ene: RGPOT ATOMS=1,2 U0=96.48533212331002 CUTOFF=0.8 PSI=0.1
+LOAD FILE=/path/to/libRgpotPlumed.so
+ene: RGPOT ...
+  POTENTIAL=EAMTable OPTIONS=file=CuNi.eam.alloy
+  SPECIES1=1-7 SPECIES2=8-13 ELEMENTS=Cu,Ni
+...
 b: BIASVALUE ARG=ene
 PRINT ARG=ene FILE=COLVAR
 #+end_src
 
-=gmx mdrun= needs =PLUMED_KERNEL= pointed at =libplumedKernel.so=.
-The meson test =gromacs_mdrun= writes a two-atom topology, runs =grompp= and
-=mdrun -nsteps 0 -plumed=, and checks the printed bias against =rgpot-lj=.
-The box is 4 nm so the neighbour list cutoff is shorter than half the cell.
-Set =-Dwith_gromacs=enabled= and =-Dwith_plumed=enabled= to require the
-binaries.
-Auto skips the test when =gmx= or the PLUMED headers are absent.
+The atom types carry the masses and nothing else:
+
+#+begin_src text
+[ defaults ]
+1 2 yes 0.5 0.8333
+
+[ atomtypes ]
+Cu 63.546 0.0 A 0.10 0.0
+Ni 58.693 0.0 A 0.10 0.0
+#+end_src
+
+#+begin_src bash
+export PLUMED_KERNEL=$CONDA_PREFIX/lib/libplumedKernel.so
+gmx grompp -f md.mdp -c conf.gro -p topol.top -o run.tpr
+gmx mdrun -s run.tpr -plumed plumed.dat -ntmpi 1
+#+end_src
+
+Without =PLUMED_KERNEL= mdrun stops with "You are trying to use plumed, but it
+is not available".
+The test's =md.mdp= uses the Verlet scheme with =rvdw= 1.2 nm and =vdw-modifier=
+None.
+GROMACS's own cutoff then only covers the zero Lennard-Jones terms; the rgpot
+potential uses its own cutoff on every atom of the action.
+
+** Units and precision
+
+PLUMED runs in GROMACS's units, so =CUTOFF= and =VACUUM= are nanometres and the
+value is =kJ/mol=.
+=OPTIONS= stay in Angstrom and eV.
+Dividing the value by 96.48533212331002, the factor =rgpot-lj --kJ-per-eV=
+prints, gives eV.
+
+The conda-forge build is mixed precision, and mdrun hands PLUMED single
+precision coordinates.
+On those rounded coordinates =rgpot-eval= reproduced the bias to within 5e-16 of
+its value.
+On the coordinates written in the gro file the two differ by about 2e-7 of the
+energy.
+
+** Cell
+
+Without =NOPBC= the cell is GROMACS's box, which PLUMED passes on.
+With =NOPBC= the action takes the positions as mdrun holds them and builds a
+cluster cell around them.
+A cluster that crosses a periodic boundary is not made whole first, so the
+periodic form suits runs where atoms may leave the box.
+
+** Domain decomposition
+
+GROMACS domain decomposition with PLUMED was not testable here.
+The thread-MPI =gmx= stops on more than one rank with "plumed MPI interface is
+not compatible with THREAD_MPI when uses more than one rank".
+The Open MPI build of GROMACS 2026.3 from conda-forge, run as
+=gmx_mpi= with Open MPI 5.0.11, crashed on 2 ranks in =MPI_Comm_dup= while
+PLUMED set up its communicator, with PLUMED 2.9.2 and with 2.10.2, also for an
+input with only =DISTANCE= and =RESTRAINT=; one rank ran.
+The action's own MPI path, evaluation on rank 0 and a broadcast, is tested with
+=plumed driver --debug-dd= on 2 and 3 ranks; see the PLUMED page.
+
+** Tests
+
+The meson test =gromacs_mdrun= runs zero steps of three systems in boxes of 4 or
+5 nm.
+It was run with GROMACS 2026.3 against PLUMED 2.9.2 and, through
+=PLUMED_KERNEL=, 2.10.2, with the same results:
+
+- The dimer of the original keywords, a 1 eV well with an 8 Angstrom cutoff:
+  bias -0.3203212665 eV against -0.3203213355 eV from =rgpot-lj=.
+- Morse Pt13 under =NOPBC VACUUM=1.0=: bias identical to =rgpot-eval= on the
+  rounded coordinates, 1.7e-7 from it on the gro coordinates, forces within
+  1.1e-6 of the largest.
+- =EAMTable= Cu7Ni6 in the periodic box, through =SPECIES1= and =SPECIES2=: bias
+  within 5e-16, 2.4e-7 on the gro coordinates, forces within 3.8e-6.
+
+The forces come from =gmx dump= of the trajectory, which prints six significant
+digits; that bounds their agreement.
+The Cu7Ni6 case needs =-Dwith_eam_table=true=.
+=-Dwith_gromacs=enabled= and =-Dwith_plumed=enabled= make a missing =gmx= or
+PLUMED an error; by default the test is skipped without them.
 
 ** Public constructor
 
 =rgpot_gromacs_potential= stores the GROMACS units once.
-=rgpot_md_kj_per_ev= is
-kJ/mol in one eV, 96.48533212331002, and =rgpot_md_nm_per_angstrom= is 0.1. A 1 eV well, an 8 Angstrom cutoff and a 1 Angstrom zero crossing are stored as =U0= from =rgpot_md_kj_per_ev=, cutoff 0.8 nm and psi 0.1 nm. An empty engine path evaluates the shifted potential in process. A path is a library whose =rgpot_md_native_force= already speaks nanometres and kJ/mol;
-the constructor converts the geometry and the result with the stored factors.
+=rgpot_md_kj_per_ev= is =kJ/mol= in one eV, 96.48533212331002, and
+=rgpot_md_nm_per_angstrom= is 0.1.
+A 1 eV well, an 8 Angstrom cutoff and a 1 Angstrom zero crossing are stored as
+=U0= from =rgpot_md_kj_per_ev=, cutoff 0.8 nm and psi 0.1 nm.
+An empty engine path evaluates the shifted potential in process.
+A path is a library whose =rgpot_md_native_force= already speaks nanometres and
+=kJ/mol=; the constructor converts the geometry and the result with the stored
+factors.
 =rgpot_external_potential_energy_forces= and =rgpot_external_potential_free= are
 the same calls as for LAMMPS.
 The dimer is -0.3203213355 eV.
