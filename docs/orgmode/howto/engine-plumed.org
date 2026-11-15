@@ -4,18 +4,151 @@
 
 * PLUMED
 
-=RGPOT= is a collective variable, not a copy of the GROMACS mdrun deck.
-=plumed driver= reads an xyz file in nanometres, the default PLUMED length, and
-=--debug-forces= finite-differences the value.
-=BIASVALUE= turns that value into the bias whose forces the driver checks.
-The printed number, divided by =rgpot-lj --kJ-per-eV=, is the rgpot energy in
-eV.
+=RGPOT= is a PLUMED action that builds an rgpot potential by name and evaluates
+it on a group of atoms.
+Its value is the potential energy, and its derivatives are the forces and the
+virial, so =BIASVALUE= applies the rgpot potential as a bias.
+Through =gmx mdrun -plumed= that is the whole potential of a GROMACS run; see
+the GROMACS page.
+It was built and tested against PLUMED 2.9.2 with Open MPI and PLUMED 2.10.2
+from conda-forge.
 
-Telling the driver =UNITS LENGTH=A= while the file is already in Angstrom makes
-PLUMED scale the coordinates again.
-The driver test therefore stays in nanometres: a 0.15 nm separation and a 2 nm
-cell.
-The meson test is =plumed_driver=.
-The shared library is =libRgpotPlumed.so=, built when pkg-config finds PLUMED
-and linked with =libplumedKernel=.
-=-Dwith_plumed=enabled= is an error when those headers are missing.
+** Build the plugin
+
+meson builds =libRgpotPlumed.so= when pkg-config finds =plumed=:
+
+#+begin_src bash
+meson setup bld -Dwith_plumed=enabled -Dwith_eam_table=true
+meson compile -C bld
+#+end_src
+
+=-Dwith_plumed=enabled= makes a missing PLUMED an error; the default skips the
+plugin.
+It links =libplumedKernel=.
+When =plumed config has mpi= reports an MPI kernel, the plugin is compiled with
+=__PLUMED_HAS_MPI=, without which the kernel's communicator symbols do not
+resolve.
+=with_eam_table= is only needed for the =EAMTable= potential.
+The build also makes =rgpot-eval=, which evaluates the same named potentials on
+one geometry and is what the tests compare against.
+
+** Use it
+
+#+begin_src text
+LOAD FILE=/path/to/libRgpotPlumed.so
+ene: RGPOT ...
+  POTENTIAL=EAMTable OPTIONS=file=CuNi.eam.alloy
+  SPECIES1=1-72 SPECIES2=73-108 ELEMENTS=Cu,Ni
+...
+b: BIASVALUE ARG=ene
+PRINT ARG=ene FILE=COLVAR
+#+end_src
+
+| Keyword      | Meaning                                                  |
+|--------------+----------------------------------------------------------|
+| =POTENTIAL=  | rgpot potential name, as for =pair_coeff * * Name=       |
+| =OPTIONS=    | its options as =key=value= pairs, in Angstrom and eV     |
+| =ATOMS=      | the atoms                                                |
+| =SPECIESn=   | the atoms of species n, instead of =ATOMS=               |
+| =ELEMENTS=   | one symbol per atom, per =SPECIESn= group, or for all    |
+| =CUTOFF=     | cutoff in PLUMED length, used when =OPTIONS= has none    |
+| =NOPBC=      | treat the atoms as a cluster in vacuum                   |
+| =VACUUM=     | with =NOPBC=, the gap between images, in PLUMED length   |
+| =VIRIAL=     | =AUTO= (default) or =FD=                                 |
+
+The names and options are those of the LAMMPS page: =LJ=, =Morse=, =SuttonChen=,
+=EAMTable=, =SWSi1985=, =TersoffSi=, =EMT=, =EAMCell=, and with the Fortran
+potentials =SWSi=, =EDIP=, =LenoskySi=, =EAMAl=, =FeHe= and =CuH2=.
+=OPTIONS= takes commas or, inside braces, spaces: =OPTIONS=u0=0.0104,psi=3.40=
+and =OPTIONS={u0=0.0104 psi=3.40}= are the same.
+A relative =file= is opened from the directory PLUMED runs in.
+Without =CUTOFF= or a =cutoff= option, a potential keeps its own default.
+=ELEMENTS= is required with =POTENTIAL=.
+The atoms reach the potential in the order of =ATOMS=, or =SPECIES1= then
+=SPECIES2= and so on.
+
+These inputs stop PLUMED with a message: an unknown name, option or element
+symbol, an option without an equals sign, a wrong number of =ELEMENTS=, =ATOMS=
+together with =SPECIESn=, an atom given twice, =NOPBC= without a gap, and a
+periodic run without a box.
+A name that is not known lists the ones this build has.
+
+** Units
+
+=OPTIONS= are always Angstrom and eV, whatever PLUMED's units are.
+=CUTOFF=, =VACUUM=, the value and its derivatives are in PLUMED's units: by
+default nanometres and =kJ/mol=, and whatever =UNITS= sets otherwise.
+The constructor converts once, with =rgpot_md_nm_per_angstrom= (0.1) and
+=rgpot_md_kj_per_ev= (96.48533212331002, \(e N_A / 1000\) from the exact SI
+constants) against PLUMED's units.
+PLUMED's own eV is 96.48530749925792 =kJ/mol=.
+Under =UNITS ENERGY=eV= the value therefore reads \(2.552 \times 10^{-7}\)
+higher than the rgpot energy in eV; the test measures that ratio.
+Divide a =kJ/mol= value by 96.48533212331002 to get the rgpot energy exactly.
+
+** Cell and virial
+
+Without =NOPBC= the cell is PLUMED's box, lattice vectors as rows, and the atoms
+are wrapped into it before the potential sees them.
+A frame without a box stops with an error.
+With =NOPBC= the atoms are placed in an orthorhombic cell that leaves =VACUUM=
+between periodic images, and the box derivatives follow from the positions.
+=VACUUM= must exceed the potential's cutoff; it defaults to =CUTOFF= when that
+is given.
+The positions are used as they are, so a cluster split across a periodic
+boundary is not made whole.
+
+With a box, =VIRIAL=AUTO= takes the box derivatives as \(-V\sigma\) from the
+potential's Cauchy stress.
+A potential without a stress, such as =EAMAl=, and =VIRIAL=FD= use central
+differences of the energy over six strains of the cell of \(10^{-5}\), twelve
+more evaluations each step.
+
+** MPI
+
+Rank 0 of PLUMED's communicator evaluates the potential and broadcasts the
+energy, forces and virial.
+The evaluation is serial, and a domain decomposed run gives the result of the
+serial one.
+
+** Original keywords
+
+Without =POTENTIAL=, =RGPOT= is the shifted Lennard-Jones potential of =U0=,
+=PSI= and =CUTOFF=, in PLUMED's units, with defaults 1, 1 and 8.
+Atoms take atomic number 1.
+=ene: RGPOT ATOMS=1,2 U0=96.48533212331002 CUTOFF=0.8 PSI=0.1= is a 1 eV well
+with a 1 Angstrom zero crossing and an 8 Angstrom cutoff in GROMACS units.
+=U0= and =PSI= stop with an error when =POTENTIAL= is given.
+
+** Tests
+
+=plumed_driver= runs the original keywords on a dimer.
+=plumed_rgpot_action= runs six cases through =plumed driver=: Lennard-Jones in a
+triclinic cell in nm and =kJ/mol= and again in Angstrom and eV, Morse,
+=EAMTable= CuNi through =SPECIES1= and =SPECIES2=, =EAMAl= and a SuttonChen Pt13
+cluster under =NOPBC=.
+One trajectory per case holds the geometry, coordinates moved by \(\pm 10^{-4}\)
+Angstrom and the six strains of \(\pm 10^{-5}\), so one run gives the energies
+to difference, and =DUMPDERIVATIVES= gives the derivatives.
+
+The largest deviations, relative to the largest energy, force or virial
+component, were the same on PLUMED 2.9.2 and 2.10.2:
+
+| Case            | energy  | forces  | FD forces | FD virial | \(-V\sigma\) |
+|-----------------+---------+---------+-----------+-----------+--------------|
+| LJ, nm          | 1e-15   | 2e-14   | 9e-9      | 5e-9      | 9e-15        |
+| LJ, Angstrom    | 5e-16   | 2e-14   | 9e-9      | 5e-9      | 3e-15        |
+| Morse           | 6e-16   | 3e-14   | 5e-9      | 4e-8      | 2e-14        |
+| EAMTable CuNi   | 5e-16   | 4e-14   | 5e-8      | 2e-8      | 2e-14        |
+| EAMAl           | 2e-15   | 2e-13   | 3e-8      | 8e-8      | no stress    |
+| SuttonChen Pt13 | 5e-16   | 4e-15   | 1e-8      | 6e-10     | 4e-15        |
+
+Energy and forces are against =rgpot-eval= on the same geometry.
+\(-V\sigma\) is from the =rgpot-eval= stress; for the cluster it is computed in
+a 40 Angstrom box.
+=VIRIAL=FD= agreed with the stress to within 4e-8.
+PLUMED's =--debug-forces= agreed to within 3e-5; it prints six decimals.
+On PLUMED 2.9.2 with Open MPI, the same trajectories on 2 and 3 ranks with
+=--debug-dd yes= wrote the same =COLVAR=, derivatives and applied forces as the
+serial run, digit for digit.
+The test also checks that twelve malformed inputs stop with their message.
