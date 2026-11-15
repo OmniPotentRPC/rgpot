@@ -237,17 +237,38 @@ if plumed_opt.allowed()
             plumed_link += [plumed_kernel]
         endif
         have_plumed = true
+        plumed_prog = find_program('plumed', required: false)
+        # The Communicator templates resolve against the kernel only when
+        # the plugin sees the same __PLUMED_HAS_MPI as the kernel build.
+        plumed_args = []
+        if plumed_prog.found() and run_command(
+            plumed_prog,
+            'config',
+            'has',
+            'mpi',
+            check: false,
+        ).returncode() == 0
+            plumed_args = [
+                '-D__PLUMED_HAS_MPI=1',
+                '-DOMPI_SKIP_MPICXX',
+                '-DMPICH_SKIP_MPICXX',
+            ]
+            plumed_mpi = dependency('mpi', language: 'cpp', required: false)
+            if plumed_mpi.found()
+                plumed_link += [plumed_mpi]
+            endif
+        endif
         plumed_lib = shared_library(
             'RgpotPlumed',
             files('plumed/RgpotColvar.cpp'),
-            dependencies: plumed_link + [lj_dep],
+            dependencies: plumed_link + [pot_spec_dep],
             link_with: rgpot,
             include_directories: [engines_inc, rgpot_inc],
-            cpp_args: _args,
+            cpp_args: _args + plumed_args,
             name_prefix: 'lib',
             install: true,
         )
-        if python3_engines.found() and find_program('plumed', required: false).found()
+        if python3_engines.found() and plumed_prog.found()
             test(
                 'plumed_driver',
                 python3_engines,
