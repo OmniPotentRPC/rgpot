@@ -117,6 +117,10 @@ SuttonChenPot::SuttonChenPot(const SuttonChenConfig &c)
 
 int suttonChenThreads(int asked, long n_atoms, long pairs, bool listed);
 
+void denseOrthoHalf(const double *R, long n, double cutoff2, double epsilon, double c_coef,
+                    double lattice, int n_exp, int m_exp, double len0, double len1, double len2,
+                    double *F, double *strain, double &energy);
+
 void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto n_atoms = static_cast<long>(in.nAtoms);
   const double *R = in.pos;
@@ -187,6 +191,23 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     const double ar2 = (lattice * lattice) / r2;
     pow_ar_both(ar2, n_exp, m_exp, rep, phi);
   };
+  // The stored half is an index gather. When it already holds most
+  // unordered pairs, walking i < j directly is the same sequence.
+  const long all_pairs = n_atoms > 1 ? (n_atoms * (n_atoms - 1)) / 2 : 0;
+  const bool ortho = box_use[1] == 0.0 && box_use[2] == 0.0 && box_use[3] == 0.0 &&
+                     box_use[5] == 0.0 && box_use[6] == 0.0 && box_use[7] == 0.0;
+  const bool dense =
+      listed && cfg.periodic && ortho && all_pairs > 0 && pairs * 2 >= all_pairs;
+  if (dense) {
+    double energy = 0.0;
+    denseOrthoHalf(R, n_atoms, cutoff2, epsilon, c_coef, lattice, n_exp, m_exp, box_use[0],
+                   box_use[4], box_use[8], F, cfg.stress ? strain : nullptr, energy);
+    out->energy = energy;
+    if (cfg.stress) {
+      publishCauchyStress(out, strain, cellVolume(in.box));
+    }
+    return;
+  }
   {
     auto density = [&](int32_t i, int32_t j, double, double, double, double r2) {
       if (!(r2 > 0.0) || r2 > cutoff2) {

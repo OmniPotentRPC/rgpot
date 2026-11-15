@@ -7,12 +7,15 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include <omp.h>
 
 #include <catch2/catch_all.hpp>
 
@@ -591,4 +594,51 @@ TEST_CASE("Sutton-Chen pressure vanishes at the fitted lattice parameter",
                               .stress[0];
   REQUIRE(squeezed < 0.0);
   REQUIRE(last < 1.0e-3 * std::abs(squeezed));
+}
+
+TEST_CASE("dense Sutton-Chen matches one thread bit for bit", "[SuttonChen][threads]") {
+  // 32 atoms in a cell much smaller than the cutoff, so the stored half
+  // holds every pair and the direct walk runs. A shorter cutoff keeps the
+  // stored half walk.
+  double box[9];
+  const std::vector<double> raw = fcc_cell(2, 4.05, box);
+  const int atoms = static_cast<int>(raw.size() / 3);
+  REQUIRE(atoms == 32);
+  REQUIRE(box[0] < 40.0);
+  AtomMatrix pos(static_cast<size_t>(atoms), 3);
+  for (int i = 0; i < atoms; ++i) {
+    pos(static_cast<size_t>(i), 0) = raw[static_cast<size_t>(i) * 3];
+    pos(static_cast<size_t>(i), 1) = raw[static_cast<size_t>(i) * 3 + 1];
+    pos(static_cast<size_t>(i), 2) = raw[static_cast<size_t>(i) * 3 + 2];
+  }
+  const std::vector<int> types(static_cast<size_t>(atoms), 79);
+  const auto cell = cube(box[0]);
+  rgpot::SuttonChenConfig cfg;
+  cfg.periodic = true;
+  cfg.cutoff = 40.0;
+  auto same = [](double a, double b) {
+    return std::memcmp(&a, &b, sizeof(double)) == 0;
+  };
+  auto run = [&](int threads) {
+    const std::string text = std::to_string(threads);
+    setenv("OMP_NUM_THREADS", text.c_str(), 1);
+    omp_set_num_threads(threads);
+    rgpot::SuttonChenPot pot(cfg);
+    return pot(pos, types, cell);
+  };
+  const auto one = run(1);
+  const double energy = std::get<0>(one);
+  const AtomMatrix &force = std::get<1>(one);
+  for (int threads : {2, 4, 8}) {
+    const auto got = run(threads);
+    REQUIRE(same(std::get<0>(got), energy));
+    const AtomMatrix &other = std::get<1>(got);
+    REQUIRE(other.rows() == force.rows());
+    for (int i = 0; i < atoms; ++i) {
+      for (int k = 0; k < 3; ++k) {
+        REQUIRE(same(other(static_cast<size_t>(i), static_cast<size_t>(k)),
+                     force(static_cast<size_t>(i), static_cast<size_t>(k))));
+      }
+    }
+  }
 }
