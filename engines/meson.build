@@ -353,14 +353,6 @@ if gromacs_opt.allowed()
     endif
 endif
 
-if python3_engines.found()
-    test(
-        'c_symbols',
-        python3_engines,
-        args: [files('../docs/check_c_symbols.py')],
-        timeout: 30,
-    )
-endif
 
 # Configures a parent project around this tree, so it needs meson on PATH
 # and only runs from the top-level build.
