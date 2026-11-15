@@ -9,6 +9,7 @@ track ``setup``.
 from __future__ import annotations
 
 import ctypes
+import inspect
 import math
 import os
 
@@ -176,6 +177,19 @@ def _aluminium(atoms: int):
     return _lattice(atoms, 4.05, _FCC, 13)
 
 
+def _stretch_past_cutoff(positions, cutoff):
+    """Stretch a cluster that sits inside ``cutoff`` until its diagonal is past it.
+
+    A cluster inside the cutoff takes the serial direct walk, which
+    ignores the thread count. A larger cube is returned unchanged.
+    """
+    span = positions.max(axis=0) - positions.min(axis=0)
+    diag2 = float((span * span).sum())
+    if diag2 > 0.0 and diag2 <= cutoff * cutoff:
+        positions *= (cutoff * 1.05) / (diag2 ** 0.5)
+    return positions
+
+
 def _lj_cluster(atoms: int):
     side = 1
     while side * side * side < atoms:
@@ -189,16 +203,9 @@ def _lj_cluster(atoms: int):
         y = (index // side) % side
         z = index // (side * side)
         coords.append((x * spacing, y * spacing, z * spacing))
-    positions = np.ascontiguousarray(coords, dtype=np.float64)
-    # A cluster that fits inside the cutoff takes the serial direct walk,
-    # which ignores the thread count. Stretch this cube until its diagonal
-    # is past the 15 A cutoff. Larger cubes already are.
-    cutoff = 15.0
-    span = positions.max(axis=0) - positions.min(axis=0)
-    diag2 = float(span @ span)
-    limit = cutoff * cutoff
-    if 0.0 < diag2 <= limit:
-        positions *= (cutoff * 1.05) / (diag2 ** 0.5)
+    positions = _stretch_past_cutoff(
+        np.ascontiguousarray(coords, dtype=np.float64), 15.0
+    )
     atom_types = np.ones(atoms, dtype=np.int32)
     box = np.eye(3, dtype=np.float64) * 80.0
     return positions, atom_types, box
@@ -295,16 +302,9 @@ def lj_cluster(atoms):
         y = (index // side) % side
         z = index // (side * side)
         coords.append((x * spacing, y * spacing, z * spacing))
-    positions = np.ascontiguousarray(coords, dtype=np.float64)
-    # A cluster that fits inside the cutoff takes the serial direct walk
-    # and the thread count never reaches the cell walk. Stretch until the
-    # diagonal is past the 15 A cutoff. Larger cubes already are.
-    cutoff = 15.0
-    span = positions.max(axis=0) - positions.min(axis=0)
-    diag2 = float((span * span).sum())
-    limit = cutoff * cutoff
-    if diag2 > 0.0 and diag2 <= limit:
-        positions *= (cutoff * 1.05) / (diag2 ** 0.5)
+    positions = _stretch_past_cutoff(
+        np.ascontiguousarray(coords, dtype=np.float64), 15.0
+    )
     atom_types = np.ones(atoms, dtype=np.int32)
     box = np.eye(3, dtype=np.float64) * 80.0
     return positions, atom_types, box
@@ -376,6 +376,14 @@ def cores_collapsed(requested):
         return True
     return False
 '''
+
+# One definition of the stretch. The timed child is a separate program,
+# so it receives that function's source.
+_CHILD = _CHILD.replace(
+    "def lj_cluster(atoms):",
+    inspect.getsource(_stretch_past_cutoff) + "\ndef lj_cluster(atoms):",
+    1,
+)
 
 
 def _timeraw_pair(kind: str, atoms: int, threads: int) -> tuple[str, str]:
