@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -122,6 +123,84 @@ void bondOrder(const TersoffSiC::Species &sp, double zeta, double &b,
   b = std::pow(base, -0.5 / sp.n);
   db = -0.5 * std::pow(base, -0.5 / sp.n - 1.0) * sp.beta_n *
        std::pow(zeta, sp.n - 1.0);
+}
+
+void radial(const TersoffSiC::Pair &p, double r, Bond &b);
+double cosine(const Bond &a, const Bond &b);
+
+std::uint64_t bits_of(double x) {
+  std::uint64_t u = 0;
+  std::memcpy(&u, &x, sizeof(u));
+  return u;
+}
+
+// Repeated bond lengths and repeated coordination sums are common in a
+// crystal. Reusing the previous results when the bits match does not change
+// them.
+struct RadialMemo {
+  std::uint64_t r_bits = ~0ull;
+  const TersoffSiC::Pair *pair = nullptr;
+  double fc = 0;
+  double dfc = 0;
+  double f_r = 0;
+  double f_a = 0;
+  double df_r = 0;
+  double df_a = 0;
+  void apply(const TersoffSiC::Pair &p, double r, Bond &b) {
+    const std::uint64_t bits = bits_of(r);
+    if (pair == &p && bits == r_bits) {
+      b.fc = fc;
+      b.dfc = dfc;
+      b.f_r = f_r;
+      b.f_a = f_a;
+      b.df_r = df_r;
+      b.df_a = df_a;
+      return;
+    }
+    radial(p, r, b);
+    pair = &p;
+    r_bits = bits;
+    fc = b.fc;
+    dfc = b.dfc;
+    f_r = b.f_r;
+    f_a = b.f_a;
+    df_r = b.df_r;
+    df_a = b.df_a;
+  }
+};
+
+struct OrderMemo {
+  std::uint64_t zeta_bits = ~0ull;
+  const TersoffSiC::Species *sp = nullptr;
+  double b = 0;
+  double db = 0;
+  void apply(const TersoffSiC::Species &species, double zeta, double &b_out,
+             double &db_out) {
+    const std::uint64_t bits = bits_of(zeta);
+    if (sp == &species && bits == zeta_bits) {
+      b_out = b;
+      db_out = db;
+      return;
+    }
+    bondOrder(species, zeta, b_out, db_out);
+    sp = &species;
+    zeta_bits = bits;
+    b = b_out;
+    db = db_out;
+  }
+};
+
+void fillAngles(const Bond *nb, int m, const TersoffSiC::Species &sp,
+                Angle *ang) {
+  for (int a = 0; a < m; ++a) {
+    for (int k = a + 1; k < m; ++k) {
+      Angle slot;
+      slot.cth = cosine(nb[a], nb[static_cast<std::size_t>(k)]);
+      angular(sp, slot.cth, slot.g, slot.dg);
+      ang[static_cast<std::size_t>(a * m + k)] = slot;
+      ang[static_cast<std::size_t>(k * m + a)] = slot;
+    }
+  }
 }
 
 void radial(const TersoffSiC::Pair &p, double r, Bond &b) {
@@ -319,7 +398,8 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
         return;
       }
       Bond forth{static_cast<int>(j), -dx, -dy, -dz, r, 0, 0, 0, 0, 0, 0};
-      radial(pij, r, forth);
+      thread_local RadialMemo radial_memo;
+      radial_memo.apply(pij, r, forth);
       nb.push_back(forth);
     };
     if (neighbours_.streaming()) {
@@ -336,6 +416,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
   if (nt == 1) {
   std::vector<Bond> nb;
   std::vector<Angle> ang;
+  thread_local OrderMemo order_memo;
   for (int i = 0; i < n; ++i) {
     load(i, nb);
     const Species &sp = m_species[kind[i]];
@@ -343,6 +424,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     if (static_cast<int>(ang.size()) < m * m) {
       ang.resize(static_cast<std::size_t>(m) * static_cast<std::size_t>(m));
     }
+    fillAngles(nb.data(), m, sp, ang.data());
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
       double zeta = 0.0;
@@ -350,14 +432,12 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
         if (k == a) {
           continue;
         }
-        Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
-        slot.cth = cosine(bj, nb[static_cast<std::size_t>(k)]);
-        angular(sp, slot.cth, slot.g, slot.dg);
+        const Angle &slot = ang[static_cast<std::size_t>(a * m + k)];
         zeta += nb[static_cast<std::size_t>(k)].fc * slot.g;
       }
       double bij = 0.0;
       double db = 0.0;
-      bondOrder(sp, zeta, bij, db);
+      order_memo.apply(sp, zeta, bij, db);
       *energy += 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
       const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) +
                                  bj.fc * (bj.df_r + bij * bj.df_a));

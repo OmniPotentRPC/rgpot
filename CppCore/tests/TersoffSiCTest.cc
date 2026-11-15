@@ -617,3 +617,59 @@ TEST_CASE("Tersoff energy and forces match with and without stress",
   setenv("OMP_NUM_THREADS", "1", 1);
   omp_set_num_threads(1);
 }
+
+TEST_CASE("Tersoff one thread matches the others bit for bit", "[TersoffSiC][threads]") {
+  // FCC spacing of the bench. Nearest neighbours share a length, so this cell
+  // takes the reused radial and bond-order path.
+  constexpr double a = 4.05;
+  constexpr int ncell = 2;
+  const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  std::vector<double> raw;
+  for (int ix = 0; ix < ncell; ++ix) {
+    for (int iy = 0; iy < ncell; ++iy) {
+      for (int iz = 0; iz < ncell; ++iz) {
+        for (const auto &b : basis) {
+          raw.push_back((ix + b[0]) * a);
+          raw.push_back((iy + b[1]) * a);
+          raw.push_back((iz + b[2]) * a);
+        }
+      }
+    }
+  }
+  const std::size_t n = raw.size() / 3;
+  AtomMatrix positions(n, 3);
+  std::copy(raw.begin(), raw.end(), positions.data());
+  const std::vector<int> types(n, 14);
+  const auto box = cubic(ncell * a);
+
+  auto pack = [](double energy, const AtomMatrix &forces) {
+    std::vector<double> buf(1 + static_cast<std::size_t>(forces.size()));
+    buf[0] = energy;
+    std::memcpy(buf.data() + 1, forces.data(), sizeof(double) * static_cast<std::size_t>(forces.size()));
+    return buf;
+  };
+
+  setenv("OMP_NUM_THREADS", "1", 1);
+  omp_set_num_threads(1);
+  TersoffSiC one;
+  one.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto [e1, f1, v1] = one(positions, types, box);
+  (void)v1;
+  const auto base = pack(e1, f1);
+  REQUIRE(base.size() > 1);
+
+  for (int threads : {2, 4, 8}) {
+    const std::string text = std::to_string(threads);
+    setenv("OMP_NUM_THREADS", text.c_str(), 1);
+    omp_set_num_threads(threads);
+    TersoffSiC pot;
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    const auto [energy, forces, variance] = pot(positions, types, box);
+    (void)variance;
+    const auto got = pack(energy, forces);
+    REQUIRE(got.size() == base.size());
+    REQUIRE(std::memcmp(got.data(), base.data(), got.size() * sizeof(double)) == 0);
+  }
+  setenv("OMP_NUM_THREADS", "1", 1);
+  omp_set_num_threads(1);
+}
