@@ -279,6 +279,34 @@ if plumed_opt.allowed()
                 ],
                 timeout: 180,
             )
+            action_args = [
+                files('plumed/test_rgpot_action.py'),
+                plumed_prog.full_path(),
+                plumed_lib.full_path(),
+                rgpot_eval.full_path(),
+                '--work',
+                meson.current_build_dir() / 'plumed-rgpot-action',
+            ]
+            if has_eam_table
+                action_args += [
+                    '--eam-alloy',
+                    project_root / 'CppCore/tests/data/eam_table/CuNi.eam.alloy',
+                ]
+            endif
+            if has_fortran
+                action_args += ['--eamal']
+            endif
+            action_mpirun = find_program('mpirun', 'mpiexec', required: false)
+            if action_mpirun.found()
+                action_args += ['--mpirun', action_mpirun.full_path()]
+            endif
+            test(
+                'plumed_rgpot_action',
+                python3_engines,
+                args: action_args,
+                depends: [plumed_lib, rgpot_eval],
+                timeout: 900,
+            )
         endif
     endif
 endif
