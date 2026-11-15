@@ -6,6 +6,7 @@
 #include "rgpot/units.hpp"
 
 #include <array>
+#include <cstdlib>
 #include <vector>
 
 #include <catch2/catch_approx.hpp>
@@ -55,4 +56,12 @@ TEST_CASE("MOPACPot packed charge reaches the engine", "[mopac]") {
   (void)forces;
   (void)variance;
   REQUIRE(energy == Approx((0.25 + 0.02) * rgpot::units::HARTREE_TO_EV));
+}
+
+TEST_CASE("MOPACPot skips an empty MOPACC_LIBRARY", "[mopac]") {
+  setenv("MOPACC_LIBRARY", "", 1);
+  rgpot::MOPACPot pot(rgpot::MOPACPot::Config{});
+  const bool available = pot.available();
+  unsetenv("MOPACC_LIBRARY");
+  REQUIRE(available);
 }
