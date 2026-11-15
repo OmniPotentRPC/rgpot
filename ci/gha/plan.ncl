@@ -150,7 +150,7 @@ let P = S.pins in
       id = "engines",
       needs = ["prepare"],
       runs_on = P.ubuntu,
-      role = "LAMMPS pair_style rgpot, GROMACS mdrun -plumed, OpenMM, PLUMED",
+      role = "LAMMPS pair_style rgpot, GROMACS mdrun -plumed, OpenMM, PLUMED RGPOT action (EAM tables built)",
     },
     {
       id = "ci_gate",
