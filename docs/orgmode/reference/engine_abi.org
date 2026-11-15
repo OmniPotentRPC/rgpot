@@ -655,8 +655,9 @@ The digest of the weights inside it is package metadata, written by
 =UmaPot::checkpointProvenance()= returns them as a =UmaCheckpointProvenance=,
 whose fields are =std::optional= and unset for packages exported before the keys
 existed.
-The engine prints =UmaPot: checkpoint_sha256== on stderr when it loads the
-package (=unset= for those packages); the table exports no symbol for the keys.
+=UmaPot= prints =checkpoint_sha256= on stderr when it loads the package, and
+=unset= for those packages.
+No engine ABI call returns the keys.
 A malformed =checkpoint_sha256=, =checkpoint_hf_revision= or =checkpoint_source=
 fails the load.
 
