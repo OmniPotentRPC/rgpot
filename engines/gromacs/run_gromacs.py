@@ -172,10 +172,8 @@ def main() -> None:
         "",
     ]), ["Ar", "Ar"], [[0.0, 0.0, 0.0], [0.15, 0.0, 0.0]], 4.0, env, args)
     ev = bias(dimer) / factor
-    direct = subprocess.check_output(
-        [args.rgpot_lj], input=(Path(__file__).resolve().parents[1] / "compare_geom.txt").read_text(),
-        text=True,
-    )
+    geom = (Path(__file__).resolve().parents[1] / "compare_geom.txt").read_text()
+    direct = subprocess.check_output([args.rgpot_lj], input=geom, text=True)
     ref = float(next(line.split()[1] for line in direct.splitlines() if line.startswith("energy")))
     if abs(ev - ref) > 1e-6:
         raise SystemExit(f"gromacs bias {ev} eV, rgpot {ref} eV")
@@ -192,8 +190,8 @@ def main() -> None:
         cases.append((
             "EAMTable Cu7Ni6", ["Cu"] * 7 + ["Ni"] * 6, icosahedron(0.252, 2.5),
             ["EAMTable", "file", args.eam_alloy],
-            f"POTENTIAL=EAMTable OPTIONS=file={args.eam_alloy} SPECIES1=1-7 SPECIES2=8-13 "
-            "ELEMENTS=Cu,Ni",
+            (f"POTENTIAL=EAMTable OPTIONS=file={args.eam_alloy} SPECIES1=1-7 SPECIES2=8-13 "
+             "ELEMENTS=Cu,Ni"),
         ))
     for name, symbols, nm, spec, keywords in cases:
         case_work = work / name.split()[0].lower()

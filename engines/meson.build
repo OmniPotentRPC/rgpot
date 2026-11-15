@@ -277,6 +277,7 @@ if plumed_opt.allowed()
                     rgpot_lj.full_path(),
                     plumed_lib.full_path(),
                 ],
+                depends: [plumed_lib, rgpot_lj],
                 timeout: 180,
             )
             action_args = [

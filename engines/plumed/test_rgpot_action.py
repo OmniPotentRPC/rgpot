@@ -172,7 +172,8 @@ def driver(plumed: list[str], case: Case, work: Path, xyz: str, dat: str, extra=
     cmd = plumed + ["driver", "--plumed", dat, "--ixyz", xyz]
     if case.angstrom_ev:
         cmd += ["--length-units", "A"]
-    res = subprocess.run(cmd + list(extra), cwd=work, capture_output=True, text=True)
+    res = subprocess.run(cmd + list(extra), cwd=work, capture_output=True, text=True,
+                         check=False)
     if res.returncode != 0:
         sys.stderr.write(res.stdout[-4000:] + res.stderr[-4000:])
         raise SystemExit(f"{case.name}: plumed driver failed")
@@ -364,7 +365,8 @@ def refusals(args, work: Path) -> None:
             f"LOAD FILE={Path(args.plugin).resolve()}\nene: RGPOT {keywords}\n"
             "PRINT ARG=ene FILE=COLVAR\n")
         res = subprocess.run([args.plumed, "driver", "--plumed", "plumed.dat", "--ixyz",
-                              "dimer.xyz"], cwd=work, capture_output=True, text=True)
+                              "dimer.xyz"], cwd=work, capture_output=True, text=True,
+                             check=False)
         if res.returncode == 0 or message not in res.stdout + res.stderr:
             raise SystemExit(f"RGPOT {keywords} did not stop with '{message}'")
     print(f"refusals: {len(REFUSALS)} inputs stop with their message")
@@ -381,7 +383,8 @@ def main() -> None:
     p.add_argument("--work", default="plumed-rgpot-action")
     args = p.parse_args()
     if args.mpirun:
-        has_mpi = subprocess.run([args.plumed, "config", "has", "mpi"], capture_output=True)
+        has_mpi = subprocess.run([args.plumed, "config", "has", "mpi"], capture_output=True,
+                                 check=False)
         if has_mpi.returncode != 0:
             print("this PLUMED has no MPI; the domain decomposition runs are skipped")
             args.mpirun = ""
