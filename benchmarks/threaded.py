@@ -45,16 +45,21 @@ def _sibling_key(cpu: int) -> str:
         return str(cpu)
 
 
+# Taken at import, before a benchmark pins this process to the parent
+# core. A later read of the affinity would only see that one core.
+try:
+    _MACHINE_CPUS = sorted(os.sched_getaffinity(0))
+except (AttributeError, OSError):
+    _MACHINE_CPUS = list(range(os.cpu_count() or 1))
+
+
 def _exclusive_cpus() -> list[int]:
-    """One logical CPU per physical core inside the current affinity.
+    """One logical CPU per physical core inside the machine affinity.
 
     CPUs that share a ``thread_siblings_list`` are SMT siblings. Only
     the first of each list is offered to a team.
     """
-    try:
-        allowed = sorted(os.sched_getaffinity(0))
-    except (AttributeError, OSError):
-        allowed = list(range(os.cpu_count() or 1))
+    allowed = list(_MACHINE_CPUS)
     chosen = []
     seen = set()
     for cpu in allowed:
