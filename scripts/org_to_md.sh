@@ -39,8 +39,18 @@ else
 fi
 
 # Emacs command to export Org file to Markdown
+# Source blocks become fenced blocks with their language, so the README
+# keeps highlighting and docs/doccheck.py can compare them with the Org file.
 emacs --batch "$EXPORT_FILE" \
     --eval "(require 'ox-md nil t)" \
+    --eval "(advice-add 'org-md-example-block :around
+              (lambda (orig block contents info)
+                (if (eq (org-element-type block) 'src-block)
+                    (format \"\`\`\`%s\n%s\`\`\`\"
+                            (or (org-element-property :language block) \"\")
+                            (org-remove-indentation
+                             (org-export-format-code-default block info)))
+                  (funcall orig block contents info))))" \
     --eval "(org-md-export-to-markdown)" \
     --kill
 
