@@ -12,6 +12,8 @@ import ctypes
 import inspect
 import math
 import os
+import subprocess
+import sys
 
 import numpy as np
 
@@ -225,12 +227,43 @@ def _energy_force(pot, positions, atom_types, box) -> None:
 
 
 def _loops(atoms: int) -> int:
-    """Calls per sample so the timed stretch is at least about 20 ms."""
+    """Fewest calls in a sample. A short call uses more than this."""
     if atoms >= 4096:
         return 12
     if atoms >= 1024:
         return 40
     return 200
+
+
+def _sample_calls(seconds: float, atoms: int) -> int:
+    """Calls so one 4 ms wait is about half a percent of the sample.
+
+    The floor keeps a long call from shrinking to a handful of iterations
+    that a single wait can swing.
+    """
+    floor = _loops(int(atoms))
+    if seconds <= 0.0:
+        return floor
+    return min(20000, max(floor, math.ceil(0.80 / seconds)))
+
+
+def _team_env(threads: int) -> dict[str, str]:
+    """Environment the timed child is born with.
+
+    OpenBLAS follows ``OMP_NUM_THREADS`` and starts that many threads on
+    the team's cores. The first window is then several millisecond barrier
+    waits, and the next window is not. One BLAS thread leaves the team
+    alone, so those waits stop before the timed calls.
+    """
+    worker = _worker_cores(int(threads))
+    return {
+        "OMP_NUM_THREADS": str(int(threads)),
+        "OMP_DYNAMIC": "false",
+        "OMP_PROC_BIND": "close",
+        "OMP_PLACES": ",".join(f"{{{cpu}}}" for cpu in worker),
+        "BENCH_CORES": ",".join(str(cpu) for cpu in worker),
+        "OPENBLAS_NUM_THREADS": "1",
+    }
 
 
 def _escape(source: str) -> str:
@@ -391,23 +424,104 @@ _CHILD = _CHILD.replace(
 )
 
 
+# The timed calls start after two successive windows agree. A window is
+# about 30 ms, long enough that the first call's team start does not
+# decide it, and short enough that a long kernel is not repeated for
+# its own sake. Six attempts is the cap.
+_WARM = r"""
+import time
+for _ in range(2):
+    call(pot, positions, atom_types, box)
+if cores_collapsed(requested):
+    raise SystemExit("team collapsed off its exclusive cores")
+
+
+def _span(repeats):
+    started = time.perf_counter()
+    for _ in range(repeats):
+        call(pot, positions, atom_types, box)
+    return time.perf_counter() - started
+
+
+probe = _span(1)
+group = 1 if probe <= 0.0 else max(1, int(0.03 / probe))
+previous = _span(group)
+for _attempt in range(6):
+    current = _span(group)
+    if previous > 0.0 and abs(current - previous) <= 0.02 * previous:
+        break
+    previous = current
+# Short groups can agree while the first full sample is still slower
+# than the one after it. Take full samples until two agree. The timed
+# calls are the next sample.
+planned = os.environ.get("BENCH_CALLS")
+if planned:
+    repeats = int(planned)
+    previous = _span(repeats)
+    for _full in range(4):
+        current = _span(repeats)
+        if previous > 0.0 and abs(current - previous) <= 0.02 * previous:
+            break
+        previous = current
+"""
+
+
 def _timeraw_pair(kind: str, atoms: int, threads: int) -> tuple[str, str]:
-    setup = _escape(_CHILD) + "\n" + _escape(
-        f"""
+    head = f"""
 kind = {kind!r}
 atoms = {int(atoms)}
 requested = {int(threads)}
 pot_built = build(kind, atoms)
 positions, atom_types, box = pot_built[0]
 pot = pot_built[1]
-for _ in range(3):
-    call(pot, positions, atom_types, box)
-if cores_collapsed(requested):
-    raise SystemExit("team collapsed off its exclusive cores")
 """
-    )
+    setup = _escape(_CHILD) + "\n" + _escape(head + _WARM)
     stmt = _escape("call(pot, positions, atom_types, box)\n")
     return stmt, setup
+
+
+def _child_code(kind: str, atoms: int, threads: int, tail: str) -> str:
+    _stmt, setup = _timeraw_pair(kind, atoms, threads)
+    return setup.replace("{{", "{").replace("}}", "}") + "\n" + tail
+
+
+def _run_child(kind: str, atoms: int, threads: int, env: dict[str, str], tail: str) -> str:
+    """Run the timed child and return its stdout. The parent stays unpinned."""
+    child_env = os.environ.copy()
+    child_env.update(env)
+    completed = subprocess.run(
+        [sys.executable, "-c", _child_code(kind, atoms, threads, tail)],
+        env=child_env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr[-400:].strip() or "timed child failed")
+    return completed.stdout.strip()
+
+
+def _steady_seconds(kind: str, atoms: int, threads: int, env: dict[str, str]) -> float:
+    """Median call after the warm-up windows, in seconds."""
+    text = _run_child(
+        kind,
+        atoms,
+        threads,
+        env,
+        """
+import time
+samples = []
+for _ in range(5):
+    started = time.perf_counter()
+    call(pot, positions, atom_types, box)
+    samples.append(time.perf_counter() - started)
+samples.sort()
+print(samples[2])
+""",
+    )
+    line = text.splitlines()[-1].strip()
+    return float(line)
 
 
 class _Timed:
@@ -422,16 +536,13 @@ class _Timed:
     kind = ""
 
     def setup(self, atoms: int, threads: int) -> None:
-        worker = _worker_cores(int(threads))
         # The child is born with these variables, before the runtime starts.
-        self.env = {
-            "OMP_NUM_THREADS": str(int(threads)),
-            "OMP_DYNAMIC": "false",
-            "OMP_PROC_BIND": "close",
-            "OMP_PLACES": ",".join(f"{{{cpu}}}" for cpu in worker),
-            "BENCH_CORES": ",".join(str(cpu) for cpu in worker),
-        }
-        self.number = _loops(int(atoms))
+        self.env = _team_env(int(threads))
+        # Size the sample from the steady call. The warm-up inside the
+        # child has already run before that median is taken.
+        seconds = _steady_seconds(self.kind, int(atoms), int(threads), self.env)
+        self.number = _sample_calls(seconds, int(atoms))
+        self.env["BENCH_CALLS"] = str(self.number)
         # This process only launches the timed child. It stays on the
         # core reserved for the parent, off the team's cores.
         try:

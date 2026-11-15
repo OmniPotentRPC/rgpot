@@ -221,3 +221,58 @@ def test_parent_pin_does_not_shrink_the_next_team() -> None:
     bench.setup(256, 1)
     bench.setup(256, 4)
     assert bench.env["BENCH_CORES"] == "4,5,6,7"
+
+
+def test_short_call_gets_a_long_sample() -> None:
+    # A 50 us call needs thousands of repetitions before a 4 ms wait is
+    # half a percent of the sample. A call that is already long stays
+    # at the floor.
+    assert _BENCH._sample_calls(50e-6, 256) >= 10000
+    assert _BENCH._sample_calls(0.2, 4096) == _BENCH._loops(4096)
+
+
+# Two timed windows of a settled row stay inside this band. The cold
+# first window is about twice the next one, which is outside it.
+_AA_LOW = 0.85
+_AA_HIGH = 1.20
+
+
+def _window_ratio(kind: str, atoms: int, threads: int) -> float:
+    env = dict(_BENCH._team_env(threads))
+    seconds = _BENCH._steady_seconds(kind, atoms, threads, env)
+    calls = _BENCH._sample_calls(seconds, atoms)
+    env["BENCH_CALLS"] = str(calls)
+    text = _BENCH._run_child(
+        kind,
+        atoms,
+        threads,
+        env,
+        f"""
+def _window():
+    started = time.perf_counter()
+    for _ in range({calls}):
+        call(pot, positions, atom_types, box)
+    return (time.perf_counter() - started) / {calls}
+
+
+first = _window()
+second = _window()
+print(second / first)
+""",
+    )
+    return float(text.splitlines()[-1])
+
+
+@pytest.mark.parametrize("kind", ["LJCluster", "LJ", "Morse", "SW", "Tersoff", "EAM"])
+@pytest.mark.parametrize("atoms", _BENCH.ATOMS)
+@pytest.mark.parametrize("threads", _BENCH.THREADS)
+def test_timed_windows_agree_within_the_aa_band(
+    kind: str, atoms: int, threads: int
+) -> None:
+    if kind == "EAM" and rgpot.EAMAlPot is None:
+        pytest.skip("this build has no stored EAM potential")
+    # The harness kind for Stillinger-Weber is the class name, not the
+    # short label the geometry helper uses.
+    kernel = "StillingerWeber" if kind == "SW" else kind
+    ratio = _window_ratio(kernel, atoms, threads)
+    assert _AA_LOW <= ratio <= _AA_HIGH
