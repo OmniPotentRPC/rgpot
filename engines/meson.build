@@ -314,15 +314,27 @@ endif
 if gromacs_opt.allowed()
     gmx = find_program('gmx', required: gromacs_opt.enabled())
     if gmx.found() and have_plumed and python3_engines.found()
+        gromacs_args = [
+            files('gromacs/run_gromacs.py'),
+            rgpot_lj.full_path(),
+            plumed_lib.full_path(),
+            meson.current_build_dir() / 'gromacs-work',
+            '--gmx',
+            gmx.full_path(),
+            '--rgpot-eval',
+            rgpot_eval.full_path(),
+        ]
+        if has_eam_table
+            gromacs_args += [
+                '--eam-alloy',
+                project_root / 'CppCore/tests/data/eam_table/CuNi.eam.alloy',
+            ]
+        endif
         test(
             'gromacs_mdrun',
             python3_engines,
-            args: [
-                files('gromacs/run_gromacs.py'),
-                rgpot_lj.full_path(),
-                plumed_lib.full_path(),
-                meson.current_build_dir() / 'gromacs-work',
-            ],
+            args: gromacs_args,
+            depends: [plumed_lib, rgpot_lj, rgpot_eval],
             timeout: 180,
         )
     elif gromacs_opt.enabled()
