@@ -19,6 +19,7 @@
 // clang-format on
 #include "rgpot/PairSwitch.hpp"
 #include "rgpot/ParamHash.hpp"
+#include "rgpot/PerAtom.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/simd/exp.hpp"
@@ -100,6 +101,9 @@ public:
    */
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /// forceImpl plus each pair energy and virial split half to each atom.
+  void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const;
+
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
   /// True when the last force call kept the Verlet list. Half the skin,
@@ -120,6 +124,8 @@ public:
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
   static constexpr uint64_t kKernelVersion = 2;
+
+  void compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms) const;
 
   double De;           //!< Well depth parameter.
   double a;            //!< Range parameter.
