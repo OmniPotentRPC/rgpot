@@ -32,7 +32,7 @@ struct Built {
 };
 
 /// cutoff is used when the potential has a cutoff and the options do
-/// not name one.
+/// not name one. A cutoff that is not positive keeps the potential's own.
 Built build(const std::string &name, const Options &options, double cutoff);
 
 /// Names build() accepts in this build, separated by spaces.

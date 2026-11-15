@@ -7,7 +7,8 @@
 //
 //   rgpot-eval Name [key value ...] < geometry
 //
-// with the geometry
+// A potential with a cutoff keeps its own unless the options name one.
+// The geometry is
 //
 //   n
 //   ax ay az bx by bz cx cy cz

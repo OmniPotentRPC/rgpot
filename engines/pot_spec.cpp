@@ -170,7 +170,7 @@ Built make(const std::string &key, Reader &r, double cutoff) {
     LJConfig c;
     c.u0 = r.real("u0", c.u0);
     c.psi = r.real("psi", c.psi);
-    c.cutoff = r.real("cutoff", cutoff);
+    c.cutoff = r.real("cutoff", cutoff > 0.0 ? cutoff : c.cutoff);
     c.switch_width = r.real("switch_width", c.switch_width);
     return own<LJPot>(c);
   }
@@ -179,7 +179,7 @@ Built make(const std::string &key, Reader &r, double cutoff) {
     c.De = r.real("de", c.De);
     c.a = r.real("a", c.a);
     c.re = r.real("re", c.re);
-    c.cutoff = r.real("cutoff", cutoff);
+    c.cutoff = r.real("cutoff", cutoff > 0.0 ? cutoff : c.cutoff);
     c.switch_width = r.real("switch_width", c.switch_width);
     return own<MorsePot>(c);
   }
@@ -199,7 +199,7 @@ Built make(const std::string &key, Reader &r, double cutoff) {
     c.a = r.real("a", c.a);
     c.n = r.integer("n", c.n);
     c.m = r.integer("m", c.m);
-    c.cutoff = r.real("cutoff", cutoff);
+    c.cutoff = r.real("cutoff", cutoff > 0.0 ? cutoff : c.cutoff);
     c.periodic = true;
     c.stress = true;
     return own<SuttonChenPot>(c);
