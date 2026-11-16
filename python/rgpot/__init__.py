@@ -15,11 +15,53 @@ Wheels bundle engines for torch 2.7 and newer.
 
 from __future__ import annotations
 
+import importlib.machinery
+import importlib.util
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
-import rgpot._core as _core
+
+def _load_core() -> None:
+    """Load ``rgpot._core`` from its resolved path.
+
+    The extension finds librgpot through its runpath, which is relative to
+    the extension (``$ORIGIN`` on Linux, ``@loader_path`` on macOS). glibc
+    takes ``$ORIGIN`` from the path the module was opened by and does not
+    follow symlinks, so a ``_core`` linked into the package from a build tree
+    would look for librgpot beside the link. Opening the resolved file keeps
+    the runpath relative to the directory the build or install put it in.
+    Windows has no runpath: the resolved directory and the wheel's
+    ``.rgpot.mesonpy.libs`` join the DLL search path instead.
+    """
+    spec = importlib.util.find_spec(f"{__name__}._core")
+    if spec is None or spec.origin is None or not os.path.isfile(spec.origin):
+        return
+    real = os.path.realpath(spec.origin)
+    if sys.platform == "win32":
+        here = os.path.dirname(real)
+        for libdir in (here, os.path.join(here, "..", ".rgpot.mesonpy.libs")):
+            if os.path.isdir(libdir):
+                os.add_dll_directory(os.path.abspath(libdir))
+    if os.path.normcase(real) == os.path.normcase(os.path.abspath(spec.origin)):
+        return
+    loader = importlib.machinery.ExtensionFileLoader(spec.name, real)
+    resolved = importlib.util.spec_from_file_location(spec.name, real, loader=loader)
+    if resolved is None:
+        return
+    module = importlib.util.module_from_spec(resolved)
+    sys.modules[spec.name] = module
+    try:
+        loader.exec_module(module)
+    except BaseException:
+        del sys.modules[spec.name]
+        raise
+
+
+_load_core()
+
+import rgpot._core as _core  # noqa: E402
 
 __version__: str = str(getattr(_core, "__version__", "0"))
 LJPot = _core.LJPot

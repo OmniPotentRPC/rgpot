@@ -123,7 +123,8 @@ jobs:
             --buildtype=release
           meson compile -C /tmp/rgpot-ci-build
           ln -sfn /tmp/rgpot-ci-build/python/_core*.so python/rgpot/
-          export LD_LIBRARY_PATH="/tmp/rgpot-ci-build/CppCore${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          # No LD_LIBRARY_PATH: rgpot opens the linked _core from its real
+          # path, where the build runpath finds librgpot.
           /tmp/rgpot-ci/bin/python -m pytest -q tests/python \
             --timeout=180 -o faulthandler_timeout=120
 

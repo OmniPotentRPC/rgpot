@@ -74,7 +74,14 @@ if not is_variable('metatomic_dlopen')
 endif
 
 _py_incs = [_incdirs, include_directories('../bind/include')]
-_py_rpath = '$ORIGIN:$ORIGIN/../.rgpot.mesonpy.libs:$ORIGIN/lib'
+# Meson rewrites only its own build-tree entries for Mach-O; dyld does not
+# expand $ORIGIN, so these name the loader directory the way each loader
+# spells it. rgpot/__init__.py opens _core from its resolved path, so the
+# entries hold when the module is reached through a symlink.
+_py_origin = host_machine.system() == 'darwin' ? '@loader_path' : '$ORIGIN'
+_py_rpath = ':'.join(
+    [_py_origin, _py_origin / '../.rgpot.mesonpy.libs', _py_origin / 'lib'],
+)
 # The umbrella librgpot link_wholes every pot and the dlopen frontends;
 # linking the static convenience libs again would just duplicate symbols
 # into the extension.

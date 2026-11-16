@@ -172,6 +172,11 @@ ASE uses CODATA 2014 constants and rgpot uses CODATA 2018.
 So the results agree with =RgpotCalculator= to about 1e-8 relative.
 The =ipi_driver_ase= meson test checks LJ and EAM-Al on sheared cells.
 It also checks an LJ cluster, TCP and the usage errors.
+With =-Dwith_python=true= it takes the reference values from the =rgpot= package
+of the same build.
+It links that package into a scratch directory, with no library path set.
+A build that made the extension but cannot import it fails the test.
+It does not skip it.
 
 *** i-PI
 

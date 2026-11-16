@@ -41,6 +41,35 @@ pip install 'rgpot[metatomic]'
 # pip install torch metatomic-torch metatensor-torch metatensor-core vesin
 #+end_src
 
+** From a build tree
+
+A meson build with =-Dwith_python=true= puts the extension in =python/= of the
+build directory.
+Link it into the source package and put =python= on =PYTHONPATH=.
+
+#+attr_rgpot: syntax needs a meson build directory named build
+#+begin_src bash
+meson setup build -Dwith_python=true
+meson compile -C build
+ln -sfn "$PWD"/build/python/_core*.so python/rgpot/
+PYTHONPATH="$PWD/python" python -c 'import rgpot; print(rgpot.LJPot)'
+#+end_src
+
+No =LD_LIBRARY_PATH= or =DYLD_LIBRARY_PATH= is needed.
+The extension finds =librgpot= through a runpath relative to its own file.
+That is =$ORIGIN= on Linux and =@loader_path= on macOS.
+glibc takes =$ORIGIN= from the path a module was opened by, and it does not
+follow symlinks.
+So =import rgpot= opens =_core= from its resolved path, and the runpath points
+into the build directory.
+A staged copy of the package with a linked =_core= works the same way.
+Windows has no runpath.
+There the package adds the resolved directory and the wheel's
+=.rgpot.mesonpy.libs= to the DLL search path.
+No Windows wheel is built, so CI does not test that branch.
+=tests/python/test_symlinked_core.py= imports a symlinked package with the
+library path variables removed.
+
 ** Multi-ABI engines and torch floor
 
 Engines live in the wheel as:

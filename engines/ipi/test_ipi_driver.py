@@ -2,7 +2,9 @@
 
 RGPOT_IPI_DRIVER names the program. RGPOT_PYTHON_BUILD names the build
 directory that holds the rgpot extension; the package is staged from
-python/rgpot beside it so RgpotCalculator gives the reference values.
+python/rgpot beside it, with symlinks, so RgpotCalculator gives the
+reference values. No library path is needed: rgpot opens the extension from
+its resolved path, where the build runpath finds librgpot.
 Without it an installed rgpot is used. ASE carries CODATA 2014 units and rgpot CODATA 2018, so
 the socket results agree to about 1e-8 relative, not to round-off.
 """
@@ -56,6 +58,10 @@ def rgpot_calc(tmp_path_factory):
     try:
         from rgpot.ase import RgpotCalculator
     except ImportError as err:
+        # The build made the extension, so a failed import is a bug in how
+        # the package finds librgpot, not a missing optional part.
+        if cores:
+            pytest.fail(f"staged rgpot package does not import: {err}")
         pytest.skip(f"rgpot Python package unavailable: {err}")
     return RgpotCalculator
 
