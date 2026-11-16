@@ -636,13 +636,13 @@ void wrapInto(std::vector<double> &pos, double side) {
 } // namespace
 
 TEST_CASE("a stored list survives atoms wrapped through the faces", "[nlist][skin]") {
-  // Five bins per side, so the tile walk takes the image of each pair from
-  // the bins of its atoms.
+  // Nine simple cubic cells of 3.6 A give five bins a side, so the tile walk
+  // takes the image of each pair from the bins of its atoms.
   const double a = 3.6;
   const double side = 9 * a;
   const double cutoff = 5.0;
   const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
-  auto pos = fcc(9, a);
+  auto pos = simpleCubic(9, a);
   for (std::size_t k = 0; k < pos.size(); ++k) {
     pos[k] += 0.05 * std::sin(1.7 * static_cast<double>(k));
   }
