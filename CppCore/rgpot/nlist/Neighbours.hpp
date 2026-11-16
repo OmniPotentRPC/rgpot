@@ -89,6 +89,10 @@ struct Range {
 /// cell vector. The bins are redone after such a wrap, for the walks
 /// that read them. Skin 0 reuses the list only when the coordinates and
 /// the cell match.
+///
+/// A sheared cell is binned along its cell vectors, with bins no
+/// narrower than the search between opposite faces, so the 27
+/// neighbouring bins hold every pair inside the search.
 class Neighbours {
 public:
   void update(const double *xyz, std::size_t n, const double *box9,
@@ -217,7 +221,7 @@ private:
     }
   };
 
-  void buildCells(const double *xyz, std::size_t n);
+  void buildCells(const double *xyz, std::size_t n, const double *box9);
   void buildStored(const double *xyz, std::size_t n);
   [[nodiscard]] std::uint64_t candidateBound() const;
   /// `wrapped` is set when some atom is within the skin only through

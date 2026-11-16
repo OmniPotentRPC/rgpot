@@ -156,6 +156,9 @@ Tersoff, Morse and ZBL take candidate pairs from
 
 The layer bins atoms into cells whose edge is at least the cutoff plus
 the skin.
+A sheared cell is binned along its cell vectors instead, with bins no
+narrower than the cutoff plus the skin between opposite faces, so the 27
+neighbouring bins hold every pair within that distance.
 `Round` is the orthorhombic truncation used by the pair kernels. `Half`
 is one correction about the half-box, which is what EAM uses after
 wrapping coordinates into the cell. `General`, and any sheared cell,
