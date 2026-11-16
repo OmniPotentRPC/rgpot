@@ -508,6 +508,16 @@ The numbers below are from one run; the tests assert looser bounds.
   pressure of =skin 0= to the bit.
   =LJ= follows the domain path within 4e-14 Å in the positions, 9e-14 eV/Å in
   the forces and 9e-11 bar in the pressure.
+- 100 steps on the gather path from a hot triclinic start, on one and two ranks,
+  under =fix npt= with =tri=, which changes the cell at every step, and under
+  =fix deform=, which stretches x and shears xy by 5 %.
+  =EAMTable= at 600 K gives the energy, forces, positions, cell and pressure of
+  =skin 0= to the bit, and builds its list 3 times in 101 evaluations where
+  =skin 0= builds it 101 times.
+  =LJ= at 40 K and =SuttonChen= at 600 K build theirs twice.
+  They follow the domain path within 1e-11 eV in the energy, 9e-13 eV/Å in the
+  forces, 2e-13 Å in the positions, 5e-14 Å in the cell and 7e-13 of the largest
+  pressure component.
 - For each kind of potential the build has, by name, with =u0 psi= and with
   =virial fd=, on one rank and on two, the log shows the path =mode auto= takes:
   the domain path for =LJ=, =u0 psi=, =Morse=, =SuttonChen= and =EAMTable=, and

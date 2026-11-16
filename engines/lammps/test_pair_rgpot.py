@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -854,6 +855,81 @@ def test_gather_list_reuse(tmp_path, system, nprocs):
         assert de < 1e-8 * max(1.0, abs(ref["pe"]))
         assert df < 1e-7
         assert dx < 1e-8
+
+
+LIST_BUILDS = re.compile(r"pair_style rgpot: pair list built (\d+) times in (\d+) evaluations")
+
+
+def counted_run(tmp_path: Path, commands: list[str], nprocs: int):
+    """The result, and the (builds, evaluations) that rank 0 logs for the
+    potential's own pair list at the end of each run on the gather path."""
+    log = tmp_path / f"count{len(list(tmp_path.glob('count*.log')))}.log"
+    result = ok(run_case(tmp_path, [f"log {log}"] + commands, nprocs=nprocs))
+    return result, [(int(b), int(e)) for b, e in LIST_BUILDS.findall(log.read_text())]
+
+
+BOX_TEMPERATURE = {"lj": 40, "eam": 600, "sc": 600}
+
+
+def box_change_md(ensemble: str, temperature: int) -> list[str]:
+    drive = {
+        "npt": [f"fix 1 all npt temp {temperature} {temperature} 0.1 tri 0.0 0.0 0.1"],
+        "deform": ["fix 1 all nve", "fix 2 all deform 1 x erate 0.5 xy erate 0.5 remap x"],
+    }[ensemble]
+    return [*THERMO, f"velocity all create {temperature} 4127 dist gaussian", *drive,
+            "run 100"]
+
+
+@pytest.mark.parametrize("nprocs", [1, 2])
+@pytest.mark.parametrize("ensemble", ["npt", "deform"])
+@pytest.mark.parametrize("system", ["lj", "eam", "sc"])
+def test_gather_list_follows_the_box(tmp_path, system, ensemble, nprocs):
+    """100 hot steps under fix npt, which changes the cell at every step,
+    or fix deform, which stretches x and shears xy by 5%. The potential's
+    own pair list follows the cell. EAMTable with its 1 A skin follows
+    skin 0, which builds the list at every evaluation, to the bit. LJ and
+    Sutton-Chen, whose skins are fixed, follow the domain path. The counts
+    rank 0 logs show the list kept through most of the box changes."""
+    if nprocs > 1 and not MPIRUN:
+        pytest.skip("needs RGPOT_MPIRUN")
+    start, pair, _ = domain_systems(system, True, "full")
+    head = read_data_start(tmp_path, start, "start.data")
+    md = box_change_md(ensemble, BOX_TEMPERATURE[system])
+    got, counts = counted_run(tmp_path, head + with_mode(pair, "gather") + md, nprocs)
+    if system == "eam":
+        rebuilt = [line.replace(f"file {EAM_ALLOY}", f"file {EAM_ALLOY} skin 0")
+                   for line in with_mode(pair, "gather")]
+        ref, ref_counts = counted_run(tmp_path, head + rebuilt + md, nprocs)
+        label = "skin 1 vs skin 0"
+        assert ref_counts == [(101, 101)]
+    else:
+        ref, ref_counts = counted_run(tmp_path, head + with_mode(pair, "domain") + md, nprocs)
+        label = "gather vs domain"
+        assert ref_counts == []
+    (builds, evaluations), = counts
+    de = abs(got["pe"] - ref["pe"])
+    df = max_abs_diff(got["forces"], ref["forces"])
+    dx = max_abs_diff(flat(got["x"]), flat(ref["x"]))
+    dh = max_abs_diff(flat(got["cell"]), flat(ref["cell"]))
+    dp = max_abs_diff(got["press"], ref["press"])
+    pscale = max(1.0, max(abs(p) for p in ref["press"]))
+    print(f"{system} {ensemble} np {nprocs} {label}: list built {builds} times in "
+          f"{evaluations} evaluations, |dE| {de:.3e} eV, max|dF| {df:.3e} eV/A, "
+          f"max|dx| {dx:.3e} A, max|dh| {dh:.3e} A, max|dP| {dp:.3e} of {pscale:.3e} bar")
+    assert evaluations == 101
+    assert 1 <= builds <= 10
+    if system == "eam":
+        assert got["pe"] == ref["pe"]
+        assert got["forces"] == ref["forces"]
+        assert got["x"] == ref["x"]
+        assert got["cell"] == ref["cell"]
+        assert got["press"] == ref["press"]
+    else:
+        assert de < 1e-8 * max(1.0, abs(ref["pe"]))
+        assert df < 1e-7
+        assert dx < 1e-8
+        assert dh < 1e-8
+        assert dp < 1e-8 * pscale
 
 
 def mode_log(tmp_path: Path, commands: list[str], nprocs: int = 1) -> str:
