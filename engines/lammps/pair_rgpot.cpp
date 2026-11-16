@@ -43,12 +43,12 @@
 // Every rank tallies its share of the energy and virial and LAMMPS sums
 // them over ranks.
 //
-// mode auto takes the domain path on more than one rank when the
-// potential allows it and the virial is not the strain difference; mode
-// gather and mode domain force one (domain stops at init when the
-// potential cannot use it). At the end of a run on the gather path,
-// rank 0 logs how often a potential that keeps its own pair list built
-// it.
+// mode auto takes the domain path whenever the potential allows it and
+// the virial is not the strain difference, on one rank as on many, since
+// it is then the faster path; it gathers otherwise. mode gather and mode
+// domain force one (domain stops at init when the potential cannot use
+// it). At the end of a run on the gather path, rank 0 logs how often a
+// potential that keeps its own pair list built it.
 //
 // The global virial is -V sigma from the backend's Cauchy stress. When
 // the backend returns no stress (an engine plugin, or a potential whose
@@ -363,8 +363,7 @@ void PairRgpot::init_style() {
   if (mode == Mode::Domain && !refusal.empty()) {
     error->all(FLERR, "pair_style rgpot mode domain: {}", refusal);
   }
-  // One rank has nothing to split.
-  use_domain = mode == Mode::Domain || (mode == Mode::Auto && refusal.empty() && comm->nprocs > 1);
+  use_domain = mode == Mode::Domain || (mode == Mode::Auto && refusal.empty());
   list_evals = 0;
   list_builds = 0;
   if (!use_domain && atom->natoms > MAXSMALLINT) {
@@ -379,10 +378,8 @@ void PairRgpot::init_style() {
       utils::logmesg(lmp, "pair_style rgpot: domain decomposition, cutoff {:.8g}, densities {}\n",
                      built.locality.cutoff, built.locality.densities);
     } else {
-      const std::string why =
-          !refusal.empty() ? refusal : (mode == Mode::Auto ? "one rank" : "");
-      utils::logmesg(lmp, "pair_style rgpot: gather on rank 0{}{}\n", why.empty() ? "" : "; ",
-                     why);
+      utils::logmesg(lmp, "pair_style rgpot: gather on rank 0{}{}\n",
+                     refusal.empty() ? "" : "; ", refusal);
     }
   }
 }

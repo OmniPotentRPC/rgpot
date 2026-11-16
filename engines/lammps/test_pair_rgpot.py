@@ -865,39 +865,116 @@ def mode_log(tmp_path: Path, commands: list[str], nprocs: int = 1) -> str:
     return text
 
 
-@pytest.mark.skipif(not MPIRUN, reason="needs RGPOT_MPIRUN")
-def test_mode_follows_the_capabilities(tmp_path):
-    """On two ranks auto takes the domain path for a finite-range
-    potential with a staged evaluation and the gather path otherwise, and
-    says which. The ghosts reach one cutoff plus the skin, many-body
-    potentials included."""
-    lj = mode_log(tmp_path, fcc(A_LJ, False) + lj_rgpot("named") + ["run 0"], 2)
-    assert "pair_style rgpot: domain decomposition, cutoff 8.5, densities 0" in lj
-    u0psi = mode_log(tmp_path, fcc(A_LJ, False) + lj_rgpot("u0psi") + ["run 0"], 2)
-    assert "domain decomposition, cutoff 8.5, densities 0" in u0psi
-    sc = mode_log(tmp_path, fcc(3.92, False) + named_pair("SuttonChen") + ["run 0"], 2)
-    assert "domain decomposition, cutoff 7, densities 1" in sc
-    assert "ghost atom cutoff = 9" in sc
-    fd = mode_log(tmp_path, fcc(A_LJ, False) + lj_rgpot("named-fd") + ["run 0"], 2)
-    assert "gather on rank 0; virial fd differentiates the whole box" in fd
-    emt_pair = [f"plugin load {PLUGIN}", "pair_style rgpot 6.0", "pair_coeff * * EMT Cu Cu"]
-    emt = mode_log(tmp_path, fcc(3.61, False) + emt_pair + ["run 0"], 2)
-    assert "gather on rank 0; the rgpot potential EMT declares no finite range" in emt
-    forced = mode_log(tmp_path, fcc(A_LJ, False) + with_mode(lj_rgpot("named"), "gather")
-                      + ["run 0"], 2)
-    assert "pair_style rgpot: gather on rank 0\n" in forced
+def crystal(style: str, a: float, cells: int = 3) -> list[str]:
+    """A cubic block of `cells` lattice cells a side, two atom types, every
+    atom of type 1 and displaced by its ID."""
+    return [
+        "units metal",
+        "atom_style atomic",
+        "atom_modify map array",
+        "boundary p p p",
+        f"lattice {style} {a}",
+        f"region box block 0 {cells} 0 {cells} 0 {cells}",
+        "create_box 2 box",
+        "create_atoms 1 box",
+        "mass * 28.0",
+        *jiggle(0.05),
+    ]
 
 
-def test_mode_on_one_rank(tmp_path):
-    """One rank gathers unless told otherwise; mode domain refuses a
-    potential that cannot use it."""
-    lj = mode_log(tmp_path, fcc(A_LJ, False) + lj_rgpot("named") + ["run 0"])
-    assert "pair_style rgpot: gather on rank 0; one rank" in lj
-    forced = mode_log(tmp_path, fcc(A_LJ, False) + with_mode(lj_rgpot("named"), "domain")
-                      + ["run 0"])
-    assert "domain decomposition, cutoff 8.5, densities 0" in forced
-    emt_pair = [f"plugin load {PLUGIN}", "pair_style rgpot 6.0", "pair_coeff * * EMT Cu Cu"]
-    refused = mode_log(tmp_path, fcc(3.61, False) + with_mode(emt_pair, "domain") + ["run 0"])
+def rgpot_pair(cutoff: float, coeff: str) -> list[str]:
+    return [f"plugin load {PLUGIN}", f"pair_style rgpot {cutoff}", f"pair_coeff * * {coeff}"]
+
+
+def domain_line(cutoff: str, densities: int) -> str:
+    return f"pair_style rgpot: domain decomposition, cutoff {cutoff}, densities {densities}\n"
+
+
+def gather_line(reason: str) -> str:
+    return f"pair_style rgpot: gather on rank 0; {reason}\n"
+
+
+def no_range(name: str) -> str:
+    return gather_line(f"the rgpot potential {name} declares no finite range")
+
+
+SILICON = crystal("diamond", 5.431)
+# Each kind of potential the plugin builds, a crystal it takes, and the
+# line init logs for it under mode auto.
+AUTO_KINDS = {
+    "LJ-u0psi": (fcc(A_LJ, False), lj_rgpot("u0psi"), domain_line("8.5", 0)),
+    "LJ": (fcc(A_LJ, False), lj_rgpot("named"), domain_line("8.5", 0)),
+    "LJ-virial-fd": (fcc(A_LJ, False), lj_rgpot("named-fd"),
+                     gather_line("virial fd differentiates the whole box")),
+    "Morse": (fcc(3.92, False), named_pair("Morse"), domain_line("7", 0)),
+    "SuttonChen": (fcc(3.92, False), named_pair("SuttonChen"), domain_line("7", 1)),
+    "EAMTable": (cuni(False), EAM_RGPOT, domain_line("6.3943324", 1)),
+    "SWSi1985": (SILICON, rgpot_pair(4.0, "SWSi1985 Si Si"), no_range("SWSi1985")),
+    "TersoffSi": (SILICON, rgpot_pair(4.0, "TersoffSi Si Si"), no_range("TersoffSi")),
+    "EMT": (fcc(3.61, False), rgpot_pair(6.0, "EMT Cu Cu"), no_range("EMT")),
+    "EAMCell": (crystal("fcc", 4.05, 4), rgpot_pair(6.0, "EAMCell Al Al"), no_range("EAMCell")),
+    "SWSi": (SILICON, rgpot_pair(4.0, "SWSi Si Si"), no_range("SWSi")),
+    "EDIP": (SILICON, rgpot_pair(4.0, "EDIP Si Si"), no_range("EDIP")),
+    "LenoskySi": (SILICON, rgpot_pair(5.0, "LenoskySi Si Si"), no_range("LenoskySi")),
+    "EAMAl": (crystal("fcc", 4.05, 4), rgpot_pair(6.0, "EAMAl Al Al"), no_range("EAMAl")),
+    "FeHe": (crystal("bcc", 2.8665, 5), rgpot_pair(6.0, "FeHe Fe Fe"), no_range("FeHe")),
+    "CuH2": (fcc(3.61, False), rgpot_pair(6.0, "CuH2 Cu Cu"), no_range("CuH2")),
+}
+
+
+@pytest.fixture(scope="module")
+def built_names(tmp_path_factory) -> set[str]:
+    """The potentials of this build, from the error that lists them."""
+    message = error_of(tmp_path_factory.mktemp("names"),
+                       fcc(A_LJ, False) + rgpot_pair(CUT, "Nope Ar Ar") + ["run 0"])
+    names = set()
+    for word in message.split("this build has ", 1)[1].split():
+        if not word.isalnum():
+            break
+        names.add(word)
+    return names
+
+
+def test_auto_kinds_cover_the_build(built_names):
+    assert set(AUTO_KINDS) - {"LJ-u0psi", "LJ-virial-fd"} >= built_names
+
+
+@pytest.mark.parametrize("nprocs", [1, 2])
+@pytest.mark.parametrize("kind", sorted(AUTO_KINDS))
+def test_auto_follows_the_capabilities(tmp_path, built_names, kind, nprocs):
+    """mode auto takes the domain path for a potential with a finite range
+    and a staged evaluation, on one rank as on two, and the gather path
+    with its reason otherwise. The ghosts reach one cutoff plus the skin,
+    many-body potentials included."""
+    if nprocs > 1 and not MPIRUN:
+        pytest.skip("needs RGPOT_MPIRUN")
+    if kind.split("-")[0] not in built_names:
+        pytest.skip(f"this build has no {kind}")
+    if kind == "EAMTable" and not EAM_ALLOY:
+        pytest.skip("needs RGPOT_EAM_ALLOY")
+    start, pair, line = AUTO_KINDS[kind]
+    text = mode_log(tmp_path, start + pair + ["run 0"], nprocs)
+    assert "ERROR" not in text, text[-2000:]
+    assert line in text
+    if kind == "SuttonChen":
+        assert "ghost atom cutoff = 9" in text
+
+
+@pytest.mark.parametrize("nprocs", [1, 2])
+def test_explicit_modes(tmp_path, nprocs):
+    """mode gather and mode domain take their path on any number of ranks;
+    mode domain refuses a potential that cannot use it."""
+    if nprocs > 1 and not MPIRUN:
+        pytest.skip("needs RGPOT_MPIRUN")
+    lj = fcc(A_LJ, False)
+    gathered = mode_log(tmp_path, lj + with_mode(lj_rgpot("named"), "gather") + ["run 0"],
+                        nprocs)
+    assert "pair_style rgpot: gather on rank 0\n" in gathered
+    forced = mode_log(tmp_path, lj + with_mode(lj_rgpot("named"), "domain") + ["run 0"],
+                      nprocs)
+    assert domain_line("8.5", 0) in forced
+    emt = with_mode(rgpot_pair(6.0, "EMT Cu Cu"), "domain")
+    refused = mode_log(tmp_path, fcc(3.61, False) + emt + ["run 0"], nprocs)
     assert ("pair_style rgpot mode domain: the rgpot potential EMT declares no finite range"
             in refused)
 

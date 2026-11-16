@@ -7,8 +7,9 @@
 =pair_style rgpot= is a LAMMPS plugin that evaluates an rgpot potential and
 returns the energy, the forces and the global virial, and for the pair and EAM
 potentials the per-atom energy and virial.
-On several MPI ranks, a potential with a finite cutoff is evaluated by domain:
-each rank works on its own atoms, on the LAMMPS neighbour list.
+A potential with a finite cutoff and a staged evaluation is evaluated by domain,
+on one MPI rank as on several: each rank works on its own atoms, on the LAMMPS
+neighbour list.
 Other potentials see the whole periodic box on rank 0.
 It works under =fix nve=, =fix npt= and =fix box/relax= like a native style.
 =compute pe/atom= and =compute stress/atom= work with the pair and EAM
@@ -235,16 +236,19 @@ another order.
 
 =mode auto=, the default, takes the domain path when all of these hold:
 
-- the run has more than one rank;
 - the potential is built by name or with =u0 psi=, not an engine;
 - it declares a finite range;
 - it has the density and force stages (=LJ=, =u0 psi=, =Morse=, =SuttonChen= and
   =EAMTable= do);
 - the virial is not =virial fd=, which strains the whole box.
 
+The rule rests on what the potential can do, not on the number of ranks or the
+system: where the domain path applies, it is the faster path on one rank too
+(see the timings).
+Otherwise =mode auto= gathers, and =init= logs the reason.
 =mode gather= always gathers.
-=mode domain= takes the domain path even on one rank, and stops at =init= when
-the potential cannot use it.
+=mode domain= takes the domain path on any number of ranks, and stops at =init=
+when the potential cannot use it.
 
 *** Timings
 
@@ -269,7 +273,8 @@ python engines/lammps/bench_pair_rgpot.py --lmp lmp --plugin libpair_rgpot.so \
     --eam CppCore/tests/data/eam_table/CuNi.eam.alloy --repeats 3 --eam-steps 50
 #+end_src
 
-The one-rank =domain= column is =mode domain=; =mode auto= gathers there.
+=mode auto= takes the =domain= column on every rank count; the =gather= column
+is =mode gather=.
 
 | Scaling | System | Atoms | Ranks | Native | Gather | Domain |
 |---------+--------+-------+-------+--------+--------+--------|
@@ -434,21 +439,22 @@ The numbers below are from one run; the tests assert looser bounds.
 
 - Jiggled fcc Lennard-Jones against =lj/cut= with shifted energy.
   The parameters are \(u_0 = 0.0104\) eV, \(\psi = 3.40\) Å and an 8.5 Å cutoff.
-  In orthogonal and triclinic cells the energies agree within 5e-14 eV.
-  The forces agree within 3e-15 eV/Å.
-  All six pressure components agree within 7e-12 bar.
-  With =virial fd= the pressure is within 8e-6 bar.
+  On the domain path that =mode auto= takes, in orthogonal and triclinic cells,
+  the energies agree within 4e-15 eV and the pressure within 6e-12 bar.
+  With =virial fd=, which gathers, they agree within 5e-14 eV and 8e-6 bar.
+  The forces agree within 8e-17 eV/Å, or 3e-15 eV/Å with =virial fd=.
 - A finite-difference strain derivative of the LAMMPS energy gives the same
   pressure within 2e-5 bar.
 - CuNi through =EAMTable=, mapping Cu and Ni, against native =eam/alloy=.
-  The energy agrees within 7e-12 eV and the forces within 3e-14 eV/Å.
-  The pressure agrees within 3e-10 bar.
-  Against =rgpot-eval= on the same box the energy agrees within 7e-13 eV.
-- Pt with =SuttonChen= and =Morse=: pressure within 2e-10 bar of =rgpot-eval=.
-- Lennard-Jones and CuNi after 20 NVE steps under =mpirun -np 1, 2, 4=.
-  =mode auto= gathers on one rank and takes the domain path on two and four.
-  Energies agree within 6e-12 eV and forces by tag within 4e-14 eV/Å.
-  The pressure agrees within 3e-10 bar.
+  On the domain path the energy and the forces are those of =eam/alloy= to the
+  last bit, and the pressure agrees within 1.3e-10 bar.
+  Against =rgpot-eval= on the same box, which sums in another order, the energy
+  agrees within 7e-12 eV.
+- Pt with =SuttonChen= and =Morse=: pressure within 2.4e-10 bar of =rgpot-eval=.
+- Lennard-Jones and CuNi after 20 NVE steps under =mpirun -np 1, 2, 4=, where
+  =mode auto= takes the domain path on every rank count.
+  Energies agree within 1.4e-11 eV and forces by tag within 1.7e-14 eV/Å.
+  The pressure agrees within 1.3e-10 bar.
   These cases need an MPI =lmp= and skip against a serial one.
 - =fix box/relax= from a strained fcc cell, iso and with a 0.25 triclinic tilt.
   It finds \(a = 5.26865164\) Å, as =lj/cut= and the analytic lattice sum do.
@@ -460,14 +466,13 @@ The numbers below are from one run; the tests assert looser bounds.
   two ranks, on both paths and with =newton on= and =off=.
 - =compute pe/atom= and =compute stress/atom= against =lj/cut= and =eam/alloy=.
   Atoms are compared in tag order, in both cell shapes, on 1, 2 and 4 ranks.
-  Lennard-Jones per-atom energies agree within 2e-16 eV.
-  Its per-atom stress agrees within 3e-9 bar Å^3 of values up to 9e4.
-  CuNi per-atom energies agree within 2e-14 eV.
-  Its per-atom stress agrees within 3e-8 bar Å^3 of values up to 2e6.
-  On two and four ranks, where =mode auto= takes the domain path, the CuNi
+  Lennard-Jones per-atom energies agree within 5e-17 eV.
+  Its per-atom stress agrees within 3e-10 bar Å^3 of values up to 9e4.
+  On every rank count, where =mode auto= takes the domain path, the CuNi
   per-atom energies equal those of =eam/alloy= to the last bit.
+  Its per-atom stress agrees within 1e-9 bar Å^3 of values up to 2e6.
   =Morse= is checked against =pair_style morse= with =pair_modify shift yes=.
-  It agrees within 9e-15 eV and 9e-8 bar Å^3 of 3.5e6.
+  It agrees within 5e-15 eV and 6e-9 bar Å^3 of 3.5e6.
 - The per-atom energies sum to the energy within 2e-13 eV for Lennard-Jones.
   The bound is 2e-11 eV for CuNi, =SuttonChen= and =Morse=.
   The per-atom stress sums to \(-PV\) within 1e-13 of its largest component.
@@ -503,9 +508,15 @@ The numbers below are from one run; the tests assert looser bounds.
   pressure of =skin 0= to the bit.
   =LJ= follows the domain path within 4e-14 Å in the positions, 9e-14 eV/Å in
   the forces and 9e-11 bar in the pressure.
-- The log names the path =mode auto= takes and why, on one rank and on two.
+- For each kind of potential the build has, by name, with =u0 psi= and with
+  =virial fd=, on one rank and on two, the log shows the path =mode auto= takes:
+  the domain path for =LJ=, =u0 psi=, =Morse=, =SuttonChen= and =EAMTable=, and
+  the gather path, with the reason, for =virial fd=, the engine and the other
+  potentials.
+  The test fails for a potential of the build that it does not list.
   For =SuttonChen= with a 7 Å cutoff the ghosts reach 9 Å, the cutoff plus the
   skin.
+  =mode gather= and =mode domain= take their path on one rank and on two, and
   =mode domain= stops with an error for =EMT=.
 - =LocalityTest= (C++) evaluates half of a periodic box with every image within
   the force range in a padded box.
@@ -527,10 +538,8 @@ The numbers below are from one run; the tests assert looser bounds.
 
 ** Limitations
 
-- Engines and potentials without a finite range or the two stages are evaluated
-  on rank 0 alone; see the MPI section.
-- On one rank =mode auto= gathers, although the domain path is faster there for
-  the potentials that have it (see the timings); =mode domain= selects it.
+- Engines, potentials without a finite range or the two stages, and =virial fd=
+  are evaluated on rank 0 alone; see the MPI section.
 - Per-atom energy and virial only for =LJ=, =Morse=, =SuttonChen= and
   =EAMTable=; see the per-atom section.
 - =units metal= and =boundary p p p= only.
@@ -545,8 +554,9 @@ The numbers below are from one run; the tests assert looser bounds.
   around \(10^{-5}\), so their pressure carries that uncertainty.
 - =single= is not provided, so =pair_write= and =compute pair/local= do not
   work.
-- =SWSi1985=, =TersoffSi=, =EAMCell= and the Fortran potentials are accepted but
-  are not covered by the LAMMPS tests.
+- =SWSi1985=, =TersoffSi=, =EAMCell= and the Fortran potentials are accepted,
+  but the LAMMPS tests only check the path =mode auto= takes for them on a
+  =run 0=, not their results.
 
 ** Public constructor
 
