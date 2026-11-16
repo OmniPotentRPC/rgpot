@@ -1,3 +1,4 @@
 A stored `nlist::Neighbours` list is kept across a change of the periodic cell, as under `fix npt`, `fix deform` or `change_box`.
 Each move is measured from the reference position carried with the cell, and the half-skin limit shrinks to `(skin - e (cutoff + skin)) / 2`, where `e = sqrt(|F - I|_1 |F - I|_inf)` for `F = H0^-1 H` bounds the stretch of any vector, so a pair now within the cutoff was within the cutoff plus the skin at the build; a change that leaves no room rebuilds the list.
 The potentials that keep such a list (`LJPot`, `LJClusterPot`, `MorsePot`, `ZBLPot`, `SuttonChenPot`, `EAMPot`, `StillingerWeberSi`, `TersoffSiC` and `EAMTablePot`) rebuild it far less often in a changing cell.
+Under `fix npt` and `fix deform`, on one and two ranks, `EAMTablePot` gives the energy, forces, positions, cell and pressure of `skin = 0` to the bit, and LJ and Sutton-Chen follow the domain path to rounding.
