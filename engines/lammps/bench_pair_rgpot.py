@@ -2,12 +2,16 @@
 """Wall time of pair_style rgpot (gather and domain) against native styles.
 
     bench_pair_rgpot.py --lmp LMP --plugin libpair_rgpot.so \
-        --eam CuNi.eam.alloy [--ranks 1 2 4 8] [--repeats 3] [--out bench.json]
+        --eam CuNi.eam.alloy [--ranks 1 2 4 8] [--repeats 3] \
+        [--ensemble nve|npt|deform] [--out bench.json]
 
 Each case is one lmp process under mpirun -np N: fcc Lennard-Jones
-(lj/cut, shifted, 8.5 A) or CuNi EAM (eam/alloy), 300 K NVE, a warm-up
+(lj/cut, shifted, 8.5 A) or CuNi EAM (eam/alloy) at 300 K, a warm-up
 run, then a timed run. The time is the "Loop time" LAMMPS prints for the
-timed run, so start-up and setup are left out. Strong scaling keeps the
+timed run, so start-up and setup are left out. --ensemble picks NVE, a
+Nose-Hoover barostat at zero pressure (fix npt iso), or NVE with the box
+stretched along x every step (fix deform, true strain rate 0.05/ps), so
+the last two change the cell on every step. Strong scaling keeps the
 box; weak scaling grows the box along x with the ranks. The script
 prints a Markdown table of the medians and writes every repeat to --out.
 """
@@ -25,6 +29,12 @@ import tempfile
 from pathlib import Path
 
 LOOP = re.compile(r"Loop time of ([0-9.eE+-]+) on (\d+) procs for (\d+) steps with (\d+) atoms")
+
+ENSEMBLES = {
+    "nve": ["fix 1 all nve"],
+    "npt": ["fix 1 all npt temp 300 300 0.1 iso 0.0 0.0 1.0"],
+    "deform": ["fix 1 all nve", "fix 2 all deform 1 x trate 0.05 remap x"],
+}
 
 
 def pair_lines(system: str, mode: str, plugin: str, eam: str) -> list[str]:
@@ -57,7 +67,7 @@ def deck(system: str, cells: tuple[int, int, int], mode: str, args) -> str:
     lines += pair_lines(system, mode, args.plugin, args.eam)
     lines += [
         "velocity all create 300 4928 dist gaussian",
-        "fix 1 all nve",
+        *ENSEMBLES[args.ensemble],
         "thermo 50",
         f"run {args.warmup}",
         f"run {args.steps[system]}",
@@ -115,6 +125,7 @@ def main() -> None:
     p.add_argument("--systems", nargs="+", default=["lj", "eam"])
     p.add_argument("--modes", nargs="+", default=["native", "gather", "domain"])
     p.add_argument("--scaling", nargs="+", default=["strong", "weak"])
+    p.add_argument("--ensemble", choices=sorted(ENSEMBLES), default="nve")
     p.add_argument("--warmup", type=int, default=10)
     p.add_argument("--lj-steps", type=int, default=100)
     p.add_argument("--eam-steps", type=int, default=100)
@@ -125,7 +136,8 @@ def main() -> None:
     # rank along x (4 atoms per cell).
     strong = {"lj": (16, 16, 16), "eam": (20, 20, 20)}
     results = {"hardware": hardware(), "versions": versions(args), "repeats": args.repeats,
-               "steps": args.steps, "warmup": args.warmup, "runs": []}
+               "steps": args.steps, "warmup": args.warmup, "ensemble": args.ensemble,
+               "runs": []}
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         for scaling in args.scaling:
@@ -154,7 +166,7 @@ def main() -> None:
                 ms = [f"{1e3 * statistics.median(c['seconds']) / c['steps']:.2f}" for c in cells]
                 print(f"| {scaling} | {system} | {cells[0]['atoms']} | {n} | " + " | ".join(ms)
                       + " |")
-    print("\nms per step, median of", args.repeats, "repeats")
+    print("\nms per step,", args.ensemble, "ensemble, median of", args.repeats, "repeats")
 
 
 if __name__ == "__main__":
