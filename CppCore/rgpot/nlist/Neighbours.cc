@@ -41,6 +41,39 @@ int axisCount(double length, double edge) {
   return static_cast<int>(n);
 }
 
+bool isSheared(const double *box9) {
+  return box9[1] != 0.0 || box9[2] != 0.0 || box9[3] != 0.0 || box9[5] != 0.0 ||
+         box9[6] != 0.0 || box9[7] != 0.0;
+}
+
+/// Inverse of a cell whose rows are the lattice vectors. False when the
+/// cell is singular or not finite.
+bool invertCell(const double *h, double *inv) {
+  const double c00 = h[4] * h[8] - h[5] * h[7];
+  const double c01 = h[5] * h[6] - h[3] * h[8];
+  const double c02 = h[3] * h[7] - h[4] * h[6];
+  const double det = h[0] * c00 + h[1] * c01 + h[2] * c02;
+  if (!std::isfinite(det) || det == 0.0) {
+    return false;
+  }
+  const double r = 1.0 / det;
+  inv[0] = c00 * r;
+  inv[1] = (h[2] * h[7] - h[1] * h[8]) * r;
+  inv[2] = (h[1] * h[5] - h[2] * h[4]) * r;
+  inv[3] = c01 * r;
+  inv[4] = (h[0] * h[8] - h[2] * h[6]) * r;
+  inv[5] = (h[2] * h[3] - h[0] * h[5]) * r;
+  inv[6] = c02 * r;
+  inv[7] = (h[1] * h[6] - h[0] * h[7]) * r;
+  inv[8] = (h[0] * h[4] - h[1] * h[3]) * r;
+  for (int k = 0; k < 9; ++k) {
+    if (!std::isfinite(inv[k])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 int threadsRequested() {
@@ -150,11 +183,25 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
   return true;
 }
 
-void Neighbours::buildCells(const double *xyz, std::size_t n) {
+void Neighbours::buildCells(const double *xyz, std::size_t n, const double *box9) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
-  nx_ = axisCount(len_[0], edge);
-  ny_ = axisCount(len_[1], edge);
-  nz_ = axisCount(len_[2], edge);
+  // A sheared cell is binned along its cell vectors. The spacing of
+  // opposite faces is 1 / |g_k| for g_k column k of the inverse cell, and
+  // a pair inside the search moves fractional coordinate k by at most the
+  // search times |g_k|, which is at most one bin.
+  double frac[9] = {};
+  double extent[3] = {len_[0], len_[1], len_[2]};
+  const bool sheared = isSheared(box9) && invertCell(box9, frac);
+  if (sheared) {
+    for (int k = 0; k < 3; ++k) {
+      const double g =
+          std::sqrt(frac[k] * frac[k] + frac[3 + k] * frac[3 + k] + frac[6 + k] * frac[6 + k]);
+      extent[k] = 1.0 / g;
+    }
+  }
+  nx_ = axisCount(extent[0], edge);
+  ny_ = axisCount(extent[1], edge);
+  nz_ = axisCount(extent[2], edge);
   const double bytes =
       static_cast<double>(nx_) * static_cast<double>(ny_) *
       static_cast<double>(nz_) * static_cast<double>(sizeof(std::int32_t));
@@ -187,9 +234,23 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
       }
       return i;
     };
-    ix = bin(xyz[3 * a], len_[0], nx_);
-    iy = bin(xyz[3 * a + 1], len_[1], ny_);
-    iz = bin(xyz[3 * a + 2], len_[2], nz_);
+    if (sheared) {
+      const double *r = xyz + 3 * a;
+      double s[3];
+      for (int k = 0; k < 3; ++k) {
+        s[k] = r[0] * frac[k] + r[1] * frac[3 + k] + r[2] * frac[6 + k];
+        if (periodic_[k]) {
+          s[k] -= std::floor(s[k]);
+        }
+      }
+      ix = bin(s[0], 1.0, nx_);
+      iy = bin(s[1], 1.0, ny_);
+      iz = bin(s[2], 1.0, nz_);
+    } else {
+      ix = bin(xyz[3 * a], len_[0], nx_);
+      iy = bin(xyz[3 * a + 1], len_[1], ny_);
+      iz = bin(xyz[3 * a + 2], len_[2], nz_);
+    }
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
@@ -316,22 +377,23 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     // The tile walk takes the image of a pair from the bins of its atoms,
     // and a wrapped atom left its bin on the far side of the cell.
     if (wrapped) {
-      buildCells(xyz, n);
+      buildCells(xyz, n, box9);
     }
     return;
   }
   reused_ = false;
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
+  const bool sheared = isSheared(box9);
   len_[0] = box9[0];
   len_[1] = box9[4];
   len_[2] = box9[8];
   for (int k = 0; k < 3; ++k) {
-    periodic_[k] = spec.periodic[static_cast<std::size_t>(k)] && len_[k] > 0.0;
-    inv_[k] = periodic_[k] ? 1.0 / len_[k] : 0.0;
+    // A sheared cell is binned in fractional coordinates, so its sides
+    // wrap whatever the sign of the diagonal.
+    periodic_[k] = spec.periodic[static_cast<std::size_t>(k)] && (sheared || len_[k] > 0.0);
+    inv_[k] = periodic_[k] && len_[k] > 0.0 ? 1.0 / len_[k] : 0.0;
   }
-  const bool sheared = box9[1] != 0.0 || box9[2] != 0.0 || box9[3] != 0.0 ||
-                       box9[5] != 0.0 || box9[6] != 0.0 || box9[7] != 0.0;
   image_ = spec.image;
   use_general_ = image_ == Image::General || sheared;
   if (use_general_) {
@@ -358,7 +420,7 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     ref_.assign(xyz, xyz + 3 * n);
     return;
   }
-  buildCells(xyz, n);
+  buildCells(xyz, n, box9);
   // A stream never stores the pairs, so the candidate count is unused.
   // Counting it walks every stencil the search is about to walk.
   if (spec.mode == Mode::Stream) {

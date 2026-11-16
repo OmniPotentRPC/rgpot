@@ -693,3 +693,52 @@ TEST_CASE("a stored list survives atoms wrapped through the faces", "[nlist][ski
   pos.resize(pos.size() - 3);
   check(pos, big, false, 4);
 }
+
+namespace {
+
+/// Every pair within `cutoff` by the minimum image of `cell`.
+PairMap bruteForce(const std::vector<double> &pos, const double *cell, double cutoff) {
+  const rgpot::nlist::MinimumImage image(cell, {true, true, true});
+  const std::size_t n = pos.size() / 3;
+  PairMap out;
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      double dx = pos[3 * i] - pos[3 * j];
+      double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      image.fold(dx, dy, dz);
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (r2 <= cutoff * cutoff) {
+        out[{static_cast<int>(i), static_cast<int>(j)}] = r2;
+      }
+    }
+  }
+  return out;
+}
+
+} // namespace
+
+TEST_CASE("a strongly sheared cell finds every pair", "[nlist][triclinic]") {
+  // Tilts of 0.2 to 0.3 of the side, inside what LAMMPS allows.
+  // Bins along x, y and z lost about one pair in nine of this lattice.
+  setThreads("1");
+  const double a = 3.6;
+  const double side = 10 * a;
+  const double cell[9] = {side, 0, 0, 0.3 * side, side, 0, 0.2 * side, -0.25 * side, side};
+  const auto pos = shearedFcc(10, a, cell);
+  const std::size_t n = pos.size() / 3;
+  const double cutoff = 5.0;
+  const PairMap direct = bruteForce(pos, cell, cutoff);
+  REQUIRE(direct.size() > 90000);
+  for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = mode == rgpot::nlist::Mode::Stored ? 1.0 : 0.0;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = mode;
+    rgpot::nlist::Neighbours cells;
+    cells.update(pos.data(), n, cell, spec);
+    REQUIRE(cells.streaming() == (mode == rgpot::nlist::Mode::Stream));
+    requireSamePairs(walkedPairs(cells, n, cutoff), direct);
+  }
+}
