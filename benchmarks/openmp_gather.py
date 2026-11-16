@@ -203,3 +203,86 @@ class TersoffWarm(SwWarm):
         import rgpot
 
         return rgpot.TersoffPot()
+
+
+# Fixed seed. Each coordinate is Uniform[-0.05, 0.05], so the
+# root-mean-square displacement is 0.05 angstrom. A perfect lattice is
+# not a timed geometry.
+_DISP_SEED = 2844147
+_DISP_HALF = 0.05
+
+
+def _displace(pos, seed=_DISP_SEED):
+    import numpy as np
+
+    rng = np.random.Generator(np.random.MT19937(seed))
+    shift = rng.uniform(-_DISP_HALF, _DISP_HALF, size=pos.shape)
+    return np.ascontiguousarray(pos + shift, dtype=np.float64)
+
+
+def displaced_fcc(n, numbers, seed=_DISP_SEED):
+    """FCC aluminium lattice, then the fixed displacement, with ``numbers``."""
+    import numpy as np
+
+    pos, _types, box = _fcc(n)
+    pos = _displace(pos, seed)
+    if isinstance(numbers, int):
+        types = np.full(n, numbers, dtype=np.int32)
+    else:
+        types = np.asarray(numbers, dtype=np.int32)
+        if types.shape != (n,):
+            raise ValueError("species length does not match the atom count")
+    return pos, types, box
+
+
+def silicon_carbon(n):
+    import numpy as np
+
+    types = np.full(n, 14, dtype=np.int32)
+    types[1::2] = 6
+    return types
+
+
+class _DisplacedTersoff(_Row):
+    """One warm TersoffSiC call on a displaced FCC cell."""
+
+    params = ([64, 256, 1024, 4096], _thread_values())
+    param_names = ["atoms", "threads"]
+
+    def _numbers(self, atoms):
+        raise NotImplementedError
+
+    def _geometry(self, atoms):
+        return displaced_fcc(atoms, self._numbers(atoms))
+
+    def _pot(self):
+        import rgpot
+
+        if rgpot.TersoffSiC is None:
+            raise NotImplementedError("TersoffSiC is not bound")
+        return rgpot.TersoffSiC()
+
+    def setup(self, atoms, threads):
+        _set_threads(threads)
+        base, types, box = self._geometry(atoms)
+        self.base = base
+        self.types = types
+        self.box = box
+        self.pos = base.copy()
+        self.step = 0
+        self.pot = self._pot()
+        self.pot(self.base, self.types, self.box)
+
+    def time_displaced(self, atoms, threads):
+        del atoms, threads
+        self.pot(self.base, self.types, self.box)
+
+
+class TersoffDisplacedSi(_DisplacedTersoff):
+    def _numbers(self, atoms):
+        return 14
+
+
+class TersoffDisplacedSiC(_DisplacedTersoff):
+    def _numbers(self, atoms):
+        return silicon_carbon(atoms)

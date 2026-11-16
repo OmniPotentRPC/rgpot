@@ -726,3 +726,83 @@ TEST_CASE("Tersoff owned rows match one thread bit for bit", "[TersoffSiC][threa
   setenv("OMP_NUM_THREADS", "1", 1);
   omp_set_num_threads(1);
 }
+
+TEST_CASE("Displaced silicon and silicon-carbon stay finite", "[TersoffSiC]") {
+  // FCC a = 4.05, then each coordinate Uniform[-0.05, 0.05] from seed
+  // 2844147. The root-mean-square displacement is 0.05 angstrom.
+  constexpr int n = 64;
+  const int cells = n / 4;
+  int nz = 1;
+  for (int k = 1; k * k * k <= cells; ++k) {
+    if (cells % k == 0) {
+      nz = k;
+    }
+  }
+  const int rest = cells / nz;
+  int ny = 1;
+  for (int k = 1; k * k <= rest; ++k) {
+    if (rest % k == 0) {
+      ny = k;
+    }
+  }
+  const int nx = rest / ny;
+  constexpr double a = 4.05;
+  static const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  AtomMatrix perfect(n, 3);
+  int filled = 0;
+  for (int ix = 0; ix < nx && filled < n; ++ix) {
+    for (int iy = 0; iy < ny && filled < n; ++iy) {
+      for (int iz = 0; iz < nz && filled < n; ++iz) {
+        for (int k = 0; k < 4 && filled < n; ++k, ++filled) {
+          perfect(filled, 0) = (ix + basis[k][0]) * a;
+          perfect(filled, 1) = (iy + basis[k][1]) * a;
+          perfect(filled, 2) = (iz + basis[k][2]) * a;
+        }
+      }
+    }
+  }
+  AtomMatrix pos = perfect;
+  std::mt19937 gen(2844147);
+  std::uniform_real_distribution<double> dist(-0.05, 0.05);
+  double sum = 0.0;
+  for (int i = 0; i < n; ++i) {
+    for (int axis = 0; axis < 3; ++axis) {
+      const double shift = dist(gen);
+      pos(i, axis) += shift;
+      sum += shift * shift;
+    }
+  }
+  const double rms = std::sqrt(sum / static_cast<double>(n));
+  REQUIRE_THAT(rms, WithinAbs(0.05, 0.01));
+  std::array<std::array<double, 3>, 3> box{};
+  box[0][0] = nx * a;
+  box[1][1] = ny * a;
+  box[2][2] = nz * a;
+  std::vector<int> silicon(static_cast<std::size_t>(n), 14);
+  std::vector<int> mixed(static_cast<std::size_t>(n), 14);
+  for (int i = 1; i < n; i += 2) {
+    mixed[static_cast<std::size_t>(i)] = 6;
+  }
+  setenv("OMP_NUM_THREADS", "1", 1);
+  omp_set_num_threads(1);
+  TersoffSiC pot;
+  pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto [e_si, f_si, v_si] = pot(pos, silicon, box);
+  const auto [e_mix, f_mix, v_mix] = pot(pos, mixed, box);
+  (void)v_si;
+  (void)v_mix;
+  REQUIRE(std::isfinite(e_si));
+  REQUIRE(std::isfinite(e_mix));
+  REQUIRE(e_si != e_mix);
+  REQUIRE(f_si.size() == n * 3);
+  REQUIRE(f_mix.size() == n * 3);
+  const auto [e_again, f_again, v_again] = pot(pos, silicon, box);
+  (void)v_again;
+  REQUIRE(std::memcmp(&e_si, &e_again, sizeof(double)) == 0);
+  REQUIRE(std::memcmp(f_si.data(), f_again.data(),
+                      sizeof(double) * static_cast<std::size_t>(f_si.size())) == 0);
+  const auto [e_perfect, f_perfect, v_perfect] = pot(perfect, silicon, box);
+  (void)f_perfect;
+  (void)v_perfect;
+  REQUIRE(std::memcmp(&e_si, &e_perfect, sizeof(double)) != 0);
+}
