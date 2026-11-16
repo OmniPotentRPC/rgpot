@@ -26,6 +26,22 @@ It is not divided by the cell volume.
 The rgpot Cauchy stress is =sigma = -W / V= in eV/Angstrom^3.
 The protocol carries no species, so each driver keeps its own list.
 
+** Closed peers
+
+A write to a socket whose peer has closed raises =SIGPIPE= by default.
+That signal ends the process.
+Every write from =IPIPot= and =IPIDriver= passes =MSG_NOSIGNAL= where the
+platform defines it.
+Every socket they open or accept also gets =SO_NOSIGPIPE= where the platform has
+it, as on macOS.
+Both live in =IPIWire= (=sendNoSignal= and =disableSigpipe=).
+The mock peers in =IPIPotTest= and =IPIDriverTest= use the same helpers.
+A write to a closed peer then fails as a "disconnected" =std::runtime_error=.
+Two tests close the peer and then make the other side write, with =SIGPIPE= at
+its default action.
+In one a driver closes before the server's next =STATUS= and its =EXIT=.
+In the other a server closes before the driver's =FORCEREADY=.
+
 ** Server: IPIPot
 
 =IPIPot= binds a UNIX or TCP socket, accepts one driver, and sends geometries.

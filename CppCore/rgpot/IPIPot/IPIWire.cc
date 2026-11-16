@@ -154,12 +154,7 @@ void writeFull(const Link &link, const void *data, size_t n,
   size_t sent = 0;
   while (sent < n) {
     waitFd(link, POLLOUT, deadline, what.c_str());
-#ifdef MSG_NOSIGNAL
-    constexpr int kSendFlags = MSG_NOSIGNAL;
-#else
-    constexpr int kSendFlags = 0;
-#endif
-    const ssize_t rc = ::send(link.fd, bytes + sent, n - sent, kSendFlags);
+    const ssize_t rc = sendNoSignal(link.fd, bytes + sent, n - sent);
     if (rc < 0) {
       if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
         continue;
@@ -225,6 +220,14 @@ bool readFullOrEof(const Link &link, void *data, size_t n,
     readFull(link, bytes + got, n - got, deadline);
   }
   return true;
+}
+
+ssize_t sendNoSignal(int fd, const void *data, size_t n) {
+#ifdef MSG_NOSIGNAL
+  return ::send(fd, data, n, MSG_NOSIGNAL);
+#else
+  return ::send(fd, data, n, 0);
+#endif
 }
 
 void setCloexec(int fd) {

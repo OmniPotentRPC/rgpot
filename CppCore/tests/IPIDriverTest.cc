@@ -13,6 +13,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -27,6 +28,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <signal.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -133,8 +135,8 @@ public:
     if (m_conn < 0) {
       throw std::runtime_error("fake server: accept failed");
     }
-    // send() passes no flags where MSG_NOSIGNAL is missing; the socket
-    // option keeps a closed driver from raising SIGPIPE there.
+    // sendNoSignal() passes no flags where MSG_NOSIGNAL is missing; the
+    // socket option keeps a closed driver from raising SIGPIPE there.
     wire::disableSigpipe(m_conn);
   }
 
@@ -154,11 +156,7 @@ public:
     const auto *bytes = static_cast<const char *>(data);
     size_t sent = 0;
     while (sent < n) {
-#ifdef MSG_NOSIGNAL
-      const ssize_t rc = ::send(m_conn, bytes + sent, n - sent, MSG_NOSIGNAL);
-#else
-      const ssize_t rc = ::send(m_conn, bytes + sent, n - sent, 0);
-#endif
+      const ssize_t rc = wire::sendNoSignal(m_conn, bytes + sent, n - sent);
       if (rc < 0 && errno == EINTR) {
         continue;
       }
@@ -334,6 +332,45 @@ struct Recorder {
       }
     };
   }
+};
+
+// SIGPIPE at its default action for one test, so a write that raises it
+// ends the test binary instead of going unnoticed.
+class DefaultSigpipe {
+public:
+  DefaultSigpipe() {
+    struct sigaction action{};
+    action.sa_handler = SIG_DFL;
+    sigemptyset(&action.sa_mask);
+    ::sigaction(SIGPIPE, &action, &m_old);
+  }
+  ~DefaultSigpipe() { ::sigaction(SIGPIPE, &m_old, nullptr); }
+  DefaultSigpipe(const DefaultSigpipe &) = delete;
+  DefaultSigpipe &operator=(const DefaultSigpipe &) = delete;
+
+private:
+  struct sigaction m_old{};
+};
+
+// Holds every evaluation until open() is called.
+class Gate {
+public:
+  void open() {
+    {
+      std::lock_guard<std::mutex> lock(m_mu);
+      m_open = true;
+    }
+    m_cv.notify_all();
+  }
+  void wait() {
+    std::unique_lock<std::mutex> lock(m_mu);
+    m_cv.wait(lock, [this] { return m_open; });
+  }
+
+private:
+  std::mutex m_mu;
+  std::condition_variable m_cv;
+  bool m_open = false;
 };
 
 // Lattice vectors as rows, Angstrom; a sheared, non-orthogonal cell.
@@ -569,6 +606,41 @@ TEST_CASE("IPIDriver reports a server that disconnects", "[ipi_driver]") {
     server.hangup();
     CHECK_THAT(thread.join(), ContainsSubstring("i-PI server disconnected"));
   }
+}
+
+TEST_CASE("IPIDriver replying to a server that closed fails without SIGPIPE",
+          "[ipi_driver]") {
+  const DefaultSigpipe sigpipe;
+  Recorder rec;
+  Gate gate;
+  const rgpot::IPIEvaluator inner = rec.evaluator();
+  const rgpot::IPIEvaluator gated = [&](const rgpot::ForceInput &in,
+                                        rgpot::ForceOut *out) {
+    gate.wait();
+    inner(in, out);
+  };
+  auto server = FakeServer::unix_at(temp_socket("reply"));
+  rgpot::IPIDriver driver(config_for(server.address(), {1}), gated);
+  DriverThread thread(driver);
+  struct Opener {
+    Gate &gate;
+    ~Opener() { gate.open(); }
+  } opener{gate};
+  server.accept();
+  REQUIRE(server.status() == "NEEDINIT");
+  server.init(0, "");
+  REQUIRE(server.status() == "READY");
+  double h[9];
+  ipi_cell(kRows, h);
+  server.posdata(h, {0.5, -0.25, 1.0}, 1);
+  server.header("GETFORCE");
+  // The driver is held inside the evaluation, so FORCEREADY is written
+  // after the server has gone.
+  server.hangup();
+  gate.open();
+  CHECK_THAT(thread.join(), ContainsSubstring("i-PI server disconnected"));
+  CHECK(rec.calls >= 1);
+  CHECK_FALSE(driver.connected());
 }
 
 TEST_CASE("IPIDriver times out on a silent server and waits forever at 0",

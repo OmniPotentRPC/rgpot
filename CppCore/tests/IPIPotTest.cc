@@ -33,12 +33,14 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/IPIPot/IPIPot.hpp"
+#include "rgpot/IPIPot/IPIWire.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/units.hpp"
 
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::WithinAbs;
 using rgpot::types::AtomMatrix;
+namespace wire = rgpot::ipi::detail;
 
 namespace {
 
@@ -104,12 +106,7 @@ void write_full(int fd, const void *data, size_t n) {
   const auto *bytes = static_cast<const char *>(data);
   size_t sent = 0;
   while (sent < n) {
-#ifdef MSG_NOSIGNAL
-    constexpr int kSendFlags = MSG_NOSIGNAL;
-#else
-    constexpr int kSendFlags = 0;
-#endif
-    const ssize_t rc = ::send(fd, bytes + sent, n - sent, kSendFlags);
+    const ssize_t rc = wire::sendNoSignal(fd, bytes + sent, n - sent);
     if (rc < 0) {
       if (errno == EINTR) {
         continue;
@@ -164,7 +161,33 @@ int connect_endpoint(const std::string &endpoint) {
   throw std::runtime_error("mock could not connect to " + endpoint);
 }
 
-enum class Behavior { Ok, BadHeader, Disconnect, Silent };
+int connect_mock(const std::string &endpoint) {
+  const int fd = connect_endpoint(endpoint);
+  // IPIPot closes its end on every error, often while the mock is still
+  // replying. Without MSG_NOSIGNAL that write would raise SIGPIPE.
+  wire::disableSigpipe(fd);
+  return fd;
+}
+
+// SIGPIPE at its default action for one test, so a write that raises it
+// ends the test binary instead of going unnoticed.
+class DefaultSigpipe {
+public:
+  DefaultSigpipe() {
+    struct sigaction action{};
+    action.sa_handler = SIG_DFL;
+    sigemptyset(&action.sa_mask);
+    ::sigaction(SIGPIPE, &action, &m_old);
+  }
+  ~DefaultSigpipe() { ::sigaction(SIGPIPE, &m_old, nullptr); }
+  DefaultSigpipe(const DefaultSigpipe &) = delete;
+  DefaultSigpipe &operator=(const DefaultSigpipe &) = delete;
+
+private:
+  struct sigaction m_old{};
+};
+
+enum class Behavior { Ok, BadHeader, Disconnect, Silent, CloseAfterForce };
 
 struct Reply {
   double energy = 0.25;
@@ -205,7 +228,7 @@ CapView view(Capture &cap) {
 void run_mock(const std::string &endpoint, Behavior behavior,
               const Reply &reply, Capture *cap) {
   try {
-    const int fd = connect_endpoint(endpoint);
+    const int fd = connect_mock(endpoint);
     if (behavior == Behavior::Silent) {
       // Stay connected and unread so the server budget expires on the
       // reply, rather than observing a peer close.
@@ -284,6 +307,9 @@ void run_mock(const std::string &endpoint, Behavior behavior,
           if (extra > 0) {
             write_full(fd, reply.extra.data(), reply.extra.size());
           }
+        }
+        if (behavior == Behavior::CloseAfterForce) {
+          break;
         }
       } else if (hdr == "EXIT") {
         break;
@@ -622,6 +648,39 @@ TEST_CASE("IPIPot accepts a new driver after the first disconnects", "[ipi]") {
                  WithinAbs(0.25 * rgpot::units::HARTREE_TO_EV, 1e-12));
     REQUIRE(pot.hasStress());
   }
+}
+
+TEST_CASE("IPIPot writing to a driver that closed fails without SIGPIPE",
+          "[ipi]") {
+  const DefaultSigpipe sigpipe;
+  rgpot::IPIConfig cfg;
+  cfg.address = "unix:rgp" + tag();
+  cfg.timeout_s = 2.0;
+  Capture cap;
+  std::thread worker;
+  Join join{worker};
+  const AtomMatrix positions = sample_positions();
+  const auto box = triclinic_box();
+  AtomMatrix forces(2, 3);
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  const rgpot::ForceInput in{2, positions.data(), nullptr, box.data()};
+  {
+    rgpot::IPIPot pot(cfg);
+    worker = std::thread(run_mock, pot.endpoint(), Behavior::CloseAfterForce,
+                         Reply{}, &cap);
+    pot.forceImpl(in, &out);
+    // Joined, so the driver has closed before the server writes again.
+    worker.join();
+    SECTION("the next STATUS") {
+      REQUIRE_THROWS_WITH(pot.forceImpl(in, &out),
+                          ContainsSubstring("i-PI driver disconnected"));
+    }
+    SECTION("the EXIT sent on destruction") {}
+  }
+  const std::vector<std::string> want = {"STATUS", "INIT", "STATUS", "POSDATA",
+                                         "GETFORCE"};
+  REQUIRE(view(cap).headers == want);
 }
 
 TEST_CASE("IPIPot optional i-PI dummy driver", "[ipi]") {

@@ -24,6 +24,8 @@
 #include <string>
 #include <string_view>
 
+#include <sys/types.h>
+
 namespace rgpot::ipi::detail {
 
 inline constexpr int kHeaderLen = 12;
@@ -80,8 +82,15 @@ void readFull(const Link &link, void *data, size_t n, const Deadline &deadline);
 bool readFullOrEof(const Link &link, void *data, size_t n,
                    const Deadline &deadline);
 
+/// One send() that reports a closed peer as EPIPE instead of raising
+/// SIGPIPE. It passes MSG_NOSIGNAL where the platform defines it; where it
+/// does not (macOS), the socket must have been through disableSigpipe().
+ssize_t sendNoSignal(int fd, const void *data, size_t n);
+
 void setCloexec(int fd);
 void setNonblock(int fd);
+/// Sets SO_NOSIGPIPE where the platform has it. Call it on every i-PI
+/// socket, so a write after the peer closes fails with EPIPE.
 void disableSigpipe(int fd);
 void setNodelay(int fd);
 
