@@ -133,7 +133,14 @@ wrapping coordinates into the cell. `General`, and any sheared cell,
 calls `MinimumImage`.
 
 `Mode::Stored` keeps a Verlet list and reuses it while every atom has
-moved by at most half the skin. `Mode::Stream` walks the 27 neighbouring
+moved by at most half the skin. The list holds partner indices and each
+walk takes the image from the current coordinates, so the move is
+measured to the nearest periodic image of the reference position: an
+atom that the caller wraps back through a face of the cell has moved by
+its step, not by a cell vector, and keeps the list. The bins are redone
+after such a wrap. A change of the cell, of the atom count or of the
+spec rebuilds the list. `Builder`, whose table stores the image shifts,
+still rebuilds when an atom wraps. `Mode::Stream` walks the 27 neighbouring
 cells and stores no pair list. The bins are reused only when the geometry
 is identical. `Mode::Auto` stores when the candidate index array fits in
 `MemAvailable` and in a 32-bit offset, and streams otherwise. There is no

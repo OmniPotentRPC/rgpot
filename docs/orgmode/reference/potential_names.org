@@ -18,7 +18,7 @@ Options come as =key value= pairs separated by spaces.
 | =LJ=         | =u0=, =psi=, =cutoff=, =switch_width=                                    | yes    |
 | =Morse=      | =de=, =a=, =re=, =cutoff=, =switch_width=                                | yes    |
 | =SuttonChen= | =preset= (=platinum= or =gold=), =epsilon=, =c=, =a=, =n=, =m=, =cutoff= | yes    |
-| =EAMTable=   | =file=, =format= (=funcfl=, =setfl= or =fs=)                             | yes    |
+| =EAMTable=   | =file=, =format= (=funcfl=, =setfl= or =fs=), =skin=                     | yes    |
 | =SWSi1985=   | none                                                                     | yes    |
 | =TersoffSi=  | none                                                                     | yes    |
 | =EMT=        | =parameters= (=asap= or =rasmussen=)                                     | no     |
@@ -28,6 +28,8 @@ A build with the Fortran potentials also accepts =SWSi= (with a stress), and
 =EDIP=, =LenoskySi=, =EAMAl=, =FeHe= and =CuH2= (without one).
 =EAMTable= needs =-Dwith_eam_table=true=; its format follows the file extension
 unless =format= is given.
+=skin= is the Verlet skin of its own pair list in Angstrom, 1 by default (see
+:doc:`eam_table`); it changes how often the list is rebuilt, not the result.
 
 =cutoff= defaults to the host's cutoff: the =pair_style= cutoff in LAMMPS.
 PLUMED and =rgpot-eval= have none, so there the potential's own default is used
