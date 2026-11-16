@@ -173,6 +173,9 @@ template <typename P, typename... A> Built own(A &&...args) {
       kernel->forceStage(list, densities, forces, tally);
     };
   }
+  if constexpr (requires { kernel->listReused(); }) {
+    out.listReused = [kernel]() { return kernel->listReused(); };
+  }
   out.pot = std::move(pot);
   return out;
 }

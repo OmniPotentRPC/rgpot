@@ -164,6 +164,14 @@ pair now within the cutoff was within the cutoff plus the skin at the build.
 A box change that leaves no room, or another atom count, rebuilds the list.
 The list does not change the result: =EAMTable= with its skin gives the bits of
 =skin 0=, which rebuilds whenever an atom moves or the box changes.
+At the end of each run on the gather path, rank 0 logs how often the potential
+built its list; this line comes from =EAMTable= on 256 CuNi atoms at 600 K over
+100 steps of =fix npt=, where =skin 0= builds it 101 times:
+
+#+attr_rgpot: output line that a run on the gather path writes to the log
+#+begin_example
+pair_style rgpot: pair list built 3 times in 101 evaluations
+#+end_example
 
 *** Domain
 

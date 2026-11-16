@@ -13,7 +13,9 @@ Nose-Hoover barostat at zero pressure (fix npt iso), or NVE with the box
 stretched along x every step (fix deform, true strain rate 0.05/ps), so
 the last two change the cell on every step. Strong scaling keeps the
 box; weak scaling grows the box along x with the ranks. The script
-prints a Markdown table of the medians and writes every repeat to --out.
+prints a Markdown table of the medians and writes every repeat to --out,
+with the list builds and evaluations that the plugin logs for the timed
+run on the gather path.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ import tempfile
 from pathlib import Path
 
 LOOP = re.compile(r"Loop time of ([0-9.eE+-]+) on (\d+) procs for (\d+) steps with (\d+) atoms")
+LIST = re.compile(r"pair_style rgpot: pair list built (\d+) times in (\d+) evaluations")
 
 ENSEMBLES = {
     "nve": ["fix 1 all nve"],
@@ -87,8 +90,10 @@ def run_one(system, cells, mode, nprocs, args, work: Path) -> dict:
         raise RuntimeError(f"{' '.join(cmd)} failed\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
     seconds, procs, steps, atoms = loops[-1]
     pe = re.findall(r"^\s+\d+\s+[0-9.eE+-]+\s+([-0-9.eE+]+)", proc.stdout, re.M)
+    builds = LIST.findall(proc.stdout)
     return {"seconds": float(seconds), "procs": int(procs), "steps": int(steps),
-            "atoms": int(atoms), "last_pe": float(pe[-1]) if pe else None}
+            "atoms": int(atoms), "last_pe": float(pe[-1]) if pe else None,
+            "list_builds": [int(v) for v in builds[-1]] if builds else None}
 
 
 def hardware() -> dict:
@@ -151,7 +156,7 @@ def main() -> None:
                             times.append(r["seconds"])
                         row = {"scaling": scaling, "system": system, "ranks": n, "mode": mode,
                                "atoms": r["atoms"], "steps": r["steps"], "seconds": times,
-                               "last_pe": r["last_pe"]}
+                               "last_pe": r["last_pe"], "list_builds": r["list_builds"]}
                         results["runs"].append(row)
                         print(json.dumps(row), flush=True)
     Path(args.out).write_text(json.dumps(results, indent=1))

@@ -1,0 +1,2 @@
+At the end of each run on the gather path, `pair_style rgpot` logs on rank 0 how often a potential that keeps its own pair list built it, as `pair_style rgpot: pair list built N times in M evaluations`.
+`SuttonChenPot`, `StillingerWeberSi` and `TersoffSiC` gain the `listReused()` of the other potentials on `nlist::Neighbours`, and `rgpot::spec::Built::listReused` carries it for a potential built by name.

@@ -46,7 +46,9 @@
 // mode auto takes the domain path on more than one rank when the
 // potential allows it and the virial is not the strain difference; mode
 // gather and mode domain force one (domain stops at init when the
-// potential cannot use it).
+// potential cannot use it). At the end of a run on the gather path,
+// rank 0 logs how often a potential that keeps its own pair list built
+// it.
 //
 // The global virial is -V sigma from the backend's Cauchy stress. When
 // the backend returns no stress (an engine plugin, or a potential whose
@@ -114,6 +116,7 @@ class PairRgpot : public Pair {
   void coeff(int, char **) override;
   void init_style() override;
   double init_one(int, int) override;
+  void finish() override;
   int pack_forward_comm(int, int *, double *, int, int *) override;
   void unpack_forward_comm(int, int, double *) override;
   int pack_reverse_comm(int, int, double *) override;
@@ -133,6 +136,10 @@ class PairRgpot : public Pair {
   Mode mode = Mode::Auto;
   // Set by init_style.
   bool use_domain = false;
+  // Evaluations on rank 0 in this run, and those that built the
+  // potential's pair list.
+  long long list_evals = 0;
+  long long list_builds = 0;
   // Atomic number per LAMMPS type, index 1..ntypes. 0 leaves the type out.
   std::vector<int> type_z;
   // Domain path, over owned and ghost atoms: atomic numbers, the
@@ -358,6 +365,8 @@ void PairRgpot::init_style() {
   }
   // One rank has nothing to split.
   use_domain = mode == Mode::Domain || (mode == Mode::Auto && refusal.empty() && comm->nprocs > 1);
+  list_evals = 0;
+  list_builds = 0;
   if (!use_domain && atom->natoms > MAXSMALLINT) {
     error->all(FLERR, "pair_style rgpot: too many atoms");
   }
@@ -375,6 +384,13 @@ void PairRgpot::init_style() {
       utils::logmesg(lmp, "pair_style rgpot: gather on rank 0{}{}\n", why.empty() ? "" : "; ",
                      why);
     }
+  }
+}
+
+void PairRgpot::finish() {
+  if (comm->me == 0 && list_evals > 0) {
+    utils::logmesg(lmp, "pair_style rgpot: pair list built {} times in {} evaluations\n",
+                   list_builds, list_evals);
   }
 }
 
@@ -413,6 +429,10 @@ int PairRgpot::evaluate(std::size_t n, const double *xyz, const int *z, const do
     *energy = out.energy;
     *has_stress = out.has_stress;
     std::copy(out.stress, out.stress + 9, stress);
+    if (built.listReused) {
+      ++list_evals;
+      list_builds += built.listReused() ? 0 : 1;
+    }
     return 0;
   }
   }

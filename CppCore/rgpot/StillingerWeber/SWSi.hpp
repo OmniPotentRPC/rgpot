@@ -66,6 +66,9 @@ public:
   /// thread agrees with the old ordered walk to within 1e-12.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// True when the last force call kept the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
   /**
    * @brief Energy and dE/dx for one configuration.
    *
