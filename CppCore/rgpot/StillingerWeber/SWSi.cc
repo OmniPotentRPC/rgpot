@@ -429,9 +429,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     const int m = static_cast<int>(nb.size());
     for (int a = 0; a < m; ++a) {
       const Bond &bj = nb[static_cast<std::size_t>(a)];
+      const double inv_r1 = 1.0 / bj.r;
       for (int b = a + 1; b < m; ++b) {
         const Bond &bk = nb[static_cast<std::size_t>(b)];
-        const double inv_r1 = 1.0 / bj.r;
         const double inv_r2 = 1.0 / bk.r;
         const double inv = inv_r1 * inv_r2;
         double cth = (bj.x * bk.x + bj.y * bk.y + bj.z * bk.z) * inv;
@@ -590,9 +590,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
           }
           for (int a = 0; a < m; ++a) {
             const Bond &bj = nb[a];
+            const double inv_r1 = 1.0 / bj.r;
             for (int b = a + 1; b < m; ++b) {
               const Bond &bk = nb[b];
-              const double inv_r1 = 1.0 / bj.r;
               const double inv_r2 = 1.0 / bk.r;
               const double inv = inv_r1 * inv_r2;
               double cth = (bj.x * bk.x + bj.y * bk.y + bj.z * bk.z) * inv;
@@ -764,9 +764,9 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
         }
         for (int a = 0; a < m; ++a) {
           const Bond &bj = nb[a];
+          const double inv_r1 = 1.0 / bj.r;
           for (int b = a + 1; b < m; ++b) {
             const Bond &bk = nb[b];
-            const double inv_r1 = 1.0 / bj.r;
             const double inv_r2 = 1.0 / bk.r;
             const double inv = inv_r1 * inv_r2;
             double cth = (bj.x * bk.x + bj.y * bk.y + bj.z * bk.z) * inv;

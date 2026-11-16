@@ -12,7 +12,10 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
+
+#include <omp.h>
 
 #include <catch2/catch_all.hpp>
 
@@ -289,4 +292,38 @@ TEST_CASE("SW 1985 skewed cell still sees one pair", "[SWSi]") {
   double grad[6];
   StillingerWeberSi{}.energyAndGradient(pos, nullptr, box, 2, &energy, grad);
   REQUIRE_THAT(energy, WithinAbs(-StillingerWeberSi::kEpsilon, 1e-9));
+}
+
+TEST_CASE("SW one thread matches the others bit for bit", "[SWSi][threads]") {
+  const double u = pairMinimumU();
+  const double a0 = u * StillingerWeberSi::kSigma * 4.0 / std::sqrt(3.0);
+  std::vector<double> raw;
+  appendDiamond(raw, 2, a0);
+  const std::size_t n = raw.size() / 3;
+  AtomMatrix positions(n, 3);
+  std::copy(raw.begin(), raw.end(), positions.data());
+  const std::vector<int> types(n, 14);
+  const auto box = cubic(2 * a0);
+  auto run = [&](int threads) {
+    const std::string text = std::to_string(threads);
+    setenv("OMP_NUM_THREADS", text.c_str(), 1);
+    omp_set_num_threads(threads);
+    StillingerWeberSi pot;
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    return pot(positions, types, box);
+  };
+  const auto one = run(1);
+  const double energy = std::get<0>(one);
+  const AtomMatrix &force = std::get<1>(one);
+  for (int threads : {2, 4, 8}) {
+    const auto got = run(threads);
+    const double other_energy = std::get<0>(got);
+    const AtomMatrix &other = std::get<1>(got);
+    REQUIRE(std::memcmp(&other_energy, &energy, sizeof(double)) == 0);
+    REQUIRE(other.size() == force.size());
+    REQUIRE(std::memcmp(other.data(), force.data(),
+                        sizeof(double) * static_cast<std::size_t>(force.size())) == 0);
+  }
+  setenv("OMP_NUM_THREADS", "1", 1);
+  omp_set_num_threads(1);
 }
