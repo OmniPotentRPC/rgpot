@@ -145,6 +145,9 @@ public:
   /// Stored Verlet list or a streaming cell walk.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// True when the last force call kept the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
 private:
   static constexpr uint64_t kKernelVersion = 1;
 

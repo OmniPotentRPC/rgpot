@@ -40,6 +40,9 @@ struct Built {
   /// half list. Empty when the kernel has no staged evaluation.
   std::function<void(const HalfList &, double *)> densityStage;
   std::function<void(const HalfList &, const double *, double *, StageTally *)> forceStage;
+  /// The kernel's listReused(): false after a call that built its pair
+  /// list. Empty when the kernel keeps no list of its own.
+  std::function<bool()> listReused;
   std::string error; ///< Reason when pot is null.
 };
 
