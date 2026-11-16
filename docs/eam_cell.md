@@ -10,8 +10,11 @@ The list is the shared neighbour layer (`rgpot::nlist::Neighbours`): a
 linked-cell search with a Verlet skin. The skin is one fifth of the widest
 cutoff (`kEamSkinOverCutoff`). A streaming walk uses no skin. A later call
 on the same object reuses a stored list while every atom has moved by at
-most half of the skin and the cell, the atom count and the neighbour mode
-are unchanged. The species are not part of that test: the list holds
+most half of the skin and the atom count and the neighbour mode are
+unchanged. A new cell keeps the list while the moves, measured from the
+positions carried with the cell, stay within half the skin less half of
+what the change stretches the widest cutoff plus the skin. The species
+are not part of that test: the list holds
 candidates out to the widest cutoff plus the skin for every atom. The
 minimum image is one half-box correction after the coordinates have been
 wrapped into the cell.

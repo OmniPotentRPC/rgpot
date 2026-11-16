@@ -681,20 +681,60 @@ TEST_CASE("a stored list survives atoms wrapped through the faces", "[nlist][ski
   wrapInto(pos, side);
   check(pos, box, false, 2);
 
-  // Another cell.
+  // The atoms carried with a dilated cell keep the list.
   const double grown = side * 1.002;
   const double big[9] = {grown, 0, 0, 0, grown, 0, 0, 0, grown};
   for (double &x : pos) {
     x *= 1.002;
   }
-  check(pos, big, false, 3);
+  check(pos, big, true, 2);
+
+  // A dilation whose stretch of the search takes the whole skin.
+  const double far = side * 1.2;
+  const double huge[9] = {far, 0, 0, 0, far, 0, 0, 0, far};
+  for (double &x : pos) {
+    x *= far / grown;
+  }
+  check(pos, huge, false, 3);
 
   // Another atom count.
   pos.resize(pos.size() - 3);
-  check(pos, big, false, 4);
+  check(pos, huge, false, 4);
 }
 
 namespace {
+
+/// Fractional coordinates of `pos` in `from`, placed in `to`.
+std::vector<double> carry(const std::vector<double> &pos, const double *from, const double *to) {
+  // Lower-triangular cells, rows a, b, c.
+  std::vector<double> out(pos.size());
+  for (std::size_t i = 0; i < pos.size() / 3; ++i) {
+    const double *r = pos.data() + 3 * i;
+    const double s2 = r[2] / from[8];
+    const double s1 = (r[1] - s2 * from[7]) / from[4];
+    const double s0 = (r[0] - s1 * from[3] - s2 * from[6]) / from[0];
+    for (int c = 0; c < 3; ++c) {
+      out[3 * i + static_cast<std::size_t>(c)] = s0 * to[c] + s1 * to[3 + c] + s2 * to[6 + c];
+    }
+  }
+  return out;
+}
+
+/// Wrap positions into a lower-triangular cell.
+void wrapCell(std::vector<double> &pos, const double *cell) {
+  for (std::size_t i = 0; i < pos.size() / 3; ++i) {
+    double *r = pos.data() + 3 * i;
+    double s2 = r[2] / cell[8];
+    double s1 = (r[1] - s2 * cell[7]) / cell[4];
+    double s0 = (r[0] - s1 * cell[3] - s2 * cell[6]) / cell[0];
+    s0 -= std::floor(s0);
+    s1 -= std::floor(s1);
+    s2 -= std::floor(s2);
+    r[0] = s0 * cell[0] + s1 * cell[3] + s2 * cell[6];
+    r[1] = s1 * cell[4] + s2 * cell[7];
+    r[2] = s2 * cell[8];
+  }
+}
 
 /// Every pair within `cutoff` by the minimum image of `cell`.
 PairMap bruteForce(const std::vector<double> &pos, const double *cell, double cutoff) {
@@ -741,4 +781,93 @@ TEST_CASE("a strongly sheared cell finds every pair", "[nlist][triclinic]") {
     REQUIRE(cells.streaming() == (mode == rgpot::nlist::Mode::Stream));
     requireSamePairs(walkedPairs(cells, n, cutoff), direct);
   }
+}
+
+TEST_CASE("a stored list follows a strained cell", "[nlist][skin][triclinic]") {
+  // Skin 1 and a 5 A cutoff, so a strain e leaves each atom (1 - 6 e) / 2
+  // A to move. The cell starts orthogonal and takes a tilt, so the walks
+  // go from the orthogonal image and the tile walk to the sheared ones.
+  setThreads("1");
+  const double a = 3.6;
+  const double side = 9 * a;
+  const double cutoff = 5.0;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = 1.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+  rgpot::nlist::Neighbours warm;
+  std::uint64_t builds = 0;
+
+  auto check = [&](const std::vector<double> &xyz, const double *cell, bool reused) {
+    warm.update(xyz.data(), xyz.size() / 3, cell, spec);
+    builds += reused ? 0 : 1;
+    REQUIRE(warm.mode() == rgpot::nlist::Mode::Stored);
+    REQUIRE(warm.reused() == reused);
+    REQUIRE(warm.builds() == builds);
+    rgpot::nlist::Neighbours fresh;
+    fresh.update(xyz.data(), xyz.size() / 3, cell, spec);
+    const Walks got = walk(warm, xyz.size() / 3, cutoff);
+    const Walks want = walk(fresh, xyz.size() / 3, cutoff);
+    REQUIRE(!want.half.empty());
+    REQUIRE(got.half == want.half);
+    REQUIRE(got.team == want.team);
+    REQUIRE(got.atom == want.atom);
+    requireSamePairs(walkedPairs(warm, xyz.size() / 3, cutoff),
+                     bruteForce(xyz, cell, cutoff));
+  };
+
+  const double cube[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  auto start = fcc(9, a);
+  for (std::size_t k = 0; k < start.size(); ++k) {
+    start[k] += 0.05 * std::sin(1.7 * static_cast<double>(k));
+  }
+  wrapCell(start, cube);
+  check(start, cube, false);
+
+  // A 1% dilation with moves of 0.2 A on top: the limit is 0.47 A.
+  const double dilated[9] = {1.01 * side, 0, 0, 0, 1.01 * side, 0, 0, 0, 1.01 * side};
+  auto pos = carry(start, cube, dilated);
+  for (std::size_t i = 0; i < pos.size() / 3; ++i) {
+    pos[3 * i + i % 3] += i % 2 == 0 ? 0.2 : -0.2;
+  }
+  wrapCell(pos, dilated);
+  check(pos, dilated, true);
+
+  // A shear of 0.05 added to that, and the atoms near the faces wrapped
+  // back into the sheared cell: the limit is 0.32 A, every move 0.2 A.
+  const double sheared[9] = {1.01 * side, 0, 0, 0.05 * side, 1.01 * side, 0,
+                             0, 0, 1.01 * side};
+  pos = carry(start, cube, sheared);
+  for (std::size_t i = 0; i < pos.size() / 3; ++i) {
+    pos[3 * i + i % 3] += i % 2 == 0 ? 0.2 : -0.2;
+  }
+  wrapCell(pos, sheared);
+  check(pos, sheared, true);
+
+  // The same cell with moves of 0.4 A, inside half the skin but past
+  // what the strain leaves of it.
+  pos = carry(start, cube, sheared);
+  for (std::size_t i = 0; i < pos.size() / 3; ++i) {
+    pos[3 * i + i % 3] += i % 2 == 0 ? 0.4 : -0.4;
+  }
+  wrapCell(pos, sheared);
+  check(pos, sheared, false);
+
+  // From that build, a further shear and a stretch along y, no moves.
+  const double tilted[9] = {1.01 * side, 0, 0, 0.09 * side, 1.02 * side, 0,
+                            0.03 * side, -0.02 * side, 1.01 * side};
+  const auto built = pos;
+  pos = carry(built, sheared, tilted);
+  wrapCell(pos, tilted);
+  check(pos, tilted, true);
+
+  // Back to the cell of the build, the atoms where they were.
+  check(built, sheared, true);
+
+  // A further shear of 0.2 leaves no skin.
+  const double far[9] = {1.01 * side, 0, 0, 0.25 * side, 1.01 * side, 0, 0, 0, 1.01 * side};
+  pos = carry(built, sheared, far);
+  wrapCell(pos, far);
+  check(pos, far, false);
 }

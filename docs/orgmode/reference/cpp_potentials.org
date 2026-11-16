@@ -407,7 +407,8 @@ void forceStage(const HalfList &list, const double *densities, double *forces,
 - Inputs :: none.
 - Units :: none.
 - Outputs :: true when the last force call kept the Verlet list, because no atom
-  had moved by more than half the skin.
+  had moved by more than half the skin, less half of what a new cell stretches
+  the cutoff plus the skin.
 - Errors :: none.
 
 *** =.retainedPairs=
@@ -454,8 +455,8 @@ void setHeldSkin(double skin);
   calls.
 - Units :: Angstrom.
 - Outputs :: a positive skin keeps one list until an atom has moved by more than
-  skin/2, or the cell or the atom count changes. 0, the default, rebuilds the
-  pairs on every call.
+  skin/2, less half of what a new cell stretches the cutoff plus the skin, or
+  the atom count changes. 0, the default, rebuilds the pairs on every call.
   Each call drops the list held before.
 - Errors :: throws =std::invalid_argument= when =skin= is negative or not
   finite.
@@ -502,8 +503,10 @@ void energyAndGradient(const double *positions, const int *atomic_numbers,
 - Outputs :: =*energy= and =gradient= (3 * n_atoms doubles), the derivative
   dE/dx.
   The force is the negative of the gradient.
-  A null =neighbors= rebuilds the pairs on every call; a list is reused while
-  each atom has moved by at most half its skin and the cell is unchanged.
+  A null =neighbors= uses the instance's list with a skin of one fifth of the
+  cutoff.
+  Either list is reused while each atom has moved by at most half its skin, less
+  half of what a new cell stretches the cutoff plus the skin.
 - Errors :: throws
   =std::invalid_argument= for a null =energy=, or for a null =positions=, =box= or =gradient= when =n_atoms=
   > 0.

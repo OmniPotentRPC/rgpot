@@ -110,7 +110,8 @@ public:
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
   /// True when the last force call kept the Verlet list. The test is
-  /// half the skin, the same predicate as `nlist::Builder::update`.
+  /// that of `nlist::Neighbours`: half the skin, less what a changed cell
+  /// stretches.
   [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
 
   /// Pair indices this potential kept. Zero in a streaming call: the
