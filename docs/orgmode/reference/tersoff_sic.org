@@ -52,8 +52,11 @@ it is positive.
 Otherwise it is one fifth of that cutoff, 0.6 Angstrom, or 0 under
 =setNeighbourMode(nlist::Mode::Stream)=.
 The pairs are reused while each atom has moved by at most half the skin and the
-cell and the atom count are unchanged.
-With skin 0 they are reused only for identical coordinates.
+atom count is unchanged.
+A new cell keeps them while the moves, measured from the positions carried with
+the cell, stay within half the skin less half of what the change stretches the
+cutoff plus the skin.
+With skin 0 they are reused only for identical coordinates and cell.
 =energyAndGradientBatch= passes no =nlist::NeighborList=.
 
 ** Held list on the force path
@@ -64,7 +67,7 @@ skin of the section above.
 =nlist::NeighborList= across =forceImpl= calls, and that skin replaces the
 default.
 The list is rebuilt when any atom has moved by more than half the skin since the
-last build, or when the cell or the atom count changes.
+last build, less what a new cell takes as above, or when the atom count changes.
 =setHeldSkin(0)= drops the list and goes back to the default.
 A negative or non-finite skin throws =std::invalid_argument=.
 =heldList()= returns the list, so a caller can see when it was last built.

@@ -384,14 +384,24 @@ void heldSequence(int nrep) {
   REQUIRE(sameBits(forceOf(held, back, box), forceOf(fresh, back, box)));
   REQUIRE(held.heldList().ref == one);
 
-  // A new cell rebuilds even when no atom moved.
+  // A cell 0.1% longer along x, the atoms carried with it: reuse. The
+  // strain takes 0.0034 A of the skin.
   box[0] *= 1.001;
-  REQUIRE(sameBits(forceOf(held, back, box), forceOf(fresh, back, box)));
-  REQUIRE(held.heldList().ref == back);
+  auto carried = back;
+  for (std::size_t i = 0; i < carried.size(); i += 3) {
+    carried[i] *= 1.001;
+  }
+  REQUIRE(sameBits(forceOf(held, carried, box), forceOf(fresh, carried, box)));
+  REQUIRE(held.heldList().ref == one);
+
+  // A cell 12% longer leaves no skin, and rebuilds though no atom moved.
+  box[0] = 1.12 * len;
+  REQUIRE(sameBits(forceOf(held, carried, box), forceOf(fresh, carried, box)));
+  REQUIRE(held.heldList().ref == carried);
   REQUIRE(held.heldList().box[0] == box[0]);
 
   // A new atom count rebuilds.
-  std::vector<double> fewer(back.begin(), back.end() - 3);
+  std::vector<double> fewer(carried.begin(), carried.end() - 3);
   REQUIRE(sameBits(forceOf(held, fewer, box), forceOf(fresh, fewer, box)));
   REQUIRE(held.heldList().n == fewer.size() / 3);
   box[0] = len;

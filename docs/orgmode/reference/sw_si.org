@@ -51,8 +51,11 @@ it is positive.
 Otherwise it is one fifth of the cutoff, or 0 under
 =setNeighbourMode(nlist::Mode::Stream)=.
 The pairs are reused while every atom has moved by at most half the skin and the
-cell and the atom count are unchanged.
-With skin 0 they are reused only for identical coordinates.
+atom count is unchanged.
+A new cell keeps them while the moves, measured from the positions carried with
+the cell, stay within half the skin less half of what the change stretches the
+cutoff plus the skin.
+With skin 0 they are reused only for identical coordinates and cell.
 =energyAndGradientBatch= passes no =nlist::NeighborList=.
 
 ** Stress

@@ -167,7 +167,10 @@ calls `MinimumImage`.
 `Mode::Stored` keeps a Verlet list and reuses it while every atom has moved by at most half the skin.
 The list holds partner indices and each walk takes the image from the current coordinates, so the move is measured to the nearest periodic image of the reference position: an atom that the caller wraps back through a face of the cell has moved by its step, not by a cell vector, and keeps the list.
 The bins are redone after such a wrap.
-A change of the cell, of the atom count or of the spec rebuilds the list.
+A new cell keeps the list too.
+With `H0` the cell of the build, `H` the new cell and `F = H0^-1 H` on row vectors, each move is measured from the reference position carried with the cell, `r0 F`, and the limit is `(skin - e (cutoff + skin)) / 2`, where `e = sqrt(|F - I|_1 |F - I|_inf)` bounds the stretch of any vector.
+A pair now within the cutoff was then within the cutoff plus the skin, so the list still holds it.
+A cell change that leaves no room, or a change of the atom count or of the spec, rebuilds the list.
 `Builder`, whose table stores the image shifts, still rebuilds when an atom wraps.
 `Mode::Stream` walks the 27 neighbouring cells and stores no pair list.
 The bins are reused only when the geometry is identical.

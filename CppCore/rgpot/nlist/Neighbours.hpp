@@ -81,14 +81,22 @@ struct Range {
 /// Candidate pairs around one configuration.
 ///
 /// A stored list is reused while every atom has moved by at most half
-/// the skin, and the cell, the count and the spec are unchanged. The
-/// list holds partner indices only and every walk takes the image from
-/// the current coordinates, so the move is measured to the nearest
-/// periodic image of the reference position: an atom wrapped back
-/// through a face of the cell has moved by its small step, not by a
-/// cell vector. The bins are redone after such a wrap, for the walks
-/// that read them. Skin 0 reuses the list only when the coordinates and
-/// the cell match.
+/// the skin, and the count and the spec are unchanged. The list holds
+/// partner indices only and every walk takes the image from the current
+/// coordinates, so the move is measured to the nearest periodic image of
+/// the reference position: an atom wrapped back through a face of the
+/// cell has moved by its small step, not by a cell vector. The bins are
+/// redone after such a wrap, for the walks that read them.
+///
+/// A new cell H keeps the list too. With H0 the cell of the build and
+/// F = H0^-1 H on row vectors, each move is measured from the reference
+/// position carried with the cell, r0 F. A pair now inside the cutoff c
+/// was then inside c + skin at the build when every move is at most
+/// (skin - e (c + skin)) / 2, where e is no less than the spectral norm
+/// of F - I and so bounds the stretch of any vector, and that is the
+/// limit under a new cell. A cell change that leaves no room rebuilds.
+/// Positions carried with the cell keep their bins. Skin 0 reuses the
+/// list only when the coordinates and the cell match.
 ///
 /// A sheared cell is binned along its cell vectors, with bins no
 /// narrower than the search between opposite faces, so the 27
@@ -100,8 +108,9 @@ public:
 
   [[nodiscard]] Mode mode() const noexcept { return mode_; }
   [[nodiscard]] bool streaming() const noexcept { return streaming_; }
-  /// True when the last update kept the previous list. The displacement
-  /// test is `withinSkin` on the nearest image of each reference position.
+  /// True when the last update kept the previous list. In an unchanged
+  /// cell the displacement test is `withinSkin` on the nearest image of
+  /// each reference position.
   [[nodiscard]] bool reused() const noexcept { return reused_; }
   /// Stored lists built so far. A reuse does not count.
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
@@ -221,6 +230,9 @@ private:
     }
   };
 
+  /// Lengths, periodic sides and the minimum image of `box9`. Every
+  /// update sets them, so the walks fold in the cell of the call.
+  void setGeometry(const double *box9, const Spec &spec);
   void buildCells(const double *xyz, std::size_t n, const double *box9);
   void buildStored(const double *xyz, std::size_t n);
   [[nodiscard]] std::uint64_t candidateBound() const;

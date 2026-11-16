@@ -74,9 +74,10 @@ public:
    * @param skin Extra search distance, Angstrom. Zero, the default,
    *        uses the internal list, with a skin of one fifth of the
    *        cutoff (none in Stream mode). A positive skin reuses the pairs
-   *        until an atom has moved by more than skin/2 since the last
-   *        build, or the cell or the atom count changes. The instance then
-   *        reports perImageInstances.
+   *        as nlist::Neighbours does: until an atom has moved by more than
+   *        skin/2 since the last build, less what a changed cell stretches,
+   *        or the atom count changes. The instance then reports
+   *        perImageInstances.
    */
   void setHeldSkin(double skin);
 
@@ -98,8 +99,9 @@ public:
    * @param energy Receives the energy, eV.
    * @param gradient Receives dE/dx, eV/Angstrom. The force is its negation.
    * @param neighbors Optional Verlet list. Null uses the internal list,
-   *        with a skin of one fifth of the cutoff (none in Stream mode). A list is reused while each atom has moved by at
-   *        most half its skin and the cell is unchanged.
+   *        with a skin of one fifth of the cutoff (none in Stream mode).
+   *        A list is reused as nlist::Neighbours reuses it, across a
+   *        changed cell too.
    */
   void energyAndGradient(const double *positions, const int *atomic_numbers,
                          const double *box, std::size_t n_atoms, double *energy,

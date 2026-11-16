@@ -153,9 +153,17 @@ every atom stays within half the skin of where it was at the last build.
 That move is measured to the nearest periodic image, so the atoms that the
 gather wraps back into the box through a face keep the list.
 A new box, as under =fix npt=, =fix deform=, =change_box= or the strains of
-=virial fd=, or another atom count rebuilds it.
+=virial fd=, keeps the list too.
+Each move is then measured from the old position carried with the cell, and the
+half skin shrinks by half of the most that the change can stretch the cutoff
+plus the skin.
+For the cell rows \(H_0\) of the build and \(H\) of the step, with
+\(F = H_0^{-1} H\), that stretch is at most
+\(\sqrt{\|F - I\|_1 \|F - I\|_\infty}\) times the cutoff plus the skin, so every
+pair now within the cutoff was within the cutoff plus the skin at the build.
+A box change that leaves no room, or another atom count, rebuilds the list.
 The list does not change the result: =EAMTable= with its skin gives the bits of
-=skin 0=, which rebuilds whenever an atom moves.
+=skin 0=, which rebuilds whenever an atom moves or the box changes.
 
 *** Domain
 
@@ -518,8 +526,12 @@ The numbers below are from one run; the tests assert looser bounds.
 - Per-atom energy and virial only for =LJ=, =Morse=, =SuttonChen= and
   =EAMTable=; see the per-atom section.
 - =units metal= and =boundary p p p= only.
-- On the gather path a new box rebuilds the potential's pair list, so under
-  =fix npt=, =fix box/relax= or =fix deform= it is built on every step.
+- On the gather path the potential's pair list follows a new box only while the
+  skin has room for it.
+  A strain since the last build that stretches the cutoff plus the skin by the
+  whole skin, about 10 % for =LJ= with its 1 Å skin and 8.5 Å cutoff and less
+  with the atoms' own moves, rebuilds it, so a fast =fix deform= or a large
+  =change_box= still builds it often.
 - The finite-difference virial is only as smooth as the potential's energy.
   For EMT and =EAMAl= it changed by tens of bar when the strain step was changed
   around \(10^{-5}\), so their pressure carries that uncertainty.

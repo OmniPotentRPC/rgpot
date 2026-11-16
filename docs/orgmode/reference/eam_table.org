@@ -108,12 +108,16 @@ it while every atom stays within half the skin of where it was at the last
 build.
 The move is measured to the nearest periodic image, so atoms that the caller
 wraps back into the cell keep the list.
-A new cell, another atom count, or a move past half the skin rebuilds it.
+Under a new cell the move is measured from the position carried with the cell,
+and the limit drops by half of what the change can stretch the cutoff plus the
+skin.
+A cell change that leaves no room, another atom count, or a move past the limit
+rebuilds it.
 Another element on a site does not, as the list holds positions only.
 The pairs within the cutoff are visited in the same order with any skin, so the
 skin changes how often the list is built, not the bits of the result, and it is
 not part of =paramsKey()=.
-=skin = 0= rebuilds the list whenever an atom moves.
+=skin = 0= rebuilds the list whenever an atom moves or the cell changes.
 =setNeighbourMode(nlist::Mode::Stream)= walks the cells on every call and keeps
 no list.
 =listReused()= tells whether the last call kept the list and =listBuilds()=
@@ -156,11 +160,13 @@ rather than reading a file.
 
 =[skin]= follows the sheared =CuNi= cell through small moves, atoms shifted by
 cell vectors and wrapped back, another element on some sites, one atom past half
-the skin, a strained cell and one atom fewer.
+the skin, a 0.3 % strain and a 0.04 shear that carry the atoms, a 0.45 Angstrom
+move past what the strain leaves of half the skin, a 20 % strain and one atom
+fewer.
 After each step the potential with its 1 Angstrom skin gives the energy, the
 forces, the stress and the per-atom energies and virials of a potential with
 skin 0 to the bit, and =listReused()= and =listBuilds()= show a rebuild exactly
-for the move past the skin, the strain and the atom count.
+for the two moves, the 20 % strain and the atom count.
 On a free =Cu_u3= cluster the kept list matches skin 0 to the bit and a stream
 within 1e-10 eV and eV/Angstrom.
 

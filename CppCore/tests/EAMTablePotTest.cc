@@ -336,12 +336,34 @@ TEST_CASE("EAM table pair list reuse gives the bits of a rebuilt list", "[EAMTab
   step(false);
   step(true);
 
-  // A strained cell.
+  // A strained cell that carries the atoms keeps the list, and so does a
+  // shear x += 0.04 y on top of it.
   for (double &v : box) {
     v *= 1.003;
   }
   for (double &v : pos) {
     v *= 1.003;
+  }
+  step(true);
+  for (std::size_t r = 0; r < box.size(); r += 3) {
+    box[r] += 0.04 * box[r + 1];
+  }
+  for (std::size_t i = 0; i < z.size(); ++i) {
+    pos[3 * i] += 0.04 * pos[3 * i + 1];
+  }
+  step(true);
+
+  // The strain leaves 0.36 of the 0.5 Angstrom each atom may move.
+  pos[3] += 0.45;
+  step(false);
+  step(true);
+
+  // A strain of 20% leaves none.
+  for (double &v : box) {
+    v *= 1.2;
+  }
+  for (double &v : pos) {
+    v *= 1.2;
   }
   step(false);
 
