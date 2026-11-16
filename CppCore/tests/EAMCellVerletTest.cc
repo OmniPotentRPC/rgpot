@@ -465,6 +465,28 @@ TEST_CASE("EAM pure-metal reuse agrees across threads", "[eam][threads]") {
   setThreads("");
 }
 
+TEST_CASE("EAM owned rows match one thread bit for bit", "[eam][threads]") {
+  // 512 atoms. Two or more threads share a pair's density term inside
+  // one owned range. One thread stays on the direct walk.
+  std::vector<int> z;
+  const std::vector<double> pos = fcc(8, 4.05, z, 13);
+  const double length = 8 * 4.05;
+  setThreads("1");
+  rgpot::EAMPot one_pot;
+  one_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const Outcome one = evaluate(one_pot, pos, z, length);
+  for (const char *threads : {"2", "4", "8"}) {
+    setThreads(threads);
+    rgpot::EAMPot pot;
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    const Outcome first = evaluate(pot, pos, z, length);
+    const Outcome second = evaluate(pot, pos, z, length);
+    expectBits(second, first);
+    expectBits(first, one);
+  }
+  setThreads("");
+}
+
 extern "C" std::size_t rgpot_eam_object_bytes();
 
 TEST_CASE("EAM construction uses the same layout as the library", "[eam][mode]") {

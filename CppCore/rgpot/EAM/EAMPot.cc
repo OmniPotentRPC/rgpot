@@ -60,7 +60,14 @@ void EAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 } // namespace rgpot
 
 void EAM::evaluateThreaded(long N, const int *atomicNrs, double *F, double *U) {
-  accumulateOwned(N, atomicNrs, F, U);
+  // One choice for this call, before either walk starts. Every thread
+  // owns at least 64 atoms, or none of them take the shared walk.
+  const int nt = threads_used_;
+  if (nt > 1 && N / nt >= 64) {
+    shareOwned(N, atomicNrs, F, U);
+  } else {
+    accumulateOwned(N, atomicNrs, F, U);
+  }
 }
 
 void EAM::accumulateOwned(long N, const int *atomicNrs, double *F, double *U) {
@@ -536,4 +543,291 @@ void EAM::accumulateFilled(long i, const int *atomicNrs, double *F, double &U,
     F[3 * d.atom + 1] -= dF * d.y;
     F[3 * d.atom + 2] -= dF * d.z;
   }
+}
+
+void EAM::shareOwned(long N, const int *atomicNrs, double *F, double *U) {
+  // Each atom writes its own slots. The force fold then reads the partner
+  // through the reverse slot: lower neighbours, this atom's pair terms,
+  // this atom's embedding, then the higher neighbours. That is the order
+  // the serial walk adds into this atom, so the bits do not depend on
+  // which thread owns the atom. The pair record sits in one struct so the
+  // reverse read is one line, and each thread's energy steps are already
+  // in atom order so the final sum is one contiguous add per thread.
+  const auto nslot = neighbours_.slots();
+  struct Term {
+    double x;
+    double y;
+    double z;
+    double fscale;
+    double morse;
+  };
+  struct Scratch {
+    std::vector<double> dix;
+    std::vector<double> diy;
+    std::vector<double> diz;
+    std::vector<double> df;
+    std::vector<int> e_at;
+    std::vector<char> live;
+    std::vector<double> packed;
+    std::vector<int> pack_at;
+    std::vector<int> pack_used;
+    std::vector<Term> term;
+  };
+  static Scratch scratch;
+  if (static_cast<long>(scratch.df.size()) < N) {
+    scratch.dix.resize(static_cast<std::size_t>(N));
+    scratch.diy.resize(static_cast<std::size_t>(N));
+    scratch.diz.resize(static_cast<std::size_t>(N));
+    scratch.df.resize(static_cast<std::size_t>(N));
+  }
+  if (scratch.live.size() < nslot) {
+    scratch.live.resize(nslot);
+  }
+  if (scratch.term.size() < nslot) {
+    scratch.term.resize(nslot);
+  }
+  const auto &off = neighbours_.offsets();
+  const auto &nbr = neighbours_.neighbours();
+  scratch.e_at.resize(static_cast<std::size_t>(N) + 1);
+  scratch.e_at[0] = 0;
+  for (long i = 0; i < N; ++i) {
+    const int deg = static_cast<int>(off[static_cast<std::size_t>(i) + 1] -
+                                     off[static_cast<std::size_t>(i)]);
+    scratch.e_at[static_cast<std::size_t>(i) + 1] =
+        scratch.e_at[static_cast<std::size_t>(i)] + deg + 1;
+  }
+  const int nt = threads_used_;
+  scratch.pack_at.resize(static_cast<std::size_t>(nt) + 1);
+  scratch.pack_used.assign(static_cast<std::size_t>(nt), 0);
+  scratch.pack_at[0] = 0;
+  for (int t = 0; t < nt; ++t) {
+    const auto range = rgpot::nlist::partition(N, t, nt);
+    const int room = scratch.e_at[static_cast<std::size_t>(range.end)] -
+                     scratch.e_at[static_cast<std::size_t>(range.begin)];
+    scratch.pack_at[static_cast<std::size_t>(t) + 1] =
+        scratch.pack_at[static_cast<std::size_t>(t)] + room;
+  }
+  if (static_cast<int>(scratch.packed.size()) < scratch.pack_at[static_cast<std::size_t>(nt)]) {
+    scratch.packed.resize(static_cast<std::size_t>(scratch.pack_at[static_cast<std::size_t>(nt)]));
+  }
+#if defined(_OPENMP)
+#pragma omp parallel num_threads(nt)
+#endif
+  {
+#if defined(_OPENMP)
+    const int thread = omp_get_thread_num();
+#else
+    const int thread = 0;
+#endif
+    const auto range = rgpot::nlist::partition(N, thread, nt);
+    double *steps = scratch.packed.data() + scratch.pack_at[static_cast<std::size_t>(thread)];
+    int ne = 0;
+    for (long i = range.begin; i < range.end; ++i) {
+      const element_parameters epar = get_element_parameters(atomicNrs[i]);
+      const double cutoff2 = epar.r_cut * epar.r_cut;
+      double dens = 0.0;
+      double dix = 0.0;
+      double diy = 0.0;
+      double diz = 0.0;
+      const long begin = static_cast<long>(off[static_cast<std::size_t>(i)]);
+      const long end = static_cast<long>(off[static_cast<std::size_t>(i) + 1]);
+      for (long p = begin; p < end; ++p) {
+        const auto slot = static_cast<std::size_t>(p);
+        const long j = nbr[slot];
+        const auto rev = slot < rev_.size() ? rev_[slot] : -1;
+        // The lower atom in this range already stored the density term.
+        if (j < i && j >= range.begin && rev >= 0) {
+          if (scratch.live[slot] == 0) {
+            continue;
+          }
+          const Term &held = scratch.term[slot];
+          dens += held.morse;
+          dix += held.fscale * held.x;
+          diy += held.fscale * held.y;
+          diz += held.fscale * held.z;
+          continue;
+        }
+        double dx = 0.0;
+        double dy = 0.0;
+        double dz = 0.0;
+        double r2 = 0.0;
+        geometry(i, j, dx, dy, dz, r2);
+        Term &term = scratch.term[slot];
+        term.x = dx;
+        term.y = dy;
+        term.z = dz;
+        if (r2 > cutoff2) {
+          scratch.live[slot] = 0;
+          if (j > i && j < range.end && rev >= 0) {
+            scratch.live[static_cast<std::size_t>(rev)] = 0;
+          }
+          continue;
+        }
+        scratch.live[slot] = 1;
+        const double r = std::sqrt(r2);
+        const double r6 = r2 * r2 * r2;
+        const double exp_b1 = std::exp(-epar.beta1 * r);
+        const double exp_b2 = std::exp(-2.0 * epar.beta2 * r);
+        const double rho_pair = exp_b1 + 512.0 * exp_b2;
+        const double rho_term = r6 * rho_pair;
+        const double r5 = r2 * r2 * r;
+        const double mag_force_den =
+            6.0 * r5 * rho_pair +
+            r6 * (-epar.beta1 * exp_b1 - 1024.0 * epar.beta2 * exp_b2);
+        const double invR = 1.0 / r;
+        const double fscale = -mag_force_den * invR;
+        term.fscale = fscale;
+        dens += rho_term;
+        dix += fscale * dx;
+        diy += fscale * dy;
+        diz += fscale * dz;
+        if (j > i) {
+          const double expArg = std::exp(-epar.alphaM * (r - epar.Rm));
+          const double d = 1.0 - expArg;
+          const double phi_r = epar.Dm * d * d - epar.Dm;
+          const double mag_force = 2.0 * epar.alphaM * epar.Dm * d * (d - 1.0);
+          term.morse = mag_force * invR;
+          steps[ne] = phi_r;
+          ++ne;
+          if (j < range.end && rev >= 0) {
+            Term &back = scratch.term[static_cast<std::size_t>(rev)];
+            back.x = -dx;
+            back.y = -dy;
+            back.z = -dz;
+            back.fscale = fscale;
+            back.morse = rho_term;
+            scratch.live[static_cast<std::size_t>(rev)] = 1;
+          }
+        } else {
+          term.morse = 0.0;
+        }
+      }
+      steps[ne] = embedding_function(epar.func_coeff, dens);
+      ++ne;
+      scratch.dix[static_cast<std::size_t>(i)] = dix;
+      scratch.diy[static_cast<std::size_t>(i)] = diy;
+      scratch.diz[static_cast<std::size_t>(i)] = diz;
+      scratch.df[static_cast<std::size_t>(i)] = embedding_force(epar.func_coeff, dens);
+    }
+    scratch.pack_used[static_cast<std::size_t>(thread)] = ne;
+#if defined(_OPENMP)
+#pragma omp barrier
+#endif
+    for (long i = range.begin; i < range.end; ++i) {
+      double fx = 0.0;
+      double fy = 0.0;
+      double fz = 0.0;
+      const long begin = static_cast<long>(off[static_cast<std::size_t>(i)]);
+      const long end = static_cast<long>(off[static_cast<std::size_t>(i) + 1]);
+      for (long p = begin; p < end; ++p) {
+        const long j = nbr[static_cast<std::size_t>(p)];
+        if (j >= i) {
+          break;
+        }
+        if (static_cast<std::size_t>(p) >= rev_.size()) {
+          continue;
+        }
+        const auto rev = rev_[static_cast<std::size_t>(p)];
+        if (rev < 0 || scratch.live[static_cast<std::size_t>(rev)] == 0) {
+          continue;
+        }
+        const auto rs = static_cast<std::size_t>(rev);
+        const Term &back = scratch.term[rs];
+        const double pdx = back.x;
+        const double pdy = back.y;
+        const double pdz = back.z;
+        fx -= back.morse * pdx;
+        fy -= back.morse * pdy;
+        fz -= back.morse * pdz;
+        const double sx = -back.fscale * pdx;
+        const double sy = -back.fscale * pdy;
+        const double sz = -back.fscale * pdz;
+        const double dFj = scratch.df[static_cast<std::size_t>(j)];
+        fx -= dFj * sx;
+        fy -= dFj * sy;
+        fz -= dFj * sz;
+      }
+      struct Held {
+        double x;
+        double y;
+        double z;
+      };
+      Held held[128];
+      int nh = 0;
+      const bool stash = (end - begin) <= 128;
+      for (long p = begin; p < end; ++p) {
+        const auto slot = static_cast<std::size_t>(p);
+        const long j = nbr[slot];
+        if (j <= i || scratch.live[slot] == 0) {
+          continue;
+        }
+        const Term &here = scratch.term[slot];
+        fx += here.morse * here.x;
+        fy += here.morse * here.y;
+        fz += here.morse * here.z;
+        if (!stash || static_cast<std::size_t>(p) >= rev_.size()) {
+          continue;
+        }
+        const auto rev = rev_[slot];
+        if (rev < 0 || scratch.live[static_cast<std::size_t>(rev)] == 0) {
+          continue;
+        }
+        const auto rs = static_cast<std::size_t>(rev);
+        const Term &back = scratch.term[rs];
+        const double dFj = scratch.df[static_cast<std::size_t>(j)];
+        const double sx = -back.fscale * back.x;
+        const double sy = -back.fscale * back.y;
+        const double sz = -back.fscale * back.z;
+        held[nh] = Held{dFj * sx, dFj * sy, dFj * sz};
+        ++nh;
+      }
+      const auto is = static_cast<std::size_t>(i);
+      const double dFi = scratch.df[is];
+      fx -= dFi * scratch.dix[is];
+      fy -= dFi * scratch.diy[is];
+      fz -= dFi * scratch.diz[is];
+      if (stash) {
+        for (int h = 0; h < nh; ++h) {
+          fx -= held[h].x;
+          fy -= held[h].y;
+          fz -= held[h].z;
+        }
+      } else {
+        for (long p = begin; p < end; ++p) {
+          const long j = nbr[static_cast<std::size_t>(p)];
+          if (j <= i) {
+            continue;
+          }
+          if (static_cast<std::size_t>(p) >= rev_.size()) {
+            continue;
+          }
+          const auto rev = rev_[static_cast<std::size_t>(p)];
+          if (rev < 0 || scratch.live[static_cast<std::size_t>(rev)] == 0) {
+            continue;
+          }
+          const auto rs = static_cast<std::size_t>(rev);
+          const Term &back = scratch.term[rs];
+          const double sx = -back.fscale * back.x;
+          const double sy = -back.fscale * back.y;
+          const double sz = -back.fscale * back.z;
+          const double dFj = scratch.df[static_cast<std::size_t>(j)];
+          fx -= dFj * sx;
+          fy -= dFj * sy;
+          fz -= dFj * sz;
+        }
+      }
+      F[3 * i] = fx;
+      F[3 * i + 1] = fy;
+      F[3 * i + 2] = fz;
+    }
+  }
+  double total = 0.0;
+  for (int t = 0; t < nt; ++t) {
+    const double *steps = scratch.packed.data() + scratch.pack_at[static_cast<std::size_t>(t)];
+    const int ne = scratch.pack_used[static_cast<std::size_t>(t)];
+    for (int k = 0; k < ne; ++k) {
+      total += steps[k];
+    }
+  }
+  *U = total;
 }

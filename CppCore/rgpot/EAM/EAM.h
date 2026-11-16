@@ -189,6 +189,9 @@ private:
   // Threaded stored walk. Each thread owns a contiguous atom range and
   // folds that atom's force in the serial write order.
   void accumulateOwned(long N, const int *atomicNrs, double *F, double *U);
+  // Same walk as accumulateOwned, except a pair's density term is evaluated
+  // once when both atoms sit in the calling thread's range.
+  void shareOwned(long N, const int *atomicNrs, double *F, double *U);
   void geometry(long i, long j, double &dx, double &dy, double &dz,
                 double &r2) const {
     const double half0 = box_len_[0] * 0.5;
