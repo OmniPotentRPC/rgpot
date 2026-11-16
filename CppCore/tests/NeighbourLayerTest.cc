@@ -62,6 +62,20 @@ std::vector<double> fcc(int n, double a) {
   return pos;
 }
 
+std::vector<double> simpleCubic(int n, double a) {
+  std::vector<double> pos;
+  for (int ix = 0; ix < n; ++ix) {
+    for (int iy = 0; iy < n; ++iy) {
+      for (int iz = 0; iz < n; ++iz) {
+        pos.push_back(ix * a);
+        pos.push_back(iy * a);
+        pos.push_back(iz * a);
+      }
+    }
+  }
+  return pos;
+}
+
 std::vector<double> diamond(int n, double a) {
   const double b[8][3] = {{0, 0, 0},         {0.5, 0.5, 0},     {0.5, 0, 0.5},
                           {0, 0.5, 0.5},     {0.25, 0.25, 0.25},{0.75, 0.75, 0.25},
@@ -364,11 +378,10 @@ void loadCells(rgpot::nlist::Neighbours &cells, const std::vector<double> &pos, 
   cells.update(pos.data(), pos.size() / 3, box, spec);
 }
 
-// fcc(n, a) mapped into `cell`, which should be about n * a wide, with a
-// jitter that keeps pairs off bin and image boundaries.
-std::vector<double> shearedFcc(int n, double a, const double cell[9]) {
-  const double side = n * a;
-  const auto cube = fcc(n, a);
+// A lattice `side` wide mapped into `cell`, which should be about as wide,
+// with a jitter that keeps pairs off bin and image boundaries.
+std::vector<double> sheared(const std::vector<double> &cube, double side,
+                            const double cell[9]) {
   const std::size_t count = cube.size() / 3;
   std::vector<double> pos(cube.size());
   for (std::size_t i = 0; i < count; ++i) {
@@ -382,6 +395,10 @@ std::vector<double> shearedFcc(int n, double a, const double cell[9]) {
     }
   }
   return pos;
+}
+
+std::vector<double> shearedFcc(int n, double a, const double cell[9]) {
+  return sheared(fcc(n, a), n * a, cell);
 }
 
 } // namespace
@@ -736,20 +753,44 @@ void wrapCell(std::vector<double> &pos, const double *cell) {
   }
 }
 
-/// Every pair within `cutoff` by the minimum image of `cell`.
+/// Every pair within `cutoff` of a lower-triangular `cell` whose lattice
+/// planes are all more than twice the cutoff apart. The minimum image of
+/// a pair inside the cutoff then has every fractional coordinate under a
+/// half, so rounding them finds it, as directPairs does in a box.
 PairMap bruteForce(const std::vector<double> &pos, const double *cell, double cutoff) {
-  const rgpot::nlist::MinimumImage image(cell, {true, true, true});
-  const std::size_t n = pos.size() / 3;
+  const double *a = cell;
+  const double *b = cell + 3;
+  const double *c = cell + 6;
+  auto area = [](const double *u, const double *v) {
+    const double x = u[1] * v[2] - u[2] * v[1];
+    const double y = u[2] * v[0] - u[0] * v[2];
+    const double z = u[0] * v[1] - u[1] * v[0];
+    return std::sqrt(x * x + y * y + z * z);
+  };
+  const double volume = a[0] * b[1] * c[2];
+  REQUIRE(volume > 2 * cutoff * area(b, c));
+  REQUIRE(volume > 2 * cutoff * area(c, a));
+  REQUIRE(volume > 2 * cutoff * area(a, b));
+  const double cut2 = cutoff * cutoff;
+  const int n = static_cast<int>(pos.size() / 3);
   PairMap out;
-  for (std::size_t i = 0; i < n; ++i) {
-    for (std::size_t j = i + 1; j < n; ++j) {
+  for (int i = 0; i < n; ++i) {
+    for (int j = i + 1; j < n; ++j) {
       double dx = pos[3 * i] - pos[3 * j];
       double dy = pos[3 * i + 1] - pos[3 * j + 1];
       double dz = pos[3 * i + 2] - pos[3 * j + 2];
-      image.fold(dx, dy, dz);
+      const double s2 = dz / c[2];
+      const double s1 = (dy - s2 * c[1]) / b[1];
+      const double s0 = (dx - s1 * b[0] - s2 * c[0]) / a[0];
+      const double k0 = roundVisit(s0);
+      const double k1 = roundVisit(s1);
+      const double k2 = roundVisit(s2);
+      dx -= k0 * a[0] + k1 * b[0] + k2 * c[0];
+      dy -= k1 * b[1] + k2 * c[1];
+      dz -= k2 * c[2];
       const double r2 = dx * dx + dy * dy + dz * dz;
-      if (r2 <= cutoff * cutoff) {
-        out[{static_cast<int>(i), static_cast<int>(j)}] = r2;
+      if (r2 <= cut2) {
+        out[{i, j}] = r2;
       }
     }
   }
@@ -760,16 +801,16 @@ PairMap bruteForce(const std::vector<double> &pos, const double *cell, double cu
 
 TEST_CASE("a strongly sheared cell finds every pair", "[nlist][triclinic]") {
   // Tilts of 0.2 to 0.3 of the side, inside what LAMMPS allows.
-  // Bins along x, y and z lost about one pair in nine of this lattice.
+  // Bins along x, y and z lost about one pair in eight of this lattice.
   setThreads("1");
   const double a = 3.6;
   const double side = 10 * a;
   const double cell[9] = {side, 0, 0, 0.3 * side, side, 0, 0.2 * side, -0.25 * side, side};
-  const auto pos = shearedFcc(10, a, cell);
+  const auto pos = sheared(simpleCubic(10, a), side, cell);
   const std::size_t n = pos.size() / 3;
   const double cutoff = 5.0;
   const PairMap direct = bruteForce(pos, cell, cutoff);
-  REQUIRE(direct.size() > 90000);
+  REQUIRE(direct.size() > 6000);
   for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
     rgpot::nlist::Spec spec;
     spec.cutoff = cutoff;
@@ -787,6 +828,9 @@ TEST_CASE("a stored list follows a strained cell", "[nlist][skin][triclinic]") {
   // Skin 1 and a 5 A cutoff, so a strain e leaves each atom (1 - 6 e) / 2
   // A to move. The cell starts orthogonal and takes a tilt, so the walks
   // go from the orthogonal image and the tile walk to the sheared ones.
+  // Nine simple cubic cells of 3.6 A give five bins a side, and the second
+  // shell at 5.09 A sits just outside the cutoff, so the moves and strains
+  // carry pairs across it.
   setThreads("1");
   const double a = 3.6;
   const double side = 9 * a;
@@ -818,7 +862,7 @@ TEST_CASE("a stored list follows a strained cell", "[nlist][skin][triclinic]") {
   };
 
   const double cube[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
-  auto start = fcc(9, a);
+  auto start = simpleCubic(9, a);
   for (std::size_t k = 0; k < start.size(); ++k) {
     start[k] += 0.05 * std::sin(1.7 * static_cast<double>(k));
   }
