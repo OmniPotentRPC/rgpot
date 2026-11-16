@@ -335,6 +335,65 @@ candidates) and 16 % in the EAM sums.
 =LJ= rebuilt its list in 40 of 112 calls: the gather wraps every atom into the
 box, and each atom that crossed a face looked as if it had moved a box length.
 
+=--ensemble npt= runs the timed steps under
+=fix npt temp 300 300 0.1 iso 0.0 0.0 1.0=, and =--ensemble deform= under
+=fix nve= with =fix deform 1 x trate 0.05 remap x=; both change the box on every
+step.
+While a new box rebuilt the list, the gather path built it on every step there.
+Counted with perf on the same boxes and fixes, but =fix deform 1 x erate 0.05=
+without remap, =LJ= built it in 111 of 112 calls over 10 and 100 steps under
+=fix npt=, in 110 under =fix deform= and in 3 under NVE, and =EAMTable= in 61,
+60 and 1 of 62 over 10 and 50 steps.
+The one-rank =fix npt= profiles put 92 % of the =LJ= samples and 84 % of the
+=EAMTable= samples in the list build (its scan, the sort of its rows and the
+count of its candidates), and 6 % and 14 % in the sums.
+Now that the list follows the box, the same decks build it 3 times for =LJ= and
+once for =EAMTable= under all three ensembles.
+In the timed runs below, =LJ= built it twice in 101 calls and =EAMTable= not at
+all.
+
+The table is milliseconds per step, the median of 3 repeats of 100 steps, from
+
+#+attr_rgpot: syntax times the fix npt cases; needs an MPI lmp and the plugin
+#+begin_src bash
+python engines/lammps/bench_pair_rgpot.py --lmp lmp --plugin libpair_rgpot.so \
+    --eam CppCore/tests/data/eam_table/CuNi.eam.alloy --ranks 1 2 --repeats 3 \
+    --scaling strong --ensemble npt
+#+end_src
+
+and the same with =--ensemble deform=, on the machine above with Open MPI
+5.0.11.
+Before is the plugin whose list a new box rebuilt; after is the one whose list
+follows the box.
+
+| Ensemble | System | Ranks | Plugin | Native | Gather | Domain |
+|----------+--------+-------+--------+--------+--------+--------|
+| npt      | LJ     |     1 | before |   9.74 | 189.53 |  10.96 |
+| npt      | LJ     |     1 | after  |   8.90 |  15.41 |  10.34 |
+| npt      | LJ     |     2 | before |   5.27 | 200.11 |   5.78 |
+| npt      | LJ     |     2 | after  |   4.67 |  15.42 |   5.25 |
+| npt      | CuNi   |     1 | before |  48.34 | 592.03 |  63.95 |
+| npt      | CuNi   |     1 | after  |  45.20 |  76.29 |  52.78 |
+| npt      | CuNi   |     2 | before |  28.52 | 549.63 |  28.05 |
+| npt      | CuNi   |     2 | after  |  24.32 |  76.01 |  27.72 |
+| deform   | LJ     |     1 | before |   9.02 | 181.40 |   9.11 |
+| deform   | LJ     |     1 | after  |   8.72 |  15.30 |   8.61 |
+| deform   | LJ     |     2 | before |   4.53 | 179.52 |   4.39 |
+| deform   | LJ     |     2 | after  |   4.43 |  15.40 |   4.37 |
+| deform   | CuNi   |     1 | before |  44.56 | 511.68 |  46.75 |
+| deform   | CuNi   |     1 | after  |  44.17 |  74.27 |  46.54 |
+| deform   | CuNi   |     2 | before |  23.57 | 509.85 |  25.29 |
+| deform   | CuNi   |     2 | after  |  23.48 |  75.20 |  24.91 |
+
+The gather path got 12 to 13 times faster for Lennard-Jones and 7 to 8 times for
+CuNi under =fix npt=, and 12 and 7 times under =fix deform=, which brings it
+within 9 % of its NVE time in the table above.
+The native styles and the domain path run the same code before and after, so
+their columns show the noise.
+The repeats of a case differ by up to 12.7 % before and 7.0 % after, and the
+same code ran up to 17.5 % faster after under =fix npt= and up to 5.5 % under
+=fix deform=, which is the drift between the two sessions.
+
 The CuNi deck sets both masses to 60.
 =eam/alloy= replaces them in =pair_coeff= with the masses in the potential file,
 so the native CuNi runs follow another trajectory than the =rgpot= runs and end
