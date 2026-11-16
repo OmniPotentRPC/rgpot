@@ -234,11 +234,24 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
       place[atom] = off;
     }
     const auto range = nlist::partition(n, t, nt);
+    // Each bond's reciprocal is shared by every angle at that bond.
+    // A longer neighbour list keeps the same values in a temporary buffer.
+    constexpr int kReciprocalCap = 256;
+    double inv_stack[kReciprocalCap];
+    std::vector<double> inv_heap;
     for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
       const Bond *nb = bonds.data() + bond_at[static_cast<std::size_t>(i)];
       const int m = bond_n[static_cast<std::size_t>(i)];
       double *steps = eterm.data() + energy_at[static_cast<std::size_t>(i)];
       int ne = 0;
+      double *inv_r = inv_stack;
+      if (m > kReciprocalCap) {
+        inv_heap.resize(static_cast<std::size_t>(m));
+        inv_r = inv_heap.data();
+      }
+      for (int a = 0; a < m; ++a) {
+        inv_r[a] = 1.0 / nb[a].r;
+      }
       for (int a = 0; a < m; ++a) {
         const Bond &bj = nb[a];
         if (bj.j <= i) {
@@ -248,19 +261,19 @@ void runWide(nlist::Neighbours &cells, int n, int nt, double cut2, double scale,
         const double dedr = pair_dedr[bond_at[static_cast<std::size_t>(i)] + a];
         steps[ne] = StillingerWeberSi::kEpsilon * f2;
         ++ne;
-        const double inv_r = 1.0 / bj.r;
-        const double sx = scale * dedr * bj.x * inv_r;
-        const double sy = scale * dedr * bj.y * inv_r;
-        const double sz = scale * dedr * bj.z * inv_r;
+        const double inv = inv_r[static_cast<std::size_t>(a)];
+        const double sx = scale * dedr * bj.x * inv;
+        const double sy = scale * dedr * bj.y * inv;
+        const double sz = scale * dedr * bj.z * inv;
         csr[static_cast<std::size_t>(place[i]++)] = Hit{sx, sy, sz};
         csr[static_cast<std::size_t>(place[bj.j]++)] = Hit{-sx, -sy, -sz};
       }
       for (int a = 0; a < m; ++a) {
         const Bond &bj = nb[a];
+        const double inv_r1 = inv_r[static_cast<std::size_t>(a)];
         for (int b = a + 1; b < m; ++b) {
           const Bond &bk = nb[b];
-          const double inv_r1 = 1.0 / bj.r;
-          const double inv_r2 = 1.0 / bk.r;
+          const double inv_r2 = inv_r[static_cast<std::size_t>(b)];
           const double inv = inv_r1 * inv_r2;
           double cth = (bj.x * bk.x + bj.y * bk.y + bj.z * bk.z) * inv;
           if (cth > 1.0) {

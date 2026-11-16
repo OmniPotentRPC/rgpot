@@ -327,3 +327,39 @@ TEST_CASE("SW one thread matches the others bit for bit", "[SWSi][threads]") {
   setenv("OMP_NUM_THREADS", "1", 1);
   omp_set_num_threads(1);
 }
+
+TEST_CASE("SW wide rows match one thread bit for bit", "[SWSi][threads]") {
+  // 512 atoms takes the wide path. One thread stays on the scalar walk.
+  const double u = pairMinimumU();
+  const double a0 = u * StillingerWeberSi::kSigma * 4.0 / std::sqrt(3.0);
+  std::vector<double> raw;
+  appendDiamond(raw, 4, a0);
+  const std::size_t n = raw.size() / 3;
+  REQUIRE(n >= 256);
+  AtomMatrix positions(n, 3);
+  std::copy(raw.begin(), raw.end(), positions.data());
+  const std::vector<int> types(n, 14);
+  const auto box = cubic(4 * a0);
+  auto run = [&](int threads) {
+    const std::string text = std::to_string(threads);
+    setenv("OMP_NUM_THREADS", text.c_str(), 1);
+    omp_set_num_threads(threads);
+    StillingerWeberSi pot;
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    return pot(positions, types, box);
+  };
+  const auto one = run(1);
+  const double energy = std::get<0>(one);
+  const AtomMatrix &force = std::get<1>(one);
+  for (int threads : {2, 4, 8}) {
+    const auto got = run(threads);
+    const double other_energy = std::get<0>(got);
+    const AtomMatrix &other = std::get<1>(got);
+    REQUIRE(std::memcmp(&other_energy, &energy, sizeof(double)) == 0);
+    REQUIRE(other.size() == force.size());
+    REQUIRE(std::memcmp(other.data(), force.data(),
+                        sizeof(double) * static_cast<std::size_t>(force.size())) == 0);
+  }
+  setenv("OMP_NUM_THREADS", "1", 1);
+  omp_set_num_threads(1);
+}
