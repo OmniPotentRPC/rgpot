@@ -94,6 +94,8 @@ public:
 
   /** Read positions, velocities, forces, and energies from the Context. */
   [[nodiscard]] OpenMMState state() const;
+  /** Read the periodic box vectors from the Context. */
+  void boxVectors(OpenMM::Vec3 &a, OpenMM::Vec3 &b, OpenMM::Vec3 &c) const;
 
 private:
   struct Impl;
