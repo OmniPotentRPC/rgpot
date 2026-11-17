@@ -14,6 +14,7 @@
 
 #include <catch2/catch_all.hpp>
 
+#include "TestFixtures.hpp"
 #include "rgpot/EAM/EAMPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -29,15 +30,7 @@
 namespace {
 
 void setThreads(const char *value) {
-#if defined(_WIN32)
-  _putenv_s("OMP_NUM_THREADS", value == nullptr ? "" : value);
-#else
-  if (value == nullptr || value[0] == '\0') {
-    unsetenv("OMP_NUM_THREADS");
-  } else {
-    setenv("OMP_NUM_THREADS", value, 1);
-  }
-#endif
+  rgpot::test_fixtures::setOmpThreads(value);
 }
 
 #if defined(_OPENMP) && _OPENMP >= 200805
