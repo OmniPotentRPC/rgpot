@@ -6,8 +6,8 @@
  * @brief The pair sum of a two-body potential on the neighbour layer, with
  * the same bits on any number of threads.
  *
- * Below kTeamMinAtoms the half pairs are walked on the calling thread and
- * each term goes straight into the totals. From kTeamMinAtoms up, each atom
+ * Below the potential's threshold the half pairs are walked on the calling
+ * thread and each term goes straight into the totals. From there up, each atom
  * keeps the energy and strain of the pairs to its partners above it, and
  * the totals add those rows in atom order. One thread on a stored list or
  * an unbounded search walks the half pairs, which reach the force of an
@@ -90,7 +90,8 @@ void halfPairs(const Neighbours &cells, std::size_t n, double cutoff2, Overlap o
 } // namespace detail
 
 /**
- * Adds the pairs of `cells` within `cutoff2` over `n` atoms.
+ * Adds the pairs of `cells` within `cutoff2` over `n` atoms, with the
+ * threshold `from` of teamSize.
  *
  * `term(i, j, r2, energy, fscale)` gives the pair energy and the force on
  * i along d = r_i - r_j as fscale * d, with the same bits for (j, i). The
@@ -100,10 +101,10 @@ void halfPairs(const Neighbours &cells, std::size_t n, double cutoff2, Overlap o
  * nothing; with Overlap::Poison it makes the energy NaN.
  */
 template <typename Term>
-void sumPairs(const Neighbours &cells, std::size_t n, double cutoff2, Overlap overlap,
-              const Term &term, double *force, double &energy, double *strain,
+void sumPairs(const Neighbours &cells, std::size_t n, std::size_t from, double cutoff2,
+              Overlap overlap, const Term &term, double *force, double &energy, double *strain,
               const PerAtomOut *atoms) {
-  if (n < kTeamMinAtoms) {
+  if (n < from) {
     detail::halfPairs<false>(cells, n, cutoff2, overlap, term, force, &energy, strain, atoms);
     return;
   }
@@ -111,7 +112,7 @@ void sumPairs(const Neighbours &cells, std::size_t n, double cutoff2, Overlap ov
   std::vector<double> row_strain(strain != nullptr ? 6 * n : 0, 0.0);
   double *row_e = rows.data();
   double *row_s = strain != nullptr ? row_strain.data() : nullptr;
-  const int slices = teamSize(n);
+  const int slices = teamSize(n, from);
   if (slices == 1 && !(cells.streaming() && !cells.allPairs())) {
     detail::halfPairs<true>(cells, n, cutoff2, overlap, term, force, row_e, row_s, atoms);
   } else {

@@ -150,6 +150,10 @@ public:
   /// Stored Verlet list or a streaming cell walk.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// Atoms from which a call adds its terms atom by atom in index order
+  /// and, when `OMP_NUM_THREADS` asks for more than one, opens a team.
+  static constexpr std::size_t kTeamMinAtoms = rgpot::kTeamMinAtoms;
+
   /// Pairs, over all threads, whose density-pass powers the force pass
   /// reads back. It computes the rest again, with the same bits. The
   /// default keeps 32 MiB of terms.

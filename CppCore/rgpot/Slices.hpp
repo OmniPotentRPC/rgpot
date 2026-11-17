@@ -48,15 +48,21 @@ struct Range {
 /// threads matches the serial order. One without OpenMP.
 [[nodiscard]] int threadsRequested();
 
-/// Atoms below which a call runs on the calling thread alone. A region
-/// costs more than such a call: on 8 threads a neighbour search of 64
-/// atoms, and a Sutton-Chen call on 55 to 80 atoms, took several times
-/// their one-thread time.
+/// Atoms below which a call without a threshold of its own, such as a
+/// neighbour-list build, runs on the calling thread alone. A region costs
+/// more than such a call: on 8 threads a neighbour search of 64 atoms took
+/// several times its one-thread time. Each potential keeps its own
+/// threshold as `kTeamMinAtoms` in its class.
 inline constexpr std::size_t kTeamMinAtoms = 8192;
 
-/// Slices for a call over `n` atoms: one below kTeamMinAtoms or when
-/// threadsRequested() is one, else threadsRequested(), at most `n`.
-[[nodiscard]] int teamSize(std::size_t n);
+/// The threshold of a call whose own is `own`: that of the innermost
+/// TeamThreshold alive on this thread, else `own`.
+[[nodiscard]] std::size_t teamThreshold(std::size_t own) noexcept;
+
+/// Slices for a call over `n` atoms with threshold `from`: one below
+/// `from` or when threadsRequested() is one, else threadsRequested(), at
+/// most `n`.
+[[nodiscard]] int teamSize(std::size_t n, std::size_t from = kTeamMinAtoms);
 
 /// Regions the calling thread has opened through the helpers below, a
 /// region the runtime gave one thread included. A call that leaves the
@@ -83,6 +89,23 @@ public:
 
 private:
   int previous_;
+};
+
+/// While alive, a potential called on this thread takes `atoms` as its
+/// threshold in place of its own, so a benchmark can time a team on either
+/// side of that. The bits still do not depend on the thread count, but a
+/// call between the two thresholds sums in the other order and its energy
+/// can differ in the last bits.
+class TeamThreshold {
+public:
+  explicit TeamThreshold(std::size_t atoms) noexcept;
+  ~TeamThreshold();
+  TeamThreshold(const TeamThreshold &) = delete;
+  TeamThreshold &operator=(const TeamThreshold &) = delete;
+
+private:
+  std::size_t previous_;
+  bool had_previous_;
 };
 
 namespace detail {

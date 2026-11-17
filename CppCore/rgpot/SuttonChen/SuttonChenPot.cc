@@ -179,8 +179,9 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   // nlist/PairSum.hpp. A team, or a stream, then walks the rows of the
   // atoms; one thread on a stored list or an unbounded search keeps the
   // half walks, whose densities and forces the rows repeat bit for bit.
-  const bool rows = n_size >= kTeamMinAtoms;
-  const int nt = nlist::teamSize(n_size);
+  const std::size_t from = teamThreshold(kTeamMinAtoms);
+  const bool rows = n_size >= from;
+  const int nt = nlist::teamSize(n_size, from);
   const bool by_row = rows && (nt > 1 || (stream && !neighbours_.allPairs()));
   std::vector<double> row_e(rows ? n_size : 0, 0.0);
   std::vector<double> row_s(rows && cfg.stress ? 6 * n_size : 0, 0.0);

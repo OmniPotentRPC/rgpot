@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -444,18 +445,36 @@ TEST_CASE("onFullTeam runs every rank at once or none", "[threads][slices]") {
 #endif
 }
 
-TEST_CASE("a call below kTeamMinAtoms takes one slice", "[threads][slices]") {
+TEST_CASE("a call below its threshold takes one slice", "[threads][slices]") {
   setThreads("8");
   CHECK(rgpot::teamSize(0) == 1);
   CHECK(rgpot::teamSize(55) == 1);
   CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms - 1) == 1);
+  CHECK(rgpot::teamSize(99, 100) == 1);
 #if defined(_OPENMP)
   CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) == 8);
+  CHECK(rgpot::teamSize(100, 100) == 8);
+  CHECK(rgpot::teamSize(5, 0) == 5);
 #else
   CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(100, 100) == 1);
 #endif
   setThreads("");
   CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(100, 100) == 1);
+
+  constexpr std::size_t kNever = std::numeric_limits<std::size_t>::max();
+  CHECK(rgpot::teamThreshold(100) == 100);
+  {
+    const rgpot::TeamThreshold outer(10);
+    CHECK(rgpot::teamThreshold(100) == 10);
+    {
+      const rgpot::TeamThreshold inner(kNever);
+      CHECK(rgpot::teamThreshold(100) == kNever);
+    }
+    CHECK(rgpot::teamThreshold(100) == 10);
+  }
+  CHECK(rgpot::teamThreshold(100) == 100);
 
   const std::uint64_t start = rgpot::teamsOpened();
   int runs = 0;

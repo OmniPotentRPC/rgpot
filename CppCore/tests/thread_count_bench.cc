@@ -12,17 +12,21 @@
 // A call is the cluster plus Gaussian noise of --sigma per coordinate,
 // cycling over --frames frames, on one potential object kept across the
 // calls. A line per potential, size and thread count gives the median
-// microseconds per call of --runs runs of at least --seconds each, and,
-// against the first thread count listed, the frames whose energy bits
-// differ, the largest energy gap and the force components whose bits
-// differ. `bits` hashes the energy and force bits of every frame, so two
-// builds can be compared. --mode sets the neighbour mode of every
-// potential; Sutton-Chen walks every pair in any mode.
+// microseconds per call of --runs runs of at least --seconds each, the
+// fastest and the slowest run, and, against the first thread count
+// listed, the frames whose energy bits differ, the largest energy gap and
+// the force components whose bits differ. `bits` hashes the energy and
+// force bits of every frame, so two builds can be compared. --mode sets
+// the neighbour mode of every potential; Sutton-Chen walks every pair in
+// any mode. --team-from sets the team threshold of every potential
+// (rgpot::TeamThreshold): its own, `none` for no team and no row sums at
+// any size, or an atom count.
 //
 // thread_count_bench [--pots sc,lj,ljcluster,morse,zbl,eam,sw,tersoff]
 //                    [--sizes 38,55,80,500,4000,10000] [--threads 1,8]
 //                    [--runs 5] [--seconds 0.2] [--frames 16]
 //                    [--sigma 0.02] [--seed 7] [--mode auto|stored|stream]
+//                    [--team-from own|none|N]
 //
 // Pin the process to as many cores as the largest thread count.
 
@@ -35,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -66,7 +71,13 @@ struct Opts {
   double sigma = 0.02;
   std::uint64_t seed = 7;
   std::string mode = "auto";
+  std::string team_from = "own";
 };
+
+bool isCount(const std::string &text) {
+  return !text.empty() &&
+         std::all_of(text.begin(), text.end(), [](char ch) { return ch >= '0' && ch <= '9'; });
+}
 
 std::vector<std::string> split(const std::string &text) {
   std::vector<std::string> out;
@@ -109,6 +120,8 @@ Opts parse(int argc, char **argv) {
       o.seed = static_cast<std::uint64_t>(std::strtoull(v.c_str(), nullptr, 10));
     } else if (k == "--mode") {
       o.mode = v;
+    } else if (k == "--team-from") {
+      o.team_from = v;
     } else {
       std::fprintf(stderr, "unknown option %s\n", k.c_str());
       std::exit(2);
@@ -122,7 +135,21 @@ Opts parse(int argc, char **argv) {
     std::fprintf(stderr, "--mode is auto, stored or stream\n");
     std::exit(2);
   }
+  if (o.team_from != "own" && o.team_from != "none" && !isCount(o.team_from)) {
+    std::fprintf(stderr, "--team-from is own, none or an atom count\n");
+    std::exit(2);
+  }
   return o;
+}
+
+/// The override --team-from asks for, or none for `own`.
+std::unique_ptr<rgpot::TeamThreshold> teamFrom(const std::string &text) {
+  if (text == "own") {
+    return nullptr;
+  }
+  const std::size_t atoms = text == "none" ? std::numeric_limits<std::size_t>::max()
+                                           : std::strtoull(text.c_str(), nullptr, 10);
+  return std::make_unique<rgpot::TeamThreshold>(atoms);
 }
 
 rgpot::nlist::Mode modeOf(const std::string &name) {
@@ -333,9 +360,12 @@ int main(int argc, char **argv) {
   std::printf("compiler: %s\n", __VERSION__);
 #endif
   setThreads(2);
-  std::printf("openmp: %s mode: %s frames: %d runs: %d seconds: %g sigma: %g seed: %llu\n",
-              rgpot::threadsRequested() == 2 ? "yes" : "no", o.mode.c_str(), o.frames, o.runs,
-              o.seconds, o.sigma, static_cast<unsigned long long>(o.seed));
+  std::printf("openmp: %s mode: %s team-from: %s frames: %d runs: %d seconds: %g sigma: %g "
+              "seed: %llu\n",
+              rgpot::threadsRequested() == 2 ? "yes" : "no", o.mode.c_str(),
+              o.team_from.c_str(), o.frames, o.runs, o.seconds, o.sigma,
+              static_cast<unsigned long long>(o.seed));
+  const auto threshold = teamFrom(o.team_from);
   for (const std::string &name : o.pots) {
     for (const int size : o.sizes) {
       const Case c = makeCase(name, size, modeOf(o.mode));
@@ -395,10 +425,11 @@ int main(int argc, char **argv) {
           return 1;
         }
         std::printf("result pot=%s n_atoms=%zu threads=%d median_us_per_call=%.3f min=%.3f "
-                    "calls=%zu energy_bits_apart=%zu/%zu max_abs_dE=%.3g "
+                    "max=%.3f calls=%zu energy_bits_apart=%zu/%zu max_abs_dE=%.3g "
                     "force_bits_apart=%zu/%zu bits=%016llx\n",
                     name.c_str(), n, o.threads[q], median(us),
-                    *std::min_element(us.begin(), us.end()), calls, e_apart, frames.size(),
+                    *std::min_element(us.begin(), us.end()),
+                    *std::max_element(us.begin(), us.end()), calls, e_apart, frames.size(),
                     max_de, f_apart, forces.size(),
                     static_cast<unsigned long long>(hashBits(energy, forces)));
       }

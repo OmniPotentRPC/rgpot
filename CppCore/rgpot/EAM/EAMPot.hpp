@@ -56,6 +56,11 @@ public:
   /// memory available to the process.
   void setNeighbourMode(nlist::Mode mode) noexcept;
 
+  /// Atoms from which a call adds its terms atom by atom in index order
+  /// and, when `OMP_NUM_THREADS` asks for more than one, opens a team.
+  /// The kernel's own, EAM::kTeamMinAtoms.
+  static constexpr std::size_t kTeamMinAtoms = rgpot::kTeamMinAtoms;
+
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
 private:
