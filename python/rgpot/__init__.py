@@ -32,6 +32,8 @@ OpenMMPot = _core.OpenMMPot
 LJClusterPot = _core.LJClusterPot
 MorsePot = _core.MorsePot
 NumericalError = _core.NumericalError
+atomic_number = _core.atomic_number
+unit_conversion_factor = _core.unit_conversion_factor
 evaluate_lj = _core.evaluate_lj
 neighbor_list = _core.neighbor_list
 has_cache = _core.has_cache
@@ -144,14 +146,18 @@ def available_metatomic_engine_abis() -> list[str]:
 
 
 def __getattr__(name: str) -> Any:
-    """Lazy exports. ``ase`` is not imported by ``import rgpot``."""
-    if name == "ase":
+    """Lazy frontend exports."""
+    if name in {"ase", "lammps"}:
         import importlib
 
-        module = importlib.import_module("rgpot.ase")
-        globals()["ase"] = module
+        module = importlib.import_module(f"rgpot.{name}")
+        globals()[name] = module
         return module
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | {"ase", "lammps"})
 
 
 def evaluate_metatomic(
@@ -192,6 +198,8 @@ __all__ = [
     "rgpot_gromacs_potential",
     "rgpot_openmm_potential",
     "NumericalError",
+    "atomic_number",
+    "unit_conversion_factor",
     "StillingerWeberSi",
     "TersoffSiC",
     "D3Pot",
@@ -225,5 +233,6 @@ __all__ = [
     "has_xckernel",
     "has_fortran_pots",
     "ase",
+    "lammps",
     "__version__",
 ]
