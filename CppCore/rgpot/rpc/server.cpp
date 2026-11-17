@@ -64,8 +64,9 @@ class MpiPefSession;
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/NWChemPot/NWChemPot.hpp"
 #include "rgpot/Potential.hpp"
-#include "rgpot/abi/Handshake.hpp"
+#include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
+#include "rgpot/abi/Handshake.hpp"
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
 #endif
@@ -152,6 +153,121 @@ public:
         m_cp2k(static_cast<rgpot::CP2KPot *>(m_potential.get())), m_pef(pef) {}
 #endif
 
+private:
+  template <typename Context>
+  kj::Promise<void> calculateImpl(Context context, bool requireStress) {
+    const bool stressCapable = m_potential->caps().stress;
+    KJ_REQUIRE(!requireStress || stressCapable,
+               "the selected potential does not provide stress");
+
+    auto fip = context.getParams().getFip();
+    const size_t numAtoms = fip.getPos().size() / 3;
+
+    KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
+
+    // Unit conversion factors (caller units -> internal angstrom/eV)
+    std::string lengthUnit = fip.getLengthUnit();
+    std::string energyUnit = fip.getEnergyUnit();
+    double len_to_angstrom =
+        rgpot::units::unit_conversion_factor(lengthUnit, "angstrom");
+    double ev_to_caller =
+        rgpot::units::unit_conversion_factor("eV", energyUnit);
+    // Force unit: energy/length in caller's system
+    double force_to_caller = ev_to_caller / len_to_angstrom;
+
+    rgpot::types::AtomMatrix nativePositions =
+        rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),
+                                                              numAtoms);
+    if (len_to_angstrom != 1.0) {
+      for (size_t i = 0; i < numAtoms * 3; ++i) {
+        nativePositions.data()[i] *= len_to_angstrom;
+      }
+    }
+
+    std::vector<int> nativeAtomTypes =
+        rgpot::types::adapt::capnp::convertAtomNumbersFromCapnp(
+            fip.getAtmnrs());
+    std::array<std::array<double, 3>, 3> nativeBoxMatrix =
+        rgpot::types::adapt::capnp::convertBoxMatrixFromCapnp(fip.getBox());
+    if (len_to_angstrom != 1.0) {
+      for (auto &row : nativeBoxMatrix)
+        for (auto &val : row)
+          val *= len_to_angstrom;
+    }
+
+    rgpot::types::AtomMatrix forces =
+        rgpot::types::AtomMatrix::Zero(numAtoms, 3);
+    double energy = 0.0;
+    double stress[9] = {};
+    bool hasStress = false;
+
+#ifdef RGPOT_POTSERV_MPI
+    if (m_pef) {
+      try {
+        double variance;
+        std::tie(energy, forces, variance) =
+            m_pef->calculate(nativePositions, nativeAtomTypes, nativeBoxMatrix);
+        (void)variance;
+      } catch (const std::exception &error) {
+        throw KJ_EXCEPTION(FAILED, error.what());
+      }
+    } else
+#endif
+    {
+      double flatBox[9];
+      for (size_t i = 0; i < 3; ++i)
+        for (size_t j = 0; j < 3; ++j)
+          flatBox[3 * i + j] = nativeBoxMatrix[i][j];
+      rgpot::ForceInput input{.nAtoms = numAtoms,
+                              .pos = nativePositions.data(),
+                              .atmnrs = nativeAtomTypes.data(),
+                              .box = flatBox};
+      rgpot::ForceOut output{.F = forces.data(),
+                             .energy = 0.0,
+                             .variance = 0.0,
+                             .stress = {},
+                             .has_stress = 0};
+      m_potential->forceBatch(
+          rgpot::ForceBatch{.nSystems = 1, .in = &input, .out = &output});
+      energy = output.energy;
+      hasStress = output.has_stress != 0;
+      std::copy(output.stress, output.stress + 9, stress);
+    }
+
+#ifdef RGPOT_HAS_IPI
+    if (!hasStress && m_ipi != nullptr) {
+      hasStress = m_ipi->copyStress(stress);
+    }
+#endif
+
+    auto pres = context.getResults().initResult();
+    pres.setEnergy(energy * ev_to_caller);
+
+    auto forcesList = pres.initForces(numAtoms * 3);
+    if (force_to_caller != 1.0) {
+      for (size_t i = 0; i < numAtoms * 3; ++i) {
+        forces.data()[i] *= force_to_caller;
+      }
+    }
+    rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
+
+    if (hasStress) {
+      // sigma_caller = sigma_eV/A^3 * (eV -> caller) *
+      //                (A -> caller length)^3
+      const double stress_to_caller =
+          ev_to_caller * len_to_angstrom * len_to_angstrom * len_to_angstrom;
+      auto stressList = pres.initStress(9);
+      for (unsigned int i = 0; i < 9; ++i) {
+        stressList.set(i, stress[i] * stress_to_caller);
+      }
+    }
+
+    KJ_REQUIRE(!requireStress || hasStress,
+               "the selected potential returned no stress");
+    return kj::READY_NOW;
+  }
+
+public:
   /**
    * @brief Reports what this server speaks, so a client can refuse an
    * incompatible peer before the first calculate call.
@@ -161,9 +277,13 @@ public:
     caps.setBackendName("rgpot");
     caps.setBackendVersion(RGPOT_BUILD_VERSION);
     caps.setAvailable(true);
-    auto ops = caps.initOperations(2);
+    const bool hasStress = m_potential->caps().stress;
+    auto ops = caps.initOperations(hasStress ? 3 : 2);
     ops.set(0, ::Capabilities::Operation::ENERGY);
     ops.set(1, ::Capabilities::Operation::FORCES);
+    if (hasStress) {
+      ops.set(2, ::Capabilities::Operation::STRESS);
+    }
     rgpot::abi::fill_compatibility(caps);
     return kj::READY_NOW;
   }
@@ -182,86 +302,11 @@ public:
    * @return An asynchronous promise for completion.
    */
   kj::Promise<void> calculate(CalculateContext context) override {
-    auto fip = context.getParams().getFip();
-    const size_t numAtoms = fip.getPos().size() / 3;
+    return calculateImpl(kj::mv(context), false);
+  }
 
-    KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
-
-    // Unit conversion factors (caller units -> internal angstrom/eV)
-    std::string lengthUnit = fip.getLengthUnit();
-    std::string energyUnit = fip.getEnergyUnit();
-    double len_to_angstrom = rgpot::units::unit_conversion_factor(lengthUnit, "angstrom");
-    double ev_to_caller = rgpot::units::unit_conversion_factor("eV", energyUnit);
-    // Force unit: energy/length in caller's system
-    double force_to_caller = ev_to_caller / len_to_angstrom;
-
-    rgpot::types::AtomMatrix nativePositions =
-        rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),
-                                                              numAtoms);
-    // Convert positions from caller's length unit to angstrom
-    if (len_to_angstrom != 1.0) {
-      for (size_t i = 0; i < numAtoms * 3; ++i) {
-        nativePositions.data()[i] *= len_to_angstrom;
-      }
-    }
-
-    std::vector<int> nativeAtomTypes =
-        rgpot::types::adapt::capnp::convertAtomNumbersFromCapnp(
-            fip.getAtmnrs());
-    std::array<std::array<double, 3>, 3> nativeBoxMatrix =
-        rgpot::types::adapt::capnp::convertBoxMatrixFromCapnp(fip.getBox());
-    // Convert box from caller's length unit to angstrom
-    if (len_to_angstrom != 1.0) {
-      for (auto &row : nativeBoxMatrix)
-        for (auto &val : row)
-          val *= len_to_angstrom;
-    }
-
-    // Potential always computes in eV/angstrom
-    auto evaluate = [&]() {
-#ifdef RGPOT_POTSERV_MPI
-      if (m_pef) {
-        try {
-          return m_pef->calculate(nativePositions, nativeAtomTypes, nativeBoxMatrix);
-        } catch (const std::exception &error) {
-          throw KJ_EXCEPTION(FAILED, error.what());
-        }
-      }
-#endif
-      return (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
-    };
-    auto [energy, forces, variance] = evaluate();
-    (void)variance;
-
-    // Convert results to caller's units
-    auto result = context.getResults();
-    auto pres = result.initResult();
-    pres.setEnergy(energy * ev_to_caller);
-
-    auto forcesList = pres.initForces(numAtoms * 3);
-    if (force_to_caller != 1.0) {
-      for (size_t i = 0; i < numAtoms * 3; ++i) {
-        forces.data()[i] *= force_to_caller;
-      }
-    }
-    rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
-
-#ifdef RGPOT_HAS_IPI
-    if (m_ipi != nullptr) {
-      double stress[9];
-      if (m_ipi->copyStress(stress)) {
-        // sigma_caller = sigma_eV/A^3 * (eV -> caller) * (A -> caller length)^3
-        const double stress_to_caller = ev_to_caller * len_to_angstrom *
-                                        len_to_angstrom * len_to_angstrom;
-        auto stressList = pres.initStress(9);
-        for (unsigned int i = 0; i < 9; ++i) {
-          stressList.set(i, stress[i] * stress_to_caller);
-        }
-      }
-    }
-#endif
-
-    return kj::READY_NOW;
+  kj::Promise<void> calculateStress(CalculateStressContext context) override {
+    return calculateImpl(kj::mv(context), true);
   }
 
   /// NWChem, CPMD and CP2K take every arm through setPotentialConfig.
@@ -351,7 +396,8 @@ int runServer(int argc, char *argv[]
 ) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
-    std::cerr << "  Available PotentialTypes: CuH2, LJ, LJCluster, Morse, ZBL"
+    std::cerr << "  Available PotentialTypes: CuH2, LJ, LJCluster, Morse, "
+                 "SWSi, ZBL"
 #ifdef RGPOT_HAS_IPI
               << ", IPI:unix:<path>, IPI:tcp:<host>:<port>"
 #endif
@@ -424,6 +470,9 @@ int runServer(int argc, char *argv[]
   } else if (pot_type == "Morse") {
     std::cout << "Loading Morse potential (Pt parameters)..." << std::endl;
     potential_to_use = std::make_unique<rgpot::MorsePot>();
+  } else if (pot_type == "SWSi") {
+    std::cout << "Loading Stillinger-Weber silicon potential..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::StillingerWeberSi>();
   } else if (pot_type == "ZBL") {
     std::cout << "Loading ZBL potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::ZBLPot>();
