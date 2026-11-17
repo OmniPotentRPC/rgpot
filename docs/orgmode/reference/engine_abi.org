@@ -7,8 +7,10 @@
 =CppCore/rgpot/engine_c_abi.h= declares the functions a host calls to drive an
 engine shared library through =dlopen= and =dlsym=.
 The host selects the backend by the library it opens.
-The configuration is a Cap'n Proto flat-array message whose root is the engine's
-params struct in =Potentials.capnp=.
+The configuration is a versioned binary message defined by each engine.
+The core engines use a Cap'n Proto flat-array message whose root is the
+engine's params struct in =Potentials.capnp=. The potlibc engine uses
+=RgpotPotlibcConfigV1= from =rgpot/potlibc_engine.h=.
 Positions and cells are in Angstrom, energies in eV and forces in eV/Angstrom.
 A cell is nine doubles in row-major order.
 
@@ -41,6 +43,7 @@ potential from the params message) and =rgpot::engine::backend_name=.
 | =libmopac_engine= | =BuiltinParams= | =mopac= | MOPAC; =name= is empty or =mopac=, =library= is the path of =libmopacc= |
 | =libnwchem_engine= | =NWChemParams= | =nwchem= | NWChem through =libnwchemc= |
 | =libskala_engine= | =NWChemParams= | =skala= | Skala XC on NWChem; reads =basis=, =charge=, =multiplicity=, =enginePath= and =nwchemRoot= |
+| =libpotlibc_engine= | =RgpotPotlibcConfigV1= | =potlibc= | one fixed-size or variable-size surface from the potlibc catalog |
 
 =BuiltinParams.name= is compared in lower case.
 The Metatomic and XTB libraries also export their own tables
@@ -50,11 +53,13 @@ NWChem and CPMD keep the prefix-parameterized profile ABI that =NWChemPot= and
 The plugin interface in =include/rgpot/plugin.h= is a separate family. tblite,
 dftd3, dftd4, ExprPot, XcKernel, CPMD and CP2K have no engine library.
 
-Every library above exports
+Every core engine library above (all except =libpotlibc_engine=) exports
 =rgpot_engine_force_batch=, =rgpot_engine_abi_stamp=,
 =rgpot_engine_abi_compatible=, =rgpot_engine_name=, =rgpot_engine_version=, =rgpot_engine_model_digest=,
 =rgpot_engine_caps=,
 =rgpot_engine_last_error=, =rgpot_engine_set_num_threads= and =rgpot_engine_set_charge_spin=.
+=libpotlibc_engine= exports the stamp, compatibility, name, version, caps,
+last-error and analytic-HVP symbols; it omits the batch and setting symbols.
 None of them exports =rgpot_engine_model_state=, =rgpot_engine_set_callbacks=,
 =rgpot_engine_hint= or =rgpot_engine_neighbor_options=.
 
@@ -178,6 +183,21 @@ Optional symbol.
 
 ** Instances
 
+*** =RgpotPotlibcConfigV1=
+
+- Inputs :: =magic= (=RGPOT_POTLIBC_CONFIG_MAGIC=), =version=
+  (=RGPOT_POTLIBC_CONFIG_VERSION=), =atom_count= and =surface_id=.
+- Units :: =atom_count= is a count; the other fields have no unit.
+- Outputs :: passed as the exact create message for =libpotlibc_engine=.
+- Errors :: an unknown magic or version, an empty or unterminated catalog id,
+  zero atoms for a variable-size surface, or a nonzero count for a fixed-size
+  surface makes =rgpot_engine_create= return NULL.
+
+=surface_id= has =RGPOT_POTLIBC_SURFACE_ID_CAPACITY= bytes and is
+NUL-terminated.
+=atom_count= is zero for a fixed-size catalog entry and the requested count for
+a variable-size entry.
+
 *** =RgpotEnginePot=
 
 - Inputs :: none; an opaque handle.
@@ -197,8 +217,10 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                                     char *errbuf, size_t errlen);
 #+end_src
 
-- Inputs :: =config=, a Cap'n Proto flat-array message (as produced by
-  =capnp::messageToFlatArray=) whose root is the library's params struct;
+- Inputs :: =config=, the library's versioned binary message; core engines use
+  a Cap'n Proto flat-array message (as produced by
+  =capnp::messageToFlatArray=) whose root is their params struct, while
+  =libpotlibc_engine= uses =RgpotPotlibcConfigV1=;
   =config_len=, its length in bytes; =errbuf= and =errlen=, a buffer for the
   failure reason (may be null or 0).
 - Units :: none.
@@ -215,6 +237,10 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
   by the reason =rgpot_engine_set_charge_spin= gives.
 
 Required symbol.
+=RgpotPotlibcConfigV1= carries a magic, version, atom count and canonical
+surface id.
+Its atom count is zero for fixed-size surfaces and the exact count for
+variable-size surfaces.
 =UmaParams= and =MetatomicParams= carry =intraopThreads= and =interopThreads=
 (default 1), which create applies with the rules of
 =rgpot_engine_set_num_threads=; a refused inter-op count fails create with the
