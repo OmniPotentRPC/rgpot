@@ -335,6 +335,51 @@ TEST_CASE("Neighbours half-box tie rules hold on every axis",
   }
 }
 
+TEST_CASE("tile bounds select the half-box pair", "[nlist][fold][displaced]") {
+  // Two bins on a side. Twelve atoms sit on one side of the cut and twelve
+  // on the other, so the stencil has a tile pair whose bounds reach half a
+  // box and tile pairs that do not. The cross-cut pair is exactly half a
+  // box and has to keep that sign; the rounded image would flip it.
+  constexpr double L = 12.0;
+  constexpr double half = 0.5 * L;
+  constexpr int n = 24;
+  double pos[n * 3];
+  for (int i = 0; i < n; ++i) {
+    pos[3 * i] = i < n / 2 ? 0.0 : half;
+    pos[3 * i + 1] = 0.0;
+    pos[3 * i + 2] = 0.0;
+  }
+  pos[3 * 1] = 1.0;
+  const double box9[9] = {L, 0.0, 0.0, 0.0, L, 0.0, 0.0, 0.0, L};
+  rgpot::nlist::Neighbours cells;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 6.0;
+  spec.skin = 0.0;
+  spec.image = rgpot::nlist::Image::Half;
+  spec.mode = rgpot::nlist::Mode::Stream;
+  cells.update(pos, static_cast<std::size_t>(n), box9, spec);
+
+  int tie = 0;
+  int inside = 0;
+  cells.forDirected(0, n, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                              double) {
+    if (i == 0 && j == n / 2) {
+      REQUIRE(dx == -half);
+      REQUIRE(dy == 0.0);
+      REQUIRE(dz == 0.0);
+      ++tie;
+    }
+    if (i == 0 && j == 1) {
+      REQUIRE(dx == -1.0);
+      REQUIRE(dy == 0.0);
+      REQUIRE(dz == 0.0);
+      ++inside;
+    }
+  });
+  REQUIRE(tie == 1);
+  REQUIRE(inside == 1);
+}
+
 TEST_CASE("a sheared description of the cell gives the same answer",
           "[nlist][fold][displaced]") {
   const Model model =
