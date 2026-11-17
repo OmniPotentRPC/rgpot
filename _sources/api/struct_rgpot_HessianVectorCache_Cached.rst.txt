@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::HessianVectorCache::Cached
+.. _doxid-structrgpot_1_1_hessian_vector_cache_1_1_cached:
+
+struct rgpot::HessianVectorCache::Cached
+========================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Cached {
+		// fields
+	
+		:ref:`Key<doxid-structrgpot_1_1_hessian_vector_cache_1_1_key>` :target:`key<doxid-structrgpot_1_1_hessian_vector_cache_1_1_cached_1a8c02383e736c41ab0c967538a06bb8be>`;
+		std::shared_ptr<const :ref:`HvpCentre<doxid-structrgpot_1_1_hvp_centre>`> :target:`centre<doxid-structrgpot_1_1_hessian_vector_cache_1_1_cached_1a8fc9f880a6b97364e8c5bed978759e84>`;
+	};

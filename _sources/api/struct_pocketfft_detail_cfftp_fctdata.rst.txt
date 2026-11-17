@@ -1,0 +1,23 @@
+.. index:: pair: struct; pocketfft::detail::cfftp::fctdata
+.. _doxid-structpocketfft_1_1detail_1_1cfftp_1_1fctdata:
+
+struct pocketfft::detail::cfftp::fctdata
+========================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct fctdata {
+		// fields
+	
+		size_t :target:`fct<doxid-structpocketfft_1_1detail_1_1cfftp_1_1fctdata_1adc71d5cc24e566629dddb4e08aaa6545>`;
+		:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T0>* :target:`tw<doxid-structpocketfft_1_1detail_1_1cfftp_1_1fctdata_1a45d188e7c567ecbb33d107d9ba0f1d0f>`;
+		:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T0>* :target:`tws<doxid-structpocketfft_1_1detail_1_1cfftp_1_1fctdata_1aa70873ade13ebe708d18885da7e20dc5>`;
+	};

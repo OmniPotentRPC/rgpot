@@ -83,6 +83,7 @@ Overview
 	double :ref:`mul_add<doxid-exact__fma_8hpp_1a6400dc19dfc6964f5daa7da968fc9e12>`(double a, double b, double c);
 	double :ref:`r2_of<doxid-exact__fma_8hpp_1a894a4d861296108dba7ed726b526790c>`(double dx, double dy, double dz);
 	double :ref:`exp<doxid-exp_8cc_1a4021c088b81552fe0d7a8a82acc684d3>`(double x);
+	void :ref:`exp_hw_n<doxid-exp_8cc_1aa78c416f8209f9fe7497341562d34193>`(const double* in, double* out, std::size_t n);
 	double :ref:`exp_fixed<doxid-exp_8cc_1a3b98ce20e45a2530b231bb9d1911f83b>`(double x);
 	void :ref:`exp_fixed_n<doxid-exp_8cc_1a350d02044999bf40739e4c634df3484b>`(const double* x, double* out, std::size_t n);
 
@@ -214,6 +215,16 @@ dx^2 + dy^2 + dz^2. The first square is a multiply. The two sums fuse.
 	double exp(double x)
 
 Scalar exp. Cody-Waite reduction by a split ln(2), then the fdlibm degree-5 polynomial. The large-argument scale and each polynomial product-sum are one rounding. Overflow returns +inf, underflow returns 0, a NaN returns a NaN, and exp(-0) is +1. Vector targets replay these operations per lane.
+
+.. index:: pair: function; exp_hw_n
+.. _doxid-exp_8cc_1aa78c416f8209f9fe7497341562d34193:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void exp_hw_n(const double* in, double* out, std::size_t n)
+
+Same bits as exp(), for n values. Declared on every target. On x86-64 GCC and Clang the body is compiled with a hardware FMA, so call it only where detail::fma_hw_active() holds. Elsewhere it calls exp().
 
 .. index:: pair: function; exp_fixed
 .. _doxid-exp_8cc_1a3b98ce20e45a2530b231bb9d1911f83b:

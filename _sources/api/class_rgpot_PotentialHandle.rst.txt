@@ -32,6 +32,13 @@ Move-only RAII handle around an opaque ``rgpot_potential_t`` pointer. :ref:`More
 		PotentialHandle& :ref:`operator=<doxid-classrgpot_1_1_potential_handle_1a552fe7a058b0411930733882b8512e14>`(PotentialHandle&& other);
 		PotentialHandle& :target:`operator=<doxid-classrgpot_1_1_potential_handle_1a15357a619922bcfedfc11bbdf26f838b>`(const PotentialHandle&);
 		:ref:`CalcResult<doxid-classrgpot_1_1_calc_result>` :ref:`calculate<doxid-classrgpot_1_1_potential_handle_1af864dc8f487587b425fb6c3fdf3bc705>`(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input);
+		void :ref:`hvp<doxid-classrgpot_1_1_potential_handle_1a95cb665786ab7b9a993093c38edc9fbb>`(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input, const double* direction, double* hv_out, double step = 0.0, rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO) const;
+		std::vector<double> :ref:`hvp<doxid-classrgpot_1_1_potential_handle_1a2bd04eb6bc914907e5909485c6304a45>`(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input, const std::vector<double>& direction, double step = 0.0, rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO) const;
+		:ref:`CalcResult<doxid-classrgpot_1_1_calc_result>` :ref:`hvp_centre<doxid-classrgpot_1_1_potential_handle_1ad2bbbce61f2d2bc851de3171845bf3db>`(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input) const;
+		void :ref:`set_hvp_callback<doxid-classrgpot_1_1_potential_handle_1a922ef3e445e9281e3ede278e11bf0b48>`(HessianVectorCallback callback) const;
+		void :ref:`invalidate_hvp<doxid-classrgpot_1_1_potential_handle_1a47374212b2e9cca571e03d472e2c8735>`() const;
+		rgpot_hvp_counts_t :ref:`hvp_counts<doxid-classrgpot_1_1_potential_handle_1a516d8ef37173d59c286f9563d53508e7>`() const;
+		void :target:`reset_hvp_counts<doxid-classrgpot_1_1_potential_handle_1a76cfaec7983b5515b522c02ec6e094e4>`() const;
 		rgpot_potential_t* :ref:`raw<doxid-classrgpot_1_1_potential_handle_1a864f673374dc6843a4a28dbf98a04839>`() const;
 	
 		template <typename Impl>
@@ -64,7 +71,7 @@ Construction
 
 Adopt an existing raw handle.
 
-*handle* was obtained from ``rgpot_potential_new()`` and has not been freed.
+*handle* was obtained from ``rgpot_potential_new()`` or ``rgpot_potential_new_eindir()`` and has not been freed.
 
 
 
@@ -176,6 +183,87 @@ Creates a ``:ref:`CalcResult <doxid-classrgpot_1_1_calc_result>```, delegates to
 
 A ``:ref:`CalcResult <doxid-classrgpot_1_1_calc_result>``` containing energy, variance, and forces.
 
+.. index:: pair: function; hvp
+.. _doxid-classrgpot_1_1_potential_handle_1a95cb665786ab7b9a993093c38edc9fbb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void hvp(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input, const double* direction, double* hv_out, double step = 0.0, rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO) const
+
+Write :math:`H v` at *input* to *hv_out*.
+
+See ``rgpot_potential_hvp``. *direction* and *hv_out* hold ``3*n_atoms`` doubles and must not overlap. With ``RGPOT_HVP_FORWARD``, ``k`` products at one geometry cost ``k+1`` force calls.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- step
+
+		- Displacement length; 0 selects ``RGPOT_HVP_DEFAULT_STEP``.
+
+	*
+		- :ref:`rgpot::Error <doxid-classrgpot_1_1_error>`
+
+		- on a malformed request or a failing callback.
+
+.. index:: pair: function; hvp
+.. _doxid-classrgpot_1_1_potential_handle_1a2bd04eb6bc914907e5909485c6304a45:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<double> hvp(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input, const std::vector<double>& direction, double step = 0.0, rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO) const
+
+``:ref:`hvp() <doxid-classrgpot_1_1_potential_handle_1a95cb665786ab7b9a993093c38edc9fbb>``` into a new vector of ``3*n_atoms`` doubles.
+
+.. index:: pair: function; hvp_centre
+.. _doxid-classrgpot_1_1_potential_handle_1ad2bbbce61f2d2bc851de3171845bf3db:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CalcResult<doxid-classrgpot_1_1_calc_result>` hvp_centre(const :ref:`InputSpec<doxid-classrgpot_1_1_input_spec>`& input) const
+
+Energy and forces at *input*, from the centre the products use.
+
+See ``rgpot_potential_hvp_centre``. A search that needs the centre forces asks here instead of ``:ref:`calculate() <doxid-classrgpot_1_1_potential_handle_1af864dc8f487587b425fb6c3fdf3bc705>```, so the forward products that follow make one force call each.
+
+.. index:: pair: function; set_hvp_callback
+.. _doxid-classrgpot_1_1_potential_handle_1a922ef3e445e9281e3ede278e11bf0b48:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void set_hvp_callback(HessianVectorCallback callback) const
+
+Register or clear (``nullptr``) the analytic product of this handle.
+
+.. index:: pair: function; invalidate_hvp
+.. _doxid-classrgpot_1_1_potential_handle_1a47374212b2e9cca571e03d472e2c8735:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void invalidate_hvp() const
+
+Drop the cached centre, for a potential that changed in place.
+
+.. index:: pair: function; hvp_counts
+.. _doxid-classrgpot_1_1_potential_handle_1a516d8ef37173d59c286f9563d53508e7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	rgpot_hvp_counts_t hvp_counts() const
+
+Products, force calls, centre reuses and analytic products so far.
+
 .. index:: pair: function; raw
 .. _doxid-classrgpot_1_1_potential_handle_1a864f673374dc6843a4a28dbf98a04839:
 
@@ -208,6 +296,8 @@ Registers a template trampoline that extracts raw CPU pointers from the DLPack t
 The caller retains ownership of *impl* and **must** keep it alive for the lifetime of the returned handle.
 
 The handle is one ``rgpot_potential_t`` and therefore one ``:ref:`eindir_objective_t <doxid-structeindir__objective__t>``` (first-member IS-A). Child terms stay inside *impl*; this factory does not build a list of objectives.
+
+When *Impl* has ``hessianVectorImpl`` (see ``HessianVector.hpp``), it is registered as the analytic product of the handle.
 
 
 

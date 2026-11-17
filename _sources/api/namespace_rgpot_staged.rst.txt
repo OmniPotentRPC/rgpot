@@ -1,0 +1,88 @@
+.. index:: pair: namespace; rgpot::staged
+.. _doxid-namespacergpot_1_1staged:
+
+namespace rgpot::staged
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace staged {
+
+	// global functions
+
+	template <typename Fn>
+	void :ref:`forEachPair<doxid-_staged_8hpp_1aa90da177a7a001e10862498007c284c5>`(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, Fn&& fn);
+
+	template <typename Body>
+	void :ref:`withTally<doxid-_staged_8hpp_1af050bcfe937e1315383ed0aff74ed639>`(const :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally, Body&& body);
+
+	template <bool Tally>
+	void :ref:`addPair<doxid-_staged_8hpp_1a7755c0b933dc49c5581362c94b6a0b75>`(std::bool_constant<Tally>, double* forces, :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally, int i, int j, bool both, double energy, double fscale, double dx, double dy, double dz);
+
+	void :ref:`addSite<doxid-_staged_8hpp_1aa08ca3a81ce86f4ad2d2e9b4577ebf65>`(:ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`& tally, int i, double energy);
+
+	} // namespace staged
+.. _details-namespacergpot_1_1staged:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; forEachPair
+.. _doxid-_staged_8hpp_1aa90da177a7a001e10862498007c284c5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Fn>
+	void forEachPair(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, Fn&& fn)
+
+Calls fn(i, j, dx, dy, dz, r2, both) for every pair of ``list``, with d = r_i - r_j and ``both`` set when the stages write atom j as well as the row atom i: j is owned, or the list is newton.
+
+.. index:: pair: function; withTally
+.. _doxid-_staged_8hpp_1af050bcfe937e1315383ed0aff74ed639:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Body>
+	void withTally(const :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally, Body&& body)
+
+Runs body(std::true_type{}) with a tally and body(std::false_type{}) without, so a stage compiles its loop once with the energy and virial and once with the forces alone.
+
+.. index:: pair: function; addPair
+.. _doxid-_staged_8hpp_1a7755c0b933dc49c5581362c94b6a0b75:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <bool Tally>
+	void addPair(std::bool_constant<Tally>, double* forces, :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally, int i, int j, bool both, double energy, double fscale, double dx, double dy, double dz)
+
+Adds a pair whose force on atom i is fscale \* d, d = r_i - r_j: the force on i, the opposite force on j when ``both``, and with a tally the host's share of the pair energy and virial (all of it when both, else half) and half of each to atom i and, when both, to atom j.
+
+.. index:: pair: function; addSite
+.. _doxid-_staged_8hpp_1aa08ca3a81ce86f4ad2d2e9b4577ebf65:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void addSite(:ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`& tally, int i, double energy)
+
+Adds the site energy of the owned atom ``i``.
+

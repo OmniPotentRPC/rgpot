@@ -1,0 +1,61 @@
+.. index:: pair: struct; pocketfft::detail::cmplx
+.. _doxid-structpocketfft_1_1detail_1_1cmplx:
+
+template struct pocketfft::detail::cmplx
+========================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename T>
+	struct cmplx {
+		// fields
+	
+		T :target:`r<doxid-structpocketfft_1_1detail_1_1cmplx_1afc51cdf222d77690953a8cb8ce3ee692>`;
+		T :target:`i<doxid-structpocketfft_1_1detail_1_1cmplx_1a35d2dce1b7de5f37d7029e639bc7f23d>`;
+
+		// construction
+	
+		:target:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx_1a5197b91994d8d8724a17d93d0c5b6e33>`();
+		:target:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx_1a05491b4f1f22ca0bc49012f6a1c1710a>`(T r_, T i_);
+
+		// methods
+	
+		void :target:`Set<doxid-structpocketfft_1_1detail_1_1cmplx_1a647fece372b64b13c4a7e5877d09a807>`(T r_, T i_);
+		void :target:`Set<doxid-structpocketfft_1_1detail_1_1cmplx_1a447d26b2e07f6e45f29d865e906c0a98>`(T r_);
+		cmplx& :target:`operator+=<doxid-structpocketfft_1_1detail_1_1cmplx_1ad4e69dcd89bdb7764c9c5807168f911e>`(const cmplx& other);
+	
+		template <typename T2>
+		cmplx& :target:`operator*=<doxid-structpocketfft_1_1detail_1_1cmplx_1a683fd490182c9189fa2c05b1823edd93>`(T2 other);
+	
+		template <typename T2>
+		cmplx& :target:`operator*=<doxid-structpocketfft_1_1detail_1_1cmplx_1a06f2c26c6fc4722e61b44da4c242ed87>`(const cmplx<T2>& other);
+	
+		template <typename T2>
+		cmplx& :target:`operator+=<doxid-structpocketfft_1_1detail_1_1cmplx_1affa618d8850a7c232793b7c61db6d184>`(const cmplx<T2>& other);
+	
+		template <typename T2>
+		cmplx& :target:`operator-=<doxid-structpocketfft_1_1detail_1_1cmplx_1a12441ff423274bd1b54245933d69ad7e>`(const cmplx<T2>& other);
+	
+		template <typename T2>
+		cmplx<decltype(r*other)> :target:`operator*<doxid-structpocketfft_1_1detail_1_1cmplx_1a26bf3d709a58f06228e502af6db8e5ac>`(const T2& other) const;
+	
+		template <typename T2>
+		cmplx<decltype(r+other.r)> :target:`operator+<doxid-structpocketfft_1_1detail_1_1cmplx_1a76447ef141c8732d57421749fc81b236>`(const cmplx<T2>& other) const;
+	
+		template <typename T2>
+		cmplx<decltype(r+other.r)> :target:`operator-<doxid-structpocketfft_1_1detail_1_1cmplx_1a460da5db36d1c72fb1ed3496fd3abde4>`(const cmplx<T2>& other) const;
+	
+		template <typename T2>
+		cmplx<decltype(r+other.r)> :target:`operator*<doxid-structpocketfft_1_1detail_1_1cmplx_1ad9c591ef8ae976293f207937d273e9a1>`(const cmplx<T2>& other) const;
+	
+		template <bool fwd, typename T2>
+		cmplx<decltype(r+other.r)> :target:`special_mul<doxid-structpocketfft_1_1detail_1_1cmplx_1a2e79f5c73c1d926361ad126cf57c8874>`(const cmplx<T2>& other) const;
+	};

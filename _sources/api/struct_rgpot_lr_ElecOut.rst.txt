@@ -1,0 +1,23 @@
+.. index:: pair: struct; rgpot::lr::ElecOut
+.. _doxid-structrgpot_1_1lr_1_1_elec_out:
+
+struct rgpot::lr::ElecOut
+=========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct ElecOut {
+		// fields
+	
+		double :target:`energy<doxid-structrgpot_1_1lr_1_1_elec_out_1a82d1264c23d05a44a049ad06e79cdecb>` = 0.0;
+		double :target:`strain<doxid-structrgpot_1_1lr_1_1_elec_out_1af92b09f23a381523364ea8ed6f5301ab>`[6] {};
+		bool :target:`has_stress<doxid-structrgpot_1_1lr_1_1_elec_out_1ac473bb958a05287f137de6b4865b09a5>` = false;
+	};

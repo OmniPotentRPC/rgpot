@@ -33,6 +33,7 @@ Overview
 	
 		static QuinticSwitch :ref:`endingAt<doxid-structrgpot_1_1_quintic_switch_1af9e4bbe5884ccb80b19f5282642e08b5>`(double cutoff, double width);
 		:ref:`Value<doxid-structrgpot_1_1_quintic_switch_1_1_value>` :target:`operator()<doxid-structrgpot_1_1_quintic_switch_1ae209a316c6e098955de99a8f633303f3>`(double r) const;
+		double :ref:`d2sdr2<doxid-structrgpot_1_1_quintic_switch_1a19edff20147a8ce7fd363c9d4f4bca3b>`(double r) const;
 	};
 .. _details-structrgpot_1_1_quintic_switch:
 
@@ -76,4 +77,14 @@ Methods
 	static QuinticSwitch endingAt(double cutoff, double width)
 
 Switch over the last ``width`` Angstrom below ``cutoff``. Throws std::invalid_argument unless 0 < width <= cutoff.
+
+.. index:: pair: function; d2sdr2
+.. _doxid-structrgpot_1_1_quintic_switch_1a19edff20147a8ce7fd363c9d4f4bca3b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double d2sdr2(double r) const
+
+:math:`d^2S/dr^2 = -60 t (1 - t) (1 - 2t) / w^2`, 0 outside the switch.
 

@@ -1,0 +1,64 @@
+.. index:: pair: class; rgpot::LammpsPot
+.. _doxid-classrgpot_1_1_lammps_pot:
+
+class rgpot::LammpsPot
+======================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_LammpsPot_Impl.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class LammpsPot: public rgpot::Potential< LammpsPot > {
+	public:
+		// structs
+	
+		struct :ref:`Impl<doxid-structrgpot_1_1_lammps_pot_1_1_impl>`;
+
+		// construction
+	
+		:target:`LammpsPot<doxid-classrgpot_1_1_lammps_pot_1a2c4bc07848016275b8fed10dd1368466>`(const :ref:`ExternalLjConfig<doxid-structrgpot_1_1_external_lj_config>`& config);
+		:target:`LammpsPot<doxid-classrgpot_1_1_lammps_pot_1aef96c532e26d4fc0774e322f6e7bf24a>`(const LammpsPot&);
+		:target:`LammpsPot<doxid-classrgpot_1_1_lammps_pot_1ae89f38b8c9c2011a892443e18001faf8>`(LammpsPot&&);
+		:target:`~LammpsPot<doxid-classrgpot_1_1_lammps_pot_1aa49dd28ef2b369b7e926ecfa186ee5cc>`();
+
+		// methods
+	
+		LammpsPot& :target:`operator=<doxid-classrgpot_1_1_lammps_pot_1a623bd88877135924b81ba0fb6d2fff82>`(const LammpsPot&);
+		LammpsPot& :target:`operator=<doxid-classrgpot_1_1_lammps_pot_1a412bad04878d99210700e16f213cdea2>`(LammpsPot&&);
+		void :target:`forceImpl<doxid-classrgpot_1_1_lammps_pot_1a782dcad8c2a101071de6470e5b0c8f08>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_lammps_pot_1af2eaa703972cce426362287a2bf95a49>`() const;
+		const :ref:`ExternalLjConfig<doxid-structrgpot_1_1_external_lj_config>`& :target:`config<doxid-classrgpot_1_1_lammps_pot_1aeb94c02cb8b2dc858dbe6866ef0b96f1>`() const;
+	};
+.. _details-classrgpot_1_1_lammps_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_lammps_pot_1af2eaa703972cce426362287a2bf95a49:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+

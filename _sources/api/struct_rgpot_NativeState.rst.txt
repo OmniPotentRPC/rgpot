@@ -1,0 +1,31 @@
+.. index:: pair: struct; rgpot::NativeState
+.. _doxid-structrgpot_1_1_native_state:
+
+struct rgpot::NativeState
+=========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct NativeState {
+		// fields
+	
+		Loaded :target:`engine<doxid-structrgpot_1_1_native_state_1accf566733c1da79c60f621edd044df00>`;
+		:ref:`LJPot<doxid-classrgpot_1_1_l_j_pot>` :target:`host<doxid-structrgpot_1_1_native_state_1a36d00f424d359e747d48f936ad37b0a0>`;
+		bool :target:`use_native<doxid-structrgpot_1_1_native_state_1a5e0328ccfa865215aa96a23c214ea61b>` = false;
+		std::mutex :target:`mutex<doxid-structrgpot_1_1_native_state_1a03b82c74cfebf20c3d5281bb990338ca>`;
+		std::vector<double> :target:`positions<doxid-structrgpot_1_1_native_state_1a75dfa36b6840d9940b8b12d739ec65b2>`;
+		std::vector<double> :target:`forces<doxid-structrgpot_1_1_native_state_1aab354ab4250015083926be16bbaaefe7>`;
+		std::array<double, 9> :target:`box<doxid-structrgpot_1_1_native_state_1a3d53cf955682c3509f3398845f1b59d0>` {};
+
+		// construction
+	
+		:target:`NativeState<doxid-structrgpot_1_1_native_state_1a2e54daa870e4cbfe95724f2df8659e44>`(const :ref:`ExternalLjConfig<doxid-structrgpot_1_1_external_lj_config>`& config);
+	};

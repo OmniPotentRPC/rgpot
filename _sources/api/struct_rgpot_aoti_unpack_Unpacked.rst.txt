@@ -1,0 +1,90 @@
+.. index:: pair: struct; rgpot::aoti_unpack::Unpacked
+.. _doxid-structrgpot_1_1aoti__unpack_1_1_unpacked:
+
+struct rgpot::aoti_unpack::Unpacked
+===================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Unpacked {
+		// fields
+	
+		fs::path :ref:`dir<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a10f9b299e8911bfa825ad6bfc04a5021>`;
+		fs::path :ref:`model_dir<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a9ba7bddc678a05890c4476989fcb394f>`;
+		fs::path :target:`so<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a391a0a5912835563e15ebba71ae2910c>`;
+		fs::path :ref:`metadata_json<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a9bc40206e7296d5059f4982db2a96f23>`;
+		fs::path :ref:`blob<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a0cedfe28c52129aaf4276808b628ae43>`;
+		std::string :target:`sha256<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a3654eb74b96b24ea4086d6f615830359>`;
+		bool :ref:`reused<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a4d11049acf6f8fd30440c3e44b912b84>` {false};
+	};
+.. _details-structrgpot_1_1aoti__unpack_1_1_unpacked:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; dir
+.. _doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a10f9b299e8911bfa825ad6bfc04a5021:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	fs::path dir
+
+<root>/aoti/<sha256>.<model>
+
+.. index:: pair: variable; model_dir
+.. _doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a9ba7bddc678a05890c4476989fcb394f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	fs::path model_dir
+
+torch's cubin / constants directory
+
+.. index:: pair: variable; metadata_json
+.. _doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a9bc40206e7296d5059f4982db2a96f23:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	fs::path metadata_json
+
+empty when the package records none
+
+.. index:: pair: variable; blob
+.. _doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a0cedfe28c52129aaf4276808b628ae43:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	fs::path blob
+
+empty when weights are inside the .so
+
+.. index:: pair: variable; reused
+.. _doxid-structrgpot_1_1aoti__unpack_1_1_unpacked_1a4d11049acf6f8fd30440c3e44b912b84:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool reused {false}
+
+an earlier unpack was valid and kept
+

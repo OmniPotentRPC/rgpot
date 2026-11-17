@@ -1,0 +1,55 @@
+.. index:: pair: class; rgpot::lr::SumPot
+.. _doxid-classrgpot_1_1lr_1_1_sum_pot:
+
+class rgpot::lr::SumPot
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class SumPot: public rgpot::Potential< SumPot > {
+	public:
+		// construction
+	
+		:target:`SumPot<doxid-classrgpot_1_1lr_1_1_sum_pot_1a27a61fee2d71fa7c7d304ce23675720c>`();
+
+		// methods
+	
+		void :target:`add<doxid-classrgpot_1_1lr_1_1_sum_pot_1a8104d173c327d14efa93a248f6102a44>`(std::unique_ptr<:ref:`PotentialBase<doxid-classrgpot_1_1_potential_base>`> term);
+		void :target:`shareNeighbours<doxid-classrgpot_1_1lr_1_1_sum_pot_1abdb31f03c4a67ce730575fb747663e62>`(std::shared_ptr<:ref:`DualList<doxid-classrgpot_1_1lr_1_1_dual_list>`> lists);
+		void :target:`forceImpl<doxid-classrgpot_1_1lr_1_1_sum_pot_1ae8b6b52d2f2ca44ad0f1105f5b3fa427>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1lr_1_1_sum_pot_1ab3c654f0eda1418de3c6af6bc1b07500>`() const;
+		std::size_t :target:`size<doxid-classrgpot_1_1lr_1_1_sum_pot_1a6371c7a0c9180160e662ed679ff9fb37>`() const;
+	};
+.. _details-classrgpot_1_1lr_1_1_sum_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1lr_1_1_sum_pot_1ab3c654f0eda1418de3c6af6bc1b07500:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+

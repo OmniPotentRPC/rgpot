@@ -1,0 +1,22 @@
+.. index:: pair: struct; pocketfft::detail::VLEN
+.. _doxid-structpocketfft_1_1detail_1_1_v_l_e_n:
+
+template struct pocketfft::detail::VLEN
+=======================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename T>
+	struct VLEN {
+		// fields
+	
+		static size_t :target:`val<doxid-structpocketfft_1_1detail_1_1_v_l_e_n_1ab1fdc340dedde723e636746c828a4534>` =1;
+	};

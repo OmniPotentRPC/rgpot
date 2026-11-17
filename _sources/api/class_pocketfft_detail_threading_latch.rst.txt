@@ -1,0 +1,28 @@
+.. index:: pair: class; pocketfft::detail::threading::latch
+.. _doxid-classpocketfft_1_1detail_1_1threading_1_1latch:
+
+class pocketfft::detail::threading::latch
+=========================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class latch {
+	public:
+		// construction
+	
+		:target:`latch<doxid-classpocketfft_1_1detail_1_1threading_1_1latch_1a9260c871bb927525f7f53caa23a19c15>`(size_t n);
+
+		// methods
+	
+		void :target:`count_down<doxid-classpocketfft_1_1detail_1_1threading_1_1latch_1a81d6597189b40410e35f3cd653fd1342>`();
+		void :target:`wait<doxid-classpocketfft_1_1detail_1_1threading_1_1latch_1af503189cc9247047fbdfc3ebf1daacc1>`();
+		bool :target:`is_ready<doxid-classpocketfft_1_1detail_1_1threading_1_1latch_1ab41ecc5adb6187aa2682ca190fd920f3>`();
+	};

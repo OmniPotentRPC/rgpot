@@ -1,0 +1,26 @@
+.. index:: pair: struct; rgpot::aoti_unpack::ZipEntry
+.. _doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry:
+
+struct rgpot::aoti_unpack::ZipEntry
+===================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct ZipEntry {
+		// fields
+	
+		std::string :target:`name<doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry_1ab7e15adb04feb42ac82664696a8e6072>`;
+		uint16_t :target:`method<doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry_1a81451547205c6a73f98deec69da4d10e>` {0};
+		uint16_t :target:`flags<doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry_1a3f172f3d611b7bb27e9a09f57294c8d5>` {0};
+		uint64_t :target:`csize<doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry_1adb83915f6497cf9dab6d47184e070a6f>` {0};
+		uint64_t :target:`usize<doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry_1af381254b86fbc61b79ba353ec987b655>` {0};
+		uint64_t :target:`local<doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry_1a85b4dd4e72671871ab57ece8bb02f535>` {0};
+	};

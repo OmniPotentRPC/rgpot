@@ -22,20 +22,8 @@ Cap'n Proto ``Potential`` interface for any client; eOn can also act as an RPC
 Engine builds live in ``nwchemc`` / ``cpmdc``; rgpot frontends ``dlopen`` them at
 runtime in both roles.
 
-Why This Shape
---------------
-
-- ``configure(PotentialConfig)`` once per method (NWChemParams / CPMDParams).
-
-- ``calculate(ForceInput)`` per geometry (positions, atomic numbers, cell, units).
-
-- Units on the wire (``lengthUnit`` / ``energyUnit``); eOn's ``RgpotPot`` converts
-
-Hartree → eV and Hartree/bohr → eV/Å at the boundary.
-
-- Engines are optional at build time: CI uses fake ``libnwchemc`` / ``libcpmdc``;
-
-production sets ``NWCHEMC_LIBRARY`` / ``CPMDC_LIBRARY`` (or aliases).
+Why the integration is shaped this way is in
+:doc:`The RPC Model <../explanation/rpc-model>`, under eOn over rgpot.
 
 Landed Work Items
 -----------------
@@ -54,12 +42,21 @@ in-process ``[RgpotPot]`` configuration.
 and ``scripts/rgpot_nwchem_vs_socket.sh`` compare ``RgpotPot`` against eOn's
 ``SocketNWChem`` on a fixed deck class.
 
-1. ****rgpot ergonomics**** (this repo): potentials-schema v1.5.0 parity (typed
+1. ****rgpot ergonomics**** (this repo): typed
+   NWChem/CPMD arms and the metatomic outputs surface in ``Potentials.capnp`` (from the potentials-schema v1.12.0 pin), the schema-sync tests (Meson suite ``schema``), and the in-process CPMD timing harness (``scripts/cpmd_inprocess_vs_subprocess_timing.sh``).
 
-NWChem/CPMD arms, metatomic outputs surface), schema-sync CI gate, and the in- process CPMD timing harness (``scripts/cpmd_inprocess_vs_subprocess_timing.sh``).
+``subprojects/potentials-schema.wrap`` now pins potentials-schema at commit
+``190fee6``.
 
 Operator Cheatsheet (rgpot side)
 --------------------------------
+
+``potserv <port> <PotentialType>`` takes ``NWChem``, ``NWChem:basis[:theory[:xc]]`` or
+``CPMD`` as the type.
+The fake engines and ``potserv`` are built with
+``-Dwith_rpc=true -Dwith_tests=true``.
+``tests/test_rpc_e2e_c_abi.py`` needs ``RGPOT_POTSERV`` and one engine variable per
+backend, and fails when one is missing.
 
 .. code:: bash
 

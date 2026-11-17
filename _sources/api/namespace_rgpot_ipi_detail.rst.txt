@@ -1,0 +1,154 @@
+.. index:: pair: namespace; rgpot::ipi::detail
+.. _doxid-namespacergpot_1_1ipi_1_1detail:
+
+namespace rgpot::ipi::detail
+============================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_ipi_detail_Address.rst
+	struct_rgpot_ipi_detail_Deadline.rst
+	struct_rgpot_ipi_detail_Link.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace detail {
+
+	// typedefs
+
+	typedef std::array<char, kHeaderLen> :target:`Header<doxid-_i_p_i_wire_8hpp_1af1897ba61d892edc2ba9eacc33804fd6>`;
+	typedef std::chrono::steady_clock :target:`Clock<doxid-_i_p_i_wire_8hpp_1a073b79680ed335b0453cead93b9b3e2d>`;
+
+	// structs
+
+	struct :ref:`Address<doxid-structrgpot_1_1ipi_1_1detail_1_1_address>`;
+	struct :ref:`Deadline<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline>`;
+	struct :ref:`Link<doxid-structrgpot_1_1ipi_1_1detail_1_1_link>`;
+
+	// global variables
+
+	int :target:`kHeaderLen<doxid-_i_p_i_wire_8hpp_1a25ea78b40483945c821bd775cde74dbb>` = 12;
+	int32_t :target:`kMaxAtoms<doxid-_i_p_i_wire_8hpp_1a2692ebc7e8e4f680cd2164f1717d60b6>` = 10'000'000;
+	int32_t :target:`kMaxString<doxid-_i_p_i_wire_8hpp_1a75b95485d3bb6ff1cd21b06ab1dda690>` = 1<<20;
+	const char* :target:`kUnixPrefix<doxid-_i_p_i_wire_8hpp_1a7ad75bd5ce53ab58469f5e3c7db71e00>` = "/tmp/ipi_";
+
+	// global functions
+
+	Header :ref:`header<doxid-_i_p_i_wire_8cc_1a9bd48d938249cb7d59ced3a0fb825630>`(std::string_view text);
+	bool :target:`sameHeader<doxid-_i_p_i_wire_8cc_1a3096fdb94b810db72a1ddb91b7157794>`(const char* got, const Header& want);
+	std::string :ref:`headerText<doxid-_i_p_i_wire_8cc_1a82d40c2bfc5e70d38875cb890c6b3326>`(const char* got);
+	double :ref:`cellVolume<doxid-_i_p_i_wire_8cc_1a5da0732721f5baa93b08ef409beed253>`(const double* box);
+	void :target:`fail<doxid-_i_p_i_wire_8cc_1a4aadbd465bb42220591eab90c52797e7>`(const char* who, const std::string& message);
+	void :target:`failErrno<doxid-_i_p_i_wire_8cc_1a96c647633f79401101e540de28bea307>`(const char* who, const std::string& what);
+	void :ref:`waitFd<doxid-_i_p_i_wire_8cc_1add14ee63193bb86fd6cd5b100b418282>`(const :ref:`Link<doxid-structrgpot_1_1ipi_1_1detail_1_1_link>`& link, short event, const :ref:`Deadline<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline>`& deadline, const char* what);
+	void :target:`writeFull<doxid-_i_p_i_wire_8cc_1aa3b5af6adb08402baea4cb48ad4fab45>`(const :ref:`Link<doxid-structrgpot_1_1ipi_1_1detail_1_1_link>`& link, const void* data, size_t n, const :ref:`Deadline<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline>`& deadline);
+	void :target:`readFull<doxid-_i_p_i_wire_8cc_1a2e6a00081302ce20d1567e564ef1b759>`(const :ref:`Link<doxid-structrgpot_1_1ipi_1_1detail_1_1_link>`& link, void* data, size_t n, const :ref:`Deadline<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline>`& deadline);
+	bool :ref:`readFullOrEof<doxid-_i_p_i_wire_8cc_1ad257b8dd03d4e5c68f961b8f49919412>`(const :ref:`Link<doxid-structrgpot_1_1ipi_1_1detail_1_1_link>`& link, void* data, size_t n, const :ref:`Deadline<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline>`& deadline);
+	void :target:`setCloexec<doxid-_i_p_i_wire_8cc_1a3d61af193c778f2fde081fecdf4fd77d>`(int fd);
+	void :target:`setNonblock<doxid-_i_p_i_wire_8cc_1a1f34bb614ae57cf3d2f1e16093865fad>`(int fd);
+	void :target:`disableSigpipe<doxid-_i_p_i_wire_8cc_1a5f0d468096fd76b061adc11e0c32c659>`(int fd);
+	void :target:`setNodelay<doxid-_i_p_i_wire_8cc_1a0214b053d98087361a71b7cfde5d612e>`(int fd);
+	:ref:`Address<doxid-structrgpot_1_1ipi_1_1detail_1_1_address>` :ref:`parseAddress<doxid-_i_p_i_wire_8cc_1a898e3e46454c0b0fe6295282becb88fe>`(const std::string& address, const char* who, const std::string& unix_prefix);
+	void :ref:`rowsToIpiCell<doxid-_i_p_i_wire_8cc_1adf9be297ea1a2cef820dd8d087991acd>`(const double* box_angstrom, double h[9], double ih[9], const char* who);
+	void :ref:`ipiCellToRows<doxid-_i_p_i_wire_8cc_1a8ab67ed4fd740fc0c06fcd58c7ad90ce>`(const double h[9], double box_angstrom[9]);
+
+	} // namespace detail
+.. _details-namespacergpot_1_1ipi_1_1detail:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; header
+.. _doxid-_i_p_i_wire_8cc_1a9bd48d938249cb7d59ced3a0fb825630:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Header header(std::string_view text)
+
+Space-padded header; text longer than 12 bytes is cut.
+
+.. index:: pair: function; headerText
+.. _doxid-_i_p_i_wire_8cc_1a82d40c2bfc5e70d38875cb890c6b3326:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string headerText(const char* got)
+
+Printable form of a received header, trailing spaces removed.
+
+.. index:: pair: function; cellVolume
+.. _doxid-_i_p_i_wire_8cc_1a5da0732721f5baa93b08ef409beed253:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cellVolume(const double* box)
+
+Absolute volume of a row-major 3x3 cell. A null or singular cell is 0.
+
+.. index:: pair: function; waitFd
+.. _doxid-_i_p_i_wire_8cc_1add14ee63193bb86fd6cd5b100b418282:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void waitFd(const :ref:`Link<doxid-structrgpot_1_1ipi_1_1detail_1_1_link>`& link, short event, const :ref:`Deadline<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline>`& deadline, const char* what)
+
+Waits for ``event`` (POLLIN or POLLOUT). Throws "timed out <what>" or "<peer> disconnected".
+
+.. index:: pair: function; readFullOrEof
+.. _doxid-_i_p_i_wire_8cc_1ad257b8dd03d4e5c68f961b8f49919412:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool readFullOrEof(const :ref:`Link<doxid-structrgpot_1_1ipi_1_1detail_1_1_link>`& link, void* data, size_t n, const :ref:`Deadline<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline>`& deadline)
+
+readFull, except that a peer that closes before the first byte returns false instead of throwing.
+
+.. index:: pair: function; parseAddress
+.. _doxid-_i_p_i_wire_8cc_1a898e3e46454c0b0fe6295282becb88fe:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Address<doxid-structrgpot_1_1ipi_1_1detail_1_1_address>` parseAddress(const std::string& address, const char* who, const std::string& unix_prefix)
+
+Throws std::invalid_argument, prefixed with ``who``.
+
+.. index:: pair: function; rowsToIpiCell
+.. _doxid-_i_p_i_wire_8cc_1adf9be297ea1a2cef820dd8d087991acd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void rowsToIpiCell(const double* box_angstrom, double h[9], double ih[9], const char* who)
+
+rgpot cell (lattice vectors in rows, Angstrom) to the i-PI cell (vectors in columns, bohr) and its inverse. Throws std::invalid_argument for a singular cell.
+
+.. index:: pair: function; ipiCellToRows
+.. _doxid-_i_p_i_wire_8cc_1a8ab67ed4fd740fc0c06fcd58c7ad90ce:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void ipiCellToRows(const double h[9], double box_angstrom[9])
+
+i-PI cell (vectors in columns, bohr) to rgpot rows in Angstrom.
+

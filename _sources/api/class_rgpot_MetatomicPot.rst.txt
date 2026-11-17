@@ -31,6 +31,8 @@ Overview
 		void :target:`forceImpl<doxid-classrgpot_1_1_metatomic_pot_1a85936bb9b3fc63fee08f34ae1e02ad5c>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
 		void :ref:`forceBatchImpl<doxid-classrgpot_1_1_metatomic_pot_1a91a7f1d987a2b25bb473f5550b300bfc>`(const :ref:`ForceBatch<doxid-structrgpot_1_1_force_batch>`& batch) const;
 		void :target:`setChargeSpin<doxid-classrgpot_1_1_metatomic_pot_1a4862f5d490e057346139894157675440>`(int charge, int spin);
+		bool :ref:`readsCharge<doxid-classrgpot_1_1_metatomic_pot_1ad9d83dad90235c59b18a960ff9cd40f0>`() const;
+		bool :target:`readsSpin<doxid-classrgpot_1_1_metatomic_pot_1a1ad5a0dea71a6da087102a313893b320>`() const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_metatomic_pot_1a9eb144be8d1ff68de864a7f0ae52626b>`() const;
 	};
 .. _details-classrgpot_1_1_metatomic_pot:
@@ -52,6 +54,16 @@ Methods
 	void forceBatchImpl(const :ref:`ForceBatch<doxid-structrgpot_1_1_force_batch>`& batch) const
 
 One model forward over the batch when no orientation average is on. Rotations stay on the per-system path, which owns that average.
+
+.. index:: pair: function; readsCharge
+.. _doxid-classrgpot_1_1_metatomic_pot_1ad9d83dad90235c59b18a960ff9cd40f0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool readsCharge() const
+
+Whether the model reads the charge (rgpot::charge) and the multiplicity (rgpot::spin_multiplicity or rgpot::spin): it declares them, or attach_system_extras is set.
 
 .. index:: pair: function; caps
 .. _doxid-classrgpot_1_1_metatomic_pot_1a9eb144be8d1ff68de864a7f0ae52626b:

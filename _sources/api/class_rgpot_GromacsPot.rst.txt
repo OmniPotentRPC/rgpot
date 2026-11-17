@@ -1,0 +1,97 @@
+.. index:: pair: class; rgpot::GromacsPot
+.. _doxid-classrgpot_1_1_gromacs_pot:
+
+class rgpot::GromacsPot
+=======================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_GromacsPot_Impl.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class GromacsPot: public rgpot::Potential< GromacsPot > {
+	public:
+		// structs
+	
+		struct :ref:`Impl<doxid-structrgpot_1_1_gromacs_pot_1_1_impl>`;
+
+		// construction
+	
+		:target:`GromacsPot<doxid-classrgpot_1_1_gromacs_pot_1a220c3dff89343c3251af5c79462f8d67>`(const :ref:`ExternalLjConfig<doxid-structrgpot_1_1_external_lj_config>`& config);
+		:target:`GromacsPot<doxid-classrgpot_1_1_gromacs_pot_1a8860fc1af08a0363f8333d3ed8d0c16a>`(const GromacsPot&);
+		:target:`GromacsPot<doxid-classrgpot_1_1_gromacs_pot_1aa0ead64278361c10c5c0e14d04c82bf6>`(GromacsPot&&);
+		:target:`~GromacsPot<doxid-classrgpot_1_1_gromacs_pot_1a06f1641d1fe8f6e660c905c7f5649047>`();
+
+		// methods
+	
+		GromacsPot& :target:`operator=<doxid-classrgpot_1_1_gromacs_pot_1a793ff27c99d2cb6714cae575d3497002>`(const GromacsPot&);
+		GromacsPot& :target:`operator=<doxid-classrgpot_1_1_gromacs_pot_1a575aabf511a7eb2947dfc70e2ac19f96>`(GromacsPot&&);
+		void :target:`forceImpl<doxid-classrgpot_1_1_gromacs_pot_1a0c4bdeb8177f63f7455e0d4489369bed>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_gromacs_pot_1a0e0f843a23774486f259e98026f82d46>`() const;
+		const :ref:`ExternalLjConfig<doxid-structrgpot_1_1_external_lj_config>`& :target:`config<doxid-classrgpot_1_1_gromacs_pot_1a4a4b257ba381febf00da396373252852>`() const;
+		double :ref:`nativeU0<doxid-classrgpot_1_1_gromacs_pot_1a05e9b66e91abafac3158bd7fefbf4d4c>`() const;
+		double :ref:`nativeCutoff<doxid-classrgpot_1_1_gromacs_pot_1aa26a24bbbb740dc02af7114a02a320b3>`() const;
+		double :ref:`nativePsi<doxid-classrgpot_1_1_gromacs_pot_1afe6c20deca953bf24ff7748ffe47dd92>`() const;
+	};
+.. _details-classrgpot_1_1_gromacs_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_gromacs_pot_1a0e0f843a23774486f259e98026f82d46:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; nativeU0
+.. _doxid-classrgpot_1_1_gromacs_pot_1a05e9b66e91abafac3158bd7fefbf4d4c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double nativeU0() const
+
+Well depth stored for the engine, kJ/mol.
+
+.. index:: pair: function; nativeCutoff
+.. _doxid-classrgpot_1_1_gromacs_pot_1aa26a24bbbb740dc02af7114a02a320b3:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double nativeCutoff() const
+
+Cutoff stored for the engine, nanometres.
+
+.. index:: pair: function; nativePsi
+.. _doxid-classrgpot_1_1_gromacs_pot_1afe6c20deca953bf24ff7748ffe47dd92:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double nativePsi() const
+
+Zero crossing stored for the engine, nanometres.
+

@@ -1,0 +1,56 @@
+.. index:: pair: struct; rgpot::PerAtomOut
+.. _doxid-structrgpot_1_1_per_atom_out:
+
+struct rgpot::PerAtomOut
+========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Per-atom result arrays. A null pointer skips that quantity. :ref:`More...<details-structrgpot_1_1_per_atom_out>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <PerAtom.hpp>
+	
+	struct PerAtomOut {
+		// fields
+	
+		double* :ref:`energy<doxid-structrgpot_1_1_per_atom_out_1a1157e535b6f32c7bf29fb461255a07e2>` = nullptr;
+		double* :ref:`virial<doxid-structrgpot_1_1_per_atom_out_1ab14658d609f92db36c48d25adc954bcc>` = nullptr;
+	};
+.. _details-structrgpot_1_1_per_atom_out:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Per-atom result arrays. A null pointer skips that quantity.
+
+Fields
+------
+
+.. index:: pair: variable; energy
+.. _doxid-structrgpot_1_1_per_atom_out_1a1157e535b6f32c7bf29fb461255a07e2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double* energy = nullptr
+
+nAtoms entries; they sum to :ref:`ForceOut::energy <doxid-structrgpot_1_1_force_out_1a7a5b68cc41c5f9f94630ad6c6be97310>`.
+
+.. index:: pair: variable; virial
+.. _doxid-structrgpot_1_1_per_atom_out_1ab14658d609f92db36c48d25adc954bcc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double* virial = nullptr
+
+6 \* nAtoms entries, xx yy zz yz xz xy per atom.
+

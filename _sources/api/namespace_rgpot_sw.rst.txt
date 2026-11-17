@@ -25,7 +25,7 @@ Stillinger-Weber potential in gather form. :ref:`More...<details-namespacergpot_
 
 	// global functions
 
-	subroutine, public :ref:`sw_energy_forces<doxid-namespacergpot__sw_1af6418e19490c418ad484332895331b53>`(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`sw_params_t<doxid-structrgpot__sw_1_1sw__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg);
+	subroutine, public :ref:`sw_energy_forces<doxid-namespacergpot__sw_1a12b0a2dc8863c989d1e0b8b17f1a7fb9>`(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`sw_params_t<doxid-structrgpot__sw_1_1sw__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg, real(wp), dimension(6), intent(out), optional strain);
 
 	} // namespace rgpot_sw
 .. _details-namespacergpot__sw:
@@ -45,6 +45,8 @@ An atom ``i`` collects three-body force in two roles:
 
 The two roles together reproduce the scatter sum exactly, at the cost of walking each neighbour's neighbour list. Energy accrues to the centre atom only, so it is counted once.
 
+The strain derivative follows the energy: atom ``i`` adds d ⊗ dE/dd for the folded bond vectors d of its pair halves and of the triplets it centres (Thompson, Plimpton and Mattson, J. Chem. Phys. 131, 154107 (2009), doi:10.1063/1.3245303).
+
 Global Variables
 ----------------
 
@@ -62,12 +64,14 @@ Global Functions
 ----------------
 
 .. index:: pair: function; sw_energy_forces
-.. _doxid-namespacergpot__sw_1af6418e19490c418ad484332895331b53:
+.. _doxid-namespacergpot__sw_1a12b0a2dc8863c989d1e0b8b17f1a7fb9:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block
 
-	subroutine, public sw_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`sw_params_t<doxid-structrgpot__sw_1_1sw__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg)
+	subroutine, public sw_energy_forces(real(wp), dimension(:, :), intent(in), contiguous positions, real(wp), dimension(3, 3), intent(in) cell, type(:ref:`sw_params_t<doxid-structrgpot__sw_1_1sw__params__t>`), intent(in) par, type(:ref:`neighbor_table_t<doxid-structrgpot__neighbors_1_1neighbor__table__t>`), intent(inout) table, real(wp), intent(out) energy, real(wp), dimension(:, :), intent(out), contiguous forces, integer, intent(out) status, character(len=:), intent(out), allocatable errmsg, real(wp), dimension(6), intent(out), optional strain)
 
 Energy and forces for ``positions`` (3 x natoms) in ``cell``.
+
+``strain``, when present, receives dE/dε in eV for the right strain that sends each position and cell vector r to r (I + ε). The order is xx, yy, zz, yz, xz, xy, and the off-diagonal entries are d_a dE/dd_b with a < b, as in :ref:`stress.hpp <doxid-stress_8hpp_source>`.
 

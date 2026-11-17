@@ -1,8 +1,8 @@
-.. index:: pair: namespace; rgpot::details
-.. _doxid-namespacergpot_1_1details:
+.. index:: pair: namespace; rgpot::detail
+.. _doxid-namespacergpot_1_1detail:
 
-namespace rgpot::details
-========================
+namespace rgpot::detail
+=======================
 
 .. toctree::
 	:hidden:
@@ -17,14 +17,15 @@ Overview
 	:class: doxyrest-overview-code-block
 
 	
-	namespace details {
+	namespace detail {
 
 	// global functions
 
-	void :ref:`check_status<doxid-errors_8hpp_1a112c6683bf3ab950851345f6f552559a>`(rgpot_status_t status);
+	int :ref:`teamFor<doxid-_slices_8cc_1a729ae23d0df399662807376667e6c347>`(int wanted);
+	void :ref:`check_status<doxid-errors_8hpp_1aec6eee9f9a613b77e8dfb0eed0cf70b8>`(rgpot_status_t status);
 
-	} // namespace details
-.. _details-namespacergpot_1_1details:
+	} // namespace detail
+.. _details-namespacergpot_1_1detail:
 
 Detailed Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -34,8 +35,18 @@ Detailed Documentation
 Global Functions
 ----------------
 
+.. index:: pair: function; teamFor
+.. _doxid-_slices_8cc_1a729ae23d0df399662807376667e6c347:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int teamFor(int wanted)
+
+Threads to request for ``wanted`` slices or ranks under this thread's cap.
+
 .. index:: pair: function; check_status
-.. _doxid-errors_8hpp_1a112c6683bf3ab950851345f6f552559a:
+.. _doxid-errors_8hpp_1aec6eee9f9a613b77e8dfb0eed0cf70b8:
 
 .. ref-code-block:: cpp
 	:class: doxyrest-title-code-block

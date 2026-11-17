@@ -1,0 +1,22 @@
+.. index:: pair: struct; pocketfft::detail::ExecFHT
+.. _doxid-structpocketfft_1_1detail_1_1_exec_f_h_t:
+
+struct pocketfft::detail::ExecFHT
+=================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct ExecFHT {
+		// methods
+	
+		template <typename T0, typename T, size_t vlen>
+		void :target:`operator()<doxid-structpocketfft_1_1detail_1_1_exec_f_h_t_1a52f6a433130ca64ba5dd7183cd9503f7>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const :ref:`cndarr<doxid-classpocketfft_1_1detail_1_1cndarr>`<T0>& in, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T0>& out, T* buf, const :ref:`pocketfft_r<doxid-classpocketfft_1_1detail_1_1pocketfft__r>`<T0>& plan, T0 fct) const;
+	};

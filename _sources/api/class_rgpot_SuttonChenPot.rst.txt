@@ -30,8 +30,13 @@ Sutton-Chen energy and analytic forces. :ref:`More...<details-classrgpot_1_1_sut
 		const :ref:`SuttonChenConfig<doxid-structrgpot_1_1_sutton_chen_config>`& :target:`config<doxid-classrgpot_1_1_sutton_chen_pot_1a85a02559db7ceb31b72d4deccd6090a7>`() const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_sutton_chen_pot_1a56287af325d76d7298706b1f2bbf1dae>`() const;
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_sutton_chen_pot_1a15c3e151689d2de7d6fefc87c5baf4c5>`() const;
+		:ref:`Locality<doxid-structrgpot_1_1_locality>` :ref:`locality<doxid-classrgpot_1_1_sutton_chen_pot_1a2b528590b5122208d569c92fee485f74>`() const;
 		void :target:`forceImpl<doxid-classrgpot_1_1_sutton_chen_pot_1af979321c99671cbf9912c34ca6d20b87>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`forcePerAtom<doxid-classrgpot_1_1_sutton_chen_pot_1a11800e8657c668c4d1835e54638a95e1>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const;
+		void :ref:`densityStage<doxid-classrgpot_1_1_sutton_chen_pot_1acc6093bdcb2177693a5a64e1dc709301>`(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, double* densities) const;
+		void :ref:`forceStage<doxid-classrgpot_1_1_sutton_chen_pot_1a6bdc469b8315067d3b479353527d8bac>`(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, const double* densities, double* forces, :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally) const;
 		void :ref:`setNeighbourMode<doxid-classrgpot_1_1_sutton_chen_pot_1a824dbf86319385df3d1a0e3221a7ef66>`(nlist::Mode mode);
+		void :ref:`setPairTermLimit<doxid-classrgpot_1_1_sutton_chen_pot_1a40fac4a3cc3d2a5e7991296b539371d4>`(std::size_t pairs);
 	};
 .. _details-classrgpot_1_1_sutton_chen_pot:
 
@@ -67,6 +72,46 @@ Fingerprint of the potential's parameter set.
 
 Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
 
+.. index:: pair: function; locality
+.. _doxid-classrgpot_1_1_sutton_chen_pot_1a2b528590b5122208d569c92fee485f74:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Locality<doxid-structrgpot_1_1_locality>` locality() const
+
+The density and the pair term both stop at the cutoff. A cutoff <= 0 keeps every pair, so there is no finite range. The staged evaluation exchanges rho.
+
+.. index:: pair: function; forcePerAtom
+.. _doxid-classrgpot_1_1_sutton_chen_pot_1a11800e8657c668c4d1835e54638a95e1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forcePerAtom(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const
+
+forceImpl plus per-atom terms: each atom's embedding -epsilon c sqrt(rho_i), and each pair energy and virial split half to each atom.
+
+.. index:: pair: function; densityStage
+.. _doxid-classrgpot_1_1_sutton_chen_pot_1acc6093bdcb2177693a5a64e1dc709301:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void densityStage(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, double* densities) const
+
+:ref:`Staged.hpp <doxid-_staged_8hpp_source>` : adds (a / r)^m to the density of each atom of a pair.
+
+.. index:: pair: function; forceStage
+.. _doxid-classrgpot_1_1_sutton_chen_pot_1a6bdc469b8315067d3b479353527d8bac:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forceStage(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, const double* densities, double* forces, :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally) const
+
+:ref:`Staged.hpp <doxid-_staged_8hpp_source>` : -epsilon c sqrt(rho_i) of each owned atom and the pair forces with the embedding weights of both atoms, tallied as forcePerAtom tallies them.
+
 .. index:: pair: function; setNeighbourMode
 .. _doxid-classrgpot_1_1_sutton_chen_pot_1a824dbf86319385df3d1a0e3221a7ef66:
 
@@ -76,4 +121,14 @@ Mixed into the result-cache key so results never cross parameter sets. Implement
 	void setNeighbourMode(nlist::Mode mode)
 
 Stored Verlet list or a streaming cell walk.
+
+.. index:: pair: function; setPairTermLimit
+.. _doxid-classrgpot_1_1_sutton_chen_pot_1a40fac4a3cc3d2a5e7991296b539371d4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setPairTermLimit(std::size_t pairs)
+
+Pairs, over all threads, whose density-pass powers the force pass reads back. It computes the rest again, with the same bits. The default keeps 32 MiB of terms.
 

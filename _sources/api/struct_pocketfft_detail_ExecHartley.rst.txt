@@ -1,0 +1,22 @@
+.. index:: pair: struct; pocketfft::detail::ExecHartley
+.. _doxid-structpocketfft_1_1detail_1_1_exec_hartley:
+
+struct pocketfft::detail::ExecHartley
+=====================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct ExecHartley {
+		// methods
+	
+		template <typename T0, typename T, size_t vlen>
+		void :target:`operator()<doxid-structpocketfft_1_1detail_1_1_exec_hartley_1a67c98b38d12440781053552b9a33bba1>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const :ref:`cndarr<doxid-classpocketfft_1_1detail_1_1cndarr>`<T0>& in, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T0>& out, T* buf, const :ref:`pocketfft_r<doxid-classpocketfft_1_1detail_1_1pocketfft__r>`<T0>& plan, T0 fct) const;
+	};

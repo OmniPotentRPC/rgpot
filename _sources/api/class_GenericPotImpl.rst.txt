@@ -29,6 +29,8 @@ Server implementation for the Potential RPC interface. :ref:`More...<details-cla
 	
 		kj::Promise<void> :ref:`getCapabilities<doxid-class_generic_pot_impl_1a1864c5ba6a6ea8afae5687885a343bfa>`(GetCapabilitiesContext context);
 		kj::Promise<void> :ref:`calculate<doxid-class_generic_pot_impl_1a59c68ff1515d997768279734ff3ebcf8>`(CalculateContext context);
+		bool :ref:`appliesOwnArm<doxid-class_generic_pot_impl_1a8270ca1abbe551b2dfb7af738ae6e666>`() const;
+		bool :target:`applyOwnArm<doxid-class_generic_pot_impl_1a3ee37c31835d8824881d3bd3af26dd25>`(const ::PotentialConfig::Reader& cfg, std::string* msg);
 		kj::Promise<void> :target:`configure<doxid-class_generic_pot_impl_1a8eff60089b9853326964768ba3a5b848>`(ConfigureContext context);
 	};
 .. _details-class_generic_pot_impl:
@@ -125,4 +127,14 @@ This method performs the following translation steps:
 .. rubric:: Returns:
 
 An asynchronous promise for completion.
+
+.. index:: pair: function; appliesOwnArm
+.. _doxid-class_generic_pot_impl_1a8270ca1abbe551b2dfb7af738ae6e666:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool appliesOwnArm() const
+
+NWChem, CPMD and CP2K take every arm through setPotentialConfig.
 

@@ -1,0 +1,29 @@
+.. index:: pair: class; rgpot::TeamCap
+.. _doxid-classrgpot_1_1_team_cap:
+
+class rgpot::TeamCap
+====================
+
+.. toctree::
+	:hidden:
+
+While alive, regions this thread opens here start at most ``threads`` threads. Zero or less lifts the cap. Slices and results do not change.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Slices.hpp>
+	
+	class TeamCap {
+	public:
+		// construction
+	
+		:target:`TeamCap<doxid-classrgpot_1_1_team_cap_1a724999db003d4ae0379be56086b8e42d>`(int threads);
+		:target:`TeamCap<doxid-classrgpot_1_1_team_cap_1a234c80e1c2105fabdbf498bcd080fac7>`(const TeamCap&);
+		:target:`~TeamCap<doxid-classrgpot_1_1_team_cap_1ad625c90150c75c6f9d2c7de1b07a1ed0>`();
+
+		// methods
+	
+		TeamCap& :target:`operator=<doxid-classrgpot_1_1_team_cap_1a377bf8afeac644713765be4b29e86804>`(const TeamCap&);
+	};

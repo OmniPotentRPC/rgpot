@@ -1,0 +1,38 @@
+.. index:: pair: struct; rgpot::lr::CudaCoulombIn
+.. _doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in:
+
+struct rgpot::lr::CudaCoulombIn
+===============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct CudaCoulombIn {
+		// fields
+	
+		int :target:`method<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a312e485aa549b2dec8a331521c3635a1>` = 0;
+		const double* :target:`pos<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a6d49217714205d72a86501b9e5a3035f>` = nullptr;
+		const double* :target:`q<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a31f2d7394908e66290ba77919b9c1aee>` = nullptr;
+		std::size_t :target:`n<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1aa998832f3455177282230ff516159f3a>` = 0;
+		double :target:`total<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a1d24562a6249e29506874ea04928d5dd>` = 0.0;
+		const double* :target:`box<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a809c995164b75cadec5543a98f0a4e81>` = nullptr;
+		const int* :target:`pair_i<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1ac75c76b51b90c89fcb34d3a1533c538a>` = nullptr;
+		const int* :target:`pair_j<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a4fee9a36167ed08da6ef0fd38e9b159a>` = nullptr;
+		const double* :target:`pair_x<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1ab7b15236e104ec75f9a9f387bf220164>` = nullptr;
+		const double* :target:`pair_y<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a8df467a58a080155a4380095341fbf42>` = nullptr;
+		const double* :target:`pair_z<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1ac26b203c65ce13c291f2cce1edd551ac>` = nullptr;
+		const double* :target:`pair_r<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a21020d8399f2f231d71ed9b12be91457>` = nullptr;
+		std::size_t :target:`npair<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a4d82766717870b0af1a7ca722d7ff1e6>` = 0;
+		double :target:`alpha<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a8f885dc6ec0c7267d2c1a9bbf54f1063>` = 0.3;
+		double :target:`cutoff<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1a53d49b1a2ebb7fc4a58d7ccc7b2902e3>` = 9.0;
+		int :target:`kmax<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1aecc2621945ba5baa394fef8f416b815d>` = 4;
+		int :target:`grid<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1afff18521b6cec4ca3598d3051f73c359>` = 16;
+		int :target:`order<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in_1ae3d80ad0e5adcfc3f97c6603924976d1>` = 4;
+	};

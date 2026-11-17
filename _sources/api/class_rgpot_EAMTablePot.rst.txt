@@ -23,13 +23,20 @@ Tabulated :ref:`EAM <doxid-class_e_a_m>` or Finnis-Sinclair energy and forces. :
 		// construction
 	
 		:target:`EAMTablePot<doxid-classrgpot_1_1_e_a_m_table_pot_1a89de2a1b087ef8b9e6f2a7b03e854482>`(const :ref:`EAMTableConfig<doxid-structrgpot_1_1_e_a_m_table_config>`& c);
-		:target:`EAMTablePot<doxid-classrgpot_1_1_e_a_m_table_pot_1a5611168a1d7960087277ccbf5bec6b7f>`(const :ref:`EAMTable<doxid-structrgpot_1_1_e_a_m_table>`& table, bool periodic, bool stress);
+		:target:`EAMTablePot<doxid-classrgpot_1_1_e_a_m_table_pot_1a030664be630fd48a9449a8e7020297e2>`(const :ref:`EAMTable<doxid-structrgpot_1_1_e_a_m_table>`& table, bool periodic, bool stress, double skin = 1.0);
 
 		// methods
 	
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_e_a_m_table_pot_1a2122ac46ebec870874a97954ecc78c7c>`() const;
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_e_a_m_table_pot_1a0f9f20dd31dab48146a8fe42b5b5719e>`() const;
+		:ref:`Locality<doxid-structrgpot_1_1_locality>` :ref:`locality<doxid-classrgpot_1_1_e_a_m_table_pot_1a159c44b35d9bf6d432c69fd7909ed956>`() const;
 		void :target:`forceImpl<doxid-classrgpot_1_1_e_a_m_table_pot_1a2aa6a68dec67700080c649b00f7efe04>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`forcePerAtom<doxid-classrgpot_1_1_e_a_m_table_pot_1a9c62a0a5e6fe076a16aee90744f679ab>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const;
+		void :ref:`densityStage<doxid-classrgpot_1_1_e_a_m_table_pot_1a5cd71bcf5d05c37939f2b7f8fe2196ec>`(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, double* densities) const;
+		void :ref:`forceStage<doxid-classrgpot_1_1_e_a_m_table_pot_1a8b637c324addbf4ea04434ccb6942049>`(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, const double* densities, double* forces, :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally) const;
+		void :ref:`setNeighbourMode<doxid-classrgpot_1_1_e_a_m_table_pot_1a8ce47046230061976213fdbf6f4dd285>`(nlist::Mode mode);
+		bool :ref:`listReused<doxid-classrgpot_1_1_e_a_m_table_pot_1a1e0b65080627ade9e29da4c953be2fa1>`() const;
+		std::uint64_t :ref:`listBuilds<doxid-classrgpot_1_1_e_a_m_table_pot_1aafaf6131c47fe6019c8aa77f6a60aeb6>`() const;
 	};
 .. _details-classrgpot_1_1_e_a_m_table_pot:
 
@@ -64,4 +71,74 @@ Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cl
 Fingerprint of the potential's parameter set.
 
 Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+
+.. index:: pair: function; locality
+.. _doxid-classrgpot_1_1_e_a_m_table_pot_1a159c44b35d9bf6d432c69fd7909ed956:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Locality<doxid-structrgpot_1_1_locality>` locality() const
+
+The density, the embedding argument and phi all stop at the table cutoff. The staged evaluation exchanges rho.
+
+.. index:: pair: function; forcePerAtom
+.. _doxid-classrgpot_1_1_e_a_m_table_pot_1a9c62a0a5e6fe076a16aee90744f679ab:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forcePerAtom(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const
+
+forceImpl plus per-atom terms: each atom's embedding F_a(rho_i), and each phi_ab and pair virial split half to each atom, as pair_style eam tallies eatom and vatom.
+
+.. index:: pair: function; densityStage
+.. _doxid-classrgpot_1_1_e_a_m_table_pot_1a5cd71bcf5d05c37939f2b7f8fe2196ec:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void densityStage(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, double* densities) const
+
+:ref:`Staged.hpp <doxid-_staged_8hpp_source>` : adds rho_ab(r) to the density of each atom of a pair.
+
+.. index:: pair: function; forceStage
+.. _doxid-classrgpot_1_1_e_a_m_table_pot_1a8b637c324addbf4ea04434ccb6942049:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forceStage(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, const double* densities, double* forces, :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally) const
+
+:ref:`Staged.hpp <doxid-_staged_8hpp_source>` : F_a(rho_i) of each owned atom and the pair forces with F'(rho) of both atoms, tallied as forcePerAtom tallies them.
+
+.. index:: pair: function; setNeighbourMode
+.. _doxid-classrgpot_1_1_e_a_m_table_pot_1a8ce47046230061976213fdbf6f4dd285:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setNeighbourMode(nlist::Mode mode)
+
+Stream walks the cells on every call and keeps no list.
+
+.. index:: pair: function; listReused
+.. _doxid-classrgpot_1_1_e_a_m_table_pot_1a1e0b65080627ade9e29da4c953be2fa1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool listReused() const
+
+True when the last forceImpl or forcePerAtom kept the pair list.
+
+.. index:: pair: function; listBuilds
+.. _doxid-classrgpot_1_1_e_a_m_table_pot_1aafaf6131c47fe6019c8aa77f6a60aeb6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint64_t listBuilds() const
+
+Pair lists built by forceImpl and forcePerAtom so far.
 

@@ -1,0 +1,30 @@
+.. index:: pair: struct; rgpot::lr::PmeTrace
+.. _doxid-structrgpot_1_1lr_1_1_pme_trace:
+
+struct rgpot::lr::PmeTrace
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct PmeTrace {
+		// fields
+	
+		double :target:`spread_us<doxid-structrgpot_1_1lr_1_1_pme_trace_1a1a0f7782b34f14e50ee3e935965569dc>` = 0;
+		double :target:`fft_us<doxid-structrgpot_1_1lr_1_1_pme_trace_1a8ba4d097abf4c1b989d806f4a52f18ef>` = 0;
+		double :target:`kernel_us<doxid-structrgpot_1_1lr_1_1_pme_trace_1a1b2f3822000eb67636f3a3d5a85ac374>` = 0;
+		double :target:`gather_us<doxid-structrgpot_1_1lr_1_1_pme_trace_1a352f976c0acfa525a0d7ea9497f1be3b>` = 0;
+		double :target:`real_us<doxid-structrgpot_1_1lr_1_1_pme_trace_1af9f8ad0f4b6f00c68c607fcb258bddf4>` = 0;
+		int :target:`spread_team<doxid-structrgpot_1_1lr_1_1_pme_trace_1a9e7b9e9fa13b91332b1bbb68c3e90db1>` = 1;
+		int :target:`fft_team<doxid-structrgpot_1_1lr_1_1_pme_trace_1a827bcd6c7b404202339279a6d26ff68b>` = 1;
+		int :target:`kernel_team<doxid-structrgpot_1_1lr_1_1_pme_trace_1aebadaf317c77974b337e885667a065a9>` = 1;
+		int :target:`gather_team<doxid-structrgpot_1_1lr_1_1_pme_trace_1aff31c55ca0f58942d52b20ee90e821fa>` = 1;
+		int :target:`real_team<doxid-structrgpot_1_1lr_1_1_pme_trace_1a3f06dd8bfffd97ecd74da5af314c96a1>` = 1;
+	};

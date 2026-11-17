@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::OpenMMPot::Impl
+.. _doxid-structrgpot_1_1_open_m_m_pot_1_1_impl:
+
+struct rgpot::OpenMMPot::Impl
+=============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// fields
+	
+		:ref:`NativeState<doxid-structrgpot_1_1_native_state>` :target:`state<doxid-structrgpot_1_1_open_m_m_pot_1_1_impl_1a46b6c6220eaa3f4319dd0acdc38663bb>`;
+
+		// construction
+	
+		:target:`Impl<doxid-structrgpot_1_1_open_m_m_pot_1_1_impl_1aa27c4b57008e6238784742ed2588ea97>`(const :ref:`ExternalLjConfig<doxid-structrgpot_1_1_external_lj_config>`& config);
+	};

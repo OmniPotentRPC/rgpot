@@ -1,0 +1,28 @@
+.. index:: pair: class; pocketfft::detail::simple_iter
+.. _doxid-classpocketfft_1_1detail_1_1simple__iter:
+
+class pocketfft::detail::simple_iter
+====================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class simple_iter {
+	public:
+		// construction
+	
+		:target:`simple_iter<doxid-classpocketfft_1_1detail_1_1simple__iter_1a1e455c615825bebd5f1f62665027b398>`(const :ref:`arr_info<doxid-classpocketfft_1_1detail_1_1arr__info>`& arr_);
+
+		// methods
+	
+		void :target:`advance<doxid-classpocketfft_1_1detail_1_1simple__iter_1a73a9ecd3008d2bd35aaa00bf9fac074f>`();
+		ptrdiff_t :target:`ofs<doxid-classpocketfft_1_1detail_1_1simple__iter_1ab59481ad9c8f04addb907c3ebb89f8fa>`() const;
+		size_t :target:`remaining<doxid-classpocketfft_1_1detail_1_1simple__iter_1a9267d37f51a9a5aecc69293c7ed1b1f6>`() const;
+	};

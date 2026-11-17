@@ -1,0 +1,63 @@
+.. index:: pair: struct; rgpot::ipi::detail::Deadline
+.. _doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline:
+
+struct rgpot::ipi::detail::Deadline
+===================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Absolute end of one blocking exchange. never() has no end. :ref:`More...<details-structrgpot_1_1ipi_1_1detail_1_1_deadline>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <IPIWire.hpp>
+	
+	struct Deadline {
+		// fields
+	
+		Clock::time_point :target:`end<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline_1a7b599ffa1e705d46480b079c8d9dbcfc>` {};
+		bool :target:`unbounded<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline_1a6eac324c9908b73136ab50e28007611e>` = false;
+
+		// methods
+	
+		static Deadline :ref:`after<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline_1a2e6f11fec9f9e164ec161f0faaaf691f>`(double seconds, const char* who);
+		static Deadline :target:`never<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline_1aa7e79a03e0eebc8286453ed426ab8d03>`();
+		bool :target:`expired<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline_1ae03a70532f89b6786379ea6838077edf>`() const;
+		int :ref:`remainingMs<doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline_1a756eec190ed0794416a96b0fcffa2f2c>`() const;
+	};
+.. _details-structrgpot_1_1ipi_1_1detail_1_1_deadline:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Absolute end of one blocking exchange. never() has no end.
+
+Methods
+-------
+
+.. index:: pair: function; after
+.. _doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline_1a2e6f11fec9f9e164ec161f0faaaf691f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static Deadline after(double seconds, const char* who)
+
+Throws std::invalid_argument for a negative or non-finite budget.
+
+.. index:: pair: function; remainingMs
+.. _doxid-structrgpot_1_1ipi_1_1detail_1_1_deadline_1a756eec190ed0794416a96b0fcffa2f2c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int remainingMs() const
+
+Milliseconds left for poll(); -1 when unbounded.
+

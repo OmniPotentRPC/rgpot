@@ -25,6 +25,7 @@ Parameters for :ref:`EAMTablePot <doxid-classrgpot_1_1_e_a_m_table_pot>`. :ref:`
 		EAMTableFormat :target:`format<doxid-structrgpot_1_1_e_a_m_table_config_1a610468d0daf0cddbe103f52b07c2c53e>` = EAMTableFormat::Setfl;
 		bool :ref:`periodic<doxid-structrgpot_1_1_e_a_m_table_config_1ac869817fe660647faad18cdcc37c8334>` = true;
 		bool :ref:`stress<doxid-structrgpot_1_1_e_a_m_table_config_1a8e003be080f806db6561a221f25e5699>` = false;
+		double :ref:`skin<doxid-structrgpot_1_1_e_a_m_table_config_1ac3256d1f52e11e550e443d9f00a50e6e>` = 1.0;
 	};
 .. _details-structrgpot_1_1_e_a_m_table_config:
 
@@ -67,4 +68,14 @@ Minimum image convention. The cutoff must sit under half of every face spacing o
 	bool stress = false
 
 Write the Cauchy stress of :ref:`stress.hpp <doxid-stress_8hpp_source>` when the cell volume is positive.
+
+.. index:: pair: variable; skin
+.. _doxid-structrgpot_1_1_e_a_m_table_config_1ac3256d1f52e11e550e443d9f00a50e6e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double skin = 1.0
+
+Verlet skin of the potential's own pair list, in the length unit of the table. forceImpl keeps the list while every atom stays within half of it (:ref:`nlist::Neighbours <doxid-classrgpot_1_1nlist_1_1_neighbours>`). 0 rebuilds it whenever an atom moves. The skin changes when the list is rebuilt, not the result.
 

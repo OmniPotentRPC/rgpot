@@ -4,56 +4,71 @@ Find the Ground State of an EON Structure
 -----------------------------------------
 
 Atomistic workflows minimize.
-ASE relaxes structures with L-BFGS and FIRE; eOn
-(TheochemUI/eOn on GitHub) runs its own L-BFGS and conjugate-gradient minimizers at the end of every min-mode and nudged-elastic-band search, over structures stored as EON ``.con`` files and driven by a potential rgpot serves over RPC. The atomistic-cookbook example lab- cosmo/atomistic-cookbook
-runs exactly this stack: a PET-MAD model, a NEB path, eOn's saddle search.
+ASE relaxes structures with L-BFGS and FIRE. eOn (TheochemUI/eOn on GitHub)
+minimizes structures stored as EON ``.con`` files, and it can drive a potential
+that rgpot serves over RPC.
 
 Goswami, Gunde, and Jónsson, Front.
 Chem. (2026),
 https://doi.org/10.3389/fchem.2026.1807063, is the enhanced climbing-image NEB paper for saddle searches on this stack. eOn, which runs those bands, is the Zenodo record https://doi.org/10.5281/zenodo.18529495.
 
-All of these minimizers are *local*: they walk downhill to the nearest minimum.
+L-BFGS and FIRE are *local* minimizers: they walk downhill to the nearest
+minimum.
 The nearest minimum is often not the one you want.
-This tutorial finds the minimum a local search misses, and shows that ``anneal``
-reaches it where ASE's optimizer and scipy's simulated annealing do not improve
-on it.
-The numbers you will reproduce, from one disordered start on a 7-atom Lennard-
-Jones cluster (reduced units, global minimum ``-16.505384``):
+This tutorial runs a local minimizer and two global minimizers, scipy's
+``dual_annealing`` and ``anneal``'s portfolio, from one disordered start on a 7-atom
+Lennard-Jones cluster (reduced units, global minimum ``-16.505384``).
+With anneal 0.11.1 from PyPI, ``tests/ase_vs_anneal.py`` gives:
 
 .. table::
 
-    +-----------------------------------+--------------+-------------+
-    | Minimizer                         | Final energy | Evaluations |
-    +===================================+==============+=============+
-    | local L-BFGS (ASE, eOn)           |        -3.13 |         500 |
-    +-----------------------------------+--------------+-------------+
-    | scipy ``dual_annealing`` (global) |   -16.505384 |       17006 |
-    +-----------------------------------+--------------+-------------+
-    | ``anneal`` portfolio (global)     |   -16.505384 |       14920 |
-    +-----------------------------------+--------------+-------------+
+    +-----------------------------------+--------------+-----------------------------------+
+    | Minimizer                         | Final energy | Evaluations                       |
+    +===================================+==============+===================================+
+    | ASE L-BFGS (local), 500 steps     |   -10.751101 | 500 force steps                   |
+    +-----------------------------------+--------------+-----------------------------------+
+    | scipy ``dual_annealing`` (global) |   -16.505377 | 17003                             |
+    +-----------------------------------+--------------+-----------------------------------+
+    | ``anneal`` portfolio (global)     |   -15.593204 | 10911 evaluations, 2222 gradients |
+    +-----------------------------------+--------------+-----------------------------------+
 
-Local L-BFGS stops at the nearest minimum.
-Both global methods reach the ground state; ``anneal`` reaches it in fewer
-evaluations than scipy.
+L-BFGS stops at its step limit in a basin above the global minimum. scipy's
+``dual_annealing`` reaches the global minimum.
+The ``anneal`` 0.11.1 portfolio ends below the local result and above the global
+minimum, so the script prints ``RESULT: FAIL``.
+The script checks that ``anneal`` reaches the global minimum within 0.05 and does
+no worse than scipy.
+The ``anneal`` result depends on the ``anneal`` version you build or install.
 
 What you will need
 ~~~~~~~~~~~~~~~~~~
 
 - `pixi <https://pixi.sh>`_ (manages the toolchain)
 
-- The ``rgpot``, ``anneal``, and ``readcon-core`` checkouts side by side
+- The ``anneal`` and ``readcon`` Python modules: installed in the ``rpctest``
+  environment, or built from ``anneal`` and ``readcon-core`` checkouts
 
-- About 10 minutes
+- For Step 4 and the second script, the
+  ``tiny_cuh2.con`` file from readcon-core (``resources/test/tiny_cuh2.con`` in that
+  repository)
 
-One command builds everything and runs the comparison:
+One command runs the comparison:
 
 .. code:: bash
 
     cd rgpot
     pixi run -e rpctest ase-anneal-compare
 
-It builds the ``potserv`` potential server, builds the ``anneal`` and ``readcon``
-Python modules, and runs the two scripts below.
+``ase-anneal-compare`` runs ``scripts/ase_anneal_compare.sh``.
+It builds ``potserv`` in ``$RGPOT_BUILD_DIR`` (default ``build-rpc``) when that build
+has no ``potserv``.
+It builds the ``anneal`` and ``readcon`` Python modules with maturin when they are
+not importable.
+The sources default to ``../../Rust/anneal`` and ``../../Rust/readcon-core``
+relative to the repository; set ``ANNEAL_SRC`` and ``READCON_SRC`` to change them.
+It then runs ``tests/ase_vs_anneal.py`` and ``tests/con_relax_demo.py``.
+``con_relax_demo.py`` reads the ``.con`` file named by
+``CON_FILE``; set it to your copy of ``tiny_cuh2.con``.
 
 Step 1: drive an rgpot potential from Python
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -77,7 +92,7 @@ Point the RPC calculator at a potential and it launches the server:
     atoms = Atoms(numbers=[0] * 7, positions=start, cell=[40, 40, 40])
     atoms.calc = calc
 
-    print("start energy:", atoms.get_potential_energy())   # about +20
+    print("start energy:", atoms.get_potential_energy())   # 19.8379
 
 Use ``spawn`` as a context manager (``with RgpotRpcCalculator.spawn(...) as calc:``)
 to stop the managed server on exit.
@@ -90,17 +105,15 @@ Step 2: local relaxation stops at the nearest minimum
     from ase.optimize import LBFGS
 
     LBFGS(atoms).run(fmax=1e-3)
-    print("local L-BFGS energy:", atoms.get_potential_energy())   # about -3.13
+    print("local L-BFGS energy:", atoms.get_potential_energy())   # -12.3029
 
-L-BFGS converges to a minimum, just not the global one.
+Without a step limit, L-BFGS converges in 721 steps to a minimum at -12.3029,
+not the global one.
 The LJ7 global minimum, the pentagonal bipyramid at ``-16.505384``, sits in a
-different basin; from a random start a local minimizer cannot cross into it.
-eOn's L-BFGS, run on the same surface, stops in the same place -- this is the
-wall a local search hits when a relaxation lands in a metastable basin instead
-of the product state.
+different basin; from this start a local minimizer does not cross into it.
 
-Step 3: find the global minimum
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Step 3: search for the global minimum
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``AnnealRunner`` wraps ``anneal``'s portfolio optimizer (the method of the INFORMS
 Journal on Computing paper: Thompson-allocated basin hopping, differential
@@ -117,35 +130,24 @@ It uses the rgpot forces as the gradient:
     atoms.set_positions(start)              # back to the disordered start
     opt = AnnealRunner(atoms, budget=15000, seed=11, pad=3.0)
     opt.run()
-    print("anneal energy:", opt.get_potential_energy())   # -16.505384
-    print("evaluations:", opt.nevals)
+    print("anneal energy:", opt.get_potential_energy())   # -15.5331 with anneal 0.11.1
+    print("evaluations:", opt.nevals)                     # 13249 with anneal 0.11.1
 
-The geometry ends at the global minimum.
-``scipy.optimize.dual_annealing`` reaches the same value on this surface; ``anneal``
-reaches it in fewer evaluations, and both pass the value the local search
-returns.
+With anneal 0.11.1 this run ends at -15.5331, below the local result and above
+the global minimum.
+``scipy.optimize.dual_annealing`` reaches -16.505377 from the same start in ``tests/ase_vs_anneal.py``.
 ``tests/ase_vs_anneal.py`` runs all three side by side.
-
-Which minimizer for which job
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-- Local L-BFGS / FIRE / conjugate gradient (ASE or eOn): refine a structure
-
-inside the basin you want -- an eOn saddle endpoint, a perturbed crystal, an MD
-snapshot.
-
-- ``AnnealRunner``: find the minimum when the basin is unknown -- cluster ground
-
-states, conformer search, potential-parameter fitting.
-
-Chain them: an ``anneal`` search to locate the basin, then a local polish.
+When to pick a local or a global minimizer is in
+:doc:`Local and global minimization <../explanation/global-optimization>`.
 
 Step 4: start from a ``.con`` file
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 EON workflows start from a structure on disk.
 ``atoms_from_con`` reads an EON ``.con`` file into ``ase.Atoms`` through
-``readcon- core`` -- the files eOn reads and writes:
+``readcon-core`` -- the files eOn reads and writes.
+It is in ``CppCore/rgpot/rpc/ase_helpers.py``; put ``CppCore/rgpot/rpc`` on
+``PYTHONPATH`` to import it:
 
 .. code:: python
 
@@ -155,7 +157,7 @@ EON workflows start from a structure on disk.
     calc = RgpotRpcCalculator.spawn(server_bin="path/to/potserv", potential="CuH2")
     atoms = atoms_from_con("tiny_cuh2.con", calc=calc)
     print(atoms.get_chemical_symbols())          # ['Cu', 'Cu', 'H', 'H']
-    print("energy:", atoms.get_potential_energy())
+    print("energy:", atoms.get_potential_energy())   # -6.474709
 
     # The cell comes from the .con; override it with a larger box when needed.
     atoms = atoms_from_con("tiny_cuh2.con", cell=[15, 20, 30], pbc=False)
@@ -165,10 +167,12 @@ minimum the ``.con`` recorded:
 
 .. code:: python
 
+    from ase.optimize import LBFGS
+
     atoms.calc = calc
     atoms.rattle(stdev=0.15, seed=1)
     LBFGS(atoms).run(fmax=0.02)
-    print("relaxed energy:", atoms.get_potential_energy())   # back to -6.474708
+    print("relaxed energy:", atoms.get_potential_energy())   # back to -6.474709
 
 ``tests/con_relax_demo.py`` runs this round-trip.
 
@@ -181,6 +185,8 @@ a lone atom (a shallow well) and a bound pair (a deeper well) gives a 2D
 Lennard-Jones double well.
 ASE LBFGS started in the shallow basin stops there; anneal's portfolio reaches
 the deep one.
+``pes-double-well`` runs
+``tests/pes_double_well.py`` and writes ``docs/orgmode/_static/pes_double_well.png``.
 
 .. code:: bash
 
@@ -194,9 +200,9 @@ Second, for an EON minimization, \`\`rgpycrumbs eon plt-min\`\` renders the actu
 trajectory on a gradient-enhanced 2D landscape: progress \`\`s\`\` toward the
 minimum against lateral deviation \`\`d\`\`, with the energy surface fitted from the
 path.
-\`\`tests/eon\ :sub:`min`\ \ :sub:`landscape.py`\\`\` runs an \`\`eonclient\`\` LJ7 minimization and plots
-it (energies capped with \`\`plt-min --energy-cap-window\`\` so the colorbar
-resolves the well):
+\`\`tests/eon\ :sub:`min`\ \ :sub:`landscape.py`\\`\` runs \`\`eonclient\`\` LJ7 minimizations and plots
+the lowest one (energies capped with \`\`plt-min --energy-cap-window\`\` so the
+colorbar resolves the well):
 
 .. code:: bash
 
@@ -204,23 +210,20 @@ resolves the well):
 
 .. figure:: ../../orgmode/_static/eon_min_landscape.png
 
-    An EON LJ7 minimization on the (s, d) landscape: the path descends from the start (initial) to the global minimum at -16.505 (minimized), and the surface energy, shown relative to that minimum, drops monotonically along progress s.
+    An EON LJ7 minimization on the (s, d) landscape: the path descends from the start (initial) to the minimum eonclient reached (minimized), and the surface energy is shown relative to that minimum.
 
-The \`\`eonviz\`\` environment is separate from the C++ build env: \`\`eon\`\` pins
-\`\`fmt>=12\`\` (clashing with rgpot's C++ \`\`fmt<12\`\`), so it carries no default
-feature and pulls \`\`eon\`\`, \`\`ira\`\`, \`\`jax\`\`, and the released \`\`chemparseplot\`\`
-and \`\`rgpycrumbs\`\` (both pinned to 1.11.0, which carry the embedded-metadata
-trajectory parser and \`\`plt-min\`\`).
-\`\`pixi run check-eonviz-pins\`\` fails when an \`\`eonviz\`\` dependency stops being
-an immutable pin.
+Why ``eonviz`` is its own pixi environment is in
+:doc:`Local and global minimization <../explanation/global-optimization>`.
 
 Where to go next
 ~~~~~~~~~~~~~~~~
 
-- Swap ``potential``"LJ"= for ``CuH2``, ``XTB``, ``TBLite``, or ``Metatomic:<model>`` (the
+- Swap ``potential="LJ"`` for ``CuH2``, ``XTB``, ``TBLite``, or ``Metatomic:<model>`` (for
 
-PET-MAD model the cookbook uses); the calculator stays the same, only the server
-backend changes, and the same server serves eOn.
+example a PET-MAD model); the calculator stays the same, only the server backend
+changes, and the same server serves eOn.
+``XTB``, ``TBLite`` and ``Metatomic:<model>`` need a ``potserv`` built with
+``with_xtb``, ``with_tblite`` or ``with_metatomic``.
 
 - Read :doc:`External Integration Guide <../howto/integration>` for how eOn
 

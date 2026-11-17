@@ -10,6 +10,7 @@ namespace rgpot::engine
 	struct_rgpot_engine_Backend.rst
 	struct_rgpot_engine_Builtin.rst
 	struct_rgpot_engine_Created.rst
+	struct_rgpot_engine_Unsupported.rst
 	class_rgpot_engine_Sha256.rst
 
 Overview
@@ -29,6 +30,7 @@ Overview
 	struct :ref:`Backend<doxid-structrgpot_1_1engine_1_1_backend>`;
 	struct :ref:`Builtin<doxid-structrgpot_1_1engine_1_1_builtin>`;
 	struct :ref:`Created<doxid-structrgpot_1_1engine_1_1_created>`;
+	struct :ref:`Unsupported<doxid-structrgpot_1_1engine_1_1_unsupported>`;
 
 	// classes
 

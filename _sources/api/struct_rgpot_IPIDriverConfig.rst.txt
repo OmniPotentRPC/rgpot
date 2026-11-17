@@ -1,0 +1,104 @@
+.. index:: pair: struct; rgpot::IPIDriverConfig
+.. _doxid-structrgpot_1_1_i_p_i_driver_config:
+
+struct rgpot::IPIDriverConfig
+=============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Where the driver connects, the species it serves, and how the geometry is handed to the evaluation. :ref:`More...<details-structrgpot_1_1_i_p_i_driver_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <IPIDriver.hpp>
+	
+	struct IPIDriverConfig {
+		// fields
+	
+		std::string :target:`address<doxid-structrgpot_1_1_i_p_i_driver_config_1af377a52039d9b1777f83fd4db16fed57>`;
+		std::vector<int> :ref:`species<doxid-structrgpot_1_1_i_p_i_driver_config_1adfe1939c9268deb5cf1e31fa07d98d3c>`;
+		std::string :target:`unix_prefix<doxid-structrgpot_1_1_i_p_i_driver_config_1ac50a9bd9ed124d59035bc6b6bb26f1d2>` = "/tmp/ipi_";
+		double :ref:`connect_timeout_s<doxid-structrgpot_1_1_i_p_i_driver_config_1aede5c1f876a8bd8c6633ccfc4efb29ac>` = 30.0;
+		double :ref:`timeout_s<doxid-structrgpot_1_1_i_p_i_driver_config_1aaf5af85dbdf8e086aa6d27097496ec00>` = 0.0;
+		double :ref:`cutoff<doxid-structrgpot_1_1_i_p_i_driver_config_1aee7c120f211eb46013b1409f2d31b141>` = 0.0;
+		double :ref:`stress_step<doxid-structrgpot_1_1_i_p_i_driver_config_1a6377735394e4df4533bde8ccf90494c5>` = 0.0;
+		bool :ref:`extras_json<doxid-structrgpot_1_1_i_p_i_driver_config_1a99d21ca24ea5112a4ddcdf04c9c1d529>` = true;
+	};
+.. _details-structrgpot_1_1_i_p_i_driver_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Where the driver connects, the species it serves, and how the geometry is handed to the evaluation.
+
+address is ``unix:/absolute/path``, ``unix:<name>`` (connects to ``<unix_prefix><name>``, by default ``/tmp/ipi_<name>``), ``tcp:<host>:<port>`` or ``tcp:<port>`` (host 127.0.0.1).
+
+Fields
+------
+
+.. index:: pair: variable; species
+.. _doxid-structrgpot_1_1_i_p_i_driver_config_1adfe1939c9268deb5cf1e31fa07d98d3c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::vector<int> species
+
+Atomic number of each atom, in the server's atom order.
+
+.. index:: pair: variable; connect_timeout_s
+.. _doxid-structrgpot_1_1_i_p_i_driver_config_1aede5c1f876a8bd8c6633ccfc4efb29ac:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double connect_timeout_s = 30.0
+
+Seconds connect() keeps retrying a refused or missing socket.
+
+.. index:: pair: variable; timeout_s
+.. _doxid-structrgpot_1_1_i_p_i_driver_config_1aaf5af85dbdf8e086aa6d27097496ec00:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double timeout_s = 0.0
+
+Seconds one message may take to arrive or send. 0 waits forever.
+
+.. index:: pair: variable; cutoff
+.. _doxid-structrgpot_1_1_i_p_i_driver_config_1aee7c120f211eb46013b1409f2d31b141:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cutoff = 0.0
+
+Interaction range in Angstrom. A periodic cell narrower than twice this is tiled, and an open box (singular cell) is padded by it.
+
+.. index:: pair: variable; stress_step
+.. _doxid-structrgpot_1_1_i_p_i_driver_config_1a6377735394e4df4533bde8ccf90494c5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double stress_step = 0.0
+
+Strain step of the central-difference virial used when the evaluation reports no stress. 0 sends a zero virial instead.
+
+.. index:: pair: variable; extras_json
+.. _doxid-structrgpot_1_1_i_p_i_driver_config_1a99d21ca24ea5112a4ddcdf04c9c1d529:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool extras_json = true
+
+Send a small JSON object as the FORCEREADY extra string. False sends an empty string.
+

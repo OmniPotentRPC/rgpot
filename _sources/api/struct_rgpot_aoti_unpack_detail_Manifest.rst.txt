@@ -1,0 +1,26 @@
+.. index:: pair: struct; rgpot::aoti_unpack::detail::Manifest
+.. _doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest:
+
+struct rgpot::aoti_unpack::detail::Manifest
+===========================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Manifest {
+		// fields
+	
+		std::string :target:`sha256<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest_1a38592f5858a7b9c6f49d092347bf5ae1>`;
+		std::string :target:`model<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest_1af1c1abed8e8f72b9cf4da0c31d02b967>`;
+		std::string :target:`so<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest_1a67193fb0e83a3fe84b77f33be872989d>`;
+		std::string :target:`metadata<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest_1a027b5d8d6c4276afe509d14d050427b5>`;
+		std::string :target:`blob<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest_1af8c959057d8303517f6263ce579c6c77>`;
+		std::vector<std::pair<uint64_t, std::string>> :target:`files<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest_1a2b32bdc132416b4c1070c12b54afb362>`;
+	};

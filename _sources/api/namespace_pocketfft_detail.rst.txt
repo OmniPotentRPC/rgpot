@@ -1,0 +1,259 @@
+.. index:: pair: namespace; pocketfft::detail
+.. _doxid-namespacepocketfft_1_1detail:
+
+namespace pocketfft::detail
+===========================
+
+.. toctree::
+	:hidden:
+
+	namespace_pocketfft_detail_threading.rst
+	struct_pocketfft_detail_ExecC2C.rst
+	struct_pocketfft_detail_ExecDcst.rst
+	struct_pocketfft_detail_ExecFHT.rst
+	struct_pocketfft_detail_ExecHartley.rst
+	struct_pocketfft_detail_ExecR2R.rst
+	struct_pocketfft_detail_VLEN.rst
+	struct_pocketfft_detail_VTYPE.rst
+	struct_pocketfft_detail_add_vec.rst
+	struct_pocketfft_detail_add_vec-2.rst
+	struct_pocketfft_detail_cmplx.rst
+	struct_pocketfft_detail_util.rst
+	class_pocketfft_detail_T_dcst23.rst
+	class_pocketfft_detail_T_dcst4.rst
+	class_pocketfft_detail_T_dct1.rst
+	class_pocketfft_detail_T_dst1.rst
+	class_pocketfft_detail_arr.rst
+	class_pocketfft_detail_arr_info.rst
+	class_pocketfft_detail_cfftp.rst
+	class_pocketfft_detail_cndarr.rst
+	class_pocketfft_detail_fftblue.rst
+	class_pocketfft_detail_multi_iter.rst
+	class_pocketfft_detail_ndarr.rst
+	class_pocketfft_detail_pocketfft_c.rst
+	class_pocketfft_detail_pocketfft_r.rst
+	class_pocketfft_detail_rev_iter.rst
+	class_pocketfft_detail_rfftp.rst
+	class_pocketfft_detail_simple_iter.rst
+	class_pocketfft_detail_sincos_2pibyn.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace detail {
+
+	// namespaces
+
+	namespace :ref:`pocketfft::detail::threading<doxid-namespacepocketfft_1_1detail_1_1threading>`;
+
+	// typedefs
+
+	typedef std::vector<size_t> :target:`shape_t<doxid-pocketfft_8hpp_1a885ee37fcf564a268a5c8ca9ea8603e1>`;
+	typedef std::vector<ptrdiff_t> :target:`stride_t<doxid-pocketfft_8hpp_1afb987c919e9424a996d0fc8b3c23cc84>`;
+	typedef typename :ref:`VTYPE<doxid-structpocketfft_1_1detail_1_1_v_t_y_p_e>`<T>::type :target:`vtype_t<doxid-pocketfft_8hpp_1a3edfb93aeed2f8258183d463ea291d62>`;
+	typedef typename :ref:`add_vec<doxid-structpocketfft_1_1detail_1_1add__vec>`<T>::type :target:`add_vec_t<doxid-pocketfft_8hpp_1a421aa74fbee775a96463246f72b144d6>`;
+
+	// structs
+
+	struct :ref:`ExecC2C<doxid-structpocketfft_1_1detail_1_1_exec_c2_c>`;
+	struct :ref:`ExecDcst<doxid-structpocketfft_1_1detail_1_1_exec_dcst>`;
+	struct :ref:`ExecFHT<doxid-structpocketfft_1_1detail_1_1_exec_f_h_t>`;
+	struct :ref:`ExecHartley<doxid-structpocketfft_1_1detail_1_1_exec_hartley>`;
+	struct :ref:`ExecR2R<doxid-structpocketfft_1_1detail_1_1_exec_r2_r>`;
+
+	template <typename T>
+	struct :ref:`VLEN<doxid-structpocketfft_1_1detail_1_1_v_l_e_n>`;
+
+	template <typename T>
+	struct :ref:`VTYPE<doxid-structpocketfft_1_1detail_1_1_v_t_y_p_e>`;
+
+	template <typename T>
+	struct :ref:`add_vec<cmplx<T>><doxid-structpocketfft_1_1detail_1_1add__vec_3_01cmplx_3_01_t_01_4_01_4>`;
+
+	template <typename T>
+	struct :ref:`add_vec<doxid-structpocketfft_1_1detail_1_1add__vec>`;
+
+	template <typename T>
+	struct :ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`;
+
+	struct :ref:`util<doxid-structpocketfft_1_1detail_1_1util>`;
+
+	// classes
+
+	template <typename T0>
+	class :ref:`T_dcst23<doxid-classpocketfft_1_1detail_1_1_t__dcst23>`;
+
+	template <typename T0>
+	class :ref:`T_dcst4<doxid-classpocketfft_1_1detail_1_1_t__dcst4>`;
+
+	template <typename T0>
+	class :ref:`T_dct1<doxid-classpocketfft_1_1detail_1_1_t__dct1>`;
+
+	template <typename T0>
+	class :ref:`T_dst1<doxid-classpocketfft_1_1detail_1_1_t__dst1>`;
+
+	template <typename T>
+	class :ref:`arr<doxid-classpocketfft_1_1detail_1_1arr>`;
+
+	class :ref:`arr_info<doxid-classpocketfft_1_1detail_1_1arr__info>`;
+
+	template <typename T0>
+	class :ref:`cfftp<doxid-classpocketfft_1_1detail_1_1cfftp>`;
+
+	template <typename T>
+	class :ref:`cndarr<doxid-classpocketfft_1_1detail_1_1cndarr>`;
+
+	template <typename T0>
+	class :ref:`fftblue<doxid-classpocketfft_1_1detail_1_1fftblue>`;
+
+	template <size_t N>
+	class :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`;
+
+	template <typename T>
+	class :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`;
+
+	template <typename T0>
+	class :ref:`pocketfft_c<doxid-classpocketfft_1_1detail_1_1pocketfft__c>`;
+
+	template <typename T0>
+	class :ref:`pocketfft_r<doxid-classpocketfft_1_1detail_1_1pocketfft__r>`;
+
+	class :ref:`rev_iter<doxid-classpocketfft_1_1detail_1_1rev__iter>`;
+
+	template <typename T0>
+	class :ref:`rfftp<doxid-classpocketfft_1_1detail_1_1rfftp>`;
+
+	class :ref:`simple_iter<doxid-classpocketfft_1_1detail_1_1simple__iter>`;
+
+	template <typename T>
+	class :ref:`sincos_2pibyn<doxid-classpocketfft_1_1detail_1_1sincos__2pibyn>`;
+
+	// global variables
+
+	bool :target:`FORWARD<doxid-pocketfft_8hpp_1aecc5444a333360628be65a6f91ceb824>` = true;
+	bool :target:`BACKWARD<doxid-pocketfft_8hpp_1a9d1eaa7469c018c39e745733eab9a9c3>` = false;
+
+	// global functions
+
+	template <typename T>
+	T :target:`cos<doxid-pocketfft_8hpp_1a499c1e8b7d79a5272af024f46c63ff9d>`(T);
+
+	template <typename T>
+	T :target:`sin<doxid-pocketfft_8hpp_1a07745f4a069f811859308281b2982258>`(T);
+
+	template <typename T>
+	T :target:`sqrt<doxid-pocketfft_8hpp_1a774f8b73f28259d4276bd188b540a3e3>`(T);
+
+	void* :target:`aligned_alloc<doxid-pocketfft_8hpp_1ae397445c61400f47a8fe3f8e1b6d0b76>`(size_t align, size_t size);
+	void :target:`aligned_dealloc<doxid-pocketfft_8hpp_1aec7820e36a33e0a8bb83aa03b04b81e8>`(void* ptr);
+
+	template <typename T>
+	void :target:`PM<doxid-pocketfft_8hpp_1a8c6ec35091d5136d991577623133fcf2>`(T& a, T& b, T c, T d);
+
+	template <typename T>
+	void :target:`PMINPLACE<doxid-pocketfft_8hpp_1aa3477781ef54788c9fa7755cb8ea75fd>`(T& a, T& b);
+
+	template <typename T>
+	void :target:`MPINPLACE<doxid-pocketfft_8hpp_1af5eedf3cdfc83c0a30807092c39a9ce2>`(T& a, T& b);
+
+	template <typename T>
+	:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T> :target:`conj<doxid-pocketfft_8hpp_1a66d79051d502046a9b9f103e744dbad3>`(const :ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T>& a);
+
+	template <bool fwd, typename T, typename T2>
+	void :target:`special_mul<doxid-pocketfft_8hpp_1a8da1f3d4a0b712a0285529f24187fe76>`(const :ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T>& v1, const :ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T2>& v2, :ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T>& res);
+
+	template <typename T>
+	void :target:`ROT90<doxid-pocketfft_8hpp_1a928bad5278df636ee47402c0a75f64ef>`(:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T>& a);
+
+	template <bool fwd, typename T>
+	void :target:`ROTX90<doxid-pocketfft_8hpp_1ab6a43dc0cec4291e163e68a0875ac501>`(:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T>& a);
+
+	template <typename T>
+	std::shared_ptr<T> :target:`get_plan<doxid-pocketfft_8hpp_1ab24cdb6118901f4d3c8df06ef0f8390b>`(size_t length);
+
+	template <typename T>
+	:ref:`arr<doxid-classpocketfft_1_1detail_1_1arr>`<char> :target:`alloc_tmp<doxid-pocketfft_8hpp_1a4db03cbcd9d43d9e0b0b9067713c80e9>`(const shape_t& shape, size_t axsize, size_t elemsize);
+
+	template <typename T>
+	:ref:`arr<doxid-classpocketfft_1_1detail_1_1arr>`<char> :target:`alloc_tmp<doxid-pocketfft_8hpp_1a13832735696303b9559c4663631d5475>`(const shape_t& shape, const shape_t& axes, size_t elemsize);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_input<doxid-pocketfft_8hpp_1aff05be3064743c1143b19318ab12ad4a>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const :ref:`cndarr<doxid-classpocketfft_1_1detail_1_1cndarr>`<:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T>>& src, :ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<vtype_t<T>>* dst);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_input<doxid-pocketfft_8hpp_1a30fc708f9d8f9cfa74194925c7863c0a>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const :ref:`cndarr<doxid-classpocketfft_1_1detail_1_1cndarr>`<T>& src, vtype_t<T>* dst);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_input<doxid-pocketfft_8hpp_1a3387bd35f237870e42b8461769e6aec4>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const :ref:`cndarr<doxid-classpocketfft_1_1detail_1_1cndarr>`<T>& src, T* dst);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_output<doxid-pocketfft_8hpp_1a1523a037300a8da05db210b802d9cb0e>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const :ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<vtype_t<T>>* src, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T>>& dst);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_output<doxid-pocketfft_8hpp_1a21980853aca4d92ed06e3dcffe7ef660>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const vtype_t<T>* src, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T>& dst);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_output<doxid-pocketfft_8hpp_1a310481c334e46674710ba794ad7403c0>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const T* src, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T>& dst);
+
+	template <typename Tplan, typename T, typename T0, typename Exec>
+	void :target:`general_nd<doxid-pocketfft_8hpp_1ab47f52551920af5eb9f57fbbded0f4f0>`(const :ref:`cndarr<doxid-classpocketfft_1_1detail_1_1cndarr>`<T>& in, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T>& out, const shape_t& axes, T0 fct, size_t nthreads, const Exec& exec, const bool allow_inplace = true);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_hartley<doxid-pocketfft_8hpp_1abac3fcc8ce83800d228774f64c28d4c3>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const vtype_t<T>* src, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T>& dst);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_hartley<doxid-pocketfft_8hpp_1ae7b44d2773d9d06a9787aff01d66b3ed>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const T* src, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T>& dst);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_FHT<doxid-pocketfft_8hpp_1afc832ea27efcc50879d6aeca86290c18>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const vtype_t<T>* src, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T>& dst);
+
+	template <typename T, size_t vlen>
+	void :target:`copy_FHT<doxid-pocketfft_8hpp_1a28000a9be674fa952d4dda0e7cebc06c>`(const :ref:`multi_iter<doxid-classpocketfft_1_1detail_1_1multi__iter>`<vlen>& it, const T* src, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T>& dst);
+
+	template <typename T>
+	void :target:`general_r2c<doxid-pocketfft_8hpp_1a055a39b0a337ca12217717196eb92fed>`(const :ref:`cndarr<doxid-classpocketfft_1_1detail_1_1cndarr>`<T>& in, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T>>& out, size_t axis, bool forward, T fct, size_t nthreads);
+
+	template <typename T>
+	void :target:`general_c2r<doxid-pocketfft_8hpp_1ac8ee38e8d8bcda875c99eeaf567550fc>`(const :ref:`cndarr<doxid-classpocketfft_1_1detail_1_1cndarr>`<:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T>>& in, :ref:`ndarr<doxid-classpocketfft_1_1detail_1_1ndarr>`<T>& out, size_t axis, bool forward, T fct, size_t nthreads);
+
+	template <typename T>
+	void :target:`c2c<doxid-pocketfft_8hpp_1ab585ac594ae1253d4659e7b9e1623c8a>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, bool forward, const std::complex<T>* data_in, std::complex<T>* data_out, T fct, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`dct<doxid-pocketfft_8hpp_1a60615f5b685314c658346c309d5ef2ba>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, int type, const T* data_in, T* data_out, T fct, bool ortho, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`dst<doxid-pocketfft_8hpp_1add0f231fc8a1ce01b90a90faeebcb4eb>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, int type, const T* data_in, T* data_out, T fct, bool ortho, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`r2c<doxid-pocketfft_8hpp_1a4e46762466d399e35b79c324cfe21616>`(const shape_t& shape_in, const stride_t& stride_in, const stride_t& stride_out, size_t axis, bool forward, const T* data_in, std::complex<T>* data_out, T fct, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`r2c<doxid-pocketfft_8hpp_1a454179497c44714d4b7425f116468c17>`(const shape_t& shape_in, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, bool forward, const T* data_in, std::complex<T>* data_out, T fct, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`c2r<doxid-pocketfft_8hpp_1ab26cbfed16f487b987f50bf63bfc1ab9>`(const shape_t& shape_out, const stride_t& stride_in, const stride_t& stride_out, size_t axis, bool forward, const std::complex<T>* data_in, T* data_out, T fct, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`c2r<doxid-pocketfft_8hpp_1a788506fff59f8e13056247076cac51c1>`(const shape_t& shape_out, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, bool forward, const std::complex<T>* data_in, T* data_out, T fct, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`r2r_fftpack<doxid-pocketfft_8hpp_1a1ccca4cbbc6150d65620e2f9cdff62ac>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, bool real2hermitian, bool forward, const T* data_in, T* data_out, T fct, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`r2r_separable_hartley<doxid-pocketfft_8hpp_1a40b56ae882eea17e6960618415f8eb42>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, const T* data_in, T* data_out, T fct, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`r2r_genuine_hartley<doxid-pocketfft_8hpp_1a072a67f2c4b3b3ebd030604f3383e1ed>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, const T* data_in, T* data_out, T fct, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`r2r_separable_fht<doxid-pocketfft_8hpp_1afbf1238f6d39f2272c2cb06909cd001e>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, const T* data_in, T* data_out, T fct, size_t nthreads = 1);
+
+	template <typename T>
+	void :target:`r2r_genuine_fht<doxid-pocketfft_8hpp_1a88fcec64ac0c09bb57dc2ec709bfa485>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, const shape_t& axes, const T* data_in, T* data_out, T fct, size_t nthreads = 1);
+
+	} // namespace detail

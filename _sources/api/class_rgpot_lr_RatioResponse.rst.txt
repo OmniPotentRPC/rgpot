@@ -1,0 +1,26 @@
+.. index:: pair: class; rgpot::lr::RatioResponse
+.. _doxid-classrgpot_1_1lr_1_1_ratio_response:
+
+class rgpot::lr::RatioResponse
+==============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class RatioResponse {
+	public:
+		// construction
+	
+		virtual :target:`~RatioResponse<doxid-classrgpot_1_1lr_1_1_ratio_response_1a8cec2556ec2c251d8ef3356cd72b8006>`();
+
+		// methods
+	
+		virtual void :target:`jacobians<doxid-classrgpot_1_1lr_1_1_ratio_response_1ae5b861ad263d07afa6b6a6e71b3841b3>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, const double** dh, const double** dc6) const = 0;
+	};

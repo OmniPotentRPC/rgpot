@@ -1,0 +1,26 @@
+.. index:: pair: struct; rgpot::lr::Pair
+.. _doxid-structrgpot_1_1lr_1_1_pair:
+
+struct rgpot::lr::Pair
+======================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Pair {
+		// fields
+	
+		int :target:`i<doxid-structrgpot_1_1lr_1_1_pair_1ab7ecfcafcadc66650980dacdcac76228>` = 0;
+		int :target:`j<doxid-structrgpot_1_1lr_1_1_pair_1a2b078ebed2981feda6b23f3195f10016>` = 0;
+		double :target:`x<doxid-structrgpot_1_1lr_1_1_pair_1a2650ab63013652d4220634bf7e55c4da>` = 0.0;
+		double :target:`y<doxid-structrgpot_1_1lr_1_1_pair_1a48fd2844791801f9c5f00356f16c3d6a>` = 0.0;
+		double :target:`z<doxid-structrgpot_1_1lr_1_1_pair_1a086c14172afbdc36d91c16d507c2ea4f>` = 0.0;
+		double :target:`r<doxid-structrgpot_1_1lr_1_1_pair_1a36d04cbcecbd37e0c3ba0fbc53d18028>` = 0.0;
+	};

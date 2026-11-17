@@ -1,0 +1,19 @@
+.. index:: pair: enum; CoulombMethod
+.. _doxid-_electro_8hpp_1a8c1c401bc237198473da1749ab9d5601:
+
+enum rgpot::lr::CoulombMethod
+=============================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Electro.hpp>
+
+	enum CoulombMethod {
+	    :target:`Ewald<doxid-_electro_8hpp_1a8c1c401bc237198473da1749ab9d5601a4ca32cf75df1f52742531e3a08c470e4>`,
+	    :target:`SPME<doxid-_electro_8hpp_1a8c1c401bc237198473da1749ab9d5601a5e88ec7714e12f6e530e5187684dd8fb>`,
+	    :target:`DSF<doxid-_electro_8hpp_1a8c1c401bc237198473da1749ab9d5601a8559883f94d543ef4bcd64e8554f27e1>`,
+	};
+

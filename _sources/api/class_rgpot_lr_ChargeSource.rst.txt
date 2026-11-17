@@ -1,0 +1,26 @@
+.. index:: pair: class; rgpot::lr::ChargeSource
+.. _doxid-classrgpot_1_1lr_1_1_charge_source:
+
+class rgpot::lr::ChargeSource
+=============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class ChargeSource {
+	public:
+		// construction
+	
+		virtual :target:`~ChargeSource<doxid-classrgpot_1_1lr_1_1_charge_source_1affe24f06ab0a0d85f7bc37ffa12cb8e7>`();
+
+		// methods
+	
+		virtual void :target:`load<doxid-classrgpot_1_1lr_1_1_charge_source_1a1b5bef15f7758eda5e8df01d54b9c091>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* q, double* total) const = 0;
+	};

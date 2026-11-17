@@ -1,0 +1,28 @@
+.. index:: pair: class; rgpot::lr::DispersionModel
+.. _doxid-classrgpot_1_1lr_1_1_dispersion_model:
+
+class rgpot::lr::DispersionModel
+================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class DispersionModel {
+	public:
+		// construction
+	
+		virtual :target:`~DispersionModel<doxid-classrgpot_1_1lr_1_1_dispersion_model_1af1d826ae27b08b8220cff9c6b21c5420>`();
+
+		// methods
+	
+		virtual const char* :target:`name<doxid-classrgpot_1_1lr_1_1_dispersion_model_1aec74214bd1e15a44aa176cf2420aec5a>`() const = 0;
+		virtual DispersionKind :target:`kind<doxid-classrgpot_1_1lr_1_1_dispersion_model_1a9931388ea24e967157c7717b40afb7c0>`() const = 0;
+		virtual void :target:`evaluate<doxid-classrgpot_1_1lr_1_1_dispersion_model_1af61d41ca5340be28b9f986a2a2098c48>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, const std::vector<:ref:`Pair<doxid-structrgpot_1_1lr_1_1_pair>`>& pairs, const std::vector<double>& h, const std::vector<double>* c6, const :ref:`DispersionConfig<doxid-structrgpot_1_1lr_1_1_dispersion_config>`& cfg, double* energy, double* F, double strain[6], int* has_stress) const = 0;
+	};

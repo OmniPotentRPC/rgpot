@@ -1,0 +1,66 @@
+.. index:: pair: class; rgpot::lr::DispersionPot
+.. _doxid-classrgpot_1_1lr_1_1_dispersion_pot:
+
+class rgpot::lr::DispersionPot
+==============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class DispersionPot: public rgpot::Potential< DispersionPot > {
+	public:
+		// construction
+	
+		:target:`DispersionPot<doxid-classrgpot_1_1lr_1_1_dispersion_pot_1a102e26df3a9fafa9440d41ff4a66e23c>`(:ref:`DispersionConfig<doxid-structrgpot_1_1lr_1_1_dispersion_config>` cfg, std::shared_ptr<:ref:`RatioSource<doxid-classrgpot_1_1lr_1_1_ratio_source>`> ratios = nullptr, std::shared_ptr<:ref:`RatioResponse<doxid-classrgpot_1_1lr_1_1_ratio_response>`> response = nullptr);
+
+		// methods
+	
+		void :target:`forceImpl<doxid-classrgpot_1_1lr_1_1_dispersion_pot_1a90e67e897bb56e735b4842e6813756cf>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1lr_1_1_dispersion_pot_1a458bfa695a3c1e58bdfca7d029066ce9>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1lr_1_1_dispersion_pot_1a98d6514699be431fd9cf6ffb61643695>`() const;
+		void :target:`setNeighbours<doxid-classrgpot_1_1lr_1_1_dispersion_pot_1a1874939c029623e4c082c28227845219>`(std::shared_ptr<:ref:`DualList<doxid-classrgpot_1_1lr_1_1_dual_list>`> lists);
+	};
+.. _details-classrgpot_1_1lr_1_1_dispersion_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1lr_1_1_dispersion_pot_1a458bfa695a3c1e58bdfca7d029066ce9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1lr_1_1_dispersion_pot_1a98d6514699be431fd9cf6ffb61643695:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+

@@ -1,0 +1,68 @@
+.. index:: pair: class; rgpot::Kept
+.. _doxid-classrgpot_1_1_kept:
+
+template class rgpot::Kept
+==========================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_Kept_Slot.rst
+
+Overview
+~~~~~~~~
+
+The potential of type ``Pot`` this thread keeps. :ref:`More...<details-classrgpot_1_1_kept>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <KeptPotential.hpp>
+	
+	template <typename Pot>
+	class Kept {
+	public:
+		// structs
+	
+		struct :ref:`Slot<doxid-structrgpot_1_1_kept_1_1_slot>`;
+
+		// methods
+	
+		template <typename Make, typename Run>
+		static decltype(auto) :ref:`with<doxid-classrgpot_1_1_kept_1a2e20f21074a65edc606cf3a8f5cd899f>`(const :ref:`KeptKey<doxid-classrgpot_1_1_kept_key>`& key, Make&& make, Run&& run);
+	
+		static :ref:`KeptCounts<doxid-structrgpot_1_1_kept_counts>` :target:`counts<doxid-classrgpot_1_1_kept_1ae6f219b08d3004e35b36fd7dbe34db14>`();
+		static void :ref:`release<doxid-classrgpot_1_1_kept_1a9edccb55f26665ea8ca44ccfc8add028>`();
+	};
+.. _details-classrgpot_1_1_kept:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+The potential of type ``Pot`` this thread keeps.
+
+Methods
+-------
+
+.. index:: pair: function; with
+.. _doxid-classrgpot_1_1_kept_1a2e20f21074a65edc606cf3a8f5cd899f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Make, typename Run>
+	static decltype(auto) with(const :ref:`KeptKey<doxid-classrgpot_1_1_kept_key>`& key, Make&& make, Run&& run)
+
+``run(pot)`` on the potential kept for *key*. When the key differs, the kept potential is dropped and ``make()``, which returns a ``std::unique_ptr<Pot>``, builds the next one. A throw from ``make`` leaves none kept. A throw from ``run`` drops the potential, whose scratch it may have left half written, and passes on.
+
+.. index:: pair: function; release
+.. _doxid-classrgpot_1_1_kept_1a9edccb55f26665ea8ca44ccfc8add028:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static void release()
+
+Drops the potential this thread keeps.
+

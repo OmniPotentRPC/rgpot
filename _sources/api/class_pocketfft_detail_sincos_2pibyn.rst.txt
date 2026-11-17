@@ -1,0 +1,27 @@
+.. index:: pair: class; pocketfft::detail::sincos_2pibyn
+.. _doxid-classpocketfft_1_1detail_1_1sincos__2pibyn:
+
+template class pocketfft::detail::sincos_2pibyn
+===============================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename T>
+	class sincos_2pibyn {
+	public:
+		// construction
+	
+		:target:`sincos_2pibyn<doxid-classpocketfft_1_1detail_1_1sincos__2pibyn_1a88518f2182d854c557edacd4ab8cbc40>`(size_t n);
+
+		// methods
+	
+		:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T> :target:`operator[]<doxid-classpocketfft_1_1detail_1_1sincos__2pibyn_1a71b02f67c47b24adb296eafd2c7a3598>`(size_t idx) const;
+	};

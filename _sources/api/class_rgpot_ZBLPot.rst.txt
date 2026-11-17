@@ -31,6 +31,7 @@ Universal screened nuclear repulsion with a switched cutoff. :ref:`More...<detai
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_z_b_l_pot_1a2394b873a5370649d2fe2424ecf36087>`() const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_z_b_l_pot_1a6f7a87dabb1a420a62a03f5305a0d27d>`() const;
 		void :ref:`forceImpl<doxid-classrgpot_1_1_z_b_l_pot_1a882d16ac5ac327e63c95a5d4c05c8fad>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`forcePerAtom<doxid-classrgpot_1_1_z_b_l_pot_1a27d7ba73e01c0634c567bd839a90d44f>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const;
 		void :ref:`setNeighbourMode<doxid-classrgpot_1_1_z_b_l_pot_1a4c4ae1e64adaa2074c7d98e4ca780719>`(nlist::Mode mode);
 		bool :ref:`listReused<doxid-classrgpot_1_1_z_b_l_pot_1a08327788a442f14f869850720408372f>`() const;
 		std::size_t :ref:`retainedPairs<doxid-classrgpot_1_1_z_b_l_pot_1a91aa8413f262ffc8e6551291c9b8f47a>`() const;
@@ -132,6 +133,16 @@ Computes the forces and energy for a given configuration.
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; forcePerAtom
+.. _doxid-classrgpot_1_1_z_b_l_pot_1a27d7ba73e01c0634c567bd839a90d44f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forcePerAtom(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const
+
+forceImpl plus each pair energy and virial split half to each atom.
 
 .. index:: pair: function; setNeighbourMode
 .. _doxid-classrgpot_1_1_z_b_l_pot_1a4c4ae1e64adaa2074c7d98e4ca780719:

@@ -1,0 +1,38 @@
+.. index:: pair: class; rgpot::lr::FixedRatios
+.. _doxid-classrgpot_1_1lr_1_1_fixed_ratios:
+
+class rgpot::lr::FixedRatios
+============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class FixedRatios: public :ref:`rgpot::lr::RatioSource<doxid-classrgpot_1_1lr_1_1_ratio_source>` {
+	public:
+		// construction
+	
+		:target:`FixedRatios<doxid-classrgpot_1_1lr_1_1_fixed_ratios_1a8153e4f69271c7d079e8713ff17989dc>`(std::vector<double> h, std::vector<double> c6);
+
+		// methods
+	
+		virtual void :target:`load<doxid-classrgpot_1_1lr_1_1_fixed_ratios_1abdc8295f963b0f9b6a927d13c697fe97>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* h, std::vector<double>* c6) const;
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// methods
+	
+		virtual void :ref:`load<doxid-classrgpot_1_1lr_1_1_ratio_source_1a9cd6d22f4926df2152ef0a892cad86f1>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* h, std::vector<double>* c6) const = 0;
+

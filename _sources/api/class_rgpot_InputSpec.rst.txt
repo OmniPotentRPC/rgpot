@@ -46,7 +46,7 @@ Wraps ``rgpot_force_input_t``. The constructor calls ``rgpot_force_input_create(
 
 
 
-.. _doxid-classrgpot_1_1_input_spec_1autotoc_md30:
+.. _doxid-classrgpot_1_1_input_spec_1autotoc_md38:
 
 Example
 ~~~~~~~
@@ -86,17 +86,17 @@ Construct from raw arrays (data is borrowed, not copied).
 	*
 		- pos
 
-		- Flat position array ```` [n_atoms\*3], row-major xyz.
+		- Flat position array of 3 \* n_atoms doubles, row-major xyz.
 
 	*
 		- atmnrs
 
-		- Atomic number array ```` [n_atoms].
+		- Atomic number array of n_atoms ints.
 
 	*
 		- box
 
-		- Flat 3x3 cell matrix ```` [9], row-major.
+		- Flat 3x3 cell matrix of 9 doubles, row-major.
 
 .. index:: pair: function; InputSpec
 .. _doxid-classrgpot_1_1_input_spec_1a61b1531ba5f3148a667b7b11cd4c853f:
@@ -132,7 +132,7 @@ Construct from STL containers and a flat box pointer.
 	*
 		- box
 
-		- Flat 3x3 cell matrix ```` [9], row-major.
+		- Flat 3x3 cell matrix of 9 doubles, row-major.
 
 Methods
 -------

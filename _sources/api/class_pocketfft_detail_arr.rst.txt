@@ -1,0 +1,35 @@
+.. index:: pair: class; pocketfft::detail::arr
+.. _doxid-classpocketfft_1_1detail_1_1arr:
+
+template class pocketfft::detail::arr
+=====================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename T>
+	class arr {
+	public:
+		// construction
+	
+		:target:`arr<doxid-classpocketfft_1_1detail_1_1arr_1a961a24410638b35129cd6b81850d2a42>`();
+		:target:`arr<doxid-classpocketfft_1_1detail_1_1arr_1a04f832b780a4453fdf3b69bf75b182bd>`(size_t n);
+		:target:`arr<doxid-classpocketfft_1_1detail_1_1arr_1ac249135885160b51a30ffd84fa66a651>`(arr&& other);
+		:target:`~arr<doxid-classpocketfft_1_1detail_1_1arr_1a8519487ee7fa95d3937a8352dd289b56>`();
+
+		// methods
+	
+		void :target:`resize<doxid-classpocketfft_1_1detail_1_1arr_1a8d73baaefa02dff8714e4398c83917e0>`(size_t n);
+		T& :target:`operator[]<doxid-classpocketfft_1_1detail_1_1arr_1aea0bd899b19e03f54dfd6c188727061a>`(size_t idx);
+		const T& :target:`operator[]<doxid-classpocketfft_1_1detail_1_1arr_1a99c54f96bc79c7cdd8925c1663462842>`(size_t idx) const;
+		T* :target:`data<doxid-classpocketfft_1_1detail_1_1arr_1aec0f2191b4663b4187aab92454c34de8>`();
+		const T* :target:`data<doxid-classpocketfft_1_1detail_1_1arr_1ac82daa17e9f991072b012343f9d7c182>`() const;
+		size_t :target:`size<doxid-classpocketfft_1_1detail_1_1arr_1a95bca00060957f540ff25b69632c6952>`() const;
+	};

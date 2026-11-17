@@ -58,7 +58,7 @@ Overview
 
 	void :ref:`checked_load<doxid-_compat_8hpp_1af4b62919113952b0df48f4b4ed837b36>`(:ref:`ProfileLoader<doxid-classrgpot_1_1abi_1_1_profile_loader>`& loader, const std::string& prefix, const std::string& explicit_path = "", const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {});
 	bool :target:`cxx_tag_eq<doxid-_cxx_layout_8hpp_1a7124277ff0319e7c8e3bec2d9f69fffb>`(const char* a, const char* b);
-	const :ref:`CxxSoversionEntry<doxid-structrgpot_1_1abi_1_1_cxx_soversion_entry>`* :target:`find_soversion_entry<doxid-_cxx_layout_8hpp_1a5705e20a63ce98b8923a7e2753812050>`(const char* tag);
+	int :ref:`find_soversion_index<doxid-_cxx_layout_8hpp_1a94dfbb26c2839cf24a0944bc6b560187>`(const char* tag);
 	bool :target:`soversion_tags_unique<doxid-_cxx_layout_8hpp_1a3e2b42b0e2ae4112253e07f7c40c38d1>`();
 	:ref:`rgpot_cxx_layout_stamp_t<doxid-structrgpot__cxx__layout__stamp__t>` :ref:`header_stamp<doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44>`();
 	std::uint64_t :ref:`recorded_layout_hash<doxid-_cxx_layout_8hpp_1a12a73f213a194b0d0665920895a06309>`();
@@ -100,7 +100,7 @@ Hand-maintained. Increment when a change the hash cannot see alters the C++ ABI:
 
 ELF soversion of librgpot (``librgpot.so.N``, ``librgpot.N.dylib``). Meson and CMake read this constant. The SONAME is not the layout hash. The hash depends on the platform tag and includes the cache feature bit, so builds of one revision do not share a hash. Bump this when a recorded hash in ``kCxxSoversionTable`` changes, and replace that table from the CI stamp lines in the same edit. ``check_cxx_soversion.py`` fails when the fingerprint of the stamp inputs changes and this number did not increase.
 
-This is not ``RGPOT_ABI_LAYOUT_REVISION``. The C ABI stamp in ``rgpot.h`` is major 1, minor 1, layout revision 1. Minor 1 adds ``rgpot_eindir_abi_compatible``. No exported C struct of that header changed layout. The neighbour query is ``RGPOT_NLIST_ABI`` 4. The C API is exported from librgpot, so it has no shared library of its own and rides this SONAME. ``librgpot_mpi`` stays at soversion 3 (``RGPOT_MPI_ABI_VERSION`` 1, unchanged).
+This is not ``RGPOT_ABI_LAYOUT_REVISION``. The C ABI stamp in ``rgpot.h`` is major 1, minor 2, layout revision 1. Minor 1 added ``rgpot_eindir_abi_compatible``. No exported C struct of that header changed layout. The neighbour query is ``RGPOT_NLIST_ABI`` 4. The C API is exported from librgpot, so it has no shared library of its own and rides this SONAME. ``librgpot_mpi`` stays at soversion 3 (``RGPOT_MPI_ABI_VERSION`` 1, unchanged).
 
 5 records :ref:`LJPot <doxid-classrgpot_1_1_l_j_pot>` and :ref:`MorsePot <doxid-classrgpot_1_1_morse_pot>` gaining a Neighbours and a CachedPairs. Soversion 4 hashed those classes at 120 and 136 bytes. They are 1016 and 1032 bytes with the members. The ledger of soversion 4 fingerprinted the POD configs only, so the class members did not force a bump. 6 drops the copied half-list from LJ and Morse, and gives ZBL and the open Lennard-Jones cluster a neighbour member. The pair term runs on the shared walk, so CachedPairs is no longer part of those objects.
 
@@ -112,7 +112,7 @@ This is not ``RGPOT_ABI_LAYOUT_REVISION``. The C ABI stamp in ``rgpot.h`` is maj
 
 	std::array<:ref:`CxxSoversionEntry<doxid-structrgpot_1_1abi_1_1_cxx_soversion_entry>`, 1> kCxxSoversionTable {{     {"linux-x86_64-libstdc++-lp64", 0x0bba2f6c8fb3f542ull}, }}
 
-No-cache ``:ref:`header_stamp() <doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44>`.hash`` for each platform ABI CI builds. Rows are copied from ``RGPOT_CXX_LAYOUT_STAMP`` lines. An unlisted platform still compiles. How to update the table: docs/orgmode/reference/c_abi.org.
+No-cache ``:ref:`header_stamp() <doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44>`.hash`` for each platform ABI CI builds. Rows are copied from ``RGPOT_CXX_LAYOUT_STAMP`` lines. An unlisted platform still compiles. How to update the table: docs/orgmode/contributing/developer/abi-bump.org.
 
 .. index:: pair: variable; kCxxPlatformTag
 .. _doxid-_cxx_layout_8hpp_1a027a3a25245f771ac31ced57e1ba965f:
@@ -132,7 +132,7 @@ This translation unit's platform tag (``os-arch-stdlib-datamodel``).
 
 	std::uint32_t kPotentialBaseVirtuals = 5
 
-Virtual functions declared by ``:ref:`PotentialBase <doxid-classrgpot_1_1_potential_base>```, destructor included. The cache hook ``set_cache`` adds one when ``RGPOT_HAS_CACHE`` is defined. A test counts the ``virtual`` declarations in Potential.hpp and fails when this and the header disagree.
+Virtual functions declared by ``:ref:`PotentialBase <doxid-classrgpot_1_1_potential_base>```, destructor included. The cache hook ``setCache`` adds one when ``RGPOT_HAS_CACHE`` is defined. A test counts the ``virtual`` declarations in Potential.hpp and fails when this and the header disagree.
 
 .. index:: pair: variable; kPotentialVirtuals
 .. _doxid-_cxx_layout_8hpp_1a732c22e957eb2e1632aa0b440d610768:
@@ -156,6 +156,16 @@ Global Functions
 	void checked_load(:ref:`ProfileLoader<doxid-classrgpot_1_1abi_1_1_profile_loader>`& loader, const std::string& prefix, const std::string& explicit_path = "", const :ref:`Expectation<doxid-structrgpot_1_1abi_1_1_expectation>`& want = {})
 
 Load a profile backend and refuse it before dispatch when its ``Capabilities`` are incompatible. On refusal the loader is left unloaded and std::runtime_error names the first mismatch.
+
+.. index:: pair: function; find_soversion_index
+.. _doxid-_cxx_layout_8hpp_1a94dfbb26c2839cf24a0944bc6b560187:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int find_soversion_index(const char* tag)
+
+Index of ``tag`` in ``kCxxSoversionTable``, or -1 when the platform is absent. A pointer into the table is not a constant expression under ``-fsanitize=undefined``, so callers compare this index with zero.
 
 .. index:: pair: function; header_stamp
 .. _doxid-_cxx_layout_8hpp_1a5b7b7e5fb73bbcf0ebb3d6bbf5f0ab44:

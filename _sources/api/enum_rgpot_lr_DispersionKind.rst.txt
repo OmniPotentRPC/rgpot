@@ -1,0 +1,20 @@
+.. index:: pair: enum; DispersionKind
+.. _doxid-_dispersion_8hpp_1a57f01bcd70c6970bd11f085d7ecb31d1:
+
+enum rgpot::lr::DispersionKind
+==============================
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Dispersion.hpp>
+
+	enum DispersionKind {
+	    :target:`D3BJ<doxid-_dispersion_8hpp_1a57f01bcd70c6970bd11f085d7ecb31d1a29281f0facd369d543d6acdc6918e471>`,
+	    :target:`D4<doxid-_dispersion_8hpp_1a57f01bcd70c6970bd11f085d7ecb31d1a2521dc256a4368da87585c936b451dd7>`,
+	    :target:`MBD<doxid-_dispersion_8hpp_1a57f01bcd70c6970bd11f085d7ecb31d1ad0a9ee5f30a70a70941dc0fbfd4997b6>`,
+	    :target:`QDO<doxid-_dispersion_8hpp_1a57f01bcd70c6970bd11f085d7ecb31d1a6a2a6aac27a26a46b8774e9671da10e0>`,
+	};
+

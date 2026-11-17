@@ -41,7 +41,7 @@ Detailed Documentation
 
 Grimme DFT-D4 dispersion via the dftd4 ISO C API (``dftd4.h``).
 
-In-process Potential summand: :ref:`ForceInput <doxid-structrgpot_1_1_force_input>` in, energy+forces out. Do not fold this into :ref:`XcKernel::contract <doxid-classrgpot_1_1_xc_kernel_1ac16dbc411a5d52f883cc7f8a5652228c>` or applyFxc. No PotentialConfig.d4 arm until a DFT host sums :ref:`XcKernel <doxid-classrgpot_1_1_xc_kernel>` + VV10 + D4 on the wire (rgpot-8mse; rgpot-uw9w / rgpot-eipa add this as Edisp from rgpot-2ftk).
+In-process Potential summand: :ref:`ForceInput <doxid-structrgpot_1_1_force_input>` in, energy+forces out. Do not fold this into :ref:`XcKernel::contract <doxid-classrgpot_1_1_xc_kernel_1ac16dbc411a5d52f883cc7f8a5652228c>` or applyFxc. The schema carries PotentialConfig.d4 @13, whose D4Params mirror :ref:`D4Config <doxid-structrgpot_1_1_d4_config>`, but nothing applies it: potserv's D4 backend runs the default :ref:`D4Config <doxid-structrgpot_1_1_d4_config>`, and configure() refuses the d4 arm on every backend. Wiring it waits on a DFT host summing :ref:`XcKernel <doxid-classrgpot_1_1_xc_kernel>` + VV10 + D4 on the wire (rgpot-8mse; rgpot-uw9w / rgpot-eipa add this as Edisp from rgpot-2ftk).
 
 Each instance owns ``dftd4_error`` / ``dftd4_structure`` / ``dftd4_model`` / ``dftd4_param`` handles. First force builds the structure and model; later forces call ``dftd4_update_structure``. Do not share one instance across threads.
 

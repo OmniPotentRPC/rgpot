@@ -1,0 +1,11 @@
+.. index:: pair: namespace; lr
+.. _doxid-namespacergpot_1_1lr_1_1_0d035126216113164126334322154042204327116323232056:
+
+namespace lr
+============
+
+.. toctree::
+	:hidden:
+
+
+

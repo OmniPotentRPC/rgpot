@@ -1,0 +1,36 @@
+.. index:: pair: struct; rgpot::StageTally
+.. _doxid-structrgpot_1_1_stage_tally:
+
+struct rgpot::StageTally
+========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+What forceStage adds up besides the forces. :ref:`More...<details-structrgpot_1_1_stage_tally>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Staged.hpp>
+	
+	struct StageTally {
+		// fields
+	
+		double :target:`energy<doxid-structrgpot_1_1_stage_tally_1ae98cfd92c6ded643c7187b0f7e59c4a4>` = 0.0;
+		double :target:`virial<doxid-structrgpot_1_1_stage_tally_1a3bd1b891b0e8eb9abaf876899e10fd39>`[6] = {};
+		:ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>` :target:`atoms<doxid-structrgpot_1_1_stage_tally_1a2cc5127b74e42ed50fec4184b1f60b98>` {};
+	};
+.. _details-structrgpot_1_1_stage_tally:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+What forceStage adds up besides the forces.
+
+The host's share of the energy and of the virial W = -V sigma, in the Voigt order of :ref:`stress.hpp <doxid-stress_8hpp_source>` (xx yy zz yz xz xy): all of a pair that only this host lists, half of a pair that both hosts list, and the site energy of each owned atom. Per-atom arrays, when set, take the split of :ref:`PerAtom.hpp <doxid-_per_atom_8hpp_source>` over nAtoms entries; a copy's entries are written only with HalfList::newton, for the host to add to its owner.
+

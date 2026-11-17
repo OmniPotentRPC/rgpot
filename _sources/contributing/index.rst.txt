@@ -21,15 +21,14 @@ Please review the technical requirements before submitting a Pull Request:
 
 Development Environment
     We use ``pixi`` for environment management.
-
-See the :doc:`Developer Guide <developer/index>` for setup and common
-tasks.
+    See the :doc:`Developer Guide <developer/index>` for setup and common
+    tasks.
 
 Documentation
-    We author all documentation in ``orgmode`` converted to ``rst``.
-
-See :doc:`Developer FAQ <developer/faq>` for documentation workflow
-details.
+    The Sphinx pages are written in ``orgmode`` under
+    ``docs/orgmode/`` and exported to ``rst``.
+    See the Developer Guide and the :doc:`Developer FAQ <developer/faq>` for
+    the documentation workflow.
 
 Reporting Issues
 ----------------
@@ -44,7 +43,8 @@ Do not open a public issue for them.
 Contributing
 ------------
 
-For details on the dispatcher architecture or internal API:
+The Developer Guide covers the environments, tasks, tests, releases and the ABI
+bump procedure:
 
   .. toctree::
      :maxdepth: 2

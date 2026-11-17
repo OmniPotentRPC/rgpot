@@ -1,0 +1,29 @@
+.. index:: pair: namespace; rgpot::md
+.. _doxid-namespacergpot_1_1md:
+
+namespace rgpot::md
+===================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace md {
+
+	// global variables
+
+	double :target:`kAngstromPerNm<doxid-md__units_8hpp_1a7ede682a2fe18fca4a3e3a7dad69d309>` = 10.0;
+	double :target:`kNmPerAngstrom<doxid-md__units_8hpp_1a0c7e830b740bae12606a8f0e0a508dae>` = 0.1;
+	double :target:`kCoulomb<doxid-md__units_8hpp_1a37195523cca842dc4e2f7c491183d1d4>` = 1.602176634e-19;
+	double :target:`kAvogadro<doxid-md__units_8hpp_1a5df1680ecf27720f8bcd2d2be97c7708>` = 6.02214076e23;
+	double :target:`kKjPerEv<doxid-md__units_8hpp_1a5d02dbd7734ba4f78b48341d12e223c5>` = kCoulomb* kAvogadro / 1000.0;
+	double :target:`kEvPerKj<doxid-md__units_8hpp_1a6d2cd4a55e4092cd9db1c199b49b7962>` = 1.0 / kKjPerEv;
+	double :target:`kEvAPerKjNm<doxid-md__units_8hpp_1a3846186030c73312aedbf4c831a89c32>` = kEvPerKj / kAngstromPerNm;
+
+	} // namespace md

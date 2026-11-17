@@ -1,0 +1,45 @@
+.. index:: pair: struct; rgpot::aoti_unpack::CacheRoot
+.. _doxid-structrgpot_1_1aoti__unpack_1_1_cache_root:
+
+struct rgpot::aoti_unpack::CacheRoot
+====================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct CacheRoot {
+		// fields
+	
+		fs::path :target:`path<doxid-structrgpot_1_1aoti__unpack_1_1_cache_root_1a16b182c155923f6f571ca15d25fb67dd>`;
+		std::string :ref:`source<doxid-structrgpot_1_1aoti__unpack_1_1_cache_root_1a0ca49361a52c76a1251f7a2e8c0c3857>`;
+	};
+.. _details-structrgpot_1_1aoti__unpack_1_1_cache_root:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; source
+.. _doxid-structrgpot_1_1aoti__unpack_1_1_cache_root_1a0ca49361a52c76a1251f7a2e8c0c3857:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string source
+
+What chose the path: "config", kCacheDirEnv, "XDG_CACHE_HOME" or "run directory".
+

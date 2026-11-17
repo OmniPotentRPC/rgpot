@@ -1,0 +1,32 @@
+.. index:: pair: struct; rgpot::Kept::Slot
+.. _doxid-structrgpot_1_1_kept_1_1_slot:
+
+struct rgpot::Kept::Slot
+========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Slot {
+		// fields
+	
+		std::unique_ptr<Pot> :target:`pot<doxid-structrgpot_1_1_kept_1_1_slot_1ae2bb29a5c5575c6584e6f1f0095a1071>`;
+		unsigned char :target:`params<doxid-structrgpot_1_1_kept_1_1_slot_1a3a9d42334e2ed9ee41426fc2fc39dda6>`[KeptKey::kBytes] = {};
+		std::size_t :target:`len<doxid-structrgpot_1_1_kept_1_1_slot_1ab0539a5433d434a9fc4d932f657bbd0d>` = 0;
+		std::size_t :target:`n<doxid-structrgpot_1_1_kept_1_1_slot_1a1bdd2bd73f0c813d3c884fc8b7d1f724>` = 0;
+		bool :target:`has_species<doxid-structrgpot_1_1_kept_1_1_slot_1a2bff5f12ef650012c6915d3f7440433d>` = false;
+		std::vector<int> :target:`species<doxid-structrgpot_1_1_kept_1_1_slot_1aa7128cd34f4db878278643bdd44445d2>`;
+		:ref:`KeptCounts<doxid-structrgpot_1_1_kept_counts>` :target:`counts<doxid-structrgpot_1_1_kept_1_1_slot_1a9b8f906f638017987ec29b135dc21b4b>`;
+
+		// methods
+	
+		bool :target:`matches<doxid-structrgpot_1_1_kept_1_1_slot_1a7bc7e35ea577ed4d98d65023e16d80d7>`(const :ref:`KeptKey<doxid-classrgpot_1_1_kept_key>`& key) const;
+		void :target:`keep<doxid-structrgpot_1_1_kept_1_1_slot_1a364f72c2fe5a7dbb8c070a033ee3aecf>`(const :ref:`KeptKey<doxid-classrgpot_1_1_kept_key>`& key);
+	};

@@ -1,0 +1,29 @@
+.. index:: pair: struct; pocketfft::detail::threading::thread_pool::worker
+.. _doxid-structpocketfft_1_1detail_1_1threading_1_1thread__pool_1_1worker:
+
+struct pocketfft::detail::threading::thread_pool::worker
+========================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct worker {
+		// fields
+	
+		std::thread :target:`thread<doxid-structpocketfft_1_1detail_1_1threading_1_1thread__pool_1_1worker_1a4b8c21fa61838f502fbddeb93dfd8afe>`;
+		std::condition_variable :target:`work_ready<doxid-structpocketfft_1_1detail_1_1threading_1_1thread__pool_1_1worker_1a55e48d6e55b9e984e98f4ab56fc74f6e>`;
+		std::mutex :target:`mut<doxid-structpocketfft_1_1detail_1_1threading_1_1thread__pool_1_1worker_1aaa5e45a0bc7051bb5a930a53b11d4ba9>`;
+		std::atomic_flag :target:`busy_flag<doxid-structpocketfft_1_1detail_1_1threading_1_1thread__pool_1_1worker_1ae3da35f637bf1d683e623e1336ed9d05>` = ATOMIC_FLAG_INIT;
+		std::function<void()> :target:`work<doxid-structpocketfft_1_1detail_1_1threading_1_1thread__pool_1_1worker_1a70a379acf33b74254d2bdcda07c8a50d>`;
+
+		// methods
+	
+		void :target:`worker_main<doxid-structpocketfft_1_1detail_1_1threading_1_1thread__pool_1_1worker_1a2555bf2b9dc6cbf6a7f94f9fca0f853c>`(std::atomic<bool>& shutdown_flag, std::atomic<size_t>& unscheduled_tasks, :ref:`concurrent_queue<doxid-classpocketfft_1_1detail_1_1threading_1_1concurrent__queue>`<std::function<void()>>& overflow_work);
+	};

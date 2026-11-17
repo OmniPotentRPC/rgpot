@@ -1,0 +1,11 @@
+.. index:: pair: namespace; detail
+.. _doxid-namespacergpot_1_1ipi_1_1detail_1_1_0d146321346301360237131177130114162037203326125232:
+
+namespace detail
+================
+
+.. toctree::
+	:hidden:
+
+
+

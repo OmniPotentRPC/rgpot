@@ -1,0 +1,65 @@
+.. index:: pair: class; rgpot::KeptKey
+.. _doxid-classrgpot_1_1_kept_key:
+
+class rgpot::KeptKey
+====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+What a kept potential was built for. :ref:`More...<details-classrgpot_1_1_kept_key>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <KeptPotential.hpp>
+	
+	class KeptKey {
+	public:
+		// fields
+	
+		static std::size_t :ref:`kBytes<doxid-classrgpot_1_1_kept_key_1a188810ff5e3984c767be915cee6af970>` = 128;
+
+		// methods
+	
+		KeptKey& :target:`f64<doxid-classrgpot_1_1_kept_key_1a28424667207f73fb02b813bedbf550b2>`(double v);
+		KeptKey& :target:`i64<doxid-classrgpot_1_1_kept_key_1adab5d122630386ed1be4d1ada41ad18d>`(std::int64_t v);
+		KeptKey& :ref:`atoms<doxid-classrgpot_1_1_kept_key_1aa6c4f1d2b86ec765c5848806b3729330>`(std::size_t n, const int* species);
+	};
+.. _details-classrgpot_1_1_kept_key:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+What a kept potential was built for.
+
+Fields
+------
+
+.. index:: pair: variable; kBytes
+.. _doxid-classrgpot_1_1_kept_key_1a188810ff5e3984c767be915cee6af970:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static std::size_t kBytes = 128
+
+Room for 16 eight-byte fields. A key that outgrows it never matches, so every call builds.
+
+Methods
+-------
+
+.. index:: pair: function; atoms
+.. _doxid-classrgpot_1_1_kept_key_1aa6c4f1d2b86ec765c5848806b3729330:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	KeptKey& atoms(std::size_t n, const int* species)
+
+The atom count, and the species of each atom, or null for a call without species. The species are read, not copied, until the key is kept.
+

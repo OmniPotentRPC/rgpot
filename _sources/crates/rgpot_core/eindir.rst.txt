@@ -52,6 +52,10 @@
       :used_name: DLManagedTensorVersioned
 
 
+   .. rust:use:: rgpot_core::hvp::HvpState
+      :used_name: HvpState
+
+
    .. rust:use:: rgpot_core::potential::PotentialCallback
       :used_name: PotentialCallback
 
@@ -389,10 +393,94 @@
          :toc: box_matrix
          :layout: [{"type":"name","value":"box_matrix"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"["},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":"; "},{"type":"literal","value":"9"},{"type":"punctuation","value":"]"}]
 
-         Box matrix (column-major, 3x3), copied at construction.
+         Box matrix copied at construction. Nine doubles, lattice vectors as
+         rows: ax ay az bx by bz cx cy cz. Same layout as ``ForceInput.box``.
 
       .. rubric:: Implementations
 
+
+      .. rust:impl:: rgpot_core::eindir::rgpot_potential_t
+         :index: -1
+         :vis: pub
+         :layout: [{"type":"keyword","value":"impl"},{"type":"space"},{"type":"link","value":"rgpot_potential_t","target":"rgpot_potential_t"}]
+         :toc: impl rgpot_potential_t
+
+
+         .. rubric:: Functions
+
+
+         .. rust:function:: rgpot_core::eindir::rgpot_potential_t::has_hessian_vector_callback
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"has_hessian_vector_callback"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"bool","target":"bool"}]
+
+            Whether an analytic Hessian-vector callback is registered.
+
+         .. rust:function:: rgpot_core::eindir::rgpot_potential_t::hessian_vector
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"hessian_vector"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":", "},{"type":"name","value":"input"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"rgpot_force_input_t","target":"rgpot_force_input_t"},{"type":"punctuation","value":", "},{"type":"name","value":"direction"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"punctuation","value":"["},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":"]"},{"type":"punctuation","value":", "},{"type":"name","value":"step"},{"type":"punctuation","value":": "},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":", "},{"type":"name","value":"scheme"},{"type":"punctuation","value":": "},{"type":"link","value":"rgpot_hvp_scheme_t","target":"rgpot_hvp_scheme_t"},{"type":"punctuation","value":", "},{"type":"name","value":"hv_out"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"keyword","value":"mut"},{"type":"space"},{"type":"punctuation","value":"["},{"type":"link","value":"f64","target":"f64"},{"type":"punctuation","value":"]"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"Result","target":"Result"},{"type":"punctuation","value":"<"},{"type":"punctuation","value":"("},{"type":"punctuation","value":")"},{"type":"punctuation","value":", "},{"type":"link","value":"HvpError","target":"HvpError"},{"type":"punctuation","value":">"}]
+
+            Write ``H direction`` to ``hv_out``; see the module documentation.
+            
+            ``direction`` and ``hv_out`` hold ``3 * n_atoms`` doubles. ``step`` is the
+            displacement length, and 0 selects ``RGPOT_HVP_DEFAULT_STEP``. A zero
+            direction gives a zero product without any call. ``hv_out`` is only
+            written on success by the finite differences; the analytic callback
+            may leave it partly written when it fails.
+            
+            **Safety**
+            
+            As for ``Self::hvp_centre``; a registered analytic callback must also
+            be safe to call with the handle's ``user_data``.
+
+         .. rust:function:: rgpot_core::eindir::rgpot_potential_t::hvp_centre
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"unsafe"},{"type":"space"},{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"hvp_centre"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":", "},{"type":"name","value":"input"},{"type":"punctuation","value":": "},{"type":"punctuation","value":"&"},{"type":"link","value":"rgpot_force_input_t","target":"rgpot_force_input_t"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"Result","target":"Result"},{"type":"punctuation","value":"<"},{"type":"link","value":"HvpCentre","target":"HvpCentre"},{"type":"punctuation","value":", "},{"type":"link","value":"HvpError","target":"HvpError"},{"type":"punctuation","value":">"}]
+
+            Energy and forces at the geometry of ``input``.
+            
+            Served from the cached centre when its positions, species and cell
+            carry the same bits, otherwise computed with one force call and
+            cached. A search that needs the centre forces asks here instead of
+            ``rgpot_potential_calculate``, so the products that follow reuse them.
+            
+            **Safety**
+            
+            The tensors of ``input`` must be valid for the call, and the handle's
+            callback safe to call with its ``user_data``.
+
+         .. rust:function:: rgpot_core::eindir::rgpot_potential_t::hvp_counts
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"hvp_counts"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"},{"type":"space"},{"type":"returns"},{"type":"space"},{"type":"link","value":"rgpot_hvp_counts_t","target":"rgpot_hvp_counts_t"}]
+
+            The counters of the Hessian-vector entry points.
+
+         .. rust:function:: rgpot_core::eindir::rgpot_potential_t::invalidate_hvp_centre
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"invalidate_hvp_centre"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"}]
+
+            Drop the cached centre. Call it when the potential behind the handle
+            changes while the geometry does not.
+
+         .. rust:function:: rgpot_core::eindir::rgpot_potential_t::reset_hvp_counts
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"reset_hvp_counts"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":")"}]
+
+            Zero the counters. The cached centre stays.
+
+         .. rust:function:: rgpot_core::eindir::rgpot_potential_t::set_hessian_vector_callback
+            :index: -1
+            :vis: pub
+            :layout: [{"type":"keyword","value":"fn"},{"type":"space"},{"type":"name","value":"set_hessian_vector_callback"},{"type":"punctuation","value":"("},{"type":"operator","value":"&"},{"type":"keyword","value":"self"},{"type":"punctuation","value":", "},{"type":"name","value":"callback"},{"type":"punctuation","value":": "},{"type":"link","value":"Option","target":"Option"},{"type":"punctuation","value":"<"},{"type":"link","value":"HessianVectorCallback","target":"HessianVectorCallback"},{"type":"punctuation","value":">"},{"type":"punctuation","value":")"}]
+
+            Register ``callback`` as the analytic Hessian-vector product of this
+            handle, or clear it with ``None``. It is called with the handle's
+            ``user_data``.
 
       .. rust:impl:: rgpot_core::eindir::rgpot_potential_t
          :index: -1

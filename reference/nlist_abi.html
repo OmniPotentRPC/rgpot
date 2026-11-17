@@ -1,0 +1,1765 @@
+<!DOCTYPE html>
+<html lang="en" data-accent-color="teal" data-content_root="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Neighbour-list C ABI - rgpot 3.7.0 documentation</title><link rel="shortcut icon" href="../_static/favicon.svg"/><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Fast pair list C ABI" href="fast_nlist.html" /><link rel="prev" title="C ABI of rgpot-core" href="c_abi.html" />
+      <link rel="canonical" href="https://rgpot.rgoswami.me/reference/nlist_abi.html" /><script>
+    function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
+    setColorMode(localStorage._theme||"auto");
+  </script><link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=e1a1ceaf" />
+    <link rel="stylesheet" type="text/css" href="../_static/shibuya.css?v=44020203" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-pygments.css?v=ff3f4257" />
+    <link rel="stylesheet" type="text/css" href="../_static/doxyrest-shibuya.css" />
+    <link media="print" rel="stylesheet" type="text/css" href="../_static/print.css?v=20ff2c19" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=23824103" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sy-f-text: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+  --sy-f-heading: "Inter", var(--sy-f-sys), var(--sy-f-cjk), sans-serif;
+}
+</style>
+    <meta property="og:type" content="website"/>
+  <meta property="og:url" content="https://rgpot.rgoswami.me/reference/nlist_abi.html"/>
+  <meta property="og:title" content="Neighbour-list C ABI"/>
+    <meta name="twitter:card" content="summary"/>
+  <!-- Sized PNG icons, apple touch icon, and manifest. html_favicon is favicon.svg. -->
+<link rel="icon" type="image/png" sizes="16x16" href="../_static/favicons/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="../_static/favicons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../_static/favicons/android-chrome-192x192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="../_static/favicons/android-chrome-512x512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="../_static/favicons/apple-touch-icon.png">
+<link rel="manifest" href="../_static/favicons/site.webmanifest">
+<!-- Antics analytics -->
+<script defer src="https://antics-api.turtletech.us/antics.js"></script>
+<script>window.antics=window.antics||{event:function(){}};document.addEventListener('click',function(e){var a=e.target.closest('a');if(a&&a.hostname&&a.hostname!==location.hostname)antics.event('Outbound Link',{url:a.href})});</script></head>
+<body><div class="sy-head">
+  <div class="sy-head-blur"></div>
+  <div class="sy-head-inner sy-container mx-auto">
+    <a class="sy-head-brand" href="../index.html">
+      <img class="light-logo" src="../_static/logo-light.svg" alt="rgpot" height="28" loading="lazy" />
+      <img class="dark-logo" src="../_static/logo-dark.svg" alt="rgpot" height="28" loading="lazy" />
+      <strong>rgpot</strong>
+    </a>
+    <div class="sy-head-nav" id="head-nav">
+      <nav class="sy-head-links"><ul>
+      <li class="link"><button class="js-menu" type="button" id="nav-trigger-1" aria-controls="nav-children-1">
+            <span>Ecosystem</span>
+            <i class="i-lucide chevron-down"></i>
+          </button>
+        <ul id="nav-children-1" aria-labelledby="nav-trigger-1"><li><a href="https://eondocs.org">
+                <span>eOn</span>
+                <small>Saddle point finding on potential energy surfaces</small>
+              </a></li><li><a href="https://rgpot.rgoswami.me">
+                <span>rgpot</span>
+                <small>Potential-energy library and Cap'n Proto RPC server</small>
+              </a></li><li><a href="https://omnipotentrpc.github.io/rgmin">
+                <span>rgmin</span>
+                <small>Local minimization over eindir objectives</small>
+              </a></li><li><a href="https://omnipotentrpc.github.io/rgsaddle">
+                <span>rgsaddle</span>
+                <small>Band and minimum-mode saddle mechanics over rgmin</small>
+              </a></li><li><a href="https://cpmdc.rgoswami.me">
+                <span>cpmdc</span>
+                <small>C ABI layer for embedding OpenCPMD</small>
+              </a></li><li><a href="https://rgpycrumbs.rgoswami.me">
+                <span>rgpycrumbs</span>
+                <small>Pure-Python computational library and CLI for chemical physics</small>
+              </a></li><li><a href="https://lode-org.github.io/minimage">
+                <span>minimage</span>
+                <small>Minimum-image convention on a general parallelepiped</small>
+              </a></li><li><a href="https://docs.rs/linkcell">
+                <span>linkcell</span>
+                <small>Periodic linked-cell k-nearest neighbour search</small>
+              </a></li><li><a href="https://lode-org.github.io/readcon-core">
+                <span>readcon</span>
+                <small>Reference implementation of versioned CON checkpoints</small>
+              </a></li><li><a href="https://lode-org.github.io/readcon-db">
+                <span>readcon-db</span>
+                <small>Mmap-backed CON campaign corpus store</small>
+              </a></li><li><a href="https://github.com/lode-org/readcon-ops">
+                <span>readcon-ops</span>
+                <small>Comparisons and rigid alignment of coordinate frames</small>
+              </a></li></ul>
+      </li></ul></nav>
+      <div class="sy-head-extra flex items-center print:hidden"><form class="searchbox flex items-center" action="../search.html" method="get">
+  <input type="text" name="q" placeholder="Search" />
+  <kbd>/</kbd>
+</form><div class="sy-head-socials">
+  <a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </a></div></div>
+    </div>
+    <div class="sy-head-actions flex items-center shrink-0 print:hidden"><button class="js-theme theme-switch flex items-center"
+data-aria-auto="Switch to light color mode"
+data-aria-light="Switch to dark color mode"
+data-aria-dark="Switch to auto color mode">
+<i class="i-lucide theme-icon"></i>
+</button><button class="md:hidden flex items-center js-menu" aria-label="Menu" type="button" aria-controls="head-nav" aria-expanded="false">
+        <div class="hamburger">
+          <span class="hamburger_1"></span>
+          <span class="hamburger_2"></span>
+          <span class="hamburger_3"></span>
+        </div>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="sy-page sy-container flex mx-auto">
+  <aside id="lside" class="sy-lside md:w-72 md:shrink-0 print:hidden">
+    <div class="sy-lside-inner md:sticky">
+      <div class="sy-scrollbar p-6">
+        <div class="globaltoc" data-expand-depth="1"><p class="caption" role="heading" aria-level="3"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/neighbour-list.html">Neighbour lists</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/pes-scan.html">Scan a potential energy surface over RPC</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/cpmd.html">Evaluate a water geometry with CPMD</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/cp2k.html">Evaluate diamond silicon with CP2K</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/pip-python.html">Python package (PyPI)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/ase.html">ASE calculators</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-lammps.html">LAMMPS</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-gromacs.html">GROMACS</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-gromacs-qmmm.html">GROMACS QM/MM drop-in</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-openmm.html">OpenMM</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-plumed.html">PLUMED</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-metatomic.html">Metatomic and the engine ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/uma-export.html">Export a UMA model with dynamic shapes</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/exprpot.html">Compose potentials with ExprPot</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/ipi.html">i-PI socket server and driver</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/add-potential.html">Add a potential to the Rust core</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-plugins.html">Open, build and test engine plugins</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html">eOn Potentials Over rgpot</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#landed-work-items">Landed Work Items</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#related">Related</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/sutton-chen-stress.html">Read the stress of a periodic Sutton-Chen cell</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/cpu-scaling.html">Measure CPU scaling of batch evaluation</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Explanation</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/index.html">Explanation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/architecture.html">Architecture</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/rpc-model.html">The RPC Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/abi-stamps.html">ABI stamps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/hessian-vector.html">Hessian-vector products</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/fortran-kernels.html">Fortran kernels: port, not wrap</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/gromacs-qmmm.html">GROMACS QM/MM through the CP2K interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/simd.html">SIMD paths and dispatch</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/thread-safety.html">Thread safety</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/neighbour-lists.html">Neighbour list design</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/mpi.html">Calculator groups over MPI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/global-optimization.html">Local and global minimization</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
+<ul class="current">
+<li class="toctree-l1 _expand"><a class="reference internal" href="architecture.html">Architecture reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="python_api.html">Python API</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="cpp_api.html">C++ API</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="cpp_potentials.html">C++ potentials</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="cpp_backends.html">C++ engine-backed potentials</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="ipi_driver.html">i-PI driver client</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="build_options.html">Build options</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="potential_config.html">PotentialConfig arms</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="sw_si.html">Stillinger-Weber silicon (1985)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="tersoff_sic.html">Tersoff silicon-carbon (1989)</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="mpi.html">MPI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="c_abi.html">C ABI of rgpot-core</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Neighbour-list C ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="fast_nlist.html">Fast pair list C ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="engine_abi.html">Engine plugin ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="gromacs_dropin.html">GROMACS QM/MM drop-in reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="plugin_abi.html">Plugin C ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="external_abi.html">External engine C ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="simd_exp.html">FMA dispatch and exp</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="sutton_chen.html">Sutton-Chen potential</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="sutton_chen.html#reduced-cluster-pairs">Reduced cluster pairs</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="sutton_chen.html#stress">Stress</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html">Tabulated EAM and Finnis-Sinclair potentials</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html#agreement-with-lammps">Agreement with LAMMPS</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html#stress">Stress</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html#pair-list">Pair list</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html#checks">Checks</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="fortran_potentials.html">Fortran potentials: porting rules</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="potential_names.html">Potential names and options</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../api/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_Error.html">class rgpot::Error</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_InputSpec.html">class rgpot::InputSpec</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_PotentialHandle.html">class rgpot::PotentialHandle</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_RpcClient.html">class rgpot::RpcClient</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api/group_vector3d.html">Common operations 3D vectors.</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api/page_bug.html">Bug List</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../api/global.html">Global Namespace</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_cache.html">namespace cache</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_cp2k.html">namespace cp2k</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_detail.html">namespace detail</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_engine.html">namespace engine</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_eonc.html">namespace eonc</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields.html">namespace forcefields</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-2.html">namespace forcefields</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_forcefields_unit_system.html">namespace forcefields::unit_system</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_forcefields_zhu_philpott_parameters.html">namespace forcefields::zhu_philpott_parameters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_forcefields_Ccl.html">class forcefields::Ccl</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_forcefields_PotentialBase.html">class forcefields::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_forcefields_SpceCcl.html">class forcefields::SpceCcl</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_forcefields_Tip4p.html">class forcefields::Tip4p</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_forcefields_ZhuPhilpott.html">template class forcefields::ZhuPhilpott</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-3.html">namespace forcefields</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-2.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-3.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-4.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-5.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-6.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-7.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist.html">namespace nlist</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_nlist_Hit.html">enum nlist::Hit</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist-2.html">namespace nlist</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist-3.html">namespace nlist</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist-4.html">namespace nlist</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_plugin.html">namespace plugin</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_plugin-2.html">namespace plugin</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_pocketfft.html">namespace pocketfft</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_pocketfft_detail.html">namespace pocketfft::detail</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-2.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-3.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-5.html">namespace rgpot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_aoti_unpack.html">namespace rgpot::aoti_unpack</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cp2k.html">namespace rgpot::cp2k</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_detail.html">namespace rgpot::detail</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_eam.html">namespace rgpot::eam</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_engine.html">namespace rgpot::engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_ipi.html">namespace rgpot::ipi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_lr.html">namespace rgpot::lr</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_md.html">namespace rgpot::md</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_rpc.html">namespace rgpot::rpc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_simd.html">namespace rgpot::simd</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_staged.html">namespace rgpot::staged</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_units.html">namespace rgpot::units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_EAMTableFormat.html">enum rgpot::EAMTableFormat</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_HvpScheme.html">enum rgpot::HvpScheme</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_BatchInput.html">struct rgpot::BatchInput</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_BatchResult.html">struct rgpot::BatchResult</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EAMCellConfig.html">struct rgpot::EAMCellConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EAMTable.html">struct rgpot::EAMTable</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EAMTableConfig.html">struct rgpot::EAMTableConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EMTConfig.html">struct rgpot::EMTConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ExternalLjConfig.html">struct rgpot::ExternalLjConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_HalfList.html">struct rgpot::HalfList</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_HvpCentre.html">struct rgpot::HvpCentre</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_HvpCounts.html">struct rgpot::HvpCounts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_IPIConfig.html">struct rgpot::IPIConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_IPIDriverConfig.html">struct rgpot::IPIDriverConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_KeptCounts.html">struct rgpot::KeptCounts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJConfig.html">struct rgpot::LJConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Locality.html">struct rgpot::Locality</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_NativeState.html">struct rgpot::NativeState</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_PerAtomOut.html">struct rgpot::PerAtomOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Range.html">struct rgpot::Range</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_StageTally.html">struct rgpot::StageTally</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SuttonChenConfig.html">struct rgpot::SuttonChenConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SuttonChenScales.html">struct rgpot::SuttonChenScales</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_UmaCheckpointProvenance.html">struct rgpot::UmaCheckpointProvenance</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_WaterConfig.html">struct rgpot::WaterConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBDlopenConfig.html">struct rgpot::XTBDlopenConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcFields.html">struct rgpot::XcFields</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcGrid.html">struct rgpot::XcGrid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcMo.html">struct rgpot::XcMo</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZBLConfig.html">struct rgpot::ZBLConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblPairCoeffs.html">struct rgpot::ZblPairCoeffs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblTables.html">struct rgpot::ZblTables</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_BatchEvaluator.html">class rgpot::BatchEvaluator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CP2KPot.html">class rgpot::CP2KPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CP2KScfError.html">class rgpot::CP2KScfError</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D3Pot.html">class rgpot::D3Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D4Pot.html">class rgpot::D4Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_EAMPot.html">class rgpot::EAMPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_EAMTablePot.html">class rgpot::EAMTablePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_EMTPot.html">class rgpot::EMTPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ExprPot.html">class rgpot::ExprPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_GromacsPot.html">class rgpot::GromacsPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_HessianVectorCache.html">class rgpot::HessianVectorCache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_IPIDriver.html">class rgpot::IPIDriver</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_IPIPot.html">class rgpot::IPIPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_Kept.html">template class rgpot::Kept</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_KeptKey.html">class rgpot::KeptKey</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJClusterPot.html">class rgpot::LJClusterPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LammpsPot.html">class rgpot::LammpsPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MOPACPot.html">class rgpot::MOPACPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicDlopen.html">class rgpot::MetatomicDlopen</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MorsePot.html">class rgpot::MorsePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_OpenMMPot.html">class rgpot::OpenMMPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PairTerms.html">template class rgpot::PairTerms</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PerAtomTeam.html">class rgpot::PerAtomTeam</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_SPCEPot.html">class rgpot::SPCEPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_SkalaPot.html">class rgpot::SkalaPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_StillingerWeberSi.html">class rgpot::StillingerWeberSi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_SuttonChenPot.html">class rgpot::SuttonChenPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TIP4PPot.html">class rgpot::TIP4PPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TIP4PPtPot.html">class rgpot::TIP4PPtPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TeamCap.html">class rgpot::TeamCap</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TersoffSiC.html">class rgpot::TersoffSiC</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_UmaPot.html">class rgpot::UmaPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-7.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-8.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-9.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-10.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-11.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-13.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-14.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-15.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-16.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-17.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-18.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-19.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-20.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-21.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-22.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-23.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-24.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-25.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-26.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_cuh2_capi.html">namespace rgpot_cuh2_capi</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_eam_al.html">namespace rgpot_eam_al</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_eam_al_capi.html">namespace rgpot_eam_al_capi</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_edip.html">namespace rgpot_edip</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_edip_capi.html">namespace rgpot_edip_capi</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_fehe.html">namespace rgpot_fehe</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_fehe_capi.html">namespace rgpot_fehe_capi</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_ferror.html">namespace rgpot_ferror</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_kinds.html">namespace rgpot_kinds</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_lenosky.html">namespace rgpot_lenosky</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_lenosky_capi.html">namespace rgpot_lenosky_capi</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_neighbors.html">namespace rgpot_neighbors</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/interface_rgpot_neighbors_rgpot_nlist_fortran_build.html">interface rgpot_neighbors::rgpot_nlist_fortran_build</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/interface_rgpot_neighbors_rgpot_nlist_fortran_close.html">interface rgpot_neighbors::rgpot_nlist_fortran_close</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/interface_rgpot_neighbors_rgpot_nlist_fortran_open.html">interface rgpot_neighbors::rgpot_nlist_fortran_open</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/interface_rgpot_neighbors_rgpot_nlist_strerror.html">interface rgpot_neighbors::rgpot_nlist_strerror</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_sw.html">namespace rgpot_sw</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_sw_capi.html">namespace rgpot_sw_capi</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_tersoff.html">namespace rgpot_tersoff</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_tersoff_capi.html">namespace rgpot_tersoff_capi</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_water_h.html">namespace rgpot_water_h</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/interface_rgpot_water_h_rgpot_fast_wrap.html">interface rgpot_water_h::rgpot_fast_wrap</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_water_h_capi.html">namespace rgpot_water_h_capi</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_workspace.html">namespace rgpot_workspace</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_simd.html">namespace simd</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_simd-2.html">namespace simd</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_simd_Mode.html">enum simd::Mode</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_std.html">namespace std</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_string_literals.html">namespace string_literals</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_vesin.html">namespace vesin</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_vesin_cpu.html">namespace vesin::cpu</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_xckernel.html">namespace xckernel</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/enum_CPMDCFeatureKind.html">enum CPMDCFeatureKind</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/enum_rgpot_engine_acquire_reason.html">enum rgpot_engine_acquire_reason</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/enum_rgpot_plugin_caps_t.html">enum rgpot_plugin_caps_t</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/enum_rgpot_plugin_status_t.html">enum rgpot_plugin_status_t</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CP2KCEnv.html">struct CP2KCEnv</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CP2KCSession.html">struct CP2KCSession</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCResult.html">struct CPMDCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_Image.html">struct Image</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_MopacCParams.html">struct MopacCParams</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_MopacCResult.html">struct MopacCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_NWChemCResult.html">struct NWChemCResult</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotEngineAbiStamp.html">struct RgpotEngineAbiStamp</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotEngineCallbacks.html">struct RgpotEngineCallbacks</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotEngineCaps.html">struct RgpotEngineCaps</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotEngineGprGate.html">struct RgpotEngineGprGate</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotEngineNeighborOptions.html">struct RgpotEngineNeighborOptions</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotEnginePot.html">struct RgpotEnginePot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_RgpotEnginePot_CallGuard.html">struct RgpotEnginePot::CallGuard</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotMtaConfig.html">struct RgpotMtaConfig</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotMtaPot.html">struct RgpotMtaPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotXtbConfig.html">struct RgpotXtbConfig</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_RgpotXtbPot.html">struct RgpotXtbPot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_eindir_abi_stamp_t.html">struct eindir_abi_stamp_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_eindir_objective_t.html">struct eindir_objective_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_emt_parameters.html">struct emt_parameters</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_cxx_layout_stamp_t.html">struct rgpot_cxx_layout_stamp_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_external_potential.html">struct rgpot_external_potential</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_mpi_group_t.html">struct rgpot_mpi_group_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_nlist_builder.html">struct rgpot_nlist_builder</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_nlist_fortran_list.html">struct rgpot_nlist_fortran_list</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_nlist_request.html">struct rgpot_nlist_request</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_nlist_soa.html">struct rgpot_nlist_soa</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_nlist_walk.html">struct rgpot_nlist_walk</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_plugin_descriptor_t.html">struct rgpot_plugin_descriptor_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_plugin_input_t.html">struct rgpot_plugin_input_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_plugin_output_t.html">struct rgpot_plugin_output_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_sc_config.html">struct rgpot_sc_config</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_sc_scales.html">struct rgpot_sc_scales</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_tip4p_sites_config.html">struct rgpot_tip4p_sites_config</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_AsapPotential.html">class AsapPotential</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_AtomMatrix.html">class AtomMatrix</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_Atoms.html">class Atoms</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_CellList.html">class CellList</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_EAM.html">class EAM</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_EAM_Delta.html">struct EAM::Delta</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_EAM_element_parameters.html">struct EAM::element_parameters</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_EMT.html">class EMT</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_EMTDefaultParameterProvider.html">class EMTDefaultParameterProvider</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_EMTParameterProvider.html">class EMTParameterProvider</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_EMTRasmussenParameterProvider.html">class EMTRasmussenParameterProvider</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_Exception.html">class Exception</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_GenericPotImpl.html">class GenericPotImpl</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_GhostAtoms.html">class GhostAtoms</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_GhostPotential.html">class GhostPotential</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_NeighborList.html">class NeighborList</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_PotClient.html">class PotClient</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_SuperCell.html">class SuperCell</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_TinyMatrix.html">template class TinyMatrix</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/class_Vec.html">class Vec</a><ul class="simple">
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../crates/rgpot_core/lib.html">Crate <code class="docutils literal notranslate"><span class="pre">rgpot_core</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/hvp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">hvp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/hvp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">hvp</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/version.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">version</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/Potentials_capnp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">Potentials_capnp</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/compat.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">compat</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/profile.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">profile</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/client.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">client</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/rpc/server.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">server</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+</ul>
+<p class="caption" role="heading" aria-level="3"><span class="caption-text">Development</span></p>
+<ul>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../contributing/index.html">Contributing to <code class="docutils literal notranslate"><span class="pre">rgpot</span></code></a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../contributing/developer/index.html">Developer Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/testing.html">Testing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/release.html">Release Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/abi-bump.html">Bump the ABI numbers</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/faq.html">Developer FAQ</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../code_of_conduct.html">Code of Conduct</a></li>
+</ul>
+</li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../code_of_conduct.html">Code of Conduct</a></li>
+</ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="lside-overlay js-menu" role="button" aria-label="Close left sidebar" aria-controls="lside" aria-expanded="false"></div>
+  <aside id="rside" class="sy-rside pb-3 w-64 shrink-0 order-last">
+    <button class="rside-close js-menu xl:hidden" aria-label="Close Table of Contents" type="button" aria-controls="rside" aria-expanded="false">
+      <i class="i-lucide close"></i>
+    </button>
+    <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
+<li><a class="reference internal" href="#codes">Codes</a></li>
+<li><a class="reference internal" href="#types">Types</a><ul>
+<li><a class="reference internal" href="#rgpot-nlist-request"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_request</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-soa"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_soa</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-walk"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-builder"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-fortran-list"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_list</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#functions">Functions</a><ul>
+<li><a class="reference internal" href="#rgpot-nlist-abi-version"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_abi_version</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-strerror"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_strerror</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-request-init"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_request_init</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-build"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-walk-open"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_open</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-walk-pull"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_pull</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-walk-close"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_close</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-build-systems"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build_systems</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-builder-open"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder_open</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-builder-update"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder_update</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-builder-close"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder_close</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-fortran-open"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_open</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-fortran-close"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_close</span></code></a></li>
+<li><a class="reference internal" href="#rgpot-nlist-fortran-build"><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_build</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#cap-n-proto-messages">Cap&#8217;n Proto messages</a></li>
+<li><a class="reference internal" href="#example">Example</a></li>
+</ul>
+</div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
+  data-type="github" data-user="OmniPotentRPC" data-repo="rgpot">
+  <span class="w-8 flex items-center justify-around shrink-0 text-3xl">
+    <iconify-icon icon="simple-icons:github"></iconify-icon>
+  </span>
+  <span class="flex-grow px-2 break-all">
+    
+    
+      <span>rgpot</span>
+    
+    <span class="flex text-sm repo-stats-count">
+      <span class="flex items-center pr-3">
+        <iconify-icon icon="lucide:star"></iconify-icon>
+        <strong class="js-repo-stars ml-1">0</strong>
+      </span>
+      <span class="flex items-center">
+        <iconify-icon icon="lucide:git-fork"></iconify-icon>
+        <strong class="js-repo-forks ml-1">0</strong>
+      </span>
+    </span>
+  </span>
+</a><div class="edit-this-page">
+  <a href="https://github.com/OmniPotentRPC/rgpot/blob/main/docs/source/reference/nlist_abi.rst">Edit this page</a>
+</div></div>
+  </aside>
+  <div class="rside-overlay js-menu" role="button" aria-label="Close Table of Contents" aria-controls="rside" aria-expanded="false"></div>
+  <main class="sy-main w-full max-sm:max-w-full print:pt-6">
+<div class="sy-breadcrumbs" role="navigation">
+  <div class="sy-breadcrumbs-inner flex items-center">
+    <div class="md:hidden mr-3">
+      <button class="js-menu" aria-label="Menu" type="button" aria-controls="lside" aria-expanded="false">
+        <i class="i-lucide menu"></i>
+      </button>
+    </div>
+    <ol class="flex-1" itemscope itemtype="https://schema.org/BreadcrumbList"><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a itemprop="item" href="../index.html"><span itemprop="name">rgpot</span></a>
+        <span>/</span>
+        <meta itemprop="position" content="1" />
+      </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <strong itemprop="name">Neighbour-list C ABI</strong>
+        <meta itemprop="position" content="2" />
+      </li></ol>
+    <div class="xl:hidden ml-1">
+      <button class="js-menu" aria-label="Show table of contents" type="button" aria-controls="rside"
+        aria-expanded="false">
+        <i class="i-lucide outdent"></i>
+      </button>
+    </div>
+  </div>
+</div><div class="flex flex-col break-words justify-between">
+      <div class="relative min-w-0 max-w-6xl px-6 pb-6 pt-8 xl:px-12">
+  <div class="copy-page-wrapper relative pb-4 lg:absolute lg:top-8 lg:right-6 xl:right-12">
+  <div id="copy-page-trigger">
+    <button
+      type="button"
+      class="js-copy px-3 py-1 inline-flex items-center gap-1"
+      data-url="https://rgpot.rgoswami.me/_sources/reference/nlist_abi.rst.txt"
+    >
+      <i class="i-lucide" data-icon="copy"></i>
+      <span>Copy page</span>
+    </button>
+    <button class="js-menu px-2 py-1" type="button" aria-label="More actions"
+      aria-haspopup="menu" aria-expanded="false" aria-controls="copy-page-content">
+      <i class="i-lucide chevron-down"></i>
+    </button>
+  </div>
+  <div id="copy-page-content" role="menu" aria-orientation="vertical" aria-hidden="true">
+    <div role="presentation">
+      <div class="flex flex-col" role="group">
+        <button class="js-copy" type="button" role="menuitem"
+          data-url="https://rgpot.rgoswami.me/_sources/reference/nlist_abi.rst.txt">
+          <span class="iconify-icon">
+            <i class="i-lucide" data-icon="copy"></i>
+          </span>
+          <span>Copy page</span>
+        </button>
+        <a role="menuitem" href="https://rgpot.rgoswami.me/_sources/reference/nlist_abi.rst.txt" target="_blank" rel="nofollow"><iconify-icon icon="bi:code-slash"></iconify-icon>
+            <span>View Source</span></a><a role="menuitem" href="https://chatgpt.com/?hints=search&q=Read%20https%3A//rgpot.rgoswami.me/_sources/reference/nlist_abi.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:openai"></iconify-icon>
+          <span>Open in ChatGPT</span>
+        </a><a role="menuitem" href="https://claude.ai/new?q=Read%20https%3A//rgpot.rgoswami.me/_sources/reference/nlist_abi.rst.txt%20so%20I%20can%20ask%20questions%20about%20it." target="_blank" rel="nofollow">
+          <iconify-icon icon="bi:claude"></iconify-icon>
+          <span>Open in Claude</span>
+        </a></div>
+    </div>
+  </div>
+</div><article class="yue dark-code" role="main">
+          <section id="neighbour-list-c-abi">
+<h1>Neighbour-list C ABI<a class="headerlink" href="#neighbour-list-c-abi" title="Link to this heading">¶</a></h1>
+<p><code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/nlist/rgpot_nlist.h</span></code> declares the neighbour query of <code class="docutils literal notranslate"><span class="pre">librgpot</span></code>.
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/nlist/NeighbourList.cc</span></code> implements it.
+Every function returns an <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_*</span></code> code unless its entry says otherwise.
+<code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_ABI</span></code> is 4.</p>
+<p>The library does not convert units.
+Positions, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">skin</span></code>, pair vectors and distances share one length unit,
+the one the caller uses.
+<code class="docutils literal notranslate"><span class="pre">box9</span></code> is nine doubles, the lattice vectors as rows:
+<code class="docutils literal notranslate"><span class="pre">ax</span> <span class="pre">ay</span> <span class="pre">az</span> <span class="pre">bx</span> <span class="pre">by</span> <span class="pre">bz</span> <span class="pre">cx</span> <span class="pre">cy</span> <span class="pre">cz</span></code>.
+The pair vector of <code class="docutils literal notranslate"><span class="pre">(i,</span> <span class="pre">j)</span></code> at integer shift <code class="docutils literal notranslate"><span class="pre">S</span></code> is <code class="docutils literal notranslate"><span class="pre">r_j</span> <span class="pre">-</span> <span class="pre">r_i</span> <span class="pre">+</span> <span class="pre">S</span> <span class="pre">H</span></code>, with <code class="docutils literal notranslate"><span class="pre">H</span></code>
+the rows of <code class="docutils literal notranslate"><span class="pre">box9</span></code>.
+A pair of an atom with itself at shift zero is never returned.</p>
+<p>Different objects may be used from different threads at the same time.
+One walk, one builder and the buffers of one call are used by one thread.
+A build of at least 8192 atoms starts an OpenMP team when <code class="docutils literal notranslate"><span class="pre">OMP_NUM_THREADS</span></code> asks
+for more than one thread.
+The runtime may start fewer threads, as inside another OpenMP region; the list
+does not depend on how many.</p>
+<section id="codes">
+<h2>Codes<a class="headerlink" href="#codes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Code</p></th>
+<th class="head"><p>Value</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_strerror</span></code> text</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_OK</span></code></p></td>
+<td><p>0</p></td>
+<td><p>ok</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_ERR_ABI</span></code></p></td>
+<td><p>1</p></td>
+<td><p>neighbour request abi or size does not match this library</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code></p></td>
+<td><p>2</p></td>
+<td><p>a required neighbour pointer is null</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_CUTOFF</span></code></p></td>
+<td><p>3</p></td>
+<td><p>cutoff and skin must be finite and &gt;= 0</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_BOX</span></code></p></td>
+<td><p>4</p></td>
+<td><p>box must be finite, and a periodic box must have positive volume</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_SHAPE</span></code></p></td>
+<td><p>5</p></td>
+<td><p>neighbour shape, shell or cut is not a supported value</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_SHORT</span></code></p></td>
+<td><p>6</p></td>
+<td><p>neighbour buffer is shorter than the list; needed holds the full count</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NOMEM</span></code></p></td>
+<td><p>7</p></td>
+<td><p>neighbour list allocation failed</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_SKIN</span></code></p></td>
+<td><p>8</p></td>
+<td><p>a positive skin needs a loose cut; a strict cut stores no buffer</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The functions that take a request check it in this order.
+A null request returns <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code>.
+<code class="docutils literal notranslate"><span class="pre">bytes</span></code> shorter than the struct through
+<code class="docutils literal notranslate"><span class="pre">want_distances</span></code>, or <code class="docutils literal notranslate"><span class="pre">abi</span></code> other than <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_ABI</span></code>, returns <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_ERR_ABI</span></code>.
+<code class="docutils literal notranslate"><span class="pre">shape</span></code>, <code class="docutils literal notranslate"><span class="pre">shell</span></code> or <code class="docutils literal notranslate"><span class="pre">cut</span></code> outside 0 and 1, or <code class="docutils literal notranslate"><span class="pre">shape</span></code> 1 with <code class="docutils literal notranslate"><span class="pre">shell</span></code> 0, returns
+<code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_SHAPE</span></code>.
+Null <code class="docutils literal notranslate"><span class="pre">positions</span></code> with <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">&gt;</span> <span class="pre">0</span></code>, or a null <code class="docutils literal notranslate"><span class="pre">box9</span></code>, returns <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code>.
+A negative or non-finite <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> or <code class="docutils literal notranslate"><span class="pre">skin</span></code> returns <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_CUTOFF</span></code>.
+<code class="docutils literal notranslate"><span class="pre">skin</span> <span class="pre">&gt;</span> <span class="pre">0</span></code> with <code class="docutils literal notranslate"><span class="pre">cut</span></code> 0 returns <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_SKIN</span></code>.
+A non-finite element of <code class="docutils literal notranslate"><span class="pre">box9</span></code>, or a zero-volume box with any periodic axis,
+returns <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_BOX</span></code>.
+A failed allocation returns <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NOMEM</span></code>.</p>
+</section>
+<section id="types">
+<h2>Types<a class="headerlink" href="#types" title="Link to this heading">¶</a></h2>
+<section id="rgpot-nlist-request">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_request</span></code><a class="headerlink" href="#rgpot-nlist-request" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">bytes</span></code> is <code class="docutils literal notranslate"><span class="pre">sizeof(rgpot_nlist_request)</span></code> as the caller compiled it,
+and <code class="docutils literal notranslate"><span class="pre">abi</span></code> is <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_ABI</span></code>.
+<code class="docutils literal notranslate"><span class="pre">cutoff</span></code> and <code class="docutils literal notranslate"><span class="pre">skin</span></code> are the cutoff and the Verlet buffer.
+<code class="docutils literal notranslate"><span class="pre">shape</span></code> is 0 for pairs and 1 for a cluster of four.
+<code class="docutils literal notranslate"><span class="pre">shell</span></code> is 0 for a half list and 1 for a full list.
+<code class="docutils literal notranslate"><span class="pre">cut</span></code> is 0 for strict (distance &lt; <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>) and 1 for loose (distance &lt;
+<code class="docutils literal notranslate"><span class="pre">cutoff</span> <span class="pre">+</span> <span class="pre">skin</span></code>, or distance &lt;= <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> when <code class="docutils literal notranslate"><span class="pre">skin</span></code> is 0).
+<code class="docutils literal notranslate"><span class="pre">periodic</span></code> is one flag per axis, nonzero when the axis is periodic.
+<code class="docutils literal notranslate"><span class="pre">want_shifts</span></code>, <code class="docutils literal notranslate"><span class="pre">want_vectors</span></code> and <code class="docutils literal notranslate"><span class="pre">want_distances</span></code> are nonzero for each column
+the call fills.</p>
+</dd>
+<dt>Units</dt><dd><p><code class="docutils literal notranslate"><span class="pre">cutoff</span></code> and <code class="docutils literal notranslate"><span class="pre">skin</span></code> are in the length unit of the positions; every
+other field has none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>none; the caller fills the struct, normally after
+<code class="docutils literal notranslate"><span class="pre">rgpot_nlist_request_init</span></code>.</p>
+</dd>
+<dt>Errors</dt><dd><p>the codes listed under Codes for a bad request.</p>
+</dd>
+</dl>
+<p>A half list keeps one direction of each pair, with the rule vesin uses for an
+atom and its own periodic image.
+A full list keeps both directions.
+A cluster list stores every neighbour, so it needs <code class="docutils literal notranslate"><span class="pre">shell</span></code> 1.</p>
+</section>
+<section id="rgpot-nlist-soa">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_soa</span></code><a class="headerlink" href="#rgpot-nlist-soa" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">bytes</span></code> is <code class="docutils literal notranslate"><span class="pre">sizeof(rgpot_nlist_soa)</span></code> as the caller compiled it.
+<code class="docutils literal notranslate"><span class="pre">cap</span></code> is the number of pairs each column holds.
+<code class="docutils literal notranslate"><span class="pre">first</span></code> and <code class="docutils literal notranslate"><span class="pre">second</span></code> hold <code class="docutils literal notranslate"><span class="pre">cap</span></code> ints.
+<code class="docutils literal notranslate"><span class="pre">shift</span></code> holds <code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">*</span> <span class="pre">cap</span></code> ints and <code class="docutils literal notranslate"><span class="pre">vector</span></code> <code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">*</span> <span class="pre">cap</span></code> doubles, pair <code class="docutils literal notranslate"><span class="pre">p</span></code> at
+elements <code class="docutils literal notranslate"><span class="pre">3p</span></code>, <code class="docutils literal notranslate"><span class="pre">3p+1</span></code>, <code class="docutils literal notranslate"><span class="pre">3p+2</span></code>.
+<code class="docutils literal notranslate"><span class="pre">distance</span></code> holds <code class="docutils literal notranslate"><span class="pre">cap</span></code> doubles and <code class="docutils literal notranslate"><span class="pre">mask</span></code> <code class="docutils literal notranslate"><span class="pre">cap</span></code> bytes.
+A null column pointer skips that column.</p>
+</dd>
+<dt>Units</dt><dd><p><code class="docutils literal notranslate"><span class="pre">vector</span></code> and <code class="docutils literal notranslate"><span class="pre">distance</span></code> are in the length unit of the positions; the
+other columns have none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>the calls write zero-based atom indices into <code class="docutils literal notranslate"><span class="pre">first</span></code> and <code class="docutils literal notranslate"><span class="pre">second</span></code>,
+and each requested column for every pair they write.
+<code class="docutils literal notranslate"><span class="pre">mask</span></code> is 0xff for a pair list.
+For a cluster list <code class="docutils literal notranslate"><span class="pre">first</span></code> is the lowest index of four consecutive atoms,
+<code class="docutils literal notranslate"><span class="pre">second</span></code> the partner, and bit <code class="docutils literal notranslate"><span class="pre">k</span></code> of <code class="docutils literal notranslate"><span class="pre">mask</span></code> is set when atom <code class="docutils literal notranslate"><span class="pre">first</span> <span class="pre">+</span> <span class="pre">k</span></code> has
+that partner at that shift.
+The vector and distance of a cluster row belong to the lowest atom whose bit
+is set.
+A column the request did not ask for is not written even when its pointer is
+set.</p>
+</dd>
+<dt>Errors</dt><dd><p><code class="docutils literal notranslate"><span class="pre">bytes</span></code> smaller than the struct through <code class="docutils literal notranslate"><span class="pre">cap</span></code> returns
+<code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_ERR_ABI</span></code>.
+With <code class="docutils literal notranslate"><span class="pre">cap</span> <span class="pre">&gt;</span> <span class="pre">0</span></code>, a null <code class="docutils literal notranslate"><span class="pre">first</span></code> or <code class="docutils literal notranslate"><span class="pre">second</span></code>, a null pointer for a requested
+column, or a null <code class="docutils literal notranslate"><span class="pre">mask</span></code> on a cluster list returns <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code> before
+anything is written.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-walk">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk</span></code><a class="headerlink" href="#rgpot-nlist-walk" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>Inputs</dt><dd><p>none; an opaque handle from <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_open</span></code>.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>none.</p>
+</dd>
+<dt>Errors</dt><dd><p>none.</p>
+</dd>
+</dl>
+<p>A walk borrows <code class="docutils literal notranslate"><span class="pre">positions</span></code> and <code class="docutils literal notranslate"><span class="pre">box9</span></code> until <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_close</span></code>.
+The caller keeps those arrays alive and does not write them during a pull.</p>
+</section>
+<section id="rgpot-nlist-builder">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder</span></code><a class="headerlink" href="#rgpot-nlist-builder" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>Inputs</dt><dd><p>none; an opaque handle from <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder_open</span></code>.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>none.</p>
+</dd>
+<dt>Errors</dt><dd><p>none.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-fortran-list">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_list</span></code><a class="headerlink" href="#rgpot-nlist-fortran-list" title="Link to this heading">¶</a></h3>
+<dl class="simple">
+<dt>Inputs</dt><dd><p>none; an opaque handle from <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_open</span></code>.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>none.</p>
+</dd>
+<dt>Errors</dt><dd><p>none.</p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<section id="rgpot-nlist-abi-version">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_abi_version</span></code><a class="headerlink" href="#rgpot-nlist-abi-version" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">int32_t</span> <span class="nf">rgpot_nlist_abi_version</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p>none.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_ABI</span></code> of the loaded library.</p>
+</dd>
+<dt>Errors</dt><dd><p>none; the call cannot fail.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-strerror">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_strerror</span></code><a class="headerlink" href="#rgpot-nlist-strerror" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="nf">rgpot_nlist_strerror</span><span class="p">(</span><span class="kt">int32_t</span> <span class="n">code</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">code</span></code>, a value returned by a neighbour call.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>a string literal, the text in the Codes table.
+The caller does not free it.</p>
+</dd>
+<dt>Errors</dt><dd><p>none; an unknown code returns “unknown neighbour error”.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-request-init">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_request_init</span></code><a class="headerlink" href="#rgpot-nlist-request-init" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">void</span> <span class="nf">rgpot_nlist_request_init</span><span class="p">(</span><span class="n">rgpot_nlist_request</span> <span class="o">*</span><span class="n">request</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">request</span></code>, caller storage.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>zeroes
+<code class="docutils literal notranslate"><span class="pre">\*request</span></code>, then sets <code class="docutils literal notranslate"><span class="pre">bytes</span></code>, <code class="docutils literal notranslate"><span class="pre">abi</span></code>, a half pair list with a strict cut, every axis periodic, and all three <code class="docutils literal notranslate"><span class="pre">want_*</span></code>
+flags.
+<code class="docutils literal notranslate"><span class="pre">cutoff</span></code> and <code class="docutils literal notranslate"><span class="pre">skin</span></code> stay 0.</p>
+</dd>
+<dt>Errors</dt><dd><p>none; a null <code class="docutils literal notranslate"><span class="pre">request</span></code> is ignored.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-build">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code><a class="headerlink" href="#rgpot-nlist-build" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">int32_t</span> <span class="nf">rgpot_nlist_build</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">positions</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">box9</span><span class="p">,</span>
+</span><span data-line="2">                          <span class="k">const</span> <span class="n">rgpot_nlist_request</span> <span class="o">*</span><span class="n">request</span><span class="p">,</span> <span class="n">rgpot_nlist_soa</span> <span class="o">*</span><span class="n">out</span><span class="p">,</span>
+</span><span data-line="3">                          <span class="kt">size_t</span> <span class="o">*</span><span class="n">count</span><span class="p">,</span> <span class="kt">size_t</span> <span class="o">*</span><span class="n">needed</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">positions</span></code> is <code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">*</span> <span class="pre">n</span></code> doubles, row-major <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">y</span> <span class="pre">z</span></code> per atom.
+<code class="docutils literal notranslate"><span class="pre">box9</span></code> is the cell, <code class="docutils literal notranslate"><span class="pre">request</span></code> the query and <code class="docutils literal notranslate"><span class="pre">out</span></code> the caller’s columns.
+<code class="docutils literal notranslate"><span class="pre">count</span></code> and <code class="docutils literal notranslate"><span class="pre">needed</span></code> may be null.</p>
+</dd>
+<dt>Units</dt><dd><p><code class="docutils literal notranslate"><span class="pre">positions</span></code>, <code class="docutils literal notranslate"><span class="pre">box9</span></code>, the request’s <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> and <code class="docutils literal notranslate"><span class="pre">skin</span></code>, and the
+written <code class="docutils literal notranslate"><span class="pre">vector</span></code> and <code class="docutils literal notranslate"><span class="pre">distance</span></code> share the caller’s length unit.</p>
+</dd>
+<dt>Outputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">\*needed</span></code> is the number of pairs in the list.
+<code class="docutils literal notranslate"><span class="pre">\*count</span></code> is the number written, at most <code class="docutils literal notranslate"><span class="pre">out-&gt;cap</span></code>.
+A null <code class="docutils literal notranslate"><span class="pre">out</span></code>, or <code class="docutils literal notranslate"><span class="pre">out-&gt;cap</span></code> 0, writes no pair, sets <code class="docutils literal notranslate"><span class="pre">\*count</span></code> to 0 and returns
+<code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_OK</span></code>; this is the size probe.</p>
+</dd>
+<dt>Errors</dt><dd><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_SHORT</span></code> after writing <code class="docutils literal notranslate"><span class="pre">out-&gt;cap</span></code> pairs when the list is
+longer.
+The request, geometry and buffer errors listed under Codes and
+<code class="docutils literal notranslate"><span class="pre">rgpot_nlist_soa</span></code>.
+On an error other than <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_SHORT</span></code>, <code class="docutils literal notranslate"><span class="pre">\*count</span></code> is 0.</p>
+</dd>
+</dl>
+<p>Each call searches again; the probe and the fill search twice.</p>
+</section>
+<section id="rgpot-nlist-walk-open">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_open</span></code><a class="headerlink" href="#rgpot-nlist-walk-open" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">int32_t</span> <span class="nf">rgpot_nlist_walk_open</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">positions</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+</span><span data-line="2">                              <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">box9</span><span class="p">,</span>
+</span><span data-line="3">                              <span class="k">const</span> <span class="n">rgpot_nlist_request</span> <span class="o">*</span><span class="n">request</span><span class="p">,</span>
+</span><span data-line="4">                              <span class="n">rgpot_nlist_walk</span> <span class="o">**</span><span class="n">walk</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">positions</span></code> (<code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">*</span> <span class="pre">n</span></code> doubles), <code class="docutils literal notranslate"><span class="pre">box9</span></code>, <code class="docutils literal notranslate"><span class="pre">request</span></code>, and <code class="docutils literal notranslate"><span class="pre">walk</span></code>, where
+the handle goes.</p>
+</dd>
+<dt>Units</dt><dd><p>as <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code>.</p>
+</dd>
+<dt>Outputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">\*walk</span></code>, a new walk over the geometry.
+The walk does not store the pairs of the whole system.</p>
+</dd>
+<dt>Errors</dt><dd><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code> for a null <code class="docutils literal notranslate"><span class="pre">walk</span></code>.
+The request and geometry errors listed under Codes.
+On any error <code class="docutils literal notranslate"><span class="pre">\*walk</span></code> is null when <code class="docutils literal notranslate"><span class="pre">walk</span></code> is not null.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-walk-pull">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_pull</span></code><a class="headerlink" href="#rgpot-nlist-walk-pull" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">int32_t</span> <span class="nf">rgpot_nlist_walk_pull</span><span class="p">(</span><span class="n">rgpot_nlist_walk</span> <span class="o">*</span><span class="n">walk</span><span class="p">,</span> <span class="n">rgpot_nlist_soa</span> <span class="o">*</span><span class="n">out</span><span class="p">,</span>
+</span><span data-line="2">                              <span class="kt">size_t</span> <span class="o">*</span><span class="n">count</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="o">*</span><span class="n">done</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">walk</span></code>, <code class="docutils literal notranslate"><span class="pre">out</span></code> (the caller’s columns), and <code class="docutils literal notranslate"><span class="pre">count</span></code> and <code class="docutils literal notranslate"><span class="pre">done</span></code>, which
+may be null.</p>
+</dd>
+<dt>Units</dt><dd><p><code class="docutils literal notranslate"><span class="pre">vector</span></code> and <code class="docutils literal notranslate"><span class="pre">distance</span></code> are in the length unit of the positions given
+to <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_open</span></code>.</p>
+</dd>
+<dt>Outputs</dt><dd><p>up to <code class="docutils literal notranslate"><span class="pre">out-&gt;cap</span></code> pairs written into <code class="docutils literal notranslate"><span class="pre">out</span></code>.
+<code class="docutils literal notranslate"><span class="pre">\*count</span></code> is the number written.
+<code class="docutils literal notranslate"><span class="pre">\*done</span></code> is 1 once the geometry is exhausted, which can be on a pull that also
+wrote pairs.
+<code class="docutils literal notranslate"><span class="pre">out-&gt;cap</span></code> 0 writes nothing and does not advance.</p>
+</dd>
+<dt>Errors</dt><dd><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code> for a null <code class="docutils literal notranslate"><span class="pre">walk</span></code> or <code class="docutils literal notranslate"><span class="pre">out</span></code>.
+The buffer errors of <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_soa</span></code>.
+An error does not advance the walk and sets <code class="docutils literal notranslate"><span class="pre">\*count</span></code> to 0.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-walk-close">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_close</span></code><a class="headerlink" href="#rgpot-nlist-walk-close" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">void</span> <span class="nf">rgpot_nlist_walk_close</span><span class="p">(</span><span class="n">rgpot_nlist_walk</span> <span class="o">*</span><span class="n">walk</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">walk</span></code>, a handle from <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_walk_open</span></code> or null.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>frees the walk and ends its borrow of <code class="docutils literal notranslate"><span class="pre">positions</span></code> and <code class="docutils literal notranslate"><span class="pre">box9</span></code>.</p>
+</dd>
+<dt>Errors</dt><dd><p>none; a null <code class="docutils literal notranslate"><span class="pre">walk</span></code> is ignored.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-build-systems">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build_systems</span></code><a class="headerlink" href="#rgpot-nlist-build-systems" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">int32_t</span> <span class="nf">rgpot_nlist_build_systems</span><span class="p">(</span><span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">positions</span><span class="p">,</span> <span class="k">const</span> <span class="kt">int32_t</span> <span class="o">*</span><span class="n">counts</span><span class="p">,</span>
+</span><span data-line="2">                                  <span class="kt">size_t</span> <span class="n">nsystems</span><span class="p">,</span> <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">box9</span><span class="p">,</span>
+</span><span data-line="3">                                  <span class="k">const</span> <span class="n">rgpot_nlist_request</span> <span class="o">*</span><span class="n">request</span><span class="p">,</span>
+</span><span data-line="4">                                  <span class="n">rgpot_nlist_soa</span> <span class="o">*</span><span class="n">out</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="o">*</span><span class="n">system</span><span class="p">,</span>
+</span><span data-line="5">                                  <span class="kt">size_t</span> <span class="o">*</span><span class="n">count</span><span class="p">,</span> <span class="kt">size_t</span> <span class="o">*</span><span class="n">needed</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">positions</span></code> is the concatenation of <code class="docutils literal notranslate"><span class="pre">nsystems</span></code> systems, <code class="docutils literal notranslate"><span class="pre">counts[s]</span></code>
+atoms each, <code class="docutils literal notranslate"><span class="pre">3</span></code> doubles per atom.
+<code class="docutils literal notranslate"><span class="pre">box9</span></code> holds <code class="docutils literal notranslate"><span class="pre">9</span> <span class="pre">*</span> <span class="pre">nsystems</span></code> doubles, one cell per system in the same order.
+<code class="docutils literal notranslate"><span class="pre">system</span></code>, when not null, holds <code class="docutils literal notranslate"><span class="pre">out-&gt;cap</span></code> ints.</p>
+</dd>
+<dt>Units</dt><dd><p>as <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code>; every system uses the same length unit.</p>
+</dd>
+<dt>Outputs</dt><dd><p>the pairs of every system, system 0 first.
+<code class="docutils literal notranslate"><span class="pre">first</span></code> and <code class="docutils literal notranslate"><span class="pre">second</span></code> index the concatenated positions.
+<code class="docutils literal notranslate"><span class="pre">system[p]</span></code> is the system of pair <code class="docutils literal notranslate"><span class="pre">p</span></code>.
+<code class="docutils literal notranslate"><span class="pre">\*needed</span></code>, <code class="docutils literal notranslate"><span class="pre">\*count</span></code> and the size probe behave as in <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code>.</p>
+</dd>
+<dt>Errors</dt><dd><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code> when <code class="docutils literal notranslate"><span class="pre">nsystems</span> <span class="pre">&gt;</span> <span class="pre">0</span></code> and <code class="docutils literal notranslate"><span class="pre">positions</span></code>, <code class="docutils literal notranslate"><span class="pre">counts</span></code> or
+<code class="docutils literal notranslate"><span class="pre">box9</span></code> is null.
+<code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_SHAPE</span></code> for a negative <code class="docutils literal notranslate"><span class="pre">counts[s]</span></code>.
+The other codes as in <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code>.</p>
+</dd>
+</dl>
+<p>The systems do not see each other’s atoms.</p>
+</section>
+<section id="rgpot-nlist-builder-open">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder_open</span></code><a class="headerlink" href="#rgpot-nlist-builder-open" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">int32_t</span> <span class="nf">rgpot_nlist_builder_open</span><span class="p">(</span><span class="n">rgpot_nlist_builder</span> <span class="o">**</span><span class="n">builder</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">builder</span></code>, where the handle goes.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">\*builder</span></code>, a builder that holds no list yet.</p>
+</dd>
+<dt>Errors</dt><dd><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code> for a null <code class="docutils literal notranslate"><span class="pre">builder</span></code>; <code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NOMEM</span></code> with
+<code class="docutils literal notranslate"><span class="pre">\*builder</span></code> null when the allocation fails.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-builder-update">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder_update</span></code><a class="headerlink" href="#rgpot-nlist-builder-update" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">int32_t</span> <span class="nf">rgpot_nlist_builder_update</span><span class="p">(</span><span class="n">rgpot_nlist_builder</span> <span class="o">*</span><span class="n">builder</span><span class="p">,</span>
+</span><span data-line="2">                                   <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">positions</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">n</span><span class="p">,</span>
+</span><span data-line="3">                                   <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">box9</span><span class="p">,</span>
+</span><span data-line="4">                                   <span class="k">const</span> <span class="n">rgpot_nlist_request</span> <span class="o">*</span><span class="n">request</span><span class="p">,</span>
+</span><span data-line="5">                                   <span class="n">rgpot_nlist_soa</span> <span class="o">*</span><span class="n">out</span><span class="p">,</span> <span class="kt">size_t</span> <span class="o">*</span><span class="n">count</span><span class="p">,</span>
+</span><span data-line="6">                                   <span class="kt">size_t</span> <span class="o">*</span><span class="n">needed</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="o">*</span><span class="n">reused</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">builder</span></code> and the arguments of <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code>.
+<code class="docutils literal notranslate"><span class="pre">reused</span></code> may be null.</p>
+</dd>
+<dt>Units</dt><dd><p>as <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code>.</p>
+</dd>
+<dt>Outputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">\*reused</span></code> is 1 when the stored list was kept, else 0.
+The list is kept when <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">box9</span></code> and every request field are unchanged and
+every atom has moved by at most <code class="docutils literal notranslate"><span class="pre">skin</span> <span class="pre">/</span> <span class="pre">2</span></code> since the last search.
+With <code class="docutils literal notranslate"><span class="pre">skin</span></code> 0 that means the coordinates did not move.
+<code class="docutils literal notranslate"><span class="pre">out</span></code>, <code class="docutils literal notranslate"><span class="pre">\*count</span></code>, <code class="docutils literal notranslate"><span class="pre">\*needed</span></code> and the size probe behave as in
+<code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code>.
+On a kept list every column, <code class="docutils literal notranslate"><span class="pre">vector</span></code> and <code class="docutils literal notranslate"><span class="pre">distance</span></code> included, describes the
+geometry of the last search.</p>
+</dd>
+<dt>Errors</dt><dd><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code> for a null <code class="docutils literal notranslate"><span class="pre">builder</span></code>.
+The other codes as in <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build</span></code>.
+A rejected geometry leaves the stored list as it was.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-builder-close">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder_close</span></code><a class="headerlink" href="#rgpot-nlist-builder-close" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">void</span> <span class="nf">rgpot_nlist_builder_close</span><span class="p">(</span><span class="n">rgpot_nlist_builder</span> <span class="o">*</span><span class="n">builder</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">builder</span></code>, a handle from <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_builder_open</span></code> or null.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>frees the builder and its list.</p>
+</dd>
+<dt>Errors</dt><dd><p>none; a null <code class="docutils literal notranslate"><span class="pre">builder</span></code> is ignored.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-fortran-open">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_open</span></code><a class="headerlink" href="#rgpot-nlist-fortran-open" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_nlist_fortran_list</span> <span class="o">*</span><span class="nf">rgpot_nlist_fortran_open</span><span class="p">(</span><span class="kt">void</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p>none.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>a new list handle.</p>
+</dd>
+<dt>Errors</dt><dd><p>returns null when the allocation fails.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-fortran-close">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_close</span></code><a class="headerlink" href="#rgpot-nlist-fortran-close" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">void</span> <span class="nf">rgpot_nlist_fortran_close</span><span class="p">(</span><span class="n">rgpot_nlist_fortran_list</span> <span class="o">*</span><span class="n">list</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">list</span></code>, a handle from <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_open</span></code> or null.</p>
+</dd>
+<dt>Units</dt><dd><p>none.</p>
+</dd>
+<dt>Outputs</dt><dd><p>frees the list.</p>
+</dd>
+<dt>Errors</dt><dd><p>none; a null <code class="docutils literal notranslate"><span class="pre">list</span></code> is ignored.</p>
+</dd>
+</dl>
+</section>
+<section id="rgpot-nlist-fortran-build">
+<h3><code class="docutils literal notranslate"><span class="pre">rgpot_nlist_fortran_build</span></code><a class="headerlink" href="#rgpot-nlist-fortran-build" title="Link to this heading">¶</a></h3>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="kt">int32_t</span> <span class="nf">rgpot_nlist_fortran_build</span><span class="p">(</span><span class="n">rgpot_nlist_fortran_list</span> <span class="o">*</span><span class="n">list</span><span class="p">,</span>
+</span><span data-line="2">                                  <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">positions</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">natoms</span><span class="p">,</span>
+</span><span data-line="3">                                  <span class="k">const</span> <span class="kt">double</span> <span class="o">*</span><span class="n">box9</span><span class="p">,</span> <span class="kt">double</span> <span class="n">cutoff</span><span class="p">,</span> <span class="kt">double</span> <span class="n">skin</span><span class="p">,</span>
+</span><span data-line="4">                                  <span class="k">const</span> <span class="kt">int32_t</span> <span class="n">periodic</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="kt">int32_t</span> <span class="o">*</span><span class="n">first</span><span class="p">,</span>
+</span><span data-line="5">                                  <span class="kt">int32_t</span> <span class="o">*</span><span class="n">second</span><span class="p">,</span> <span class="kt">double</span> <span class="o">*</span><span class="n">vector</span><span class="p">,</span> <span class="kt">double</span> <span class="o">*</span><span class="n">distance</span><span class="p">,</span>
+</span><span data-line="6">                                  <span class="kt">size_t</span> <span class="n">cap</span><span class="p">,</span> <span class="kt">size_t</span> <span class="o">*</span><span class="n">count</span><span class="p">,</span> <span class="kt">int32_t</span> <span class="o">*</span><span class="n">reused</span><span class="p">);</span>
+</span></pre></div>
+</div>
+<dl class="simple">
+<dt>Inputs</dt><dd><p><code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">positions</span></code> (<code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">*</span> <span class="pre">natoms</span></code> doubles), <code class="docutils literal notranslate"><span class="pre">box9</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>,
+<code class="docutils literal notranslate"><span class="pre">skin</span></code>, and <code class="docutils literal notranslate"><span class="pre">periodic</span></code>, three ints, nonzero for a periodic axis.
+<code class="docutils literal notranslate"><span class="pre">first</span></code>, <code class="docutils literal notranslate"><span class="pre">second</span></code> and <code class="docutils literal notranslate"><span class="pre">distance</span></code> hold <code class="docutils literal notranslate"><span class="pre">cap</span></code> values and <code class="docutils literal notranslate"><span class="pre">vector</span></code> <code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">*</span> <span class="pre">cap</span></code>
+doubles.
+When <code class="docutils literal notranslate"><span class="pre">first</span></code> is not null, <code class="docutils literal notranslate"><span class="pre">second</span></code>, <code class="docutils literal notranslate"><span class="pre">vector</span></code> and <code class="docutils literal notranslate"><span class="pre">distance</span></code> must not be null;
+the call does not check them.
+<code class="docutils literal notranslate"><span class="pre">count</span></code> and <code class="docutils literal notranslate"><span class="pre">reused</span></code> may be null.</p>
+</dd>
+<dt>Units</dt><dd><p><code class="docutils literal notranslate"><span class="pre">positions</span></code>, <code class="docutils literal notranslate"><span class="pre">box9</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">skin</span></code>, <code class="docutils literal notranslate"><span class="pre">vector</span></code> and <code class="docutils literal notranslate"><span class="pre">distance</span></code> share
+the caller’s length unit.</p>
+</dd>
+<dt>Outputs</dt><dd><p>the pairs strictly inside <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> for the positions passed in,
+both directions of each pair (a full list), indices zero-based.
+<code class="docutils literal notranslate"><span class="pre">vector</span></code> is in Fortran <code class="docutils literal notranslate"><span class="pre">(3,</span> <span class="pre">npairs)</span></code> order, <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">y</span> <span class="pre">z</span></code> of pair 0, then pair 1.
+Vectors and distances are computed from these positions even when the stored
+search is reused.
+<code class="docutils literal notranslate"><span class="pre">\*count</span></code> is the number of such pairs, which can exceed <code class="docutils literal notranslate"><span class="pre">cap</span></code>; at most <code class="docutils literal notranslate"><span class="pre">cap</span></code>
+are written.
+A null <code class="docutils literal notranslate"><span class="pre">first</span></code> writes no pair and only sets <code class="docutils literal notranslate"><span class="pre">\*count</span></code>.
+<code class="docutils literal notranslate"><span class="pre">\*reused</span></code> is 1 when the stored search was kept.</p>
+</dd>
+<dt>Errors</dt><dd><p><code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_NULL</span></code> with <code class="docutils literal notranslate"><span class="pre">\*count</span></code> 0 when <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">positions</span></code>, <code class="docutils literal notranslate"><span class="pre">box9</span></code>
+or <code class="docutils literal notranslate"><span class="pre">periodic</span></code> is null.
+<code class="docutils literal notranslate"><span class="pre">RGPOT_NLIST_SHORT</span></code> when <code class="docutils literal notranslate"><span class="pre">first</span></code> is not null and the count exceeds <code class="docutils literal notranslate"><span class="pre">cap</span></code>.
+The geometry codes listed under Codes, with <code class="docutils literal notranslate"><span class="pre">\*count</span></code> 0.</p>
+</dd>
+</dl>
+<p>The list keeps a builder that searches at <code class="docutils literal notranslate"><span class="pre">cutoff</span> <span class="pre">+</span> <span class="pre">skin</span></code> with a loose cut when
+<code class="docutils literal notranslate"><span class="pre">skin</span> <span class="pre">&gt;</span> <span class="pre">0</span></code>, and at <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> with a strict cut when <code class="docutils literal notranslate"><span class="pre">skin</span></code> is 0.
+The search is reused while every atom stays within <code class="docutils literal notranslate"><span class="pre">skin</span> <span class="pre">/</span> <span class="pre">2</span></code> of the last
+search.</p>
+</section>
+</section>
+<section id="cap-n-proto-messages">
+<h2>Cap’n Proto messages<a class="headerlink" href="#cap-n-proto-messages" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/rpc/local/neighbour-chunk.diff</span></code> adds the query to the
+<code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> that rgpot compiles and installs.
+The pinned potentials-schema file does not have it;
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/rpc/local/series</span></code> lists the rgpot-local diffs.
+The messages carry the columns of <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_request</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_soa</span></code>.
+Lengths are in the unit of the positions, <code class="docutils literal notranslate"><span class="pre">ForceInput.lengthUnit</span></code> on the wire.</p>
+<p>No rgpot server answers the query yet.
+<code class="docutils literal notranslate"><span class="pre">potserv</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_rpc_server_start</span></code> do not implement <code class="docutils literal notranslate"><span class="pre">Potential.neighbours</span></code>,
+so a call fails with Cap’n Proto’s unimplemented error.
+They ignore <code class="docutils literal notranslate"><span class="pre">ForceInput.neighbors</span></code> and never set <code class="docutils literal notranslate"><span class="pre">PotentialResult.neighborList</span></code>.
+<code class="docutils literal notranslate"><span class="pre">CppCore/examples/nlist_stream.cc</span></code> sends <code class="docutils literal notranslate"><span class="pre">NeighborRequest</span></code> and <code class="docutils literal notranslate"><span class="pre">NeighborList</span></code> as
+framed messages over a socket and serves each chunk from a stored list.</p>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ForceInput.neighbors</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest</span></code></p></td>
+<td><p>The query to answer with the forces. A client that does not know it leaves it unset.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PotentialResult.neighborList</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">NeighborList</span></code></p></td>
+<td><p>The answer, present only when <code class="docutils literal notranslate"><span class="pre">ForceInput.neighbors</span></code> was set. A stream returns one chunk.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Potential.neighbours</span></code></p></td>
+<td><p>method</p></td>
+<td><p>Takes <code class="docutils literal notranslate"><span class="pre">fip</span> <span class="pre">:ForceInput</span></code> and <code class="docutils literal notranslate"><span class="pre">request</span> <span class="pre">:NeighborRequest</span></code> and returns one chunk as <code class="docutils literal notranslate"><span class="pre">neighbors</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest</span></code> field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.cutoff</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Float64</span></code></p></td>
+<td><p>0</p></td>
+<td><p>The cutoff, as <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> of <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_request</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.skin</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Float64</span></code></p></td>
+<td><p>0</p></td>
+<td><p>The Verlet buffer, as <code class="docutils literal notranslate"><span class="pre">skin</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.format</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UInt8</span></code></p></td>
+<td><p>0</p></td>
+<td><p>0 half pairs, 1 full pairs, 2 cluster of four. It is <code class="docutils literal notranslate"><span class="pre">shape</span></code> and <code class="docutils literal notranslate"><span class="pre">shell</span></code> in one field, so no half cluster.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.cut</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UInt8</span></code></p></td>
+<td><p>0</p></td>
+<td><p>0 strict, 1 loose, as <code class="docutils literal notranslate"><span class="pre">cut</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.periodic</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(Bool)</span></code></p></td>
+<td><p>empty</p></td>
+<td><p>One flag per axis. Empty means every axis is periodic.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.shifts</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Bool</span></code></p></td>
+<td><p>true</p></td>
+<td><p>Fill <code class="docutils literal notranslate"><span class="pre">NeighborList.shift</span></code>, as <code class="docutils literal notranslate"><span class="pre">want_shifts</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.vectors</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Bool</span></code></p></td>
+<td><p>true</p></td>
+<td><p>Fill <code class="docutils literal notranslate"><span class="pre">NeighborList.vector</span></code>, as <code class="docutils literal notranslate"><span class="pre">want_vectors</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.distances</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Bool</span></code></p></td>
+<td><p>true</p></td>
+<td><p>Fill <code class="docutils literal notranslate"><span class="pre">NeighborList.distance</span></code>, as <code class="docutils literal notranslate"><span class="pre">want_distances</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.mode</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UInt8</span></code></p></td>
+<td><p>1</p></td>
+<td><p>1 one stored chunk, 2 a stream that honours <code class="docutils literal notranslate"><span class="pre">cursor</span></code> and <code class="docutils literal notranslate"><span class="pre">limit</span></code>. 0 is not a mode.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.cursor</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UInt64</span></code></p></td>
+<td><p>0</p></td>
+<td><p>The pair index the chunk starts at.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.limit</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UInt32</span></code></p></td>
+<td><p>0</p></td>
+<td><p>The most pairs in the reply. 0 means 4096 on a stream.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborRequest.systems</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(NeighborSystem)</span></code></p></td>
+<td><p>empty</p></td>
+<td><p>Empty for one system. Otherwise systems that do not interact, as in <code class="docutils literal notranslate"><span class="pre">rgpot_nlist_build_systems</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborSystem.count</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UInt32</span></code></p></td>
+<td><p>0</p></td>
+<td><p>The atoms of the system. Positions are concatenated in the order of <code class="docutils literal notranslate"><span class="pre">systems</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborSystem.box</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(Float64)</span></code></p></td>
+<td><p>empty</p></td>
+<td><p>The cell of the system, the lattice vectors as rows.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">NeighborList</span></code> field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.first</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(Int32)</span></code></p></td>
+<td><p>The first atom of each pair. With <code class="docutils literal notranslate"><span class="pre">systems</span></code> it indexes the concatenated positions.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.second</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(Int32)</span></code></p></td>
+<td><p>The second atom of each pair, the same length as <code class="docutils literal notranslate"><span class="pre">first</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.shift</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(Int32)</span></code></p></td>
+<td><p>Three integers per pair when shifts were requested.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.vector</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(Float64)</span></code></p></td>
+<td><p>Three values per pair.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.distance</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(Float64)</span></code></p></td>
+<td><p>One value per pair.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.mask</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(UInt8)</span></code></p></td>
+<td><p>One byte per pair, 0xff for a pair list and the low four bits for a cluster.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.more</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Bool</span></code></p></td>
+<td><p>True when a later chunk exists. The client repeats the call with the same query.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.next</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">UInt64</span></code></p></td>
+<td><p>The <code class="docutils literal notranslate"><span class="pre">cursor</span></code> to send for that chunk.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.status</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Int32</span></code></p></td>
+<td><p>0 on success.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.message</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Text</span></code></p></td>
+<td><p>A sentence when <code class="docutils literal notranslate"><span class="pre">status</span></code> is not 0. The lists are empty then.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeighborList.system</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">List(Int32)</span></code></p></td>
+<td><p>The system of each pair. Empty when the request named one system.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="example">
+<h2>Example<a class="headerlink" href="#example" title="Link to this heading">¶</a></h2>
+<p>The size probe, then the fill.</p>
+<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="cp">#include</span> <span class="cpf">&lt;stdio.h&gt;</span>
+</span><span data-line="2"><span class="cp">#include</span> <span class="cpf">&lt;stdlib.h&gt;</span>
+</span><span data-line="3"><span class="cp">#include</span> <span class="cpf">&quot;rgpot/nlist/rgpot_nlist.h&quot;</span>
+</span><span data-line="4">
+</span><span data-line="5"><span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span> <span class="p">{</span>
+</span><span data-line="6">  <span class="k">const</span> <span class="kt">double</span> <span class="n">positions</span><span class="p">[</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">};</span>
+</span><span data-line="7">  <span class="k">const</span> <span class="kt">double</span> <span class="n">box9</span><span class="p">[</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">};</span>
+</span><span data-line="8">  <span class="n">rgpot_nlist_request</span> <span class="n">request</span><span class="p">;</span>
+</span><span data-line="9">  <span class="n">rgpot_nlist_request_init</span><span class="p">(</span><span class="o">&amp;</span><span class="n">request</span><span class="p">);</span>
+</span><span data-line="10">  <span class="n">request</span><span class="p">.</span><span class="n">cutoff</span> <span class="o">=</span> <span class="mf">2.0</span><span class="p">;</span>
+</span><span data-line="11">
+</span><span data-line="12">  <span class="kt">size_t</span> <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">needed</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+</span><span data-line="13">  <span class="kt">int32_t</span> <span class="n">rc</span> <span class="o">=</span> <span class="n">rgpot_nlist_build</span><span class="p">(</span><span class="n">positions</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">box9</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">request</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">count</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">needed</span><span class="p">);</span>
+</span><span data-line="14">  <span class="k">if</span> <span class="p">(</span><span class="n">rc</span> <span class="o">!=</span> <span class="n">RGPOT_NLIST_OK</span><span class="p">)</span> <span class="p">{</span>
+</span><span data-line="15">    <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">&quot;%s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">rgpot_nlist_strerror</span><span class="p">(</span><span class="n">rc</span><span class="p">));</span>
+</span><span data-line="16">    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span data-line="17">  <span class="p">}</span>
+</span><span data-line="18">
+</span><span data-line="19">  <span class="n">rgpot_nlist_soa</span> <span class="n">out</span> <span class="o">=</span> <span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span data-line="20">  <span class="n">out</span><span class="p">.</span><span class="n">bytes</span> <span class="o">=</span> <span class="k">sizeof</span> <span class="n">out</span><span class="p">;</span>
+</span><span data-line="21">  <span class="n">out</span><span class="p">.</span><span class="n">cap</span> <span class="o">=</span> <span class="n">needed</span><span class="p">;</span>
+</span><span data-line="22">  <span class="n">out</span><span class="p">.</span><span class="n">first</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="n">needed</span> <span class="o">*</span> <span class="k">sizeof</span> <span class="o">*</span><span class="n">out</span><span class="p">.</span><span class="n">first</span><span class="p">);</span>
+</span><span data-line="23">  <span class="n">out</span><span class="p">.</span><span class="n">second</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="n">needed</span> <span class="o">*</span> <span class="k">sizeof</span> <span class="o">*</span><span class="n">out</span><span class="p">.</span><span class="n">second</span><span class="p">);</span>
+</span><span data-line="24">  <span class="n">out</span><span class="p">.</span><span class="n">shift</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="n">needed</span> <span class="o">*</span> <span class="k">sizeof</span> <span class="o">*</span><span class="n">out</span><span class="p">.</span><span class="n">shift</span><span class="p">);</span>
+</span><span data-line="25">  <span class="n">out</span><span class="p">.</span><span class="n">vector</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="mi">3</span> <span class="o">*</span> <span class="n">needed</span> <span class="o">*</span> <span class="k">sizeof</span> <span class="o">*</span><span class="n">out</span><span class="p">.</span><span class="n">vector</span><span class="p">);</span>
+</span><span data-line="26">  <span class="n">out</span><span class="p">.</span><span class="n">distance</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="n">needed</span> <span class="o">*</span> <span class="k">sizeof</span> <span class="o">*</span><span class="n">out</span><span class="p">.</span><span class="n">distance</span><span class="p">);</span>
+</span><span data-line="27">  <span class="n">rc</span> <span class="o">=</span> <span class="n">rgpot_nlist_build</span><span class="p">(</span><span class="n">positions</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">box9</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">request</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">out</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">count</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">needed</span><span class="p">);</span>
+</span><span data-line="28">  <span class="k">if</span> <span class="p">(</span><span class="n">rc</span> <span class="o">!=</span> <span class="n">RGPOT_NLIST_OK</span> <span class="o">||</span> <span class="n">count</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">)</span> <span class="p">{</span>
+</span><span data-line="29">    <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">&quot;rc %d count %zu</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">rc</span><span class="p">,</span> <span class="n">count</span><span class="p">);</span>
+</span><span data-line="30">    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+</span><span data-line="31">  <span class="p">}</span>
+</span><span data-line="32">  <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">p</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">p</span> <span class="o">&lt;</span> <span class="n">count</span><span class="p">;</span> <span class="o">++</span><span class="n">p</span><span class="p">)</span> <span class="p">{</span>
+</span><span data-line="33">    <span class="n">printf</span><span class="p">(</span><span class="s">&quot;%d %d %.3f</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">out</span><span class="p">.</span><span class="n">first</span><span class="p">[</span><span class="n">p</span><span class="p">],</span> <span class="n">out</span><span class="p">.</span><span class="n">second</span><span class="p">[</span><span class="n">p</span><span class="p">],</span> <span class="n">out</span><span class="p">.</span><span class="n">distance</span><span class="p">[</span><span class="n">p</span><span class="p">]);</span>
+</span><span data-line="34">  <span class="p">}</span>
+</span><span data-line="35">  <span class="n">free</span><span class="p">(</span><span class="n">out</span><span class="p">.</span><span class="n">first</span><span class="p">);</span>
+</span><span data-line="36">  <span class="n">free</span><span class="p">(</span><span class="n">out</span><span class="p">.</span><span class="n">second</span><span class="p">);</span>
+</span><span data-line="37">  <span class="n">free</span><span class="p">(</span><span class="n">out</span><span class="p">.</span><span class="n">shift</span><span class="p">);</span>
+</span><span data-line="38">  <span class="n">free</span><span class="p">(</span><span class="n">out</span><span class="p">.</span><span class="n">vector</span><span class="p">);</span>
+</span><span data-line="39">  <span class="n">free</span><span class="p">(</span><span class="n">out</span><span class="p">.</span><span class="n">distance</span><span class="p">);</span>
+</span><span data-line="40">  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+</span><span data-line="41"><span class="p">}</span>
+</span></pre></div>
+</div>
+</section>
+</section>
+
+        </article><button class="back-to-top" type="button">
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+    <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+  </svg>
+  <span>Back to top</span>
+</button><div class="navigation flex print:hidden"><div class="navigation-prev">
+    <a href="c_abi.html">
+      <i class="i-lucide chevron-left"></i>
+      <div class="page-info">
+        <span>Previous</span><div class="title">C ABI of rgpot-core</div></div>
+    </a>
+  </div><div class="navigation-next">
+    <a href="fast_nlist.html">
+      <div class="page-info">
+        <span>Next</span>
+        <div class="title">Fast pair list C ABI</div>
+      </div>
+      <i class="i-lucide chevron-right"></i>
+    </a>
+  </div></div></div>
+    </div>
+  </main>
+</div>
+<footer class="sy-foot">
+  <div class="sy-foot-inner sy-container mx-auto">
+    
+    <div
+      style="
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        color: var(--sy-c-text-weak);
+        font-size: 0.9em;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 1rem;
+          align-items: center;
+        "
+      >
+
+        
+        <span style="display: inline-flex; align-items: center; gap: 0.3em">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="1em"
+            height="1em"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M7,20H4V4h3V20z M14,20h-3V12h3V20z M21,20h-3V8h3V20z" />
+          </svg>
+          <span
+            >Analytics by
+            <a
+              href="https://antics.turtletech.us/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="color: inherit; text-decoration: underline"
+              >antics</a>
+            ></span
+          >
+        </span>
+
+        
+        <span style="display: inline-flex; align-items: center; gap: 0.3em">
+          <span>provided by</span>
+          <span style="display: inline-flex; align-items: center; gap: 0.3em">
+            <svg xmlns="http://www.w3.org/2000/svg" width="1.4em" height="1.4em" viewBox="0 0 64 64" aria-hidden="true"><g fill-rule="evenodd"><ellipse cx="32" cy="11" fill="#80D25B" rx="7" ry="9"/><path fill="#80D25B" d="M20.3,46c0,0-3.2,9.9.3,13.8c3.5,3.9 6.1,3.4 6.1-6C26.8,44.3 20.3,46 20.3,46Z"/><path fill="#80D25B" d="M38.3,46c0,0-3.2,9.9.4,13.8c3.5,3.9 6.1,3.4 6.1-6C44.8,44.3 38.3,46 38.3,46Z" transform="matrix(-1 0 0 1 81.8 0)"/><path fill="#80D25B" d="M20.6,21.2c0,0-6.7-5.8-10.5-5.2C6.2,16.7 6,22.2 6,24c0,1.8 1.8,13.3 3.8,12.5c2-0.8 4-8.5 4-8.5c1.9,2.3 4.8,2.5 4.8,2.5L20.6,21.2Z"/><path fill="#80D25B" d="M57.6,21.2c0,0-6.6-5.8-10.5-5.2C43.2,16.7 43,22.2 43,24c0,1.8 1.8,13.3 3.8,12.5c2-0.8 4-8.5 4-8.5c1.9,2.3 4.8,2.5 4.8,2.5L57.6,21.2Z" transform="matrix(-1 0 0 1 100.623 0)"/><path fill="#BD7575" stroke="#595959" stroke-linecap="round" stroke-width="2" d="M32,53C40.8,53 48,44.5 48,34C48,23.5 46.7,17 32,17C17.3,17 16,23.5 16,34C16,44.5 23.2,53 32,53Z"/><polygon fill="#BD7575" stroke="#595959" stroke-linecap="round" stroke-width="2" points="32 22 38.9 26 38.9 34 32 38 25.1 34 25.1 26"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M30,8C28.9,8 28,8.9 28,10"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M36,8C34.9,8 34,8.9 34,10" transform="matrix(-1 0 0 1 70 0)"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M32.1,38.2L32.1,52.4M32,21.7L32,17M25.2,26L17.7,23.1M25.1,34.2L16.8,38.9"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M46.2,26L38.7,23.1" transform="matrix(-1 0 0 1 84.951 0)"/><path stroke="#595959" stroke-linecap="round" stroke-width="2" d="M47.1,34.2L38.8,38.9" transform="matrix(-1 0 0 1 85.891 0)"/></g></svg>
+            <a
+              href="https://turtletech.us/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="color: inherit; text-decoration: underline"
+              >TurtleTech ehf</a
+            >
+          </span>
+        </span>
+      </div>
+    </div>
+
+    
+    <div class="sy-foot-reserved md:flex justify-between items-center">
+      <div class="sy-foot-copyright"><p>2025--present, rgpot developers</p>
+  
+  <p>
+    Made with
+    
+    <a href="https://www.sphinx-doc.org/">Sphinx</a> and
+    
+    <a href="https://shibuya.lepture.com">Shibuya theme</a>.
+  </p>
+</div> <div class="sy-foot-socials">
+<a href="https://github.com/OmniPotentRPC/rgpot" aria-label="GitHub">
+  <iconify-icon icon="simple-icons:github"></iconify-icon>
+</a></div>
+    </div>
+  </div>
+</footer>
+      <script src="../_static/documentation_options.js?v=229cbe3b"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/target-highlight.js?v=df7d332b"></script>
+      <script src="../_static/shibuya.js?v=cac61aee"></script></body>
+</html>

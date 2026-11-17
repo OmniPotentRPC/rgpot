@@ -1,0 +1,26 @@
+.. index:: pair: class; rgpot::lr::RatioSource
+.. _doxid-classrgpot_1_1lr_1_1_ratio_source:
+
+class rgpot::lr::RatioSource
+============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class RatioSource {
+	public:
+		// construction
+	
+		virtual :target:`~RatioSource<doxid-classrgpot_1_1lr_1_1_ratio_source_1a8a3f09232c17ea987621782a303949f3>`();
+
+		// methods
+	
+		virtual void :target:`load<doxid-classrgpot_1_1lr_1_1_ratio_source_1a9cd6d22f4926df2152ef0a892cad86f1>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* h, std::vector<double>* c6) const = 0;
+	};

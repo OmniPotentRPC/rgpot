@@ -1,0 +1,24 @@
+.. index:: pair: struct; rgpot::HvpCentre
+.. _doxid-structrgpot_1_1_hvp_centre:
+
+struct rgpot::HvpCentre
+=======================
+
+.. toctree::
+	:hidden:
+
+Energy, variance and forces (``3*nAtoms``, row-major) at a centre.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <HessianVector.hpp>
+	
+	struct HvpCentre {
+		// fields
+	
+		double :target:`energy<doxid-structrgpot_1_1_hvp_centre_1a0a240efea612b2e60e67ce5b31f59d5a>` {0.0};
+		double :target:`variance<doxid-structrgpot_1_1_hvp_centre_1a77191171be7d2ff877f0ea2af5ef6cea>` {0.0};
+		std::vector<double> :target:`forces<doxid-structrgpot_1_1_hvp_centre_1af3313cfb2e1e1f1e20e309acb096c3bc>`;
+	};

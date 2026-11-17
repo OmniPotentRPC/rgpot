@@ -1,0 +1,23 @@
+.. index:: pair: struct; rgpot::KeptCounts
+.. _doxid-structrgpot_1_1_kept_counts:
+
+struct rgpot::KeptCounts
+========================
+
+.. toctree::
+	:hidden:
+
+Builds and reuses on one thread, for one potential type.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <KeptPotential.hpp>
+	
+	struct KeptCounts {
+		// fields
+	
+		std::uint64_t :target:`builds<doxid-structrgpot_1_1_kept_counts_1a97ef0f9b7fa0dab187d799cbe6f7c862>` = 0;
+		std::uint64_t :target:`reuses<doxid-structrgpot_1_1_kept_counts_1aa424c8490505da2bbd8631927f243c5b>` = 0;
+	};

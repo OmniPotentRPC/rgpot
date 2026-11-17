@@ -57,7 +57,7 @@ Well depth (eV).
 
 	double a = 1.6047
 
-Range parameter (1/Angstrom).
+:ref:`Range <doxid-structrgpot_1_1_range>` parameter (1/Angstrom).
 
 .. index:: pair: variable; re
 .. _doxid-structrgpot_1_1_morse_config_1a31b7f04e644f1109c6b3512b3290123b:

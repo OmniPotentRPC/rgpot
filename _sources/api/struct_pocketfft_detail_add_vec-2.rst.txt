@@ -1,0 +1,11 @@
+.. index:: pair: struct; pocketfft::detail::add_vec
+.. _doxid-structpocketfft_1_1detail_1_1add__vec:
+
+template struct pocketfft::detail::add_vec
+==========================================
+
+.. toctree::
+	:hidden:
+
+
+

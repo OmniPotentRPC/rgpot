@@ -33,7 +33,7 @@ Overview
 		TorchDeterminismPolicy :target:`torch_determinism<doxid-structrgpot_1_1_metatomic_config_1a5abb79bcbeb0bef2e1f1726cf1da8cdb>` = TorchDeterminismPolicy::Fast;
 		std::string :ref:`engine_path<doxid-structrgpot_1_1_metatomic_config_1a583641dcd773db985882bb1d51942920>`;
 		std::string :ref:`task_name<doxid-structrgpot_1_1_metatomic_config_1afc2411b4d092db3f6247fdafb917aa3c>`;
-		int :target:`charge<doxid-structrgpot_1_1_metatomic_config_1af1c8a89df8c7422f57ce62b14352571f>` = 0;
+		int :ref:`charge<doxid-structrgpot_1_1_metatomic_config_1af1c8a89df8c7422f57ce62b14352571f>` = 0;
 		int :ref:`spin<doxid-structrgpot_1_1_metatomic_config_1a9f645071aa805eb15dd767898f5b6343>` = 1;
 		bool :ref:`attach_system_extras<doxid-structrgpot_1_1_metatomic_config_1af7910621a82733a34263031032e71f7c>` = false;
 	};
@@ -67,6 +67,16 @@ Optional explicit path to libmetatomic_engine.so (dlopen path).
 
 UMA / OMol task head baked into or selected by the exported model.
 
+.. index:: pair: variable; charge
+.. _doxid-structrgpot_1_1_metatomic_config_1af1c8a89df8c7422f57ce62b14352571f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int charge = 0
+
+Total charge, attached as rgpot::charge system data.
+
 .. index:: pair: variable; spin
 .. _doxid-structrgpot_1_1_metatomic_config_1a9f645071aa805eb15dd767898f5b6343:
 
@@ -75,7 +85,7 @@ UMA / OMol task head baked into or selected by the exported model.
 
 	int spin = 1
 
-Spin multiplicity (1 = singlet). Attached as system extra data.
+Spin multiplicity (1 = singlet), attached as rgpot::spin_multiplicity and rgpot::spin system data.
 
 .. index:: pair: variable; attach_system_extras
 .. _doxid-structrgpot_1_1_metatomic_config_1af7910621a82733a34263031032e71f7c:
@@ -85,5 +95,5 @@ Spin multiplicity (1 = singlet). Attached as system extra data.
 
 	bool attach_system_extras = false
 
-Attach charge/spin TensorMaps on every System (UMA omol).
+Each System carries the rgpot:: data the model declares in requested_inputs; true attaches all three, for a model that reads them without declaring them.
 

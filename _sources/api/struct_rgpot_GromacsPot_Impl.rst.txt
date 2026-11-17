@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::GromacsPot::Impl
+.. _doxid-structrgpot_1_1_gromacs_pot_1_1_impl:
+
+struct rgpot::GromacsPot::Impl
+==============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// fields
+	
+		:ref:`NativeState<doxid-structrgpot_1_1_native_state>` :target:`state<doxid-structrgpot_1_1_gromacs_pot_1_1_impl_1a01f48b16bf32e430cb559dc615523d08>`;
+
+		// construction
+	
+		:target:`Impl<doxid-structrgpot_1_1_gromacs_pot_1_1_impl_1ab8a9a8dbd971a721f235237363aa3e32>`(const :ref:`ExternalLjConfig<doxid-structrgpot_1_1_external_lj_config>`& config);
+	};

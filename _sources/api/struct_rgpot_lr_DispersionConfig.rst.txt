@@ -1,0 +1,39 @@
+.. index:: pair: struct; rgpot::lr::DispersionConfig
+.. _doxid-structrgpot_1_1lr_1_1_dispersion_config:
+
+struct rgpot::lr::DispersionConfig
+==================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct DispersionConfig {
+		// fields
+	
+		DispersionKind :target:`kind<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a010b1cdbf908377d610f9245e56ef21f>` = DispersionKind::QDO;
+		std::string :target:`functional<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a9b562fbb592ae92ad485b27765ee8c95>` = "pbe";
+		bool :target:`atm<doxid-structrgpot_1_1lr_1_1_dispersion_config_1ad2896c57ad2c93d996dbff79dc2e3d67>` = true;
+		double :target:`charge<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a772d274a0e2013d046e8bd26e74b27fe>` = 0.0;
+		double :target:`mbd_beta<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a828691a62ffa9ebdaefb5b5c1239a69b>` = 0.83;
+		double :target:`mbd_a<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a5b3672ae4787258ec9a4f5451a4870b8>` = 6.0;
+		int :target:`mbd_k<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a25ca87eb6d2e5afa4da9ed8cf11fe1b2>`[3] = {4, 4, 4};
+		bool :target:`mbd_gamma<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a6ad8e7c29593a22a9e0df22da6a9b4f2>` = false;
+		double :target:`qdo_scale<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a304f3a6f4f4c82e9e59738f9601973fd>` = 1.0;
+		bool :target:`qdo_legacy<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a02904c711942280bdbc3c679b7997c7d>` = false;
+		bool :target:`qdo_damped<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a7cdb8fd3393dfc2c06c07af9f4186498>` = true;
+		double :target:`cutoff<doxid-structrgpot_1_1lr_1_1_dispersion_config_1abea7b4f4709d0062a229c2c385e63f9d>` = 15.0;
+		double :target:`lib_disp2<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a1b5c69c5f1625c3e375446a893d8f135>` = 0.0;
+		double :target:`lib_disp3<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a924f19c7fcd563c4b5897e4f3aec0438>` = 0.0;
+		double :target:`lib_cn<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a54f39a0b31db5232d47d500be20f2553>` = 0.0;
+		double :target:`switch_width<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a8319a61865cd7dfac4f51a6ea2b6a386>` = 0.0;
+		double :target:`short_cutoff<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a6e2112d098befd8b214dfb9eb049fb3c>` = 4.0;
+		double :target:`skin<doxid-structrgpot_1_1lr_1_1_dispersion_config_1a3c10b3b143edb89691d6aad6b889ace0>` = 1.0;
+		bool :target:`periodic<doxid-structrgpot_1_1lr_1_1_dispersion_config_1ad617cb34f00a41d6825c96039be3411c>` = false;
+	};

@@ -1,0 +1,25 @@
+.. index:: pair: namespace; rgpot::ipi
+.. _doxid-namespacergpot_1_1ipi:
+
+namespace rgpot::ipi
+====================
+
+.. toctree::
+	:hidden:
+
+	namespace_rgpot_ipi_detail.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace ipi {
+
+	// namespaces
+
+	namespace :ref:`rgpot::ipi::detail<doxid-namespacergpot_1_1ipi_1_1detail>`;
+
+	} // namespace ipi

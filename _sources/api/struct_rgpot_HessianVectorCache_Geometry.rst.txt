@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::HessianVectorCache::Geometry
+.. _doxid-structrgpot_1_1_hessian_vector_cache_1_1_geometry:
+
+struct rgpot::HessianVectorCache::Geometry
+==========================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Geometry {
+		// fields
+	
+		std::vector<double> :target:`positions<doxid-structrgpot_1_1_hessian_vector_cache_1_1_geometry_1a8dab5426b4f617515b48acd98bc91752>`;
+		:ref:`Key<doxid-structrgpot_1_1_hessian_vector_cache_1_1_key>` :target:`key<doxid-structrgpot_1_1_hessian_vector_cache_1_1_geometry_1af4ca2b5ccaa3ec2ba22224d8b9456eae>`;
+	};

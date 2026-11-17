@@ -1,0 +1,25 @@
+.. index:: pair: class; pocketfft::detail::threading::concurrent_queue
+.. _doxid-classpocketfft_1_1detail_1_1threading_1_1concurrent__queue:
+
+template class pocketfft::detail::threading::concurrent_queue
+=============================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename T>
+	class concurrent_queue {
+	public:
+		// methods
+	
+		void :target:`push<doxid-classpocketfft_1_1detail_1_1threading_1_1concurrent__queue_1ae8ebd6bc1b4d18e75bd046005e7dde7b>`(T val);
+		bool :target:`try_pop<doxid-classpocketfft_1_1detail_1_1threading_1_1concurrent__queue_1aa3807d46a126d229f9054c779105ea43>`(T& val);
+		bool :target:`empty<doxid-classpocketfft_1_1detail_1_1threading_1_1concurrent__queue_1a1269e5da40c3f5145c895cee3641879a>`() const;
+	};

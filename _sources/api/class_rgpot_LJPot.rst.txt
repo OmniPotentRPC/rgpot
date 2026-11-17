@@ -30,7 +30,11 @@ Implementation of a shifted 12-6 Lennard-Jones potential. :ref:`More...<details-
 		const :ref:`LJConfig<doxid-structrgpot_1_1_l_j_config>`& :target:`config<doxid-classrgpot_1_1_l_j_pot_1a7b3c522e7a042feb87add918da912033>`() const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_l_j_pot_1a2421f1854cc46c0c467a58c4ebda956a>`() const;
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_l_j_pot_1a8c8f6af50485f38472d8f8b82e3b9be5>`() const;
+		:ref:`Locality<doxid-structrgpot_1_1_locality>` :ref:`locality<doxid-classrgpot_1_1_l_j_pot_1aa83631d98dea5e046cb7ef2fb780d3c6>`() const;
 		void :ref:`forceImpl<doxid-classrgpot_1_1_l_j_pot_1a74c9c2b391a010329a97b272ef1cc776>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`forcePerAtom<doxid-classrgpot_1_1_l_j_pot_1a91287b144b01dd2687896c6cee08534f>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const;
+		void :ref:`densityStage<doxid-classrgpot_1_1_l_j_pot_1a61bf8210cef612434f7080b09f705df6>`(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`&, double*) const;
+		void :ref:`forceStage<doxid-classrgpot_1_1_l_j_pot_1a3cf92cdcbc623def0776e4da3bc88fda>`(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, const double* densities, double* forces, :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally) const;
 		void :target:`setNeighbourMode<doxid-classrgpot_1_1_l_j_pot_1abd1f445188217b50399c18341e2b660b>`(nlist::Mode mode);
 		bool :ref:`listReused<doxid-classrgpot_1_1_l_j_pot_1a52c309bae656de6586bbf69594a0ee78>`() const;
 		std::size_t :ref:`retainedPairs<doxid-classrgpot_1_1_l_j_pot_1a4dfa3b74991a793011d318c9646b37eb>`() const;
@@ -42,7 +46,7 @@ Detailed Documentation
 
 Implementation of a shifted 12-6 Lennard-Jones potential.
 
-Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal or sheared box. Pairs come from the shared neighbour layer: a cell list, a Verlet skin, and either a stored list or a streaming walk. The pair term runs during that walk. A streaming call does not copy a half-list. A stored call keeps candidates out to the cutoff plus the skin and drops the rest from the current distances, so a later call inside half the skin reuses the candidates. Several threads split the atoms, keep a private force buffer, and add those buffers in thread order. A nonzero switch width uses the quintic switch. Cauchy stress is published from the kernel's strain accumulator.
+Pairwise interactions within the cutoff radius, minimum image convention on an orthogonal or sheared box. Pairs come from the shared neighbour layer: a cell list, a Verlet skin, and either a stored list or a streaming walk. The pair term runs during that walk. A streaming call does not copy a half-list. A stored call keeps candidates out to the cutoff plus the skin and drops the rest from the current distances, so a later call inside half the skin reuses the candidates. Several slices split the atoms, each with a private force buffer, and the buffers are added in slice order. A nonzero switch width uses the quintic switch. Cauchy stress is published from the kernel's strain accumulator.
 
 .. warning::
 
@@ -74,6 +78,16 @@ Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cl
 Fingerprint of the potential's parameter set.
 
 Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+
+.. index:: pair: function; locality
+.. _doxid-classrgpot_1_1_l_j_pot_1aa83631d98dea5e046cb7ef2fb780d3c6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Locality<doxid-structrgpot_1_1_locality>` locality() const
+
+Pairs count out to the cutoff; a cutoff <= 0 has no pairs.
 
 .. index:: pair: function; forceImpl
 .. _doxid-classrgpot_1_1_l_j_pot_1a74c9c2b391a010329a97b272ef1cc776:
@@ -107,6 +121,36 @@ Computes the forces and energy for a given configuration.
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; forcePerAtom
+.. _doxid-classrgpot_1_1_l_j_pot_1a91287b144b01dd2687896c6cee08534f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forcePerAtom(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const
+
+forceImpl plus each pair energy and virial split half to each atom.
+
+.. index:: pair: function; densityStage
+.. _doxid-classrgpot_1_1_l_j_pot_1a61bf8210cef612434f7080b09f705df6:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void densityStage(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`&, double*) const
+
+:ref:`Staged.hpp <doxid-_staged_8hpp_source>` : a pair potential has no densities.
+
+.. index:: pair: function; forceStage
+.. _doxid-classrgpot_1_1_l_j_pot_1a3cf92cdcbc623def0776e4da3bc88fda:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forceStage(const :ref:`HalfList<doxid-structrgpot_1_1_half_list>`& list, const double* densities, double* forces, :ref:`StageTally<doxid-structrgpot_1_1_stage_tally>`* tally) const
+
+:ref:`Staged.hpp <doxid-_staged_8hpp_source>` : the pair terms of forceImpl on a host's list.
 
 .. index:: pair: function; listReused
 .. _doxid-classrgpot_1_1_l_j_pot_1a52c309bae656de6586bbf69594a0ee78:

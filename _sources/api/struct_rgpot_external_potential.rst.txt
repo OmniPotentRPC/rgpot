@@ -1,0 +1,21 @@
+.. index:: pair: struct; rgpot_external_potential
+.. _doxid-structrgpot__external__potential:
+
+struct rgpot_external_potential
+===============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct rgpot_external_potential {
+		// fields
+	
+		std::unique_ptr<:ref:`rgpot::PotentialBase<doxid-classrgpot_1_1_potential_base>`> :target:`pot<doxid-structrgpot__external__potential_1a40f23595904adaa9fdb68a125c38dd28>`;
+	};

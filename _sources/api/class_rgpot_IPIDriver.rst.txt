@@ -1,0 +1,145 @@
+.. index:: pair: class; rgpot::IPIDriver
+.. _doxid-classrgpot_1_1_i_p_i_driver:
+
+class rgpot::IPIDriver
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Client side of the i-PI socket protocol. :ref:`More...<details-classrgpot_1_1_i_p_i_driver>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <IPIDriver.hpp>
+	
+	class IPIDriver {
+	public:
+		// construction
+	
+		:ref:`IPIDriver<doxid-classrgpot_1_1_i_p_i_driver_1a93bedec44a0c2437ff2d8748511518c8>`(const :ref:`IPIDriverConfig<doxid-structrgpot_1_1_i_p_i_driver_config>`& config, :ref:`IPIEvaluator<doxid-namespacergpot_1a78d79640286324586df1246b2083985a>` evaluate);
+		:target:`IPIDriver<doxid-classrgpot_1_1_i_p_i_driver_1a018bc58737438ff3d1f20d71eca9429e>`(const IPIDriver&);
+		:target:`~IPIDriver<doxid-classrgpot_1_1_i_p_i_driver_1a14488752c02ed4217a90986fe36fe882>`();
+
+		// methods
+	
+		IPIDriver& :target:`operator=<doxid-classrgpot_1_1_i_p_i_driver_1aa9df8885cd551c5e714e7814cad128fc>`(const IPIDriver&);
+		void :ref:`connect<doxid-classrgpot_1_1_i_p_i_driver_1a68f281544e4167e57eee50423c298c54>`();
+		bool :ref:`step<doxid-classrgpot_1_1_i_p_i_driver_1a1283b62b282be230ce74910baab4d95c>`();
+		void :ref:`run<doxid-classrgpot_1_1_i_p_i_driver_1a686b516b62f6248762c77ce8989c094e>`();
+		void :ref:`close<doxid-classrgpot_1_1_i_p_i_driver_1ac966782a00a0546f48a0266f6fab56cb>`();
+		const :ref:`IPIDriverConfig<doxid-structrgpot_1_1_i_p_i_driver_config>`& :target:`config<doxid-classrgpot_1_1_i_p_i_driver_1ad7756c7411bba5c612a08eec94a965b2>`() const;
+		const std::string& :ref:`endpoint<doxid-classrgpot_1_1_i_p_i_driver_1a76917fb930eb71deba7d886b8ee86937>`() const;
+		bool :target:`connected<doxid-classrgpot_1_1_i_p_i_driver_1a55a6c226965446bd67ebdd19263e40f9>`() const;
+		int32_t :ref:`bead<doxid-classrgpot_1_1_i_p_i_driver_1ada13c4be086c1374cd54f1f517ac1782>`() const;
+		const std::string& :ref:`initString<doxid-classrgpot_1_1_i_p_i_driver_1ab9c5f5e973b061ea56943e9b0e483faf>`() const;
+		uint64_t :ref:`evaluations<doxid-classrgpot_1_1_i_p_i_driver_1a04c7be27d6639e2af64a33d03637a0ba>`() const;
+	};
+.. _details-classrgpot_1_1_i_p_i_driver:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Client side of the i-PI socket protocol.
+
+Construction
+------------
+
+.. index:: pair: function; IPIDriver
+.. _doxid-classrgpot_1_1_i_p_i_driver_1a93bedec44a0c2437ff2d8748511518c8:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	IPIDriver(const :ref:`IPIDriverConfig<doxid-structrgpot_1_1_i_p_i_driver_config>`& config, :ref:`IPIEvaluator<doxid-namespacergpot_1a78d79640286324586df1246b2083985a>` evaluate)
+
+Validates the config and the species; does not connect.
+
+Methods
+-------
+
+.. index:: pair: function; connect
+.. _doxid-classrgpot_1_1_i_p_i_driver_1a68f281544e4167e57eee50423c298c54:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void connect()
+
+Connects, retrying a refused or missing socket for connect_timeout_s.
+
+.. index:: pair: function; step
+.. _doxid-classrgpot_1_1_i_p_i_driver_1a1283b62b282be230ce74910baab4d95c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool step()
+
+Handles one server message. Returns false after EXIT.
+
+.. index:: pair: function; run
+.. _doxid-classrgpot_1_1_i_p_i_driver_1a686b516b62f6248762c77ce8989c094e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void run()
+
+Connects if needed, then handles messages until EXIT.
+
+.. index:: pair: function; close
+.. _doxid-classrgpot_1_1_i_p_i_driver_1ac966782a00a0546f48a0266f6fab56cb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void close()
+
+Closes the connection without sending anything.
+
+.. index:: pair: function; endpoint
+.. _doxid-classrgpot_1_1_i_p_i_driver_1a76917fb930eb71deba7d886b8ee86937:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const std::string& endpoint() const
+
+``unix:<path>`` or ``tcp:<host>:<port>`` the driver connects to.
+
+.. index:: pair: function; bead
+.. _doxid-classrgpot_1_1_i_p_i_driver_1ada13c4be086c1374cd54f1f517ac1782:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int32_t bead() const
+
+Bead index of the last INIT, -1 before one.
+
+.. index:: pair: function; initString
+.. _doxid-classrgpot_1_1_i_p_i_driver_1ab9c5f5e973b061ea56943e9b0e483faf:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const std::string& initString() const
+
+Init string of the last INIT.
+
+.. index:: pair: function; evaluations
+.. _doxid-classrgpot_1_1_i_p_i_driver_1a04c7be27d6639e2af64a33d03637a0ba:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	uint64_t evaluations() const
+
+Number of POSDATA messages evaluated.
+

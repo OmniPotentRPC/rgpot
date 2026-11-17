@@ -1,0 +1,126 @@
+.. index:: pair: class; rgpot::HessianVectorCache
+.. _doxid-classrgpot_1_1_hessian_vector_cache:
+
+class rgpot::HessianVectorCache
+===============================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_HessianVectorCache_Cached.rst
+	struct_rgpot_HessianVectorCache_Geometry.rst
+	struct_rgpot_HessianVectorCache_Key.rst
+
+Overview
+~~~~~~~~
+
+Centre forces and counters for Hessian-vector products. :ref:`More...<details-classrgpot_1_1_hessian_vector_cache>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <HessianVector.hpp>
+	
+	class HessianVectorCache {
+	public:
+		// structs
+	
+		struct :ref:`Cached<doxid-structrgpot_1_1_hessian_vector_cache_1_1_cached>`;
+		struct :ref:`Geometry<doxid-structrgpot_1_1_hessian_vector_cache_1_1_geometry>`;
+		struct :ref:`Key<doxid-structrgpot_1_1_hessian_vector_cache_1_1_key>`;
+
+		// construction
+	
+		:target:`HessianVectorCache<doxid-classrgpot_1_1_hessian_vector_cache_1ad132f8297cba17b462c397682e2a46ca>`();
+		:target:`HessianVectorCache<doxid-classrgpot_1_1_hessian_vector_cache_1a6ea6df63914df8da542b436e2147de9a>`(const HessianVectorCache&);
+
+		// methods
+	
+		HessianVectorCache& :target:`operator=<doxid-classrgpot_1_1_hessian_vector_cache_1a6be05fb0ff880eeba0e032f115a713c0>`(const HessianVectorCache&);
+	
+		template <ForceKernel Pot>
+		:ref:`HvpCentre<doxid-structrgpot_1_1_hvp_centre>` :ref:`centre<doxid-classrgpot_1_1_hessian_vector_cache_1a18e372aabdbf54f82db4bed25e708b9e>`(Pot& pot, const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in);
+	
+		template <ForceKernel Pot>
+		void :ref:`apply<doxid-classrgpot_1_1_hessian_vector_cache_1a64a09ff8f867598b6e74ee3659d581bc>`(Pot& pot, const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, const double* v, double* hv, double step = 0.0, :ref:`HvpScheme<doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3>` scheme = :ref:`HvpScheme::Auto<doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a06b9281e396db002010bde1de57262eb>`);
+	
+		void :ref:`invalidate<doxid-classrgpot_1_1_hessian_vector_cache_1a11c6b78fccbaded2ebb959abedf00a19>`();
+		:ref:`HvpCounts<doxid-structrgpot_1_1_hvp_counts>` :target:`counts<doxid-classrgpot_1_1_hessian_vector_cache_1a406b0dcee1c97501b1b49ec3c074904e>`() const;
+		void :ref:`resetCounts<doxid-classrgpot_1_1_hessian_vector_cache_1ad4767507af3daf497807e0ec0cd99f5e>`();
+	};
+.. _details-classrgpot_1_1_hessian_vector_cache:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Centre forces and counters for Hessian-vector products.
+
+Safe to share between threads; the lock covers the cached centre, not the force calls. The potential passed to each call must be the one the cache was filled with, or ``:ref:`invalidate() <doxid-classrgpot_1_1_hessian_vector_cache_1a11c6b78fccbaded2ebb959abedf00a19>``` must be called in between.
+
+Methods
+-------
+
+.. index:: pair: function; centre
+.. _doxid-classrgpot_1_1_hessian_vector_cache_1a18e372aabdbf54f82db4bed25e708b9e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <ForceKernel Pot>
+	:ref:`HvpCentre<doxid-structrgpot_1_1_hvp_centre>` centre(Pot& pot, const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in)
+
+Energy and forces at *in*.
+
+Served from the cached centre when its positions, species and cell carry the same bits, otherwise one force call that becomes the centre. A search that needs the centre forces asks here, so the products that follow reuse them.
+
+.. index:: pair: function; apply
+.. _doxid-classrgpot_1_1_hessian_vector_cache_1a64a09ff8f867598b6e74ee3659d581bc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <ForceKernel Pot>
+	void apply(Pot& pot, const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, const double* v, double* hv, double step = 0.0, :ref:`HvpScheme<doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3>` scheme = :ref:`HvpScheme::Auto<doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a06b9281e396db002010bde1de57262eb>`)
+
+Write :math:`H v` to *hv*.
+
+*v* and *hv* hold ``3*in``.nAtoms doubles and must not overlap. *step* 0 selects ``kHvpDefaultStep``. A zero direction gives a zero product without a call.
+
+
+
+.. rubric:: Parameters:
+
+.. list-table::
+	:widths: 20 80
+
+	*
+		- std::invalid_argument
+
+		- for a malformed request.
+
+	*
+		- std::domain_error
+
+		- when the kernel returns a non-finite value.
+
+.. index:: pair: function; invalidate
+.. _doxid-classrgpot_1_1_hessian_vector_cache_1a11c6b78fccbaded2ebb959abedf00a19:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void invalidate()
+
+Drop the cached centre. Call it when the potential changes while the geometry does not.
+
+.. index:: pair: function; resetCounts
+.. _doxid-classrgpot_1_1_hessian_vector_cache_1ad4767507af3daf497807e0ec0cd99f5e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void resetCounts()
+
+Zero the counters. The cached centre stays.
+

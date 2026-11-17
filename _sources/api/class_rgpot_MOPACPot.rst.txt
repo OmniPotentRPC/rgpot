@@ -40,8 +40,8 @@ Overview
 		void :target:`forceImpl<doxid-classrgpot_1_1_m_o_p_a_c_pot_1ac557bb76fb85cb7182d969ca0ef2f69c>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_m_o_p_a_c_pot_1a46ce3fabb01b1387939e462b4b45a9d6>`() const;
 		bool :target:`available<doxid-classrgpot_1_1_m_o_p_a_c_pot_1a3c23c51c1b41d439d2b90aa271cad842>`() const;
-		static bool :target:`probe_available<doxid-classrgpot_1_1_m_o_p_a_c_pot_1af30e6c2b3faa06382777efc86a824c8b>`();
-		static bool :target:`abi_available<doxid-classrgpot_1_1_m_o_p_a_c_pot_1abe54b2b60b901874120a848113f425d9>`();
+		static bool :target:`probeAvailable<doxid-classrgpot_1_1_m_o_p_a_c_pot_1a0041495af1dda93b56eba8972d77da23>`();
+		static bool :target:`abiAvailable<doxid-classrgpot_1_1_m_o_p_a_c_pot_1a25d63970a5816b7c10df22094df4c0b1>`();
 	};
 .. _details-classrgpot_1_1_m_o_p_a_c_pot:
 

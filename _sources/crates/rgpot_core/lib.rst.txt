@@ -17,17 +17,25 @@ Crate ``rgpot_core``
    
    **Module Overview**
    
-   ============= ======================================================
-   Module        Purpose
-   ============= ======================================================
-   ``types``     ``#[repr(C)]`` data structures for force/energy I/O
-   ``tensor``    DLPack tensor helpers: create, free, validate
-   ``status``    Status codes, thread-local error message, panic safety
-   ``potential`` Callback-based potential dispatch (opaque handle)
-   ``c_api``     ``extern "C"`` entry points collected by cbindgen
-   ``version``   Loaded library version, to check against ``rgpot.h``
-   ``rpc``       Cap'n Proto RPC client and server (feature-gated)
-   ============= ======================================================
+   +--------------------------------+----------------------------------------------------------------------+
+   | Module                         | Purpose                                                              |
+   +================================+======================================================================+
+   | ``types``                      | ``#[repr(C)]`` data structures for force/energy I/O                  |
+   +--------------------------------+----------------------------------------------------------------------+
+   | ``tensor``                     | DLPack tensor helpers: create, free, validate                        |
+   +--------------------------------+----------------------------------------------------------------------+
+   | ``status``                     | Status codes, thread-local error message, panic safety               |
+   +--------------------------------+----------------------------------------------------------------------+
+   | ``potential``                  | Callback-based potential dispatch (opaque handle)                    |
+   +--------------------------------+----------------------------------------------------------------------+
+   | ``hvp``                        | Hessian-vector products with a cached centre or an analytic callback |
+   +--------------------------------+----------------------------------------------------------------------+
+   | ``c_api``                      | ``extern "C"`` entry points collected by cbindgen                    |
+   +--------------------------------+----------------------------------------------------------------------+
+   | ``version``                    | Loaded library version, to check against ``rgpot.h``                 |
+   +--------------------------------+----------------------------------------------------------------------+
+   | ``rpc``                        | Cap'n Proto RPC client and server (feature-gated)                    |
+   +--------------------------------+----------------------------------------------------------------------+
    
    **Design Principles**
    
@@ -60,6 +68,7 @@ Crate ``rgpot_core``
       tensor
       status
       potential
+      hvp
       eindir
       c_api
       version

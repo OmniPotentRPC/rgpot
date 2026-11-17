@@ -79,7 +79,7 @@ Global counter for force evaluations.
 
 	T* prev = nullptr
 
-Unused. Kept so the potential object layout stays.
+Unused. :ref:`Kept <doxid-classrgpot_1_1_kept>` so the potential object layout stays.
 
 .. index:: pair: variable; next
 .. _doxid-classrgpot_1_1registry_1a63702ca67d75ee109e6a1632541d8407:
@@ -89,7 +89,7 @@ Unused. Kept so the potential object layout stays.
 
 	T* next = nullptr
 
-Unused. Kept so the potential object layout stays.
+Unused. :ref:`Kept <doxid-classrgpot_1_1_kept>` so the potential object layout stays.
 
 Construction
 ------------

@@ -1,0 +1,74 @@
+.. index:: pair: namespace; pocketfft::detail::threading
+.. _doxid-namespacepocketfft_1_1detail_1_1threading:
+
+namespace pocketfft::detail::threading
+======================================
+
+.. toctree::
+	:hidden:
+
+	struct_pocketfft_detail_threading_aligned_allocator.rst
+	class_pocketfft_detail_threading_concurrent_queue.rst
+	class_pocketfft_detail_threading_latch.rst
+	class_pocketfft_detail_threading_thread_pool.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace threading {
+
+	// structs
+
+	template <typename T>
+	struct :ref:`aligned_allocator<doxid-structpocketfft_1_1detail_1_1threading_1_1aligned__allocator>`;
+
+	// classes
+
+	template <typename T>
+	class :ref:`concurrent_queue<doxid-classpocketfft_1_1detail_1_1threading_1_1concurrent__queue>`;
+
+	class :ref:`latch<doxid-classpocketfft_1_1detail_1_1threading_1_1latch>`;
+	class :ref:`thread_pool<doxid-classpocketfft_1_1detail_1_1threading_1_1thread__pool>`;
+
+	// global variables
+
+	static const size_t :target:`max_threads<doxid-pocketfft_8hpp_1a2d5c0729f0b66cf061918baea4337d70>` = std::max(1u, std::thread::hardware_concurrency());
+
+	// global functions
+
+	size_t& :target:`thread_id<doxid-pocketfft_8hpp_1aebe85d6273d92c7d3728e2c621ccc82b>`();
+	size_t& :target:`num_threads<doxid-pocketfft_8hpp_1af5432c2e25aed679a73fe7b29534c833>`();
+	:ref:`thread_pool<doxid-classpocketfft_1_1detail_1_1threading_1_1thread__pool>`& :target:`get_pool<doxid-pocketfft_8hpp_1a7ec2b3f99232bd0f15f7b022c59d139a>`();
+
+	template <typename Func>
+	void :ref:`thread_map<doxid-pocketfft_8hpp_1a4fcf674db39f0e2c1c59d48491daed6e>`(size_t nthreads, Func f);
+
+	} // namespace threading
+.. _details-namespacepocketfft_1_1detail_1_1threading:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Functions
+----------------
+
+.. index:: pair: function; thread_map
+.. _doxid-pocketfft_8hpp_1a4fcf674db39f0e2c1c59d48491daed6e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Func>
+	void thread_map(size_t nthreads, Func f)
+
+Map a function f over nthreads
+

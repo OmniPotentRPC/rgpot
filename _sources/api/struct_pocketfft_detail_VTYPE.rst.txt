@@ -1,0 +1,11 @@
+.. index:: pair: struct; pocketfft::detail::VTYPE
+.. _doxid-structpocketfft_1_1detail_1_1_v_t_y_p_e:
+
+template struct pocketfft::detail::VTYPE
+========================================
+
+.. toctree::
+	:hidden:
+
+
+

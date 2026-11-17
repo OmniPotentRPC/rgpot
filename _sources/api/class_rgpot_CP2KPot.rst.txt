@@ -1,0 +1,178 @@
+.. index:: pair: class; rgpot::CP2KPot
+.. _doxid-classrgpot_1_1_c_p2_k_pot:
+
+class rgpot::CP2KPot
+====================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_CP2KPot_Impl.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class CP2KPot: public rgpot::Potential< CP2KPot > {
+	public:
+		// structs
+	
+		struct :ref:`Impl<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl>`;
+
+		// fields
+	
+		static uint64_t :ref:`kKernelVersion<doxid-classrgpot_1_1_c_p2_k_pot_1a3e1921a750e7063289043ba5a4e6125a>` = 1;
+
+		// construction
+	
+		:target:`CP2KPot<doxid-classrgpot_1_1_c_p2_k_pot_1ad200022d6780c429ab0f15087c43d5ad>`();
+		:target:`CP2KPot<doxid-classrgpot_1_1_c_p2_k_pot_1ab92e452eb09c955e5c742f3d9c30bcff>`(const ::CP2KParams::Reader& params);
+		:target:`CP2KPot<doxid-classrgpot_1_1_c_p2_k_pot_1aaed8b7c402c5e27a43610813f4cd792b>`(const CP2KPot&);
+		:target:`~CP2KPot<doxid-classrgpot_1_1_c_p2_k_pot_1a7bc50bf774a7af9d878686feea91915b>`();
+
+		// methods
+	
+		CP2KPot& :target:`operator=<doxid-classrgpot_1_1_c_p2_k_pot_1ad7f31610484d3800e21f37db847ae8b9>`(const CP2KPot&);
+		void :ref:`forceImpl<doxid-classrgpot_1_1_c_p2_k_pot_1a45e65d592e2a06c5bdb856b9309a390f>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_c_p2_k_pot_1a296f3fdbe768ab0871c73df01625cb53>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_c_p2_k_pot_1a2ddca162882a3766822d46d7e4f8935e>`() const;
+		bool :ref:`setParams<doxid-classrgpot_1_1_c_p2_k_pot_1a1b6ea1adc291906635b3ab4b2379176c>`(const ::CP2KParams::Reader& params);
+		void :target:`getParams<doxid-classrgpot_1_1_c_p2_k_pot_1ac14eddfae7ac6379b16ddd643fc65e18>`(::CP2KParams::Builder out) const;
+		bool :target:`setPotentialConfig<doxid-classrgpot_1_1_c_p2_k_pot_1a032223ad5c43cd85d379708f780d7653>`(const ::PotentialConfig::Reader& cfg, std::string* message_out = nullptr);
+		void :ref:`selectOrbitals<doxid-classrgpot_1_1_c_p2_k_pot_1a44ee3265562bd2befacba68557956054>`(int64_t key);
+		bool :ref:`keepsOrbitalsPerKey<doxid-classrgpot_1_1_c_p2_k_pot_1afece9df5f51c3e201ab11a4352a3469d>`() const;
+		bool :ref:`available<doxid-classrgpot_1_1_c_p2_k_pot_1aae1234b49fb0a1cc3152070bdafbd166>`() const;
+		std::string :ref:`loadError<doxid-classrgpot_1_1_c_p2_k_pot_1a5177ff970c824859b0422c16a7006a01>`() const;
+		std::string :ref:`runDirectory<doxid-classrgpot_1_1_c_p2_k_pot_1ac9d37d2078c93c912427573395d63ce1>`() const;
+		static bool :target:`probeAvailable<doxid-classrgpot_1_1_c_p2_k_pot_1ac0f69687fc3ed14fed29d12dc4a07ad0>`();
+		static int :ref:`bindCalculators<doxid-classrgpot_1_1_c_p2_k_pot_1a1791c1cd1eed0bb213c6170a8c791427>`(int ranks_per_calc);
+	};
+.. _details-classrgpot_1_1_c_p2_k_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; kKernelVersion
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1a3e1921a750e7063289043ba5a4e6125a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static uint64_t kKernelVersion = 1
+
+Bump whenever the engine-facing numerics change.
+
+Methods
+-------
+
+.. index:: pair: function; forceImpl
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1a45e65d592e2a06c5bdb856b9309a390f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forceImpl(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const
+
+Every rank of the calling calculator enters this call together. Positions and the box are Angstrom; the energy is eV and the forces eV/Angstrom. An unconverged SCF throws :ref:`CP2KScfError <doxid-classrgpot_1_1_c_p2_k_scf_error>` on every rank. Any other failure is printed on every rank of the calculator, then MPI_Abort runs on MPI_COMM_WORLD, and then the exception leaves the call.
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1a296f3fdbe768ab0871c73df01625cb53:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+libcp2k keeps global state: serialize process-wide. The SCF and the convergence exchange are collectives on the calculator's communicator.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1a2ddca162882a3766822d46d7e4f8935e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+FNV-1a over the serialized CP2KParams bytes plus kKernelVersion.
+
+.. index:: pair: function; setParams
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1a1b6ea1adc291906635b3ab4b2379176c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool setParams(const ::CP2KParams::Reader& params)
+
+Stores the params. A session built from other params is destroyed; the next force renders the deck again. Returns false when the shim cannot be loaded or inputTemplate lacks a geometry token.
+
+.. index:: pair: function; selectOrbitals
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1a44ee3265562bd2befacba68557956054:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void selectOrbitals(int64_t key)
+
+Names the calculation the following forces belong to (a band image, a ring-polymer bead). The shim keeps one CP2K force environment per key, so each keeps its own wavefunction. Every rank of a calculator names the same key before the same force.
+
+.. index:: pair: function; keepsOrbitalsPerKey
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1afece9df5f51c3e201ab11a4352a3469d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool keepsOrbitalsPerKey() const
+
+True when the loaded shim keeps a force environment per key.
+
+.. index:: pair: function; available
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1aae1234b49fb0a1cc3152070bdafbd166:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool available() const
+
+True when the shim is loaded and the params are usable.
+
+.. index:: pair: function; loadError
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1a5177ff970c824859b0422c16a7006a01:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string loadError() const
+
+Why :ref:`available() <doxid-classrgpot_1_1_c_p2_k_pot_1aae1234b49fb0a1cc3152070bdafbd166>` is false; empty otherwise.
+
+.. index:: pair: function; runDirectory
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1ac9d37d2078c93c912427573395d63ce1:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string runDirectory() const
+
+Directory holding input.inp and the CP2K output of the live session; empty before the first force.
+
+.. index:: pair: function; bindCalculators
+.. _doxid-classrgpot_1_1_c_p2_k_pot_1a1791c1cd1eed0bb213c6170a8c791427:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static int bindCalculators(int ranks_per_calc)
+
+Collective on MPI_COMM_WORLD, as :ref:`CPMDPot::bindCalculators <doxid-classrgpot_1_1_c_p_m_d_pot_1adaecbf76c0c5f2fda166136873c07e7b>` : splits into calculators of ranks_per_calc ranks and hands the shim the calculator communicator. Returns the group index, or -1 when the shim has no communicator-adoption symbol.
+

@@ -1,0 +1,34 @@
+.. index:: pair: class; rgpot::lr::UnitRatios
+.. _doxid-classrgpot_1_1lr_1_1_unit_ratios:
+
+class rgpot::lr::UnitRatios
+===========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class UnitRatios: public :ref:`rgpot::lr::RatioSource<doxid-classrgpot_1_1lr_1_1_ratio_source>` {
+	public:
+		// methods
+	
+		virtual void :target:`load<doxid-classrgpot_1_1lr_1_1_unit_ratios_1a3884b6b74e792e052a0d1536790d751c>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* h, std::vector<double>* c6) const;
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// methods
+	
+		virtual void :ref:`load<doxid-classrgpot_1_1lr_1_1_ratio_source_1a9cd6d22f4926df2152ef0a892cad86f1>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* h, std::vector<double>* c6) const = 0;
+

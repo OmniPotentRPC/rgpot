@@ -1,0 +1,42 @@
+.. index:: pair: class; rgpot::lr::FnCharges
+.. _doxid-classrgpot_1_1lr_1_1_fn_charges:
+
+class rgpot::lr::FnCharges
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class FnCharges: public :ref:`rgpot::lr::ChargeSource<doxid-classrgpot_1_1lr_1_1_charge_source>` {
+	public:
+		// typedefs
+	
+		typedef void(*)(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`&, double*, double*, void*) :target:`Fn<doxid-classrgpot_1_1lr_1_1_fn_charges_1ac1a0850eeffa1a9abe7ccae3897ea851>`;
+
+		// construction
+	
+		:target:`FnCharges<doxid-classrgpot_1_1lr_1_1_fn_charges_1ae4061408a0e957a160f2a7f3a2934a3e>`(Fn fn, void* user);
+
+		// methods
+	
+		virtual void :target:`load<doxid-classrgpot_1_1lr_1_1_fn_charges_1ac1ef636d0f0d02ca1dc7559886cfe114>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* q, double* total) const;
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// methods
+	
+		virtual void :ref:`load<doxid-classrgpot_1_1lr_1_1_charge_source_1a1b5bef15f7758eda5e8df01d54b9c091>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* q, double* total) const = 0;
+

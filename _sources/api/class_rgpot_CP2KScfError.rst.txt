@@ -1,0 +1,19 @@
+.. index:: pair: class; rgpot::CP2KScfError
+.. _doxid-classrgpot_1_1_c_p2_k_scf_error:
+
+class rgpot::CP2KScfError
+=========================
+
+.. toctree::
+	:hidden:
+
+The SCF did not converge. The shim agrees on this outcome over the calculator's communicator, so every rank of the calculator throws it for the same call and no rank aborts the world. A caller may reject the geometry and continue.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <CP2KPot.hpp>
+	
+	class CP2KScfError: public std::runtime_error {
+	};

@@ -35,6 +35,8 @@ Plugin path: ``dlopen`` ``libxtb_engine.so``, which implements the same ISO_C_BI
 		void :ref:`reset<doxid-classrgpot_1_1_x_t_b_dlopen_1a8d9a141acebe35951f242158d1d00a65>`();
 		void :ref:`setWarmMove<doxid-classrgpot_1_1_x_t_b_dlopen_1a83a352555d726d4fe690f9674aef068f>`(double angstrom);
 		double :target:`warmMove<doxid-classrgpot_1_1_x_t_b_dlopen_1a7c5bd3b64af341a1cab2cb56ad9b2e39>`() const;
+		void :ref:`setWarmMinGap<doxid-classrgpot_1_1_x_t_b_dlopen_1a80ab3a82364c7eaaa033aa3990e8e5e9>`(double ev);
+		double :target:`warmMinGap<doxid-classrgpot_1_1_x_t_b_dlopen_1a6c9ef9d6e38c1d5c166b7cabb88f37da>`() const;
 		bool :ref:`reusedWavefunction<doxid-classrgpot_1_1_x_t_b_dlopen_1a4700c947e182a003a1a3d93e924ef8d2>`() const;
 		std::tuple<double, :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`, double> :ref:`operator()<doxid-classrgpot_1_1_x_t_b_dlopen_1a8e36276d08cec60655c0b0a41c936012>`(const :ref:`types::AtomMatrix<doxid-classrgpot_1_1types_1_1_atom_matrix>`& positions, const std::vector<int>& atmtypes, const std::array<std::array<double, 3>, 3>& box) const;
 	};
@@ -73,6 +75,16 @@ Drop the stored SCC wavefunction. The calculator stays.
 	void setWarmMove(double angstrom)
 
 Displacement guard in Angstrom. Zero or negative disables reuse.
+
+.. index:: pair: function; setWarmMinGap
+.. _doxid-classrgpot_1_1_x_t_b_dlopen_1a80ab3a82364c7eaaa033aa3990e8e5e9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setWarmMinGap(double ev)
+
+HOMO-LUMO gap guard in eV. Zero or negative reuses at any gap.
 
 .. index:: pair: function; reusedWavefunction
 .. _doxid-classrgpot_1_1_x_t_b_dlopen_1a4700c947e182a003a1a3d93e924ef8d2:

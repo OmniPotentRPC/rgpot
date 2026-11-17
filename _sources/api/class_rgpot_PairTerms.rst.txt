@@ -1,0 +1,133 @@
+.. index:: pair: class; rgpot::PairTerms
+.. _doxid-classrgpot_1_1_pair_terms:
+
+template class rgpot::PairTerms
+===============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+``Width`` doubles for each pair of a first pass, in visit order. :ref:`More...<details-classrgpot_1_1_pair_terms>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <PairTerms.hpp>
+	
+	template <std::size_t Width>
+	class PairTerms {
+	public:
+		// fields
+	
+		static std::size_t :ref:`kDefaultLimit<doxid-classrgpot_1_1_pair_terms_1ab35633bf44747f4d6cb86d579d7e8f9b>` =(std::size_t{32}<<20) /(Width* sizeof(double));
+
+		// methods
+	
+		void :ref:`record<doxid-classrgpot_1_1_pair_terms_1a49f39dd363e49a19c3b8b74771bb47df>`(std::size_t expected);
+		double* :ref:`push<doxid-classrgpot_1_1_pair_terms_1a90b4689427af237ee134d57693f9e050>`();
+		void :ref:`replay<doxid-classrgpot_1_1_pair_terms_1a91dee138595027d699f2ce2bdb437296>`();
+		const double* :ref:`next<doxid-classrgpot_1_1_pair_terms_1a39f75e3d383b41a767caa2536c978c07>`();
+		std::size_t :ref:`size<doxid-classrgpot_1_1_pair_terms_1a89d636ab81fba19d35f6c0e3899b65cc>`() const;
+		std::size_t :target:`limit<doxid-classrgpot_1_1_pair_terms_1a205f2b0a1a0c7ab4395cf35205a98959>`() const;
+		void :ref:`setLimit<doxid-classrgpot_1_1_pair_terms_1a2dfbda9746e67326c2967ac84337fc31>`(std::size_t pairs);
+		void :ref:`release<doxid-classrgpot_1_1_pair_terms_1ad1b68ca8e8a7356c29bf7f65d0caa41d>`();
+	};
+.. _details-classrgpot_1_1_pair_terms:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+``Width`` doubles for each pair of a first pass, in visit order.
+
+A pass keeps pairs until the room that ``record`` made is full. Past it ``push`` and ``next`` return null and the second pass computes its terms again. Nothing is allocated during a pass, so a pair loop holds no call; the next ``record`` makes room for every pair the last pass saw, up to ``limit()``. The block is kept from one evaluation to the next, so a potential that outlives a call refills the same memory.
+
+Fields
+------
+
+.. index:: pair: variable; kDefaultLimit
+.. _doxid-classrgpot_1_1_pair_terms_1ab35633bf44747f4d6cb86d579d7e8f9b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	static std::size_t kDefaultLimit =(std::size_t{32}<<20) /(Width* sizeof(double))
+
+Pairs kept by default: 32 MiB of terms.
+
+Methods
+-------
+
+.. index:: pair: function; record
+.. _doxid-classrgpot_1_1_pair_terms_1a49f39dd363e49a19c3b8b74771bb47df:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void record(std::size_t expected)
+
+Starts a first pass with room for *expected* pairs or for every pair the last pass saw, whichever is more, capped at the limit.
+
+.. index:: pair: function; push
+.. _doxid-classrgpot_1_1_pair_terms_1a90b4689427af237ee134d57693f9e050:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double* push()
+
+Room for the terms of the next pair, or null once the pass is out of room. The pointer is good until the next record.
+
+.. index:: pair: function; replay
+.. _doxid-classrgpot_1_1_pair_terms_1a91dee138595027d699f2ce2bdb437296:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void replay()
+
+Starts the second pass.
+
+.. index:: pair: function; next
+.. _doxid-classrgpot_1_1_pair_terms_1a39f75e3d383b41a767caa2536c978c07:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* next()
+
+The terms of the next pair, or null past the pairs kept.
+
+.. index:: pair: function; size
+.. _doxid-classrgpot_1_1_pair_terms_1a89d636ab81fba19d35f6c0e3899b65cc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::size_t size() const
+
+Pairs the last first pass kept.
+
+.. index:: pair: function; setLimit
+.. _doxid-classrgpot_1_1_pair_terms_1a2dfbda9746e67326c2967ac84337fc31:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setLimit(std::size_t pairs)
+
+Pairs to keep from the next record on. 0 keeps none.
+
+.. index:: pair: function; release
+.. _doxid-classrgpot_1_1_pair_terms_1ad1b68ca8e8a7356c29bf7f65d0caa41d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void release()
+
+Frees the block.
+

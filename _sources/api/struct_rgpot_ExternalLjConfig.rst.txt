@@ -1,0 +1,68 @@
+.. index:: pair: struct; rgpot::ExternalLjConfig
+.. _doxid-structrgpot_1_1_external_lj_config:
+
+struct rgpot::ExternalLjConfig
+==============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Host-unit parameters of the shifted 12-6 potential the engine drivers compare. :ref:`More...<details-structrgpot_1_1_external_lj_config>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <ExternalPot.hpp>
+	
+	struct ExternalLjConfig {
+		// fields
+	
+		double :ref:`u0<doxid-structrgpot_1_1_external_lj_config_1a8364106bad562a8439691ec71dfb1a37>` = 1.0;
+		double :ref:`cutoff<doxid-structrgpot_1_1_external_lj_config_1a14aaad629898a7613ff567c50bdb11e5>` = 8.0;
+		double :ref:`psi<doxid-structrgpot_1_1_external_lj_config_1a58b5cf0a60fdaa5ca477b8ccbddf89fe>` = 1.0;
+		std::string :target:`engine_path<doxid-structrgpot_1_1_external_lj_config_1a034602df6b30e2e5b4d52d7f94cf863a>`;
+	};
+.. _details-structrgpot_1_1_external_lj_config:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Host-unit parameters of the shifted 12-6 potential the engine drivers compare.
+
+Fields
+------
+
+.. index:: pair: variable; u0
+.. _doxid-structrgpot_1_1_external_lj_config_1a8364106bad562a8439691ec71dfb1a37:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double u0 = 1.0
+
+Well depth (eV).
+
+.. index:: pair: variable; cutoff
+.. _doxid-structrgpot_1_1_external_lj_config_1a14aaad629898a7613ff567c50bdb11e5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cutoff = 8.0
+
+Truncation (Angstrom).
+
+.. index:: pair: variable; psi
+.. _doxid-structrgpot_1_1_external_lj_config_1a58b5cf0a60fdaa5ca477b8ccbddf89fe:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double psi = 1.0
+
+Zero crossing (Angstrom).
+

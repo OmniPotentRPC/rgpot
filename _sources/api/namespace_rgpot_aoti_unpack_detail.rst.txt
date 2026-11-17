@@ -1,0 +1,38 @@
+.. index:: pair: namespace; rgpot::aoti_unpack::detail
+.. _doxid-namespacergpot_1_1aoti__unpack_1_1detail:
+
+namespace rgpot::aoti_unpack::detail
+====================================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_aoti_unpack_detail_Manifest.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace detail {
+
+	// structs
+
+	struct :ref:`Manifest<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest>`;
+
+	// global functions
+
+	bool :target:`starts_with<doxid-aoti__unpack_8hpp_1a8eda7de8b7a8ac69f59817b40b358701>`(const std::string& s, const std::string& prefix);
+	bool :target:`ends_with<doxid-aoti__unpack_8hpp_1a46d36efec89b1b0d90b4e8d2abd2c639>`(const std::string& s, const std::string& suffix);
+	bool :target:`safe_relative<doxid-aoti__unpack_8hpp_1a52803c4579035674de93b2b8b696b006>`(const std::string& rel);
+	bool :target:`safe_model_name<doxid-aoti__unpack_8hpp_1aa419ed9a7c50a03d2b7f5e2a95033053>`(const std::string& name);
+	std::string :target:`unique_token<doxid-aoti__unpack_8hpp_1ac76b1fcac43e054bdb68a6deddc2d4eb>`();
+	void :target:`write_manifest<doxid-aoti__unpack_8hpp_1a728e15dbbeb79696cc8e897966560aba>`(const fs::path& path, const :ref:`Manifest<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest>`& m);
+	std::optional<:ref:`Manifest<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest>`> :target:`read_manifest<doxid-aoti__unpack_8hpp_1aa98ac914fa4c1fda122ef0a42319b2eb>`(const fs::path& path);
+	std::optional<:ref:`Unpacked<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked>`> :target:`load_valid<doxid-aoti__unpack_8hpp_1a91d9a8e8de2bab1b489ba62bb0bd914f>`(const fs::path& dir, const std::string& sha256, const std::string& model);
+	:ref:`Manifest<doxid-structrgpot_1_1aoti__unpack_1_1detail_1_1_manifest>` :target:`extract<doxid-aoti__unpack_8hpp_1ab2408b84c7ecf4bdeca66074bd6d8b0e>`(const fs::path& package, const fs::path& out, const std::string& model, const std::string& sha256);
+	void :target:`remove_leftovers<doxid-aoti__unpack_8hpp_1ab108338798962a2321491587a8f5e7ab>`(const fs::path& aoti_dir, const std::string& final_name);
+
+	} // namespace detail

@@ -1,0 +1,40 @@
+.. index:: pair: class; rgpot::PerAtomTeam
+.. _doxid-classrgpot_1_1_per_atom_team:
+
+class rgpot::PerAtomTeam
+========================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Private per-atom arrays, one per slice, for a walk that writes both atoms of a pair from any slice. :ref:`More...<details-classrgpot_1_1_per_atom_team>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <PerAtom.hpp>
+	
+	class PerAtomTeam {
+	public:
+		// construction
+	
+		:target:`PerAtomTeam<doxid-classrgpot_1_1_per_atom_team_1a9175321a36e73985e4ea6919db7eb475>`(const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`* target, std::size_t n, int nthreads);
+
+		// methods
+	
+		:ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>` :target:`slot<doxid-classrgpot_1_1_per_atom_team_1a26e760bdfbc5698f797a00bc7e79c71c>`(int t);
+		void :target:`reduce<doxid-classrgpot_1_1_per_atom_team_1a2b8e06614fed311c213b05b80f9abe66>`() const;
+	};
+.. _details-classrgpot_1_1_per_atom_team:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Private per-atom arrays, one per slice, for a walk that writes both atoms of a pair from any slice.
+
+Slice ``t`` tallies into ``slot(t)``; ``reduce`` adds the slots into the caller's arrays in slice order. A null target allocates nothing and hands out empty slots.
+

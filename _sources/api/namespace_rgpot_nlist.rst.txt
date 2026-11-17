@@ -96,11 +96,15 @@ Overview
 	template <typename Fn>
 	void :ref:`visitHalf<doxid-_neighbour_list_8hpp_1ad26e673b5d183ef34fe91dead088f7c1>`(const :ref:`Neighbours<doxid-classrgpot_1_1nlist_1_1_neighbours>`& cells, std::int64_t begin, std::int64_t end, Fn&& fn);
 
-	int :ref:`threadsRequested<doxid-_neighbours_8cc_1a05e36639124846887956213a31950e7a>`();
-	:ref:`Range<doxid-structrgpot_1_1nlist_1_1_range>` :ref:`partition<doxid-_neighbours_8cc_1afd10c100b7fb7b72ab685a052bffd4a5>`(std::int64_t n, int thread, int nthreads);
 	std::uint64_t :ref:`availableBytes<doxid-_neighbours_8cc_1ad73498fcacbec8d7bad2fdc78d14359e>`();
 	bool :ref:`withinSkin<doxid-_neighbours_8hpp_1a016896fca86003412f1fce1d1f117b2d>`(const double* reference, const double* current, std::size_t n, double skin);
 	double :ref:`mul_add<doxid-_minimum_image_8cpp_1a6400dc19dfc6964f5daa7da968fc9e12>`(double a, double b, double c);
+
+	template <typename Body>
+	void :ref:`forEachSlice<doxid-_neighbours_8hpp_1a4c9d8bfc4e6bd020cd503618028229fc>`(int nslices, Body&& body);
+
+	:ref:`Range<doxid-structrgpot_1_1_range>` :ref:`partition<doxid-_neighbours_8hpp_1a04e5055b9df355eda6ccf517fd51f473>`(std::int64_t n, int slice, int nslices);
+	int :ref:`threadsRequested<doxid-_neighbours_8hpp_1a063f995f7f50b29ad3120f34dc88552f>`();
 
 	} // namespace nlist
 .. _details-namespacergpot_1_1nlist:
@@ -198,26 +202,6 @@ Bind ``cells`` to this geometry. ``cutoff`` is the pair cutoff and ``skin`` is t
 
 The pairs of ``visitDirected`` with ``j > i`` only.
 
-.. index:: pair: function; threadsRequested
-.. _doxid-_neighbours_8cc_1a05e36639124846887956213a31950e7a:
-
-.. ref-code-block:: cpp
-	:class: doxyrest-title-code-block
-
-	int threadsRequested()
-
-Thread count from OMP_NUM_THREADS. Unset, empty, or a non-positive value is one thread, so a call that does not ask for threads matches the serial pair order.
-
-.. index:: pair: function; partition
-.. _doxid-_neighbours_8cc_1afd10c100b7fb7b72ab685a052bffd4a5:
-
-.. ref-code-block:: cpp
-	:class: doxyrest-title-code-block
-
-	:ref:`Range<doxid-structrgpot_1_1nlist_1_1_range>` partition(std::int64_t n, int thread, int nthreads)
-
-Contiguous slice of ``n`` items for ``thread`` in ``[0, nthreads)``. The slices cover ``n`` without overlap, in thread order.
-
 .. index:: pair: function; availableBytes
 .. _doxid-_neighbours_8cc_1ad73498fcacbec8d7bad2fdc78d14359e:
 
@@ -247,4 +231,37 @@ True when every atom has moved by at most half of ``skin`` from ``reference``. S
 	double mul_add(double a, double b, double c)
 
 a\*b+c, one rounding. A hardware instruction when this translation unit has one, or when fma_hw_active(). Otherwise fma_quick.
+
+.. index:: pair: function; forEachSlice
+.. _doxid-_neighbours_8hpp_1a4c9d8bfc4e6bd020cd503618028229fc:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	template <typename Body>
+	void forEachSlice(int nslices, Body&& body)
+
+Runs ``body(slice)`` once for each slice in ``[0, nslices)``, possibly several on one thread, so slices must not wait on each other.
+
+MSVC rejects ``#pragma omp`` inside a lambda (C2760, token PRAGMA_OMP). The regions live here; the lambdas only supply the bodies.
+
+.. index:: pair: function; partition
+.. _doxid-_neighbours_8hpp_1a04e5055b9df355eda6ccf517fd51f473:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Range<doxid-structrgpot_1_1_range>` partition(std::int64_t n, int slice, int nslices)
+
+Contiguous run of ``n`` items for ``slice`` in ``[0, nslices)``. The runs cover ``n`` without overlap, in slice order. Any other slice is empty.
+
+.. index:: pair: function; threadsRequested
+.. _doxid-_neighbours_8hpp_1a063f995f7f50b29ad3120f34dc88552f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int threadsRequested()
+
+Slice count from OMP_NUM_THREADS, read on every call. Unset, empty, or a non-positive value is one slice, so a call that does not ask for threads matches the serial order. One without OpenMP.
 

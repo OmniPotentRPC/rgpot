@@ -1,0 +1,107 @@
+.. index:: pair: namespace; rgpot::lr
+.. _doxid-namespacergpot_1_1lr:
+
+namespace rgpot::lr
+===================
+
+.. toctree::
+	:hidden:
+
+	enum_rgpot_lr_CoulombMethod.rst
+	enum_rgpot_lr_DispersionKind.rst
+	struct_rgpot_lr_CellGeom.rst
+	struct_rgpot_lr_CoulombConfig.rst
+	struct_rgpot_lr_CudaCoulombIn.rst
+	struct_rgpot_lr_D3BjParam.rst
+	struct_rgpot_lr_D4BjParam.rst
+	struct_rgpot_lr_DispersionConfig.rst
+	struct_rgpot_lr_ElecOut.rst
+	struct_rgpot_lr_Neumaier.rst
+	struct_rgpot_lr_NlhConfig.rst
+	struct_rgpot_lr_Pair.rst
+	struct_rgpot_lr_PmeTrace.rst
+	class_rgpot_lr_ChargeResponse.rst
+	class_rgpot_lr_ChargeSource.rst
+	class_rgpot_lr_CoulombPot.rst
+	class_rgpot_lr_DispersionModel.rst
+	class_rgpot_lr_DispersionPot.rst
+	class_rgpot_lr_DualList.rst
+	class_rgpot_lr_FixedCharges.rst
+	class_rgpot_lr_FixedRatios.rst
+	class_rgpot_lr_FnCharges.rst
+	class_rgpot_lr_NlhPot.rst
+	class_rgpot_lr_RatioResponse.rst
+	class_rgpot_lr_RatioSource.rst
+	class_rgpot_lr_SumPot.rst
+	class_rgpot_lr_UnitRatios.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace lr {
+
+	// enums
+
+	enum :ref:`CoulombMethod<doxid-_electro_8hpp_1a8c1c401bc237198473da1749ab9d5601>`;
+	enum :ref:`DispersionKind<doxid-_dispersion_8hpp_1a57f01bcd70c6970bd11f085d7ecb31d1>`;
+
+	// structs
+
+	struct :ref:`CellGeom<doxid-structrgpot_1_1lr_1_1_cell_geom>`;
+	struct :ref:`CoulombConfig<doxid-structrgpot_1_1lr_1_1_coulomb_config>`;
+	struct :ref:`CudaCoulombIn<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in>`;
+	struct :ref:`D3BjParam<doxid-structrgpot_1_1lr_1_1_d3_bj_param>`;
+	struct :ref:`D4BjParam<doxid-structrgpot_1_1lr_1_1_d4_bj_param>`;
+	struct :ref:`DispersionConfig<doxid-structrgpot_1_1lr_1_1_dispersion_config>`;
+	struct :ref:`ElecOut<doxid-structrgpot_1_1lr_1_1_elec_out>`;
+	struct :ref:`Neumaier<doxid-structrgpot_1_1lr_1_1_neumaier>`;
+	struct :ref:`NlhConfig<doxid-structrgpot_1_1lr_1_1_nlh_config>`;
+	struct :ref:`Pair<doxid-structrgpot_1_1lr_1_1_pair>`;
+	struct :ref:`PmeTrace<doxid-structrgpot_1_1lr_1_1_pme_trace>`;
+
+	// classes
+
+	class :ref:`ChargeResponse<doxid-classrgpot_1_1lr_1_1_charge_response>`;
+	class :ref:`ChargeSource<doxid-classrgpot_1_1lr_1_1_charge_source>`;
+	class :ref:`CoulombPot<doxid-classrgpot_1_1lr_1_1_coulomb_pot>`;
+	class :ref:`DispersionModel<doxid-classrgpot_1_1lr_1_1_dispersion_model>`;
+	class :ref:`DispersionPot<doxid-classrgpot_1_1lr_1_1_dispersion_pot>`;
+	class :ref:`DualList<doxid-classrgpot_1_1lr_1_1_dual_list>`;
+	class :ref:`FixedCharges<doxid-classrgpot_1_1lr_1_1_fixed_charges>`;
+	class :ref:`FixedRatios<doxid-classrgpot_1_1lr_1_1_fixed_ratios>`;
+	class :ref:`FnCharges<doxid-classrgpot_1_1lr_1_1_fn_charges>`;
+	class :ref:`NlhPot<doxid-classrgpot_1_1lr_1_1_nlh_pot>`;
+	class :ref:`RatioResponse<doxid-classrgpot_1_1lr_1_1_ratio_response>`;
+	class :ref:`RatioSource<doxid-classrgpot_1_1lr_1_1_ratio_source>`;
+	class :ref:`SumPot<doxid-classrgpot_1_1lr_1_1_sum_pot>`;
+	class :ref:`UnitRatios<doxid-classrgpot_1_1lr_1_1_unit_ratios>`;
+
+	// global functions
+
+	void :target:`coulomb_host<doxid-_cuda_path_8cc_1a185e846a2519c653946b001c5edda35f>`(const :ref:`CudaCoulombIn<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in>`& in, double* energy, double* F);
+	double :target:`pair_sum_host<doxid-_cuda_path_8cc_1ae88fae7d4bb4f1e34becf4fcae6e8841>`(const double* pair, std::size_t n);
+	double :target:`damp_sum_host<doxid-_cuda_path_8cc_1a284389c55a546304be02b455985fc802>`(const double* c6, const double* r0, const double* r, std::size_t n, double a1, double a2);
+	int :target:`cuda_device_count<doxid-_cuda_path_8cc_1ab0bea266f2caac55a4abad410de38b28>`();
+	void :target:`coulomb_cuda<doxid-_cuda_path_8cc_1af9f84ae2507ce3455d99728d624712a4>`(const :ref:`CudaCoulombIn<doxid-structrgpot_1_1lr_1_1_cuda_coulomb_in>`& in, double* energy, double* F, int* used_device);
+	double :target:`pair_sum_cuda<doxid-_cuda_path_8cc_1a3bb19ad2652b0ddb763895fe39b742b3>`(const double* pair, std::size_t n, int* used_device);
+	double :target:`damp_sum_cuda<doxid-_cuda_path_8cc_1a090274a53d5f6ec6a227bbab52d9d0ae>`(const double* c6, const double* r0, const double* r, std::size_t n, double a1, double a2, int* used_device);
+	std::unique_ptr<:ref:`DispersionModel<doxid-classrgpot_1_1lr_1_1_dispersion_model>`> :target:`make_dispersion<doxid-_dispersion_8cc_1a10e3c7c3fcbd40215de9c4f47b37c8fa>`(DispersionKind kind);
+	void :target:`so3lr_erf_pair<doxid-_electro_8cc_1abd86ae308d072f96f0f3a7decc3b6541>`(double qi, double qj, double r, double sigma, double cuton, double cutoff, double ke, double* energy, double* dEdr);
+	void :target:`evaluate_electrostatics<doxid-_electro_8cc_1afefa8cbd26d573fd18aead0d592c0eae>`(CoulombMethod method, const :ref:`CoulombConfig<doxid-structrgpot_1_1lr_1_1_coulomb_config>`& cfg, const double* pos, const double* q, std::size_t n, double total_charge, const double* box, const std::vector<:ref:`Pair<doxid-structrgpot_1_1lr_1_1_pair>`>& pairs, double* F, double* dE_dq, :ref:`ElecOut<doxid-structrgpot_1_1lr_1_1_elec_out>`* out);
+	:ref:`PmeTrace<doxid-structrgpot_1_1lr_1_1_pme_trace>` :target:`pme_trace<doxid-_electro_8cc_1a3e9a8a49cf06f9c21c3fad172be0865e>`();
+	bool :target:`d3bj_param<doxid-_fast_d3_8cc_1a716f99a2d5c65d9f9b126928dcd32105>`(const char* functional, :ref:`D3BjParam<doxid-structrgpot_1_1lr_1_1_d3_bj_param>`* out);
+	void :target:`d3bj_evaluate<doxid-_fast_d3_8cc_1a0e24a5732c061a5c797d937765230ae3>`(const double* pos, const int* z, std::size_t n, const double* box, bool periodic, const std::vector<:ref:`Pair<doxid-structrgpot_1_1lr_1_1_pair>`>& pairs, const :ref:`D3BjParam<doxid-structrgpot_1_1lr_1_1_d3_bj_param>`& param, double cut2, double cut3, double cut_cn, double* energy, double* F, double strain[6]);
+	bool :target:`d4bj_param<doxid-_fast_d4_8cc_1a4aa2439629a7c184f729c62048cdf810>`(const char* functional, :ref:`D4BjParam<doxid-structrgpot_1_1lr_1_1_d4_bj_param>`* out);
+	void :target:`d4_evaluate<doxid-_fast_d4_8cc_1a5ace102e5813b3ba4d8b973a63cda343>`(const double* pos, const int* z, std::size_t n, const double* box, bool periodic, double charge, const :ref:`D4BjParam<doxid-structrgpot_1_1lr_1_1_d4_bj_param>`& param, double cut2, double cut3, double cut_cn, double* energy, double* F, double strain[6]);
+	:ref:`CellGeom<doxid-structrgpot_1_1lr_1_1_cell_geom>` :target:`cell_from_box<doxid-_lattice_8hpp_1af676905267bb8254b18dc20c1c6fd496>`(const double* box);
+	int& :target:`caller_team<doxid-_team_8hpp_1a450d0c0302b9158a05f61b519fcce498>`();
+	int :target:`axis_workers<doxid-_team_8hpp_1a2fb0b7edcd34718a01f596da9d835061>`(int npoints, int team);
+	int :target:`atom_workers<doxid-_team_8hpp_1a5abd3b8bbd047ae4b8e3c6f17e35dd65>`(int natoms, int team);
+	int :target:`beside_real_workers<doxid-_team_8hpp_1adb3b58ad3e7b154fefedf3c91f3d46c1>`(int natoms, int npoints, int requested);
+	int :target:`pme_team<doxid-_team_8hpp_1a96f6af03839d76bf2c14294b1ec9adfe>`(int natoms, int npoints, int requested);
+
+	} // namespace lr

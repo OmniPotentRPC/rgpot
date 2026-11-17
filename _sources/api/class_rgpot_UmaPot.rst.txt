@@ -42,6 +42,7 @@ UMA / OMol calculator: neighbour query + AOTI package. :ref:`More...<details-cla
 		void :target:`setChargeSpin<doxid-classrgpot_1_1_uma_pot_1a58c1104e4bb45668135c173868eb83be>`(int charge, int spin);
 		const char* :ref:`posDtypeName<doxid-classrgpot_1_1_uma_pot_1a509e3a1ef6f13e09c069b2e4d6b2527c>`() const;
 		const char* :ref:`modelDtypeName<doxid-classrgpot_1_1_uma_pot_1a0d6ef864eb7268b509e1e8dc976b01ff>`() const;
+		const :ref:`UmaCheckpointProvenance<doxid-structrgpot_1_1_uma_checkpoint_provenance>`& :ref:`checkpointProvenance<doxid-classrgpot_1_1_uma_pot_1a7b74c0ad3223e3ca06b022a14275e9ef>`() const;
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_uma_pot_1aec8956d8d8fbc5af49d2b69f3e622d5b>`() const;
 	};
 .. _details-classrgpot_1_1_uma_pot:
@@ -53,7 +54,7 @@ UMA / OMol calculator: neighbour query + AOTI package.
 
 Loads an AOTInductor ``.pt2`` exported by ``scripts/export_uma_aoti.py``. Each force call builds a fairchem-convention edge list with the neighbour query and runs the compiled graph. Charge and spin are per-call tensor inputs.
 
-The package was merged for one composition, charge, spin and task. Every force call checks the config and the input against the metadata embedded in the package and throws UmaContractError on a mismatch (see UmaContract).
+A package is exported for one charge, spin and task, and either one composition (merged MoLE) or any composition up to ``z_max``. A dynamic package accepts a range of atom and edge counts. Every force call checks the config and the input against the metadata embedded in the package and throws UmaContractError or UmaShapeError on a mismatch (see UmaContract).
 
 Methods
 -------
@@ -99,6 +100,16 @@ Input dtype used for positions, the cell and cell offsets. ``float32`` or ``floa
 	const char* modelDtypeName() const
 
 Weight dtype recorded in the package. Same lifetime rules as :ref:`posDtypeName() <doxid-classrgpot_1_1_uma_pot_1a509e3a1ef6f13e09c069b2e4d6b2527c>`.
+
+.. index:: pair: function; checkpointProvenance
+.. _doxid-classrgpot_1_1_uma_pot_1a7b74c0ad3223e3ca06b022a14275e9ef:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const :ref:`UmaCheckpointProvenance<doxid-structrgpot_1_1_uma_checkpoint_provenance>`& checkpointProvenance() const
+
+Checkpoint the package was exported from and its SHA-256, read from the package metadata. Every field is unset for a package exported before the keys existed. Loads the package on the first call; the reference lives as long as this :ref:`UmaPot <doxid-classrgpot_1_1_uma_pot>`.
 
 .. index:: pair: function; paramsKey
 .. _doxid-classrgpot_1_1_uma_pot_1aec8956d8d8fbc5af49d2b69f3e622d5b:

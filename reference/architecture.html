@@ -2,7 +2,7 @@
 <html lang="en" data-accent-color="teal" data-content_root="../">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Architecture Overview - rgpot 3.6.0 documentation</title><link rel="shortcut icon" href="../_static/favicon.svg"/><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Python API" href="python_api.html" /><link rel="prev" title="Thread safety" href="../explanation/thread-safety.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Architecture reference - rgpot 3.7.0 documentation</title><link rel="shortcut icon" href="../_static/favicon.svg"/><link rel="index" title="Index" href="../genindex.html" /><link rel="search" title="Search" href="../search.html" /><link rel="next" title="Python API" href="python_api.html" /><link rel="prev" title="Local and global minimization" href="../explanation/global-optimization.html" />
       <link rel="canonical" href="https://rgpot.rgoswami.me/reference/architecture.html" /><script>
     function setColorMode(t){let e=document.documentElement;e.setAttribute("data-color-mode",t);let a=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches,s=t;"auto"===t&&(s=a?"dark":"light"),"light"===s?(e.classList.remove("dark"),e.classList.add("light")):(e.classList.remove("light"),e.classList.add("dark"))}
     setColorMode(localStorage._theme||"auto");
@@ -23,7 +23,7 @@
 </style>
     <meta property="og:type" content="website"/>
   <meta property="og:url" content="https://rgpot.rgoswami.me/reference/architecture.html"/>
-  <meta property="og:title" content="Architecture Overview"/>
+  <meta property="og:title" content="Architecture reference"/>
     <meta name="twitter:card" content="summary"/>
   <!-- Sized PNG icons, apple touch icon, and manifest. html_favicon is favicon.svg. -->
 <link rel="icon" type="image/png" sizes="16x16" href="../_static/favicons/favicon-16x16.png">
@@ -117,42 +117,71 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/neighbour-list.html">Neighbour lists</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/pes-scan.html">Scan a potential energy surface over RPC</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/cpmd.html">Evaluate a water geometry with CPMD</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/cp2k.html">Evaluate diamond silicon with CP2K</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../tutorials/molecular-global-optimization.html">Find the Ground State of an EON Structure</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">How-To Guides</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/pip-python.html">Python package (PyPI)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/ase.html">ASE calculators</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-lammps.html">LAMMPS</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-gromacs.html">GROMACS</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-gromacs-qmmm.html">GROMACS QM/MM drop-in</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-openmm.html">OpenMM</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-plumed.html">PLUMED</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-metatomic.html">Metatomic and the engine ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/uma-export.html">Export a UMA model with dynamic shapes</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/embedding.html">Embedding as a Subproject</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/exprpot.html">Compose potentials with ExprPot</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/ipi.html">i-PI socket server</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/ipi.html">i-PI socket server and driver</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/integration.html">External Integration Guide</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/add-potential.html">Add a potential to the Rust core</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/engine-plugins.html">Open, build and test engine plugins</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eindir-anneal.html">rgpot Potentials as eindir Objectives</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html">eOn Potentials Over rgpot</a></li>
-<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#why-this-shape">Why This Shape</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#landed-work-items">Landed Work Items</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#operator-cheatsheet-rgpot-side">Operator Cheatsheet (rgpot side)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/eon-rgpot.html#related">Related</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../howto/sutton-chen-stress.html">Read the stress of a periodic Sutton-Chen cell</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="../howto/cpu-scaling.html">Measure CPU scaling of batch evaluation</a></li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Explanation</span></p>
 <ul>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../explanation/index.html">Explanation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/architecture.html">Architecture</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../explanation/rpc-model.html">The RPC Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/abi-stamps.html">ABI stamps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/hessian-vector.html">Hessian-vector products</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/fortran-kernels.html">Fortran kernels: port, not wrap</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/gromacs-qmmm.html">GROMACS QM/MM through the CP2K interface</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../explanation/simd.html">SIMD paths and dispatch</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../explanation/thread-safety.html">Thread safety</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/neighbour-lists.html">Neighbour list design</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/mpi.html">Calculator groups over MPI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../explanation/global-optimization.html">Local and global minimization</a></li>
 </ul>
 </li>
 </ul>
 <p class="caption" role="heading" aria-level="3"><span class="caption-text">Reference</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Architecture Overview</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Architecture reference</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="python_api.html">Python API</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="cpp_api.html">C++ API</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="cpp_potentials.html">C++ potentials</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="cpp_backends.html">C++ engine-backed potentials</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="ipi_driver.html">i-PI driver client</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="build_options.html">Build options</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="potential_config.html">PotentialConfig arms</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="sw_si.html">Stillinger-Weber silicon (1985)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="tersoff_sic.html">Tersoff silicon-carbon (1989)</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="mpi.html">MPI</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="c_abi.html">C ABI of rgpot-core</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="nlist_abi.html">Neighbour-list C ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="fast_nlist.html">Fast pair list C ABI</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="engine_abi.html">Engine plugin ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="gromacs_dropin.html">GROMACS QM/MM drop-in reference</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="plugin_abi.html">Plugin C ABI</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="external_abi.html">External engine C ABI</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="simd_exp.html">FMA dispatch and exp</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="sutton_chen.html">Sutton-Chen potential</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="sutton_chen.html#reduced-cluster-pairs">Reduced cluster pairs</a></li>
@@ -160,8 +189,10 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html">Tabulated EAM and Finnis-Sinclair potentials</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html#agreement-with-lammps">Agreement with LAMMPS</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html#stress">Stress</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html#pair-list">Pair list</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="eam_table.html#checks">Checks</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="fortran_potentials.html">Fortran potentials: porting rules</a></li>
+<li class="toctree-l1 _expand"><a class="reference internal" href="potential_names.html">Potential names and options</a></li>
 <li class="toctree-l1 _expand"><a class="reference internal" href="../api/index.html">API Reference</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../api/group_rgpot_cpp.html">C++ RAII Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../api/class_rgpot_CalcResult.html">class rgpot::CalcResult</a><ul class="simple">
@@ -189,16 +220,22 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_cache.html">namespace cache</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_cp2k.html">namespace cp2k</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_detail.html">namespace detail</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_engine.html">namespace engine</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_eonc.html">namespace eonc</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields.html">namespace forcefields</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-2.html">namespace forcefields</a><ul class="simple">
-</ul>
-</li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-3.html">namespace forcefields</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-2.html">namespace forcefields</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_forcefields_unit_system.html">namespace forcefields::unit_system</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/namespace_forcefields_zhu_philpott_parameters.html">namespace forcefields::zhu_philpott_parameters</a></li>
 <li class="toctree-l4"><a class="reference internal" href="../api/class_forcefields_Ccl.html">class forcefields::Ccl</a></li>
@@ -208,14 +245,38 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l4"><a class="reference internal" href="../api/class_forcefields_ZhuPhilpott.html">template class forcefields::ZhuPhilpott</a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_forcefields-3.html">namespace forcefields</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_fortranpots.html">namespace fortranpots</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist.html">namespace nlist</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr.html">namespace lr</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist-2.html">namespace nlist</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-2.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-3.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-4.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-5.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-6.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_lr-7.html">namespace lr</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist.html">namespace nlist</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../api/enum_nlist_Hit.html">enum nlist::Hit</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist-2.html">namespace nlist</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_nlist-3.html">namespace nlist</a><ul class="simple">
@@ -230,6 +291,10 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_plugin-2.html">namespace plugin</a><ul class="simple">
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_pocketfft.html">namespace pocketfft</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_pocketfft_detail.html">namespace pocketfft::detail</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
@@ -242,7 +307,126 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-4.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-5.html">namespace rgpot</a><ul class="simple">
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-5.html">namespace rgpot</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_aoti_unpack.html">namespace rgpot::aoti_unpack</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cp2k.html">namespace rgpot::cp2k</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_detail.html">namespace rgpot::detail</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_eam.html">namespace rgpot::eam</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_engine.html">namespace rgpot::engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_ipi.html">namespace rgpot::ipi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_lr.html">namespace rgpot::lr</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_md.html">namespace rgpot::md</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_rpc.html">namespace rgpot::rpc</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_simd.html">namespace rgpot::simd</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_staged.html">namespace rgpot::staged</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_units.html">namespace rgpot::units</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_EAMTableFormat.html">enum rgpot::EAMTableFormat</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_HvpScheme.html">enum rgpot::HvpScheme</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_BatchInput.html">struct rgpot::BatchInput</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_BatchResult.html">struct rgpot::BatchResult</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EAMCellConfig.html">struct rgpot::EAMCellConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EAMTable.html">struct rgpot::EAMTable</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EAMTableConfig.html">struct rgpot::EAMTableConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EMTConfig.html">struct rgpot::EMTConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ExternalLjConfig.html">struct rgpot::ExternalLjConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_HalfList.html">struct rgpot::HalfList</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_HvpCentre.html">struct rgpot::HvpCentre</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_HvpCounts.html">struct rgpot::HvpCounts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_IPIConfig.html">struct rgpot::IPIConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_IPIDriverConfig.html">struct rgpot::IPIDriverConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_KeptCounts.html">struct rgpot::KeptCounts</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJConfig.html">struct rgpot::LJConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Locality.html">struct rgpot::Locality</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_NativeState.html">struct rgpot::NativeState</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_PerAtomOut.html">struct rgpot::PerAtomOut</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Range.html">struct rgpot::Range</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_StageTally.html">struct rgpot::StageTally</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SuttonChenConfig.html">struct rgpot::SuttonChenConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SuttonChenScales.html">struct rgpot::SuttonChenScales</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_UmaCheckpointProvenance.html">struct rgpot::UmaCheckpointProvenance</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_WaterConfig.html">struct rgpot::WaterConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBDlopenConfig.html">struct rgpot::XTBDlopenConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcFields.html">struct rgpot::XcFields</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcGrid.html">struct rgpot::XcGrid</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcMo.html">struct rgpot::XcMo</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZBLConfig.html">struct rgpot::ZBLConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblPairCoeffs.html">struct rgpot::ZblPairCoeffs</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblTables.html">struct rgpot::ZblTables</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_BatchEvaluator.html">class rgpot::BatchEvaluator</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CP2KPot.html">class rgpot::CP2KPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CP2KScfError.html">class rgpot::CP2KScfError</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D3Pot.html">class rgpot::D3Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D4Pot.html">class rgpot::D4Pot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_EAMPot.html">class rgpot::EAMPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_EAMTablePot.html">class rgpot::EAMTablePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_EMTPot.html">class rgpot::EMTPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ExprPot.html">class rgpot::ExprPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_GromacsPot.html">class rgpot::GromacsPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_HessianVectorCache.html">class rgpot::HessianVectorCache</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_IPIDriver.html">class rgpot::IPIDriver</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_IPIPot.html">class rgpot::IPIPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_Kept.html">template class rgpot::Kept</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_KeptKey.html">class rgpot::KeptKey</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJClusterPot.html">class rgpot::LJClusterPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LammpsPot.html">class rgpot::LammpsPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MOPACPot.html">class rgpot::MOPACPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicDlopen.html">class rgpot::MetatomicDlopen</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MorsePot.html">class rgpot::MorsePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_OpenMMPot.html">class rgpot::OpenMMPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PairTerms.html">template class rgpot::PairTerms</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PerAtomTeam.html">class rgpot::PerAtomTeam</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_SPCEPot.html">class rgpot::SPCEPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_SkalaPot.html">class rgpot::SkalaPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_StillingerWeberSi.html">class rgpot::StillingerWeberSi</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_SuttonChenPot.html">class rgpot::SuttonChenPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TIP4PPot.html">class rgpot::TIP4PPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TIP4PPtPot.html">class rgpot::TIP4PPtPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TeamCap.html">class rgpot::TeamCap</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TersoffSiC.html">class rgpot::TersoffSiC</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_UmaPot.html">class rgpot::UmaPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-6.html">namespace rgpot</a><ul class="simple">
@@ -260,94 +444,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-10.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-11.html">namespace rgpot</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_abi.html">namespace rgpot::abi</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_aoti_execstack.html">namespace rgpot::aoti_execstack</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_cache.html">namespace rgpot::cache</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_details.html">namespace rgpot::details</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_eam.html">namespace rgpot::eam</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_engine.html">namespace rgpot::engine</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_fortranpots.html">namespace rgpot::fortranpots</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_nlist.html">namespace rgpot::nlist</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_plugin.html">namespace rgpot::plugin</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_simd.html">namespace rgpot::simd</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_tools.html">namespace rgpot::tools</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_types.html">namespace rgpot::types</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_uma.html">namespace rgpot::uma</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_units.html">namespace rgpot::units</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/namespace_rgpot_vesin_compat.html">namespace rgpot::vesin_compat</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_D3Damping.html">enum rgpot::D3Damping</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_EAMTableFormat.html">enum rgpot::EAMTableFormat</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_GFNMethod.html">enum rgpot::GFNMethod</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_Reentrancy.html">enum rgpot::Reentrancy</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TBLiteMethod.html">enum rgpot::TBLiteMethod</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/enum_rgpot_TorchDeterminismPolicy.html">enum rgpot::TorchDeterminismPolicy</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_BatchInput.html">struct rgpot::BatchInput</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_BatchResult.html">struct rgpot::BatchResult</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_CalculatorGroup.html">struct rgpot::CalculatorGroup</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D3Config.html">struct rgpot::D3Config</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_D4Config.html">struct rgpot::D4Config</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EAMCellConfig.html">struct rgpot::EAMCellConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EAMTable.html">struct rgpot::EAMTable</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EAMTableConfig.html">struct rgpot::EAMTableConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_EMTConfig.html">struct rgpot::EMTConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_Fnv1a.html">struct rgpot::Fnv1a</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceBatch.html">struct rgpot::ForceBatch</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceInput.html">struct rgpot::ForceInput</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ForceOut.html">struct rgpot::ForceOut</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_IPIConfig.html">struct rgpot::IPIConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJClusterConfig.html">struct rgpot::LJClusterConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_LJConfig.html">struct rgpot::LJConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MetatomicConfig.html">struct rgpot::MetatomicConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_MorseConfig.html">struct rgpot::MorseConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_PotCaps.html">struct rgpot::PotCaps</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_QuinticSwitch.html">struct rgpot::QuinticSwitch</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SkalaConfig.html">struct rgpot::SkalaConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SuttonChenConfig.html">struct rgpot::SuttonChenConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_SuttonChenScales.html">struct rgpot::SuttonChenScales</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_TBLiteConfig.html">struct rgpot::TBLiteConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_UmaConfig.html">struct rgpot::UmaConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_WaterConfig.html">struct rgpot::WaterConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBConfig.html">struct rgpot::XTBConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XTBDlopenConfig.html">struct rgpot::XTBDlopenConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcFields.html">struct rgpot::XcFields</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcGrid.html">struct rgpot::XcGrid</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_XcMo.html">struct rgpot::XcMo</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZBLConfig.html">struct rgpot::ZBLConfig</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblPairCoeffs.html">struct rgpot::ZblPairCoeffs</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/struct_rgpot_ZblTables.html">struct rgpot::ZblTables</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_BatchEvaluator.html">class rgpot::BatchEvaluator</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_CPMDPot.html">class rgpot::CPMDPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D3Pot.html">class rgpot::D3Pot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_D4Pot.html">class rgpot::D4Pot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_DynLib.html">class rgpot::DynLib</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_EAMPot.html">class rgpot::EAMPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_EAMTablePot.html">class rgpot::EAMTablePot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_EMTPot.html">class rgpot::EMTPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ExprPot.html">class rgpot::ExprPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_IPIPot.html">class rgpot::IPIPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJClusterPot.html">class rgpot::LJClusterPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_LJPot.html">class rgpot::LJPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MOPACPot.html">class rgpot::MOPACPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicDlopen.html">class rgpot::MetatomicDlopen</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MetatomicPot.html">class rgpot::MetatomicPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_MorsePot.html">class rgpot::MorsePot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_NWChemPot.html">class rgpot::NWChemPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_PotentialBase.html">class rgpot::PotentialBase</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_SPCEPot.html">class rgpot::SPCEPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_SkalaPot.html">class rgpot::SkalaPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_StillingerWeberSi.html">class rgpot::StillingerWeberSi</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_SuttonChenPot.html">class rgpot::SuttonChenPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TBLitePot.html">class rgpot::TBLitePot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TIP4PPot.html">class rgpot::TIP4PPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TIP4PPtPot.html">class rgpot::TIP4PPtPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_TersoffSiC.html">class rgpot::TersoffSiC</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_UmaPot.html">class rgpot::UmaPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBDlopen.html">class rgpot::XTBDlopen</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XTBPot.html">class rgpot::XTBPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_XcKernel.html">class rgpot::XcKernel</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_ZBLPot.html">class rgpot::ZBLPot</a></li>
-<li class="toctree-l4"><a class="reference internal" href="../api/class_rgpot_registry.html">template class rgpot::registry</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-11.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-12.html">namespace rgpot</a><ul class="simple">
@@ -381,6 +478,18 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-22.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-23.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-24.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-25.html">namespace rgpot</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot-26.html">namespace rgpot</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/namespace_rgpot_cuh2.html">namespace rgpot_cuh2</a><ul class="simple">
@@ -472,6 +581,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../api/enum_rgpot_engine_acquire_reason.html">enum rgpot_engine_acquire_reason</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../api/enum_rgpot_plugin_caps_t.html">enum rgpot_plugin_caps_t</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../api/enum_rgpot_plugin_status_t.html">enum rgpot_plugin_status_t</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CP2KCEnv.html">struct CP2KCEnv</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_CP2KCSession.html">struct CP2KCSession</a><ul class="simple">
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_CPMDCFeatureEntry.html">struct CPMDCFeatureEntry</a><ul class="simple">
 </ul>
 </li>
@@ -531,6 +646,9 @@ data-aria-dark="Switch to auto color mode">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_cxx_layout_stamp_t.html">struct rgpot_cxx_layout_stamp_t</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_external_potential.html">struct rgpot_external_potential</a><ul class="simple">
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="../api/struct_rgpot_mpi_api_t.html">struct rgpot_mpi_api_t</a><ul class="simple">
@@ -635,10 +753,12 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/tensor.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">tensor</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/status.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">status</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/hvp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">hvp</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/eindir.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">eindir</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="../crates/rgpot_core/c_api.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">c_api</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/types.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">types</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/potential.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">potential</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/hvp.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">hvp</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="../crates/rgpot_core/c_api/rpc.html"><code class="docutils literal notranslate"><span class="pre">mod</span> <span class="pre">rpc</span></code></a></li>
 </ul>
 </li>
@@ -663,6 +783,7 @@ data-aria-dark="Switch to auto color mode">
 <li class="toctree-l2"><a class="reference internal" href="../contributing/developer/index.html">Developer Guide</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/developer/testing.html">Testing</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/developer/release.html">Release Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/developer/abi-bump.html">Bump the ABI numbers</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/developer/faq.html">Developer FAQ</a></li>
 </ul>
 </li>
@@ -681,32 +802,15 @@ data-aria-dark="Switch to auto color mode">
       <i class="i-lucide close"></i>
     </button>
     <div class="sy-scrollbar sy-rside-inner px-6 xl:top-16 xl:sticky xl:pl-0 pt-6 pb-4"><div class="localtoc"><h3>On this page</h3><ul>
-<li><a class="reference internal" href="#layer-diagram">Layer Diagram</a></li>
-<li><a class="reference internal" href="#layers-in-detail">Layers in Detail</a><ul>
-<li><a class="reference internal" href="#rust-core-rgpot-core">Rust Core (<code class="docutils literal notranslate"><span class="pre">rgpot-core/</span></code>)</a><ul>
-<li><a class="reference internal" href="#feature-gates">Feature Gates</a></li>
-<li><a class="reference internal" href="#cap-n-proto-schema-sharing">Cap&#8217;n Proto Schema Sharing</a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#c-abi-rgpot-core-include-rgpot-h">C ABI (<code class="docutils literal notranslate"><span class="pre">rgpot-core/include/rgpot.h</span></code>)</a></li>
-<li><a class="reference internal" href="#c-raii-wrappers-include-rgpot">C++ RAII Wrappers (<code class="docutils literal notranslate"><span class="pre">include/rgpot/</span></code>)</a></li>
-<li><a class="reference internal" href="#c-potentials">C++ Potentials</a><ul>
+<li><a class="reference internal" href="#potentials">Potentials</a><ul>
 <li><a class="reference internal" href="#built-in-potentials">Built-in Potentials</a></li>
+<li><a class="reference internal" href="#fortran-potentials">Fortran Potentials</a></li>
 <li><a class="reference internal" href="#feature-gated-potentials">Feature-gated Potentials</a></li>
 <li><a class="reference internal" href="#nwchempot-rgpot-nwchempot">NWChemPot (<code class="docutils literal notranslate"><span class="pre">rgpot/NWChemPot/</span></code>)</a></li>
 <li><a class="reference internal" href="#units-rgpot-units-hpp">Units (<code class="docutils literal notranslate"><span class="pre">rgpot/units.hpp</span></code>)</a></li>
 </ul>
 </li>
-</ul>
-</li>
-<li><a class="reference internal" href="#error-handling-conventions">Error Handling Conventions</a></li>
-<li><a class="reference internal" href="#backend-capability-handshake">Backend Capability Handshake</a></li>
-<li><a class="reference internal" href="#adding-a-new-potential">Adding a New Potential</a></li>
-<li><a class="reference internal" href="#build-system-integration">Build System Integration</a><ul>
-<li><a class="reference internal" href="#meson">Meson</a></li>
-<li><a class="reference internal" href="#standalone-rust">Standalone Rust</a></li>
-</ul>
-</li>
+<li><a class="reference internal" href="#capability-handshake">Capability handshake</a></li>
 <li><a class="reference internal" href="#directory-reference">Directory Reference</a></li>
 </ul>
 </div><a class="js-repo-stats repo-stats flex items-center" href="https://github.com/OmniPotentRPC/rgpot"
@@ -748,7 +852,7 @@ data-aria-dark="Switch to auto color mode">
         <span>/</span>
         <meta itemprop="position" content="1" />
       </li><li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-        <strong itemprop="name">Architecture Overview</strong>
+        <strong itemprop="name">Architecture reference</strong>
         <meta itemprop="position" content="2" />
       </li></ol>
     <div class="xl:hidden ml-1">
@@ -796,210 +900,38 @@ data-aria-dark="Switch to auto color mode">
     </div>
   </div>
 </div><article class="yue dark-code" role="main">
-          <section id="architecture-overview">
-<h1>Architecture Overview<a class="headerlink" href="#architecture-overview" title="Link to this heading">¶</a></h1>
-<p>Why the wire uses three carriers is explained in</p>
-<p><a class="reference internal" href="../explanation/rpc-model.html"><span class="doc">The RPC Model</span></a></p>
-<p><code class="docutils literal notranslate"><span class="pre">rgpot</span></code> follows a <em>metatensor</em>-style layered architecture: a Rust core defines
-the fundamental types and RPC infrastructure, exposed via a C ABI (generated by
-<code class="docutils literal notranslate"><span class="pre">cbindgen</span></code>), with hand-written C++ RAII wrappers on top.
-Existing C++ potentials remain callable through an FFI callback mechanism.</p>
-<section id="layer-diagram">
-<h2>Layer Diagram<a class="headerlink" href="#layer-diagram" title="Link to this heading">¶</a></h2>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="o">+---------------------------------------------+</span>
-</span><span data-line="2"><span class="o">|</span>  <span class="n">C</span><span class="o">++</span> <span class="n">Consumer</span> <span class="n">Layer</span> <span class="p">(</span><span class="n">RAII</span> <span class="n">wrappers</span><span class="p">)</span>          <span class="o">|</span>
-</span><span data-line="3"><span class="o">|</span>  <span class="n">include</span><span class="o">/</span><span class="n">rgpot</span><span class="o">/*.</span><span class="n">hpp</span>                         <span class="o">|</span>
-</span><span data-line="4"><span class="o">+---------------------------------------------+</span>
-</span><span data-line="5"><span class="o">|</span>  <span class="n">C</span> <span class="n">ABI</span> <span class="p">(</span><span class="n">generated</span> <span class="n">by</span> <span class="n">cbindgen</span><span class="p">)</span>               <span class="o">|</span>
-</span><span data-line="6"><span class="o">|</span>  <span class="n">rgpot</span><span class="o">-</span><span class="n">core</span><span class="o">/</span><span class="n">include</span><span class="o">/</span><span class="n">rgpot</span><span class="o">.</span><span class="n">h</span>                  <span class="o">|</span>
-</span><span data-line="7"><span class="o">+---------------------------------------------+</span>
-</span><span data-line="8"><span class="o">|</span>  <span class="n">Rust</span> <span class="n">Core</span>                                   <span class="o">|</span>
-</span><span data-line="9"><span class="o">|</span>  <span class="n">rgpot</span><span class="o">-</span><span class="n">core</span><span class="o">/</span><span class="n">src</span><span class="o">/</span>                             <span class="o">|</span>
-</span><span data-line="10"><span class="o">|</span>  <span class="o">-</span> <span class="n">Types</span> <span class="p">(</span><span class="n">ForceInput</span><span class="p">,</span> <span class="n">ForceOut</span><span class="p">)</span>              <span class="o">|</span>
-</span><span data-line="11"><span class="o">|</span>  <span class="o">-</span> <span class="n">Potential</span> <span class="n">trait</span> <span class="o">+</span> <span class="n">callback</span> <span class="n">dispatch</span>        <span class="o">|</span>
-</span><span data-line="12"><span class="o">|</span>  <span class="o">-</span> <span class="n">Cap</span><span class="s1">&#39;n Proto RPC client/server             |</span>
-</span><span data-line="13"><span class="o">|</span>  <span class="o">-</span> <span class="n">Error</span> <span class="n">handling</span> <span class="p">(</span><span class="n">status</span> <span class="n">codes</span> <span class="o">+</span> <span class="n">TLS</span> <span class="n">msg</span><span class="p">)</span>   <span class="o">|</span>
-</span><span data-line="14"><span class="o">+---------------------------------------------+</span>
-</span><span data-line="15">        <span class="o">|</span> <span class="n">FFI</span> <span class="n">callbacks</span>
-</span><span data-line="16"><span class="o">+---------------------------------------------+</span>
-</span><span data-line="17"><span class="o">|</span>  <span class="n">C</span><span class="o">++</span> <span class="n">Potentials</span>                              <span class="o">|</span>
-</span><span data-line="18"><span class="o">|</span>  <span class="n">LJ</span><span class="p">,</span> <span class="n">CuH2</span><span class="p">,</span> <span class="n">XTBPot</span><span class="p">,</span> <span class="n">TBLitePot</span><span class="p">,</span> <span class="n">D3Pot</span><span class="p">,</span> <span class="n">D4Pot</span><span class="p">,</span><span class="o">|</span>
-</span><span data-line="19"><span class="o">|</span>  <span class="n">ExprPot</span><span class="p">,</span> <span class="n">MetatomicPot</span>                       <span class="o">|</span>
-</span><span data-line="20"><span class="o">+---------------------------------------------+</span>
-</span></pre></div>
-</div>
-</section>
-<section id="layers-in-detail">
-<h2>Layers in Detail<a class="headerlink" href="#layers-in-detail" title="Link to this heading">¶</a></h2>
-<section id="rust-core-rgpot-core">
-<h3>Rust Core (<code class="docutils literal notranslate"><span class="pre">rgpot-core/</span></code>)<a class="headerlink" href="#rust-core-rgpot-core" title="Link to this heading">¶</a></h3>
-<p>The Rust crate is the single source of truth for the public API.
-It defines:</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">rgpot_force_input_t</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_force_out_t</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">#[repr(C)]</span></code> structs
-mirroring</p>
-</dd>
-</dl>
-<p>the legacy C++ <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> / <code class="docutils literal notranslate"><span class="pre">ForceOut</span></code> from <code class="docutils literal notranslate"><span class="pre">ForceStructs.hpp</span></code>.
-These are the canonical data exchange types across the FFI boundary.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">rgpot_status_t</span></code></dt><dd><p>An enum of status codes (<code class="docutils literal notranslate"><span class="pre">RGPOT_SUCCESS</span></code>,</p>
-</dd>
-</dl>
-<p><code class="docutils literal notranslate"><span class="pre">RGPOT_INVALID_PARAMETER</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_INTERNAL_ERROR</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_RPC_ERROR</span></code>,
-<code class="docutils literal notranslate"><span class="pre">RGPOT_BUFFER_SIZE_ERROR</span></code>).
-Every <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> function returns one of these.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code></dt><dd><p>An opaque handle wrapping a C function pointer callback</p>
-</dd>
-</dl>
-<p>plus a <code class="docutils literal notranslate"><span class="pre">void*</span> <span class="pre">user_data</span></code>.
-This is how C++ potentials are registered into the Rust core without the core
-knowing the concrete type.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code></dt><dd><p>Thread-local last error message.</p>
-</dd>
-</dl>
-<p>On any non-success return, the caller can retrieve a human-readable string
-describing the failure.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">catch_unwind</span></code> wrapper</dt><dd><p>Every <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> function boundary catches Rust</p>
-</dd>
-</dl>
-<p>panics and converts them to <code class="docutils literal notranslate"><span class="pre">RGPOT_INTERNAL_ERROR</span></code> plus an error message.
-This prevents undefined behaviour from unwinding across the FFI boundary.</p>
-<section id="feature-gates">
-<h4>Feature Gates<a class="headerlink" href="#feature-gates" title="Link to this heading">¶</a></h4>
-<p>The crate uses Cargo feature flags to keep the core minimal:</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">rpc</span></code></dt><dd><p>Enables Cap’n Proto RPC client and server.</p>
-</dd>
-</dl>
-<p>Adds dependencies on <code class="docutils literal notranslate"><span class="pre">capnp</span></code>, <code class="docutils literal notranslate"><span class="pre">capnp-rpc</span></code>, and <code class="docutils literal notranslate"><span class="pre">tokio</span></code>.
-The RPC module reuses the existing <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> schema shared with the C+</p>
-<ul class="simple">
-<li><p>server.</p></li>
-</ul>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">cache</span></code></dt><dd><p>Reserved for future caching integration.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">gen-header</span></code></dt><dd><p>Enables C header generation via <code class="docutils literal notranslate"><span class="pre">cbindgen</span></code>.</p>
-</dd>
-</dl>
-<p>Used only during development; run <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">gen-header</span></code> to regenerate
-<code class="docutils literal notranslate"><span class="pre">include/</span> <span class="pre">rgpot.h</span></code>.</p>
-</section>
-<section id="cap-n-proto-schema-sharing">
-<h4>Cap’n Proto Schema Sharing<a class="headerlink" href="#cap-n-proto-schema-sharing" title="Link to this heading">¶</a></h4>
-<p>The Cap’n Proto schema (<code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code>) is bundled inside the Rust crate at
-<code class="docutils literal notranslate"><span class="pre">rgpot-core/schema/Potentials.capnp</span></code>.
-This is the canonical copy used when building from <code class="docutils literal notranslate"><span class="pre">crates.io</span></code>.
-In the monorepo, <code class="docutils literal notranslate"><span class="pre">build.rs</span></code> also checks <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/rpc/Potentials.capnp</span></code> as
-a fallback.
-The Cap’n Proto wire format is stable across language implementations, so Rust
-clients and C++ servers (or vice versa) are fully interoperable.</p>
-</section>
-</section>
-<section id="c-abi-rgpot-core-include-rgpot-h">
-<h3>C ABI (<code class="docutils literal notranslate"><span class="pre">rgpot-core/include/rgpot.h</span></code>)<a class="headerlink" href="#c-abi-rgpot-core-include-rgpot-h" title="Link to this heading">¶</a></h3>
-<p>The C header is auto-generated by <code class="docutils literal notranslate"><span class="pre">cbindgen</span></code> from the Rust source.
-Run <code class="docutils literal notranslate"><span class="pre">pixi</span> <span class="pre">r</span> <span class="pre">gen-header</span></code> (which invokes <code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">build</span> <span class="pre">--features</span> <span class="pre">gen-header</span></code>) to
-regenerate it.
-This header is the contract between the Rust core and all C/C++ consumers.
-It contains:</p>
-<ul class="simple">
-<li><p>Type definitions for all <code class="docutils literal notranslate"><span class="pre">#[repr(C)]</span></code> structs and enums.</p></li>
-<li><p>Forward declarations for opaque handles (<code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code>,</p></li>
-</ul>
-<p><code class="docutils literal notranslate"><span class="pre">rgpot_rpc_client_t</span></code>).</p>
-<ul class="simple">
-<li><p>Function declarations for the entire public API.</p></li>
-<li><p>Doxygen-style documentation extracted from Rust doc comments.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">#ifdef</span> <span class="pre">RGPOT_HAS_RPC</span></code> guards around RPC-specific declarations.</p></li>
-</ul>
-<p>This header is never edited by hand; any changes to the public API are made in
-the Rust source and regenerated.</p>
-</section>
-<section id="c-raii-wrappers-include-rgpot">
-<h3>C++ RAII Wrappers (<code class="docutils literal notranslate"><span class="pre">include/rgpot/</span></code>)<a class="headerlink" href="#c-raii-wrappers-include-rgpot" title="Link to this heading">¶</a></h3>
-<p>Hand-written C++ headers provide idiomatic wrappers around the C API:</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">errors.hpp</span></code></dt><dd><p>Maps <code class="docutils literal notranslate"><span class="pre">rgpot_status_t</span></code> codes to <code class="docutils literal notranslate"><span class="pre">rgpot::Error</span></code> exceptions via</p>
-</dd>
-</dl>
-<p><code class="docutils literal notranslate"><span class="pre">details::check_status()</span></code>.
-Internally calls <code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code> to populate the exception message.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">types.hpp</span></code></dt><dd><p>Provides <code class="docutils literal notranslate"><span class="pre">rgpot::InputSpec</span></code> (a lightweight view over borrowed</p>
-</dd>
-</dl>
-<p>input data) and <code class="docutils literal notranslate"><span class="pre">rgpot::CalcResult</span></code> (holds the force buffer and stores energy/
-variance).
-These are distinct from the legacy <code class="docutils literal notranslate"><span class="pre">rgpot::ForceInput</span></code> / <code class="docutils literal notranslate"><span class="pre">rgpot::ForceOut</span></code> types
-in <code class="docutils literal notranslate"><span class="pre">ForceStructs.hpp</span></code> to avoid name collisions.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">potential.hpp</span></code></dt><dd><p>The <code class="docutils literal notranslate"><span class="pre">rgpot::PotentialHandle</span></code> class is a move-only RAII</p>
-</dd>
-</dl>
-<p>wrapper around <code class="docutils literal notranslate"><span class="pre">rgpot_potential_t*</span></code>.
-Key methods:</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">calculate(const</span> <span class="pre">InputSpec&amp;)</span></code></dt><dd><p>Invokes the potential and returns a</p>
-</dd>
-</dl>
-<p><code class="docutils literal notranslate"><span class="pre">CalcResult</span></code>.
-Throws <code class="docutils literal notranslate"><span class="pre">rgpot::Error</span></code> on failure.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">from_impl&lt;Impl&gt;(impl)</span></code></dt><dd><p>Template factory that wraps any C++ potential
-object</p>
-</dd>
-</dl>
-<p>with a compatible <code class="docutils literal notranslate"><span class="pre">forceImpl</span></code> method.
-Generates a type-safe trampoline function automatically.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">from_callback(fn,</span> <span class="pre">user_data,</span> <span class="pre">free_fn)</span></code></dt><dd><p>Low-level factory taking an
-explicit</p>
-</dd>
-</dl>
-<p>C function pointer.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">rpc_client.hpp</span></code></dt><dd><p>RAII wrapper around <code class="docutils literal notranslate"><span class="pre">rgpot_rpc_client_t*</span></code>.</p>
-</dd>
-</dl>
-<p>Connects to a remote server on construction and provides <code class="docutils literal notranslate"><span class="pre">calculate()</span></code> with the
-same <code class="docutils literal notranslate"><span class="pre">InputSpec</span></code> / <code class="docutils literal notranslate"><span class="pre">CalcResult</span></code> interface.
-Guarded by <code class="docutils literal notranslate"><span class="pre">#ifdef</span> <span class="pre">RGPOT_HAS_RPC</span></code>.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">rgpot.hpp</span></code></dt><dd><p>Aggregate header that includes everything.</p>
-</dd>
-</dl>
-</section>
-<section id="c-potentials">
-<h3>C++ Potentials<a class="headerlink" href="#c-potentials" title="Link to this heading">¶</a></h3>
-<p>The <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/</span></code> directory contains all potential implementations using the
-CRTP-based <code class="docutils literal notranslate"><span class="pre">Potential&lt;Derived&gt;</span></code> template.
-Each potential provides <code class="docutils literal notranslate"><span class="pre">void</span> <span class="pre">forceImpl(const</span> <span class="pre">ForceInput&amp;,</span> <span class="pre">ForceOut*)</span> <span class="pre">const</span></code>.
-To use them through the Rust core, pass them to
-<code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl&lt;&gt;()</span></code>.</p>
+          <section id="architecture-reference">
+<h1>Architecture reference<a class="headerlink" href="#architecture-reference" title="Link to this heading">¶</a></h1>
+<p>The layers and why they exist are in
+<a class="reference internal" href="../explanation/architecture.html"><span class="doc">Architecture</span></a>.
+To add a potential, see
+<a class="reference internal" href="../howto/add-potential.html"><span class="doc">Add a potential to the Rust core</span></a>.</p>
+<section id="potentials">
+<h2>Potentials<a class="headerlink" href="#potentials" title="Link to this heading">¶</a></h2>
+<p>Each potential lives under <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/&lt;Name&gt;/</span></code>.
+<code class="docutils literal notranslate"><span class="pre">PotType</span></code> in <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/pot_types.hpp</span></code> names every type the library knows.
+<code class="docutils literal notranslate"><span class="pre">CppCore/meson.build</span></code> decides which directories a build compiles.</p>
 <section id="built-in-potentials">
-<h4>Built-in Potentials<a class="headerlink" href="#built-in-potentials" title="Link to this heading">¶</a></h4>
+<h3>Built-in Potentials<a class="headerlink" href="#built-in-potentials" title="Link to this heading">¶</a></h3>
+<p>These are compiled in every build of the main library (every build except
+<code class="docutils literal notranslate"><span class="pre">-Dwith_rpc_client_only=true</span></code>).</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">LJPot</span></code></dt><dd><p>Standard 12-6 Lennard-Jones (always available).</p>
+<dt><code class="docutils literal notranslate"><span class="pre">LJPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::LJ</span></code>)</dt><dd><p>Standard 12-6 Lennard-Jones.</p>
 </dd>
 </dl>
 <p>Configurable via <code class="docutils literal notranslate"><span class="pre">LJConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">u0</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">psi</span></code>, <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>).</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">LJClusterPot</span></code></dt><dd><p>12-6 Lennard-Jones on free boundaries, for isolated</p>
+<dt><code class="docutils literal notranslate"><span class="pre">LJClusterPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::LJCluster</span></code>)</dt><dd><p>12-6 Lennard-Jones on free
+boundaries, for isolated clusters; the cell is ignored.</p>
 </dd>
 </dl>
-<p>clusters; the cell is ignored.
-Configurable via <code class="docutils literal notranslate"><span class="pre">LJClusterConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">u0</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">psi</span></code>, <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>).</p>
+<p>Configurable via <code class="docutils literal notranslate"><span class="pre">LJClusterConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">u0</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">psi</span></code>, <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>).</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">MorsePot</span></code></dt><dd><p>Pairwise Morse with a shifted cutoff, platinum parameters by</p>
+<dt><code class="docutils literal notranslate"><span class="pre">MorsePot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::Morse</span></code>)</dt><dd><p>Pairwise Morse with a shifted cutoff,
+platinum parameters by default.</p>
 </dd>
 </dl>
-<p>default.
-Configurable via <code class="docutils literal notranslate"><span class="pre">MorseConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">De</span></code>, <code class="docutils literal notranslate"><span class="pre">a</span></code>, <code class="docutils literal notranslate"><span class="pre">re</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>).</p>
+<p>Configurable via <code class="docutils literal notranslate"><span class="pre">MorseConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">De</span></code>, <code class="docutils literal notranslate"><span class="pre">a</span></code>, <code class="docutils literal notranslate"><span class="pre">re</span></code>, <code class="docutils literal notranslate"><span class="pre">cutoff</span></code>, <code class="docutils literal notranslate"><span class="pre">switch_width</span></code>).</p>
 <p>With <code class="docutils literal notranslate"><span class="pre">switch_width</span></code> at 0 (the default) these three shift each pair energy to
 zero at the cutoff, and the force jumps there.
 A positive
@@ -1008,237 +940,358 @@ w)/w\)</span> clamped to <span class="math notranslate nohighlight">\([0, 1]\)</
 cutoff (<code class="docutils literal notranslate"><span class="pre">PairSwitch.hpp</span></code>).
 The constructors throw <code class="docutils literal notranslate"><span class="pre">std::invalid_argument</span></code> unless <span class="math notranslate nohighlight">\(0 &lt; w \le r_c\)</span>.
 <code class="docutils literal notranslate"><span class="pre">scripts/validation/pair_kernels.py</span></code> checks the kernels and the switch with sympy, and <code class="docutils literal notranslate"><span class="pre">scripts/validation/quintic_switch.sollya</span></code>
-bounds the switch’s binary64 evaluation error at <span class="math notranslate nohighlight">\(28u\)</span> for <span class="math notranslate nohighlight">\(S\)</span> and <span class="math notranslate nohighlight">\(12u\)</span> for
-<span class="math notranslate nohighlight">\(S'\)</span> (<span class="math notranslate nohighlight">\(u = 2^{-53}\)</span>).</p>
-<p>These pair potentials share <code class="docutils literal notranslate"><span class="pre">rgpot::nlist::PairListCache</span></code>, a pool of Verlet
-lists with a 1 Angstrom skin.
-A search for pairs uses linked cells once the box holds 64 or more cells of one
-cutoff plus skin, and an all-pairs scan below that.
-The cached list is a CSR half list, and the force loop subtracts the periodic
-image recorded at build whenever cutoff plus skin is below half the box.</p>
+bounds the switch’s first-order binary64 rounding error at <span class="math notranslate nohighlight">\(28u\)</span> for <span class="math notranslate nohighlight">\(S\)</span> and
+<span class="math notranslate nohighlight">\(12u\)</span> for <span class="math notranslate nohighlight">\(S'\)</span> (<span class="math notranslate nohighlight">\(u = 2^{-53}\)</span>).</p>
+<p>These pair potentials take their pairs from the shared neighbour layer,
+<code class="docutils literal notranslate"><span class="pre">nlist::updateCells</span></code> in <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/nlist/Neighbours.hpp</span></code>.
+<code class="docutils literal notranslate"><span class="pre">nlist::Mode</span></code> selects a stored Verlet list (<code class="docutils literal notranslate"><span class="pre">Stored</span></code>), a walk over the cells
+that stores no pair list (<code class="docutils literal notranslate"><span class="pre">Stream</span></code>), or <code class="docutils literal notranslate"><span class="pre">Auto</span></code>, which stores when the candidate
+index array fits in the memory the OS reports as available.
+The Verlet skin is 1 Angstrom for <code class="docutils literal notranslate"><span class="pre">LJPot</span></code> and one fifth of the cutoff for
+<code class="docutils literal notranslate"><span class="pre">LJClusterPot</span></code> and <code class="docutils literal notranslate"><span class="pre">MorsePot</span></code>; a stream uses no skin.
+A stored list is reused while every atom has moved by at most half the skin and
+the cell, the atom count and the settings are unchanged.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">StillingerWeberSi</span></code></dt><dd><p>Stillinger-Weber silicon with the 1985 parameters</p>
+<dt><code class="docutils literal notranslate"><span class="pre">StillingerWeberSi</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::SWSi1985</span></code>)</dt><dd><p>Stillinger-Weber silicon with the
+1985 parameters (Phys. Rev. B 31, 5262).</p>
 </dd>
 </dl>
-<p>(Phys. Rev. B 31, 5262), equation (2.9).
-Epsilon is 3.4723e-12 erg, 2.16723920 eV.
-<code class="docutils literal notranslate"><span class="pre">energyAndGradient</span></code> and <code class="docutils literal notranslate"><span class="pre">energyAndGradientBatch</span></code> evaluate a whole configuration,
-and a batch that shares a cell and a species list.
-A <code class="docutils literal notranslate"><span class="pre">nlist::NeighborList</span></code> reuses the pairs across calls.
+<p>Epsilon is 3.4723e-12 erg, 2.16723920 eV, the value of equation (2.9).
+<code class="docutils literal notranslate"><span class="pre">energyAndGradient</span></code> evaluates one configuration, and <code class="docutils literal notranslate"><span class="pre">energyAndGradientBatch</span></code>
+several configurations that share a cell and a species list.
+See <a class="reference internal" href="sw_si.html"><span class="doc">Stillinger-Weber silicon (1985)</span></a>.
 The Fortran <code class="docutils literal notranslate"><span class="pre">SWPot</span></code> kernel (<code class="docutils literal notranslate"><span class="pre">PotType::SWSi</span></code>) uses eOn’s rescaled epsilon,
 2.16826 × 1.06767385 = 2.3149945 eV.
 The ratio of that epsilon to the published value is 1.068176741337.
 The factor 1.06767385 is copied from eOn’s <code class="docutils literal notranslate"><span class="pre">SWFortran.f90</span></code> and is untraced.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">TersoffSiC</span></code></dt><dd><p>1989 Tersoff kernel for silicon, carbon, and</p>
+<dt><code class="docutils literal notranslate"><span class="pre">TersoffSiC</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::TersoffSi</span></code>)</dt><dd><p>1989 Tersoff kernel for silicon,
+carbon, and silicon carbide (Phys. Rev. B 39, 5566, and the 1990 erratum).</p>
 </dd>
 </dl>
-<p>silicon-carbide (Phys. Rev. B 39, 5566, and the 1990 erratum).
-<code class="docutils literal notranslate"><span class="pre">PotType::TersoffSi</span></code> and the engine name <code class="docutils literal notranslate"><span class="pre">tersoff</span></code> are this potential.
-All-silicon calls, and a null species pointer, use the Fortran gather.
-Any other atomic number uses this kernel, which accepts 14 and 6 and rejects the
-rest.
-<code class="docutils literal notranslate"><span class="pre">energyAndGradient</span></code> and <code class="docutils literal notranslate"><span class="pre">energyAndGradientBatch</span></code> on <code class="docutils literal notranslate"><span class="pre">TersoffSiC</span></code> always evaluate
-the 1989 form, including an all-silicon cell.
-A <code class="docutils literal notranslate"><span class="pre">nlist::NeighborList</span></code> reuses the pairs across those calls.
-<code class="docutils literal notranslate"><span class="pre">setHeldSkin</span></code> keeps one such list for <code class="docutils literal notranslate"><span class="pre">forceImpl</span></code>; skin 0, the default, rebuilds
-on every call.</p>
+<p>It accepts atomic numbers 14 and 6 and throws <code class="docutils literal notranslate"><span class="pre">std::invalid_argument</span></code> for any
+other.
+<code class="docutils literal notranslate"><span class="pre">TersoffSiC</span></code> always evaluates the 1989 form, including an all-silicon cell.
+The Fortran <code class="docutils literal notranslate"><span class="pre">TersoffPot</span></code>, which also reports <code class="docutils literal notranslate"><span class="pre">PotType::TersoffSi</span></code> and is the
+engine name <code class="docutils literal notranslate"><span class="pre">tersoff</span></code>, sends all-silicon calls and a null species pointer to its
+Fortran gather and every other call to <code class="docutils literal notranslate"><span class="pre">TersoffSiC</span></code>.
+<code class="docutils literal notranslate"><span class="pre">setHeldSkin</span></code> keeps one Verlet list for <code class="docutils literal notranslate"><span class="pre">forceImpl</span></code>.
+See <a class="reference internal" href="tersoff_sic.html"><span class="doc">Tersoff silicon-carbon (1989)</span></a>.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">ZBLPot</span></code></dt><dd><p>Screened nuclear repulsion (Ziegler-Biersack-Littmark) with the</p>
+<dt><code class="docutils literal notranslate"><span class="pre">ZBLPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::ZBL</span></code>)</dt><dd><p>Screened nuclear repulsion
+(Ziegler-Biersack-Littmark) with the LAMMPS switching function, on free
+boundaries.</p>
 </dd>
 </dl>
-<p>LAMMPS switching function, on free boundaries.
-Configurable via <code class="docutils literal notranslate"><span class="pre">ZBLConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">cut_inner</span></code>, <code class="docutils literal notranslate"><span class="pre">cut_global</span></code>); the constructor throws
+<p>Configurable via <code class="docutils literal notranslate"><span class="pre">ZBLConfig</span></code> (<code class="docutils literal notranslate"><span class="pre">cut_inner</span></code>, <code class="docutils literal notranslate"><span class="pre">cut_global</span></code>); the constructor throws
 <code class="docutils literal notranslate"><span class="pre">std::invalid_argument</span></code> unless <code class="docutils literal notranslate"><span class="pre">0</span> <span class="pre">&lt;</span> <span class="pre">cut_inner</span> <span class="pre">&lt;</span> <span class="pre">cut_global</span></code>.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">rgpot::fortranpots::CuH2Pot</span></code></dt><dd><p>Copper-Hydrogen EAM.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">SuttonChenPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::SuttonChen</span></code>)</dt><dd><p>Sutton-Chen 10-8 many-body
+potential, in reduced units by default.</p>
 </dd>
 </dl>
-<p>One of the Fortran 2018 kernels under <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/fortran/</span></code>, declared in
-<code class="docutils literal notranslate"><span class="pre">FortranPots.hpp</span></code> and built when <code class="docutils literal notranslate"><span class="pre">with_fortran_pots</span></code> finds a Fortran compiler.</p>
+<p>See <a class="reference internal" href="sutton_chen.html"><span class="doc">Sutton-Chen potential</span></a>.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">EMTPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::EMT</span></code>, <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/EMT/</span></code>)</dt><dd><p>Effective medium theory
+from Asap.</p>
+</dd>
+</dl>
+<p><code class="docutils literal notranslate"><span class="pre">EMTConfig::rasmussen</span></code> selects the Rasmussen parameters; the default is the Asap
+copper set.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">EAMPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::EAMCell</span></code>, <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/EAM/</span></code>)</dt><dd><p>Cell-list embedded-atom
+potential.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">MOPACPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::MOPAC</span></code>, <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/MOPACPot/</span></code>)</dt><dd><p>Frontend that
+loads the split <code class="docutils literal notranslate"><span class="pre">mopacc</span></code> engine at run time.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">LammpsPot</span></code>, <code class="docutils literal notranslate"><span class="pre">GromacsPot</span></code>, <code class="docutils literal notranslate"><span class="pre">OpenMMPot</span></code></dt><dd><p>Shifted Lennard-Jones in
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/ExternalPot/</span></code>, as <code class="docutils literal notranslate"><span class="pre">PotType::Lammps</span></code>, <code class="docutils literal notranslate"><span class="pre">PotType::Gromacs</span></code> and <code class="docutils literal notranslate"><span class="pre">PotType::OpenMM</span></code>; <code class="docutils literal notranslate"><span class="pre">GromacsPot</span></code> and <code class="docutils literal notranslate"><span class="pre">OpenMMPot</span></code> store nm and kJ/mol
+parameters.</p>
+</dd>
+<dt>Gupta and reduced cluster pairs</dt><dd><p>C kernels
+(<code class="docutils literal notranslate"><span class="pre">rgpot_gupta</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot_lj_gradient</span></code>, <code class="docutils literal notranslate"><span class="pre">rgpot_morse_gradient</span></code>) in
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/Gupta/</span></code> and <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/ReducedPair/</span></code>, not <code class="docutils literal notranslate"><span class="pre">Potential</span></code>
+classes.</p>
+</dd>
+</dl>
+</section>
+<section id="fortran-potentials">
+<h3>Fortran Potentials<a class="headerlink" href="#fortran-potentials" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">-Dwith_fortran_pots</span></code> (a feature option, <code class="docutils literal notranslate"><span class="pre">auto</span></code> by default) builds the Fortran
+2018 kernels under <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/fortran/</span></code> when a Fortran compiler is found.
+The C++ classes are in <code class="docutils literal notranslate"><span class="pre">FortranPots.hpp</span></code>, in the namespace <code class="docutils literal notranslate"><span class="pre">rgpot::fortranpots</span></code>:</p>
+<div class="table-wrapper docutils container">
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Class</p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">PotType</span></code></p></th>
+<th class="head"><p>Potential</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CuH2Pot</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">CuH2</span></code></p></td>
+<td><p>Copper-hydrogen EAM</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">EDIPPot</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">EDIP</span></code></p></td>
+<td><p>Environment-dependent interatomic potential for silicon</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LenoskyPot</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">LenoskySi</span></code></p></td>
+<td><p>Lenosky silicon</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">EAMAlPot</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">EAMAl</span></code></p></td>
+<td><p>EAM aluminium</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">FeHePot</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">FeHe</span></code></p></td>
+<td><p>Fe-He embedded atom</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">WaterHPot</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">WaterH</span></code></p></td>
+<td><p>TIP4P water with a hydrogen atom</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SWPot</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SWSi</span></code></p></td>
+<td><p>Stillinger-Weber silicon with eOn’s epsilon</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">TersoffPot</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">TersoffSi</span></code></p></td>
+<td><p>Tersoff silicon: Fortran gather, or <code class="docutils literal notranslate"><span class="pre">TersoffSiC</span></code> for other Z</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The porting rules are in
+<a class="reference internal" href="fortran_potentials.html"><span class="doc">Fortran potentials: porting rules</span></a>.</p>
 </section>
 <section id="feature-gated-potentials">
-<h4>Feature-gated Potentials<a class="headerlink" href="#feature-gated-potentials" title="Link to this heading">¶</a></h4>
+<h3>Feature-gated Potentials<a class="headerlink" href="#feature-gated-potentials" title="Link to this heading">¶</a></h3>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">IPIPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_ipi=auto</span></code>, POSIX sockets)</dt><dd><p>Listens for one i-PI driver</p>
+<dt><code class="docutils literal notranslate"><span class="pre">IPIPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_ipi</span></code>)</dt><dd><p>Listens for one i-PI driver on a UNIX or TCP
+socket.</p>
 </dd>
 </dl>
-<p>on a UNIX or TCP socket.
-The driver connects and returns energy, forces and a virial. rgpot converts
-those to eV, eV/Angstrom and Cauchy stress.
+<p><code class="docutils literal notranslate"><span class="pre">-Dwith_ipi</span></code> is a feature option, <code class="docutils literal notranslate"><span class="pre">auto</span></code> by default; it needs POSIX sockets and
+is off on Windows.
+The driver connects and returns energy, forces and a virial in atomic units.
+rgpot converts those to eV, eV/Angstrom and the Cauchy stress.
+The same option builds <code class="docutils literal notranslate"><span class="pre">IPIDriver</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot-ipi-driver</span></code>, the client side.
+They answer an i-PI server with any <code class="docutils literal notranslate"><span class="pre">engines/pot_spec.hpp</span></code> potential.
 See <code class="docutils literal notranslate"><span class="pre">docs/orgmode/howto/ipi.org</span></code>.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">XTBPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_xtb=true</span></code>)</dt><dd><p>GFN tight-binding methods (GFNFF, GFN0-xTB,</p>
+<dt><code class="docutils literal notranslate"><span class="pre">EAMTablePot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_eam_table=true</span></code>)</dt><dd><p>EAM and Finnis-Sinclair potentials
+read from LAMMPS tables.</p>
 </dd>
 </dl>
-<p>GFN1-xTB, GFN2-xTB) via the <a class="reference external" href="https://github.com/grimme-lab/xtb">xtb</a> C API.
-Configurable via <code class="docutils literal notranslate"><span class="pre">XTBConfig</span></code> struct (method, accuracy, electronic temperature,
-charge, spin).
-Not thread-safe on a single instance; create separate instances for parallel
-use.</p>
+<p>See <a class="reference internal" href="eam_table.html"><span class="doc">Tabulated EAM and Finnis-Sinclair potentials</span></a>.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">TBLitePot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_tblite=true</span></code>)</dt><dd><p>GFN tight-binding methods (GFN1, GFN2,</p>
+<dt><code class="docutils literal notranslate"><span class="pre">TIP4PPot</span></code>, <code class="docutils literal notranslate"><span class="pre">SPCEPot</span></code>, <code class="docutils literal notranslate"><span class="pre">TIP4PPtPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_water=true</span></code>)</dt><dd><p>Flexible TIP4P,
+SPC/E and TIP4P on platinum, in <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/Water/</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">XTBPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_xtb=true</span></code>)</dt><dd><p>GFN tight-binding methods (GFN-FF, GFN0-xTB,
+GFN1-xTB, GFN2-xTB) via the <a class="reference external" href="https://github.com/grimme-lab/xtb">xtb</a> C API.</p>
 </dd>
 </dl>
-<p>IPEA1) via the <a class="reference external" href="https://github.com/tblite/tblite">tblite</a> C API.
-Same config pattern as <code class="docutils literal notranslate"><span class="pre">XTBPot</span></code>.
-Lighter weight than xtb but fewer methods.</p>
+<p><code class="docutils literal notranslate"><span class="pre">XTBConfig</span></code> holds the method, accuracy, electronic temperature (K), iteration
+limit, charge, unpaired electrons (<code class="docutils literal notranslate"><span class="pre">uhf</span></code>) and <code class="docutils literal notranslate"><span class="pre">warm_move</span></code>, the largest atom move
+in Angstrom that still reuses the previous wavefunction.
+Do not share one instance across threads; create separate instances for parallel
+use.
+The <code class="docutils literal notranslate"><span class="pre">XTBDlopen</span></code> frontend, which loads xtb at run time, is built in every build
+of the main library.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">D3Pot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_dftd3=true</span></code>)</dt><dd><p>Grimme DFT-D3 via the</p>
+<dt><code class="docutils literal notranslate"><span class="pre">TBLitePot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_tblite=true</span></code>)</dt><dd><p>GFN tight-binding methods (GFN1, GFN2,
+IPEA1) via the <a class="reference external" href="https://github.com/tblite/tblite">tblite</a> C API.</p>
 </dd>
 </dl>
-<p><a class="reference external" href="https://github.com/dftd3/simple-dftd3">s-dftd3</a> ISO C API.
-<code class="docutils literal notranslate"><span class="pre">D3Config</span></code> selects BJ or zero damping, the functional key for C6 parameters, and
-an explicit <code class="docutils literal notranslate"><span class="pre">atm</span></code> flag for the Axilrod-Teller-Muto E(3) term (default on).
-In-process <code class="docutils literal notranslate"><span class="pre">Potential</span></code> summand: construct it and evaluate <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> to
-energy+forces.
-Not an XC kernel and not a <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> arm.
-There is no <code class="docutils literal notranslate"><span class="pre">PotentialConfig.d3</span></code>.
-A DFT host adds this as the Edisp summand next to XcKernel and VV10; do not fold
-D3 into the kernel.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TBLiteConfig</span></code> has the fields of <code class="docutils literal notranslate"><span class="pre">XTBConfig</span></code> except <code class="docutils literal notranslate"><span class="pre">warm_move</span></code>.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">D4Pot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_dftd4=true</span></code>)</dt><dd><p>Grimme DFT-D4 via the</p>
+<dt><code class="docutils literal notranslate"><span class="pre">D3Pot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_dftd3=true</span></code>)</dt><dd><p>Grimme DFT-D3 via the
+<a class="reference external" href="https://github.com/dftd3/simple-dftd3">s-dftd3</a> ISO C API.</p>
 </dd>
 </dl>
-<p><a class="reference external" href="https://github.com/dftd4/dftd4">dftd4</a> ISO C API.
-<code class="docutils literal notranslate"><span class="pre">D4Config</span></code> selects the functional key, the total charge forwarded to
-<code class="docutils literal notranslate"><span class="pre">dftd4_new_structure</span></code>, and an explicit <code class="docutils literal notranslate"><span class="pre">atm</span></code> flag for the many-body (<code class="docutils literal notranslate"><span class="pre">mdb</span></code>) term
+<p><code class="docutils literal notranslate"><span class="pre">D3Config</span></code> selects BJ or zero damping, the functional key for the C6 parameters
+(default <code class="docutils literal notranslate"><span class="pre">pbe</span></code>), and an <code class="docutils literal notranslate"><span class="pre">atm</span></code> flag for the Axilrod-Teller-Muto E(3) term
 (default on).
-Charge scaling stays inside dftd4.
-In-process <code class="docutils literal notranslate"><span class="pre">Potential</span></code> summand: construct it and evaluate <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> to
-energy+forces.
-Not an XC kernel and not a <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code> arm.
-There is no <code class="docutils literal notranslate"><span class="pre">PotentialConfig.d4</span></code>.
-A DFT host adds this as the Edisp summand next to XcKernel and VV10; do not fold
-D4 into the kernel.</p>
+It is an in-process <code class="docutils literal notranslate"><span class="pre">Potential</span></code> summand: it takes a <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> and returns
+energy and forces.
+It is not an XC kernel term.
+The schema has <code class="docutils literal notranslate"><span class="pre">PotentialConfig.d3</span></code> &#64;12, and its <code class="docutils literal notranslate"><span class="pre">D3Params</span></code> mirror <code class="docutils literal notranslate"><span class="pre">D3Config</span></code>.
+Nothing applies that arm yet.
+The <code class="docutils literal notranslate"><span class="pre">potserv</span></code> <code class="docutils literal notranslate"><span class="pre">D3</span></code> backend runs the default <code class="docutils literal notranslate"><span class="pre">D3Config</span></code>.
+<code class="docutils literal notranslate"><span class="pre">configure()</span></code> refuses the <code class="docutils literal notranslate"><span class="pre">d3</span></code> arm by name on every <code class="docutils literal notranslate"><span class="pre">potserv</span></code> backend.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">ExprPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_expr=true</span></code>)</dt><dd><p>Named-child PES algebra compiled with</p>
+<dt><code class="docutils literal notranslate"><span class="pre">D4Pot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_dftd4=true</span></code>)</dt><dd><p>Grimme DFT-D4 via the
+<a class="reference external" href="https://github.com/dftd4/dftd4">dftd4</a> ISO C API.</p>
 </dd>
 </dl>
-<p>vendored OpenMM Lepton (no pixi muparser).
-The constructor takes an energy string and <code class="docutils literal notranslate"><span class="pre">unique_ptr&lt;PotentialBase&gt;</span></code> children.
-Names must be Lepton identifiers; unknown, duplicate, unused, empty, or
-non-identifier names fail at construct.
-Forces are analytic chain-rule weights from
+<p><code class="docutils literal notranslate"><span class="pre">D4Config</span></code> selects the functional key (default <code class="docutils literal notranslate"><span class="pre">pbe</span></code>), the total charge
+forwarded to <code class="docutils literal notranslate"><span class="pre">dftd4_new_structure</span></code> (default 0), and an <code class="docutils literal notranslate"><span class="pre">atm</span></code> flag for the
+many-body (<code class="docutils literal notranslate"><span class="pre">mdb</span></code>) term (default on).
+It is an in-process <code class="docutils literal notranslate"><span class="pre">Potential</span></code> summand: it takes a <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> and returns
+energy and forces.
+It is not an XC kernel term.
+The schema has <code class="docutils literal notranslate"><span class="pre">PotentialConfig.d4</span></code> &#64;13, and its <code class="docutils literal notranslate"><span class="pre">D4Params</span></code> mirror <code class="docutils literal notranslate"><span class="pre">D4Config</span></code>.
+Nothing applies that arm yet.
+The <code class="docutils literal notranslate"><span class="pre">potserv</span></code> <code class="docutils literal notranslate"><span class="pre">D4</span></code> backend runs the default <code class="docutils literal notranslate"><span class="pre">D4Config</span></code>.
+<code class="docutils literal notranslate"><span class="pre">configure()</span></code> refuses the <code class="docutils literal notranslate"><span class="pre">d4</span></code> arm by name on every <code class="docutils literal notranslate"><span class="pre">potserv</span></code> backend.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">ExprPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_expr=true</span></code>)</dt><dd><p>Energy as an expression over named child
+potentials.</p>
+</dd>
+</dl>
+<p>The vendored OpenMM Lepton (<code class="docutils literal notranslate"><span class="pre">third_party/lepton</span></code>) compiles the expression.
+The constructor takes an energy string and a list of names with
+<code class="docutils literal notranslate"><span class="pre">unique_ptr&lt;PotentialBase&gt;</span></code> children.
+It throws <code class="docutils literal notranslate"><span class="pre">std::invalid_argument</span></code> for an empty expression, no terms, a null
+term, a name that is not a Lepton identifier (including an empty name), a
+duplicate name, a name the expression does not use, an identifier in the
+expression that is not a term, and an expression Lepton cannot parse or
+differentiate.
+Forces are the chain rule, with the weights from
 <code class="docutils literal notranslate"><span class="pre">ParsedExpression::differentiate(name)</span></code>.
-<code class="docutils literal notranslate"><span class="pre">D3Pot</span></code> / <code class="docutils literal notranslate"><span class="pre">D4Pot</span></code> are ordinary children.
-<code class="docutils literal notranslate"><span class="pre">XcKernel</span></code> is not a term.
-There is no <code class="docutils literal notranslate"><span class="pre">PotentialConfig.expr</span></code> arm.
-The C++ constructor is the first-slice API; RPC/config names the same tree as
-recursive <code class="docutils literal notranslate"><span class="pre">ExprParams</span></code> / <code class="docutils literal notranslate"><span class="pre">PotSpec</span></code>.
-<code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl</span></code> / <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code> wraps one <code class="docutils literal notranslate"><span class="pre">ExprPot</span></code>
+<code class="docutils literal notranslate"><span class="pre">D3Pot</span></code> and <code class="docutils literal notranslate"><span class="pre">D4Pot</span></code> can be children.
+<code class="docutils literal notranslate"><span class="pre">PotentialConfig.expr</span></code> is in the schema as <code class="docutils literal notranslate"><span class="pre">ExprParams</span></code> (with <code class="docutils literal notranslate"><span class="pre">PotSpec</span></code>
+children), but <code class="docutils literal notranslate"><span class="pre">potserv</span></code> does not apply it; <code class="docutils literal notranslate"><span class="pre">configure</span></code> refuses it by name.
+<code class="docutils literal notranslate"><span class="pre">PotentialHandle::from_impl</span></code> and <code class="docutils literal notranslate"><span class="pre">rgpot_potential_new_eindir</span></code> wrap one <code class="docutils literal notranslate"><span class="pre">ExprPot</span></code>
 as one eindir objective.</p>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">MetatomicPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_metatomic=true</span></code>)</dt><dd><p>Pre-trained ML atomistic models</p>
+<dt><code class="docutils literal notranslate"><span class="pre">lr::CoulombPot</span></code>, <code class="docutils literal notranslate"><span class="pre">lr::DispersionPot</span></code>, <code class="docutils literal notranslate"><span class="pre">lr::NlhPot</span></code>, <code class="docutils literal notranslate"><span class="pre">lr::SumPot</span></code></dt><dd><p>Ewald,
+smooth PME or damped shifted force electrostatics, dispersion, SO3LR NLH
+repulsion, and a sum of summands, built with <code class="docutils literal notranslate"><span class="pre">-Dwith_long_range=true</span></code> from
+<code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/LongRange/</span></code>.</p>
 </dd>
 </dl>
-<p>via
-<a class="reference external" href="https://github.com/metatensor/metatomic">metatomic</a>/PyTorch, loaded <strong>directly</strong> as TorchScript (<code class="docutils literal notranslate"><span class="pre">.pt</span></code>) in C++ with no Python at evaluation time. Uses <a class="reference external" href="https://github.com/Luthaf/vesin">vesin</a> <strong>0.5+</strong> for neighbor lists and PyTorch autograd for forces. Pass CPU as <code class="docutils literal notranslate"><span class="pre">VesinDevice{VesinCPU,</span> <span class="pre">0}</span></code> (<code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">{</span> <span class="pre">VesinDeviceKind</span> <span class="pre">type;</span> <span class="pre">int</span> <span class="pre">device_id;</span> <span class="pre">}</span></code>; <code class="docutils literal notranslate"><span class="pre">VesinCPU</span></code> alone is only the kind enum). Thread-safe via internal mutex; caches the atomic-types tensor across geometry steps. Configurable device (CPU/CUDA),
-dtype override, length unit, consistency checks, and <code class="docutils literal notranslate"><span class="pre">torch_determinism</span></code> via
-<code class="docutils literal notranslate"><span class="pre">MetatomicConfig</span></code>.
+<p><code class="docutils literal notranslate"><span class="pre">-Dwith_cuda=true</span></code> compiles the CUDA path with nvcc.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">XcKernel</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_xckernel=true</span></code>)</dt><dd><p>In-process libxckernel XC kernel.</p>
+</dd>
+</dl>
+<p>It is not a <code class="docutils literal notranslate"><span class="pre">Potential</span></code>.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">MetatomicPot</span></code> (<code class="docutils literal notranslate"><span class="pre">-Dwith_metatomic=true</span></code>)</dt><dd><p>Pre-trained ML atomistic models
+via <a class="reference external" href="https://github.com/metatensor/metatomic">metatomic</a> and PyTorch, loaded
+as TorchScript (<code class="docutils literal notranslate"><span class="pre">.pt</span></code>) in C++ with no Python at evaluation time.</p>
+</dd>
+</dl>
+<p>Neighbour lists come from <a class="reference external" href="https://github.com/Luthaf/vesin">vesin</a>; the source
+builds against vesin 0.3 and 0.5 or newer (<code class="docutils literal notranslate"><span class="pre">vesin_compat.hpp</span></code>).
+PyTorch autograd gives the forces.
+With vesin 0.5 or newer, pass CPU as <code class="docutils literal notranslate"><span class="pre">VesinDevice{VesinCPU,</span> <span class="pre">0}</span></code>
+(<code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">{</span> <span class="pre">VesinDeviceKind</span> <span class="pre">type;</span> <span class="pre">int</span> <span class="pre">device_id;</span> <span class="pre">}</span></code>); <code class="docutils literal notranslate"><span class="pre">VesinCPU</span></code> alone is only
+the kind enum.
+An internal mutex serialises the Torch session, so a shared instance is safe
+across threads.
+<code class="docutils literal notranslate"><span class="pre">MetatomicConfig</span></code> sets the model path, device, dtype override, length unit,
+consistency checks, and <code class="docutils literal notranslate"><span class="pre">torch_determinism</span></code>.
 <code class="docutils literal notranslate"><span class="pre">TorchDeterminismPolicy::Fast</span></code> (default) does not touch process-global LibTorch
 state.
 <code class="docutils literal notranslate"><span class="pre">Strict</span></code> calls <code class="docutils literal notranslate"><span class="pre">apply_torch_determinism_policy</span></code>, which sets
-<code class="docutils literal notranslate"><span class="pre">at::globalContext()</span></code> deterministic algorithms (no warn-only fallback), pins
-scaled-dot-product attention to the math SDP backend (flash, memory-efficient,
-and cuDNN SDP off), disables TF32 for cuBLAS and cuDNN (full fp32 mantissas on
-Ampere+), forces deterministic cuDNN algorithms with benchmarking off, and fills
-uninitialized memory deterministically.
+<code class="docutils literal notranslate"><span class="pre">at::globalContext()</span></code> deterministic algorithms (no warn-only fallback), turns
+off the flash, memory-efficient and cuDNN scaled-dot-product attention backends
+and keeps the math backend, disables TF32 for cuBLAS and cuDNN, forces
+deterministic cuDNN algorithms with benchmarking off, and fills uninitialized
+memory deterministically.
 Those flags are process-global: they affect every Torch user in the process, and
-Fast does not restore a previous Strict setting.
+<code class="docutils literal notranslate"><span class="pre">Fast</span></code> does not restore a previous <code class="docutils literal notranslate"><span class="pre">Strict</span></code> setting.
 CUDA host processes that need bit-stable cuBLAS must also export
-<code class="docutils literal notranslate"><span class="pre">CUBLAS_WORKSPACE_CONFIG</span></code>:4096:8= (or <code class="docutils literal notranslate"><span class="pre">:16:8</span></code>) <strong>before</strong> the first cuBLAS call —
-that is process environment, not <code class="docutils literal notranslate"><span class="pre">at::globalContext()</span></code> (see NVIDIA cuBLAS
-reproducibility and <code class="docutils literal notranslate"><span class="pre">alertCuBLASConfigNotDeterministic</span></code>).
-On the RPC server pass <code class="docutils literal notranslate"><span class="pre">Metatomic:/path/to/model.pt</span></code>.
-Build with the <code class="docutils literal notranslate"><span class="pre">metatomicbld</span></code> pixi env (linux-64; pulls torch, metatomic-torch,
-and vesin <code class="docutils literal notranslate"><span class="pre">&gt;=0.5.2,&lt;0.6</span></code> from PyPI).
-CI job <code class="docutils literal notranslate"><span class="pre">potentials_metatomic</span></code> in <code class="docutils literal notranslate"><span class="pre">ci-</span> <span class="pre">orchestrator.yml</span></code>.</p>
-<p>The <strong>pip</strong> product (<code class="docutils literal notranslate"><span class="pre">rgpot</span></code> on PyPI) does not link Metatomic into the Python
+<code class="docutils literal notranslate"><span class="pre">CUBLAS_WORKSPACE_CONFIG</span></code>:4096:8= (or <code class="docutils literal notranslate"><span class="pre">:16:8</span></code>) before the first cuBLAS call;
+that is process environment, not <code class="docutils literal notranslate"><span class="pre">at::globalContext()</span></code>.
+On the RPC server pass <code class="docutils literal notranslate"><span class="pre">Metatomic:/path/to/model.pt</span></code>, optionally followed by
+<code class="docutils literal notranslate"><span class="pre">:&lt;device&gt;</span></code>.
+Build with the <code class="docutils literal notranslate"><span class="pre">metatomicbld</span></code> pixi environment (linux-64; it pulls torch,
+metatomic-torch, and vesin <code class="docutils literal notranslate"><span class="pre">&gt;=0.6.0,&lt;0.7</span></code> from PyPI).
+CI job <code class="docutils literal notranslate"><span class="pre">potentials_metatomic</span></code> is in <code class="docutils literal notranslate"><span class="pre">.github/workflows/ci-orchestrator.yml</span></code>.
+<code class="docutils literal notranslate"><span class="pre">UmaPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::Uma</span></code>) builds with it when <code class="docutils literal notranslate"><span class="pre">with_python</span></code> is false.</p>
+<p>The pip product (<code class="docutils literal notranslate"><span class="pre">rgpot</span></code> on PyPI) does not link Metatomic into the Python
 extension.
-It <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">a</span> <span class="pre">portable</span> <span class="pre">=libmetatomic_engine.so</span></code> chosen from
-<code class="docutils literal notranslate"><span class="pre">rgpot/lib/torch-</span> <span class="pre">X.Y/</span></code> for the installed torch major.
-Supported torch majors for bundled engines start at <strong>2.7</strong> (wheels ship 2.7–
-2.13).
+It <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">a</span> <span class="pre">Metatomic</span> <span class="pre">engine</span> <span class="pre">library</span> <span class="pre">from</span> <span class="pre">=rgpot/lib/torch-X.Y/</span></code> that matches
+the installed torch major.
+Bundled engines start at torch 2.7.
 See:</p>
 <p><a class="reference internal" href="../howto/pip-python.html"><span class="doc">Python package (PyPI)</span></a></p>
-<p>All feature-gated potentials are detected via <code class="docutils literal notranslate"><span class="pre">pkg-config</span></code> / <code class="docutils literal notranslate"><span class="pre">cmake</span></code> and
-controlled by Meson options.</p>
+<p>The remaining feature-gated potentials need the RPC stack
+(<code class="docutils literal notranslate"><span class="pre">-Dwith_rpc=true</span></code> or <code class="docutils literal notranslate"><span class="pre">-Dwith_rpc_client_only=true</span></code>), because they read
+parameters from the generated Cap’n Proto schema:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">NWChemPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::NWChem</span></code>) and <code class="docutils literal notranslate"><span class="pre">CPMDPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::CPMD</span></code>)</dt><dd><p>Frontends
+that load the split <code class="docutils literal notranslate"><span class="pre">nwchemc</span></code> and <code class="docutils literal notranslate"><span class="pre">cpmdc</span></code> engines at run time.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">CP2KPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::CP2K</span></code>, <code class="docutils literal notranslate"><span class="pre">-Dwith_cp2k</span></code>, needs <code class="docutils literal notranslate"><span class="pre">with_rpc</span></code>)</dt><dd><p>CP2K Quickstep
+through the <code class="docutils literal notranslate"><span class="pre">libcp2kc_rgpot</span></code> shim against libcp2k.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">SkalaPot</span></code> (<code class="docutils literal notranslate"><span class="pre">PotType::Skala</span></code>, <code class="docutils literal notranslate"><span class="pre">-Dwith_skala=true</span></code>, needs <code class="docutils literal notranslate"><span class="pre">with_rpc</span></code>)</dt><dd><p>Skala
+XC on NWChem DFT through <code class="docutils literal notranslate"><span class="pre">libnwchemc</span></code>.</p>
+</dd>
+</dl>
+<p>Each feature-gated potential has its own Meson option.
+External libraries are found with Meson <code class="docutils literal notranslate"><span class="pre">dependency()</span></code> (pkg-config or CMake),
+some with a wrap fallback.</p>
 </section>
 <section id="nwchempot-rgpot-nwchempot">
-<h4>NWChemPot (<code class="docutils literal notranslate"><span class="pre">rgpot/NWChemPot/</span></code>)<a class="headerlink" href="#nwchempot-rgpot-nwchempot" title="Link to this heading">¶</a></h4>
-<p>Always-built frontend (<code class="docutils literal notranslate"><span class="pre">NWChemPot.cc</span></code>) that serializes <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code> and
-<code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">=libnwchemc</span></code> (via <code class="docutils literal notranslate"><span class="pre">DynLib.hpp</span></code>).
-Stable consumer C-ABI contract in <code class="docutils literal notranslate"><span class="pre">nwchem_c_abi.h</span></code> uses
+<h3>NWChemPot (<code class="docutils literal notranslate"><span class="pre">rgpot/NWChemPot/</span></code>)<a class="headerlink" href="#nwchempot-rgpot-nwchempot" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">NWChemPot.cc</span></code> serializes <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code> and <code class="docutils literal notranslate"><span class="pre">dlopen=s</span> <span class="pre">=libnwchemc</span></code> (via
+<code class="docutils literal notranslate"><span class="pre">DynLib.hpp</span></code>).
+It is built whenever the RPC stack is on.
+The consumer C ABI in <code class="docutils literal notranslate"><span class="pre">nwchem_c_abi.h</span></code> uses
 <code class="docutils literal notranslate"><span class="pre">nwchemc_*</span></code> symbols and flat Cap’n Proto message bytes; <code class="docutils literal notranslate"><span class="pre">nwchem_c_abi_stub.c</span></code> is
-a no-op ABI linked by the conformance test only. rgpot is a pure consumer: the
-engine implementation (NWChem embed + Fortran) lives in the split
-<code class="docutils literal notranslate"><span class="pre">https://github.com/OmniPotentRPC/</span> <span class="pre">nwchemc</span></code> project, not in rgpot.
-RPC schema adds <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code>, <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code>, and <code class="docutils literal notranslate"><span class="pre">configure</span> <span class="pre">&#64;1</span></code> on
-<code class="docutils literal notranslate"><span class="pre">Potential</span></code>; <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">&lt;port&gt;</span> <span class="pre">NWChem</span></code>.
-Runtime: <code class="docutils literal notranslate"><span class="pre">NWCHEMC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEMC_ENGINE</span></code>, <code class="docutils literal notranslate"><span class="pre">NWCHEM_TOP</span></code>.
+a no-op ABI for tests. rgpot is a pure consumer: the engine implementation
+(NWChem embed and Fortran) lives in the split
+<a class="reference external" href="https://github.com/OmniPotentRPC/nwchemc">nwchemc</a> project, not in rgpot.
+The schema has <code class="docutils literal notranslate"><span class="pre">NWChemParams</span></code>, <code class="docutils literal notranslate"><span class="pre">PotentialConfig</span></code>, and <code class="docutils literal notranslate"><span class="pre">configure</span> <span class="pre">&#64;1</span></code> on
+<code class="docutils literal notranslate"><span class="pre">Potential</span></code>; start the server with <code class="docutils literal notranslate"><span class="pre">potserv</span> <span class="pre">&lt;port&gt;</span> <span class="pre">NWChem</span></code>.
+Engine lookup tries <code class="docutils literal notranslate"><span class="pre">NWChemParams.enginePath</span></code>, then
+<code class="docutils literal notranslate"><span class="pre">NWCHEMC_LIBRARY</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEMC_ENGINE</span></code>, <code class="docutils literal notranslate"><span class="pre">RGPOT_NWCHEM_ENGINE</span></code>, and the
+default library names.
+A non-empty <code class="docutils literal notranslate"><span class="pre">nwchemRoot</span></code> is exported as <code class="docutils literal notranslate"><span class="pre">NWCHEM_TOP</span></code>.
 Details: <code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/NWChemPot/README.md</span></code>.</p>
 </section>
 <section id="units-rgpot-units-hpp">
-<h4>Units (<code class="docutils literal notranslate"><span class="pre">rgpot/units.hpp</span></code>)<a class="headerlink" href="#units-rgpot-units-hpp" title="Link to this heading">¶</a></h4>
-<p>rgpot’s internal unit system is <strong>energy = eV</strong>, <strong>length = Angstrom</strong>,
-<strong>force = eV/Angstrom</strong>.</p>
+<h3>Units (<code class="docutils literal notranslate"><span class="pre">rgpot/units.hpp</span></code>)<a class="headerlink" href="#units-rgpot-units-hpp" title="Link to this heading">¶</a></h3>
+<p>rgpot’s internal unit system is energy in eV, length in Angstrom, and force in
+eV/Angstrom.</p>
 <ul class="simple">
-<li><p><strong>Compile-time constants</strong> (CODATA 2018): <code class="docutils literal notranslate"><span class="pre">BOHR_TO_ANGSTROM</span></code>, <code class="docutils literal notranslate"><span class="pre">HARTREE_TO_EV</span></code>,</p></li>
+<li><p>Compile-time constants (CODATA 2018): <code class="docutils literal notranslate"><span class="pre">BOHR_TO_ANGSTROM</span></code>, <code class="docutils literal notranslate"><span class="pre">HARTREE_TO_EV</span></code>,
+<code class="docutils literal notranslate"><span class="pre">HARTREE_BOHR_TO_EV_ANGSTROM</span></code>,
+<code class="docutils literal notranslate"><span class="pre">NEG_GRAD_TO_FORCE</span></code>, <code class="docutils literal notranslate"><span class="pre">HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3</span></code>, <code class="docutils literal notranslate"><span class="pre">KB_HARTREE</span></code> and
+<code class="docutils literal notranslate"><span class="pre">KB_EV</span></code>.</p></li>
 </ul>
-<p><code class="docutils literal notranslate"><span class="pre">HARTREE_BOHR_TO_EV_ANGSTROM</span></code>, <code class="docutils literal notranslate"><span class="pre">NEG_GRAD_TO_FORCE</span></code>, Boltzmann constants, etc.
-Used by XTBPot/TBLitePot (Bohr/Hartree backends) and any caller that wants zero-
-overhead conversion.</p>
+<p>Backends that work in bohr and hartree, such as <code class="docutils literal notranslate"><span class="pre">XTBPot</span></code> and <code class="docutils literal notranslate"><span class="pre">TBLitePot</span></code>, use
+them.</p>
 <ul class="simple">
-<li><p><strong>Runtime expression parser</strong> (<code class="docutils literal notranslate"><span class="pre">unit_conversion_factor(from,</span> <span class="pre">to)</span></code>):
-Shunting-Yard</p></li>
+<li><p>Runtime expression parser (<code class="docutils literal notranslate"><span class="pre">unit_conversion_factor(from,</span> <span class="pre">to)</span></code>): a
+Shunting-Yard parser with SI dimensional analysis, derived from
+metatomic-torch (PR #173).</p></li>
 </ul>
-<p>algorithm with SI dimensional analysis, derived from metatomic-torch (PR #173).
-Accepts compound expressions such as <code class="docutils literal notranslate"><span class="pre">&quot;kJ/mol&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;eV/angstrom^3&quot;</span></code>, or
+<p>It accepts compound expressions such as <code class="docutils literal notranslate"><span class="pre">&quot;kJ/mol&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;eV/angstrom^3&quot;</span></code>, or
 <code class="docutils literal notranslate"><span class="pre">&quot;(eV*u)^(1/2)&quot;</span></code>.
-Throws <code class="docutils literal notranslate"><span class="pre">std::invalid_argument</span></code> on dimension mismatch or unknown tokens.
+It throws <code class="docutils literal notranslate"><span class="pre">std::invalid_argument</span></code> on a dimension mismatch or an unknown token.
 <code class="docutils literal notranslate"><span class="pre">validate_unit(quantity,</span> <span class="pre">unit)</span></code> checks a unit against a known quantity
 (<code class="docutils literal notranslate"><span class="pre">length</span></code>, <code class="docutils literal notranslate"><span class="pre">energy</span></code>, <code class="docutils literal notranslate"><span class="pre">force</span></code>, <code class="docutils literal notranslate"><span class="pre">pressure</span></code>, <code class="docutils literal notranslate"><span class="pre">momentum</span></code>, <code class="docutils literal notranslate"><span class="pre">mass</span></code>, <code class="docutils literal notranslate"><span class="pre">velocity</span></code>,
 <code class="docutils literal notranslate"><span class="pre">charge</span></code>).</p>
 <ul class="simple">
-<li><p><strong>RPC negotiation</strong>: Cap’n Proto <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> carries optional <code class="docutils literal notranslate"><span class="pre">lengthUnit</span></code> and</p></li>
+<li><p>RPC negotiation: Cap’n Proto <code class="docutils literal notranslate"><span class="pre">ForceInput</span></code> carries <code class="docutils literal notranslate"><span class="pre">lengthUnit</span></code> and
+<code class="docutils literal notranslate"><span class="pre">energyUnit</span></code> (default <code class="docutils literal notranslate"><span class="pre">&quot;angstrom&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;eV&quot;</span></code>).</p></li>
 </ul>
-<p><code class="docutils literal notranslate"><span class="pre">energyUnit</span></code> (default <code class="docutils literal notranslate"><span class="pre">&quot;angstrom&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;eV&quot;</span></code>).
-The server converts inbound positions/box into Angstrom before <code class="docutils literal notranslate"><span class="pre">forceImpl</span></code>, then
-converts energy and forces into the caller’s requested units on the response.</p>
+<p>The server converts inbound positions and box into Angstrom before <code class="docutils literal notranslate"><span class="pre">forceImpl</span></code>,
+then converts energy and forces into the caller’s units on the response.</p>
 </section>
 </section>
-</section>
-<section id="error-handling-conventions">
-<h2>Error Handling Conventions<a class="headerlink" href="#error-handling-conventions" title="Link to this heading">¶</a></h2>
-<p>The project uses a two-tier error strategy:</p>
-<ol class="arabic simple">
-<li><p><strong>Across the FFI boundary</strong> :: Status codes (<code class="docutils literal notranslate"><span class="pre">rgpot_status_t</span></code>) plus a
-thread-local</p></li>
-</ol>
-<p>error message (<code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code>).
-No exceptions cross FFI.
-Every Rust <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> function wraps its body in
-<code class="docutils literal notranslate"><span class="pre">catch_unwind</span></code> to convert panics to <code class="docutils literal notranslate"><span class="pre">RGPOT_INTERNAL_ERROR</span></code>.</p>
-<ol class="arabic simple">
-<li><p><strong>Within C++</strong> :: The RAII wrappers call <code class="docutils literal notranslate"><span class="pre">details::check_status()</span></code> which maps
-non-</p></li>
-</ol>
-<p>success codes to <code class="docutils literal notranslate"><span class="pre">rgpot::Error</span></code> exceptions.
-C++ consumers work with exceptions as usual.</p>
-<ol class="arabic simple">
-<li><p><strong>Within Rust</strong> :: Standard <code class="docutils literal notranslate"><span class="pre">Result</span></code> types internally, converted to status
-codes</p></li>
-</ol>
-<p>at the <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> boundary.</p>
-</section>
-<section id="backend-capability-handshake">
-<h2>Backend Capability Handshake<a class="headerlink" href="#backend-capability-handshake" title="Link to this heading">¶</a></h2>
+<section id="capability-handshake">
+<h2>Capability handshake<a class="headerlink" href="#capability-handshake" title="Link to this heading">¶</a></h2>
+<p>Why the handshake exists is in
+<a class="reference internal" href="../explanation/architecture.html"><span class="doc">Architecture</span></a>.</p>
 <p>A backend loaded through the potential profile reports a <code class="docutils literal notranslate"><span class="pre">Capabilities</span></code> message
-(<code class="docutils literal notranslate"><span class="pre">&lt;prefix&gt;_capabilities_result</span></code>).
+through <code class="docutils literal notranslate"><span class="pre">&lt;prefix&gt;_capabilities_result</span></code>.
 Before a session is created, <code class="docutils literal notranslate"><span class="pre">ProfileSession::load</span></code> (Rust) and
-<code class="docutils literal notranslate"><span class="pre">rgpot::abi::checked_load</span></code> (C++) compare it with the host’s expectation and
-refuse the backend with a message naming the first mismatch:</p>
+<code class="docutils literal notranslate"><span class="pre">rgpot::abi::checked_load</span></code> (C++) compare it with the host’s expectation.
+They refuse the backend with a message that names the first mismatch.
+<code class="docutils literal notranslate"><span class="pre">ProfileSession::load</span></code> returns a <code class="docutils literal notranslate"><span class="pre">ProfileError</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">checked_load</span></code> throws <code class="docutils literal notranslate"><span class="pre">std::runtime_error</span></code>.</p>
 <div class="table-wrapper docutils container">
 <table class="docutils align-default">
 <thead>
@@ -1247,109 +1300,55 @@ refuse the backend with a message naming the first mismatch:</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">protocolFamily</span></code>, <code class="docutils literal notranslate"><span class="pre">protocolMajor</span></code></p></td>
-<td><p>family differs from <code class="docutils literal notranslate"><span class="pre">rgpot.potentials</span></code> or major differs</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">protocolFamily</span></code></p></td>
+<td><p>the family differs from <code class="docutils literal notranslate"><span class="pre">rgpot.potentials</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">protocolMinor</span></code></p></td>
-<td><p>below the host’s required minor</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">protocolMajor</span></code>, <code class="docutils literal notranslate"><span class="pre">protocolMinor</span></code></p></td>
+<td><p>the major differs, or the minor is below the host’s required minor</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">schemaId</span></code></p></td>
-<td><p>differs from the <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> identity</p></td>
+<td><p>the identity differs from that of <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">bridgeAbiMajor/Minor</span></code>, <code class="docutils literal notranslate"><span class="pre">bridgeLayout</span></code>, <code class="docutils literal notranslate"><span class="pre">bridgeFeatures</span></code></p></td>
-<td><p>different eindir objective ABI, a newer minor, another layout or unknown feature bits</p></td>
+<td><p>another eindir ABI major, a newer minor, another layout, or feature bits not known</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dlpackMajor/Minor</span></code></p></td>
-<td><p>different DLPack major or a newer minor</p></td>
+<td><p>another DLPack major or a newer minor</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">operations</span></code></p></td>
-<td><p>energy or forces not served</p></td>
+<td><p>energy or forces is not served</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-<p>Metadata a backend leaves unset (empty family, zero bridge major) is not a
-declaration and is not checked, so backends that predate the fields keep
-loading.
+<p>Metadata that a backend leaves unset is not a declaration and is not checked, so
+backends that predate the fields keep loading.
+An empty family skips the three protocol checks, an empty schema identity skips
+the schema check, and a zero bridge or DLPack major skips that group.
 <code class="docutils literal notranslate"><span class="pre">buildVersion</span></code> and <code class="docutils literal notranslate"><span class="pre">buildRevision</span></code> report the version and source revision of the
-build that produced the message; <code class="docutils literal notranslate"><span class="pre">rgpot_source_revision()</span></code> returns the same
-revision through the C ABI.</p>
+build that produced the message.
+For a message that <code class="docutils literal notranslate"><span class="pre">rgpot-core</span></code> fills in, <code class="docutils literal notranslate"><span class="pre">rgpot_source_revision</span></code> returns the
+same revision through the C ABI.</p>
 <p>The same check guards RPC.
-The rgpot servers implement <code class="docutils literal notranslate"><span class="pre">Potential.getCapabilities</span></code> in <code class="docutils literal notranslate"><span class="pre">potserv</span></code> and
+The rgpot servers implement <code class="docutils literal notranslate"><span class="pre">Potential.getCapabilities</span></code>, in <code class="docutils literal notranslate"><span class="pre">potserv</span></code> and in
 <code class="docutils literal notranslate"><span class="pre">rgpot_rpc_server_start</span></code>.
-The Rust client (<code class="docutils literal notranslate"><span class="pre">RpcClient</span></code>) and the C bridge (<code class="docutils literal notranslate"><span class="pre">pot_calculate</span></code>) call it before
-the first <code class="docutils literal notranslate"><span class="pre">calculate</span></code> and refuse the server when its capabilities are
-incompatible.
+The Rust client (<code class="docutils literal notranslate"><span class="pre">RpcClient</span></code>) asks for the capabilities on every connection, and
+it opens one connection for each <code class="docutils literal notranslate"><span class="pre">calculate</span></code>.
+The C bridge (<code class="docutils literal notranslate"><span class="pre">pot_calculate</span></code>) asks once, before its first <code class="docutils literal notranslate"><span class="pre">calculate</span></code>.
+Both refuse a server whose capabilities are incompatible.
 A server that does not implement the call answers UNIMPLEMENTED.
-It is refused with a message naming <code class="docutils literal notranslate"><span class="pre">Potential.getCapabilities</span></code> and asking for
-an upgrade to an rgpot release whose <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> carries it.
-The two eOn callback servers do not implement it yet and gain it in a separate
-change, so an rgpot client built from this revision refuses them until then.</p>
-<p>A callback handle (<code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code>) takes the peer’s message with
-<code class="docutils literal notranslate"><span class="pre">rgpot_potential_set_peer_capabilities</span></code> (built with the <code class="docutils literal notranslate"><span class="pre">schema</span></code> feature).
+The client refuses it with a message that names <code class="docutils literal notranslate"><span class="pre">Potential.getCapabilities</span></code> and
+asks for an rgpot release whose <code class="docutils literal notranslate"><span class="pre">Potentials.capnp</span></code> carries it.</p>
+<p>A callback handle (<code class="docutils literal notranslate"><span class="pre">rgpot_potential_t</span></code>) takes the peer’s message through
+<code class="docutils literal notranslate"><span class="pre">rgpot_potential_set_peer_capabilities</span></code>, which exists only when the crate is
+built with the <code class="docutils literal notranslate"><span class="pre">schema</span></code> feature.
 When the peer is incompatible, <code class="docutils literal notranslate"><span class="pre">rgpot_potential_calculate</span></code>,
 <code class="docutils literal notranslate"><span class="pre">eindir_objective_eval</span></code> and <code class="docutils literal notranslate"><span class="pre">eindir_objective_grad</span></code> fail before the callback
-runs, with the message <code class="docutils literal notranslate"><span class="pre">peer</span> <span class="pre">refused:</span> <span class="pre">&lt;first</span> <span class="pre">mismatch&gt;</span></code> in <code class="docutils literal notranslate"><span class="pre">rgpot_last_error()</span></code>.
-A handle that never receives a message keeps the plain callback contract.</p>
-</section>
-<section id="adding-a-new-potential">
-<h2>Adding a New Potential<a class="headerlink" href="#adding-a-new-potential" title="Link to this heading">¶</a></h2>
-<p>To register a new C++ potential with the Rust core:</p>
-<ol class="arabic simple">
-<li><p>Implement the potential class inheriting from <code class="docutils literal notranslate"><span class="pre">Potential&lt;MyPot&gt;</span></code> as usual.</p></li>
-</ol>
-<p>The class must provide <code class="docutils literal notranslate"><span class="pre">void</span> <span class="pre">forceImpl(const</span> <span class="pre">ForceInput&amp;,</span> <span class="pre">ForceOut*)</span> <span class="pre">const</span></code>.</p>
-<ol class="arabic simple">
-<li><p>Use the RAII wrapper to create a handle:</p></li>
-</ol>
-<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="cp">#include</span> <span class="cpf">&quot;rgpot/potential.hpp&quot;</span>
-</span><span data-line="2"><span class="cp">#include</span> <span class="cpf">&quot;my_pot/MyPot.hpp&quot;</span>
-</span><span data-line="3">
-</span><span data-line="4"><span class="n">rgpot</span><span class="o">::</span><span class="n">MyPot</span> <span class="n">my_pot</span><span class="p">;</span>
-</span><span data-line="5"><span class="k">auto</span> <span class="n">handle</span> <span class="o">=</span> <span class="n">rgpot</span><span class="o">::</span><span class="n">PotentialHandle</span><span class="o">::</span><span class="n">from_impl</span><span class="p">(</span><span class="n">my_pot</span><span class="p">);</span>
-</span><span data-line="6"><span class="k">auto</span> <span class="n">result</span> <span class="o">=</span> <span class="n">handle</span><span class="p">.</span><span class="n">calculate</span><span class="p">(</span><span class="n">input_spec</span><span class="p">);</span>
-</span><span data-line="7"><span class="kt">double</span> <span class="n">energy</span> <span class="o">=</span> <span class="n">result</span><span class="p">.</span><span class="n">energy</span><span class="p">();</span>
-</span></pre></div>
-</div>
-<ol class="arabic simple">
-<li><p>Alternatively, write a standalone <code class="docutils literal notranslate"><span class="pre">extern</span> <span class="pre">&quot;C&quot;</span></code> trampoline and call</p></li>
-</ol>
-<p><code class="docutils literal notranslate"><span class="pre">rgpot_potential_new()</span></code> directly from C:</p>
-<div class="highlight-c notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="n">rgpot_status_t</span> <span class="nf">my_trampoline</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">ud</span><span class="p">,</span> <span class="k">const</span> <span class="n">rgpot_force_input_t</span> <span class="o">*</span><span class="n">in</span><span class="p">,</span>
-</span><span data-line="2">                             <span class="n">rgpot_force_out_t</span> <span class="o">*</span><span class="n">out</span><span class="p">)</span> <span class="p">{</span>
-</span><span data-line="3">    <span class="cm">/* ... forward to your implementation ... */</span>
-</span><span data-line="4">    <span class="k">return</span> <span class="n">RGPOT_SUCCESS</span><span class="p">;</span>
-</span><span data-line="5"><span class="p">}</span>
-</span><span data-line="6">
-</span><span data-line="7"><span class="n">rgpot_potential_t</span> <span class="o">*</span><span class="n">pot</span> <span class="o">=</span> <span class="n">rgpot_potential_new</span><span class="p">(</span><span class="n">my_trampoline</span><span class="p">,</span> <span class="n">my_data</span><span class="p">,</span> <span class="nb">NULL</span><span class="p">);</span>
-</span></pre></div>
-</div>
-</section>
-<section id="build-system-integration">
-<h2>Build System Integration<a class="headerlink" href="#build-system-integration" title="Link to this heading">¶</a></h2>
-<section id="meson">
-<h3>Meson<a class="headerlink" href="#meson" title="Link to this heading">¶</a></h3>
-<p>The Rust crate is built via a
-<code class="docutils literal notranslate"><span class="pre">custom_target</span></code> in <code class="docutils literal notranslate"><span class="pre">meson.build</span></code>, gated behind the <code class="docutils literal notranslate"><span class="pre">with_rust_core</span></code> option:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1">meson<span class="w"> </span>setup<span class="w"> </span>bbdir<span class="w"> </span>-Dwith_rust_core<span class="o">=</span><span class="nb">true</span>
-</span><span data-line="2">meson<span class="w"> </span>compile<span class="w"> </span>-C<span class="w"> </span>bbdir
-</span></pre></div>
-</div>
-<p>Meson invokes <code class="docutils literal notranslate"><span class="pre">cargo</span> <span class="pre">build</span></code> and links the resulting <code class="docutils literal notranslate"><span class="pre">librgpot_core.a</span></code> into the
-project.
-The feature flags (<code class="docutils literal notranslate"><span class="pre">rpc</span></code>, <code class="docutils literal notranslate"><span class="pre">cache</span></code>) are forwarded from the corresponding Meson
-options.</p>
-</section>
-<section id="standalone-rust">
-<h3>Standalone Rust<a class="headerlink" href="#standalone-rust" title="Link to this heading">¶</a></h3>
-<p>The crate can also be built and tested independently:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span data-line="1"><span class="nb">cd</span><span class="w"> </span>rgpot-core
-</span><span data-line="2">cargo<span class="w"> </span>build
-</span><span data-line="3">cargo<span class="w"> </span><span class="nb">test</span>
-</span><span data-line="4">cargo<span class="w"> </span>build<span class="w"> </span>--features<span class="w"> </span>rpc<span class="w">  </span><span class="c1"># with RPC support</span>
-</span></pre></div>
-</div>
-</section>
+runs.
+<code class="docutils literal notranslate"><span class="pre">rgpot_potential_calculate</span></code> returns <code class="docutils literal notranslate"><span class="pre">RGPOT_INVALID_PARAMETER</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">rgpot_last_error</span></code> holds <code class="docutils literal notranslate"><span class="pre">peer</span> <span class="pre">refused:</span> <span class="pre">&lt;first</span> <span class="pre">mismatch&gt;</span></code>.
+A handle that never receives a message keeps the plain callback contract.
+The C entry point is listed in <a class="reference internal" href="c_abi.html"><span class="doc">C ABI of rgpot-core</span></a>.</p>
 </section>
 <section id="directory-reference">
 <h2>Directory Reference<a class="headerlink" href="#directory-reference" title="Link to this heading">¶</a></h2>
@@ -1365,28 +1364,40 @@ options.</p>
 <td><p>Rust crate configuration.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">rgpot-core/build.rs</span></code></p></td>
-<td><p>capnp compilation (+ cbindgen when <code class="docutils literal notranslate"><span class="pre">gen-header</span></code> enabled).</p></td>
+<td><p>Compiles the Cap’n Proto schema with the <code class="docutils literal notranslate"><span class="pre">schema</span></code> feature and runs cbindgen with <code class="docutils literal notranslate"><span class="pre">gen-header</span></code>.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rgpot-core/cbindgen.toml</span></code></p></td>
 <td><p>cbindgen configuration.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">rgpot-core/src/</span></code></p></td>
-<td><p>Rust source (types, status, potential, c<sub>api</sub>, rpc).</p></td>
+<td><p>Rust source (types, status, potential, c<sub>api</sub>, rpc, eindir, hvp, tensor, profile, version).</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rgpot-core/include/rgpot.h</span></code></p></td>
-<td><p>Auto-generated C header.</p></td>
+<td><p>C header generated by cbindgen and checked in.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">include/rgpot/</span></code></p></td>
 <td><p>Hand-written C++ RAII wrapper headers.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/</span></code></p></td>
-<td><p>Original C++ potentials and helpers.</p></td>
+<td><p>C++ potentials, neighbour lists, the RPC server and helpers.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">rgpot-core/schema/Potentials.capnp</span></code></p></td>
-<td><p>Bundled Cap’n Proto schema (canonical for crates.io).</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/fortran/</span></code></p></td>
+<td><p>Fortran 2018 potential kernels and their C entry points.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/rpc/Potentials.capnp</span></code></p></td>
-<td><p>Shared Cap’n Proto schema (monorepo fallback).</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">engines/</span></code></p></td>
+<td><p>Engine plugins and <code class="docutils literal notranslate"><span class="pre">pot_spec.hpp</span></code>, which builds a potential from a name and options.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">subprojects/potentials-schema.wrap</span></code></p></td>
+<td><p>Pinned canonical Cap’n Proto schema, plus the local <code class="docutils literal notranslate"><span class="pre">neighbour-chunk.diff</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rgpot-core/schema/Potentials.capnp</span></code></p></td>
+<td><p>Vendored schema copy; <code class="docutils literal notranslate"><span class="pre">build.rs</span></code> prefers it (works on crates.io).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/rpc/Potentials.capnp</span></code></p></td>
+<td><p>Vendored schema copy used by Meson; <code class="docutils literal notranslate"><span class="pre">build.rs</span></code> falls back to it. Both copies must equal the pinned one.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CppCore/rgpot/rpc/Potentials.ordinals</span></code></p></td>
+<td><p>Append-only ledger of schema ordinals.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1400,10 +1411,10 @@ options.</p>
   </svg>
   <span>Back to top</span>
 </button><div class="navigation flex print:hidden"><div class="navigation-prev">
-    <a href="../explanation/thread-safety.html">
+    <a href="../explanation/global-optimization.html">
       <i class="i-lucide chevron-left"></i>
       <div class="page-info">
-        <span>Previous</span><div class="title">Thread safety</div></div>
+        <span>Previous</span><div class="title">Local and global minimization</div></div>
     </a>
   </div><div class="navigation-next">
     <a href="python_api.html">
@@ -1501,7 +1512,7 @@ options.</p>
     </div>
   </div>
 </footer>
-      <script src="../_static/documentation_options.js?v=5349f462"></script>
+      <script src="../_static/documentation_options.js?v=229cbe3b"></script>
       <script src="../_static/doctools.js?v=9a2dae69"></script>
       <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../_static/target-highlight.js?v=df7d332b"></script>

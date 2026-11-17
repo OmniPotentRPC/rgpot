@@ -1,0 +1,68 @@
+.. index:: pair: struct; rgpot::HalfList
+.. _doxid-structrgpot_1_1_half_list:
+
+struct rgpot::HalfList
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+A host's half neighbour list over its atoms and their copies. :ref:`More...<details-structrgpot_1_1_half_list>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <Staged.hpp>
+	
+	struct HalfList {
+		// fields
+	
+		std::size_t :target:`nAtoms<doxid-structrgpot_1_1_half_list_1aca830a8b31e412615ff28e55520fe72a>` = 0;
+		std::size_t :target:`nOwned<doxid-structrgpot_1_1_half_list_1aa723553471eb9aeb2a7976d3f3c47aac>` = 0;
+		const double* :ref:`pos<doxid-structrgpot_1_1_half_list_1a3251a86bf4c293e43df21aa83ef0193d>` = nullptr;
+		const int* :ref:`atmnrs<doxid-structrgpot_1_1_half_list_1a74665257fb771665f1e42db3b44fb92b>` = nullptr;
+		std::size_t :target:`nRows<doxid-structrgpot_1_1_half_list_1ae3f9e099133fc4b9c50ccb37bfbc31e3>` = 0;
+		const int* :target:`rows<doxid-structrgpot_1_1_half_list_1a9994408b3535051764c91516a9490751>` = nullptr;
+		const int* :target:`count<doxid-structrgpot_1_1_half_list_1a15e9fc4139ac97d0d5dfa8a241c1dac2>` = nullptr;
+		const int*const* :target:`neighbours<doxid-structrgpot_1_1_half_list_1ab48f3d2cc02f223644667ad80c8fd92a>` = nullptr;
+		int :target:`indexMask<doxid-structrgpot_1_1_half_list_1a66d843eda14f219384be7c201f27eee2>` = ~0;
+		bool :target:`newton<doxid-structrgpot_1_1_half_list_1a635cddb938f9cf507682f4228c28a41d>` = false;
+	};
+.. _details-structrgpot_1_1_half_list:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+A host's half neighbour list over its atoms and their copies.
+
+:ref:`Atoms <doxid-class_atoms>` [0, nOwned) are the host's own and [nOwned, nAtoms) are copies. Row k belongs to the owned atom i = rows[k], whose neighbours are neighbours[i][0 .. count[i]): the layout of a LAMMPS NeighList (ilist, numneigh, firstneigh), with ``count`` and ``neighbours`` indexed by atom. ``indexMask`` clears any bits a host sets in an entry besides the index (LAMMPS NEIGHMASK).
+
+A pair of owned atoms is listed once, in either row. A pair of an owned atom and a copy is listed in the owned atom's row. With ``newton``, only one of the two hosts that hold such a pair lists it, and the stages write the copy's share as well for the host to add to its owner (LAMMPS newton_pair on). Without it both hosts list the pair and each writes its own atom. Entries beyond the cutoff are skipped, so a list built with a skin works. A copy sits at its image, so the separation of a pair is the plain difference of its positions.
+
+Fields
+------
+
+.. index:: pair: variable; pos
+.. _doxid-structrgpot_1_1_half_list_1a3251a86bf4c293e43df21aa83ef0193d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const double* pos = nullptr
+
+3 \* nAtoms Cartesian coordinates.
+
+.. index:: pair: variable; atmnrs
+.. _doxid-structrgpot_1_1_half_list_1a74665257fb771665f1e42db3b44fb92b:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const int* atmnrs = nullptr
+
+Atomic number per atom.
+

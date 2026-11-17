@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::ipi::detail::Address
+.. _doxid-structrgpot_1_1ipi_1_1detail_1_1_address:
+
+struct rgpot::ipi::detail::Address
+==================================
+
+.. toctree::
+	:hidden:
+
+Parsed form of ``unix:/abs/path``, ``unix:<name>``, ``tcp:<host>:<port>`` or ``tcp:<port>``. ``unix:<name>`` maps to ``<unix_prefix><name>``.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <IPIWire.hpp>
+	
+	struct Address {
+		// fields
+	
+		bool :target:`tcp<doxid-structrgpot_1_1ipi_1_1detail_1_1_address_1a47ebc4cf8f5736553c2c41c86487db4a>` = false;
+		std::string :target:`host<doxid-structrgpot_1_1ipi_1_1detail_1_1_address_1a64ec90cfe52d638c22460043acfc9603>`;
+		int :target:`port<doxid-structrgpot_1_1ipi_1_1detail_1_1_address_1aad4aaedacd5e4fb48d8ed922d085322f>` = 0;
+		std::string :target:`unixPath<doxid-structrgpot_1_1ipi_1_1detail_1_1_address_1adea18416f06b17fd4feb53f043e10f2c>`;
+	};

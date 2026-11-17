@@ -28,6 +28,7 @@ UMA / OMol calculator configuration. :ref:`More...<details-structrgpot_1_1_uma_c
 		int :target:`spin<doxid-structrgpot_1_1_uma_config_1a361b90a87de54893d563a949f7972d15>` = 1;
 		double :ref:`cutoff<doxid-structrgpot_1_1_uma_config_1a63261db84609cde3f7c77d4919a21a59>` = 6.0;
 		int :target:`max_neighbors<doxid-structrgpot_1_1_uma_config_1a87b174d24b7b36ff0a4261a6c11e338e>` = 300;
+		std::string :ref:`cache_dir<doxid-structrgpot_1_1_uma_config_1a9135172f5cb84f1dda7be99e6e5adf3f>`;
 	};
 .. _details-structrgpot_1_1_uma_config:
 
@@ -50,4 +51,14 @@ Fields
 	double cutoff = 6.0
 
 Cutoff in angstrom. The package's embedded ``cutoff`` metadata wins when present; no sidecar file is read.
+
+.. index:: pair: variable; cache_dir
+.. _doxid-structrgpot_1_1_uma_config_1a9135172f5cb84f1dda7be99e6e5adf3f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string cache_dir
+
+Root of the persistent cache the package is unpacked into, under ``aoti/<sha256 of the .pt2>.model/``. Empty means ``$RGPOT_CACHE_DIR``, then ``$XDG_CACHE_HOME/rgpot``, then ``.rgpot-cache`` in the working directory. Nothing is written to the system temporary directory.
 

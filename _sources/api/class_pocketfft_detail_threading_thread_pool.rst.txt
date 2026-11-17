@@ -1,0 +1,36 @@
+.. index:: pair: class; pocketfft::detail::threading::thread_pool
+.. _doxid-classpocketfft_1_1detail_1_1threading_1_1thread__pool:
+
+class pocketfft::detail::threading::thread_pool
+===============================================
+
+.. toctree::
+	:hidden:
+
+	struct_pocketfft_detail_threading_thread_pool_worker.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class thread_pool {
+	public:
+		// structs
+	
+		struct :ref:`worker<doxid-structpocketfft_1_1detail_1_1threading_1_1thread__pool_1_1worker>`;
+
+		// construction
+	
+		:target:`thread_pool<doxid-classpocketfft_1_1detail_1_1threading_1_1thread__pool_1a37a8121a99dd06a9d44b3e80ba0ea560>`(size_t nthreads);
+		:target:`thread_pool<doxid-classpocketfft_1_1detail_1_1threading_1_1thread__pool_1aefaadaa60c0183b862ad96338177a5e0>`();
+		:target:`~thread_pool<doxid-classpocketfft_1_1detail_1_1threading_1_1thread__pool_1a68f71e79fa93379fcc5819e533b45472>`();
+
+		// methods
+	
+		void :target:`submit<doxid-classpocketfft_1_1detail_1_1threading_1_1thread__pool_1a8698d49e8f406cdb88006aac6a91f9a4>`(std::function<void()> work);
+		void :target:`shutdown<doxid-classpocketfft_1_1detail_1_1threading_1_1thread__pool_1a0c7c29290fde806031c497f24c4ad411>`();
+		void :target:`restart<doxid-classpocketfft_1_1detail_1_1threading_1_1thread__pool_1a51d252df8d0cd060f15be8ba2bfe3288>`();
+	};

@@ -1,0 +1,19 @@
+.. index:: pair: struct; rgpot::engine::Unsupported
+.. _doxid-structrgpot_1_1engine_1_1_unsupported:
+
+struct rgpot::engine::Unsupported
+=================================
+
+.. toctree::
+	:hidden:
+
+Thrown by a setting hook for a value the backend cannot take; the adapter returns 3 with the reason in last_error.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <EngineTable.hpp>
+	
+	struct Unsupported: public std::runtime_error {
+	};

@@ -1,0 +1,27 @@
+.. index:: pair: struct; CP2KCSession
+.. _doxid-struct_c_p2_k_c_session:
+
+struct CP2KCSession
+===================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct CP2KCSession {
+		// fields
+	
+		char :target:`dir<doxid-struct_c_p2_k_c_session_1a293d01a93520b8a1bc7a975918f5ef47>`[4096];
+		char :target:`input<doxid-struct_c_p2_k_c_session_1a9534efa184c6c0b40c7993e05a71489c>`[4096];
+		long long :target:`key<doxid-struct_c_p2_k_c_session_1a184608a06a7c0eb51849c1c9a70f13b5>`;
+		:ref:`CP2KCEnv<doxid-struct_c_p2_k_c_env>`* :target:`envs<doxid-struct_c_p2_k_c_session_1a09cc465a083591325d2a8c54a9d4621c>`;
+		size_t :target:`n_envs<doxid-struct_c_p2_k_c_session_1ab8e953531bd5a1249fa617b4edb7a41a>`;
+		size_t :target:`cap_envs<doxid-struct_c_p2_k_c_session_1afe61b328a929926f8b0114bf33bb115c>`;
+		CP2KCSession* :target:`next<doxid-struct_c_p2_k_c_session_1aa80c8b6b3c7577bdf68cdf17a365c395>`;
+	};

@@ -1,0 +1,66 @@
+.. index:: pair: class; rgpot::lr::NlhPot
+.. _doxid-classrgpot_1_1lr_1_1_nlh_pot:
+
+class rgpot::lr::NlhPot
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class NlhPot: public rgpot::Potential< NlhPot > {
+	public:
+		// construction
+	
+		:target:`NlhPot<doxid-classrgpot_1_1lr_1_1_nlh_pot_1aa6e71670c59d309157a5b256ef669e53>`(:ref:`NlhConfig<doxid-structrgpot_1_1lr_1_1_nlh_config>` cfg = {});
+
+		// methods
+	
+		void :target:`forceImpl<doxid-classrgpot_1_1lr_1_1_nlh_pot_1aac496ec8645ab7315d695cf48d77a052>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1lr_1_1_nlh_pot_1ae020b6ddf1690cb7c248212ae022d0e7>`() const;
+		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1lr_1_1_nlh_pot_1aec4f691407d17014258f1b2fec816f1c>`() const;
+		void :target:`setNeighbours<doxid-classrgpot_1_1lr_1_1_nlh_pot_1a2f8493ca001641d823c09fb12d01e52a>`(std::shared_ptr<:ref:`DualList<doxid-classrgpot_1_1lr_1_1_dual_list>`> lists);
+	};
+.. _details-classrgpot_1_1lr_1_1_nlh_pot:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Methods
+-------
+
+.. index:: pair: function; caps
+.. _doxid-classrgpot_1_1lr_1_1_nlh_pot_1ae020b6ddf1690cb7c248212ae022d0e7:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` caps() const
+
+Concurrency and evaluation capabilities of this potential.
+
+Multi-threaded callers (NEB images, dimer endpoints) derive their sharing and cloning policy from this instead of hard-coded lists.
+
+.. index:: pair: function; paramsKey
+.. _doxid-classrgpot_1_1lr_1_1_nlh_pot_1aec4f691407d17014258f1b2fec816f1c:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	virtual uint64_t paramsKey() const
+
+Fingerprint of the potential's parameter set.
+
+Mixed into the result-cache key so results never cross parameter sets. Implementations hash their config field by field (see :ref:`ParamHash.hpp <doxid-_param_hash_8hpp_source>`) plus a kernel-version salt that changes whenever the numerics change. The default (0) suits parameter-free potentials whose numerics never changed.
+

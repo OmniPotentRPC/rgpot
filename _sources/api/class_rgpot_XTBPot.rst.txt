@@ -33,6 +33,8 @@ Linked GFN-xTB pot (NEEDED libxtb). :ref:`More...<details-classrgpot_1_1_x_t_b_p
 		void :ref:`reset<doxid-classrgpot_1_1_x_t_b_pot_1adb24312e22eb779feb00192475c56ba4>`();
 		void :ref:`setWarmMove<doxid-classrgpot_1_1_x_t_b_pot_1afb310595c5b3ea2c7cfde351eb2985a1>`(double angstrom);
 		double :target:`warmMove<doxid-classrgpot_1_1_x_t_b_pot_1a211bb5e4aa8e6533dd6403cb808fa789>`() const;
+		void :ref:`setWarmMinGap<doxid-classrgpot_1_1_x_t_b_pot_1a5bd9f0915f5a1a6e93f9caf2afc378ae>`(double ev);
+		double :target:`warmMinGap<doxid-classrgpot_1_1_x_t_b_pot_1a5cdf230e6c10e9921db567c59c1a06ea>`() const;
 		bool :ref:`reusedWavefunction<doxid-classrgpot_1_1_x_t_b_pot_1a39f04647e68aa823a77f52fa086d5399>`() const;
 		void :target:`forceImpl<doxid-classrgpot_1_1_x_t_b_pot_1a7180249bbc61a142c0b35b886ed5da52>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_x_t_b_pot_1a45b3800a2be60758506f83414af94b0f>`() const;
@@ -44,7 +46,7 @@ Detailed Documentation
 
 Linked GFN-xTB pot (NEEDED libxtb).
 
-libxtb exposes a stable **ISO_C_BINDING** C API (``xtb.h``): opaque ``xtb_TEnvironment`` / ``xtb_TCalculator`` / ``xtb_TMolecule`` / ``xtb_TResults`` handles with explicit create/update/destroy. We test and use that C contract—not free-form Fortran ABI. Each ``:ref:`XTBPot <doxid-classrgpot_1_1_x_t_b_pot>``` owns its handles. The first force builds the molecule. Later forces call ``xtb_updateMolecule`` and keep the SCC wavefunction in the results object while no atom moves by more than ``:ref:`XTBConfig::warm_move <doxid-structrgpot_1_1_x_t_b_config_1a77d9b5f2284813a43156e3ce6fcecf5c>``` (1 Angstrom unless changed). A larger move, a new composition, or ``:ref:`reset() <doxid-classrgpot_1_1_x_t_b_pot_1adb24312e22eb779feb00192475c56ba4>``` drops that object so the next single point uses xtb's own guess. ``xtb_releaseOutput`` is called on create (library recommendation for multi-env processes). Do not share one instance across threads; distinct instances may be used from different threads if the loaded libxtb build is reentrant for independent handle sets.
+libxtb exposes a stable **ISO_C_BINDING** C API (``xtb.h``): opaque ``xtb_TEnvironment`` / ``xtb_TCalculator`` / ``xtb_TMolecule`` / ``xtb_TResults`` handles with explicit create/update/destroy. We test and use that C contract—not free-form Fortran ABI. Each ``:ref:`XTBPot <doxid-classrgpot_1_1_x_t_b_pot>``` owns its handles. The first force builds the molecule. Later forces call ``xtb_updateMolecule`` and keep the SCC wavefunction in the results object while no atom moves by more than ``:ref:`XTBConfig::warm_move <doxid-structrgpot_1_1_x_t_b_config_1a77d9b5f2284813a43156e3ce6fcecf5c>``` (1 Angstrom unless changed) and the HOMO-LUMO gap stays at or above ``:ref:`XTBConfig::warm_min_gap <doxid-structrgpot_1_1_x_t_b_config_1a8530905fb719d37812e15b97502f5975>``` (1 eV unless changed). A larger move, a smaller gap, a new composition, or ``:ref:`reset() <doxid-classrgpot_1_1_x_t_b_pot_1adb24312e22eb779feb00192475c56ba4>``` drops that object so the next single point uses xtb's own guess. An SCC that does not converge never seeds another one. ``xtb_releaseOutput`` is called on create (library recommendation for multi-env processes). Do not share one instance across threads; distinct instances may be used from different threads if the loaded libxtb build is reentrant for independent handle sets.
 
 For hosts that must not NEEDED libxtb, use ``:ref:`XTBDlopen <doxid-classrgpot_1_1_x_t_b_dlopen>``` + ``libxtb_engine.so`` instead (always built; no ``-Dwith_xtb`` required).
 
@@ -70,6 +72,16 @@ Drop the stored SCC wavefunction. The calculator stays. The next force starts fr
 	void setWarmMove(double angstrom)
 
 Replace the displacement guard. Zero or a negative value disables reuse.
+
+.. index:: pair: function; setWarmMinGap
+.. _doxid-classrgpot_1_1_x_t_b_pot_1a5bd9f0915f5a1a6e93f9caf2afc378ae:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void setWarmMinGap(double ev)
+
+Replace the frontier gap guard, in eV. Zero or a negative value reuses the wavefunction at any gap.
 
 .. index:: pair: function; reusedWavefunction
 .. _doxid-classrgpot_1_1_x_t_b_pot_1a39f04647e68aa823a77f52fa086d5399:

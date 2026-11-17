@@ -73,6 +73,10 @@
       :used_name: rgpot_status_t
 
 
+   .. rust:use:: rgpot_core::tensor::copy_f64_tensor
+      :used_name: copy_f64_tensor
+
+
    .. rust:use:: rgpot_core::tensor::rgpot_tensor_cpu_f64_2d
       :used_name: rgpot_tensor_cpu_f64_2d
 
@@ -108,6 +112,11 @@
       Start an RPC server listening on ``host:port``, dispatching to ``pot``.
       
       This function blocks the current thread. It creates its own tokio runtime.
+      
+      A request whose ``pos`` does not hold three values per entry of ``atmnrs``,
+      or whose ``box`` does not hold 9 values, fails without calling the
+      callback.  A successful callback whose forces tensor is not 3 doubles
+      per atom on the CPU also fails the request.
       
       **Safety**
       ``pot`` must be a valid pointer obtained from ``rgpot_potential_new``.

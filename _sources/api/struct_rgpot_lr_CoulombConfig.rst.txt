@@ -1,0 +1,30 @@
+.. index:: pair: struct; rgpot::lr::CoulombConfig
+.. _doxid-structrgpot_1_1lr_1_1_coulomb_config:
+
+struct rgpot::lr::CoulombConfig
+===============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct CoulombConfig {
+		// fields
+	
+		CoulombMethod :target:`method<doxid-structrgpot_1_1lr_1_1_coulomb_config_1a3b974d9183ab28c79aba51a21577fdd3>` = CoulombMethod::Ewald;
+		double :target:`cutoff<doxid-structrgpot_1_1lr_1_1_coulomb_config_1a5562d76549632d2894ad8d9a907bafc6>` = 9.0;
+		double :target:`alpha<doxid-structrgpot_1_1lr_1_1_coulomb_config_1ae06f4813a06f428d9911ab752ca4b750>` = 0.30;
+		int :target:`kmax<doxid-structrgpot_1_1lr_1_1_coulomb_config_1ae3f1bb79d6a8d0614a62c2600296c0b8>` = 8;
+		int :target:`grid<doxid-structrgpot_1_1lr_1_1_coulomb_config_1aa4a7e43f6129c23cfc7dc0b2da92be4d>`[3] = {32, 32, 32};
+		int :target:`spline_order<doxid-structrgpot_1_1lr_1_1_coulomb_config_1a25d3c4cfc9c5af2144e57c62f9cf1cf9>` = 6;
+		double :target:`short_cutoff<doxid-structrgpot_1_1lr_1_1_coulomb_config_1a05b30512d329d09d96a701924f903f6f>` = 4.0;
+		double :target:`skin<doxid-structrgpot_1_1lr_1_1_coulomb_config_1a5ce3a3433efa16973c73f5a7d1534c3b>` = 1.0;
+		bool :target:`periodic<doxid-structrgpot_1_1lr_1_1_coulomb_config_1a32bb94748d65a6abedada0f7a0e5b35a>` = true;
+		bool :target:`stress<doxid-structrgpot_1_1lr_1_1_coulomb_config_1a339c289a6252eb7b209173c25e539181>` = true;
+	};

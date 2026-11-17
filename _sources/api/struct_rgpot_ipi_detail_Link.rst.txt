@@ -1,0 +1,57 @@
+.. index:: pair: struct; rgpot::ipi::detail::Link
+.. _doxid-structrgpot_1_1ipi_1_1detail_1_1_link:
+
+struct rgpot::ipi::detail::Link
+===============================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+One connected or listening socket, and the names used in errors. :ref:`More...<details-structrgpot_1_1ipi_1_1detail_1_1_link>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <IPIWire.hpp>
+	
+	struct Link {
+		// fields
+	
+		int :target:`fd<doxid-structrgpot_1_1ipi_1_1detail_1_1_link_1a5999588d9aeef31429c848f8495b394a>` = -1;
+		const char* :ref:`who<doxid-structrgpot_1_1ipi_1_1detail_1_1_link_1a40d3a1d3f76c03c8ba1a18cb9a050a61>` = "";
+		const char* :ref:`peer<doxid-structrgpot_1_1ipi_1_1detail_1_1_link_1aaa28208e00e692b0f2521b804d67f5ce>` = "";
+	};
+.. _details-structrgpot_1_1ipi_1_1detail_1_1_link:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+One connected or listening socket, and the names used in errors.
+
+Fields
+------
+
+.. index:: pair: variable; who
+.. _doxid-structrgpot_1_1ipi_1_1detail_1_1_link_1a40d3a1d3f76c03c8ba1a18cb9a050a61:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* who = ""
+
+"IPIPot" or "IPIDriver"
+
+.. index:: pair: variable; peer
+.. _doxid-structrgpot_1_1ipi_1_1detail_1_1_link_1aaa28208e00e692b0f2521b804d67f5ce:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* peer = ""
+
+"i-PI driver" or "i-PI server"
+

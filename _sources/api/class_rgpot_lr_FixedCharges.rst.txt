@@ -1,0 +1,38 @@
+.. index:: pair: class; rgpot::lr::FixedCharges
+.. _doxid-classrgpot_1_1lr_1_1_fixed_charges:
+
+class rgpot::lr::FixedCharges
+=============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class FixedCharges: public :ref:`rgpot::lr::ChargeSource<doxid-classrgpot_1_1lr_1_1_charge_source>` {
+	public:
+		// construction
+	
+		:target:`FixedCharges<doxid-classrgpot_1_1lr_1_1_fixed_charges_1a6088f69f7349a32574fc748924622ad3>`(std::vector<double> q, double total);
+
+		// methods
+	
+		virtual void :target:`load<doxid-classrgpot_1_1lr_1_1_fixed_charges_1a6046cf7da6a9ce6ac6da350cc167afe2>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* q, double* total) const;
+	};
+
+Inherited Members
+-----------------
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-inherited-code-block
+
+	public:
+		// methods
+	
+		virtual void :ref:`load<doxid-classrgpot_1_1lr_1_1_charge_source_1a1b5bef15f7758eda5e8df01d54b9c091>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, std::vector<double>* q, double* total) const = 0;
+

@@ -1,0 +1,31 @@
+.. index:: pair: class; pocketfft::detail::arr_info
+.. _doxid-classpocketfft_1_1detail_1_1arr__info:
+
+class pocketfft::detail::arr_info
+=================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class arr_info {
+	public:
+		// construction
+	
+		:target:`arr_info<doxid-classpocketfft_1_1detail_1_1arr__info_1a52198c90eae1ff0b49d116250c31c3e8>`(shape_t shape_, stride_t stride_);
+
+		// methods
+	
+		size_t :target:`ndim<doxid-classpocketfft_1_1detail_1_1arr__info_1ac608c8af2a59a28a0012e308be7ee414>`() const;
+		size_t :target:`size<doxid-classpocketfft_1_1detail_1_1arr__info_1a003a7106f7fa59a3c55ac1f0116313a5>`() const;
+		const shape_t& :target:`shape<doxid-classpocketfft_1_1detail_1_1arr__info_1accada8146cb8d3ab7facb4c1e3413ec0>`() const;
+		size_t :target:`shape<doxid-classpocketfft_1_1detail_1_1arr__info_1ac601c660c64a4c252aa8be4ae7dfa7a8>`(size_t i) const;
+		const stride_t& :target:`stride<doxid-classpocketfft_1_1detail_1_1arr__info_1a9d10aa83a1117e75d36f7396b8c2a093>`() const;
+		const ptrdiff_t& :target:`stride<doxid-classpocketfft_1_1detail_1_1arr__info_1ac1f6a9bd6703eceef6003f5f6315d39b>`(size_t i) const;
+	};

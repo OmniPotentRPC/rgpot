@@ -1,0 +1,25 @@
+.. index:: pair: struct; rgpot::lr::DualList::Skin
+.. _doxid-structrgpot_1_1lr_1_1_dual_list_1_1_skin:
+
+struct rgpot::lr::DualList::Skin
+================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Skin {
+		// fields
+	
+		std::vector<double> :target:`ref<doxid-structrgpot_1_1lr_1_1_dual_list_1_1_skin_1a58b308d776ecd5b1b966de5e34d2bf74>`;
+		double :target:`ref_h<doxid-structrgpot_1_1lr_1_1_dual_list_1_1_skin_1af6af110a2d39d14b0154cbab9ed36907>`[9] {};
+		std::vector<Cand> :target:`cand<doxid-structrgpot_1_1lr_1_1_dual_list_1_1_skin_1ade719eb8a1a86f496616effaef52858d>`;
+		bool :target:`built<doxid-structrgpot_1_1lr_1_1_dual_list_1_1_skin_1a0df640c7ae5a41e2f281e5d793edd907>` = false;
+		bool :target:`emitted<doxid-structrgpot_1_1lr_1_1_dual_list_1_1_skin_1a955d64552c248a101552f725c2b3a63c>` = false;
+	};

@@ -41,8 +41,8 @@ Overview
 		void :ref:`getParams<doxid-classrgpot_1_1_n_w_chem_pot_1af43bd2a50c93577f155b6ca4a85409f1>`(::NWChemParams::Builder out) const;
 		bool :ref:`setPotentialConfig<doxid-classrgpot_1_1_n_w_chem_pot_1afe1b5ac6acd29e8f8e3c56f92714f951>`(const ::PotentialConfig::Reader& cfg, std::string* message_out = nullptr);
 		bool :target:`available<doxid-classrgpot_1_1_n_w_chem_pot_1a97d745ef38da9b98a5d8fb03826c40e1>`() const;
-		static bool :target:`probe_available<doxid-classrgpot_1_1_n_w_chem_pot_1a10c1e6ab4971f8969fbef683aecfe768>`();
-		static bool :target:`abi_available<doxid-classrgpot_1_1_n_w_chem_pot_1a30f244ff54edbb17af427561970fe371>`();
+		static bool :target:`probeAvailable<doxid-classrgpot_1_1_n_w_chem_pot_1a4999b732b5f28d9f2400f9e3c1d527ed>`();
+		static bool :target:`abiAvailable<doxid-classrgpot_1_1_n_w_chem_pot_1a4787875bc708d10b9f61b346340dc6c6>`();
 	};
 .. _details-classrgpot_1_1_n_w_chem_pot:
 

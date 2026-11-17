@@ -1,0 +1,26 @@
+.. index:: pair: struct; rgpot::lr::D4BjParam
+.. _doxid-structrgpot_1_1lr_1_1_d4_bj_param:
+
+struct rgpot::lr::D4BjParam
+===========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct D4BjParam {
+		// fields
+	
+		double :target:`s6<doxid-structrgpot_1_1lr_1_1_d4_bj_param_1a628b77bd55b79cd599058d41d506b8f6>` = 1.0;
+		double :target:`s8<doxid-structrgpot_1_1lr_1_1_d4_bj_param_1a17fe628b752f027e516e545a266bc067>` = 0.95948085;
+		double :target:`s9<doxid-structrgpot_1_1lr_1_1_d4_bj_param_1a5943f75172de8d49626b0c547ed18a11>` = 1.0;
+		double :target:`a1<doxid-structrgpot_1_1lr_1_1_d4_bj_param_1a1d5c851e777dd5765bc8e8d936f4216a>` = 0.38574991;
+		double :target:`a2<doxid-structrgpot_1_1lr_1_1_d4_bj_param_1aed61d88887440368d06a72dba1692dff>` = 4.80688534;
+		double :target:`alp<doxid-structrgpot_1_1lr_1_1_d4_bj_param_1adb4d85b81df5c9b339ad8deab7933da9>` = 16.0;
+	};

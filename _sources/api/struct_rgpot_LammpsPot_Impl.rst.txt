@@ -1,0 +1,22 @@
+.. index:: pair: struct; rgpot::LammpsPot::Impl
+.. _doxid-structrgpot_1_1_lammps_pot_1_1_impl:
+
+struct rgpot::LammpsPot::Impl
+=============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// fields
+	
+		Loaded :target:`engine<doxid-structrgpot_1_1_lammps_pot_1_1_impl_1a1441e9d6ca8c565a810efc58fb4fbcf2>`;
+		std::mutex :target:`mutex<doxid-structrgpot_1_1_lammps_pot_1_1_impl_1a0c7317257b106e6ff189fc9c90e7b012>`;
+	};

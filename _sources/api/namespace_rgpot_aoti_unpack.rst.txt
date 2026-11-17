@@ -1,0 +1,141 @@
+.. index:: pair: namespace; rgpot::aoti_unpack
+.. _doxid-namespacergpot_1_1aoti__unpack:
+
+namespace rgpot::aoti_unpack
+============================
+
+.. toctree::
+	:hidden:
+
+	namespace_rgpot_aoti_unpack_detail.rst
+	struct_rgpot_aoti_unpack_CacheRoot.rst
+	struct_rgpot_aoti_unpack_Unpacked.rst
+	struct_rgpot_aoti_unpack_ZipEntry.rst
+	class_rgpot_aoti_unpack_ZipReader.rst
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace aoti_unpack {
+
+	// namespaces
+
+	namespace :ref:`rgpot::aoti_unpack::detail<doxid-namespacergpot_1_1aoti__unpack_1_1detail>`;
+
+	// structs
+
+	struct :ref:`CacheRoot<doxid-structrgpot_1_1aoti__unpack_1_1_cache_root>`;
+	struct :ref:`Unpacked<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked>`;
+	struct :ref:`ZipEntry<doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry>`;
+
+	// classes
+
+	class :ref:`ZipReader<doxid-classrgpot_1_1aoti__unpack_1_1_zip_reader>`;
+
+	// global variables
+
+	const char* :ref:`kCacheDirEnv<doxid-aoti__unpack_8hpp_1abc553d25db067336938f2c39fb81b875>` = "RGPOT_CACHE_DIR";
+	const char* :ref:`kRunDirCache<doxid-aoti__unpack_8hpp_1ae80dab6aa384ccabfc43191cdc63d596>` = ".rgpot-cache";
+	const char* :ref:`kManifest<doxid-aoti__unpack_8hpp_1ab32dc4bb98e236954ed118f9a808390e>` = "rgpot-unpack.manifest";
+	const char* :target:`kManifestMagic<doxid-aoti__unpack_8hpp_1ae0f48826726370c6fbd2e516f71cf2ff>` = "rgpot-aoti-unpack 1";
+	std::chrono::hours :ref:`kLeftoverAge<doxid-aoti__unpack_8hpp_1a792787e38ce942467632ebb2ea415d64>` {1};
+
+	// global functions
+
+	std::string :target:`sha256_file<doxid-aoti__unpack_8hpp_1a117b13de9a084eb9efbee4f813d6c451>`(const fs::path& path);
+	:ref:`CacheRoot<doxid-structrgpot_1_1aoti__unpack_1_1_cache_root>` :ref:`resolve_cache_root<doxid-aoti__unpack_8hpp_1aac1de20e948a0c98834f36c593450ca4>`(const std::string& configured);
+	:ref:`Unpacked<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked>` :ref:`unpack<doxid-aoti__unpack_8hpp_1a6bd8d03b01a01fd20c6b8c0a3140310d>`(const fs::path& package, const fs::path& root, const std::string& model = "model");
+	std::unordered_map<std::string, std::string> :ref:`parse_flat_json<doxid-aoti__unpack_8hpp_1a5f9fc46c0e7860e77f64da4fac87a50f>`(const std::string& text);
+	std::unordered_map<std::string, std::string> :target:`read_metadata<doxid-aoti__unpack_8hpp_1ad16ba83f19d12913e6e7cba3ed7937ba>`(const fs::path& path);
+
+	} // namespace aoti_unpack
+.. _details-namespacergpot_1_1aoti__unpack:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Global Variables
+----------------
+
+.. index:: pair: variable; kCacheDirEnv
+.. _doxid-aoti__unpack_8hpp_1abc553d25db067336938f2c39fb81b875:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* kCacheDirEnv = "RGPOT_CACHE_DIR"
+
+Environment variable naming the cache root when the config has none.
+
+.. index:: pair: variable; kRunDirCache
+.. _doxid-aoti__unpack_8hpp_1ae80dab6aa384ccabfc43191cdc63d596:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* kRunDirCache = ".rgpot-cache"
+
+Cache root below the run directory when nothing else names one.
+
+.. index:: pair: variable; kManifest
+.. _doxid-aoti__unpack_8hpp_1ab32dc4bb98e236954ed118f9a808390e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* kManifest = "rgpot-unpack.manifest"
+
+Written last into an unpack; a directory without it is not an unpack.
+
+.. index:: pair: variable; kLeftoverAge
+.. _doxid-aoti__unpack_8hpp_1a792787e38ce942467632ebb2ea415d64:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::chrono::hours kLeftoverAge {1}
+
+Leftover build or stale directories older than this are removed.
+
+Global Functions
+----------------
+
+.. index:: pair: function; resolve_cache_root
+.. _doxid-aoti__unpack_8hpp_1aac1de20e948a0c98834f36c593450ca4:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`CacheRoot<doxid-structrgpot_1_1aoti__unpack_1_1_cache_root>` resolve_cache_root(const std::string& configured)
+
+The cache root, in order: the explicit config value, $RGPOT_CACHE_DIR, $XDG_CACHE_HOME/rgpot (absolute values only, as the XDG base directory specification requires), then .rgpot-cache in the working directory. The result is absolute, so a later chdir does not move it.
+
+.. index:: pair: function; unpack
+.. _doxid-aoti__unpack_8hpp_1a6bd8d03b01a01fd20c6b8c0a3140310d:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`Unpacked<doxid-structrgpot_1_1aoti__unpack_1_1_unpacked>` unpack(const fs::path& package, const fs::path& root, const std::string& model = "model")
+
+Unpack ``package`` under ``root`` and return the unpacked paths. A valid earlier unpack of the same bytes is reused; no file is ever written outside ``root``.
+
+.. index:: pair: function; parse_flat_json
+.. _doxid-aoti__unpack_8hpp_1a5f9fc46c0e7860e77f64da4fac87a50f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::unordered_map<std::string, std::string> parse_flat_json(const std::string& text)
+
+Parse the flat JSON object torch writes as <model>_metadata.json. String values are unescaped; any other scalar is kept as its literal text.
+

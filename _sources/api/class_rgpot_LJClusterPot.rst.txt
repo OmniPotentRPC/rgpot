@@ -31,6 +31,7 @@ Shifted 12-6 Lennard-Jones for isolated clusters. :ref:`More...<details-classrgp
 		virtual uint64_t :ref:`paramsKey<doxid-classrgpot_1_1_l_j_cluster_pot_1acd4671bb73a60e0f16f8e9ae61881eb6>`() const;
 		virtual :ref:`PotCaps<doxid-structrgpot_1_1_pot_caps>` :ref:`caps<doxid-classrgpot_1_1_l_j_cluster_pot_1af424a4742c6e993deef6ccdec5aca78e>`() const;
 		void :ref:`forceImpl<doxid-classrgpot_1_1_l_j_cluster_pot_1a2c831c32b78d72a59e3bad9b025b1b01>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out) const;
+		void :ref:`forcePerAtom<doxid-classrgpot_1_1_l_j_cluster_pot_1a68e5a0734a8b9644c5661d03832ca220>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const;
 		void :target:`setNeighbourMode<doxid-classrgpot_1_1_l_j_cluster_pot_1ad5260edf318fcc5caac0e92d64e1ba33>`(nlist::Mode mode);
 		bool :target:`listReused<doxid-classrgpot_1_1_l_j_cluster_pot_1a0159ee104f82e3e70ee0faca05e75040>`() const;
 		std::size_t :ref:`retainedPairs<doxid-classrgpot_1_1_l_j_cluster_pot_1a44129ae569d5b514e426c341f295ddc6>`() const;
@@ -103,6 +104,16 @@ Computes the forces and energy for a given configuration.
 .. rubric:: Returns:
 
 Void.
+
+.. index:: pair: function; forcePerAtom
+.. _doxid-classrgpot_1_1_l_j_cluster_pot_1a68e5a0734a8b9644c5661d03832ca220:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	void forcePerAtom(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, :ref:`ForceOut<doxid-structrgpot_1_1_force_out>`* out, const :ref:`PerAtomOut<doxid-structrgpot_1_1_per_atom_out>`& atoms) const
+
+forceImpl plus each pair energy and virial split half to each atom. Always walks the cells, so the energy can differ from forceImpl's direct all-pairs sum in the last bits.
 
 .. index:: pair: function; retainedPairs
 .. _doxid-classrgpot_1_1_l_j_cluster_pot_1a44129ae569d5b514e426c341f295ddc6:

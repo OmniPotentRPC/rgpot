@@ -1,0 +1,34 @@
+.. index:: pair: class; pocketfft::detail::rfftp
+.. _doxid-classpocketfft_1_1detail_1_1rfftp:
+
+template class pocketfft::detail::rfftp
+=======================================
+
+.. toctree::
+	:hidden:
+
+	struct_pocketfft_detail_rfftp_fctdata.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename T0>
+	class rfftp {
+	public:
+		// structs
+	
+		struct :ref:`fctdata<doxid-structpocketfft_1_1detail_1_1rfftp_1_1fctdata>`;
+
+		// construction
+	
+		:target:`rfftp<doxid-classpocketfft_1_1detail_1_1rfftp_1a0c590f917b8e8afa3ff53ccff52e68c5>`(size_t length_);
+
+		// methods
+	
+		template <typename T>
+		void :target:`exec<doxid-classpocketfft_1_1detail_1_1rfftp_1a073972f42bdd3617693be7be2cb5e0ac>`(T c[], T0 fct, bool r2hc) const;
+	};

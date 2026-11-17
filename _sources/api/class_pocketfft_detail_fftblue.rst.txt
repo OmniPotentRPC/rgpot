@@ -1,0 +1,31 @@
+.. index:: pair: class; pocketfft::detail::fftblue
+.. _doxid-classpocketfft_1_1detail_1_1fftblue:
+
+template class pocketfft::detail::fftblue
+=========================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename T0>
+	class fftblue {
+	public:
+		// construction
+	
+		:target:`fftblue<doxid-classpocketfft_1_1detail_1_1fftblue_1a8613b2131e7843bbca9e1cd4cc15bc01>`(size_t length);
+
+		// methods
+	
+		template <typename T>
+		void :target:`exec<doxid-classpocketfft_1_1detail_1_1fftblue_1a5fb03413a3d1a653842875adcf87ae8c>`(:ref:`cmplx<doxid-structpocketfft_1_1detail_1_1cmplx>`<T> c[], T0 fct, bool fwd) const;
+	
+		template <typename T>
+		void :target:`exec_r<doxid-classpocketfft_1_1detail_1_1fftblue_1a642b4aff0485c7d9c8794161a1464f00>`(T c[], T0 fct, bool fwd);
+	};

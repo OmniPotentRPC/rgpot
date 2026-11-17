@@ -1,0 +1,131 @@
+.. index:: pair: namespace; rgpot::cp2k
+.. _doxid-namespacergpot_1_1cp2k:
+
+namespace rgpot::cp2k
+=====================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+CP2K input decks from CP2KParams and one geometry. :ref:`More...<details-namespacergpot_1_1cp2k>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace cp2k {
+
+	// global variables
+
+	const char* :ref:`kCoordToken<doxid-namespacergpot_1_1cp2k_1af85a00e60636e7940a8fdb01de34b87f>` = "@RGPOT_COORD@";
+	const char* :ref:`kCellToken<doxid-namespacergpot_1_1cp2k_1a5295f0cecc84798e3bd0c02fb837fe37>` = "@RGPOT_CELL@";
+
+	// global functions
+
+	std::string :ref:`elementSymbol<doxid-namespacergpot_1_1cp2k_1afa94a57335fbf4a30d3fab7a2719d27e>`(int z);
+	std::string :ref:`checkTemplate<doxid-namespacergpot_1_1cp2k_1a7dbdbb7d1150ab41bf568e3459c46d34>`(const std::string& deck);
+	std::string :ref:`coordRows<doxid-namespacergpot_1_1cp2k_1ac9b3ba97c99ec77c38fdca16601cd9ab>`(std::size_t n_atoms, const double* pos_ang, const int* atomic_numbers);
+	std::string :ref:`cellRows<doxid-namespacergpot_1_1cp2k_1a89bb987186c8b2d29d66ee8cca817546>`(const double* box_ang);
+	std::string :ref:`defaultTemplate<doxid-namespacergpot_1_1cp2k_1a38cb8693886ddbda70ec95ee7fd1ee36>`(const ::CP2KParams::Reader& params, const std::vector<int>& atomic_numbers);
+	std::string :ref:`renderDeck<doxid-namespacergpot_1_1cp2k_1ae78a98e65a9f87e401e1fabc07e35d01>`(const ::CP2KParams::Reader& params, std::size_t n_atoms, const double* pos_ang, const int* atomic_numbers, const double* box_ang);
+
+	} // namespace cp2k
+.. _details-namespacergpot_1_1cp2k:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+CP2K input decks from CP2KParams and one geometry.
+
+Pure text functions without libcp2k, so the deck :ref:`CP2KPot <doxid-classrgpot_1_1_c_p2_k_pot>` hands the shim can be tested on its own.
+
+Global Variables
+----------------
+
+.. index:: pair: variable; kCoordToken
+.. _doxid-namespacergpot_1_1cp2k_1af85a00e60636e7940a8fdb01de34b87f:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* kCoordToken = "@RGPOT_COORD@"
+
+Token a template replaces with one ``&COORD`` row per atom (Angstrom).
+
+.. index:: pair: variable; kCellToken
+.. _doxid-namespacergpot_1_1cp2k_1a5295f0cecc84798e3bd0c02fb837fe37:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	const char* kCellToken = "@RGPOT_CELL@"
+
+Token a template replaces with the ``&CELL`` ``A``, ``B`` and ``C`` rows (Angstrom).
+
+Global Functions
+----------------
+
+.. index:: pair: function; elementSymbol
+.. _doxid-namespacergpot_1_1cp2k_1afa94a57335fbf4a30d3fab7a2719d27e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string elementSymbol(int z)
+
+Element symbol of atomic number ``z`` (1..118). Throws std::invalid_argument outside that range.
+
+.. index:: pair: function; checkTemplate
+.. _doxid-namespacergpot_1_1cp2k_1a7dbdbb7d1150ab41bf568e3459c46d34:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string checkTemplate(const std::string& deck)
+
+Empty when ``deck`` contains both tokens, else the reason it does not.
+
+.. index:: pair: function; coordRows
+.. _doxid-namespacergpot_1_1cp2k_1ac9b3ba97c99ec77c38fdca16601cd9ab:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string coordRows(std::size_t n_atoms, const double* pos_ang, const int* atomic_numbers)
+
+``Symbol x y z`` rows, one per atom, positions in Angstrom.
+
+.. index:: pair: function; cellRows
+.. _doxid-namespacergpot_1_1cp2k_1a89bb987186c8b2d29d66ee8cca817546:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string cellRows(const double* box_ang)
+
+``A``, ``B`` and ``C`` rows from a row-major 3x3 cell in Angstrom (rows are the cell vectors).
+
+.. index:: pair: function; defaultTemplate
+.. _doxid-namespacergpot_1_1cp2k_1a38cb8693886ddbda70ec95ee7fd1ee36:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string defaultTemplate(const ::CP2KParams::Reader& params, const std::vector<int>& atomic_numbers)
+
+The deck the typed fields describe, with both tokens in place of the geometry. One ``&KIND`` block per element, in order of first appearance.
+
+.. index:: pair: function; renderDeck
+.. _doxid-namespacergpot_1_1cp2k_1ae78a98e65a9f87e401e1fabc07e35d01:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::string renderDeck(const ::CP2KParams::Reader& params, std::size_t n_atoms, const double* pos_ang, const int* atomic_numbers, const double* box_ang)
+
+inputTemplate when it is set, else defaultTemplate, with the tokens replaced by this geometry. Throws std::invalid_argument when the template lacks a token or an atomic number has no symbol.
+

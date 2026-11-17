@@ -1,0 +1,43 @@
+.. index:: pair: struct; rgpot::CP2KPot::Impl
+.. _doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl:
+
+struct rgpot::CP2KPot::Impl
+===========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Impl {
+		// fields
+	
+		EngineBundle :target:`bundle<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a71817eb258dcbe290ed32fc0ddb93af4>`;
+		std::vector<::capnp::word> :target:`params_words<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a1c78d1651625e4ee9bef7abe75608d0d>`;
+		std::string :target:`engine_path<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1af2469df74000b3f9319bbdc434fab8b2>`;
+		std::string :target:`params_error<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a60d9fdc87d476b7b5e71fab66d82643d>`;
+		uint64_t :target:`params_key<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a0e29fd3e7b5eaff65971dbcfe2b1ade3>` = 0;
+		std::size_t :target:`serial<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1ab0c6cd9cb74ee63f4843226b702e5b10>` = g_instance_serial.fetch_add(1);
+		:ref:`CP2KCSession<doxid-struct_c_p2_k_c_session>`* :target:`session<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a006a18663522a2873e8a27c62d25a260>` = nullptr;
+		std::vector<int> :target:`session_numbers<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1aa05d5b44132900cb814e7878851620a0>`;
+		std::filesystem::path :target:`run_dir<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a3cf616192f38fb9a5ae38b83534b4e5a>`;
+		bool :target:`keep_run_dir<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a2c44b30ff87a0a864b1089ac5f361e00>` = false;
+		bool :target:`has_orbital_key<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a833b355e02688e79750fc85507381731>` = false;
+		int64_t :target:`orbital_key<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1ace39206f1994c0af6d0b24ee4f1ad125>` = 0;
+		std::vector<double> :target:`pos_bohr<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a3250a0147a2888d35a29f04002d964f1>`;
+		std::vector<double> :target:`forces<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a34e2c1b94d7c7fda3d64820ee616de33>`;
+
+		// methods
+	
+		kj::ArrayPtr<const ::capnp::word> :target:`words<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a27cfc4e05ec888615bbc510d4aae42c0>`() const;
+		void :target:`recomputeParamsKey<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1ab3b88028e1a13610a6e8407b85abd293>`();
+		void :target:`destroySession<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a45ddf3752bea93da475a7149e1dd72ab>`();
+		void :target:`store<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a3456f89f3c4e7a0bdb0c60308231de6d>`(const ::CP2KParams::Reader& params);
+		bool :target:`load<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a86398385d543fc51ab56bfeb767e2b4d>`();
+		void :target:`createSession<doxid-structrgpot_1_1_c_p2_k_pot_1_1_impl_1a1bd94aff233b637900b79522160c8923>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in);
+	};

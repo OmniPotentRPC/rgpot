@@ -1,0 +1,67 @@
+.. index:: pair: struct; rgpot::UmaCheckpointProvenance
+.. _doxid-structrgpot_1_1_uma_checkpoint_provenance:
+
+struct rgpot::UmaCheckpointProvenance
+=====================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Where the weights of a ``.pt2`` came from, and their digest. :ref:`More...<details-structrgpot_1_1_uma_checkpoint_provenance>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <UmaProvenance.hpp>
+	
+	struct UmaCheckpointProvenance {
+		// fields
+	
+		std::optional<std::string> :target:`source<doxid-structrgpot_1_1_uma_checkpoint_provenance_1ae235943fed6c5bf05991b4f6c8309dcb>`;
+		std::optional<std::string> :target:`path<doxid-structrgpot_1_1_uma_checkpoint_provenance_1adfdf7dfaffd61cfb084fc394c543dcb7>`;
+		std::optional<std::string> :target:`hf_repo<doxid-structrgpot_1_1_uma_checkpoint_provenance_1a243af15bc5aa766ea15ff58ab51bd2cb>`;
+		std::optional<std::string> :target:`hf_filename<doxid-structrgpot_1_1_uma_checkpoint_provenance_1a931fdd908289e1664fbb75ab94f394f0>`;
+		std::optional<std::string> :target:`hf_revision<doxid-structrgpot_1_1_uma_checkpoint_provenance_1a55c8731b45b0ec8ee307c67a67e7c5d8>`;
+		std::optional<std::string> :target:`sha256<doxid-structrgpot_1_1_uma_checkpoint_provenance_1a27977b2bb4664104a6fe757a5093b603>`;
+
+		// methods
+	
+		bool :ref:`present<doxid-structrgpot_1_1_uma_checkpoint_provenance_1a5397a3d69fe2901036dbf6412cd0953a>`() const;
+		static UmaCheckpointProvenance :target:`fromMetadata<doxid-structrgpot_1_1_uma_checkpoint_provenance_1a63e4f01008643e407418fd366286605a>`(const std::unordered_map<std::string, std::string>& meta);
+	};
+.. _details-structrgpot_1_1_uma_checkpoint_provenance:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Where the weights of a ``.pt2`` came from, and their digest.
+
+Built from the package metadata, as UmaContract is. Every field is optional: packages exported before these keys report all of them absent and load as before. ``scripts/export_uma_aoti.py`` writes
+
+* ``checkpoint_source`` : ``cli`` (``--checkpoint``), ``env`` (``RGPOT_UMA_CHECKPOINT``) or ``hf`` (downloaded for ``--model``);
+
+* ``checkpoint_path`` : the local file, for ``cli`` and ``env``;
+
+* ``checkpoint_hf_repo``, ``checkpoint_hf_filename`` and ``checkpoint_hf_revision`` (the 40-digit commit the file was served from), for ``hf``;
+
+* ``checkpoint_sha256`` : SHA-256 of the checkpoint file the exporter loaded, 64 lowercase hexadecimal digits.
+
+The digest names the weights, not the ``.pt2``; the engine ABI's ``rgpot_engine_model_digest`` hashes the package file itself.
+
+Methods
+-------
+
+.. index:: pair: function; present
+.. _doxid-structrgpot_1_1_uma_checkpoint_provenance_1a5397a3d69fe2901036dbf6412cd0953a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool present() const
+
+True when the package records any of the keys.
+

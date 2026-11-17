@@ -1,0 +1,49 @@
+.. index:: pair: struct; pocketfft::detail::util
+.. _doxid-structpocketfft_1_1detail_1_1util:
+
+struct pocketfft::detail::util
+==============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct util {
+		// methods
+	
+		static size_t :target:`largest_prime_factor<doxid-structpocketfft_1_1detail_1_1util_1a0e9b92280f25063d1ebef942dd0d233c>`(size_t n);
+		static double :target:`cost_guess<doxid-structpocketfft_1_1detail_1_1util_1ad3d874bc3fb0048df2270779a15d4bd0>`(size_t n);
+	
+		template <typename UIntT>
+		static UIntT :target:`good_size_cmplx_typed<doxid-structpocketfft_1_1detail_1_1util_1aad7974f3543935272d62b753385db006>`(UIntT n);
+	
+		static size_t :target:`good_size_cmplx<doxid-structpocketfft_1_1detail_1_1util_1a758e00d242a1b7eda8f9f0c21f35c624>`(size_t n);
+		static size_t :target:`good_size_cmplx<doxid-structpocketfft_1_1detail_1_1util_1a0029e10f88a43293cc31c9ea0b3da654>`(size_t n, size_t required_factor);
+	
+		template <typename UIntT>
+		static UIntT :target:`good_size_real_typed<doxid-structpocketfft_1_1detail_1_1util_1ad5a6ede26040099c361c13b457176276>`(UIntT n);
+	
+		static size_t :target:`good_size_real<doxid-structpocketfft_1_1detail_1_1util_1a173da7d5929ded86fffcebcfdc5086aa>`(size_t n);
+		static size_t :target:`good_size_real<doxid-structpocketfft_1_1detail_1_1util_1a5e0df010b99b9b004a62c95ee5a93b15>`(size_t n, size_t required_factor);
+	
+		template <typename UIntT>
+		static UIntT :target:`prev_good_size_cmplx_typed<doxid-structpocketfft_1_1detail_1_1util_1af481f028389d10f875b5ef93021cd773>`(UIntT n);
+	
+		static size_t :target:`prev_good_size_cmplx<doxid-structpocketfft_1_1detail_1_1util_1aed491a429601624b825801fc552c15a2>`(size_t n);
+	
+		template <typename UIntT>
+		static UIntT :target:`prev_good_size_real_typed<doxid-structpocketfft_1_1detail_1_1util_1ace1eb1654fa50f326a06972ae3a762a4>`(UIntT n);
+	
+		static size_t :target:`prev_good_size_real<doxid-structpocketfft_1_1detail_1_1util_1add97ef2089d2f8622102d2235ba563de>`(size_t n);
+		static size_t :target:`prod<doxid-structpocketfft_1_1detail_1_1util_1a33acae07b20b28fe4658bc338fce1b89>`(const shape_t& shape);
+		static void :target:`sanity_check<doxid-structpocketfft_1_1detail_1_1util_1a3d2f5f00d4fed5c09bd1509ffa9a44cd>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, bool inplace);
+		static void :target:`sanity_check<doxid-structpocketfft_1_1detail_1_1util_1a280945ba7af964102b1d0d1d83469130>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, bool inplace, const shape_t& axes);
+		static void :target:`sanity_check<doxid-structpocketfft_1_1detail_1_1util_1a670e044dadbbf680537e1fb11bc8b724>`(const shape_t& shape, const stride_t& stride_in, const stride_t& stride_out, bool inplace, size_t axis);
+		static size_t :target:`thread_count<doxid-structpocketfft_1_1detail_1_1util_1a3b012d5a19215bcd32cf6e228556fa87>`(size_t nthreads, const shape_t& shape, size_t axis, size_t vlen);
+	};

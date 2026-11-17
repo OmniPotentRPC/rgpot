@@ -1,0 +1,60 @@
+.. index:: pair: namespace; rgpot::rpc
+.. _doxid-namespacergpot_1_1rpc:
+
+namespace rgpot::rpc
+====================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_rpc_MorseConfigureResult.rst
+
+Overview
+~~~~~~~~
+
+PotentialConfig.morse for a :ref:`MorsePot <doxid-classrgpot_1_1_morse_pot>` backend. :ref:`More...<details-namespacergpot_1_1rpc>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace rpc {
+
+	// structs
+
+	struct :ref:`MorseConfigureResult<doxid-structrgpot_1_1rpc_1_1_morse_configure_result>`;
+
+	// global functions
+
+	:ref:`MorseConfig<doxid-structrgpot_1_1_morse_config>` :target:`morseConfigFrom<doxid-namespacergpot_1_1rpc_1a4751c890b98cbfa6cf37b5a3eab60398>`(const ::MorseParams::Reader& params, :ref:`MorseConfig<doxid-structrgpot_1_1_morse_config>` base = {});
+	:ref:`MorseConfigureResult<doxid-structrgpot_1_1rpc_1_1_morse_configure_result>` :ref:`configureMorse<doxid-namespacergpot_1_1rpc_1ab83faaef2555881901170c5cad5a8dd0>`(const ::PotentialConfig::Reader& cfg, const :ref:`MorsePot<doxid-classrgpot_1_1_morse_pot>`& current);
+	std::string :target:`potentialConfigArm<doxid-namespacergpot_1_1rpc_1a71b92072123e54c3b049b6d25f24eade>`(const ::PotentialConfig::Reader& cfg);
+
+	} // namespace rpc
+.. _details-namespacergpot_1_1rpc:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+PotentialConfig.morse for a :ref:`MorsePot <doxid-classrgpot_1_1_morse_pot>` backend.
+
+Name of the PotentialConfig arm a configure() call carries.
+
+:ref:`MorsePot <doxid-classrgpot_1_1_morse_pot>` fixes its parameters at construction, so applying the morse arm builds a replacement pot. switch_width is not on the wire and carries over from the pot being replaced.
+
+A peer built against a newer potentials-schema can send an arm this build does not know. which() then returns the raw discriminant, so the name comes from the compiled schema and an unknown arm is reported by its discriminant instead of indexing past the known ones.
+
+Global Functions
+----------------
+
+.. index:: pair: function; configureMorse
+.. _doxid-namespacergpot_1_1rpc_1ab83faaef2555881901170c5cad5a8dd0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	:ref:`MorseConfigureResult<doxid-structrgpot_1_1rpc_1_1_morse_configure_result>` configureMorse(const ::PotentialConfig::Reader& cfg, const :ref:`MorsePot<doxid-classrgpot_1_1_morse_pot>`& current)
+
+none is a no-op, morse rebuilds the pot, every other arm is refused.
+

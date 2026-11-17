@@ -25,7 +25,9 @@ struct rgpot::UmaPot::Impl
 		double :target:`molecular_box<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a27f9d11e74dffefc337a2856fff944e0>` {0.0};
 		int :target:`max_neighbors<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a1185dc2d0adb9f26e064d1515e445024>` {300};
 		int64_t :target:`batch_max<doxid-structrgpot_1_1_uma_pot_1_1_impl_1ae8626f2b728fcd963df63079e5a36352>` {0};
+		bool :target:`batch_packed<doxid-structrgpot_1_1_uma_pot_1_1_impl_1ae2bfcb2e6ea2864e62a91a11691ec274>` {false};
 		UmaContract :target:`contract<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a880f33ae27e8a604240b28cd3b5515a8>`;
-		std::unique_ptr<torch::inductor::AOTIModelPackageLoader> :target:`loader<doxid-structrgpot_1_1_uma_pot_1_1_impl_1aefb61615049850495794f2a04c4b0eb7>`;
+		:ref:`UmaCheckpointProvenance<doxid-structrgpot_1_1_uma_checkpoint_provenance>` :target:`provenance<doxid-structrgpot_1_1_uma_pot_1_1_impl_1aa3fdfdd10e4d89edd7e85e1226d66b5d>`;
+		std::unique_ptr<torch::inductor::AOTIModelContainerRunner> :target:`runner<doxid-structrgpot_1_1_uma_pot_1_1_impl_1a83357198cd9430da5f6b30b6a09d9ad2>`;
 		std::mutex :target:`mutex<doxid-structrgpot_1_1_uma_pot_1_1_impl_1ae73856e50b723fe45b43ec89e994de98>`;
 	};

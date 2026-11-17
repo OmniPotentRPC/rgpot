@@ -1,0 +1,27 @@
+.. index:: pair: struct; rgpot::HessianVectorCache::Key
+.. _doxid-structrgpot_1_1_hessian_vector_cache_1_1_key:
+
+struct rgpot::HessianVectorCache::Key
+=====================================
+
+.. toctree::
+	:hidden:
+
+``std::bit_cast`` of every coordinate and cell entry: float equality would serve the forces of +0.0 at -0.0.
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Key {
+		// fields
+	
+		std::vector<std::uint64_t> :target:`positions<doxid-structrgpot_1_1_hessian_vector_cache_1_1_key_1a3cfaa9ef53a6f72c1b28f9b80977ac91>`;
+		std::optional<std::vector<int>> :target:`atomicNumbers<doxid-structrgpot_1_1_hessian_vector_cache_1_1_key_1ac37c6fbe2bfd27eda4b252e0e32e8a2f>`;
+		std::optional<std::array<std::uint64_t, 9>> :target:`box<doxid-structrgpot_1_1_hessian_vector_cache_1_1_key_1a234bf2a310e4dd5e295115cc9d2868dd>`;
+
+		// methods
+	
+		bool :target:`operator==<doxid-structrgpot_1_1_hessian_vector_cache_1_1_key_1a24f99f10c8443116dd48fcb763cdff1a>`(const Key&) const;
+	};

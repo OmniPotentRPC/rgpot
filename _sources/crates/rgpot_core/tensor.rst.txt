@@ -111,8 +111,10 @@
 
       Get the raw data pointer of a DLPack tensor.
       
+      Returns NULL for a NULL ``tensor``.
+      
       **Safety**
-      ``tensor`` must be a valid, non-null ``DLManagedTensorVersioned*``.
+      ``tensor`` must be NULL or a valid ``DLManagedTensorVersioned*``.
 
    .. rust:function:: rgpot_core::tensor::rgpot_tensor_device
       :index: 0
@@ -121,8 +123,10 @@
 
       Get the device of a DLPack tensor.
       
+      For a NULL ``tensor``, returns ``{kDLCPU, -1}``; no real device has id -1.
+      
       **Safety**
-      ``tensor`` must be a valid, non-null ``DLManagedTensorVersioned*``.
+      ``tensor`` must be NULL or a valid ``DLManagedTensorVersioned*``.
 
    .. rust:function:: rgpot_core::tensor::rgpot_tensor_free
       :index: 0
@@ -147,6 +151,9 @@
       The returned tensor owns a copy of the data — the caller may free the
       original buffer after this call.  Call ``rgpot_tensor_free`` when done.
       
+      Returns NULL, with a ``rgpot_last_error()`` message, when ``data`` is NULL,
+      ``rows`` or ``cols`` is negative, or ``rows * cols`` overflows.
+      
       **Safety**
       ``data`` must point to at least ``rows * cols`` contiguous ``f64`` values.
 
@@ -158,7 +165,8 @@
       Get the shape array and number of dimensions of a DLPack tensor.
       
       Writes the number of dimensions to ``*ndim_out`` and returns a pointer to
-      the shape array (length ``*ndim_out``).
+      the shape array (length ``*ndim_out``).  For a NULL ``tensor``, writes 0 to
+      ``*ndim_out`` and returns NULL; for a NULL ``ndim_out``, returns NULL.
       
       **Safety**
-      Both ``tensor`` and ``ndim_out`` must be valid, non-null pointers.
+      ``tensor`` and ``ndim_out`` must each be NULL or a valid pointer.

@@ -113,7 +113,7 @@ Keep one Verlet list across forceImpl calls.
 	*
 		- skin
 
-		- Extra search distance, Angstrom. Zero, the default, rebuilds the pairs on every call. A positive skin reuses them until an atom has moved by more than skin/2 since the last build, or the cell or the atom count changes. The instance then reports :ref:`Reentrancy::PerInstance <doxid-namespacergpot_1afc52f666d5e44be6f4cc73b2009ed9bba638926405e39d8cd5227b49fa3156e1a>`.
+		- Extra search distance, Angstrom. Zero, the default, uses the internal list, with a skin of one fifth of the cutoff (none in Stream mode). A positive skin reuses the pairs until an atom has moved by more than skin/2 since the last build, or the cell or the atom count changes. The instance then reports perImageInstances.
 
 .. index:: pair: function; setNeighbourMode
 .. _doxid-classrgpot_1_1_tersoff_si_c_1a6e261e4cb5db6845668060174c677b9b:
@@ -185,7 +185,7 @@ Energy and dE/dx for one configuration.
 	*
 		- neighbors
 
-		- Optional Verlet list. Null rebuilds the pairs on every call. A list is reused while each atom has moved by at most half its skin and the cell is unchanged.
+		- Optional Verlet list. Null uses the internal list, with a skin of one fifth of the cutoff (none in Stream mode). A list is reused while each atom has moved by at most half its skin and the cell is unchanged.
 
 .. index:: pair: function; energyAndGradientBatch
 .. _doxid-classrgpot_1_1_tersoff_si_c_1a30ba4039483df7096c81cb8bd7d06404:

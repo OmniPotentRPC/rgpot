@@ -1,0 +1,46 @@
+.. index:: pair: struct; rgpot::rpc::MorseConfigureResult
+.. _doxid-structrgpot_1_1rpc_1_1_morse_configure_result:
+
+struct rgpot::rpc::MorseConfigureResult
+=======================================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct MorseConfigureResult {
+		// fields
+	
+		bool :target:`ok<doxid-structrgpot_1_1rpc_1_1_morse_configure_result_1afffa097128f0f9b9780f7419a516031d>` = false;
+		std::unique_ptr<:ref:`MorsePot<doxid-classrgpot_1_1_morse_pot>`> :ref:`replacement<doxid-structrgpot_1_1rpc_1_1_morse_configure_result_1ab0bd3755e00c4612c6006ed2844996a5>`;
+		std::string :target:`message<doxid-structrgpot_1_1rpc_1_1_morse_configure_result_1a7000761e51b42e8b009fc4328b25a187>`;
+	};
+.. _details-structrgpot_1_1rpc_1_1_morse_configure_result:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; replacement
+.. _doxid-structrgpot_1_1rpc_1_1_morse_configure_result_1ab0bd3755e00c4612c6006ed2844996a5:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::unique_ptr<:ref:`MorsePot<doxid-classrgpot_1_1_morse_pot>`> replacement
+
+Set when the morse arm was accepted; the caller swaps it in.
+

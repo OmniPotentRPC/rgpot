@@ -1,0 +1,28 @@
+.. index:: pair: struct; rgpot::lr::Neumaier
+.. _doxid-structrgpot_1_1lr_1_1_neumaier:
+
+struct rgpot::lr::Neumaier
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Neumaier {
+		// fields
+	
+		double :target:`sum<doxid-structrgpot_1_1lr_1_1_neumaier_1a4afec68a1d75f9c76b3a32d21c7e37f4>` = 0.0;
+		double :target:`c<doxid-structrgpot_1_1lr_1_1_neumaier_1ae41c0d185e7c9c1f18546e6f3e27aede>` = 0.0;
+
+		// methods
+	
+		void :target:`add<doxid-structrgpot_1_1lr_1_1_neumaier_1a8a01047adb46ad23b02543a4a8985a0f>`(double x);
+		void :target:`add<doxid-structrgpot_1_1lr_1_1_neumaier_1a5c9f2bfb03190cbc27066e697ccead07>`(const Neumaier& o);
+		double :target:`total<doxid-structrgpot_1_1lr_1_1_neumaier_1a9bc879a630b53b4ec38c342e5f383ca9>`() const;
+	};

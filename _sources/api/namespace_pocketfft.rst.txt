@@ -1,0 +1,26 @@
+.. index:: pair: namespace; pocketfft
+.. _doxid-namespacepocketfft:
+
+namespace pocketfft
+===================
+
+.. toctree::
+	:hidden:
+
+	namespace_pocketfft_detail.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	namespace pocketfft {
+
+	// namespaces
+
+	namespace :ref:`pocketfft::detail<doxid-namespacepocketfft_1_1detail>`;
+		namespace :ref:`pocketfft::detail::threading<doxid-namespacepocketfft_1_1detail_1_1threading>`;
+
+	} // namespace pocketfft

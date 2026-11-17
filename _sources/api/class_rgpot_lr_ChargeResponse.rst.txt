@@ -1,0 +1,26 @@
+.. index:: pair: class; rgpot::lr::ChargeResponse
+.. _doxid-classrgpot_1_1lr_1_1_charge_response:
+
+class rgpot::lr::ChargeResponse
+===============================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class ChargeResponse {
+	public:
+		// construction
+	
+		virtual :target:`~ChargeResponse<doxid-classrgpot_1_1lr_1_1_charge_response_1a2e2117df62446d417b4e3f501555a2bb>`();
+
+		// methods
+	
+		virtual void :target:`accumulate<doxid-classrgpot_1_1lr_1_1_charge_response_1af1ae0fa32ad322cf7f19f7684155afa9>`(const :ref:`ForceInput<doxid-structrgpot_1_1_force_input>`& in, const double* dE_dq, double* force) const = 0;
+	};

@@ -29,6 +29,8 @@
    - ``potential`` — Lifecycle functions for
      [``rgpot_potential_t``](crate::potential::rgpot_potential_t): create,
      calculate, free.
+   - ``hvp`` — Hessian-vector products of a potential handle: the product,
+     the cached centre, the analytic callback and the counters.
    - ``rpc`` — RPC client functions (feature-gated on ``rpc``): connect,
      calculate, disconnect.
 
@@ -38,6 +40,7 @@
 
       c_api/types
       c_api/potential
+      c_api/hvp
       c_api/rpc
 
 

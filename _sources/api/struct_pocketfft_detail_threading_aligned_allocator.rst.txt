@@ -1,0 +1,34 @@
+.. index:: pair: struct; pocketfft::detail::threading::aligned_allocator
+.. _doxid-structpocketfft_1_1detail_1_1threading_1_1aligned__allocator:
+
+template struct pocketfft::detail::threading::aligned_allocator
+===============================================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	template <typename T>
+	struct aligned_allocator {
+		// typedefs
+	
+		typedef T :target:`value_type<doxid-structpocketfft_1_1detail_1_1threading_1_1aligned__allocator_1ab86a2740ed9ce3199135372ff1d88c76>`;
+
+		// construction
+	
+		template <class U>
+		:target:`aligned_allocator<doxid-structpocketfft_1_1detail_1_1threading_1_1aligned__allocator_1a57c07047ac09c6cf48a269429de2b0fb>`(const aligned_allocator<U>&);
+	
+		:target:`aligned_allocator<doxid-structpocketfft_1_1detail_1_1threading_1_1aligned__allocator_1a0c390851ec37c5cdc5c1e7c6232a0b94>`();
+
+		// methods
+	
+		T* :target:`allocate<doxid-structpocketfft_1_1detail_1_1threading_1_1aligned__allocator_1a4f785747b898980756af9e5515363826>`(size_t n);
+		void :target:`deallocate<doxid-structpocketfft_1_1detail_1_1threading_1_1aligned__allocator_1a2a99b8e296d26b255e9937ba5f30e76f>`(T* p, size_t);
+	};

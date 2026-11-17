@@ -1,0 +1,73 @@
+.. index:: pair: enum; HvpScheme
+.. _doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3:
+
+enum rgpot::HvpScheme
+=====================
+
+Overview
+~~~~~~~~
+
+How a product is computed. The values match ``rgpot_hvp_scheme_t``. :ref:`More...<details-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3>`
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <HessianVector.hpp>
+
+	enum HvpScheme {
+	    :ref:`Auto<doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a06b9281e396db002010bde1de57262eb>`     = 0,
+	    :ref:`Forward<doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a67d2f6740a8eaebf4d5c6f79be8da481>`  = 1,
+	    :ref:`Central<doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a4a8c79ddddd6109289084e80aa41cdf2>`  = 2,
+	    :ref:`Analytic<doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a8503d71dcafbdc254c2bbea2599e5791>` = 3,
+	};
+
+.. _details-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+How a product is computed. The values match ``rgpot_hvp_scheme_t``.
+
+Enum Values
+-----------
+
+.. index:: pair: enumvalue; Auto
+.. _doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a06b9281e396db002010bde1de57262eb:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Auto
+
+Analytic when the potential has it, otherwise Forward.
+
+.. index:: pair: enumvalue; Forward
+.. _doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a67d2f6740a8eaebf4d5c6f79be8da481:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Forward
+
+One displaced force call against the cached centre.
+
+.. index:: pair: enumvalue; Central
+.. _doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a4a8c79ddddd6109289084e80aa41cdf2:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Central
+
+Two displaced force calls, one on each side.
+
+.. index:: pair: enumvalue; Analytic
+.. _doxid-namespacergpot_1a29b200eb6813e0ff47a0671f34e9a1b3a8503d71dcafbdc254c2bbea2599e5791:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	Analytic
+
+The potential's hessianVectorImpl. Refused without it.
+

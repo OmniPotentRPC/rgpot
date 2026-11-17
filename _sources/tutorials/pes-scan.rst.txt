@@ -31,7 +31,8 @@ Step 1: start a server
 
     ./bbdir/CppCore/potserv 12345 LJ &
 
-It prints ``Server running on port 12345 with LJ potential.`` when it is ready.
+It prints ``Loading LJ potential...`` and then
+``Server running on port 12345 with LJ potential.`` when it is ready.
 
 Step 2: send one geometry
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -124,6 +125,8 @@ It reuses ``connect`` and ``calculate`` from the client above.
 
     python docs/orgmode/tutorials/pes_scan/scan_pes.py --server-bin ./bbdir/CppCore/potserv
 
+The script writes ``dimer_curves.png`` and ``cuh2_elbow.png`` into
+``docs/orgmode/tutorials/pes_scan/``, over the copies in the repository.
 The first lines of output cover the two pair potentials:
 
 ::
@@ -139,8 +142,8 @@ The first lines of output cover the two pair potentials:
 
     Energy (top) and force on the second atom (bottom) for an LJ pair and a Morse pair, each evaluated through potserv. Crosses are minus the central difference of the energy, step 1e-5 Angstrom.
 
-The LJ curve bottoms out one grid step from the 12-6 minimum, which sits at the
-sixth root of 2 times the zero crossing.
+The lowest LJ grid point is the one nearest the 12-6 minimum, which sits at the
+sixth root of 2 times the zero crossing (1.1225 Angstrom).
 The Morse server uses platinum parameters, a well depth of 0.7102 eV at 2.8970
 Angstrom (``CppCore/rgpot/Morse/MorsePot.hpp``); its lowest grid point is
 -0.710085 eV at 2.8905 Angstrom.

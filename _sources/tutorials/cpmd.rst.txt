@@ -50,10 +50,14 @@ The command prints:
     water geometry: water
     water energy: 0.77
 
-``0.77`` is the energy the stand-in engine returns for this geometry and this
-cell.
+The script asks for the energy in eV.
+The stand-in engine does not compute an energy from the geometry.
+Its energy is 0.75 plus 0.001 times the last entry of the cell (the z length),
+so the 20 angstrom cell gives 0.77 eV.
+``--expect`` makes the script exit with status 1 when the energy differs from the
+given value by more than 1e-12.
 Point ``RGPOT_CPMD_ENGINE`` at a ``libcpmdc.so`` built from the CPMD archive to
-evaluate the same file with CPMD.
+evaluate the same file with CPMD, and leave out ``--expect``.
 Read the energy the command prints.
 
 Next steps

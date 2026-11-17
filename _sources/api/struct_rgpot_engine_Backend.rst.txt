@@ -54,7 +54,7 @@ File whose SHA-256 identifies the loaded model; empty when the backend has no mo
 
 	std::function<void(int charge, int spin)> set_charge_spin
 
-Empty when the backend has no charge and spin to change.
+Empty when the backend has no charge and spin to change. Throws :ref:`Unsupported <doxid-structrgpot_1_1engine_1_1_unsupported>`, before changing anything, for a value it cannot take.
 
 .. index:: pair: variable; set_num_threads
 .. _doxid-structrgpot_1_1engine_1_1_backend_1a08b2685a9ac8388350e9bfd120520db7:

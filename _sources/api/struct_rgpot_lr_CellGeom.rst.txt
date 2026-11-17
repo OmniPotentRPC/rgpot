@@ -1,0 +1,28 @@
+.. index:: pair: struct; rgpot::lr::CellGeom
+.. _doxid-structrgpot_1_1lr_1_1_cell_geom:
+
+struct rgpot::lr::CellGeom
+==========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct CellGeom {
+		// fields
+	
+		double :target:`H<doxid-structrgpot_1_1lr_1_1_cell_geom_1af2e97662b4dd11dbf17a7a85be435a2d>`[3][3] {};
+		double :target:`inv<doxid-structrgpot_1_1lr_1_1_cell_geom_1ae640238194ef4d6edfeb3461224a1791>`[3][3] {};
+		double :target:`recip<doxid-structrgpot_1_1lr_1_1_cell_geom_1a365f84861e8d7e46a8c771bdea866499>`[3][3] {};
+		double :target:`volume<doxid-structrgpot_1_1lr_1_1_cell_geom_1a286577dd0917468f143c88e362378d2f>` = 0.0;
+
+		// methods
+	
+		void :target:`fractional<doxid-structrgpot_1_1lr_1_1_cell_geom_1a67387b4484159de25edb17ede0b85e2a>`(const double r[3], double s[3]) const;
+	};

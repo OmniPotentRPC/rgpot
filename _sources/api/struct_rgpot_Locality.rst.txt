@@ -1,0 +1,84 @@
+.. index:: pair: struct; rgpot::Locality
+.. _doxid-structrgpot_1_1_locality:
+
+struct rgpot::Locality
+======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct Locality {
+		// fields
+	
+		double :ref:`cutoff<doxid-structrgpot_1_1_locality_1ab4158467404d2c4b39936496398814a0>` = 0.0;
+		bool :ref:`pairwise<doxid-structrgpot_1_1_locality_1ad1e791434b82dfb816a5458bad409781>` = false;
+		int :ref:`densities<doxid-structrgpot_1_1_locality_1a1ce3c32b2d6406d29a3f76260f8f7be0>` = 0;
+
+		// methods
+	
+		bool :target:`finite<doxid-structrgpot_1_1_locality_1a497e1bca5542a3f69eb0beec627e0d02>`() const;
+		double :ref:`forceRange<doxid-structrgpot_1_1_locality_1a50fd1bccd98f35b81d45d59bb9813554>`() const;
+	};
+.. _details-structrgpot_1_1_locality:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+Fields
+------
+
+.. index:: pair: variable; cutoff
+.. _doxid-structrgpot_1_1_locality_1ab4158467404d2c4b39936496398814a0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double cutoff = 0.0
+
+:ref:`Range <doxid-structrgpot_1_1_range>` of a site energy, in the length unit of the potential.
+
+.. index:: pair: variable; pairwise
+.. _doxid-structrgpot_1_1_locality_1ad1e791434b82dfb816a5458bad409781:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	bool pairwise = false
+
+Every energy term is a function of one pair distance.
+
+.. index:: pair: variable; densities
+.. _doxid-structrgpot_1_1_locality_1a1ce3c32b2d6406d29a3f76260f8f7be0:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	int densities = 0
+
+Values per atom that the density stage of :ref:`Staged.hpp <doxid-_staged_8hpp_source>` sums over the neighbours and the force stage reads at both atoms of a pair. 0 for a potential without densities.
+
+Methods
+-------
+
+.. index:: pair: function; forceRange
+.. _doxid-structrgpot_1_1_locality_1a50fd1bccd98f35b81d45d59bb9813554:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	double forceRange() const
+
+Distance within which the atoms set the force on one atom.
+

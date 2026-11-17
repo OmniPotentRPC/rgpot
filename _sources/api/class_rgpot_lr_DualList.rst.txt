@@ -1,0 +1,39 @@
+.. index:: pair: class; rgpot::lr::DualList
+.. _doxid-classrgpot_1_1lr_1_1_dual_list:
+
+class rgpot::lr::DualList
+=========================
+
+.. toctree::
+	:hidden:
+
+	struct_rgpot_lr_DualList_Skin.rst
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class DualList {
+	public:
+		// structs
+	
+		struct :ref:`Skin<doxid-structrgpot_1_1lr_1_1_dual_list_1_1_skin>`;
+
+		// construction
+	
+		:target:`DualList<doxid-classrgpot_1_1lr_1_1_dual_list_1a15aee51b209bb989bc4c826576e569f3>`(double short_cut, double long_cut, double skin);
+		:target:`DualList<doxid-classrgpot_1_1lr_1_1_dual_list_1ab9931323f107689a9ec41b1a447e76a8>`(const DualList&);
+		:target:`~DualList<doxid-classrgpot_1_1lr_1_1_dual_list_1af30f9100eed2c0a4d5831e4a79030b9a>`();
+
+		// methods
+	
+		DualList& :target:`operator=<doxid-classrgpot_1_1lr_1_1_dual_list_1a93a92e38b7ac6450c08743487d931c63>`(const DualList&);
+		void :target:`update<doxid-classrgpot_1_1lr_1_1_dual_list_1a3cb6dbeb998b892424db58dcb6906cba>`(const double* pos, std::size_t n, const double* box, bool periodic);
+		const std::vector<:ref:`Pair<doxid-structrgpot_1_1lr_1_1_pair>`>& :target:`short_pairs<doxid-classrgpot_1_1lr_1_1_dual_list_1ad0f65f2e7f19e64e632e31ddf0d71b10>`() const;
+		const std::vector<:ref:`Pair<doxid-structrgpot_1_1lr_1_1_pair>`>& :target:`long_pairs<doxid-classrgpot_1_1lr_1_1_dual_list_1aafff4513ab34ca4e9986af24edc68709>`() const;
+		bool :target:`short_rebuilt<doxid-classrgpot_1_1lr_1_1_dual_list_1a03a46f479bccf0a19e94a0bbe06af97b>`() const;
+		bool :target:`long_rebuilt<doxid-classrgpot_1_1lr_1_1_dual_list_1a028c6e73c5b4c4704e7ef089b9d8b308>`() const;
+	};

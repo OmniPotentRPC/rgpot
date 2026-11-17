@@ -40,12 +40,19 @@ Run the tests
 Run the RPC smoke
 ~~~~~~~~~~~~~~~~~
 
-The checked smoke starts ``potserv``, connects through pycapnp, sends a
-``ForceInput``, and verifies the returned ``PotentialResult``:
+``tests/rpc_integ.py`` starts ``potserv`` with the ``CuH2`` potential and connects
+through pycapnp.
+It sends one ``ForceInput`` for a Cu atom and an H atom 1.5 Angstrom apart and
+checks the energy and forces in the returned ``PotentialResult``.
+It then starts a second ``potserv`` with ``Morse`` and checks that ``configure``
+changes the energy.
 
 .. code:: bash
 
     python tests/rpc_integ.py --server-bin ./bbdir/CppCore/potserv
+
+The script prints ``Integration test passed.`` and ``Morse configure passed.`` when
+both checks pass.
 
 Run configure smokes for the runtime-loaded quantum frontends:
 
@@ -56,10 +63,15 @@ Run configure smokes for the runtime-loaded quantum frontends:
       --nwchem-smoke \
       --cpmd-smoke
 
+These smokes send ``configure`` requests to an ``NWChem`` and a ``CPMD`` server.
+They do not need an engine: without one, ``configure`` of the engine arm returns
+``ok=False`` and the smoke still passes.
+
 What just happened
 ~~~~~~~~~~~~~~~~~~
 
-1. ``potserv`` loaded a built-in potential and exposed it over Cap'n Proto RPC.
+1. ``potserv`` loaded a built-in potential (``CuH2``, then ``Morse``) and exposed it
+   over Cap'n Proto RPC.
 
 2. The Python client sent atomic positions in ``ForceInput``.
 
@@ -78,7 +90,8 @@ Launch a Lennard-Jones server on port 12345:
 
     ./bbdir/CppCore/potserv 12345 LJ
 
-For runtime-loaded quantum engines, pass the matching selector and engine path:
+For runtime-loaded quantum engines, pass the matching selector and engine path.
+Each command starts a server on port 12345, so run one at a time:
 
 .. code:: bash
 
@@ -108,7 +121,9 @@ The command prints:
     water geometry: water
     water energy: 0.77
 
-``0.77`` is the energy that stand-in engine returns for this geometry and cell.
+The stand-in engine does not compute an energy from the geometry.
+Its energy is 0.75 plus 0.001 times the last entry of the cell (the z length),
+so the 20 angstrom cell gives 0.77 eV.
 The same command with ``RGPOT_CPMD_ENGINE`` pointed at a CPMD-archive
 ``libcpmdc.so`` evaluates that file with CPMD.
 

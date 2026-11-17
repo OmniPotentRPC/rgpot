@@ -1,0 +1,29 @@
+.. index:: pair: class; rgpot::aoti_unpack::ZipReader
+.. _doxid-classrgpot_1_1aoti__unpack_1_1_zip_reader:
+
+class rgpot::aoti_unpack::ZipReader
+===================================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	class ZipReader {
+	public:
+		// construction
+	
+		:target:`ZipReader<doxid-classrgpot_1_1aoti__unpack_1_1_zip_reader_1a2fa988f0a4732d9dff6e2487d7200d06>`(const fs::path& path);
+
+		// methods
+	
+		const std::vector<:ref:`ZipEntry<doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry>`>& :target:`entries<doxid-classrgpot_1_1aoti__unpack_1_1_zip_reader_1acb68d0a3311810a5fdc2cb468e35dd08>`() const;
+		uint64_t :target:`data_offset<doxid-classrgpot_1_1aoti__unpack_1_1_zip_reader_1ae270243ee7e412615246619c9ad46d24>`(const :ref:`ZipEntry<doxid-structrgpot_1_1aoti__unpack_1_1_zip_entry>`& e);
+		std::vector<uint8_t> :target:`read<doxid-classrgpot_1_1aoti__unpack_1_1_zip_reader_1a44157ef0c6c3c6118895bd8e08515fad>`(uint64_t off, uint64_t len);
+		void :target:`copy<doxid-classrgpot_1_1aoti__unpack_1_1_zip_reader_1a143151218294ed19b41ed70c2ee551c9>`(uint64_t off, uint64_t len, std::ostream& out);
+	};

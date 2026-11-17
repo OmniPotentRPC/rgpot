@@ -1,0 +1,78 @@
+.. index:: pair: struct; rgpot::HvpCounts
+.. _doxid-structrgpot_1_1_hvp_counts:
+
+struct rgpot::HvpCounts
+=======================
+
+.. toctree::
+	:hidden:
+
+Overview
+~~~~~~~~
+
+Work done by a cache. The fields match ``rgpot_hvp_counts_t``. :ref:`More...<details-structrgpot_1_1_hvp_counts>`
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	#include <HessianVector.hpp>
+	
+	struct HvpCounts {
+		// fields
+	
+		std::uint64_t :ref:`products<doxid-structrgpot_1_1_hvp_counts_1a3990eef3d19f86e58713043449c901e9>` {0};
+		std::uint64_t :ref:`forceCalls<doxid-structrgpot_1_1_hvp_counts_1aef9c661ada2ebdbb7a9b60647dfc32cd>` {0};
+		std::uint64_t :ref:`centreReused<doxid-structrgpot_1_1_hvp_counts_1ae1817d80f828af053c0329fa31db864a>` {0};
+		std::uint64_t :ref:`analytic<doxid-structrgpot_1_1_hvp_counts_1aed04901c0c457fa596ed2a81bb467a6e>` {0};
+	};
+.. _details-structrgpot_1_1_hvp_counts:
+
+Detailed Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Work done by a cache. The fields match ``rgpot_hvp_counts_t``.
+
+Fields
+------
+
+.. index:: pair: variable; products
+.. _doxid-structrgpot_1_1_hvp_counts_1a3990eef3d19f86e58713043449c901e9:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint64_t products {0}
+
+Products answered.
+
+.. index:: pair: variable; forceCalls
+.. _doxid-structrgpot_1_1_hvp_counts_1aef9c661ada2ebdbb7a9b60647dfc32cd:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint64_t forceCalls {0}
+
+Force evaluations made.
+
+.. index:: pair: variable; centreReused
+.. _doxid-structrgpot_1_1_hvp_counts_1ae1817d80f828af053c0329fa31db864a:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint64_t centreReused {0}
+
+Requests served from the centre.
+
+.. index:: pair: variable; analytic
+.. _doxid-structrgpot_1_1_hvp_counts_1aed04901c0c457fa596ed2a81bb467a6e:
+
+.. ref-code-block:: cpp
+	:class: doxyrest-title-code-block
+
+	std::uint64_t analytic {0}
+
+Products from hessianVectorImpl.
+

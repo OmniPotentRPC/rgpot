@@ -1,0 +1,23 @@
+.. index:: pair: struct; rgpot::lr::NlhConfig
+.. _doxid-structrgpot_1_1lr_1_1_nlh_config:
+
+struct rgpot::lr::NlhConfig
+===========================
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct NlhConfig {
+		// fields
+	
+		double :target:`cutoff<doxid-structrgpot_1_1lr_1_1_nlh_config_1ab9cb018f7c634c81c807aae48033706f>` = 2.0;
+		double :target:`skin<doxid-structrgpot_1_1lr_1_1_nlh_config_1a9f9bb8b7091a38dd1788347c20307268>` = 0.5;
+		double :target:`switch_off<doxid-structrgpot_1_1lr_1_1_nlh_config_1ab3909ff7a188cfd870d5f935e69cf952>` = 1.5;
+	};

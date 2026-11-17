@@ -1,0 +1,27 @@
+.. index:: pair: struct; CP2KCEnv
+.. _doxid-struct_c_p2_k_c_env:
+
+struct CP2KCEnv
+===============
+
+.. toctree::
+	:hidden:
+
+
+
+
+.. ref-code-block:: cpp
+	:class: doxyrest-overview-code-block
+
+	
+	struct CP2KCEnv {
+		// fields
+	
+		long long :target:`key<doxid-struct_c_p2_k_c_env_1afd67cae4c40f16e9d4e85163365af27a>`;
+		force_env_t :target:`force_env<doxid-struct_c_p2_k_c_env_1af0b6750256a795fa854f66eba051d375>`;
+		int :target:`natom<doxid-struct_c_p2_k_c_env_1aefac90f2286f6ebce3870c9618a7fe00>`;
+		int :target:`has_cell<doxid-struct_c_p2_k_c_env_1a624edea82fdd579ca681f963cf7a28b1>`;
+		double :target:`cell<doxid-struct_c_p2_k_c_env_1a4876daa62889fb15029b2e1ff630282f>`[9];
+		long :target:`output_offset<doxid-struct_c_p2_k_c_env_1aca4c8cb7dd49f2294c741493fa4b516b>`;
+		char :target:`output<doxid-struct_c_p2_k_c_env_1a5bc85ba4a9b4b1dab44241afb35ec411>`[4096];
+	};
