@@ -215,6 +215,7 @@ RPCSchemaSync | tests core rpc | custom suite=rpc |
 CapabilitiesWire | tests core rpc | py CppCore/tests/test_capabilities_wire.py @root@ @capnp@ suite=rpc |
 MorseConfigureTest | tests core rpc | unit morse_configure_test MorseConfigureTest.cc |
 ProfileLoaderTest | tests core rpc | custom suite=abi workdir=. |
+LammpcProfileTest | tests core rpc | unit lammpc_profile_test LammpcProfileTest.cc |
 NWChemPotLifetime-ordinary | tests core rpc | custom suite=nwchem |
 NWChemPotLifetime-probe | tests core rpc | custom suite=nwchem |
 NWChemPotTest | tests core rpc | custom suite=nwchem workdir=. |
