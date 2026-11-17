@@ -163,7 +163,9 @@ impl MdSession for CAbiMdSession {
                 error.len(),
             )
         };
-        (status == 0).then_some(()).ok_or_else(|| error_message(&error))
+        (status == 0)
+            .then_some(())
+            .ok_or_else(|| error_message(&error))
     }
 
     fn set_velocities(&mut self, velocities: &[f64]) -> Result<(), String> {
@@ -177,7 +179,9 @@ impl MdSession for CAbiMdSession {
                 error.len(),
             )
         };
-        (status == 0).then_some(()).ok_or_else(|| error_message(&error))
+        (status == 0)
+            .then_some(())
+            .ok_or_else(|| error_message(&error))
     }
 
     fn step_langevin(
@@ -218,7 +222,9 @@ impl MdSession for CAbiMdSession {
         let status = unsafe {
             rgpot_md_session_step_nve(self.raw.as_ptr(), steps, error.as_mut_ptr(), error.len())
         };
-        (status == 0).then_some(()).ok_or_else(|| error_message(&error))
+        (status == 0)
+            .then_some(())
+            .ok_or_else(|| error_message(&error))
     }
 
     fn state(&mut self) -> Result<MdSessionState, String> {
@@ -242,6 +248,8 @@ impl MdSession for CAbiMdSession {
                 error.len(),
             )
         };
-        (status == 0).then_some(state).ok_or_else(|| error_message(&error))
+        (status == 0)
+            .then_some(state)
+            .ok_or_else(|| error_message(&error))
     }
 }
