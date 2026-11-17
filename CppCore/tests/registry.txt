@@ -142,9 +142,10 @@ ReducedPairTest | tests core | unit reduced_pair_test ReducedPairTest.cc fp_cont
 EMTPotTest | tests core | unit emt_pot_test EMTPotTest.cc |
 EAMCellPotTest | tests core | unit eam_cell_pot_test EAMCellPotTest.cc |
 NeighbourLayerTest | tests core | unit neighbour_layer_test NeighbourLayerTest.cc fp_contract=off timeout=120 |
-# Eight potentials on 1, 2, 3 and 8 threads, on up to 10648 atoms. Meson
-# scales explicit timeouts by 3 under ASan/UBSan and 8 under TSan.
-ThreadTeamTest | tests core | unit thread_team_test ThreadTeamTest.cc timeout=120 |
+# Eight potentials on 1, 2, 3 and 8 threads, on up to 10648 atoms. gcov
+# instrumentation makes its bitwise serial/team matrix take over four minutes.
+# Meson scales explicit timeouts by 3 under ASan/UBSan and 8 under TSan.
+ThreadTeamTest | tests core | unit thread_team_test ThreadTeamTest.cc timeout=360 |
 TersoffZblBuildTest | tests core | unit tersoff_zbl_build_test TersoffZblBuildTest.cc fp_contract=off timeout=180 |
 StreamParityTest | tests core | unit stream_parity_test StreamParityTest.cc fp_contract=off timeout=900 |
 ExternalPotFactoryFailureTest | tests core | unit external_pot_factory_failure_test ExternalPotFactoryFailureTest.cc |
@@ -183,8 +184,8 @@ CacheTest | tests cache | unit cache_test CacheTest.cc |
 InvarianceTest | tests cache | unit invariance_test InvarianceTest.cc |
 XTBDlopenTest | tests core,xtb | custom suite=xtb workdir=. |
 # Under a thread limit every region gets fewer threads than it asks for.
-ThreadTeamTest_limit1 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=1 timeout=120 |
-ThreadTeamTest_limit2 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=2 timeout=120 |
+ThreadTeamTest_limit1 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=1 timeout=360 |
+ThreadTeamTest_limit2 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=2 timeout=360 |
 openmp_confined | tests python | py CppCore/tests/test_openmp_confined.py @root@ |
 omp_crossover_v3_provenance | tests python | py bench/test_omp_crossover_v3_provenance.py --repo @root@ --json @root@ --json-relative bench/results/rgpot_omp_crossover_v3_results.json --report bench/results/rgpot_omp_crossover_v3d_report.md |
 omp_crossover_v3_provenance_cases | tests python | py bench/test_omp_crossover_v3_provenance_cases.py |
