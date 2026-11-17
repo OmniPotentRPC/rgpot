@@ -267,3 +267,16 @@ impl MdSession for CAbiMdSession {
             .ok_or_else(|| error_message(&error))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{MdSessionState, error_message};
+
+    #[test]
+    fn state_units_are_flat_xyz_and_error_buffers_are_safe() {
+        let state = MdSessionState::default();
+        assert!(state.positions.is_empty());
+        assert_eq!(error_message(&[b'b' as i8, b'a' as i8, 0, b'x' as i8]), "ba");
+        assert_eq!(error_message(&[0]), "");
+    }
+}
