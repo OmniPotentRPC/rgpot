@@ -6,6 +6,7 @@
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/ExternalPot/md_units.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -72,6 +73,7 @@ public:
   [[nodiscard]] size_t numParticles() const noexcept;
   [[nodiscard]] std::vector<double> masses() const;
 
+  void setPeriodicBox(const std::array<double, 9> &box);
   void setPositions(const std::vector<OpenMM::Vec3> &positions);
   void setVelocities(const std::vector<OpenMM::Vec3> &velocities);
 

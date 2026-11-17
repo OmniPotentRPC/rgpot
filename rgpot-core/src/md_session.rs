@@ -6,7 +6,7 @@
 //! ps, friction in inverse ps, and masses in amu. Flat arrays contain
 //! `3 * n_atoms` entries in row-major `(x, y, z)` order.
 
-use std::ffi::{CStr, c_char, c_void};
+use std::ffi::{c_char, c_void, CStr};
 use std::fmt;
 use std::ptr::NonNull;
 
@@ -154,6 +154,9 @@ pub trait MdSession {
     /// Particle masses in amu (`n_atoms` entries).
     fn masses(&self) -> Result<Vec<f64>, MdSessionError>;
 
+    /// Set periodic box vectors in Angstrom, stored as three row-major vectors.
+    fn set_periodic_box(&mut self, box9: &[f64]) -> Result<(), MdSessionError>;
+
     /// Replace the current flat xyz positions in Angstrom.
     fn set_positions(&mut self, positions: &[f64]) -> Result<(), MdSessionError>;
 
@@ -176,6 +179,9 @@ pub trait MdSession {
 
     /// Read positions, velocities, forces, and energies.
     fn state(&mut self) -> Result<MdSessionState, MdSessionError>;
+
+    /// Initialize the engine after explicit configuration.
+    fn initialize(&mut self) -> Result<(), MdSessionError>;
 }
 
 /// C ABI vtable matching `rgpot_md_session_ops` in `external_potentials.h`.
@@ -184,6 +190,13 @@ pub trait MdSession {
 pub struct MdSessionOps {
     /// Byte size of this struct (`std::mem::size_of::<MdSessionOps>()`).
     pub struct_size: usize,
+    /// Set three periodic box vectors in Angstrom.
+    pub set_periodic_box: unsafe extern "C" fn(
+        ctx: *mut c_void,
+        box9: *const f64,
+        err: *mut c_char,
+        err_len: usize,
+    ) -> i32,
     /// Set flat positions in Angstrom.
     pub set_positions: unsafe extern "C" fn(
         ctx: *mut c_void,
@@ -246,6 +259,8 @@ pub struct MdSessionOps {
         err: *mut c_char,
         err_len: usize,
     ) -> i32,
+    /// Initialize an engine after explicit inputs were provided.
+    pub initialize: unsafe extern "C" fn(ctx: *mut c_void, err: *mut c_char, err_len: usize) -> i32,
     /// Destroy the backend context.
     pub destroy: unsafe extern "C" fn(ctx: *mut c_void),
 }
@@ -274,7 +289,9 @@ impl CAbiMdSession {
         n_atoms: usize,
     ) -> Result<Self, MdSessionError> {
         if ops.struct_size < std::mem::size_of::<MdSessionOps>() {
-            return Err(MdSessionError::new("MD session vtable struct_size is too small"));
+            return Err(MdSessionError::new(
+                "MD session vtable struct_size is too small",
+            ));
         }
         let Some(n3) = n_atoms.checked_mul(3) else {
             return Err(MdSessionError::new("MD session atom count overflows"));
@@ -387,7 +404,9 @@ fn error_message(error: &[c_char]) -> String {
 
 fn check_finite_slice(values: &[f64], label: &str) -> Result<(), MdSessionError> {
     if !values.iter().all(|value| value.is_finite()) {
-        return Err(MdSessionError::new(format!("{label} contains non-finite values")));
+        return Err(MdSessionError::new(format!(
+            "{label} contains non-finite values"
+        )));
     }
     Ok(())
 }
@@ -411,6 +430,27 @@ impl MdSession for CAbiMdSession {
         };
         if status == 0 {
             Ok(masses)
+        } else {
+            Err(MdSessionError::new(error_message(&error)))
+        }
+    }
+
+    fn set_periodic_box(&mut self, box9: &[f64]) -> Result<(), MdSessionError> {
+        if box9.len() != 9 {
+            return Err(MdSessionError::new("periodic box must contain nine values"));
+        }
+        check_finite_slice(box9, "periodic box")?;
+        let mut error = [0 as c_char; 1024];
+        let status = unsafe {
+            (self.ops.set_periodic_box)(
+                self.ctx.as_ptr(),
+                box9.as_ptr(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if status == 0 {
+            Ok(())
         } else {
             Err(MdSessionError::new(error_message(&error)))
         }
@@ -478,7 +518,9 @@ impl MdSession for CAbiMdSession {
         steps: usize,
     ) -> Result<usize, MdSessionError> {
         if !(config.k_t.is_finite() && config.k_t > 0.0) {
-            return Err(MdSessionError::new("Langevin kT must be finite and positive"));
+            return Err(MdSessionError::new(
+                "Langevin kT must be finite and positive",
+            ));
         }
         if !(config.friction.is_finite() && config.friction >= 0.0) {
             return Err(MdSessionError::new(
@@ -539,8 +581,7 @@ impl MdSession for CAbiMdSession {
             )
         };
         if status == 0 {
-            usize::try_from(hits)
-                .map_err(|_| MdSessionError::new("wall hit count exceeds usize"))
+            usize::try_from(hits).map_err(|_| MdSessionError::new("wall hit count exceeds usize"))
         } else {
             Err(MdSessionError::new(error_message(&error)))
         }
@@ -548,7 +589,9 @@ impl MdSession for CAbiMdSession {
 
     fn step_nve(&mut self, time_step: f64, steps: usize) -> Result<(), MdSessionError> {
         if !(time_step.is_finite() && time_step > 0.0) {
-            return Err(MdSessionError::new("NVE time_step must be finite and positive"));
+            return Err(MdSessionError::new(
+                "NVE time_step must be finite and positive",
+            ));
         }
         let mut error = [0 as c_char; 1024];
         let status = unsafe {
@@ -590,6 +633,17 @@ impl MdSession for CAbiMdSession {
         };
         if status == 0 {
             Ok(state)
+        } else {
+            Err(MdSessionError::new(error_message(&error)))
+        }
+    }
+
+    fn initialize(&mut self) -> Result<(), MdSessionError> {
+        let mut error = [0 as c_char; 1024];
+        let status =
+            unsafe { (self.ops.initialize)(self.ctx.as_ptr(), error.as_mut_ptr(), error.len()) };
+        if status == 0 {
+            Ok(())
         } else {
             Err(MdSessionError::new(error_message(&error)))
         }
@@ -638,6 +692,15 @@ mod tests {
         let state = unsafe { &mut *(ctx as *mut MockCtx) };
         let slice = unsafe { std::slice::from_raw_parts(positions, n3) };
         state.positions.copy_from_slice(slice);
+        0
+    }
+
+    unsafe extern "C" fn mock_set_periodic_box(
+        _ctx: *mut c_void,
+        _box9: *const f64,
+        _err: *mut c_char,
+        _err_len: usize,
+    ) -> i32 {
         0
     }
 
@@ -746,15 +809,25 @@ mod tests {
         boxed.destroyed.store(true, Ordering::SeqCst);
     }
 
+    unsafe extern "C" fn mock_initialize(
+        _ctx: *mut c_void,
+        _err: *mut c_char,
+        _err_len: usize,
+    ) -> i32 {
+        0
+    }
+
     fn mock_ops() -> MdSessionOps {
         MdSessionOps {
             struct_size: std::mem::size_of::<MdSessionOps>(),
+            set_periodic_box: mock_set_periodic_box,
             set_positions: mock_set_positions,
             set_velocities: mock_set_velocities,
             step_langevin: mock_step_langevin,
             step_nve: mock_step_nve,
             get_state: mock_get_state,
             get_masses: mock_get_masses,
+            initialize: mock_initialize,
             destroy: mock_destroy,
         }
     }
@@ -784,10 +857,9 @@ mod tests {
             fail_next: false,
             destroyed: Arc::clone(&destroyed),
         }));
-        let mut session = unsafe {
-            CAbiMdSession::from_ops(NonNull::new_unchecked(ctx.cast()), mock_ops(), 2)
-        }
-        .expect("valid vtable");
+        let mut session =
+            unsafe { CAbiMdSession::from_ops(NonNull::new_unchecked(ctx.cast()), mock_ops(), 2) }
+                .expect("valid vtable");
 
         assert_eq!(session.dof(), 6);
         assert_eq!(session.masses().unwrap(), vec![4.0, 39.9]);
@@ -795,8 +867,12 @@ mod tests {
         // Buffer length and finiteness validation before C boundary.
         assert!(session.set_positions(&[0.0; 3]).is_err());
         assert!(session.set_velocities(&[f64::NAN; 6]).is_err());
-        session.set_positions(&[1.0, 0.0, 0.0, 2.0, 0.0, 0.0]).unwrap();
-        session.set_velocities(&[0.5, 0.0, 0.0, -0.5, 0.0, 0.0]).unwrap();
+        session
+            .set_positions(&[1.0, 0.0, 0.0, 2.0, 0.0, 0.0])
+            .unwrap();
+        session
+            .set_velocities(&[0.5, 0.0, 0.0, -0.5, 0.0, 0.0])
+            .unwrap();
 
         let cfg = MdLangevinConfig::default()
             .with_k_t(0.05)
@@ -808,11 +884,9 @@ mod tests {
         let wall_p = [0.0; 12];
         let wall_n = [0.0; 12];
         // Mismatched wall buffers rejected.
-        assert!(
-            session
-                .step_langevin(&cfg, &plane_p, &plane_n, &wall_p, &[0.0; 6], 1)
-                .is_err()
-        );
+        assert!(session
+            .step_langevin(&cfg, &plane_p, &plane_n, &wall_p, &[0.0; 6], 1)
+            .is_err());
         let hits = session
             .step_langevin(&cfg, &plane_p, &plane_n, &wall_p, &wall_n, 3)
             .unwrap();

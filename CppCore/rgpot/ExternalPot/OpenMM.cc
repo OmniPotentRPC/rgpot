@@ -235,6 +235,16 @@ size_t OpenMMSession::numParticles() const noexcept {
 
 std::vector<double> OpenMMSession::masses() const { return impl_->masses; }
 
+void OpenMMSession::setPeriodicBox(const std::array<double, 9> &box) {
+  for (const double value : box) {
+    require_finite_vec3(OpenMM::Vec3(value, value, value), "OpenMM box");
+  }
+  impl_->context->setPeriodicBoxVectors(
+      OpenMM::Vec3(box[0], box[1], box[2]),
+      OpenMM::Vec3(box[3], box[4], box[5]),
+      OpenMM::Vec3(box[6], box[7], box[8]));
+}
+
 void OpenMMSession::setPositions(const std::vector<OpenMM::Vec3> &positions) {
   if (positions.size() != impl_->particles) {
     throw std::invalid_argument("OpenMM position count differs from System");
@@ -475,6 +485,25 @@ void copy_from_openmm_vec3(const std::vector<OpenMM::Vec3> &values,
   }
 }
 
+int c_set_periodic_box(void *ctx, const double *box9, char *err,
+                       size_t err_len) {
+  try {
+    if (box9 == nullptr) {
+      throw std::invalid_argument("MD periodic box is null");
+    }
+    std::array<double, 9> box{};
+    std::copy_n(box9, box.size(), box.begin());
+    static_cast<OpenMMSession *>(ctx)->setPeriodicBox(box);
+    return 0;
+  } catch (const std::exception &ex) {
+    write_c_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_c_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
 int c_set_positions(void *ctx, const double *positions, size_t n3, char *err,
                     size_t err_len) {
   try {
@@ -601,6 +630,19 @@ int c_get_masses(void *ctx, double *masses, size_t n_atoms, char *err,
   }
 }
 
+int c_initialize(void *ctx, char *err, size_t err_len) {
+  try {
+    (void)static_cast<OpenMMSession *>(ctx)->state();
+    return 0;
+  } catch (const std::exception &ex) {
+    write_c_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_c_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
 void c_destroy(void *ctx) { delete static_cast<OpenMMSession *>(ctx); }
 
 } // namespace
@@ -624,12 +666,14 @@ int openmm_md_session_init(const char *system_xml, const char *platform,
     auto session = std::make_unique<OpenMMSession>(std::move(system), config);
     *n_atoms = session->numParticles();
     ops->struct_size = sizeof(rgpot_md_session_ops);
+    ops->set_periodic_box = c_set_periodic_box;
     ops->set_positions = c_set_positions;
     ops->set_velocities = c_set_velocities;
     ops->step_langevin = c_step_langevin;
     ops->step_nve = c_step_nve;
     ops->get_state = c_get_state;
     ops->get_masses = c_get_masses;
+    ops->initialize = c_initialize;
     ops->destroy = c_destroy;
     *ctx = session.release();
     return 0;

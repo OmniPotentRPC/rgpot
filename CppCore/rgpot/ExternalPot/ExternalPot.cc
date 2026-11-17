@@ -430,9 +430,11 @@ std::vector<std::string> md_engine_paths(const char *engine,
 
 bool valid_md_ops(const rgpot_md_session_ops *ops) {
   return ops != nullptr && ops->struct_size >= sizeof(rgpot_md_session_ops) &&
-         ops->set_positions != nullptr && ops->set_velocities != nullptr &&
+         ops->set_periodic_box != nullptr && ops->set_positions != nullptr &&
+         ops->set_velocities != nullptr &&
          ops->step_langevin != nullptr && ops->step_nve != nullptr &&
          ops->get_state != nullptr && ops->get_masses != nullptr &&
+         ops->initialize != nullptr &&
          ops->destroy != nullptr;
 }
 
@@ -664,6 +666,24 @@ int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
   }
 }
 
+int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
+                                      const double *box9, char *err,
+                                      size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || !finite_array(box9, 9)) {
+      throw std::invalid_argument("MD periodic box must contain nine finite values");
+    }
+    return session->ops.set_periodic_box(session->ctx, box9, err, err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
 int rgpot_md_session_set_positions(rgpot_md_session *session,
                                    const double *positions, size_t n3,
                                    char *err, size_t err_len) {
@@ -779,6 +799,23 @@ int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
     return session->ops.get_state(session->ctx, positions, velocities, forces,
                                   n3, potential_energy, kinetic_energy, err,
                                   err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_initialize(rgpot_md_session *session, char *err,
+                                size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr) {
+      throw std::invalid_argument("null MD session");
+    }
+    return session->ops.initialize(session->ctx, err, err_len);
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
     return 1;

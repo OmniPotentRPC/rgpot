@@ -78,6 +78,8 @@ typedef struct rgpot_md_session rgpot_md_session;
 
 typedef struct rgpot_md_session_ops {
   size_t struct_size;
+  int (*set_periodic_box)(void *ctx, const double *box9, char *err,
+                          size_t err_len);
   int (*set_positions)(void *ctx, const double *positions, size_t n3,
                        char *err, size_t err_len);
   int (*set_velocities)(void *ctx, const double *velocities, size_t n3,
@@ -94,6 +96,7 @@ typedef struct rgpot_md_session_ops {
                    double *kinetic_energy, char *err, size_t err_len);
   int (*get_masses)(void *ctx, double *masses, size_t n_atoms, char *err,
                     size_t err_len);
+  int (*initialize)(void *ctx, char *err, size_t err_len);
   void (*destroy)(void *ctx);
 } rgpot_md_session_ops;
 
@@ -114,6 +117,9 @@ rgpot_md_session *rgpot_md_session_create(const char *engine,
 size_t rgpot_md_session_n_atoms(const rgpot_md_session *session);
 int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
                                 size_t n_atoms, char *err, size_t err_len);
+int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
+                                      const double *box9, char *err,
+                                      size_t err_len);
 int rgpot_md_session_set_positions(rgpot_md_session *session,
                                    const double *positions, size_t n3,
                                    char *err, size_t err_len);
@@ -132,6 +138,8 @@ int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
                                double *velocities, double *forces, size_t n3,
                                double *potential_energy, double *kinetic_energy,
                                char *err, size_t err_len);
+int rgpot_md_session_initialize(rgpot_md_session *session, char *err,
+                                size_t err_len);
 void rgpot_md_session_destroy(rgpot_md_session *session);
 
 #ifdef __cplusplus
