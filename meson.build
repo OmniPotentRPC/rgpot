@@ -93,6 +93,11 @@ if has_eam_table
 endif
 
 rpc_enabled = get_option('with_rpc') or get_option('with_rpc_client_only')
+mdi_enabled = get_option('with_mdi')
+
+if mdi_enabled and not get_option('with_rust_core')
+    error('with_mdi=true needs with_rust_core=true')
+endif
 
 if get_option('with_rpc_client_only')
     _args += ['-DRGPOT_RPC_CLIENT_ONLY=TRUE']
@@ -672,10 +677,8 @@ if get_option('with_rust_core')
     # Determine Cargo build profile and library name
     if get_option('buildtype') == 'release'
         _cargo_profile_dir = 'release'
-        _cargo_args = ['build', '--release']
     else
         _cargo_profile_dir = 'debug'
-        _cargo_args = ['build']
     endif
 
     # Add feature flags for the Rust crate
@@ -689,36 +692,44 @@ if get_option('with_rust_core')
     if get_option('with_cache')
         _cargo_features += ['cache']
     endif
-
-    if _cargo_features.length() > 0
-        _cargo_args += ['--features', ','.join(_cargo_features)]
+    if mdi_enabled
+        _cargo_features += ['mdi']
+        _args += ['-DRGPOT_HAS_MDI=TRUE']
     endif
 
     _rgpot_core_dir = meson.current_source_dir() / 'rgpot-core'
 
-    # Build the Rust crate; produces librgpot_core.a and include/rgpot.h
+    # Cargo writes under its target directory. Copy the archive to @OUTPUT@
+    # so Meson has a real generated library and an explicit build edge.
+    _rust_builder = find_program('python3')
     rgpot_rust_target = custom_target(
         'rgpot_rust_core',
         command: [
-            cargo,
-            _cargo_args,
-            '--manifest-path',
+            _rust_builder,
+            files('scripts/build_rgpot_core.py'),
+            '--cargo',
+            cargo.full_path(),
+            '--manifest',
             _rgpot_core_dir / 'Cargo.toml',
             '--target-dir',
             meson.current_build_dir() / 'cargo-target',
+            '--profile',
+            _cargo_profile_dir,
+            '--features',
+            ','.join(_cargo_features),
+            '--output',
+            '@OUTPUT@',
         ],
         output: ['librgpot_core.a'],
         build_by_default: true,
+        build_always_stale: true,
         console: true,
     )
 
-    # Link the Rust static library
+    # Link the generated archive after building it.
     _rust_target_dir = meson.current_build_dir() / 'cargo-target' / _cargo_profile_dir
-    rgpot_rust_lib = cppc.find_library(
-        'rgpot_core',
-        dirs: [_rust_target_dir],
-        required: true,
-        static: true,
+    rgpot_rust_lib = declare_dependency(
+        link_with: rgpot_rust_target,
     )
 
     # Thread and dl libraries needed by the Rust runtime
