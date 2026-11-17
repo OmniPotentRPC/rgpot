@@ -613,7 +613,7 @@ if openmm_opt.allowed() and python3_engines.found()
             openmm_engine = shared_library(
                 'openmm_engine',
                 files('openmm/openmm_engine.cpp'),
-                link_with: openmm_session_lib,
+                link_with: [openmm_session_lib, rgpot],
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
