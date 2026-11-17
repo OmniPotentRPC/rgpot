@@ -1,0 +1,4 @@
+An optional GROMACS nblib backend, built with `-Dwith_nblib=true` (off by default): `NblibPot` evaluates a topology as a regular rgpot potential (energy, forces and stress, Angstrom and eV) from C++, Python and `rgpot-eval`, and `librgpot_nblib` loads GROMACS in process only.
+The same library exports an engine-generic MD session, `CppCore/rgpot/MDSession/md_session_c_abi.h` with `rgpot.mdsession` in Python: set positions, velocities and the box, take plain NVE steps or thermostatted steps restricted to a hyperplane with optional planar hard walls, read the state back, and install a per-step hook or a boundary callback.
+Another engine implements the same calls under its own symbol prefix.
+`engines/nblib/build_gromacs.sh` builds the pinned GROMACS 2025.5 the backend targets; see `docs/orgmode/howto/engine-nblib.org`.

@@ -1460,6 +1460,113 @@ int main() {
 }
 #+end_src
 
+** GROMACS nblib
+
+The potential and the MD session of =librgpot_nblib=; see
+[[file:../howto/engine-nblib.org][GROMACS nblib]].
+The class exists when the build has =-Dwith_nblib=true=.
+
+*** =rgpot::NblibConfig=
+
+- Inputs :: =topology= (default empty), =topology_file= (default empty) and
+  =engine_path= (default empty).
+  =topology= is the text of the nblib topology format.
+  When it is empty the text is read from =topology_file=.
+  =engine_path= is =librgpot_nblib=; empty searches =RGPOT_NBLIB_ENGINE= and
+  then =librgpot_nblib.so=.
+- Units :: none; the topology text states masses in amu, the cutoff in nm and
+  the parameters in GROMACS units.
+- Outputs :: a plain struct read by =NblibPot=.
+- Errors :: =NblibPot= throws =std::invalid_argument= when neither topology
+  field gives text.
+  It throws =std::runtime_error= when =topology_file= cannot be read, when the
+  library cannot be opened or speaks another ABI version, or when it rejects
+  the topology; the last message carries the line number.
+
+*** =rgpot::NblibPot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+explicit NblibPot(const NblibConfig &config);
+#+end_src
+
+- Inputs :: =config=, an =rgpot::NblibConfig=.
+- Units :: positions and cell in Angstrom, energy in eV, forces in
+  eV/Angstrom, stress in eV/Angstrom^3.
+  The library converts to nm and kJ/mol.
+- Outputs :: a potential that builds one nblib force calculator at
+  construction and evaluates the topology on every call.
+  It fills the energy, the forces and the stress \(2\Xi/V\) for the GROMACS
+  virial \(\Xi\).
+  The atom count of a call must equal the topology's; atomic numbers are not
+  read.
+- Errors :: as =NblibConfig=.
+  A call throws =std::invalid_argument= for incomplete buffers, and
+  =std::runtime_error= with the library's last error for a cell that is not
+  rectangular, an atom count that differs from the topology's, or a failure
+  inside GROMACS.
+
+*** =rgpot::NblibPot::config=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const NblibConfig &config() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the =NblibConfig= given to the constructor.
+- Errors :: none.
+
+*** =rgpot::NblibPot::atomCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::size_t atomCount() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the number of atoms of the topology.
+- Errors :: none.
+
+*** =rgpot::NblibPot::cutoff=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] double cutoff() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: Angstrom.
+- Outputs :: the cutoff of the topology.
+- Errors :: none.
+
+*** =rgpot::NblibPot::masses=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::vector<double> masses() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: amu.
+- Outputs :: one mass per atom.
+- Errors :: none.
+
+*** =rgpot::NblibPot::lastVirial=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::vector<double> lastVirial() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: eV.
+- Outputs :: the GROMACS virial \(-\tfrac12\sum r\otimes F\) of the last call,
+  nine values, row-major; zeros before the first call.
+- Errors :: none.
+
 ** Members common to several classes
 
 These members have the same declaration in each class that has them.

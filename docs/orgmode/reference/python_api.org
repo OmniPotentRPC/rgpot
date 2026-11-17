@@ -845,6 +845,28 @@ rgpot.IPIPot(address, timeout_s=30.0)
   =native_cutoff= and =native_psi=.
 - Errors :: as =rgpot.GromacsPot=.
 
+*** =rgpot.NblibPot=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.NblibPot(topology, engine_path="")
+#+end_src
+
+- Inputs :: =topology= is the text of the nblib topology format
+  ([[file:../howto/engine-nblib.org][GROMACS nblib]]).
+  =engine_path= is =librgpot_nblib=; empty searches =RGPOT_NBLIB_ENGINE=, then
+  =librgpot_nblib.so=.
+- Units :: positions and box in Angstrom, energy eV, forces eV/Angstrom.
+  The box must be rectangular.
+- Outputs :: a potential that builds one nblib force calculator in the
+  constructor.
+  It has =__call__=, =atom_count=, =cutoff=, =masses= and =virial=.
+  The class exists when the extension was built with =-Dwith_nblib=true=.
+- Errors :: a topology the parser rejects, a library that cannot be opened and
+  a call with a different atom count or a box that is not rectangular raise
+  =RuntimeError=; the message of a rejected topology names the line.
+  An empty =topology= raises =ValueError=.
+
 ** Shared methods
 
 *** =.__call__=
@@ -858,7 +880,7 @@ __call__(positions, atom_types, box)
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
   rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
   rgpot.ExprPot, rgpot.StillingerWeberSi, rgpot.TersoffSiC, rgpot.IPIPot,
-  rgpot.LammpsPot, rgpot.GromacsPot, rgpot.OpenMMPot
+  rgpot.LammpsPot, rgpot.GromacsPot, rgpot.OpenMMPot, rgpot.NblibPot
 - Inputs :: =positions= =(N, 3)=, =atom_types= (=N= integers) and =box=
   =(3, 3)=, as in the conventions.
 - Units :: positions and box in Angstrom; energy eV; forces eV/Angstrom;
@@ -1436,3 +1458,52 @@ fields_from_density(chi, dchi, density, lapl_chi=None, hess_chi=None)
 - Errors :: =density= not =(nbf, nbf)= raises =ValueError=; the shape errors of
   =contract= apply to the other arrays.
   =chi= or =density= of the wrong dtype or order raises =TypeError=.
+
+*** =rgpot.NblibPot.atom_count=
+
+#+attr_rgpot: signature
+#+begin_src python
+atom_count()
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the number of atoms of the topology, an int.
+- Errors :: none.
+
+*** =rgpot.NblibPot.cutoff=
+
+#+attr_rgpot: signature
+#+begin_src python
+cutoff()
+#+end_src
+
+- Inputs :: none.
+- Units :: Angstrom.
+- Outputs :: the cutoff of the topology, a float.
+- Errors :: none.
+
+*** =rgpot.NblibPot.masses=
+
+#+attr_rgpot: signature
+#+begin_src python
+masses()
+#+end_src
+
+- Inputs :: none.
+- Units :: amu.
+- Outputs :: a float64 array of shape =(N, 1)=.
+- Errors :: none.
+
+*** =rgpot.NblibPot.virial=
+
+#+attr_rgpot: signature
+#+begin_src python
+virial()
+#+end_src
+
+- Inputs :: none.
+- Units :: eV.
+- Outputs :: the GROMACS virial of the last call, a float64 array of shape
+  =(3, 3)=; zeros before the first call.
+- Errors :: none.

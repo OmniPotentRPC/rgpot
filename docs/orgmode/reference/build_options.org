@@ -44,6 +44,9 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_ipi= | feature | =auto= | i-PI socket server Potential (IPIPot), driver client (IPIDriver) and rgpot-ipi-driver (POSIX sockets). auto is on except on Windows. |
 | =with_water= | boolean | =false= | Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option. |
 | =with_eam_table= | boolean | =false= | EAM and Finnis-Sinclair potentials read from LAMMPS funcfl, setfl and eam/fs tables. |
+| =with_nblib= | boolean | =false= | GROMACS nblib backend: =librgpot_nblib= (potential and MD session C ABI) and the =NblibPot= frontend. Needs a GROMACS built with =-DGMX_INSTALL_NBLIB_API=ON -DGMX_INSTALL_LEGACY_API=ON -DBUILD_SHARED_LIBS=ON=, found through =nblib_prefix=. Off by default. |
+| =nblib_prefix= | string | =(empty)= | Install prefix of that GROMACS, with the nblib headers and libnblib_gmx under it. Empty uses the compiler default search paths. |
+| =nblib_gmx= | string | =(empty)= | Double-precision =gmx= used by the nblib =mdrun -rerun= reference tests; empty uses =nblib_prefix/bin/gmx_d=, then =gmx_d= on PATH, and skips the reference tests without one. |
 | =with_lammps= | feature | =auto= | LAMMPS pair_style rgpot and the lj/cut comparison. Needs the lammps Python module. pair_style rgpot also needs lammps_src. |
 | =lammps_src= | string | =(empty)= | LAMMPS src directory that contains pair.h, matching the liblammps that will load the plugin. |
 | =lammps_exe= | string | =(empty)= | lmp built from lammps_src. When set, the LAMMPS test also runs pair_style rgpot. |
