@@ -17,6 +17,7 @@
 // clang-format on
 
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/PairEval.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/simd/exp.hpp"
 #include "rgpot/stress.hpp"
@@ -80,69 +81,24 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
     return;
   }
 
-  const auto n_atoms = static_cast<std::size_t>(N);
   updateNeighbours(in);
   const double cutoff2 = cuttOffR * cuttOffR;
-  const int nt = nlist::threadsRequested();
-  auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                    double r2, double *force, double &energy, double *virial,
-                    const PerAtomOut *share) {
-    if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
-      return;
-    }
-    double pair_e = 0.0;
-    double fscale = 0.0;
-    pairTerm(std::sqrt(r2), pair_e, fscale);
-    energy += pair_e;
-    const double fx = fscale * dx;
-    const double fy = fscale * dy;
-    const double fz = fscale * dz;
-    force[3 * i] += fx;
-    force[3 * i + 1] += fy;
-    force[3 * i + 2] += fz;
-    force[3 * j] -= fx;
-    force[3 * j + 1] -= fy;
-    force[3 * j + 2] -= fz;
-    accumulatePairStrain(virial, fscale, dx, dy, dz);
-    if (share != nullptr) {
-      tallyPair(*share, static_cast<std::size_t>(i), static_cast<std::size_t>(j), pair_e, fscale,
-                dx, dy, dz);
-    }
-  };
   double energy = 0.0;
-  if (nt <= 1) {
-    nlist::visitHalf(neighbours_, 0, N,
-                     [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                         double r2) { accept(i, j, dx, dy, dz, r2, F, energy, strain, atoms); });
-  } else {
-    std::vector<double> owned(static_cast<std::size_t>(nt) * n_atoms * 3, 0.0);
-    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
-    std::vector<double> virial(static_cast<std::size_t>(nt) * 6, 0.0);
-    PerAtomTeam team(atoms, static_cast<std::size_t>(N), nt);
-    std::vector<PerAtomOut> slots(static_cast<std::size_t>(nt));
-    for (int t = 0; t < nt; ++t) {
-      slots[static_cast<std::size_t>(t)] = team.slot(t);
-    }
-    neighbours_.forCellTeam(
-        true, nt, [&](int t, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                      double r2) {
-          double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
-          double *st = virial.data() + static_cast<std::size_t>(t) * 6;
-          accept(i, j, dx, dy, dz, r2, local, partial[static_cast<std::size_t>(t)], st,
-                 atoms != nullptr ? &slots[static_cast<std::size_t>(t)] : nullptr);
-        });
-    team.reduce();
-    for (int t = 0; t < nt; ++t) {
-      energy += partial[static_cast<std::size_t>(t)];
-      const double *local = owned.data() + static_cast<std::size_t>(t) * n_atoms * 3;
-      for (std::size_t k = 0; k < n_atoms * 3; ++k) {
-        F[k] += local[k];
-      }
-      for (int c = 0; c < 6; ++c) {
-        strain[c] += virial[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(c)];
-      }
-    }
-  }
+  runCellTeamPairs(
+      N, neighbours_, F, energy, strain, atoms,
+      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+          double r2, double *force, double &local_e, double *virial,
+          const PerAtomOut *share) {
+        if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+          return;
+        }
+        double pair_e = 0.0;
+        double fscale = 0.0;
+        pairTerm(std::sqrt(r2), pair_e, fscale);
+        local_e += pair_e;
+        scatterPairForce(force, i, j, pair_e, fscale, dx, dy, dz, virial,
+                         share);
+      });
   *U = energy;
   publishCauchyStress(out, strain, volume);
 }
