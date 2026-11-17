@@ -86,6 +86,12 @@ if has_water
     _args += ['-DRGPOT_HAS_WATER=TRUE']
 endif
 
+# GROMACS nblib backend (librgpot_nblib and the dlopen frontend). Off unless asked for.
+has_nblib = get_option('with_nblib')
+if has_nblib
+    _args += ['-DRGPOT_HAS_NBLIB=TRUE']
+endif
+
 # Tabulated EAM / Finnis-Sinclair files. Off unless asked for.
 has_eam_table = get_option('with_eam_table')
 if has_eam_table

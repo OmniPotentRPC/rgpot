@@ -99,6 +99,24 @@ option(
     description: 'Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option.',
 )
 option(
+    'with_nblib',
+    type: 'boolean',
+    value: false,
+    description: 'GROMACS nblib backend: librgpot_nblib (potential and MD session C ABI) and the NblibPot frontend. Needs a GROMACS built with -DGMX_INSTALL_NBLIB_API=ON -DGMX_INSTALL_LEGACY_API=ON -DBUILD_SHARED_LIBS=ON, found through nblib_prefix. Off by default.',
+)
+option(
+    'nblib_prefix',
+    type: 'string',
+    value: '',
+    description: 'Install prefix of that GROMACS (include/nblib, lib/libnblib_gmx). Empty uses the compiler default search paths.',
+)
+option(
+    'nblib_gmx',
+    type: 'string',
+    value: '',
+    description: 'Double-precision gmx used by the nblib mdrun -rerun reference tests; empty uses nblib_prefix/bin/gmx_d, then gmx_d on PATH, and skips the reference tests without one.',
+)
+option(
     'with_eam_table',
     type: 'boolean',
     value: false,

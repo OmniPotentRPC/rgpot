@@ -424,6 +424,10 @@ if get_option('with_gromacs_dropin').allowed()
     subdir('gromacs')
 endif
 
+if has_nblib
+    subdir('nblib')
+endif
+
 # Configures a parent project around this tree, so it needs meson on PATH
 # and only runs from the top-level build.
 meson_prog = find_program('meson', required: false)
