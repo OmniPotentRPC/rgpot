@@ -1,0 +1,2 @@
+Add an in-process OpenMM CustomIntegrator session with projected BAOAB,
+planar reflecting walls, state readback, and NVE stepping.
