@@ -62,6 +62,8 @@ FeHePot: Any = getattr(_core, "FeHePot", None)
 CuH2Pot: Any = getattr(_core, "CuH2Pot", None)
 WaterHPot: Any = getattr(_core, "WaterHPot", None)
 
+NblibPot: Any = getattr(_core, "NblibPot", None)
+
 try:
     from rgpot._core import IPIPot
 except ImportError:  # compiled without -DRGPOT_HAS_IPI
@@ -196,6 +198,7 @@ __all__ = [
     "D4Pot",
     "ExprPot",
     "IPIPot",
+    "NblibPot",
     "XcKernel",
     "PotentialCache",
     "SWPot",

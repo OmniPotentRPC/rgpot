@@ -7,6 +7,9 @@
 #include "rgpot/EMT/EMTPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#ifdef RGPOT_HAS_NBLIB
+#include "rgpot/NblibPot/NblibPot.hpp"
+#endif
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
@@ -254,6 +257,14 @@ Built make(const std::string &key, Reader &r, double fallback) {
   if (key == "eamcell") {
     return own<EAMPot>();
   }
+#ifdef RGPOT_HAS_NBLIB
+  if (key == "nblib") {
+    NblibConfig c;
+    c.topology_file = r.text("topology", "");
+    c.engine_path = r.text("engine", "");
+    return own<NblibPot>(c);
+  }
+#endif
 #ifdef RGPOT_HAS_FORTRAN_POTS
   if (key == "swsi") {
     return own<fortranpots::SWPot>();
@@ -285,6 +296,9 @@ std::string names() {
   out += " EAMTable";
 #endif
   out += " SWSi1985 TersoffSi EMT EAMCell";
+#ifdef RGPOT_HAS_NBLIB
+  out += " Nblib";
+#endif
 #ifdef RGPOT_HAS_FORTRAN_POTS
   out += " SWSi EDIP LenoskySi EAMAl FeHe CuH2";
 #endif

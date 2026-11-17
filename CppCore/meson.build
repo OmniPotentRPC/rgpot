@@ -369,6 +369,11 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/ExternalPot')  # lammps / gromacs / openmm constructors
     rgpotentials += [external_pot]
 
+    if has_nblib
+        subdir('rgpot/NblibPot')  # NblibPot: dlopen frontend of librgpot_nblib
+        rgpotentials += [nblibpot]
+    endif
+
     subdir('rgpot/CuH2')  # 'cuh2': slab-geometry helpers
     rgpotentials += [cuh2]
 

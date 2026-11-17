@@ -62,6 +62,9 @@
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
 #endif
+#ifdef RGPOT_HAS_NBLIB
+#include "rgpot/NblibPot/NblibPot.hpp"
+#endif
 
 #ifndef RGPOT_PY_VERSION
 #define RGPOT_PY_VERSION "0.0.0"
@@ -900,6 +903,49 @@ NB_MODULE(_core, m) {
           "Cauchy stress from the last call, shape (3, 3), in eV/Angstrom^3. "
           "None before a successful call.")
       .def_prop_ro("endpoint", &rgpot::IPIPot::endpoint);
+#endif
+
+#ifdef RGPOT_HAS_NBLIB
+  nb::class_<rgpot::NblibPot>(m, "NblibPot")
+      .def(
+          "__init__",
+          [](rgpot::NblibPot *self, const std::string &topology,
+             const std::string &engine_path) {
+            rgpot::NblibConfig cfg;
+            cfg.topology = topology;
+            cfg.engine_path = engine_path;
+            new (self) rgpot::NblibPot(cfg);
+          },
+          nb::arg("topology"), nb::arg("engine_path") = "",
+          "GROMACS nblib topology as a potential. topology is the text of "
+          "docs/orgmode/howto/engine-nblib.org. The constructor dlopens "
+          "librgpot_nblib; engine_path empty searches RGPOT_NBLIB_ENGINE, "
+          "then librgpot_nblib.so. Positions are Angstrom, energy is eV.")
+      .def(
+          "__call__",
+          [](rgpot::NblibPot &self, const F64 &positions, nb::handle atom_types,
+             const F64 &box) {
+            auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+            return rgpot::pybind::call_detached(self, geom);
+          },
+          nb::arg("positions").noconvert(), nb::arg("atom_types"),
+          nb::arg("box").noconvert())
+      .def("atom_count", &rgpot::NblibPot::atomCount)
+      .def("cutoff", &rgpot::NblibPot::cutoff, "Cutoff in Angstrom.")
+      .def(
+          "masses",
+          [](const rgpot::NblibPot &self) {
+            const std::vector<double> masses = self.masses();
+            return nb::cast(buffer_to_numpy(masses.data(), masses.size(), 1));
+          },
+          "Atomic masses in amu, shape (n, 1).")
+      .def(
+          "virial",
+          [](const rgpot::NblibPot &self) {
+            const std::vector<double> virial = self.lastVirial();
+            return nb::cast(buffer_to_numpy(virial.data(), 3, 3));
+          },
+          "GROMACS virial -1/2 sum r (x) F of the last call, eV, shape (3, 3).");
 #endif
 
 #ifdef RGPOT_HAS_XCKERNEL

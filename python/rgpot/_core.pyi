@@ -687,6 +687,25 @@ class ExprPot:
     def has_analytic_hvp(self) -> bool:
         """Whether hvp(scheme='auto') uses the kernel's own product."""
 
+class NblibPot:
+    def __init__(self, topology: str, engine_path: str = '') -> None:
+        """
+        GROMACS nblib topology as a potential. topology is the text of docs/orgmode/howto/engine-nblib.org. The constructor dlopens librgpot_nblib; engine_path empty searches RGPOT_NBLIB_ENGINE, then librgpot_nblib.so. Positions are Angstrom, energy is eV.
+        """
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+
+    def atom_count(self) -> int: ...
+
+    def cutoff(self) -> float:
+        """Cutoff in Angstrom."""
+
+    def masses(self) -> object:
+        """Atomic masses in amu, shape (n, 1)."""
+
+    def virial(self) -> object:
+        """GROMACS virial -1/2 sum r (x) F of the last call, eV, shape (3, 3)."""
+
 class IPIPot:
     def __init__(self, address: str, timeout_s: float = 30.0) -> None:
         """
