@@ -113,6 +113,8 @@ endif
 # loop only calls an inline function, so the library is not linked.
 minimage_dep = dependency('minimage', required: true)
 _deps += minimage_dep.partial_dependency(includes: true, compile_args: true)
+# Example drivers set include paths without the dependency list.
+_incdirs += include_directories(minimage_dep.get_variable(pkgconfig: 'includedir'))
 
 # ------------------------ vesin (neighbour lists)
 # One vesin for the whole tree: the nlist headers, MetatomicPot, and the
