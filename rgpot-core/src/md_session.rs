@@ -7,17 +7,29 @@ use std::ptr::NonNull;
 /// State returned by an rgpot MD session, in the engine's documented units.
 #[derive(Clone, Debug, Default)]
 pub struct MdSessionState {
+    /// Flat xyz positions in nanometres.
     pub positions: Vec<f64>,
+    /// Flat xyz velocities in nanometres per picosecond.
     pub velocities: Vec<f64>,
+    /// Flat xyz forces in kilojoules per mole per nanometre.
     pub forces: Vec<f64>,
+    /// Potential energy in kilojoules per mole.
     pub potential_energy: f64,
+    /// Kinetic energy in kilojoules per mole.
     pub kinetic_energy: f64,
 }
 
 /// Safe Rust contract implemented by C ABI-backed rgpot engines.
 pub trait MdSession {
+    /// Replace the current flat xyz positions.
+    ///
+    /// Coordinates use nanometres.
+    ///
     fn set_positions(&mut self, positions: &[f64]) -> Result<(), String>;
+    /// Replace the current flat xyz velocities in nanometres per picosecond.
     fn set_velocities(&mut self, velocities: &[f64]) -> Result<(), String>;
+    /// Advance projected BAOAB Langevin dynamics.
+    #[allow(clippy::too_many_arguments)]
     fn step_langevin(
         &mut self,
         k_t: f64,
@@ -30,7 +42,9 @@ pub trait MdSession {
         steps: usize,
         seed: u64,
     ) -> Result<usize, String>;
+    /// Advance deterministic velocity-Verlet/NVE dynamics.
     fn step_nve(&mut self, time_step: f64, steps: usize) -> Result<(), String>;
+    /// Read positions, velocities, forces, and energies.
     fn state(&mut self) -> Result<MdSessionState, String>;
 }
 
