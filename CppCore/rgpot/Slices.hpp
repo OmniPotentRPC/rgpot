@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 #if defined(_OPENMP)
 #include <omp.h>
@@ -52,17 +53,42 @@ struct Range {
 /// neighbour-list build, runs on the calling thread alone. A region costs
 /// more than such a call: on 8 threads a neighbour search of 64 atoms took
 /// several times its one-thread time. Each potential keeps its own
-/// threshold as `kTeamMinAtoms` in its class.
+/// thresholds as `kTeamFrom` in its class.
 inline constexpr std::size_t kTeamMinAtoms = 8192;
+
+/// An atom count no call reaches, for a team that never opens.
+inline constexpr std::size_t kNoTeam = std::numeric_limits<std::size_t>::max();
+
+/// Atoms from which a team of two threads opens, of three, and of four or
+/// more. The default opens each at the threshold of the call. A potential
+/// keeps its own as `kTeamFrom` and, on any thread count, sums atom by atom
+/// in index order from the least of them, its `kTeamMinAtoms`.
+struct TeamFrom {
+  std::size_t two = 0;
+  std::size_t three = 0;
+  std::size_t more = 0;
+
+  /// Atoms from which a team of `threads` opens.
+  [[nodiscard]] constexpr std::size_t of(int threads) const noexcept {
+    return threads <= 2 ? two : (threads == 3 ? three : more);
+  }
+
+  /// Atoms from which some team opens.
+  [[nodiscard]] constexpr std::size_t least() const noexcept {
+    const std::size_t fewer = two < three ? two : three;
+    return fewer < more ? fewer : more;
+  }
+};
 
 /// The threshold of a call whose own is `own`: that of the innermost
 /// TeamThreshold alive on this thread, else `own`.
 [[nodiscard]] std::size_t teamThreshold(std::size_t own) noexcept;
 
-/// Slices for a call over `n` atoms with threshold `from`: one below
-/// `from` or when threadsRequested() is one, else threadsRequested(), at
-/// most `n`.
-[[nodiscard]] int teamSize(std::size_t n, std::size_t from = kTeamMinAtoms);
+/// Slices for a call over `n` atoms with threshold `from` and teams
+/// `team`: threadsRequested(), at most `n`, once `n` reaches `from` and the
+/// atoms `team` asks of that many threads, else one. While a TeamThreshold
+/// is alive any count above one opens from `from`.
+[[nodiscard]] int teamSize(std::size_t n, std::size_t from = kTeamMinAtoms, TeamFrom team = {});
 
 /// Regions the calling thread has opened through the helpers below, a
 /// region the runtime gave one thread included. A call that leaves the
@@ -92,8 +118,9 @@ private:
 };
 
 /// While alive, a potential called on this thread takes `atoms` as its
-/// threshold in place of its own, so a benchmark can time a team on either
-/// side of that. The bits still do not depend on the thread count, but a
+/// threshold in place of its own and opens a team on any thread count
+/// above one, so a benchmark can time every team on either side of its
+/// own threshold. The bits still do not depend on the thread count, but a
 /// call between the two thresholds sums in the other order and its energy
 /// can differ in the last bits.
 class TeamThreshold {

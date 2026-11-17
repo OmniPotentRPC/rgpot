@@ -5,6 +5,9 @@
 namespace rgpot {
 
 static_assert(EAMPot::kTeamMinAtoms == EAM::kTeamMinAtoms);
+static_assert(EAMPot::kTeamFrom.two == EAM::kTeamFrom.two &&
+              EAMPot::kTeamFrom.three == EAM::kTeamFrom.three &&
+              EAMPot::kTeamFrom.more == EAM::kTeamFrom.more);
 
 struct EAMPot::Impl {
   EAM kernel;

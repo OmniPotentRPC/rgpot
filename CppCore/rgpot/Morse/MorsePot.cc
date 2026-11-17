@@ -86,7 +86,8 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
   const double cutoff2 = cuttOffR * cuttOffR;
   double energy = 0.0;
   nlist::sumPairs(
-      neighbours_, n_atoms, teamThreshold(kTeamMinAtoms), cutoff2, nlist::Overlap::Skip,
+      neighbours_, n_atoms, teamThreshold(kTeamMinAtoms), kTeamFrom, cutoff2,
+      nlist::Overlap::Skip,
       [this](std::int32_t, std::int32_t, double r2, double &pair_e, double &fscale) {
         pairTerm(std::sqrt(r2), pair_e, fscale);
       },

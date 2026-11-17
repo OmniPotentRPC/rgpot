@@ -181,7 +181,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   // the rows repeat bit for bit.
   const std::size_t from = teamThreshold(kTeamMinAtoms);
   const bool rows = n_size >= from;
-  const int nt = nlist::teamSize(n_size, from);
+  const int nt = nlist::teamSize(n_size, from, kTeamFrom);
   const bool by_row = rows && nt > 1;
   std::vector<double> row_e(rows ? n_size : 0, 0.0);
   std::vector<double> row_s(rows && cfg.stress ? 6 * n_size : 0, 0.0);

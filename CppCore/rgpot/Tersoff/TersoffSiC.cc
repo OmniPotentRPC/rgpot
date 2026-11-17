@@ -389,7 +389,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     return;
   }
   sumCentres<std::vector<Bond>>(
-      n_atoms, from,
+      n_atoms, from, kTeamFrom,
       [&](std::int32_t i, CentreTerms &terms, std::vector<Bond> &nb) {
         load(i, nb);
         terms.reset(i, nb);

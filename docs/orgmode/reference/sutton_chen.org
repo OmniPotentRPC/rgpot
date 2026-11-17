@@ -45,15 +45,17 @@ of one fifth of the cutoff, or none in =nlist::Mode::Stream=.
 With =cutoff = 0= the layer searches without a bound: it bins nothing, stores no
 list, and each pass takes the pairs straight from the coordinates, in the order
 of the one bin that a search wider than the cluster gives.
-A call on fewer than 8192 atoms (=rgpot::kTeamMinAtoms=) runs on the calling
+A call on fewer than =SuttonChenPot::kTeamMinAtoms= atoms runs on the calling
 thread whatever =OMP_NUM_THREADS= asks for, since starting a team costs more
 than such a call.
-From 8192 atoms up each atom keeps the energy and strain of its pairs with
+From there up each atom keeps the energy and strain of its pairs with
 higher-index partners, and the atoms are added in index order.
-A team of =OMP_NUM_THREADS= threads splits the atoms into as many runs and walks
-each atom's whole row on the run that owns it, so the energy, the forces, the
-stress and the per-atom terms have the bits of one thread on any thread count,
-also when the runtime starts fewer threads.
+When the call has at least the atoms =SuttonChenPot::kTeamFrom= asks of the
+=OMP_NUM_THREADS= threads, a team splits the atoms into as many runs and walks
+each atom's whole row on the run that owns it; one thread walks each pair once,
+in the order of those rows.
+So the energy, the forces, the stress and the per-atom terms have the bits of
+one thread on any thread count, also when the runtime starts fewer threads.
 One pass builds the densities and a second pass writes the forces.
 The density pass keeps the powers and =1/r^2= that the force of each pair takes,
 and the force pass reads them back instead of raising the distance to =n= and

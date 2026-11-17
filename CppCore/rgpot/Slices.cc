@@ -39,9 +39,9 @@ std::size_t teamThreshold(std::size_t own) noexcept {
   return t_threshold_set ? t_threshold : own;
 }
 
-int teamSize(std::size_t n, std::size_t from) {
+int teamSize(std::size_t n, std::size_t from, TeamFrom team) {
   const int nt = threadsRequested();
-  if (n < from || nt <= 1) {
+  if (n < from || nt <= 1 || (!t_threshold_set && n < team.of(nt))) {
     return 1;
   }
   if (static_cast<std::size_t>(nt) > n) {

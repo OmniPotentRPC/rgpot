@@ -150,7 +150,7 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
     }
   };
   nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), teamThreshold(kTeamMinAtoms),
-                  cutoff2, nlist::Overlap::Skip, term, F, *U, nullptr, atoms);
+                  kTeamFrom, cutoff2, nlist::Overlap::Skip, term, F, *U, nullptr, atoms);
 }
 
 } // namespace rgpot
