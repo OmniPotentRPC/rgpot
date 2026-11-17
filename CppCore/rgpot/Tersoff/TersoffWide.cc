@@ -75,56 +75,6 @@ void radial(const TersoffSiC::Pair &p, double r, Bond &b) {
   b.df_a = -p.lambda2 * b.f_a;
 }
 
-struct RadialMemo {
-  double r = -1.0;
-  const TersoffSiC::Pair *pair = nullptr;
-  double fc = 0;
-  double dfc = 0;
-  double f_r = 0;
-  double f_a = 0;
-  double df_r = 0;
-  double df_a = 0;
-  void apply(const TersoffSiC::Pair &p, double radius, Bond &b) {
-    if (pair == &p && r == radius) {
-      b.fc = fc;
-      b.dfc = dfc;
-      b.f_r = f_r;
-      b.f_a = f_a;
-      b.df_r = df_r;
-      b.df_a = df_a;
-      return;
-    }
-    radial(p, radius, b);
-    pair = &p;
-    r = radius;
-    fc = b.fc;
-    dfc = b.dfc;
-    f_r = b.f_r;
-    f_a = b.f_a;
-    df_r = b.df_r;
-    df_a = b.df_a;
-  }
-};
-
-struct OrderMemo {
-  const TersoffSiC::Species *sp = nullptr;
-  double zeta = -1.0;
-  double b = 0;
-  double db = 0;
-  void apply(const TersoffSiC::Species &species, double z, double &b_out, double &db_out) {
-    if (sp == &species && zeta == z) {
-      b_out = b;
-      db_out = db;
-      return;
-    }
-    bondOrder(species, z, b_out, db_out);
-    sp = &species;
-    zeta = z;
-    b = b_out;
-    db = db_out;
-  }
-};
-
 double cosine(const Bond &a, const Bond &b);
 
 // The cosine is symmetric, so each angle is stored for both bond orders.
@@ -153,7 +103,7 @@ double cosine(const Bond &a, const Bond &b) {
 }
 
 int storeBonds(nlist::Neighbours &cells, const TersoffSiC::Pair pairs[2][2], const int *kind,
-               int i, double cut2, Bond *dest, int room, RadialMemo &radial_memo) {
+               int i, double cut2, Bond *dest, int room) {
   int m = 0;
   const int ki = kind[i];
   auto take = [&](std::int32_t, std::int32_t j, double dx, double dy, double dz, double r2) {
@@ -169,7 +119,7 @@ int storeBonds(nlist::Neighbours &cells, const TersoffSiC::Pair pairs[2][2], con
       return;
     }
     Bond forth{static_cast<int>(j), -dx, -dy, -dz, r, 0, 0, 0, 0, 0, 0};
-    radial_memo.apply(pij, r, forth);
+    radial(pij, r, forth);
     dest[m] = forth;
     ++m;
   };
@@ -222,7 +172,6 @@ void TersoffSiC::runOwned(const int *kind, int n, int nt, double cut2, double sc
     const int t = 0;
 #endif
     const auto range = nlist::partition(n, t, nt);
-    RadialMemo radial_memo;
     for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
       bond_n[static_cast<std::size_t>(i)] =
           row[static_cast<std::size_t>(i) + 1] - row[static_cast<std::size_t>(i)];
@@ -247,7 +196,7 @@ void TersoffSiC::runOwned(const int *kind, int n, int nt, double cut2, double sc
           bond_at[static_cast<std::size_t>(i) + 1] - bond_at[static_cast<std::size_t>(i)];
       Bond *dest = bonds.data() + bond_at[static_cast<std::size_t>(i)];
       bond_n[static_cast<std::size_t>(i)] =
-          storeBonds(neighbours_, m_pair, kind, i, cut2, dest, room, radial_memo);
+          storeBonds(neighbours_, m_pair, kind, i, cut2, dest, room);
     }
 #if defined(_OPENMP)
 #pragma omp barrier
@@ -285,7 +234,6 @@ void TersoffSiC::runOwned(const int *kind, int n, int nt, double cut2, double sc
     // Each thread owns a contiguous atom range and adds, in center order,
     // every term that lands on those atoms. The bonds are only read.
     std::vector<Angle> ang;
-    OrderMemo order_memo;
     const int begin = static_cast<int>(range.begin);
     const int end = static_cast<int>(range.end);
     auto owned = [&](int atom) { return atom >= begin && atom < end; };
@@ -330,7 +278,7 @@ void TersoffSiC::runOwned(const int *kind, int n, int nt, double cut2, double sc
         }
         double bij = 0.0;
         double db = 0.0;
-        order_memo.apply(sp, zeta, bij, db);
+        bondOrder(sp, zeta, bij, db);
         if (steps != nullptr) {
           steps[a] = 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
         }
@@ -474,7 +422,6 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
     const int t = 0;
 #endif
     const auto range = nlist::partition(n, t, nt);
-    RadialMemo radial_memo;
     for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
       bond_n[static_cast<std::size_t>(i)] =
           row[static_cast<std::size_t>(i) + 1] - row[static_cast<std::size_t>(i)];
@@ -499,7 +446,7 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
           bond_at[static_cast<std::size_t>(i) + 1] - bond_at[static_cast<std::size_t>(i)];
       Bond *dest = bonds.data() + bond_at[static_cast<std::size_t>(i)];
       bond_n[static_cast<std::size_t>(i)] =
-          storeBonds(neighbours_, m_pair, kind, i, cut2, dest, room, radial_memo);
+          storeBonds(neighbours_, m_pair, kind, i, cut2, dest, room);
     }
     int *mine = local_n.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(n);
     std::fill(mine, mine + n, 0);
@@ -577,7 +524,6 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
       place[atom] = off;
     }
     std::vector<Angle> ang;
-    OrderMemo order_memo;
     for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
       const Bond *nb = bonds.data() + bond_at[static_cast<std::size_t>(i)];
       const TersoffSiC::Species &sp = m_species[kind[i]];
@@ -604,7 +550,7 @@ void TersoffSiC::runWide(const int *kind, int n, int nt, double cut2, double sca
         }
         double bij = 0.0;
         double db = 0.0;
-        order_memo.apply(sp, zeta, bij, db);
+        bondOrder(sp, zeta, bij, db);
         steps[a] = 0.5 * bj.fc * (bj.f_r + bij * bj.f_a);
         const double dedr =
             0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) + bj.fc * (bj.df_r + bij * bj.df_a));
