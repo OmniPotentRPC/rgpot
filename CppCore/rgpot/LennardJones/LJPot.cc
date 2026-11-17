@@ -16,67 +16,15 @@
 #include <vector>
 // clang-format on
 
+#include "rgpot/LennardJones/LJPair.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/nlist/PairSum.hpp"
-#include "rgpot/simd/api.hpp"
-#include "rgpot/simd/exact_fma.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 using rgpot::types::AtomMatrix;
 
 namespace rgpot {
-namespace {
-
-inline void lj_pair(double r2, const simd::LjParams &p, double &energy, double &fscale) {
-  const double inv_r2 = 1.0 / r2;
-  const double sr2 = p.psi2 * inv_r2;
-  const double sr4 = sr2 * sr2;
-  const double a = sr4 * sr2;
-  const double b = p.four_u0 * a;
-  const double a_m1 = a - 1.0;
-  const double v = b * a_m1;
-  const double two_a = 2.0 * a;
-  const double two_a_m1 = two_a - 1.0;
-  const double six_b = 6.0 * b;
-  const double f_un = (six_b * inv_r2) * two_a_m1;
-  if (p.use_switch == 0) {
-    energy = v - p.shift;
-    fscale = f_un;
-    return;
-  }
-  const double r = std::sqrt(r2);
-  const double t_raw = (r - p.r_on) * p.inv_width;
-  const double t = t_raw < 0.0 ? 0.0 : (t_raw > 1.0 ? 1.0 : t_raw);
-  const double t2 = t * t;
-  const double t3 = t2 * t;
-  const double six_t = 6.0 * t;
-  const double inner = 15.0 - six_t;
-  const double poly = simd::fma_quick(t, inner, -10.0);
-  const double s = simd::fma_quick(t3, poly, 1.0);
-  const double omt = 1.0 - t;
-  const double ds2 = (-30.0 * t2) * omt * omt;
-  const double dsdr = ds2 * p.inv_width;
-  energy = v * s;
-  fscale = f_un * s - (v * dsdr) / r;
-}
-
-simd::LjParams lj_params(double u0, double psi, double shift, const LJConfig &c,
-                         const QuinticSwitch &sw) {
-  simd::LjParams params{};
-  params.psi2 = psi * psi;
-  params.four_u0 = 4.0 * u0;
-  params.shift = shift;
-  params.use_switch = 0;
-  if (c.switch_width != 0.0) {
-    params.use_switch = 1;
-    params.r_on = sw.r_on;
-    params.inv_width = sw.inv_width;
-  }
-  return params;
-}
-
-} // namespace
 
 /**
  * @class LJPot
@@ -124,7 +72,8 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
     return;
   }
 
-  const simd::LjParams params = lj_params(u0, psi, cuttOffU, m_config, m_switch);
+  const simd::LjParams params =
+      makeLjParams(u0, psi, cuttOffU, m_config.switch_width, m_switch);
   const auto n_atoms = static_cast<std::size_t>(N);
   // One angstrom of skin. A stored list keeps pairs out to cutoff + skin
   // and the kernel below drops those past the cutoff. Stream asks for no
@@ -139,7 +88,7 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
   nlist::sumPairs(
       neighbours_, n_atoms, cutoff2, nlist::Overlap::Poison,
       [&params](std::int32_t, std::int32_t, double r2, double &pair_e, double &fscale) {
-        lj_pair(r2, params, pair_e, fscale);
+        evalLjPair(r2, params, pair_e, fscale);
       },
       F, *U, strain, atoms);
   publishCauchyStress(out, strain, volume);
@@ -150,7 +99,8 @@ void LJPot::forceStage(const HalfList &list, const double *, double *forces,
   if (cuttOffR <= 0.0) {
     return;
   }
-  const simd::LjParams params = lj_params(u0, psi, cuttOffU, m_config, m_switch);
+  const simd::LjParams params =
+      makeLjParams(u0, psi, cuttOffU, m_config.switch_width, m_switch);
   const double cutoff2 = cuttOffR * cuttOffR;
   staged::withTally(tally, [&](auto tallied) {
     staged::forEachPair(
@@ -166,7 +116,7 @@ void LJPot::forceStage(const HalfList &list, const double *, double *forces,
           }
           double pair_e = 0.0;
           double fscale = 0.0;
-          lj_pair(r2, params, pair_e, fscale);
+          evalLjPair(r2, params, pair_e, fscale);
           staged::addPair(tallied, forces, tally, i, j, both, pair_e, fscale, dx, dy, dz);
         });
   });

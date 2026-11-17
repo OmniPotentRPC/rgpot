@@ -13,11 +13,10 @@
 #include "rgpot/CentreTerms.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/nlist/ThreeBodyCommon.hpp"
 #include "rgpot/stress.hpp"
 
-#include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <stdexcept>
 #include <vector>
 
@@ -148,27 +147,13 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
   const double cut2 = cut * cut;
   const int n = static_cast<int>(n_atoms);
 
-  const double skin = (neighbors != nullptr && neighbors->skin > 0.0)
-                          ? neighbors->skin
-                          : (mode_ == nlist::Mode::Stream ? 0.0 : cut / 5.0);
-  const auto before = neighbours_.builds();
-  nlist::updateCells(neighbours_, positions, n_atoms, box, cut, skin, nlist::Image::Round,
-                     mode_, {true, true, true});
-  if (neighbors != nullptr && neighbors->skin > 0.0 &&
-      (neighbours_.builds() != before || !neighbors->built)) {
-    neighbors->ref.assign(positions, positions + 3 * n_atoms);
-    std::memcpy(neighbors->box, box, 9 * sizeof(double));
-    neighbors->n = n_atoms;
-    neighbors->cutoff = cut;
-    neighbors->skin_used = neighbors->skin;
-    neighbors->built = true;
-  }
+  nlist::updateThreeBodyCells(neighbours_, positions, n_atoms, box, cut, mode_,
+                              neighbors);
 
   // One atom of bonds. A stream reads the bins directly, so the scratch
   // is that atom and not a copy of every bond. A stored call reads the
   // index row, which is already paid for.
   auto load = [&](int i, std::vector<Bond> &nb) {
-    nb.clear();
     auto take = [&](std::int32_t, std::int32_t j, double dx, double dy, double dz, double r2) {
       if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
         throw std::invalid_argument("StillingerWeberSi: non-finite position");
@@ -183,12 +168,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       }
       nb.push_back(Bond{static_cast<int>(j), -dx, -dy, -dz, r, t.gexp, t.dgdr});
     };
-    if (neighbours_.streaming()) {
-      neighbours_.forAtom(static_cast<std::int32_t>(i), take);
-    } else {
-      nlist::visitDirected(neighbours_, i, static_cast<std::int64_t>(i) + 1, take);
-    }
-    std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) { return a.j < b.j; });
+    nlist::collectAtomBonds(neighbours_, i, nb, take);
   };
   // The terms of centre i, into a CentreDirect or a CentreTerms.
   auto centre = [&](int i, const std::vector<Bond> &nb, auto &sink) {
