@@ -1,0 +1,1 @@
+Tests pin the bits of the Tersoff, Stillinger-Weber, and EAM energies and forces across thread counts and path switches, check the forces against central differences, and cover the minimum-image fold at cell faces, half-box ties, and sheared cells, all on displaced FCC cells (fixed seed, 0.05 angstrom RMS).

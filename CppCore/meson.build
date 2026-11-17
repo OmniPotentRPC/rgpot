@@ -812,6 +812,24 @@ if get_option('with_tests')
                 '',
             ],
             [
+                'ThreadDeterminismTest',
+                'thread_determinism_test',
+                'ThreadDeterminismTest.cc',
+                '',
+            ],
+            [
+                'ForceFiniteDifferenceTest',
+                'force_finite_difference_test',
+                'ForceFiniteDifferenceTest.cc',
+                '',
+            ],
+            [
+                'FoldEdgeCaseTest',
+                'fold_edge_case_test',
+                'FoldEdgeCaseTest.cc',
+                '',
+            ],
+            [
                 'SkinPairTest',
                 'skin_pair_test',
                 'SkinPairTest.cc',
