@@ -20,12 +20,14 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
 #include "displaced_cell.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 
 using namespace displaced;
 
@@ -148,6 +150,11 @@ TEST_CASE("a coordinate on a cell face gives the same answer one box over",
   }
   const Result reference = Engine(model)(cell.pos, cell.box);
   REQUIRE(finite(reference));
+  const bool check_stream =
+      model != Model::EamStored && model != Model::EamStream;
+  if (check_stream) {
+    requireClose(Engine(model, true)(cell.pos, cell.box), reference);
+  }
 
   // The face coordinates on the other side of the cell, one to three boxes
   // away, and at the two signed zeros and the smallest steps either side of
@@ -182,6 +189,9 @@ TEST_CASE("a coordinate on a cell face gives the same answer one box over",
       moved.data()[face[r]] = place(kind, face[r] % 3);
     }
     requireClose(Engine(model)(moved, cell.box), reference);
+    if (check_stream && (pass == 0 || pass == 4 || pass == kinds)) {
+      requireClose(Engine(model, true)(moved, cell.box), reference);
+    }
     mixed = moved;
   }
   requireThreadBits(model, mixed, cell.box, threads);
@@ -221,6 +231,108 @@ TEST_CASE("pairs exactly half a box apart fold the same either way round",
   }
   requireClose(restored, result);
   requireThreadBits(model, cell.pos, cell.box, threads);
+
+  if (model != Model::EamStored && model != Model::EamStream) {
+    const Result stream_res = Engine(model, true)(cell.pos, cell.box);
+    REQUIRE(finite(stream_res));
+    REQUIRE(netForce(stream_res) <= kForceTolerance);
+    const Result stream_other = Engine(model, true)(reordered, cell.box);
+    Result stream_restored = stream_other;
+    for (std::size_t i = 0; i < n; ++i) {
+      for (std::size_t k = 0; k < 3; ++k) {
+        stream_restored.force[3 * i + k] =
+            stream_other.force[3 * slot(i, n) + k];
+      }
+    }
+    requireClose(stream_restored, stream_res);
+  }
+}
+
+TEST_CASE("Neighbours half-box tie rules hold on every axis",
+          "[nlist][fold][displaced]") {
+  // EAMPot reads only r^2 from Image::Half stored lists and recomputes its
+  // own pair vectors, while stored Tersoff/SW stay on cached shifts. Querying
+  // Neighbours directly exercises both Image::Half (forDirected) and
+  // Image::Round (forAtom) at exact half-box ties on each axis.
+  constexpr double L = 10.0;
+  constexpr double half = 0.5 * L;
+  constexpr double eps = 1.0e-6;
+  const double box9[9] = {L, 0.0, 0.0, 0.0, L, 0.0, 0.0, 0.0, L};
+
+  for (int axis = 0; axis < 3; ++axis) {
+    CAPTURE(axis);
+    // Exact half-box: pair (0, 1) has r_1 - r_0 = +half, so r_0 - r_1 = -half.
+    double pos_tie[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    pos_tie[3 + axis] = half;
+
+    {
+      rgpot::nlist::Neighbours cells;
+      rgpot::nlist::Spec spec;
+      spec.cutoff = 6.0;
+      spec.image = rgpot::nlist::Image::Half;
+      spec.mode = rgpot::nlist::Mode::Stored;
+      cells.update(pos_tie, 2, box9, spec);
+      int seen = 0;
+      cells.forDirected(0, 2, [&](std::int32_t i, std::int32_t j, double dx,
+                                  double dy, double dz, double) {
+        const double v[3] = {dx, dy, dz};
+        const double expect = (i == 0 && j == 1) ? -half : half;
+        REQUIRE(v[axis] == expect);
+        ++seen;
+      });
+      REQUIRE(seen == 2);
+    }
+
+    // One ULP-scale step past +half must wrap across the boundary.
+    double pos_past[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    pos_past[3 + axis] = half + eps;
+    {
+      rgpot::nlist::Neighbours cells;
+      rgpot::nlist::Spec spec;
+      spec.cutoff = 6.0;
+      spec.image = rgpot::nlist::Image::Half;
+      spec.mode = rgpot::nlist::Mode::Stored;
+      cells.update(pos_past, 2, box9, spec);
+      int seen = 0;
+      cells.forDirected(0, 2, [&](std::int32_t i, std::int32_t j, double dx,
+                                  double dy, double dz, double) {
+        const double v[3] = {dx, dy, dz};
+        const double expect =
+            (i == 0 && j == 1) ? (half - eps) : (-half + eps);
+        REQUIRE(std::abs(v[axis] - expect) <= 1.0e-12);
+        ++seen;
+      });
+      REQUIRE(seen == 2);
+    }
+
+    // Image::Round via forAtom hits Neighbours::fold directly at +-half and +-1.5*L.
+    double pos_round[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    pos_round[3 + axis] = 1.5 * L;
+    {
+      rgpot::nlist::Neighbours cells;
+      rgpot::nlist::Spec spec;
+      spec.cutoff = 6.0;
+      spec.image = rgpot::nlist::Image::Round;
+      spec.mode = rgpot::nlist::Mode::Stream;
+      cells.update(pos_round, 2, box9, spec);
+      int seen = 0;
+      cells.forAtom(0, [&](std::int32_t, std::int32_t, double dx, double dy,
+                           double dz, double) {
+        const double v[3] = {dx, dy, dz};
+        // dx = r_0 - r_1 = -1.5 * L -> trunc(-1.5 - 0.5) = -2 -> +0.5 * L
+        REQUIRE(v[axis] == half);
+        ++seen;
+      });
+      cells.forAtom(1, [&](std::int32_t, std::int32_t, double dx, double dy,
+                           double dz, double) {
+        const double v[3] = {dx, dy, dz};
+        // dx = r_1 - r_0 = +1.5 * L -> trunc(+1.5 + 0.5) = +2 -> -0.5 * L
+        REQUIRE(v[axis] == -half);
+        ++seen;
+      });
+      REQUIRE(seen == 2);
+    }
+  }
 }
 
 TEST_CASE("a sheared description of the cell gives the same answer",
