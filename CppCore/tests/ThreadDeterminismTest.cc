@@ -39,20 +39,39 @@ std::vector<int> grantedCounts() {
   return counts;
 }
 
+struct Variant {
+  Model model = Model::TersoffSi;
+  bool streamed = false;
+};
+
+const std::array<Variant, 8> kVariants = {{
+    {Model::TersoffSi, false},
+    {Model::TersoffSi, true},
+    {Model::TersoffSiC, false},
+    {Model::TersoffSiC, true},
+    {Model::StillingerWeber, false},
+    {Model::StillingerWeber, true},
+    {Model::EamStored, false},
+    {Model::EamStream, true},
+}};
+
 // Kernels change strategy with the atom count, or with the atoms per
-// thread. These sizes sit on both sides of each switch: Tersoff and SW take
-// a different walk from 4096 and from 256 atoms, and the stored EAM list
-// takes a different pass once each thread owns 64 atoms.
+// thread. These sizes sit on both sides of each switch: Tersoff and SW
+// stored take a different walk from 4096 and from 256 atoms, SW streamed
+// switches at 1024 atoms, and stored EAM takes a different pass once each
+// thread owns 64 atoms.
 struct Switch {
-  Model model;
+  Model model = Model::TersoffSi;
+  bool streamed = false;
   std::vector<int> sizes;
 };
 
-const std::array<Switch, 4> kSwitches = {{
-    {Model::TersoffSi, {4095, 4096}},
-    {Model::TersoffSiC, {4095, 4096}},
-    {Model::StillingerWeber, {255, 256}},
-    {Model::EamStored, {255, 256, 511, 512}},
+const std::array<Switch, 5> kSwitches = {{
+    {Model::TersoffSi, false, {4095, 4096}},
+    {Model::TersoffSiC, false, {4095, 4096}},
+    {Model::StillingerWeber, false, {255, 256}},
+    {Model::StillingerWeber, true, {1023, 1024}},
+    {Model::EamStored, false, {255, 256, 511, 512}},
 }};
 
 } // namespace
@@ -75,45 +94,71 @@ TEST_CASE("the displaced cell repeats and has the stated spread",
 
 TEST_CASE("displaced cells give the same bits at every thread count",
           "[threads][bits][displaced]") {
+  const Threads threads;
   const std::vector<int> counts = grantedCounts();
   if (counts.empty()) {
     SKIP("the OpenMP runtime grants no team of two or more threads");
   }
-  const Model model = GENERATE(from_range(kModels));
+  const Variant &var =
+      kVariants[GENERATE(range(std::size_t{0}, kVariants.size()))];
   const int n = GENERATE(64, 256);
-  CAPTURE(name(model), n);
-  const Threads threads;
+  CAPTURE(name(var.model), var.streamed, n);
   const Cell cell = fcc(n);
 
   threads.use(1);
-  const Result serial = Engine(model)(cell.pos, cell.box);
+  const Result serial = Engine(var.model, var.streamed)(cell.pos, cell.box);
   REQUIRE(serial.force.size() == cell.pos.size());
   for (int count : counts) {
     CAPTURE(count);
     threads.use(count);
-    Engine parallel(model);
+    Engine parallel(var.model, var.streamed);
     const Result got = parallel(cell.pos, cell.box);
     REQUIRE(difference(got, serial) == "");
-    if (isEam(model)) {
+    if (isEam(var.model)) {
       REQUIRE(parallel.threadsUsed() == count);
     }
   }
 }
 
-TEST_CASE("one object keeps its bits as the thread count changes",
+TEST_CASE("displaced zincblende Si-C gives the same bits at every thread count",
           "[threads][bits][displaced]") {
+  const Threads threads;
   const std::vector<int> counts = grantedCounts();
   if (counts.empty()) {
     SKIP("the OpenMP runtime grants no team of two or more threads");
   }
-  const Model model = GENERATE(from_range(kModels));
-  const int n = GENERATE(64, 256);
-  CAPTURE(name(model), n);
+  const bool streamed = GENERATE(false, true);
+  CAPTURE(streamed);
+  const Cell cell = zincblende(64);
+  const std::vector<int> z = zincblendeSpecies(64);
+
+  threads.use(1);
+  const Result serial = Engine(Model::TersoffSiC, streamed)(cell.pos, z, cell.box);
+  REQUIRE(serial.force.size() == cell.pos.size());
+  for (int count : counts) {
+    CAPTURE(count);
+    threads.use(count);
+    Engine parallel(Model::TersoffSiC, streamed);
+    const Result got = parallel(cell.pos, z, cell.box);
+    REQUIRE(difference(got, serial) == "");
+  }
+}
+
+TEST_CASE("one object keeps its bits as the thread count changes",
+          "[threads][bits][displaced]") {
   const Threads threads;
+  const std::vector<int> counts = grantedCounts();
+  if (counts.empty()) {
+    SKIP("the OpenMP runtime grants no team of two or more threads");
+  }
+  const Variant &var =
+      kVariants[GENERATE(range(std::size_t{0}, kVariants.size()))];
+  const int n = GENERATE(64, 256);
+  CAPTURE(name(var.model), var.streamed, n);
   const Cell cell = fcc(n);
 
   threads.use(1);
-  Engine engine(model);
+  Engine engine(var.model, var.streamed);
   const Result serial = engine(cell.pos, cell.box);
 
   // Up through the counts, back down, and twice at the same count. Every
@@ -127,34 +172,34 @@ TEST_CASE("one object keeps its bits as the thread count changes",
     threads.use(count);
     const Result got = engine(cell.pos, cell.box);
     REQUIRE(difference(got, serial) == "");
-    if (isEam(model)) {
+    if (isEam(var.model)) {
       REQUIRE(engine.threadsUsed() == count);
     }
   }
-  if (model == Model::EamStored) {
+  if (var.model == Model::EamStored) {
     REQUIRE(engine.listBuilds() == 1);
   }
 }
 
 TEST_CASE("sizes on both sides of a path switch give the same bits",
           "[threads][bits][displaced]") {
+  const Threads threads;
   const std::vector<int> counts = grantedCounts();
   if (counts.empty()) {
     SKIP("the OpenMP runtime grants no team of two or more threads");
   }
   const Switch &row =
       kSwitches[GENERATE(range(std::size_t{0}, kSwitches.size()))];
-  const Threads threads;
 
   for (int n : row.sizes) {
-    CAPTURE(name(row.model), n);
+    CAPTURE(name(row.model), row.streamed, n);
     const Cell cell = fcc(n);
     threads.use(1);
-    const Result serial = Engine(row.model)(cell.pos, cell.box);
+    const Result serial = Engine(row.model, row.streamed)(cell.pos, cell.box);
     for (int count : counts) {
       CAPTURE(count);
       threads.use(count);
-      Engine parallel(row.model);
+      Engine parallel(row.model, row.streamed);
       const Result got = parallel(cell.pos, cell.box);
       REQUIRE(difference(got, serial) == "");
       if (isEam(row.model)) {

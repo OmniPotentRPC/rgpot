@@ -120,6 +120,68 @@ inline Cell fcc(int n, std::uint32_t seed = kSeed) {
   return cell;
 }
 
+// Zincblende Si-C lattice (a = 4.36 A, 8 atoms per cell: basis 0..3 are Si,
+// 4..7 are C), cut to the first n sites, with the same uniform displacement.
+// Unlike the 4.05 A FCC lattice, every atom sits inside the Si-C cutoff.
+inline Cell zincblende(int n, std::uint32_t seed = kSeed) {
+  static const double basis[8][3] = {
+      {0.0, 0.0, 0.0},    {0.0, 0.5, 0.5},    {0.5, 0.0, 0.5},
+      {0.5, 0.5, 0.0},    {0.25, 0.25, 0.25}, {0.25, 0.75, 0.75},
+      {0.75, 0.25, 0.75}, {0.75, 0.75, 0.25},
+  };
+  constexpr double kSiCLattice = 4.36;
+  const int cells = (n + 7) / 8;
+  int nz = 1;
+  for (int k = 1; k * k * k <= cells; ++k) {
+    if (cells % k == 0) {
+      nz = k;
+    }
+  }
+  const int rest = cells / nz;
+  int ny = 1;
+  for (int k = 1; k * k <= rest; ++k) {
+    if (rest % k == 0) {
+      ny = k;
+    }
+  }
+  Cell cell;
+  cell.reps = {rest / ny, ny, nz};
+  cell.pos = AtomMatrix(static_cast<std::size_t>(n), 3);
+  int filled = 0;
+  for (int ix = 0; ix < cell.reps[0]; ++ix) {
+    for (int iy = 0; iy < cell.reps[1]; ++iy) {
+      for (int iz = 0; iz < cell.reps[2]; ++iz) {
+        for (int b = 0; b < 8 && filled < n; ++b, ++filled) {
+          const auto row = static_cast<std::size_t>(filled);
+          cell.pos(row, 0) = (ix + basis[b][0]) * kSiCLattice;
+          cell.pos(row, 1) = (iy + basis[b][1]) * kSiCLattice;
+          cell.pos(row, 2) = (iz + basis[b][2]) * kSiCLattice;
+        }
+      }
+    }
+  }
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    cell.box[axis][axis] = cell.reps[axis] * kSiCLattice;
+  }
+  std::mt19937 gen(seed);
+  for (std::size_t i = 0; i < cell.pos.rows(); ++i) {
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      cell.pos(i, axis) += kHalfWidth * unit(gen);
+    }
+  }
+  return cell;
+}
+
+inline std::vector<int> zincblendeSpecies(std::size_t n) {
+  std::vector<int> z(n, 14);
+  for (std::size_t i = 0; i < n; ++i) {
+    if ((i % 8) >= 4) {
+      z[i] = 6;
+    }
+  }
+  return z;
+}
+
 // Root-mean-square length of the displacement from the perfect lattice.
 inline double rmsDisplacement(const Cell &cell) {
   const Cell perfect = lattice(static_cast<int>(cell.pos.rows()));
@@ -291,6 +353,11 @@ public:
     return run_(pos, species(model_, pos.rows()), box);
   }
 
+  Result operator()(const AtomMatrix &pos, const std::vector<int> &z,
+                    const Box &box) const {
+    return run_(pos, z, box);
+  }
+
   // Threads the last call used, and neighbour-list builds so far. Only the
   // EAM object reports them; both are zero for the other models.
   int threadsUsed() const { return used_ ? used_() : 0; }
@@ -374,9 +441,11 @@ inline void setThreadEnvironment(const std::string &value, bool unset) {
 // sets it and the OpenMP default together, and puts both back on exit.
 class Threads {
 public:
-  Threads() : had_(std::getenv("OMP_NUM_THREADS") != nullptr) {
+  Threads() {
+    const char *env = std::getenv("OMP_NUM_THREADS");
+    had_ = env != nullptr;
     if (had_) {
-      saved_ = std::getenv("OMP_NUM_THREADS");
+      saved_ = env;
     }
 #if defined(_OPENMP)
     max_ = omp_get_max_threads();
