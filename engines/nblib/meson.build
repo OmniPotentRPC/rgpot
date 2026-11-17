@@ -50,3 +50,66 @@ nblib_engine = shared_library(
     gnu_symbol_visibility: 'hidden',
     install: not meson.is_subproject(),
 )
+
+nblib_here = meson.current_source_dir()
+nblib_pytest = python3_engines.found() ? run_command(
+    python3_engines,
+    '-c',
+    'import pytest, numpy',
+    check: false,
+).returncode() == 0 : false
+if nblib_pytest
+    nblib_env = environment()
+    nblib_env.set('RGPOT_NBLIB_ENGINE', nblib_engine.full_path())
+    nblib_env.set('RGPOT_EVAL', rgpot_eval.full_path())
+    nblib_args = [
+        '-m',
+        'pytest',
+        '-q',
+        '-p',
+        'no:cacheprovider',
+        '--rootdir',
+        nblib_here,
+    ]
+    test(
+        'nblib_api',
+        python3_engines,
+        args: nblib_args + [files('test_nblib_api.py')],
+        env: nblib_env,
+        depends: [nblib_engine, rgpot_eval],
+        workdir: meson.current_build_dir(),
+        timeout: 300,
+    )
+
+    nblib_gmx_bin = get_option('nblib_gmx')
+    if nblib_gmx_bin == '' and nblib_prefix != ''
+        nblib_gmx_prog = find_program(
+            nblib_prefix / 'bin' / 'gmx_d',
+            required: false,
+        )
+        nblib_gmx_bin = nblib_gmx_prog.found() ? nblib_gmx_prog.full_path() : ''
+    endif
+    if nblib_gmx_bin == ''
+        nblib_gmx_prog = find_program('gmx_d', required: false)
+        nblib_gmx_bin = nblib_gmx_prog.found() ? nblib_gmx_prog.full_path() : ''
+    endif
+    if nblib_gmx_bin != ''
+        nblib_ref_env = nblib_env
+        nblib_ref_env.set('RGPOT_GMX', nblib_gmx_bin)
+        test(
+            'nblib_gmx_rerun',
+            python3_engines,
+            args: nblib_args + ['-s', files('test_nblib_rerun.py')],
+            env: nblib_ref_env,
+            depends: [nblib_engine, rgpot_eval],
+            workdir: meson.current_build_dir(),
+            timeout: 900,
+        )
+    else
+        message(
+            'nblib mdrun -rerun tests skipped: set nblib_gmx to a double-precision gmx_d',
+        )
+    endif
+else
+    message('nblib tests skipped: needs python3 with pytest and numpy')
+endif

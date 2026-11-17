@@ -309,6 +309,8 @@ gromacs_unit_reference | core posix probe | custom | @engines
 gromacs_dropin_api | core posix probe | custom timeout=300 | @engines
 gromacs_dropin_mdrun | core posix probe | custom timeout=1800 | @engines
 openmm_lj | core posix probe | custom timeout=120 | @engines
+nblib_api | core posix probe | custom timeout=300 | @engines
+nblib_gmx_rerun | core posix probe | custom timeout=900 | @engines
 optional_engine_install | tests core posix python toplevel | custom timeout=300 | @meson
 eigen_subproject_fallback | tests core posix python toplevel | custom timeout=300 | @meson
 gromacs_include_prefix | tests core posix python toplevel | custom timeout=300 | @meson
