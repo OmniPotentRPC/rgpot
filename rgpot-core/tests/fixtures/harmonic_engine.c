@@ -29,6 +29,7 @@ struct RgpotEnginePot {
 static int destroyed = 0;
 
 int fixture_destroy_count(void) { return destroyed; }
+int fixture_unsupported_code(void) { return RGPOT_ENGINE_ERR_UNSUPPORTED; }
 
 int rgpot_engine_abi_version(void) { return FIXTURE_ABI; }
 
@@ -79,6 +80,10 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
   (void)box;
   (void)transform;
   (void)user;
+#ifdef FORCE_UNSUPPORTED
+  snprintf(pot->error, sizeof pot->error, "force operation unavailable");
+  return RGPOT_ENGINE_ERR_UNSUPPORTED;
+#endif
   for (i = 0; i < n; i++) {
     if (atomic_nrs[i] == 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has atomic number 0", i);
@@ -125,5 +130,67 @@ size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buf, size_t len)
     snprintf(buf, len, "%s", pot->error);
   }
   return full;
+}
+#endif
+
+#ifndef NO_CAPS
+int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
+  RgpotEngineCaps filled;
+  unsigned room;
+  (void)pot;
+#ifdef CAPS_ERROR
+  return RGPOT_ENGINE_ERR_EVAL;
+#endif
+  if (!out || out->size < sizeof(unsigned)) return 1;
+  memset(&filled, 0, sizeof filled);
+  filled.size = sizeof filled;
+  filled.periodic = 1;
+#if !defined(NO_HVP) && !defined(NO_HVP_CAP)
+  filled.analytic_hvp = 1;
+#endif
+  room = out->size < sizeof filled ? out->size : sizeof filled;
+  memcpy(out, &filled, room);
+  out->size = room;
+  return 0;
+}
+#endif
+
+#ifndef NO_HVP
+int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
+                     const int *atomic_nrs, const double *direction,
+                     double *hv_out, const double *box,
+                     rgpot_engine_coord_transform transform, void *user) {
+  (void)positions;
+  (void)box;
+  (void)transform;
+  (void)user;
+#if defined(NO_HVP_CAP) || defined(HVP_UNSUPPORTED)
+  (void)n;
+  (void)atomic_nrs;
+  (void)direction;
+  (void)hv_out;
+  snprintf(pot->error, sizeof pot->error,
+           "harmonic engine built without analytic HVP");
+  return RGPOT_ENGINE_ERR_UNSUPPORTED;
+#else
+  long i;
+  for (i = 0; i < n; i++) {
+    if (atomic_nrs[i] == 0) {
+      snprintf(pot->error, sizeof pot->error,
+               "atom %ld has atomic number 0", i);
+      return 1;
+    }
+    if (atomic_nrs[i] < 0) {
+      snprintf(pot->error, sizeof pot->error,
+               "atom %ld has a negative atomic number", i);
+      return -1;
+    }
+  }
+  for (i = 0; i < 3 * n; i++) {
+    hv_out[i] = pot->k * direction[i];
+  }
+  pot->error[0] = '\0';
+  return 0;
+#endif
 }
 #endif
