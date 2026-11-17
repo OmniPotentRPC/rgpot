@@ -28,7 +28,9 @@ namespace rgpot {
  */
 struct OpenMMSessionConfig {
   std::string platform = "Reference";
+  // OpenMM's documented Langevin examples use a 1 fs step.
   double time_step = 0.001;
+  // Inverse picoseconds, matching OpenMM's documented example friction.
   double friction = 1.0;
   double temperature = 0.02585;
   int random_seed = 1;
