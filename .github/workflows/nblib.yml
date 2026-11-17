@@ -1,0 +1,78 @@
+# GROMACS nblib backend. with_nblib defaults to false, so no other job builds
+# librgpot_nblib. This job builds the pinned GROMACS release with the nblib API
+# (cached on the version and the script that builds it), then builds the
+# backend and runs the nblib tests, among them the mdrun -rerun comparison.
+
+name: nblib
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    paths:
+      - ".github/workflows/nblib.yml"
+      - "engines/nblib/**"
+      - "CppCore/rgpot/MDSession/**"
+      - "CppCore/rgpot/NblibPot/**"
+      - "python/rgpot/mdsession.py"
+      - "meson.build"
+      - "meson_options.txt"
+  workflow_dispatch:
+
+concurrency:
+  group: nblib-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  GROMACS_VERSION: "2025.5"
+
+jobs:
+  nblib-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    name: nblib (linux)
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+
+      - name: Packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build curl python3-numpy python3-pytest \
+            python3-pip pkg-config
+          python3 -m pip install --break-system-packages meson
+
+      - name: GROMACS with nblib
+        id: gromacs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/gmx-nblib
+          key: gromacs-nblib-${{ env.GROMACS_VERSION }}-${{ runner.os }}-${{ hashFiles('engines/nblib/build_gromacs.sh') }}
+
+      - name: Build GROMACS
+        if: steps.gromacs.outputs.cache-hit != 'true'
+        run: engines/nblib/build_gromacs.sh "$HOME/gmx-nblib" "$GROMACS_VERSION"
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          meson setup bbdir-nblib \
+            -Dwith_nblib=true \
+            -Dnblib_prefix="$HOME/gmx-nblib" \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            --buildtype=release
+          meson compile -C bbdir-nblib
+
+      - name: Tests
+        run: |
+          set -euo pipefail
+          meson test -C bbdir-nblib nblib_api nblib_gmx_rerun --print-errorlogs
