@@ -9,9 +9,12 @@
 #include <openmm/State.h>
 #include <openmm/System.h>
 #include <openmm/VerletIntegrator.h>
+#include <openmm/serialization/XmlSerializer.h>
 
 #include <cmath>
+#include <cstdio>
 #include <stdexcept>
+#include <sstream>
 #include <utility>
 
 namespace rgpot {
@@ -193,3 +196,171 @@ OpenMMState OpenMMSession::state() const {
 }
 
 } // namespace rgpot
+
+struct rgpot_md_session {
+  std::unique_ptr<rgpot::OpenMMSession> session;
+  size_t n3 = 0;
+};
+
+namespace {
+void md_error(char *err, size_t len, const std::exception &error) {
+  if (err != nullptr && len > 0) {
+    std::snprintf(err, len, "%s", error.what());
+  }
+}
+
+std::vector<OpenMM::Vec3> md_vectors(const double *values, size_t n3) {
+  if (values == nullptr || n3 == 0 || n3 % 3 != 0) {
+    throw std::invalid_argument("MD vector buffer must contain xyz triples");
+  }
+  std::vector<OpenMM::Vec3> out(n3 / 3);
+  for (size_t i = 0; i < out.size(); ++i) {
+    out[i] = OpenMM::Vec3(values[3 * i], values[3 * i + 1],
+                          values[3 * i + 2]);
+  }
+  return out;
+}
+
+void copy_md_vectors(const std::vector<OpenMM::Vec3> &values, double *output,
+                     size_t n3) {
+  if (output == nullptr || n3 != 3 * values.size()) {
+    throw std::invalid_argument("MD output buffer has the wrong length");
+  }
+  for (size_t i = 0; i < values.size(); ++i) {
+    output[3 * i] = values[i][0];
+    output[3 * i + 1] = values[i][1];
+    output[3 * i + 2] = values[i][2];
+  }
+}
+} // namespace
+
+extern "C" {
+
+rgpot_md_session *rgpot_md_session_create(
+    const char *system_xml, const char *platform, double time_step,
+    double friction, double kT, int seed, char *err, size_t err_len) {
+  try {
+    if (system_xml == nullptr || platform == nullptr) {
+      throw std::invalid_argument("MD session needs XML and platform");
+    }
+    std::istringstream xml(system_xml);
+    auto system = std::unique_ptr<OpenMM::System>(
+        OpenMM::XmlSerializer::deserialize<OpenMM::System>(xml));
+    rgpot::OpenMMSessionConfig config;
+    config.platform = platform;
+    config.time_step = time_step;
+    config.friction = friction;
+    config.temperature = kT;
+    config.random_seed = seed;
+    auto *out = new rgpot_md_session;
+    out->session =
+        std::make_unique<rgpot::OpenMMSession>(std::move(system), config);
+    return out;
+  } catch (const std::exception &error) {
+    md_error(err, err_len, error);
+    return nullptr;
+  }
+}
+
+int rgpot_md_session_set_positions(rgpot_md_session *session,
+                                   const double *values, size_t n3, char *err,
+                                   size_t err_len) {
+  try {
+    if (session == nullptr) {
+      throw std::invalid_argument("null MD session");
+    }
+    session->session->setPositions(md_vectors(values, n3));
+    session->n3 = n3;
+    return 0;
+  } catch (const std::exception &error) {
+    md_error(err, err_len, error);
+    return 1;
+  }
+}
+
+int rgpot_md_session_set_velocities(rgpot_md_session *session,
+                                    const double *values, size_t n3, char *err,
+                                    size_t err_len) {
+  try {
+    if (session == nullptr) {
+      throw std::invalid_argument("null MD session");
+    }
+    session->session->setVelocities(md_vectors(values, n3));
+    return 0;
+  } catch (const std::exception &error) {
+    md_error(err, err_len, error);
+    return 1;
+  }
+}
+
+int rgpot_md_session_step_langevin(
+    rgpot_md_session *session, const double *plane_point,
+    const double *plane_normal, const double *wall_points,
+    const double *wall_normals, size_t n_walls, size_t steps,
+    uint64_t *wall_hits, char *err, size_t err_len) {
+  try {
+    if (session == nullptr || plane_point == nullptr || plane_normal == nullptr ||
+        (n_walls > 0 && (wall_points == nullptr || wall_normals == nullptr))) {
+      throw std::invalid_argument("incomplete MD Langevin inputs");
+    }
+    std::vector<OpenMM::Vec3> points(n_walls);
+    std::vector<OpenMM::Vec3> normals(n_walls);
+    for (size_t i = 0; i < n_walls; ++i) {
+      points[i] = OpenMM::Vec3(wall_points[3 * i], wall_points[3 * i + 1],
+                               wall_points[3 * i + 2]);
+      normals[i] = OpenMM::Vec3(wall_normals[3 * i], wall_normals[3 * i + 1],
+                                wall_normals[3 * i + 2]);
+    }
+    const int hits = session->session->stepLangevin(
+        OpenMM::Vec3(plane_point[0], plane_point[1], plane_point[2]),
+        OpenMM::Vec3(plane_normal[0], plane_normal[1], plane_normal[2]),
+        points, normals, static_cast<int>(steps));
+    if (wall_hits != nullptr) {
+      *wall_hits = static_cast<uint64_t>(hits);
+    }
+    return 0;
+  } catch (const std::exception &error) {
+    md_error(err, err_len, error);
+    return 1;
+  }
+}
+
+int rgpot_md_session_step_nve(rgpot_md_session *session, size_t steps,
+                              char *err, size_t err_len) {
+  try {
+    if (session == nullptr) {
+      throw std::invalid_argument("null MD session");
+    }
+    session->session->stepNVE(static_cast<int>(steps));
+    return 0;
+  } catch (const std::exception &error) {
+    md_error(err, err_len, error);
+    return 1;
+  }
+}
+
+int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
+                               double *velocities, double *forces, size_t n3,
+                               double *potential_energy, double *kinetic_energy,
+                               char *err, size_t err_len) {
+  try {
+    if (session == nullptr || potential_energy == nullptr ||
+        kinetic_energy == nullptr) {
+      throw std::invalid_argument("incomplete MD state outputs");
+    }
+    const auto state = session->session->state();
+    copy_md_vectors(state.positions, positions, n3);
+    copy_md_vectors(state.velocities, velocities, n3);
+    copy_md_vectors(state.forces, forces, n3);
+    *potential_energy = state.potential_energy;
+    *kinetic_energy = state.kinetic_energy;
+    return 0;
+  } catch (const std::exception &error) {
+    md_error(err, err_len, error);
+    return 1;
+  }
+}
+
+void rgpot_md_session_destroy(rgpot_md_session *session) { delete session; }
+
+} // extern "C"
