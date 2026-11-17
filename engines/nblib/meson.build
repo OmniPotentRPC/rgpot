@@ -11,7 +11,7 @@ nblib_prefix = get_option('nblib_prefix')
 nblib_search = []
 nblib_compile = []
 if nblib_prefix != ''
-    foreach sub : ['lib', 'lib64']
+    foreach sub : ['lib', 'lib64', 'lib.AVX2_256', 'lib.AVX_256', 'lib.SSE2']
         nblib_search += [nblib_prefix / sub]
     endforeach
     nblib_compile += ['-isystem', nblib_prefix / 'include']
@@ -38,7 +38,7 @@ nblib_rpath = nblib_prefix != '' ? nblib_prefix / 'lib' : ''
 
 if nblib_lib.found() and nblib_gmx_core.found()
 nblib_engine = shared_library(
-    'rgpot_nblib',
+    'nblib_engine',
     files(
         'NblibTopology.cc',
         'NblibEngine.cc',
@@ -52,6 +52,14 @@ nblib_engine = shared_library(
     build_rpath: nblib_rpath,
     install_rpath: nblib_rpath,
     install: not meson.is_subproject(),
+)
+nblib_session_test = executable(
+    'test_nblib_session',
+    files('test_nblib_session.cpp'),
+    dependencies: lj_dep,
+    link_with: rgpot,
+    include_directories: [engines_inc, rgpot_inc],
+    cpp_args: _args,
 )
 
 else
