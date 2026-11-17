@@ -44,6 +44,8 @@ struct Stub {
   size_t (*digest)(const RgpotEnginePot *, char *, size_t) = nullptr;
   int (*set_num_threads)(RgpotEnginePot *, int, int) = nullptr;
   int (*set_charge_spin)(RgpotEnginePot *, int, int) = nullptr;
+  int (*select_orbitals)(RgpotEnginePot *, long long) = nullptr;
+  long long (*orbital_key)() = nullptr;
   int (*max_concurrent)() = nullptr;
   void (*reset)() = nullptr;
   int (*charge)() = nullptr;
@@ -79,6 +81,9 @@ Stub &stub() {
         sym<decltype(out.set_num_threads)>(h, "rgpot_engine_set_num_threads");
     out.set_charge_spin =
         sym<decltype(out.set_charge_spin)>(h, "rgpot_engine_set_charge_spin");
+    out.select_orbitals =
+        sym<decltype(out.select_orbitals)>(h, "rgpot_engine_select_orbitals");
+    out.orbital_key = sym<long long (*)()>(h, "stub_orbital_key");
     out.max_concurrent = sym<int (*)()>(h, "stub_max_concurrent");
     out.reset = sym<void (*)()>(h, "stub_reset");
     out.charge = sym<int (*)()>(h, "stub_charge");
@@ -288,6 +293,23 @@ TEST_CASE("charge, spin and thread settings reach the backend",
   REQUIRE(s.set_charge_spin(bare, 0, 1) == 3);
   REQUIRE(s.set_num_threads(bare, 1, 1) == 3);
   REQUIRE(!error_of(s, bare).empty());
+  s.destroy(bare);
+}
+
+TEST_CASE("an orbital key reaches the backend that keeps one per call",
+          "[engine][adapter]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 0);
+  REQUIRE(s.select_orbitals(pot, 17) == 0);
+  REQUIRE(s.orbital_key() == 17);
+  REQUIRE(s.select_orbitals(pot, 0) == 2);
+  REQUIRE(error_of(s, pot).find("refused") != std::string::npos);
+  REQUIRE(s.orbital_key() == 17);
+  s.destroy(pot);
+
+  RgpotEnginePot *bare = make(s, 0, 1);
+  REQUIRE(s.select_orbitals(bare, 4) == 3);
+  REQUIRE(error_of(s, bare).find("one wavefunction") != std::string::npos);
   s.destroy(bare);
 }
 
