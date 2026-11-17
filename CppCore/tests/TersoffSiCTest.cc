@@ -619,8 +619,7 @@ TEST_CASE("Tersoff energy and forces match with and without stress",
 }
 
 TEST_CASE("Tersoff one thread matches the others bit for bit", "[TersoffSiC][threads]") {
-  // FCC spacing of the bench. Nearest neighbours share a length, so this cell
-  // takes the reused radial and bond-order path.
+  // FCC spacing of the bench.
   constexpr double a = 4.05;
   constexpr int ncell = 2;
   const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};

@@ -124,7 +124,6 @@ void bondOrder(const TersoffSiC::Species &sp, double zeta, double &b,
        std::pow(zeta, sp.n - 1.0);
 }
 
-void radial(const TersoffSiC::Pair &p, double r, Bond &b);
 double cosine(const Bond &a, const Bond &b);
 
 void fillAngles(const Bond *nb, int m, const TersoffSiC::Species &sp,
