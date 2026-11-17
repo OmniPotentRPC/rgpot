@@ -40,22 +40,31 @@ returns =NULL= and writes =err=.
 ** In-process dynamics session
 
 When OpenMM is enabled, =rgpot/ExternalPot/OpenMM.hpp= also exposes
-=rgpot::OpenMMSession=. It takes an owned =OpenMM::System= and creates the
-selected platform in the same process. =setPositions= and =setVelocities=
-initialize the context; =state= reads positions, velocities, forces, and both
-energies.
+=rgpot::OpenMMSession= (in OpenMM native units: nm, kJ/mol, ps, amu). It
+takes an owned =OpenMM::System= and creates the selected platform in the same
+process. =setPositions= and =setVelocities= initialize the context; =state=
+reads positions, velocities, forces, and both energies.
 
-=stepLangevin= uses an OpenMM =CustomIntegrator= with BAOAB splitting. It
-projects force and velocity onto a Cartesian plane, restores positions after
-each step, and reflects optional planar walls. Its return value is the number
-of reflections. =stepNVE= disables the thermostat terms and advances the same
-OpenMM context with deterministic velocity-Verlet updates.
+=stepLangevin= runs projected BAOAB splitting on a full =3N=-dimensional
+hyperplane using the inverse-mass metric (matching Euclidean projection in
+mass-weighted coordinates), restores positions after each half-drift, and
+reflects optional planar walls specularly with a deterministic 64-bit PRNG.
+Its return value is the number of wall reflections. =stepNVE= advances
+unconstrained deterministic velocity-Verlet updates on the same OpenMM Context.
 
-The OpenMM session test builds a harmonic System in C++, checks its energy and
-force against the analytic OpenMM result, samples a free two-particle system
-against the target kinetic temperature, checks the plane and wall, and bounds
-NVE energy drift. It uses =Reference= in the test; applications can select
-=CPU= or =CUDA= through =OpenMMSessionConfig::platform=.
+The generic C ABI =rgpot_md_session_*= (=external_potentials.h=) wraps any
+engine via =rgpot_md_session_ops= or =rgpot_md_session_create= in rgpot units
+(Angstrom, eV, eV/Angstrom, ps, amu); =libopenmm_engine.so= exports
+=rgpot_md_session_engine_create= and converts between Angstrom/eV and
+OpenMM's nm/kJ/mol. In Rust, =rgpot_core::md_session= exposes =MdSession=,
+=MdLangevinConfig=, =MdSessionState=, and =CAbiMdSession=.
+
+The OpenMM session test checks harmonic energy and force, samples a free
+two-particle system with unequal masses on a =3N= hyperplane against the
+target kinetic temperature, checks wall reflections, determinism across
+64-bit seeds, unconstrained NVE after Langevin stepping, and the C ABI unit
+conversions and error handling. It uses =Reference= in the test; applications
+can select =CPU= or =CUDA= through =OpenMMSessionConfig::platform=.
 
 Meson builds =libopenmm_engine.so= when the =openmm= Python module reports its
 library path and =libOpenMM= and =openmm/Platform.h= are found there.
