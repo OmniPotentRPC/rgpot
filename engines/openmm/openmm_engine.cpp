@@ -5,6 +5,8 @@
 // are kJ/mol/nm. The expression is the shifted 12-6 potential the
 // openmm_lj test evaluates. The host constructor converts once.
 
+#include "rgpot/ExternalPot/OpenMM.hpp"
+#include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/engine_c_abi.h"
 
 #include <openmm/Context.h>
@@ -180,5 +182,21 @@ int rgpot_md_native_force(void *pot, long nAtoms, const double *positions,
 }
 
 const char *rgpot_engine_name(void) { return "openmm"; }
+
+int rgpot_md_session_engine_create(const void *spec, size_t spec_len,
+                                   const char *options,
+                                   rgpot_md_session_ops *ops, void **ctx,
+                                   size_t *n_atoms, char *err,
+                                   size_t err_len) {
+  if (spec == nullptr || spec_len == 0) {
+    set_error(err, err_len, "OpenMM MD session needs serialized System XML");
+    return 1;
+  }
+  const std::string xml(static_cast<const char *>(spec), spec_len);
+  const char *platform =
+      (options != nullptr && options[0] != '\0') ? options : "Reference";
+  return rgpot::openmm_md_session_init(xml.c_str(), platform, ops, ctx,
+                                       n_atoms, err, err_len);
+}
 
 } // extern "C"
