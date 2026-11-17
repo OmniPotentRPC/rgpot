@@ -59,7 +59,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * Additive protocol revision.
  */
-#define PROTOCOL_MINOR 0
+#define PROTOCOL_MINOR 1
 #endif
 
 /**
@@ -768,6 +768,13 @@ rgpot_rpc_client_t *rgpot_rpc_client_new(const char *host, uint16_t port);
 enum rgpot_status_t rgpot_rpc_calculate(rgpot_rpc_client_t *client,
                                         const struct rgpot_force_input_t *input,
                                         struct rgpot_force_out_t *output);
+#endif
+
+#if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
+/**
+ * Select the image or bead whose keyed orbitals following calls should use.
+ */
+enum rgpot_status_t rgpot_rpc_client_select_orbitals(rgpot_rpc_client_t *client, int64_t key);
 #endif
 
 #if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))

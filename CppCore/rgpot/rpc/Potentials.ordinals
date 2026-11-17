@@ -1953,3 +1953,5 @@ CP2KParams @21 field extraForceEvalSections :List(Text) upstream
 PotentialSpec @6 arm cp2k :CP2KParams upstream
 PotentialConfig @17 arm cp2k :CP2KParams upstream
 UmaParams @10 field cacheDir :Text local
+ForceInput @10 field hasOrbitalKey :Bool local
+ForceInput @11 field orbitalKey :Int64 local

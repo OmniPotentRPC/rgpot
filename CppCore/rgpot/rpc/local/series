@@ -14,3 +14,7 @@ neighbour-chunk.diff
 # uma-cache-dir.diff: UmaParams.cacheDir @10, the root of the persistent
 # cache a UMA .pt2 is unpacked into.
 uma-cache-dir.diff
+#
+# orbital-key.diff: ForceInput.hasOrbitalKey @10 and orbitalKey @11 select
+# per-image or per-bead orbital state for CPMD and CP2K.
+orbital-key.diff

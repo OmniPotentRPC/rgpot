@@ -9,6 +9,8 @@
  */
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <sstream>
 #include <vector>
 
@@ -217,17 +219,36 @@ public:
           val *= len_to_angstrom;
     }
 
+    const std::optional<std::int64_t> orbitalKey =
+        fip.getHasOrbitalKey()
+            ? std::optional<std::int64_t>(fip.getOrbitalKey())
+            : std::nullopt;
+
     // Potential always computes in eV/angstrom
     auto evaluate = [&]() {
 #ifdef RGPOT_POTSERV_MPI
       if (m_pef) {
         try {
-          return m_pef->calculate(nativePositions, nativeAtomTypes, nativeBoxMatrix);
+          return m_pef->calculate(nativePositions, nativeAtomTypes,
+                                  nativeBoxMatrix, orbitalKey);
         } catch (const std::exception &error) {
           throw KJ_EXCEPTION(FAILED, error.what());
         }
       }
 #endif
+      if (orbitalKey) {
+        if (m_cpmd) {
+          m_cpmd->selectOrbitals(*orbitalKey);
+#ifdef RGPOT_HAS_CP2K
+        } else if (m_cp2k) {
+          m_cp2k->selectOrbitals(*orbitalKey);
+#endif
+        } else {
+          throw KJ_EXCEPTION(
+              FAILED,
+              "orbitalKey is supported only by CPMD and CP2K backends");
+        }
+      }
       return (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
     };
     auto [energy, forces, variance] = evaluate();

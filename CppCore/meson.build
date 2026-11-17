@@ -2273,11 +2273,13 @@ if get_option('with_tests')
         endif
         if _rpc_stack and host_system != 'windows'
             engine_table_env = environment()
-            engine_table_expect = ['CLASSICAL', 'MOPAC', 'NWCHEM']
+            engine_table_expect = ['CLASSICAL', 'MOPAC', 'NWCHEM', 'CPMD']
             engine_table_depends = [
                 classical_engine,
                 mopac_engine,
                 nwchem_engine,
+                cpmd_engine,
+                cpmdc_fake_engine,
             ]
             engine_table_env.set(
                 'RGPOT_ENGINE_CLASSICAL',
@@ -2287,6 +2289,14 @@ if get_option('with_tests')
             engine_table_env.set(
                 'RGPOT_ENGINE_NWCHEM',
                 nwchem_engine.full_path(),
+            )
+            engine_table_env.set(
+                'RGPOT_ENGINE_CPMD',
+                cpmd_engine.full_path(),
+            )
+            engine_table_env.set(
+                'RGPOT_CPMD_ENGINE',
+                cpmdc_fake_engine.full_path(),
             )
             if has_skala
                 engine_table_expect += ['SKALA']
