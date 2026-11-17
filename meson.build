@@ -108,6 +108,12 @@ if host_system == 'linux'
     _deps += [declare_dependency(link_args: '-lstdc++')]
 endif
 
+# ------------------------ minimage (periodic geometry)
+# The canonical half-box wrap is the installed minimage header. The pair
+# loop only calls an inline function, so the library is not linked.
+minimage_dep = dependency('minimage', required: true)
+_deps += minimage_dep.partial_dependency(includes: true, compile_args: true)
+
 # ------------------------ vesin (neighbour lists)
 # One vesin for the whole tree: the nlist headers, MetatomicPot, and the
 # Fortran pots all consume this dependency. Prefer an installed vesin

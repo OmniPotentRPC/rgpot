@@ -14,7 +14,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 #include <vector>
+
+#include "minimage.hpp"
 
 #if defined(_OPENMP)
 #include <omp.h>
@@ -295,16 +298,29 @@ public:
         }
       }
     }
-    if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
-                       const std::int32_t *head, std::size_t tiles,
-                       bool cell_shift, double search2, double L0, double L1, double L2, double i0,
-                       double i1, double i2, bool p0, bool p1, bool p2) {
+    const bool cell_shift_now = (!periodic_[0] || nx_ >= 5) && (!periodic_[1] || ny_ >= 5) &&
+                                 (!periodic_[2] || nz_ >= 5);
+    const bool tied = image_ == Image::Half && !cell_shift_now && halfBoxTies();
+    const bool covered =
+        tied ? fastTiles<true>([&](const auto &tile, const auto &neigh, const auto &nneigh,
+                                   const std::int32_t *head, std::size_t tiles, bool cell_shift,
+                                   double search2, double L0, double L1, double L2, double i0,
+                                   double i1, double i2, bool p0, bool p1, bool p2,
+                                   const char *half_tie) {
           withTeam(nthreads, [&](int thread) {
             const auto begin = static_cast<std::size_t>(cut[static_cast<std::size_t>(thread)]);
             const auto end = static_cast<std::size_t>(cut[static_cast<std::size_t>(thread) + 1]);
             auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                               double r2) { fn(thread, i, j, dx, dy, dz, r2); };
-            if (head != nullptr) {
+            if (half_tie != nullptr) {
+              if (head != nullptr) {
+                visitTied<true>(tile, neigh, nneigh, head, begin, end, 0, n_, half, search2, L0,
+                                L1, L2, i0, i1, i2, p0, p1, p2, half_tie, accept);
+              } else {
+                visitTied<false>(tile, neigh, nneigh, head, begin, end, 0, n_, half, search2, L0,
+                                 L1, L2, i0, i1, i2, p0, p1, p2, half_tie, accept);
+              }
+            } else if (head != nullptr) {
               visitTiles<true>(tile, neigh, nneigh, head, begin, end, 0, n_, half, cell_shift,
                                search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
             } else {
@@ -313,7 +329,28 @@ public:
             }
           });
           (void)tiles;
-        })) {
+        })
+             : fastTiles<false>([&](const auto &tile, const auto &neigh, const auto &nneigh,
+                                    const std::int32_t *head, std::size_t tiles, bool cell_shift,
+                                    double search2, double L0, double L1, double L2, double i0,
+                                    double i1, double i2, bool p0, bool p1, bool p2) {
+                 withTeam(nthreads, [&](int thread) {
+                   const auto begin = static_cast<std::size_t>(cut[static_cast<std::size_t>(thread)]);
+                   const auto end = static_cast<std::size_t>(cut[static_cast<std::size_t>(thread) + 1]);
+                   auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                                     double dz, double r2) { fn(thread, i, j, dx, dy, dz, r2); };
+                   if (head != nullptr) {
+                     visitTiles<true>(tile, neigh, nneigh, head, begin, end, 0, n_, half, cell_shift,
+                                      search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+                   } else {
+                     visitTiles<false>(tile, neigh, nneigh, head, begin, end, 0, n_, half,
+                                       cell_shift, search2, L0, L1, L2, i0, i1, i2, p0, p1, p2,
+                                       accept);
+                   }
+                 });
+                 (void)tiles;
+               });
+    if (!covered) {
       withTeam(nthreads, [&](int thread) {
         const auto range = partition(static_cast<std::int64_t>(n_), thread, nthreads);
         auto adapt = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
@@ -621,7 +658,196 @@ private:
     return !(tile_bytes > list_bytes);
   }
 
-  template <typename Loop>
+  // True when a raw separation in [lo, hi] can make the strict half-box
+  // image differ from the rounded image for a pair the search accepts.
+  // Inside one and a half boxes the images differ only by the sign of an
+  // exact half-box tie. A component of that length is outside the search.
+  static bool axisNeedsHalfTie(double lo, double hi, double length, double search) {
+    if (!(length > 0.0) || !(lo <= hi) || !std::isfinite(lo) || !std::isfinite(hi) ||
+        !std::isfinite(search)) {
+      return true;
+    }
+    const double span = 1.5 * length;
+    if (lo < -span || hi > span) {
+      return true;
+    }
+    if (0.5 * length > search) {
+      return false;
+    }
+    const double tie[4] = {-span, -0.5 * length, 0.5 * length, span};
+    for (double value : tie) {
+      if (lo <= value && value <= hi) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void tileBounds(std::vector<char> &occupied, std::vector<double> &bound_lo,
+                  std::vector<double> &bound_hi) const {
+    const auto ncells = occupied.size();
+    for (std::size_t c = 0; c < ncells; ++c) {
+      const auto a0 = cell_start_[c];
+      const auto a1 = cell_start_[c + 1];
+      if (a0 == a1) {
+        continue;
+      }
+      occupied[c] = 1;
+      const auto u0 = static_cast<std::size_t>(cell_atoms_[static_cast<std::size_t>(a0)]) * 3;
+      for (int axis = 0; axis < 3; ++axis) {
+        const double x = xyz_[u0 + static_cast<std::size_t>(axis)];
+        bound_lo[c * 3 + static_cast<std::size_t>(axis)] = x;
+        bound_hi[c * 3 + static_cast<std::size_t>(axis)] = x;
+      }
+      for (std::int32_t q = a0 + 1; q < a1; ++q) {
+        const auto u = static_cast<std::size_t>(cell_atoms_[static_cast<std::size_t>(q)]) * 3;
+        for (int axis = 0; axis < 3; ++axis) {
+          const double x = xyz_[u + static_cast<std::size_t>(axis)];
+          double &lo = bound_lo[c * 3 + static_cast<std::size_t>(axis)];
+          double &hi = bound_hi[c * 3 + static_cast<std::size_t>(axis)];
+          if (x < lo) {
+            lo = x;
+          }
+          if (x > hi) {
+            hi = x;
+          }
+        }
+      }
+    }
+  }
+
+  [[nodiscard]] bool tilePairNeedsTie(std::size_t home, std::size_t other,
+                                      const std::vector<char> &occupied,
+                                      const std::vector<double> &bound_lo,
+                                      const std::vector<double> &bound_hi) const {
+    if (home >= occupied.size() || other >= occupied.size() || occupied[home] == 0 ||
+        occupied[other] == 0) {
+      return false;
+    }
+    for (int axis = 0; axis < 3; ++axis) {
+      if (!periodic_[axis]) {
+        continue;
+      }
+      const auto ha = home * 3 + static_cast<std::size_t>(axis);
+      const auto oa = other * 3 + static_cast<std::size_t>(axis);
+      const double lo = bound_lo[ha] - bound_hi[oa];
+      const double hi = bound_hi[ha] - bound_lo[oa];
+      if (axisNeedsHalfTie(lo, hi, len_[axis], search_)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // The rounded image and the strict half-box image accept different
+  // neighbours only when a tile pair can put a component on a half-box
+  // boundary inside the search. That decision is one flag per tile pair.
+  [[nodiscard]] bool halfBoxTies() const {
+    if (image_ != Image::Half || use_general_ || n_ < 2) {
+      return false;
+    }
+    const bool cell_shift = (!periodic_[0] || nx_ >= 5) && (!periodic_[1] || ny_ >= 5) &&
+                            (!periodic_[2] || nz_ >= 5);
+    if (cell_shift) {
+      return false;
+    }
+    struct Memo {
+      const Neighbours *owner = nullptr;
+      int nx = 0;
+      int ny = 0;
+      int nz = 0;
+      double search = 0;
+      std::uint64_t builds = 0;
+      bool any = false;
+    };
+    thread_local Memo memo;
+    if (memo.owner == this && memo.nx == nx_ && memo.ny == ny_ && memo.nz == nz_ &&
+        memo.search == search_ && memo.builds == builds_) {
+      return memo.any;
+    }
+    const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+                        static_cast<std::size_t>(nz_);
+    std::vector<char> occupied(ncells, 0);
+    std::vector<double> bound_lo(ncells * 3, 0.0);
+    std::vector<double> bound_hi(ncells * 3, 0.0);
+    if (ncells > 0 && cell_start_.size() == ncells + 1) {
+      tileBounds(occupied, bound_lo, bound_hi);
+    }
+    bool any = false;
+    for (std::size_t c = 0; c < ncells && !any; ++c) {
+      if (occupied[c] == 0) {
+        continue;
+      }
+      const int cell = static_cast<int>(c);
+      const int iz = cell % nz_;
+      const int iy = (cell / nz_) % ny_;
+      const int ix = cell / (nz_ * ny_);
+      int seen[27];
+      int nseen = 0;
+      for (int ox = -1; ox <= 1 && !any; ++ox) {
+        for (int oy = -1; oy <= 1 && !any; ++oy) {
+          for (int oz = -1; oz <= 1; ++oz) {
+            int jx = ix + ox;
+            int jy = iy + oy;
+            int jz = iz + oz;
+            if (periodic_[0]) {
+              if (jx < 0) {
+                jx += nx_;
+              } else if (jx >= nx_) {
+                jx -= nx_;
+              }
+            } else if (jx < 0 || jx >= nx_) {
+              continue;
+            }
+            if (periodic_[1]) {
+              if (jy < 0) {
+                jy += ny_;
+              } else if (jy >= ny_) {
+                jy -= ny_;
+              }
+            } else if (jy < 0 || jy >= ny_) {
+              continue;
+            }
+            if (periodic_[2]) {
+              if (jz < 0) {
+                jz += nz_;
+              } else if (jz >= nz_) {
+                jz -= nz_;
+              }
+            } else if (jz < 0 || jz >= nz_) {
+              continue;
+            }
+            const int id = (jx * ny_ + jy) * nz_ + jz;
+            bool dup = false;
+            for (int s = 0; s < nseen; ++s) {
+              if (seen[s] == id) {
+                dup = true;
+                break;
+              }
+            }
+            if (dup) {
+              continue;
+            }
+            seen[nseen++] = id;
+            if (tilePairNeedsTie(c, static_cast<std::size_t>(id), occupied, bound_lo, bound_hi)) {
+              any = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+    memo.owner = this;
+    memo.nx = nx_;
+    memo.ny = ny_;
+    memo.nz = nz_;
+    memo.search = search_;
+    memo.builds = builds_;
+    memo.any = any;
+    return any;
+  }
+
+  template <bool HalfTie, typename Loop>
   bool fastTiles(Loop &&loop) const {
     // Half is the same orthorhombic minimum image once coordinates sit in
     // the cell. A sheared box stays on the scattered walk.
@@ -667,9 +893,19 @@ private:
       bool compact = false;
       std::vector<std::int32_t> head;
     };
+    // Flags live on the half-box instantiation only. The rounded image and
+    // the cell-shift walk keep the original cache.
+    struct TieCache : Cache {
+      std::vector<char> tie;
+      std::vector<char> occupied;
+      std::vector<double> bound_lo;
+      std::vector<double> bound_hi;
+      bool any = false;
+    };
+    using Store = std::conditional_t<HalfTie, TieCache, Cache>;
     // One stencil per thread. The cache is process-wide otherwise, and two
     // evaluations then rewrite the same vectors.
-    thread_local Cache cache;
+    thread_local Store cache;
     // The stored evaluation rebuilds its stencil. A stream keeps one and
     // reuses it when the coordinates are unchanged.
     const bool same_grid = cache.owner == this && cache.nx == nx_ && cache.ny == ny_ &&
@@ -680,6 +916,16 @@ private:
         (reused_ || (cache.xyz.size() == n_ * 3 &&
                      std::memcmp(cache.xyz.data(), xyz_, n_ * 3 * sizeof(double)) == 0));
     if (!reuse) {
+    if constexpr (HalfTie) {
+      cache.tie.clear();
+      cache.any = false;
+      cache.occupied.assign(ncells, 0);
+      cache.bound_lo.assign(ncells * 3, 0.0);
+      cache.bound_hi.assign(ncells * 3, 0.0);
+      if (ncells > 0 && cell_start_.size() == ncells + 1) {
+        tileBounds(cache.occupied, cache.bound_lo, cache.bound_hi);
+      }
+    }
     if (!dense) {
       cache.compact = true;
       cache.neigh.clear();
@@ -784,6 +1030,16 @@ private:
                 break;
               }
               cache.neigh.push_back(Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]});
+              if constexpr (HalfTie) {
+                const char bit = tilePairNeedsTie(c, static_cast<std::size_t>(id), cache.occupied,
+                                                   cache.bound_lo, cache.bound_hi)
+                                     ? 1
+                                     : 0;
+                cache.tie.push_back(bit);
+                if (bit != 0) {
+                  cache.any = true;
+                }
+              }
               ++cache.nneigh[c];
             }
           }
@@ -805,6 +1061,10 @@ private:
         cache.neigh.clear();
         cache.head.clear();
         cache.nneigh.clear();
+        if constexpr (HalfTie) {
+          cache.tie.clear();
+          cache.any = false;
+        }
         return false;
       }
       if (!cache.neigh.empty()) {
@@ -822,6 +1082,9 @@ private:
     auto &nneigh = cache.nneigh;
     neigh.assign(ncells * 27, Nbor{});
     nneigh.assign(ncells, 0);
+    if constexpr (HalfTie) {
+      cache.tie.assign(ncells * 27, 0);
+    }
     for (std::size_t c = 0; c < ncells; ++c) {
       const int cell = static_cast<int>(c);
       int iz = cell % nz_;
@@ -885,6 +1148,16 @@ private:
             seen[nseen] = id;
             neigh[c * 27 + static_cast<std::size_t>(nseen)] =
                 Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]};
+            if constexpr (HalfTie) {
+              const char bit = tilePairNeedsTie(c, static_cast<std::size_t>(id), cache.occupied,
+                                                 cache.bound_lo, cache.bound_hi)
+                                   ? 1
+                                   : 0;
+              cache.tie[c * 27 + static_cast<std::size_t>(nseen)] = bit;
+              if (bit != 0) {
+                cache.any = true;
+              }
+            }
             ++nseen;
           }
         }
@@ -911,9 +1184,16 @@ private:
     if (cache.compact && cache.neigh.empty()) {
       return true;
     }
-    loop(cache.tile, cache.neigh, cache.nneigh, cache.compact ? cache.head.data() : nullptr, ncells,
-         cell_shift, search_ * search_, len_[0], len_[1], len_[2], inv_[0], inv_[1], inv_[2],
-         periodic_[0], periodic_[1], periodic_[2]);
+    if constexpr (HalfTie) {
+      const char *half_tie = cache.any && !cache.tie.empty() ? cache.tie.data() : nullptr;
+      loop(cache.tile, cache.neigh, cache.nneigh, cache.compact ? cache.head.data() : nullptr,
+           ncells, cell_shift, search_ * search_, len_[0], len_[1], len_[2], inv_[0], inv_[1],
+           inv_[2], periodic_[0], periodic_[1], periodic_[2], half_tie);
+    } else {
+      loop(cache.tile, cache.neigh, cache.nneigh, cache.compact ? cache.head.data() : nullptr,
+           ncells, cell_shift, search_ * search_, len_[0], len_[1], len_[2], inv_[0], inv_[1],
+           inv_[2], periodic_[0], periodic_[1], periodic_[2]);
+    }
     return true;
   }
 
@@ -1013,13 +1293,130 @@ private:
     }
   }
 
+  // The strict half-box wrap, chosen once per neighbour tile. The common
+  // pair loop stays in visitTiles.
+  template <bool Compact, typename Tile, typename Nbor, typename Fn>
+  void visitTied(const std::vector<Tile> &tile, const std::vector<Nbor> &neigh,
+                 const std::vector<int> &nneigh, const std::int32_t *head, std::size_t c0,
+                 std::size_t c1, std::int64_t atom0, std::size_t atom1, bool half, double search2,
+                 double L0, double L1, double L2, double i0, double i1, double i2, bool p0,
+                 bool p1, bool p2, const char *half_tie, Fn &&fn) const {
+    auto round_axis = [](double delta, double inv, double length, bool periodic, int &shift) {
+      if (!periodic) {
+        shift = 0;
+        return delta;
+      }
+      const double t = delta * inv;
+      if (!(t > -1.0e15 && t < 1.0e15)) {
+        shift = 0;
+        return delta;
+      }
+      const double shifted = t + std::copysign(0.5, t);
+      const auto image = static_cast<long long>(shifted);
+      shift = static_cast<int>(image);
+      return delta - length * static_cast<double>(image);
+    };
+    auto round_strict = [](double delta, double inv, double length, bool periodic) {
+      if (!periodic) {
+        return delta;
+      }
+      const double t = delta * inv;
+      if (!(t > -1.0e15 && t < 1.0e15)) {
+        return delta;
+      }
+      return minimage::wrap_ortho_half_strict(delta, length);
+    };
+    for (std::size_t c = c0; c < c1; ++c) {
+      const auto a0 = cell_start_[c];
+      const auto a1 = cell_start_[c + 1];
+      if (a0 == a1) {
+        continue;
+      }
+      const int nn = nneigh[c];
+      if constexpr (Compact) {
+        if (nn == 0) {
+          continue;
+        }
+      }
+      const Nbor *nb;
+      const char *flags;
+      if constexpr (Compact) {
+        nb = neigh.data() + static_cast<std::size_t>(head[c]);
+        flags = half_tie + static_cast<std::size_t>(head[c]);
+      } else {
+        nb = neigh.data() + c * 27;
+        flags = half_tie + c * 27;
+      }
+      for (std::int32_t q = a0; q < a1; ++q) {
+        const Tile &a = tile[static_cast<std::size_t>(q)];
+        if (a.id < atom0 || static_cast<std::size_t>(a.id) >= atom1) {
+          continue;
+        }
+        for (int k = 0; k < nn; ++k) {
+          const Nbor &src = nb[k];
+          const auto b0 = static_cast<std::size_t>(cell_start_[static_cast<std::size_t>(src.id)]);
+          const auto b1 =
+              static_cast<std::size_t>(cell_start_[static_cast<std::size_t>(src.id) + 1]);
+          // Atom ids increase inside a cell, so a half pair starts at the
+          // first neighbour with a larger id and does not test the rest.
+          const std::size_t rstart = [&]() {
+            if (!half) {
+              return b0;
+            }
+            const auto begin = tile.begin() + static_cast<std::ptrdiff_t>(b0);
+            const auto end = tile.begin() + static_cast<std::ptrdiff_t>(b1);
+            const auto found = std::lower_bound(
+                begin, end, a.id, [](const Tile &atom, std::int32_t id) { return atom.id < id; });
+            auto next = found;
+            if (next != end && next->id == a.id) {
+              ++next;
+            }
+            return static_cast<std::size_t>(next - tile.begin());
+          }();
+          if (flags[k] != 0) {
+            for (std::size_t r = rstart; r < b1; ++r) {
+              const Tile &b = tile[r];
+              if (!half && b.id == a.id) {
+                continue;
+              }
+              const double dx = round_strict(a.x - b.x, i0, L0, p0);
+              const double dy = round_strict(a.y - b.y, i1, L1, p1);
+              const double dz = round_strict(a.z - b.z, i2, L2, p2);
+              const double r2 = dx * dx + dy * dy + dz * dz;
+              if (r2 <= search2) {
+                fn(a.id, b.id, dx, dy, dz, r2);
+              }
+            }
+          } else {
+            for (std::size_t r = rstart; r < b1; ++r) {
+              const Tile &b = tile[r];
+              if (!half && b.id == a.id) {
+                continue;
+              }
+              int sa = 0;
+              int sb = 0;
+              int sc = 0;
+              const double dx = round_axis(a.x - b.x, i0, L0, p0, sa);
+              const double dy = round_axis(a.y - b.y, i1, L1, p1, sb);
+              const double dz = round_axis(a.z - b.z, i2, L2, p2, sc);
+              const double r2 = dx * dx + dy * dy + dz * dz;
+              if (r2 <= search2) {
+                fn(a.id, b.id, dx, dy, dz, r2);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   template <typename Fn>
   void walkCells(std::int64_t begin, std::int64_t end, Fn &fn, bool half) const {
     const double search2 = search_ * search_;
-    if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
-                       const std::int32_t *head, std::size_t ncells, bool cell_shift,
-                       double search2_fast, double L0, double L1, double L2, double i0, double i1,
-                       double i2, bool p0, bool p1, bool p2) {
+    if (!fastTiles<false>([&](const auto &tile, const auto &neigh, const auto &nneigh,
+                              const std::int32_t *head, std::size_t ncells, bool cell_shift,
+                              double search2_fast, double L0, double L1, double L2, double i0,
+                              double i1, double i2, bool p0, bool p1, bool p2) {
           if (head != nullptr) {
             visitTiles<true>(tile, neigh, nneigh, head, 0, ncells, begin,
                              static_cast<std::size_t>(end), half, cell_shift, search2_fast, L0, L1,

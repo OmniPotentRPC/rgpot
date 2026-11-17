@@ -361,8 +361,9 @@ TEST_CASE("tile bounds select the half-box pair", "[nlist][fold][displaced]") {
 
   int tie = 0;
   int inside = 0;
-  cells.forDirected(0, n, [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                              double) {
+  // The streamed team walk is the pair loop a half-box potential runs.
+  cells.forCellTeam(false, 1, [&](int, std::int32_t i, std::int32_t j, double dx, double dy,
+                                  double dz, double) {
     if (i == 0 && j == n / 2) {
       REQUIRE(dx == -half);
       REQUIRE(dy == 0.0);

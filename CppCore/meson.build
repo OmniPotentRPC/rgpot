@@ -154,7 +154,9 @@ rgpot_halfshell = static_library(
     ),
     include_directories: _incdirs,
     cpp_args: _args + (get_option('with_eam_al_openmp') ? ['-DRGPOT_EAM_AL_OPENMP'] : []),
-    dependencies: _halfshell_omp.found() ? [_halfshell_omp] : [],
+    dependencies: (_halfshell_omp.found() ? [_halfshell_omp] : []) + [
+        minimage_dep.partial_dependency(includes: true, compile_args: true),
+    ],
     pic: true,
     install: false,
 )
@@ -2673,6 +2675,7 @@ if not meson.is_subproject()
     _pc_cflags = []
     if not get_option('with_rpc_client_only')
         _pc_libs += [rgpot]
+        _pc_requires += ['minimage']
         _pc_cflags += ['-DRGPOT_HAS_POTLIB=TRUE']
         if has_fortran
             _pc_cflags += ['-DRGPOT_HAS_FORTRAN_POTS=TRUE']
