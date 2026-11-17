@@ -755,6 +755,11 @@ void rgpot_potential_reset_hvp_counts(const struct rgpot_potential_t *pot);
  *
  * Returns a heap-allocated handle, or `NULL` on failure.
  * The caller must eventually call `rgpot_rpc_client_free`.
+ *
+ * # Safety
+ *
+ * `host` must be a valid pointer to a NUL-terminated C string for the
+ * duration of the call.
  */
 rgpot_rpc_client_t *rgpot_rpc_client_new(const char *host, uint16_t port);
 #endif
@@ -764,6 +769,12 @@ rgpot_rpc_client_t *rgpot_rpc_client_new(const char *host, uint16_t port);
  * Perform a remote force/energy calculation.
  *
  * Returns `RGPOT_SUCCESS` on success, or an error status code.
+ *
+ * # Safety
+ *
+ * `client` must be a live pointer from `rgpot_rpc_client_new`.
+ * `input` must point to a valid `rgpot_force_input_t` for the duration of
+ * the call, and `output` must point to writable storage.
  */
 enum rgpot_status_t rgpot_rpc_calculate(rgpot_rpc_client_t *client,
                                         const struct rgpot_force_input_t *input,
@@ -775,6 +786,13 @@ enum rgpot_status_t rgpot_rpc_calculate(rgpot_rpc_client_t *client,
  * Compute an analytic Hessian-vector product through the remote potential.
  *
  * `direction` and `product` each hold `3 * n_atoms` doubles.
+ *
+ * # Safety
+ *
+ * `client` must be a live pointer from `rgpot_rpc_client_new`.
+ * `input` must point to a valid `rgpot_force_input_t`.
+ * `direction` and `product` must each point to arrays of at least
+ * `3 * n_atoms` doubles, where `n_atoms` comes from `input`.
  */
 enum rgpot_status_t rgpot_rpc_calculate_hvp(rgpot_rpc_client_t *client,
                                             const struct rgpot_force_input_t *input,
@@ -787,6 +805,11 @@ enum rgpot_status_t rgpot_rpc_calculate_hvp(rgpot_rpc_client_t *client,
  * Free an RPC client handle.
  *
  * If `client` is `NULL`, this is a no-op.
+ *
+ * # Safety
+ *
+ * If non-NULL, `client` must be a pointer returned by
+ * `rgpot_rpc_client_new` that has not been freed yet.
  */
 void rgpot_rpc_client_free(rgpot_rpc_client_t *client);
 #endif
