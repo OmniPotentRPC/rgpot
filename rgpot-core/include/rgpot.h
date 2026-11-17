@@ -59,7 +59,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * Additive protocol revision.
  */
-#define PROTOCOL_MINOR 0
+#define PROTOCOL_MINOR 1
 #endif
 
 /**
