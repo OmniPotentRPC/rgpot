@@ -51,6 +51,9 @@ struct Backend {
   std::function<void(int charge, int spin)> set_charge_spin;
   /// Empty when the backend has no tensor runtime.
   std::function<void(int intra_op, int inter_op)> set_num_threads;
+  /// Empty when the backend keeps one wavefunction for every call.
+  /// The argument is the caller's key: an image of a band, a bead of a ring.
+  std::function<void(long long key)> select_orbitals;
 };
 
 struct Created {

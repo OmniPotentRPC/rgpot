@@ -362,6 +362,24 @@ int rgpot_engine_set_num_threads(RgpotEnginePot *pot, int intra_op,
   }
 }
 
+int rgpot_engine_select_orbitals(RgpotEnginePot *pot, long long key) {
+  if (!pot || !pot->backend) {
+    return 1;
+  }
+  if (!pot->backend->select_orbitals) {
+    return fail(pot, 3, "backend keeps one wavefunction for every call");
+  }
+  try {
+    pot->backend->select_orbitals(key);
+    pot->clear_error();
+    return 0;
+  } catch (const std::exception &e) {
+    return fail(pot, 2, e.what());
+  } catch (...) {
+    return fail(pot, 2, "unknown exception");
+  }
+}
+
 int rgpot_engine_set_charge_spin(RgpotEnginePot *pot, int charge, int spin) {
   if (!pot || !pot->backend || spin < 1) {
     return 1;

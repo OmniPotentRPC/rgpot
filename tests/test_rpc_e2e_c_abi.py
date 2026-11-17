@@ -15,6 +15,7 @@ import asyncio
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -22,7 +23,23 @@ import capnp
 import numpy as np
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-SCHEMA_PATH = SCRIPT_DIR / "../CppCore/rgpot/rpc/Potentials.capnp"
+ROOT = SCRIPT_DIR.parent
+SCHEMA_DIR = tempfile.TemporaryDirectory()
+SCHEMA_PATH = Path(SCHEMA_DIR.name) / "Potentials.capnp"
+subprocess.run(
+    [
+        sys.executable,
+        str(ROOT / "CppCore/rgpot/rpc/schema_ledger.py"),
+        "apply",
+        "--root",
+        str(ROOT),
+        "--schema",
+        str(ROOT / "CppCore/rgpot/rpc/Potentials.capnp"),
+        "--out",
+        str(SCHEMA_PATH),
+    ],
+    check=True,
+)
 pot_capnp = capnp.load(str(SCHEMA_PATH))
 
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -86,6 +103,7 @@ async def _run_backend(
     pot_name: str,
     engine_env: dict[str, str],
     configure_fn,
+    orbital_keys: tuple[int, ...] = (),
 ):
     env = os.environ.copy()
     env.update(engine_env)
@@ -116,7 +134,13 @@ async def _run_backend(
         assert all(np.isfinite(f) for f in forces), f"non-finite forces: {forces}"
         # At least one non-zero force from fake engines
         assert any(abs(f) > 1e-12 for f in forces), f"all-zero forces: {forces}"
-        return energy, forces
+        keyed_forces = []
+        for key in orbital_keys:
+            fip.hasOrbitalKey = True
+            fip.orbitalKey = key
+            keyed = await pot.calculate(fip)
+            keyed_forces.append(float(keyed.result.forces[0]))
+        return energy, forces, keyed_forces
     finally:
         proc.kill()
         proc.wait(timeout=5)
@@ -137,7 +161,7 @@ def test_nwchem_rpc_configure_and_calculate() -> None:
             engine_path=engine,
         )
 
-    energy, forces = asyncio.run(
+    energy, forces, _ = asyncio.run(
         capnp.run(
             _run_backend(
                 potserv,
@@ -171,7 +195,7 @@ def test_cpmd_rpc_configure_and_calculate() -> None:
             engine_path=engine,
         )
 
-    energy, forces = asyncio.run(
+    energy, forces, keyed_forces = asyncio.run(
         capnp.run(
             _run_backend(
                 potserv,
@@ -183,10 +207,12 @@ def test_cpmd_rpc_configure_and_calculate() -> None:
                     "RGPOT_CPMD_ENGINE": engine,
                 },
                 cfg,
+                (7, 19, 7),
             )
         )
     )
     assert energy > 0.0
+    assert np.allclose(keyed_forces, [0.012, 0.012, 0.013], rtol=0.0, atol=1e-15)
     print(f"CPMD E2E energy={energy} forces0={forces[0]}")
 
 

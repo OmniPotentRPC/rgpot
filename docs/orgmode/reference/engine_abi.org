@@ -40,6 +40,7 @@ potential from the params message) and =rgpot::engine::backend_name=.
 | =libclassical_engine= | =BuiltinParams= | =classical= | =name= =lj=, =ljcluster=, =morse= or =zbl=; with the water kernels =tip4p=, =spce=, =tip4p_pt=; with the Fortran kernels =sw=, =edip=, =lenosky=, =tersoff=, =eamal=, =fehe=, =cuh2=, =waterh=; all with default parameters |
 | =libmopac_engine= | =BuiltinParams= | =mopac= | MOPAC; =name= is empty or =mopac=, =library= is the path of =libmopacc= |
 | =libnwchem_engine= | =NWChemParams= | =nwchem= | NWChem through =libnwchemc= |
+| =libcpmd_engine= | =CPMDParams= | =cpmd= | CPMD through =libcpmdc= |
 | =libskala_engine= | =NWChemParams= | =skala= | Skala XC on NWChem; reads =basis=, =charge=, =multiplicity=, =enginePath= and =nwchemRoot= |
 
 =BuiltinParams.name= is compared in lower case.
@@ -48,13 +49,13 @@ The Metatomic and XTB libraries also export their own tables
 NWChem and CPMD keep the prefix-parameterized profile ABI that =NWChemPot= and
 =CPMDPot= load, and MOPAC keeps =mopac_c_abi.h=.
 The plugin interface in =include/rgpot/plugin.h= is a separate family. tblite,
-dftd3, dftd4, ExprPot, XcKernel, CPMD and CP2K have no engine library.
+dftd3, dftd4, ExprPot, XcKernel and CP2K have no engine library.
 
 Every library above exports
 =rgpot_engine_force_batch=, =rgpot_engine_abi_stamp=,
 =rgpot_engine_abi_compatible=, =rgpot_engine_name=, =rgpot_engine_version=, =rgpot_engine_model_digest=,
 =rgpot_engine_caps=,
-=rgpot_engine_last_error=, =rgpot_engine_set_num_threads= and =rgpot_engine_set_charge_spin=.
+=rgpot_engine_last_error=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin= and =rgpot_engine_select_orbitals=.
 None of them exports =rgpot_engine_model_state=, =rgpot_engine_set_callbacks=,
 =rgpot_engine_hint= or =rgpot_engine_neighbor_options=.
 
@@ -388,6 +389,29 @@ UMA stores the values and passes them to the model at the next evaluation.
 Skala applies them to NWChem at once.
 Metatomic stores them for the next evaluations of a model that reads them; see
 Charge and spin below.
+Must not run concurrently with another call on the same handle.
+
+*** =rgpot_engine_select_orbitals=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_engine_select_orbitals(RgpotEnginePot *pot, long long key);
+#+end_src
+
+- Inputs :: =pot=, a handle; =key=, the signed image or bead identifier.
+- Units :: none.
+- Outputs :: 0 on success.
+  The next force call uses the orbitals stored for =key= and parks the orbitals
+  of the key it leaves.
+- Errors :: returns 1 for a null handle, 3 when the backend keeps one
+  wavefunction for every call, and 2 when selection fails; the latter two leave
+  a reason in =rgpot_engine_last_error=.
+
+Optional symbol.
+=libcpmd_engine= routes this call directly to =CPMDPot::selectOrbitals=; it does
+not keep a second orbital table.
+The RPC equivalent sets =ForceInput.hasOrbitalKey= and =ForceInput.orbitalKey=
+on every keyed calculation.
 Must not run concurrently with another call on the same handle.
 
 ** Evaluation

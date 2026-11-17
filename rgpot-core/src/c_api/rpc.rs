@@ -91,6 +91,23 @@ pub unsafe extern "C" fn rgpot_rpc_calculate(
     }))
 }
 
+/// Select the image or bead whose keyed orbitals following calls should use.
+#[cfg(feature = "rpc")]
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_rpc_client_select_orbitals(
+    client: *mut rgpot_rpc_client_t,
+    key: i64,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if client.is_null() {
+            set_last_error("rgpot_rpc_client_select_orbitals: client is NULL");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        unsafe { &mut *client }.select_orbitals(key);
+        rgpot_status_t::RGPOT_SUCCESS
+    }))
+}
+
 /// Free an RPC client handle.
 ///
 /// If `client` is `NULL`, this is a no-op.
