@@ -11,6 +11,7 @@
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine_c_abi.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -29,7 +30,9 @@ public:
       : PotentialBase(rgpot::PotType::UNKNOWN), reentrancy_(r) {}
 
   [[nodiscard]] rgpot::PotCaps caps() const noexcept override {
-    return {.reentrancy = reentrancy_, .perImageInstances = true};
+    return {.reentrancy = reentrancy_,
+            .perImageInstances = true,
+            .analyticHvp = true};
   }
 
   std::tuple<double, rgpot::types::AtomMatrix, double>
@@ -56,6 +59,11 @@ public:
       batch.out[s].variance = 0.25;
     }
     --g_inside;
+  }
+
+  void hessianVectorImpl(const rgpot::ForceInput &in, const double *direction,
+                         double *product) const override {
+    std::copy_n(direction, 3 * in.nAtoms, product);
   }
 
 private:

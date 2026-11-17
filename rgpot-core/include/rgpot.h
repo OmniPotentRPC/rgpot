@@ -911,6 +911,18 @@ enum rgpot_status_t rgpot_rpc_calculate(rgpot_rpc_client_t *client,
 
 #if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
 /**
+ * Compute an analytic Hessian-vector product through the remote potential.
+ *
+ * `direction` and `product` each hold `3 * n_atoms` doubles.
+ */
+enum rgpot_status_t rgpot_rpc_calculate_hvp(rgpot_rpc_client_t *client,
+                                            const struct rgpot_force_input_t *input,
+                                            const double *direction,
+                                            double *product);
+#endif
+
+#if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
+/**
  * Free an RPC client handle.
  *
  * If `client` is `NULL`, this is a no-op.
