@@ -52,6 +52,11 @@ name = "potential_config"
 path = "tests/potential_config.rs"
 required-features = ["schema"]
 
+[[test]]
+name = "units"
+path = "tests/units.rs"
+required-features = ["units"]
+
 [build-dependencies]
 cbindgen = { version = "0.27", optional = true }
 capnpc = { version = "0.20", optional = true }
