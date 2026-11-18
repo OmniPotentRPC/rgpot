@@ -67,6 +67,7 @@ pub mod tensor;
 pub mod types;
 pub mod version;
 
+/// CODATA 2018 physical constants and unit conversions from `CppCore/rgpot/units.hpp`.
 #[cfg(feature = "units")]
 pub mod units;
 
