@@ -135,6 +135,12 @@ impl FixtureObserver {
         Self(unsafe { libloading::Library::new(path) }.expect("open the fixture observer"))
     }
 
+    fn created(&self) -> c_int {
+        let count: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+            unsafe { self.0.get(b"fixture_create_count\0") }.expect("create count symbol");
+        unsafe { count() }
+    }
+
     fn destroyed(&self) -> c_int {
         let count: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
             unsafe { self.0.get(b"fixture_destroy_count\0") }.expect("count symbol");
@@ -660,6 +666,24 @@ fn a_missing_required_symbol_is_named() {
         .err()
         .expect("force is required");
     assert_eq!(error, EngineError::Missing("rgpot_engine_force".into()));
+
+    let no_available = build("harmonic_noavailable", &["NO_AVAILABLE"]);
+    let error = unsafe { EnginePotential::load(&no_available, &config()) }
+        .err()
+        .expect("available is required");
+    assert_eq!(error, EngineError::Missing("rgpot_engine_available".into()));
+}
+
+#[test]
+fn an_unavailable_engine_is_refused_before_create() {
+    let path = build("harmonic_unavailable", &["FIXTURE_AVAILABLE=0"]);
+    let observer = FixtureObserver::open(&path);
+    let before = observer.created();
+    let error = unsafe { EnginePotential::load(&path, &config()) }
+        .err()
+        .expect("unavailable engine must be refused");
+    assert_eq!(error, EngineError::Unavailable);
+    assert_eq!(observer.created(), before);
 }
 
 #[test]
