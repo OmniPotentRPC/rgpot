@@ -50,13 +50,21 @@
 //! The core types use DLPack tensors for device-agnostic data exchange.
 //! See [`tensor`] for helpers to create DLPack tensors from raw pointers.
 
-pub mod c_api;
-pub mod eindir;
-pub mod hvp;
-pub mod potential;
-pub mod status;
-pub mod tensor;
+#[rustfmt::skip]
 pub mod types;
+#[rustfmt::skip]
+pub mod tensor;
+#[rustfmt::skip]
+pub mod status;
+#[rustfmt::skip]
+pub mod potential;
+#[rustfmt::skip]
+pub mod hvp;
+#[rustfmt::skip]
+pub mod eindir;
+#[rustfmt::skip]
+pub mod c_api;
+#[rustfmt::skip]
 pub mod version;
 
 #[cfg(feature = "schema")]
