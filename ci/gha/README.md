@@ -171,7 +171,7 @@ jobs, matrix legs pooled: the last 100 completed orchestrator runs and the last
 |------|-----------|----------------------|-------------------|
 | `potentials_uma_engine` | 10.9 | 1200 s, `doccheck_examples` | 35 |
 | `build_and_test`, `thread_limit`, `potentials_metatomic` | 7.2, 5.2, 8.4 | 1200 s | 30 |
-| `coverage-cpp`, `coverage-fortran` (`coverage.yml`) | 6.3, 6.1 | 1440 s with the coverage multiplier (`ThreadTeamTest_limit2_sutton3`, registry 480 s) | 65 |
+| `coverage-cpp`, `coverage-fortran` (`coverage.yml`) | 6.3, 6.1 | 1440 s with the coverage multiplier (thread-team shards, registry 480 s) | 70 |
 | `nodownload_rehearsal`, `build_fast_nlist_off`, `potentials_tight_binding` | 4.0, 3.9, 4.4 | 1200 s | 25 |
 | `build_windows_meson` | 7.1 | 900 s, `StreamParityTest` | 25 |
 | `engines` | 5.4 | 600 s, the plumed tests | 20 |
@@ -182,11 +182,11 @@ jobs, matrix legs pooled: the last 100 completed orchestrator runs and the last
 
 `coverage-cpp` and `coverage-fortran` are above that sum on purpose. The p95
 was recorded before the instrumented thread-team shards. `scripts/run_coverage_cpp.sh`
-took 2058 s pinned to 4 cores, which is what `ubuntu-22.04` provides. 60% of
-65 minutes is 2340 s, so that run is 52.8% of the job. 60 minutes would leave
-102 s under the 60% line, and one shard in that run took 341 s after taking
-50 s on a rerun. `coverage-fortran` runs the same script when `bbdir-cov` is
-absent, then extracts the Fortran kernels.
+took 2058 s pinned to 4 cores, which is what `ubuntu-22.04` provides, and that
+run included one shard at 341 s that took 50 s when the same binary was run
+again. 60% of 70 minutes is 2520 s, so the measured run is 49% of the job and
+another stall of that size still fits. 65 minutes would not. `coverage-fortran`
+runs the same script when `bbdir-cov` is absent, then extracts the Fortran kernels.
 
 Timeouts set before the rule stay, all above it: cosmo `build-ape` 120 (a cache
 miss rebuilds the Cosmopolitan toolchain), the reusable `py-wheels` 150,
