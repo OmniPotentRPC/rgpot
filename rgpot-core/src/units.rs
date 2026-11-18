@@ -38,8 +38,10 @@ pub const EV_TO_HARTREE: f64 = 1.0 / HARTREE_TO_EV;
 pub const KB_HARTREE: f64 = 3.166_811_563_455_6e-6;
 /// Boltzmann constant in electronvolts per kelvin (`k_B / e`).
 pub const KB_EV: f64 = BOLTZMANN_CONSTANT_J_PER_K / ELEMENTARY_CHARGE_C;
+/// Electron mass in daltons (`m_e / u`, CODATA 2018).
+pub const ELECTRON_MASS_IN_DALTON: f64 = 5.485_799_090_65e-4;
 /// Unified atomic mass unit (dalton) in electron masses.
-pub const DALTON_IN_ELECTRON_MASSES: f64 = 1.0 / 5.485_799_090_65e-4;
+pub const DALTON_IN_ELECTRON_MASSES: f64 = 1.0 / ELECTRON_MASS_IN_DALTON;
 /// Atomic unit of time in seconds (`hbar / E_h`).
 pub const ATOMIC_UNIT_OF_TIME_S: f64 = REDUCED_PLANCK_CONSTANT_J_S / HARTREE_ENERGY_J;
 
@@ -51,6 +53,7 @@ mod tests {
     fn header_constants_match_their_definitions() {
         assert!(KB_HARTREE > 0.0 && KB_HARTREE.is_finite());
         assert!(KB_EV > 0.0 && KB_EV.is_finite());
+        assert!(ELECTRON_MASS_IN_DALTON > 0.0 && ELECTRON_MASS_IN_DALTON.is_finite());
         assert!(BOHR_TO_ANGSTROM > 0.0 && BOHR_TO_ANGSTROM.is_finite());
         assert!(HARTREE_TO_EV > 0.0 && HARTREE_TO_EV.is_finite());
         assert!(DALTON_IN_ELECTRON_MASSES > 0.0 && DALTON_IN_ELECTRON_MASSES.is_finite());
@@ -64,6 +67,10 @@ mod tests {
         assert_eq!(
             ATOMIC_UNIT_OF_TIME_S.to_bits(),
             (REDUCED_PLANCK_CONSTANT_J_S / HARTREE_ENERGY_J).to_bits()
+        );
+        assert_eq!(
+            DALTON_IN_ELECTRON_MASSES.to_bits(),
+            (1.0 / ELECTRON_MASS_IN_DALTON).to_bits()
         );
     }
 }

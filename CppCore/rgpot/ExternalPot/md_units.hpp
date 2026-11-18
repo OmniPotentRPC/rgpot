@@ -7,6 +7,9 @@
 // elementary charge and Avogadro number, 2019), so a caller converts
 // once and then reuses the stored values.
 
+// Keep SI constants in sync with rgpot/units.hpp.
+#include "rgpot/units.hpp"
+
 namespace rgpot::md {
 
 // 1 nm = 10 Angstrom, exactly.
@@ -15,8 +18,8 @@ inline constexpr double kNmPerAngstrom = 0.1;
 
 // Faraday constant / 1000: kJ/mol in one eV.
 // e = 1.602176634e-19 C, N_A = 6.02214076e23 /mol.
-inline constexpr double kCoulomb = 1.602176634e-19;
-inline constexpr double kAvogadro = 6.02214076e23;
+inline constexpr double kCoulomb = units::ELEMENTARY_CHARGE_C;
+inline constexpr double kAvogadro = units::AVOGADRO_CONSTANT_PER_MOL;
 inline constexpr double kKjPerEv = kCoulomb * kAvogadro / 1000.0;
 inline constexpr double kEvPerKj = 1.0 / kKjPerEv;
 

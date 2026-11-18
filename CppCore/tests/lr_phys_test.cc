@@ -488,7 +488,7 @@ void test_library_dispersion() {
   double native = 0.0;
   double nF[9] = {};
   double nstrain[6] = {};
-  const double bohr = 0.529177210903;
+  const double bohr = rgpot::units::BOHR_TO_ANGSTROM;
   rgpot::lr::d4_evaluate(pos.data(), z.data(), pos.size() / 3, nullptr, false, 0.0, bj, 60.0 * bohr,
                          40.0 * bohr, 30.0 * bohr, &native, nF, nstrain);
   check_close(native, e.energy, 1e-8, "native D4 matches dftd4 on water");

@@ -13,6 +13,9 @@ import sys
 import tempfile
 import time
 
+HARTREE_TO_EV = 27.211386245988
+BOHR_TO_ANGSTROM = 0.529177210903
+
 
 def run(command: list[str], env: dict[str, str], expected: int = 0) -> str:
     result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=30)
@@ -58,8 +61,8 @@ def main() -> None:
         if not match:
             raise AssertionError("force host did not report physical results")
         positions = [0.0, 0.0, -0.3707, 0.0, 0.0, 0.3707]
-        energy = (0.02 + sum(0.5 * value * value for value in positions)) * 27.211386245988
-        force = max(abs(0.001 * (i + 1) + 0.01 * value) for i, value in enumerate(positions)) * (27.211386245988 / 0.529177210903)
+        energy = (0.02 + sum(0.5 * value * value for value in positions)) * HARTREE_TO_EV
+        force = max(abs(0.001 * (i + 1) + 0.01 * value) for i, value in enumerate(positions)) * (HARTREE_TO_EV / BOHR_TO_ANGSTROM)
         if not math.isclose(float(match[1]), energy, rel_tol=0.0, abs_tol=1e-11):
             raise AssertionError("force host energy differs from independent oracle")
         if not math.isclose(float(match[2]), force, rel_tol=0.0, abs_tol=1e-12):
