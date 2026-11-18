@@ -148,14 +148,13 @@ impl RpcClient {
     }
 }
 
+type CpuInput<'a> = (&'a [f64], &'a [i32], &'a [f64]);
+
 /// Extract CPU data slices from DLPack input tensors.
 ///
 /// # Safety
 /// All tensor pointers in `input` must be valid DLPack tensors on kDLCPU.
-unsafe fn extract_cpu_input(
-    input: &rgpot_force_input_t,
-    n: usize,
-) -> Result<(&[f64], &[i32], &[f64]), String> {
+unsafe fn extract_cpu_input(input: &rgpot_force_input_t, n: usize) -> Result<CpuInput<'_>, String> {
     // Positions
     if input.positions.is_null() {
         return Err("positions tensor is NULL".into());
