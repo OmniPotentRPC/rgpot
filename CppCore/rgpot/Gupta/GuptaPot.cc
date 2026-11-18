@@ -146,8 +146,12 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
     grad_.assign(3 * n_size, 0.0);
     rgpot_gupta(R, n_size, slot_.data(), 1, &cfg.A, &cfg.xi, &cfg.p, &cfg.q,
                 &cfg.r0, &out->energy, grad_.data());
-    for (std::size_t k = 0; k < 3 * n_size; ++k) {
-      F[k] = -grad_[k];
+    if (!std::isfinite(out->energy)) {
+      std::fill_n(F, 3 * n_size, std::numeric_limits<double>::quiet_NaN());
+    } else {
+      for (std::size_t k = 0; k < 3 * n_size; ++k) {
+        F[k] = -grad_[k];
+      }
     }
     if (cfg.stress) {
       publishCauchyStress(out, strain, volume);
@@ -232,8 +236,15 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
               return;
             }
             if (r2 <= 0.0) {
+              const double nan = std::numeric_limits<double>::quiet_NaN();
+              rho[static_cast<std::size_t>(i)] = nan;
+              rho[static_cast<std::size_t>(j)] = nan;
               e_sum[static_cast<std::size_t>(i) * decltype(stride)::value] =
-                  std::numeric_limits<double>::quiet_NaN();
+                  nan;
+              if (atom_e != nullptr) {
+                atom_e[static_cast<std::size_t>(i)] = nan;
+                atom_e[static_cast<std::size_t>(j)] = nan;
+              }
               return;
             }
             double phi = 0.0;
@@ -258,9 +269,13 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
             return;
           }
           if (r2 <= 0.0) {
+            const double nan = std::numeric_limits<double>::quiet_NaN();
+            rho[static_cast<std::size_t>(i)] = nan;
             if (j > i) {
-              e_sum[static_cast<std::size_t>(i)] =
-                  std::numeric_limits<double>::quiet_NaN();
+              e_sum[static_cast<std::size_t>(i)] = nan;
+            }
+            if (atom_e != nullptr) {
+              atom_e[static_cast<std::size_t>(i)] = nan;
             }
             return;
           }
@@ -299,29 +314,32 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
   auto apply = [=](auto stride, int32_t i, int32_t j, double dx, double dy,
                    double dz, double r2, double *force, double *virial,
                    bool both, Terms &terms) RGPOT_GUPTA_PAIR_INLINE {
-    if (r2 > cutoff2 || r2 <= 0.0) {
+    if (r2 > cutoff2) {
       return;
     }
-    double r = 0.0;
-    double dphi = 0.0;
-    double dpsi = 0.0;
-    if (const double *kept = terms.next()) {
-      r = kept[0];
-      dphi = kept[1];
-      dpsi = kept[2];
-    } else {
-      r = std::sqrt(r2);
-      const double u = r / r0 - 1.0;
-      const double phi = 2.0 * A * std::exp(-p * u);
-      const double psi = xi2 * std::exp(-2.0 * q * u);
-      dphi = -(p / r0) * phi;
-      dpsi = -(2.0 * q / r0) * psi;
+    double fscale = std::numeric_limits<double>::quiet_NaN();
+    if (!(r2 <= 0.0)) {
+      double r = 0.0;
+      double dphi = 0.0;
+      double dpsi = 0.0;
+      if (const double *kept = terms.next()) {
+        r = kept[0];
+        dphi = kept[1];
+        dpsi = kept[2];
+      } else {
+        r = std::sqrt(r2);
+        const double u = r / r0 - 1.0;
+        const double phi = 2.0 * A * std::exp(-p * u);
+        const double psi = xi2 * std::exp(-2.0 * q * u);
+        dphi = -(p / r0) * phi;
+        dpsi = -(2.0 * q / r0) * psi;
+      }
+      const double wi = weight[static_cast<std::size_t>(i)];
+      const double wj = weight[static_cast<std::size_t>(j)];
+      const double embed = -0.5 * (wi + wj);
+      const double coef = (dphi + embed * dpsi) / r;
+      fscale = -coef;
     }
-    const double wi = weight[static_cast<std::size_t>(i)];
-    const double wj = weight[static_cast<std::size_t>(j)];
-    const double embed = -0.5 * (wi + wj);
-    const double coef = (dphi + embed * dpsi) / r;
-    const double fscale = -coef;
     const double fx = fscale * dx;
     const double fy = fscale * dy;
     const double fz = fscale * dz;
@@ -399,7 +417,15 @@ void GuptaPot::densityStage(const HalfList &list, double *densities) const {
   const double xi2 = cfg.xi * cfg.xi;
   staged::forEachPair(
       list, [&](int i, int j, double, double, double, double r2, bool both) {
-        if (r2 > cutoff2 || r2 <= 0.0) {
+        if (r2 > cutoff2) {
+          return;
+        }
+        if (r2 <= 0.0) {
+          const double nan = std::numeric_limits<double>::quiet_NaN();
+          densities[i] = nan;
+          if (both) {
+            densities[j] = nan;
+          }
           return;
         }
         const double r = std::sqrt(r2);
@@ -440,13 +466,12 @@ void GuptaPot::forceStage(const HalfList &list, const double *densities,
       if (r2 > cutoff2) {
         return;
       }
-      // Same signal as LJPot::forceStage: a coincidence has no direction,
-      // so the tally energy is NaN and the pair contributes no force. NaN
-      // is not <= 0 and falls through.
+      // A coincidence has no direction, so the energy and the pair forces
+      // are poisoned with NaN. NaN is not <= 0 and falls through.
       if (r2 <= 0.0) {
-        if constexpr (decltype(tallied)::value) {
-          tally->energy = std::numeric_limits<double>::quiet_NaN();
-        }
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        staged::addPair(tallied, forces, tally, i, j, both, nan, nan, dx, dy,
+                        dz);
         return;
       }
       const double r = std::sqrt(r2);
