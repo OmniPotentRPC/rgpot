@@ -21,6 +21,7 @@ schema = ["dep:capnp", "dep:capnpc"]
 profile = ["schema", "dep:libloading"]
 rpc = ["schema", "dep:capnp-rpc", "dep:tokio", "dep:tokio-util", "dep:futures"]
 cache = []
+mdi = ["dep:libloading", "dep:libc"]
 gen-header = ["dep:cbindgen"]
 
 [dependencies]
@@ -36,9 +37,11 @@ capnp-rpc = { version = "0.20", optional = true }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "macros"], optional = true }
 tokio-util = { version = "0.7", features = ["compat"], optional = true }
 futures = { version = "0.3", optional = true }
+libc = { version = "0.2", optional = true }
 
 [dev-dependencies]
 ndarray = "0.17.2"
+tempfile = "3.27.0"
 
 [[test]]
 name = "profile"

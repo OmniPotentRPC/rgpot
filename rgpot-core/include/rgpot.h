@@ -918,6 +918,26 @@ enum rgpot_status_t rgpot_rpc_calculate(rgpot_rpc_client_t *client,
 void rgpot_rpc_client_free(rgpot_rpc_client_t *client);
 #endif
 
+#if defined(RGPOT_HAS_MDI)
+/**
+ * Start an MDI engine for `pot` and block until the driver sends `EXIT`.
+ *
+ * `options` is passed to the official MDI Library, for example
+ * `-role ENGINE -name RGPOT -method TCP -hostname localhost -port 8021`.
+ * `library_path` may be NULL to use `RGPOT_MDI_LIBRARY` or the platform
+ * loader's normal `libmdi` search.
+ *
+ * # Safety
+ *
+ * `pot` must remain valid until this function returns. `options` must point
+ * to a NUL-terminated UTF-8 string. `library_path` must be NULL or point to
+ * a NUL-terminated UTF-8 string.
+ */
+enum rgpot_status_t rgpot_mdi_server_start(const struct rgpot_potential_t *pot,
+                                           const char *options,
+                                           const char *library_path);
+#endif
+
 /**
  * Full version string of the loaded library, as `MAJOR.MINOR.PATCH`.
  *
