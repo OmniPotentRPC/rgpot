@@ -136,7 +136,7 @@ nblib::NBKernelOptions kernelOptions(const TopologyDesc &description) {
   options.numOpenMPThreads = 1;
   options.nbnxmSimd = nblib::SimdKernels::SimdNo;
   options.pairlistCutoff = static_cast<Real>(description.cutoff);
-  options.coulombType = nblib::CoulombType::Cutoff;
+  options.coulombType = nblib::CoulombType::ReactionField;
   return options;
 }
 
@@ -188,6 +188,11 @@ void Engine::rebuildListed(const std::array<double, 3> &box) {
 
 void Engine::evaluate(const double *positions, const std::array<double, 3> &box,
                       bool wantVirial, Evaluation &out) {
+  for (std::size_t k = 0; k < 3 * atoms_; ++k) {
+    if (!std::isfinite(positions[k])) {
+      throw std::invalid_argument("nblib positions must be finite");
+    }
+  }
   const double shortest = std::min({box[0], box[1], box[2]});
   if (!(shortest > 2.0 * description_.cutoff)) {
     throw std::invalid_argument(

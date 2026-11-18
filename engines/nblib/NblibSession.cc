@@ -57,8 +57,6 @@ void Session::setBox(const double *box9) {
   forcesValid_ = false;
   box_ = edges;
   haveBox_ = true;
-  simulation_.reset();
-  integrator_.reset();
 }
 
 std::array<double, 9> Session::box() const {
@@ -128,58 +126,70 @@ void Session::initialize() { ensureForces(); }
 void Session::step(std::uint64_t count, double timeStep) {
   requireFinitePositive(timeStep, "the time step");
   ensureForces();
-  if (simulation_ == nullptr) {
-    const std::size_t atoms = engine_.atoms();
-    const std::vector<nblib::Vec3> zeros(atoms, nblib::Vec3(0, 0, 0));
-    const nblib::Box box = Engine::makeBox(box_);
-    simulation_ = std::make_unique<nblib::SimulationState>(
-        zeros, zeros, zeros, box, engine_.topology());
-    integrator_ =
-        std::make_unique<nblib::LeapFrog>(simulation_->topology(), box);
-  }
+  const std::size_t atoms = engine_.atoms();
+  const std::vector<nblib::Vec3> zeros(atoms, nblib::Vec3(0, 0, 0));
+  const nblib::Box box = Engine::makeBox(box_);
+  nblib::SimulationState simulation(zeros, zeros, zeros, box,
+                                    engine_.topology());
+  nblib::LeapFrog integrator(simulation.topology(), box);
+  std::vector<double> nextX = x_;
+  std::vector<double> nextForce = force_;
+  double nextPotential = potential_;
+  std::array<double, 9> nextVirial = virial_;
+  std::uint64_t nextSteps = steps_;
+  double nextTime = time_;
+  std::uint64_t nextEvaluations = evaluations_;
   // nblib's leap-frog keeps the velocity half a step behind the positions:
   // v(t - dt/2) = v(t) - dt/2 F(t)/m. A step from there is velocity Verlet.
   std::vector<double> half(v_);
   for (std::size_t k = 0; k < half.size(); ++k) {
-    half[k] -= 0.5 * timeStep * force_[k] / mass3_[k];
+    half[k] -= 0.5 * timeStep * nextForce[k] / mass3_[k];
   }
   const auto exchange = [&](bool toState) {
-    auto &x = simulation_->coordinates();
-    auto &v = simulation_->velocities();
-    auto &f = simulation_->forces();
+    auto &x = simulation.coordinates();
+    auto &v = simulation.velocities();
+    auto &f = simulation.forces();
     for (std::size_t i = 0; i < engine_.atoms(); ++i) {
       for (std::size_t d = 0; d < 3; ++d) {
         const std::size_t k = 3 * i + d;
         if (toState) {
-          x[i][d] = static_cast<Real>(x_[k]);
+          x[i][d] = static_cast<Real>(nextX[k]);
           v[i][d] = static_cast<Real>(half[k]);
-          f[i][d] = static_cast<Real>(force_[k]);
+          f[i][d] = static_cast<Real>(nextForce[k]);
         } else {
-          x_[k] = x[i][d];
+          nextX[k] = x[i][d];
           half[k] = v[i][d];
         }
       }
     }
   };
-  try {
-    for (std::uint64_t s = 0; s < count; ++s) {
-      exchange(true);
-      integrator_->integrate(static_cast<Real>(timeStep),
-                             simulation_->coordinates(),
-                             simulation_->velocities(),
-                             simulation_->forces());
-      exchange(false);
-      ++steps_;
-      time_ += timeStep;
-      evaluate();
-    }
-  } catch (...) {
-    forcesValid_ = false;
-    throw;
+  Evaluation nextEvaluation;
+  for (std::uint64_t s = 0; s < count; ++s) {
+    exchange(true);
+    integrator.integrate(static_cast<Real>(timeStep), simulation.coordinates(),
+                         simulation.velocities(), simulation.forces());
+    exchange(false);
+    engine_.evaluate(nextX.data(), box_, true, nextEvaluation);
+    nextForce = nextEvaluation.forces;
+    nextPotential = nextEvaluation.energy;
+    nextVirial = nextEvaluation.virial;
+    ++nextSteps;
+    nextTime += timeStep;
+    ++nextEvaluations;
   }
-  for (std::size_t k = 0; k < v_.size(); ++k) {
-    v_[k] = half[k] + 0.5 * timeStep * force_[k] / mass3_[k];
+  std::vector<double> nextV(half.size());
+  for (std::size_t k = 0; k < nextV.size(); ++k) {
+    nextV[k] = half[k] + 0.5 * timeStep * nextForce[k] / mass3_[k];
   }
+  x_ = std::move(nextX);
+  v_ = std::move(nextV);
+  force_ = std::move(nextForce);
+  potential_ = nextPotential;
+  virial_ = nextVirial;
+  steps_ = nextSteps;
+  time_ = nextTime;
+  evaluations_ = nextEvaluations;
+  forcesValid_ = true;
 }
 
 md::LangevinResult Session::langevin(const md::LangevinSettings &settings,

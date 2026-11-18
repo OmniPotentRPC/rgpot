@@ -62,7 +62,7 @@ Inside a molecule:
 | Line | Parameters |
 |------+------------|
 | =atom <name> <type> <charge>= | charge in e |
-| =exclude <a> <b>= | atom names or indices |
+| =exclude <a> <b>= | atom names (numeric indices are not supported) |
 | =bond harmonic= or =g96 <a> <b> <k> <r0>= | kJ mol^-1 nm^-2 (g96: nm^-4), nm |
 | =bond morse <a> <b> <depth> <beta> <r0>= | kJ/mol, nm^-1, nm |
 | =angle harmonic= or =g96 <a> <b> <c> <k> <theta0>= | kJ mol^-1 rad^-2, degrees |
@@ -146,8 +146,9 @@ engines, because they travel in the request and not in a callback.
 - The CPU nonbonded calculator adds the energies of each call to those of the
   last; the library takes the difference, and recreates the calculator every
   256 calls so the running sum stays small.
-- The improper-dihedral forces of nblib have the wrong sign.
-  The library puts impropers in a separate calculator and subtracts its forces.
+- The improper-dihedral forces of nblib 2025.5 have the wrong sign.
+  For that version, the library puts impropers in a separate calculator and
+  subtracts its forces.
 - The listed virial assumes whole molecules; the library unwraps each molecule
   sequentially, so a chain longer than half the box is right.
 
@@ -160,7 +161,7 @@ reads the box back.
 harmonic bonds of rest length zero on a hyperplane. The kinetic energy
 \(4kT\), the potential energy \(5kT/2+c^2/2s\) and the mean constraint force
 \(dF/dc=c/s\) are known in closed form; each sampled mean, with its
-batch-means standard error, must lie within five standard errors of the closed
+batch-means standard error, must lie within four standard errors of the closed
 form, and the OpenMM and nblib means must agree within their pooled error.
 =md_engine_agreement= compares argon energies and forces between the engines,
 including a periodic image and a reseed, and a harmonic dimer's temperature

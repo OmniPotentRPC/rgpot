@@ -15,9 +15,7 @@ prefix=$1
 version=${2:-2025.5}
 
 case $version in
-  2024.6) sha256=7cbad81f51c71a144d646515a7249aa74940b3f68071f51410e3a9473f05b339 ;;
   2025.5) sha256=7d0c7791675d0171af71dbfb35bfbb90bc4deb08266e62fbdcdac996f1f60174 ;;
-  2026.4) sha256=58eda60979b124fcf9dff8b1b63cedfbc72fdb36d99e921dc1bdc310571098b6 ;;
   *) echo "no pinned tarball for GROMACS $version" >&2; exit 2 ;;
 esac
 

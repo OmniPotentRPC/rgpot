@@ -24,17 +24,31 @@ nblib_lib = cppc.find_library(
 nblib_gmx_double = cppc.find_library(
     'gromacs_d',
     dirs: nblib_search,
-    required: false,
-)
-nblib_gmx_core = nblib_gmx_double.found() ? nblib_gmx_double : cppc.find_library(
-    'gromacs',
-    dirs: nblib_search,
     required: nblib_opt.enabled(),
 )
-if nblib_lib.found() and nblib_gmx_core.found() and nblib_gmx_double.found()
+nblib_gmx_core = nblib_gmx_double
+if nblib_lib.found() and nblib_gmx_double.found()
     nblib_compile += ['-DGMX_DOUBLE=1']
+    if nblib_prefix != ''
+        nblib_gmx = find_program(
+            nblib_prefix / 'bin' / 'gmx_d',
+            required: true,
+        )
+    else
+        nblib_gmx = find_program('gmx_d', required: true)
+    endif
+    nblib_version = run_command(
+        nblib_gmx,
+        '--version',
+        check: true,
+    ).stdout()
+    if not nblib_version.contains('2025.5')
+        error('the nblib engine requires GROMACS 2025.5')
+    endif
 endif
-nblib_rpath = nblib_prefix != '' ? nblib_prefix / 'lib' : ''
+nblib_rpath = nblib_prefix != '' ? (
+    nblib_prefix / 'lib' + ':' + nblib_prefix / 'lib64'
+) : ''
 
 if nblib_lib.found() and nblib_gmx_core.found()
     nblib_engine = shared_library(
@@ -87,5 +101,7 @@ if nblib_lib.found() and nblib_gmx_core.found()
     )
 
 else
-    message('nblib engine skipped: GROMACS nblib libraries were not found')
+    message(
+        'nblib engine skipped: double-precision GROMACS nblib libraries were not found',
+    )
 endif

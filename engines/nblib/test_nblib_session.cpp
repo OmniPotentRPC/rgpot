@@ -79,6 +79,35 @@ std::string argon_topology() {
          full_number(argon_c12()) + "\nmolecule argon 2\natom Ar Ar 0\nend\n";
 }
 
+void require_topology_rejected(const char *engine, const std::string &topology,
+                               const std::string &message) {
+  char error[1024] = {};
+  rgpot_md_session *session =
+      rgpot_md_session_create("nblib", engine, topology.data(), topology.size(),
+                              nullptr, error, sizeof(error));
+  if (session != nullptr) {
+    rgpot_md_session_destroy(session);
+    throw std::runtime_error(message + ": topology was accepted");
+  }
+  require(std::string(error).find(message) != std::string::npos, error);
+}
+
+void check_topology_header(const char *engine) {
+  require_topology_rejected(
+      engine,
+      "cutoff 0.4\nnblib 1\ncoulomb none\natomtype X 1 0 0\n"
+      "molecule one 1\natom A X 0\nend\n",
+      "first directive must be nblib 1");
+}
+
+void check_exclusion_index(const char *engine) {
+  require_topology_rejected(
+      engine,
+      "nblib 1\ncutoff 0.4\ncoulomb none\natomtype X 1 0 0\n"
+      "molecule pair 1\natom A X 0\natom B X 0\nexclude 0 1\nend\n",
+      "exclusions by index are not supported");
+}
+
 void check_improper_dihedral(const char *engine) {
   constexpr double force_constant = 2.0;
   const std::string topology =
@@ -132,10 +161,143 @@ void check_improper_dihedral(const char *engine) {
   require_near(forces[2], expected_force, "nblib improper force on A.z");
 }
 
+void check_charged_pair(const char *engine) {
+  const std::string topology =
+      "nblib 1\ncutoff 0.8\ncoulomb cutoff\natomtype X 1 0 0\n"
+      "molecule ions 1\natom P X 1\natom N X -1\nend\n";
+  char error[1024] = {};
+  rgpot_md_session *session =
+      rgpot_md_session_create("nblib", engine, topology.data(), topology.size(),
+                              nullptr, error, sizeof(error));
+  require(session != nullptr, error);
+  struct SessionGuard {
+    rgpot_md_session *session;
+    ~SessionGuard() { rgpot_md_session_destroy(session); }
+  } guard{session};
+  const std::array<double, 9> box{30.0, 0.0, 0.0, 0.0, 30.0,
+                                  0.0,  0.0, 0.0, 30.0};
+  const std::array<double, 6> positions{0.0, 0.0, 0.0, 4.0, 0.0, 0.0};
+  const std::array<double, 6> velocities{};
+  require(rgpot_md_session_set_periodic_box(session, box.data(), error,
+                                            sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_set_positions(session, positions.data(),
+                                         positions.size(), error,
+                                         sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_set_velocities(session, velocities.data(),
+                                          velocities.size(), error,
+                                          sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_initialize(session, error, sizeof(error)) == 0,
+          error);
+  std::array<double, 6> forces{};
+  double energy = 0.0;
+  require(rgpot_md_session_get_state(session, nullptr, nullptr, forces.data(),
+                                     forces.size(), &energy, nullptr, error,
+                                     sizeof(error)) == 0,
+          error);
+  constexpr double coulomb_kj_nm = 138.93545764438198;
+  const double expected_energy = -coulomb_kj_nm / 0.4 * kEvPerKj;
+  const double expected_force =
+      coulomb_kj_nm / (0.4 * 0.4) * kEvAPerKjNm;
+  require_near(energy, expected_energy, "nblib reaction-field energy");
+  require_near(forces[0], expected_force, "nblib reaction-field force");
+  require_near(forces[3], -expected_force,
+               "nblib reaction-field reaction force");
+}
+
+void check_nve_transaction(const char *engine) {
+  const std::string topology =
+      "nblib 1\ncutoff 0.4\ncoulomb none\natomtype X 1 0 0\n"
+      "molecule one 1\natom A X 0\nend\n";
+  char error[1024] = {};
+  rgpot_md_session *session =
+      rgpot_md_session_create("nblib", engine, topology.data(), topology.size(),
+                              nullptr, error, sizeof(error));
+  require(session != nullptr, error);
+  struct SessionGuard {
+    rgpot_md_session *session;
+    ~SessionGuard() { rgpot_md_session_destroy(session); }
+  } guard{session};
+  const std::array<double, 9> box{20.0, 0.0, 0.0, 0.0, 20.0,
+                                  0.0,  0.0, 0.0, 20.0};
+  const std::array<double, 3> positions{1.0, 2.0, 3.0};
+  const std::array<double, 3> velocities{0.25, -0.5, 0.75};
+  require(rgpot_md_session_set_periodic_box(session, box.data(), error,
+                                            sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_set_positions(session, positions.data(),
+                                         positions.size(), error,
+                                         sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_set_velocities(session, velocities.data(),
+                                          velocities.size(), error,
+                                          sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_initialize(session, error, sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_step_nve(session, 0.2, 3, error, sizeof(error)) == 0,
+          error);
+  std::array<double, 3> advanced{};
+  std::array<double, 3> advanced_velocity{};
+  require(rgpot_md_session_get_state(
+              session, advanced.data(), advanced_velocity.data(), nullptr,
+              advanced.size(), nullptr, nullptr, error, sizeof(error)) == 0,
+          error);
+  for (std::size_t k = 0; k < positions.size(); ++k) {
+    require_near(advanced[k], positions[k] + 0.6 * velocities[k],
+                 "nblib NVE ballistic position");
+    require_near(advanced_velocity[k], velocities[k],
+                 "nblib NVE ballistic velocity");
+  }
+
+  const std::array<double, 3> extreme{
+      std::numeric_limits<double>::max(), 0.0, 0.0};
+  require(rgpot_md_session_set_positions(session, positions.data(),
+                                         positions.size(), error,
+                                         sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_set_velocities(session, extreme.data(),
+                                          extreme.size(), error,
+                                          sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_initialize(session, error, sizeof(error)) == 0,
+          error);
+  std::array<double, 3> before_positions{};
+  std::array<double, 3> before_velocities{};
+  std::array<double, 3> before_forces{};
+  double before_energy = 0.0;
+  require(rgpot_md_session_get_state(
+              session, before_positions.data(), before_velocities.data(),
+              before_forces.data(), before_positions.size(), &before_energy,
+              nullptr, error, sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_step_nve(
+              session, std::numeric_limits<double>::max(), 1, error,
+              sizeof(error)) != 0,
+          "extreme NVE step unexpectedly succeeded");
+  std::array<double, 3> after_positions{};
+  std::array<double, 3> after_velocities{};
+  std::array<double, 3> after_forces{};
+  double after_energy = 0.0;
+  require(rgpot_md_session_get_state(
+              session, after_positions.data(), after_velocities.data(),
+              after_forces.data(), after_positions.size(), &after_energy,
+              nullptr, error, sizeof(error)) == 0,
+          error);
+  require(before_positions == after_positions &&
+              before_velocities == after_velocities &&
+              before_forces == after_forces && before_energy == after_energy,
+          "a failed nblib NVE step changed the session state");
+}
+
 void run(const char *engine) {
   require(engine != nullptr && engine[0] != '\0', "nblib engine path is empty");
   require(setenv("RGPOT_NBLIB_ENGINE", engine, 1) == 0,
           "could not set nblib engine path");
+  check_topology_header(engine);
+  check_exclusion_index(engine);
   char error[1024] = {};
   const std::string topology = argon_topology();
   rgpot_md_session *session =
@@ -264,14 +426,29 @@ void run(const char *engine) {
               first_velocities == second_velocities,
           "nblib Langevin seed is not deterministic");
   check_improper_dihedral(engine);
+  check_charged_pair(engine);
+  check_nve_transaction(engine);
 }
 
 } // namespace
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 2, "usage: test_nblib_session <engine>");
-    run(argv[1]);
+    require(argc == 2 || argc == 3,
+            "usage: test_nblib_session <engine> [regression-case]");
+    if (argc == 2) {
+      run(argv[1]);
+    } else if (std::string(argv[2]) == "topology-header") {
+      check_topology_header(argv[1]);
+    } else if (std::string(argv[2]) == "exclusion-index") {
+      check_exclusion_index(argv[1]);
+    } else if (std::string(argv[2]) == "charged-pair") {
+      check_charged_pair(argv[1]);
+    } else if (std::string(argv[2]) == "nve-transaction") {
+      check_nve_transaction(argv[1]);
+    } else {
+      throw std::runtime_error("unknown regression case");
+    }
     return 0;
   } catch (const std::exception &exception) {
     std::cerr << exception.what() << '\n';

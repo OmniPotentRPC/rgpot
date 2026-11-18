@@ -67,9 +67,8 @@ private:
   std::array<double, 5> accumulated_{};
   std::size_t epochCalls_ = 0;
   std::unique_ptr<nblib::ListedForceCalculator> listed_;
-  // nblib 2025.5 returns the improper dihedral forces with the wrong sign
-  // and the right energy, so impropers run in a calculator of their own
-  // and their forces are subtracted.
+  // nblib 2025.5 returns improper-dihedral forces with the wrong sign.
+  // Improper terms run separately so that version's forces can be corrected.
   std::unique_ptr<nblib::ListedForceCalculator> impropers_;
   std::vector<nblib::Vec3> improperForces_;
   std::array<double, 3> listedBox_{};

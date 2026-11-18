@@ -19,7 +19,6 @@
 
 #include <array>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace rgpot::nblibpot {
@@ -87,8 +86,6 @@ private:
   md::ProjectedLangevin driver_;
   md::SeededStream stream_;
 
-  std::unique_ptr<nblib::SimulationState> simulation_;
-  std::unique_ptr<nblib::LeapFrog> integrator_;
   Evaluation scratch_;
 };
 

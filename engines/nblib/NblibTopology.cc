@@ -41,6 +41,14 @@ int whole(std::size_t line, const std::string &token, const char *what) {
   return value;
 }
 
+bool isInteger(const std::string &token) {
+  int value = 0;
+  const char *first = token.data();
+  const char *last = first + token.size();
+  const auto result = std::from_chars(first, last, value);
+  return result.ec == std::errc() && result.ptr == last;
+}
+
 int atomIndex(std::size_t line, const MoleculeDesc &molecule,
               const std::string &name) {
   for (std::size_t i = 0; i < molecule.atoms.size(); ++i) {
@@ -214,6 +222,7 @@ TopologyDesc parseTopology(std::string_view text) {
   std::size_t line = 0;
   MoleculeDesc *open = nullptr;
   bool haveCutoff = false;
+  bool haveHeader = false;
   while (std::getline(input, raw)) {
     ++line;
     const std::size_t hash = raw.find('#');
@@ -229,6 +238,12 @@ TopologyDesc parseTopology(std::string_view text) {
       continue;
     }
     const std::string &key = tokens[0];
+    if (!haveHeader) {
+      if (key != "nblib" || tokens.size() != 2 || tokens[1] != "1") {
+        fail(line, "the first directive must be nblib 1");
+      }
+      haveHeader = true;
+    }
     if (key == "nblib") {
       needTokens(line, tokens, 2, "nblib 1");
       if (whole(line, tokens[1], "format version") != 1) {
@@ -322,6 +337,9 @@ TopologyDesc parseTopology(std::string_view text) {
           {tokens[1], tokens[2], number(line, tokens[3], "charge")});
     } else if (key == "exclude") {
       needTokens(line, tokens, 3, "exclude <atomA> <atomB>");
+      if (isInteger(tokens[1]) || isInteger(tokens[2])) {
+        fail(line, "exclusions by index are not supported; use atom names");
+      }
       const int a = atomIndex(line, *open, tokens[1]);
       const int b = atomIndex(line, *open, tokens[2]);
       if (a == b) {
@@ -341,6 +359,10 @@ TopologyDesc parseTopology(std::string_view text) {
   }
   if (open != nullptr) {
     fail(line, "molecule " + open->name + " is not closed with end");
+  }
+  if (!haveHeader) {
+    throw std::invalid_argument(
+        "nblib topology: the first directive must be nblib 1");
   }
   if (!haveCutoff) {
     throw std::invalid_argument("nblib topology: no cutoff directive");
