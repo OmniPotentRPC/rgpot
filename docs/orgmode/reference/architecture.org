@@ -83,6 +83,7 @@ See [[file:sutton_chen.org][Sutton-Chen potential]].
   =r0=, =cutoff=, =periodic=, =stress=).
   Unbounded non-periodic calls without stress delegate to the =rgpot_gupta= C
   kernel; periodic and truncated calls use the shared neighbour layer.
+  Periodic calls reject a cutoff at or above half a face spacing.
   A coincident pair makes that kernel return +infinity and =GuptaPot= poison the
   forces with NaN.
   Neighbour and staged calls set the energy and the forces to NaN.

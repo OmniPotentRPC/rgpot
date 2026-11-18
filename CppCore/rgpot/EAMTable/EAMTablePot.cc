@@ -27,6 +27,7 @@
 // clang-format on
 
 #include "rgpot/EAMTable/EAMTablePot.hpp"
+#include "rgpot/half_face_spacing.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
@@ -398,20 +399,11 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
                                          0.0,   0.0, 0.0, 1.0e6};
   const double *box = in.box;
   if (m_periodic) {
-    const double vol = cellVolume(box);
-    if (!(vol > 0.0)) {
+    if (!(cellVolume(box) > 0.0)) {
       bad("periodic evaluation needs a cell");
     }
-    // The pair list folds to one image per partner.
-    for (int k = 0; k < 3; ++k) {
-      const double *u = box + 3 * ((k + 1) % 3);
-      const double *v = box + 3 * ((k + 2) % 3);
-      const double cx = u[1] * v[2] - u[2] * v[1];
-      const double cy = u[2] * v[0] - u[0] * v[2];
-      const double cz = u[0] * v[1] - u[1] * v[0];
-      if (!(2.0 * t.cutoff < vol / std::sqrt(cx * cx + cy * cy + cz * cz))) {
-        bad("cutoff exceeds half a face spacing");
-      }
+    if (!rgpot::cutoffWithinHalfFaceSpacing(box, t.cutoff)) {
+      bad("cutoff exceeds half a face spacing");
     }
   } else {
     box = free_box;

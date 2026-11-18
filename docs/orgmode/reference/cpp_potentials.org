@@ -994,6 +994,7 @@ E = sum_i [ sum_{j != i} A * exp(-p * (r_ij / r_0 - 1))
   The force call throws =std::invalid_argument= when =out= is null, when
   =nAtoms > 0= with a null position or force buffer, and when =periodic= is set
   and the cell is null or has a diagonal entry that is not positive.
+  A periodic call also throws when the cutoff exceeds half a face spacing.
 
 *** =rgpot::GuptaPot::config=
 
