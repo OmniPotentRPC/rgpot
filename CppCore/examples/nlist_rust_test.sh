@@ -50,8 +50,12 @@ fi
 # shared library on the link line, ahead of the neighbour archives, or the
 # loader reports that the runtime does not come first.
 asan_first=
+ubsan_on=
 if nm "$half" 2>/dev/null | grep -q __asan_init; then
   asan_first=1
+fi
+if nm "$half" 2>/dev/null | grep -q __ubsan_; then
+  ubsan_on=1
 fi
 case "$os" in
   Darwin)
@@ -87,11 +91,21 @@ case "$os" in
     ;;
   *)
     asan_so=
-    if [ -n "$asan_first" ]; then
-      asan_so="-Wl,--no-as-needed -lasan -Wl,--as-needed"
+    ubsan_so=
+    no_as_needed=
+    as_needed=
+    if [ -n "$asan_first" ] || [ -n "$ubsan_on" ]; then
+      no_as_needed=-Wl,--no-as-needed
+      as_needed=-Wl,--as-needed
     fi
-    # $asan_so stays unquoted: empty adds nothing, and -lasan precedes the archives.
-    "$cxx" -shared -o "$dir/libnlist.so" $asan_so -Wl,--whole-archive "$half" "$mini" "$fma" \
+    if [ -n "$asan_first" ]; then
+      asan_so=-lasan
+    fi
+    if [ -n "$ubsan_on" ]; then
+      ubsan_so=-lubsan
+    fi
+    # These stay unquoted: empty adds nothing, and sanitizer libs precede the archives.
+    "$cxx" -shared -o "$dir/libnlist.so" $no_as_needed $asan_so $ubsan_so $as_needed -Wl,--whole-archive "$half" "$mini" "$fma" \
       -Wl,--no-whole-archive "$@" $gcov_flag
     ;;
 esac
@@ -106,12 +120,16 @@ case "$os" in
     ;;
   *)
     asan_exe=
+    ubsan_exe=
     if [ "$os" != Darwin ] && [ -n "$asan_first" ]; then
       asan_exe=-lasan
     fi
-    # -lasan before -lnlist makes the runtime the executable's first dependency.
+    if [ "$os" != Darwin ] && [ -n "$ubsan_on" ]; then
+      ubsan_exe=-lubsan
+    fi
+    # Put sanitizer runtimes before -lnlist so they are available while libnlist loads.
     "$rustc_bin" --edition 2021 "$root/CppCore/examples/nlist_rust/main.rs" -o "$out" \
-      -L "$dir" $asan_exe -lnlist
+      -L "$dir" $asan_exe $ubsan_exe -lnlist
     ;;
 esac
 case "$os" in
