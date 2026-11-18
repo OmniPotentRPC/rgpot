@@ -611,6 +611,56 @@ int c_get_masses(void *ctx, double *masses, size_t n_atoms, char *err,
   }
 }
 
+int c_get_neighbors(void *ctx, const rgpot_nlist_request *request,
+                    rgpot_nlist_soa *out, size_t *count, size_t *needed,
+                    char *err, size_t err_len) {
+  try {
+    auto *session = static_cast<OpenMMSession *>(ctx);
+    const OpenMMState st = session->state();
+    std::vector<double> pos_ang(st.positions.size() * 3);
+    for (size_t i = 0; i < st.positions.size(); ++i) {
+      pos_ang[3 * i] = st.positions[i][0] * md::kAngstromPerNm;
+      pos_ang[3 * i + 1] = st.positions[i][1] * md::kAngstromPerNm;
+      pos_ang[3 * i + 2] = st.positions[i][2] * md::kAngstromPerNm;
+    }
+    OpenMM::Vec3 a, b, c;
+    session->boxVectors(a, b, c);
+    const std::array<double, 9> box_ang = {
+        a[0] * md::kAngstromPerNm, a[1] * md::kAngstromPerNm,
+        a[2] * md::kAngstromPerNm, b[0] * md::kAngstromPerNm,
+        b[1] * md::kAngstromPerNm, b[2] * md::kAngstromPerNm,
+        c[0] * md::kAngstromPerNm, c[1] * md::kAngstromPerNm,
+        c[2] * md::kAngstromPerNm,
+    };
+    const int32_t status = rgpot_nlist_build(pos_ang.data(), st.positions.size(),
+                                             box_ang.data(), request, out,
+                                             count, needed);
+    if (status != RGPOT_NLIST_OK) {
+      write_c_err(err, err_len, rgpot_nlist_strerror(status));
+      return RGPOT_MD_NLIST_ERROR;
+    }
+    return RGPOT_MD_NLIST_OK;
+  } catch (const std::exception &ex) {
+    write_c_err(err, err_len, ex.what());
+    return RGPOT_MD_NLIST_ERROR;
+  } catch (...) {
+    write_c_err(err, err_len, "unknown C++ exception");
+    return RGPOT_MD_NLIST_ERROR;
+  }
+}
+
+int c_set_neighbors(void *ctx, const rgpot_nlist_request *request,
+                    const rgpot_nlist_soa *pairs, size_t count, char *err,
+                    size_t err_len) {
+  (void)ctx;
+  (void)request;
+  (void)pairs;
+  (void)count;
+  write_c_err(err, err_len,
+              "OpenMM MD session does not accept externally supplied neighbor lists");
+  return RGPOT_MD_NLIST_UNSUPPORTED;
+}
+
 void c_destroy(void *ctx) { delete static_cast<OpenMMSession *>(ctx); }
 
 } // namespace
@@ -645,6 +695,8 @@ int openmm_md_session_init(const char *system_xml, const char *platform,
     ops->get_periodic_box = c_get_periodic_box;
     ops->initialize = c_initialize;
     ops->run_langevin = c_run_langevin;
+    ops->get_neighbors = c_get_neighbors;
+    ops->set_neighbors = c_set_neighbors;
     *ctx = session.release();
     return 0;
   } catch (const std::exception &ex) {
