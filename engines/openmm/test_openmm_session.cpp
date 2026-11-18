@@ -3,6 +3,7 @@
 
 #include "rgpot/ExternalPot/OpenMM.hpp"
 #include "rgpot/ExternalPot/external_potentials.h"
+#include "../common/test_seed.hpp"
 
 #include <openmm/HarmonicBondForce.h>
 #include <openmm/System.h>
@@ -28,19 +29,6 @@ constexpr std::size_t kTemperatureBatches = 48;
 constexpr std::size_t kSamplesPerBatch = 250;
 constexpr std::size_t kTemperatureStride = 40;
 constexpr double kTemperatureFriction = 10.0;
-
-std::uint64_t test_seed(std::uint64_t fallback) {
-  const char *value = std::getenv("RGPOT_TEST_SEED");
-  if (value == nullptr) {
-    return fallback;
-  }
-  char *end = nullptr;
-  const auto parsed = std::strtoull(value, &end, 10);
-  if (end == value || *end != '\0') {
-    throw std::runtime_error("RGPOT_TEST_SEED is not an integer");
-  }
-  return parsed;
-}
 
 std::unique_ptr<OpenMM::System> make_harmonic_system(double m0, double m1) {
   auto out = std::make_unique<OpenMM::System>();
@@ -76,7 +64,7 @@ void test_cpp_session() {
   config.time_step = 0.0005;
   config.friction = 1.0;
   config.temperature = 0.02585 * rgpot::md::kKjPerEv;
-  config.random_seed = static_cast<int>(test_seed(19));
+  config.random_seed = rgpot::test::test_seed(19);
 
   rgpot::OpenMMSession session(make_harmonic_system(39.9, 39.9), config);
   const std::vector<OpenMM::Vec3> positions{OpenMM::Vec3(0.0, 0.0, 0.0),
@@ -116,14 +104,15 @@ void test_cpp_session() {
       {OpenMM::Vec3(0.0, 0.0, 0.0), OpenMM::Vec3(0.0, 0.0, 0.0)});
   sample_session.stepLangevin(config.temperature, kTemperatureFriction,
                               config.time_step, plane_point, plane_normal,
-                              wall_points, wall_normals, 5000, test_seed(19));
+                              wall_points, wall_normals, 5000,
+                              rgpot::test::test_seed(19));
 
   const double tolerance =
       4096.0 * std::sqrt(std::numeric_limits<double>::epsilon());
   constexpr std::size_t total_samples = kTemperatureBatches * kSamplesPerBatch;
   std::vector<double> temperatures;
   temperatures.reserve(total_samples);
-  const std::uint64_t sample_seed = test_seed(20);
+  const std::uint64_t sample_seed = rgpot::test::test_seed(20);
   for (std::size_t sample = 0; sample < total_samples; ++sample) {
     sample_session.stepLangevin(config.temperature, kTemperatureFriction,
                                 config.time_step, plane_point, plane_normal,
@@ -239,6 +228,47 @@ void test_cpp_session() {
   }
 }
 
+void test_seed_validation() {
+  const char *prior = std::getenv("RGPOT_TEST_SEED");
+  const std::string saved = prior != nullptr ? prior : "";
+  const bool had_prior = prior != nullptr;
+  auto restore = [&]() {
+    if (had_prior) {
+      setenv("RGPOT_TEST_SEED", saved.c_str(), 1);
+    } else {
+      unsetenv("RGPOT_TEST_SEED");
+    }
+  };
+  try {
+    unsetenv("RGPOT_TEST_SEED");
+    if (rgpot::test::test_seed(42) != 42) {
+      throw std::runtime_error("test_seed did not return fallback");
+    }
+    setenv("RGPOT_TEST_SEED", "18446744073709551615", 1);
+    if (rgpot::test::test_seed(0) != std::numeric_limits<std::uint64_t>::max()) {
+      throw std::runtime_error("test_seed did not parse UINT64_MAX");
+    }
+    for (const char *bad :
+         {"", "-1", "+1", " 42", "42 ", "abc", "18446744073709551616"}) {
+      setenv("RGPOT_TEST_SEED", bad, 1);
+      bool rejected = false;
+      try {
+        (void)rgpot::test::test_seed(0);
+      } catch (const std::runtime_error &) {
+        rejected = true;
+      }
+      if (!rejected) {
+        throw std::runtime_error(
+            std::string("test_seed accepted invalid value: ") + bad);
+      }
+    }
+    restore();
+  } catch (...) {
+    restore();
+    throw;
+  }
+}
+
 void test_c_abi_session() {
   auto sys = make_harmonic_system(4.0, 39.9);
   std::ostringstream xml_stream;
@@ -338,6 +368,7 @@ void test_c_abi_session() {
 
 int main() {
   try {
+    test_seed_validation();
     test_cpp_session();
     test_c_abi_session();
     std::cout
