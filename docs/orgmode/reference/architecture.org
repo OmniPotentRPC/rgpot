@@ -79,8 +79,8 @@ Configurable via =ZBLConfig= (=cut_inner=, =cut_global=); the constructor throws
   potential, in reduced units by default.
 See [[file:sutton_chen.org][Sutton-Chen potential]].
 - =GuptaPot= (=PotType::Gupta=) :: Cleri-Rosato Gupta many-body potential
-  (=CppCore/rgpot/Gupta/=), configurable via =GuptaConfig= (=A=, =xi=, =p=,
-  =q=, =r0=, =cutoff=, =periodic=, =stress=).
+  (=CppCore/rgpot/Gupta/=), configurable via =GuptaConfig= (=A=, =xi=, =p=, =q=,
+  =r0=, =cutoff=, =periodic=, =stress=).
   Unbounded non-periodic calls without stress delegate to the =rgpot_gupta= C
   kernel; periodic and truncated calls use the shared neighbour layer.
 - =EMTPot= (=PotType::EMT=, =CppCore/rgpot/EMT/=) :: Effective medium theory
@@ -94,9 +94,9 @@ copper set.
 - =LammpsPot=, =GromacsPot=, =OpenMMPot= :: Shifted Lennard-Jones in
   =CppCore/rgpot/ExternalPot/=, as =PotType::Lammps=, =PotType::Gromacs= and =PotType::OpenMM=; =GromacsPot= and =OpenMMPot= store nm and kJ/mol
   parameters.
-- Reduced cluster pairs :: C kernels
-  (=rgpot_lj_gradient=, =rgpot_morse_gradient=) in
-  =CppCore/rgpot/ReducedPair/=, not =Potential= classes.
+- Reduced cluster pairs :: C kernels (=rgpot_lj_gradient=,
+  =rgpot_morse_gradient=) in =CppCore/rgpot/ReducedPair/=, not =Potential=
+  classes.
 
 *** Fortran Potentials
 
