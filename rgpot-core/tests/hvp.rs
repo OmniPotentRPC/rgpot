@@ -15,8 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rgpot_core::c_api::hvp::{
     rgpot_potential_hessian, rgpot_potential_hvp, rgpot_potential_hvp_centre,
-    rgpot_potential_hvp_counts,
-    rgpot_potential_hvp_invalidate, rgpot_potential_reset_hvp_counts,
+    rgpot_potential_hvp_counts, rgpot_potential_hvp_invalidate, rgpot_potential_reset_hvp_counts,
     rgpot_potential_set_hvp_callback,
 };
 use rgpot_core::c_api::potential::{
@@ -369,8 +368,7 @@ fn dense_hessian_uses_analytic_products_as_columns() {
     let handle = Handle::with_analytic();
     let dim = system.pos.len();
     let mut dense = vec![f64::NAN; dim * dim];
-    let status =
-        unsafe { rgpot_potential_hessian(handle.pot, &input, dense.as_mut_ptr()) };
+    let status = unsafe { rgpot_potential_hessian(handle.pot, &input, dense.as_mut_ptr()) };
     assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS, "{}", last_error());
     for column in 0..dim {
         let mut basis = vec![0.0; dim];
@@ -749,6 +747,32 @@ fn malformed_requests_are_refused_before_any_call() {
     assert_eq!(status, invalid);
     let status = unsafe { rgpot_potential_set_hvp_callback(std::ptr::null(), None) };
     assert_eq!(status, invalid);
+
+    let too_many_atoms = usize::MAX / 3 + 1;
+    let mut one_position = 0.0;
+    let mut one_number = 1;
+    let mut one_cell = 1.0;
+    let mut oversized = unsafe {
+        rgpot_force_input_create(
+            too_many_atoms,
+            &mut one_position,
+            &mut one_number,
+            &mut one_cell,
+        )
+    };
+    let status = unsafe {
+        rgpot_potential_hvp(
+            handle.pot,
+            &oversized,
+            v.as_ptr(),
+            0.0,
+            FORWARD,
+            hv.as_mut_ptr(),
+        )
+    };
+    assert_eq!(status, invalid);
+    assert!(last_error().contains("too large"));
+    unsafe { rgpot_force_input_free(&mut oversized) };
 
     assert_eq!(handle.force_calls(), 0);
     unsafe { rgpot_force_input_free(&mut input) };

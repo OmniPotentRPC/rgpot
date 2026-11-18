@@ -86,6 +86,12 @@ The constructor does not check the cutoff against a cell; it throws
 =forceImpl= throws =std::invalid_argument= for a smaller cell, for a periodic
 call without a cell, and for an atomic number that is in no element line.
 
+* Hessian-vector products
+
+=hessianVectorImpl= evaluates the analytic Cartesian Hessian-vector product.
+It differentiates the table cubics on the segments selected by the current
+geometry and includes both pair and embedding contributions.
+
 * Stress
 
 =EAMTableConfig::stress= is off by default.

@@ -43,7 +43,7 @@ pub struct rgpot_abi_stamp_t {
 /// ABI major of this build.
 pub const RGPOT_ABI_VERSION_MAJOR: u16 = 1;
 /// ABI minor of this build.
-pub const RGPOT_ABI_VERSION_MINOR: u16 = 3;
+pub const RGPOT_ABI_VERSION_MINOR: u16 = 4;
 /// Layout revision of this build.
 pub const RGPOT_ABI_LAYOUT_REVISION: u16 = 1;
 
@@ -153,6 +153,7 @@ mod tests {
 
     #[test]
     fn stamp_equals_the_macros() {
+        assert_eq!(RGPOT_ABI_VERSION_MINOR, 4);
         assert_eq!(
             rgpot_abi_stamp(),
             stamp(
@@ -227,11 +228,9 @@ mod tests {
 
     #[test]
     fn committed_header_matches_the_crate() {
-        let header = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/include/rgpot.h"
-        ))
-        .unwrap();
+        let header =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/include/rgpot.h"))
+                .unwrap();
         let want = format!("#define RGPOT_VERSION \"{}\"", env!("CARGO_PKG_VERSION"));
         assert!(header.contains(&want), "rgpot.h lacks {want}");
         for (name, value) in [
@@ -266,7 +265,10 @@ mod tests {
             "#define RGPOT_HVP_DEFAULT_STEP {:.1e}",
             crate::hvp::RGPOT_HVP_DEFAULT_STEP
         );
-        assert!(header.contains(&default_step), "rgpot.h lacks {default_step}");
+        assert!(
+            header.contains(&default_step),
+            "rgpot.h lacks {default_step}"
+        );
     }
 
     /// Every name in the rgpot-core ABI baseline is still declared by the
@@ -282,7 +284,10 @@ mod tests {
             // A packaged crate carries the header but not the repository scripts.
             return;
         };
-        for name in baseline.lines().filter(|l| !l.is_empty()) {
+        for name in baseline
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        {
             assert!(header.contains(&format!("{name}(")), "rgpot.h lacks {name}");
         }
         for name in [

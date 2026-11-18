@@ -117,8 +117,9 @@ call.
 =numerical_stress=True= adds =stress= for a kernel that writes none (EAM-Al, EDIP, Lenosky, Tersoff, FeHe, CuH2, WaterH) from a central difference over six cell strains of =stress_step=
 (default 1e-6).
 That is twelve energy calls a stress.
-=get_hessian= raises =NotImplementedError=: no bound potential has an analytic
-Hessian.
+=get_hessian= returns a dense analytic Hessian when the bound potential exposes
+=hessian=, including =StillingerWeberSi= and the analytic pair kernels. It
+raises =NotImplementedError= for kernels without an analytic Hessian.
 =ase.vibrations= uses finite differences of the forces and does not need one.
 
 ** Periodic boundaries

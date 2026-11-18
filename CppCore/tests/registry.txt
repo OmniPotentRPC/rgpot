@@ -293,6 +293,7 @@ UmaProvenanceTest | tests metatomic | custom workdir=. | @metatomic
 SkalaPotTest | tests core rpc skala | custom suite=skala workdir=. | @skala
 PotentialHvpTest | tests core rust_core | unit potential_hvp_test PotentialHvpTest.cc | @rust_core
 abi_core_symbols | rust_core linux | custom | @rust_core
+abi_core_minor_bump | tests python | py scripts/check_abi_minor.py @root@ |
 EngineTableTest | tests core rpc posix | custom workdir=. | @engine_plugins
 lj_eval | core posix | custom timeout=60 | @engines
 lj_engine | core posix | custom timeout=60 | @engines

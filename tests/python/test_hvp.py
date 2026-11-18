@@ -65,6 +65,31 @@ def test_analytic_morse_product_matches_the_dense_hessian() -> None:
     }
 
 
+def test_stillinger_weber_hessian_matches_central_force_differences() -> None:
+    positions = np.ascontiguousarray(
+        [
+            [8.9, 9.0, 9.1],
+            [11.2, 9.1, 8.9],
+            [9.1, 11.3, 9.0],
+            [9.0, 9.2, 11.4],
+        ]
+    )
+    types = np.full(len(positions), 14, dtype=np.int32)
+    pot = rgpot.StillingerWeberSi()
+    hessian = pot.hessian(positions, types, BOX)
+    step = 2e-5
+    finite_difference = np.empty_like(hessian)
+    for column in range(positions.size):
+        plus = positions.copy()
+        minus = positions.copy()
+        plus.flat[column] += step
+        minus.flat[column] -= step
+        plus_force = pot(plus, types, BOX)[1].ravel()
+        minus_force = pot(minus, types, BOX)[1].ravel()
+        finite_difference[:, column] = (minus_force - plus_force) / (2 * step)
+    np.testing.assert_allclose(hessian, finite_difference, rtol=2e-7, atol=2e-8)
+
+
 @pytest.mark.parametrize(("scheme", "step", "order"), [("forward", 4e-3, 1.0), ("central", 2e-2, 2.0)])
 def test_finite_differences_converge_at_their_order(scheme: str, step: float, order: float) -> None:
     positions, types = _cluster()

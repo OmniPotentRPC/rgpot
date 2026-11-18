@@ -21,7 +21,9 @@
 #include <catch2/catch_all.hpp>
 
 #include "DenseHessianOracle.hpp"
+#ifdef RGPOT_HAS_EAM_TABLE
 #include "rgpot/EAMTable/EAMTablePot.hpp"
+#endif
 #include "rgpot/HessianVector.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
@@ -31,9 +33,11 @@ using rgpot::ForceInput;
 using rgpot::ForceOut;
 using rgpot::HessianVectorCache;
 using rgpot::HvpScheme;
+#ifdef RGPOT_HAS_EAM_TABLE
 using rgpot::EAMTableConfig;
 using rgpot::EAMTableFormat;
 using rgpot::EAMTablePot;
+#endif
 using rgpot::MorseConfig;
 using rgpot::MorsePot;
 using rgpot::StillingerWeberSi;
@@ -376,6 +380,7 @@ TEST_CASE("Stillinger-Weber analytic product at the diamond minimum",
   }
 }
 
+#ifdef RGPOT_HAS_EAM_TABLE
 TEST_CASE("funcfl EAM analytic product matches a dense Hessian",
           "[HessianVector]") {
   EAMTablePot pot(EAMTableConfig{
@@ -439,6 +444,41 @@ TEST_CASE("setfl EAM analytic product matches a dense Hessian",
   for (std::size_t k = 0; k < v.size(); ++k) {
     CHECK(std::abs(analytic[k] - oracle.product[k]) <= oracle.bound[k]);
   }
+}
+#endif
+
+TEST_CASE("analytic Hessian kernels reject null product buffers",
+          "[HessianVector]") {
+  const std::array<double, 3> position{1.0, 1.0, 1.0};
+  const std::array<int, 1> silicon{14};
+  const auto box = cell();
+  const ForceInput silicon_input{.nAtoms = 1,
+                                 .pos = position.data(),
+                                 .atmnrs = silicon.data(),
+                                 .box = box.data()};
+  const std::array<double, 3> direction{1.0, 0.0, 0.0};
+  std::array<double, 3> product{};
+  StillingerWeberSi sw;
+  CHECK_THROWS_AS(sw.hessianVectorImpl(silicon_input, nullptr, product.data()),
+                  std::invalid_argument);
+  CHECK_THROWS_AS(sw.hessianVectorImpl(silicon_input, direction.data(), nullptr),
+                  std::invalid_argument);
+
+#ifdef RGPOT_HAS_EAM_TABLE
+  EAMTablePot eam(EAMTableConfig{
+      .path = "CppCore/tests/data/eam_table/Cu_u3.eam",
+      .format = EAMTableFormat::Funcfl, .periodic = true,
+      .stress = false, .skin = 0.0});
+  const std::array<int, 1> copper{29};
+  const ForceInput copper_input{.nAtoms = 1,
+                                .pos = position.data(),
+                                .atmnrs = copper.data(),
+                                .box = box.data()};
+  CHECK_THROWS_AS(eam.hessianVectorImpl(copper_input, nullptr, product.data()),
+                  std::invalid_argument);
+  CHECK_THROWS_AS(eam.hessianVectorImpl(copper_input, direction.data(), nullptr),
+                  std::invalid_argument);
+#endif
 }
 
 TEST_CASE("MorsePot hessianVectorImpl differentiates the switch", "[HessianVector]") {

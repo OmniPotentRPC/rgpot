@@ -673,8 +673,9 @@ rgpot.StillingerWeberSi()
   Epsilon is the published 2.16723920 eV of Stillinger and Weber, Phys.
   Rev. B 31, 5262 (1985).
 - Outputs :: the C++ Stillinger-Weber silicon kernel.
-  It has =__call__=, =caps=, =evaluate= (with stress) and =energy_gradient=, and
-  no =evaluate_batch= or =hvp=.
+  It has =__call__=, =caps=, =evaluate= (with stress), =energy_gradient= and
+  =hessian=. The Hessian is dense, has shape =(3N, 3N)=, and is assembled from
+  analytic Hessian-vector products. It has no =evaluate_batch= or =hvp=.
   See the [[file:sw_si.org][Stillinger-Weber reference]].
 - Errors :: as the conventions list.
   A NaN coordinate returned energy 0.0 here without an error.

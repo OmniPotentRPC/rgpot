@@ -44,6 +44,10 @@ cell and one species list, so a caller enters the library once per batch.
 The Python method =energy_gradient= accepts positions of shape =(n_atoms, 3)= or
 =(n_config, n_atoms, 3)= and uses that entry.
 
+=hessianVectorImpl= computes the analytic Cartesian Hessian-vector product by
+hyper-dual differentiation of the pair and three-body energy. As implemented,
+one product is O(N^3).
+
 Every call takes its pairs from the instance's shared neighbour layer
 (=nlist::updateCells=).
 The skin is that of a =nlist::NeighborList= passed to =energyAndGradient= when

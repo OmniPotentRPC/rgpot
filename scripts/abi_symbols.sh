@@ -41,7 +41,7 @@ if [ "$#" -eq 0 ]; then
   cat "$found"
   exit 0
 fi
-cat "$@" | sort -u > "$want"
+cat "$@" | awk 'NF && $1 !~ /^#/' | sort -u > "$want"
 missing=$(comm -23 "$want" "$found")
 if [ -n "$missing" ]; then
   echo "C ABI lost symbols:" >&2

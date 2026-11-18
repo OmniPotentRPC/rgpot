@@ -1,3 +1,4 @@
+# RGPOT_ABI_VERSION_MINOR 4
 rgpot_abi_compatible
 rgpot_abi_stamp
 rgpot_eindir_abi_compatible

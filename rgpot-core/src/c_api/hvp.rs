@@ -144,6 +144,13 @@ pub unsafe extern "C" fn rgpot_potential_hvp(
 ///
 /// The output holds `(3 * n_atoms)²` doubles. Columns are assembled from
 /// analytic Hessian-vector products. No finite-difference fallback is used.
+///
+/// # Safety
+///
+/// `pot` must point to a live potential handle, `input` must point to a valid
+/// `rgpot_force_input_t`, and `hessian_out` must point to writable storage for
+/// `(3 * n_atoms)²` doubles. A NULL argument returns
+/// `RGPOT_INVALID_PARAMETER`.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_hessian(
     pot: *const rgpot_potential_t,
@@ -156,13 +163,7 @@ pub unsafe extern "C" fn rgpot_potential_hessian(
         }
         match unsafe { (*pot).analytic_hessian(&*input) } {
             Ok(dense) => {
-                unsafe {
-                    std::ptr::copy_nonoverlapping(
-                        dense.as_ptr(),
-                        hessian_out,
-                        dense.len(),
-                    )
-                };
+                unsafe { std::ptr::copy_nonoverlapping(dense.as_ptr(), hessian_out, dense.len()) };
                 rgpot_status_t::RGPOT_SUCCESS
             }
             Err(err) => fail(err),

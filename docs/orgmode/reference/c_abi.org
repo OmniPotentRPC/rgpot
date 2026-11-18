@@ -579,6 +579,11 @@ The function is compiled only with the =schema= feature of the crate, which the
 The header declares it only when =RGPOT_HAS_SCHEMA= is defined; the meson build
 defines it, with =RGPOT_HAS_RPC=, when =with_rpc= is on.
 
+=RGPOT_HAS_ENGINE= exposes the engine-loader constants =ENGINE_ABI_VERSION= and
+=ENGINE_ERR_UNSUPPORTED= in the header. Cargo enables those declarations with
+the =engine= feature; consumers that include the generated header directly must
+define =RGPOT_HAS_ENGINE= only when they link a build with that feature.
+
 ** Hessian-vector products
 
 =RGPOT_HVP_DEFAULT_STEP= is 1.0e-3, the step used when a caller passes 0.
@@ -1072,7 +1077,7 @@ enum rgpot_status_t rgpot_rpc_server_start(const struct rgpot_potential_t *pot,
 
 The macros =RGPOT_ABI_VERSION_MAJOR=, =RGPOT_ABI_VERSION_MINOR= and
 =RGPOT_ABI_LAYOUT_REVISION= hold the stamp of the header the caller compiled
-against: 1, 3 and 1.
+against: 1, 4 and 1.
 
 *** =rgpot_abi_stamp_t=
 

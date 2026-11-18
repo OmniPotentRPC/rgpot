@@ -41,7 +41,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * ABI minor of this build.
  */
-#define RGPOT_ABI_VERSION_MINOR 3
+#define RGPOT_ABI_VERSION_MINOR 4
 
 /**
  * Layout revision of this build.
@@ -716,6 +716,13 @@ enum rgpot_status_t rgpot_potential_hvp(const struct rgpot_potential_t *pot,
  *
  * The output holds `(3 * n_atoms)²` doubles. Columns are assembled from
  * analytic Hessian-vector products. No finite-difference fallback is used.
+ *
+ * # Safety
+ *
+ * `pot` must point to a live potential handle, `input` must point to a valid
+ * `rgpot_force_input_t`, and `hessian_out` must point to writable storage for
+ * `(3 * n_atoms)²` doubles. A NULL argument returns
+ * `RGPOT_INVALID_PARAMETER`.
  */
 enum rgpot_status_t rgpot_potential_hessian(const struct rgpot_potential_t *pot,
                                             const struct rgpot_force_input_t *input,
