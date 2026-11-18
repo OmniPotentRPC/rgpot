@@ -18,6 +18,7 @@
 
 use std::os::raw::c_void;
 
+use crate::c_api::potential::force_input_defect;
 use crate::eindir::rgpot_potential_t;
 use crate::hvp::{rgpot_hvp_counts_t, rgpot_hvp_scheme_t, HessianVectorCallback, HvpError};
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
@@ -96,7 +97,9 @@ pub unsafe extern "C" fn rgpot_potential_set_hvp_callback(
 /// # Safety
 ///
 /// NULL pointers, an unknown scheme, a non-positive step and overlapping
-/// buffers return `RGPOT_INVALID_PARAMETER`. Otherwise `pot` must be a live
+/// buffers return `RGPOT_INVALID_PARAMETER`. So does an input that
+/// `rgpot_potential_calculate` refuses: a missing positions, species or
+/// cell buffer, or no atoms. Otherwise `pot` must be a live
 /// handle, `input` must point to a valid `rgpot_force_input_t` whose tensors
 /// stay alive for the call, and `direction` and `hv_out` must point to
 /// `3 * n_atoms` readable and writable doubles.
@@ -122,6 +125,9 @@ pub unsafe extern "C" fn rgpot_potential_hvp(
         let Some(scheme) = rgpot_hvp_scheme_t::from_raw(scheme) else {
             return refuse(&format!("rgpot_potential_hvp: unknown scheme {scheme}"));
         };
+        if let Some(why) = unsafe { force_input_defect(input) } {
+            return refuse(why);
+        }
         let input = unsafe { &*input };
         let Some(dim) = unsafe { input.n_atoms() }.and_then(|n| n.checked_mul(3)) else {
             return refuse("rgpot_potential_hvp: positions tensor is NULL or too large");

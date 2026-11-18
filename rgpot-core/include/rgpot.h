@@ -890,7 +890,9 @@ enum rgpot_status_t rgpot_potential_set_hvp_callback(const struct rgpot_potentia
  * # Safety
  *
  * NULL pointers, an unknown scheme, a non-positive step and overlapping
- * buffers return `RGPOT_INVALID_PARAMETER`. Otherwise `pot` must be a live
+ * buffers return `RGPOT_INVALID_PARAMETER`. So does an input that
+ * `rgpot_potential_calculate` refuses: a missing positions, species or
+ * cell buffer, or no atoms. Otherwise `pot` must be a live
  * handle, `input` must point to a valid `rgpot_force_input_t` whose tensors
  * stay alive for the call, and `direction` and `hv_out` must point to
  * `3 * n_atoms` readable and writable doubles.

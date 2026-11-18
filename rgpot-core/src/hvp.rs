@@ -41,6 +41,7 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::c_api::potential::force_input_defect;
 use crate::eindir::rgpot_potential_t;
 use crate::fused::{lock, FusedError, FusedSource};
 use crate::status::rgpot_status_t;
@@ -171,8 +172,14 @@ struct Geometry {
 }
 
 /// Copy the positions, species and cell of `input` after checking them.
-/// Species and cell are optional, as for the force callback.
+///
+/// The input must pass `force_input_defect`, the check that
+/// `rgpot_potential_calculate` makes, so a missing species or cell buffer
+/// and an empty system are refused here as they are on the C++ side.
 unsafe fn read_geometry(input: &rgpot_force_input_t) -> Result<Geometry, HvpError> {
+    if let Some(why) = unsafe { force_input_defect(input) } {
+        return Err(invalid(why));
+    }
     let n_atoms = unsafe { input.n_atoms() }.ok_or_else(|| invalid("positions: tensor is NULL"))?;
     let dim = n_atoms
         .checked_mul(3)
