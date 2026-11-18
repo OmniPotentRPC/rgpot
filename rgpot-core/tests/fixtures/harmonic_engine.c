@@ -155,10 +155,13 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   memset(&filled, 0, sizeof filled);
   filled.size = sizeof filled;
   filled.periodic = 1;
-#if !defined(NO_HVP) && !defined(NO_HVP_CAP)
+#if (!defined(NO_HVP) && !defined(NO_HVP_CAP)) || defined(FORCE_HVP_CAP)
   filled.analytic_hvp = 1;
 #endif
-  room = out->size < sizeof filled ? out->size : sizeof filled;
+#ifdef CAPS_SIZE_BEFORE_HVP
+  filled.size = (unsigned)offsetof(RgpotEngineCaps, analytic_hvp);
+#endif
+  room = out->size < filled.size ? out->size : filled.size;
   memcpy(out, &filled, room);
   out->size = room;
   return 0;

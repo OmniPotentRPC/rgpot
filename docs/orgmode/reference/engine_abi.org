@@ -551,7 +551,9 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
   analytic HVP is unsupported, or the transform's nonzero code.
 
 Optional symbol.
-The engine also sets =RgpotEngineCaps.analytic_hvp=.
+Exporting it declares HVP support even when =rgpot_engine_caps= is omitted.
+When =rgpot_engine_caps= is present and writes =analytic_hvp=, 1 confirms
+support and 0 narrows it off for that handle.
 The caller's position and box buffers are not modified.
 
 *** =rgpot_engine_force_batch=
@@ -1214,13 +1216,13 @@ the handle as a =PotentialImpl=.
   =rgpot_engine_force_batch=, and maps positive codes to =EngineError::Recoverable= and negative codes to =EngineError::Fatal= using =rgpot_engine_last_error=
   when present.
   A fatal result is sticky: later calls return it without entering the engine.
-- =EnginePotential::caps()= :: Reads =rgpot_engine_caps=, including
-  =analytic_hvp=.
-- =EnginePotential::hvp(&request, direction)= :: Calls only the analytic
-  =rgpot_engine_hvp= path and returns =Unsupported= when the symbol or
-  capability is absent.
+- =EnginePotential::caps()= :: Reads =rgpot_engine_caps=;
+  =analytic_hvp= confirms or narrows =rgpot_engine_hvp= symbol presence and is never true when =rgpot_engine_hvp=
+  is absent.
+- =EnginePotential::hvp(&request, direction)= :: Discovers HVP by
+  =rgpot_engine_hvp= symbol presence (even without =rgpot_engine_caps=), lets
+  =rgpot_engine_caps= narrow or confirm when present, and returns =Unsupported=
+  when absent or narrowed off.
   It never finite-differences.
-- =EnginePotential::into_potential(self)= :: Converts the instance into a
-  =PotentialImpl= callback handle and installs the analytic HVP callback when
-  advertised.
+- =EnginePotential::into_potential(self)= :: Converts the instance into a =PotentialImpl= callback handle and installs the analytic HVP callback when =rgpot_engine_hvp= is exported and not narrowed off by =rgpot_engine_caps=.
   A failed capability query is returned to the caller.

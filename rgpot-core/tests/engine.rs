@@ -464,7 +464,64 @@ fn hvp_returns_the_harmonic_hessian_product() {
 }
 
 #[test]
-fn hvp_without_the_symbol_or_capability_is_unsupported() {
+fn hvp_is_discovered_by_symbol_presence_without_caps() {
+    let path = build("harmonic_nocaps_hvp", &["NO_CAPS"]);
+    let mut engine = load(&path);
+    assert!(matches!(
+        engine.caps(),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_caps",
+            ..
+        })
+    ));
+    let positions = [0.5, -1.0, 2.0, 0.0, 3.0, -0.25];
+    let direction = [1.0, -0.5, 0.25, -2.0, 0.0, 4.0];
+    let product = engine
+        .hvp(
+            &EngineRequest {
+                positions: &positions,
+                atomic_numbers: &[1, 8],
+                box_matrix: &CELL,
+            },
+            &direction,
+        )
+        .expect("hvp without rgpot_engine_caps");
+    let expected: Vec<f64> = direction.iter().map(|value| SPRING * value).collect();
+    assert!(all_within_roundoff(&product, &expected));
+
+    let potential = load(&path)
+        .into_potential()
+        .expect("potential handle without rgpot_engine_caps");
+    assert!(potential.as_handle().has_hessian_vector_callback());
+    let mut pos_vec = positions.to_vec();
+    let mut numbers = vec![1, 8];
+    let mut cell = CELL;
+    let input = rgpot_force_input_t {
+        positions: unsafe { rgpot_tensor_cpu_f64_2d(pos_vec.as_mut_ptr(), 2, 3) },
+        atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 2) },
+        box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+    };
+    let mut handle_product = [0.0; 6];
+    unsafe {
+        potential
+            .as_handle()
+            .hessian_vector(
+                &input,
+                &direction,
+                0.0,
+                rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC,
+                &mut handle_product,
+            )
+            .expect("analytic HVP through handle without rgpot_engine_caps");
+        rgpot_tensor_free(input.positions);
+        rgpot_tensor_free(input.atomic_numbers);
+        rgpot_tensor_free(input.box_matrix);
+    }
+    assert!(all_within_roundoff(&handle_product, &expected));
+}
+
+#[test]
+fn hvp_without_the_symbol_or_narrowed_by_caps_is_unsupported() {
     let no_symbol = build("harmonic_nohvp", &["NO_HVP"]);
     let mut engine = load(&no_symbol);
     assert!(!engine.caps().expect("caps").analytic_hvp);
@@ -490,6 +547,28 @@ fn hvp_without_the_symbol_or_capability_is_unsupported() {
         .expect("handle without HVP symbol");
     assert!(!potential.as_handle().has_hessian_vector_callback());
 
+    let bogus_caps = build("harmonic_nohvp_forcecap", &["NO_HVP", "FORCE_HVP_CAP"]);
+    let mut engine = load(&bogus_caps);
+    assert!(!engine.caps().expect("caps").analytic_hvp);
+    assert!(matches!(
+        engine.hvp(
+            &EngineRequest {
+                positions: &[0.0; 3],
+                atomic_numbers: &[1],
+                box_matrix: &CELL,
+            },
+            &[1.0, 0.0, 0.0],
+        ),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_hvp",
+            ..
+        })
+    ));
+    let potential = load(&bogus_caps)
+        .into_potential()
+        .expect("caps cannot enable a missing HVP symbol");
+    assert!(!potential.as_handle().has_hessian_vector_callback());
+
     let no_capability = build("harmonic_nohvpcap", &["NO_HVP_CAP"]);
     let mut engine = load(&no_capability);
     assert!(!engine.caps().expect("caps").analytic_hvp);
@@ -509,6 +588,28 @@ fn hvp_without_the_symbol_or_capability_is_unsupported() {
             operation: "rgpot_engine_hvp",
             ..
         }
+    ));
+    let narrowed_handle = load(&no_capability)
+        .into_potential()
+        .expect("handle with HVP narrowed off by caps");
+    assert!(!narrowed_handle.as_handle().has_hessian_vector_callback());
+
+    let short_caps = build("harmonic_shortcaps", &["CAPS_SIZE_BEFORE_HVP"]);
+    let mut engine = load(&short_caps);
+    assert!(engine.caps().expect("short caps").analytic_hvp);
+    let short_product = engine
+        .hvp(
+            &EngineRequest {
+                positions: &[0.0; 3],
+                atomic_numbers: &[1],
+                box_matrix: &CELL,
+            },
+            &[2.0, -1.0, 0.5],
+        )
+        .expect("short caps preserves symbol-presence HVP");
+    assert!(all_within_roundoff(
+        &short_product,
+        &[2.0 * SPRING, -SPRING, 0.5 * SPRING]
     ));
 }
 
