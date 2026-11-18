@@ -153,6 +153,25 @@ impl FixtureObserver {
                 .expect("native call count symbol");
         unsafe { count() }
     }
+
+    fn max_concurrent(&self) -> c_int {
+        let f: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+            unsafe { self.0.get(b"fixture_max_concurrent\0") }.expect("max concurrent symbol");
+        unsafe { f() }
+    }
+
+    fn max_handle_concurrent(&self) -> c_int {
+        let f: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+            unsafe { self.0.get(b"fixture_max_handle_concurrent\0") }
+                .expect("max handle concurrent symbol");
+        unsafe { f() }
+    }
+
+    fn reset_concurrent(&self) {
+        let f: libloading::Symbol<unsafe extern "C" fn()> =
+            unsafe { self.0.get(b"fixture_reset_concurrent\0") }.expect("reset concurrent symbol");
+        unsafe { f() };
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -1507,14 +1526,354 @@ fn lock_error_code_matches_header_maps_on_rust_side_and_marks_handle_unusable() 
     assert_eq!(hvp_engine.force(&request).unwrap_err(), expected_hvp);
 
     let caps_lock = build("harmonic_capslock", &["CAPS_LOCK_ERROR"]);
-    let mut caps_engine = load(&caps_lock);
-    let expected_caps = EngineError::Lock {
-        operation: "rgpot_engine_caps",
-        message: "fixture caps lock failed".into(),
-    };
-    assert_eq!(caps_engine.caps().unwrap_err(), expected_caps);
-    assert_eq!(caps_engine.force(&request).unwrap_err(), expected_caps);
+    let rejected = unsafe { EnginePotential::load(&caps_lock, &config()) }
+        .err()
+        .expect("a caps lock failure at load rejects the engine");
+    assert_eq!(
+        rejected,
+        EngineError::Lock {
+            operation: "rgpot_engine_caps",
+            message: "fixture caps lock failed".into(),
+        }
+    );
+}
 
-    let handle = load(&caps_lock).into_potential();
-    assert!(!handle.as_handle().has_hessian_vector_callback());
+#[test]
+fn a_negative_caps_code_at_load_rejects_the_engine_and_frees_the_handle() {
+    for (name, define, expected) in [
+        (
+            "harmonic_capsfatal",
+            "CAPS_ERROR_CODE=-1",
+            EngineError::Fatal {
+                code: -1,
+                message: "fixture caps failed".into(),
+            },
+        ),
+        (
+            "harmonic_capsfatal_other",
+            "CAPS_ERROR_CODE=-7",
+            EngineError::Fatal {
+                code: -7,
+                message: "fixture caps failed".into(),
+            },
+        ),
+    ] {
+        let path = build(name, &[define]);
+        let observer = FixtureObserver::open(&path);
+        let before_created = observer.created();
+        let before_destroyed = observer.destroyed();
+        let rejected = unsafe { EnginePotential::load(&path, &config()) }
+            .err()
+            .expect("a negative caps code at load rejects the engine");
+        assert_eq!(rejected, expected);
+        assert_eq!(rejected.status(), rgpot_status_t::RGPOT_INTERNAL_ERROR);
+        assert_eq!(observer.created(), before_created + 1);
+        assert_eq!(
+            observer.destroyed(),
+            before_destroyed + 1,
+            "the rejected handle must be destroyed exactly once"
+        );
+    }
+}
+
+#[test]
+fn a_positive_caps_code_at_load_keeps_process_wide_serialization() {
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_capspositive",
+        &[
+            "CAPS_ERROR_CODE=1",
+            "FIXTURE_REENTRANCY=1",
+            "CONCURRENCY_PROBE",
+        ],
+    );
+    let observer = FixtureObserver::open(&path);
+    observer.reset_concurrent();
+    let gate = Arc::new(Barrier::new(3));
+    std::thread::scope(|scope| {
+        for idx in 0..3usize {
+            let path_ref = &path;
+            let gate = Arc::clone(&gate);
+            scope.spawn(move || {
+                let mut engine = load(path_ref);
+                let factor = (idx + 1) as f64;
+                let positions = [factor, -factor, 0.5 * factor];
+                let request = EngineRequest {
+                    positions: &positions,
+                    atomic_numbers: &[1],
+                    box_matrix: &CELL,
+                };
+                gate.wait();
+                for _ in 0..4 {
+                    engine
+                        .force(&request)
+                        .expect("force after a failed caps probe");
+                }
+            });
+        }
+    });
+    assert_eq!(
+        observer.max_concurrent(),
+        1,
+        "a failed caps probe must not skip the process-wide lock"
+    );
+}
+
+#[test]
+fn concurrent_handles_serialize_each_handle_and_parallelize_distinct_handles() {
+    use rgpot_core::c_api::hvp::rgpot_potential_hvp;
+    use rgpot_core::c_api::potential::rgpot_potential_calculate;
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_concurrent_handles",
+        &["FIXTURE_REENTRANCY=1", "CONCURRENCY_PROBE"],
+    );
+    let observer = FixtureObserver::open(&path);
+    let probe = load(&path);
+    assert_eq!(probe.caps().expect("caps").reentrancy, 1);
+    drop(probe);
+
+    // 1. Overlapping force and analytic HVP calls on a single PotentialImpl handle
+    //    must serialize through the handle mutex.
+    observer.reset_concurrent();
+    let shared_potential = load(&path).into_potential();
+    let raw_addr = shared_potential.as_handle() as *const _ as usize;
+    let start = Arc::new(Barrier::new(4));
+    std::thread::scope(|scope| {
+        for worker in 0..4usize {
+            let start = Arc::clone(&start);
+            scope.spawn(move || {
+                let pot = raw_addr as *const rgpot_core::potential::rgpot_potential_t;
+                let scale = (worker + 1) as f64;
+                let mut positions = [0.5 * scale, -scale, 2.0 * scale];
+                let mut numbers = [1_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                start.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let mut output = rgpot_force_out_t {
+                            forces: std::ptr::null_mut(),
+                            energy: 0.0,
+                            variance: 0.0,
+                        };
+                        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                        unsafe { rgpot_tensor_free(output.forces) };
+                    } else {
+                        let direction = [scale, -0.5 * scale, 0.25 * scale];
+                        let mut hv = [0.0; 3];
+                        let status = unsafe {
+                            rgpot_potential_hvp(
+                                pot,
+                                &input,
+                                direction.as_ptr(),
+                                0.0,
+                                rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC as i32,
+                                hv.as_mut_ptr(),
+                            )
+                        };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let want: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
+                        assert!(all_within_roundoff(&hv, &want));
+                    }
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(observer.max_concurrent(), 1);
+    assert_eq!(observer.max_handle_concurrent(), 1);
+    drop(shared_potential);
+
+    // 2. Distinct PotentialImpl handles of a reentrancy==1 engine evaluate
+    //    concurrently on separate worker threads without blocking each other.
+    observer.reset_concurrent();
+    let before_destroy = observer.destroyed();
+    let handles: Vec<rgpot_core::potential::PotentialImpl> =
+        (0..4).map(|_| load(&path).into_potential()).collect();
+    let gate = Arc::new(Barrier::new(handles.len()));
+    std::thread::scope(|scope| {
+        for (idx, handle) in handles.into_iter().enumerate() {
+            let gate = Arc::clone(&gate);
+            scope.spawn(move || {
+                let factor = (idx + 1) as f64;
+                let mut positions = [factor, -2.0 * factor, 0.5 * factor];
+                let mut numbers = [8_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                gate.wait();
+                for _ in 0..4 {
+                    let mut output = rgpot_force_out_t {
+                        forces: std::ptr::null_mut(),
+                        energy: 0.0,
+                        variance: 0.0,
+                    };
+                    let status = unsafe { handle.calculate(&input, &mut output) };
+                    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                    let sum: f64 = positions.iter().map(|v| v * v).sum();
+                    assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                    unsafe { rgpot_tensor_free(output.forces) };
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(observer.max_handle_concurrent(), 1);
+    let cpus = match std::thread::available_parallelism() {
+        Ok(count) => count.get(),
+        Err(_) => 1,
+    };
+    if cpus >= 2 {
+        assert!(
+            observer.max_concurrent() >= 2,
+            "expected parallel execution across distinct reentrancy==1 handles, got max_concurrent={}",
+            observer.max_concurrent()
+        );
+    }
+    assert_eq!(observer.destroyed(), before_destroy + 4);
+}
+
+#[test]
+fn reentrancy_two_engines_serialize_across_handles() {
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_reentrancy2",
+        &["FIXTURE_REENTRANCY=2", "CONCURRENCY_PROBE"],
+    );
+    let observer = FixtureObserver::open(&path);
+    let probe = load(&path);
+    let caps = probe.caps().expect("reentrancy==2 caps");
+    assert_eq!(caps.reentrancy, 2);
+    assert!(caps.analytic_hvp);
+    drop(probe);
+
+    // Direct EnginePotential instances on separate threads must serialize across handles.
+    observer.reset_concurrent();
+    let direct_gate = Arc::new(Barrier::new(3));
+    std::thread::scope(|scope| {
+        for idx in 0..3usize {
+            let path_ref = &path;
+            let direct_gate = Arc::clone(&direct_gate);
+            scope.spawn(move || {
+                let mut engine = load(path_ref);
+                let factor = (idx + 1) as f64;
+                let positions = [factor, -factor, 0.5 * factor];
+                let request = EngineRequest {
+                    positions: &positions,
+                    atomic_numbers: &[1],
+                    box_matrix: &CELL,
+                };
+                direct_gate.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let eval = engine.force(&request).expect("reentrancy==2 direct force");
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(eval.energy, 0.5 * SPRING * sum, 9));
+                    } else {
+                        let dir = [1.0, -2.0, 0.5];
+                        let hv = engine
+                            .hvp(&request, &dir)
+                            .expect("reentrancy==2 direct hvp");
+                        assert!(all_within_roundoff(
+                            &hv,
+                            &[SPRING, -2.0 * SPRING, 0.5 * SPRING]
+                        ));
+                    }
+                }
+            });
+        }
+    });
+    assert_eq!(
+        observer.max_concurrent(),
+        1,
+        "reentrancy==2 EnginePotential instances overlapped"
+    );
+
+    // PotentialImpl handles created via into_potential() must also serialize across handles.
+    observer.reset_concurrent();
+    let before_destroy = observer.destroyed();
+    let handles: Vec<rgpot_core::potential::PotentialImpl> =
+        (0..4).map(|_| load(&path).into_potential()).collect();
+    let handle_gate = Arc::new(Barrier::new(handles.len()));
+    std::thread::scope(|scope| {
+        for (idx, handle) in handles.into_iter().enumerate() {
+            let handle_gate = Arc::clone(&handle_gate);
+            scope.spawn(move || {
+                let factor = (idx + 1) as f64;
+                let mut positions = [0.5 * factor, 1.5 * factor, -factor];
+                let mut numbers = [1_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                handle_gate.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let mut output = rgpot_force_out_t {
+                            forces: std::ptr::null_mut(),
+                            energy: 0.0,
+                            variance: 0.0,
+                        };
+                        let status = unsafe { handle.calculate(&input, &mut output) };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                        unsafe { rgpot_tensor_free(output.forces) };
+                    } else {
+                        let direction = [factor, -0.5 * factor, 2.0 * factor];
+                        let mut hv = [0.0; 3];
+                        unsafe {
+                            handle
+                                .as_handle()
+                                .hessian_vector(
+                                    &input,
+                                    &direction,
+                                    0.0,
+                                    rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC,
+                                    &mut hv,
+                                )
+                                .expect("reentrancy==2 handle HVP");
+                        }
+                        let want: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
+                        assert!(all_within_roundoff(&hv, &want));
+                    }
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(
+        observer.max_concurrent(),
+        1,
+        "reentrancy==2 PotentialImpl handles overlapped"
+    );
+    assert_eq!(observer.destroyed(), before_destroy + 4);
 }
