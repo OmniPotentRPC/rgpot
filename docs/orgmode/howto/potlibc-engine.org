@@ -97,7 +97,8 @@ typed size error.
 A larger version-2 message is accepted only when every unknown trailing byte
 up to =size= is zero.
 A version other than =RGPOT_POTLIBC_CONFIG_VERSION_V1= or
-=RGPOT_POTLIBC_CONFIG_VERSION= is refused as a typed version error.
+=RGPOT_POTLIBC_CONFIG_VERSION= is refused with the plain error string
+=potlibc config version is unknown=.
 The 144-byte version-1 message is accepted unchanged.
 
 The engine ABI takes Angstrom and returns eV and eV/Angstrom.

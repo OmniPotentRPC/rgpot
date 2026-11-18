@@ -32,7 +32,7 @@ extern "C" {
  * for a variable-size surface.
  *
  * The engine accepts this message and RgpotPotlibcConfigV2. Any other version
- * is refused with a typed version error.
+ * is refused with the plain error string "potlibc config version is unknown".
  *
  * Evaluation and capability calls on an RgpotEnginePot serialize per handle
  * with an error-checking mutex; if acquiring that mutex fails, the call
