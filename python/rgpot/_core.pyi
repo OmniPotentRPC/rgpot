@@ -189,6 +189,26 @@ class MorsePot:
     def has_analytic_hvp(self) -> bool:
         """Whether hvp(scheme='auto') uses the kernel's own product."""
 
+class EAMTablePot:
+    def __init__(self, table_path: str, format: str = "setfl", periodic: bool = True, stress: bool = False, skin: float = 1.0) -> None:
+        """
+        Embedded-atom or Finnis-Sinclair potential read from a DYNAMO table. table_path is the file. format is setfl (pair_style eam/alloy), funcfl (pair_style eam), or fs (pair_style eam/fs). Energies are eV and lengths are Angstrom. The gradient is dE/dx.
+        """
+
+    def caps(self) -> dict: ...
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+        """
+        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        """
+
+    def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Hessian-vector product H @ direction, shape (N, 3). step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
 class SWPot:
     def __init__(self) -> None: ...
 

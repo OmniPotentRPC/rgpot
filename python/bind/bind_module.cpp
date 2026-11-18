@@ -28,6 +28,9 @@
 
 #include "pot_holder.hpp"
 
+#ifdef RGPOT_HAS_EAM_TABLE
+#include "rgpot/EAMTable/EAMTablePot.hpp"
+#endif
 #include "rgpot/ExternalPot/ExternalPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -708,6 +711,47 @@ NB_MODULE(_core, m) {
     return out;
   });
   rgpot::pybind::bind_calls(morse_cls);
+
+#ifdef RGPOT_HAS_EAM_TABLE
+  auto eam_table_format = [](std::string name) {
+    std::ranges::transform(name, name.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+    if (name == "setfl" || name == "eam/alloy" || name == "alloy")
+      return rgpot::EAMTableFormat::Setfl;
+    if (name == "funcfl" || name == "eam")
+      return rgpot::EAMTableFormat::Funcfl;
+    if (name == "fs" || name == "eam/fs" || name == "finnis-sinclair" ||
+        name == "finnissinclair")
+      return rgpot::EAMTableFormat::FinnisSinclair;
+    throw std::invalid_argument(
+        "EAM table format must be setfl, funcfl, or fs");
+  };
+  auto eam_table = nb::class_<PotHolder<rgpot::EAMTablePot>>(m, "EAMTablePot");
+  eam_table.def(
+      "__init__",
+      [eam_table_format](PotHolder<rgpot::EAMTablePot> *self,
+                         std::string table_path, std::string format,
+                         bool periodic, bool stress, double skin) {
+        const rgpot::EAMTableFormat parsed = eam_table_format(format);
+        new (self) PotHolder<rgpot::EAMTablePot>([=] {
+          rgpot::EAMTableConfig cfg;
+          cfg.path = table_path;
+          cfg.format = parsed;
+          cfg.periodic = periodic;
+          cfg.stress = stress;
+          cfg.skin = skin;
+          return std::make_unique<rgpot::EAMTablePot>(cfg);
+        });
+      },
+      nb::arg("table_path"), nb::arg("format") = "setfl",
+      nb::arg("periodic") = true, nb::arg("stress") = false,
+      nb::arg("skin") = 1.0,
+      "Embedded-atom or Finnis-Sinclair potential read from a DYNAMO "
+      "table. table_path is the file. format is setfl (pair_style "
+      "eam/alloy), funcfl (pair_style eam), or fs (pair_style eam/fs). "
+      "Energies are eV and lengths are Angstrom. The gradient is dE/dx.");
+  rgpot::pybind::bind_calls(eam_table);
+#endif
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
   bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");

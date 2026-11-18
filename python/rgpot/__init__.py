@@ -58,6 +58,7 @@ EDIPPot: Any = getattr(_core, "EDIPPot", None)
 LenoskyPot: Any = getattr(_core, "LenoskyPot", None)
 TersoffPot: Any = getattr(_core, "TersoffPot", None)
 EAMAlPot: Any = getattr(_core, "EAMAlPot", None)
+EAMTablePot: Any = getattr(_core, "EAMTablePot", None)
 FeHePot: Any = getattr(_core, "FeHePot", None)
 CuH2Pot: Any = getattr(_core, "CuH2Pot", None)
 WaterHPot: Any = getattr(_core, "WaterHPot", None)
@@ -203,6 +204,7 @@ __all__ = [
     "LenoskyPot",
     "TersoffPot",
     "EAMAlPot",
+    "EAMTablePot",
     "FeHePot",
     "CuH2Pot",
     "WaterHPot",
