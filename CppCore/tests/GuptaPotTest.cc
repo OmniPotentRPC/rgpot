@@ -334,6 +334,49 @@ TEST_CASE("GuptaPot propagates a NaN coordinate on the neighbour path",
   }
 }
 
+TEST_CASE("GuptaPot zero density stays finite and a NaN density propagates",
+          "[Gupta]") {
+  const rgpot::GuptaPot pot({.A = 0.2061,
+                             .xi = 0.8900,
+                             .p = 10.229,
+                             .q = 4.036,
+                             .r0 = 2.5,
+                             .cutoff = 8.0});
+  const double pos[6] = {0.0, 0.0, 0.0, 2.5, 0.0, 0.0};
+  const int atmnrs[2] = {1, 1};
+  const int rows[1] = {0};
+  const int count[2] = {1, 0};
+  const int neigh0[1] = {1};
+  const int *neighs[2] = {neigh0, nullptr};
+  rgpot::HalfList list;
+  list.nAtoms = 2;
+  list.nOwned = 2;
+  list.pos = pos;
+  list.atmnrs = atmnrs;
+  list.nRows = 1;
+  list.rows = rows;
+  list.count = count;
+  list.neighbours = neighs;
+
+  double dens[2] = {};
+  double forces[6] = {};
+  rgpot::StageTally tally;
+  pot.forceStage(list, dens, forces, &tally);
+  REQUIRE(std::isfinite(tally.energy));
+  REQUIRE(std::isfinite(forces[0]));
+  REQUIRE(forces[0] != 0.0);
+
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  dens[0] = nan;
+  dens[1] = nan;
+  std::fill(forces, forces + 6, 0.0);
+  tally = {};
+  pot.forceStage(list, dens, forces, &tally);
+  REQUIRE(std::isnan(tally.energy));
+  REQUIRE(std::isnan(forces[0]));
+  REQUIRE(std::isnan(forces[3]));
+}
+
 TEST_CASE("GuptaPot forces match central differences on a 13-atom cluster",
           "[Gupta]") {
   const rgpot::GuptaConfig cfg{
