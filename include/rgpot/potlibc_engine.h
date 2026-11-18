@@ -19,6 +19,13 @@ extern "C" {
  * surface_id is a NUL-terminated canonical potlibc catalog id.
  * atom_count is zero for a fixed-size surface and the exact requested count
  * for a variable-size surface.
+ *
+ * Evaluation and capability calls on an RgpotEnginePot serialize per handle
+ * with an error-checking mutex; if acquiring that mutex fails, the call
+ * records a diagnostic for rgpot_engine_last_error and returns the fatal code
+ * RGPOT_ENGINE_ERR_LOCK from rgpot/engine_c_abi.h. rgpot_engine_destroy must
+ * not race an active call on the same handle and still releases the surface
+ * and handle allocation if locking fails during teardown.
  */
 typedef struct {
   uint32_t magic;
