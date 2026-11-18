@@ -5,6 +5,7 @@
 #include "rgpot/units.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -12,8 +13,19 @@
 namespace rgpot {
 
 using units::ANGSTROM_TO_BOHR;
+using units::HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3;
 using units::HARTREE_TO_EV;
 using units::NEG_GRAD_TO_FORCE;
+
+namespace {
+
+double det3(const double *h) {
+  return h[0] * (h[4] * h[8] - h[5] * h[7]) -
+         h[1] * (h[3] * h[8] - h[5] * h[6]) +
+         h[2] * (h[3] * h[7] - h[4] * h[6]);
+}
+
+} // namespace
 
 D4Pot::D4Pot() : D4Pot(D4Config{}) {}
 
@@ -68,7 +80,8 @@ D4Pot::~D4Pot() {
 void D4Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
-  const bool periodicity[3] = {false, false, false};
+  const bool p = m_config.periodic;
+  const bool periodicity[3] = {p, p, p};
 
   m_pos_bohr.resize(n3);
   for (size_t i = 0; i < n3; ++i) {
@@ -78,6 +91,11 @@ void D4Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
   double box_bohr[9];
   for (int i = 0; i < 9; ++i) {
     box_bohr[i] = in.box[i] * ANGSTROM_TO_BOHR;
+  }
+  const double volume = std::abs(det3(box_bohr));
+  if (p && !(volume > 0.0)) {
+    throw std::invalid_argument(
+        "D4Pot: a periodic D4Config needs a box of positive volume");
   }
 
   if (!m_initialized || m_natoms != intN ||
@@ -101,8 +119,9 @@ void D4Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
 
   double energy_hartree = 0.0;
+  double sigma[9] = {};
   dftd4_get_dispersion(m_err, m_mol, m_model, m_param, &energy_hartree, out->F,
-                       nullptr);
+                       p ? sigma : nullptr);
   throwIfError("dftd4 get dispersion");
 
   out->energy = energy_hartree * HARTREE_TO_EV;
@@ -110,6 +129,14 @@ void D4Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->F[i] *= NEG_GRAD_TO_FORCE;
   }
   out->variance = 0.0;
+  if (p) {
+    // dftd4's sigma is dE/dstrain, symmetric, in Hartree.
+    for (int k = 0; k < 9; ++k) {
+      out->stress[k] =
+          sigma[k] / volume * HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3;
+    }
+    out->has_stress = 1;
+  }
 }
 
 } // namespace rgpot
