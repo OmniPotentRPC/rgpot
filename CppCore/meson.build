@@ -562,6 +562,7 @@ if not get_option('with_rpc_client_only')
             lennard_jones,
             morse,
             zbl,
+            gupta,
             model_pots,
             rgpot_halfshell,
         ]

@@ -59,6 +59,7 @@ class MpiPefSession;
 #include "rgpot/CP2KPot/CP2KPot.hpp"
 #endif
 #include "rgpot/CPMDPot/CPMDPot.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
@@ -396,7 +397,7 @@ int runServer(int argc, char *argv[]
 ) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
-    std::cerr << "  Available PotentialTypes: LJ, LJCluster, Morse, ZBL"
+    std::cerr << "  Available PotentialTypes: Gupta, LJ, LJCluster, Morse, ZBL"
 #ifdef RGPOT_HAS_FORTRAN_POTS
               << ", CuH2"
 #endif
@@ -476,6 +477,9 @@ int runServer(int argc, char *argv[]
   } else if (pot_type == "ZBL") {
     std::cout << "Loading ZBL potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::ZBLPot>();
+  } else if (pot_type == "Gupta") {
+    std::cout << "Loading Gupta potential..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::GuptaPot>();
   } else if (pot_type == "Eckart") {
     potential_to_use = std::make_unique<rgpot::EckartPot>();
   } else if (pot_type == "MullerBrown") {
