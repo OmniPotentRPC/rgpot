@@ -29,7 +29,8 @@ on:
         required: true
         type: string
       baseline:
-        description: x86-64, x86-64-v2, or armv8-a. Empty uses the per-file default.
+        description: x86-64, x86-64-v2, or armv8-a. Empty uses the per-file 
+          default.
         required: false
         type: string
         default: ""
@@ -57,8 +58,8 @@ jobs:
       - name: Checkout auditor
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
           persist-credentials: false
           path: auditor
 
@@ -99,3 +100,8 @@ jobs:
           path: |
             isa-audit-report.json
             isa-audit-report.txt
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || 
+    github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref != 
+    'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}

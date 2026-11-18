@@ -4,11 +4,13 @@ on:
   workflow_call:
     inputs:
       vendored-path:
-        description: Path to the vendored rgbind.hpp, relative to the repository root
+        description: Path to the vendored rgbind.hpp, relative to the repository
+          root
         required: true
         type: string
       rgpot-ref:
-        description: OmniPotentRPC/rgpot commit or ref that owns bind/include/rgbind/rgbind.hpp
+        description: OmniPotentRPC/rgpot commit or ref that owns 
+          bind/include/rgbind/rgbind.hpp
         required: true
         type: string
 
@@ -40,3 +42,8 @@ jobs:
           diff -u "${VENDORED}" /tmp/rgbind.hpp || true
           echo "vendored rgbind.hpp differs from ${RGPOT_REF}" >&2
           exit 1
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || 
+    github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref != 
+    'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}

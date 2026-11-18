@@ -10,18 +10,33 @@ name: CI (orchestrator)
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+    tags:
+      - '*'
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+      - newsfragments/**
+      - LICENSE
   pull_request:
     branches: [main, develop]
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+      - newsfragments/**
+      - LICENSE
   workflow_dispatch:
   # was docs_quality.yml weekly; keep link/prose hygiene on a schedule
   schedule:
     - cron: "15 7 * * 1"
 
 concurrency:
-  group: ci-orchestrator-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || 
+    github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref != 
+    'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 permissions:
   contents: read
 
@@ -92,7 +107,8 @@ jobs:
         with:
           activate-environment: true
           cache: true
-          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 
+            'main' }}
           pixi-version: v0.70.2
       - name: Install prek
         run: |
@@ -175,7 +191,8 @@ jobs:
       - name: Restore lychee cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          key: lychee-${{ runner.os }}-${{ hashFiles('.lychee.toml', 'README.md', 'docs/**/*.org', 'docs/**/*.md') }}
+          key: lychee-${{ runner.os }}-${{ hashFiles('.lychee.toml', 
+            'README.md', 'docs/**/*.org', 'docs/**/*.md') }}
           path: .lycheecache
           restore-keys: lychee-${{ runner.os }}-
       - name: Link check
@@ -214,7 +231,8 @@ jobs:
         with:
           artifact-prefix: ci-tools-${{ github.sha }}
       - name: Towncrier check vs base branch
-        run: potctl ci towncrier-check --compare-with ${{ github.event.pull_request.base.sha }}
+        run: potctl ci towncrier-check --compare-with ${{ 
+          github.event.pull_request.base.sha }}
 
   # Potentials.ordinals against the unpatched pinned potentials-schema commit,
   # the wrap diffs and both vendored copies; append only against the base.
@@ -262,7 +280,8 @@ jobs:
 
   # --- Stage 2a: C++ build matrix ---
   build_and_test:
-    name: ${{ matrix.sys }} / ${{ matrix.os }} [RPC:${{ matrix.rpc }} CACHE:${{ matrix.cache }}]
+    name: ${{ matrix.sys }} / ${{ matrix.os }} [RPC:${{ matrix.rpc }} CACHE:${{ 
+      matrix.cache }}]
     needs: [prepare, ci-tools]
     if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
@@ -308,7 +327,8 @@ jobs:
         shell: bash
         env:
           # ubuntu: -Dwith_mpi=enabled via POTCTL_WITH_MPI. Other OS values stay off.
-          POTCTL_WITH_MPI: ${{ matrix.os == 'ubuntu-latest' && 'enabled' || 'disabled' }}
+          POTCTL_WITH_MPI: ${{ matrix.os == 'ubuntu-latest' && 'enabled' || 
+            'disabled' }}
         run: |
           set -euo pipefail
           if [ "${POTCTL_WITH_MPI}" = "enabled" ]; then
@@ -318,12 +338,15 @@ jobs:
           fi
       - if: matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
         name: mpirun calculator_group_test
-        run: pixi run -e mpibld mpirun --oversubscribe -n 4 ./bbdir/CppCore/calculator_group_test
+        run: pixi run -e mpibld mpirun --oversubscribe -n 4 
+          ./bbdir/CppCore/calculator_group_test
       - if: matrix.sys == 'cmake'
         name: Build & Test (CMake)
         shell: pixi run bash -e {0}
-        run: potctl ci cmake-test --rpc ${{ matrix.rpc }} --cache ${{ matrix.cache }}
-      - if: matrix.rpc == 'true' && matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
+        run: potctl ci cmake-test --rpc ${{ matrix.rpc }} --cache ${{ 
+          matrix.cache }}
+      - if: matrix.rpc == 'true' && matrix.sys == 'meson' && matrix.os == 
+          'ubuntu-latest'
         name: RPC Integration Test
         shell: pixi run -e rpctest bash -e {0}
         run: potctl ci rpc-integ --server-bin bbdir/CppCore/potserv

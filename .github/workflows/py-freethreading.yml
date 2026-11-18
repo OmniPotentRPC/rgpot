@@ -26,22 +26,26 @@ on:
         type: string
         default: "50"
       rust-crate-dir:
-        description: Crate directory relative to package-dir. Empty skips the Rust toolchain.
+        description: Crate directory relative to package-dir. Empty skips the 
+          Rust toolchain.
         required: false
         type: string
         default: ""
       apt-packages:
-        description: Space-separated apt packages installed before the build. Empty skips apt.
+        description: Space-separated apt packages installed before the build. 
+          Empty skips apt.
         required: false
         type: string
         default: ""
       setup-script:
-        description: Repo-relative script to source instead of pip install of the package. Empty keeps pip install.
+        description: Repo-relative script to source instead of pip install of 
+          the package. Empty keeps pip install.
         required: false
         type: string
         default: ""
       python:
-        description: JSON array of free-threaded version tags. The default is 3.14t and 3.15t.
+        description: JSON array of free-threaded version tags. The default is 
+          3.14t and 3.15t.
         required: false
         type: string
         default: '["3.14t","3.15t"]'
@@ -137,3 +141,8 @@ jobs:
             --iterations=${{ inputs.iterations }} \
             --timeout=180 \
             -o faulthandler_timeout=120
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || 
+    github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref != 
+    'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
