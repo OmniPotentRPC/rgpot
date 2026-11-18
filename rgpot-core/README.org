@@ -27,6 +27,7 @@ protocol for device-agnostic interoperability (CPU, CUDA, ROCm).
 | =profile= | Prefix-generic in-process loader with one persistent backend session |
 | =engine= | Native loader for shared libraries that implement the generic engine C ABI |
 | =rpc= | Cap'n Proto RPC client and server for distributed calculations |
+| =units= | CODATA 2018 physical constants bit-checked against the C++ API |
 | =cache= | /(planned)/ Result caching layer |
 
 ** Quick Start
@@ -61,6 +62,13 @@ Enable the generic engine C ABI loader:
 #+begin_src toml
 [dependencies]
 rgpot-core = { version = "3.7.0", features = ["engine"] }
+#+end_src
+
+Enable the standalone physical constants module:
+
+#+begin_src toml
+[dependencies]
+rgpot-core = { version = "3.7.0", features = ["units"] }
 #+end_src
 
 ** Documentation

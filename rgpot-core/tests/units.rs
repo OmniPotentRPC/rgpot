@@ -45,7 +45,7 @@ impl Drop for ScratchDir {
         for file in self.files.iter().rev() {
             let _ = std::fs::remove_file(file);
         }
-        let _ = std::fs::remove_dir(&self.dir);
+        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
@@ -98,7 +98,11 @@ fn every_exported_constant_has_the_bits_of_units_hpp() {
 
 int main(int argc, char **argv) {
   if (argc != 2) return 2;
-  const double values[8] = {
+  const double values[12] = {
+      rgpot::units::BOLTZMANN_CONSTANT_J_PER_K,
+      rgpot::units::ELEMENTARY_CHARGE_C,
+      rgpot::units::HARTREE_ENERGY_J,
+      rgpot::units::REDUCED_PLANCK_CONSTANT_J_S,
       rgpot::units::BOHR_TO_ANGSTROM,
       rgpot::units::ANGSTROM_TO_BOHR,
       rgpot::units::HARTREE_TO_EV,
@@ -110,13 +114,23 @@ int main(int argc, char **argv) {
   };
   std::FILE *fp = std::fopen(argv[1], "wb");
   if (!fp) return 3;
-  const std::size_t wrote = std::fwrite(values, sizeof(double), 8, fp);
+  const std::size_t wrote = std::fwrite(values, sizeof(double), 12, fp);
   std::fclose(fp);
-  return wrote == 8 ? 0 : 4;
+  return wrote == 12 ? 0 : 4;
 }
 "#;
-    let cpp = run_cpp_probe("header-bits", probe, &[], 8);
+    let cpp = run_cpp_probe("header-bits", probe, &[], 12);
     let rust = [
+        (
+            "BOLTZMANN_CONSTANT_J_PER_K",
+            units::BOLTZMANN_CONSTANT_J_PER_K,
+        ),
+        ("ELEMENTARY_CHARGE_C", units::ELEMENTARY_CHARGE_C),
+        ("HARTREE_ENERGY_J", units::HARTREE_ENERGY_J),
+        (
+            "REDUCED_PLANCK_CONSTANT_J_S",
+            units::REDUCED_PLANCK_CONSTANT_J_S,
+        ),
         ("BOHR_TO_ANGSTROM", units::BOHR_TO_ANGSTROM),
         ("ANGSTROM_TO_BOHR", units::ANGSTROM_TO_BOHR),
         ("HARTREE_TO_EV", units::HARTREE_TO_EV),
@@ -216,7 +230,10 @@ fn codata_2018_values_and_identities_hold() {
         units::EV_TO_HARTREE.to_bits(),
         (1.0_f64 / units::HARTREE_TO_EV).to_bits()
     );
-    assert_eq!(units::KB_EV.to_bits(), 8.617_333_262e-5_f64.to_bits());
+    assert_eq!(
+        units::KB_EV.to_bits(),
+        (units::BOLTZMANN_CONSTANT_J_PER_K / units::ELEMENTARY_CHARGE_C).to_bits()
+    );
     assert_eq!(
         units::KB_HARTREE.to_bits(),
         3.166_811_563_455_6e-6_f64.to_bits()
@@ -227,12 +244,12 @@ fn codata_2018_values_and_identities_hold() {
     );
     assert_eq!(
         units::ATOMIC_UNIT_OF_TIME_S.to_bits(),
-        2.418_884_326_585_7e-17_f64.to_bits()
+        (units::REDUCED_PLANCK_CONSTANT_J_S / units::HARTREE_ENERGY_J).to_bits()
     );
 
     // Exact 2019 SI k_B and elementary charge e against CODATA 2018 Hartree.
-    let kb_si = 1.380_649e-23_f64;
-    let elem_charge = 1.602_176_634e-19_f64;
+    let kb_si = units::BOLTZMANN_CONSTANT_J_PER_K;
+    let elem_charge = units::ELEMENTARY_CHARGE_C;
     let planck_h = 6.626_070_15e-34_f64;
     let kb_hartree_from_si = (kb_si / elem_charge) / units::HARTREE_TO_EV;
     assert!(((units::KB_HARTREE - kb_hartree_from_si) / units::KB_HARTREE).abs() < 1e-14);
@@ -253,66 +270,54 @@ fn linking_rgpot_core_c_abi_with_cpp_units_has_no_duplicate_symbols() {
     let cpp_core = cpp_core_dir();
     let parser = cpp_core.join("rgpot").join("units.cc");
 
-    let current_exe = std::env::current_exe().expect("current_exe");
-    let mut rlib_files = Vec::new();
-    let mut profile_dir = None;
-    for ancestor in current_exe.ancestors().skip(1) {
-        for search in [ancestor.to_path_buf(), ancestor.join("deps")] {
-            let Ok(entries) = std::fs::read_dir(&search) else {
-                continue;
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-                    continue;
-                };
-                if name.starts_with("librgpot_core") && name.ends_with(".rlib") {
-                    rlib_files.push(path);
-                    if profile_dir.is_none() {
-                        profile_dir = Some(ancestor.to_path_buf());
-                    }
-                }
-            }
-        }
-        if !rlib_files.is_empty() {
-            break;
-        }
-    }
+    // `cargo test` does not necessarily emit the crate's staticlib. Build it
+    // through Cargo in an isolated target directory so this check cannot pass
+    // vacuously in a clean checkout or under nextest.
+    let mut scratch = ScratchDir::new("no-dup-link");
+    let cargo_target = scratch.dir.join("cargo-target");
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let built = Command::new(cargo)
+        .args(["build", "--lib", "--no-default-features", "--manifest-path"])
+        .arg(&manifest)
+        .arg("--target-dir")
+        .arg(&cargo_target)
+        .env_remove("CARGO_BUILD_TARGET")
+        .output()
+        .expect("invoke cargo to build librgpot_core static archive");
     assert!(
-        !rlib_files.is_empty(),
-        "no librgpot_core*.rlib found above {}",
-        current_exe.display()
+        built.status.success(),
+        "could not build librgpot_core static archive required by the duplicate-symbol test:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&built.stdout),
+        String::from_utf8_lossy(&built.stderr)
     );
-    for rlib in &rlib_files {
-        let bytes = std::fs::read(rlib).expect("read rlib");
-        for forbidden in [
-            b"unit_conversion_factor".as_slice(),
-            b"validate_unit".as_slice(),
-        ] {
-            assert!(
-                !bytes.windows(forbidden.len()).any(|w| w == forbidden),
-                "{} unexpectedly embeds C++ units symbol {:?}",
-                rlib.display(),
-                std::str::from_utf8(forbidden)
-            );
-        }
-    }
 
-    // When `cargo build` has also produced the static archive, link it into a
-    // C++ binary alongside `CppCore/rgpot/units.cc`.
-    let Some(profile_dir) = profile_dir else {
-        return;
-    };
+    let profile_dir = cargo_target.join("debug");
     let staticlib = if cfg!(windows) {
         profile_dir.join("rgpot_core.lib")
     } else {
         profile_dir.join("librgpot_core.a")
     };
-    if !staticlib.is_file() {
-        return;
+    assert!(
+        staticlib.is_file(),
+        "cargo succeeded but did not produce the required static archive at {}",
+        staticlib.display()
+    );
+    let archive = std::fs::read(&staticlib).expect("read librgpot_core static archive");
+    for forbidden in [
+        b"unit_conversion_factor".as_slice(),
+        b"validate_unit".as_slice(),
+    ] {
+        assert!(
+            !archive
+                .windows(forbidden.len())
+                .any(|window| window == forbidden),
+            "{} unexpectedly embeds C++ units symbol {:?}",
+            staticlib.display(),
+            std::str::from_utf8(forbidden)
+        );
     }
 
-    let mut scratch = ScratchDir::new("no-dup-link");
     let src = scratch.track(scratch.dir.join("link_check.cc"));
     let bin = scratch.track(cxx_host::executable_path(&scratch.dir, "link_check"));
     std::fs::write(
