@@ -231,6 +231,59 @@ TEST_CASE("GuptaPot dimer at r0 gives 2A - 2xi and matches rgpot_gupta bit for b
   REQUIRE(per.forces == c_forces);
 }
 
+TEST_CASE("GuptaPot degenerate pairs match all-pairs and neighbour paths",
+          "[Gupta]") {
+  rgpot::GuptaConfig base{
+      .A = 0.2061, .xi = 0.0, .p = 10.229, .q = 4.036, .r0 = 2.5};
+  rgpot::GuptaConfig bounded = base;
+  bounded.cutoff = 4.0 * base.r0;
+
+  auto compare_paths = [&](const std::vector<double> &positions) {
+    const StressEval all_pairs =
+        eval_stress(rgpot::GuptaPot(base), positions, nullptr);
+    const StressEval neighbours =
+        eval_stress(rgpot::GuptaPot(bounded), positions, nullptr);
+    require_scaled_match(all_pairs.energy, neighbours.energy);
+    REQUIRE(all_pairs.forces.size() == neighbours.forces.size());
+    for (std::size_t k = 0; k < all_pairs.forces.size(); ++k) {
+      require_scaled_match(all_pairs.forces[k], neighbours.forces[k]);
+    }
+    return all_pairs;
+  };
+
+  SECTION("zero hopping dimer") {
+    const std::vector<double> positions = {
+        0.0, 0.0, 0.0, base.r0, 0.0, 0.0};
+    const StressEval result = compare_paths(positions);
+    const double analytic_force = -(base.p / base.r0) * 2.0 * base.A;
+    require_scaled_match(result.energy, 2.0 * base.A);
+    require_scaled_match(result.forces[0], analytic_force);
+    require_scaled_match(result.forces[3], -analytic_force);
+    require_scaled_match(analytic_force, -1.68655752);
+  }
+
+  base.xi = 0.8900;
+  bounded.xi = base.xi;
+
+  SECTION("coincident dimer") {
+    const std::vector<double> positions(6, 0.0);
+    const StressEval result = compare_paths(positions);
+    const double expected =
+        2.0 * base.A * std::exp(base.p) -
+        2.0 * std::abs(base.xi) * std::exp(base.q);
+    require_scaled_match(result.energy, expected);
+    for (double force : result.forces) {
+      require_scaled_match(force, 0.0);
+    }
+  }
+
+  SECTION("trimer with one coincident pair") {
+    const std::vector<double> positions = {
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, base.r0, 0.0, 0.0};
+    compare_paths(positions);
+  }
+}
+
 TEST_CASE("GuptaPot forces match central differences on a 13-atom cluster",
           "[Gupta]") {
   const rgpot::GuptaConfig cfg{
