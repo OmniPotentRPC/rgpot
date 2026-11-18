@@ -25,6 +25,7 @@
 //! | [`c_api`] | `extern "C"` entry points collected by cbindgen |
 //! | [`version`] | Loaded library version, to check against `rgpot.h` |
 //! | [`rpc`] | Cap'n Proto RPC client and server (feature-gated) |
+//! | [`units`] | CODATA 2018 physical constants shared bit-for-bit with C++ (feature-gated) |
 //!
 //! ## Design Principles
 //!

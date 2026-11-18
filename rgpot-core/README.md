@@ -16,6 +16,7 @@ Data exchange uses the [DLPack](https://github.com/dmlc/dlpack) tensor protocol 
 | `schema` | Generated bindings for the shared `PotentialConfig`, `ForceInput`, and `PotentialResult` carriers |
 | `profile` | Prefix-generic in-process loader with one persistent backend session |
 | `rpc` | Cap'n Proto RPC client and server for distributed calculations |
+| `units` | CODATA 2018 physical constants bit-checked against the C++ API |
 | `cache` | *(planned)* Result caching layer |
 
 ## Quick Start
@@ -44,6 +45,13 @@ Enable the RPC client and server:
 rgpot-core = { version = "3.7.0", features = ["rpc"] }
 ```
 <!-- [[[end]]] -->
+
+Enable the standalone physical constants module:
+
+```toml
+[dependencies]
+rgpot-core = { version = "3.7.0", features = ["units"] }
+```
 
 ## Documentation
 
