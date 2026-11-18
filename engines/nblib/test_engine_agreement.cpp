@@ -20,8 +20,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -34,7 +36,9 @@ using rgpot::md::kEvAPerKjNm;
 using rgpot::md::kEvPerKj;
 using rgpot::md::kKjPerEv;
 
-constexpr int kSigmaMultiple = 6;
+// Four standard errors are a conservative, precision-scaled acceptance bound.
+constexpr int kSigmaMultiple = 4;
+constexpr std::size_t kBatchCount = 8;
 constexpr double kRoundoff = 8192.0;
 
 void require(bool condition, const std::string &message) {
@@ -74,21 +78,41 @@ struct Moments {
 };
 
 Moments moments_of(const std::vector<double> &samples) {
-  require(samples.size() > 1, "a mean needs more than one sample");
-  double sum = 0.0;
-  for (const double value : samples) {
-    require_finite(value, "a sample is not finite");
-    sum += value;
+  require(samples.size() >= 2 * kBatchCount &&
+              samples.size() % kBatchCount == 0,
+          "batch means need equal nontrivial batches");
+  const std::size_t batch_size = samples.size() / kBatchCount;
+  std::vector<double> means;
+  means.reserve(kBatchCount);
+  for (std::size_t batch = 0; batch < kBatchCount; ++batch) {
+    double sum = 0.0;
+    for (std::size_t sample = 0; sample < batch_size; ++sample) {
+      const double value = samples[batch * batch_size + sample];
+      require_finite(value, "a sample is not finite");
+      sum += value;
+    }
+    means.push_back(sum / static_cast<double>(batch_size));
   }
-  const double mean = sum / static_cast<double>(samples.size());
+  const double mean = std::accumulate(means.begin(), means.end(), 0.0) /
+                      static_cast<double>(means.size());
   double scatter = 0.0;
-  for (const double value : samples) {
+  for (const double value : means) {
     const double delta = value - mean;
     scatter += delta * delta;
   }
-  const double variance =
-      scatter / static_cast<double>(samples.size() - 1);
-  return {mean, std::sqrt(variance / static_cast<double>(samples.size()))};
+  const double variance = scatter / static_cast<double>(means.size() - 1);
+  return {mean, std::sqrt(variance / static_cast<double>(means.size()))};
+}
+
+std::uint64_t test_seed(std::uint64_t fallback) {
+  const char *value = std::getenv("RGPOT_TEST_SEED");
+  if (value == nullptr) {
+    return fallback;
+  }
+  char *end = nullptr;
+  const auto parsed = std::strtoull(value, &end, 10);
+  require(end != value && *end == '\0', "RGPOT_TEST_SEED is not an integer");
+  return parsed;
 }
 
 void require_within_se(double actual, double expected, double stderr,
@@ -97,13 +121,13 @@ void require_within_se(double actual, double expected, double stderr,
   require_finite(expected, message);
   require_finite(stderr, message);
   require(stderr > 0.0, message + " has no sample scatter");
-  const double allowance = static_cast<double>(kSigmaMultiple) * stderr +
-                           roundoff_scale(std::max(std::abs(actual),
-                                                   std::abs(expected)));
+  const double allowance =
+      static_cast<double>(kSigmaMultiple) * stderr +
+      roundoff_scale(std::max(std::abs(actual), std::abs(expected)));
   if (!(std::abs(actual - expected) <= allowance)) {
     throw std::runtime_error(message + ": got " + full_number(actual) +
-                             " expected " + full_number(expected) +
-                             " stderr " + full_number(stderr));
+                             " expected " + full_number(expected) + " stderr " +
+                             full_number(stderr));
   }
 }
 
@@ -172,7 +196,8 @@ void set_positions(rgpot_md_session *session,
                    const std::vector<double> &positions) {
   char error[1024] = {};
   call_ok(rgpot_md_session_set_positions(session, positions.data(),
-                                         positions.size(), error, sizeof(error)),
+                                         positions.size(), error,
+                                         sizeof(error)),
           error, "set_positions");
 }
 
@@ -224,14 +249,16 @@ void shifted_lj(const std::vector<double> &positions_nm, double c6, double c12,
   energy_kj = 0.0;
   forces_kj_nm.assign(positions_nm.size(), 0.0);
   const double rc2 = cutoff_nm * cutoff_nm;
-  const double shift = c6 / std::pow(cutoff_nm, 6) - c12 / std::pow(cutoff_nm, 12);
+  const double shift =
+      c6 / std::pow(cutoff_nm, 6) - c12 / std::pow(cutoff_nm, 12);
   for (std::size_t i = 0; i < atoms; ++i) {
     for (std::size_t j = i + 1; j < atoms; ++j) {
-      const double dx = minimum_image(positions_nm[3 * j] - positions_nm[3 * i], box_nm);
-      const double dy =
-          minimum_image(positions_nm[3 * j + 1] - positions_nm[3 * i + 1], box_nm);
-      const double dz =
-          minimum_image(positions_nm[3 * j + 2] - positions_nm[3 * i + 2], box_nm);
+      const double dx =
+          minimum_image(positions_nm[3 * j] - positions_nm[3 * i], box_nm);
+      const double dy = minimum_image(
+          positions_nm[3 * j + 1] - positions_nm[3 * i + 1], box_nm);
+      const double dz = minimum_image(
+          positions_nm[3 * j + 2] - positions_nm[3 * i + 2], box_nm);
       const double r2 = dx * dx + dy * dy + dz * dz;
       if (!(r2 < rc2) || !(r2 > 0.0)) {
         continue;
@@ -253,8 +280,7 @@ void shifted_lj(const std::vector<double> &positions_nm, double c6, double c12,
   }
 }
 
-std::string argon_topology(double c6, double c12, double cutoff_nm,
-                           int atoms) {
+std::string argon_topology(double c6, double c12, double cutoff_nm, int atoms) {
   std::string text = "nblib 1\ncutoff " + full_number(cutoff_nm) +
                      "\ncoulomb none\natomtype Ar 39.948 " + full_number(c6) +
                      " " + full_number(c12) + "\nmolecule argon 1\n";
@@ -331,21 +357,21 @@ void check_argon(const char *nblib_library, const char *openmm_library) {
   const double c6 = 4.0 * epsilon_kj * std::pow(sigma_nm, 6);
   const double c12 = 4.0 * epsilon_kj * std::pow(sigma_nm, 12);
   constexpr int atoms = 3;
-  const std::vector<double> box{box_angstrom, 0.0, 0.0, 0.0, box_angstrom,
-                                0.0,          0.0, 0.0, box_angstrom};
+  const std::vector<double> box{
+      box_angstrom, 0.0, 0.0, 0.0, box_angstrom, 0.0, 0.0, 0.0, box_angstrom};
   // Two distances inside the cutoff and one pair outside it.
   const std::vector<double> inside{0.0, 0.0, 0.0, 4.2, 0.0, 0.0, 0.0, 5.1, 0.3};
-  const std::vector<double> outside{0.0, 0.0, 0.0, 12.0, 0.0,
+  const std::vector<double> outside{0.0, 0.0, 0.0,  12.0, 0.0,
                                     0.0, 0.0, 12.0, 0.0};
   // Direct separation is past the cutoff. The nearest periodic image is not.
-  const std::vector<double> image{1.0, 2.0, 3.0, 28.0, 2.4, 3.2, 1.5, 14.0, 3.0};
+  const std::vector<double> image{1.0, 2.0, 3.0,  28.0, 2.4,
+                                  3.2, 1.5, 14.0, 3.0};
   const std::vector<double> zero(static_cast<std::size_t>(3 * atoms), 0.0);
   const std::string topology = argon_topology(c6, c12, cutoff_nm, atoms);
   const std::string xml =
       argon_openmm_xml(epsilon_kj, sigma_nm, cutoff_nm, box_nm, atoms);
 
-  OwnedSession nblib =
-      open_session("nblib", nblib_library, topology, nullptr);
+  OwnedSession nblib = open_session("nblib", nblib_library, topology, nullptr);
   OwnedSession openmm =
       open_session("openmm", openmm_library, xml, "Reference");
   for (const auto &geometry : {inside, outside, image, inside}) {
@@ -353,7 +379,8 @@ void check_argon(const char *nblib_library, const char *openmm_library) {
     prepare(openmm.session, box, geometry, zero);
     const Snapshot nblib_state = read_state(nblib.session, geometry.size());
     const Snapshot openmm_state = read_state(openmm.session, geometry.size());
-    compare_snapshot_to_lj(nblib_state, c6, c12, cutoff_nm, box_nm, "nblib argon");
+    compare_snapshot_to_lj(nblib_state, c6, c12, cutoff_nm, box_nm,
+                           "nblib argon");
     compare_snapshot_to_lj(openmm_state, c6, c12, cutoff_nm, box_nm,
                            "OpenMM argon");
     require_near(nblib_state.potential, openmm_state.potential,
@@ -451,13 +478,13 @@ void check_constrained_dimer(const char *nblib_library,
   constexpr double dt = 0.001;
   constexpr std::size_t burn = 4000;
   constexpr std::size_t stride = 500;
-  constexpr std::size_t samples = 48;
+  constexpr std::size_t samples = 64;
   constexpr double mass = 39.948;
   const double kT_kj = kT_ev * kKjPerEv;
   const double box_angstrom = box_nm / rgpot::md::kNmPerAngstrom;
   const double xi_angstrom = xi_nm / rgpot::md::kNmPerAngstrom;
-  const std::vector<double> box{box_angstrom, 0.0, 0.0, 0.0, box_angstrom,
-                                0.0,          0.0, 0.0, box_angstrom};
+  const std::vector<double> box{
+      box_angstrom, 0.0, 0.0, 0.0, box_angstrom, 0.0, 0.0, 0.0, box_angstrom};
   const std::vector<double> positions{0.0, 0.0, 0.0, xi_angstrom, 0.0, 0.0};
   const std::vector<double> zero(6, 0.0);
   const std::vector<double> normal{1.0, 0.0, 0.0, -1.0, 0.0, 0.0};
@@ -467,8 +494,8 @@ void check_constrained_dimer(const char *nblib_library,
 
   const auto run = [&](const char *engine, const char *library,
                        const std::string &spec, std::uint64_t seed) {
-    OwnedSession session =
-        open_session(engine, library, spec, engine[0] == 'o' ? "Reference" : nullptr);
+    OwnedSession session = open_session(
+        engine, library, spec, engine[0] == 'o' ? "Reference" : nullptr);
     prepare(session.session, box, positions, zero);
     const Snapshot initial = read_state(session.session, 6);
     const double r_nm = xi_nm;
@@ -491,22 +518,25 @@ void check_constrained_dimer(const char *nblib_library,
       step_langevin(session.session, kT_ev, friction, dt, positions, normal, {},
                     {}, stride, seed + 1 + sample);
       const Snapshot state = read_state(session.session, 6);
-      const double separation =
-          state.positions[0] - state.positions[3];
+      const double separation = state.positions[0] - state.positions[3];
       require_near(separation, -xi_angstrom,
                    std::string(engine) + " left the hyperplane");
       // Five degrees of freedom: six Cartesian coordinates, one constraint.
       temperatures.push_back(2.0 * state.kinetic / 5.0);
       lambdas.push_back(constraint_lambda(state.forces, masses, normal));
     }
+    // Eight batches contain eight observations, or 4 ps, each. This exceeds
+    // the 0.125 ps thermostat time and the harmonic dimer's autocorrelation
+    // time, so the batch means account for correlated trajectory samples.
     return std::pair<Moments, Moments>{moments_of(temperatures),
                                        moments_of(lambdas)};
   };
 
   const auto nblib = run("nblib", nblib_library,
-                         dimer_topology(k_kj, r0_nm, cutoff_nm), 17);
+                         dimer_topology(k_kj, r0_nm, cutoff_nm), test_seed(17));
   const auto openmm =
-      run("openmm", openmm_library, dimer_openmm_xml(k_kj, r0_nm, box_nm), 19);
+      run("openmm", openmm_library, dimer_openmm_xml(k_kj, r0_nm, box_nm),
+          test_seed(19) + 2);
   require_within_se(nblib.first.mean, kT_ev, nblib.first.stderr,
                     "nblib temperature");
   require_within_se(openmm.first.mean, kT_ev, openmm.first.stderr,
@@ -535,8 +565,8 @@ void check_reflection_keeps_the_pair(const char *nblib_library,
   const double box_nm = box_angstrom * rgpot::md::kNmPerAngstrom;
   const double c6 = 4.0 * epsilon_kj * std::pow(sigma_nm, 6);
   const double c12 = 4.0 * epsilon_kj * std::pow(sigma_nm, 12);
-  const std::vector<double> box{box_angstrom, 0.0, 0.0, 0.0, box_angstrom,
-                                0.0,          0.0, 0.0, box_angstrom};
+  const std::vector<double> box{
+      box_angstrom, 0.0, 0.0, 0.0, box_angstrom, 0.0, 0.0, 0.0, box_angstrom};
   const std::vector<double> positions{0.0, 0.0, 0.0, 4.2, 0.0, 0.0};
   std::vector<double> velocities{0.0, 0.0, 80.0, 0.0, 0.0, 0.0};
   const std::vector<double> plane{0.0, 0.0, 0.0, 4.2, 0.0, 0.0};
@@ -546,8 +576,9 @@ void check_reflection_keeps_the_pair(const char *nblib_library,
   const std::string topology = argon_topology(c6, c12, cutoff_nm, 2);
   const std::string xml =
       argon_openmm_xml(epsilon_kj, sigma_nm, cutoff_nm, box_nm, 2);
-  for (const auto &engine : {std::pair<const char *, const char *>{"nblib", nblib_library},
-                             {"openmm", openmm_library}}) {
+  for (const auto &engine :
+       {std::pair<const char *, const char *>{"nblib", nblib_library},
+        {"openmm", openmm_library}}) {
     OwnedSession session = open_session(
         engine.first, engine.second, engine.first[0] == 'n' ? topology : xml,
         engine.first[0] == 'n' ? nullptr : "Reference");
@@ -566,7 +597,8 @@ void check_nblib_reseed(const char *nblib_library) {
   const std::string topology =
       "nblib 1\ncutoff 0.5\ncoulomb none\natomtype A 12 0 0\n"
       "molecule mono 1\natom A A 0\nend\n";
-  OwnedSession session = open_session("nblib", nblib_library, topology, nullptr);
+  OwnedSession session =
+      open_session("nblib", nblib_library, topology, nullptr);
   const std::vector<double> box{20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
   const std::vector<double> positions{1.0, 2.0, 0.0};
   const std::vector<double> velocities(3, 0.0);
@@ -596,7 +628,8 @@ void check_nblib_reseed(const char *nblib_library) {
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 3, "usage: test_engine_agreement <nblib-engine> <openmm-engine>");
+    require(argc == 3,
+            "usage: test_engine_agreement <nblib-engine> <openmm-engine>");
     check_argon(argv[1], argv[2]);
     check_constrained_dimer(argv[1], argv[2]);
     check_reflection_keeps_the_pair(argv[1], argv[2]);

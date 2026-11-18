@@ -1,9 +1,9 @@
 // MIT License
 // Copyright 2026 Rohit Goswami
 
+#include "lj_eval.hpp"
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/ExternalPot/md_units.hpp"
-#include "lj_eval.hpp"
 
 #include <algorithm>
 #include <array>
@@ -41,8 +41,8 @@ void require(bool condition, const char *message) {
 
 void require_near(double actual, double expected, const std::string &message) {
   const double magnitude = std::max(std::abs(actual), std::abs(expected));
-  const double tolerance = kUlps * std::numeric_limits<double>::epsilon() *
-                           std::max(1.0, magnitude);
+  const double tolerance =
+      kUlps * std::numeric_limits<double>::epsilon() * std::max(1.0, magnitude);
   if (!(std::abs(actual - expected) <= tolerance)) {
     throw std::runtime_error(message + ": got " + full_number(actual) +
                              " expected " + full_number(expected));
@@ -51,8 +51,8 @@ void require_near(double actual, double expected, const std::string &message) {
 
 // Potential-shifted 12-6 pair in kJ/mol and kJ/mol/nm, the form nblib
 // evaluates inside the cutoff.
-void shifted_pair(double c6, double c12, double cutoff, double r, double &energy,
-                  double &dvdr) {
+void shifted_pair(double c6, double c12, double cutoff, double r,
+                  double &energy, double &dvdr) {
   const double inv_r6 = std::pow(r, -6);
   const double shift = c6 / std::pow(cutoff, 6) - c12 / std::pow(cutoff, 12);
   energy = c12 * inv_r6 * inv_r6 - c6 * inv_r6 + shift;
@@ -79,15 +79,68 @@ std::string argon_topology() {
          full_number(argon_c12()) + "\nmolecule argon 2\natom Ar Ar 0\nend\n";
 }
 
+void check_improper_dihedral(const char *engine) {
+  constexpr double force_constant = 2.0;
+  const std::string topology =
+      "nblib 1\ncutoff 0.4\ncoulomb none\natomtype X 12 0 0\n"
+      "molecule improper 1\natom A X 0\natom B X 0\natom C X 0\n"
+      "atom D X 0\ndihedral improper A B C D 0 2\nend\n";
+  char error[1024] = {};
+  rgpot_md_session *session =
+      rgpot_md_session_create("nblib", engine, topology.data(), topology.size(),
+                              nullptr, error, sizeof(error));
+  require(session != nullptr, error);
+  struct SessionGuard {
+    rgpot_md_session *session;
+    ~SessionGuard() { rgpot_md_session_destroy(session); }
+  } guard{session};
+
+  const std::array<double, 9> box{40.0, 0.0, 0.0, 0.0, 40.0,
+                                  0.0,  0.0, 0.0, 40.0};
+  // The two planes are perpendicular and every defining bond is 1 nm long.
+  const std::array<double, 12> positions{20.0, 10.0, 10.0, 10.0, 10.0, 10.0,
+                                         10.0, 20.0, 10.0, 10.0, 20.0, 20.0};
+  const std::array<double, 12> velocities{};
+  require(rgpot_md_session_set_periodic_box(session, box.data(), error,
+                                            sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_set_positions(session, positions.data(),
+                                         positions.size(), error,
+                                         sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_set_velocities(session, velocities.data(),
+                                          velocities.size(), error,
+                                          sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_initialize(session, error, sizeof(error)) == 0,
+          error);
+
+  std::array<double, 12> forces{};
+  double energy = 0.0;
+  require(rgpot_md_session_get_state(session, nullptr, nullptr, forces.data(),
+                                     forces.size(), &energy, nullptr, error,
+                                     sizeof(error)) == 0,
+          error);
+  const double half_turn = std::acos(-1.0) / 2.0;
+  // V = k*phi^2/2 at phi = pi/2. Hand differentiation gives
+  // -dV/dz_A = k*pi/2 because the adjacent bonds are unit length. The
+  // positive sign pins the nblib improper-force sign correction.
+  const double expected_energy =
+      0.5 * force_constant * half_turn * half_turn * kEvPerKj;
+  const double expected_force = force_constant * half_turn * kEvAPerKjNm;
+  require_near(energy, expected_energy, "nblib improper energy");
+  require_near(forces[2], expected_force, "nblib improper force on A.z");
+}
+
 void run(const char *engine) {
   require(engine != nullptr && engine[0] != '\0', "nblib engine path is empty");
   require(setenv("RGPOT_NBLIB_ENGINE", engine, 1) == 0,
           "could not set nblib engine path");
   char error[1024] = {};
   const std::string topology = argon_topology();
-  rgpot_md_session *session = rgpot_md_session_create(
-      "nblib", nullptr, topology.data(), topology.size(), nullptr, error,
-      sizeof(error));
+  rgpot_md_session *session =
+      rgpot_md_session_create("nblib", nullptr, topology.data(),
+                              topology.size(), nullptr, error, sizeof(error));
   if (session == nullptr) {
     throw std::runtime_error(error);
   }
@@ -97,29 +150,28 @@ void run(const char *engine) {
   } guard{session};
 
   const std::array<double, 9> box{20.0, 0.0, 0.0, 0.0, 20.0,
-                                  0.0, 0.0, 0.0, 20.0};
+                                  0.0,  0.0, 0.0, 20.0};
   const std::array<double, 6> positions{0.0, 0.0, 0.0, 4.2, 0.0, 0.0};
   const std::array<double, 6> velocities{0.0, 0.1, 0.0, 0.0, -0.1, 0.0};
   require(rgpot_md_session_set_periodic_box(session, box.data(), error,
-                                             sizeof(error)) == 0,
+                                            sizeof(error)) == 0,
           error);
   require(rgpot_md_session_set_positions(session, positions.data(),
-                                          positions.size(), error,
-                                          sizeof(error)) == 0,
+                                         positions.size(), error,
+                                         sizeof(error)) == 0,
           error);
   require(rgpot_md_session_set_velocities(session, velocities.data(),
-                                           velocities.size(), error,
-                                           sizeof(error)) == 0,
+                                          velocities.size(), error,
+                                          sizeof(error)) == 0,
           error);
   require(rgpot_md_session_initialize(session, error, sizeof(error)) == 0,
           error);
 
   std::array<double, 6> nblib_force{};
   double nblib_energy = 0.0;
-  require(rgpot_md_session_get_state(session, nullptr, nullptr,
-                                     nblib_force.data(), nblib_force.size(),
-                                     &nblib_energy, nullptr, error,
-                                     sizeof(error)) == 0,
+  require(rgpot_md_session_get_state(
+              session, nullptr, nullptr, nblib_force.data(), nblib_force.size(),
+              &nblib_energy, nullptr, error, sizeof(error)) == 0,
           error);
 
   // The pair sits at 4.2 Angstrom, near the well, so a wrong c12 shows in
@@ -129,7 +181,8 @@ void run(const char *engine) {
   shifted_pair(argon_c6(), argon_c12(), kCutoffNm, 0.42, energy_kj, dvdr_kj);
   require_near(nblib_energy, energy_kj * kEvPerKj, "nblib argon energy");
   require_near(nblib_force[0], dvdr_kj * kEvAPerKjNm, "nblib argon force on 0");
-  require_near(nblib_force[3], -dvdr_kj * kEvAPerKjNm, "nblib argon force on 1");
+  require_near(nblib_force[3], -dvdr_kj * kEvAPerKjNm,
+               "nblib argon force on 1");
   for (const size_t component : {1u, 2u, 4u, 5u}) {
     require_near(nblib_force[component], 0.0, "nblib argon transverse force");
   }
@@ -187,12 +240,12 @@ void run(const char *engine) {
                            std::array<double, 6> &out_velocities,
                            uint64_t &hits) {
     require(rgpot_md_session_set_positions(session, positions.data(),
-                                            positions.size(), error,
-                                            sizeof(error)) == 0,
+                                           positions.size(), error,
+                                           sizeof(error)) == 0,
             error);
     require(rgpot_md_session_set_velocities(session, velocities.data(),
-                                             velocities.size(), error,
-                                             sizeof(error)) == 0,
+                                            velocities.size(), error,
+                                            sizeof(error)) == 0,
             error);
     require(rgpot_md_session_step_langevin(
                 session, 0.025, 1.0, 0.001, plane_point.data(),
@@ -207,10 +260,10 @@ void run(const char *engine) {
   };
   advance(first_positions, first_velocities, first_hits);
   advance(second_positions, second_velocities, second_hits);
-  require(first_hits == second_hits &&
-              first_positions == second_positions &&
+  require(first_hits == second_hits && first_positions == second_positions &&
               first_velocities == second_velocities,
           "nblib Langevin seed is not deterministic");
+  check_improper_dihedral(engine);
 }
 
 } // namespace

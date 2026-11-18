@@ -3,10 +3,10 @@
 
 // OpenMM and nblib against each other and against the closed forms of the
 // harmonic chain, through the one session ABI. Both engines run the same
-// harness; every sampled mean must lie within the standard error of its
-// closed form and the two engines must agree within the pooled standard
-// error, for the kinetic energy, the potential energy and the mean constraint
-// force.
+// harness; every sampled mean must lie within the named multiple of its
+// batch-means standard error, and the two engines must agree within the same
+// multiple of the pooled error for kinetic energy, potential energy and mean
+// constraint force.
 
 #include "engines/common/md_session_chain_nblib.hpp"
 #include "engines/common/md_session_chain_openmm.hpp"
@@ -20,8 +20,8 @@ int main(int argc, char **argv) {
     require(argc == 3,
             "usage: test_engine_analytic <nblib-engine> <openmm-engine>");
     const Chain chain;
-    const std::vector<double> box{50.0, 0.0, 0.0, 0.0, 50.0, 0.0,
-                                  0.0,  0.0, 50.0};
+    const std::vector<double> box{50.0, 0.0, 0.0, 0.0, 50.0,
+                                  0.0,  0.0, 0.0, 50.0};
     char error[1024] = {};
 
     const std::string topology = chainNblibTopology(chain);
@@ -41,8 +41,8 @@ int main(int argc, char **argv) {
     b.prepare(box);
     a.checkReplay();
     b.checkReplay();
-    const Sampled fromNblib = a.sample(6000, 100, 2207);
-    const Sampled fromOpenmm = b.sample(6000, 100, 3301);
+    const Sampled fromNblib = a.sample(6000, 100, testSeed(2207));
+    const Sampled fromOpenmm = b.sample(6000, 100, testSeed(3301) + 2);
     checkAgainstAnalytic(fromNblib, chain, "nblib");
     checkAgainstAnalytic(fromOpenmm, chain, "OpenMM");
     checkAgreement(fromNblib, fromOpenmm, "nblib vs OpenMM");

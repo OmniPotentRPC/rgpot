@@ -23,12 +23,12 @@ int main(int argc, char **argv) {
                                             sizeof(error)));
     require(session.handle != nullptr, std::string("nblib: ") + error);
     Harness harness(session.handle, chain);
-    const std::vector<double> box{50.0, 0.0, 0.0, 0.0, 50.0, 0.0,
-                                  0.0,  0.0, 50.0};
+    const std::vector<double> box{50.0, 0.0, 0.0, 0.0, 50.0,
+                                  0.0,  0.0, 0.0, 50.0};
     harness.prepare(box);
     harness.checkReplay();
     harness.checkReseed();
-    const Sampled sampled = harness.sample(6000, 100, 1103);
+    const Sampled sampled = harness.sample(6000, 100, testSeed(1103));
     checkAgainstAnalytic(sampled, chain, "nblib");
     std::cout << "nblib: <K> = " << number(sampled.kinetic.value) << " +- "
               << number(sampled.kinetic.error)
