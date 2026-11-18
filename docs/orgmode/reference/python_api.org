@@ -550,15 +550,13 @@ rgpot.GuptaPot(A=0.1477, xi=0.89, p=9.689, q=4.602, r0=1.0, cutoff=0.0, periodic
   Phys. Rev. B 48, 22 (1993), doi:10.1103/PhysRevB.48.22).
   When =stress= is true and the box has positive volume, =evaluate= returns the
   Cauchy stress.
-  A coincident pair is not a finite minimum.
-  With no cutoff the call delegates to =rgpot_gupta=, which returns +infinity
-  and poisons the forces with NaN; a cutoff or a staged call sets the energy and
-  the forces to NaN.
-  =evaluate= then raises =rgpot.NumericalError=.
-  A NaN coordinate does the same.
+  A coincident pair or non-finite coordinate is rejected before a result is
+  returned.
 - Errors :: =ValueError= when =r0 <= 0= or non-finite, when any parameter is
   non-finite, when =periodic= is true with =cutoff <= 0=, or when a periodic
   cutoff exceeds half a face spacing.
+  =ValueError= is also raised when coordinates are non-finite or when a pair is
+  coincident.
 
 *** =rgpot.SWPot=
 

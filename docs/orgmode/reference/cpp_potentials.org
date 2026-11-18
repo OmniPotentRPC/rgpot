@@ -1056,11 +1056,8 @@ E = sum_i [ sum_{j != i} A * exp(-p * (r_ij / r_0 - 1))
 - Outputs :: the Cleri-Rosato Gupta energy and analytic forces, with no energy
   shift at the cutoff.
   Atomic numbers are not read.
-  A coincident pair is not a minimum.
-  =rgpot_gupta= sets the energy to +infinity, and a =GuptaPot= call that
-  delegates to it poisons the forces with NaN.
-  Neighbour and staged calls set the energy and the forces to NaN.
-  A NaN separation falls through, so the energy and the forces are NaN.
+  A =GuptaPot= call rejects non-finite coordinates and coincident pairs in both
+  direct and neighbour-backed paths.
   Exact zero density keeps a finite repulsive force.
   Non-periodic unbounded calls without stress or per-atom output delegate to
   =rgpot_gupta=.
@@ -1072,6 +1069,8 @@ E = sum_i [ sum_{j != i} A * exp(-p * (r_ij / r_0 - 1))
   =nAtoms > 0= with a null position or force buffer, and when =periodic= is set
   and the cell is null or has a diagonal entry that is not positive.
   A periodic call also throws when the cutoff exceeds half a face spacing.
+  It also throws when any position component is non-finite or when a pair is
+  coincident.
 
 *** =rgpot::GuptaPot::config=
 
