@@ -168,7 +168,7 @@ TEST_CASE("neighbour modes agree for the classical potentials", "[nlist]") {
   checkModes(sc_s, sc_w, scpos, pt, 3 * std::sqrt(2.0));
 
   rgpot::GuptaConfig gupta;
-  gupta.cutoff = 3.0;
+  gupta.cutoff = 2.0;
   gupta.periodic = true;
   rgpot::GuptaPot gupta_s(gupta);
   rgpot::GuptaPot gupta_w(gupta);
@@ -290,7 +290,7 @@ TEST_CASE("threaded classical forces repeat and stay near one thread",
                3 * std::sqrt(2.0));
 
   rgpot::GuptaConfig gupta;
-  gupta.cutoff = 3.0;
+  gupta.cutoff = 2.0;
   gupta.periodic = true;
   rgpot::GuptaPot g_one(gupta);
   rgpot::GuptaPot g_two(gupta);
