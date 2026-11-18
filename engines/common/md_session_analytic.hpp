@@ -25,6 +25,7 @@
 // and the continuation of a stream across calls are exact.
 
 #include "rgpot/ExternalPot/external_potentials.h"
+#include "test_seed.hpp"
 
 #include <algorithm>
 #include <array>
@@ -123,14 +124,7 @@ inline Mean batchMean(const std::vector<double> &series,
 }
 
 inline std::uint64_t testSeed(std::uint64_t fallback) {
-  const char *value = std::getenv("RGPOT_TEST_SEED");
-  if (value == nullptr) {
-    return fallback;
-  }
-  char *end = nullptr;
-  const auto parsed = std::strtoull(value, &end, 10);
-  require(end != value && *end == '\0', "RGPOT_TEST_SEED is not an integer");
-  return parsed;
+  return rgpot::test::test_seed(fallback);
 }
 
 inline std::string number(double value) {

@@ -14,6 +14,8 @@
 #include <openmm/serialization/XmlSerializer.h>
 
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -87,25 +89,25 @@ void check_box_in_angstrom(const char *library) {
 
   // 1.0 and 29.0 Angstrom are 2.0 Angstrom apart through the boundary.
   const double positions[6] = {1.0, 5.0, 5.0, 29.0, 5.0, 5.0};
-  require(rgpot_md_session_set_positions(owned.session, positions, 6, error,
-                                         sizeof(error)) == 0,
-          error);
-  require(rgpot_md_session_initialize(owned.session, error, sizeof(error)) == 0,
-          error);
+  int rc = rgpot_md_session_set_positions(owned.session, positions, 6, error,
+                                          sizeof(error));
+  require(rc == 0, error);
+  rc = rgpot_md_session_initialize(owned.session, error, sizeof(error));
+  require(rc == 0, error);
   double potential = 0.0;
   double forces[6] = {};
-  require(rgpot_md_session_get_forces(owned.session, forces, 6, &potential,
-                                      error, sizeof(error)) == 0,
-          error);
+  rc = rgpot_md_session_get_forces(owned.session, forces, 6, &potential, error,
+                                   sizeof(error));
+  require(rc == 0, error);
   const double expected_kj = 100.0 * std::pow(1.0 - 0.2 / 0.8, 2);
   require(near(potential, expected_kj * rgpot::md::kEvPerKj, 1.0e-9),
           "the image pair energy is missing: the box is not in Angstrom");
   require(forces[0] != 0.0 && near(forces[0], -forces[3], 1.0e-9),
           "the image pair has no force");
   double kinetic = 0.0;
-  require(rgpot_md_session_get_energy(owned.session, nullptr, &kinetic, error,
-                                      sizeof(error)) == 0,
-          error);
+  rc = rgpot_md_session_get_energy(owned.session, nullptr, &kinetic, error,
+                                   sizeof(error));
+  require(rc == 0, error);
   require(std::isfinite(kinetic) && kinetic >= 0.0, "get_energy kinetic");
 }
 
@@ -122,12 +124,12 @@ void check_constraint_force(const char *library) {
 
   const double start[3] = {0.0, 0.7, 0.0};
   const double rest[3] = {0.0, 0.0, 0.0};
-  require(rgpot_md_session_set_positions(owned.session, start, 3, error,
-                                         sizeof(error)) == 0,
-          error);
-  require(rgpot_md_session_set_velocities(owned.session, rest, 3, error,
-                                          sizeof(error)) == 0,
-          error);
+  int rc = rgpot_md_session_set_positions(owned.session, start, 3, error,
+                                          sizeof(error));
+  require(rc == 0, error);
+  rc = rgpot_md_session_set_velocities(owned.session, rest, 3, error,
+                                       sizeof(error));
+  require(rc == 0, error);
   const double normal[3] = {0.0, 1.0, 0.0};
   std::vector<double> lambda(4, -1.0);
   rgpot_md_langevin_request request{};
@@ -144,9 +146,9 @@ void check_constraint_force(const char *library) {
   result.struct_size = sizeof(result);
   result.constraint_force = lambda.data();
   result.constraint_force_len = lambda.size();
-  require(rgpot_md_session_run_langevin(owned.session, &request, &result, error,
-                                        sizeof(error)) == 0,
-          error);
+  rc = rgpot_md_session_run_langevin(owned.session, &request, &result, error,
+                                     sizeof(error));
+  require(rc == 0, error);
   // F_y = -k y with k = 500 kJ/mol/nm^2 and y = 0.07 nm, and lambda = -F_y.
   const double expected = 500.0 * 0.07 * rgpot::md::kEvAPerKjNm;
   for (int step = 0; step < 3; ++step) {
@@ -177,9 +179,9 @@ void check_constraint_force(const char *library) {
   request.plane_normal = nullptr;
   result.constraint_force = nullptr;
   result.constraint_force_len = 0;
-  require(rgpot_md_session_run_langevin(owned.session, &request, &result, error,
-                                        sizeof(error)) == 0,
-          error);
+  rc = rgpot_md_session_run_langevin(owned.session, &request, &result, error,
+                                     sizeof(error));
+  require(rc == 0, error);
 
   // Reseeding wants a normal of the right length.
   require(rgpot_md_session_reseed_velocities(owned.session, 0.02585, 3, normal,

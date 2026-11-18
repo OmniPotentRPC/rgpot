@@ -2,6 +2,7 @@
 // Copyright 2026 Rohit Goswami
 
 #include "rgpot/ExternalPot/OpenMM.hpp"
+#include "../common/test_seed.hpp"
 
 #include <openmm/CustomExternalForce.h>
 #include <openmm/System.h>
@@ -39,24 +40,13 @@ void require_close(double actual, double expected, double tolerance,
   }
 }
 
-std::uint64_t test_seed(std::uint64_t fallback) {
-  const char *value = std::getenv("RGPOT_TEST_SEED");
-  if (value == nullptr) {
-    return fallback;
-  }
-  char *end = nullptr;
-  const auto parsed = std::strtoull(value, &end, 10);
-  require(end != value && *end == '\0', "RGPOT_TEST_SEED is not an integer");
-  return parsed;
-}
-
 rgpot::OpenMMSessionConfig reference_config() {
   rgpot::OpenMMSessionConfig config;
   config.platform = "Reference";
   config.time_step = 0.0005;
   config.friction = 5.0;
   config.temperature = 2.5;
-  config.random_seed = static_cast<int>(test_seed(17));
+  config.random_seed = rgpot::test::test_seed(17);
   return config;
 }
 
@@ -109,14 +99,14 @@ void test_harmonic_equipartition_on_plane() {
   session.setPositions(point);
   session.setVelocities(zeros(2));
   session.stepLangevin(kT, config.friction, config.time_step, point, normal, {},
-                       {}, 20000, test_seed(701));
+                       {}, 20000, rgpot::test::test_seed(701));
 
   constexpr std::size_t sample_count = 60000;
   std::vector<double> potential_samples;
   potential_samples.reserve(sample_count);
   for (std::size_t sample = 0; sample < sample_count; ++sample) {
     session.stepLangevin(kT, config.friction, config.time_step, point, normal,
-                         {}, {}, 20, test_seed(9001) + sample);
+                         {}, {}, 20, rgpot::test::test_seed(9001) + sample);
     const auto state = session.state();
     const double plane = state.positions[0][0] + state.positions[1][0];
     require(std::abs(plane) < kPlaneTolerance,
@@ -165,7 +155,7 @@ void test_closed_form_constrained_mean_force() {
   session.setPositions(point);
   session.setVelocities(zeros(1));
   session.stepLangevin(kT, config.friction, config.time_step, point, normal, {},
-                       {}, 20000, test_seed(1103));
+                       {}, 20000, rgpot::test::test_seed(1103));
 
   constexpr std::size_t sample_count = 6000;
   std::vector<double> x_samples;
@@ -174,7 +164,7 @@ void test_closed_form_constrained_mean_force() {
   lambda_samples.reserve(sample_count);
   for (std::size_t sample = 0; sample < sample_count; ++sample) {
     session.stepLangevin(kT, config.friction, config.time_step, point, normal,
-                         {}, {}, 200, test_seed(12001) + sample);
+                         {}, {}, 200, rgpot::test::test_seed(12001) + sample);
     const auto state = session.state();
     require_close(state.positions[0][1], constrained_y, kPlaneTolerance,
                   "mean-force model left the plane");
