@@ -50,10 +50,17 @@ thread whatever =OMP_NUM_THREADS= asks for, since starting a team costs more
 than such a call.
 From 8192 atoms up each atom keeps the energy and strain of its pairs with
 higher-index partners, and the atoms are added in index order.
-A team of =OMP_NUM_THREADS= threads splits the atoms into as many runs and walks
-each atom's whole row on the run that owns it, so the energy, the forces, the
-stress and the per-atom terms have the bits of one thread on any thread count,
-also when the runtime starts fewer threads.
+On a stored neighbour list with at least 8192 atoms and at least 4096 candidate
+upper pairs, a team of =OMP_NUM_THREADS= threads runs one three-phase OpenMP
+region over an upper-pair index: phase 0 evaluates each upper pair once across
+work-balanced atom slices rounded to 8-atom boundaries, phase 1 accumulates
+per-atom densities and embedding weights in pair-index order, and phase 2 sums
+forces, stress, and per-atom virials from the stored pair terms.
+Sparser stored lists stay on one thread, and streaming or unbounded walks still
+evaluate each atom's row on its owning slice.
+The energy, the forces, the stress and the per-atom terms therefore keep the
+bits of one thread on any thread count, also when the runtime starts fewer
+threads.
 One pass builds the densities and a second pass writes the forces.
 The density pass keeps the powers and =1/r^2= that the force of each pair takes,
 and the force pass reads them back instead of raising the distance to =n= and
