@@ -138,6 +138,67 @@ struct Knot {
   [[nodiscard]] double slope() const { return (c[0] * p + c[1]) * p + c[2]; }
 };
 
+/// A second-order hyper-dual number. `a` is seeded with one Cartesian
+/// basis vector and `b` with the requested direction; `ab` is therefore
+/// one component of the Hessian-vector product.
+struct HyperDual {
+  double value;
+  double a;
+  double b;
+  double ab;
+};
+
+HyperDual operator+(HyperDual x, HyperDual y) {
+  return {x.value + y.value, x.a + y.a, x.b + y.b, x.ab + y.ab};
+}
+
+HyperDual operator*(HyperDual x, HyperDual y) {
+  return {x.value * y.value, x.a * y.value + x.value * y.a,
+          x.b * y.value + x.value * y.b,
+          x.ab * y.value + x.a * y.b + x.b * y.a + x.value * y.ab};
+}
+
+HyperDual operator*(double x, HyperDual y) {
+  return {x * y.value, x * y.a, x * y.b, x * y.ab};
+}
+
+HyperDual compose(HyperDual x, double value, double first, double second) {
+  return {value, first * x.a, first * x.b,
+          second * x.a * x.b + first * x.ab};
+}
+
+HyperDual square_root(HyperDual x) {
+  const double root = std::sqrt(x.value);
+  const double first = 0.5 / root;
+  return compose(x, root, first, -0.25 / (x.value * root));
+}
+
+HyperDual reciprocal(HyperDual x) {
+  const double inverse = 1.0 / x.value;
+  return compose(x, inverse, -inverse * inverse,
+                 2.0 * inverse * inverse * inverse);
+}
+
+/// A cubic table value, with its segment chosen solely from the ordinary
+/// value. This keeps the discrete lookup out of the differentiated graph.
+HyperDual table_value(const double *s, double inverse_delta, int n,
+                      HyperDual x) {
+  const Place at = place(x.value, inverse_delta, n);
+  const double *c = s + at.offset;
+  HyperDual p{x.value * inverse_delta + 1.0 -
+                  static_cast<double>(at.offset / 7 + 1),
+              x.a * inverse_delta, x.b * inverse_delta,
+              x.ab * inverse_delta};
+  // place() fixes the endpoint coordinate at one outside the upper end.
+  if (at.p == 1.0 && p.value > 1.0) {
+    p = {1.0, 0.0, 0.0, 0.0};
+  }
+  const HyperDual c4{c[4], 0.0, 0.0, 0.0};
+  const HyperDual c5{c[5], 0.0, 0.0, 0.0};
+  const HyperDual c6{c[6], 0.0, 0.0, 0.0};
+  return ((c[3] * p + c4) * p + c5) * p + c6;
+}
+
 /// The radial tables of a pair of an a atom i and a b atom j: the density
 /// j puts at i, the density i puts at j, and r phi_ab.
 struct Couple {
@@ -369,6 +430,119 @@ EAMTablePot::EAMTablePot(const EAMTable &table, bool periodic, bool stress, doub
 
 void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
   compute(in, out, nullptr);
+}
+
+void EAMTablePot::hessianVectorImpl(const ForceInput &in,
+                                    const double *direction,
+                                    double *product) const {
+  const std::size_t n = in.nAtoms;
+  const std::size_t dim = 3 * n;
+  std::fill_n(product, dim, 0.0);
+
+  std::vector<std::size_t> el(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    const int a = element_of(m_element, in.atmnrs[i]);
+    if (a < 0) {
+      bad("no element for atomic number " + std::to_string(in.atmnrs[i]));
+    }
+    el[i] = static_cast<std::size_t>(a);
+  }
+
+  static constexpr double free_box[9] = {1.0e6, 0.0, 0.0, 0.0,  1.0e6,
+                                         0.0,   0.0, 0.0, 1.0e6};
+  const double *box = in.box;
+  if (m_periodic) {
+    const double vol = cellVolume(box);
+    if (!(vol > 0.0)) {
+      bad("periodic evaluation needs a cell");
+    }
+    for (int k = 0; k < 3; ++k) {
+      const double *u = box + 3 * ((k + 1) % 3);
+      const double *v = box + 3 * ((k + 2) % 3);
+      const double cx = u[1] * v[2] - u[2] * v[1];
+      const double cy = u[2] * v[0] - u[0] * v[2];
+      const double cz = u[0] * v[1] - u[1] * v[0];
+      if (!(2.0 * m_table.cutoff <
+            vol / std::sqrt(cx * cx + cy * cy + cz * cz))) {
+        bad("cutoff exceeds half a face spacing");
+      }
+    }
+  } else {
+    box = free_box;
+  }
+  if (n < 2) {
+    return;
+  }
+
+  const double skin = m_mode == nlist::Mode::Stream ? 0.0 : m_skin;
+  nlist::updateCells(m_neighbours, in.pos, n, box, m_table.cutoff, skin,
+                     nlist::Image::Round, m_mode,
+                     {m_periodic, m_periodic, m_periodic});
+
+  struct Pair {
+    std::size_t i;
+    std::size_t j;
+    double d[3];
+  };
+  std::vector<Pair> pairs;
+  const double cut2 = m_table.cutoff * m_table.cutoff;
+  nlist::visitHalf(
+      m_neighbours, 0, static_cast<std::int64_t>(n),
+      [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
+        if (r2 > 0.0 && r2 < cut2) {
+          pairs.push_back({static_cast<std::size_t>(i),
+                           static_cast<std::size_t>(j), {dx, dy, dz}});
+        }
+      });
+
+  const Terms terms{m_table, m_frho, m_rhor, m_z2r};
+  const HyperDual zero{0.0, 0.0, 0.0, 0.0};
+  for (std::size_t row = 0; row < dim; ++row) {
+    std::vector<HyperDual> rho(n, zero);
+    std::vector<HyperDual> radii;
+    radii.reserve(pairs.size());
+
+    for (const Pair &pair : pairs) {
+      HyperDual r2 = zero;
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        const std::size_t ii = 3 * pair.i + axis;
+        const std::size_t jj = 3 * pair.j + axis;
+        const HyperDual d{pair.d[axis], (row == ii ? 1.0 : 0.0) -
+                                           (row == jj ? 1.0 : 0.0),
+                          direction[ii] - direction[jj], 0.0};
+        r2 = r2 + d * d;
+      }
+      const HyperDual r = square_root(r2);
+      radii.push_back(r);
+      const Couple &couple = terms.couple(el[pair.i], el[pair.j]);
+      rho[pair.i] =
+          rho[pair.i] + table_value(couple.atI, terms.rdr, m_table.nr, r);
+      rho[pair.j] =
+          rho[pair.j] + table_value(couple.atJ, terms.rdr, m_table.nr, r);
+    }
+
+    HyperDual energy = zero;
+    for (std::size_t i = 0; i < n; ++i) {
+      HyperDual embed =
+          table_value(m_frho[el[i]].data(), terms.rdrho, m_table.nrho, rho[i]);
+      if (rho[i].value > m_table.rhomax) {
+        const Place end = place(m_table.rhomax, terms.rdrho, m_table.nrho);
+        const Knot knot(m_frho[el[i]].data(), end);
+        const HyperDual excess{
+            rho[i].value - m_table.rhomax, rho[i].a, rho[i].b, rho[i].ab};
+        embed = HyperDual{knot.value(), 0.0, 0.0, 0.0} +
+                knot.slope() * excess;
+      }
+      energy = energy + embed;
+    }
+    for (std::size_t p = 0; p < pairs.size(); ++p) {
+      const Couple &couple = terms.couple(el[pairs[p].i], el[pairs[p].j]);
+      const HyperDual z =
+          table_value(couple.z2, terms.rdr, m_table.nr, radii[p]);
+      energy = energy + z * reciprocal(radii[p]);
+    }
+    product[row] = energy.ab;
+  }
 }
 
 void EAMTablePot::forcePerAtom(const ForceInput &in, ForceOut *out,

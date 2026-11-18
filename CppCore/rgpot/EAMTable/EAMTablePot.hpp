@@ -101,7 +101,8 @@ public:
     // The pair list is scratch rewritten by every force call.
     return {.reentrancy = Reentrancy::PerInstance,
             .periodic = m_periodic,
-            .stress = m_stress};
+            .stress = m_stress,
+            .analyticHvp = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -115,6 +116,12 @@ public:
   }
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
+
+  /// Analytic product of the Cartesian energy Hessian with @p direction.
+  /// The table cubics are differentiated on the segment selected by the
+  /// unperturbed geometry.
+  void hessianVectorImpl(const ForceInput &in, const double *direction,
+                         double *product) const override;
 
   /// forceImpl plus per-atom terms: each atom's embedding F_a(rho_i), and
   /// each phi_ab and pair virial split half to each atom, as pair_style

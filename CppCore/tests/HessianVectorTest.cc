@@ -21,6 +21,7 @@
 #include <catch2/catch_all.hpp>
 
 #include "DenseHessianOracle.hpp"
+#include "rgpot/EAMTable/EAMTablePot.hpp"
 #include "rgpot/HessianVector.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
@@ -30,6 +31,9 @@ using rgpot::ForceInput;
 using rgpot::ForceOut;
 using rgpot::HessianVectorCache;
 using rgpot::HvpScheme;
+using rgpot::EAMTableConfig;
+using rgpot::EAMTableFormat;
+using rgpot::EAMTablePot;
 using rgpot::MorseConfig;
 using rgpot::MorsePot;
 using rgpot::StillingerWeberSi;
@@ -367,6 +371,71 @@ TEST_CASE("Stillinger-Weber analytic product at the diamond minimum",
   for (std::size_t k = 0; k < v.size(); ++k) {
     CHECK(std::abs(analytic[k] - oracle.product[k]) <=
           8.0 * oracle.bound[k]);
+  }
+}
+
+TEST_CASE("funcfl EAM analytic product matches a dense Hessian",
+          "[HessianVector]") {
+  EAMTablePot pot(EAMTableConfig{
+      .path = "CppCore/tests/data/eam_table/Cu_u3.eam",
+      .format = EAMTableFormat::Funcfl, .periodic = true,
+      .stress = false, .skin = 0.0});
+  // A fixed draw of seven sites in the periodic cell.
+  std::vector<double> x{
+      10.2, 10.1, 10.4, 12.7, 10.3, 10.0, 11.0, 12.6, 10.5,
+      9.8, 11.4, 12.7, 12.9, 12.8, 12.3, 10.4, 13.5, 11.7,
+      13.6, 10.8, 13.0};
+  std::vector<int> z(7, 29);
+  const auto box = cell(40.0);
+  const ForceInput in{.nAtoms = z.size(), .pos = x.data(),
+                      .atmnrs = z.data(), .box = box.data()};
+  std::vector<double> forces(x.size());
+  ForceOut out{.F = forces.data(), .energy = 0.0, .variance = 0.0,
+               .stress = {}, .has_stress = 0};
+  pot.forceImpl(in, &out);
+  CHECK_THAT(out.energy,
+             Catch::Matchers::WithinAbs(-8.8277011201, 1e-10));
+  CHECK(pot.caps().analyticHvp);
+  static_assert(rgpot::AnalyticHessianVectorKernel<EAMTablePot>);
+
+  const auto v = direction(x.size());
+  std::vector<double> analytic(x.size());
+  pot.hessianVectorImpl(in, v.data(), analytic.data());
+  const auto oracle = finiteDifferenceOracle(pot, x, z, box, v);
+  for (std::size_t k = 0; k < v.size(); ++k) {
+    CHECK(std::abs(analytic[k] - oracle.product[k]) <= oracle.bound[k]);
+  }
+}
+
+TEST_CASE("setfl EAM analytic product matches a dense Hessian",
+          "[HessianVector]") {
+  EAMTablePot pot(EAMTableConfig{
+      .path = "CppCore/tests/data/eam_table/CuNi.eam.alloy",
+      .format = EAMTableFormat::Setfl, .periodic = true,
+      .stress = false, .skin = 0.0});
+  // The same fixed random sites with alternating species.
+  std::vector<double> x{
+      10.2, 10.1, 10.4, 12.7, 10.3, 10.0, 11.0, 12.6, 10.5,
+      9.8, 11.4, 12.7, 12.9, 12.8, 12.3, 10.4, 13.5, 11.7,
+      13.6, 10.8, 13.0};
+  std::vector<int> z{29, 28, 29, 28, 29, 28, 29};
+  const auto box = cell(40.0);
+  const ForceInput in{.nAtoms = z.size(), .pos = x.data(),
+                      .atmnrs = z.data(), .box = box.data()};
+  std::vector<double> forces(x.size());
+  ForceOut out{.F = forces.data(), .energy = 0.0, .variance = 0.0,
+               .stress = {}, .has_stress = 0};
+  pot.forceImpl(in, &out);
+  CHECK_THAT(out.energy,
+             Catch::Matchers::WithinAbs(-1.9226899525, 1e-10));
+  CHECK(pot.caps().analyticHvp);
+
+  const auto v = direction(x.size());
+  std::vector<double> analytic(x.size());
+  pot.hessianVectorImpl(in, v.data(), analytic.data());
+  const auto oracle = finiteDifferenceOracle(pot, x, z, box, v);
+  for (std::size_t k = 0; k < v.size(); ++k) {
+    CHECK(std::abs(analytic[k] - oracle.product[k]) <= oracle.bound[k]);
   }
 }
 
