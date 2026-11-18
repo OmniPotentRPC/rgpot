@@ -100,15 +100,25 @@ TEST_CASE("validate_unit", "[units]") {
 
 TEST_CASE("constexpr constants match parser", "[units]") {
   double parsed_bohr = rgpot::units::unit_conversion_factor("bohr", "angstrom");
-  REQUIRE_THAT(parsed_bohr, WithinRel(rgpot::units::BOHR_TO_ANGSTROM, 1e-8));
+  REQUIRE_THAT(parsed_bohr, WithinRel(rgpot::units::BOHR_TO_ANGSTROM, 1e-11));
 
   double parsed_hartree = rgpot::units::unit_conversion_factor("hartree", "eV");
-  REQUIRE_THAT(parsed_hartree, WithinRel(rgpot::units::HARTREE_TO_EV, 1e-8));
+  REQUIRE_THAT(parsed_hartree, WithinRel(rgpot::units::HARTREE_TO_EV, 1e-11));
 
   double parsed_force =
       rgpot::units::unit_conversion_factor("hartree/bohr", "eV/angstrom");
   REQUIRE_THAT(parsed_force,
-               WithinRel(rgpot::units::HARTREE_BOHR_TO_EV_ANGSTROM, 1e-8));
+               WithinRel(rgpot::units::HARTREE_BOHR_TO_EV_ANGSTROM, 1e-11));
+
+  double parsed_dalton =
+      rgpot::units::unit_conversion_factor("dalton", "electron_mass");
+  REQUIRE_THAT(parsed_dalton,
+               WithinRel(rgpot::units::DALTON_IN_ELECTRON_MASSES, 1e-11));
+
+  double parsed_au_time =
+      rgpot::units::unit_conversion_factor("hbar", "hartree*s");
+  REQUIRE_THAT(parsed_au_time,
+               WithinRel(rgpot::units::ATOMIC_UNIT_OF_TIME_S, 1e-11));
 }
 
 TEST_CASE("round-trip conversions are inverses", "[units]") {
