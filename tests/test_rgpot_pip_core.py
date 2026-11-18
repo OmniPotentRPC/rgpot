@@ -144,6 +144,21 @@ def test_extension_rpath_has_no_host_build_tree():
             assert bad not in line, f"host path marker {bad!r} in:\n{line}\nfull:\n{out}"
 
 
+def test_extension_needs_librgpot():
+    """Built Linux extension must dynamically link librgpot via DT_NEEDED."""
+    parent = Path(rgpot.__file__).resolve().parent
+    cores = list(parent.glob("_core*.so"))
+    if not cores:
+        pytest.skip("ELF _core*.so not present")
+    if not shutil.which("readelf"):
+        pytest.skip("readelf not available")
+    out = subprocess.check_output(["readelf", "-d", str(cores[0])], text=True)
+    needed = [
+        line for line in out.splitlines() if "(NEEDED)" in line and "librgpot.so" in line
+    ]
+    assert needed, f"librgpot missing from DT_NEEDED of {cores[0]}:\n{out}"
+
+
 @pytest.mark.skipif(
     os.environ.get("RGPOT_SKIP_WHEEL_TEST") == "1",
     reason="RGPOT_SKIP_WHEEL_TEST=1",
