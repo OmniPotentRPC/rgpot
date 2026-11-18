@@ -28,8 +28,11 @@
 //! - [`rpc`] — RPC client functions (feature-gated on `rpc`): connect,
 //!   calculate, disconnect.
 
+#[rustfmt::skip]
 pub mod types;
+#[rustfmt::skip]
 pub mod potential;
+#[rustfmt::skip]
 pub mod hvp;
 
 #[cfg(feature = "rpc")]

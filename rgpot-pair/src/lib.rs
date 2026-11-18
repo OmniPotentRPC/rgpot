@@ -1,6 +1,8 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#![allow(clippy::neg_cmp_op_on_partial_ord, clippy::too_many_arguments)]
+
 //! Unshifted cluster pair kernels.
 //!
 //! The unit Lennard-Jones branch is the Wales and Doye expression tree.
@@ -12,8 +14,8 @@ mod cluster;
 mod scales;
 pub use cluster::{cambridge_morse, cluster_lj, gupta};
 pub use scales::{
-    SuttonChenMetal, fcc_power_sum, lennard_jones_scales, morse_scales, sutton_chen_fcc_energy,
-    sutton_chen_gold, sutton_chen_platinum, sutton_chen_scales,
+    fcc_power_sum, lennard_jones_scales, morse_scales, sutton_chen_fcc_energy, sutton_chen_gold,
+    sutton_chen_platinum, sutton_chen_scales, SuttonChenMetal,
 };
 
 /// Unit Lennard-Jones tree. `r2` must be finite and positive.
@@ -55,7 +57,14 @@ pub fn lj_pair(epsilon: f64, sigma: f64, r2: f64) -> (f64, f64, f64) {
 
 /// Energy, `(dV/dr) / r`, and `d2V/dr2` for a list of squared distances.
 #[inline(always)]
-pub fn lj_curvature_pairs(epsilon: f64, sigma: f64, r2: &[f64], energy: &mut [f64], coef: &mut [f64], curv: &mut [f64]) {
+pub fn lj_curvature_pairs(
+    epsilon: f64,
+    sigma: f64,
+    r2: &[f64],
+    energy: &mut [f64],
+    coef: &mut [f64],
+    curv: &mut [f64],
+) {
     let n = r2.len().min(energy.len()).min(coef.len()).min(curv.len());
     for i in 0..n {
         let (v, c, k) = lj_pair(epsilon, sigma, r2[i]);
@@ -77,7 +86,13 @@ fn inside(r2: f64, cutoff: f64) -> bool {
 
 /// Whole-configuration energy and gradient. `cutoff <= 0` keeps every pair.
 #[inline(always)]
-pub fn lj_gradient(epsilon: f64, sigma: f64, cutoff: f64, positions: &[f64], gradient: &mut [f64]) -> f64 {
+pub fn lj_gradient(
+    epsilon: f64,
+    sigma: f64,
+    cutoff: f64,
+    positions: &[f64],
+    gradient: &mut [f64],
+) -> f64 {
     let n = positions.len() / 3;
     for g in gradient.iter_mut().take(3 * n) {
         *g = 0.0;
@@ -134,7 +149,13 @@ pub fn lj_atom_energies(epsilon: f64, sigma: f64, positions: &[f64], atom_energy
 
 /// Gradient on the moved atoms only.
 #[inline(always)]
-pub fn lj_partial(epsilon: f64, sigma: f64, positions: &[f64], moved: &[usize], gradient: &mut [f64]) {
+pub fn lj_partial(
+    epsilon: f64,
+    sigma: f64,
+    positions: &[f64],
+    moved: &[usize],
+    gradient: &mut [f64],
+) {
     let n = positions.len() / 3;
     for g in gradient.iter_mut().take(3 * n) {
         *g = 0.0;
@@ -229,7 +250,14 @@ pub fn morse_pair(epsilon: f64, rho: f64, re: f64, r2: f64) -> (f64, f64, f64) {
 
 /// Morse cluster energy and gradient.
 #[inline(always)]
-pub fn morse_gradient(epsilon: f64, rho: f64, re: f64, cutoff: f64, positions: &[f64], gradient: &mut [f64]) -> f64 {
+pub fn morse_gradient(
+    epsilon: f64,
+    rho: f64,
+    re: f64,
+    cutoff: f64,
+    positions: &[f64],
+    gradient: &mut [f64],
+) -> f64 {
     let n = positions.len() / 3;
     for g in gradient.iter_mut().take(3 * n) {
         *g = 0.0;
@@ -261,7 +289,14 @@ pub fn morse_gradient(epsilon: f64, rho: f64, re: f64, cutoff: f64, positions: &
 /// Binary Lennard-Jones. Species A is the first `n_a` atoms.
 /// `eps` and `sig` are ordered AA, AB, BB.
 #[inline(always)]
-pub fn binary_lj(n_a: usize, eps: [f64; 3], sig: [f64; 3], cutoff: f64, positions: &[f64], gradient: &mut [f64]) -> f64 {
+pub fn binary_lj(
+    n_a: usize,
+    eps: [f64; 3],
+    sig: [f64; 3],
+    cutoff: f64,
+    positions: &[f64],
+    gradient: &mut [f64],
+) -> f64 {
     if eps == [1.0, 1.0, 1.0] && sig == [1.0, 1.0, 1.0] && !(cutoff > 0.0) {
         return lj_gradient(1.0, 1.0, 0.0, positions, gradient);
     }
@@ -305,7 +340,18 @@ pub fn binary_lj(n_a: usize, eps: [f64; 3], sig: [f64; 3], cutoff: f64, position
 
 /// TIP4P site energy. Sites are molecule-major O, H, H, M.
 #[inline(always)]
-pub fn tip4p_sites(use_epsilon: bool, c6: f64, c12: f64, epsilon: f64, sigma: f64, coulomb: f64, q_h: f64, q_m: f64, sites: &[f64], gradient: &mut [f64]) -> f64 {
+pub fn tip4p_sites(
+    use_epsilon: bool,
+    c6: f64,
+    c12: f64,
+    epsilon: f64,
+    sigma: f64,
+    coulomb: f64,
+    q_h: f64,
+    q_m: f64,
+    sites: &[f64],
+    gradient: &mut [f64],
+) -> f64 {
     let n_molecules = sites.len() / 12;
     for g in gradient.iter_mut().take(12 * n_molecules) {
         *g = 0.0;

@@ -26,7 +26,12 @@ documentation_style = "doxy"
 # Named by the documentation of rgpot_potential_hvp and
 # rgpot_potential_set_hvp_callback, not by a signature.
 include = ["rgpot_hvp_scheme_t", "HessianVectorCallback"]
-exclude = []
+exclude = [
+    "ENGINE_ABI_VERSION",
+    "ENGINE_ABI_MINOR",
+    "ENGINE_ABI_LAYOUT_REVISION",
+    "ENGINE_ERR_UNSUPPORTED",
+]
 
 [export.rename]
 

@@ -26,6 +26,7 @@ pub type rgpot_rpc_client_t = RpcClient;
 /// Returns a heap-allocated handle, or `NULL` on failure.
 /// The caller must eventually call `rgpot_rpc_client_free`.
 #[cfg(feature = "rpc")]
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_rpc_client_new(
     host: *const c_char,
@@ -57,6 +58,7 @@ pub unsafe extern "C" fn rgpot_rpc_client_new(
 ///
 /// Returns `RGPOT_SUCCESS` on success, or an error status code.
 #[cfg(feature = "rpc")]
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_rpc_calculate(
     client: *mut rgpot_rpc_client_t,
@@ -95,6 +97,7 @@ pub unsafe extern "C" fn rgpot_rpc_calculate(
 ///
 /// If `client` is `NULL`, this is a no-op.
 #[cfg(feature = "rpc")]
+#[allow(clippy::missing_safety_doc)]
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_rpc_client_free(client: *mut rgpot_rpc_client_t) {
     if !client.is_null() {
