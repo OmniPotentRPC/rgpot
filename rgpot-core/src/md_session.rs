@@ -6,7 +6,7 @@
 //! ps, friction in inverse ps, and masses in amu. Flat arrays contain
 //! `3 * n_atoms` entries in row-major `(x, y, z)` order.
 
-use std::ffi::{CStr, c_char, c_void};
+use std::ffi::{c_char, c_void, CStr};
 use std::fmt;
 use std::ptr::NonNull;
 
@@ -715,8 +715,8 @@ impl MdSession for CAbiMdSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     struct MockCtx {
         positions: Vec<f64>,
@@ -971,11 +971,9 @@ mod tests {
         let wall_p = [0.0; 12];
         let wall_n = [0.0; 12];
         // Mismatched wall buffers rejected.
-        assert!(
-            session
-                .step_langevin(&cfg, &plane_p, &plane_n, &wall_p, &[0.0; 6], 1)
-                .is_err()
-        );
+        assert!(session
+            .step_langevin(&cfg, &plane_p, &plane_n, &wall_p, &[0.0; 6], 1)
+            .is_err());
         let hits = session
             .step_langevin(&cfg, &plane_p, &plane_n, &wall_p, &wall_n, 3)
             .unwrap();
