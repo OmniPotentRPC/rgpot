@@ -988,10 +988,9 @@ E = sum_i [ sum_{j != i} A * exp(-p * (r_ij / r_0 - 1))
   shift at the cutoff.
   Atomic numbers are not read.
   A coincident pair is not a minimum.
-  =rgpot_gupta=, and a call that delegates to it, sets the energy to +infinity
-  and returns with the forces left at zero.
-  Neighbour and staged calls set the energy to NaN and add no pair force, the
-  convention of =rgpot::LJPot= (=CppCore/rgpot/LennardJones/LJPot.cc=).
+  =rgpot_gupta= sets the energy to +infinity, and a =GuptaPot= call that
+  delegates to it poisons the forces with NaN.
+  Neighbour and staged calls set the energy and the forces to NaN.
   A NaN separation falls through, so the energy and the forces are NaN.
   Exact zero density keeps a finite repulsive force.
   Non-periodic unbounded calls without stress or per-atom output delegate to
