@@ -35,6 +35,7 @@ static int destroyed = 0;
 int fixture_create_count(void) { return created; }
 int fixture_destroy_count(void) { return destroyed; }
 int fixture_unsupported_code(void) { return RGPOT_ENGINE_ERR_UNSUPPORTED; }
+int fixture_lock_error_code(void) { return RGPOT_ENGINE_ERR_LOCK; }
 
 int rgpot_engine_abi_version(void) { return FIXTURE_ABI; }
 
@@ -94,6 +95,10 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
   snprintf(pot->error, sizeof pot->error, "force operation unavailable");
   return RGPOT_ENGINE_ERR_UNSUPPORTED;
 #endif
+#ifdef FORCE_LOCK_ERROR
+  snprintf(pot->error, sizeof pot->error, "fixture handle lock failed");
+  return RGPOT_ENGINE_ERR_LOCK;
+#endif
   for (i = 0; i < n; i++) {
     if (atomic_nrs[i] == 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has atomic number 0", i);
@@ -151,6 +156,11 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 #ifdef CAPS_ERROR
   return RGPOT_ENGINE_ERR_EVAL;
 #endif
+#ifdef CAPS_LOCK_ERROR
+  snprintf(((RgpotEnginePot *)pot)->error, sizeof ((RgpotEnginePot *)pot)->error,
+           "fixture caps lock failed");
+  return RGPOT_ENGINE_ERR_LOCK;
+#endif
   if (!out || out->size < sizeof(unsigned)) return 1;
   memset(&filled, 0, sizeof filled);
   filled.size = sizeof filled;
@@ -185,6 +195,13 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
   snprintf(pot->error, sizeof pot->error,
            "harmonic engine built without analytic HVP");
   return RGPOT_ENGINE_ERR_UNSUPPORTED;
+#elif defined(HVP_LOCK_ERROR)
+  (void)n;
+  (void)atomic_nrs;
+  (void)direction;
+  (void)hv_out;
+  snprintf(pot->error, sizeof pot->error, "fixture hvp lock failed");
+  return RGPOT_ENGINE_ERR_LOCK;
 #else
   long i;
   for (i = 0; i < n; i++) {

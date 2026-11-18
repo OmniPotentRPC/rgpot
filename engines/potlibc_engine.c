@@ -22,6 +22,36 @@
 #define RGPOT_ENGINE_PROJECT_VERSION "unknown"
 #endif
 
+#ifdef RGPOT_POTLIBC_TEST_LOCK_FAIL
+#include <errno.h>
+static int potlibc_test_fail_lock = 0;
+RGPOT_ENGINE_API void rgpot_potlibc_test_set_lock_fail(int fail) {
+  potlibc_test_fail_lock = fail;
+}
+static int potlibc_mutex_lock(pthread_mutex_t *mutex) {
+  if (potlibc_test_fail_lock) {
+    return EINVAL;
+  }
+  return pthread_mutex_lock(mutex);
+}
+#else
+#define potlibc_mutex_lock pthread_mutex_lock
+#endif
+
+static int init_call_mutex(pthread_mutex_t *mutex) {
+  pthread_mutexattr_t attr;
+  int rc;
+  if (pthread_mutexattr_init(&attr) != 0) {
+    return -1;
+  }
+  rc = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
+  if (rc == 0) {
+    rc = pthread_mutex_init(mutex, &attr);
+  }
+  pthread_mutexattr_destroy(&attr);
+  return rc;
+}
+
 struct RgpotEnginePot {
   potlibc_handle *surface;
   potlibc_metadata metadata;
@@ -96,8 +126,9 @@ static int lock_handle(RgpotEnginePot *pot) {
   if (pot == NULL) {
     return RGPOT_ENGINE_ERR_INVALID;
   }
-  if (pthread_mutex_lock(&pot->call_lock) != 0) {
-    return -1;
+  if (potlibc_mutex_lock(&pot->call_lock) != 0) {
+    set_error(pot, "potlibc engine handle lock failed");
+    return RGPOT_ENGINE_ERR_LOCK;
   }
   return RGPOT_ENGINE_OK;
 }
@@ -160,7 +191,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
     copy_message(errbuf, errlen, "potlibc engine allocation failed");
     return NULL;
   }
-  if (pthread_mutex_init(&pot->call_lock, NULL) != 0) {
+  if (init_call_mutex(&pot->call_lock) != 0) {
     copy_message(errbuf, errlen, "potlibc engine mutex initialization failed");
     free(pot);
     return NULL;
@@ -232,17 +263,24 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
 }
 
 void rgpot_engine_destroy(RgpotEnginePot *pot) {
+  int locked;
   if (pot == NULL) {
     return;
   }
-  if (pthread_mutex_lock(&pot->call_lock) != 0) {
-    return;
+  /* engine_c_abi.h forbids calling destroy concurrently with another call on
+   * the same handle. If call_lock cannot be acquired, still release the
+   * surface and free the handle so cleanup after RGPOT_ENGINE_ERR_LOCK does
+   * not leak. */
+  locked = (potlibc_mutex_lock(&pot->call_lock) == 0);
+  if (pot->surface != NULL) {
+    potlibc_destroy(pot->surface);
+    pot->surface = NULL;
   }
-  potlibc_destroy(pot->surface);
-  pot->surface = NULL;
-  pthread_mutex_unlock(&pot->call_lock);
+  if (locked) {
+    pthread_mutex_unlock(&pot->call_lock);
+    pthread_mutex_destroy(&pot->call_lock);
+  }
   pthread_mutex_destroy(&pot->error_lock);
-  pthread_mutex_destroy(&pot->call_lock);
   free(pot);
 }
 
@@ -409,9 +447,13 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   RgpotEngineCaps result;
   RgpotEnginePot *mutable_pot = (RgpotEnginePot *)pot;
   size_t room;
-  if (out == NULL || out->size < sizeof(unsigned) ||
-      lock_handle(mutable_pot) != RGPOT_ENGINE_OK) {
+  int code;
+  if (out == NULL || out->size < sizeof(unsigned)) {
     return RGPOT_ENGINE_ERR_INVALID;
+  }
+  code = lock_handle(mutable_pot);
+  if (code != RGPOT_ENGINE_OK) {
+    return code;
   }
   memset(&result, 0, sizeof result);
   result.size = sizeof result;
