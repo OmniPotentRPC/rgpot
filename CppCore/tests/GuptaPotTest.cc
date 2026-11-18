@@ -284,6 +284,56 @@ TEST_CASE("GuptaPot degenerate pairs match all-pairs and neighbour paths",
   }
 }
 
+TEST_CASE("GuptaPot propagates a NaN coordinate on the neighbour path",
+          "[Gupta]") {
+  // The free-cluster kernel is covered by rgpot-pair. A positive cutoff
+  // takes the neighbour walk, which used to drop a NaN separation and
+  // leave a finite energy and zero force.
+  const rgpot::GuptaConfig cfg{.A = 0.2061,
+                               .xi = 1.790,
+                               .p = 10.229,
+                               .q = 4.036,
+                               .r0 = 2.884,
+                               .cutoff = 6.0};
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const std::vector<double> pos = {
+      nan, 0.0, 0.0, 1.0, 0.0, 0.0, 0.2, 1.1, 0.0};
+  const StressEval got = eval_stress(rgpot::GuptaPot(cfg), pos, nullptr);
+  REQUIRE(std::isnan(got.energy));
+  REQUIRE(got.forces.size() == pos.size());
+  for (double component : got.forces) {
+    REQUIRE(std::isnan(component));
+  }
+
+  const rgpot::GuptaPot pot(cfg);
+  const double staged_pos[6] = {nan, 0.0, 0.0, 1.0, 0.0, 0.0};
+  const int atmnrs[2] = {1, 1};
+  const int rows[1] = {0};
+  const int count[2] = {1, 0};
+  const int neigh0[1] = {1};
+  const int *neighs[2] = {neigh0, nullptr};
+  rgpot::HalfList list;
+  list.nAtoms = 2;
+  list.nOwned = 2;
+  list.pos = staged_pos;
+  list.atmnrs = atmnrs;
+  list.nRows = 1;
+  list.rows = rows;
+  list.count = count;
+  list.neighbours = neighs;
+  double dens[2] = {};
+  pot.densityStage(list, dens);
+  REQUIRE(std::isnan(dens[0]));
+  REQUIRE(std::isnan(dens[1]));
+  double forces[6] = {};
+  rgpot::StageTally tally;
+  pot.forceStage(list, dens, forces, &tally);
+  REQUIRE(std::isnan(tally.energy));
+  for (double component : forces) {
+    REQUIRE(std::isnan(component));
+  }
+}
+
 TEST_CASE("GuptaPot forces match central differences on a 13-atom cluster",
           "[Gupta]") {
   const rgpot::GuptaConfig cfg{
