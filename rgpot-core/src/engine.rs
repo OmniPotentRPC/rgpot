@@ -67,6 +67,16 @@ const REENTRANCY_PROCESS_SERIAL: i32 = 2;
 pub const COUPLED_WELL_CONFIG_MAGIC: u32 = 0x4357_5054;
 /// Version of [`CoupledWellConfig`].
 pub const COUPLED_WELL_CONFIG_VERSION: u32 = 1;
+/// Atomic number of [`CoupledWellConfig::default`].
+pub const COUPLED_WELL_DEFAULT_ATOMIC_NUMBER: i32 = 1;
+/// Barrier energy `V0` of [`CoupledWellConfig::default`], in eV.
+pub const COUPLED_WELL_DEFAULT_BARRIER_ENERGY: f64 = 1.0;
+/// Well position `x0` of [`CoupledWellConfig::default`], in Angstrom.
+pub const COUPLED_WELL_DEFAULT_WELL_POSITION: f64 = 1.0;
+/// Transverse spring `k` of [`CoupledWellConfig::default`], in eV/Angstrom^2.
+pub const COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING: f64 = 1.0;
+/// Coupling `alpha` of [`CoupledWellConfig::default`], in 1/Angstrom.
+pub const COUPLED_WELL_DEFAULT_COUPLING: f64 = 0.0;
 /// Magic number of `RgpotPotlibcConfigV1`.
 pub const POTLIBC_CONFIG_MAGIC: u32 = 0x504f_544c;
 /// Version of [`PotlibcConfig`].
@@ -74,23 +84,75 @@ pub const POTLIBC_CONFIG_VERSION: u32 = 1;
 /// Capacity of the potlibc surface identifier, including its terminator.
 pub const POTLIBC_SURFACE_ID_CAPACITY: usize = 128;
 
+const COUPLED_WELL_CONFIG_BYTES: usize = 48;
+const POTLIBC_CONFIG_BYTES: usize = 144;
+
 /// Parameters for `libpotlibc_engine`.
+///
+/// Build one with [`PotlibcConfig::new`], or start from
+/// [`PotlibcConfig::default`] and chain [`PotlibcConfig::with_surface_id`] and
+/// [`PotlibcConfig::with_atom_count`]. The default has no surface id and is
+/// refused by [`PotlibcConfig::validate`] and by the engine until one is set.
+///
+/// ```
+/// use rgpot_core::engine::PotlibcConfig;
+///
+/// let config = PotlibcConfig::default()
+///     .with_surface_id("vbo-beta1")
+///     .unwrap()
+///     .with_atom_count(4);
+/// assert!(config.validate().is_ok());
+/// assert!(PotlibcConfig::default().validate().is_err());
+/// ```
+///
+/// The struct is `#[non_exhaustive]`: other crates build it with these methods.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct PotlibcConfig {
     /// Configuration identity.
     pub magic: u32,
     /// Configuration layout version.
     pub version: u32,
-    /// Zero for a fixed-size surface.
+    /// Zero for a fixed-size surface, else the exact atom count of a
+    /// variable-size surface.
     pub atom_count: u64,
     /// NUL-terminated canonical catalog identifier.
     pub surface_id: [u8; POTLIBC_SURFACE_ID_CAPACITY],
 }
 
+const _: () = assert!(std::mem::size_of::<PotlibcConfig>() == POTLIBC_CONFIG_BYTES);
+
+impl Default for PotlibcConfig {
+    fn default() -> Self {
+        Self {
+            magic: POTLIBC_CONFIG_MAGIC,
+            version: POTLIBC_CONFIG_VERSION,
+            atom_count: 0,
+            surface_id: [0; POTLIBC_SURFACE_ID_CAPACITY],
+        }
+    }
+}
+
 impl PotlibcConfig {
     /// Construct a version-one parameter message.
     pub fn new(surface_id: &str, atom_count: u64) -> Result<Self, EngineError> {
+        Self::default()
+            .with_atom_count(atom_count)
+            .with_surface_id(surface_id)
+    }
+
+    /// Set the exact atom count of a variable-size surface; zero selects a
+    /// fixed-size surface.
+    #[must_use]
+    pub fn with_atom_count(mut self, atom_count: u64) -> Self {
+        self.atom_count = atom_count;
+        self
+    }
+
+    /// Set the canonical catalog identifier. It must be non-empty, shorter
+    /// than [`POTLIBC_SURFACE_ID_CAPACITY`] bytes and free of NUL.
+    pub fn with_surface_id(mut self, surface_id: &str) -> Result<Self, EngineError> {
         let bytes = surface_id.as_bytes();
         if bytes.is_empty() || bytes.len() >= POTLIBC_SURFACE_ID_CAPACITY {
             return Err(EngineError::Invalid(
@@ -102,18 +164,33 @@ impl PotlibcConfig {
                 "potlibc surface id contains NUL".into(),
             ));
         }
-        let mut encoded = [0; POTLIBC_SURFACE_ID_CAPACITY];
-        encoded[..bytes.len()].copy_from_slice(bytes);
-        Ok(Self {
-            magic: POTLIBC_CONFIG_MAGIC,
-            version: POTLIBC_CONFIG_VERSION,
-            atom_count,
-            surface_id: encoded,
-        })
+        self.surface_id = [0; POTLIBC_SURFACE_ID_CAPACITY];
+        self.surface_id[..bytes.len()].copy_from_slice(bytes);
+        Ok(self)
+    }
+
+    /// Check what `rgpot_engine_create` checks of the message itself: magic,
+    /// version and a NUL-terminated, non-empty surface id. Whether the surface
+    /// exists and takes this atom count is the engine's to decide.
+    pub fn validate(&self) -> Result<(), EngineError> {
+        if self.magic != POTLIBC_CONFIG_MAGIC || self.version != POTLIBC_CONFIG_VERSION {
+            return Err(EngineError::Invalid(
+                "potlibc config magic or version".into(),
+            ));
+        }
+        if self.surface_id[0] == 0 || !self.surface_id.contains(&0) {
+            return Err(EngineError::Invalid(
+                "potlibc config needs a non-empty NUL-terminated surface id".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// Native bytes consumed by `rgpot_engine_create`.
     pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: `PotlibcConfig` is `repr(C)` plain data whose size equals the
+        // sum of its fields (asserted above), so it has no padding and every
+        // byte is initialised.
         unsafe {
             std::slice::from_raw_parts(
                 std::ptr::from_ref(self).cast::<u8>(),
@@ -128,8 +205,40 @@ impl PotlibcConfig {
 /// The engine evaluates one atom and uses its x and y coordinates:
 /// `V0 ((x / x0)^2 - 1)^2 + k/2 (y - alpha x^2)^2`.
 /// Values use the engine ABI units, eV and Angstrom.
+///
+/// [`CoupledWellConfig::default`] is a valid hydrogen atom in a unit double
+/// well with no coupling; change it with the `with_*` builders:
+///
+/// ```
+/// use rgpot_core::engine::CoupledWellConfig;
+///
+/// let config = CoupledWellConfig::default()
+///     .with_barrier_energy(0.5)
+///     .with_well_position(1.5)
+///     .with_coupling(0.2);
+/// assert!(config.validate().is_ok());
+/// ```
+///
+/// The struct is `#[non_exhaustive]`, so other crates cannot write a struct
+/// literal and a new field is not a breaking change:
+///
+/// ```compile_fail,E0639
+/// use rgpot_core::engine::CoupledWellConfig;
+///
+/// let _ = CoupledWellConfig {
+///     magic: 0,
+///     version: 0,
+///     atomic_number: 1,
+///     reserved: 0,
+///     barrier_energy: 1.0,
+///     well_position: 1.0,
+///     transverse_spring: 1.0,
+///     coupling: 0.0,
+/// };
+/// ```
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub struct CoupledWellConfig {
     /// Configuration identity.
     pub magic: u32,
@@ -139,14 +248,31 @@ pub struct CoupledWellConfig {
     pub atomic_number: i32,
     /// Must be zero.
     pub reserved: u32,
-    /// Quartic barrier energy in eV.
+    /// Quartic barrier energy `V0` in eV.
     pub barrier_energy: f64,
-    /// Position of either minimum along x in Angstrom.
+    /// Position `x0` of either minimum along x in Angstrom.
     pub well_position: f64,
-    /// Transverse spring constant in eV/Angstrom squared.
+    /// Transverse spring constant `k` in eV/Angstrom squared.
     pub transverse_spring: f64,
-    /// Coupling coefficient in inverse Angstrom.
+    /// Coupling coefficient `alpha` in inverse Angstrom.
     pub coupling: f64,
+}
+
+const _: () = assert!(std::mem::size_of::<CoupledWellConfig>() == COUPLED_WELL_CONFIG_BYTES);
+
+impl Default for CoupledWellConfig {
+    fn default() -> Self {
+        Self {
+            magic: COUPLED_WELL_CONFIG_MAGIC,
+            version: COUPLED_WELL_CONFIG_VERSION,
+            atomic_number: COUPLED_WELL_DEFAULT_ATOMIC_NUMBER,
+            reserved: 0,
+            barrier_energy: COUPLED_WELL_DEFAULT_BARRIER_ENERGY,
+            well_position: COUPLED_WELL_DEFAULT_WELL_POSITION,
+            transverse_spring: COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING,
+            coupling: COUPLED_WELL_DEFAULT_COUPLING,
+        }
+    }
 }
 
 impl CoupledWellConfig {
@@ -158,20 +284,84 @@ impl CoupledWellConfig {
         transverse_spring: f64,
         coupling: f64,
     ) -> Self {
-        Self {
-            magic: COUPLED_WELL_CONFIG_MAGIC,
-            version: COUPLED_WELL_CONFIG_VERSION,
-            atomic_number,
-            reserved: 0,
-            barrier_energy,
-            well_position,
-            transverse_spring,
-            coupling,
+        Self::default()
+            .with_atomic_number(atomic_number)
+            .with_barrier_energy(barrier_energy)
+            .with_well_position(well_position)
+            .with_transverse_spring(transverse_spring)
+            .with_coupling(coupling)
+    }
+
+    /// Set the one atomic number the engine accepts; it must be positive.
+    #[must_use]
+    pub fn with_atomic_number(mut self, atomic_number: i32) -> Self {
+        self.atomic_number = atomic_number;
+        self
+    }
+
+    /// Set the barrier energy `V0` in eV; it must be finite and positive.
+    #[must_use]
+    pub fn with_barrier_energy(mut self, barrier_energy: f64) -> Self {
+        self.barrier_energy = barrier_energy;
+        self
+    }
+
+    /// Set the well position `x0` in Angstrom; it must be finite and positive.
+    #[must_use]
+    pub fn with_well_position(mut self, well_position: f64) -> Self {
+        self.well_position = well_position;
+        self
+    }
+
+    /// Set the transverse spring `k` in eV/Angstrom squared; it must be finite
+    /// and positive.
+    #[must_use]
+    pub fn with_transverse_spring(mut self, transverse_spring: f64) -> Self {
+        self.transverse_spring = transverse_spring;
+        self
+    }
+
+    /// Set the coupling `alpha` in inverse Angstrom; it must be finite.
+    #[must_use]
+    pub fn with_coupling(mut self, coupling: f64) -> Self {
+        self.coupling = coupling;
+        self
+    }
+
+    /// Check what `rgpot_engine_create` checks, so a bad parameter is reported
+    /// before the library is opened. The engine repeats these checks.
+    pub fn validate(&self) -> Result<(), EngineError> {
+        let invalid = |why: &str| Err(EngineError::Invalid(format!("coupled-well {why}")));
+        if self.magic != COUPLED_WELL_CONFIG_MAGIC
+            || self.version != COUPLED_WELL_CONFIG_VERSION
+            || self.reserved != 0
+        {
+            return invalid("config magic, version, or reserved field");
         }
+        if self.atomic_number <= 0 {
+            return invalid("atomic_number must be positive");
+        }
+        let positive = |value: f64| value.is_finite() && value > 0.0;
+        if !positive(self.barrier_energy) {
+            return invalid("barrier_energy must be finite and positive");
+        }
+        if !positive(self.well_position) {
+            return invalid("well_position must be finite and positive");
+        }
+        if !positive(self.transverse_spring) {
+            return invalid("transverse_spring must be finite and positive");
+        }
+        if !self.coupling.is_finite() {
+            return invalid("coupling must be finite");
+        }
+        Ok(())
     }
 
     /// Native bytes consumed by `rgpot_engine_create`.
     pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: `CoupledWellConfig` is `repr(C)` plain data whose size equals
+        // the sum of its fields (asserted above), so it has no padding and
+        // every byte is initialised.
         unsafe {
             std::slice::from_raw_parts(
                 std::ptr::from_ref(self).cast::<u8>(),
