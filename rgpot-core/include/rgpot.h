@@ -85,6 +85,16 @@ typedef enum rgpot_fused_error_kind_t {
 } rgpot_fused_error_kind_t;
 
 /**
+ * The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
+ */
+#define ENGINE_ABI_VERSION 1
+
+/**
+ * Engine code meaning the backend does not support the requested operation.
+ */
+#define ENGINE_ERR_UNSUPPORTED 3
+
+/**
  * How a Hessian-vector product is computed.
  */
 typedef enum rgpot_hvp_scheme_t {

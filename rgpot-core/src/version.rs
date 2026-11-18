@@ -165,6 +165,17 @@ mod tests {
         assert_eq!(unsafe { rgpot_abi_compatible(&stamp) }, 1);
     }
 
+    /// The engine and RPC Hessian-vector exports are additive, so the
+    /// minor moves to 3; the next additive change takes 4.
+    #[test]
+    fn the_minor_counts_the_engine_and_rpc_hvp_exports() {
+        assert_eq!(RGPOT_ABI_VERSION_MAJOR, 1);
+        assert_eq!(RGPOT_ABI_VERSION_MINOR, 3);
+        assert_eq!(rgpot_abi_stamp().abi_minor, 3);
+        assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, 2, 1)) }, 1);
+        assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, 4, 1)) }, 0);
+    }
+
     fn stamp(major: u16, minor: u16, layout: u16) -> rgpot_abi_stamp_t {
         rgpot_abi_stamp_t {
             abi_major: major,
