@@ -397,6 +397,10 @@ if(_on)
   rgpot_add_test(abi_symbols
     COMMAND ${_rgpot_abi_script} ${_rgpot_abi_lib}
             "${RGPOT_TEST_ROOT}/scripts/abi_baseline.txt")
+  # The MD-session C ABI is in librgpot itself, in a static build too.
+  rgpot_add_test(abi_symbols_md_session
+    COMMAND ${_rgpot_abi_script} $<TARGET_FILE:rgpot>
+            "${RGPOT_TEST_ROOT}/scripts/abi_baseline_md_session.txt")
   add_library(rgpot_abi_fixture SHARED engines/abi_fixture.c)
   add_library(rgpot_abi_fixture_a STATIC engines/abi_fixture.c)
   add_library(rgpot_abi_fixture_lib STATIC engines/abi_fixture.c)

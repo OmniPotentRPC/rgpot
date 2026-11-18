@@ -486,6 +486,12 @@ test(
     args: [rgpot.full_path(), abi_baselines],
     timeout: 30,
 )
+test(
+    'abi_symbols_md_session',
+    abi_script,
+    args: [rgpot.full_path(), files('../scripts/abi_baseline_md_session.txt')],
+    timeout: 30,
+)
 # abi_symbols above reads only the kind of librgpot this build makes. A
 # small fixture built as a shared object, a lib*.a archive and a *.lib
 # archive runs the script's other nm modes in every build. The two
