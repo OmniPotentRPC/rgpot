@@ -366,9 +366,12 @@ int rgpot_engine_force_batch(
     rgpot_engine_coord_transform transform, void *transform_user) {
   size_t component;
   size_t system;
+  size_t systems;
   size_t dimension;
+  size_t values;
   double *coordinates;
   double *surface_forces;
+  double *surface_energies;
   potlibc_status status;
   int code = lock_handle(pot);
   if (code != RGPOT_ENGINE_OK) {
@@ -378,27 +381,34 @@ int rgpot_engine_force_batch(
   if (code != RGPOT_ENGINE_OK || n_systems < 1 || positions == NULL ||
       forces == NULL || energies == NULL || boxes == NULL) {
     if (code == RGPOT_ENGINE_OK) {
-      set_error(pot, "invalid batch argument");
+      set_error(pot, "invalid argument (batch)");
       code = RGPOT_ENGINE_ERR_INVALID;
     }
     pthread_mutex_unlock(&pot->call_lock);
     return code;
   }
+  systems = (size_t)n_systems;
   dimension = 3 * (size_t)n_atoms;
-  coordinates =
-      malloc((size_t)n_systems * dimension * sizeof *coordinates);
-  surface_forces =
-      malloc((size_t)n_systems * dimension * sizeof *surface_forces);
-  if (coordinates == NULL || surface_forces == NULL) {
+  if (systems > SIZE_MAX / (dimension * sizeof(double))) {
+    set_error(pot, "invalid argument (batch): too many systems");
+    pthread_mutex_unlock(&pot->call_lock);
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  values = systems * dimension;
+  coordinates = malloc(values * sizeof *coordinates);
+  surface_forces = malloc(values * sizeof *surface_forces);
+  surface_energies = malloc(systems * sizeof *surface_energies);
+  if (coordinates == NULL || surface_forces == NULL ||
+      surface_energies == NULL) {
     free(coordinates);
     free(surface_forces);
+    free(surface_energies);
     set_error(pot, "potlibc batch allocation failed");
     pthread_mutex_unlock(&pot->call_lock);
     return RGPOT_ENGINE_ERR_EVAL;
   }
-  memcpy(coordinates, positions,
-         (size_t)n_systems * dimension * sizeof *coordinates);
-  for (system = 0; system < (size_t)n_systems; ++system) {
+  memcpy(coordinates, positions, values * sizeof *coordinates);
+  for (system = 0; system < systems; ++system) {
     double local_box[9];
     memcpy(local_box, boxes + 9 * system, sizeof local_box);
     if (transform != NULL) {
@@ -408,36 +418,37 @@ int rgpot_engine_force_batch(
         set_error(pot, "coordinate transform returned %d", code);
         free(coordinates);
         free(surface_forces);
+        free(surface_energies);
         pthread_mutex_unlock(&pot->call_lock);
         return code;
       }
     }
   }
-  for (component = 0;
-       component < (size_t)n_systems * dimension; ++component) {
+  for (component = 0; component < values; ++component) {
     coordinates[component] /= ANGSTROM_PER_BOHR;
   }
-  status = potlibc_evaluate(pot->surface, (size_t)n_systems, coordinates,
-                            energies, surface_forces);
+  status = potlibc_evaluate(pot->surface, systems, coordinates,
+                            surface_energies, surface_forces);
   free(coordinates);
   if (status != POTLIBC_SUCCESS) {
     code = fail_potlibc(pot, "potlibc batch", status);
     free(surface_forces);
+    free(surface_energies);
     pthread_mutex_unlock(&pot->call_lock);
     return code;
   }
-  for (system = 0; system < (size_t)n_systems; ++system) {
-    energies[system] *= EV_PER_HARTREE;
+  for (system = 0; system < systems; ++system) {
+    energies[system] = surface_energies[system] * EV_PER_HARTREE;
     if (variances != NULL) {
       variances[system] = 0.0;
     }
   }
-  for (component = 0;
-       component < (size_t)n_systems * dimension; ++component) {
+  for (component = 0; component < values; ++component) {
     forces[component] =
         surface_forces[component] * FORCE_TO_EV_PER_ANGSTROM;
   }
   free(surface_forces);
+  free(surface_energies);
   set_error(pot, "%s", "");
   pthread_mutex_unlock(&pot->call_lock);
   return RGPOT_ENGINE_OK;
