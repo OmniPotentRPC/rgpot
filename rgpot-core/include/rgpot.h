@@ -68,6 +68,16 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define ENGINE_ABI_VERSION 1
 
 /**
+ * The ABI minor this loader requires, `RGPOT_ENGINE_ABI_MINOR` of the header.
+ */
+#define ENGINE_ABI_MINOR 3
+
+/**
+ * The struct layout revision this loader expects, `RGPOT_ENGINE_ABI_LAYOUT_REVISION` of the header.
+ */
+#define ENGINE_ABI_LAYOUT_REVISION 1
+
+/**
  * Engine code meaning the backend does not support the requested operation.
  */
 #define ENGINE_ERR_UNSUPPORTED 3
