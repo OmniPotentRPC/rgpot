@@ -1,9 +1,7 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
-// Prints the units.hpp constants as Rust `f64` bit patterns. rgpot-core's
-// `units` feature compiles and runs this program; the header stays the
-// only table.
+// Prints the units.hpp constants as Rust `f64` bit patterns for audits.
 
 #include "rgpot/units.hpp"
 
@@ -44,6 +42,16 @@ int main() {
     std::fprintf(stderr, "units export: %s\n", err.what());
     return 1;
   }
+  emit("BOLTZMANN_CONSTANT_J_PER_K",
+       "Exact Boltzmann constant in joules per kelvin.",
+       BOLTZMANN_CONSTANT_J_PER_K);
+  emit("ELEMENTARY_CHARGE_C", "Exact elementary charge in coulombs.",
+       ELEMENTARY_CHARGE_C);
+  emit("HARTREE_ENERGY_J", "Hartree energy in joules (CODATA 2018).",
+       HARTREE_ENERGY_J);
+  emit("REDUCED_PLANCK_CONSTANT_J_S",
+       "Reduced Planck constant in joule seconds (CODATA 2018).",
+       REDUCED_PLANCK_CONSTANT_J_S);
   emit("BOHR_TO_ANGSTROM",
        "Bohr radius in angstroms (`a_0`, CODATA 2018, "
        "`rgpot::units::BOHR_TO_ANGSTROM`).",

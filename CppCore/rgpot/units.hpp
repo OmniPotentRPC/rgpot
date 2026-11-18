@@ -23,6 +23,12 @@ namespace rgpot::units {
 
 // ---- Compile-time constants (CODATA 2018) ----
 
+// Exact SI defining constants and CODATA 2018 derived constants
+inline constexpr double BOLTZMANN_CONSTANT_J_PER_K = 1.380649e-23;
+inline constexpr double ELEMENTARY_CHARGE_C = 1.602176634e-19;
+inline constexpr double HARTREE_ENERGY_J = 4.3597447222071e-18;
+inline constexpr double REDUCED_PLANCK_CONSTANT_J_S = 1.0545718176461565e-34;
+
 // Length
 inline constexpr double BOHR_TO_ANGSTROM = 0.529177210903;
 inline constexpr double ANGSTROM_TO_BOHR = 1.0 / BOHR_TO_ANGSTROM;
@@ -43,7 +49,8 @@ inline constexpr double HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3 =
 
 // Temperature / Boltzmann
 inline constexpr double KB_HARTREE = 3.1668115634556e-6; // k_B in Hartree/K
-inline constexpr double KB_EV = 8.617333262e-5;          // k_B in eV/K
+inline constexpr double KB_EV =
+    BOLTZMANN_CONSTANT_J_PER_K / ELEMENTARY_CHARGE_C; // k_B in eV/K
 
 // Mass (electron mass in u: 5.48579909065e-4 u)
 inline constexpr double ELECTRON_MASS_IN_DALTON = 5.48579909065e-4;
@@ -51,7 +58,8 @@ inline constexpr double DALTON_IN_ELECTRON_MASSES =
     1.0 / ELECTRON_MASS_IN_DALTON;
 
 // Time (hbar / E_h in seconds)
-inline constexpr double ATOMIC_UNIT_OF_TIME_S = 2.4188843265857e-17;
+inline constexpr double ATOMIC_UNIT_OF_TIME_S =
+    REDUCED_PLANCK_CONSTANT_J_S / HARTREE_ENERGY_J;
 
 // ---- Runtime unit expression parser ----
 
