@@ -280,7 +280,13 @@ typedef struct rgpot_potential_t {
  * charges evaluations chooses which field to bill.
  */
 typedef struct rgpot_eval_counts_t {
+  /**
+   * Number of callback evaluations.
+   */
   uint64_t computed;
+  /**
+   * Number of results served from the fused cache.
+   */
   uint64_t served;
 } rgpot_eval_counts_t;
 

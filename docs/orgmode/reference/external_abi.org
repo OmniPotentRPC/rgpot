@@ -460,8 +460,9 @@ int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
 #+end_src
 
 - Inputs :: =session=, optional flat xyz output arrays =positions=,
-  =velocities=, and =forces= of length =n3=, optional scalar pointers
-  =potential_energy= and =kinetic_energy=, and =err=/=err_len=.
+  =velocities=, and =forces=, optional scalar pointers =potential_energy= and
+  =kinetic_energy=, =n3= (which must always equal =3 * n_atoms=, even when
+  all coordinate and force output pointers are null), and =err=/=err_len=.
 - Units :: =positions= in Angstrom, =velocities= in Angstrom/ps, =forces= in
   eV/Angstrom, energies in eV.
 - Outputs :: returns 0 and fills any non-null output buffers.
