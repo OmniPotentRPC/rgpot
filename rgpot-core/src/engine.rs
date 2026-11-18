@@ -50,6 +50,8 @@ pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 pub const ENGINE_ERR_UNSUPPORTED: c_int = 3;
 
 const ERROR_CAPACITY: usize = 1024;
+const ANALYTIC_HVP_END: usize =
+    std::mem::offset_of!(RgpotEngineCaps, analytic_hvp) + std::mem::size_of::<c_int>();
 
 /// Opaque engine instance, `RgpotEnginePot` of the header.
 #[repr(C)]
@@ -533,6 +535,13 @@ impl EnginePotential {
         };
         let code = unsafe { caps_fn(self.handle.as_ptr(), &mut raw) };
         self.answer(code, "rgpot_engine_caps")?;
+        let analytic_hvp = if self.symbols.hvp.is_none() {
+            false
+        } else if (raw.size as usize) < ANALYTIC_HVP_END {
+            true
+        } else {
+            raw.analytic_hvp != 0
+        };
         Ok(EngineCaps {
             reentrancy: raw.reentrancy,
             per_image_instances: raw.per_image_instances != 0,
@@ -540,15 +549,17 @@ impl EnginePotential {
             periodic: raw.periodic != 0,
             stress: raw.stress != 0,
             group_collective: raw.group_collective != 0,
-            analytic_hvp: raw.analytic_hvp != 0,
+            analytic_hvp,
         })
     }
 
     /// Analytic Hessian-vector product `H(positions) * direction`.
     ///
     /// Positions and directions are in Angstrom; the result is in
-    /// eV/Angstrom^2 times the direction. No finite-difference fallback is
-    /// attempted.
+    /// eV/Angstrom^2 times the direction. Support is discovered by
+    /// `rgpot_engine_hvp` symbol presence; when `rgpot_engine_caps` is also
+    /// exported, `analytic_hvp` may only confirm or narrow support for this
+    /// handle. No finite-difference fallback is attempted.
     pub fn hvp(
         &mut self,
         request: &EngineRequest<'_>,
@@ -559,7 +570,7 @@ impl EnginePotential {
             .symbols
             .hvp
             .ok_or_else(|| unsupported_symbol("rgpot_engine_hvp"))?;
-        if !self.caps()?.analytic_hvp {
+        if !self.has_analytic_hvp()? {
             return Err(EngineError::Unsupported {
                 operation: "rgpot_engine_hvp",
                 message: "analytic_hvp is not advertised".into(),
@@ -608,15 +619,12 @@ impl EnginePotential {
     }
 
     /// The instance as a [`PotentialImpl`]. The handle owns the engine and
-    /// destroys it on drop. Calls through the handle are serialized. A
-    /// capability-query failure is returned rather than silently replacing an
-    /// advertised analytic product with finite differences.
+    /// destroys it on drop. Calls through the handle are serialized. Analytic
+    /// HVP is enabled when `rgpot_engine_hvp` is exported and not narrowed off
+    /// by `rgpot_engine_caps`; a capability-query failure is returned rather
+    /// than silently replacing an analytic product with finite differences.
     pub fn into_potential(mut self) -> Result<PotentialImpl, EngineError> {
-        let analytic_hvp = if self.symbols.hvp.is_some() {
-            self.caps()?.analytic_hvp
-        } else {
-            false
-        };
+        let analytic_hvp = self.has_analytic_hvp()?;
         let owned = Box::into_raw(Box::new(Mutex::new(self))).cast::<c_void>();
         let potential = PotentialImpl::new(engine_callback, owned, Some(drop_engine));
         if analytic_hvp {
@@ -625,6 +633,16 @@ impl EnginePotential {
                 .set_hessian_vector_callback(Some(engine_hessian_vector_callback));
         }
         Ok(potential)
+    }
+
+    fn has_analytic_hvp(&mut self) -> Result<bool, EngineError> {
+        if self.symbols.hvp.is_none() {
+            return Ok(false);
+        }
+        if self.symbols.caps.is_none() {
+            return Ok(true);
+        }
+        Ok(self.caps()?.analytic_hvp)
     }
 
     fn check_usable(&self) -> Result<(), EngineError> {

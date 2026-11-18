@@ -45,7 +45,11 @@
  * - Capability discovery is by symbol presence: entry points marked
  *   optional are probed with dlsym. An absent symbol means the engine
  *   does not support the operation; a static (non-learning) engine
- *   simply omits the learning set.
+ *   simply omits the learning set. Exporting an optional symbol (such
+ *   as `rgpot_engine_hvp`) declares support even when
+ *   `rgpot_engine_caps` is omitted; when `rgpot_engine_caps` is
+ *   present and writes the corresponding flag, it may only confirm or
+ *   narrow support for that handle, never enable a missing symbol.
  * - Engines with internal mutable state (learning surrogates) carry a
  *   monotone model-state counter. Any refit, hyperparameter change,
  *   or observation incorporation increments it; host-visible caches
@@ -178,7 +182,10 @@ RGPOT_ENGINE_API int rgpot_engine_force(
  * for a direction in Angstrom. direction and hv_out hold 3*nAtoms doubles.
  * The optional transform is applied to a scratch copy of positions and box
  * before evaluation, as for rgpot_engine_force; direction is unchanged.
- * Returns RGPOT_ENGINE_OK or RGPOT_ENGINE_ERR_UNSUPPORTED.
+ * Exporting this symbol declares HVP support even without `rgpot_engine_caps`.
+ * When `rgpot_engine_caps` is present and writes `analytic_hvp`, a nonzero
+ * value confirms support and zero narrows it off for that handle. Returns
+ * RGPOT_ENGINE_OK or RGPOT_ENGINE_ERR_UNSUPPORTED.
  */
 RGPOT_ENGINE_API int rgpot_engine_hvp(
     RgpotEnginePot *pot, long nAtoms, const double *positions,
@@ -294,7 +301,7 @@ typedef struct {
   int periodic;            /**< periodic boundary conditions supported */
   int stress;              /**< cell stress is available */
   int group_collective;    /**< every rank of a group enters each call */
-  int analytic_hvp;        /**< rgpot_engine_hvp is exact for this potential */
+  int analytic_hvp;        /**< confirms/narrows rgpot_engine_hvp on pot */
 } RgpotEngineCaps;
 
 RGPOT_ENGINE_API int rgpot_engine_caps(const RgpotEnginePot *pot,
