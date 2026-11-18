@@ -115,9 +115,9 @@ let mut engine =
 =EnginePotential::force= evaluates energy and forces.
 =EnginePotential::force_batch= evaluates systems of the surface's atom count in
 one =potlibc_evaluate= call; a failed batch writes nothing.
-=EnginePotential::hvp= uses =rgpot_engine_hvp= only when the surface advertises
-an analytic product, and =into_potential= exposes that same handle to in-process
-and RPC callers.
+=EnginePotential::hvp= uses =rgpot_engine_hvp= whenever the symbol is present;
+=rgpot_engine_caps= may narrow that support when it is also present.
+=into_potential= exposes that same handle to in-process and RPC callers.
 
 The complete symbol contracts and units are in the
 [[file:../reference/engine_abi.org][engine ABI reference]].
