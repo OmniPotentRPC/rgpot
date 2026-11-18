@@ -34,8 +34,7 @@ impl RpcClient {
     ///
     /// The connection is established lazily on the first `calculate` call.
     pub fn new(host: &str, port: u16) -> Result<Self, String> {
-        let runtime =
-            Runtime::new().map_err(|e| format!("failed to create tokio runtime: {e}"))?;
+        let runtime = Runtime::new().map_err(|e| format!("failed to create tokio runtime: {e}"))?;
         Ok(Self {
             runtime,
             addr: format!("{host}:{port}"),
@@ -74,8 +73,7 @@ impl RpcClient {
             .set_nodelay(true)
             .map_err(|e| format!("set_nodelay failed: {e}"))?;
 
-        let (reader, writer) =
-            tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+        let (reader, writer) = tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
 
         let network = twoparty::VatNetwork::new(
             futures::io::BufReader::new(reader),

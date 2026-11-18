@@ -49,13 +49,13 @@
 //! The core types use DLPack tensors for device-agnostic data exchange.
 //! See [`tensor`] for helpers to create DLPack tensors from raw pointers.
 
-pub mod types;
-pub mod tensor;
-pub mod status;
-pub mod potential;
-pub mod hvp;
-pub mod eindir;
 pub mod c_api;
+pub mod eindir;
+pub mod hvp;
+pub mod potential;
+pub mod status;
+pub mod tensor;
+pub mod types;
 pub mod version;
 
 #[cfg(feature = "schema")]
