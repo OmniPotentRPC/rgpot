@@ -2884,6 +2884,7 @@ if not meson.is_subproject()
         install_dir: get_option('includedir'),
         exclude_directories: ['__pycache__', 'rpc/local', 'Morse/detail'],
         exclude_files: [
+            'Morse/MorsePot.cc',
             '*.o',
             '*.a',
             '*.so',
