@@ -63,11 +63,15 @@ const REENTRANCY_END: usize =
     std::mem::offset_of!(RgpotEngineCaps, reentrancy) + std::mem::size_of::<c_int>();
 const REENTRANCY_PROCESS_SERIAL: i32 = 2;
 
-/// Magic number of `RgpotCoupledWellConfigV1`.
+/// Magic number of `RgpotCoupledWellConfigV1` and `RgpotCoupledWellConfigV2`.
 pub const COUPLED_WELL_CONFIG_MAGIC: u32 = 0x4357_5054;
-/// Version of [`CoupledWellConfig`].
-pub const COUPLED_WELL_CONFIG_VERSION: u32 = 1;
-/// Minimum message size accepted by `libcoupled_well_engine`.
+/// Version of the 48-byte coupled-well create message.
+pub const COUPLED_WELL_CONFIG_VERSION_V1: u32 = 1;
+/// Version of [`CoupledWellConfig`], the version-2 create message.
+pub const COUPLED_WELL_CONFIG_VERSION: u32 = 2;
+/// Byte size of `RgpotCoupledWellConfigV1`.
+pub const COUPLED_WELL_CONFIG_V1_SIZE: u32 = 48;
+/// Minimum message size of the version-2 coupled-well create message.
 pub const COUPLED_WELL_CONFIG_MIN_SIZE: u32 = 56;
 /// Atomic number of [`CoupledWellConfig::default`].
 pub const COUPLED_WELL_DEFAULT_ATOMIC_NUMBER: i32 = 1;
@@ -79,17 +83,27 @@ pub const COUPLED_WELL_DEFAULT_WELL_POSITION: f64 = 1.0;
 pub const COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING: f64 = 1.0;
 /// Coupling `alpha` of [`CoupledWellConfig::default`], in 1/Angstrom.
 pub const COUPLED_WELL_DEFAULT_COUPLING: f64 = 0.0;
-/// Magic number of `RgpotPotlibcConfigV1`.
+/// Magic number of `RgpotPotlibcConfigV1` and `RgpotPotlibcConfigV2`.
 pub const POTLIBC_CONFIG_MAGIC: u32 = 0x504f_544c;
-/// Version of [`PotlibcConfig`].
-pub const POTLIBC_CONFIG_VERSION: u32 = 1;
-/// Minimum message size accepted by `libpotlibc_engine`.
+/// Version of the 144-byte potlibc create message.
+pub const POTLIBC_CONFIG_VERSION_V1: u32 = 1;
+/// Version of [`PotlibcConfig`], the version-2 create message.
+pub const POTLIBC_CONFIG_VERSION: u32 = 2;
+/// Byte size of `RgpotPotlibcConfigV1`.
+pub const POTLIBC_CONFIG_V1_SIZE: u32 = 144;
+/// Minimum message size of the version-2 potlibc create message.
 pub const POTLIBC_CONFIG_MIN_SIZE: u32 = 152;
 /// Capacity of the potlibc surface identifier, including its terminator.
 pub const POTLIBC_SURFACE_ID_CAPACITY: usize = 128;
 
 const COUPLED_WELL_CONFIG_BYTES: usize = 56;
 const POTLIBC_CONFIG_BYTES: usize = 152;
+const _: () = assert!(COUPLED_WELL_CONFIG_V1_SIZE == 48);
+const _: () = assert!(COUPLED_WELL_CONFIG_VERSION_V1 == 1);
+const _: () = assert!(COUPLED_WELL_CONFIG_VERSION == 2);
+const _: () = assert!(POTLIBC_CONFIG_V1_SIZE == 144);
+const _: () = assert!(POTLIBC_CONFIG_VERSION_V1 == 1);
+const _: () = assert!(POTLIBC_CONFIG_VERSION == 2);
 
 /// Parameters for `libpotlibc_engine`.
 ///
@@ -130,6 +144,12 @@ pub struct PotlibcConfig {
 }
 
 const _: () = assert!(std::mem::size_of::<PotlibcConfig>() == POTLIBC_CONFIG_BYTES);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, magic) == 0);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, size) == 4);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, version) == 8);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, reserved) == 12);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, atom_count) == 16);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, surface_id) == 24);
 
 impl Default for PotlibcConfig {
     fn default() -> Self {
@@ -145,7 +165,7 @@ impl Default for PotlibcConfig {
 }
 
 impl PotlibcConfig {
-    /// Construct a version-one parameter message.
+    /// Construct a version-two parameter message.
     pub fn new(surface_id: &str, atom_count: u64) -> Result<Self, EngineError> {
         Self::default()
             .with_atom_count(atom_count)
@@ -184,10 +204,17 @@ impl PotlibcConfig {
     /// id. Whether the surface exists and takes this atom count is the
     /// engine's to decide.
     pub fn validate(&self) -> Result<(), EngineError> {
-        if self.magic != POTLIBC_CONFIG_MAGIC
-            || self.version != POTLIBC_CONFIG_VERSION
-            || self.reserved != 0
-        {
+        if self.magic != POTLIBC_CONFIG_MAGIC {
+            return Err(EngineError::Invalid(
+                "potlibc config magic, version, or reserved field".into(),
+            ));
+        }
+        if self.version != POTLIBC_CONFIG_VERSION {
+            return Err(EngineError::Invalid(
+                "potlibc config version is unknown".into(),
+            ));
+        }
+        if self.reserved != 0 {
             return Err(EngineError::Invalid(
                 "potlibc config magic, version, or reserved field".into(),
             ));
@@ -284,6 +311,16 @@ pub struct CoupledWellConfig {
 }
 
 const _: () = assert!(std::mem::size_of::<CoupledWellConfig>() == COUPLED_WELL_CONFIG_BYTES);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, magic) == 0);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, size) == 4);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, version) == 8);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, reserved0) == 12);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, atomic_number) == 16);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, reserved1) == 20);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, barrier_energy) == 24);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, well_position) == 32);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, transverse_spring) == 40);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, coupling) == 48);
 
 impl Default for CoupledWellConfig {
     fn default() -> Self {
@@ -303,7 +340,7 @@ impl Default for CoupledWellConfig {
 }
 
 impl CoupledWellConfig {
-    /// Construct the version-one parameter message.
+    /// Construct the version-two parameter message.
     pub fn new(
         atomic_number: i32,
         barrier_energy: f64,
@@ -359,11 +396,13 @@ impl CoupledWellConfig {
     /// before the library is opened. The engine repeats these checks.
     pub fn validate(&self) -> Result<(), EngineError> {
         let invalid = |why: &str| Err(EngineError::Invalid(format!("coupled-well {why}")));
-        if self.magic != COUPLED_WELL_CONFIG_MAGIC
-            || self.version != COUPLED_WELL_CONFIG_VERSION
-            || self.reserved0 != 0
-            || self.reserved1 != 0
-        {
+        if self.magic != COUPLED_WELL_CONFIG_MAGIC {
+            return invalid("config magic, version, or reserved fields");
+        }
+        if self.version != COUPLED_WELL_CONFIG_VERSION {
+            return invalid("config version is unknown");
+        }
+        if self.reserved0 != 0 || self.reserved1 != 0 {
             return invalid("config magic, version, or reserved fields");
         }
         if self.size < COUPLED_WELL_CONFIG_MIN_SIZE {

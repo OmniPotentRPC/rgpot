@@ -74,9 +74,9 @@ A message whose length is not a multiple of 8 bytes is refused with a reason in
 Backends without a shared schema may document a versioned magic structure
 instead.
 For example, [[file:potlibc-engine.org][the potlibc plugin]] takes
-=RgpotPotlibcConfigV1= and
+=RgpotPotlibcConfigV1= or =RgpotPotlibcConfigV2= and
 [[file:coupled-well-engine.org][the coupled-well plugin]] takes
-=RgpotCoupledWellConfigV1=.
+=RgpotCoupledWellConfigV1= or =RgpotCoupledWellConfigV2=.
 
 Do not =dlclose= an engine: the tensor runtime keeps process-wide state.
 =libuma_engine.so= is linked with =-z nodelete=, so a =dlclose= leaves it

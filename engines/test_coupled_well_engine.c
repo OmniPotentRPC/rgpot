@@ -46,8 +46,8 @@ static int failures = 0;
     }                                                                          \
   } while (0)
 
-static RgpotCoupledWellConfigV1 config(void) {
-  RgpotCoupledWellConfigV1 result;
+static RgpotCoupledWellConfigV2 config(void) {
+  RgpotCoupledWellConfigV2 result;
   memset(&result, 0, sizeof result);
   result.magic = RGPOT_COUPLED_WELL_CONFIG_MAGIC;
   result.size = sizeof result;
@@ -63,7 +63,7 @@ static RgpotCoupledWellConfigV1 config(void) {
 }
 
 static RgpotEnginePot *make(void) {
-  const RgpotCoupledWellConfigV1 message = config();
+  const RgpotCoupledWellConfigV2 message = config();
   char error[256] = {0};
   RgpotEnginePot *pot =
       rgpot_engine_create(&message, sizeof message, error, sizeof error);
@@ -73,7 +73,7 @@ static RgpotEnginePot *make(void) {
   return pot;
 }
 
-static int refused(const RgpotCoupledWellConfigV1 *message, size_t length) {
+static int refused(const RgpotCoupledWellConfigV2 *message, size_t length) {
   char error[256] = {0};
   RgpotEnginePot *pot = rgpot_engine_create(message, length, error,
                                             sizeof error);
@@ -127,20 +127,20 @@ static void identity_and_contract(void) {
 }
 
 static void create_validation(void) {
-  RgpotCoupledWellConfigV1 message = config();
+  RgpotCoupledWellConfigV2 message = config();
   RgpotEnginePot *pot = make();
   CHECK(pot != NULL);
   rgpot_engine_destroy(pot);
   rgpot_engine_destroy(NULL);
 
   CHECK(refused(NULL, sizeof message));
-  CHECK(refused(&message, offsetof(RgpotCoupledWellConfigV1, version) + 3));
+  CHECK(refused(&message, offsetof(RgpotCoupledWellConfigV2, version) + 3));
   CHECK(refused(&message, sizeof message - 1));
   {
     unsigned char future[sizeof message + 8];
     memset(future, 0, sizeof future);
     memcpy(future, &message, sizeof message);
-    ((RgpotCoupledWellConfigV1 *)future)->size = sizeof future;
+    ((RgpotCoupledWellConfigV2 *)future)->size = sizeof future;
     CHECK(!refused_bytes(future, sizeof future));
     future[sizeof message] = 7u;
     CHECK(refused_bytes(future, sizeof future));
@@ -369,7 +369,7 @@ static void rejects_bad_requests(void) {
   CHECK(rgpot_engine_hvp(pot, 1, huge, SPECIES, direction, product, BOX, NULL,
                          NULL) == RGPOT_ENGINE_ERR_EVAL);
   {
-    RgpotCoupledWellConfigV1 tiny = config();
+    RgpotCoupledWellConfigV2 tiny = config();
     RgpotEnginePot *small;
     const double scaled_min[3] = {1.0e-155, 0.0, 0.0};
     const double along_y[3] = {0.0, 1.0, 0.0};
@@ -399,7 +399,7 @@ static void rejects_bad_requests(void) {
     rgpot_engine_destroy(small);
   }
   {
-    RgpotCoupledWellConfigV1 huge_alpha = config();
+    RgpotCoupledWellConfigV2 huge_alpha = config();
     RgpotEnginePot *stiff;
     const double point[3] = {1.0, 1.0e200, 0.0};
     const double along_y[3] = {0.0, 1.0, 0.0};
@@ -722,9 +722,105 @@ static void one_handle_serves_concurrent_batch_hvp_and_caps(void) {
   rgpot_engine_destroy(pot);
 }
 
+static void put_u32(unsigned char *bytes, size_t offset, uint32_t value) {
+  memcpy(bytes + offset, &value, sizeof value);
+}
+
+static void put_i32(unsigned char *bytes, size_t offset, int32_t value) {
+  memcpy(bytes + offset, &value, sizeof value);
+}
+
+static void put_f64(unsigned char *bytes, size_t offset, double value) {
+  memcpy(bytes + offset, &value, sizeof value);
+}
+
+static int same_geometry(RgpotEnginePot *legacy, RgpotEnginePot *current,
+                         const double *positions, const double *direction) {
+  double legacy_forces[3];
+  double current_forces[3];
+  double legacy_energy;
+  double current_energy;
+  double legacy_product[3];
+  double current_product[3];
+  int legacy_code;
+  int current_code;
+  legacy_code =
+      rgpot_engine_force(legacy, 1, positions, SPECIES, legacy_forces,
+                         &legacy_energy, NULL, BOX, NULL, NULL);
+  current_code =
+      rgpot_engine_force(current, 1, positions, SPECIES, current_forces,
+                         &current_energy, NULL, BOX, NULL, NULL);
+  if (legacy_code != RGPOT_ENGINE_OK || current_code != RGPOT_ENGINE_OK ||
+      legacy_energy != current_energy ||
+      memcmp(legacy_forces, current_forces, sizeof legacy_forces) != 0) {
+    return 0;
+  }
+  legacy_code = rgpot_engine_hvp(legacy, 1, positions, SPECIES, direction,
+                                 legacy_product, BOX, NULL, NULL);
+  current_code = rgpot_engine_hvp(current, 1, positions, SPECIES, direction,
+                                  current_product, BOX, NULL, NULL);
+  return legacy_code == RGPOT_ENGINE_OK && current_code == RGPOT_ENGINE_OK &&
+         memcmp(legacy_product, current_product, sizeof legacy_product) == 0;
+}
+
+/* A client built against 41b87aa5 writes 48 bytes: magic, version 1,
+ * atomic_number, reserved, then the four parameters. The tip must accept
+ * that message and return the same energy, forces and Hessian-vector product
+ * as the version-2 message for the same parameters. */
+static void v1_client_matches_version_two(void) {
+  unsigned char legacy_bytes[48];
+  RgpotCoupledWellConfigV2 current_message;
+  RgpotEnginePot *legacy;
+  RgpotEnginePot *current;
+  char error[256];
+  const double direction[3] = {1.0, 2.0, 5.0};
+  size_t index;
+  memset(legacy_bytes, 0, sizeof legacy_bytes);
+  put_u32(legacy_bytes, 0, RGPOT_COUPLED_WELL_CONFIG_MAGIC);
+  put_u32(legacy_bytes, 4, 1u);
+  put_i32(legacy_bytes, 8, NUMBER);
+  put_u32(legacy_bytes, 12, 0u);
+  put_f64(legacy_bytes, 16, BARRIER);
+  put_f64(legacy_bytes, 24, WELL);
+  put_f64(legacy_bytes, 32, SPRING);
+  put_f64(legacy_bytes, 40, COUPLING);
+
+  memset(error, 0, sizeof error);
+  legacy = rgpot_engine_create(legacy_bytes, sizeof legacy_bytes, error,
+                               sizeof error);
+  CHECK(legacy != NULL);
+  current_message = config();
+  memset(error, 0, sizeof error);
+  current = rgpot_engine_create(&current_message, sizeof current_message, error,
+                                sizeof error);
+  CHECK(current != NULL);
+  if (legacy != NULL && current != NULL) {
+    for (index = 0; index < 3; ++index) {
+      const double positions[3] = {POINTS[index].x, POINTS[index].y, 7.0};
+      CHECK(same_geometry(legacy, current, positions, direction));
+    }
+  }
+  rgpot_engine_destroy(legacy);
+  rgpot_engine_destroy(current);
+
+  put_u32(legacy_bytes, 4, 99u);
+  memset(error, 0, sizeof error);
+  CHECK(rgpot_engine_create(legacy_bytes, sizeof legacy_bytes, error,
+                            sizeof error) == NULL);
+  CHECK(strstr(error, "version is unknown") != NULL);
+
+  current_message = config();
+  current_message.version = 3u;
+  memset(error, 0, sizeof error);
+  CHECK(rgpot_engine_create(&current_message, sizeof current_message, error,
+                            sizeof error) == NULL);
+  CHECK(strstr(error, "version is unknown") != NULL);
+}
+
 int main(void) {
   identity_and_contract();
   create_validation();
+  v1_client_matches_version_two();
   analytic_force_and_hessian();
   transform_is_scratch_only();
   rejects_bad_requests();

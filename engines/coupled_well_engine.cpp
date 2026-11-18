@@ -76,36 +76,88 @@ bool trailingBytesAreZero(const unsigned char *bytes, size_t count) {
   return true;
 }
 
+// Version 1 is the 48-byte layout: magic, version, atomic_number, reserved,
+// then the four doubles. Version 2 carries size at offset 4 and version at
+// offset 8. A u32 of 1 at offset 4 is version 1, never a version-2 size
+// (those are at least 56). The stored parameters are the version-1 fields.
 bool readConfig(RgpotCoupledWellConfigV1 *out, const void *config, size_t configLen,
                 char *errbuf, size_t errlen) {
-  if (config == nullptr || configLen < offsetof(RgpotCoupledWellConfigV1, version) +
-                                         sizeof(uint32_t)) {
+  if (config == nullptr || configLen < sizeof(uint32_t) * 2) {
     copyMessage(errbuf, errlen,
                 "coupled-well engine requires RgpotCoupledWellConfigV1");
     return false;
   }
-  RgpotCoupledWellConfigV1 params{};
-  memcpy(&params, config, sizeof(uint32_t) * 3);
-  if (params.size < RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE) {
+  const auto *bytes = static_cast<const unsigned char *>(config);
+  uint32_t magic = 0;
+  uint32_t word4 = 0;
+  memcpy(&magic, bytes, sizeof magic);
+  memcpy(&word4, bytes + sizeof magic, sizeof word4);
+  if (magic != RGPOT_COUPLED_WELL_CONFIG_MAGIC) {
     copyMessage(errbuf, errlen,
-                "coupled-well config size is smaller than RgpotCoupledWellConfigV1");
+                "coupled-well engine config magic, version, or reserved fields");
     return false;
   }
-  if (configLen < params.size) {
+  if (word4 == RGPOT_COUPLED_WELL_CONFIG_VERSION_V1) {
+    if (configLen != sizeof(RgpotCoupledWellConfigV1)) {
+      copyMessage(errbuf, errlen,
+                  "coupled-well engine requires RgpotCoupledWellConfigV1");
+      return false;
+    }
+    RgpotCoupledWellConfigV1 params{};
+    memcpy(&params, config, sizeof params);
+    if (params.reserved != 0) {
+      copyMessage(errbuf, errlen,
+                  "coupled-well engine config magic, version, or reserved fields");
+      return false;
+    }
+    *out = params;
+    return true;
+  }
+  if (configLen < offsetof(RgpotCoupledWellConfigV2, version) + sizeof(uint32_t)) {
+    copyMessage(errbuf, errlen,
+                "coupled-well engine requires RgpotCoupledWellConfigV2");
+    return false;
+  }
+  uint32_t version = 0;
+  memcpy(&version, bytes + offsetof(RgpotCoupledWellConfigV2, version),
+         sizeof version);
+  if (version != RGPOT_COUPLED_WELL_CONFIG_VERSION) {
+    copyMessage(errbuf, errlen, "coupled-well config version is unknown");
+    return false;
+  }
+  RgpotCoupledWellConfigV2 wire{};
+  memcpy(&wire, config, sizeof(uint32_t) * 3);
+  if (wire.size < RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE) {
+    copyMessage(errbuf, errlen,
+                "coupled-well config size is smaller than RgpotCoupledWellConfigV2");
+    return false;
+  }
+  if (configLen < wire.size) {
     copyMessage(errbuf, errlen,
                 "coupled-well config buffer is shorter than config.size");
     return false;
   }
-  memcpy(&params, config, sizeof params);
-  if (params.size > sizeof params) {
-    const unsigned char *tail =
-        static_cast<const unsigned char *>(config) + sizeof params;
-    if (!trailingBytesAreZero(tail, params.size - sizeof params)) {
-      copyMessage(errbuf, errlen,
-                  "coupled-well config trailing bytes must be zero");
-      return false;
-    }
+  memcpy(&wire, config, sizeof wire);
+  if (wire.size > sizeof wire &&
+      !trailingBytesAreZero(bytes + sizeof wire, wire.size - sizeof wire)) {
+    copyMessage(errbuf, errlen,
+                "coupled-well config trailing bytes must be zero");
+    return false;
   }
+  if (wire.reserved0 != 0 || wire.reserved1 != 0) {
+    copyMessage(errbuf, errlen,
+                "coupled-well engine config magic, version, or reserved fields");
+    return false;
+  }
+  RgpotCoupledWellConfigV1 params{};
+  params.magic = wire.magic;
+  params.version = RGPOT_COUPLED_WELL_CONFIG_VERSION_V1;
+  params.atomic_number = wire.atomic_number;
+  params.reserved = 0;
+  params.barrier_energy = wire.barrier_energy;
+  params.well_position = wire.well_position;
+  params.transverse_spring = wire.transverse_spring;
+  params.coupling = wire.coupling;
   *out = params;
   return true;
 }
@@ -215,13 +267,6 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t configLen,
                                     char *errbuf, size_t errlen) {
   RgpotCoupledWellConfigV1 params;
   if (!readConfig(&params, config, configLen, errbuf, errlen)) {
-    return nullptr;
-  }
-  if (params.magic != RGPOT_COUPLED_WELL_CONFIG_MAGIC ||
-      params.version != RGPOT_COUPLED_WELL_CONFIG_VERSION ||
-      params.reserved0 != 0 || params.reserved1 != 0) {
-    copyMessage(errbuf, errlen,
-                "coupled-well engine config magic, version, or reserved fields");
     return nullptr;
   }
   if (params.atomic_number <= 0) {
