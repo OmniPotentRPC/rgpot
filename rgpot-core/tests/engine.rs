@@ -845,3 +845,190 @@ fn hvp_rejects_mismatched_direction_length() {
         .unwrap_err();
     assert!(matches!(error, EngineError::Invalid(_)), "{error}");
 }
+
+fn build_with_abs_zero(name: &str, defines: &[&str], zero_symbols: &[&str]) -> PathBuf {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/harmonic_engine.c");
+    let include = Path::new(env!("CARGO_MANIFEST_DIR")).join("../CppCore");
+    let suffix = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let tmpdir = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let asm = tmpdir.join(format!("{name}_abs_zero.s"));
+    let prefix = if cfg!(target_os = "macos") { "_" } else { "" };
+    let mut asm_src = String::new();
+    for sym in zero_symbols {
+        asm_src.push_str(&format!(".globl {prefix}{sym}\n.set {prefix}{sym}, 0\n"));
+    }
+    if !cfg!(target_os = "macos") {
+        asm_src.push_str(".section .note.GNU-stack,\"\",%progbits\n");
+    }
+    std::fs::write(&asm, asm_src).expect("write ABS-zero assembly fixture");
+
+    let out = tmpdir.join(format!("lib{name}.{suffix}"));
+    let target = env!("RGPOT_BUILD_TARGET");
+    let compiler = match cc::Build::new()
+        .target(target)
+        .host(target)
+        .opt_level(0)
+        .try_get_compiler()
+    {
+        Ok(compiler) => compiler,
+        Err(why) => panic!(
+            "cannot compile C fixture '{name}': no C compiler available for target {target} ({why})"
+        ),
+    };
+    let mut command = compiler.to_command();
+    if cfg!(target_os = "macos") {
+        command.arg("-dynamiclib");
+    } else {
+        command.args(["-shared", "-fPIC"]);
+    }
+    command
+        .arg("-I")
+        .arg(include)
+        .arg("-o")
+        .arg(&out)
+        .arg(&source)
+        .arg(&asm);
+    for define in defines {
+        command.arg(format!("-D{define}"));
+    }
+    let status = match command.status() {
+        Ok(status) => status,
+        Err(why) => panic!("spawn C compiler {:?}: {why}", compiler.path()),
+    };
+    assert!(
+        status.success(),
+        "the ABS-zero fixture did not compile: {status}"
+    );
+    out
+}
+
+#[test]
+fn abs_zero_symbols_are_none_when_optional_and_missing_when_required() {
+    let null_hvp_with_caps = build_with_abs_zero(
+        "harmonic_abs0_hvp_caps",
+        &["NO_HVP", "FORCE_HVP_CAP"],
+        &["rgpot_engine_hvp"],
+    );
+    let mut engine = load(&null_hvp_with_caps);
+    assert!(!engine.caps().expect("caps").analytic_hvp);
+    assert_eq!(
+        engine.hvp(
+            &EngineRequest {
+                positions: &[1.0, 0.0, 0.0],
+                atomic_numbers: &[1],
+                box_matrix: &CELL,
+            },
+            &[1.0, 0.0, 0.0],
+        ),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_hvp",
+            message: "symbol is not exported".into(),
+        })
+    );
+    let handle = load(&null_hvp_with_caps)
+        .into_potential()
+        .expect("potential handle with ABS-zero hvp");
+    assert!(!handle.as_handle().has_hessian_vector_callback());
+
+    let null_all_optional = build_with_abs_zero(
+        "harmonic_abs0_all_opt",
+        &["NO_STAMP", "NO_BATCH", "NO_CAPS", "NO_LAST_ERROR", "NO_HVP"],
+        &[
+            "rgpot_engine_abi_stamp",
+            "rgpot_engine_abi_compatible",
+            "rgpot_engine_force_batch",
+            "rgpot_engine_hvp",
+            "rgpot_engine_caps",
+            "rgpot_engine_last_error",
+        ],
+    );
+    let mut engine = load(&null_all_optional);
+    let eval = engine
+        .force(&EngineRequest {
+            positions: &[1.0, 0.0, 0.0],
+            atomic_numbers: &[1],
+            box_matrix: &CELL,
+        })
+        .expect("force with ABS-zero optional symbols");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING, 3));
+    let handle = load(&null_all_optional)
+        .into_potential()
+        .expect("handle with ABS-zero optional symbols");
+    assert!(!handle.as_handle().has_hessian_vector_callback());
+
+    let null_force = build_with_abs_zero(
+        "harmonic_abs0_force",
+        &["NO_FORCE", "NO_BATCH"],
+        &["rgpot_engine_force"],
+    );
+    let before = created(&null_force);
+    let err = unsafe { EnginePotential::load(&null_force, &config()) }
+        .err()
+        .expect("ABS-zero required rgpot_engine_force must fail load");
+    assert_eq!(err, EngineError::Missing("rgpot_engine_force".into()));
+    assert_eq!(created(&null_force), before);
+
+    // Build a standalone shared object where all required symbols are exported,
+    // with one required symbol set to ABS 0 at a time, so every required lookup
+    // is verified without invoking a null function pointer.
+    let required_names = [
+        "rgpot_engine_abi_version",
+        "rgpot_engine_available",
+        "rgpot_engine_create",
+        "rgpot_engine_destroy",
+        "rgpot_engine_force",
+    ];
+    let suffix = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let prefix = if cfg!(target_os = "macos") { "_" } else { "" };
+    let target = env!("RGPOT_BUILD_TARGET");
+    let compiler = cc::Build::new()
+        .target(target)
+        .host(target)
+        .opt_level(0)
+        .try_get_compiler()
+        .expect("C compiler");
+    for (idx, missing_sym) in required_names.iter().enumerate() {
+        let asm = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("req_abs0_{idx}.s"));
+        let out =
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("libreq_abs0_{idx}.{suffix}"));
+        let mut text = String::from(".text\n");
+        for sym in required_names {
+            if sym == *missing_sym {
+                text.push_str(&format!(".globl {prefix}{sym}\n.set {prefix}{sym}, 0\n"));
+            } else {
+                text.push_str(&format!(
+                    ".globl {prefix}{sym}\n{prefix}{sym}:\n  .byte 0\n"
+                ));
+            }
+        }
+        if !cfg!(target_os = "macos") {
+            text.push_str(".section .note.GNU-stack,\"\",%progbits\n");
+        }
+        std::fs::write(&asm, text).expect("write required ABS-zero asm");
+        let mut cmd = compiler.to_command();
+        if cfg!(target_os = "macos") {
+            cmd.arg("-dynamiclib");
+        } else {
+            cmd.args(["-shared", "-fPIC"]);
+        }
+        let status = cmd
+            .arg("-o")
+            .arg(&out)
+            .arg(&asm)
+            .status()
+            .expect("link asm");
+        assert!(status.success(), "link {missing_sym} fixture: {status}");
+        let err = unsafe { EnginePotential::load(&out, &config()) }
+            .err()
+            .expect("ABS-zero required symbol must be rejected during resolve");
+        assert_eq!(err, EngineError::Missing((*missing_sym).into()));
+    }
+}
