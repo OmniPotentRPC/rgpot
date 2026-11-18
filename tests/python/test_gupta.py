@@ -74,6 +74,14 @@ def test_gupta_in_available_kinds() -> None:
     assert "guptapot" in kinds
 
 
+def test_gupta_periodic_cutoff_rejects_half_box() -> None:
+    kwargs = dict(A=0.2061, xi=1.790, p=10.229, q=4.036, r0=2.884, periodic=True)
+    pos = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=np.float64)
+    box = np.diag([10.0, 12.0, 12.0]).astype(np.float64)
+    with pytest.raises(ValueError):
+        rgpot.GuptaPot(**kwargs, cutoff=5.0).evaluate(pos, [1, 1], box)
+
+
 def test_gupta_degenerate_inputs_are_numerical_errors() -> None:
     """Coincident atoms and a NaN coordinate are not a finite minimum.
 
