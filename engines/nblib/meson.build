@@ -53,7 +53,21 @@ nblib_engine = shared_library(
     install_rpath: nblib_rpath,
     install: not meson.is_subproject(),
 )
+nblib_session_test = executable(
+    'test_nblib_session',
+    files('test_nblib_session.cpp'),
+    dependencies: lj_dep,
+    link_with: rgpot,
+    include_directories: [engines_inc, rgpot_inc],
+    cpp_args: _args,
+)
 have_nblib_engine = true
+test(
+    'nblib_session',
+    nblib_session_test,
+    args: [nblib_engine.full_path()],
+    timeout: 120,
+)
 
 else
     message('nblib engine skipped: GROMACS nblib libraries were not found')

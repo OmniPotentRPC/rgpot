@@ -444,6 +444,7 @@ openmm_lj | core posix probe | custom timeout=120 | @engines
 openmm_session | core posix probe | custom timeout=120 | @engines
 openmm_analytic | core posix probe | custom timeout=300 | @engines
 openmm_abi | core posix probe | custom timeout=120 | @engines
+nblib_session | core posix probe | custom timeout=120 | @engines
 openmm_review_equipartition | core posix probe | custom timeout=180 | @engines
 openmm_review_mean-force | core posix probe | custom timeout=180 | @engines
 openmm_review_wall-energy | core posix probe | custom timeout=180 | @engines
