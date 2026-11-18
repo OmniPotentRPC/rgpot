@@ -12,10 +12,13 @@
 // clang-format off
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
+#include <memory>
 #include <vector>
 // clang-format on
 
+#include "rgpot/KeptPotential.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/nlist/PairSum.hpp"
@@ -76,7 +79,42 @@ simd::LjParams lj_params(double u0, double psi, double shift, const LJConfig &c,
   return params;
 }
 
+struct LjNeighbours {
+  nlist::Neighbours cells;
+};
+
+using KeptLjNeighbours = Kept<LjNeighbours, 4>;
+
+KeptKey ljNeighbourKey(const LJPot *self, double cutoff,
+                       nlist::Mode mode) noexcept {
+  KeptKey key;
+  key.ptr(self).f64(cutoff).i64(static_cast<std::int64_t>(mode));
+  return key;
+}
+
 } // namespace
+
+LJPot::~LJPot() {
+  for (const nlist::Mode mode :
+       {nlist::Mode::Auto, nlist::Mode::Stored, nlist::Mode::Stream}) {
+    KeptLjNeighbours::release(ljNeighbourKey(this, cuttOffR, mode));
+  }
+}
+
+bool LJPot::listReused() const noexcept {
+  const LjNeighbours *kept =
+      KeptLjNeighbours::peek(ljNeighbourKey(this, cuttOffR, mode_));
+  return kept != nullptr && kept->cells.reused();
+}
+
+std::size_t LJPot::retainedPairs() const noexcept {
+  const LjNeighbours *kept =
+      KeptLjNeighbours::peek(ljNeighbourKey(this, cuttOffR, mode_));
+  if (kept == nullptr || kept->cells.streaming()) {
+    return 0;
+  }
+  return kept->cells.slots();
+}
 
 /**
  * @class LJPot
@@ -120,6 +158,7 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
     F[3 * i + 2] = 0;
   }
   if (N < 2 || cuttOffR <= 0.0) {
+    KeptLjNeighbours::release(ljNeighbourKey(this, cuttOffR, mode_));
     publishCauchyStress(out, strain, volume);
     return;
   }
@@ -131,17 +170,21 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
   // skin: the bins are not reused unless the coordinates match.
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : 1.0;
   const std::array<bool, 3> periodic{{true, true, true}};
-  nlist::updateCells(neighbours_, R, n_atoms, box, cuttOffR, skin, nlist::Image::Round,
-                     mode_, periodic);
   const double cutoff2 = cuttOffR * cuttOffR;
   // Two different atoms on the same point make the energy NaN. Skipping
   // the pair would report a finite energy of zero and hide the singularity.
-  nlist::sumPairs(
-      neighbours_, n_atoms, cutoff2, nlist::Overlap::Poison,
-      [&params](std::int32_t, std::int32_t, double r2, double &pair_e, double &fscale) {
-        lj_pair(r2, params, pair_e, fscale);
-      },
-      F, *U, strain, atoms);
+  KeptLjNeighbours::with(
+      ljNeighbourKey(this, cuttOffR, mode_),
+      [] { return std::make_unique<LjNeighbours>(); },
+      [&](LjNeighbours &scratch) {
+        nlist::updateCells(scratch.cells, R, n_atoms, box, cuttOffR, skin,
+                           nlist::Image::Round, mode_, periodic);
+        nlist::sumPairs(
+            scratch.cells, n_atoms, cutoff2, nlist::Overlap::Poison,
+            [&params](std::int32_t, std::int32_t, double r2, double &pair_e,
+                      double &fscale) { lj_pair(r2, params, pair_e, fscale); },
+            F, *U, strain, atoms);
+      });
   publishCauchyStress(out, strain, volume);
 }
 
