@@ -13,11 +13,15 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 // clang-format on
 
 #include "rgpot/Morse/MorsePot.hpp"
@@ -70,11 +74,47 @@ struct PairForce {
   double fz;
 };
 
+/// Thread-local scratch for the OpenMP stored half-pair evaluation and row
+/// accumulators, keyed on Neighbours::generation(). Buffers grow to the
+/// high-water mark of the thread and shrink back when a later call requires
+/// less than a quarter of the retained capacity (above kShrinkFloor).
+constexpr std::size_t kShrinkFloor = 4096;
+
+template <typename T>
+void resizeBuffer(std::vector<T> &vec, std::size_t count) {
+  if (vec.capacity() > kShrinkFloor && count * 4 < vec.capacity()) {
+    std::vector<T> fresh(count);
+    vec.swap(fresh);
+  } else {
+    vec.resize(count);
+  }
+}
+
+template <typename T>
+void assignBuffer(std::vector<T> &vec, std::size_t count, const T &value) {
+  if (vec.capacity() > kShrinkFloor && count * 4 < vec.capacity()) {
+    std::vector<T> fresh(count, value);
+    vec.swap(fresh);
+  } else {
+    vec.assign(count, value);
+  }
+}
+
+inline void atomicFetchOr(std::uint64_t &word, std::uint64_t mask) noexcept {
+#if defined(__cpp_lib_atomic_ref) && __cpp_lib_atomic_ref >= 201806L
+  std::atomic_ref<std::uint64_t>(word).fetch_or(mask, std::memory_order_relaxed);
+#elif defined(__GNUC__) || defined(__clang__)
+  __atomic_fetch_or(&word, mask, __ATOMIC_RELAXED);
+#elif defined(_MSC_VER)
+  _InterlockedOr64(reinterpret_cast<volatile long long *>(&word),
+                   static_cast<long long>(mask));
+#else
+  word |= mask;
+#endif
+}
+
 struct MorseWorkspace {
-  const nlist::Neighbours *owner = nullptr;
-  std::uint64_t build_id = 0;
-  std::size_t index_atoms = 0;
-  std::size_t slots = 0;
+  std::uint64_t generation = 0;
 
   std::vector<std::int32_t> up_off;
   std::vector<std::int32_t> lo_off;
@@ -89,16 +129,13 @@ struct MorseWorkspace {
   std::vector<double> row_s;
   std::vector<std::size_t> p0_splits;
   std::vector<std::size_t> p1_splits;
-  const nlist::Neighbours *split_owner = nullptr;
-  std::uint64_t split_build_id = 0;
+  std::uint64_t split_generation = 0;
   std::size_t split_atoms = 0;
   int split_slices = 0;
   std::size_t split_total_up = 0;
   std::size_t split_total_inc = 0;
 
-  const nlist::Neighbours *scratch_owner = nullptr;
-  std::uint64_t scratch_build_id = 0;
-  std::size_t scratch_slots = 0;
+  std::uint64_t scratch_generation = 0;
   std::uint64_t scratch_avail = 0;
 };
 
@@ -133,8 +170,8 @@ struct WorkspaceLease {
 void buildStoredHalfIndex(MorseWorkspace &ws, const nlist::Neighbours &cells, std::size_t n) {
   const auto &off = cells.offsets();
   const auto &nbr = cells.neighbours();
-  ws.up_off.resize(n + 1);
-  ws.lo_count.assign(n, 0);
+  resizeBuffer(ws.up_off, n + 1);
+  assignBuffer(ws.lo_count, n, std::int32_t{0});
   const auto row = nbr.begin();
   std::int32_t total_up = 0;
   for (std::size_t i = 0; i < n; ++i) {
@@ -151,7 +188,7 @@ void buildStoredHalfIndex(MorseWorkspace &ws, const nlist::Neighbours &cells, st
   }
   ws.up_off[n] = total_up;
 
-  ws.lo_off.resize(n + 1);
+  resizeBuffer(ws.lo_off, n + 1);
   std::int32_t acc = 0;
   for (std::size_t i = 0; i < n; ++i) {
     ws.lo_off[i] = acc;
@@ -160,7 +197,7 @@ void buildStoredHalfIndex(MorseWorkspace &ws, const nlist::Neighbours &cells, st
   }
   ws.lo_off[n] = acc;
 
-  ws.lo_u.resize(static_cast<std::size_t>(total_up));
+  resizeBuffer(ws.lo_u, static_cast<std::size_t>(total_up));
   for (std::size_t i = 0; i < n; ++i) {
     const auto hi = off[i + 1];
     const auto count_i = ws.up_off[i + 1] - ws.up_off[i];
@@ -172,12 +209,8 @@ void buildStoredHalfIndex(MorseWorkspace &ws, const nlist::Neighbours &cells, st
     }
   }
 
-  ws.owner = &cells;
-  ws.build_id = cells.builds();
-  ws.index_atoms = n;
-  ws.slots = cells.slots();
-  ws.split_owner = nullptr;
-  ws.split_build_id = 0;
+  ws.generation = cells.generation();
+  ws.split_generation = 0;
   ws.split_atoms = 0;
   ws.split_slices = 0;
   ws.split_total_up = 0;
@@ -217,11 +250,8 @@ void partitionAtomsByWork(std::size_t n, int slices, std::int64_t total_work, Wo
 }
 
 std::uint64_t cachedAvailableBytes(MorseWorkspace &ws, const nlist::Neighbours &cells) {
-  if (ws.scratch_owner != &cells || ws.scratch_build_id != cells.builds() ||
-      ws.scratch_slots != cells.slots()) {
-    ws.scratch_owner = &cells;
-    ws.scratch_build_id = cells.builds();
-    ws.scratch_slots = cells.slots();
+  if (ws.scratch_generation != cells.generation()) {
+    ws.scratch_generation = cells.generation();
     ws.scratch_avail = nlist::availableBytes();
   }
   return ws.scratch_avail;
@@ -403,31 +433,32 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
     const std::uint64_t scratch_avail = cachedAvailableBytes(ws, neighbours_);
     if (slices > 1 && est_half_pairs >= kMinParallelHalfPairs &&
         pairScratchFits(est_half_pairs, atoms, scratch_avail)) {
-      const bool index_valid = neighbours_.reused() && ws.owner == &neighbours_ &&
-                               ws.build_id == neighbours_.builds() && ws.index_atoms == n_atoms &&
-                               ws.slots == neighbours_.slots();
-      if (!index_valid) {
+      if (ws.generation != neighbours_.generation()) {
         buildStoredHalfIndex(ws, neighbours_, n_atoms);
       }
       const auto total_up = static_cast<std::size_t>(ws.up_off[n_atoms]);
       if (total_up >= kMinParallelHalfPairs) {
         const std::size_t nwords = (total_up + 63) / 64;
-        ws.active_bits.assign(nwords, 0ULL);
-        ws.pair_forces.resize(total_up);
+        assignBuffer(ws.active_bits, nwords, std::uint64_t{0});
+        resizeBuffer(ws.pair_forces, total_up);
         const bool want_he = atoms != nullptr && atoms->energy != nullptr;
         const bool want_hv = atoms != nullptr && atoms->virial != nullptr;
         if (want_he) {
-          ws.pair_he.resize(total_up);
+          resizeBuffer(ws.pair_he, total_up);
+        } else {
+          resizeBuffer(ws.pair_he, 0);
         }
         if (want_hv) {
-          ws.pair_hv.resize(6 * total_up);
+          resizeBuffer(ws.pair_hv, 6 * total_up);
+        } else {
+          resizeBuffer(ws.pair_hv, 0);
         }
-        ws.row_e.resize(n_atoms);
-        ws.row_s.resize(6 * n_atoms);
+        resizeBuffer(ws.row_e, n_atoms);
+        resizeBuffer(ws.row_s, 6 * n_atoms);
 
         const std::int64_t total_inc =
             static_cast<std::int64_t>(ws.lo_off[n_atoms]) + static_cast<std::int64_t>(total_up);
-        if (ws.split_owner != &neighbours_ || ws.split_build_id != ws.build_id ||
+        if (ws.split_generation != ws.generation ||
             ws.split_atoms != n_atoms || ws.split_slices != slices ||
             ws.split_total_up != total_up ||
             ws.split_total_inc != static_cast<std::size_t>(total_inc)) {
@@ -443,8 +474,7 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
                        static_cast<std::int64_t>(ws.up_off[idx]);
               },
               ws.p1_splits);
-          ws.split_owner = &neighbours_;
-          ws.split_build_id = ws.build_id;
+          ws.split_generation = ws.generation;
           ws.split_atoms = n_atoms;
           ws.split_slices = slices;
           ws.split_total_up = total_up;
@@ -538,14 +568,13 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
                     flushBatch(batch, emit);
                   }
                 });
+            assert(next_u == u_end);
             flushBatch(batch, emit);
             if (first_mask != 0ULL) {
-              std::atomic_ref<std::uint64_t>(active_bits[first_w])
-                  .fetch_or(first_mask, std::memory_order_relaxed);
+              atomicFetchOr(active_bits[first_w], first_mask);
             }
             if (last_mask != 0ULL) {
-              std::atomic_ref<std::uint64_t>(active_bits[last_w])
-                  .fetch_or(last_mask, std::memory_order_relaxed);
+              atomicFetchOr(active_bits[last_w], last_mask);
             }
             return;
           }
@@ -630,8 +659,8 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
   }
 
   std::fill_n(F, 3 * n_atoms, 0.0);
-  ws.row_e.assign(n_atoms, 0.0);
-  ws.row_s.assign(6 * n_atoms, 0.0);
+  assignBuffer(ws.row_e, n_atoms, 0.0);
+  assignBuffer(ws.row_s, 6 * n_atoms, 0.0);
   double *row_e = ws.row_e.data();
   double *row_s = ws.row_s.data();
 
@@ -844,8 +873,7 @@ MorseSplitSnapshot morseStoredSplitSnapshot() {
   WorkspaceLease lease;
   const MorseWorkspace &ws = *lease.ws;
   return MorseSplitSnapshot{
-      .owner = ws.split_owner,
-      .build_id = ws.split_build_id,
+      .generation = ws.split_generation,
       .atoms = ws.split_atoms,
       .slices = ws.split_slices,
       .total_up = ws.split_total_up,

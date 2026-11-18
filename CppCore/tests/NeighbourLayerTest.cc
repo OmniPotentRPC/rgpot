@@ -1098,3 +1098,66 @@ TEST_CASE("a directed walk gives a lower partner the negated vector of the half 
     }
   }
 }
+
+TEST_CASE("Neighbours generation id advances on construction, rebuild, copy and move",
+          "[nlist][generation]") {
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  auto pos = fcc(3, a);
+  const std::size_t n = pos.size() / 3;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 5.0;
+  spec.skin = 1.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+
+  rgpot::nlist::Neighbours first;
+  const auto g_ctor = first.generation();
+  REQUIRE(g_ctor > 0);
+
+  first.update(pos.data(), n, box, spec);
+  const auto g_build1 = first.generation();
+  REQUIRE(g_build1 > g_ctor);
+
+  // Within-skin reuse preserves the generation id.
+  for (double &x : pos) {
+    x += 0.05;
+  }
+  first.update(pos.data(), n, box, spec);
+  REQUIRE(first.reused());
+  REQUIRE(first.generation() == g_build1);
+
+  // Past-skin rebuild assigns a new generation id.
+  pos[0] += 1.0;
+  first.update(pos.data(), n, box, spec);
+  REQUIRE_FALSE(first.reused());
+  const auto g_build2 = first.generation();
+  REQUIRE(g_build2 > g_build1);
+
+  // Copy construction and copy assignment assign fresh generation ids.
+  rgpot::nlist::Neighbours copy_ctor(first);
+  const auto g_copy_ctor = copy_ctor.generation();
+  REQUIRE(g_copy_ctor > g_build2);
+
+  rgpot::nlist::Neighbours copy_assign;
+  const auto g_before_copy_assign = copy_assign.generation();
+  copy_assign = first;
+  const auto g_copy_assign = copy_assign.generation();
+  REQUIRE(g_copy_assign > g_before_copy_assign);
+  REQUIRE(g_copy_assign != first.generation());
+
+  // Move construction and move assignment assign fresh generation ids to both
+  // destination and moved-from instances.
+  rgpot::nlist::Neighbours move_ctor(std::move(copy_ctor));
+  const auto g_move_ctor = move_ctor.generation();
+  REQUIRE(g_move_ctor > g_copy_assign);
+  REQUIRE(copy_ctor.generation() != g_copy_ctor);
+  REQUIRE(copy_ctor.generation() != g_move_ctor);
+
+  rgpot::nlist::Neighbours move_assign;
+  move_assign = std::move(copy_assign);
+  REQUIRE(move_assign.generation() > g_move_ctor);
+  REQUIRE(copy_assign.generation() != g_copy_assign);
+  REQUIRE(copy_assign.generation() != move_assign.generation());
+}
