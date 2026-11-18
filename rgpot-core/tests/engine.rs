@@ -2081,12 +2081,14 @@ fn coupled_well_parameters_are_validated_in_rust_and_by_the_engine_alike() {
     let truncated = unsafe {
         EnginePotential::load(
             build_coupled_well(),
-            &well_config().as_bytes()[..std::mem::size_of::<CoupledWellConfig>() - 1],
+            &well_config().as_bytes()[..std::mem::size_of::<CoupledWellConfig>() - 8],
         )
     };
     assert!(matches!(
         truncated.err(),
-        Some(EngineError::Create(why)) if why.contains("shorter than config.size")
+        Some(EngineError::Create(why))
+            if why.contains("CoupledWellConfigV1")
+                || why.contains("shorter than config.size")
     ));
 
     let mut extended = vec![0_u8; std::mem::size_of::<CoupledWellConfig>() + 16];
@@ -2178,7 +2180,10 @@ fn coupled_well_accepts_a_version_one_message_with_the_same_answer() {
 
     for atomic_number in [WELL_NUMBER, 2_i32] {
         legacy[8..12].copy_from_slice(&atomic_number.to_ne_bytes());
-        for bad_version in [99_u32, COUPLED_WELL_CONFIG_VERSION] {
+        for bad_version in [
+            COUPLED_WELL_CONFIG_MIN_SIZE - 1,
+            COUPLED_WELL_CONFIG_VERSION,
+        ] {
             legacy[4..8].copy_from_slice(&bad_version.to_ne_bytes());
             let unknown_v1 = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
                 .err()
@@ -2189,6 +2194,23 @@ fn coupled_well_accepts_a_version_one_message_with_the_same_answer() {
                 "atomic_number={atomic_number}, version={bad_version}"
             );
         }
+        // 99 is at least the version-2 size. atomic_number 2 makes the version
+        // word 2, so the 48-byte buffer is shorter than config.size. Any other
+        // atomic number leaves a version other than 2.
+        legacy[4..8].copy_from_slice(&99_u32.to_ne_bytes());
+        let sized = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
+            .err()
+            .expect("a 48-byte buffer with size 99 must be refused");
+        let expected = if atomic_number == 2 {
+            "coupled-well config buffer is shorter than config.size"
+        } else {
+            "coupled-well config version is unknown"
+        };
+        assert_eq!(
+            sized,
+            EngineError::Create(expected.into()),
+            "atomic_number={atomic_number}, size=99"
+        );
     }
     for bad_version in [COUPLED_WELL_CONFIG_VERSION_V1, 3_u32] {
         let mut unknown_v2 = well_config();
@@ -2255,7 +2277,7 @@ fn potlibc_accepts_a_version_one_message_and_pins_its_exact_length() {
 
     for atom_count in [0_u64, 2_u64] {
         legacy[8..16].copy_from_slice(&atom_count.to_ne_bytes());
-        for bad_version in [99_u32, 200_u32, POTLIBC_CONFIG_VERSION] {
+        for bad_version in [99_u32, POTLIBC_CONFIG_VERSION] {
             legacy[4..8].copy_from_slice(&bad_version.to_ne_bytes());
             let unknown_v1 = unsafe { EnginePotential::load(build_potlibc(), &legacy) }
                 .err()
@@ -2266,6 +2288,23 @@ fn potlibc_accepts_a_version_one_message_and_pins_its_exact_length() {
                 "atom_count={atom_count}, version={bad_version}"
             );
         }
+        // 200 is a plausible version-2 size. atom_count 0 leaves version 0 at
+        // offset 8, so the version is unknown. atom_count 2 leaves version 2
+        // there, so the 144-byte buffer is a truncated version-2 message.
+        legacy[4..8].copy_from_slice(&200_u32.to_ne_bytes());
+        let sized = unsafe { EnginePotential::load(build_potlibc(), &legacy) }
+            .err()
+            .expect("a 144-byte buffer with size 200 must be refused");
+        let expected = if atom_count == 2 {
+            "potlibc config buffer is shorter than config.size"
+        } else {
+            "potlibc config version is unknown"
+        };
+        assert_eq!(
+            sized,
+            EngineError::Create(expected.into()),
+            "atom_count={atom_count}, size=200"
+        );
     }
     for bad_version in [POTLIBC_CONFIG_VERSION_V1, 3_u32] {
         let mut unknown_v2 = PotlibcConfig::new("brh2leps", 0).expect("v2 config");
@@ -2277,6 +2316,62 @@ fn potlibc_accepts_a_version_one_message_and_pins_its_exact_length() {
             unknown_v2,
             EngineError::Create("potlibc config version is unknown".into()),
             "v2 version={bad_version}"
+        );
+    }
+}
+
+/// A version-2 message cut to the version-1 length, with a size word of 56,
+/// 152 or 200, is shorter than `config.size`. A genuine version-1 message
+/// still decodes.
+#[test]
+fn a_v2_message_cut_to_the_v1_length_is_shorter_than_its_size() {
+    let mut legacy = [0_u8; 48];
+    legacy[0..4].copy_from_slice(&COUPLED_WELL_CONFIG_MAGIC.to_ne_bytes());
+    legacy[4..8].copy_from_slice(&COUPLED_WELL_CONFIG_VERSION_V1.to_ne_bytes());
+    legacy[8..12].copy_from_slice(&WELL_NUMBER.to_ne_bytes());
+    legacy[16..24].copy_from_slice(&WELL_BARRIER.to_ne_bytes());
+    legacy[24..32].copy_from_slice(&WELL_POSITION.to_ne_bytes());
+    legacy[32..40].copy_from_slice(&WELL_SPRING.to_ne_bytes());
+    legacy[40..48].copy_from_slice(&WELL_COUPLING.to_ne_bytes());
+    unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
+        .expect("genuine coupled-well version-1 message");
+
+    let well = well_config().as_bytes().to_vec();
+    for size in [COUPLED_WELL_CONFIG_MIN_SIZE, 152_u32, 200_u32] {
+        let mut truncated = well[..COUPLED_WELL_CONFIG_V1_SIZE as usize].to_vec();
+        truncated[4..8].copy_from_slice(&size.to_ne_bytes());
+        let refused = unsafe { EnginePotential::load(build_coupled_well(), &truncated) }
+            .err()
+            .expect("truncated coupled-well version-2 message");
+        assert_eq!(
+            refused,
+            EngineError::Create("coupled-well config buffer is shorter than config.size".into()),
+            "coupled-well size={size}"
+        );
+    }
+
+    let mut legacy = [0_u8; 144];
+    legacy[0..4].copy_from_slice(&POTLIBC_CONFIG_MAGIC.to_ne_bytes());
+    legacy[4..8].copy_from_slice(&POTLIBC_CONFIG_VERSION_V1.to_ne_bytes());
+    legacy[8..16].copy_from_slice(&0_u64.to_ne_bytes());
+    legacy[16..24].copy_from_slice(b"brh2leps");
+    unsafe { EnginePotential::load(build_potlibc(), &legacy) }
+        .expect("genuine potlibc version-1 message");
+
+    let pot = PotlibcConfig::new("brh2leps", 0)
+        .expect("v2 config")
+        .as_bytes()
+        .to_vec();
+    for size in [POTLIBC_CONFIG_MIN_SIZE, 200_u32] {
+        let mut truncated = pot[..POTLIBC_CONFIG_V1_SIZE as usize].to_vec();
+        truncated[4..8].copy_from_slice(&size.to_ne_bytes());
+        let refused = unsafe { EnginePotential::load(build_potlibc(), &truncated) }
+            .err()
+            .expect("truncated potlibc version-2 message");
+        assert_eq!(
+            refused,
+            EngineError::Create("potlibc config buffer is shorter than config.size".into()),
+            "potlibc size={size}"
         );
     }
 }

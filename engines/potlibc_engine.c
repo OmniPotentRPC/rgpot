@@ -106,10 +106,14 @@ typedef struct {
 
 /* Version 1 is the 144-byte layout: magic, version, atom_count, surface_id.
  * Version 2 carries size at offset 4 and version at offset 8. A u32 of 1 at
- * offset 4 is version 1, never a version-2 size (those are at least 152).
- * Any other 144-byte message has an unknown or mismatched version at offset 4
- * and is refused before offset 8 (the low word of atom_count in version 1,
- * which may be 2) is read as a version-2 version. */
+ * offset 4 is version 1, never a version-2 size (those are at least
+ * RGPOT_POTLIBC_CONFIG_MIN_SIZE). A 144-byte message whose word at offset 4
+ * is below that minimum, and is not 1, has an unknown version and is refused
+ * before offset 8 (the low word of atom_count in version 1, which may be 2)
+ * is read as a version-2 version. A word at offset 4 that is at least the
+ * version-2 size is a truncated version-2 or later message, so decoding
+ * follows the version-2 path and reports that the buffer is shorter than
+ * config.size. */
 static int decode_potlibc_config(PotlibcCreateRequest *out, const void *config,
                                  size_t config_len, char *errbuf,
                                  size_t errlen) {
@@ -143,7 +147,8 @@ static int decode_potlibc_config(PotlibcCreateRequest *out, const void *config,
     memcpy(out->surface_id, legacy.surface_id, sizeof out->surface_id);
     return 0;
   }
-  if (config_len == sizeof(RgpotPotlibcConfigV1)) {
+  if (config_len == sizeof(RgpotPotlibcConfigV1) &&
+      word4 < RGPOT_POTLIBC_CONFIG_MIN_SIZE) {
     copy_message(errbuf, errlen, "potlibc config version is unknown");
     return -1;
   }

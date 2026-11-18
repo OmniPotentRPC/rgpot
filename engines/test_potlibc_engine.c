@@ -309,13 +309,17 @@ static int v1_client_matches_version_two(Engine *engine) {
     fprintf(stderr, "version-1 unknown version with atom_count=2: %s\n", error);
     return 1;
   }
+  /* 200 is a plausible version-2 size. atom_count 2 puts version 2 at
+   * offset 8, so this 144-byte buffer is a truncated version-2 message. */
   version = 200u;
   memcpy(legacy_bytes + 4, &version, sizeof version);
   memset(error, 0, sizeof error);
   if (engine->create(legacy_bytes, sizeof legacy_bytes, error, sizeof error) !=
           NULL ||
-      strcmp(error, "potlibc config version is unknown") != 0) {
-    fprintf(stderr, "version-1 version=200 with atom_count=2: %s\n", error);
+      strcmp(error, "potlibc config buffer is shorter than config.size") !=
+          0) {
+    fprintf(stderr, "truncated version-2 size 200 with atom_count=2: %s\n",
+            error);
     return 1;
   }
   version = RGPOT_POTLIBC_CONFIG_VERSION;
@@ -343,6 +347,53 @@ static int v1_client_matches_version_two(Engine *engine) {
       strcmp(error, "potlibc config version is unknown") != 0) {
     fprintf(stderr, "version-2 unknown version: %s\n", error);
     return 1;
+  }
+  return 0;
+}
+
+/* A version-2 message cut to the 144-byte version-1 length, with the size
+ * field reading 152 or 200, is shorter than config.size. A genuine version-1
+ * message still decodes. */
+static int truncated_v2_reports_short_buffer(Engine *engine) {
+  unsigned char legacy[144];
+  unsigned char truncated[144];
+  RgpotPotlibcConfigV2 full;
+  RgpotEnginePot *pot;
+  char error[512];
+  uint32_t magic = RGPOT_POTLIBC_CONFIG_MAGIC;
+  uint32_t version = RGPOT_POTLIBC_CONFIG_VERSION_V1;
+  uint64_t atoms = 0;
+  const uint32_t sizes[2] = {RGPOT_POTLIBC_CONFIG_MIN_SIZE, 200u};
+  size_t index;
+
+  memset(legacy, 0, sizeof legacy);
+  memcpy(legacy + 0, &magic, sizeof magic);
+  memcpy(legacy + 4, &version, sizeof version);
+  memcpy(legacy + 8, &atoms, sizeof atoms);
+  memcpy(legacy + 16, "brh2leps", 8);
+  memset(error, 0, sizeof error);
+  pot = engine->create(legacy, sizeof legacy, error, sizeof error);
+  if (pot == NULL) {
+    fprintf(stderr, "genuine version-1 potlibc message was refused: %s\n",
+            error);
+    return 1;
+  }
+  engine->destroy(pot);
+
+  full = config("brh2leps", 0);
+  for (index = 0; index < 2; ++index) {
+    full.size = sizes[index];
+    memset(truncated, 0, sizeof truncated);
+    memcpy(truncated, &full, sizeof truncated);
+    memset(error, 0, sizeof error);
+    if (engine->create(truncated, sizeof truncated, error, sizeof error) !=
+            NULL ||
+        strcmp(error, "potlibc config buffer is shorter than config.size") !=
+            0) {
+      fprintf(stderr, "truncated version-2 potlibc size %u: %s\n", sizes[index],
+              error);
+      return 1;
+    }
   }
   return 0;
 }
@@ -930,6 +981,7 @@ int main(int argc, char **argv) {
       batch_is_one_call_per_system(&engine) != 0 ||
       config_size_is_extensible(&engine) != 0 ||
       v1_client_matches_version_two(&engine) != 0 ||
+      truncated_v2_reports_short_buffer(&engine) != 0 ||
       caps_refuses_null_handle(&engine) != 0 ||
       evaluate_failure_preserves_outputs(&engine) != 0 ||
       concurrent_batch_hvp_caps_calls(&engine) != 0 ||

@@ -826,11 +826,18 @@ static void v1_client_matches_version_two(void) {
   CHECK(strcmp(error, "coupled-well config version is unknown") == 0);
 
   /* Overlapping word at offset 8 is 2 (atomic_number == 2, matching
-   * RGPOT_COUPLED_WELL_CONFIG_VERSION at V2's version offset): both an unknown
-   * version and a mismatched V2 version in a V1 layout must still report the
-   * specific unknown-version diagnostic. */
+   * RGPOT_COUPLED_WELL_CONFIG_VERSION at V2's version offset). A word at
+   * offset 4 below the version-2 size is still an unknown version. A word
+   * at least that size, with version 2 at offset 8, is a short buffer. */
   put_i32(legacy_bytes, 8, 2);
   put_u32(legacy_bytes, 4, 99u);
+  memset(error, 0, sizeof error);
+  CHECK(rgpot_engine_create(legacy_bytes, sizeof legacy_bytes, error,
+                            sizeof error) == NULL);
+  CHECK(strcmp(error,
+               "coupled-well config buffer is shorter than config.size") == 0);
+
+  put_u32(legacy_bytes, 4, RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE - 1u);
   memset(error, 0, sizeof error);
   CHECK(rgpot_engine_create(legacy_bytes, sizeof legacy_bytes, error,
                             sizeof error) == NULL);
@@ -857,10 +864,52 @@ static void v1_client_matches_version_two(void) {
   CHECK(strcmp(error, "coupled-well config version is unknown") == 0);
 }
 
+/* A version-2 message cut to the 48-byte version-1 length still carries a
+ * plausible size at offset 4 (56, 152 or 200) and version 2 at offset 8.
+ * That buffer is shorter than config.size. A genuine version-1 message still
+ * decodes. */
+static void truncated_v2_reports_short_buffer(void) {
+  unsigned char legacy[48];
+  unsigned char truncated[48];
+  RgpotCoupledWellConfigV2 full;
+  RgpotEnginePot *pot;
+  char error[256];
+  const uint32_t sizes[3] = {RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE, 152u, 200u};
+  size_t index;
+
+  memset(legacy, 0, sizeof legacy);
+  put_u32(legacy, 0, RGPOT_COUPLED_WELL_CONFIG_MAGIC);
+  put_u32(legacy, 4, RGPOT_COUPLED_WELL_CONFIG_VERSION_V1);
+  put_i32(legacy, 8, NUMBER);
+  put_u32(legacy, 12, 0u);
+  put_f64(legacy, 16, BARRIER);
+  put_f64(legacy, 24, WELL);
+  put_f64(legacy, 32, SPRING);
+  put_f64(legacy, 40, COUPLING);
+  memset(error, 0, sizeof error);
+  pot = rgpot_engine_create(legacy, sizeof legacy, error, sizeof error);
+  CHECK(pot != NULL);
+  rgpot_engine_destroy(pot);
+
+  full = config();
+  for (index = 0; index < 3; ++index) {
+    full.size = sizes[index];
+    memset(truncated, 0, sizeof truncated);
+    memcpy(truncated, &full, sizeof truncated);
+    memset(error, 0, sizeof error);
+    CHECK(rgpot_engine_create(truncated, sizeof truncated, error,
+                              sizeof error) == NULL);
+    CHECK(strcmp(error,
+                 "coupled-well config buffer is shorter than config.size") ==
+          0);
+  }
+}
+
 int main(void) {
   identity_and_contract();
   create_validation();
   v1_client_matches_version_two();
+  truncated_v2_reports_short_buffer();
   analytic_force_and_hessian();
   transform_is_scratch_only();
   rejects_bad_requests();
