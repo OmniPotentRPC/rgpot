@@ -203,6 +203,8 @@ private:
   int nmax_[3]{};
   bool one_image_ = false;
   Neighbours cells_;
+  std::vector<double> wrapped_pos_;
+  std::vector<std::int32_t> wrap_shifts_;
   std::size_t atom_ = 0;
   std::vector<std::int32_t> hold_first_;
   std::vector<std::int32_t> hold_second_;

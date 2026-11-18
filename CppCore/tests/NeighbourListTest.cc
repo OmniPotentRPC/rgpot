@@ -38,9 +38,9 @@ struct Key {
 };
 
 std::set<Key> brute(const std::vector<double> &pos, const double *box, double cutoff,
-                    bool full, bool strict, const std::array<bool, 3> &periodic) {
+                    bool full, bool strict, const std::array<bool, 3> &periodic,
+                    int span = 3) {
   const int n = static_cast<int>(pos.size() / 3);
-  const int span = 3;
   std::set<Key> out;
   for (int i = 0; i < n; ++i) {
     for (int j = 0; j < n; ++j) {
@@ -637,4 +637,141 @@ TEST_CASE("threads match the serial list when a thin or sheared box needs severa
   REQUIRE(repeated > 0);
   REQUIRE(serial.size() == threaded.size());
   REQUIRE(pairs == from_table(threaded));
+}
+
+TEST_CASE("out-of-cell positions match brute force across small and large boxes",
+          "[nlist][api]") {
+  // Small triclinic box with cutoff > half box and atoms shifted outside by
+  // multiple periodic lattice vectors.
+  const double box[9] = {7.0, 0.0, 0.0, 2.2, 6.5, 0.0, 1.4, -1.1, 6.0};
+  const std::vector<double> base_frac = {
+      0.1, 0.2, 0.3,
+      0.8, 0.1, 0.7,
+      0.2, 0.9, 0.85,
+      0.5, 0.5, 0.15,
+  };
+  const int offsets[4][3] = {
+      {0, 0, 0},
+      {2, -1, 0},
+      {-1, 0, 3},
+      {0, -2, -2},
+  };
+  std::vector<double> pos(base_frac.size());
+  for (std::size_t i = 0; i < 4; ++i) {
+    const double fa = base_frac[3 * i] + offsets[i][0];
+    const double fb = base_frac[3 * i + 1] + offsets[i][1];
+    const double fc = base_frac[3 * i + 2] + offsets[i][2];
+    for (int c = 0; c < 3; ++c) {
+      pos[3 * i + c] = fa * box[c] + fb * box[3 + c] + fc * box[6 + c];
+    }
+  }
+  const double cutoff = 5.5;
+  const std::array<bool, 3> periodic{{true, true, true}};
+  for (bool full : {false, true}) {
+    rgpot::nlist::Query query;
+    query.cutoff = cutoff;
+    query.skin = 0.0;
+    query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
+                                          : rgpot::nlist::Shell::Half};
+    query.cut = rgpot::nlist::Cut::Strict;
+    query.periodic = periodic;
+    rgpot::nlist::Table table;
+    rgpot::nlist::build(table, pos.data(), 4, box, query);
+    const auto ref = brute(pos, box, cutoff, full, true, periodic, 7);
+    REQUIRE(from_table(table) == ref);
+    for (std::size_t p = 0; p < table.size(); ++p) {
+      const int i = table.first[p];
+      const int j = table.second[p];
+      const double vx = pos[3 * j] - pos[3 * i] +
+                        table.shift[3 * p] * box[0] +
+                        table.shift[3 * p + 1] * box[3] +
+                        table.shift[3 * p + 2] * box[6];
+      const double vy = pos[3 * j + 1] - pos[3 * i + 1] +
+                        table.shift[3 * p] * box[1] +
+                        table.shift[3 * p + 1] * box[4] +
+                        table.shift[3 * p + 2] * box[7];
+      const double vz = pos[3 * j + 2] - pos[3 * i + 2] +
+                        table.shift[3 * p] * box[2] +
+                        table.shift[3 * p + 1] * box[5] +
+                        table.shift[3 * p + 2] * box[8];
+      REQUIRE(std::abs(vx - table.vector[3 * p]) < 1e-11);
+      REQUIRE(std::abs(vy - table.vector[3 * p + 1]) < 1e-11);
+      REQUIRE(std::abs(vz - table.vector[3 * p + 2]) < 1e-11);
+    }
+
+    // Walk must produce the same set.
+    rgpot::nlist::Walk walk(pos.data(), 4, box, query);
+    std::vector<std::int32_t> wf(4), ws(4), wsh(12);
+    std::vector<double> wv(12), wd(4);
+    std::vector<std::uint8_t> wm(4);
+    std::set<Key> walked;
+    bool done = false;
+    while (!done) {
+      rgpot::nlist::Buffers dest{wf, ws, wsh, wv, wd, wm};
+      const std::size_t n = walk.pull(dest, done);
+      for (std::size_t p = 0; p < n; ++p) {
+        walked.insert(
+            Key{wf[p], ws[p], wsh[3 * p], wsh[3 * p + 1], wsh[3 * p + 2]});
+      }
+    }
+    REQUIRE(walked == ref);
+  }
+
+  // Large system (>= 512 atoms) exercising cell-list paths (orthorhombic
+  // wide + sheared) with unwrapped out-of-cell coordinates.
+  constexpr std::size_t n_large = 600;
+  for (const auto &large_box : {
+           std::array<double, 9>{24.0, 0.0, 0.0, 0.0, 24.0, 0.0, 0.0, 0.0, 24.0},
+           std::array<double, 9>{20.0, 0.0, 0.0, 6.0, 20.0, 0.0, 3.0, -2.5, 20.0},
+       }) {
+    std::vector<double> wrapped_pos(3 * n_large);
+    std::vector<double> unwrapped_pos(3 * n_large);
+    std::uint64_t rng = 98765;
+    auto next_u = [&rng]() {
+      rng = rng * 6364136223846793005ULL + 1442695040888963407ULL;
+      return static_cast<double>(rng >> 11) * 0x1.0p-53;
+    };
+    std::vector<std::array<int, 3>> wrap_w(n_large);
+    for (std::size_t i = 0; i < n_large; ++i) {
+      const double fa = next_u();
+      const double fb = next_u();
+      const double fc = next_u();
+      const int wa = static_cast<int>(i % 5) - 2;
+      const int wb = static_cast<int>((i / 5) % 5) - 2;
+      const int wc = static_cast<int>((i / 25) % 5) - 2;
+      wrap_w[i] = {wa, wb, wc};
+      for (int c = 0; c < 3; ++c) {
+        wrapped_pos[3 * i + c] =
+            fa * large_box[c] + fb * large_box[3 + c] + fc * large_box[6 + c];
+        unwrapped_pos[3 * i + c] =
+            (fa + wa) * large_box[c] + (fb + wb) * large_box[3 + c] +
+            (fc + wc) * large_box[6 + c];
+      }
+    }
+    rgpot::nlist::Query q;
+    q.cutoff = 4.2;
+    q.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
+    q.cut = rgpot::nlist::Cut::Strict;
+    rgpot::nlist::Table ref_table;
+    rgpot::nlist::build(ref_table, wrapped_pos.data(), n_large, large_box.data(), q);
+    rgpot::nlist::Table unwrapped_table;
+    rgpot::nlist::build(unwrapped_table, unwrapped_pos.data(), n_large, large_box.data(), q);
+    rgpot::nlist::Table by_atom_table;
+    rgpot::nlist::buildByAtom(by_atom_table, unwrapped_pos.data(), n_large, large_box.data(), q);
+    std::set<Key> expected;
+    for (std::size_t p = 0; p < ref_table.size(); ++p) {
+      const auto i = static_cast<std::size_t>(ref_table.first[p]);
+      const auto j = static_cast<std::size_t>(ref_table.second[p]);
+      expected.insert(Key{
+          ref_table.first[p],
+          ref_table.second[p],
+          ref_table.shift[3 * p] + wrap_w[i][0] - wrap_w[j][0],
+          ref_table.shift[3 * p + 1] + wrap_w[i][1] - wrap_w[j][1],
+          ref_table.shift[3 * p + 2] + wrap_w[i][2] - wrap_w[j][2],
+      });
+    }
+    REQUIRE(ref_table.size() > 0);
+    REQUIRE(from_table(unwrapped_table) == expected);
+    REQUIRE(from_table(by_atom_table) == expected);
+  }
 }
