@@ -147,6 +147,11 @@ nblib::Box Engine::makeBox(const std::array<double, 3> &edges) {
                     static_cast<Real>(edges[2]));
 }
 
+bool Engine::usesReactionField() {
+  return kernelOptions(TopologyDesc{}).coulombType ==
+         nblib::CoulombType::ReactionField;
+}
+
 Engine::Engine(TopologyDesc description)
     : description_(std::move(description)), atoms_(description_.atomCount()),
       instances_(description_.instances()) {

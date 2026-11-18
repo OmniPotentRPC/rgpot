@@ -5,6 +5,8 @@
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/ExternalPot/md_units.hpp"
 
+#include <dlfcn.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -162,6 +164,20 @@ void check_improper_dihedral(const char *engine) {
 }
 
 void check_charged_pair(const char *engine) {
+  void *library = dlopen(engine, RTLD_NOW | RTLD_LOCAL);
+  require(library != nullptr, dlerror());
+  struct LibraryGuard {
+    void *library;
+    ~LibraryGuard() { dlclose(library); }
+  } library_guard{library};
+  using UsesReactionField = int (*)(void);
+  auto uses_reaction_field = reinterpret_cast<UsesReactionField>(
+      dlsym(library, "rgpot_nblib_uses_reaction_field"));
+  require(uses_reaction_field != nullptr,
+          "nblib engine does not report its Coulomb kernel");
+  require(uses_reaction_field() == 1,
+          "charged nblib systems do not use ReactionField");
+
   const std::string topology =
       "nblib 1\ncutoff 0.8\ncoulomb cutoff\natomtype X 1 0 0\n"
       "molecule ions 1\natom P X 1\natom N X -1\nend\n";

@@ -210,6 +210,10 @@ void destroy(void *context) { delete static_cast<Session *>(context); }
 
 } // namespace
 
+extern "C" int rgpot_nblib_uses_reaction_field(void) {
+  return rgpot::nblibpot::Engine::usesReactionField() ? 1 : 0;
+}
+
 extern "C" int rgpot_md_session_engine_create(
     const void *spec, size_t spec_len, const char *options,
     rgpot_md_session_ops *ops, void **context, size_t *n_atoms, char *buffer,

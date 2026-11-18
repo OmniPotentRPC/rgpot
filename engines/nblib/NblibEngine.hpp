@@ -52,6 +52,8 @@ public:
 
   /// The nblib box of three edge lengths.
   [[nodiscard]] static nblib::Box makeBox(const std::array<double, 3> &edges);
+  /// Whether charged systems use nblib's reaction-field kernel.
+  [[nodiscard]] static bool usesReactionField();
 
 private:
   void rebuildListed(const std::array<double, 3> &box);
