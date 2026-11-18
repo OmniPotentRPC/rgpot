@@ -42,6 +42,7 @@ exclude = [
     "EV_TO_HARTREE",
     "KB_HARTREE",
     "KB_EV",
+    "ELECTRON_MASS_IN_DALTON",
     "DALTON_IN_ELECTRON_MASSES",
     "ATOMIC_UNIT_OF_TIME_S",
 ]

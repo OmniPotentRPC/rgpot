@@ -21,6 +21,7 @@
 #include "rgpot/Potential.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
+#include "rgpot/units.hpp"
 
 namespace rgpot {
 
@@ -38,7 +39,8 @@ public:
   /// Eq. (2.9) prints 3.4723e-12 erg per atom pair, 2.16723920 eV.
   /// 1 erg = 1e-7 J. The CODATA electron-volt is 1.602176634e-19 J.
   /// PotType::SWSi is 2.3149945 eV, larger by 1.068176741337.
-  static constexpr double kEpsilon = 3.4723e-12 * 1.0e-7 / 1.602176634e-19;
+  static constexpr double kEpsilon =
+      3.4723e-12 * 1.0e-7 / units::ELEMENTARY_CHARGE_C;
   static constexpr double kSigma = 2.0951; //!< 0.20951 nm, Eq. (2.9).
   static constexpr double kA = 7.049556277;
   static constexpr double kB = 0.6022245584;

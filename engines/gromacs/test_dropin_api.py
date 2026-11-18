@@ -195,9 +195,8 @@ def test_conversion_factors_match_gromacs():
     # the library must hand back exactly the eV times rgpot's kJ/mol per eV.
     hartree_per_ev = dc.KJ_PER_EV / (dc.C_HARTREE2KJ * dc.C_AVOGADRO)
     assert abs(hartree_per_ev * dc.C_HARTREE2KJ * dc.C_AVOGADRO / dc.KJ_PER_EV - 1) < 1e-15
-    # CODATA 2018: 4.3597447222071e-18 J and 0.529177210903 Angstrom.
-    assert abs(dc.C_HARTREE2KJ * 1e3 / 4.3597447222071e-18 - 1) < 1e-12
-    assert dc.C_BOHR2NM * 10 == 0.529177210903
+    assert abs(dc.C_HARTREE2KJ * 1e3 / dc.HARTREE_ENERGY_J - 1) < 1e-12
+    assert dc.C_BOHR2NM * 10 == dc.BOHR_TO_ANGSTROM
     assert abs(dc.KJ_PER_EV - 96.48533212331002) < 1e-12
 
 
