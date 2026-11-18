@@ -1375,3 +1375,73 @@ fn reentrancy_two_engines_serialize_across_handles() {
     );
     assert_eq!(destroyed(&path), before_destroy + 4);
 }
+
+#[test]
+fn an_engine_without_stamp_symbols_uses_the_major_contract() {
+    let path = build("harmonic_nostamp", &["NO_STAMP"]);
+    let mut engine = load(&path);
+    let eval = engine
+        .force(&EngineRequest {
+            positions: &[1.0, -2.0, 0.5],
+            atomic_numbers: &[1],
+            box_matrix: &CELL,
+        })
+        .expect("force on unstamped engine");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING * 5.25, 9));
+    assert!(
+        engine
+            .caps()
+            .expect("caps on unstamped engine")
+            .analytic_hvp
+    );
+}
+
+#[test]
+fn unstamped_compatible_and_older_stamped_minors_load_while_future_minors_fail() {
+    let request = EngineRequest {
+        positions: &[1.0, 0.0, 0.0],
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+
+    // Unstamped engine that still exports rgpot_engine_abi_compatible at minor 0:
+    // loader must query baseline minor 0 rather than host minor 4.
+    let unstamped_compat = build(
+        "harmonic_nostamp_compat_minor0",
+        &["NO_STAMP_ONLY", "FIXTURE_MINOR=0"],
+    );
+    let mut engine = load(&unstamped_compat);
+    let eval = engine
+        .force(&request)
+        .expect("unstamped engine with minor-0 abi_compatible");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING, 3));
+
+    // Stamped minor 1 is accepted by a minor 4 loader (1 <= 4).
+    let minor1 = build("harmonic_stamped_minor1", &["FIXTURE_MINOR=1"]);
+    let mut engine = load(&minor1);
+    let eval = engine.force(&request).expect("stamped minor 1 force");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING, 3));
+
+    // Stamped minor above ENGINE_ABI_MINOR is rejected before create.
+    let minor5 = build("harmonic_stamped_minor5", &["FIXTURE_MINOR=5"]);
+    let before = created(&minor5);
+    let err = unsafe { EnginePotential::load(&minor5, &config()) }
+        .err()
+        .expect("minor 5 must be rejected");
+    assert_eq!(
+        err,
+        EngineError::Incompatible {
+            host: RgpotEngineAbiStamp {
+                abi_major: ENGINE_ABI_VERSION as u16,
+                abi_minor: ENGINE_ABI_MINOR,
+                layout_revision: ENGINE_ABI_LAYOUT_REVISION,
+            },
+            engine: Some(RgpotEngineAbiStamp {
+                abi_major: ENGINE_ABI_VERSION as u16,
+                abi_minor: 5,
+                layout_revision: ENGINE_ABI_LAYOUT_REVISION,
+            }),
+        }
+    );
+    assert_eq!(created(&minor5), before);
+}
