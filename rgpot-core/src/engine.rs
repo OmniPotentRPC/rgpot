@@ -40,6 +40,10 @@ use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
 use crate::tensor::{copy_f64_tensor, copy_i32_tensor, rgpot_tensor_owned_cpu_f64_2d};
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
+/// cbindgen:ignore
+/// Engine code meaning acquiring an engine or handle lock failed (`RGPOT_ENGINE_ERR_LOCK`).
+pub const ENGINE_ERR_LOCK: c_int = -2;
+
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
 /// The ABI minor this loader speaks, `RGPOT_ENGINE_ABI_MINOR` of the header.
@@ -263,6 +267,13 @@ pub enum EngineError {
         /// Error message from `rgpot_engine_last_error`.
         message: String,
     },
+    /// Acquiring an engine or handle lock failed (`RGPOT_ENGINE_ERR_LOCK`); the instance is unusable.
+    Lock {
+        /// Engine symbol whose lock acquisition failed.
+        operation: &'static str,
+        /// Error message from `rgpot_engine_last_error`.
+        message: String,
+    },
 }
 
 impl fmt::Display for EngineError {
@@ -306,6 +317,9 @@ impl fmt::Display for EngineError {
             }
             Self::Fatal { code, message } => {
                 write!(f, "engine instance is unusable, code {code}: {message}")
+            }
+            Self::Lock { operation, message } => {
+                write!(f, "engine lock failed in {operation}: {message}")
             }
         }
     }
@@ -679,6 +693,10 @@ impl EnginePotential {
         let message = self.last_error_text(code);
         if code == ENGINE_ERR_UNSUPPORTED {
             Err(EngineError::Unsupported { operation, message })
+        } else if code == ENGINE_ERR_LOCK {
+            let error = EngineError::Lock { operation, message };
+            self.fatal = Some(error.clone());
+            Err(error)
         } else if code > 0 {
             Err(EngineError::Recoverable { code, message })
         } else {
