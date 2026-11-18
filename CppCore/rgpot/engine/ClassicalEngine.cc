@@ -1,12 +1,13 @@
 // MIT License — generic rgpot engine table for the classical potentials.
-// BuiltinParams names the potential: lj, ljcluster, morse, zbl and, when the
-// water option is on, tip4p, spce, tip4p_pt. When the Fortran kernels are
-// built: sw, edip, lenosky, tersoff, eamal, fehe, cuh2, waterh. Every
-// potential takes its default parameters.
+// BuiltinParams names the potential: lj, ljcluster, morse, zbl, gupta and,
+// when the water option is on, tip4p, spce, tip4p_pt. When the Fortran
+// kernels are built: sw, edip, lenosky, tersoff, eamal, fehe, cuh2, waterh.
+// Every potential takes its default parameters.
 
 #include "rgpot/engine/BuiltinParams.hpp"
 #include "rgpot/engine/EngineTable.hpp"
 
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
@@ -36,6 +37,8 @@ Created create(const void *config, std::size_t config_len) {
       pot = std::make_unique<MorsePot>();
     } else if (n == "zbl") {
       pot = std::make_unique<ZBLPot>();
+    } else if (n == "gupta") {
+      pot = std::make_unique<GuptaPot>();
 #ifdef RGPOT_HAS_WATER
     } else if (n == "tip4p") {
       pot = std::make_unique<TIP4PPot>();

@@ -520,7 +520,7 @@ if not get_option('with_rpc_client_only')
             capnp_rpc_dep,
             ptlrpc_dep,
         ] + fortran_rt_deps
-        _classical_whole = [lennard_jones, morse, zbl]
+        _classical_whole = [lennard_jones, morse, zbl, gupta]
         if has_water
             _classical_whole += [water_pots]
         endif
