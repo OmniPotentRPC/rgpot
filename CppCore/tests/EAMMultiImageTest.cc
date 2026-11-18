@@ -139,8 +139,10 @@ TEST_CASE("EAM sums every image once the cutoff passes half a face",
   const double ortho[9] = {6, 0, 0, 0, 6, 0, 0, 0, 6};
   check({0.2, 0.3, 0.4, 1.9, 0.5, 0.2}, ortho);
 
-  // One atom. The six face images at 4 angstroms are inside the cutoff.
-  check({0.4, 0.5, 0.6}, ortho);
+  // One atom in a cell shorter than the cutoff. The six face images
+  // lie inside it; the corner images do not.
+  const double tight[9] = {4, 0, 0, 0, 4, 0, 0, 0, 4};
+  check({0.4, 0.5, 0.6}, tight);
 
   // Sheared. The same cutoff still passes half of every face.
   const double shear[9] = {6, 0, 0, 1.2, 5.5, 0, 0.3, -0.4, 5.8};

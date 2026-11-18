@@ -213,9 +213,12 @@ TEST_CASE("EAM table rejects bad input", "[EAMTable]") {
   std::vector<int> nickel(ref.z.size(), 28);
   REQUIRE_THROWS_AS(eval(cu_u3(true, false), ref.pos, nickel, ref.box),
                     std::invalid_argument);
+  // A cell shorter than twice the cutoff is a real evaluation. Every
+  // image inside the cutoff is summed, so this is not an error.
   const double small[9] = {9.0, 0.0, 0.0, 0.0, 9.0, 0.0, 0.0, 0.0, 9.0};
-  REQUIRE_THROWS_AS(eval(cu_u3(true, false), ref.pos, ref.z, small),
-                    std::invalid_argument);
+  const Eval folded = eval(cu_u3(true, false), ref.pos, ref.z, small);
+  REQUIRE(std::isfinite(folded.energy));
+  REQUIRE(folded.forces.size() == ref.pos.size());
   std::ifstream file(kData + "eam_table/Cu_u3.eam");
   std::string head, line;
   for (int k = 0; k < 40 && std::getline(file, line); ++k)
