@@ -324,6 +324,43 @@ void test_c_abi_session() {
   if (rgpot_md_session_step_nve(session, 0.0005, 10, err, sizeof(err)) != 0) {
     throw std::runtime_error(err);
   }
+
+  rgpot_nlist_request nreq{};
+  rgpot_nlist_request_init(&nreq);
+  nreq.cutoff = 8.0;
+  nreq.shell = 1; // full list
+  nreq.cut = 1;   // loose
+  nreq.skin = 0.5;
+  size_t need = 0;
+  int nrc = rgpot_md_session_get_neighbors(session, &nreq, nullptr, nullptr,
+                                           &need, err, sizeof(err));
+  if (nrc != RGPOT_MD_NLIST_OK || need == 0) {
+    throw std::runtime_error(std::string("get_neighbors size probe failed: ") +
+                             err);
+  }
+  std::vector<int32_t> first(need), second(need), shift(3 * need);
+  std::vector<double> vector(3 * need), distance(need);
+  std::vector<uint8_t> mask(need);
+  rgpot_nlist_soa soa{};
+  soa.bytes = sizeof(soa);
+  soa.first = first.data();
+  soa.second = second.data();
+  soa.shift = shift.data();
+  soa.vector = vector.data();
+  soa.distance = distance.data();
+  soa.mask = mask.data();
+  soa.cap = need;
+  size_t got = 0;
+  nrc = rgpot_md_session_get_neighbors(session, &nreq, &soa, &got, &need, err,
+                                       sizeof(err));
+  if (nrc != RGPOT_MD_NLIST_OK || got == 0 || got != need) {
+    throw std::runtime_error(std::string("get_neighbors fill failed: ") + err);
+  }
+  const int set_rc = rgpot_md_session_set_neighbors(session, &nreq, &soa, got,
+                                                    err, sizeof(err));
+  if (set_rc != RGPOT_MD_NLIST_UNSUPPORTED) {
+    throw std::runtime_error("expected OpenMM neighbor setter to be unsupported");
+  }
 }
 
 } // namespace
