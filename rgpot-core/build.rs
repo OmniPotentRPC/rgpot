@@ -83,6 +83,47 @@ fn main() {
 
     #[cfg(feature = "schema")]
     compile_capnp_schema(&crate_dir);
+
+    #[cfg(feature = "units")]
+    generate_units(&crate_dir);
+}
+
+/// Read `units.hpp` by compiling it, and write the resulting doubles.
+#[cfg(feature = "units")]
+fn generate_units(crate_dir: &str) {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR");
+    let cpp_core = PathBuf::from(crate_dir).join("..").join("CppCore");
+    let header = cpp_core.join("rgpot").join("units.hpp");
+    let parser = cpp_core.join("rgpot").join("units.cc");
+    let export = cpp_core.join("rgpot").join("units_rust_export.cc");
+    for path in [&header, &parser, &export] {
+        println!("cargo::rerun-if-changed={}", path.display());
+    }
+    let bin = PathBuf::from(&out_dir).join("units_rust_export");
+    let compiled = Command::new("g++")
+        .args(["-std=c++17", "-O2", "-I"])
+        .arg(&cpp_core)
+        .arg(&export)
+        .arg(&parser)
+        .arg("-o")
+        .arg(&bin)
+        .status()
+        .expect("g++");
+    if !compiled.success() {
+        panic!("the units header did not compile");
+    }
+    let printed = Command::new(&bin).output().expect("units export");
+    if !printed.status.success() {
+        panic!(
+            "the units export failed: {}",
+            String::from_utf8_lossy(&printed.stderr)
+        );
+    }
+    let generated = PathBuf::from(&out_dir).join("units_generated.rs");
+    std::fs::write(&generated, &printed.stdout).expect("write units_generated.rs");
 }
 
 #[cfg(feature = "schema")]
