@@ -153,6 +153,7 @@ impl rgpot_fused_cache_t {
             .clone()
     }
 
+    #[cfg(feature = "schema")]
     fn set_peer_refusal(&self, why: Option<String>) {
         *self
             .peer_refusal
@@ -1303,7 +1304,8 @@ mod tests {
         assert_eq!(unsafe { rgpot_eindir_abi_compatible(&stamp) }, 1);
         assert_eq!(unsafe { rgpot_eindir_abi_compatible(std::ptr::null()) }, 0);
 
-        let edits: [(&str, fn(&mut eindir_abi_stamp_t)); 6] = [
+        type StampEdit = (&'static str, fn(&mut eindir_abi_stamp_t));
+        let edits: [StampEdit; 6] = [
             ("major", |s| s.abi_major += 1),
             ("minor", |s| s.abi_minor += 1),
             ("layout", |s| s.objective_layout += 1),
