@@ -51,12 +51,11 @@ No potlibc symbols or headers enter the core library.
 ** Create a surface
 
 =include/rgpot/potlibc_engine.h= declares =RgpotPotlibcConfigV1=.
-Set its magic and version, copy one canonical catalog id into =surface_id=, and
-set =atom_count= to zero for a fixed-size surface or to the exact count for a
-variable-size surface.
-The plugin calls =potlibc_create= in the first case and
-=potlibc_create_sized= in the second; it does not retry with another
-constructor.
+Set its magic and version, copy one canonical catalog id into
+=surface_id=, and set =atom_count= to zero for a fixed-size surface or to the
+exact count for a variable-size surface.
+The plugin calls =potlibc_create= in the first case and =potlibc_create_sized=
+in the second; it does not retry with another constructor.
 
 #+attr_rgpot: compile flags=-ICppCore -Iinclude
 #+begin_src c
@@ -97,8 +96,8 @@ Enable the generic loader, not a potlibc-specific feature.
 rgpot-core = { version = "3.7.0", features = ["engine"] }
 #+end_src
 
-Serialize the bytes of =RgpotPotlibcConfigV1= in the host language and pass
-them to =EnginePotential::load= with the path to =libpotlibc_engine.so=.
+Serialize the bytes of =RgpotPotlibcConfigV1= in the host language and pass them
+to =EnginePotential::load= with the path to =libpotlibc_engine.so=.
 =EnginePotential::force= evaluates energy and forces.
 =EnginePotential::hvp= uses =rgpot_engine_hvp= only when the surface advertises
 an analytic product, and =into_potential= exposes that same handle to in-process
