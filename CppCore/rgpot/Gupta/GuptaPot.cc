@@ -12,6 +12,7 @@
 
 // clang-format off
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -140,12 +141,27 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
     throw std::invalid_argument("cutoff exceeds half a face spacing");
   }
   const auto n_size = static_cast<std::size_t>(n_atoms);
+  for (std::size_t k = 0; k < 3 * n_size; ++k) {
+    if (!std::isfinite(R[k])) {
+      throw std::invalid_argument("GuptaPot: positions must be finite");
+    }
+  }
 
   // Free-cluster, unbounded calls without stress or per-atom output delegate
   // directly to the C kernel rgpot_gupta.
   if (!cfg.periodic && !(cfg.cutoff > 0.0) && (!cfg.stress || !(volume > 0.0)) &&
       atoms == nullptr && mode_ == nlist::Mode::Auto &&
       n_size < kTeamMinAtoms) {
+    for (std::size_t i = 0; i < n_size; ++i) {
+      for (std::size_t j = i + 1; j < n_size; ++j) {
+        const double dx = R[3 * i] - R[3 * j];
+        const double dy = R[3 * i + 1] - R[3 * j + 1];
+        const double dz = R[3 * i + 2] - R[3 * j + 2];
+        if (dx * dx + dy * dy + dz * dz == 0.0) {
+          throw std::invalid_argument("GuptaPot: coincident atoms are not allowed");
+        }
+      }
+    }
     slot_.assign(n_size, 0);
     grad_.assign(3 * n_size, 0.0);
     rgpot_gupta(R, n_size, slot_.data(), 1, &cfg.A, &cfg.xi, &cfg.p, &cfg.q,
@@ -184,6 +200,7 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
   nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin,
                      nlist::Image::Round, mode_, periodic);
   const bool stream = neighbours_.streaming();
+  std::atomic<bool> bad_coincidence{false};
 
   const bool rows = n_size >= kTeamMinAtoms;
   const int nt = nlist::teamSize(n_size);
@@ -234,21 +251,13 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
     by_stride([&](auto stride) {
       nlist::visitHalf(
           neighbours_, 0, n_atoms,
-          [=, &lane](int32_t i, int32_t j, double, double, double,
+          [=, &lane, &bad_coincidence](int32_t i, int32_t j, double, double, double,
                      double r2) RGPOT_GUPTA_PAIR_INLINE {
             if (r2 > cutoff2) {
               return;
             }
             if (r2 <= 0.0) {
-              const double nan = std::numeric_limits<double>::quiet_NaN();
-              rho[static_cast<std::size_t>(i)] = nan;
-              rho[static_cast<std::size_t>(j)] = nan;
-              e_sum[static_cast<std::size_t>(i) * decltype(stride)::value] =
-                  nan;
-              if (atom_e != nullptr) {
-                atom_e[static_cast<std::size_t>(i)] = nan;
-                atom_e[static_cast<std::size_t>(j)] = nan;
-              }
+              bad_coincidence.store(true, std::memory_order_relaxed);
               return;
             }
             double phi = 0.0;
@@ -267,20 +276,13 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
     Terms *lane_terms = terms_.data();
     neighbours_.forRowTeam(
         nt,
-        [=](int t, int32_t i, int32_t j, double, double, double,
+        [=, &bad_coincidence](int t, int32_t i, int32_t j, double, double, double,
             double r2) RGPOT_GUPTA_PAIR_INLINE {
           if (r2 > cutoff2) {
             return;
           }
           if (r2 <= 0.0) {
-            const double nan = std::numeric_limits<double>::quiet_NaN();
-            rho[static_cast<std::size_t>(i)] = nan;
-            if (j > i) {
-              e_sum[static_cast<std::size_t>(i)] = nan;
-            }
-            if (atom_e != nullptr) {
-              atom_e[static_cast<std::size_t>(i)] = nan;
-            }
+            bad_coincidence.store(true, std::memory_order_relaxed);
             return;
           }
           double phi = 0.0;
@@ -294,6 +296,9 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
             atom_e[static_cast<std::size_t>(i)] += 0.5 * phi;
           }
         });
+  }
+  if (bad_coincidence.load(std::memory_order_relaxed)) {
+    throw std::invalid_argument("GuptaPot: coincident atoms are not allowed");
   }
 
   weight_.assign(n_size, 0.0);
@@ -419,17 +424,19 @@ void GuptaPot::densityStage(const HalfList &list, double *densities) const {
   const double cutoff = searchCutoff(cfg);
   const double cutoff2 = cutoff * cutoff;
   const double xi2 = cfg.xi * cfg.xi;
+  for (std::size_t k = 0; k < 3 * list.nAtoms; ++k) {
+    if (!std::isfinite(list.pos[k])) {
+      throw std::invalid_argument("GuptaPot: positions must be finite");
+    }
+  }
+  bool bad_coincidence = false;
   staged::forEachPair(
       list, [&](int i, int j, double, double, double, double r2, bool both) {
         if (r2 > cutoff2) {
           return;
         }
         if (r2 <= 0.0) {
-          const double nan = std::numeric_limits<double>::quiet_NaN();
-          densities[i] = nan;
-          if (both) {
-            densities[j] = nan;
-          }
+          bad_coincidence = true;
           return;
         }
         const double r = std::sqrt(r2);
@@ -440,6 +447,9 @@ void GuptaPot::densityStage(const HalfList &list, double *densities) const {
           densities[j] += psi;
         }
       });
+  if (bad_coincidence) {
+    throw std::invalid_argument("GuptaPot: coincident atoms are not allowed");
+  }
 }
 
 void GuptaPot::forceStage(const HalfList &list, const double *densities,
@@ -448,6 +458,11 @@ void GuptaPot::forceStage(const HalfList &list, const double *densities,
   const double cutoff = searchCutoff(cfg);
   const double cutoff2 = cutoff * cutoff;
   const double xi2 = cfg.xi * cfg.xi;
+  for (std::size_t k = 0; k < 3 * list.nAtoms; ++k) {
+    if (!std::isfinite(list.pos[k])) {
+      throw std::invalid_argument("GuptaPot: positions must be finite");
+    }
+  }
   std::vector<double> weight(list.nAtoms, 0.0);
   for (std::size_t i = 0; i < list.nAtoms; ++i) {
     if (densities[i] == 0.0) {
@@ -464,18 +479,15 @@ void GuptaPot::forceStage(const HalfList &list, const double *densities,
       staged::addSite(*tally, i, -std::sqrt(densities[i]));
     }
   }
+  bool bad_coincidence = false;
   staged::withTally(tally, [&](auto tallied) {
     staged::forEachPair(list, [&](int i, int j, double dx, double dy, double dz,
                                   double r2, bool both) {
       if (r2 > cutoff2) {
         return;
       }
-      // A coincidence has no direction, so the energy and the pair forces
-      // are poisoned with NaN. NaN is not <= 0 and falls through.
       if (r2 <= 0.0) {
-        const double nan = std::numeric_limits<double>::quiet_NaN();
-        staged::addPair(tallied, forces, tally, i, j, both, nan, nan, dx, dy,
-                        dz);
+        bad_coincidence = true;
         return;
       }
       const double r = std::sqrt(r2);
@@ -492,6 +504,9 @@ void GuptaPot::forceStage(const HalfList &list, const double *densities,
                       dz);
     });
   });
+  if (bad_coincidence) {
+    throw std::invalid_argument("GuptaPot: coincident atoms are not allowed");
+  }
 }
 
 } // namespace rgpot
