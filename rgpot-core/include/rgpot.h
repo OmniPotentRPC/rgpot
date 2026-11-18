@@ -73,6 +73,11 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define COUPLED_WELL_CONFIG_VERSION 1
 
 /**
+ * Minimum message size accepted by `libcoupled_well_engine`.
+ */
+#define COUPLED_WELL_CONFIG_MIN_SIZE 56
+
+/**
  * Atomic number of [`CoupledWellConfig::default`].
  */
 #define COUPLED_WELL_DEFAULT_ATOMIC_NUMBER 1
@@ -106,6 +111,11 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
  * Version of [`PotlibcConfig`].
  */
 #define POTLIBC_CONFIG_VERSION 1
+
+/**
+ * Minimum message size accepted by `libpotlibc_engine`.
+ */
+#define POTLIBC_CONFIG_MIN_SIZE 152
 
 /**
  * Capacity of the potlibc surface identifier, including its terminator.

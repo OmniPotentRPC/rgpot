@@ -7,10 +7,15 @@
 #include <atomic>
 #include <climits>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <new>
+
+#ifndef RGPOT_ENGINE_PROJECT_VERSION
+#define RGPOT_ENGINE_PROJECT_VERSION "unknown"
+#endif
 
 // The model is a pure function of the create message, so one handle serves
 // concurrent calls (reentrancy 0). The only mutable state is the last-error
@@ -33,7 +38,6 @@ constexpr const char kNoError[] = "";
 struct Derivatives {
   double energy;
   double gradient[2];
-  double hessian[4];
 };
 
 void copyMessage(char *destination, size_t capacity, const char *message) {
@@ -60,6 +64,49 @@ bool allFinite(const double *values, int count) {
       return false;
     }
   }
+  return true;
+}
+
+bool trailingBytesAreZero(const unsigned char *bytes, size_t count) {
+  for (size_t index = 0; index < count; ++index) {
+    if (bytes[index] != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool readConfig(RgpotCoupledWellConfigV1 *out, const void *config, size_t configLen,
+                char *errbuf, size_t errlen) {
+  if (config == nullptr || configLen < offsetof(RgpotCoupledWellConfigV1, version) +
+                                         sizeof(uint32_t)) {
+    copyMessage(errbuf, errlen,
+                "coupled-well engine requires RgpotCoupledWellConfigV1");
+    return false;
+  }
+  RgpotCoupledWellConfigV1 params{};
+  memcpy(&params, config, sizeof(uint32_t) * 3);
+  if (params.size < RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE) {
+    copyMessage(errbuf, errlen,
+                "coupled-well config size is smaller than RgpotCoupledWellConfigV1");
+    return false;
+  }
+  if (configLen < params.size) {
+    copyMessage(errbuf, errlen,
+                "coupled-well config buffer is shorter than config.size");
+    return false;
+  }
+  memcpy(&params, config, sizeof params);
+  if (params.size > sizeof params) {
+    const unsigned char *tail =
+        static_cast<const unsigned char *>(config) + sizeof params;
+    if (!trailingBytesAreZero(tail, params.size - sizeof params)) {
+      copyMessage(errbuf, errlen,
+                  "coupled-well config trailing bytes must be zero");
+      return false;
+    }
+  }
+  *out = params;
   return true;
 }
 
@@ -99,32 +146,39 @@ int transformed(RgpotEnginePot *pot, const double *positions, const double *box,
 
 Derivatives derivatives(const RgpotCoupledWellConfigV1 &p, double x,
                         double y) {
-  const double u = x / p.well_position;
+  const double x0 = p.well_position;
+  const double v0 = p.barrier_energy;
+  const double k = p.transverse_spring;
+  const double alpha = p.coupling;
+
+  const double u = x / x0;
   const double u2 = u * u;
-  const double displaced = y - p.coupling * x * x;
-  const double displacedDx = -2.0 * p.coupling * x;
-  const double displacedDxx = -2.0 * p.coupling;
-  const double wellShape = u2 - 1.0;
+  double wellEnergy;
+  double wellGradX;
+  if (std::isfinite(u2)) {
+    const double wellShape = u2 - 1.0;
+    wellEnergy = v0 * wellShape * wellShape;
+    wellGradX = 4.0 * v0 * u * wellShape / x0;
+  } else {
+    const double v0WellShape = (v0 * u) * u - v0;
+    wellEnergy = (v0WellShape * u) * u - v0WellShape;
+    wellGradX = 4.0 * (v0WellShape / x0) * u;
+  }
+
+  const double displaced = y - alpha * x * x;
+  const double dDx = -2.0 * alpha * x;
+  const double springGradX =
+      displaced == 0.0 ? 0.0 : k * displaced * dDx;
 
   Derivatives d;
-  d.energy = p.barrier_energy * wellShape * wellShape +
-             0.5 * p.transverse_spring * displaced * displaced;
-  d.gradient[0] = 4.0 * p.barrier_energy * u * wellShape / p.well_position +
-                  p.transverse_spring * displaced * displacedDx;
-  d.gradient[1] = p.transverse_spring * displaced;
-  d.hessian[0] = 4.0 * p.barrier_energy * (3.0 * u2 - 1.0) /
-                     (p.well_position * p.well_position) +
-                 p.transverse_spring *
-                     (displacedDx * displacedDx + displaced * displacedDxx);
-  d.hessian[1] = p.transverse_spring * displacedDx;
-  d.hessian[2] = d.hessian[1];
-  d.hessian[3] = p.transverse_spring;
+  d.energy = wellEnergy + 0.5 * k * displaced * displaced;
+  d.gradient[0] = wellGradX + springGradX;
+  d.gradient[1] = k * displaced;
   return d;
 }
 
-bool finiteAnswer(const Derivatives &d) {
-  return std::isfinite(d.energy) && allFinite(d.gradient, 2) &&
-         allFinite(d.hessian, 4);
+bool finiteEnergyAndGradient(const Derivatives &d) {
+  return std::isfinite(d.energy) && allFinite(d.gradient, 2);
 }
 
 struct Scratch {
@@ -160,17 +214,14 @@ int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *stamp) {
 RgpotEnginePot *rgpot_engine_create(const void *config, size_t configLen,
                                     char *errbuf, size_t errlen) {
   RgpotCoupledWellConfigV1 params;
-  if (config == nullptr || configLen != sizeof params) {
-    copyMessage(errbuf, errlen,
-                "coupled-well engine requires RgpotCoupledWellConfigV1");
+  if (!readConfig(&params, config, configLen, errbuf, errlen)) {
     return nullptr;
   }
-  memcpy(&params, config, sizeof params);
   if (params.magic != RGPOT_COUPLED_WELL_CONFIG_MAGIC ||
       params.version != RGPOT_COUPLED_WELL_CONFIG_VERSION ||
-      params.reserved != 0) {
+      params.reserved0 != 0 || params.reserved1 != 0) {
     copyMessage(errbuf, errlen,
-                "coupled-well engine config magic, version, or reserved field");
+                "coupled-well engine config magic, version, or reserved fields");
     return nullptr;
   }
   if (params.atomic_number <= 0) {
@@ -232,7 +283,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
     return code;
   }
   const Derivatives d = derivatives(pot->params, coordinates[0], coordinates[1]);
-  if (!finiteAnswer(d)) {
+  if (!finiteEnergyAndGradient(d)) {
     return fail(pot, RGPOT_ENGINE_ERR_EVAL,
                 "coupled-well evaluation is not finite at this position");
   }
@@ -286,7 +337,7 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
   for (size_t system = 0; system < systems; ++system) {
     const double *q = coordinates + kCoordinates * system;
     const Derivatives d = derivatives(pot->params, q[0], q[1]);
-    if (!finiteAnswer(d)) {
+    if (!finiteEnergyAndGradient(d)) {
       return fail(pot, RGPOT_ENGINE_ERR_EVAL,
                   "coupled-well evaluation is not finite at this position");
     }
@@ -332,11 +383,42 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
   if (code != RGPOT_ENGINE_OK) {
     return code;
   }
-  const Derivatives d = derivatives(pot->params, coordinates[0], coordinates[1]);
-  const double result[kCoordinates] = {
-      d.hessian[0] * direction[0] + d.hessian[1] * direction[1],
-      d.hessian[2] * direction[0] + d.hessian[3] * direction[1], 0.0};
-  if (!finiteAnswer(d) || !allFinite(result, kCoordinates)) {
+  const double x = coordinates[0];
+  const double y = coordinates[1];
+  const double dx = direction[0];
+  const double dy = direction[1];
+  const double x0 = pot->params.well_position;
+  const double v0 = pot->params.barrier_energy;
+  const double k = pot->params.transverse_spring;
+  const double alpha = pot->params.coupling;
+  const double hxy = -2.0 * k * alpha * x;
+  const double hyy = k;
+  double hvx = 0.0;
+  double hvy = 0.0;
+  if (dx != 0.0) {
+    const double u = x / x0;
+    const double u2 = u * u;
+    const double v0Term =
+        std::isfinite(u2) ? v0 * (3.0 * u2 - 1.0) : 3.0 * ((v0 * u) * u) - v0;
+    const double wellHxx = (4.0 * (v0Term / x0)) / x0;
+    const double displaced = y - alpha * x * x;
+    const double dDx = -2.0 * alpha * x;
+    const double dDxx = -2.0 * alpha;
+    const double hxx =
+        wellHxx +
+        k * (dDx * dDx + (displaced == 0.0 ? 0.0 : displaced * dDxx));
+    hvx = hxx * dx;
+    hvy = hxy * dx;
+    if (dy != 0.0) {
+      hvx += hxy * dy;
+      hvy += hyy * dy;
+    }
+  } else if (dy != 0.0) {
+    hvx = hxy * dy;
+    hvy = hyy * dy;
+  }
+  const double result[kCoordinates] = {hvx, hvy, 0.0};
+  if (!allFinite(result, kCoordinates)) {
     return fail(pot, RGPOT_ENGINE_ERR_EVAL,
                 "coupled-well evaluation is not finite at this position");
   }
@@ -345,8 +427,8 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
   return RGPOT_ENGINE_OK;
 }
 
-int rgpot_engine_caps(const RgpotEnginePot *, RgpotEngineCaps *out) {
-  if (out == nullptr || out->size < sizeof(unsigned)) {
+int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
+  if (pot == nullptr || out == nullptr || out->size < sizeof(unsigned)) {
     return RGPOT_ENGINE_ERR_INVALID;
   }
   RgpotEngineCaps caps{};
@@ -379,6 +461,8 @@ size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buffer,
 
 const char *rgpot_engine_name(void) { return "coupled-well"; }
 
-const char *rgpot_engine_version(void) { return "coupled-well/1"; }
+const char *rgpot_engine_version(void) {
+  return "coupled-well/" RGPOT_ENGINE_PROJECT_VERSION;
+}
 
 } // extern "C"

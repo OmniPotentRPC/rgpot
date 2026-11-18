@@ -6,9 +6,9 @@ use std::sync::OnceLock;
 
 use rgpot_core::engine::{
     CoupledWellConfig, EngineError, EnginePotential, EngineRequest, PotlibcConfig,
-    RgpotEngineAbiStamp, ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINOR, ENGINE_ABI_VERSION,
-    ENGINE_ERR_UNSUPPORTED, POTLIBC_CONFIG_MAGIC, POTLIBC_CONFIG_VERSION,
-    POTLIBC_SURFACE_ID_CAPACITY,
+    RgpotEngineAbiStamp, COUPLED_WELL_CONFIG_MIN_SIZE, ENGINE_ABI_LAYOUT_REVISION,
+    ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_UNSUPPORTED, POTLIBC_CONFIG_MAGIC,
+    POTLIBC_CONFIG_MIN_SIZE, POTLIBC_CONFIG_VERSION, POTLIBC_SURFACE_ID_CAPACITY,
 };
 use rgpot_core::hvp::rgpot_hvp_scheme_t;
 use rgpot_core::status::rgpot_status_t;
@@ -1641,6 +1641,56 @@ fn coupled_well_stationary_points_have_the_hand_computed_curvature() {
 }
 
 #[test]
+fn coupled_well_extreme_finite_inputs_and_hvp_edge_cases_stay_servable() {
+    // Regression: finite answers at this point used to overflow intermediates.
+    let tiny = CoupledWellConfig::default()
+        .with_atomic_number(WELL_NUMBER)
+        .with_barrier_energy(1.0e-320)
+        .with_well_position(1.0e-155)
+        .with_transverse_spring(1.0)
+        .with_coupling(0.0);
+    let mut tiny_engine =
+        unsafe { EnginePotential::load(build_coupled_well(), tiny.as_bytes()) }.expect("tiny cfg");
+    let tiny_eval = tiny_engine
+        .force(&well_request(&[1.0, 0.0, 0.0]))
+        .expect("finite tiny-scale answer");
+    assert!(tiny_eval.energy.is_finite());
+    assert!(tiny_eval.forces.iter().all(|v| v.is_finite()));
+    let scaled_min = [1.0e-155, 0.0, 0.0];
+    let min_eval = tiny_engine
+        .force(&well_request(&scaled_min))
+        .expect("scaled minimum answer");
+    assert_eq!(min_eval.energy, 0.0);
+    assert_eq!(min_eval.forces, vec![0.0, 0.0, 0.0]);
+    let min_hv = tiny_engine
+        .hvp(&well_request(&scaled_min), &[1.0, 0.0, 0.0])
+        .expect("scaled minimum HVP");
+    assert!(min_hv[0].is_finite());
+    assert_eq!(&min_hv[1..], &[0.0, 0.0]);
+
+    // Regression: force used to require a finite Hessian, and HVP used inf*0.
+    let huge_alpha = CoupledWellConfig::default()
+        .with_atomic_number(WELL_NUMBER)
+        .with_barrier_energy(1.0)
+        .with_well_position(1.0)
+        .with_transverse_spring(1.0)
+        .with_coupling(1.0e200);
+    let mut edge_engine =
+        unsafe { EnginePotential::load(build_coupled_well(), huge_alpha.as_bytes()) }
+            .expect("huge-alpha cfg");
+    let edge_point = [1.0, 1.0e200, 0.0];
+    let edge_eval = edge_engine
+        .force(&well_request(&edge_point))
+        .expect("force must not require finite Hessian");
+    assert_eq!(edge_eval.energy, 0.0);
+    assert_eq!(edge_eval.forces, vec![0.0, 0.0, 0.0]);
+    let hv = edge_engine
+        .hvp(&well_request(&edge_point), &[0.0, 1.0, 0.0])
+        .expect("direct HVP must avoid inf*0");
+    assert_eq!(hv, vec![-2.0e200, 1.0, 0.0]);
+}
+
+#[test]
 fn coupled_well_batch_is_the_analytic_answer_for_each_system() {
     let mut engine = load_well();
     let systems = [[2.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.5, -1.0]];
@@ -1773,12 +1823,18 @@ fn coupled_well_parameters_are_validated_in_rust_and_by_the_engine_alike() {
     wrong_magic.magic ^= 1;
     let mut wrong_version = well_config();
     wrong_version.version += 1;
-    let mut reserved = well_config();
-    reserved.reserved = 1;
+    let mut reserved0 = well_config();
+    reserved0.reserved0 = 1;
+    let mut reserved1 = well_config();
+    reserved1.reserved1 = 1;
+    let mut too_small = well_config();
+    too_small.size = COUPLED_WELL_CONFIG_MIN_SIZE - 8;
     let invalid = [
         ("magic", wrong_magic),
         ("version", wrong_version),
-        ("reserved", reserved),
+        ("reserved0", reserved0),
+        ("reserved1", reserved1),
+        ("too-small size", too_small),
         ("zero atomic number", well_config().with_atomic_number(0)),
         (
             "negative atomic number",
@@ -1822,26 +1878,43 @@ fn coupled_well_parameters_are_validated_in_rust_and_by_the_engine_alike() {
             &well_config().as_bytes()[..std::mem::size_of::<CoupledWellConfig>() - 8],
         )
     };
-    assert!(
-        matches!(truncated.err(), Some(EngineError::Create(why)) if why.contains("CoupledWellConfigV1"))
-    );
+    assert!(matches!(
+        truncated.err(),
+        Some(EngineError::Create(why))
+            if why.contains("CoupledWellConfigV1")
+                || why.contains("shorter than config.size")
+    ));
+
+    let mut extended = vec![0_u8; std::mem::size_of::<CoupledWellConfig>() + 16];
+    extended[..std::mem::size_of::<CoupledWellConfig>()].copy_from_slice(well_config().as_bytes());
+    let new_size = extended.len() as u32;
+    extended[4..8].copy_from_slice(&new_size.to_ne_bytes());
+    unsafe { EnginePotential::load(build_coupled_well(), &extended) }
+        .expect("future coupled-well config with zero trailing bytes");
+    extended[std::mem::size_of::<CoupledWellConfig>()] = 1;
+    assert!(matches!(
+        unsafe { EnginePotential::load(build_coupled_well(), &extended) }.err(),
+        Some(EngineError::Create(why)) if why.contains("trailing bytes")
+    ));
 }
 
 #[test]
 fn coupled_well_config_bytes_follow_the_header_layout() {
     let config = well_config();
     let bytes = config.as_bytes();
-    assert_eq!(bytes.len(), 48);
+    assert_eq!(bytes.len(), COUPLED_WELL_CONFIG_MIN_SIZE as usize);
     let word = |offset: usize| u32::from_ne_bytes(bytes[offset..offset + 4].try_into().unwrap());
     let real = |offset: usize| f64::from_ne_bytes(bytes[offset..offset + 8].try_into().unwrap());
     assert_eq!(word(0), 0x4357_5054, "magic");
-    assert_eq!(word(4), 1, "version");
-    assert_eq!(word(8), WELL_NUMBER as u32, "atomic_number");
-    assert_eq!(word(12), 0, "reserved");
-    assert_eq!(real(16), WELL_BARRIER);
-    assert_eq!(real(24), WELL_POSITION);
-    assert_eq!(real(32), WELL_SPRING);
-    assert_eq!(real(40), WELL_COUPLING);
+    assert_eq!(word(4), COUPLED_WELL_CONFIG_MIN_SIZE, "size");
+    assert_eq!(word(8), 1, "version");
+    assert_eq!(word(12), 0, "reserved0");
+    assert_eq!(word(16), WELL_NUMBER as u32, "atomic_number");
+    assert_eq!(word(20), 0, "reserved1");
+    assert_eq!(real(24), WELL_BARRIER);
+    assert_eq!(real(32), WELL_POSITION);
+    assert_eq!(real(40), WELL_SPRING);
+    assert_eq!(real(48), WELL_COUPLING);
     assert_eq!(
         CoupledWellConfig::new(WELL_NUMBER, 3.0, 2.0, 4.0, 0.25),
         config
@@ -1853,18 +1926,23 @@ fn coupled_well_config_bytes_follow_the_header_layout() {
 fn potlibc_config_bytes_follow_the_header_layout() {
     let config = PotlibcConfig::new("vbo-beta1", 4).expect("config");
     let bytes = config.as_bytes();
-    assert_eq!(bytes.len(), 16 + POTLIBC_SURFACE_ID_CAPACITY);
+    assert_eq!(bytes.len(), POTLIBC_CONFIG_MIN_SIZE as usize);
     assert_eq!(
         u32::from_ne_bytes(bytes[0..4].try_into().unwrap()),
         POTLIBC_CONFIG_MAGIC
     );
     assert_eq!(
         u32::from_ne_bytes(bytes[4..8].try_into().unwrap()),
+        POTLIBC_CONFIG_MIN_SIZE
+    );
+    assert_eq!(
+        u32::from_ne_bytes(bytes[8..12].try_into().unwrap()),
         POTLIBC_CONFIG_VERSION
     );
-    assert_eq!(u64::from_ne_bytes(bytes[8..16].try_into().unwrap()), 4);
-    assert_eq!(&bytes[16..25], b"vbo-beta1");
-    assert!(bytes[25..].iter().all(|byte| *byte == 0));
+    assert_eq!(u32::from_ne_bytes(bytes[12..16].try_into().unwrap()), 0);
+    assert_eq!(u64::from_ne_bytes(bytes[16..24].try_into().unwrap()), 4);
+    assert_eq!(&bytes[24..33], b"vbo-beta1");
+    assert!(bytes[33..].iter().all(|byte| *byte == 0));
     config.validate().expect("valid");
 
     let fixed = PotlibcConfig::default()
@@ -1873,11 +1951,11 @@ fn potlibc_config_bytes_follow_the_header_layout() {
     assert_eq!(fixed, PotlibcConfig::new("brh2leps", 0).expect("config"));
     let resized = fixed.with_atom_count(7);
     assert_eq!(
-        u64::from_ne_bytes(resized.as_bytes()[8..16].try_into().unwrap()),
+        u64::from_ne_bytes(resized.as_bytes()[16..24].try_into().unwrap()),
         7
     );
     let replaced = resized.with_surface_id("fh25sec").expect("id");
-    assert_eq!(&replaced.as_bytes()[16..], &{
+    assert_eq!(&replaced.as_bytes()[24..], &{
         let mut expected = [0_u8; POTLIBC_SURFACE_ID_CAPACITY];
         expected[..7].copy_from_slice(b"fh25sec");
         expected
@@ -1917,6 +1995,9 @@ fn potlibc_config_refuses_an_unusable_surface_id() {
         wrong_magic.validate(),
         Err(EngineError::Invalid(_))
     ));
+    let mut too_small = PotlibcConfig::new("brh2leps", 0).expect("config");
+    too_small.size = POTLIBC_CONFIG_MIN_SIZE - 8;
+    assert!(matches!(too_small.validate(), Err(EngineError::Invalid(_))));
 }
 
 #[test]
