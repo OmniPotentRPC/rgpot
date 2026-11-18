@@ -14,3 +14,8 @@ neighbour-chunk.diff
 # uma-cache-dir.diff: UmaParams.cacheDir @10, the root of the persistent
 # cache a UMA .pt2 is unpacked into.
 uma-cache-dir.diff
+#
+# composite.diff: PotentialConfig.composite @18 and the CompositeParams and
+# CompositeTerm structs, a weighted sum of PotentialSpec children that
+# rgpot::SumPot evaluates.
+composite.diff
