@@ -594,6 +594,9 @@ jobs:
         run: |
           cargo nextest run -p rgpot-core
           cargo nextest run -p rgpot-core --all-features
+      - name: Check the C header is not stale
+        shell: pixi run bash -e {0}
+        run: bash scripts/check_header_drift.sh
       - name: Run Rust doc-tests
         shell: pixi run bash -e {0}
         run: cargo test --doc -p rgpot-core
