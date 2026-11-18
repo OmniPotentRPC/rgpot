@@ -64,7 +64,8 @@ enum class PotType {
   LrCoulomb,   //!<  Ewald, smooth PME, or damped shifted force.
   LrDispersion, //!<  D3(BJ), D4, MBD, or SO3LR QDO dispersion.
   LrNlh,       //!<  SO3LR NLH short-range repulsion.
-  LrSum        //!<  Weighted sum of child potentials (rgpot::SumPot).
+  LrSum,       //!<  Weighted sum of child potentials (rgpot::SumPot).
+  D2           //!<  Grimme DFT-D2 lattice sum (rgpot::D2Pot).
 };
 
 } // namespace rgpot
