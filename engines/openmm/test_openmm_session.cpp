@@ -3,7 +3,6 @@
 
 #include "rgpot/ExternalPot/OpenMM.hpp"
 #include "rgpot/ExternalPot/external_potentials.h"
-#include "rgpot/nlist/NeighbourList.hpp"
 #include "../common/test_seed.hpp"
 
 #include <openmm/HarmonicBondForce.h>
@@ -22,6 +21,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -364,97 +364,178 @@ void test_c_abi_session() {
   if (rgpot_md_session_step_nve(session, 0.0005, 10, err, sizeof(err)) != 0) {
     throw std::runtime_error(err);
   }
+}
 
-  rgpot_nlist_request nreq{};
-  rgpot_nlist_request_init(&nreq);
-  nreq.cutoff = 8.0;
-  nreq.shell = 1; // full list
-  nreq.cut = 1;   // loose
-  nreq.skin = 0.5;
-  size_t need = 0;
-  int nrc = rgpot_md_session_get_neighbors(session, &nreq, nullptr, nullptr,
-                                           &need, err, sizeof(err));
-  if (nrc != RGPOT_MD_NLIST_OK || need == 0) {
-    throw std::runtime_error(std::string("get_neighbors size probe failed: ") +
+void test_c_abi_session_neighbors() {
+  auto sys = std::make_unique<OpenMM::System>();
+  for (const double m : {4.0, 12.0, 16.0, 39.9}) {
+    sys->addParticle(m);
+  }
+  std::ostringstream xml_stream;
+  OpenMM::XmlSerializer::serialize<OpenMM::System>(sys.get(), "System",
+                                                   xml_stream);
+  const std::string xml = xml_stream.str();
+
+  char err[512] = {};
+  rgpot_md_session *session = rgpot_md_session_create(
+      "openmm", nullptr, xml.data(), xml.size(), "Reference", err, sizeof(err));
+  if (session == nullptr) {
+    throw std::runtime_error(std::string("rgpot_md_session_create failed: ") +
                              err);
   }
-  std::vector<int32_t> first(need), second(need), shift(3 * need);
-  std::vector<double> vector(3 * need), distance(need);
-  std::vector<uint8_t> mask(need);
-  rgpot_nlist_soa soa{};
-  soa.bytes = sizeof(soa);
-  soa.first = first.data();
-  soa.second = second.data();
-  soa.shift = shift.data();
-  soa.vector = vector.data();
-  soa.distance = distance.data();
-  soa.mask = mask.data();
-  soa.cap = need;
-  size_t got = 0;
-  nrc = rgpot_md_session_get_neighbors(session, &nreq, &soa, &got, &need, err,
-                                       sizeof(err));
-  if (nrc != RGPOT_MD_NLIST_OK || got == 0 || got != need) {
-    throw std::runtime_error(std::string("get_neighbors fill failed: ") + err);
+  std::unique_ptr<rgpot_md_session, decltype(&rgpot_md_session_destroy)> guard(
+      session, rgpot_md_session_destroy);
+
+  // Small triclinic box (heights ~6-7 A) set through the session ABI.
+  const double box_ang[9] = {7.0, 0.0, 0.0, 2.2, 6.5, 0.0, 1.4, -1.1, 6.0};
+  if (rgpot_md_session_set_periodic_box(session, box_ang, err, sizeof(err)) !=
+      0) {
+    throw std::runtime_error(std::string("set_periodic_box failed: ") + err);
   }
-  // Compare session-exported pairs with the shared neighbour-layer build.
-  rgpot_nlist_request ref_req = nreq;
-  ref_req.shape = 0;
-  ref_req.shell = 1;
-  ref_req.cut = 1;
-  ref_req.periodic[0] = 1;
-  ref_req.periodic[1] = 1;
-  ref_req.periodic[2] = 1;
-  rgpot_nlist_soa ref_soa{};
-  size_t ref_need = 0;
-  std::vector<double> now_pos(6);
-  std::vector<double> now_vel(6);
-  std::vector<double> now_force(6);
-  if (rgpot_md_session_get_state(session, now_pos.data(), now_vel.data(),
-                                 now_force.data(), 6, nullptr, nullptr, err,
-                                 sizeof(err)) != 0) {
-    throw std::runtime_error(std::string("state before nlist parity failed: ") +
-                             err);
+
+  // Place atoms deliberately outside the primary cell by multiple lattice
+  // vectors, as happens after MD propagation without wrapping.
+  constexpr size_t n_atoms = 4;
+  const double base_frac[12] = {0.10, 0.20, 0.30, 0.80, 0.10, 0.70,
+                                0.20, 0.90, 0.85, 0.50, 0.50, 0.15};
+  const int cell_offsets[12] = {0, 0, 0, 2, -1, 0, -1, 0, 3, 0, -2, -2};
+  std::vector<double> pos_ang(3 * n_atoms, 0.0);
+  for (size_t i = 0; i < n_atoms; ++i) {
+    const double fa = base_frac[3 * i] + cell_offsets[3 * i];
+    const double fb = base_frac[3 * i + 1] + cell_offsets[3 * i + 1];
+    const double fc = base_frac[3 * i + 2] + cell_offsets[3 * i + 2];
+    for (int c = 0; c < 3; ++c) {
+      pos_ang[3 * i + c] =
+          fa * box_ang[c] + fb * box_ang[3 + c] + fc * box_ang[6 + c];
+    }
   }
-  const double box_ang[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
-  int32_t ref_status = rgpot_nlist_build(now_pos.data(), 2, box_ang, &ref_req,
-                                         nullptr, nullptr, &ref_need);
-  if (ref_status != RGPOT_NLIST_OK || ref_need == 0) {
-    throw std::runtime_error("shared neighbour size probe failed");
+  if (rgpot_md_session_set_positions(session, pos_ang.data(), pos_ang.size(),
+                                     err, sizeof(err)) != 0) {
+    throw std::runtime_error(std::string("set_positions failed: ") + err);
   }
-  std::vector<int32_t> ref_first(ref_need), ref_second(ref_need),
-      ref_shift(3 * ref_need);
-  std::vector<double> ref_vector(3 * ref_need), ref_distance(ref_need);
-  std::vector<uint8_t> ref_mask(ref_need);
-  ref_soa.bytes = sizeof(ref_soa);
-  ref_soa.first = ref_first.data();
-  ref_soa.second = ref_second.data();
-  ref_soa.shift = ref_shift.data();
-  ref_soa.vector = ref_vector.data();
-  ref_soa.distance = ref_distance.data();
-  ref_soa.mask = ref_mask.data();
-  ref_soa.cap = ref_need;
-  size_t ref_count = 0;
-  ref_status = rgpot_nlist_build(now_pos.data(), 2, box_ang, &ref_req, &ref_soa,
-                                 &ref_count, &ref_need);
-  if (ref_status != RGPOT_NLIST_OK || ref_count != got) {
-    throw std::runtime_error("shared neighbour build failed");
-  }
+
+  // Cutoff larger than half the box: multiple periodic images contribute.
+  constexpr double cutoff = 5.5;
+  struct RefGeom {
+    double vx, vy, vz, dist;
+  };
   using PairKey = std::tuple<int, int, int, int, int>;
-  std::map<PairKey, double> got_dist;
-  std::map<PairKey, double> ref_dist;
-  for (size_t p = 0; p < got; ++p) {
-    got_dist[{first[p], second[p], shift[3 * p], shift[3 * p + 1],
-              shift[3 * p + 2]}] = distance[p];
-    ref_dist[{ref_first[p], ref_second[p], ref_shift[3 * p],
-              ref_shift[3 * p + 1], ref_shift[3 * p + 2]}] = ref_distance[p];
-  }
-  if (got_dist != ref_dist) {
-    throw std::runtime_error("session neighbours differ from shared neighbour layer");
-  }
-  const int set_rc = rgpot_md_session_set_neighbors(session, &nreq, &soa, got,
-                                                    err, sizeof(err));
-  if (set_rc != RGPOT_MD_NLIST_UNSUPPORTED) {
-    throw std::runtime_error("expected OpenMM neighbor setter to be unsupported");
+
+  for (int shell : {0, 1}) {
+    rgpot_nlist_request nreq{};
+    rgpot_nlist_request_init(&nreq);
+    nreq.cutoff = cutoff;
+    nreq.shell = shell;
+    nreq.cut = 0; // strict
+
+    // Brute-force minimum-image (all images within cutoff) reference set.
+    std::map<PairKey, RefGeom> ref;
+    const double cut2 = cutoff * cutoff;
+    constexpr int kSpan = 7;
+    for (int i = 0; i < static_cast<int>(n_atoms); ++i) {
+      for (int j = 0; j < static_cast<int>(n_atoms); ++j) {
+        for (int sa = -kSpan; sa <= kSpan; ++sa) {
+          for (int sb = -kSpan; sb <= kSpan; ++sb) {
+            for (int sc = -kSpan; sc <= kSpan; ++sc) {
+              if (shell == 0) {
+                if (i > j) {
+                  continue;
+                }
+                if (i == j) {
+                  const int sum = sa + sb + sc;
+                  if (sum < 0 ||
+                      (sum == 0 && (sc < 0 || (sc == 0 && sb < 0))) ||
+                      (sa == 0 && sb == 0 && sc == 0)) {
+                    continue;
+                  }
+                }
+              }
+              const double vx =
+                  pos_ang[3 * j] - pos_ang[3 * i] + sa * box_ang[0] +
+                  sb * box_ang[3] + sc * box_ang[6];
+              const double vy =
+                  pos_ang[3 * j + 1] - pos_ang[3 * i + 1] + sa * box_ang[1] +
+                  sb * box_ang[4] + sc * box_ang[7];
+              const double vz =
+                  pos_ang[3 * j + 2] - pos_ang[3 * i + 2] + sa * box_ang[2] +
+                  sb * box_ang[5] + sc * box_ang[8];
+              const double r2 = vx * vx + vy * vy + vz * vz;
+              if (r2 > 0.0 && r2 < cut2) {
+                ref[{i, j, sa, sb, sc}] = {vx, vy, vz, std::sqrt(r2)};
+              }
+            }
+          }
+        }
+      }
+    }
+    if (ref.empty()) {
+      throw std::runtime_error("brute-force reference pair set is empty");
+    }
+
+    size_t need = 0;
+    int nrc = rgpot_md_session_get_neighbors(session, &nreq, nullptr, nullptr,
+                                             &need, err, sizeof(err));
+    if (nrc != RGPOT_MD_NLIST_OK || need != ref.size()) {
+      throw std::runtime_error(
+          "get_neighbors size probe mismatch: got " + std::to_string(need) +
+          ", expected " + std::to_string(ref.size()) +
+          (err[0] != '\0' ? std::string(" (") + err + ")" : ""));
+    }
+    std::vector<int32_t> first(need), second(need), shift(3 * need);
+    std::vector<double> vector(3 * need), distance(need);
+    std::vector<uint8_t> mask(need);
+    rgpot_nlist_soa soa{};
+    soa.bytes = sizeof(soa);
+    soa.first = first.data();
+    soa.second = second.data();
+    soa.shift = shift.data();
+    soa.vector = vector.data();
+    soa.distance = distance.data();
+    soa.mask = mask.data();
+    soa.cap = need;
+    size_t got = 0;
+    nrc = rgpot_md_session_get_neighbors(session, &nreq, &soa, &got, &need,
+                                         err, sizeof(err));
+    if (nrc != RGPOT_MD_NLIST_OK || got != ref.size()) {
+      throw std::runtime_error(
+          "get_neighbors fill count mismatch: got " + std::to_string(got) +
+          ", expected " + std::to_string(ref.size()));
+    }
+    std::map<PairKey, RefGeom> got_map;
+    for (size_t p = 0; p < got; ++p) {
+      const PairKey key{first[p], second[p], shift[3 * p], shift[3 * p + 1],
+                        shift[3 * p + 2]};
+      if (!got_map
+               .emplace(key, RefGeom{vector[3 * p], vector[3 * p + 1],
+                                     vector[3 * p + 2], distance[p]})
+               .second) {
+        throw std::runtime_error("duplicate pair in get_neighbors output");
+      }
+    }
+    if (got_map.size() != ref.size()) {
+      throw std::runtime_error("get_neighbors pair map size mismatch");
+    }
+    for (const auto &[key, want] : ref) {
+      const auto it = got_map.find(key);
+      if (it == got_map.end()) {
+        throw std::runtime_error(
+            "session neighbors missing brute-force reference pair");
+      }
+      const RefGeom &have = it->second;
+      if (std::abs(have.vx - want.vx) > 1.0e-11 ||
+          std::abs(have.vy - want.vy) > 1.0e-11 ||
+          std::abs(have.vz - want.vz) > 1.0e-11 ||
+          std::abs(have.dist - want.dist) > 1.0e-11) {
+        throw std::runtime_error(
+            "session neighbor vector or distance differs from brute force");
+      }
+    }
+    const int set_rc = rgpot_md_session_set_neighbors(session, &nreq, &soa,
+                                                      got, err, sizeof(err));
+    if (set_rc != RGPOT_MD_NLIST_UNSUPPORTED) {
+      throw std::runtime_error(
+          "expected OpenMM neighbor setter to be unsupported");
+    }
   }
 }
 
@@ -465,6 +546,7 @@ int main() {
     test_seed_validation();
     test_cpp_session();
     test_c_abi_session();
+    test_c_abi_session_neighbors();
     std::cout
         << "OpenMM session energy, plane, wall, temperature, determinism, "
            "C ABI, and NVE checks passed\n";
