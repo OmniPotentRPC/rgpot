@@ -73,7 +73,8 @@ enum class PotType {
   LepsFH2,
   DoubleWell,
   CoupledProtonWell,
-  CBE           //!< External cbe-pes frontend.
+  CBE,          //!< External cbe-pes frontend.
+  Gupta         //!<  Cleri-Rosato Gupta many-body potential.
 };
 
 } // namespace rgpot
