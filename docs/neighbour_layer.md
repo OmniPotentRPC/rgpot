@@ -221,9 +221,20 @@ candidate upper pairs (`kMinParallelHalfPairs`), `MorsePot` evaluates
 each upper pair once in a two-phase OpenMP region (`forEachSlicePhase`),
 batching `simd::exp_fixed_n` and partitioning atoms by pair count on
 8-atom boundaries before reducing forces in partner index order; sparser
-stored lists stay on one thread. `fastTiles` runs
-only when `streaming()` holds, so `forCellTeam` on a stored list walks
-`walkStored` instead of rebuilding a 27-cell tile stencil. A
+stored lists stay on one thread. The thread-local transpose index, split
+vectors and pair scratch (`MorseWorkspace`) are keyed on the
+process-unique `Neighbours::generation()` counter (assigned at
+construction and on every rebuild, copy and move), retain their
+per-thread high-water capacity across calls of comparable size, and
+reallocate down when a later call needs less than a quarter of the
+retained capacity above `kShrinkFloor` (4096 elements). Boundary words of
+the 1-bit active-pair mask are merged with `std::atomic_ref` (which on
+LLVM's C++ library requires `libc++` 19 or newer, `_LIBCPP_VERSION >=
+190000`), falling back to `__atomic_fetch_or` on older `libc++` and
+failing at Meson/CMake configure time if neither is supported.
+`fastTiles` runs only when `streaming()` holds, so `forCellTeam` on a
+stored list walks `walkStored` instead of rebuilding a 27-cell tile
+stencil. A
 stream walks whole rows on any thread count, so on one thread a two-body
 potential evaluates each pair twice where a stored list evaluates it
 once. Stillinger-Weber and Tersoff
@@ -597,11 +608,4 @@ be compared.
 `morse_omp_bench`) runs a smoke check for `MorsePot` at 1, 2, 4, 8 and
 16 threads on a 6×6×6 Cu vacancy (863 atoms, below `kTeamMinAtoms`), a
 14×14×14 Cu vacancy (10,975 atoms, stored list) and the 10,000-atom Pt
-cluster, checking bit-for-bit agreement against 1 thread. On the 8-core
-Xeon host above (GCC 13.3.0, release build), evaluating each stored
-upper pair once and batching `simd::exp_fixed_n` moves the 14×14×14 Cu
-vacancy median from 10,795 / 11,317 / 5,771 µs at 1 / 2 / 4 threads to
-5,591 / 3,459 / 1,789 µs (1.62× at 2 threads, 3.12× at 4 threads), the
-10,000-atom Pt cluster from 36,007 / 45,698 / 23,290 µs to 25,026 /
-17,672 / 9,185 µs (1.42× at 2 threads, 2.72× at 4 threads), and the
-863-atom Cu vacancy from 805 µs to 457 µs.
+cluster, checking bit-for-bit agreement against 1 thread.
