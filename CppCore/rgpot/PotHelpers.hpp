@@ -81,4 +81,25 @@ void zeroForceOut(const size_t &nAtoms, ForceOut *efvd);
  */
 void checkParams(const ForceInput &params);
 
+/// Same numeric value as RGPOT_PLUGIN_INVALID_PARAM and
+/// RGPOT_INVALID_PARAMETER.
+constexpr int kInvalidParameter = 1;
+
+/**
+ * @brief Reject a force or energy call that would read a null buffer.
+ *
+ * Returns kInvalidParameter and stores the reason for forceLastError()
+ * when @a out or its force array is null, @a in.nAtoms is zero, a
+ * coordinate or species pointer is null, or @a periodic is set and the
+ * cell pointer is null. Returns 0 and clears the message otherwise.
+ * The atom count is unsigned at this boundary, so zero is the
+ * non-positive count.
+ */
+int rejectForceCall(const ForceInput &in, const ForceOut *out, bool periodic);
+
+/// Reason stored by the last rejectForceCall() on this thread.
+/// Empty after a call that returned 0. The pointer stays valid until the
+/// next rejectForceCall() on this thread.
+const char *forceLastError() noexcept;
+
 } // namespace rgpot

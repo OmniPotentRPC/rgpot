@@ -1,0 +1,1 @@
+Force and energy calls through the potential dispatch and the built-in plugin ABI reject a null coordinate, species or force buffer, a null cell on a periodic potential, and a non-positive atom count, and report invalid-parameter with a message instead of crashing.

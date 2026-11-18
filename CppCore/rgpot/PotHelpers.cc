@@ -9,7 +9,12 @@
  */
 
 #include "PotHelpers.hpp"
+#include <rgpot/plugin.h>
 #include <stdexcept>
+#include <string>
+
+static_assert(rgpot::kInvalidParameter ==
+              static_cast<int>(RGPOT_PLUGIN_INVALID_PARAM));
 
 namespace rgpot {
 
@@ -46,5 +51,39 @@ void checkParams(const ForceInput &params) {
     throw std::runtime_error("Can't work with zero atoms in force call");
   }
 }
+
+namespace {
+thread_local std::string g_force_error;
+
+int rejectWith(const char *reason) {
+  if (reason == nullptr) {
+    g_force_error.clear();
+    return 0;
+  }
+  g_force_error = reason;
+  return kInvalidParameter;
+}
+} // namespace
+
+int rejectForceCall(const ForceInput &in, const ForceOut *out, bool periodic) {
+  if (out == nullptr || out->F == nullptr) {
+    return rejectWith("invalid parameter: forces are null");
+  }
+  if (in.nAtoms == 0) {
+    return rejectWith("invalid parameter: nAtoms must be positive");
+  }
+  if (in.pos == nullptr) {
+    return rejectWith("invalid parameter: positions is null");
+  }
+  if (in.atmnrs == nullptr) {
+    return rejectWith("invalid parameter: atomic numbers are null");
+  }
+  if (periodic && in.box == nullptr) {
+    return rejectWith("invalid parameter: box is null");
+  }
+  return rejectWith(nullptr);
+}
+
+const char *forceLastError() noexcept { return g_force_error.c_str(); }
 
 } // namespace rgpot

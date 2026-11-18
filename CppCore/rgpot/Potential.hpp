@@ -189,6 +189,10 @@ public:
                 .stress = {},
                 .has_stress = 0};
 
+    if (rejectForceCall(fi, &fo, caps().periodic) != 0) {
+      throw std::invalid_argument(forceLastError());
+    }
+
 #ifdef RGPOT_HAS_CACHE
     rgpot::cache::KeyHash key = cacheKey(fi);
 
@@ -286,6 +290,11 @@ public:
       out.variance = 0.0;
       out.has_stress = 0;
       std::fill(out.stress, out.stress + 9, 0.0);
+    }
+    for (size_t i = 0; i < batch.nSystems; ++i) {
+      if (rejectForceCall(batch.in[i], &batch.out[i], caps().periodic) != 0) {
+        throw std::invalid_argument(forceLastError());
+      }
     }
 #ifdef RGPOT_HAS_CACHE
     if (_cache) {

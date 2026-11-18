@@ -12,13 +12,27 @@
 
 namespace rgpot::plugin {
 const rgpot_plugin_descriptor_t *builtinLennardJones();
+const rgpot_plugin_descriptor_t *builtinClassicalMorse();
+const rgpot_plugin_descriptor_t *builtinSuttonChen();
+#ifdef RGPOT_HAS_EAM_TABLE
+const rgpot_plugin_descriptor_t *builtinEamFuncfl();
+const rgpot_plugin_descriptor_t *builtinEamSetfl();
+#endif
 
 PluginRegistry &PluginRegistry::instance() {
   static PluginRegistry registry;
   return registry;
 }
 
-PluginRegistry::PluginRegistry() { register_builtin(builtinLennardJones()); }
+PluginRegistry::PluginRegistry() {
+  register_builtin(builtinLennardJones());
+  register_builtin(builtinClassicalMorse());
+  register_builtin(builtinSuttonChen());
+#ifdef RGPOT_HAS_EAM_TABLE
+  register_builtin(builtinEamFuncfl());
+  register_builtin(builtinEamSetfl());
+#endif
+}
 
 void PluginRegistry::discover() {
   const char *path = std::getenv("RGPOT_PLUGIN_PATH");
