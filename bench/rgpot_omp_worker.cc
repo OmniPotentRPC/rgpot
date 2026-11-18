@@ -303,6 +303,8 @@ struct BenchSamples {
   std::vector<double> build_ns_per_eval;
   std::vector<double> force_ns_per_eval;
   std::vector<double> total_ns_per_eval;
+  std::vector<double> nlist_pairs_per_eval;
+  std::vector<double> nlist_pairs_per_atom_per_eval;
   std::vector<std::size_t> evals_per_sample;
   std::vector<int> omp_max_threads_per_sample;
   std::vector<int> omp_parallel_threads_per_sample;
@@ -685,6 +687,8 @@ BenchSamples run_samples(const PotentialDescriptor &desc, const Args &args) {
   out.build_ns_per_eval.reserve(static_cast<std::size_t>(args.samples));
   out.force_ns_per_eval.reserve(static_cast<std::size_t>(args.samples));
   out.total_ns_per_eval.reserve(static_cast<std::size_t>(args.samples));
+  out.nlist_pairs_per_eval.reserve(static_cast<std::size_t>(args.samples));
+  out.nlist_pairs_per_atom_per_eval.reserve(static_cast<std::size_t>(args.samples));
   out.evals_per_sample.reserve(static_cast<std::size_t>(args.samples));
   out.omp_max_threads_per_sample.reserve(static_cast<std::size_t>(args.samples));
   out.omp_parallel_threads_per_sample.reserve(static_cast<std::size_t>(args.samples));
@@ -706,6 +710,7 @@ BenchSamples run_samples(const PotentialDescriptor &desc, const Args &args) {
     std::size_t evals = 0;
     double build_ns = 0.0;
     double force_ns = 0.0;
+    double pair_count_sum = 0.0;
     const auto sample_start = std::chrono::steady_clock::now();
     while (true) {
       if (desc.has_neighbor_timing) {
@@ -715,6 +720,7 @@ BenchSamples run_samples(const PotentialDescriptor &desc, const Args &args) {
         const auto b1 = std::chrono::steady_clock::now();
         build_ns +=
             std::chrono::duration<double, std::nano>(b1 - b0).count();
+        pair_count_sum += static_cast<double>(table.size());
       }
 
       evaluate_once(*runner, in, scratch_forces, scratch_energy);
@@ -737,6 +743,9 @@ BenchSamples run_samples(const PotentialDescriptor &desc, const Args &args) {
     out.build_ns_per_eval.push_back(build_avg);
     out.force_ns_per_eval.push_back(force_avg);
     out.total_ns_per_eval.push_back(build_avg + force_avg);
+    const double pair_avg = desc.has_neighbor_timing ? pair_count_sum / static_cast<double>(evals) : 0.0;
+    out.nlist_pairs_per_eval.push_back(pair_avg);
+    out.nlist_pairs_per_atom_per_eval.push_back(pair_avg / static_cast<double>(n_atoms));
     out.evals_per_sample.push_back(evals);
   }
 
@@ -834,6 +843,12 @@ int main(int argc, char **argv) {
     std::cout << ",";
     std::cout << "\"total_ns_per_eval\":";
     print_double_array(result.total_ns_per_eval);
+    std::cout << ",";
+    std::cout << "\"nlist_pairs_per_eval\":";
+    print_double_array(result.nlist_pairs_per_eval);
+    std::cout << ",";
+    std::cout << "\"nlist_pairs_per_atom_per_eval\":";
+    print_double_array(result.nlist_pairs_per_atom_per_eval);
     std::cout << ",";
     std::cout << "\"evals_per_sample\":";
     print_size_array(result.evals_per_sample);
