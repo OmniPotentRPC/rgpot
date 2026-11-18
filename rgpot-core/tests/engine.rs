@@ -5,8 +5,10 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use rgpot_core::engine::{
-    CoupledWellConfig, EngineError, EnginePotential, EngineRequest, RgpotEngineAbiStamp,
-    ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_UNSUPPORTED,
+    CoupledWellConfig, EngineError, EnginePotential, EngineRequest, PotlibcConfig,
+    RgpotEngineAbiStamp, ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINOR, ENGINE_ABI_VERSION,
+    ENGINE_ERR_UNSUPPORTED, POTLIBC_CONFIG_MAGIC, POTLIBC_CONFIG_VERSION,
+    POTLIBC_SURFACE_ID_CAPACITY,
 };
 use rgpot_core::hvp::rgpot_hvp_scheme_t;
 use rgpot_core::status::rgpot_status_t;
@@ -1481,78 +1483,478 @@ fn unstamped_compatible_and_older_stamped_minors_load_while_future_minors_fail()
         }
     );
     assert_eq!(created(&minor5), before);
-#[test]
-fn coupled_well_binding_loads_parameters_and_matches_force_differences() {
-    let path = build_coupled_well();
-    let config = CoupledWellConfig::new(1, 3.0, 2.0, 4.0, 0.2);
-    let mut engine =
-        unsafe { EnginePotential::load(&path, config.as_bytes()) }.expect("coupled-well engine");
-    let positions = [0.7, -0.3, 0.0];
-    let request = EngineRequest {
-        positions: &positions,
-        atomic_numbers: &[1],
+}
+
+/// Parameters of the coupled-well tests. Every value is a dyadic rational, so the
+/// closed forms below are exact in binary floating point.
+const WELL_NUMBER: i32 = 1;
+const WELL_BARRIER: f64 = 3.0;
+const WELL_POSITION: f64 = 2.0;
+const WELL_SPRING: f64 = 4.0;
+const WELL_COUPLING: f64 = 0.25;
+/// Terms in the longest expression the oracle and the engine each evaluate.
+const WELL_TERMS: usize = 16;
+
+fn well_config() -> CoupledWellConfig {
+    CoupledWellConfig::default()
+        .with_atomic_number(WELL_NUMBER)
+        .with_barrier_energy(WELL_BARRIER)
+        .with_well_position(WELL_POSITION)
+        .with_transverse_spring(WELL_SPRING)
+        .with_coupling(WELL_COUPLING)
+}
+
+fn load_well() -> EnginePotential {
+    unsafe { EnginePotential::load(build_coupled_well(), well_config().as_bytes()) }
+        .expect("coupled-well engine")
+}
+
+fn well_request(positions: &[f64; 3]) -> EngineRequest<'_> {
+    EngineRequest {
+        positions,
+        atomic_numbers: &[WELL_NUMBER],
         box_matrix: &CELL,
+    }
+}
+
+/// Energy, gradient and Hessian of the model from the expanded polynomial
+///   E = V0 (x^4/x0^4 - 2 x^2/x0^2 + 1) + k/2 (y^2 - 2 a x^2 y + a^2 x^4),
+/// differentiated by hand, not from the engine's factored form.
+struct Expansion {
+    energy: f64,
+    gradient: [f64; 2],
+    hessian: [f64; 3],
+}
+
+fn expansion(x: f64, y: f64) -> Expansion {
+    let (v0, x0, k, a) = (WELL_BARRIER, WELL_POSITION, WELL_SPRING, WELL_COUPLING);
+    let (x2, x02) = (x * x, x0 * x0);
+    let (x4, x04) = (x2 * x2, x02 * x02);
+    Expansion {
+        energy: v0 * (x4 / x04 - 2.0 * x2 / x02 + 1.0)
+            + 0.5 * k * (y * y - 2.0 * a * x2 * y + a * a * x4),
+        gradient: [
+            v0 * (4.0 * x * x2 / x04 - 4.0 * x / x02)
+                + k * (2.0 * a * a * x * x2 - 2.0 * a * x * y),
+            k * (y - a * x2),
+        ],
+        hessian: [
+            v0 * (12.0 * x2 / x04 - 4.0 / x02) + k * (6.0 * a * a * x2 - 2.0 * a * y),
+            -2.0 * k * a * x,
+            k,
+        ],
+    }
+}
+
+const WELL_XS: [f64; 7] = [-3.0, -2.0, -0.5, 0.0, 1.0, 2.0, 2.5];
+const WELL_YS: [f64; 5] = [-1.5, 0.0, 0.5, 1.0, 3.0];
+
+#[test]
+fn coupled_well_force_and_hvp_are_the_analytic_derivatives_on_a_grid() {
+    let mut engine = load_well();
+    let directions = [[1.0, 0.0, 9.0], [0.0, 1.0, 9.0], [0.5, -1.5, 4.0]];
+    for x in WELL_XS {
+        for y in WELL_YS {
+            let positions = [x, y, 7.0];
+            let want = expansion(x, y);
+            let answer = engine.force(&well_request(&positions)).expect("force");
+            assert!(
+                within_roundoff(answer.energy, want.energy, WELL_TERMS),
+                "energy at ({x}, {y}): {} vs {}",
+                answer.energy,
+                want.energy
+            );
+            for (component, gradient) in want.gradient.iter().enumerate() {
+                assert!(
+                    within_roundoff(answer.forces[component], -gradient, WELL_TERMS),
+                    "force {component} at ({x}, {y}): {} vs {}",
+                    answer.forces[component],
+                    -gradient
+                );
+            }
+            assert_eq!(answer.forces[2], 0.0, "the energy does not depend on z");
+            for direction in directions {
+                let product = engine
+                    .hvp(&well_request(&positions), &direction)
+                    .expect("hvp");
+                let [hxx, hxy, hyy] = want.hessian;
+                let expected = [
+                    hxx * direction[0] + hxy * direction[1],
+                    hxy * direction[0] + hyy * direction[1],
+                    0.0,
+                ];
+                for component in 0..3 {
+                    assert!(
+                        within_roundoff(product[component], expected[component], WELL_TERMS),
+                        "hvp {component} at ({x}, {y}) along {direction:?}: {} vs {}",
+                        product[component],
+                        expected[component]
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn coupled_well_stationary_points_have_the_hand_computed_curvature() {
+    let mut engine = load_well();
+    let unit_x = [1.0, 0.0, 0.0];
+    let unit_y = [0.0, 1.0, 0.0];
+
+    // x = x0, y = alpha x0^2: both terms vanish. With u = 1 and a zero
+    // displacement, H = [[8 V0 / x0^2 + 4 k a^2 x0^2, -2 k a x0], [., k]].
+    let minimum = [2.0, 1.0, 0.0];
+    let answer = engine.force(&well_request(&minimum)).expect("minimum");
+    assert_eq!(answer.energy, 0.0);
+    assert_eq!(answer.forces, [0.0, 0.0, 0.0]);
+    let column_x = engine.hvp(&well_request(&minimum), &unit_x).expect("Hx");
+    let column_y = engine.hvp(&well_request(&minimum), &unit_y).expect("Hy");
+    assert_eq!(column_x, [10.0, -4.0, 0.0]);
+    assert_eq!(column_y, [-4.0, 4.0, 0.0]);
+
+    // The barrier top x = 0, y = 0 has energy V0 and H = diag(-4 V0 / x0^2, k).
+    let top = [0.0, 0.0, 0.0];
+    let answer = engine.force(&well_request(&top)).expect("barrier top");
+    assert_eq!(answer.energy, WELL_BARRIER);
+    assert_eq!(answer.forces, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        engine.hvp(&well_request(&top), &unit_x).expect("Hx"),
+        [-3.0, 0.0, 0.0]
+    );
+    assert_eq!(
+        engine.hvp(&well_request(&top), &unit_y).expect("Hy"),
+        [0.0, 4.0, 0.0]
+    );
+
+    // (1, 1/2): E = 29/16, F = (11/4, -1), H = [[-1/4, -2], [-2, 4]].
+    let generic = [1.0, 0.5, 0.0];
+    let answer = engine
+        .force(&well_request(&generic))
+        .expect("generic point");
+    assert_eq!(answer.energy, 1.8125);
+    assert_eq!(answer.forces, [2.75, -1.0, 0.0]);
+    let product = engine
+        .hvp(&well_request(&generic), &[1.0, 2.0, 5.0])
+        .expect("Hd");
+    assert_eq!(product, [-4.25, 6.0, 0.0]);
+}
+
+#[test]
+fn coupled_well_batch_is_the_analytic_answer_for_each_system() {
+    let mut engine = load_well();
+    let systems = [[2.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.5, -1.0]];
+    let positions: Vec<f64> = systems.iter().flatten().copied().collect();
+    let boxes: Vec<f64> = CELL.repeat(systems.len());
+    let batch = engine
+        .force_batch(&[WELL_NUMBER], &positions, &boxes)
+        .expect("batch");
+    assert_eq!(batch.len(), systems.len());
+    for (system, answer) in systems.iter().zip(&batch) {
+        let want = expansion(system[0], system[1]);
+        assert!(within_roundoff(answer.energy, want.energy, WELL_TERMS));
+        assert!(within_roundoff(
+            answer.forces[0],
+            -want.gradient[0],
+            WELL_TERMS
+        ));
+        assert!(within_roundoff(
+            answer.forces[1],
+            -want.gradient[1],
+            WELL_TERMS
+        ));
+        assert_eq!(answer.forces[2], 0.0);
+        let single = engine.force(&well_request(system)).expect("single");
+        assert_eq!(*answer, single);
+    }
+    assert_eq!(batch[0].energy, 0.0);
+    assert_eq!(batch[1].energy, WELL_BARRIER);
+}
+
+#[test]
+fn coupled_well_batch_refuses_a_ragged_or_mismatched_request() {
+    let mut engine = load_well();
+    let positions = [1.0, 0.5, 0.0, 2.0, 1.0, 0.0];
+    let ragged = engine
+        .force_batch(&[WELL_NUMBER], &positions[..5], &CELL)
+        .unwrap_err();
+    assert!(matches!(ragged, EngineError::Invalid(_)), "{ragged}");
+    let wrong_boxes = engine
+        .force_batch(&[WELL_NUMBER], &positions, &CELL)
+        .unwrap_err();
+    assert!(
+        matches!(wrong_boxes, EngineError::Invalid(_)),
+        "{wrong_boxes}"
+    );
+    let empty = engine.force_batch(&[WELL_NUMBER], &[], &[]).unwrap_err();
+    assert!(matches!(empty, EngineError::Invalid(_)), "{empty}");
+    let two_atoms = engine
+        .force_batch(&[WELL_NUMBER, WELL_NUMBER], &positions, &CELL)
+        .unwrap_err();
+    assert!(
+        matches!(two_atoms, EngineError::Recoverable { code: 1, .. }),
+        "{two_atoms}"
+    );
+    let species = engine
+        .force_batch(&[WELL_NUMBER + 1], &positions, &CELL.repeat(2))
+        .unwrap_err();
+    assert!(
+        matches!(&species, EngineError::Recoverable { code: 1, message } if message.contains("atomic number")),
+        "{species}"
+    );
+}
+
+#[test]
+fn coupled_well_refuses_requests_it_cannot_serve_and_keeps_serving() {
+    let mut engine = load_well();
+    let two_atoms = engine
+        .force(&EngineRequest {
+            positions: &[0.0; 6],
+            atomic_numbers: &[WELL_NUMBER, WELL_NUMBER],
+            box_matrix: &CELL,
+        })
+        .unwrap_err();
+    assert!(
+        matches!(&two_atoms, EngineError::Recoverable { code: 1, message } if message.contains("one atom")),
+        "{two_atoms}"
+    );
+    let species = engine
+        .force(&EngineRequest {
+            positions: &[0.0; 3],
+            atomic_numbers: &[WELL_NUMBER + 1],
+            box_matrix: &CELL,
+        })
+        .unwrap_err();
+    assert!(
+        matches!(&species, EngineError::Recoverable { code: 1, message } if message.contains("atomic number")),
+        "{species}"
+    );
+    let not_finite = engine
+        .force(&well_request(&[f64::NAN, 0.0, 0.0]))
+        .unwrap_err();
+    assert!(
+        matches!(&not_finite, EngineError::Recoverable { code: 1, message } if message.contains("finite")),
+        "{not_finite}"
+    );
+    let overflow = engine
+        .force(&well_request(&[1.0e200, 0.0, 0.0]))
+        .unwrap_err();
+    assert!(
+        matches!(overflow, EngineError::Recoverable { code: 2, .. }),
+        "{overflow}"
+    );
+    let direction = engine
+        .hvp(&well_request(&[0.0; 3]), &[f64::INFINITY, 0.0, 0.0])
+        .unwrap_err();
+    assert!(matches!(direction, EngineError::Invalid(_)), "{direction}");
+    // None of these is fatal: the instance still answers.
+    let answer = engine
+        .force(&well_request(&[0.0; 3]))
+        .expect("still usable");
+    assert_eq!(answer.energy, WELL_BARRIER);
+}
+
+#[test]
+fn coupled_well_parameters_are_validated_in_rust_and_by_the_engine_alike() {
+    let valid = [
+        well_config(),
+        CoupledWellConfig::default(),
+        well_config().with_coupling(-WELL_COUPLING),
+        well_config().with_coupling(0.0),
+        CoupledWellConfig::new(8, 0.5, 1.5, 2.0, 1.0),
+    ];
+    for config in valid {
+        config.validate().expect("valid in Rust");
+        unsafe { EnginePotential::load(build_coupled_well(), config.as_bytes()) }
+            .unwrap_or_else(|why| panic!("{config:?} refused by the engine: {why}"));
+    }
+
+    let mut wrong_magic = well_config();
+    wrong_magic.magic ^= 1;
+    let mut wrong_version = well_config();
+    wrong_version.version += 1;
+    let mut reserved = well_config();
+    reserved.reserved = 1;
+    let invalid = [
+        ("magic", wrong_magic),
+        ("version", wrong_version),
+        ("reserved", reserved),
+        ("zero atomic number", well_config().with_atomic_number(0)),
+        (
+            "negative atomic number",
+            well_config().with_atomic_number(-1),
+        ),
+        ("zero barrier", well_config().with_barrier_energy(0.0)),
+        ("negative barrier", well_config().with_barrier_energy(-1.0)),
+        ("NaN barrier", well_config().with_barrier_energy(f64::NAN)),
+        ("zero well position", well_config().with_well_position(0.0)),
+        (
+            "infinite well position",
+            well_config().with_well_position(f64::INFINITY),
+        ),
+        (
+            "negative spring",
+            well_config().with_transverse_spring(-1.0),
+        ),
+        ("NaN spring", well_config().with_transverse_spring(f64::NAN)),
+        ("NaN coupling", well_config().with_coupling(f64::NAN)),
+        (
+            "infinite coupling",
+            well_config().with_coupling(f64::NEG_INFINITY),
+        ),
+    ];
+    for (name, config) in invalid {
+        let rust = config.validate();
+        assert!(
+            matches!(rust, Err(EngineError::Invalid(_))),
+            "{name}: Rust accepted it"
+        );
+        let engine = unsafe { EnginePotential::load(build_coupled_well(), config.as_bytes()) };
+        assert!(
+            matches!(engine.err(), Some(EngineError::Create(why)) if !why.is_empty()),
+            "{name}: the engine accepted it or gave no reason"
+        );
+    }
+
+    let truncated = unsafe {
+        EnginePotential::load(
+            build_coupled_well(),
+            &well_config().as_bytes()[..std::mem::size_of::<CoupledWellConfig>() - 8],
+        )
     };
-    let answer = engine.force(&request).expect("analytic force");
-    let step = 1.0e-5;
-    for component in 0..2 {
-        let mut plus = positions;
-        let mut minus = positions;
-        plus[component] += step;
-        minus[component] -= step;
-        let ep = engine
-            .force(&EngineRequest {
-                positions: &plus,
-                atomic_numbers: &[1],
-                box_matrix: &CELL,
-            })
-            .expect("positive displacement")
-            .energy;
-        let em = engine
-            .force(&EngineRequest {
-                positions: &minus,
-                atomic_numbers: &[1],
-                box_matrix: &CELL,
-            })
-            .expect("negative displacement")
-            .energy;
-        let finite_difference = -(ep - em) / (2.0 * step);
+    assert!(
+        matches!(truncated.err(), Some(EngineError::Create(why)) if why.contains("CoupledWellConfigV1"))
+    );
+}
+
+#[test]
+fn coupled_well_config_bytes_follow_the_header_layout() {
+    let config = well_config();
+    let bytes = config.as_bytes();
+    assert_eq!(bytes.len(), 48);
+    let word = |offset: usize| u32::from_ne_bytes(bytes[offset..offset + 4].try_into().unwrap());
+    let real = |offset: usize| f64::from_ne_bytes(bytes[offset..offset + 8].try_into().unwrap());
+    assert_eq!(word(0), 0x4357_5054, "magic");
+    assert_eq!(word(4), 1, "version");
+    assert_eq!(word(8), WELL_NUMBER as u32, "atomic_number");
+    assert_eq!(word(12), 0, "reserved");
+    assert_eq!(real(16), WELL_BARRIER);
+    assert_eq!(real(24), WELL_POSITION);
+    assert_eq!(real(32), WELL_SPRING);
+    assert_eq!(real(40), WELL_COUPLING);
+    assert_eq!(
+        CoupledWellConfig::new(WELL_NUMBER, 3.0, 2.0, 4.0, 0.25),
+        config
+    );
+    assert_eq!(CoupledWellConfig::default().validate().ok(), Some(()));
+}
+
+#[test]
+fn potlibc_config_bytes_follow_the_header_layout() {
+    let config = PotlibcConfig::new("vbo-beta1", 4).expect("config");
+    let bytes = config.as_bytes();
+    assert_eq!(bytes.len(), 16 + POTLIBC_SURFACE_ID_CAPACITY);
+    assert_eq!(
+        u32::from_ne_bytes(bytes[0..4].try_into().unwrap()),
+        POTLIBC_CONFIG_MAGIC
+    );
+    assert_eq!(
+        u32::from_ne_bytes(bytes[4..8].try_into().unwrap()),
+        POTLIBC_CONFIG_VERSION
+    );
+    assert_eq!(u64::from_ne_bytes(bytes[8..16].try_into().unwrap()), 4);
+    assert_eq!(&bytes[16..25], b"vbo-beta1");
+    assert!(bytes[25..].iter().all(|byte| *byte == 0));
+    config.validate().expect("valid");
+
+    let fixed = PotlibcConfig::default()
+        .with_surface_id("brh2leps")
+        .expect("id");
+    assert_eq!(fixed, PotlibcConfig::new("brh2leps", 0).expect("config"));
+    let resized = fixed.with_atom_count(7);
+    assert_eq!(
+        u64::from_ne_bytes(resized.as_bytes()[8..16].try_into().unwrap()),
+        7
+    );
+    let replaced = resized.with_surface_id("fh25sec").expect("id");
+    assert_eq!(&replaced.as_bytes()[16..], &{
+        let mut expected = [0_u8; POTLIBC_SURFACE_ID_CAPACITY];
+        expected[..7].copy_from_slice(b"fh25sec");
+        expected
+    });
+}
+
+#[test]
+fn potlibc_config_refuses_an_unusable_surface_id() {
+    let longest = "a".repeat(POTLIBC_SURFACE_ID_CAPACITY - 1);
+    assert!(PotlibcConfig::new(&longest, 0).is_ok());
+    for (name, id) in [
+        ("empty", String::new()),
+        (
+            "no room for the terminator",
+            "a".repeat(POTLIBC_SURFACE_ID_CAPACITY),
+        ),
+        ("embedded NUL", "br\0h2".to_owned()),
+    ] {
         assert!(
-            (answer.forces[component] - finite_difference).abs() < 1.0e-9,
-            "component {component}: analytic {} finite difference {finite_difference}",
-            answer.forces[component]
+            matches!(PotlibcConfig::new(&id, 0), Err(EngineError::Invalid(_))),
+            "{name}"
         );
     }
-    let direction = [0.4, -0.6, 0.0];
-    let product = engine.hvp(&request, &direction).expect("analytic HVP");
-    let mut plus = positions;
-    let mut minus = positions;
-    for component in 0..3 {
-        plus[component] += step * direction[component];
-        minus[component] -= step * direction[component];
-    }
-    let fp = engine
-        .force(&EngineRequest {
-            positions: &plus,
-            atomic_numbers: &[1],
-            box_matrix: &CELL,
-        })
-        .expect("positive directional displacement")
-        .forces;
-    let fm = engine
-        .force(&EngineRequest {
-            positions: &minus,
-            atomic_numbers: &[1],
-            box_matrix: &CELL,
-        })
-        .expect("negative directional displacement")
-        .forces;
-    for component in 0..2 {
-        let finite_difference = -(fp[component] - fm[component]) / (2.0 * step);
-        assert!(
-            (product[component] - finite_difference).abs() < 1.0e-9,
-            "HVP component {component}: analytic {} finite difference {finite_difference}",
-            product[component]
-        );
-    }
+    assert!(matches!(
+        PotlibcConfig::default().validate(),
+        Err(EngineError::Invalid(_))
+    ));
+    let mut unterminated = PotlibcConfig::new("brh2leps", 0).expect("config");
+    unterminated.surface_id = [b'a'; POTLIBC_SURFACE_ID_CAPACITY];
+    assert!(matches!(
+        unterminated.validate(),
+        Err(EngineError::Invalid(_))
+    ));
+    let mut wrong_magic = PotlibcConfig::new("brh2leps", 0).expect("config");
+    wrong_magic.magic = 0;
+    assert!(matches!(
+        wrong_magic.validate(),
+        Err(EngineError::Invalid(_))
+    ));
+}
+
+#[test]
+fn coupled_well_honours_the_engine_identity_contract() {
+    let library = unsafe { libloading::Library::new(build_coupled_well()) }.expect("open engine");
+    let available: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"rgpot_engine_available\0") }.expect("available symbol");
+    let stamp: libloading::Symbol<unsafe extern "C" fn() -> RgpotEngineAbiStamp> =
+        unsafe { library.get(b"rgpot_engine_abi_stamp\0") }.expect("stamp symbol");
+    let compatible: libloading::Symbol<unsafe extern "C" fn(*const RgpotEngineAbiStamp) -> c_int> =
+        unsafe { library.get(b"rgpot_engine_abi_compatible\0") }.expect("compatible symbol");
+    assert_eq!(unsafe { available() }, 1);
+    let engine = unsafe { stamp() };
+    let host = RgpotEngineAbiStamp {
+        abi_major: ENGINE_ABI_VERSION as u16,
+        abi_minor: ENGINE_ABI_MINOR,
+        layout_revision: ENGINE_ABI_LAYOUT_REVISION,
+    };
+    assert_eq!(engine, host, "the engine and the loader share one header");
+
+    // The documented rule: equal major and layout, engine minor at least the host's.
+    let accepts = |host: RgpotEngineAbiStamp| unsafe { compatible(&host) } != 0;
+    assert!(accepts(host));
+    assert!(accepts(RgpotEngineAbiStamp {
+        abi_minor: 0,
+        ..host
+    }));
+    assert!(!accepts(RgpotEngineAbiStamp {
+        abi_minor: host.abi_minor + 1,
+        ..host
+    }));
+    assert!(!accepts(RgpotEngineAbiStamp {
+        abi_major: host.abi_major + 1,
+        ..host
+    }));
+    assert!(!accepts(RgpotEngineAbiStamp {
+        layout_revision: host.layout_revision + 1,
+        ..host
+    }));
+    assert_eq!(unsafe { compatible(std::ptr::null()) }, 0);
 }
