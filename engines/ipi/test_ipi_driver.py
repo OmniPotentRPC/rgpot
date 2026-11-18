@@ -241,7 +241,7 @@ def test_usage_errors_exit_2(args):
 
 def test_list_and_help():
     names = driver_names()
-    assert {"LJ", "Morse", "SuttonChen"} <= set(names)
+    assert {"LJ", "Morse", "SuttonChen", "Gupta"} <= set(names)
     out = subprocess.run([DRIVER, "--help"], capture_output=True, text=True, check=True)
     assert out.stdout.startswith("usage: rgpot-ipi-driver")
 
