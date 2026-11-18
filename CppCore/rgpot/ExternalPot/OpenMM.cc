@@ -183,6 +183,7 @@ struct OpenMMSession::Impl {
   std::vector<double> masses;
   size_t particles = 0;
   double default_time_step = 0.0;
+  double constraint_force = 0.0;
 };
 
 OpenMMSession::OpenMMSession(std::unique_ptr<OpenMM::System> system,
@@ -218,7 +219,8 @@ OpenMMSession::OpenMMSession(std::unique_ptr<OpenMM::System> system,
   }
   impl_->system = std::move(system);
   ensure_plugins_loaded();
-  impl_->integrator = std::make_unique<OpenMM::VerletIntegrator>(config.time_step);
+  impl_->integrator =
+      std::make_unique<OpenMM::VerletIntegrator>(config.time_step);
   OpenMM::Platform &platform =
       OpenMM::Platform::getPlatformByName(config.platform);
   impl_->context = std::make_unique<OpenMM::Context>(
@@ -229,11 +231,19 @@ OpenMMSession::~OpenMMSession() = default;
 OpenMMSession::OpenMMSession(OpenMMSession &&) noexcept = default;
 OpenMMSession &OpenMMSession::operator=(OpenMMSession &&) noexcept = default;
 
-size_t OpenMMSession::numParticles() const noexcept {
-  return impl_->particles;
-}
+size_t OpenMMSession::numParticles() const noexcept { return impl_->particles; }
 
 std::vector<double> OpenMMSession::masses() const { return impl_->masses; }
+
+void OpenMMSession::setPeriodicBox(const std::vector<OpenMM::Vec3> &box) {
+  if (box.size() != 3) {
+    throw std::invalid_argument("OpenMM periodic box needs three vectors");
+  }
+  for (const auto &vector : box) {
+    require_finite_vec3(vector, "OpenMM periodic box vector");
+  }
+  impl_->context->setPeriodicBoxVectors(box[0], box[1], box[2]);
+}
 
 void OpenMMSession::setPositions(const std::vector<OpenMM::Vec3> &positions) {
   if (positions.size() != impl_->particles) {
@@ -255,6 +265,31 @@ void OpenMMSession::setVelocities(const std::vector<OpenMM::Vec3> &velocities) {
   impl_->context->setVelocities(velocities);
 }
 
+void OpenMMSession::reseedVelocities(double kT, uint64_t seed) {
+  require_positive(kT, "OpenMM velocity reseed kT");
+  SplitMix64 rng(seed);
+  std::vector<OpenMM::Vec3> velocities(impl_->particles,
+                                       OpenMM::Vec3(0.0, 0.0, 0.0));
+  for (size_t atom = 0; atom < impl_->particles; ++atom) {
+    if (impl_->masses[atom] <= 0.0) {
+      continue;
+    }
+    const double sigma = std::sqrt(kT / impl_->masses[atom]);
+    for (int component = 0; component < 3; ++component) {
+      velocities[atom][component] = sigma * rng.next_normal();
+    }
+  }
+  impl_->context->setVelocities(velocities);
+}
+
+void OpenMMSession::initialize() {
+  (void)impl_->context->getState(OpenMM::State::Energy | OpenMM::State::Forces);
+}
+
+double OpenMMSession::constraintForce() const noexcept {
+  return impl_->constraint_force;
+}
+
 void OpenMMSession::stepNVE(int steps) {
   if (steps < 0) {
     throw std::invalid_argument("OpenMM NVE steps must be non-negative");
@@ -264,6 +299,7 @@ void OpenMMSession::stepNVE(int steps) {
 
 void OpenMMSession::stepNVE(double time_step, size_t steps) {
   require_positive(time_step, "OpenMM NVE time_step");
+  impl_->constraint_force = 0.0;
   impl_->integrator->setStepSize(time_step);
   constexpr size_t kMaxChunk =
       static_cast<size_t>(std::numeric_limits<int>::max());
@@ -287,7 +323,8 @@ uint64_t OpenMMSession::stepLangevin(
   require_positive(time_step, "OpenMM Langevin time_step");
   if (plane_point.size() != impl_->particles ||
       plane_normal.size() != impl_->particles) {
-    throw std::invalid_argument("OpenMM hyperplane vector count differs from System");
+    throw std::invalid_argument(
+        "OpenMM hyperplane vector count differs from System");
   }
   if (wall_points.size() != wall_normals.size()) {
     throw std::invalid_argument("OpenMM wall point and normal count mismatch");
@@ -310,7 +347,8 @@ uint64_t OpenMMSession::stepLangevin(
     }
   }
   require_positive(alpha, "OpenMM hyperplane inverse-mass norm");
-  std::vector<OpenMM::Vec3> plane_w(impl_->particles, OpenMM::Vec3(0.0, 0.0, 0.0));
+  std::vector<OpenMM::Vec3> plane_w(impl_->particles,
+                                    OpenMM::Vec3(0.0, 0.0, 0.0));
   for (size_t i = 0; i < impl_->particles; ++i) {
     if (impl_->masses[i] > 0.0) {
       plane_w[i] = n[i] * (1.0 / (alpha * impl_->masses[i]));
@@ -321,7 +359,8 @@ uint64_t OpenMMSession::stepLangevin(
   for (size_t w = 0; w < wall_points.size(); ++w) {
     if (wall_points[w].size() != impl_->particles ||
         wall_normals[w].size() != impl_->particles) {
-      throw std::invalid_argument("OpenMM wall vector count differs from System");
+      throw std::invalid_argument(
+          "OpenMM wall vector count differs from System");
     }
     double u_sq = 0.0;
     for (size_t i = 0; i < impl_->particles; ++i) {
@@ -351,11 +390,13 @@ uint64_t OpenMMSession::stepLangevin(
     }
     const double scale = std::sqrt(scale_sq);
     walls[w].scale = scale;
-    walls[w].tangent_m_inv.assign(impl_->particles, OpenMM::Vec3(0.0, 0.0, 0.0));
+    walls[w].tangent_m_inv.assign(impl_->particles,
+                                  OpenMM::Vec3(0.0, 0.0, 0.0));
     if (scale > 0.0) {
       for (size_t i = 0; i < impl_->particles; ++i) {
         if (impl_->masses[i] > 0.0) {
-          walls[w].tangent_m_inv[i] = u_tan[i] * (1.0 / (scale * impl_->masses[i]));
+          walls[w].tangent_m_inv[i] =
+              u_tan[i] * (1.0 / (scale * impl_->masses[i]));
         }
       }
     }
@@ -371,6 +412,10 @@ uint64_t OpenMMSession::stepLangevin(
   auto positions = initial.getPositions();
   auto velocities = initial.getVelocities();
   auto forces = initial.getForces();
+  impl_->constraint_force = 0.0;
+  for (size_t i = 0; i < impl_->particles; ++i) {
+    impl_->constraint_force += n[i].dot(forces[i]);
+  }
 
   restore_position(positions, plane_point, n, plane_w);
   project_velocity(velocities, n, plane_w);
@@ -418,6 +463,10 @@ uint64_t OpenMMSession::stepLangevin(
     impl_->context->setPositions(positions);
     const OpenMM::State post = impl_->context->getState(OpenMM::State::Forces);
     forces = post.getForces();
+    impl_->constraint_force = 0.0;
+    for (size_t i = 0; i < impl_->particles; ++i) {
+      impl_->constraint_force += n[i].dot(forces[i]);
+    }
     for (size_t i = 0; i < impl_->particles; ++i) {
       if (impl_->masses[i] > 0.0) {
         velocities[i] += forces[i] * (half_dt / impl_->masses[i]);
@@ -475,11 +524,41 @@ void copy_from_openmm_vec3(const std::vector<OpenMM::Vec3> &values,
   }
 }
 
+int c_set_periodic_box(void *ctx, const double *box9, char *err,
+                       size_t err_len) {
+  try {
+    static_cast<OpenMMSession *>(ctx)->setPeriodicBox(
+        to_openmm_vec3(box9, 9, md::kNmPerAngstrom));
+    return 0;
+  } catch (const std::exception &ex) {
+    write_c_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_c_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
 int c_set_positions(void *ctx, const double *positions, size_t n3, char *err,
                     size_t err_len) {
   try {
     auto *session = static_cast<OpenMMSession *>(ctx);
     session->setPositions(to_openmm_vec3(positions, n3, md::kNmPerAngstrom));
+    return 0;
+  } catch (const std::exception &ex) {
+    write_c_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_c_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int c_reseed_velocities(void *ctx, double kT, uint64_t seed, char *err,
+                        size_t err_len) {
+  try {
+    static_cast<OpenMMSession *>(ctx)->reseedVelocities(kT * md::kKjPerEv,
+                                                        seed);
     return 0;
   } catch (const std::exception &ex) {
     write_c_err(err, err_len, ex.what());
@@ -524,9 +603,9 @@ int c_step_langevin(void *ctx, double kT, double friction, double time_step,
           to_openmm_vec3(wall_points + w * n3, n3, md::kNmPerAngstrom);
       w_normals[w] = to_openmm_vec3(wall_normals + w * n3, n3, 1.0);
     }
-    const uint64_t hits = session->stepLangevin(
-        kT * md::kKjPerEv, friction, time_step, p_point, p_normal, w_points,
-        w_normals, steps, seed);
+    const uint64_t hits =
+        session->stepLangevin(kT * md::kKjPerEv, friction, time_step, p_point,
+                              p_normal, w_points, w_normals, steps, seed);
     if (wall_hits != nullptr) {
       *wall_hits = hits;
     }
@@ -601,6 +680,37 @@ int c_get_masses(void *ctx, double *masses, size_t n_atoms, char *err,
   }
 }
 
+int c_get_constraint_force(void *ctx, double *constraint_force, char *err,
+                           size_t err_len) {
+  try {
+    if (constraint_force == nullptr) {
+      throw std::invalid_argument("MD constraint force output is null");
+    }
+    *constraint_force =
+        static_cast<OpenMMSession *>(ctx)->constraintForce() * md::kEvAPerKjNm;
+    return 0;
+  } catch (const std::exception &ex) {
+    write_c_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_c_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int c_initialize(void *ctx, char *err, size_t err_len) {
+  try {
+    static_cast<OpenMMSession *>(ctx)->initialize();
+    return 0;
+  } catch (const std::exception &ex) {
+    write_c_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_c_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
 void c_destroy(void *ctx) { delete static_cast<OpenMMSession *>(ctx); }
 
 } // namespace
@@ -623,13 +733,18 @@ int openmm_md_session_init(const char *system_xml, const char *platform,
     }
     auto session = std::make_unique<OpenMMSession>(std::move(system), config);
     *n_atoms = session->numParticles();
+    *ops = {};
     ops->struct_size = sizeof(rgpot_md_session_ops);
+    ops->set_periodic_box = c_set_periodic_box;
     ops->set_positions = c_set_positions;
     ops->set_velocities = c_set_velocities;
+    ops->reseed_velocities = c_reseed_velocities;
     ops->step_langevin = c_step_langevin;
     ops->step_nve = c_step_nve;
     ops->get_state = c_get_state;
     ops->get_masses = c_get_masses;
+    ops->get_constraint_force = c_get_constraint_force;
+    ops->initialize = c_initialize;
     ops->destroy = c_destroy;
     *ctx = session.release();
     return 0;

@@ -72,25 +72,31 @@ public:
   [[nodiscard]] size_t numParticles() const noexcept;
   [[nodiscard]] std::vector<double> masses() const;
 
+  void setPeriodicBox(const std::vector<OpenMM::Vec3> &box);
   void setPositions(const std::vector<OpenMM::Vec3> &positions);
   void setVelocities(const std::vector<OpenMM::Vec3> &velocities);
+  void reseedVelocities(double kT, uint64_t seed);
+  void initialize();
+  [[nodiscard]] double constraintForce() const noexcept;
 
-  /** Advance unconstrained NVE Verlet dynamics using the configured step size. */
+  /** Advance unconstrained NVE Verlet dynamics using the configured step size.
+   */
   void stepNVE(int steps);
-  /** Advance unconstrained NVE Verlet dynamics with an explicit time step (ps). */
+  /** Advance unconstrained NVE Verlet dynamics with an explicit time step (ps).
+   */
   void stepNVE(double time_step, size_t steps);
 
   /**
    * Advance projected BAOAB dynamics with explicit controls and 3N plane/wall
    * geometry in OpenMM native units. Returns the number of wall reflections.
    */
-  uint64_t stepLangevin(
-      double kT, double friction, double time_step,
-      const std::vector<OpenMM::Vec3> &plane_point,
-      const std::vector<OpenMM::Vec3> &plane_normal,
-      const std::vector<std::vector<OpenMM::Vec3>> &wall_points,
-      const std::vector<std::vector<OpenMM::Vec3>> &wall_normals,
-      size_t steps, uint64_t seed);
+  uint64_t
+  stepLangevin(double kT, double friction, double time_step,
+               const std::vector<OpenMM::Vec3> &plane_point,
+               const std::vector<OpenMM::Vec3> &plane_normal,
+               const std::vector<std::vector<OpenMM::Vec3>> &wall_points,
+               const std::vector<std::vector<OpenMM::Vec3>> &wall_normals,
+               size_t steps, uint64_t seed);
 
   /** Read positions, velocities, forces, and energies from the Context. */
   [[nodiscard]] OpenMMState state() const;
