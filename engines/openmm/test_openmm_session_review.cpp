@@ -50,6 +50,31 @@ std::vector<OpenMM::Vec3> zeros(std::size_t count) {
   return std::vector<OpenMM::Vec3>(count, OpenMM::Vec3(0.0, 0.0, 0.0));
 }
 
+struct BatchMean {
+  double mean = 0.0;
+  double error = 0.0;
+};
+
+// Mean and standard error of a correlated series by batch means.
+BatchMean batch_mean(const std::vector<double> &series,
+                     std::size_t batches = 40) {
+  const std::size_t size = series.size() / batches;
+  std::vector<double> means;
+  for (std::size_t b = 0; b < batches; ++b) {
+    means.push_back(std::accumulate(series.begin() + b * size,
+                                    series.begin() + (b + 1) * size, 0.0) /
+                    static_cast<double>(size));
+  }
+  const double mean = std::accumulate(means.begin(), means.end(), 0.0) /
+                      static_cast<double>(means.size());
+  double square = 0.0;
+  for (const double value : means) {
+    square += (value - mean) * (value - mean);
+  }
+  return {mean, std::sqrt(square / static_cast<double>(means.size() - 1) /
+                          static_cast<double>(means.size()))};
+}
+
 void test_harmonic_equipartition_on_plane() {
   constexpr double kT = 2.5;
   constexpr double spring = 200.0;
@@ -72,7 +97,7 @@ void test_harmonic_equipartition_on_plane() {
   session.stepLangevin(kT, config.friction, config.time_step, point, normal, {},
                        {}, 20000, 701);
 
-  constexpr std::size_t sample_count = 3000;
+  constexpr std::size_t sample_count = 60000;
   std::vector<double> potential_samples;
   potential_samples.reserve(sample_count);
   for (std::size_t sample = 0; sample < sample_count; ++sample) {
@@ -84,13 +109,16 @@ void test_harmonic_equipartition_on_plane() {
             "harmonic sample left the plane");
     potential_samples.push_back(state.potential_energy);
   }
-  const double mean =
-      std::accumulate(potential_samples.begin(), potential_samples.end(), 0.0) /
-      static_cast<double>(potential_samples.size());
+  const BatchMean potential = batch_mean(potential_samples);
   const double expected = 2.5 * kT;
-  require(std::abs(mean - expected) < 0.35,
+  require(potential.error < 0.3,
+          "equipartition run is too short to resolve the mean: error " +
+              std::to_string(potential.error));
+  require(std::abs(potential.mean - expected) < 4.0 * potential.error,
           "constrained harmonic configurational equipartition failed: got " +
-              std::to_string(mean) + ", expected " + std::to_string(expected));
+              std::to_string(potential.mean) + " +- " +
+              std::to_string(potential.error) + ", expected " +
+              std::to_string(expected));
 }
 
 void test_closed_form_constrained_mean_force() {
