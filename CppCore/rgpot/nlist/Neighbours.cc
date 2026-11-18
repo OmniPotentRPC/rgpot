@@ -116,9 +116,62 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
-  nx_ = axisCount(len_[0], edge);
-  ny_ = axisCount(len_[1], edge);
-  nz_ = axisCount(len_[2], edge);
+  const bool sheared = box_[1] != 0.0 || box_[2] != 0.0 || box_[3] != 0.0 ||
+                       box_[5] != 0.0 || box_[6] != 0.0 || box_[7] != 0.0;
+  double inv[9]{};
+  bool use_frac = false;
+  if (sheared) {
+    const double a[3] = {box_[0], box_[1], box_[2]};
+    const double b[3] = {box_[3], box_[4], box_[5]};
+    const double c[3] = {box_[6], box_[7], box_[8]};
+    const double bx[3] = {b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2],
+                          b[0] * c[1] - b[1] * c[0]};
+    const double cx[3] = {c[1] * a[2] - c[2] * a[1], c[2] * a[0] - c[0] * a[2],
+                          c[0] * a[1] - c[1] * a[0]};
+    const double ax[3] = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+                          a[0] * b[1] - a[1] * b[0]};
+    const double det = a[0] * bx[0] + a[1] * bx[1] + a[2] * bx[2];
+    if (std::isfinite(det) && det != 0.0) {
+      inv[0] = bx[0] / det;
+      inv[1] = cx[0] / det;
+      inv[2] = ax[0] / det;
+      inv[3] = bx[1] / det;
+      inv[4] = cx[1] / det;
+      inv[5] = ax[1] / det;
+      inv[6] = bx[2] / det;
+      inv[7] = cx[2] / det;
+      inv[8] = ax[2] / det;
+      bool inv_ok = true;
+      for (int k = 0; k < 9; ++k) {
+        if (!std::isfinite(inv[k])) {
+          inv_ok = false;
+          break;
+        }
+      }
+      if (inv_ok) {
+        const double vol = std::fabs(det);
+        const double nb =
+            std::sqrt(bx[0] * bx[0] + bx[1] * bx[1] + bx[2] * bx[2]);
+        const double nc =
+            std::sqrt(cx[0] * cx[0] + cx[1] * cx[1] + cx[2] * cx[2]);
+        const double na =
+            std::sqrt(ax[0] * ax[0] + ax[1] * ax[1] + ax[2] * ax[2]);
+        nx_ = axisCount(nb > 0.0 ? vol / nb : 0.0, edge);
+        ny_ = axisCount(nc > 0.0 ? vol / nc : 0.0, edge);
+        nz_ = axisCount(na > 0.0 ? vol / na : 0.0, edge);
+        use_frac = true;
+      }
+    }
+  }
+  if (!use_frac) {
+    if (sheared) {
+      nx_ = ny_ = nz_ = 1;
+    } else {
+      nx_ = axisCount(len_[0], edge);
+      ny_ = axisCount(len_[1], edge);
+      nz_ = axisCount(len_[2], edge);
+    }
+  }
   const double bytes =
       static_cast<double>(nx_) * static_cast<double>(ny_) *
       static_cast<double>(nz_) * static_cast<double>(sizeof(std::int32_t));
@@ -130,30 +183,62 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
                       static_cast<std::size_t>(nz_);
   cell_start_.assign(ncells + 1, 0);
   cell_of_.resize(n);
+  auto bin_ortho = [](double x, double length, int naxis) {
+    if (!(length > 0.0) || naxis <= 1) {
+      return 0;
+    }
+    double t = x / length * static_cast<double>(naxis);
+    if (!(t >= 0.0)) {
+      t = 0.0;
+    }
+    auto i = static_cast<int>(t);
+    if (i >= naxis) {
+      i = naxis - 1;
+    }
+    if (i < 0) {
+      i = 0;
+    }
+    return i;
+  };
+  auto bin_frac = [](double f, int naxis, bool periodic) {
+    if (naxis <= 1) {
+      return 0;
+    }
+    if (periodic && std::isfinite(f)) {
+      f -= std::floor(f);
+    }
+    double t = f * static_cast<double>(naxis);
+    if (!(t >= 0.0)) {
+      t = 0.0;
+    }
+    auto i = static_cast<int>(t);
+    if (i >= naxis) {
+      i = naxis - 1;
+    }
+    if (i < 0) {
+      i = 0;
+    }
+    return i;
+  };
   for (std::size_t a = 0; a < n; ++a) {
     int ix = 0;
     int iy = 0;
     int iz = 0;
-    auto bin = [](double x, double length, int naxis) {
-      if (!(length > 0.0) || naxis <= 1) {
-        return 0;
-      }
-      double t = x / length * static_cast<double>(naxis);
-      if (!(t >= 0.0)) {
-        t = 0.0;
-      }
-      auto i = static_cast<int>(t);
-      if (i >= naxis) {
-        i = naxis - 1;
-      }
-      if (i < 0) {
-        i = 0;
-      }
-      return i;
-    };
-    ix = bin(xyz[3 * a], len_[0], nx_);
-    iy = bin(xyz[3 * a + 1], len_[1], ny_);
-    iz = bin(xyz[3 * a + 2], len_[2], nz_);
+    if (use_frac) {
+      const double x = xyz[3 * a];
+      const double y = xyz[3 * a + 1];
+      const double z = xyz[3 * a + 2];
+      const double fx = x * inv[0] + y * inv[3] + z * inv[6];
+      const double fy = x * inv[1] + y * inv[4] + z * inv[7];
+      const double fz = x * inv[2] + y * inv[5] + z * inv[8];
+      ix = bin_frac(fx, nx_, periodic_[0]);
+      iy = bin_frac(fy, ny_, periodic_[1]);
+      iz = bin_frac(fz, nz_, periodic_[2]);
+    } else {
+      ix = bin_ortho(xyz[3 * a], len_[0], nx_);
+      iy = bin_ortho(xyz[3 * a + 1], len_[1], ny_);
+      iz = bin_ortho(xyz[3 * a + 2], len_[2], nz_);
+    }
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
