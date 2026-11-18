@@ -473,6 +473,21 @@ TEST_CASE("a seeded stream continues across calls", "[md][session]") {
     CHECK(odd[k] == Catch::Approx(whole[k]).margin(1.0e-13));
   }
   CHECK(other != whole);
+
+  // Ending the stream makes the next call with the same seed replay.
+  std::vector<double> x(9, 0.0);
+  std::vector<double> v(9, 0.0);
+  settings.steps = 3;
+  rgpot::md::SeededStream stream;
+  driver.run(settings, &plane, {}, x.data(), v.data(), forces,
+             stream.forSeed(29));
+  const std::vector<double> first = x;
+  x.assign(9, 0.0);
+  v.assign(9, 0.0);
+  stream.reset();
+  driver.run(settings, &plane, {}, x.data(), v.data(), forces,
+             stream.forSeed(29));
+  CHECK(x == first);
 }
 
 TEST_CASE("the first kick uses the force at the constrained position",
