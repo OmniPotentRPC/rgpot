@@ -230,6 +230,10 @@ int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
                                        uint64_t seed,
                                        const double *plane_normal, size_t n3,
                                        char *err, size_t err_len);
+/*
+ * Read positions, velocities, forces, and/or energies. Any output pointer may
+ * be null, but n3 must always be exactly 3 * n_atoms.
+ */
 int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
                                double *velocities, double *forces, size_t n3,
                                double *potential_energy, double *kinetic_energy,

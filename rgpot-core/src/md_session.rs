@@ -655,7 +655,7 @@ impl CAbiMdSession {
             Some(value) => value.as_ptr(),
             None => std::ptr::null(),
         };
-        let mut ops: MdSessionOps = unsafe { std::mem::zeroed() };
+        let mut ops = std::mem::MaybeUninit::<MdSessionOps>::zeroed();
         let mut ctx: *mut c_void = std::ptr::null_mut();
         let mut n_atoms: usize = 0;
         let mut error = [0 as c_char; 1024];
@@ -668,7 +668,7 @@ impl CAbiMdSession {
                 },
                 spec.len(),
                 options_ptr,
-                &mut ops,
+                ops.as_mut_ptr(),
                 &mut ctx,
                 &mut n_atoms,
                 error.as_mut_ptr(),
@@ -678,6 +678,7 @@ impl CAbiMdSession {
         if status != 0 {
             return Err(MdSessionError::new(error_message(&error)));
         }
+        let ops = unsafe { ops.assume_init() };
         let Some(ctx) = NonNull::new(ctx) else {
             return Err(MdSessionError::new("MD engine returned null session"));
         };
@@ -822,7 +823,8 @@ impl MdSession for CAbiMdSession {
                 "hyperplane point and normal length must match 3 * n_atoms",
             ));
         }
-        if wall_points.len() != wall_normals.len() || !wall_points.len().is_multiple_of(self.n3) {
+        #[allow(clippy::manual_is_multiple_of)]
+        if wall_points.len() != wall_normals.len() || wall_points.len() % self.n3 != 0 {
             return Err(MdSessionError::new(
                 "wall points and normals must match and be multiples of 3 * n_atoms",
             ));
@@ -986,7 +988,8 @@ impl MdSession for CAbiMdSession {
             check_finite_slice(point, "plane_point")?;
             check_finite_slice(normal, "plane_normal")?;
         }
-        if wall_points.len() != wall_normals.len() || !wall_points.len().is_multiple_of(self.n3) {
+        #[allow(clippy::manual_is_multiple_of)]
+        if wall_points.len() != wall_normals.len() || wall_points.len() % self.n3 != 0 {
             return Err(MdSessionError::new(
                 "wall points and normals must match and be multiples of 3 * n_atoms",
             ));
@@ -1521,8 +1524,8 @@ mod tests {
         ];
         let expected = [
             1.364_992_297_457_228_2,
-            0.144_521_221_269_415_41,
-            -0.396_523_975_253_817_72,
+            0.144_521_221_269_415_4,
+            -0.396_523_975_253_817_7,
         ];
         for (draw, want) in draws.iter().zip(expected) {
             assert!((draw - want).abs() <= 1.0e-15, "{draw} vs {want}");
@@ -1537,9 +1540,9 @@ mod tests {
             10.778_569_510_299_807,
             1.141_202_065_438_486,
             -3.131_124_796_627_359,
-            -0.569_035_935_022_960_02,
+            -0.569_035_935_022_96,
             0.011_247_207_933_508_375,
-            3.148_832_525_364_432_9,
+            3.148_832_525_364_433,
         ];
         let normal = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
         let plane = maxwell_boltzmann_velocities(&masses, 0.02585, 7, Some(&normal)).unwrap();
@@ -1549,7 +1552,7 @@ mod tests {
             -3.131_124_796_627_359,
             -1.499_289_563_749_779_8,
             0.011_247_207_933_508_375,
-            3.148_832_525_364_432_9,
+            3.148_832_525_364_433,
         ];
         for (got, want) in free
             .iter()
