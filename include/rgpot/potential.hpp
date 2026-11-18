@@ -310,6 +310,8 @@ public:
   rgpot_potential_t *raw() const { return handle_; }
 
 private:
+  friend struct TrampolineAccess; //!< Lets a test call a trampoline directly.
+
   rgpot_potential_t *handle_; //!< Owned opaque handle (may be @c nullptr
                               //!< after move).
 
@@ -415,6 +417,14 @@ private:
       if (input == nullptr || input->positions == nullptr ||
           input->positions->dl_tensor.shape == nullptr) {
         rgpot_set_last_error("invalid parameter: positions is null");
+        return RGPOT_INVALID_PARAMETER;
+      }
+      if (user_data == nullptr) {
+        rgpot_set_last_error("invalid parameter: potential is null");
+        return RGPOT_INVALID_PARAMETER;
+      }
+      if (direction == nullptr || hv_out == nullptr) {
+        rgpot_set_last_error("invalid parameter: direction or output is null");
         return RGPOT_INVALID_PARAMETER;
       }
       const auto *self = static_cast<const Impl *>(user_data);
