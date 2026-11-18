@@ -144,9 +144,8 @@ the layout revision stays at 1.
 A 3.7 library still serves a caller built against minor 0 or 1.
 A caller built against minor 2 is refused by a 3.6 library.
 3.8.0 raised the minor to 3 for the engine and RPC Hessian-vector exports.
-They are additions, so a 3.8 library still serves a caller built against
-minor 0, 1 or 2, and a caller built against minor 3 is refused by a 3.7
-library.
+They are additions, so a 3.8 library still serves a caller built against minor
+0, 1 or 2, and a caller built against minor 3 is refused by a 3.7 library.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.

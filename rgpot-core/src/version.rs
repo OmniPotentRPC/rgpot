@@ -238,11 +238,9 @@ mod tests {
 
     #[test]
     fn committed_header_matches_the_crate() {
-        let header = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/include/rgpot.h"
-        ))
-        .unwrap();
+        let header =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/include/rgpot.h"))
+                .unwrap();
         let want = format!("#define RGPOT_VERSION \"{}\"", env!("CARGO_PKG_VERSION"));
         assert!(header.contains(&want), "rgpot.h lacks {want}");
         for (name, value) in [
@@ -291,7 +289,10 @@ mod tests {
             "#define RGPOT_HVP_DEFAULT_STEP {:.1e}",
             crate::hvp::RGPOT_HVP_DEFAULT_STEP
         );
-        assert!(header.contains(&default_step), "rgpot.h lacks {default_step}");
+        assert!(
+            header.contains(&default_step),
+            "rgpot.h lacks {default_step}"
+        );
     }
 
     /// Every name in the rgpot-core ABI baseline is still declared by the

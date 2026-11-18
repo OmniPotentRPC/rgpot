@@ -27,8 +27,7 @@ use crate::hvp::HvpState;
 use crate::potential::PotentialCallback;
 use crate::status::{rgpot_status_t, set_last_error};
 use crate::tensor::{
-    checked_f64_data, copy_f64_tensor,
-    rgpot_tensor_cpu_f64_2d, rgpot_tensor_cpu_f64_matrix3,
+    checked_f64_data, copy_f64_tensor, rgpot_tensor_cpu_f64_2d, rgpot_tensor_cpu_f64_matrix3,
     rgpot_tensor_cpu_i32_1d, rgpot_tensor_free,
 };
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
@@ -46,8 +45,8 @@ use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
 pub use eindir_core::ffi::eindir_status_t;
 pub use eindir_core::ffi::{
-    eindir_abi_stamp_t, eindir_objective_eval, eindir_objective_grad,
-    eindir_objective_has_grad, eindir_objective_t, EindirEvalFn, EindirFreeFn, EindirGradFn,
+    eindir_abi_stamp_t, eindir_objective_eval, eindir_objective_grad, eindir_objective_has_grad,
+    eindir_objective_t, EindirEvalFn, EindirFreeFn, EindirGradFn,
 };
 
 /// The eindir ABI stamp of the `eindir_objective_t` base that
@@ -192,13 +191,14 @@ pub unsafe extern "C" fn rgpot_potential_set_peer_capabilities(
     caps: *const u8,
     size: usize,
 ) -> rgpot_status_t {
-    if pot.is_null() || caps.is_null() || size == 0 || size % 8 != 0 {
+    if pot.is_null() || caps.is_null() || size == 0 || !size.is_multiple_of(8) {
         set_last_error("rgpot_potential_set_peer_capabilities: invalid argument");
         return rgpot_status_t::RGPOT_INVALID_PARAMETER;
     }
     let mut words = vec![0u64; size / 8];
     unsafe { std::ptr::copy_nonoverlapping(caps, words.as_mut_ptr().cast::<u8>(), size) };
-    let verdict = crate::compat::check_capabilities_words(&words, &crate::compat::Expectation::default());
+    let verdict =
+        crate::compat::check_capabilities_words(&words, &crate::compat::Expectation::default());
     let cache = unsafe { &*(*pot).fused_cache };
     match verdict {
         Ok(()) => {
@@ -329,12 +329,8 @@ unsafe extern "C" fn rgpot_eval_cb(
         unsafe { std::slice::from_raw_parts(pot.atomic_numbers, pot.n_atoms) }.to_vec();
     let mut box_ = pot.box_matrix;
     let input = rgpot_force_input_t {
-        positions: unsafe {
-            rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), pot.n_atoms as i64, 3)
-        },
-        atomic_numbers: unsafe {
-            rgpot_tensor_cpu_i32_1d(atmnrs.as_mut_ptr(), pot.n_atoms as i64)
-        },
+        positions: unsafe { rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), pot.n_atoms as i64, 3) },
+        atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(atmnrs.as_mut_ptr(), pot.n_atoms as i64) },
         box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(box_.as_mut_ptr()) },
     };
     let mut output = rgpot_force_out_t {
@@ -343,8 +339,7 @@ unsafe extern "C" fn rgpot_eval_cb(
         variance: 0.0,
     };
     pot.fused_cache.computed.fetch_add(1, Ordering::Relaxed);
-    let status =
-        unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
+    let status = unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
     let forces = if status == rgpot_status_t::RGPOT_SUCCESS {
         validated_result(&output, n)
     } else {
@@ -421,12 +416,8 @@ unsafe extern "C" fn rgpot_grad_cb(
         unsafe { std::slice::from_raw_parts(pot.atomic_numbers, pot.n_atoms) }.to_vec();
     let mut box_ = pot.box_matrix;
     let input = rgpot_force_input_t {
-        positions: unsafe {
-            rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), pot.n_atoms as i64, 3)
-        },
-        atomic_numbers: unsafe {
-            rgpot_tensor_cpu_i32_1d(atmnrs.as_mut_ptr(), pot.n_atoms as i64)
-        },
+        positions: unsafe { rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), pot.n_atoms as i64, 3) },
+        atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(atmnrs.as_mut_ptr(), pot.n_atoms as i64) },
         box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(box_.as_mut_ptr()) },
     };
     let mut output = rgpot_force_out_t {
@@ -435,8 +426,7 @@ unsafe extern "C" fn rgpot_grad_cb(
         variance: 0.0,
     };
     pot.fused_cache.computed.fetch_add(1, Ordering::Relaxed);
-    let status =
-        unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
+    let status = unsafe { (pot.callback)(pot.pot_user_data, &input, &mut output) };
     let forces = if status == rgpot_status_t::RGPOT_SUCCESS {
         validated_result(&output, n)
     } else {
@@ -901,7 +891,9 @@ mod tests {
         out.energy = 1.0;
         out.forces = match mode {
             Bad::NullForces => std::ptr::null_mut(),
-            Bad::WrongLength => create_owned_f64_tensor(vec![0.0; n * 3 - 1], vec![(n * 3 - 1) as i64]),
+            Bad::WrongLength => {
+                create_owned_f64_tensor(vec![0.0; n * 3 - 1], vec![(n * 3 - 1) as i64])
+            }
             Bad::WrongRank => create_owned_f64_tensor(vec![0.0; n * 3], vec![1, n as i64, 3]),
             Bad::NotF64 => {
                 let t = create_owned_f64_tensor(vec![0.0; n * 3], vec![n as i64, 3]);
@@ -969,7 +961,10 @@ mod tests {
             assert_eq!(s, eindir_status_t::EINDIR_INVALID_PARAMETER);
             let s = unsafe { eindir_objective_grad(obj, x_t, g_t) };
             assert_eq!(s, eindir_status_t::EINDIR_INVALID_PARAMETER);
-            assert!(g_data.iter().all(|&v| v == 7.0), "gradient must stay untouched");
+            assert!(
+                g_data.iter().all(|&v| v == 7.0),
+                "gradient must stay untouched"
+            );
 
             unsafe {
                 del1d(x_t);
@@ -1062,7 +1057,13 @@ mod tests {
             unsafe { rgpot_potential_eval_counts(pot, &mut counts) },
             rgpot_status_t::RGPOT_SUCCESS
         );
-        assert_eq!(counts, rgpot_eval_counts_t { computed: 0, served: 0 });
+        assert_eq!(
+            counts,
+            rgpot_eval_counts_t {
+                computed: 0,
+                served: 0
+            }
+        );
 
         let mut x = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
         let x_t = make_1d(x.as_mut_ptr(), 6);
@@ -1074,13 +1075,25 @@ mod tests {
         unsafe { eindir_objective_eval(obj, x_t, &mut value) };
         unsafe { eindir_objective_grad(obj, x_t, g_t) };
         unsafe { rgpot_potential_eval_counts(pot, &mut counts) };
-        assert_eq!(counts, rgpot_eval_counts_t { computed: 1, served: 1 });
+        assert_eq!(
+            counts,
+            rgpot_eval_counts_t {
+                computed: 1,
+                served: 1
+            }
+        );
         assert_eq!(calls, 1);
 
         // A gradient with no preceding energy is computed.
         unsafe { eindir_objective_grad(obj, x_t, g_t) };
         unsafe { rgpot_potential_eval_counts(pot, &mut counts) };
-        assert_eq!(counts, rgpot_eval_counts_t { computed: 2, served: 1 });
+        assert_eq!(
+            counts,
+            rgpot_eval_counts_t {
+                computed: 2,
+                served: 1
+            }
+        );
         assert_eq!(calls, 2);
 
         unsafe { rgpot_potential_reset_eval_counts(pot) };
@@ -1147,14 +1160,18 @@ mod tests {
             }
 
             fn install(&self, bytes: &[u8]) -> rgpot_status_t {
-                unsafe { rgpot_potential_set_peer_capabilities(self.pot, bytes.as_ptr(), bytes.len()) }
+                unsafe {
+                    rgpot_potential_set_peer_capabilities(self.pot, bytes.as_ptr(), bytes.len())
+                }
             }
 
             fn eval(&self) -> eindir_status_t {
                 let mut x = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0];
                 let x_t = make_1d(x.as_mut_ptr(), 6);
                 let mut value = 0.0f64;
-                let s = unsafe { eindir_objective_eval(self.pot as *mut eindir_objective_t, x_t, &mut value) };
+                let s = unsafe {
+                    eindir_objective_eval(self.pot as *mut eindir_objective_t, x_t, &mut value)
+                };
                 unsafe { del1d(x_t) };
                 s
             }
@@ -1164,7 +1181,8 @@ mod tests {
                 let x_t = make_1d(x.as_mut_ptr(), 6);
                 let mut g = [0.0f64; 6];
                 let g_t = make_1d(g.as_mut_ptr(), 6);
-                let s = unsafe { eindir_objective_grad(self.pot as *mut eindir_objective_t, x_t, g_t) };
+                let s =
+                    unsafe { eindir_objective_grad(self.pot as *mut eindir_objective_t, x_t, g_t) };
                 unsafe {
                     del1d(x_t);
                     del1d(g_t);
@@ -1220,7 +1238,10 @@ mod tests {
         #[test]
         fn compatible_peer_is_accepted() {
             let h = Handle::new();
-            assert_eq!(h.install(&caps_bytes(|_| {})), rgpot_status_t::RGPOT_SUCCESS);
+            assert_eq!(
+                h.install(&caps_bytes(|_| {})),
+                rgpot_status_t::RGPOT_SUCCESS
+            );
             assert_eq!(h.eval(), eindir_status_t::EINDIR_SUCCESS);
             assert_eq!(h.grad(), eindir_status_t::EINDIR_SUCCESS);
             assert_eq!(h.calculate(), rgpot_status_t::RGPOT_SUCCESS);
@@ -1231,13 +1252,25 @@ mod tests {
             let h = Handle::new();
             let bytes = caps_bytes(|c| c.set_protocol_family("other.family"));
             assert_eq!(h.install(&bytes), rgpot_status_t::RGPOT_INVALID_PARAMETER);
-            assert!(last_error().starts_with("peer refused: protocol family"), "{}", last_error());
+            assert!(
+                last_error().starts_with("peer refused: protocol family"),
+                "{}",
+                last_error()
+            );
 
             assert_eq!(h.eval(), eindir_status_t::EINDIR_INVALID_PARAMETER);
-            assert!(last_error().starts_with("peer refused:"), "{}", last_error());
+            assert!(
+                last_error().starts_with("peer refused:"),
+                "{}",
+                last_error()
+            );
             assert_eq!(h.grad(), eindir_status_t::EINDIR_INVALID_PARAMETER);
             assert_eq!(h.calculate(), rgpot_status_t::RGPOT_INVALID_PARAMETER);
-            assert!(last_error().starts_with("peer refused:"), "{}", last_error());
+            assert!(
+                last_error().starts_with("peer refused:"),
+                "{}",
+                last_error()
+            );
             assert_eq!(*h.calls, 0, "no callback may run for a refused peer");
         }
 
@@ -1246,16 +1279,24 @@ mod tests {
             let h = Handle::new();
             h.install(&caps_bytes(|c| c.set_dlpack_major(2)));
             assert_eq!(h.eval(), eindir_status_t::EINDIR_INVALID_PARAMETER);
-            assert_eq!(h.install(&caps_bytes(|_| {})), rgpot_status_t::RGPOT_SUCCESS);
+            assert_eq!(
+                h.install(&caps_bytes(|_| {})),
+                rgpot_status_t::RGPOT_SUCCESS
+            );
             assert_eq!(h.eval(), eindir_status_t::EINDIR_SUCCESS);
         }
 
         #[test]
         fn invalid_arguments_are_rejected_and_leave_the_handle_usable() {
             let h = Handle::new();
-            assert_eq!(h.install(&[0u8; 3]), rgpot_status_t::RGPOT_INVALID_PARAMETER);
             assert_eq!(
-                unsafe { rgpot_potential_set_peer_capabilities(std::ptr::null(), [0u8; 8].as_ptr(), 8) },
+                h.install(&[0u8; 3]),
+                rgpot_status_t::RGPOT_INVALID_PARAMETER
+            );
+            assert_eq!(
+                unsafe {
+                    rgpot_potential_set_peer_capabilities(std::ptr::null(), [0u8; 8].as_ptr(), 8)
+                },
                 rgpot_status_t::RGPOT_INVALID_PARAMETER
             );
             assert_eq!(
@@ -1268,7 +1309,10 @@ mod tests {
         #[test]
         fn an_unreadable_message_is_refused() {
             let h = Handle::new();
-            assert_eq!(h.install(&[0u8; 8]), rgpot_status_t::RGPOT_INVALID_PARAMETER);
+            assert_eq!(
+                h.install(&[0u8; 8]),
+                rgpot_status_t::RGPOT_INVALID_PARAMETER
+            );
             assert!(
                 last_error().starts_with("peer refused: capabilities unreadable"),
                 "{}",
@@ -1284,7 +1328,11 @@ mod tests {
                 c.reborrow().init_operations(0);
             });
             assert_eq!(h.install(&bytes), rgpot_status_t::RGPOT_INVALID_PARAMETER);
-            assert!(last_error().starts_with("peer refused: operation"), "{}", last_error());
+            assert!(
+                last_error().starts_with("peer refused: operation"),
+                "{}",
+                last_error()
+            );
             assert_eq!(h.calculate(), rgpot_status_t::RGPOT_INVALID_PARAMETER);
         }
     }
@@ -1292,8 +1340,14 @@ mod tests {
     #[test]
     fn eindir_abi_stamp_is_accepted_by_eindir_core() {
         let stamp = rgpot_eindir_abi_stamp();
-        assert_eq!(stamp.objective_size, std::mem::size_of::<eindir_objective_t>());
-        assert_eq!(unsafe { eindir_core::ffi::eindir_core_abi_compatible(&stamp) }, 1);
+        assert_eq!(
+            stamp.objective_size,
+            std::mem::size_of::<eindir_objective_t>()
+        );
+        assert_eq!(
+            unsafe { eindir_core::ffi::eindir_core_abi_compatible(&stamp) },
+            1
+        );
     }
 
     #[test]
@@ -1426,11 +1480,23 @@ mod tests {
 
         let e_fused = eval_at(fused, &X);
         let g_fused = grad_at(fused, &X);
-        assert_eq!(counts(fused), rgpot_eval_counts_t { computed: 1, served: 1 });
+        assert_eq!(
+            counts(fused),
+            rgpot_eval_counts_t {
+                computed: 1,
+                served: 1
+            }
+        );
 
         let g_split = grad_at(split, &X);
         let e_split = eval_at(split, &X);
-        assert_eq!(counts(split), rgpot_eval_counts_t { computed: 2, served: 0 });
+        assert_eq!(
+            counts(split),
+            rgpot_eval_counts_t {
+                computed: 2,
+                served: 0
+            }
+        );
 
         assert_eq!(e_fused.to_bits(), e_split.to_bits());
         assert_eq!(bits(&g_fused), bits(&g_split));
@@ -1439,7 +1505,13 @@ mod tests {
         let (e_pair, g_pair) = objective.value_and_gradient(Array1::from(X.to_vec()).view());
         assert_eq!(e_pair.to_bits(), e_split.to_bits());
         assert_eq!(bits(g_pair.as_slice().unwrap()), bits(&g_split));
-        assert_eq!(counts(fused), rgpot_eval_counts_t { computed: 2, served: 2 });
+        assert_eq!(
+            counts(fused),
+            rgpot_eval_counts_t {
+                computed: 2,
+                served: 2
+            }
+        );
         assert_eq!((fused_calls, split_calls), (2, 2));
 
         unsafe {
@@ -1459,7 +1531,13 @@ mod tests {
         far[0] += 0.25;
         eval_at(pot, &X);
         let g_far = grad_at(pot, &far);
-        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 2, served: 0 });
+        assert_eq!(
+            counts(pot),
+            rgpot_eval_counts_t {
+                computed: 2,
+                served: 0
+            }
+        );
         assert_eq!(bits(&g_far), bits(&grad_at(reference, &far)));
         assert_ne!(bits(&g_far), bits(&g_x));
 
@@ -1467,13 +1545,25 @@ mod tests {
         ulp[4] = f64::from_bits(ulp[4].to_bits() + 1);
         eval_at(pot, &X);
         let g_ulp = grad_at(pot, &ulp);
-        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 4, served: 0 });
+        assert_eq!(
+            counts(pot),
+            rgpot_eval_counts_t {
+                computed: 4,
+                served: 0
+            }
+        );
         assert_eq!(bits(&g_ulp), bits(&grad_at(reference, &ulp)));
 
         // A mismatched gradient drops the stored result, so the energy at X
         // no longer answers a later gradient at X.
         let g_again = grad_at(pot, &X);
-        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 5, served: 0 });
+        assert_eq!(
+            counts(pot),
+            rgpot_eval_counts_t {
+                computed: 5,
+                served: 0
+            }
+        );
         assert_eq!(bits(&g_again), bits(&g_x));
 
         unsafe {
@@ -1497,15 +1587,33 @@ mod tests {
         let e_b = eval_at(b, &X);
         let g_a = grad_at(a, &X);
         let g_b = grad_at(b, &X);
-        assert_eq!(counts(a), rgpot_eval_counts_t { computed: 1, served: 1 });
-        assert_eq!(counts(b), rgpot_eval_counts_t { computed: 1, served: 1 });
+        assert_eq!(
+            counts(a),
+            rgpot_eval_counts_t {
+                computed: 1,
+                served: 1
+            }
+        );
+        assert_eq!(
+            counts(b),
+            rgpot_eval_counts_t {
+                computed: 1,
+                served: 1
+            }
+        );
 
         assert_ne!(bits(&g_a), bits(&g_b));
         assert_eq!(bits(&g_a), bits(&grad_at(ref_a, &X)));
         assert_eq!(bits(&g_b), bits(&grad_at(ref_b, &X)));
         assert_eq!(e_a.to_bits(), eval_at(ref_a, &X).to_bits());
         assert_eq!(e_b.to_bits(), eval_at(ref_b, &X).to_bits());
-        assert_eq!(counts(ref_a), rgpot_eval_counts_t { computed: 2, served: 0 });
+        assert_eq!(
+            counts(ref_a),
+            rgpot_eval_counts_t {
+                computed: 2,
+                served: 0
+            }
+        );
 
         unsafe {
             for pot in [a, b, ref_a, ref_b] {
@@ -1551,13 +1659,25 @@ mod tests {
 
         eval_at(pot, &plus);
         let g_minus = grad_at(pot, &minus);
-        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 2, served: 0 });
+        assert_eq!(
+            counts(pot),
+            rgpot_eval_counts_t {
+                computed: 2,
+                served: 0
+            }
+        );
         assert_eq!(g_minus[0], 1.0);
         assert_eq!(bits(&g_minus), bits(&grad_at(reference, &minus)));
 
         eval_at(pot, &minus);
         let g_same = grad_at(pot, &minus);
-        assert_eq!(counts(pot), rgpot_eval_counts_t { computed: 3, served: 1 });
+        assert_eq!(
+            counts(pot),
+            rgpot_eval_counts_t {
+                computed: 3,
+                served: 1
+            }
+        );
         assert_eq!(bits(&g_same), bits(&g_minus));
 
         unsafe {

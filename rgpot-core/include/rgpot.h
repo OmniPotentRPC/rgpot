@@ -263,18 +263,6 @@ typedef struct rgpot_potential_t {
 } rgpot_potential_t;
 
 /**
- * Evaluations a potential handle has answered, split by origin.
- *
- * `computed` counts callback invocations; `served` counts gradients
- * answered from the fused energy-and-gradient result without invoking the
- * callback. A caller that charges evaluations chooses which field to bill.
- */
-typedef struct rgpot_eval_counts_t {
-  uint64_t computed;
-  uint64_t served;
-} rgpot_eval_counts_t;
-
-/**
  * Work done by the Hessian-vector entry points of one handle.
  */
 typedef struct rgpot_hvp_counts_t {
@@ -302,6 +290,18 @@ typedef struct rgpot_hvp_counts_t {
  */
 typedef struct RpcClient rgpot_rpc_client_t;
 #endif
+
+/**
+ * Evaluations a potential handle has answered, split by origin.
+ *
+ * `computed` counts callback invocations; `served` counts gradients
+ * answered from the fused energy-and-gradient result without invoking the
+ * callback. A caller that charges evaluations chooses which field to bill.
+ */
+typedef struct rgpot_eval_counts_t {
+  uint64_t computed;
+  uint64_t served;
+} rgpot_eval_counts_t;
 
 /**
  * Compatibility identity of the rgpot-core C ABI.
@@ -337,224 +337,6 @@ typedef enum rgpot_status_t (*HessianVectorCallback)(void *user_data,
                                                      const struct rgpot_force_input_t *input,
                                                      const double *direction,
                                                      double *hv_out);
-
-/**
- * Create a non-owning 2-D f64 tensor on CPU wrapping an existing buffer.
- *
- * The returned tensor borrows `data` — the caller must keep `data` alive
- * for the lifetime of the tensor.  Call `rgpot_tensor_free` when done.
- *
- * # Safety
- * `data` must point to at least `rows * cols` contiguous `f64` values.
- */
-DLManagedTensorVersioned *rgpot_tensor_cpu_f64_2d(double *data, int64_t rows, int64_t cols);
-
-/**
- * Create a non-owning 1-D i32 tensor on CPU wrapping an existing buffer.
- *
- * # Safety
- * `data` must point to at least `len` contiguous `c_int` values.
- */
-DLManagedTensorVersioned *rgpot_tensor_cpu_i32_1d(int *data, int64_t len);
-
-/**
- * Create a non-owning 2-D f64 tensor on CPU for a 3x3 matrix.
- *
- * Convenience wrapper — equivalent to `rgpot_tensor_cpu_f64_2d(data, 3, 3)`.
- *
- * # Safety
- * `data` must point to at least 9 contiguous `f64` values.
- */
-DLManagedTensorVersioned *rgpot_tensor_cpu_f64_matrix3(double *data);
-
-/**
- * Create an **owning** 2-D f64 tensor on CPU by copying data.
- *
- * The returned tensor owns a copy of the data — the caller may free the
- * original buffer after this call.  Call `rgpot_tensor_free` when done.
- *
- * Returns NULL, with a `rgpot_last_error()` message, when `data` is NULL,
- * `rows` or `cols` is negative, or `rows * cols` overflows.
- *
- * # Safety
- * `data` must point to at least `rows * cols` contiguous `f64` values.
- */
-DLManagedTensorVersioned *rgpot_tensor_owned_cpu_f64_2d(const double *data,
-                                                        int64_t rows,
-                                                        int64_t cols);
-
-/**
- * Free a DLPack tensor by invoking its deleter.
- *
- * If `tensor` is `NULL`, this is a no-op.
- *
- * # Safety
- * `tensor` must have been obtained from one of the `rgpot_tensor_*` creation
- * functions, or be a valid `DLManagedTensorVersioned` with a deleter.
- */
-void rgpot_tensor_free(DLManagedTensorVersioned *tensor);
-
-/**
- * Get the device of a DLPack tensor.
- *
- * For a NULL `tensor`, returns `{kDLCPU, -1}`; no real device has id -1.
- *
- * # Safety
- * `tensor` must be NULL or a valid `DLManagedTensorVersioned*`.
- */
-DLDevice rgpot_tensor_device(const DLManagedTensorVersioned *tensor);
-
-/**
- * Get the raw data pointer of a DLPack tensor.
- *
- * Returns NULL for a NULL `tensor`.
- *
- * # Safety
- * `tensor` must be NULL or a valid `DLManagedTensorVersioned*`.
- */
-const void *rgpot_tensor_data(const DLManagedTensorVersioned *tensor);
-
-/**
- * Get the shape array and number of dimensions of a DLPack tensor.
- *
- * Writes the number of dimensions to `*ndim_out` and returns a pointer to
- * the shape array (length `*ndim_out`).  For a NULL `tensor`, writes 0 to
- * `*ndim_out` and returns NULL; for a NULL `ndim_out`, returns NULL.
- *
- * # Safety
- * `tensor` and `ndim_out` must each be NULL or a valid pointer.
- */
-const int64_t *rgpot_tensor_shape(const DLManagedTensorVersioned *tensor, int32_t *ndim_out);
-
-/**
- * Retrieve a pointer to the last error message for the current thread.
- *
- * The pointer is valid until the next call to any `rgpot_*` function
- * on the same thread.
- *
- * # Safety
- * This is intended to be called from C. The returned pointer must not
- * be freed by the caller.
- */
-const char *rgpot_last_error(void);
-
-/**
- * The eindir ABI stamp of the `eindir_objective_t` base that
- * `rgpot_potential_t` embeds as its first member.
- *
- * A consumer that takes the potential as an eindir objective (rgmin's
- * `rgmin_minimize_eindir`, for one) passes this stamp to
- * `eindir_core_abi_compatible`, so a layout from a different eindir-core
- * revision is refused instead of read as the wrong struct.
- */
-eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
-
-/**
- * Return nonzero when the eindir-core compiled into this library can
- * consume an objective described by `stamp`.
- *
- * This is `eindir_core_abi_compatible` reached through rgpot, so a caller
- * that links only rgpot checks the stamp against the same eindir-core that
- * built the `eindir_objective_t` base. A null `stamp` is not compatible.
- *
- * # Safety
- *
- * `stamp` must be null or point to a readable `eindir_abi_stamp_t`.
- */
-int32_t rgpot_eindir_abi_compatible(const eindir_abi_stamp_t *stamp);
-
-#if defined(RGPOT_HAS_SCHEMA)
-/**
- * Install the `Capabilities` message of the peer behind `pot`, checked
- * against what this build speaks.
- *
- * A compatible peer is accepted. An incompatible one makes
- * `rgpot_potential_calculate`, `eindir_objective_eval` and
- * `eindir_objective_grad` on this handle fail before the callback runs: the
- * first returns `RGPOT_INVALID_PARAMETER`, the others
- * `EINDIR_INVALID_PARAMETER`, all with a `rgpot_last_error()` message of the
- * form `peer refused: <first mismatch>`. A handle that never receives a
- * message keeps the plain callback contract.
- *
- * `caps` points to `size` bytes of a flat Cap'n Proto `Capabilities`
- * message.
- *
- * # Safety
- *
- * `pot` must be NULL or a live handle, and `caps` NULL or `size` readable
- * bytes.
- */
-enum rgpot_status_t rgpot_potential_set_peer_capabilities(const struct rgpot_potential_t *pot,
-                                                          const uint8_t *caps,
-                                                          uintptr_t size);
-#endif
-
-/**
- * Read the computed and served counters of `pot` into `out`.
- *
- * # Safety
- *
- * `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`],
- * and `out` NULL or writable. NULL for either yields
- * `RGPOT_INVALID_PARAMETER`.
- */
-enum rgpot_status_t rgpot_potential_eval_counts(const struct rgpot_potential_t *pot,
-                                                struct rgpot_eval_counts_t *out);
-
-/**
- * Zero the counters of `pot`.
- *
- * # Safety
- *
- * `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`].
- */
-void rgpot_potential_reset_eval_counts(const struct rgpot_potential_t *pot);
-
-/**
- * Create a potential that is ALSO a valid eindir objective.
- *
- * The returned pointer is simultaneously a `rgpot_potential_t*` and (via
- * zero-cost cast to the first member) an `eindir_objective_t*`.
- *
- * - `callback`: the rgpot force/energy callback.
- * - `user_data` / `free_fn`: opaque context for the rgpot callback.
- * - `n_atoms`, `atomic_numbers`, `box_matrix`: molecular context.
- * - `bounds_low`, `bounds_high`: f64 arrays of length `n_atoms * 3`
- *   (may be NULL; defaults to [-50, 50] per dimension).
- *
- * The caller must eventually pass the returned pointer to
- * [`rgpot_potential_free`].
- *
- * # Safety
- *
- * `atomic_numbers` must be NULL or point to `n_atoms` readable `i32`
- * values, `box_matrix` NULL or 9 readable `f64` values, and each bound NULL
- * or `n_atoms * 3` readable `f64` values. `callback` and `free_fn` must be
- * safe to call with `user_data`.
- */
-struct rgpot_potential_t *rgpot_potential_new_eindir(PotentialCallback callback,
-                                                     void *user_data,
-                                                     void (*free_fn)(void*),
-                                                     uintptr_t n_atoms,
-                                                     const int32_t *atomic_numbers,
-                                                     const double *box_matrix,
-                                                     const double *bounds_low,
-                                                     const double *bounds_high);
-
-/**
- * Free a potential created by [`rgpot_potential_new_eindir`].
- *
- * Calls `pot_free_fn(pot_user_data)` if provided, frees all owned arrays,
- * then frees the struct.  Do NOT call `eindir_objective_free` on the embedded
- * base; call this function.
- *
- * # Safety
- *
- * `pot` must be NULL or a pointer returned by
- * [`rgpot_potential_new_eindir`] that has not been freed yet. The pointer is
- * invalid after the call.
- */
-void rgpot_potential_free_eindir(struct rgpot_potential_t *pot);
 
 /**
  * Create a `rgpot_force_input_t` from raw CPU arrays.
@@ -833,6 +615,224 @@ enum rgpot_status_t rgpot_rpc_calculate_hvp(rgpot_rpc_client_t *client,
  */
 void rgpot_rpc_client_free(rgpot_rpc_client_t *client);
 #endif
+
+/**
+ * The eindir ABI stamp of the `eindir_objective_t` base that
+ * `rgpot_potential_t` embeds as its first member.
+ *
+ * A consumer that takes the potential as an eindir objective (rgmin's
+ * `rgmin_minimize_eindir`, for one) passes this stamp to
+ * `eindir_core_abi_compatible`, so a layout from a different eindir-core
+ * revision is refused instead of read as the wrong struct.
+ */
+eindir_abi_stamp_t rgpot_eindir_abi_stamp(void);
+
+/**
+ * Return nonzero when the eindir-core compiled into this library can
+ * consume an objective described by `stamp`.
+ *
+ * This is `eindir_core_abi_compatible` reached through rgpot, so a caller
+ * that links only rgpot checks the stamp against the same eindir-core that
+ * built the `eindir_objective_t` base. A null `stamp` is not compatible.
+ *
+ * # Safety
+ *
+ * `stamp` must be null or point to a readable `eindir_abi_stamp_t`.
+ */
+int32_t rgpot_eindir_abi_compatible(const eindir_abi_stamp_t *stamp);
+
+#if defined(RGPOT_HAS_SCHEMA)
+/**
+ * Install the `Capabilities` message of the peer behind `pot`, checked
+ * against what this build speaks.
+ *
+ * A compatible peer is accepted. An incompatible one makes
+ * `rgpot_potential_calculate`, `eindir_objective_eval` and
+ * `eindir_objective_grad` on this handle fail before the callback runs: the
+ * first returns `RGPOT_INVALID_PARAMETER`, the others
+ * `EINDIR_INVALID_PARAMETER`, all with a `rgpot_last_error()` message of the
+ * form `peer refused: <first mismatch>`. A handle that never receives a
+ * message keeps the plain callback contract.
+ *
+ * `caps` points to `size` bytes of a flat Cap'n Proto `Capabilities`
+ * message.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live handle, and `caps` NULL or `size` readable
+ * bytes.
+ */
+enum rgpot_status_t rgpot_potential_set_peer_capabilities(const struct rgpot_potential_t *pot,
+                                                          const uint8_t *caps,
+                                                          uintptr_t size);
+#endif
+
+/**
+ * Read the computed and served counters of `pot` into `out`.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`],
+ * and `out` NULL or writable. NULL for either yields
+ * `RGPOT_INVALID_PARAMETER`.
+ */
+enum rgpot_status_t rgpot_potential_eval_counts(const struct rgpot_potential_t *pot,
+                                                struct rgpot_eval_counts_t *out);
+
+/**
+ * Zero the counters of `pot`.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live pointer from [`rgpot_potential_new_eindir`].
+ */
+void rgpot_potential_reset_eval_counts(const struct rgpot_potential_t *pot);
+
+/**
+ * Create a potential that is ALSO a valid eindir objective.
+ *
+ * The returned pointer is simultaneously a `rgpot_potential_t*` and (via
+ * zero-cost cast to the first member) an `eindir_objective_t*`.
+ *
+ * - `callback`: the rgpot force/energy callback.
+ * - `user_data` / `free_fn`: opaque context for the rgpot callback.
+ * - `n_atoms`, `atomic_numbers`, `box_matrix`: molecular context.
+ * - `bounds_low`, `bounds_high`: f64 arrays of length `n_atoms * 3`
+ *   (may be NULL; defaults to [-50, 50] per dimension).
+ *
+ * The caller must eventually pass the returned pointer to
+ * [`rgpot_potential_free`].
+ *
+ * # Safety
+ *
+ * `atomic_numbers` must be NULL or point to `n_atoms` readable `i32`
+ * values, `box_matrix` NULL or 9 readable `f64` values, and each bound NULL
+ * or `n_atoms * 3` readable `f64` values. `callback` and `free_fn` must be
+ * safe to call with `user_data`.
+ */
+struct rgpot_potential_t *rgpot_potential_new_eindir(PotentialCallback callback,
+                                                     void *user_data,
+                                                     void (*free_fn)(void*),
+                                                     uintptr_t n_atoms,
+                                                     const int32_t *atomic_numbers,
+                                                     const double *box_matrix,
+                                                     const double *bounds_low,
+                                                     const double *bounds_high);
+
+/**
+ * Free a potential created by [`rgpot_potential_new_eindir`].
+ *
+ * Calls `pot_free_fn(pot_user_data)` if provided, frees all owned arrays,
+ * then frees the struct.  Do NOT call `eindir_objective_free` on the embedded
+ * base; call this function.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a pointer returned by
+ * [`rgpot_potential_new_eindir`] that has not been freed yet. The pointer is
+ * invalid after the call.
+ */
+void rgpot_potential_free_eindir(struct rgpot_potential_t *pot);
+
+/**
+ * Retrieve a pointer to the last error message for the current thread.
+ *
+ * The pointer is valid until the next call to any `rgpot_*` function
+ * on the same thread.
+ *
+ * # Safety
+ * This is intended to be called from C. The returned pointer must not
+ * be freed by the caller.
+ */
+const char *rgpot_last_error(void);
+
+/**
+ * Create a non-owning 2-D f64 tensor on CPU wrapping an existing buffer.
+ *
+ * The returned tensor borrows `data` — the caller must keep `data` alive
+ * for the lifetime of the tensor.  Call `rgpot_tensor_free` when done.
+ *
+ * # Safety
+ * `data` must point to at least `rows * cols` contiguous `f64` values.
+ */
+DLManagedTensorVersioned *rgpot_tensor_cpu_f64_2d(double *data, int64_t rows, int64_t cols);
+
+/**
+ * Create a non-owning 1-D i32 tensor on CPU wrapping an existing buffer.
+ *
+ * # Safety
+ * `data` must point to at least `len` contiguous `c_int` values.
+ */
+DLManagedTensorVersioned *rgpot_tensor_cpu_i32_1d(int *data, int64_t len);
+
+/**
+ * Create a non-owning 2-D f64 tensor on CPU for a 3x3 matrix.
+ *
+ * Convenience wrapper — equivalent to `rgpot_tensor_cpu_f64_2d(data, 3, 3)`.
+ *
+ * # Safety
+ * `data` must point to at least 9 contiguous `f64` values.
+ */
+DLManagedTensorVersioned *rgpot_tensor_cpu_f64_matrix3(double *data);
+
+/**
+ * Create an **owning** 2-D f64 tensor on CPU by copying data.
+ *
+ * The returned tensor owns a copy of the data — the caller may free the
+ * original buffer after this call.  Call `rgpot_tensor_free` when done.
+ *
+ * Returns NULL, with a `rgpot_last_error()` message, when `data` is NULL,
+ * `rows` or `cols` is negative, or `rows * cols` overflows.
+ *
+ * # Safety
+ * `data` must point to at least `rows * cols` contiguous `f64` values.
+ */
+DLManagedTensorVersioned *rgpot_tensor_owned_cpu_f64_2d(const double *data,
+                                                        int64_t rows,
+                                                        int64_t cols);
+
+/**
+ * Free a DLPack tensor by invoking its deleter.
+ *
+ * If `tensor` is `NULL`, this is a no-op.
+ *
+ * # Safety
+ * `tensor` must have been obtained from one of the `rgpot_tensor_*` creation
+ * functions, or be a valid `DLManagedTensorVersioned` with a deleter.
+ */
+void rgpot_tensor_free(DLManagedTensorVersioned *tensor);
+
+/**
+ * Get the device of a DLPack tensor.
+ *
+ * For a NULL `tensor`, returns `{kDLCPU, -1}`; no real device has id -1.
+ *
+ * # Safety
+ * `tensor` must be NULL or a valid `DLManagedTensorVersioned*`.
+ */
+DLDevice rgpot_tensor_device(const DLManagedTensorVersioned *tensor);
+
+/**
+ * Get the raw data pointer of a DLPack tensor.
+ *
+ * Returns NULL for a NULL `tensor`.
+ *
+ * # Safety
+ * `tensor` must be NULL or a valid `DLManagedTensorVersioned*`.
+ */
+const void *rgpot_tensor_data(const DLManagedTensorVersioned *tensor);
+
+/**
+ * Get the shape array and number of dimensions of a DLPack tensor.
+ *
+ * Writes the number of dimensions to `*ndim_out` and returns a pointer to
+ * the shape array (length `*ndim_out`).  For a NULL `tensor`, writes 0 to
+ * `*ndim_out` and returns NULL; for a NULL `ndim_out`, returns NULL.
+ *
+ * # Safety
+ * `tensor` and `ndim_out` must each be NULL or a valid pointer.
+ */
+const int64_t *rgpot_tensor_shape(const DLManagedTensorVersioned *tensor, int32_t *ndim_out);
 
 /**
  * Full version string of the loaded library, as `MAJOR.MINOR.PATCH`.
