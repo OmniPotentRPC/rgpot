@@ -59,6 +59,10 @@ exact count for a variable-size surface.
 =reserved= must be zero.
 Version 1 has no size field: =magic= is at offset 0, =version= at offset 4,
 =atom_count= at offset 8 and =surface_id= at offset 16.
+Because =RGPOT_POTLIBC_CONFIG_VERSION= now names version 2, a version-1 source
+recompiled against the current header must use
+=RGPOT_POTLIBC_CONFIG_VERSION_V1= (and =RGPOT_POTLIBC_CONFIG_V1_SIZE=); setting
+=RgpotPotlibcConfigV1.version= to =RGPOT_POTLIBC_CONFIG_VERSION= is refused.
 The plugin calls =potlibc_create= in the first case and =potlibc_create_sized=
 in the second; it does not retry with another constructor.
 
