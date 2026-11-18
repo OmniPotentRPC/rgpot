@@ -755,6 +755,35 @@ fn missing_slot(name: &str) -> MdSessionError {
     MdSessionError::new(format!("MD session vtable has a null {name} callback"))
 }
 
+/// Entry point an MD engine plugin exports as `rgpot_md_session_engine_create`.
+pub type MdEngineCreateFn = unsafe extern "C" fn(
+    spec: *const c_void,
+    spec_len: usize,
+    options: *const c_char,
+    ops: *mut MdSessionOps,
+    ctx: *mut *mut c_void,
+    n_atoms: *mut usize,
+    err: *mut c_char,
+    err_len: usize,
+) -> i32;
+
+/// Release a context whose vtable [`CAbiMdSession::from_ops`] refused.
+///
+/// The `destroy` slot is read only when `struct_size` covers it and it is set;
+/// an engine that returned neither has no way to free the context.
+///
+/// # Safety
+///
+/// `ctx` must be the context the engine returned with `ops`.
+unsafe fn destroy_refused_context(ops: &MdSessionOps, ctx: NonNull<c_void>) {
+    if ops.struct_size < REQUIRED_OPS_SIZE {
+        return;
+    }
+    if let Some(destroy) = ops.destroy {
+        unsafe { destroy(ctx.as_ptr()) };
+    }
+}
+
 /// Rust owner for an engine-agnostic C ABI MD session vtable.
 pub struct CAbiMdSession {
     ctx: NonNull<c_void>,
@@ -826,35 +855,23 @@ impl CAbiMdSession {
         })
     }
 
-    /// Dynamically load an MD engine plugin exporting `rgpot_md_session_engine_create`.
+    /// Create a session through an engine's `rgpot_md_session_engine_create`.
+    ///
+    /// The vtable the engine fills is validated by [`Self::from_ops`]. When it
+    /// is refused, the context the engine returned is released through the
+    /// vtable's `destroy` callback if the vtable has one, so a refused engine
+    /// does not leak its session.
     ///
     /// # Safety
     ///
-    /// `engine_path` must point to a valid rgpot MD session plugin implementing
-    /// `rgpot_md_session_engine_create_fn` and `rgpot_md_session_ops`.
-    #[cfg(feature = "profile")]
-    pub unsafe fn open_engine(
-        engine_path: &std::path::Path,
+    /// `create` must implement `rgpot_md_session_engine_create_fn` as
+    /// documented in `external_potentials.h`, and what it returns must follow
+    /// the C ABI contract of `rgpot_md_session_ops`.
+    pub unsafe fn from_engine_create(
+        create: MdEngineCreateFn,
         spec: &[u8],
         options: Option<&str>,
     ) -> Result<Self, MdSessionError> {
-        type CreateFn = unsafe extern "C" fn(
-            spec: *const c_void,
-            spec_len: usize,
-            options: *const c_char,
-            ops: *mut MdSessionOps,
-            ctx: *mut *mut c_void,
-            n_atoms: *mut usize,
-            err: *mut c_char,
-            err_len: usize,
-        ) -> i32;
-
-        let library = unsafe { libloading::Library::new(engine_path) }
-            .map_err(|err| MdSessionError::new(format!("failed to load MD engine: {err}")))?;
-        let create = unsafe { library.get::<CreateFn>(b"rgpot_md_session_engine_create\0") }
-            .map_err(|err| {
-                MdSessionError::new(format!("missing rgpot_md_session_engine_create: {err}"))
-            })?;
         let c_options = match options {
             Some(text) => Some(
                 std::ffi::CString::new(text)
@@ -896,7 +913,35 @@ impl CAbiMdSession {
         let Some(ctx) = NonNull::new(ctx) else {
             return Err(MdSessionError::new("MD engine returned null session"));
         };
-        let mut session = unsafe { Self::from_ops(ctx, ops, n_atoms) }?;
+        match unsafe { Self::from_ops(ctx, ops, n_atoms) } {
+            Ok(session) => Ok(session),
+            Err(refusal) => {
+                unsafe { destroy_refused_context(&ops, ctx) };
+                Err(refusal)
+            }
+        }
+    }
+
+    /// Dynamically load an MD engine plugin exporting `rgpot_md_session_engine_create`.
+    ///
+    /// # Safety
+    ///
+    /// `engine_path` must point to a valid rgpot MD session plugin implementing
+    /// `rgpot_md_session_engine_create_fn` and `rgpot_md_session_ops`.
+    #[cfg(feature = "profile")]
+    pub unsafe fn open_engine(
+        engine_path: &std::path::Path,
+        spec: &[u8],
+        options: Option<&str>,
+    ) -> Result<Self, MdSessionError> {
+        let library = unsafe { libloading::Library::new(engine_path) }
+            .map_err(|err| MdSessionError::new(format!("failed to load MD engine: {err}")))?;
+        let create =
+            *unsafe { library.get::<MdEngineCreateFn>(b"rgpot_md_session_engine_create\0") }
+                .map_err(|err| {
+                    MdSessionError::new(format!("missing rgpot_md_session_engine_create: {err}"))
+                })?;
+        let mut session = unsafe { Self::from_engine_create(create, spec, options) }?;
         session._library = Some(library);
         Ok(session)
     }
@@ -2004,6 +2049,122 @@ mod tests {
         };
         drop(session);
         assert!(destroyed.load(Ordering::SeqCst));
+    }
+
+    static ENGINE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    static ENGINE_DESTROYS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static ENGINE_SHAPE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    static ENGINE_CTX: std::sync::atomic::AtomicPtr<MockCtx> =
+        std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+
+    const ENGINE_WELL_FORMED: usize = 0;
+    const ENGINE_NO_ATOMS: usize = 1;
+    const ENGINE_NULL_SLOT: usize = 2;
+    const ENGINE_SHORT_TABLE: usize = 3;
+    const ENGINE_FAILS: usize = 4;
+
+    unsafe extern "C" fn engine_destroy(ctx: *mut c_void) {
+        drop(unsafe { Box::from_raw(ctx.cast::<MockCtx>()) });
+        ENGINE_DESTROYS.fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn mock_engine_create(
+        _spec: *const c_void,
+        _spec_len: usize,
+        _options: *const c_char,
+        ops: *mut MdSessionOps,
+        ctx: *mut *mut c_void,
+        n_atoms: *mut usize,
+        err: *mut c_char,
+        err_len: usize,
+    ) -> i32 {
+        let shape = ENGINE_SHAPE.load(Ordering::SeqCst);
+        if shape == ENGINE_FAILS {
+            write_c_err(err, err_len, "mock engine refused the spec");
+            return 1;
+        }
+        let mut table = mock_ops();
+        table.destroy = Some(engine_destroy);
+        let mut atoms = 2;
+        match shape {
+            ENGINE_NO_ATOMS => atoms = 0,
+            ENGINE_NULL_SLOT => table.get_masses = None,
+            ENGINE_SHORT_TABLE => table.struct_size = std::mem::offset_of!(MdSessionOps, destroy),
+            _ => {}
+        }
+        let created = new_mock_ctx(&Arc::new(AtomicBool::new(false)));
+        ENGINE_CTX.store(created, Ordering::SeqCst);
+        unsafe {
+            *ops = table;
+            *ctx = created.cast();
+            *n_atoms = atoms;
+        }
+        0
+    }
+
+    fn serial_engine_test() -> std::sync::MutexGuard<'static, ()> {
+        match ENGINE_TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn open_mock_engine(shape: usize) -> (Result<CAbiMdSession, MdSessionError>, usize) {
+        ENGINE_SHAPE.store(shape, Ordering::SeqCst);
+        ENGINE_DESTROYS.store(0, Ordering::SeqCst);
+        ENGINE_CTX.store(std::ptr::null_mut(), Ordering::SeqCst);
+        let opened =
+            unsafe { CAbiMdSession::from_engine_create(mock_engine_create, b"spec", None) };
+        let destroys = ENGINE_DESTROYS.load(Ordering::SeqCst);
+        (opened, destroys)
+    }
+
+    #[test]
+    fn a_refused_engine_vtable_releases_the_context_it_returned() {
+        let _serial = serial_engine_test();
+
+        let (opened, destroys) = open_mock_engine(ENGINE_NO_ATOMS);
+        let message = opened.err().expect("zero atoms are refused").to_string();
+        assert!(message.contains("at least one atom"), "{message}");
+        assert_eq!(destroys, 1);
+
+        let (opened, destroys) = open_mock_engine(ENGINE_NULL_SLOT);
+        let message = opened.err().expect("a null slot is refused").to_string();
+        assert!(message.contains("get_masses"), "{message}");
+        assert_eq!(destroys, 1);
+    }
+
+    #[test]
+    fn an_engine_vtable_without_destroy_cannot_release_its_context() {
+        let _serial = serial_engine_test();
+
+        let (opened, destroys) = open_mock_engine(ENGINE_SHORT_TABLE);
+        let message = opened.err().expect("a short table is refused").to_string();
+        assert!(message.contains("too small"), "{message}");
+        assert_eq!(destroys, 0);
+        let leaked = ENGINE_CTX.swap(std::ptr::null_mut(), Ordering::SeqCst);
+        assert!(!leaked.is_null());
+        drop(unsafe { Box::from_raw(leaked) });
+    }
+
+    #[test]
+    fn a_well_formed_engine_opens_and_destroys_once() {
+        let _serial = serial_engine_test();
+
+        let (opened, destroys) = open_mock_engine(ENGINE_WELL_FORMED);
+        let session = opened.expect("a well-formed engine opens");
+        assert_eq!(destroys, 0);
+        assert_eq!(session.dof(), 6);
+        drop(session);
+        assert_eq!(ENGINE_DESTROYS.load(Ordering::SeqCst), 1);
+
+        let (opened, destroys) = open_mock_engine(ENGINE_FAILS);
+        let message = opened
+            .err()
+            .expect("a failing engine is refused")
+            .to_string();
+        assert_eq!(message, "mock engine refused the spec");
+        assert_eq!(destroys, 0);
     }
 
     #[test]
