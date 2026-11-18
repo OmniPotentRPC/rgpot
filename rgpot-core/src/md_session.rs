@@ -588,75 +588,92 @@ pub struct MdLangevinResult {
 }
 
 /// C ABI vtable matching `rgpot_md_session_ops` in `external_potentials.h`.
+///
+/// Every callback is an `Option` of a function pointer, which has the layout
+/// of a nullable C function pointer. [`CAbiMdSession::from_ops`] refuses a
+/// vtable whose required callbacks are null or whose `struct_size` ends before
+/// them.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct MdSessionOps {
     /// Byte size of this struct (`std::mem::size_of::<MdSessionOps>()`).
     pub struct_size: usize,
     /// Set flat positions in Angstrom.
-    pub set_positions: unsafe extern "C" fn(
-        ctx: *mut c_void,
-        positions: *const f64,
-        n3: usize,
-        err: *mut c_char,
-        err_len: usize,
-    ) -> i32,
+    pub set_positions: Option<
+        unsafe extern "C" fn(
+            ctx: *mut c_void,
+            positions: *const f64,
+            n3: usize,
+            err: *mut c_char,
+            err_len: usize,
+        ) -> i32,
+    >,
     /// Set flat velocities in Angstrom/ps.
-    pub set_velocities: unsafe extern "C" fn(
-        ctx: *mut c_void,
-        velocities: *const f64,
-        n3: usize,
-        err: *mut c_char,
-        err_len: usize,
-    ) -> i32,
+    pub set_velocities: Option<
+        unsafe extern "C" fn(
+            ctx: *mut c_void,
+            velocities: *const f64,
+            n3: usize,
+            err: *mut c_char,
+            err_len: usize,
+        ) -> i32,
+    >,
     /// Step projected BAOAB Langevin dynamics.
-    pub step_langevin: unsafe extern "C" fn(
-        ctx: *mut c_void,
-        k_t: f64,
-        friction: f64,
-        time_step: f64,
-        plane_point: *const f64,
-        plane_normal: *const f64,
-        wall_points: *const f64,
-        wall_normals: *const f64,
-        n_walls: usize,
-        n3: usize,
-        steps: usize,
-        seed: u64,
-        wall_hits: *mut u64,
-        err: *mut c_char,
-        err_len: usize,
-    ) -> i32,
+    pub step_langevin: Option<
+        unsafe extern "C" fn(
+            ctx: *mut c_void,
+            k_t: f64,
+            friction: f64,
+            time_step: f64,
+            plane_point: *const f64,
+            plane_normal: *const f64,
+            wall_points: *const f64,
+            wall_normals: *const f64,
+            n_walls: usize,
+            n3: usize,
+            steps: usize,
+            seed: u64,
+            wall_hits: *mut u64,
+            err: *mut c_char,
+            err_len: usize,
+        ) -> i32,
+    >,
     /// Step unconstrained NVE dynamics.
-    pub step_nve: unsafe extern "C" fn(
-        ctx: *mut c_void,
-        time_step: f64,
-        steps: usize,
-        err: *mut c_char,
-        err_len: usize,
-    ) -> i32,
+    pub step_nve: Option<
+        unsafe extern "C" fn(
+            ctx: *mut c_void,
+            time_step: f64,
+            steps: usize,
+            err: *mut c_char,
+            err_len: usize,
+        ) -> i32,
+    >,
     /// Read positions, velocities, forces, and energies.
-    pub get_state: unsafe extern "C" fn(
-        ctx: *mut c_void,
-        positions: *mut f64,
-        velocities: *mut f64,
-        forces: *mut f64,
-        n3: usize,
-        potential_energy: *mut f64,
-        kinetic_energy: *mut f64,
-        err: *mut c_char,
-        err_len: usize,
-    ) -> i32,
+    pub get_state: Option<
+        unsafe extern "C" fn(
+            ctx: *mut c_void,
+            positions: *mut f64,
+            velocities: *mut f64,
+            forces: *mut f64,
+            n3: usize,
+            potential_energy: *mut f64,
+            kinetic_energy: *mut f64,
+            err: *mut c_char,
+            err_len: usize,
+        ) -> i32,
+    >,
     /// Read particle masses in amu.
-    pub get_masses: unsafe extern "C" fn(
-        ctx: *mut c_void,
-        masses: *mut f64,
-        n_atoms: usize,
-        err: *mut c_char,
-        err_len: usize,
-    ) -> i32,
+    pub get_masses: Option<
+        unsafe extern "C" fn(
+            ctx: *mut c_void,
+            masses: *mut f64,
+            n_atoms: usize,
+            err: *mut c_char,
+            err_len: usize,
+        ) -> i32,
+    >,
     /// Destroy the backend context.
-    pub destroy: unsafe extern "C" fn(ctx: *mut c_void),
+    pub destroy: Option<unsafe extern "C" fn(ctx: *mut c_void)>,
     /// Optional: set the periodic box in Angstrom.
     pub set_periodic_box: Option<
         unsafe extern "C" fn(
@@ -713,6 +730,31 @@ pub struct MdSessionOps {
     >,
 }
 
+/// Bytes of the vtable up to and including the last required callback.
+const REQUIRED_OPS_SIZE: usize = std::mem::offset_of!(MdSessionOps, destroy)
+    + std::mem::size_of::<Option<unsafe extern "C" fn(*mut c_void)>>();
+
+/// Name of the first required callback that is null, if any.
+fn first_missing_required_slot(ops: &MdSessionOps) -> Option<&'static str> {
+    let slots: [(&'static str, bool); 7] = [
+        ("set_positions", ops.set_positions.is_some()),
+        ("set_velocities", ops.set_velocities.is_some()),
+        ("step_langevin", ops.step_langevin.is_some()),
+        ("step_nve", ops.step_nve.is_some()),
+        ("get_state", ops.get_state.is_some()),
+        ("get_masses", ops.get_masses.is_some()),
+        ("destroy", ops.destroy.is_some()),
+    ];
+    slots
+        .into_iter()
+        .find(|(_, present)| !present)
+        .map(|(name, _)| name)
+}
+
+fn missing_slot(name: &str) -> MdSessionError {
+    MdSessionError::new(format!("MD session vtable has a null {name} callback"))
+}
+
 /// Rust owner for an engine-agnostic C ABI MD session vtable.
 pub struct CAbiMdSession {
     ctx: NonNull<c_void>,
@@ -736,12 +778,15 @@ impl CAbiMdSession {
         ops: MdSessionOps,
         n_atoms: usize,
     ) -> Result<Self, MdSessionError> {
-        let required = std::mem::offset_of!(MdSessionOps, destroy)
-            + std::mem::size_of::<unsafe extern "C" fn(*mut c_void)>();
-        if ops.struct_size < required {
+        if ops.struct_size < REQUIRED_OPS_SIZE {
             return Err(MdSessionError::new(
                 "MD session vtable struct_size is too small",
             ));
+        }
+        if let Some(name) = first_missing_required_slot(&ops) {
+            return Err(MdSessionError::new(format!(
+                "MD session vtable has a null {name} callback"
+            )));
         }
         let mut ops = ops;
         let slot_size = std::mem::size_of::<*const c_void>();
@@ -821,6 +866,9 @@ impl CAbiMdSession {
             Some(value) => value.as_ptr(),
             None => std::ptr::null(),
         };
+        // Zero is a valid vtable: every slot is an `Option` of a function
+        // pointer, so an engine that fills only the leading part leaves the
+        // rest null.
         let mut ops = std::mem::MaybeUninit::<MdSessionOps>::zeroed();
         let mut ctx: *mut c_void = std::ptr::null_mut();
         let mut n_atoms: usize = 0;
@@ -856,7 +904,9 @@ impl CAbiMdSession {
 
 impl Drop for CAbiMdSession {
     fn drop(&mut self) {
-        unsafe { (self.ops.destroy)(self.ctx.as_ptr()) };
+        if let Some(destroy) = self.ops.destroy {
+            unsafe { destroy(self.ctx.as_ptr()) };
+        }
     }
 }
 
@@ -895,8 +945,11 @@ impl MdSession for CAbiMdSession {
     fn masses(&self) -> Result<Vec<f64>, MdSessionError> {
         let mut masses = vec![0.0; self.n_atoms];
         let mut error = [0 as c_char; 1024];
+        let Some(call) = self.ops.get_masses else {
+            return Err(missing_slot("get_masses"));
+        };
         let status = unsafe {
-            (self.ops.get_masses)(
+            call(
                 self.ctx.as_ptr(),
                 masses.as_mut_ptr(),
                 self.n_atoms,
@@ -921,8 +974,11 @@ impl MdSession for CAbiMdSession {
         }
         check_finite_slice(positions, "positions")?;
         let mut error = [0 as c_char; 1024];
+        let Some(call) = self.ops.set_positions else {
+            return Err(missing_slot("set_positions"));
+        };
         let status = unsafe {
-            (self.ops.set_positions)(
+            call(
                 self.ctx.as_ptr(),
                 positions.as_ptr(),
                 positions.len(),
@@ -947,8 +1003,11 @@ impl MdSession for CAbiMdSession {
         }
         check_finite_slice(velocities, "velocities")?;
         let mut error = [0 as c_char; 1024];
+        let Some(call) = self.ops.set_velocities else {
+            return Err(missing_slot("set_velocities"));
+        };
         let status = unsafe {
-            (self.ops.set_velocities)(
+            call(
                 self.ctx.as_ptr(),
                 velocities.as_ptr(),
                 velocities.len(),
@@ -1017,8 +1076,11 @@ impl MdSession for CAbiMdSession {
 
         let mut error = [0 as c_char; 1024];
         let mut hits: u64 = 0;
+        let Some(call) = self.ops.step_langevin else {
+            return Err(missing_slot("step_langevin"));
+        };
         let status = unsafe {
-            (self.ops.step_langevin)(
+            call(
                 self.ctx.as_ptr(),
                 config.k_t,
                 config.friction,
@@ -1050,8 +1112,11 @@ impl MdSession for CAbiMdSession {
             ));
         }
         let mut error = [0 as c_char; 1024];
+        let Some(call) = self.ops.step_nve else {
+            return Err(missing_slot("step_nve"));
+        };
         let status = unsafe {
-            (self.ops.step_nve)(
+            call(
                 self.ctx.as_ptr(),
                 time_step,
                 steps,
@@ -1234,8 +1299,11 @@ impl MdSession for CAbiMdSession {
             ..MdSessionState::default()
         };
         let mut error = [0 as c_char; 1024];
+        let Some(call) = self.ops.get_state else {
+            return Err(missing_slot("get_state"));
+        };
         let status = unsafe {
-            (self.ops.get_state)(
+            call(
                 self.ctx.as_ptr(),
                 state.positions.as_mut_ptr(),
                 state.velocities.as_mut_ptr(),
@@ -1545,13 +1613,13 @@ mod tests {
     fn mock_ops() -> MdSessionOps {
         MdSessionOps {
             struct_size: std::mem::size_of::<MdSessionOps>(),
-            set_positions: mock_set_positions,
-            set_velocities: mock_set_velocities,
-            step_langevin: mock_step_langevin,
-            step_nve: mock_step_nve,
-            get_state: mock_get_state,
-            get_masses: mock_get_masses,
-            destroy: mock_destroy,
+            set_positions: Some(mock_set_positions),
+            set_velocities: Some(mock_set_velocities),
+            step_langevin: Some(mock_step_langevin),
+            step_nve: Some(mock_step_nve),
+            get_state: Some(mock_get_state),
+            get_masses: Some(mock_get_masses),
+            destroy: Some(mock_destroy),
             set_periodic_box: None,
             get_periodic_box: None,
             initialize: None,
@@ -1861,6 +1929,81 @@ mod tests {
         assert!(session
             .run_langevin(&cfg, Some((&plane.0[..3], &plane.1)), &[], &[], 1)
             .is_err());
+    }
+
+    fn new_mock_ctx(destroyed: &Arc<AtomicBool>) -> *mut MockCtx {
+        Box::into_raw(Box::new(MockCtx {
+            positions: vec![0.0; 6],
+            velocities: vec![0.0; 6],
+            masses: vec![4.0, 39.9],
+            last_seed: 0,
+            last_k_t: 0.0,
+            last_time_step: 0.0,
+            last_n_walls: 0,
+            last_wall_mode: -1,
+            cell: [0.0; 9],
+            fail_next: false,
+            nlist_calls: 0,
+            destroyed: Arc::clone(destroyed),
+        }))
+    }
+
+    #[test]
+    fn a_null_required_callback_is_refused_by_name() {
+        type Clear = fn(&mut MdSessionOps);
+        let cases: [(&str, Clear); 7] = [
+            ("set_positions", |ops| ops.set_positions = None),
+            ("set_velocities", |ops| ops.set_velocities = None),
+            ("step_langevin", |ops| ops.step_langevin = None),
+            ("step_nve", |ops| ops.step_nve = None),
+            ("get_state", |ops| ops.get_state = None),
+            ("get_masses", |ops| ops.get_masses = None),
+            ("destroy", |ops| ops.destroy = None),
+        ];
+        for (name, clear) in cases {
+            let destroyed = Arc::new(AtomicBool::new(false));
+            let ctx = new_mock_ctx(&destroyed);
+            let mut ops = mock_ops();
+            clear(&mut ops);
+            let refused =
+                unsafe { CAbiMdSession::from_ops(NonNull::new_unchecked(ctx.cast()), ops, 2) };
+            let message = refused.err().expect("a null slot is refused").to_string();
+            assert!(message.contains(name), "{name}: {message}");
+            assert!(message.contains("null"), "{name}: {message}");
+            assert!(!destroyed.load(Ordering::SeqCst));
+            drop(unsafe { Box::from_raw(ctx) });
+        }
+    }
+
+    #[test]
+    fn a_vtable_that_ends_before_destroy_is_refused() {
+        for size in [
+            0,
+            std::mem::size_of::<usize>(),
+            REQUIRED_OPS_SIZE - std::mem::size_of::<usize>(),
+            REQUIRED_OPS_SIZE - 1,
+        ] {
+            let destroyed = Arc::new(AtomicBool::new(false));
+            let ctx = new_mock_ctx(&destroyed);
+            let mut ops = mock_ops();
+            ops.struct_size = size;
+            let refused =
+                unsafe { CAbiMdSession::from_ops(NonNull::new_unchecked(ctx.cast()), ops, 2) };
+            let message = refused
+                .err()
+                .expect("a short vtable is refused")
+                .to_string();
+            assert!(message.contains("too small"), "{size}: {message}");
+            drop(unsafe { Box::from_raw(ctx) });
+        }
+        let destroyed = Arc::new(AtomicBool::new(false));
+        let (session, _ctx) = {
+            let mut ops = mock_ops();
+            ops.struct_size = REQUIRED_OPS_SIZE;
+            mock_session(ops, &destroyed)
+        };
+        drop(session);
+        assert!(destroyed.load(Ordering::SeqCst));
     }
 
     #[test]
