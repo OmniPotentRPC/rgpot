@@ -80,14 +80,14 @@ void setForceLastError(const char *reason) noexcept {
 
 const char *forceLastError() noexcept { return g_force_error.c_str(); }
 
-int rejectInputBuffers(const ForceInput &in, bool periodic) {
+int rejectInputBuffers(const ForceInput &in, bool periodic, bool needsSpecies) {
   if (in.nAtoms == 0) {
     return fail("invalid parameter: nAtoms must be positive");
   }
   if (in.pos == nullptr) {
     return fail("invalid parameter: positions is null");
   }
-  if (in.atmnrs == nullptr) {
+  if (needsSpecies && in.atmnrs == nullptr) {
     return fail("invalid parameter: atomic numbers are null");
   }
   if (periodic && in.box == nullptr) {
@@ -96,7 +96,8 @@ int rejectInputBuffers(const ForceInput &in, bool periodic) {
   return 0;
 }
 
-int rejectForceCall(const ForceInput &in, const ForceOut *out, bool periodic) {
+int rejectForceCall(const ForceInput &in, const ForceOut *out, bool periodic,
+                    bool needsSpecies) {
   // Before the force pointer. A zero-atom call often has no force
   // allocation, and that null must not become the reported error.
   if (in.nAtoms == 0) {
@@ -105,17 +106,19 @@ int rejectForceCall(const ForceInput &in, const ForceOut *out, bool periodic) {
   if (out == nullptr || out->F == nullptr) {
     return fail("invalid parameter: forces are null");
   }
-  return rejectInputBuffers(in, periodic);
+  return rejectInputBuffers(in, periodic, needsSpecies);
 }
 
-void guardInputBuffers(const ForceInput &in, bool periodic) {
-  if (rejectInputBuffers(in, periodic) != 0) {
+void guardInputBuffers(const ForceInput &in, bool periodic,
+                       bool needsSpecies) {
+  if (rejectInputBuffers(in, periodic, needsSpecies) != 0) {
     throw std::invalid_argument(forceLastError());
   }
 }
 
-void guardForceCall(const ForceInput &in, const ForceOut *out, bool periodic) {
-  if (rejectForceCall(in, out, periodic) != 0) {
+void guardForceCall(const ForceInput &in, const ForceOut *out, bool periodic,
+                    bool needsSpecies) {
+  if (rejectForceCall(in, out, periodic, needsSpecies) != 0) {
     throw std::invalid_argument(forceLastError());
   }
 }

@@ -373,6 +373,7 @@ void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
 void EAMTablePot::forcePerAtom(const ForceInput &in, ForceOut *out,
                                const PerAtomOut &atoms) const {
+  guardForceCall(in, out, kernelPeriodic(*this));
   clearPerAtom(atoms, in.nAtoms);
   compute(in, out, &atoms);
 }

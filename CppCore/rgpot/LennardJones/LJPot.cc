@@ -101,6 +101,7 @@ void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 }
 
 void LJPot::forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const {
+  guardForceCall(in, out, kernelPeriodic(*this), false);
   clearPerAtom(atoms, in.nAtoms);
   compute(in, out, &atoms);
 }

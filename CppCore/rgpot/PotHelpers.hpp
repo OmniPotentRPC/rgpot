@@ -109,7 +109,8 @@ const char *forceLastError() noexcept;
  * null cell when @a periodic is set. A usable input returns 0 and leaves
  * the stored message unchanged.
  */
-int rejectInputBuffers(const ForceInput &in, bool periodic);
+int rejectInputBuffers(const ForceInput &in, bool periodic,
+                       bool needsSpecies = true);
 
 /**
  * @brief Reject a force call that would read a null buffer.
@@ -120,17 +121,21 @@ int rejectInputBuffers(const ForceInput &in, bool periodic);
  * After that, a null @a out or force array, a null position or species
  * pointer, or a null cell when @a periodic is set, stores a message and
  * returns @c kInvalidParameter. A usable call returns 0 and leaves the
- * stored message unchanged.
+ * stored message unchanged. A kernel that never reads the species passes
+ * @a needsSpecies false and may be called with a null species pointer.
  */
-int rejectForceCall(const ForceInput &in, const ForceOut *out, bool periodic);
+int rejectForceCall(const ForceInput &in, const ForceOut *out, bool periodic,
+                    bool needsSpecies = true);
 
 /// Throw @c std::invalid_argument with the stored message when
 /// @c rejectInputBuffers rejects @a in.
-void guardInputBuffers(const ForceInput &in, bool periodic);
+void guardInputBuffers(const ForceInput &in, bool periodic,
+                       bool needsSpecies = true);
 
 /// Throw @c std::invalid_argument with the stored message when
 /// @c rejectForceCall rejects @a in and @a out.
-void guardForceCall(const ForceInput &in, const ForceOut *out, bool periodic);
+void guardForceCall(const ForceInput &in, const ForceOut *out, bool periodic,
+                    bool needsSpecies = true);
 
 /// @c pot.caps().periodic when the kernel reports it, otherwise true,
 /// which is the default of @c PotCaps.
