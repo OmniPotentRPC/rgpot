@@ -282,10 +282,12 @@ Details: =CppCore/rgpot/NWChemPot/README.md=.
 rgpot's internal unit system is energy in eV, length in Angstrom, and force in
 eV/Angstrom.
 
-- Compile-time constants (CODATA 2018): =BOHR_TO_ANGSTROM=, =HARTREE_TO_EV=,
-  =HARTREE_BOHR_TO_EV_ANGSTROM=,
-  =NEG_GRAD_TO_FORCE=, =HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3=, =KB_HARTREE= and
-  =KB_EV=.
+- Compile-time constants (CODATA 2018 and SI 2019): =BOLTZMANN_CONSTANT_J_PER_K=,
+  =ELEMENTARY_CHARGE_C=, =HARTREE_ENERGY_J=, =REDUCED_PLANCK_CONSTANT_J_S=,
+  =BOHR_TO_ANGSTROM=, =HARTREE_TO_EV=, =HARTREE_BOHR_TO_EV_ANGSTROM=,
+  =NEG_GRAD_TO_FORCE=, =HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3=, =KB_HARTREE=,
+  =KB_EV=, =ELECTRON_MASS_IN_DALTON=, =DALTON_IN_ELECTRON_MASSES= and
+  =ATOMIC_UNIT_OF_TIME_S=.
 Backends that work in bohr and hartree, such as =XTBPot= and =TBLitePot=, use
 them.
 - Runtime expression parser (=unit_conversion_factor(from, to)=): a
