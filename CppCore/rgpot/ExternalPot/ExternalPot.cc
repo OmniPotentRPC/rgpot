@@ -1026,7 +1026,7 @@ int rgpot_md_session_get_neighbors(rgpot_md_session *session,
     if (session == nullptr || request == nullptr) {
       throw std::invalid_argument("MD neighbor query needs a session and request");
     }
-    if (session->ops.get_neighbors == nullptr) {
+    if (!RGPOT_MD_OPS_HAS(&session->ops, get_neighbors)) {
       write_err(err, err_len, "MD engine does not expose neighbor queries");
       return RGPOT_MD_NLIST_UNSUPPORTED;
     }
@@ -1036,7 +1036,7 @@ int rgpot_md_session_get_neighbors(rgpot_md_session *session,
         status == RGPOT_MD_NLIST_ERROR) {
       return status;
     }
-    return status == 0 ? RGPOT_MD_NLIST_OK : RGPOT_MD_NLIST_ERROR;
+    return RGPOT_MD_NLIST_ERROR;
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
     return RGPOT_MD_NLIST_ERROR;
@@ -1055,7 +1055,7 @@ int rgpot_md_session_set_neighbors(rgpot_md_session *session,
     if (session == nullptr || request == nullptr) {
       throw std::invalid_argument("MD neighbor setter needs a session and request");
     }
-    if (session->ops.set_neighbors == nullptr) {
+    if (!RGPOT_MD_OPS_HAS(&session->ops, set_neighbors)) {
       write_err(err, err_len, "MD engine does not accept supplied neighbors");
       return RGPOT_MD_NLIST_UNSUPPORTED;
     }
@@ -1064,7 +1064,7 @@ int rgpot_md_session_set_neighbors(rgpot_md_session *session,
         status == RGPOT_MD_NLIST_ERROR) {
       return status;
     }
-    return status == 0 ? RGPOT_MD_NLIST_OK : RGPOT_MD_NLIST_ERROR;
+    return RGPOT_MD_NLIST_ERROR;
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
     return RGPOT_MD_NLIST_ERROR;
