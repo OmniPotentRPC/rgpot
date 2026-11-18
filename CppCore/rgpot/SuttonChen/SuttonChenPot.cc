@@ -198,7 +198,8 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   const bool rows = n_size >= kTeamMinAtoms;
   const int nt = nlist::teamSize(n_size);
   const bool by_row = rows && (nt > 1 || (stream && !neighbours_.allPairs()));
-  const bool collect_pairs = !by_row && !rows && n_size >= 256;
+  const bool collect_pairs =
+      !by_row && !rows && n_size >= 256 && !stream && !neighbours_.allPairs();
   if (collect_pairs) {
     nlist::collectHalf(neighbours_, 0, n_atoms, cutoff2, pair_first_, pair_second_,
                        pair_dx_, pair_dy_, pair_dz_, pair_r2_, nlist::CutoffEdge::Inclusive);
