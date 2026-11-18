@@ -20,8 +20,8 @@
  * cutoff truncates pairs at that distance with no energy shift.
  *
  * A coincident pair is not a minimum. rgpot_gupta sets the energy to
- * +infinity and returns. Neighbour and staged evaluation sets the energy
- * to NaN and adds no pair force, as LJPot does.
+ * +infinity and GuptaPot poisons its forces with NaN; neighbour and staged
+ * evaluation sets both the energy and the forces to NaN.
  */
 
 // clang-format off
