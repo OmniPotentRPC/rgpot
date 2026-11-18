@@ -623,13 +623,17 @@ if openmm_opt.allowed() and python3_engines.found()
             )
             external_env.set('RGPOT_OPENMM_ENGINE', openmm_engine.full_path())
             external_env.set('OPENMM_PLUGIN_DIR', openmm_libdir / 'plugins')
-            # Session tests need only the engine path; plugin loading leaks PME
-            # factory registrations that LSan reports under ASan.
+            # Every OpenMM test runs here. The plugin directory is named
+            # because OpenMM's compiled-in default may not exist, and
+            # LeakSanitizer reports OpenMM's own start-up registrations in a
+            # process that loads the engine library without loading a
+            # plugin directory.
             openmm_session_env = environment()
             openmm_session_env.set(
                 'RGPOT_OPENMM_ENGINE',
                 openmm_engine.full_path(),
             )
+            openmm_session_env.set('OPENMM_PLUGIN_DIR', openmm_libdir / 'plugins')
             openmm_session_test = executable(
                 'test_openmm_session',
                 files('openmm/test_openmm_session.cpp'),
@@ -669,7 +673,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 'openmm_analytic',
                 openmm_analytic_test,
                 args: [openmm_engine.full_path()],
-                env: external_env,
+                env: openmm_session_env,
                 timeout: 300,
             )
             openmm_abi_test = executable(
@@ -685,7 +689,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 'openmm_abi',
                 openmm_abi_test,
                 args: [openmm_engine.full_path()],
-                env: external_env,
+                env: openmm_session_env,
                 timeout: 120,
             )
             foreach review_case : [
