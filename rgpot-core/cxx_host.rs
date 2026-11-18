@@ -105,7 +105,7 @@ fn macos_sdkroot() -> Option<String> {
     }
 }
 
-fn configure_compile_env(cmd: &mut Command) {
+pub fn configure_compile_env(cmd: &mut Command) {
     if cfg!(target_os = "macos") {
         if conda_darwin_sysroot_missing() {
             cmd.env_remove("CONDA_BUILD_SYSROOT");
