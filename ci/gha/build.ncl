@@ -303,6 +303,10 @@ in
         "%
         & { name = "Run Rust tests (nextest)" },
         S.run_pixi m%"
+          bash scripts/check_header_drift.sh
+        "%
+        & { name = "Check the C header is not stale" },
+        S.run_pixi m%"
           cargo test --doc -p rgpot-core
         "%
         & { name = "Run Rust doc-tests" },
