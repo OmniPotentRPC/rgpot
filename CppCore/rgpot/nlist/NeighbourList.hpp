@@ -281,12 +281,17 @@ inline void visitHalf(const Neighbours &cells, std::int64_t begin, std::int64_t 
   cells.forHalf(begin, end, std::forward<Fn>(fn));
 }
 
+/// Whether collectHalf keeps a pair whose squared distance equals cutoff^2.
+enum class CutoffEdge { Exclusive, Inclusive };
+
 /// Gather half-list pairs into contiguous arrays, filtering by cutoff^2.
+/// `edge` picks whether a pair at exactly the cutoff stays, so each caller
+/// keeps the comparison its other paths use.
 inline void collectHalf(const Neighbours &cells, std::int64_t begin, std::int64_t end,
                         double cutoff2, std::vector<std::int32_t> &first,
                         std::vector<std::int32_t> &second, std::vector<double> &dx,
                         std::vector<double> &dy, std::vector<double> &dz,
-                        std::vector<double> &r2) {
+                        std::vector<double> &r2, CutoffEdge edge = CutoffEdge::Exclusive) {
   first.clear();
   second.clear();
   dx.clear();
@@ -296,7 +301,8 @@ inline void collectHalf(const Neighbours &cells, std::int64_t begin, std::int64_
   visitHalf(cells, begin, end,
             [&](std::int32_t i, std::int32_t j, double x, double y, double z,
                 double d2) {
-              if (!(d2 > 0.0) || !(d2 < cutoff2)) {
+              const bool inside = edge == CutoffEdge::Inclusive ? d2 <= cutoff2 : d2 < cutoff2;
+              if (!(d2 > 0.0) || !inside) {
                 return;
               }
               first.push_back(i);

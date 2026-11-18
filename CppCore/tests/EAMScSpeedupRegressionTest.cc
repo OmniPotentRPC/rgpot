@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -93,6 +94,76 @@ std::vector<std::vector<double>> frames(const std::vector<double> &base, double 
   return out;
 }
 
+struct Eval {
+  double energy = 0.0;
+  std::vector<double> forces;
+};
+
+std::uint64_t evalBits(const Eval &e) {
+  std::uint64_t bits = 1469598103934665603ULL;
+  bits = fnv(bits, &e.energy, sizeof(e.energy));
+  return fnv(bits, e.forces.data(), e.forces.size() * sizeof(double));
+}
+
+/// Energy and forces of the Sutton-Chen sums over every pair with r <= cutoff,
+/// by the minimum image when periodic.
+Eval scReference(const rgpot::SuttonChenConfig &cfg, const std::vector<double> &pos,
+                 const double *box) {
+  const std::size_t n = pos.size() / 3;
+  const double cutoff2 = cfg.cutoff * cfg.cutoff;
+  Eval r;
+  r.forces.assign(pos.size(), 0.0);
+  struct Pair {
+    std::size_t i, j;
+    double d[3];
+    double r2;
+  };
+  std::vector<Pair> pairs;
+  std::vector<double> rho(n, 0.0);
+  double epair = 0.0;
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      Pair p{i, j, {}, 0.0};
+      for (int k = 0; k < 3; ++k) {
+        double d = pos[3 * i + k] - pos[3 * j + k];
+        if (cfg.periodic) {
+          d -= box[4 * k] * std::round(d / box[4 * k]);
+        }
+        p.d[k] = d;
+        p.r2 += d * d;
+      }
+      if (p.r2 > cutoff2) {
+        continue;
+      }
+      const double ar = cfg.a / std::sqrt(p.r2);
+      rho[i] += std::pow(ar, cfg.m);
+      rho[j] += std::pow(ar, cfg.m);
+      epair += cfg.epsilon * std::pow(ar, cfg.n);
+      pairs.push_back(p);
+    }
+  }
+  double eemb = 0.0;
+  std::vector<double> weight(n, 0.0);
+  for (std::size_t i = 0; i < n; ++i) {
+    if (rho[i] > 0.0) {
+      eemb -= cfg.epsilon * cfg.c * std::sqrt(rho[i]);
+      weight[i] = cfg.epsilon * cfg.c / (2.0 * std::sqrt(rho[i]));
+    }
+  }
+  for (const Pair &p : pairs) {
+    const double ar = cfg.a / std::sqrt(p.r2);
+    const double fscale = (cfg.epsilon * cfg.n * std::pow(ar, cfg.n) -
+                           cfg.m * std::pow(ar, cfg.m) * (weight[p.i] + weight[p.j])) /
+                          p.r2;
+    for (int k = 0; k < 3; ++k) {
+      r.forces[3 * p.i + k] += fscale * p.d[k];
+      r.forces[3 * p.j + k] -= fscale * p.d[k];
+    }
+  }
+  r.energy = epair + eemb;
+  return r;
+}
+
 } // namespace
 
 TEST_CASE("EAM and SC benchmark geometries keep the stored base fingerprints",
@@ -173,3 +244,73 @@ TEST_CASE("EAM and SC benchmark geometries keep the stored base fingerprints",
     }
   }
 }
+
+TEST_CASE("Sutton-Chen keeps pairs at exactly the cutoff on every path",
+          "[SuttonChen][regression]") {
+  // A simple cubic grid of spacing 2 puts every nearest pair at r^2 = 4
+  // exactly, which is cutoff^2 for cutoff 2, and every second pair past it.
+  // 256 atoms is the smallest count that takes the gathered pair path.
+  constexpr int kNx = 8;
+  constexpr int kNy = 8;
+  constexpr int kNz = 4;
+  constexpr double kSpacing = 2.0;
+  std::vector<double> pos;
+  for (int ix = 0; ix < kNx; ++ix) {
+    for (int iy = 0; iy < kNy; ++iy) {
+      for (int iz = 0; iz < kNz; ++iz) {
+        pos.push_back(ix * kSpacing);
+        pos.push_back(iy * kSpacing);
+        pos.push_back(iz * kSpacing);
+      }
+    }
+  }
+  const std::size_t n = pos.size() / 3;
+  REQUIRE(n == 256);
+  double box[9] = {};
+  box[0] = kNx * kSpacing;
+  box[4] = kNy * kSpacing;
+  box[8] = kNz * kSpacing;
+
+  for (const bool periodic : {false, true}) {
+    INFO("periodic " << periodic);
+    rgpot::SuttonChenConfig cfg;
+    cfg.epsilon = 0.01;
+    cfg.c = 30.0;
+    cfg.a = 2.5;
+    cfg.cutoff = kSpacing;
+    cfg.periodic = periodic;
+    const Eval ref = scReference(cfg, pos, box);
+    REQUIRE(ref.energy != 0.0);
+
+    rgpot::SuttonChenPot pot(cfg);
+    Eval got;
+    got.forces.assign(pos.size(), 0.0);
+    rgpot::ForceOut out{};
+    out.F = got.forces.data();
+    const rgpot::ForceInput in{n, pos.data(), nullptr, periodic ? box : nullptr};
+    pot.forceImpl(in, &out);
+    pot.forceImpl(in, &out);
+
+    REQUIRE(std::abs(out.energy - ref.energy) < 1e-12 * std::abs(ref.energy));
+    double scale = 0.0;
+    for (const double f : ref.forces) {
+      scale = std::max(scale, std::abs(f));
+    }
+    // The open grid has surface forces; the periodic one sums to zero.
+    REQUIRE((periodic || scale > 0.0));
+    for (std::size_t k = 0; k < pos.size(); ++k) {
+      REQUIRE(std::abs(got.forces[k] - ref.forces[k]) < 1e-12 * std::max(scale, 1.0));
+    }
+    if (!periodic) {
+      // The energy and forces this potential gave before the pair gather.
+      Eval kept;
+      kept.energy = out.energy;
+      kept.forces = got.forces;
+      INFO("energy " << std::setprecision(15) << out.energy << " bits " << std::hex
+                     << evalBits(kept));
+      REQUIRE(std::abs(out.energy - (-358.277063164732)) < 1e-9);
+      REQUIRE(evalBits(kept) == 0xabb545887837750eULL);
+    }
+  }
+}
+
