@@ -125,9 +125,14 @@ OpenMMSession::OpenMMSession(std::unique_ptr<OpenMM::System> system,
           "OpenMM session does not support virtual sites");
     }
   }
-  if (system->getNumConstraints() > 0) {
-    throw std::invalid_argument(
-        "OpenMM session does not support holonomic constraints");
+  std::vector<md::DistanceConstraint> distances;
+  for (int c = 0; c < system->getNumConstraints(); ++c) {
+    int first = 0;
+    int second = 0;
+    double length = 0.0;
+    system->getConstraintParameters(c, first, second, length);
+    distances.push_back({static_cast<size_t>(first),
+                         static_cast<size_t>(second), length});
   }
   std::vector<double> coordinate_masses;
   coordinate_masses.reserve(3 * impl_->particles);
@@ -135,7 +140,8 @@ OpenMMSession::OpenMMSession(std::unique_ptr<OpenMM::System> system,
     coordinate_masses.insert(coordinate_masses.end(), {mass, mass, mass});
   }
   impl_->driver =
-      std::make_unique<md::ProjectedLangevin>(std::move(coordinate_masses));
+      std::make_unique<md::ProjectedLangevin>(std::move(coordinate_masses),
+                                              std::move(distances));
   impl_->scratch.resize(impl_->particles);
   impl_->system = std::move(system);
   ensure_plugins_loaded();
