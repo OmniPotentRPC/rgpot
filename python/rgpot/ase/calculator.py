@@ -80,6 +80,10 @@ _KERNEL_CUTOFF_ANGSTROM = {
     "EAMAlPot": 7.1,
     "FeHePot": 5.4,
     "CuH2Pot": 6.1,
+    # Asap wants a cell height of twice 1.1 * 1.045 * the Fermi cutoff.
+    # Mg has the widest cutoff of the covered elements, 5.9627, so 6.8542
+    # is the bound for every element, with either provider.
+    "EMTPot": 6.855,
     "WaterHPot": 0.0,
 }
 
