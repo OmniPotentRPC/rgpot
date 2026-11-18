@@ -823,14 +823,38 @@ static void v1_client_matches_version_two(void) {
   memset(error, 0, sizeof error);
   CHECK(rgpot_engine_create(legacy_bytes, sizeof legacy_bytes, error,
                             sizeof error) == NULL);
-  CHECK(strstr(error, "version is unknown") != NULL);
+  CHECK(strcmp(error, "coupled-well config version is unknown") == 0);
+
+  /* Overlapping word at offset 8 is 2 (atomic_number == 2, matching
+   * RGPOT_COUPLED_WELL_CONFIG_VERSION at V2's version offset): both an unknown
+   * version and a mismatched V2 version in a V1 layout must still report the
+   * specific unknown-version diagnostic. */
+  put_i32(legacy_bytes, 8, 2);
+  put_u32(legacy_bytes, 4, 99u);
+  memset(error, 0, sizeof error);
+  CHECK(rgpot_engine_create(legacy_bytes, sizeof legacy_bytes, error,
+                            sizeof error) == NULL);
+  CHECK(strcmp(error, "coupled-well config version is unknown") == 0);
+
+  put_u32(legacy_bytes, 4, RGPOT_COUPLED_WELL_CONFIG_VERSION);
+  memset(error, 0, sizeof error);
+  CHECK(rgpot_engine_create(legacy_bytes, sizeof legacy_bytes, error,
+                            sizeof error) == NULL);
+  CHECK(strcmp(error, "coupled-well config version is unknown") == 0);
+
+  current_message = config();
+  current_message.version = RGPOT_COUPLED_WELL_CONFIG_VERSION_V1;
+  memset(error, 0, sizeof error);
+  CHECK(rgpot_engine_create(&current_message, sizeof current_message, error,
+                            sizeof error) == NULL);
+  CHECK(strcmp(error, "coupled-well config version is unknown") == 0);
 
   current_message = config();
   current_message.version = 3u;
   memset(error, 0, sizeof error);
   CHECK(rgpot_engine_create(&current_message, sizeof current_message, error,
                             sizeof error) == NULL);
-  CHECK(strstr(error, "version is unknown") != NULL);
+  CHECK(strcmp(error, "coupled-well config version is unknown") == 0);
 }
 
 int main(void) {

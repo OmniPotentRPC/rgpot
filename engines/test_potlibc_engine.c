@@ -290,15 +290,57 @@ static int v1_client_matches_version_two(Engine *engine) {
   memset(error, 0, sizeof error);
   if (engine->create(legacy_bytes, sizeof legacy_bytes, error, sizeof error) !=
           NULL ||
-      strstr(error, "version is unknown") == NULL) {
+      strcmp(error, "potlibc config version is unknown") != 0) {
     fprintf(stderr, "version-1 unknown version: %s\n", error);
+    return 1;
+  }
+  /* Overlapping word at offset 8 is 2 (atom_count == 2, matching
+   * RGPOT_POTLIBC_CONFIG_VERSION at V2's version offset): both an unknown
+   * version and a mismatched V2 version in a V1 layout must still report the
+   * specific unknown-version diagnostic. */
+  atoms = 2u;
+  memcpy(legacy_bytes + 8, &atoms, sizeof atoms);
+  version = 99u;
+  memcpy(legacy_bytes + 4, &version, sizeof version);
+  memset(error, 0, sizeof error);
+  if (engine->create(legacy_bytes, sizeof legacy_bytes, error, sizeof error) !=
+          NULL ||
+      strcmp(error, "potlibc config version is unknown") != 0) {
+    fprintf(stderr, "version-1 unknown version with atom_count=2: %s\n", error);
+    return 1;
+  }
+  version = 200u;
+  memcpy(legacy_bytes + 4, &version, sizeof version);
+  memset(error, 0, sizeof error);
+  if (engine->create(legacy_bytes, sizeof legacy_bytes, error, sizeof error) !=
+          NULL ||
+      strcmp(error, "potlibc config version is unknown") != 0) {
+    fprintf(stderr, "version-1 version=200 with atom_count=2: %s\n", error);
+    return 1;
+  }
+  version = RGPOT_POTLIBC_CONFIG_VERSION;
+  memcpy(legacy_bytes + 4, &version, sizeof version);
+  memset(error, 0, sizeof error);
+  if (engine->create(legacy_bytes, sizeof legacy_bytes, error, sizeof error) !=
+          NULL ||
+      strcmp(error, "potlibc config version is unknown") != 0) {
+    fprintf(stderr, "version-1 mismatched V2 version with atom_count=2: %s\n",
+            error);
+    return 1;
+  }
+  current = config("brh2leps", 0);
+  current.version = RGPOT_POTLIBC_CONFIG_VERSION_V1;
+  memset(error, 0, sizeof error);
+  if (engine->create(&current, sizeof current, error, sizeof error) != NULL ||
+      strcmp(error, "potlibc config version is unknown") != 0) {
+    fprintf(stderr, "version-2 mismatched V1 version: %s\n", error);
     return 1;
   }
   current = config("brh2leps", 0);
   current.version = 3u;
   memset(error, 0, sizeof error);
   if (engine->create(&current, sizeof current, error, sizeof error) != NULL ||
-      strstr(error, "version is unknown") == NULL) {
+      strcmp(error, "potlibc config version is unknown") != 0) {
     fprintf(stderr, "version-2 unknown version: %s\n", error);
     return 1;
   }

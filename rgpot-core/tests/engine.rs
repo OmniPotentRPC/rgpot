@@ -2081,14 +2081,12 @@ fn coupled_well_parameters_are_validated_in_rust_and_by_the_engine_alike() {
     let truncated = unsafe {
         EnginePotential::load(
             build_coupled_well(),
-            &well_config().as_bytes()[..std::mem::size_of::<CoupledWellConfig>() - 8],
+            &well_config().as_bytes()[..std::mem::size_of::<CoupledWellConfig>() - 1],
         )
     };
     assert!(matches!(
         truncated.err(),
-        Some(EngineError::Create(why))
-            if why.contains("CoupledWellConfigV1")
-                || why.contains("shorter than config.size")
+        Some(EngineError::Create(why)) if why.contains("shorter than config.size")
     ));
 
     let mut extended = vec![0_u8; std::mem::size_of::<CoupledWellConfig>() + 16];
@@ -2135,7 +2133,7 @@ fn coupled_well_accepts_a_version_one_message_with_the_same_answer() {
     assert_eq!(COUPLED_WELL_CONFIG_V1_SIZE, 48);
     let mut legacy = [0_u8; 48];
     legacy[0..4].copy_from_slice(&COUPLED_WELL_CONFIG_MAGIC.to_ne_bytes());
-    legacy[4..8].copy_from_slice(&1_u32.to_ne_bytes());
+    legacy[4..8].copy_from_slice(&COUPLED_WELL_CONFIG_VERSION_V1.to_ne_bytes());
     legacy[8..12].copy_from_slice(&WELL_NUMBER.to_ne_bytes());
     legacy[16..24].copy_from_slice(&WELL_BARRIER.to_ne_bytes());
     legacy[24..32].copy_from_slice(&WELL_POSITION.to_ne_bytes());
@@ -2178,23 +2176,33 @@ fn coupled_well_accepts_a_version_one_message_with_the_same_answer() {
         );
     }
 
-    legacy[4..8].copy_from_slice(&99_u32.to_ne_bytes());
-    let unknown_v1 = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
-        .err()
-        .expect("a version-1 buffer with version 99 must be refused");
-    assert!(
-        matches!(unknown_v1, EngineError::Create(ref why) if why.contains("version is unknown")),
-        "{unknown_v1}"
-    );
-    let mut unknown_v2 = well_config();
-    unknown_v2.version = 3;
-    let unknown_v2 = unsafe { EnginePotential::load(build_coupled_well(), unknown_v2.as_bytes()) }
-        .err()
-        .expect("version 3 must be refused");
-    assert!(
-        matches!(unknown_v2, EngineError::Create(ref why) if why.contains("version is unknown")),
-        "{unknown_v2}"
-    );
+    for atomic_number in [WELL_NUMBER, 2_i32] {
+        legacy[8..12].copy_from_slice(&atomic_number.to_ne_bytes());
+        for bad_version in [99_u32, COUPLED_WELL_CONFIG_VERSION] {
+            legacy[4..8].copy_from_slice(&bad_version.to_ne_bytes());
+            let unknown_v1 = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
+                .err()
+                .expect("a version-1 buffer with a non-V1 version must be refused");
+            assert_eq!(
+                unknown_v1,
+                EngineError::Create("coupled-well config version is unknown".into()),
+                "atomic_number={atomic_number}, version={bad_version}"
+            );
+        }
+    }
+    for bad_version in [COUPLED_WELL_CONFIG_VERSION_V1, 3_u32] {
+        let mut unknown_v2 = well_config();
+        unknown_v2.version = bad_version;
+        let unknown_v2 =
+            unsafe { EnginePotential::load(build_coupled_well(), unknown_v2.as_bytes()) }
+                .err()
+                .expect("a version-2 buffer with a non-V2 version must be refused");
+        assert_eq!(
+            unknown_v2,
+            EngineError::Create("coupled-well config version is unknown".into()),
+            "v2 version={bad_version}"
+        );
+    }
 }
 
 #[test]
@@ -2242,6 +2250,33 @@ fn potlibc_accepts_a_version_one_message_and_pins_its_exact_length() {
         assert!(
             matches!(wrong_len, EngineError::Create(ref why) if why.contains("RgpotPotlibcConfigV1")),
             "{len}-byte v1: {wrong_len}"
+        );
+    }
+
+    for atom_count in [0_u64, 2_u64] {
+        legacy[8..16].copy_from_slice(&atom_count.to_ne_bytes());
+        for bad_version in [99_u32, 200_u32, POTLIBC_CONFIG_VERSION] {
+            legacy[4..8].copy_from_slice(&bad_version.to_ne_bytes());
+            let unknown_v1 = unsafe { EnginePotential::load(build_potlibc(), &legacy) }
+                .err()
+                .expect("a version-1 potlibc buffer with a non-V1 version must be refused");
+            assert_eq!(
+                unknown_v1,
+                EngineError::Create("potlibc config version is unknown".into()),
+                "atom_count={atom_count}, version={bad_version}"
+            );
+        }
+    }
+    for bad_version in [POTLIBC_CONFIG_VERSION_V1, 3_u32] {
+        let mut unknown_v2 = PotlibcConfig::new("brh2leps", 0).expect("v2 config");
+        unknown_v2.version = bad_version;
+        let unknown_v2 = unsafe { EnginePotential::load(build_potlibc(), unknown_v2.as_bytes()) }
+            .err()
+            .expect("a version-2 potlibc buffer with a non-V2 version must be refused");
+        assert_eq!(
+            unknown_v2,
+            EngineError::Create("potlibc config version is unknown".into()),
+            "v2 version={bad_version}"
         );
     }
 }
