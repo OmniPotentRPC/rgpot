@@ -46,6 +46,13 @@ gcov_flag=
 if nm "$half" 2>/dev/null | grep -q __gcov_init; then
   gcov_flag=--coverage
 fi
+# Instrumented objects reference the sanitizer. It has to be the first
+# shared library on the link line, ahead of the neighbour archives, or the
+# loader reports that the runtime does not come first.
+asan_first=
+if nm "$half" 2>/dev/null | grep -q __asan_init; then
+  asan_first=1
+fi
 case "$os" in
   Darwin)
     "$cxx" -shared -o "$dir/libnlist.dylib" \
@@ -79,7 +86,12 @@ case "$os" in
     export TMP TEMP TMPDIR
     ;;
   *)
-    "$cxx" -shared -o "$dir/libnlist.so" -Wl,--whole-archive "$half" "$mini" "$fma" \
+    asan_so=
+    if [ -n "$asan_first" ]; then
+      asan_so="-Wl,--no-as-needed -lasan -Wl,--as-needed"
+    fi
+    # $asan_so stays unquoted: empty adds nothing, and -lasan precedes the archives.
+    "$cxx" -shared -o "$dir/libnlist.so" $asan_so -Wl,--whole-archive "$half" "$mini" "$fma" \
       -Wl,--no-whole-archive "$@" $gcov_flag
     ;;
 esac
@@ -93,8 +105,13 @@ case "$os" in
       -L "native=${wdir}" -lnlist
     ;;
   *)
+    asan_exe=
+    if [ "$os" != Darwin ] && [ -n "$asan_first" ]; then
+      asan_exe=-lasan
+    fi
+    # -lasan before -lnlist makes the runtime the executable's first dependency.
     "$rustc_bin" --edition 2021 "$root/CppCore/examples/nlist_rust/main.rs" -o "$out" \
-      -L "$dir" -lnlist
+      -L "$dir" $asan_exe -lnlist
     ;;
 esac
 case "$os" in
