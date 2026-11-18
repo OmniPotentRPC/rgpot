@@ -140,8 +140,11 @@ fn invalid(why: impl Into<String>) -> HvpError {
 /// Energy, variance and forces (`3 * n_atoms`, row-major) at a centre.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HvpCentre {
+    /// Potential energy in the engine's energy units.
     pub energy: f64,
+    /// Estimated force variance.
     pub variance: f64,
+    /// Flat Cartesian forces.
     pub forces: Vec<f64>,
 }
 

@@ -57,6 +57,7 @@ pub mod hvp;
 pub mod eindir;
 pub mod c_api;
 pub mod version;
+pub mod md_session;
 
 #[cfg(feature = "schema")]
 #[allow(dead_code, non_snake_case, unused_parens, clippy::all)]

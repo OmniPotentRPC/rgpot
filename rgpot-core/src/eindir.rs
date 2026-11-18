@@ -153,6 +153,7 @@ impl rgpot_fused_cache_t {
             .clone()
     }
 
+    #[allow(dead_code)]
     fn set_peer_refusal(&self, why: Option<String>) {
         *self
             .peer_refusal
@@ -221,7 +222,9 @@ pub unsafe extern "C" fn rgpot_potential_set_peer_capabilities(
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct rgpot_eval_counts_t {
+    /// Number of callback evaluations.
     pub computed: u64,
+    /// Number of results served from the fused cache.
     pub served: u64,
 }
 
