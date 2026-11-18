@@ -24,6 +24,7 @@
 #include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/Gupta/gupta.h"
 #include "rgpot/KeptPotential.hpp"
+#include "rgpot/half_face_spacing.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
@@ -139,6 +140,9 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
                       in.box[8] > 0.0;
   if (cfg.periodic && !box_ok) {
     throw std::invalid_argument("periodic Gupta needs a real cell");
+  }
+  if (cfg.periodic && !cutoffWithinHalfFaceSpacing(in.box, cfg.cutoff)) {
+    throw std::invalid_argument("cutoff exceeds half a face spacing");
   }
   const auto n_size = static_cast<std::size_t>(n_atoms);
 
