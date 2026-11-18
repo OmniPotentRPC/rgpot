@@ -368,6 +368,23 @@ TEST_CASE("GuptaPot propagates a NaN coordinate on the neighbour path",
     REQUIRE(std::isnan(component));
   }
 
+  // A partner in a non-adjacent bin of a 1000^3 box still reaches the NaN
+  // atom across Auto, Stored, and Stream modes.
+  const double box[9] = {1000.0, 0.0, 0.0, 0.0, 1000.0, 0.0, 0.0, 0.0, 1000.0};
+  const std::vector<double> far = {nan, 0.0, 0.0, 500.0, 0.0, 0.0};
+  for (const auto mode : {rgpot::nlist::Mode::Auto, rgpot::nlist::Mode::Stored,
+                          rgpot::nlist::Mode::Stream}) {
+    INFO("mode " << static_cast<int>(mode));
+    rgpot::GuptaPot pot(cfg);
+    pot.setNeighbourMode(mode);
+    const StressEval cross = eval_stress(pot, far, box);
+    REQUIRE_FALSE(std::isfinite(cross.energy));
+    REQUIRE(cross.forces.size() == far.size());
+    for (double component : cross.forces) {
+      REQUIRE_FALSE(std::isfinite(component));
+    }
+  }
+
   const rgpot::GuptaPot pot(cfg);
   const double staged_pos[6] = {nan, 0.0, 0.0, 1.0, 0.0, 0.0};
   const int atmnrs[2] = {1, 1};
