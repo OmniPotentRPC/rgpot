@@ -75,11 +75,13 @@ using rgpot::types::AtomMatrix;
 
 namespace {
 
-void translate_invalid_argument(const std::exception_ptr &ptr, void *) {
+void translate_kernel_error(const std::exception_ptr &ptr, void *) {
   try {
     std::rethrow_exception(ptr);
   } catch (const std::invalid_argument &err) {
     PyErr_SetString(PyExc_ValueError, err.what());
+  } catch (const std::domain_error &err) {
+    throw rgbind::NumericalError(err.what());
   }
 }
 
@@ -460,9 +462,9 @@ nb::tuple tersoff_sic_energy_gradient(rgpot::TersoffSiC &self,
 NB_MODULE(_core, m) {
   // F1, F3, F7. install_policy registers NumericalError and the
   // in-use translator. A second translator maps invalid_argument to
-  // ValueError (F7).
+  // ValueError and domain_error to NumericalError (F7).
   rgbind::install_policy(m);
-  nb::register_exception_translator(translate_invalid_argument);
+  nb::register_exception_translator(translate_kernel_error);
 
   m.doc() = "rgpot Python bindings (nanobind). Classes that need a build "
             "option, such as ExprPot, D3Pot, D4Pot, XcKernel and the Fortran "
