@@ -68,6 +68,11 @@ class LJPot:
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
         """
 
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
+        """
+
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
         """
         (energy, forces, variance) at the geometry, from the centre that hvp() reuses. A search that needs the centre forces asks here so the forward products that follow make one force call each.
@@ -117,6 +122,11 @@ class LJClusterPot:
     def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
         """
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
         """
 
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -170,6 +180,11 @@ class MorsePot:
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
         """
 
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
+        """
+
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
         """
         (energy, forces, variance) at the geometry, from the centre that hvp() reuses. A search that needs the centre forces asks here so the forward products that follow make one force call each.
@@ -209,6 +224,11 @@ class SWPot:
     def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
         """
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
         """
 
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -252,6 +272,11 @@ class EDIPPot:
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
         """
 
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
+        """
+
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
         """
         (energy, forces, variance) at the geometry, from the centre that hvp() reuses. A search that needs the centre forces asks here so the forward products that follow make one force call each.
@@ -291,6 +316,11 @@ class LenoskyPot:
     def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
         """
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
         """
 
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -334,6 +364,11 @@ class TersoffPot:
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
         """
 
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
+        """
+
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
         """
         (energy, forces, variance) at the geometry, from the centre that hvp() reuses. A search that needs the centre forces asks here so the forward products that follow make one force call each.
@@ -373,6 +408,11 @@ class EAMAlPot:
     def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
         """
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
         """
 
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -416,6 +456,11 @@ class FeHePot:
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
         """
 
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
+        """
+
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
         """
         (energy, forces, variance) at the geometry, from the centre that hvp() reuses. A search that needs the centre forces asks here so the forward products that follow make one force call each.
@@ -457,6 +502,11 @@ class CuH2Pot:
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
         """
 
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
+        """
+
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
         """
         (energy, forces, variance) at the geometry, from the centre that hvp() reuses. A search that needs the centre forces asks here so the forward products that follow make one force call each.
@@ -496,6 +546,11 @@ class WaterHPot:
     def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
         """
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
         """
 
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -540,6 +595,9 @@ class StillingerWeberSi:
         Energy and dE/dx. positions is (n_atoms, 3) or (n_config, n_atoms, 3). A batch shares atom_types and box, and crosses into the library once.
         """
 
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """Dense analytic Cartesian Hessian, shape (3N, 3N)."""
+
 class TersoffSiC:
     def __init__(self) -> None:
         """
@@ -576,6 +634,11 @@ class D3Pot:
     def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
         """
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
         """
 
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -617,6 +680,11 @@ class D4Pot:
     def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
         """
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
         """
 
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -666,6 +734,11 @@ class ExprPot:
     def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
         """
         Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product; 'auto' is analytic where the kernel has one, otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Dense analytic Cartesian Hessian, shape (3N, 3N), assembled from one analytic product per column.
         """
 
     def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:

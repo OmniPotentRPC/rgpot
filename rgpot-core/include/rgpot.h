@@ -63,6 +63,16 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #endif
 
 /**
+ * The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
+ */
+#define ENGINE_ABI_VERSION 1
+
+/**
+ * Engine code meaning the backend does not support the requested operation.
+ */
+#define ENGINE_ERR_UNSUPPORTED 3
+
+/**
  * How a Hessian-vector product is computed.
  */
 typedef enum rgpot_hvp_scheme_t {
@@ -696,6 +706,16 @@ enum rgpot_status_t rgpot_potential_hvp(const struct rgpot_potential_t *pot,
                                         double step,
                                         int32_t scheme,
                                         double *hv_out);
+
+/**
+ * Write the dense row-major analytic Hessian to `hessian_out`.
+ *
+ * The output holds `(3 * n_atoms)²` doubles. Columns are assembled from
+ * analytic Hessian-vector products. No finite-difference fallback is used.
+ */
+enum rgpot_status_t rgpot_potential_hessian(const struct rgpot_potential_t *pot,
+                                            const struct rgpot_force_input_t *input,
+                                            double *hessian_out);
 
 /**
  * Energy and forces at the geometry of `input`, from the cached centre of

@@ -207,11 +207,57 @@ def test_reset_and_check_state() -> None:
     assert "positions" in calc.check_state(moved)
 
 
-def test_get_hessian_is_not_implemented() -> None:
+def test_get_hessian_uses_analytic_products_only() -> None:
     atoms = lj_dimer()
     calc = RgpotCalculator("lj")
+    hessian = calc.get_hessian(atoms)
+    assert hessian.shape == (6, 6)
+    step = 1e-5
+    numerical = np.empty((6, 6))
+    for column in range(6):
+        plus = atoms.copy()
+        minus = atoms.copy()
+        plus.positions.flat[column] += step
+        minus.positions.flat[column] -= step
+        numerical[:, column] = (
+            calc.__rg_evaluate__(
+                minus.positions, minus.numbers, minus.cell.array, minus.pbc
+            )["forces"].ravel()
+            - calc.__rg_evaluate__(
+                plus.positions, plus.numbers, plus.cell.array, plus.pbc
+            )["forces"].ravel()
+        ) / (2.0 * step)
+    np.testing.assert_allclose(hessian, numerical, rtol=step * step * 100.0)
+
+    without_product = RgpotCalculator("lj_cluster")
     with pytest.raises(NotImplementedError):
-        calc.get_hessian(atoms)
+        without_product.get_hessian(atoms)
+
+
+def test_get_hessian_sums_periodic_replica_columns() -> None:
+    atoms = lj_crystal()
+    atoms.set_cell([4.5, 6.0, 6.0], scale_atoms=False)
+    calc = RgpotCalculator("lj", cutoff=2.5)
+    hessian = calc.get_hessian(atoms)
+    assert hessian.shape == (12, 12)
+    step = 1e-5
+    numerical = np.empty_like(hessian)
+    for column in range(12):
+        plus = atoms.copy()
+        minus = atoms.copy()
+        plus.positions.flat[column] += step
+        minus.positions.flat[column] -= step
+        numerical[:, column] = (
+            calc.__rg_evaluate__(
+                minus.positions, minus.numbers, minus.cell.array, minus.pbc
+            )["forces"].ravel()
+            - calc.__rg_evaluate__(
+                plus.positions, plus.numbers, plus.cell.array, plus.pbc
+            )["forces"].ravel()
+        ) / (2.0 * step)
+    np.testing.assert_allclose(
+        hessian, numerical, rtol=step * step * 100.0, atol=step * step
+    )
 
 
 def test_unknown_kind_and_parameter() -> None:

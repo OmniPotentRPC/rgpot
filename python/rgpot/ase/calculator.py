@@ -657,11 +657,28 @@ class RgpotCalculator(Calculator):
     def get_hessian(self, atoms: Atoms) -> np.ndarray:
         """Analytic Hessian, shape (3N, 3N).
 
-        Raises NotImplementedError. No bound potential reports an analytic
-        Hessian.
+        Raises NotImplementedError when the bound potential has no analytic
+        Hessian-vector product.
         """
-        del atoms
-        raise NotImplementedError(f"{self._name} has no analytic Hessian")
+        hessian = getattr(self._potential, "hessian", None)
+        analytic_hvp = getattr(self._potential, "has_analytic_hvp", None)
+        if not callable(hessian) or (
+            callable(analytic_hvp) and not bool(analytic_hvp())
+        ):
+            raise NotImplementedError(f"{self._name} has no analytic Hessian")
+        geom = self._geometry(
+            atoms.positions, atoms.numbers, atoms.cell.array, atoms.pbc
+        )
+        dense = np.asarray(
+            hessian(geom.positions, geom.numbers, geom.box), dtype=np.float64
+        )
+        n3 = 3 * geom.n_atoms
+        if geom.copies == 1:
+            return np.ascontiguousarray(dense.reshape(n3, n3))
+        # A primitive-cell displacement moves the corresponding atom in every
+        # replica. Sum those replica columns and retain the first-copy rows.
+        full = dense.reshape(geom.copies, n3, geom.copies, n3)
+        return np.ascontiguousarray(np.sum(full[0], axis=1))
 
     def calculate_many(
         self,

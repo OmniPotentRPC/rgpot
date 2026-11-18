@@ -618,6 +618,28 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
       "kernel's own product; 'auto' is analytic where the kernel has one, "
       "otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the "
       "interpreter released.");
+  if constexpr (AnalyticHessianVectorKernel<Pot>) {
+    cls.def(
+        "hessian",
+        [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
+           const F64 &box) {
+          Geom geom = read_geom(positions, atom_types, box);
+          const size_t n = static_cast<size_t>(geom.pos.rows());
+          std::vector<double> dense = detached_hvp([&] {
+            const std::array<double, 9> flat = flat_box(geom);
+            const ForceInput in{.nAtoms = n,
+                                .pos = geom.pos.data(),
+                                .atmnrs = geom.types.data(),
+                                .box = flat.data()};
+            return denseAnalyticHessian(std::as_const(self.slot()), in);
+          });
+          return vector_to_numpy(dense, {3 * n, 3 * n});
+        },
+        nb::arg("positions").noconvert(), nb::arg("atom_types"),
+        nb::arg("box").noconvert(),
+        "Dense analytic Cartesian Hessian, shape (3N, 3N), assembled "
+        "from one analytic product per column.");
+  }
   cls.def(
       "hvp_centre",
       [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,

@@ -158,6 +158,15 @@ public:
     return out;
   }
 
+  /// Dense row-major analytic Hessian, assembled from 3N products.
+  std::vector<double> hessian(const InputSpec &input) const {
+    const std::size_t dim = 3 * input.n_atoms();
+    std::vector<double> out(dim * dim);
+    detail::check_status(
+        rgpot_potential_hessian(handle_, &input.c_struct(), out.data()));
+    return out;
+  }
+
   /**
    * @brief Energy and forces at @a input, from the centre the products use.
    *

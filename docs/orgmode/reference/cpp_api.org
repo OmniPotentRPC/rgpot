@@ -306,6 +306,20 @@ std::vector<double> hvp(const InputSpec &input,
 
 With =RGPOT_HVP_FORWARD=, k products at one geometry make k+1 force calls.
 
+*** =rgpot::PotentialHandle::hessian=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+std::vector<double> hessian(const InputSpec &input) const;
+#+end_src
+
+- Inputs :: =input=, the geometry.
+- Units :: energy per length squared.
+- Outputs :: the dense row-major =3*n= by =3*n= Cartesian Hessian, assembled
+  from one analytic Hessian-vector product per column.
+- Errors :: throws =rgpot::Error= when no analytic callback is registered or
+  an analytic product fails.
+
 *** =rgpot::PotentialHandle::hvp_centre=
 
 #+attr_rgpot: signature

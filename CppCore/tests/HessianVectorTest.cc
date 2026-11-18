@@ -279,6 +279,19 @@ TEST_CASE("LJPot hessianVectorImpl reports coincident atoms", "[HessianVector]")
                   std::domain_error);
 }
 
+TEST_CASE("denseAnalyticHessian puts products in columns",
+          "[HessianVector]") {
+  System s;
+  MorsePot pot;
+  const std::vector<double> dense =
+      rgpot::denseAnalyticHessian(std::as_const(pot), s.input());
+  const auto v = direction(s.x.size());
+  std::vector<double> product(v.size());
+  pot.hessianVectorImpl(s.input(), v.data(), product.data());
+  const auto from_dense = multiply(dense, v);
+  CHECK(relativeError(from_dense, product) < 1e-13);
+}
+
 TEST_CASE("MorsePot hessianVectorImpl differentiates the switch", "[HessianVector]") {
   // Most pairs of the cluster fall inside the switch region.
   System s;

@@ -410,6 +410,47 @@ impl rgpot_potential_t {
         Ok(())
     }
 
+    /// Return the dense row-major analytic Hessian, one product per column.
+    ///
+    /// There is intentionally no finite-difference fallback. A handle without
+    /// a registered analytic callback returns an error.
+    ///
+    /// # Safety
+    ///
+    /// The tensors and callback follow [`Self::hessian_vector`].
+    pub unsafe fn analytic_hessian(
+        &self,
+        input: &rgpot_force_input_t,
+    ) -> Result<Vec<f64>, HvpError> {
+        let geometry = unsafe { read_geometry(input) }?;
+        let dim = geometry.positions.len();
+        if !self.has_hessian_vector_callback() {
+            return Err(invalid(
+                "analytic Hessian: no Hessian-vector callback is registered",
+            ));
+        }
+        let mut dense = vec![0.0; dim * dim];
+        let mut direction = vec![0.0; dim];
+        let mut product = vec![0.0; dim];
+        for column in 0..dim {
+            direction[column] = 1.0;
+            unsafe {
+                self.hessian_vector(
+                    input,
+                    &direction,
+                    0.0,
+                    rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC,
+                    &mut product,
+                )
+            }?;
+            direction[column] = 0.0;
+            for row in 0..dim {
+                dense[row * dim + column] = product[row];
+            }
+        }
+        Ok(dense)
+    }
+
     fn refuse_if_peer_refused(&self) -> Result<(), HvpError> {
         match self.fused_cache_peer_refusal() {
             Some(why) => Err(HvpError::Invalid(why)),

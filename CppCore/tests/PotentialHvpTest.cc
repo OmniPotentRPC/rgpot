@@ -145,6 +145,18 @@ TEST_CASE("from_impl registers the analytic product of MorsePot", "[hvp]") {
   CHECK(pot.hvp_counts().analytic == 1);
 }
 
+TEST_CASE("PotentialHandle assembles an analytic Hessian by columns", "[hvp]") {
+  System s;
+  MorsePot morse;
+  auto pot = PotentialHandle::from_impl(morse);
+  auto input = s.input();
+  const auto dense = pot.hessian(input);
+  const auto expected = rgpot::denseAnalyticHessian(morse, s.legacy());
+  CHECK(dense == expected);
+  CHECK(pot.hvp_counts().analytic == s.x.size());
+  CHECK(pot.hvp_counts().force_calls == 0);
+}
+
 TEST_CASE("from_impl keeps LJClusterPot Auto on finite differences", "[hvp]") {
   LJClusterPot lj;
   auto pot = PotentialHandle::from_impl(lj);

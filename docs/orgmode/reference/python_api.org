@@ -1099,6 +1099,26 @@ print(pot.has_analytic_hvp(), rgpot.MorsePot().has_analytic_hvp())
 True True
 #+end_example
 
+*** =.hessian=
+
+#+attr_rgpot: signature
+#+begin_src python
+hessian(positions, atom_types, box)
+#+end_src
+
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
+  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
+  rgpot.ExprPot, rgpot.StillingerWeberSi
+- Inputs :: =positions=, =atom_types= and =box= as in the conventions.
+- Units :: positions and box in Angstrom; the Hessian is eV/Angstrom^2.
+- Outputs :: the dense analytic Cartesian Hessian as a new float64 array of
+  shape =(3N, 3N)=. It is assembled from one analytic Hessian-vector product
+  per column and never falls back to finite differences.
+- Errors :: a class whose =has_analytic_hvp()= is false raises =ValueError=.
+  =StillingerWeberSi= has the analytic product directly and does not expose
+  =has_analytic_hvp()=.
+
 *** =.hvp_centre=
 
 #+attr_rgpot: signature

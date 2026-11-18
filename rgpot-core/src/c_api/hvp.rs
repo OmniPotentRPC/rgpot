@@ -140,6 +140,36 @@ pub unsafe extern "C" fn rgpot_potential_hvp(
     }))
 }
 
+/// Write the dense row-major analytic Hessian to `hessian_out`.
+///
+/// The output holds `(3 * n_atoms)²` doubles. Columns are assembled from
+/// analytic Hessian-vector products. No finite-difference fallback is used.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_hessian(
+    pot: *const rgpot_potential_t,
+    input: *const rgpot_force_input_t,
+    hessian_out: *mut f64,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if pot.is_null() || input.is_null() || hessian_out.is_null() {
+            return refuse("rgpot_potential_hessian: NULL argument");
+        }
+        match unsafe { (*pot).analytic_hessian(&*input) } {
+            Ok(dense) => {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        dense.as_ptr(),
+                        hessian_out,
+                        dense.len(),
+                    )
+                };
+                rgpot_status_t::RGPOT_SUCCESS
+            }
+            Err(err) => fail(err),
+        }
+    }))
+}
+
 /// Energy and forces at the geometry of `input`, from the cached centre of
 /// `pot` when it matches, otherwise from one force call that becomes the
 /// cached centre.

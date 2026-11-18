@@ -104,6 +104,36 @@ concept AnalyticHessianVectorKernel =
              double *hv) { pot.hessianVectorImpl(in, v, hv); };
 
 /**
+ * @brief Dense row-major analytic Hessian, assembled one product per column.
+ *
+ * There is deliberately no finite-difference fallback. The instance must
+ * advertise @c caps().analyticHvp and implement @c hessianVectorImpl.
+ */
+template <AnalyticHessianVectorKernel Pot>
+std::vector<double> denseAnalyticHessian(const Pot &pot, const ForceInput &in) {
+  if constexpr (!AnalyticHessianVector<Pot>) {
+    throw std::invalid_argument(
+        "denseAnalyticHessian: potential has no analytic HVP capability");
+  } else if (!pot.caps().analyticHvp) {
+    throw std::invalid_argument(
+        "denseAnalyticHessian: potential does not advertise analyticHvp");
+  }
+  const std::size_t dim = 3 * in.nAtoms;
+  std::vector<double> hessian(dim * dim, 0.0);
+  std::vector<double> direction(dim, 0.0);
+  std::vector<double> product(dim, 0.0);
+  for (std::size_t column = 0; column < dim; ++column) {
+    direction[column] = 1.0;
+    pot.hessianVectorImpl(in, direction.data(), product.data());
+    direction[column] = 0.0;
+    for (std::size_t row = 0; row < dim; ++row) {
+      hessian[row * dim + column] = product[row];
+    }
+  }
+  return hessian;
+}
+
+/**
  * @class HessianVectorCache
  * @brief Centre forces and counters for Hessian-vector products.
  *

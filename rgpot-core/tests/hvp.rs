@@ -14,7 +14,8 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rgpot_core::c_api::hvp::{
-    rgpot_potential_hvp, rgpot_potential_hvp_centre, rgpot_potential_hvp_counts,
+    rgpot_potential_hessian, rgpot_potential_hvp, rgpot_potential_hvp_centre,
+    rgpot_potential_hvp_counts,
     rgpot_potential_hvp_invalidate, rgpot_potential_reset_hvp_counts,
     rgpot_potential_set_hvp_callback,
 };
@@ -358,6 +359,29 @@ fn last_error() -> String {
     unsafe { std::ffi::CStr::from_ptr(rgpot_last_error()) }
         .to_string_lossy()
         .into_owned()
+}
+
+#[test]
+fn dense_hessian_uses_analytic_products_as_columns() {
+    let mut system = System::octahedron();
+    let frame = system.frame();
+    let mut input = system.input();
+    let handle = Handle::with_analytic();
+    let dim = system.pos.len();
+    let mut dense = vec![f64::NAN; dim * dim];
+    let status =
+        unsafe { rgpot_potential_hessian(handle.pot, &input, dense.as_mut_ptr()) };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS, "{}", last_error());
+    for column in 0..dim {
+        let mut basis = vec![0.0; dim];
+        basis[column] = 1.0;
+        let product = handle.morse.hessian_vector(&frame, &basis);
+        for row in 0..dim {
+            assert_eq!(dense[row * dim + column], product[row]);
+        }
+    }
+    assert_eq!(handle.morse.hvp_calls.load(Ordering::SeqCst), dim);
+    unsafe { rgpot_force_input_free(&mut input) };
 }
 
 /// `k` steps of Lanczos from `q1` with `apply` as the operator. Returns the
