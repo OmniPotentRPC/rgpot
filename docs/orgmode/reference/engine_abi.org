@@ -37,7 +37,7 @@ potential from the params message) and =rgpot::engine::backend_name=.
 | =libuma_engine= | =UmaParams= | =uma= | the UMA package at =modelPath= |
 | =libmetatomic_engine= | =MetatomicParams= | =metatomic= | the metatomic model at =modelPath= |
 | =libxtb_engine= | =BuiltinParams= | =xtb= | GFN2-xTB with the =XTBConfig= defaults; =name= is empty or =xtb= |
-| =libclassical_engine= | =BuiltinParams= | =classical= | =name= =lj=, =ljcluster=, =morse= or =zbl=; with the water kernels =tip4p=, =spce=, =tip4p_pt=; with the Fortran kernels =sw=, =edip=, =lenosky=, =tersoff=, =eamal=, =fehe=, =cuh2=, =waterh=; all with default parameters |
+| =libclassical_engine= | =BuiltinParams= | =classical= | =name= =lj=, =ljcluster=, =morse=, =zbl=, =eckart=, =muller_brown=, =modified_muller_brown=, =leps_hh2=, =leps_hcl2=, =leps_fh2=, =double_well=, =coupled_proton_well= and (when built with CBE) =cbe=; with the water kernels =tip4p=, =spce=, =tip4p_pt=; with the Fortran kernels =sw=, =edip=, =lenosky=, =tersoff=, =eamal=, =fehe=, =cuh2=, =waterh=; all with default parameters |
 | =libmopac_engine= | =BuiltinParams= | =mopac= | MOPAC; =name= is empty or =mopac=, =library= is the path of =libmopacc= |
 | =libnwchem_engine= | =NWChemParams= | =nwchem= | NWChem through =libnwchemc= |
 | =libskala_engine= | =NWChemParams= | =skala= | Skala XC on NWChem; reads =basis=, =charge=, =multiplicity=, =enginePath= and =nwchemRoot= |
@@ -260,6 +260,7 @@ image.
 =stress= means the backend computes cell stress; the engine ABI has no call that
 returns it.
 =group_collective= means every rank of a calculator group enters each call.
+=analytic_hvp= means =rgpot_engine_hvp= returns an exact directional product.
 
 =reentrancy= decides how the table admits concurrent =rgpot_engine_force= and
 =rgpot_engine_force_batch= calls:
@@ -473,6 +474,25 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
   =rgpot_engine_force=.
   The backend writes =forces= in place, so after a code 2 =forces= may be partly
   written; =energies= and =variances= are not written.
+
+*** =rgpot_engine_hvp=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
+                     const double *positions, const int *atomicNrs,
+                     const double *direction, double *product,
+                     const double *box);
+#+end_src
+
+- Inputs :: the potential and geometry as for =rgpot_engine_force=, plus
+  =direction= with =3 * nAtoms= Cartesian entries.
+- Units :: positions and direction in Angstrom; =product= in eV/Angstrom.
+- Outputs :: 0 and the exact energy-Hessian product in =product=.
+- Errors :: returns 1 for a NULL pointer or invalid atom count, 3 when the
+  potential does not advertise =analytic_hvp=, and 2 when the implementation
+  throws.
+  The reason is available from =rgpot_engine_last_error=.
 
 Optional symbol.
 For learning engines the call is also an incorporation boundary.

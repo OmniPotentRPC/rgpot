@@ -25,6 +25,11 @@ pub type rgpot_rpc_client_t = RpcClient;
 ///
 /// Returns a heap-allocated handle, or `NULL` on failure.
 /// The caller must eventually call `rgpot_rpc_client_free`.
+///
+/// # Safety
+///
+/// `host` must be a valid pointer to a NUL-terminated C string for the
+/// duration of the call.
 #[cfg(feature = "rpc")]
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_rpc_client_new(
@@ -56,6 +61,12 @@ pub unsafe extern "C" fn rgpot_rpc_client_new(
 /// Perform a remote force/energy calculation.
 ///
 /// Returns `RGPOT_SUCCESS` on success, or an error status code.
+///
+/// # Safety
+///
+/// `client` must be a live pointer from `rgpot_rpc_client_new`.
+/// `input` must point to a valid `rgpot_force_input_t` for the duration of
+/// the call, and `output` must point to writable storage.
 #[cfg(feature = "rpc")]
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_rpc_calculate(
@@ -91,9 +102,58 @@ pub unsafe extern "C" fn rgpot_rpc_calculate(
     }))
 }
 
+/// Compute an analytic Hessian-vector product through the remote potential.
+///
+/// `direction` and `product` each hold `3 * n_atoms` doubles.
+///
+/// # Safety
+///
+/// `client` must be a live pointer from `rgpot_rpc_client_new`.
+/// `input` must point to a valid `rgpot_force_input_t`.
+/// `direction` and `product` must each point to arrays of at least
+/// `3 * n_atoms` doubles, where `n_atoms` comes from `input`.
+#[cfg(feature = "rpc")]
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_rpc_calculate_hvp(
+    client: *mut rgpot_rpc_client_t,
+    input: *const rgpot_force_input_t,
+    direction: *const f64,
+    product: *mut f64,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if client.is_null() || input.is_null() || direction.is_null() || product.is_null() {
+            set_last_error("rgpot_rpc_calculate_hvp: NULL argument");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let inp = unsafe { &*input };
+        let Some(dimension) = unsafe { inp.n_atoms() }.and_then(|n| n.checked_mul(3)) else {
+            set_last_error("rgpot_rpc_calculate_hvp: invalid positions tensor");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        };
+        let direction = unsafe { std::slice::from_raw_parts(direction, dimension) };
+        match unsafe { &mut *client }.calculate_hvp(inp, direction) {
+            Ok(values) => {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(values.as_ptr(), product, dimension);
+                }
+                rgpot_status_t::RGPOT_SUCCESS
+            }
+            Err(error) => {
+                set_last_error(&format!("rgpot_rpc_calculate_hvp: {error}"));
+                rgpot_status_t::RGPOT_RPC_ERROR
+            }
+        }
+    }))
+}
+
 /// Free an RPC client handle.
 ///
 /// If `client` is `NULL`, this is a no-op.
+///
+/// # Safety
+///
+/// If non-NULL, `client` must be a pointer returned by
+/// `rgpot_rpc_client_new` that has not been freed yet.
 #[cfg(feature = "rpc")]
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_rpc_client_free(client: *mut rgpot_rpc_client_t) {

@@ -95,7 +95,7 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
  * minor 0, layout 1.
  */
 #define RGPOT_ENGINE_ABI_VERSION 1
-#define RGPOT_ENGINE_ABI_MINOR 2
+#define RGPOT_ENGINE_ABI_MINOR 3
 #define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
 
 RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
@@ -157,6 +157,16 @@ RGPOT_ENGINE_API int rgpot_engine_force(
     const int *atomicNrs, double *forces, double *energy, double *variance,
     const double *box, rgpot_engine_coord_transform transform,
     void *transform_user);
+
+/**
+ * Exact energy-Hessian product for one Cartesian direction. positions and
+ * direction hold 3*nAtoms doubles; product receives 3*nAtoms doubles in
+ * eV/Angstrom. Returns 3 when the potential has no analytic product.
+ */
+RGPOT_ENGINE_API int rgpot_engine_hvp(
+    RgpotEnginePot *pot, long nAtoms, const double *positions,
+    const int *atomicNrs, const double *direction, double *product,
+    const double *box);
 
 /* ------------------------------------------------------------------ */
 /* Optional symbols: probe with dlsym; absence means unsupported.     */
@@ -270,6 +280,7 @@ typedef struct {
   int periodic;            /**< periodic boundary conditions supported */
   int stress;              /**< cell stress is available */
   int group_collective;    /**< every rank of a group enters each call */
+  int analytic_hvp;        /**< rgpot_engine_hvp is exact for this potential */
 } RgpotEngineCaps;
 
 RGPOT_ENGINE_API int rgpot_engine_caps(const RgpotEnginePot *pot,
