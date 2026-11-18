@@ -236,6 +236,25 @@ TEST_CASE("EAM and SC benchmark geometries keep the stored base fingerprints",
     REQUIRE(bits == 0x3ee4b21bc23d1a83ULL);
   }
 
+  SECTION("EAM CuNi alloy with asymmetric rhor") {
+    // rho_ab and rho_ba differ, so a swapped density index changes the sums.
+    std::ifstream in(kAlloyPath);
+    REQUIRE(in);
+    const rgpot::EAMTable table = rgpot::read_eam_table(in, rgpot::EAMTableFormat::Setfl);
+    REQUIRE(table.z.size() == 2);
+    REQUIRE(table.rhor[0 * 2 + 1] != table.rhor[1 * 2 + 0]);
+
+    const Alloy cell = alloyCell();
+    rgpot::EAMTablePot pot = alloyPot();
+    Eval e;
+    for (int k = 0; k < kCalls; ++k) {
+      e = evalEam(pot, cell.pos, cell.z, cell.box);
+    }
+    INFO("energy " << std::setprecision(15) << e.energy << " bits " << std::hex << evalBits(e));
+    REQUIRE(std::abs(e.energy - (-3266.12762903245)) < 1e-9);
+    REQUIRE(evalBits(e) == 0x67792a4edba2a304ULL);
+  }
+
   SECTION("SC Pt/Au cluster panel") {
     const std::vector<double> pt38 = pointFile("CppCore/tests/data/sc108/pt38");
     const std::vector<double> pt75 = pointFile("CppCore/tests/data/sc108/pt75");
