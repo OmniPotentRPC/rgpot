@@ -84,9 +84,7 @@ See [[file:sutton_chen.org][Sutton-Chen potential]].
   Unbounded non-periodic calls without stress delegate to the =rgpot_gupta= C
   kernel; periodic and truncated calls use the shared neighbour layer.
   Periodic calls reject a cutoff at or above half a face spacing.
-  On a coincident pair, that kernel returns +infinity and =GuptaPot= poisons the
-  forces with NaN.
-  Neighbour and staged calls set the energy and the forces to NaN.
+  Non-finite coordinates and coincident pairs are rejected as invalid input.
 - =EMTPot= (=PotType::EMT=, =CppCore/rgpot/EMT/=) :: Effective medium theory
   from Asap.
 =EMTConfig::rasmussen= selects the Rasmussen parameters; the default is the Asap
