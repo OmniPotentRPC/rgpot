@@ -54,8 +54,14 @@
       const double d1 = x[base_i + 1] - x[base_j + 1];
       const double d2 = x[base_i + 2] - x[base_j + 2];
       const double r2 = d0 * d0 + d1 * d1 + d2 * d2;
-      /* A coincident pair has a finite energy. Its direction is undefined,
-       * so the force pass below assigns it zero pair force. */
+      /* A coincidence is not differentiable. NaN is not <= 0, so it
+       * falls through and the energy and the forces become NaN. */
+      if (r2 <= 0.0) {
+        free(pack_heap);
+        free(rho_heap);
+        *energy = INFINITY;
+        return;
+      }
       const size_t key = si * n_species + (size_t)slot[j];
       const double r = sqrt(r2);
       const double u = r / r0[key] - 1.0;
@@ -105,10 +111,6 @@
         const double psi = xi[key] * xi[key] * exp(-2.0 * q[key] * u);
         dphi = -(p[key] / r0[key]) * phi;
         dpsi = -(2.0 * q[key] / r0[key]) * psi;
-      }
-      if (r == 0.0) {
-        m++;
-        continue;
       }
       const double inv_j = rho[j] == 0.0 ? 0.0 : 1.0 / sqrt(rho[j]);
       const double embed = -0.5 * (inv_i + inv_j);
