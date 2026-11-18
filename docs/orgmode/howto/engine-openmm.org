@@ -84,6 +84,10 @@ target kinetic temperature, checks wall reflections, determinism across
 64-bit seeds, unconstrained NVE after Langevin stepping, and the C ABI unit
 conversions and error handling. It uses =Reference= in the test; applications
 can select =CPU= or =CUDA= through =OpenMMSessionConfig::platform=.
+Setting =RGPOT_TEST_SEED= to an unsigned 64-bit decimal integer overrides the
+default seeds across =openmm_session=, =openmm_analytic=, and
+=openmm_review_*=; negative values, whitespace, non-digits, and overflow are
+rejected.
 
 Meson builds =libopenmm_engine.so= when the =openmm= Python module reports its
 library path and =libOpenMM= and =openmm/Platform.h= are found there.
