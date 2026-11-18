@@ -3,6 +3,7 @@
 
 #include "rgpot/ExternalPot/OpenMM.hpp"
 #include "rgpot/ExternalPot/external_potentials.h"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "../common/test_seed.hpp"
 
 #include <openmm/HarmonicBondForce.h>
@@ -14,6 +15,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -361,6 +363,98 @@ void test_c_abi_session() {
   }
   if (rgpot_md_session_step_nve(session, 0.0005, 10, err, sizeof(err)) != 0) {
     throw std::runtime_error(err);
+  }
+
+  rgpot_nlist_request nreq{};
+  rgpot_nlist_request_init(&nreq);
+  nreq.cutoff = 8.0;
+  nreq.shell = 1; // full list
+  nreq.cut = 1;   // loose
+  nreq.skin = 0.5;
+  size_t need = 0;
+  int nrc = rgpot_md_session_get_neighbors(session, &nreq, nullptr, nullptr,
+                                           &need, err, sizeof(err));
+  if (nrc != RGPOT_MD_NLIST_OK || need == 0) {
+    throw std::runtime_error(std::string("get_neighbors size probe failed: ") +
+                             err);
+  }
+  std::vector<int32_t> first(need), second(need), shift(3 * need);
+  std::vector<double> vector(3 * need), distance(need);
+  std::vector<uint8_t> mask(need);
+  rgpot_nlist_soa soa{};
+  soa.bytes = sizeof(soa);
+  soa.first = first.data();
+  soa.second = second.data();
+  soa.shift = shift.data();
+  soa.vector = vector.data();
+  soa.distance = distance.data();
+  soa.mask = mask.data();
+  soa.cap = need;
+  size_t got = 0;
+  nrc = rgpot_md_session_get_neighbors(session, &nreq, &soa, &got, &need, err,
+                                       sizeof(err));
+  if (nrc != RGPOT_MD_NLIST_OK || got == 0 || got != need) {
+    throw std::runtime_error(std::string("get_neighbors fill failed: ") + err);
+  }
+  // Compare session-exported pairs with the shared neighbour-layer build.
+  rgpot_nlist_request ref_req = nreq;
+  ref_req.shape = 0;
+  ref_req.shell = 1;
+  ref_req.cut = 1;
+  ref_req.periodic[0] = 1;
+  ref_req.periodic[1] = 1;
+  ref_req.periodic[2] = 1;
+  rgpot_nlist_soa ref_soa{};
+  size_t ref_need = 0;
+  std::vector<double> now_pos(6);
+  std::vector<double> now_vel(6);
+  std::vector<double> now_force(6);
+  if (rgpot_md_session_get_state(session, now_pos.data(), now_vel.data(),
+                                 now_force.data(), 6, nullptr, nullptr, err,
+                                 sizeof(err)) != 0) {
+    throw std::runtime_error(std::string("state before nlist parity failed: ") +
+                             err);
+  }
+  const double box_ang[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  int32_t ref_status = rgpot_nlist_build(now_pos.data(), 2, box_ang, &ref_req,
+                                         nullptr, nullptr, &ref_need);
+  if (ref_status != RGPOT_NLIST_OK || ref_need == 0) {
+    throw std::runtime_error("shared neighbour size probe failed");
+  }
+  std::vector<int32_t> ref_first(ref_need), ref_second(ref_need),
+      ref_shift(3 * ref_need);
+  std::vector<double> ref_vector(3 * ref_need), ref_distance(ref_need);
+  std::vector<uint8_t> ref_mask(ref_need);
+  ref_soa.bytes = sizeof(ref_soa);
+  ref_soa.first = ref_first.data();
+  ref_soa.second = ref_second.data();
+  ref_soa.shift = ref_shift.data();
+  ref_soa.vector = ref_vector.data();
+  ref_soa.distance = ref_distance.data();
+  ref_soa.mask = ref_mask.data();
+  ref_soa.cap = ref_need;
+  size_t ref_count = 0;
+  ref_status = rgpot_nlist_build(now_pos.data(), 2, box_ang, &ref_req, &ref_soa,
+                                 &ref_count, &ref_need);
+  if (ref_status != RGPOT_NLIST_OK || ref_count != got) {
+    throw std::runtime_error("shared neighbour build failed");
+  }
+  using PairKey = std::tuple<int, int, int, int, int>;
+  std::map<PairKey, double> got_dist;
+  std::map<PairKey, double> ref_dist;
+  for (size_t p = 0; p < got; ++p) {
+    got_dist[{first[p], second[p], shift[3 * p], shift[3 * p + 1],
+              shift[3 * p + 2]}] = distance[p];
+    ref_dist[{ref_first[p], ref_second[p], ref_shift[3 * p],
+              ref_shift[3 * p + 1], ref_shift[3 * p + 2]}] = ref_distance[p];
+  }
+  if (got_dist != ref_dist) {
+    throw std::runtime_error("session neighbours differ from shared neighbour layer");
+  }
+  const int set_rc = rgpot_md_session_set_neighbors(session, &nreq, &soa, got,
+                                                    err, sizeof(err));
+  if (set_rc != RGPOT_MD_NLIST_UNSUPPORTED) {
+    throw std::runtime_error("expected OpenMM neighbor setter to be unsupported");
   }
 }
 
