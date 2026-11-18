@@ -200,13 +200,17 @@ Optional symbol.
 *** =RgpotPotlibcConfigV1=
 
 - Inputs :: =magic=
-  (=RGPOT_POTLIBC_CONFIG_MAGIC=), =version= (=RGPOT_POTLIBC_CONFIG_VERSION=),
-  =atom_count= and =surface_id=.
+  (=RGPOT_POTLIBC_CONFIG_MAGIC=), =size= (bytes, at least
+  =RGPOT_POTLIBC_CONFIG_MIN_SIZE=), =version= (=RGPOT_POTLIBC_CONFIG_VERSION=),
+  =reserved= (zero), =atom_count= and =surface_id=.
 - Units :: =atom_count= is a count; the other fields have no unit.
-- Outputs :: passed as the exact create message for =libpotlibc_engine=.
+- Outputs :: passed as the create message for =libpotlibc_engine=.
 - Errors :: an unknown magic or version, an empty or unterminated catalog id,
   zero atoms for a variable-size surface, or a nonzero count for a fixed-size
   surface makes =rgpot_engine_create= return NULL.
+  =size < RGPOT_POTLIBC_CONFIG_MIN_SIZE= is refused as a typed size error.
+  A message larger than =RGPOT_POTLIBC_CONFIG_MIN_SIZE= is accepted only when
+  every unknown trailing byte up to =size= is zero.
 
 =surface_id= has =RGPOT_POTLIBC_SURFACE_ID_CAPACITY= bytes and is
 NUL-terminated.
@@ -215,17 +219,21 @@ a variable-size entry.
 
 *** =RgpotCoupledWellConfigV1=
 
-- Inputs :: =magic= (=RGPOT_COUPLED_WELL_CONFIG_MAGIC=), =version=
-  (=RGPOT_COUPLED_WELL_CONFIG_VERSION=), =atomic_number=, =reserved= (zero),
-  =barrier_energy=, =well_position=, =transverse_spring= and =coupling=.
+- Inputs :: =magic= (=RGPOT_COUPLED_WELL_CONFIG_MAGIC=), =size= (bytes, at
+  least =RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE=), =version=
+  (=RGPOT_COUPLED_WELL_CONFIG_VERSION=), =reserved0= (zero), =atomic_number=,
+  =reserved1= (zero), =barrier_energy=, =well_position=,
+  =transverse_spring= and =coupling=.
 - Units :: =barrier_energy= in eV, =well_position= in Angstrom,
   =transverse_spring= in eV/Angstrom^2 and =coupling= in 1/Angstrom.
-- Outputs :: passed as the exact create message for =libcoupled_well_engine=.
-- Errors :: a length other than the 48 bytes of the structure, an unknown magic
-  or version, a nonzero =reserved=, a non-positive =atomic_number=, a
+- Outputs :: passed as the create message for =libcoupled_well_engine=.
+- Errors :: a =size= below =RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE=, an unknown magic
+  or version, a nonzero reserved field, a non-positive =atomic_number=, a
   =barrier_energy=, =well_position= or =transverse_spring= that is not finite and
   positive, or a =coupling= that is not finite makes =rgpot_engine_create=
   return NULL with the reason in =errbuf=.
+  A message larger than =RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE= is accepted only
+  when every unknown trailing byte up to =size= is zero.
 
 The engine evaluates one atom of species =atomic_number= with the energy
 =V0 ((x / x0)^2 - 1)^2 + k / 2 (y - alpha x^2)^2=, where =V0=, =x0=, =k= and
@@ -274,10 +282,12 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
   by the reason =rgpot_engine_set_charge_spin= gives.
 
 Required symbol.
-=RgpotPotlibcConfigV1= carries a magic, version, atom count and canonical
-surface id.
+=RgpotPotlibcConfigV1= carries a magic, message size, version, reserved word,
+atom count and canonical surface id.
 Its atom count is zero for fixed-size surfaces and the exact count for
 variable-size surfaces.
+=RgpotCoupledWellConfigV1= carries a magic, message size, version, two reserved
+words, the accepted atomic number and the four coupled-well parameters.
 =UmaParams= and =MetatomicParams= carry =intraopThreads= and =interopThreads=
 (default 1), which create applies with the rules of
 =rgpot_engine_set_num_threads=; a refused inter-op count fails create with the
@@ -374,6 +384,8 @@ Reading does not clear the message.
 A successful =rgpot_engine_force=,
 =rgpot_engine_force_batch=, =rgpot_engine_set_num_threads= or =rgpot_engine_set_charge_spin=
 clears it.
+Under concurrent calls on one handle, a success in one call may clear a failure
+message written by another before the reader observes it.
 Errors of =rgpot_engine_create= go to its =errbuf=.
 May run at any time, also during an evaluation on the same handle.
 
@@ -1166,7 +1178,11 @@ the handle as a =PotentialImpl=.
 - =RgpotEnginePot= :: Opaque handle type matching =struct RgpotEnginePot=.
 - =CoupledWellConfig=, =PotlibcConfig= :: Typed create messages for
   =libcoupled_well_engine= and =libpotlibc_engine=, laid out as
-  =RgpotCoupledWellConfigV1= and =RgpotPotlibcConfigV1=. Both are
+  =RgpotCoupledWellConfigV1= (=COUPLED_WELL_CONFIG_MAGIC=,
+  =COUPLED_WELL_CONFIG_VERSION= 1, =COUPLED_WELL_CONFIG_MIN_SIZE= 56, with
+  =size= at byte offset 4) and =RgpotPotlibcConfigV1= (=POTLIBC_CONFIG_MAGIC=,
+  =POTLIBC_CONFIG_VERSION= 1, =POTLIBC_CONFIG_MIN_SIZE= 152,
+  =POTLIBC_SURFACE_ID_CAPACITY= 128, with =size= at byte offset 4). Both are
   =#[non_exhaustive]=, implement =Default= and have =with_*= builders,
   =validate= (the create-time checks of the message itself) and =as_bytes= (the
   bytes for =EnginePotential::load=). =PotlibcConfig::with_surface_id= refuses an

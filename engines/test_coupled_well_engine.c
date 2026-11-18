@@ -20,6 +20,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifndef RGPOT_ENGINE_PROJECT_VERSION
+#define RGPOT_ENGINE_PROJECT_VERSION "unknown"
+#endif
+
 #define BARRIER 3.0
 #define WELL 2.0
 #define SPRING 4.0
@@ -46,8 +50,11 @@ static RgpotCoupledWellConfigV1 config(void) {
   RgpotCoupledWellConfigV1 result;
   memset(&result, 0, sizeof result);
   result.magic = RGPOT_COUPLED_WELL_CONFIG_MAGIC;
+  result.size = sizeof result;
   result.version = RGPOT_COUPLED_WELL_CONFIG_VERSION;
+  result.reserved0 = 0;
   result.atomic_number = NUMBER;
+  result.reserved1 = 0;
   result.barrier_energy = BARRIER;
   result.well_position = WELL;
   result.transverse_spring = SPRING;
@@ -77,6 +84,17 @@ static int refused(const RgpotCoupledWellConfigV1 *message, size_t length) {
   return error[0] != '\0';
 }
 
+static int refused_bytes(const unsigned char *message, size_t length) {
+  char error[256] = {0};
+  RgpotEnginePot *pot = rgpot_engine_create(message, length, error,
+                                            sizeof error);
+  if (pot != NULL) {
+    rgpot_engine_destroy(pot);
+    return 0;
+  }
+  return error[0] != '\0';
+}
+
 static void identity_and_contract(void) {
   const RgpotEngineAbiStamp host = {RGPOT_ENGINE_ABI_VERSION,
                                     RGPOT_ENGINE_ABI_MINOR,
@@ -88,7 +106,8 @@ static void identity_and_contract(void) {
   CHECK(stamp.abi_major == host.abi_major && stamp.abi_minor == host.abi_minor &&
         stamp.layout_revision == host.layout_revision);
   CHECK(strcmp(rgpot_engine_name(), "coupled-well") == 0);
-  CHECK(strncmp(rgpot_engine_version(), "coupled-well/", 13) == 0);
+  CHECK(strcmp(rgpot_engine_version(),
+               "coupled-well/" RGPOT_ENGINE_PROJECT_VERSION) == 0);
 
   /* The documented rule: equal major, equal layout, engine minor at least the
    * host's. A host built against an older minor is served; a newer one is not. */
@@ -115,8 +134,20 @@ static void create_validation(void) {
   rgpot_engine_destroy(NULL);
 
   CHECK(refused(NULL, sizeof message));
+  CHECK(refused(&message, offsetof(RgpotCoupledWellConfigV1, version) + 3));
   CHECK(refused(&message, sizeof message - 1));
-  CHECK(refused(&message, sizeof message + 8));
+  {
+    unsigned char future[sizeof message + 8];
+    memset(future, 0, sizeof future);
+    memcpy(future, &message, sizeof message);
+    ((RgpotCoupledWellConfigV1 *)future)->size = sizeof future;
+    CHECK(!refused_bytes(future, sizeof future));
+    future[sizeof message] = 7u;
+    CHECK(refused_bytes(future, sizeof future));
+  }
+  message = config();
+  message.size = sizeof(message) - 8;
+  CHECK(refused(&message, sizeof message));
   message = config();
   message.magic ^= 1u;
   CHECK(refused(&message, sizeof message));
@@ -124,7 +155,10 @@ static void create_validation(void) {
   message.version += 1u;
   CHECK(refused(&message, sizeof message));
   message = config();
-  message.reserved = 1u;
+  message.reserved0 = 1u;
+  CHECK(refused(&message, sizeof message));
+  message = config();
+  message.reserved1 = 1u;
   CHECK(refused(&message, sizeof message));
   message = config();
   message.atomic_number = 0;
@@ -287,6 +321,7 @@ static void rejects_bad_requests(void) {
   const double positions[3] = {1.0, 0.5, 0.0};
   const double not_finite[3] = {NAN, 0.5, 0.0};
   const double huge[3] = {1.0e200, 0.5, 0.0};
+  const double finite_extreme[3] = {1.0, 0.0, 0.0};
   const int wrong_species[1] = {NUMBER + 1};
   const double direction[3] = {1.0, 0.0, 0.0};
   const double bad_direction[3] = {INFINITY, 0.0, 0.0};
@@ -333,6 +368,59 @@ static void rejects_bad_requests(void) {
                          BOX, NULL, NULL) == RGPOT_ENGINE_ERR_INVALID);
   CHECK(rgpot_engine_hvp(pot, 1, huge, SPECIES, direction, product, BOX, NULL,
                          NULL) == RGPOT_ENGINE_ERR_EVAL);
+  {
+    RgpotCoupledWellConfigV1 tiny = config();
+    RgpotEnginePot *small;
+    const double scaled_min[3] = {1.0e-155, 0.0, 0.0};
+    const double along_y[3] = {0.0, 1.0, 0.0};
+    tiny.barrier_energy = 1.0e-320;
+    tiny.well_position = 1.0e-155;
+    tiny.transverse_spring = 1.0;
+    tiny.coupling = 0.0;
+    small = rgpot_engine_create(&tiny, sizeof tiny, message, sizeof message);
+    CHECK(small != NULL);
+    forces[0] = -1.0;
+    energy = -1.0;
+    CHECK(rgpot_engine_force(small, 1, finite_extreme, SPECIES, forces, &energy,
+                             NULL, BOX, NULL, NULL) == RGPOT_ENGINE_OK);
+    CHECK(isfinite(energy) && isfinite(forces[0]) && isfinite(forces[1]));
+    forces[0] = -1.0;
+    forces[1] = -1.0;
+    energy = -1.0;
+    CHECK(rgpot_engine_force(small, 1, scaled_min, SPECIES, forces, &energy,
+                             NULL, BOX, NULL, NULL) == RGPOT_ENGINE_OK);
+    CHECK(energy == 0.0 && forces[0] == 0.0 && forces[1] == 0.0);
+    CHECK(rgpot_engine_hvp(small, 1, scaled_min, SPECIES, direction, product,
+                           BOX, NULL, NULL) == RGPOT_ENGINE_OK);
+    CHECK(isfinite(product[0]) && product[1] == 0.0 && product[2] == 0.0);
+    CHECK(rgpot_engine_hvp(small, 1, scaled_min, SPECIES, along_y, product, BOX,
+                           NULL, NULL) == RGPOT_ENGINE_OK);
+    CHECK(product[0] == 0.0 && product[1] == 1.0 && product[2] == 0.0);
+    rgpot_engine_destroy(small);
+  }
+  {
+    RgpotCoupledWellConfigV1 huge_alpha = config();
+    RgpotEnginePot *stiff;
+    const double point[3] = {1.0, 1.0e200, 0.0};
+    const double along_y[3] = {0.0, 1.0, 0.0};
+    huge_alpha.barrier_energy = 1.0;
+    huge_alpha.well_position = 1.0;
+    huge_alpha.transverse_spring = 1.0;
+    huge_alpha.coupling = 1.0e200;
+    stiff = rgpot_engine_create(&huge_alpha, sizeof huge_alpha, message,
+                                sizeof message);
+    CHECK(stiff != NULL);
+    forces[0] = 9.0;
+    forces[1] = 9.0;
+    energy = 9.0;
+    CHECK(rgpot_engine_force(stiff, 1, point, SPECIES, forces, &energy, NULL,
+                             BOX, NULL, NULL) == RGPOT_ENGINE_OK);
+    CHECK(energy == 0.0 && forces[0] == 0.0 && forces[1] == 0.0);
+    CHECK(rgpot_engine_hvp(stiff, 1, point, SPECIES, along_y, product, BOX,
+                           NULL, NULL) == RGPOT_ENGINE_OK);
+    CHECK(product[0] == -2.0e200 && product[1] == 1.0 && product[2] == 0.0);
+    rgpot_engine_destroy(stiff);
+  }
   CHECK(rgpot_engine_force(pot, 1, positions, SPECIES, forces, &energy, NULL,
                            BOX, NULL, NULL) == RGPOT_ENGINE_OK);
   CHECK(rgpot_engine_last_error(pot, message, sizeof message) == 0);
@@ -484,6 +572,7 @@ static void caps_and_last_error(void) {
   small.size = 1;
   CHECK(rgpot_engine_caps(pot, &small) == RGPOT_ENGINE_ERR_INVALID);
   CHECK(rgpot_engine_caps(pot, NULL) == RGPOT_ENGINE_ERR_INVALID);
+  CHECK(rgpot_engine_caps(NULL, &caps) == RGPOT_ENGINE_ERR_INVALID);
 
   CHECK(rgpot_engine_last_error(NULL, buffer, sizeof buffer) == 0);
   CHECK(rgpot_engine_last_error(pot, buffer, sizeof buffer) == 0);
@@ -537,6 +626,54 @@ static void *fail_repeatedly(void *argument) {
   return NULL;
 }
 
+static void *batch_repeatedly(void *argument) {
+  Worker *worker = (Worker *)argument;
+  const double positions[6] = {1.0, 0.5, 0.0, 2.0, 1.0, 0.0};
+  const double boxes[18] = {10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0,
+                            10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0};
+  double forces[6];
+  double energies[2];
+  int count;
+  for (count = 0; count < EVALUATIONS; ++count) {
+    if (rgpot_engine_force_batch(worker->pot, 2, 1, positions, SPECIES, forces,
+                                 energies, NULL, boxes, NULL, NULL) !=
+        RGPOT_ENGINE_OK) {
+      worker->bad += 1;
+    }
+  }
+  return NULL;
+}
+
+static void *hvp_repeatedly(void *argument) {
+  Worker *worker = (Worker *)argument;
+  const double positions[3] = {1.0, 0.5, 0.0};
+  const double direction[3] = {1.0, 2.0, 0.0};
+  double product[3];
+  int count;
+  for (count = 0; count < EVALUATIONS; ++count) {
+    if (rgpot_engine_hvp(worker->pot, 1, positions, SPECIES, direction, product,
+                         BOX, NULL, NULL) != RGPOT_ENGINE_OK) {
+      worker->bad += 1;
+    }
+  }
+  return NULL;
+}
+
+static void *caps_repeatedly(void *argument) {
+  Worker *worker = (Worker *)argument;
+  RgpotEngineCaps caps;
+  int count;
+  for (count = 0; count < EVALUATIONS; ++count) {
+    memset(&caps, 0, sizeof caps);
+    caps.size = sizeof caps;
+    if (rgpot_engine_caps(worker->pot, &caps) != RGPOT_ENGINE_OK ||
+        caps.analytic_hvp != 1 || caps.batched != 1) {
+      worker->bad += 1;
+    }
+  }
+  return NULL;
+}
+
 static void one_handle_serves_concurrent_calls(void) {
   RgpotEnginePot *pot = make();
   pthread_t threads[THREADS + 1];
@@ -561,6 +698,30 @@ static void one_handle_serves_concurrent_calls(void) {
   rgpot_engine_destroy(pot);
 }
 
+static void one_handle_serves_concurrent_batch_hvp_and_caps(void) {
+  RgpotEnginePot *pot = make();
+  pthread_t threads[THREADS];
+  Worker workers[THREADS];
+  int index;
+  void *(*jobs[THREADS])(void *) = {batch_repeatedly, hvp_repeatedly,
+                                    caps_repeatedly, evaluate_repeatedly};
+  if (pot == NULL) {
+    ++failures;
+    return;
+  }
+  for (index = 0; index < THREADS; ++index) {
+    workers[index].pot = pot;
+    workers[index].bad = 0;
+    CHECK(pthread_create(&threads[index], NULL, jobs[index], &workers[index]) ==
+          0);
+  }
+  for (index = 0; index < THREADS; ++index) {
+    CHECK(pthread_join(threads[index], NULL) == 0);
+    CHECK(workers[index].bad == 0);
+  }
+  rgpot_engine_destroy(pot);
+}
+
 int main(void) {
   identity_and_contract();
   create_validation();
@@ -571,6 +732,7 @@ int main(void) {
   batch_failure_writes_nothing();
   caps_and_last_error();
   one_handle_serves_concurrent_calls();
+  one_handle_serves_concurrent_batch_hvp_and_caps();
   if (failures != 0) {
     fprintf(stderr, "%d coupled-well engine checks failed\n", failures);
     return 1;
