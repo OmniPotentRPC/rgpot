@@ -7,6 +7,10 @@ use std::path::PathBuf;
 #[path = "version_macros.rs"]
 mod version_macros;
 
+#[cfg(feature = "units")]
+#[path = "cxx_host.rs"]
+mod cxx_host;
+
 /// Generate C header via cbindgen (only when `gen-header` feature is active).
 /// Run `cargo build --features gen-header` or `pixi r gen-header` to regenerate.
 #[cfg(feature = "gen-header")]
@@ -159,6 +163,9 @@ fn generate_units(crate_dir: &str) {
     use std::path::PathBuf;
     use std::process::Command;
 
+    for key in cxx_host::ENV_KEYS {
+        println!("cargo::rerun-if-env-changed={key}");
+    }
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR");
     let cpp_core = PathBuf::from(crate_dir).join("..").join("CppCore");
     let header = cpp_core.join("rgpot").join("units.hpp");
@@ -167,27 +174,27 @@ fn generate_units(crate_dir: &str) {
     for path in [&header, &parser, &export] {
         println!("cargo::rerun-if-changed={}", path.display());
     }
-    let bin = PathBuf::from(&out_dir).join("units_rust_export");
-    let compiled = Command::new("g++")
-        .args(["-std=c++17", "-O2", "-I"])
-        .arg(&cpp_core)
-        .arg(&export)
-        .arg(&parser)
-        .arg("-o")
-        .arg(&bin)
-        .status()
-        .expect("g++");
-    if !compiled.success() {
-        panic!("the units header did not compile");
+    if !header.is_file() {
+        panic!(
+            "missing C++ header required for units export: {}",
+            header.display()
+        );
     }
-    let printed = Command::new(&bin).output().expect("units export");
+
+    let out_path = PathBuf::from(&out_dir);
+    let bin = cxx_host::executable_path(&out_path, "units_rust_export");
+    cxx_host::compile_cpp_binary(&cpp_core, &[&export, &parser], &bin);
+
+    let mut run = Command::new(&bin);
+    cxx_host::configure_run_env(&mut run);
+    let printed = run.output().expect("units export");
     if !printed.status.success() {
         panic!(
             "the units export failed: {}",
             String::from_utf8_lossy(&printed.stderr)
         );
     }
-    let generated = PathBuf::from(&out_dir).join("units_generated.rs");
+    let generated = out_path.join("units_generated.rs");
     std::fs::write(&generated, &printed.stdout).expect("write units_generated.rs");
 }
 
