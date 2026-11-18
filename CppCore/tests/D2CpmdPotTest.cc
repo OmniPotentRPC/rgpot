@@ -7,7 +7,8 @@
 // either side of CPMD's 6 R0 truncation; finite differences for its forces
 // and stress; the cusp at half the cell that rgpot::D2Pot does not have;
 // and the composite that swaps CPMD's term for the lattice sum.
-// scripts/regen_d2_cpmd_references.py writes CppCore/tests/data/d2cpmd/.
+// scripts/regen_d2_cpmd_references.py writes the water and methane files.
+// scripts/regen_d2_cpmd_pbc3.py writes the pbc3 symmetry-cell files.
 
 #include <algorithm>
 #include <array>
@@ -34,9 +35,10 @@ using rgpot::units::HARTREE_TO_EV;
 
 namespace {
 
-// OpenCPMD's bohr (1 / fbohr). Positions, the cell, the forces and the
-// stress of D2CpmdPot all use it, so the derivatives match the energy.
-constexpr double kCpmdBohr = 0.529177210859;
+// OpenCPMD 062582b7cfd832d36f88f504cd08e4ead42eb404. Positions, the cell,
+// the forces and the stress all use rgpot::kCpmdBohr, so a derivative of
+// the returned energy recovers the force without a second bohr factor.
+constexpr const char *kOpenCpmdPbc3 = "062582b7cfd832d36f88f504cd08e4ead42eb404";
 
 struct Reference {
   std::vector<int> z;
@@ -45,6 +47,10 @@ struct Reference {
   double energy = 0.0;  // Ha
   double printed = 0.0; // Ha, CPMD's VDW ENERGY line
   std::vector<double> force; // Ha/bohr
+  int ibrav = 0;
+  bool differs = false;     // pbc3 energy is not the Euclidean image's
+  double euclidean = 0.0;   // Ha, Grimme energy of that Euclidean image
+  std::string version;
 };
 
 Reference load(const std::string &name) {
@@ -79,6 +85,16 @@ Reference load(const std::string &name) {
       double a = 0, b = 0, c = 0;
       ss >> a >> b >> c;
       r.force.insert(r.force.end(), {a, b, c});
+    } else if (key == "ibrav") {
+      ss >> r.ibrav;
+    } else if (key == "differs") {
+      int flag = 0;
+      ss >> flag;
+      r.differs = flag != 0;
+    } else if (key == "euclidean") {
+      ss >> r.euclidean;
+    } else if (key == "version") {
+      ss >> r.version;
     }
   }
   REQUIRE(r.force.size() == r.pos.size());
@@ -116,6 +132,8 @@ const char *kSystems[] = {"cubic_water",         "cubic_below_half",
                           "cubic_above_half",    "ortho_water_methane",
                           "triclinic_water_methane", "cubic_truncation"};
 
+const char *kPbc3[] = {"pbc3_hexagonal", "pbc3_fcc", "pbc3_monoclinic"};
+
 } // namespace
 
 TEST_CASE("CPMD's D2 matches OpenCPMD's empirical correction", "[d2cpmd][reference]") {
@@ -127,7 +145,7 @@ TEST_CASE("CPMD's D2 matches OpenCPMD's empirical correction", "[d2cpmd][referen
     // CPMD prints eight decimals, rounded.
     REQUIRE(std::abs(ref.printed - ref.energy) <= 0.5e-8);
     REQUIRE(std::abs(r.energy / HARTREE_TO_EV - ref.energy) <= kEnergyThr);
-    const double to_au = kCpmdBohr / HARTREE_TO_EV;
+    const double to_au = rgpot::kCpmdBohr / HARTREE_TO_EV;
     for (std::size_t k = 0; k < ref.pos.size(); ++k) {
       INFO("component " << k);
       REQUIRE(std::abs(r.forces[k] * to_au - ref.force[k]) <= kGradThr);
@@ -280,4 +298,60 @@ TEST_CASE("a composite swaps CPMD's D2 for the lattice sum", "[d2cpmd][composite
             Catch::Approx(l.forces[k] - c.forces[k]).margin(kGradThr * HARTREE_TO_EV));
   }
   REQUIRE(sum.lastComponents()[0].energy == c.energy);
+}
+
+TEST_CASE("CPMD pbc3 matches OpenCPMD on the symmetry cells", "[d2cpmd][pbc3]") {
+  rgpot::D2CpmdPot pot;
+  const double to_au = rgpot::kCpmdBohr / HARTREE_TO_EV;
+  bool saw_difference = false;
+  for (const char *name : kPbc3) {
+    INFO(name);
+    const Reference ref = load(name);
+    REQUIRE(ref.version == kOpenCpmdPbc3);
+    REQUIRE(ref.ibrav != 0);
+    const Result got = run(pot, ref.z, ref.pos, ref.box);
+    REQUIRE(std::abs(got.energy / HARTREE_TO_EV - ref.energy) <= kEnergyThr);
+    REQUIRE(got.forces.size() == ref.force.size());
+    for (std::size_t k = 0; k < ref.force.size(); ++k) {
+      INFO("component " << k);
+      REQUIRE(std::abs(got.forces[k] * to_au - ref.force[k]) <= kGradThr);
+    }
+    if (std::string(name) == "pbc3_hexagonal" || std::string(name) == "pbc3_monoclinic") {
+      REQUIRE(ref.differs);
+    }
+    if (ref.differs) {
+      saw_difference = true;
+      REQUIRE(std::abs(ref.energy - ref.euclidean) > kEnergyThr);
+      REQUIRE(std::abs(got.energy / HARTREE_TO_EV - ref.euclidean) > kEnergyThr);
+    }
+  }
+  REQUIRE(saw_difference);
+}
+
+TEST_CASE("CPMD pbc3 folds a displacement of several cells like one inside the cell",
+          "[d2cpmd][pbc3]") {
+  const std::array<std::array<double, 3>, 3> kShifts{{
+      {2.0, -2.0, 2.0},
+      {3.0, -4.0, 2.0},
+      {-7.0, 5.0, -6.0},
+  }};
+  rgpot::D2CpmdPot pot;
+  for (const char *name : kPbc3) {
+    const Reference ref = load(name);
+    const Result want = run(pot, ref.z, ref.pos, ref.box);
+    for (const auto &shift : kShifts) {
+      INFO(name << " shift " << shift[0] << " " << shift[1] << " " << shift[2]);
+      std::vector<double> far = ref.pos;
+      for (int a = 0; a < 3; ++a) {
+        far[3 + a] += shift[0] * ref.box[a] + shift[1] * ref.box[3 + a] + shift[2] * ref.box[6 + a];
+      }
+      const Result got = run(pot, ref.z, far, ref.box);
+      REQUIRE(got.energy == Catch::Approx(want.energy).margin(kEnergyThr * HARTREE_TO_EV));
+      REQUIRE(got.forces.size() == want.forces.size());
+      for (std::size_t k = 0; k < want.forces.size(); ++k) {
+        REQUIRE(got.forces[k] ==
+                Catch::Approx(want.forces[k]).margin(kGradThr * HARTREE_TO_EV / rgpot::kCpmdBohr));
+      }
+    }
+  }
 }

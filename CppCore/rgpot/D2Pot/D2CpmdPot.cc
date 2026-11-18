@@ -57,6 +57,7 @@ constexpr double kCpmdFbohr = 1.0 / kCpmdBohr;
 // reps in vdw: a pair closer than this many bohr contributes nothing.
 constexpr double kCpmdMinPair = 1.0e-2;
 constexpr int kCpmdMaxZ = 99;
+constexpr double kCellTol = 1.0e-12;
 
 std::string upper(std::string_view s) {
   std::string out(s);
@@ -65,11 +66,98 @@ std::string upper(std::string_view s) {
   return out;
 }
 
-/// CPMD's pbc3 for an orthorhombic cell (labels 5 and 15): per axis,
-/// x - L * dint(dmod(x, L) / (L / 2)) applied to dmod(x, L).
+/// CPMD's orthorhombic fold (pbc3 labels 5 and 15): dmod into one period,
+/// then subtract the period times dint of that value over half a period.
 double wrap_axis(double x, double length) {
   const double y = std::fmod(x, length);
   return y - length * std::trunc(y / (0.5 * length));
+}
+
+bool nearly(double a, double b) { return std::abs(a - b) <= kCellTol; }
+
+// OpenCPMD 062582b, src/pbc_utils.mod.F90, subroutine pbc3, called from
+// subroutine vdw in src/vdw_utils.mod.F90 with m = 1. The vectors are
+// latgen's (src/latgen_utils.mod.F90, subroutine latgen) and apbc is the
+// one setsc stores (src/setsc_utils.mod.F90, subroutine setsc). Symmetry
+// 2 is face centred cubic in latgen's orientation. Symmetry 4 and
+// symmetry 14 with alpha and beta at 90 degrees share pbc3's shear
+// branch (label 25). A box that matches neither is the general branch,
+// the nearest integer of each fractional coordinate (label 99), which is
+// also what CELL VECTORS selects after setsc turns ibrav -2 into 14.
+
+bool matches_fcc(const std::array<double, 9> &h, double *ap) {
+  const double t = h[2];
+  if (!(t > 0.0)) {
+    return false;
+  }
+  const double expect[9] = {-t, 0.0, t, 0.0, t, t, -t, t, 0.0};
+  for (int k = 0; k < 9; ++k) {
+    if (!nearly(h[k], expect[k])) {
+      return false;
+    }
+  }
+  *ap = t * std::sqrt(2.0) * 0.5;
+  return true;
+}
+
+bool matches_label25(const std::array<double, 9> &h, double ap[4]) {
+  const double a = h[0];
+  const double c = h[8];
+  const double bx = h[3];
+  const double by = h[4];
+  if (!(a > 0.0 && c > 0.0 && by > 0.0)) {
+    return false;
+  }
+  if (!(nearly(h[1], 0.0) && nearly(h[2], 0.0) && nearly(h[5], 0.0) &&
+        nearly(h[6], 0.0) && nearly(h[7], 0.0))) {
+    return false;
+  }
+  if (nearly(bx, 0.0)) {
+    return false;
+  }
+  ap[0] = 0.5 * a;
+  ap[1] = 0.5 * by;
+  ap[2] = 0.5 * c;
+  ap[3] = -bx / by;
+  return true;
+}
+
+void pbc_fcc(double *r, double ap) {
+  const double s2 = std::sqrt(2.0);
+  const double ta = 2.0 * ap;
+  double x2 = (r[0] + r[1]) / s2;
+  double y2 = (-r[0] + r[1]) / s2;
+  x2 = wrap_axis(x2, ta);
+  y2 = wrap_axis(y2, ta);
+  double z2 = wrap_axis(r[2], ta * s2);
+  if (!(std::abs(x2) + std::abs(y2) + s2 * std::abs(z2) < ta)) {
+    x2 -= std::copysign(ap, x2);
+    y2 -= std::copysign(ap, y2);
+    z2 -= std::copysign(s2 * ap, z2);
+  }
+  const double xt = (x2 - y2) / s2;
+  r[0] = xt;
+  r[1] = (x2 + y2) / s2;
+  r[2] = z2;
+}
+
+void pbc_label25(double *r, const double ap[4]) {
+  const double y0 = r[1];
+  const double y2 = wrap_axis(y0, 2.0 * ap[1]);
+  const double z2 = wrap_axis(r[2], 2.0 * ap[2]);
+  const double dx = (y2 - y0) * ap[3];
+  r[0] = wrap_axis(r[0] - dx, 2.0 * ap[0]);
+  r[1] = y2;
+  r[2] = z2;
+}
+
+void pbc_general(const d2::detail::Cell &cell, double *r) {
+  double s[3];
+  cell.fractional(r, s);
+  for (double &v : s) {
+    v -= std::round(v);
+  }
+  cell.cartesian(s, r);
 }
 
 } // namespace
@@ -126,6 +214,11 @@ void D2CpmdPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto &h = cell.h;
   const bool orthorhombic = cell.periodic && h[1] == 0.0 && h[2] == 0.0 && h[3] == 0.0 &&
                             h[5] == 0.0 && h[6] == 0.0 && h[7] == 0.0;
+  double fcc_ap = 0.0;
+  double shear_ap[4] = {};
+  const bool fcc = cell.periodic && !orthorhombic && matches_fcc(h, &fcc_ap);
+  const bool shear =
+      cell.periodic && !orthorhombic && !fcc && matches_label25(h, shear_ap);
   const double rpow_max = 1.0 / cfg_.vdweps;
 
   std::vector<double> f(3 * n, 0.0);
@@ -145,13 +238,12 @@ void D2CpmdPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         for (int a = 0; a < 3; ++a) {
           rlp[a] = wrap_axis(rlp[a], h[4 * a]);
         }
+      } else if (fcc) {
+        pbc_fcc(rlp, fcc_ap);
+      } else if (shear) {
+        pbc_label25(rlp, shear_ap);
       } else if (cell.periodic) {
-        double s[3];
-        cell.fractional(rlp, s);
-        for (double &v : s) {
-          v -= std::round(v);
-        }
-        cell.cartesian(s, rlp);
+        pbc_general(cell, rlp);
       }
       const double rlm2 = rlp[0] * rlp[0] + rlp[1] * rlp[1] + rlp[2] * rlp[2];
       const double rlm1 = std::sqrt(rlm2);

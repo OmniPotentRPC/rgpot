@@ -16,11 +16,14 @@
  *
  * with C6 = sqrt(C6_i C6_j) times CPMD's 17.33979, R_r = (R0_i + R0_j) in
  * CPMD's bohr, the paper's R0 without dftd3's 1.1 split, and alpha = 20.
- * Each pair takes only the image CPMD's `pbc3` picks: per axis in an
- * orthorhombic cell, the nearest integer fractional shift otherwise, and no
- * image at all for an all-zero box. A pair is dropped once the magnitude
- * of alpha (r / R_r - 1) reaches 1 / vdweps, that is r >= 6 R_r at the
- * default vdweps, and below CPMD's 0.01 bohr.
+ * Each pair takes only the image CPMD's `pbc3` picks (src/pbc_utils.mod.F90,
+ * called from subroutine vdw in src/vdw_utils.mod.F90): per axis in an
+ * orthorhombic cell, the face centred cubic branch for latgen's symmetry 2,
+ * the shear branch for symmetry 4 and for symmetry 14 with alpha and beta
+ * at 90 degrees, and the nearest integer fractional shift otherwise. An
+ * all-zero box takes no image. A pair is dropped once the magnitude of
+ * alpha (r / R_r - 1) reaches 1 / vdweps, that is r >= 6 R_r at the default
+ * vdweps, and below CPMD's 0.01 bohr.
  *
  * Positions, the cell, the forces and the stress all use CPMD's own
  * 0.529177210859 (kCpmdBohr, the reciprocal of fbohr in src/cnst.mod.F90),

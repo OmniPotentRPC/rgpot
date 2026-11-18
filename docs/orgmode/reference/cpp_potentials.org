@@ -1446,6 +1446,20 @@ explicit D4Pot(const D4Config &config);
 - Outputs :: the =rgpot::D4Config= the instance was built with.
 - Errors :: none.
 
+*** =rgpot::D4Pot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: an FNV-1a digest over the D4 functional key, charge, ATM
+  switch and periodic switch.
+  The result separates cache entries for distinct D4 parameter sets.
+- Errors :: none.
+
 ** Expression of potentials
 
 *** =rgpot::ExprPot=
@@ -1656,8 +1670,7 @@ void setWeight(std::size_t index, double weight);
   from the last force call on this instance: =name=, =weight=, =enabled=,
   =evaluated= (false for a disabled term and before the first call), =energy=,
   =forces= (empty when not evaluated), =variance=, =has_stress= and =stress=.
-  A call that throws leaves the record of the terms that ran before the
-  failure.
+  A call that throws keeps the record of the last successful call.
 - Errors :: none.
 
 *** =rgpot::SumPot::setLogSink=
