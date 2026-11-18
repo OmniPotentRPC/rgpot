@@ -66,6 +66,17 @@ if has_fortran
     _args += ['-DRGPOT_HAS_FORTRAN_POTS=TRUE']
 endif
 
+# gcov's default counter update races when tests run together, and lcov
+# then stops on a negative branch count. Atomic updates keep the ordinary
+# tests parallel under a coverage build.
+if get_option('b_coverage')
+    _cov_langs = ['c', 'cpp']
+    if has_fortran
+        _cov_langs += ['fortran']
+    endif
+    add_project_arguments('-fprofile-update=atomic', language: _cov_langs)
+endif
+
 # i-PI socket server. POSIX sockets only; auto skips Windows.
 _ipi_opt = get_option('with_ipi')
 has_ipi = false
