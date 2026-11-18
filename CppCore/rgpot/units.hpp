@@ -45,6 +45,14 @@ inline constexpr double HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3 =
 inline constexpr double KB_HARTREE = 3.1668115634556e-6; // k_B in Hartree/K
 inline constexpr double KB_EV = 8.617333262e-5;          // k_B in eV/K
 
+// Mass (electron mass in u: 5.48579909065e-4 u)
+inline constexpr double ELECTRON_MASS_IN_DALTON = 5.48579909065e-4;
+inline constexpr double DALTON_IN_ELECTRON_MASSES =
+    1.0 / ELECTRON_MASS_IN_DALTON;
+
+// Time (hbar / E_h in seconds)
+inline constexpr double ATOMIC_UNIT_OF_TIME_S = 2.4188843265857e-17;
+
 // ---- Runtime unit expression parser ----
 
 /// Get the multiplicative conversion factor from @p from_unit to @p to_unit.

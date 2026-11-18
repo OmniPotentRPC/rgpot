@@ -7,10 +7,19 @@
 
 #include "rgpot/units.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
+
+static void check_parser_matches(const char *name, double header_value,
+                                 double parsed_value) {
+  double scale = std::fabs(header_value);
+  if (std::fabs(parsed_value - header_value) > 1e-11 * scale) {
+    throw std::runtime_error(std::string("units.cc disagrees with ") + name);
+  }
+}
 
 static void emit(const char *name, double value) {
   std::uint64_t bits = 0;
@@ -21,20 +30,27 @@ static void emit(const char *name, double value) {
 
 int main() {
   using namespace rgpot::units;
+  try {
+    check_parser_matches("BOHR_TO_ANGSTROM", BOHR_TO_ANGSTROM,
+                         unit_conversion_factor("bohr", "angstrom"));
+    check_parser_matches("HARTREE_TO_EV", HARTREE_TO_EV,
+                         unit_conversion_factor("hartree", "eV"));
+    check_parser_matches("DALTON_IN_ELECTRON_MASSES",
+                         DALTON_IN_ELECTRON_MASSES,
+                         unit_conversion_factor("dalton", "electron_mass"));
+    check_parser_matches("ATOMIC_UNIT_OF_TIME_S", ATOMIC_UNIT_OF_TIME_S,
+                         unit_conversion_factor("hbar", "hartree*s"));
+  } catch (const std::exception &err) {
+    std::fprintf(stderr, "units export: %s\n", err.what());
+    return 1;
+  }
   emit("BOHR_TO_ANGSTROM", BOHR_TO_ANGSTROM);
   emit("ANGSTROM_TO_BOHR", ANGSTROM_TO_BOHR);
   emit("HARTREE_TO_EV", HARTREE_TO_EV);
   emit("EV_TO_HARTREE", EV_TO_HARTREE);
   emit("KB_HARTREE", KB_HARTREE);
   emit("KB_EV", KB_EV);
-  try {
-    emit("DALTON_IN_ELECTRON_MASSES",
-         unit_conversion_factor("dalton", "electron_mass"));
-    emit("ATOMIC_UNIT_OF_TIME_S",
-         unit_conversion_factor("hbar", "hartree*s"));
-  } catch (const std::exception &err) {
-    std::fprintf(stderr, "units export: %s\n", err.what());
-    return 1;
-  }
+  emit("DALTON_IN_ELECTRON_MASSES", DALTON_IN_ELECTRON_MASSES);
+  emit("ATOMIC_UNIT_OF_TIME_S", ATOMIC_UNIT_OF_TIME_S);
   return 0;
 }
