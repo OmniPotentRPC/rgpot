@@ -12,41 +12,12 @@
 #define RGPOT_TARGET_AVX2 __attribute__((target("avx2,fma")))
 #endif
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#define RGPOT_THREAD_LOCAL __declspec(thread)
-#else
-#define RGPOT_THREAD_LOCAL _Thread_local
-#endif
-
-static RGPOT_THREAD_LOCAL double *rho_buf;
-static RGPOT_THREAD_LOCAL size_t rho_cap;
-static RGPOT_THREAD_LOCAL double *pack_buf;
-static RGPOT_THREAD_LOCAL size_t pack_cap;
-
-static int rgpot_gupta_ensure(size_t n, size_t pairs) {
-  if (rho_cap < n) {
-    double *next = (double *)realloc(rho_buf, n * sizeof(double));
-    if (next == 0) {
-      return 1;
-    }
-    rho_buf = next;
-    rho_cap = n;
-  }
-  const size_t need = pairs * 6;
-  if (pack_cap < need) {
-    double *next = (double *)realloc(pack_buf, need * sizeof(double));
-    if (next == 0) {
-      return 1;
-    }
-    pack_buf = next;
-    pack_cap = need;
-  }
-  return 0;
-}
-
-static double *rgpot_gupta_rho(void) { return rho_buf; }
-
-static double *rgpot_gupta_pack(void) { return pack_buf; }
+// Small clusters use stack scratch; larger calls cap stored pair derivatives
+// at 32 MiB and free the heap scratch before returning, recomputing pairs
+// past the cap identically in the force pass.
+#define RGPOT_GUPTA_STACK_ATOMS 64
+#define RGPOT_GUPTA_STACK_PAIRS 512
+#define RGPOT_GUPTA_MAX_PACK_PAIRS ((32u << 20) / (6u * sizeof(double)))
 
 static void gupta_scalar(const double *x, size_t n, const unsigned char *slot,
                          size_t n_species, const double *a, const double *xi, const double *p,
