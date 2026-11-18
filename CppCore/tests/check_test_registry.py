@@ -326,7 +326,7 @@ def main() -> int:
     parser.add_argument("features", nargs="*", metavar="FEATURE=0|1")
     parser.add_argument("--ctest", default="ctest")
     parser.add_argument("--list", type=Path, default=os.environ.get("RGPOT_TEST_LIST"))
-    args = parser.parse_args()
+    args = parser.parse_intermixed_args()
     if args.system != "lint" and args.build is None:
         parser.error(f"{args.system} needs the build directory")
 
