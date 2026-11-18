@@ -7,7 +7,8 @@
 //! exports one symbol set. Which backend runs is which library is loaded, and
 //! the backend's configuration is the opaque message the library's create
 //! call reads. [`EnginePotential::load`] resolves that symbol set, checks the
-//! ABI major and optional compatibility stamp, and keeps one engine instance.
+//! ABI major, optional compatibility stamp, and backend availability, and
+//! keeps one engine instance.
 //! [`EnginePotential::force`] is one geometry in Angstrom and one answer in eV
 //! and eV/Angstrom, the units the header fixes.
 //!
@@ -66,6 +67,8 @@ pub type CoordTransformFn = unsafe extern "C" fn(
 
 /// `rgpot_engine_abi_version`.
 pub type AbiVersionFn = unsafe extern "C" fn() -> c_int;
+/// `rgpot_engine_available`.
+pub type AvailableFn = unsafe extern "C" fn() -> c_int;
 /// Compatibility identity returned by `rgpot_engine_abi_stamp`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,11 +175,14 @@ pub struct EngineCaps {
 }
 
 /// The symbols of one engine library. Creation, destruction, force evaluation,
-/// and the ABI major are required; the remaining symbols are optional.
+/// availability, and the ABI major are required; the remaining symbols are
+/// optional.
 #[derive(Clone, Copy)]
 pub struct EngineSymbols {
     /// Required symbol `rgpot_engine_abi_version`.
     pub abi_version: AbiVersionFn,
+    /// Required symbol `rgpot_engine_available`.
+    pub available: AvailableFn,
     /// Optional symbol `rgpot_engine_abi_stamp`.
     pub abi_stamp: Option<AbiStampFn>,
     /// Optional symbol `rgpot_engine_abi_compatible`.
@@ -218,6 +224,8 @@ pub enum EngineError {
         /// Engine stamp, when the engine exports it.
         engine: Option<RgpotEngineAbiStamp>,
     },
+    /// `rgpot_engine_available` reported that the engine cannot create instances.
+    Unavailable,
     /// `rgpot_engine_create` returned no instance; the text is its error buffer.
     Create(String),
     /// The request does not fit the ABI: a length or a non-finite answer.
@@ -270,6 +278,12 @@ impl fmt::Display for EngineError {
                     host.abi_major, host.abi_minor, host.layout_revision
                 ),
             },
+            Self::Unavailable => {
+                write!(
+                    f,
+                    "rgpot_engine_available reported that the engine is unavailable"
+                )
+            }
             Self::Create(why) => write!(f, "rgpot_engine_create failed: {why}"),
             Self::Invalid(why) => write!(f, "invalid engine request: {why}"),
             Self::Unsupported { operation, message } => {
@@ -389,6 +403,9 @@ impl EnginePotential {
                 host,
                 engine: engine_stamp,
             });
+        }
+        if unsafe { (symbols.available)() } == 0 {
+            return Err(EngineError::Unavailable);
         }
         // In-tree engines cast `config` to `capnp::word`, which requires
         // 8-byte alignment even when the caller passes an unaligned `&[u8]`.
@@ -719,6 +736,7 @@ unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
     }
     Ok(EngineSymbols {
         abi_version: unsafe { required(library, "rgpot_engine_abi_version")? },
+        available: unsafe { required(library, "rgpot_engine_available")? },
         abi_stamp: unsafe { optional(library, "rgpot_engine_abi_stamp") },
         abi_compatible: unsafe { optional(library, "rgpot_engine_abi_compatible") },
         create: unsafe { required(library, "rgpot_engine_create")? },

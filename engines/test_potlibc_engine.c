@@ -20,6 +20,7 @@ typedef int (*hvp_fn)(RgpotEnginePot *, long, const double *, const int *,
                       const double *, double *, const double *,
                       rgpot_engine_coord_transform, void *);
 typedef int (*abi_version_fn)(void);
+typedef int (*available_fn)(void);
 typedef RgpotEngineAbiStamp (*abi_stamp_fn)(void);
 typedef int (*abi_compatible_fn)(const RgpotEngineAbiStamp *);
 typedef const char *(*text_fn)(void);
@@ -27,6 +28,7 @@ typedef size_t (*last_error_fn)(const RgpotEnginePot *, char *, size_t);
 
 typedef struct {
   abi_version_fn abi_version;
+  available_fn available;
   abi_stamp_fn abi_stamp;
   abi_compatible_fn abi_compatible;
   text_fn name;
@@ -214,6 +216,7 @@ int main(int argc, char **argv) {
   }
   engine.abi_version =
       (abi_version_fn)dlsym(library, "rgpot_engine_abi_version");
+  engine.available = (available_fn)dlsym(library, "rgpot_engine_available");
   engine.abi_stamp = (abi_stamp_fn)dlsym(library, "rgpot_engine_abi_stamp");
   engine.abi_compatible =
       (abi_compatible_fn)dlsym(library, "rgpot_engine_abi_compatible");
@@ -225,10 +228,11 @@ int main(int argc, char **argv) {
   engine.hvp = (hvp_fn)dlsym(library, "rgpot_engine_hvp");
   engine.last_error =
       (last_error_fn)dlsym(library, "rgpot_engine_last_error");
-  if (engine.abi_version == NULL || engine.abi_stamp == NULL ||
-      engine.abi_compatible == NULL || engine.name == NULL ||
-      engine.version == NULL || engine.create == NULL || engine.destroy == NULL ||
-      engine.force == NULL || engine.hvp == NULL || engine.last_error == NULL) {
+  if (engine.abi_version == NULL || engine.available == NULL ||
+      engine.abi_stamp == NULL || engine.abi_compatible == NULL ||
+      engine.name == NULL || engine.version == NULL || engine.create == NULL ||
+      engine.destroy == NULL || engine.force == NULL || engine.hvp == NULL ||
+      engine.last_error == NULL) {
     fprintf(stderr, "potlibc engine symbols are incomplete\n");
     return 2;
   }
@@ -240,6 +244,7 @@ int main(int argc, char **argv) {
     };
     const RgpotEngineAbiStamp stamp = engine.abi_stamp();
     if (engine.abi_version() != RGPOT_ENGINE_ABI_VERSION ||
+        !engine.available() ||
         stamp.abi_major != host.abi_major ||
         stamp.abi_minor != host.abi_minor ||
         stamp.layout_revision != host.layout_revision ||
