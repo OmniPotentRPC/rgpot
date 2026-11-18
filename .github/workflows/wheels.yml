@@ -4,9 +4,10 @@ name: Wheels
 # with no tag and no main-branch source behind it. Tag-driven builds keep the
 # artifact and the tag describing each other.
 concurrency:
-  group: wheels-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || 
+    github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref != 
+    'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 on:
   workflow_dispatch:
     inputs:
@@ -26,7 +27,7 @@ on:
     # A branch push starts this workflow only when the wheel or audit
     # files change. Other branches run these jobs through their pull request.
     tags:
-      - "v*"
+      - '*'
     branches:
       - main
       - develop
@@ -88,10 +89,15 @@ jobs:
       os: '["ubuntu-latest","ubuntu-24.04-arm","macos-15"]'
       build: "cp310-* cp311-* cp312-* cp314t-*"
 
+    if: github.event_name == 'workflow_dispatch' || github.ref == 
+      'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || 
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
   kernel-count:
     name: Fortran kernels in the linux wheel
     needs: py-wheels
-    if: always()
+    if: (always()) && (github.event_name == 'workflow_dispatch' || github.ref ==
+      'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || 
+      contains(github.event.pull_request.labels.*.name, 'ci:full'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -371,6 +377,9 @@ jobs:
           name: isa-audit-macos-arm64
           path: isa-audit-libs/
 
+    if: github.event_name == 'workflow_dispatch' || github.ref == 
+      'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || 
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
   wheel-import-arm:
     name: Import each repaired arm wheel without LD_LIBRARY_PATH
     needs: py-wheels
@@ -409,6 +418,9 @@ jobs:
           PY_314T: ${{ steps.py314t.outputs.python-path }}
         run: bash .github/scripts/rgpot_installed_wheel_check.sh wheelhouse
 
+    if: github.event_name == 'workflow_dispatch' || github.ref == 
+      'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || 
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
   sdist:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -459,16 +471,23 @@ jobs:
       allow-file: rgpot/isa-allow.toml
       baseline: armv8-a
 
+    if: github.event_name == 'workflow_dispatch' || github.ref == 
+      'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || 
+      contains(github.event.pull_request.labels.*.name, 'ci:full')
   publish:
-    needs: [kernel-count, wheel-import-arm, sdist, isa-audit-linux, isa-audit-macos]
+    needs: [kernel-count, wheel-import-arm, sdist, isa-audit-linux, 
+          isa-audit-macos]
     if: >-
       github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
       || (github.event_name == 'workflow_dispatch' && inputs.publish)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
-      name: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') && 'testpypi-rgpot' || 'pypi-rgpot' }}
-      url: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') && 'https://test.pypi.org/p/rgpot' || 'https://pypi.org/p/rgpot' }}
+      name: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 
+        'testpypi') && 'testpypi-rgpot' || 'pypi-rgpot' }}
+      url: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 
+        'testpypi') && 'https://test.pypi.org/p/rgpot' || 
+        'https://pypi.org/p/rgpot' }}
     permissions:
       contents: read
       id-token: write
@@ -487,11 +506,14 @@ jobs:
       # environment PYPI_TOKEN until that publisher exists; keep
       # id-token: write so a later OIDC switch is one-line.
       - name: Publish
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        uses: 
+          pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33     # release/v1
         with:
           user: __token__
           password: ${{ secrets.PYPI_TOKEN }}
           packages-dir: upload/
-          repository-url: ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi') && 'https://test.pypi.org/legacy/' || '' }}
+          repository-url: ${{ (github.event_name == 'workflow_dispatch' && 
+            inputs.target == 'testpypi') && 'https://test.pypi.org/legacy/' || 
+            '' }}
           skip-existing: true
           verbose: true

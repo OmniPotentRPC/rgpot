@@ -1,82 +1,85 @@
 concurrency:
-  cancel-in-progress: true
-  group: release-prepare-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || 
+    github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref != 
+    'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 env:
   CI_TOOLS_ARTIFACT: ci-tools-${{ github.sha }}-Linux
 jobs:
   prepare:
     needs:
-    - tools
+      - tools
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        fetch-depth: 0
-    - name: Restore potctl + cog from tools job
-      uses: ./.github/actions/restore-ci-tools
-      with:
-        artifact-name: ${{ env.CI_TOOLS_ARTIFACT }}
-    - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
-      with:
-        activate-environment: true
-        cache: true
-        environments: devbld
-        pixi-version: v0.70.2
-    - name: Assert lockstep surfaces agree
-      run: potctl ci release-assert
-    - name: Towncrier draft (fragments must build cleanly)
-      run: potctl ci towncrier-draft
-    - name: Cargo check rgpot-core (locked)
-      run: cargo check -p rgpot-core --locked
-      shell: pixi run bash -e {0}
-    - name: Cog bump dry-run (PR tip version)
-      run: potctl ci cog-bump-dry-run
-    - if: github.event_name == 'workflow_dispatch'
-      name: Cog bump dry-run (workflow_dispatch)
-      run: potctl ci cog-bump-dry-run --bump ${{ inputs.bump }}
-    - name: Cog check (conventional commits since last tag)
-      run: potctl ci cog-check --from ${{ github.event.pull_request.base.sha || '' }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Restore potctl + cog from tools job
+        uses: ./.github/actions/restore-ci-tools
+        with:
+          artifact-name: ${{ env.CI_TOOLS_ARTIFACT }}
+      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          activate-environment: true
+          cache: true
+          environments: devbld
+          pixi-version: v0.70.2
+      - name: Assert lockstep surfaces agree
+        run: potctl ci release-assert
+      - name: Towncrier draft (fragments must build cleanly)
+        run: potctl ci towncrier-draft
+      - name: Cargo check rgpot-core (locked)
+        run: cargo check -p rgpot-core --locked
+        shell: pixi run bash -e {0}
+      - name: Cog bump dry-run (PR tip version)
+        run: potctl ci cog-bump-dry-run
+      - if: github.event_name == 'workflow_dispatch'
+        name: Cog bump dry-run (workflow_dispatch)
+        run: potctl ci cog-bump-dry-run --bump ${{ inputs.bump }}
+      - name: Cog check (conventional commits since last tag)
+        run: potctl ci cog-check --from ${{ github.event.pull_request.base.sha 
+          || '' }}
     timeout-minutes: 10
   tools:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    - name: Stage portable potctl + cog (Linux musl + upload)
-      uses: ./.github/actions/setup-ci-tools
-      with:
-        artifact-name: ${{ env.CI_TOOLS_ARTIFACT }}
-        install-cog: 'true'
-        upload-artifact: 'true'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Stage portable potctl + cog (Linux musl + upload)
+        uses: ./.github/actions/setup-ci-tools
+        with:
+          artifact-name: ${{ env.CI_TOOLS_ARTIFACT }}
+          install-cog: 'true'
+          upload-artifact: 'true'
     timeout-minutes: 10
 name: Release prepare (cog dry-run)
 on:
   pull_request:
     paths:
-    - cog.toml
-    - towncrier.toml
-    - potctl/**
-    - Cargo.toml
-    - Cargo.lock
-    - docs/newsfragments/**
-    - rgpot-core/Cargo.toml
-    - meson.build
-    - CMakeLists.txt
-    - pixi.toml
-    - CHANGELOG.md
-    - .github/workflows/release.yml
-    - .github/workflows/release-prepare.yml
-    - .github/actions/**
-    - ci/gha/**
+      - cog.toml
+      - towncrier.toml
+      - potctl/**
+      - Cargo.toml
+      - Cargo.lock
+      - docs/newsfragments/**
+      - rgpot-core/Cargo.toml
+      - meson.build
+      - CMakeLists.txt
+      - pixi.toml
+      - CHANGELOG.md
+      - .github/workflows/release.yml
+      - .github/workflows/release-prepare.yml
+      - .github/actions/**
+      - ci/gha/**
   workflow_dispatch:
     inputs:
       bump:
         default: auto
         description: SemVer component for cog dry-run
         options:
-        - auto
-        - patch
-        - minor
-        - major
+          - auto
+          - patch
+          - minor
+          - major
         required: true
         type: choice
 permissions:
