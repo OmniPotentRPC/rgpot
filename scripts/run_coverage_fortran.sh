@@ -19,20 +19,32 @@ if [[ ! -d "$BUILD" ]]; then
   exit 1
 fi
 
-# lcov 2 reports template instances in toolchain headers as inconsistent;
-# that one class is tolerated, every other lcov error fails the script.
+# lcov 2 renamed the branch-coverage rc option and rejects the old name. It
+# also checks gcov data against source lines and reports template instances
+# in toolchain headers as mismatched. lcov 2.0 calls that class "mismatch";
+# later releases also say "inconsistent". That one class is tolerated.
+# Every other lcov error still fails the script.
 LCOV_MAJOR=$(lcov --version | sed -n 's/.*LCOV version \([0-9][0-9]*\)\..*/\1/p')
 LCOV_ARGS=()
 if [[ "${LCOV_MAJOR:-0}" -ge 2 ]]; then
-  LCOV_ARGS+=(--ignore-errors inconsistent)
+  LCOV_ARGS+=(--ignore-errors inconsistent,mismatch)
+else
+  LCOV_ARGS+=(--rc lcov_branch_coverage=1)
 fi
 
 echo "==> extract Fortran kernels from meson coverage tree $BUILD"
-RAW=$(mktemp)
-trap 'rm -f "$RAW"' EXIT
+TMP_DIR=$(mktemp -d)
+RAW="$TMP_DIR/fortran.info"
+cleanup_tmp() {
+  rm -f -- "$RAW"
+  rmdir -- "$TMP_DIR"
+}
+trap cleanup_tmp EXIT
 lcov --directory "$BUILD" --capture --output-file "$RAW" "${LCOV_ARGS[@]}"
 lcov --extract "$RAW" '*/CppCore/rgpot/fortran/*' \
   --output-file "$OUT" "${LCOV_ARGS[@]}"
+cleanup_tmp
+trap - EXIT
 
 test -s "$OUT"
 python3 - "$OUT" <<'PY'

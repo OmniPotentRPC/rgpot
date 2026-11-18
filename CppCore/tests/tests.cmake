@@ -204,6 +204,22 @@ rgpot_add_test(AotiPublicationStressTest COMMAND AotiPublicationStressTest)
 rgpot_add_test(MolecularFrameTest COMMAND MolecularFrameTest)
 rgpot_add_test(AotiUnpackTest COMMAND aoti_unpack_test)
 
+# Same rule as meson's coverage_serial: RUN_SERIAL only when the compiler
+# flags instrument for gcov. An ordinary build leaves those tests parallel.
+set(RGPOT_COVERAGE FALSE)
+if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
+  set(RGPOT_COVERAGE TRUE)
+endif()
+foreach(_rgpot_cov_flags CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG
+        CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELWITHDEBINFO
+        CMAKE_CXX_FLAGS_MINSIZEREL)
+  if(DEFINED ${_rgpot_cov_flags})
+    if(${_rgpot_cov_flags} MATCHES "(--coverage|-fprofile-arcs|-ftest-coverage)")
+      set(RGPOT_COVERAGE TRUE)
+    endif()
+  endif()
+endforeach()
+
 rgpot_registry_feature_args(_rgpot_features)
 rgpot_add_test(test_list_parity
   COMMAND Python3::Interpreter
@@ -214,22 +230,22 @@ rgpot_add_test(test_list_parity
 rgpot_registry_tests(unit _rgpot_units)
 foreach(test IN LISTS _rgpot_units)
   rgpot_registry_field("${test}" args _args)
-  list(GET _args 0 _exe)
-  list(GET _args 1 _source)
+  list(POP_FRONT _args _exe _source)
   rgpot_test_executable(${_exe} CppCore/tests/${_source})
   rgpot_registry_field("${test}" unfused _unfused)
   if(_unfused)
     target_compile_options(${_exe} PRIVATE ${_rgpot_fp_contract_off})
   endif()
-  rgpot_add_test("${test}" COMMAND ${_exe})
+  rgpot_add_test("${test}" COMMAND ${_exe} ${_args})
 endforeach()
 
 rgpot_registry_tests(rerun _rgpot_reruns)
 foreach(test IN LISTS _rgpot_reruns)
-  rgpot_registry_field("${test}" args _base)
+  rgpot_registry_field("${test}" args _rerun_args)
+  list(POP_FRONT _rerun_args _base)
   rgpot_registry_field("${_base}" args _args)
   list(GET _args 0 _exe)
-  rgpot_add_test("${test}" COMMAND ${_exe})
+  rgpot_add_test("${test}" COMMAND ${_exe} ${_rerun_args})
 endforeach()
 
 rgpot_registry_tests(fortran _rgpot_fortran)

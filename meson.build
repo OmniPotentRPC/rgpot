@@ -4,6 +4,8 @@ project(
     # [[[cog import rgpot_version as v; cog.outl(f"    version: '{v.VERSION}',")]]]
     version: '3.7.0',
     # [[[end]]]
+    # array.slice(), used for registry command arguments.
+    meson_version: '>=1.10',
     default_options: ['warning_level=2', 'cpp_std=c++20'],
 )
 # IMPORTANT!! warning_level=3 passes -fimplicit-none
@@ -62,6 +64,17 @@ if has_fortran
     # Matches the RGPOT_HAS_FORTRAN_POTS cflag rgpot.pc exports, so in-tree
     # sources and installed consumers gate the Fortran pots on one name.
     _args += ['-DRGPOT_HAS_FORTRAN_POTS=TRUE']
+endif
+
+# gcov's default counter update races when tests run together, and lcov
+# then stops on a negative branch count. Atomic updates keep the ordinary
+# tests parallel under a coverage build.
+if get_option('b_coverage')
+    _cov_langs = ['c', 'cpp']
+    if has_fortran
+        _cov_langs += ['fortran']
+    endif
+    add_project_arguments('-fprofile-update=atomic', language: _cov_langs)
 endif
 
 # i-PI socket server. POSIX sockets only; auto skips Windows.

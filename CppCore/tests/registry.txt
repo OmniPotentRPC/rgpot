@@ -44,13 +44,13 @@
 #
 # kind:
 #
-#   unit EXE SOURCE     Catch2 test in CppCore/tests, linked to the library
+#   unit EXE SOURCE [ARG...] Catch2 test in CppCore/tests, linked to the library
 #   fortran EXE SOURCE  program in CppCore/rgpot/fortran, linked to the kernels
 #   nlist EXE SOURCE    example in CppCore/examples, linked to the neighbour
 #                       archives
 #   py SCRIPT [ARG...]  SCRIPT relative to the source root, where @root@ is
 #                       the source root and @capnp@ the capnp compiler
-#   rerun TEST          TEST's executable again, under these options
+#   rerun TEST [ARG...] TEST's executable again, under these options
 #   custom              built and registered by hand in each build system
 #
 # options:
@@ -62,6 +62,8 @@
 #                       directory unless they name one
 #   env=NAME=VALUE      repeatable
 #   serial              never runs beside another test
+#   coverage_serial     serial only while coverage is on. An ordinary build
+#                       leaves the test parallel
 #   should_fail         passes when the command fails
 #   fp_contract=off     unit only: the test source is compiled unfused, for
 #                       oracles compared exactly with unfused sums
@@ -127,10 +129,30 @@ ReducedPairTest | tests core | unit reduced_pair_test ReducedPairTest.cc fp_cont
 EMTPotTest | tests core | unit emt_pot_test EMTPotTest.cc |
 EAMCellPotTest | tests core | unit eam_cell_pot_test EAMCellPotTest.cc |
 NeighbourLayerTest | tests core | unit neighbour_layer_test NeighbourLayerTest.cc fp_contract=off |
-# Eight potentials on 1, 2, 3 and 8 threads, on up to 10648 atoms.
-ThreadTeamTest | tests core | unit thread_team_test ThreadTeamTest.cc timeout=120 |
+# Eight potentials on 1, 2, 3 and 8 threads, on up to 10648 atoms. Each
+# registration runs one Catch2 tag. coverage_serial keeps those copies off
+# one another's cores only while the binary is instrumented. Ordinary
+# builds still run them together. The names say which tag they run.
+# Two coverage runs each had one of these take about 330s after the same
+# binary had taken under a minute, so the limit is 480s. That keeps the
+# slow run under half of the coverage timeout (480s times the multiplier).
+ThreadTeamTest_slices | tests core | unit thread_team_test ThreadTeamTest.cc [slices] timeout=480 coverage_serial |
+ThreadTeamTest_eam | tests core | rerun ThreadTeamTest_slices [eam] timeout=480 coverage_serial |
+ThreadTeamTest_pair | tests core | rerun ThreadTeamTest_slices [pair] timeout=480 coverage_serial |
+ThreadTeamTest_sutton | tests core | rerun ThreadTeamTest_slices [sutton] timeout=480 coverage_serial |
+ThreadTeamTest_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] timeout=480 coverage_serial |
+ThreadTeamTest_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] timeout=480 coverage_serial |
+ThreadTeamTest_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] timeout=480 coverage_serial |
+ThreadTeamTest_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] timeout=480 coverage_serial |
+ThreadTeamTest_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] timeout=480 coverage_serial |
+ThreadTeamTest_sw | tests core | rerun ThreadTeamTest_slices [sw] timeout=480 coverage_serial |
+ThreadTeamTest_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] timeout=480 coverage_serial |
+ThreadTeamTest_nlist | tests core | rerun ThreadTeamTest_slices [nlist] timeout=480 coverage_serial |
 StreamParityTest | tests core | unit stream_parity_test StreamParityTest.cc fp_contract=off timeout=900 |
-NeighbourListTest | tests core | unit neighbour_list_test NeighbourListTest.cc |
+# About 40s once the binary is instrumented, past the 30s default. 120s
+# leaves that runtime under half the ordinary limit and under half of the
+# coverage timeout (120s times the coverage multiplier).
+NeighbourListTest | tests core | unit neighbour_list_test NeighbourListTest.cc timeout=120 |
 VesinEmptyResetTest | tests core | unit vesin_empty_reset_test VesinEmptyResetTest.cc |
 EAMCellVerletTest | tests core | unit eam_cell_verlet_test EAMCellVerletTest.cc fp_contract=off |
 ManyBodyForceTest | tests core | unit many_body_force_test ManyBodyForceTest.cc |
@@ -157,8 +179,31 @@ CacheTest | tests cache | unit cache_test CacheTest.cc |
 InvarianceTest | tests cache | unit invariance_test InvarianceTest.cc |
 XTBDlopenTest | tests core,xtb | custom suite=xtb workdir=. |
 # Under a thread limit every region gets fewer threads than it asks for.
-ThreadTeamTest_limit1 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=1 timeout=120 |
-ThreadTeamTest_limit2 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=2 timeout=120 |
+# The same tags as above, so each limit still runs the whole file.
+ThreadTeamTest_limit1_slices | tests core | rerun ThreadTeamTest_slices [slices] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_eam | tests core | rerun ThreadTeamTest_slices [eam] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_pair | tests core | rerun ThreadTeamTest_slices [pair] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton | tests core | rerun ThreadTeamTest_slices [sutton] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sw | tests core | rerun ThreadTeamTest_slices [sw] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_nlist | tests core | rerun ThreadTeamTest_slices [nlist] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_slices | tests core | rerun ThreadTeamTest_slices [slices] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_eam | tests core | rerun ThreadTeamTest_slices [eam] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_pair | tests core | rerun ThreadTeamTest_slices [pair] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton | tests core | rerun ThreadTeamTest_slices [sutton] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sw | tests core | rerun ThreadTeamTest_slices [sw] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit2_nlist | tests core | rerun ThreadTeamTest_slices [nlist] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
 openmp_confined | tests python | py CppCore/tests/test_openmp_confined.py @root@ |
 MinImageIsaVariants | tests core isa_variants | custom |
 ExactFmaEq | tests core | custom |
