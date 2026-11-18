@@ -227,6 +227,7 @@ static int evaluate_message(Engine *engine, const void *message, size_t length,
  * return the same energy, forces and Hessian-vector product as version 2. */
 static int v1_client_matches_version_two(Engine *engine) {
   unsigned char legacy_bytes[144];
+  unsigned char oversized_v1[sizeof(RgpotPotlibcConfigV2)];
   RgpotPotlibcConfigV2 current;
   double legacy_energy = 0.0;
   double current_energy = 0.0;
@@ -257,6 +258,30 @@ static int v1_client_matches_version_two(Engine *engine) {
       memcmp(legacy_forces, current_forces, sizeof legacy_forces) != 0 ||
       memcmp(legacy_product, current_product, sizeof legacy_product) != 0) {
     fprintf(stderr, "version-1 potlibc results differ from version 2\n");
+    return 1;
+  }
+
+  memset(error, 0, sizeof error);
+  if (engine->create(legacy_bytes, sizeof legacy_bytes - 1, error,
+                     sizeof error) != NULL ||
+      strstr(error, "RgpotPotlibcConfigV1") == NULL) {
+    fprintf(stderr, "short version-1 potlibc message: %s\n", error);
+    return 1;
+  }
+  memset(oversized_v1, 0, sizeof oversized_v1);
+  memcpy(oversized_v1, legacy_bytes, sizeof legacy_bytes);
+  memset(error, 0, sizeof error);
+  if (engine->create(oversized_v1, sizeof legacy_bytes + 1, error,
+                     sizeof error) != NULL ||
+      strstr(error, "RgpotPotlibcConfigV1") == NULL) {
+    fprintf(stderr, "145-byte version-1 potlibc message: %s\n", error);
+    return 1;
+  }
+  memset(error, 0, sizeof error);
+  if (engine->create(oversized_v1, sizeof oversized_v1, error, sizeof error) !=
+          NULL ||
+      strstr(error, "RgpotPotlibcConfigV1") == NULL) {
+    fprintf(stderr, "152-byte version-1 potlibc message: %s\n", error);
     return 1;
   }
 
