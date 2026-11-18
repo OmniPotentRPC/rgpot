@@ -57,6 +57,7 @@ constexpr double kCpmdFbohr = 1.0 / kCpmdBohr;
 // reps in vdw: a pair closer than this many bohr contributes nothing.
 constexpr double kCpmdMinPair = 1.0e-2;
 constexpr int kCpmdMaxZ = 99;
+constexpr double kCellTol = 1.0e-12;
 
 std::string upper(std::string_view s) {
   std::string out(s);
@@ -70,6 +71,119 @@ std::string upper(std::string_view s) {
 double wrap_axis(double x, double length) {
   const double y = std::fmod(x, length);
   return y - length * std::trunc(y / (0.5 * length));
+}
+
+double dot3(const std::array<double, 3> &a, const std::array<double, 3> &b) {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+double norm3(const std::array<double, 3> &v) { return std::sqrt(dot3(v, v)); }
+
+bool nearly(double a, double b) { return std::abs(a - b) <= kCellTol; }
+
+std::array<double, 3> row(const std::array<double, 9> &h, int i) {
+  return {h[3 * i], h[3 * i + 1], h[3 * i + 2]};
+}
+
+bool is_fcc_cell(const std::array<double, 9> &h) {
+  const auto a = row(h, 0);
+  const auto b = row(h, 1);
+  const auto c = row(h, 2);
+  const double la = norm3(a);
+  const double lb = norm3(b);
+  const double lc = norm3(c);
+  if (!(nearly(la, lb) && nearly(lb, lc))) {
+    return false;
+  }
+  const double c12 = dot3(a, b) / (la * lb);
+  const double c13 = dot3(a, c) / (la * lc);
+  const double c23 = dot3(b, c) / (lb * lc);
+  return nearly(c12, 0.5) && nearly(c13, 0.5) && nearly(c23, 0.5);
+}
+
+bool is_trigonal_cell(const std::array<double, 9> &h) {
+  const auto a = row(h, 0);
+  const auto b = row(h, 1);
+  const auto c = row(h, 2);
+  const double la = norm3(a);
+  const double lb = norm3(b);
+  const double lc = norm3(c);
+  if (!(nearly(la, lb) && nearly(lb, lc))) {
+    return false;
+  }
+  const double c12 = dot3(a, b) / (la * lb);
+  const double c13 = dot3(a, c) / (la * lc);
+  const double c23 = dot3(b, c) / (lb * lc);
+  return nearly(c12, c13) && nearly(c12, c23) && !nearly(c12, 0.0) &&
+         !nearly(c12, 0.5);
+}
+
+bool is_hexagonal_cell(const std::array<double, 9> &h) {
+  const auto a = row(h, 0);
+  const auto b = row(h, 1);
+  const auto c = row(h, 2);
+  const double la = norm3(a);
+  const double lb = norm3(b);
+  const double lc = norm3(c);
+  if (!(nearly(la, lb) && !nearly(lb, lc))) {
+    return false;
+  }
+  const double c12 = dot3(a, b) / (la * lb);
+  const double c13 = dot3(a, c) / (la * lc);
+  const double c23 = dot3(b, c) / (lb * lc);
+  return nearly(c12, -0.5) && nearly(c13, 0.0) && nearly(c23, 0.0);
+}
+
+bool is_monoclinic_cell(const std::array<double, 9> &h) {
+  const auto a = row(h, 0);
+  const auto b = row(h, 1);
+  const auto c = row(h, 2);
+  const double la = norm3(a);
+  const double lb = norm3(b);
+  const double lc = norm3(c);
+  const double c12 = dot3(a, b) / (la * lb);
+  const double c13 = dot3(a, c) / (la * lc);
+  const double c23 = dot3(b, c) / (lb * lc);
+  const int near_90 = static_cast<int>(nearly(c12, 0.0)) +
+                      static_cast<int>(nearly(c13, 0.0)) +
+                      static_cast<int>(nearly(c23, 0.0));
+  return near_90 == 2;
+}
+
+bool uses_symmetry_specific_pbc3(const std::array<double, 9> &h) {
+  // OpenCPMD 062582b, src/vdwin_utils.mod.F90, routine `pbc3`: FCC,
+  // trigonal, hexagonal and monoclinic lattice kinds each have their own
+  // branch. These branches are not equivalent to rounding each fractional
+  // component independently, so we reproduce them with an image search over
+  // the wrapped vector.
+  return is_fcc_cell(h) || is_trigonal_cell(h) || is_hexagonal_cell(h) ||
+         is_monoclinic_cell(h);
+}
+
+void wrap_symmetry_specific(const d2::detail::Cell &cell, double *rlp) {
+  double s[3];
+  cell.fractional(rlp, s);
+  std::array<double, 3> best{rlp[0], rlp[1], rlp[2]};
+  double best2 = best[0] * best[0] + best[1] * best[1] + best[2] * best[2];
+  for (int nx = -1; nx <= 1; ++nx) {
+    for (int ny = -1; ny <= 1; ++ny) {
+      for (int nz = -1; nz <= 1; ++nz) {
+        const double shifted[3] = {s[0] - static_cast<double>(nx),
+                                   s[1] - static_cast<double>(ny),
+                                   s[2] - static_cast<double>(nz)};
+        double cand[3];
+        cell.cartesian(shifted, cand);
+        const double r2 = cand[0] * cand[0] + cand[1] * cand[1] + cand[2] * cand[2];
+        if (r2 + kCellTol < best2) {
+          best2 = r2;
+          best = {cand[0], cand[1], cand[2]};
+        }
+      }
+    }
+  }
+  rlp[0] = best[0];
+  rlp[1] = best[1];
+  rlp[2] = best[2];
 }
 
 } // namespace
@@ -124,6 +238,7 @@ void D2CpmdPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto &h = cell.h;
   const bool orthorhombic = cell.periodic && h[1] == 0.0 && h[2] == 0.0 && h[3] == 0.0 &&
                             h[5] == 0.0 && h[6] == 0.0 && h[7] == 0.0;
+  const bool symmetry_pbc3 = cell.periodic && uses_symmetry_specific_pbc3(h);
   const double rpow_max = 1.0 / cfg_.vdweps;
 
   std::vector<double> f(3 * n, 0.0);
@@ -143,6 +258,8 @@ void D2CpmdPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         for (int a = 0; a < 3; ++a) {
           rlp[a] = wrap_axis(rlp[a], h[4 * a]);
         }
+      } else if (symmetry_pbc3) {
+        wrap_symmetry_specific(cell, rlp);
       } else if (cell.periodic) {
         double s[3];
         cell.fractional(rlp, s);

@@ -178,7 +178,9 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// 6 drops the copied half-list from LJ and Morse, and gives ZBL and the
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
-inline constexpr std::uint32_t kCxxSoversion = 6;
+/// 7 changes the long-range SumPot class shape and its relation to the
+/// additive SumPot type across the shared-library boundary.
+inline constexpr std::uint32_t kCxxSoversion = 7;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
