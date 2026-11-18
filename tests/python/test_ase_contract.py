@@ -23,6 +23,9 @@ from rgpot.ase import AnnealOptimizer, AnnealRunner, RgpotCalculator
 
 from support import lj_crystal, lj_dimer, pt7, raw_bytes, si_crystal
 
+ELEMENTARY_CHARGE_C = 1.602176634e-19
+SW_1985_EPSILON_EV = 3.4723e-12 * 1.0e-7 / ELEMENTARY_CHARGE_C
+
 
 def test_import_rgpot_does_not_import_ase() -> None:
     env = os.environ.copy()
@@ -162,7 +165,7 @@ def test_sw_stress_is_the_1985_stress_scaled_by_epsilon() -> None:
     args = (atoms.positions, atoms.numbers, np.ascontiguousarray(atoms.cell.array))
     eon = rgpot.SWPot().evaluate(*args)
     published = rgpot.StillingerWeberSi().evaluate(*args)
-    ratio = 2.16826 * 1.06767385 / (3.4723e-12 * 1.0e-7 / 1.602176634e-19)
+    ratio = 2.16826 * 1.06767385 / SW_1985_EPSILON_EV
     assert eon["energy"] == pytest.approx(ratio * published["energy"], rel=1e-13)
     np.testing.assert_allclose(
         eon["stress"], ratio * published["stress"], atol=1e-14, rtol=0.0

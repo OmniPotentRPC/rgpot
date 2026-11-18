@@ -27,6 +27,7 @@
 #include "rgpot/XTBPot/XTBDlopen.hpp"
 #include "rgpot/XTBPot/XTBPot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+#include "rgpot/units.hpp"
 
 #include "XtbHotClusters.hpp"
 
@@ -309,7 +310,7 @@ TEST_CASE("XTBDlopen serial multi-instance via recreate",
 // as a fresh results object. 1e-8 Hartree is the energy agreement. Forces
 // at accuracy 0.01 are compared in eV/Angstrom; accuracy 1 stops earlier
 // and is checked against its own residual below.
-static constexpr double kWarmEnergyTol = 1e-8 * 27.211386245988;
+static constexpr double kWarmEnergyTol = 1e-8 * rgpot::units::HARTREE_TO_EV;
 // Measured warm-versus-cold gap on this water is 6.5e-8 eV/Angstrom.
 static constexpr double kWarmForceTol = 1e-7;
 

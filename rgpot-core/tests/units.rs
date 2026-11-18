@@ -98,7 +98,7 @@ fn every_exported_constant_has_the_bits_of_units_hpp() {
 
 int main(int argc, char **argv) {
   if (argc != 2) return 2;
-  const double values[12] = {
+  const double values[13] = {
       rgpot::units::BOLTZMANN_CONSTANT_J_PER_K,
       rgpot::units::ELEMENTARY_CHARGE_C,
       rgpot::units::HARTREE_ENERGY_J,
@@ -109,17 +109,18 @@ int main(int argc, char **argv) {
       rgpot::units::EV_TO_HARTREE,
       rgpot::units::KB_HARTREE,
       rgpot::units::KB_EV,
+      rgpot::units::ELECTRON_MASS_IN_DALTON,
       rgpot::units::DALTON_IN_ELECTRON_MASSES,
       rgpot::units::ATOMIC_UNIT_OF_TIME_S,
   };
   std::FILE *fp = std::fopen(argv[1], "wb");
   if (!fp) return 3;
-  const std::size_t wrote = std::fwrite(values, sizeof(double), 12, fp);
+  const std::size_t wrote = std::fwrite(values, sizeof(double), 13, fp);
   std::fclose(fp);
-  return wrote == 12 ? 0 : 4;
+  return wrote == 13 ? 0 : 4;
 }
 "#;
-    let cpp = run_cpp_probe("header-bits", probe, &[], 12);
+    let cpp = run_cpp_probe("header-bits", probe, &[], 13);
     let rust = [
         (
             "BOLTZMANN_CONSTANT_J_PER_K",
@@ -137,6 +138,7 @@ int main(int argc, char **argv) {
         ("EV_TO_HARTREE", units::EV_TO_HARTREE),
         ("KB_HARTREE", units::KB_HARTREE),
         ("KB_EV", units::KB_EV),
+        ("ELECTRON_MASS_IN_DALTON", units::ELECTRON_MASS_IN_DALTON),
         (
             "DALTON_IN_ELECTRON_MASSES",
             units::DALTON_IN_ELECTRON_MASSES,
@@ -240,7 +242,7 @@ fn codata_2018_values_and_identities_hold() {
     );
     assert_eq!(
         units::DALTON_IN_ELECTRON_MASSES.to_bits(),
-        (1.0_f64 / 5.485_799_090_65e-4_f64).to_bits()
+        (1.0_f64 / units::ELECTRON_MASS_IN_DALTON).to_bits()
     );
     assert_eq!(
         units::ATOMIC_UNIT_OF_TIME_S.to_bits(),

@@ -32,6 +32,8 @@ inline constexpr double REDUCED_PLANCK_CONSTANT_J_S = 1.0545718176461565e-34;
 // Length
 inline constexpr double BOHR_TO_ANGSTROM = 0.529177210903;
 inline constexpr double ANGSTROM_TO_BOHR = 1.0 / BOHR_TO_ANGSTROM;
+// Bohr radius in meters (CODATA 2018): a0 = 5.29177210903e-11 m.
+inline constexpr double BOHR_RADIUS_M = 5.29177210903e-11;
 
 // Energy
 inline constexpr double HARTREE_TO_EV = 27.211386245988;
@@ -56,6 +58,14 @@ inline constexpr double KB_EV =
 inline constexpr double ELECTRON_MASS_IN_DALTON = 5.48579909065e-4;
 inline constexpr double DALTON_IN_ELECTRON_MASSES =
     1.0 / ELECTRON_MASS_IN_DALTON;
+// Unified atomic mass unit in kilograms (CODATA 2018): 1 u = 1.66053906660e-27 kg.
+inline constexpr double DALTON_MASS_KG = 1.66053906660e-27;
+// Electron rest mass in kilograms (CODATA 2018): m_e = 9.1093837015e-31 kg.
+inline constexpr double ELECTRON_MASS_KG = 9.1093837015e-31;
+
+// Amount of substance
+// Avogadro constant, exact SI 2019 defining value.
+inline constexpr double AVOGADRO_CONSTANT_PER_MOL = 6.02214076e23;
 
 // Time (hbar / E_h in seconds)
 inline constexpr double ATOMIC_UNIT_OF_TIME_S =

@@ -8,6 +8,7 @@
 #include "rgpot/CPMDPot/cpmd_c_abi.h"
 #include "rgpot/CP2KPot/cp2kc_abi.h"
 #include "rgpot/rpc/Potentials.capnp.h"
+#include "rgpot/units.hpp"
 #include <capnp/serialize.h>
 #include <mpi.h>
 
@@ -196,7 +197,7 @@ extern "C" int cp2kc_session_calculate(CP2KCSession *session, int n,
   }
   std::vector<double> positions(3 * static_cast<std::size_t>(n));
   for (std::size_t i = 0; i < positions.size(); ++i) {
-    positions[i] = pos_bohr[i] * 0.529177210903;
+    positions[i] = pos_bohr[i] * rgpot::units::BOHR_TO_ANGSTROM;
     const double rounded = std::round(positions[i] * 1e6) / 1e6;
     if (std::abs(positions[i] - rounded) < 1e-9)
       positions[i] = rounded;
