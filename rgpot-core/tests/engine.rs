@@ -4,8 +4,8 @@ use std::ffi::c_int;
 use std::path::{Path, PathBuf};
 
 use rgpot_core::engine::{
-    EngineError, EnginePotential, EngineRequest, RgpotEngineAbiStamp, ENGINE_ABI_LAYOUT_REVISION,
-    ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_UNSUPPORTED,
+    CoupledWellConfig, EngineError, EnginePotential, EngineRequest, RgpotEngineAbiStamp,
+    ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_UNSUPPORTED,
 };
 use rgpot_core::hvp::rgpot_hvp_scheme_t;
 use rgpot_core::status::rgpot_status_t;
@@ -39,12 +39,14 @@ fn build(name: &str, defines: &[&str]) -> PathBuf {
             "cannot compile C fixture '{name}': no C compiler available for target {target} ({why})"
         ),
     };
-    let mut command = compiler.to_command();
+    let mut command = std::process::Command::new(compiler.path());
+    command.args(compiler.args());
     if cfg!(target_os = "macos") {
         command.arg("-dynamiclib");
     } else {
         command.args(["-shared", "-fPIC"]);
     }
+    command.arg("-nostdlib++");
     command
         .arg("-I")
         .arg(include)
@@ -63,6 +65,46 @@ fn build(name: &str, defines: &[&str]) -> PathBuf {
         Err(why) => panic!("spawn C compiler {:?}: {why}", compiler.path()),
     };
     assert!(status.success(), "the fixture did not compile: {status}");
+    out
+}
+
+fn build_coupled_well() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let source = root.join("engines/coupled_well_engine.cpp");
+    let suffix = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("libcoupled_well.{suffix}"));
+    let target = env!("RGPOT_BUILD_TARGET");
+    let compiler_result = cc::Build::new()
+        .target(target)
+        .host(target)
+        .opt_level(0)
+        .try_get_compiler();
+    let compiler = match compiler_result {
+        Ok(compiler) => compiler,
+        Err(why) => panic!("cannot compile coupled-well engine: {why}"),
+    };
+    let mut command = compiler.to_command();
+    if cfg!(target_os = "macos") {
+        command.arg("-dynamiclib");
+    } else {
+        command.args(["-shared", "-fPIC"]);
+    }
+    let status = command
+        .args(["-x", "c++", "-std=c++20"])
+        .arg("-I")
+        .arg(root.join("CppCore"))
+        .arg("-I")
+        .arg(root.join("include"))
+        .arg("-o")
+        .arg(&out)
+        .arg(&source)
+        .status()
+        .expect("run the C++ compiler");
+    assert!(status.success(), "the coupled-well engine did not compile");
     out
 }
 
@@ -1431,4 +1473,78 @@ fn unstamped_compatible_and_older_stamped_minors_load_while_future_minors_fail()
         }
     );
     assert_eq!(created(&minor5), before);
+#[test]
+fn coupled_well_binding_loads_parameters_and_matches_force_differences() {
+    let path = build_coupled_well();
+    let config = CoupledWellConfig::new(1, 3.0, 2.0, 4.0, 0.2);
+    let mut engine =
+        unsafe { EnginePotential::load(&path, config.as_bytes()) }.expect("coupled-well engine");
+    let positions = [0.7, -0.3, 0.0];
+    let request = EngineRequest {
+        positions: &positions,
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+    let answer = engine.force(&request).expect("analytic force");
+    let step = 1.0e-5;
+    for component in 0..2 {
+        let mut plus = positions;
+        let mut minus = positions;
+        plus[component] += step;
+        minus[component] -= step;
+        let ep = engine
+            .force(&EngineRequest {
+                positions: &plus,
+                atomic_numbers: &[1],
+                box_matrix: &CELL,
+            })
+            .expect("positive displacement")
+            .energy;
+        let em = engine
+            .force(&EngineRequest {
+                positions: &minus,
+                atomic_numbers: &[1],
+                box_matrix: &CELL,
+            })
+            .expect("negative displacement")
+            .energy;
+        let finite_difference = -(ep - em) / (2.0 * step);
+        assert!(
+            (answer.forces[component] - finite_difference).abs() < 1.0e-9,
+            "component {component}: analytic {} finite difference {finite_difference}",
+            answer.forces[component]
+        );
+    }
+    let direction = [0.4, -0.6, 0.0];
+    let product = engine.hvp(&request, &direction).expect("analytic HVP");
+    let mut plus = positions;
+    let mut minus = positions;
+    for component in 0..3 {
+        plus[component] += step * direction[component];
+        minus[component] -= step * direction[component];
+    }
+    let fp = engine
+        .force(&EngineRequest {
+            positions: &plus,
+            atomic_numbers: &[1],
+            box_matrix: &CELL,
+        })
+        .expect("positive directional displacement")
+        .forces;
+    let fm = engine
+        .force(&EngineRequest {
+            positions: &minus,
+            atomic_numbers: &[1],
+            box_matrix: &CELL,
+        })
+        .expect("negative directional displacement")
+        .forces;
+    for component in 0..2 {
+        let finite_difference = -(fp[component] - fm[component]) / (2.0 * step);
+        assert!(
+            (product[component] - finite_difference).abs() < 1.0e-9,
+            "HVP component {component}: analytic {} finite difference {finite_difference}",
+            product[component]
+        );
+    }
 }
