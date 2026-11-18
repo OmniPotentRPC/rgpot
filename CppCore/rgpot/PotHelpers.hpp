@@ -101,6 +101,17 @@ void setForceLastError(const char *reason) noexcept;
 const char *forceLastError() noexcept;
 
 /**
+ * @brief Reject an input that would read a null buffer, with no output.
+ *
+ * For a call that has no force array, such as an analytic Hessian-vector
+ * product. The checks and messages are those of @c rejectForceCall after
+ * its force pointer test: no atoms, null positions, null species, and a
+ * null cell when @a periodic is set. A usable input returns 0 and leaves
+ * the stored message unchanged.
+ */
+int rejectInputBuffers(const ForceInput &in, bool periodic);
+
+/**
  * @brief Reject a force call that would read a null buffer.
  *
  * A system with no atoms is rejected first, with its own message, before
@@ -112,6 +123,10 @@ const char *forceLastError() noexcept;
  * stored message unchanged.
  */
 int rejectForceCall(const ForceInput &in, const ForceOut *out, bool periodic);
+
+/// Throw @c std::invalid_argument with the stored message when
+/// @c rejectInputBuffers rejects @a in.
+void guardInputBuffers(const ForceInput &in, bool periodic);
 
 /// Throw @c std::invalid_argument with the stored message when
 /// @c rejectForceCall rejects @a in and @a out.
