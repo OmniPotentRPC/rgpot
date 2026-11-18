@@ -1025,6 +1025,50 @@ if openmm_opt.allowed() and python3_engines.found()
                 env: external_env,
                 timeout: 120,
             )
+            if have_nblib_engine
+                engine_agreement = executable(
+                    'test_engine_agreement',
+                    files('nblib/test_engine_agreement.cpp'),
+                    link_with: rgpot,
+                    dependencies: [openmm_lib],
+                    include_directories: [rgpot_inc, openmm_inc],
+                    cpp_args: _args,
+                    build_rpath: openmm_libdir,
+                )
+                test(
+                    'md_engine_agreement',
+                    engine_agreement,
+                    args: [
+                        nblib_engine.full_path(),
+                        openmm_engine.full_path(),
+                    ],
+                    env: external_env,
+                    timeout: 300,
+                )
+                engine_analytic = executable(
+                    'test_engine_analytic',
+                    files('nblib/test_engine_analytic.cpp'),
+                    link_with: rgpot,
+                    dependencies: [openmm_lib],
+                    include_directories: [
+                        rgpot_inc,
+                        openmm_inc,
+                        include_directories('..'),
+                    ],
+                    cpp_args: _args,
+                    build_rpath: openmm_libdir,
+                )
+                test(
+                    'md_engine_analytic',
+                    engine_analytic,
+                    args: [
+                        nblib_engine.full_path(),
+                        openmm_engine.full_path(),
+                    ],
+                    env: external_env,
+                    timeout: 600,
+                )
+            endif
             foreach review_case : [
                 'equipartition',
                 'mean-force',
