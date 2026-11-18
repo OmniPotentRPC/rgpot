@@ -8,9 +8,9 @@
 engine shared library through =dlopen= and =dlsym=.
 The host selects the backend by the library it opens.
 The configuration is a versioned binary message defined by each engine.
-The core engines use a Cap'n Proto flat-array message whose root is the
-engine's params struct in =Potentials.capnp=. The potlibc engine uses
-=RgpotPotlibcConfigV1= from =rgpot/potlibc_engine.h=.
+The core engines use a Cap'n Proto flat-array message whose root is the engine's
+params struct in =Potentials.capnp=.
+The potlibc engine uses =RgpotPotlibcConfigV1= from =rgpot/potlibc_engine.h=.
 Positions and cells are in Angstrom, energies in eV and forces in eV/Angstrom.
 A cell is nine doubles in row-major order.
 
@@ -53,12 +53,13 @@ NWChem and CPMD keep the prefix-parameterized profile ABI that =NWChemPot= and
 The plugin interface in =include/rgpot/plugin.h= is a separate family. tblite,
 dftd3, dftd4, ExprPot, XcKernel, CPMD and CP2K have no engine library.
 
-Every core engine library above (all except =libpotlibc_engine=) exports
-=rgpot_engine_force_batch=, =rgpot_engine_abi_stamp=,
-=rgpot_engine_abi_compatible=, =rgpot_engine_name=, =rgpot_engine_version=, =rgpot_engine_model_digest=,
-=rgpot_engine_caps=,
-=rgpot_engine_last_error=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=
-and =rgpot_engine_copy_orbitals=.
+Every core engine library above (all except
+=libpotlibc_engine=) exports =rgpot_engine_force_batch=,
+=rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible=, =rgpot_engine_name=,
+=rgpot_engine_version=,
+=rgpot_engine_model_digest=, =rgpot_engine_caps=, =rgpot_engine_last_error=,
+=rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
+=rgpot_engine_select_orbitals= and =rgpot_engine_copy_orbitals=.
 =libpotlibc_engine= exports the stamp, compatibility, name, version, caps,
 last-error and analytic-HVP symbols; it omits the batch and setting symbols.
 None of them exports =rgpot_engine_model_state=, =rgpot_engine_set_callbacks=,
@@ -189,8 +190,9 @@ Optional symbol.
 
 *** =RgpotPotlibcConfigV1=
 
-- Inputs :: =magic= (=RGPOT_POTLIBC_CONFIG_MAGIC=), =version=
-  (=RGPOT_POTLIBC_CONFIG_VERSION=), =atom_count= and =surface_id=.
+- Inputs :: =magic=
+  (=RGPOT_POTLIBC_CONFIG_MAGIC=), =version= (=RGPOT_POTLIBC_CONFIG_VERSION=),
+  =atom_count= and =surface_id=.
 - Units :: =atom_count= is a count; the other fields have no unit.
 - Outputs :: passed as the exact create message for =libpotlibc_engine=.
 - Errors :: an unknown magic or version, an empty or unterminated catalog id,
@@ -221,12 +223,12 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                                     char *errbuf, size_t errlen);
 #+end_src
 
-- Inputs :: =config=, the library's versioned binary message; core engines use
-  a Cap'n Proto flat-array message (as produced by
-  =capnp::messageToFlatArray=) whose root is their params struct, while
-  =libpotlibc_engine= uses =RgpotPotlibcConfigV1=;
-  =config_len=, its length in bytes; =errbuf= and =errlen=, a buffer for the
-  failure reason (may be null or 0).
+- Inputs :: =config=, the library's versioned binary message; core engines use a
+  Cap'n Proto flat-array message (as produced by =capnp::messageToFlatArray=)
+  whose root is their params struct, while
+  =libpotlibc_engine= uses =RgpotPotlibcConfigV1=; =config_len=, its length in
+  bytes; =errbuf= and =errlen=, a buffer for the failure reason (may be null or
+  0).
 - Units :: none.
 - Outputs :: a new handle, or NULL on failure.
 - Errors :: returns NULL and writes the reason to =errbuf= (at most =errlen - 1=
@@ -280,7 +282,8 @@ Must not run concurrently with another call on the same handle.
 - Units :: none.
 - Outputs :: =size= (bytes the engine wrote), =reentrancy=,
   =per_image_instances=, =batched=, =periodic=, =stress=,
-  =group_collective=, =orbital_selection=, =orbital_copy= and =analytic_hvp=; the flags are 0 or 1.
+  =group_collective=, =orbital_selection=, =orbital_copy= and =analytic_hvp=;
+  the flags are 0 or 1.
 - Errors :: none.
 
 The fields mirror rgpot's =PotCaps=.
@@ -542,8 +545,8 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
   =transform_user=, an optional coordinate transform applied to an engine-owned
   copy of =positions= and =box=.
 - Units :: =positions= and =box= in Angstrom; =direction= in Angstrom.
-- Outputs :: 0 on success; =hv_out= receives
-  =H(positions) * direction= in eV/Angstrom.
+- Outputs :: 0 on success; =hv_out= receives =H(positions) * direction= in
+  eV/Angstrom.
 - Errors :: returns 1 for invalid arguments, 2 when evaluation fails, 3 when
   analytic HVP is unsupported, or the transform's nonzero code.
 
@@ -1171,47 +1174,53 @@ The engine looks the CPython calls up at run time and does not link libpython.
 
 ** Rust loader (=rgpot-core= =engine= feature)
 
-Enable the =engine= feature on =rgpot-core= to expose =rgpot_core::engine=, a
-thin Rust wrapper over the symbols declared in =CppCore/rgpot/engine_c_abi.h=.
+Enable the =engine= feature on =rgpot-core= to expose
+=rgpot_core::engine=, a thin Rust wrapper over the symbols declared in =CppCore/rgpot/engine_c_abi.h=.
 No second engine abstraction is added: =EnginePotential::into_potential= wraps
 the handle as a =PotentialImpl=.
 
 - =ENGINE_ABI_VERSION=, =ENGINE_ABI_MINOR=, =ENGINE_ABI_LAYOUT_REVISION= ::
   Expected ABI identity (1, 4, 1).
 - =RgpotEnginePot= :: Opaque handle type matching =struct RgpotEnginePot=.
-- =CoordTransformFn=, =AbiVersionFn=, =AbiStampFn=, =AbiCompatibleFn=,
-  =CreateFn=, =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =CapsFn=,
-  =LastErrorFn= :: =extern "C"= function-pointer types matching the C
-  declarations above.
-- =EngineSymbols= :: Resolved symbol table holding required (=abi_version=,
-  =create=, =destroy=, =force=) and optional (=force_batch=, =last_error=)
-  function pointers.
-- =EngineError= :: Typed error enum covering =Load=, =Missing=, =Abi= (=expected=,
-  =found=), =Create=, =Invalid=, =Unsupported=, =Recoverable= (=code=, =message=),
-  and =Fatal= (=code=, =message=).
-- =EngineRequest= :: Single-geometry input with =positions= (Angstrom,
-  row-major =[n_atoms, 3]=), =atomic_numbers=, and =box_matrix= (row-major 3x3
-  lattice in Angstrom).
+- =CoordTransformFn=, =AbiVersionFn=, =AvailableFn=, =AbiStampFn=,
+  =AbiCompatibleFn=, =CreateFn=, =DestroyFn=, =ForceFn=, =ForceBatchFn=,
+  =HvpFn=, =CapsFn=, =LastErrorFn= :: =extern "C"= function-pointer types
+  matching the C declarations above.
+- =EngineSymbols= :: Resolved symbol table holding required
+  (=abi_version=, =available=, =create=, =destroy=, =force=) and optional (=abi_stamp=,
+  =abi_compatible=, =force_batch=, =hvp=, =caps=, =last_error=) function
+  pointers.
+- =EngineError= :: Typed error enum covering =Load=, =Missing=, =Abi=
+  (=expected=, =found=), =Incompatible=, =Unavailable=, =Create=, =Invalid=,
+  =Unsupported=, =Recoverable= (=code=, =message=), and =Fatal= (=code=,
+  =message=).
+- =EngineRequest= :: Single-geometry input with =positions= (Angstrom, row-major
+  =[n_atoms, 3]=), =atomic_numbers=, and =box_matrix= (row-major 3x3 lattice in
+  Angstrom).
 - =EngineEvaluation= :: Output containing =energy= (eV) and =forces=
   (eV/Angstrom, row-major =[n_atoms, 3]=).
-- =EnginePotential::load(path, config)= / =EnginePotential::from_symbols(symbols, config)= ::
-  Verifies =rgpot_engine_abi_version() == ENGINE_ABI_VERSION= and, when
-  exported, checks =rgpot_engine_abi_stamp= and
-  =rgpot_engine_abi_compatible= against the loader's stamp. It copies =config=
-  into an 8-byte-aligned =Vec<u64>= buffer (so engines that cast =config= to
-  =capnp::word= never receive an unaligned pointer), then calls
+- =EnginePotential::load(path, config)= /
+  =EnginePotential::from_symbols(symbols, config)= :: Verifies =rgpot_engine_abi_version() ==
+  ENGINE_ABI_VERSION=, checks
+  =rgpot_engine_abi_stamp= and =rgpot_engine_abi_compatible= when exported, and
+  checks =rgpot_engine_available() != 0= before creating an instance.
+  It copies =config= into an 8-byte-aligned =Vec<u64>= buffer (so engines that
+  cast =config= to =capnp::word= never receive an unaligned pointer), then calls
   =rgpot_engine_create=.
-- =EnginePotential::force(&request)= and =EnginePotential::force_batch(&atomic_numbers, &positions, &boxes)= ::
+- =EnginePotential::force(&request)= and
+  =EnginePotential::force_batch(&atomic_numbers, &positions, &boxes)= ::
   Validates input lengths and output finiteness, dispatches to
-  =rgpot_engine_force= or =rgpot_engine_force_batch=, and maps positive codes to
-  =EngineError::Recoverable= and negative codes to =EngineError::Fatal= using
-  =rgpot_engine_last_error= when present. A fatal result is sticky: later calls
-  return it without entering the engine.
+  =rgpot_engine_force= or
+  =rgpot_engine_force_batch=, and maps positive codes to =EngineError::Recoverable= and negative codes to =EngineError::Fatal= using =rgpot_engine_last_error=
+  when present.
+  A fatal result is sticky: later calls return it without entering the engine.
 - =EnginePotential::caps()= :: Reads =rgpot_engine_caps=, including
   =analytic_hvp=.
 - =EnginePotential::hvp(&request, direction)= :: Calls only the analytic
   =rgpot_engine_hvp= path and returns =Unsupported= when the symbol or
-  capability is absent. It never finite-differences.
+  capability is absent.
+  It never finite-differences.
 - =EnginePotential::into_potential(self)= :: Converts the instance into a
   =PotentialImpl= callback handle and installs the analytic HVP callback when
-  advertised. A failed capability query is returned to the caller.
+  advertised.
+  A failed capability query is returned to the caller.

@@ -20,18 +20,27 @@
 #ifndef FIXTURE_LAYOUT
 #define FIXTURE_LAYOUT RGPOT_ENGINE_ABI_LAYOUT_REVISION
 #endif
+#ifndef FIXTURE_AVAILABLE
+#define FIXTURE_AVAILABLE 1
+#endif
 
 struct RgpotEnginePot {
   double k;
   char error[128];
 };
 
+static int created = 0;
 static int destroyed = 0;
 
+int fixture_create_count(void) { return created; }
 int fixture_destroy_count(void) { return destroyed; }
 int fixture_unsupported_code(void) { return RGPOT_ENGINE_ERR_UNSUPPORTED; }
 
 int rgpot_engine_abi_version(void) { return FIXTURE_ABI; }
+
+#ifndef NO_AVAILABLE
+int rgpot_engine_available(void) { return FIXTURE_AVAILABLE; }
+#endif
 
 #ifndef NO_STAMP
 RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
@@ -49,6 +58,7 @@ int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *host) {
 RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                                     char *errbuf, size_t errlen) {
   RgpotEnginePot *pot;
+  created += 1;
   if (config == NULL || config_len != sizeof(double)) {
     snprintf(errbuf, errlen, "harmonic engine: config is %zu bytes, need %zu",
              config_len, sizeof(double));
