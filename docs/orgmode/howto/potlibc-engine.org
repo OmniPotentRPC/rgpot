@@ -50,10 +50,19 @@ No potlibc symbols or headers enter the core library.
 
 ** Create a surface
 
-=include/rgpot/potlibc_engine.h= declares =RgpotPotlibcConfigV1=.
-Set its magic and version, copy one canonical catalog id into
+=include/rgpot/potlibc_engine.h= declares =RgpotPotlibcConfigV2=, the message
+new callers write, and =RgpotPotlibcConfigV1=, the 144-byte message a client
+built against the original layout still sends.
+Set the version-2 magic, size and version, copy one canonical catalog id into
 =surface_id=, and set =atom_count= to zero for a fixed-size surface or to the
 exact count for a variable-size surface.
+=reserved= must be zero.
+Version 1 has no size field: =magic= is at offset 0, =version= at offset 4,
+=atom_count= at offset 8 and =surface_id= at offset 16.
+Because =RGPOT_POTLIBC_CONFIG_VERSION= now names version 2, a version-1 source
+recompiled against the current header must use
+=RGPOT_POTLIBC_CONFIG_VERSION_V1= (and =RGPOT_POTLIBC_CONFIG_V1_SIZE=); setting
+=RgpotPotlibcConfigV1.version= to =RGPOT_POTLIBC_CONFIG_VERSION= is refused.
 The plugin calls =potlibc_create= in the first case and =potlibc_create_sized=
 in the second; it does not retry with another constructor.
 
@@ -65,9 +74,11 @@ in the second; it does not retry with another constructor.
 #include "rgpot/potlibc_engine.h"
 
 int main(void) {
-RgpotPotlibcConfigV1 cfg = {
+RgpotPotlibcConfigV2 cfg = {
     .magic = RGPOT_POTLIBC_CONFIG_MAGIC,
+    .size = sizeof(RgpotPotlibcConfigV2),
     .version = RGPOT_POTLIBC_CONFIG_VERSION,
+    .reserved = 0,
     .atom_count = 0,
 };
 strcpy(cfg.surface_id, "brh2leps");
@@ -75,10 +86,20 @@ strcpy(cfg.surface_id, "brh2leps");
 char error[512];
 RgpotEnginePot *pot =
     rgpot_engine_create(&cfg, sizeof cfg, error, sizeof error);
+
 rgpot_engine_destroy(pot);
 return pot == NULL;
 }
 #+end_src
+
+A version-2 message with =size < RGPOT_POTLIBC_CONFIG_MIN_SIZE= is refused as a
+typed size error.
+A larger version-2 message is accepted only when every unknown trailing byte
+up to =size= is zero.
+A version other than =RGPOT_POTLIBC_CONFIG_VERSION_V1= or
+=RGPOT_POTLIBC_CONFIG_VERSION= is refused with the plain error string
+=potlibc config version is unknown=.
+The 144-byte version-1 message is accepted unchanged.
 
 The engine ABI takes Angstrom and returns eV and eV/Angstrom.
 The plugin performs the conversion to potlibc's Bohr and Hartree units.
@@ -96,12 +117,28 @@ Enable the generic loader, not a potlibc-specific feature.
 rgpot-core = { version = "3.7.0", features = ["engine"] }
 #+end_src
 
-Serialize the bytes of =RgpotPotlibcConfigV1= in the host language and pass them
-to =EnginePotential::load= with the path to =libpotlibc_engine.so=.
+=rgpot_core::engine::PotlibcConfig= is the typed create message.
+It is =#[non_exhaustive]=: start from =PotlibcConfig::default()= or call
+=PotlibcConfig::new(surface_id, atom_count)=, which refuses an empty, over-long
+or NUL-containing surface id.
+=as_bytes= is the message to pass to =EnginePotential::load= with the path to
+=libpotlibc_engine.so=.
+
+#+attr_rgpot: fragment Rust excerpt; needs the rgpot-core crate and an installed potlibc
+#+begin_src rust
+let config = PotlibcConfig::default()
+    .with_surface_id("vbo-beta1")?
+    .with_atom_count(4);
+let mut engine =
+    unsafe { EnginePotential::load(path, config.as_bytes()) }?;
+#+end_src
+
 =EnginePotential::force= evaluates energy and forces.
-=EnginePotential::hvp= uses =rgpot_engine_hvp= only when the surface advertises
-an analytic product, and =into_potential= exposes that same handle to in-process
-and RPC callers.
+=EnginePotential::force_batch= evaluates systems of the surface's atom count in
+one =potlibc_evaluate= call; a failed batch writes nothing.
+=EnginePotential::hvp= uses =rgpot_engine_hvp= whenever the symbol is present;
+=rgpot_engine_caps= may narrow that support when it is also present.
+=into_potential= exposes that same handle to in-process and RPC callers.
 
 The complete symbol contracts and units are in the
 [[file:../reference/engine_abi.org][engine ABI reference]].

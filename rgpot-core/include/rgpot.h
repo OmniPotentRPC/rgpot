@@ -63,6 +63,86 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #endif
 
 /**
+ * Magic number of `RgpotCoupledWellConfigV1` and `RgpotCoupledWellConfigV2`.
+ */
+#define COUPLED_WELL_CONFIG_MAGIC 1129795668
+
+/**
+ * Version of the 48-byte coupled-well create message.
+ */
+#define COUPLED_WELL_CONFIG_VERSION_V1 1
+
+/**
+ * Version of [`CoupledWellConfig`], the version-2 create message.
+ */
+#define COUPLED_WELL_CONFIG_VERSION 2
+
+/**
+ * Byte size of `RgpotCoupledWellConfigV1`.
+ */
+#define COUPLED_WELL_CONFIG_V1_SIZE 48
+
+/**
+ * Minimum message size of the version-2 coupled-well create message.
+ */
+#define COUPLED_WELL_CONFIG_MIN_SIZE 56
+
+/**
+ * Atomic number of [`CoupledWellConfig::default`].
+ */
+#define COUPLED_WELL_DEFAULT_ATOMIC_NUMBER 1
+
+/**
+ * Barrier energy `V0` of [`CoupledWellConfig::default`], in eV.
+ */
+#define COUPLED_WELL_DEFAULT_BARRIER_ENERGY 1.0
+
+/**
+ * Well position `x0` of [`CoupledWellConfig::default`], in Angstrom.
+ */
+#define COUPLED_WELL_DEFAULT_WELL_POSITION 1.0
+
+/**
+ * Transverse spring `k` of [`CoupledWellConfig::default`], in eV/Angstrom^2.
+ */
+#define COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING 1.0
+
+/**
+ * Coupling `alpha` of [`CoupledWellConfig::default`], in 1/Angstrom.
+ */
+#define COUPLED_WELL_DEFAULT_COUPLING 0.0
+
+/**
+ * Magic number of `RgpotPotlibcConfigV1` and `RgpotPotlibcConfigV2`.
+ */
+#define POTLIBC_CONFIG_MAGIC 1347376204
+
+/**
+ * Version of the 144-byte potlibc create message.
+ */
+#define POTLIBC_CONFIG_VERSION_V1 1
+
+/**
+ * Version of [`PotlibcConfig`], the version-2 create message.
+ */
+#define POTLIBC_CONFIG_VERSION 2
+
+/**
+ * Byte size of `RgpotPotlibcConfigV1`.
+ */
+#define POTLIBC_CONFIG_V1_SIZE 144
+
+/**
+ * Minimum message size of the version-2 potlibc create message.
+ */
+#define POTLIBC_CONFIG_MIN_SIZE 152
+
+/**
+ * Capacity of the potlibc surface identifier, including its terminator.
+ */
+#define POTLIBC_SURFACE_ID_CAPACITY 128
+
+/**
  * How a Hessian-vector product is computed.
  */
 typedef enum rgpot_hvp_scheme_t {

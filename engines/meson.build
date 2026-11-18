@@ -12,6 +12,52 @@ project_root = meson.project_source_root()
 engines_here = meson.current_source_dir()
 dl_dep = cppc.find_library('dl', required: false)
 thread_dep = dependency('threads')
+python3_runner = find_program('python3', required: true)
+engine_exports_script = files('../scripts/check_engine_exports.py')
+engine_exports_expected = files('engine_exports_expected.txt')
+
+coupled_well_engine = shared_library(
+    'coupled_well_engine',
+    files('coupled_well_engine.cpp'),
+    include_directories: [engines_inc, rgpot_inc],
+    cpp_args: _args + [
+        '-DRGPOT_ENGINE_BUILD',
+        '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
+        '-fvisibility-inlines-hidden',
+    ],
+    gnu_symbol_visibility: 'hidden',
+    install: not meson.is_subproject(),
+)
+if not meson.is_subproject()
+    install_headers(
+        '../include/rgpot/coupled_well_engine.h',
+        subdir: 'rgpot',
+    )
+endif
+test(
+    'coupled_well_engine',
+    executable(
+        'test_coupled_well_engine',
+        files('test_coupled_well_engine.c'),
+        link_with: coupled_well_engine,
+        dependencies: thread_dep,
+        include_directories: [engines_inc, rgpot_inc],
+        c_args: [
+            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
+                meson.project_version(),
+            ),
+        ],
+        link_language: 'cpp',
+    ),
+    timeout: 60,
+)
+test(
+    'coupled_well_engine_exports',
+    python3_runner,
+    args: [engine_exports_script, coupled_well_engine.full_path(), engine_exports_expected],
+    depends: coupled_well_engine,
+    timeout: 30,
+)
 
 potlibc_opt = get_option('with_potlibc')
 potlibc_dep = dependency('potlibc', required: potlibc_opt)
@@ -27,12 +73,15 @@ if potlibc_dep.found()
                 meson.project_version(),
             ),
         ],
+        gnu_symbol_visibility: 'hidden',
         install: not meson.is_subproject(),
     )
-    install_headers(
-        '../include/rgpot/potlibc_engine.h',
-        subdir: 'rgpot',
-    )
+    if not meson.is_subproject()
+        install_headers(
+            '../include/rgpot/potlibc_engine.h',
+            subdir: 'rgpot',
+        )
+    endif
     potlibc_engine_fail_lock = shared_library(
         'potlibc_engine_fail_lock',
         files('potlibc_engine.c'),
@@ -45,6 +94,7 @@ if potlibc_dep.found()
                 meson.project_version(),
             ),
         ],
+        gnu_symbol_visibility: 'hidden',
         install: false,
     )
     test(
@@ -52,14 +102,27 @@ if potlibc_dep.found()
         executable(
             'test_potlibc_engine',
             files('test_potlibc_engine.c'),
-            dependencies: dl_dep,
+            dependencies: [dl_dep, thread_dep],
             include_directories: [engines_inc, rgpot_inc],
         ),
         args: [
             potlibc_engine.full_path(),
             potlibc_engine_fail_lock.full_path(),
         ],
+        depends: [potlibc_engine, potlibc_engine_fail_lock],
         timeout: 120,
+    )
+    test(
+        'potlibc_engine_exports',
+        python3_runner,
+        args: [
+            engine_exports_script,
+            potlibc_engine.full_path(),
+            potlibc_engine_fail_lock.full_path(),
+            engine_exports_expected,
+        ],
+        depends: [potlibc_engine, potlibc_engine_fail_lock],
+        timeout: 30,
     )
 endif
 

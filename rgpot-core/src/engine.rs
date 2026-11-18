@@ -63,6 +63,384 @@ const REENTRANCY_END: usize =
     std::mem::offset_of!(RgpotEngineCaps, reentrancy) + std::mem::size_of::<c_int>();
 const REENTRANCY_PROCESS_SERIAL: i32 = 2;
 
+/// Magic number of `RgpotCoupledWellConfigV1` and `RgpotCoupledWellConfigV2`.
+pub const COUPLED_WELL_CONFIG_MAGIC: u32 = 0x4357_5054;
+/// Version of the 48-byte coupled-well create message.
+pub const COUPLED_WELL_CONFIG_VERSION_V1: u32 = 1;
+/// Version of [`CoupledWellConfig`], the version-2 create message.
+pub const COUPLED_WELL_CONFIG_VERSION: u32 = 2;
+/// Byte size of `RgpotCoupledWellConfigV1`.
+pub const COUPLED_WELL_CONFIG_V1_SIZE: u32 = 48;
+/// Minimum message size of the version-2 coupled-well create message.
+pub const COUPLED_WELL_CONFIG_MIN_SIZE: u32 = 56;
+/// Atomic number of [`CoupledWellConfig::default`].
+pub const COUPLED_WELL_DEFAULT_ATOMIC_NUMBER: i32 = 1;
+/// Barrier energy `V0` of [`CoupledWellConfig::default`], in eV.
+pub const COUPLED_WELL_DEFAULT_BARRIER_ENERGY: f64 = 1.0;
+/// Well position `x0` of [`CoupledWellConfig::default`], in Angstrom.
+pub const COUPLED_WELL_DEFAULT_WELL_POSITION: f64 = 1.0;
+/// Transverse spring `k` of [`CoupledWellConfig::default`], in eV/Angstrom^2.
+pub const COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING: f64 = 1.0;
+/// Coupling `alpha` of [`CoupledWellConfig::default`], in 1/Angstrom.
+pub const COUPLED_WELL_DEFAULT_COUPLING: f64 = 0.0;
+/// Magic number of `RgpotPotlibcConfigV1` and `RgpotPotlibcConfigV2`.
+pub const POTLIBC_CONFIG_MAGIC: u32 = 0x504f_544c;
+/// Version of the 144-byte potlibc create message.
+pub const POTLIBC_CONFIG_VERSION_V1: u32 = 1;
+/// Version of [`PotlibcConfig`], the version-2 create message.
+pub const POTLIBC_CONFIG_VERSION: u32 = 2;
+/// Byte size of `RgpotPotlibcConfigV1`.
+pub const POTLIBC_CONFIG_V1_SIZE: u32 = 144;
+/// Minimum message size of the version-2 potlibc create message.
+pub const POTLIBC_CONFIG_MIN_SIZE: u32 = 152;
+/// Capacity of the potlibc surface identifier, including its terminator.
+pub const POTLIBC_SURFACE_ID_CAPACITY: usize = 128;
+
+const COUPLED_WELL_CONFIG_BYTES: usize = 56;
+const POTLIBC_CONFIG_BYTES: usize = 152;
+const _: () = assert!(COUPLED_WELL_CONFIG_V1_SIZE == 48);
+const _: () = assert!(COUPLED_WELL_CONFIG_VERSION_V1 == 1);
+const _: () = assert!(COUPLED_WELL_CONFIG_VERSION == 2);
+const _: () = assert!(POTLIBC_CONFIG_V1_SIZE == 144);
+const _: () = assert!(POTLIBC_CONFIG_VERSION_V1 == 1);
+const _: () = assert!(POTLIBC_CONFIG_VERSION == 2);
+
+/// Parameters for `libpotlibc_engine`.
+///
+/// Build one with [`PotlibcConfig::new`], or start from
+/// [`PotlibcConfig::default`] and chain [`PotlibcConfig::with_surface_id`] and
+/// [`PotlibcConfig::with_atom_count`]. The default has no surface id and is
+/// refused by [`PotlibcConfig::validate`] and by the engine until one is set.
+///
+/// ```
+/// use rgpot_core::engine::PotlibcConfig;
+///
+/// let config = PotlibcConfig::default()
+///     .with_surface_id("vbo-beta1")
+///     .unwrap()
+///     .with_atom_count(4);
+/// assert!(config.validate().is_ok());
+/// assert!(PotlibcConfig::default().validate().is_err());
+/// ```
+///
+/// The struct is `#[non_exhaustive]`: other crates build it with these methods.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct PotlibcConfig {
+    /// Configuration identity.
+    pub magic: u32,
+    /// Message size in bytes (minimum [`POTLIBC_CONFIG_MIN_SIZE`]).
+    pub size: u32,
+    /// Configuration layout version.
+    pub version: u32,
+    /// Must be zero.
+    pub reserved: u32,
+    /// Zero for a fixed-size surface, else the exact atom count of a
+    /// variable-size surface.
+    pub atom_count: u64,
+    /// NUL-terminated canonical catalog identifier.
+    pub surface_id: [u8; POTLIBC_SURFACE_ID_CAPACITY],
+}
+
+const _: () = assert!(std::mem::size_of::<PotlibcConfig>() == POTLIBC_CONFIG_BYTES);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, magic) == 0);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, size) == 4);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, version) == 8);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, reserved) == 12);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, atom_count) == 16);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, surface_id) == 24);
+
+impl Default for PotlibcConfig {
+    fn default() -> Self {
+        Self {
+            magic: POTLIBC_CONFIG_MAGIC,
+            size: POTLIBC_CONFIG_MIN_SIZE,
+            version: POTLIBC_CONFIG_VERSION,
+            reserved: 0,
+            atom_count: 0,
+            surface_id: [0; POTLIBC_SURFACE_ID_CAPACITY],
+        }
+    }
+}
+
+impl PotlibcConfig {
+    /// Construct a version-two parameter message.
+    pub fn new(surface_id: &str, atom_count: u64) -> Result<Self, EngineError> {
+        Self::default()
+            .with_atom_count(atom_count)
+            .with_surface_id(surface_id)
+    }
+
+    /// Set the exact atom count of a variable-size surface; zero selects a
+    /// fixed-size surface.
+    #[must_use]
+    pub fn with_atom_count(mut self, atom_count: u64) -> Self {
+        self.atom_count = atom_count;
+        self
+    }
+
+    /// Set the canonical catalog identifier. It must be non-empty, shorter
+    /// than [`POTLIBC_SURFACE_ID_CAPACITY`] bytes and free of NUL.
+    pub fn with_surface_id(mut self, surface_id: &str) -> Result<Self, EngineError> {
+        let bytes = surface_id.as_bytes();
+        if bytes.is_empty() || bytes.len() >= POTLIBC_SURFACE_ID_CAPACITY {
+            return Err(EngineError::Invalid(
+                "potlibc surface id is empty or too long".into(),
+            ));
+        }
+        if bytes.contains(&0) {
+            return Err(EngineError::Invalid(
+                "potlibc surface id contains NUL".into(),
+            ));
+        }
+        self.surface_id = [0; POTLIBC_SURFACE_ID_CAPACITY];
+        self.surface_id[..bytes.len()].copy_from_slice(bytes);
+        Ok(self)
+    }
+
+    /// Check what `rgpot_engine_create` checks of the message itself: magic,
+    /// size, version, reserved field, and a NUL-terminated, non-empty surface
+    /// id. Whether the surface exists and takes this atom count is the
+    /// engine's to decide.
+    pub fn validate(&self) -> Result<(), EngineError> {
+        if self.magic != POTLIBC_CONFIG_MAGIC {
+            return Err(EngineError::Invalid(
+                "potlibc config magic, version, or reserved field".into(),
+            ));
+        }
+        if self.version != POTLIBC_CONFIG_VERSION {
+            return Err(EngineError::Invalid(
+                "potlibc config version is unknown".into(),
+            ));
+        }
+        if self.reserved != 0 {
+            return Err(EngineError::Invalid(
+                "potlibc config magic, version, or reserved field".into(),
+            ));
+        }
+        if self.size < POTLIBC_CONFIG_MIN_SIZE {
+            return Err(EngineError::Invalid(
+                "potlibc config size is smaller than PotlibcConfig".into(),
+            ));
+        }
+        if self.surface_id[0] == 0 || !self.surface_id.contains(&0) {
+            return Err(EngineError::Invalid(
+                "potlibc config needs a non-empty NUL-terminated surface id".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Native bytes consumed by `rgpot_engine_create`.
+    pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: `PotlibcConfig` is `repr(C)` plain data whose size equals the
+        // sum of its fields (asserted above), so it has no padding and every
+        // byte is initialised.
+        unsafe {
+            std::slice::from_raw_parts(
+                std::ptr::from_ref(self).cast::<u8>(),
+                std::mem::size_of::<Self>(),
+            )
+        }
+    }
+}
+
+/// Parameters for `libcoupled_well_engine`.
+///
+/// The engine evaluates one atom and uses its x and y coordinates:
+/// `V0 ((x / x0)^2 - 1)^2 + k/2 (y - alpha x^2)^2`.
+/// Values use the engine ABI units, eV and Angstrom.
+///
+/// [`CoupledWellConfig::default`] is a valid hydrogen atom in a unit double
+/// well with no coupling; change it with the `with_*` builders:
+///
+/// ```
+/// use rgpot_core::engine::CoupledWellConfig;
+///
+/// let config = CoupledWellConfig::default()
+///     .with_barrier_energy(0.5)
+///     .with_well_position(1.5)
+///     .with_coupling(0.2);
+/// assert!(config.validate().is_ok());
+/// ```
+///
+/// The struct is `#[non_exhaustive]`, so other crates cannot write a struct
+/// literal and a new field is not a breaking change:
+///
+/// ```compile_fail,E0639
+/// use rgpot_core::engine::CoupledWellConfig;
+///
+/// let _ = CoupledWellConfig {
+///     magic: 0,
+///     size: 0,
+///     version: 0,
+///     reserved0: 0,
+///     atomic_number: 1,
+///     reserved1: 0,
+///     barrier_energy: 1.0,
+///     well_position: 1.0,
+///     transverse_spring: 1.0,
+///     coupling: 0.0,
+/// };
+/// ```
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub struct CoupledWellConfig {
+    /// Configuration identity.
+    pub magic: u32,
+    /// Message size in bytes (minimum [`COUPLED_WELL_CONFIG_MIN_SIZE`]).
+    pub size: u32,
+    /// Configuration layout version.
+    pub version: u32,
+    /// Must be zero.
+    pub reserved0: u32,
+    /// Atomic number accepted by the engine.
+    pub atomic_number: i32,
+    /// Must be zero.
+    pub reserved1: u32,
+    /// Quartic barrier energy `V0` in eV.
+    pub barrier_energy: f64,
+    /// Position `x0` of either minimum along x in Angstrom.
+    pub well_position: f64,
+    /// Transverse spring constant `k` in eV/Angstrom squared.
+    pub transverse_spring: f64,
+    /// Coupling coefficient `alpha` in inverse Angstrom.
+    pub coupling: f64,
+}
+
+const _: () = assert!(std::mem::size_of::<CoupledWellConfig>() == COUPLED_WELL_CONFIG_BYTES);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, magic) == 0);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, size) == 4);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, version) == 8);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, reserved0) == 12);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, atomic_number) == 16);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, reserved1) == 20);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, barrier_energy) == 24);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, well_position) == 32);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, transverse_spring) == 40);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, coupling) == 48);
+
+impl Default for CoupledWellConfig {
+    fn default() -> Self {
+        Self {
+            magic: COUPLED_WELL_CONFIG_MAGIC,
+            size: COUPLED_WELL_CONFIG_MIN_SIZE,
+            version: COUPLED_WELL_CONFIG_VERSION,
+            reserved0: 0,
+            atomic_number: COUPLED_WELL_DEFAULT_ATOMIC_NUMBER,
+            reserved1: 0,
+            barrier_energy: COUPLED_WELL_DEFAULT_BARRIER_ENERGY,
+            well_position: COUPLED_WELL_DEFAULT_WELL_POSITION,
+            transverse_spring: COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING,
+            coupling: COUPLED_WELL_DEFAULT_COUPLING,
+        }
+    }
+}
+
+impl CoupledWellConfig {
+    /// Construct the version-two parameter message.
+    pub fn new(
+        atomic_number: i32,
+        barrier_energy: f64,
+        well_position: f64,
+        transverse_spring: f64,
+        coupling: f64,
+    ) -> Self {
+        Self::default()
+            .with_atomic_number(atomic_number)
+            .with_barrier_energy(barrier_energy)
+            .with_well_position(well_position)
+            .with_transverse_spring(transverse_spring)
+            .with_coupling(coupling)
+    }
+
+    /// Set the one atomic number the engine accepts; it must be positive.
+    #[must_use]
+    pub fn with_atomic_number(mut self, atomic_number: i32) -> Self {
+        self.atomic_number = atomic_number;
+        self
+    }
+
+    /// Set the barrier energy `V0` in eV; it must be finite and positive.
+    #[must_use]
+    pub fn with_barrier_energy(mut self, barrier_energy: f64) -> Self {
+        self.barrier_energy = barrier_energy;
+        self
+    }
+
+    /// Set the well position `x0` in Angstrom; it must be finite and positive.
+    #[must_use]
+    pub fn with_well_position(mut self, well_position: f64) -> Self {
+        self.well_position = well_position;
+        self
+    }
+
+    /// Set the transverse spring `k` in eV/Angstrom squared; it must be finite
+    /// and positive.
+    #[must_use]
+    pub fn with_transverse_spring(mut self, transverse_spring: f64) -> Self {
+        self.transverse_spring = transverse_spring;
+        self
+    }
+
+    /// Set the coupling `alpha` in inverse Angstrom; it must be finite.
+    #[must_use]
+    pub fn with_coupling(mut self, coupling: f64) -> Self {
+        self.coupling = coupling;
+        self
+    }
+
+    /// Check what `rgpot_engine_create` checks, so a bad parameter is reported
+    /// before the library is opened. The engine repeats these checks.
+    pub fn validate(&self) -> Result<(), EngineError> {
+        let invalid = |why: &str| Err(EngineError::Invalid(format!("coupled-well {why}")));
+        if self.magic != COUPLED_WELL_CONFIG_MAGIC {
+            return invalid("config magic, version, or reserved fields");
+        }
+        if self.version != COUPLED_WELL_CONFIG_VERSION {
+            return invalid("config version is unknown");
+        }
+        if self.reserved0 != 0 || self.reserved1 != 0 {
+            return invalid("config magic, version, or reserved fields");
+        }
+        if self.size < COUPLED_WELL_CONFIG_MIN_SIZE {
+            return invalid("config size is smaller than CoupledWellConfig");
+        }
+        if self.atomic_number <= 0 {
+            return invalid("atomic_number must be positive");
+        }
+        let positive = |value: f64| value.is_finite() && value > 0.0;
+        if !positive(self.barrier_energy) {
+            return invalid("barrier_energy must be finite and positive");
+        }
+        if !positive(self.well_position) {
+            return invalid("well_position must be finite and positive");
+        }
+        if !positive(self.transverse_spring) {
+            return invalid("transverse_spring must be finite and positive");
+        }
+        if !self.coupling.is_finite() {
+            return invalid("coupling must be finite");
+        }
+        Ok(())
+    }
+
+    /// Native bytes consumed by `rgpot_engine_create`.
+    pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: `CoupledWellConfig` is `repr(C)` plain data whose size equals
+        // the sum of its fields (asserted above), so it has no padding and
+        // every byte is initialised.
+        unsafe {
+            std::slice::from_raw_parts(
+                std::ptr::from_ref(self).cast::<u8>(),
+                std::mem::size_of::<Self>(),
+            )
+        }
+    }
+}
+
 /// Opaque engine instance, `RgpotEnginePot` of the header.
 #[repr(C)]
 pub struct RgpotEnginePot {
