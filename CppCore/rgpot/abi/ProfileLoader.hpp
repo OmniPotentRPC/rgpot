@@ -61,15 +61,15 @@ public:
 
   /** Candidate library paths for a prefix: explicit path, env hints,
    * platform default names. */
-  static std::vector<std::string>
-  candidates(const std::string &prefix, const std::string &explicit_path) {
+  static std::vector<std::string> candidates(const std::string &prefix,
+                                             const std::string &explicit_path) {
     std::vector<std::string> out;
     if (!explicit_path.empty())
       out.emplace_back(explicit_path);
     std::string upper;
     for (char c : prefix)
-      upper.push_back(static_cast<char>(
-          c >= 'a' && c <= 'z' ? c - ('a' - 'A') : c));
+      upper.push_back(
+          static_cast<char>(c >= 'a' && c <= 'z' ? c - ('a' - 'A') : c));
     for (const std::string &var :
          {upper + "_LIBRARY", "RGPOT_" + upper + "_ENGINE"}) {
       if (const char *e = std::getenv(var.c_str()))
@@ -111,9 +111,8 @@ public:
     available = resolve<AvailableFn>("available", missing);
     finalize = resolve<FinalizeFn>("finalize", missing);
     configure = resolve<ConfigureFn>("configure", missing);
-    session_create_from_config =
-        resolve<SessionCreateFromConfigFn>("session_create_from_config",
-                                           missing);
+    session_create_from_config = resolve<SessionCreateFromConfigFn>(
+        "session_create_from_config", missing);
     session_configure =
         resolve<SessionConfigureFn>("session_configure", missing);
     session_destroy = resolve<SessionDestroyFn>("session_destroy", missing);
@@ -127,8 +126,9 @@ public:
         resolve<CapabilitiesResultFn>("capabilities_result", missing);
 
     if (!missing.empty()) {
-      std::string what = "lib" + prefix + " does not conform to the minimum "
-                                          "potential ABI profile; missing:";
+      std::string what = "lib" + prefix +
+                         " does not conform to the minimum "
+                         "potential ABI profile; missing:";
       for (const auto &sym : missing)
         what += " " + sym;
       throw std::runtime_error(what);
@@ -137,6 +137,12 @@ public:
 
   bool loaded() const { return lib_.valid() && capabilities_result; }
   const std::string &prefix() const { return prefix_; }
+
+  /** Resolve an additive backend extension without duplicating dlopen logic. */
+  template <typename Fn> Fn optional(const std::string &name) const {
+    const std::string symbol = prefix_ + "_" + name;
+    return lib_.sym_optional<Fn>(symbol.c_str());
+  }
 
   /** Flat `Capabilities` message bytes (size query + fill). */
   std::vector<unsigned char> capabilities() const {

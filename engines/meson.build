@@ -648,6 +648,62 @@ test(
     timeout: 120,
 )
 
+lammpc_session_opt = get_option('with_lammpc_session')
+if lammpc_session_opt.enabled()
+    if not rpc_enabled
+        error('with_lammpc_session needs with_rpc or with_rpc_client_only')
+    endif
+    lammpc_root = get_option('lammpc_root')
+    if lammpc_root == ''
+        error('with_lammpc_session needs lammpc_root')
+    endif
+    lammpc_inc_path = lammpc_root / 'include'
+    lammpc_inc = include_directories(
+        lammpc_inc_path.startswith(project_root + '/') ? fs.relative_to(
+            lammpc_inc_path,
+            engines_here,
+        ) : lammpc_inc_path,
+    )
+    if not cppc.has_header('lammpc.h', include_directories: lammpc_inc)
+        error('lammpc_root does not provide include/lammpc.h')
+    endif
+    lammpc_session_engine = shared_library(
+        'lammpc_engine',
+        files('lammpc/lammpc_engine.cpp'),
+        dependencies: [ptlrpc_dep, dl_dep],
+        include_directories: [rgpot_inc, lammpc_inc],
+        cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+        install: not meson.is_subproject(),
+    )
+    lammpc_library = get_option('lammpc_library')
+    if (
+        get_option('with_tests')
+        and lammpc_library != ''
+        and is_variable('openmm_engine')
+        and is_variable('openmm_lib')
+    )
+        lammpc_session_test = executable(
+            'test_lammpc_session',
+            files('lammpc/test_lammpc_session.cpp'),
+            dependencies: [ptlrpc_dep, openmm_lib],
+            link_with: rgpot,
+            include_directories: [rgpot_inc, lammpc_inc, openmm_inc],
+            cpp_args: _args,
+        )
+        test(
+            'lammpc_session',
+            lammpc_session_test,
+            args: [
+                lammpc_session_engine.full_path(),
+                lammpc_library,
+                openmm_engine.full_path(),
+            ],
+            env: external_env,
+            timeout: 300,
+        )
+    endif
+endif
+
 gromacs_inc = ''
 if python3_engines.found()
     _gmx_inc = run_command(

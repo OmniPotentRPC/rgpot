@@ -111,6 +111,24 @@ option(
     description: 'LAMMPS pair_style rgpot and the lj/cut comparison. Needs the lammps Python module. pair_style rgpot also needs lammps_src.',
 )
 option(
+    'with_lammpc_session',
+    type: 'feature',
+    value: 'disabled',
+    description: 'LAMMPS MD session plugin over the lammpc profile ABI (needs RPC and lammpc headers).',
+)
+option(
+    'lammpc_root',
+    type: 'string',
+    value: '',
+    description: 'lammpc install or source root providing include/lammpc.h.',
+)
+option(
+    'lammpc_library',
+    type: 'string',
+    value: '',
+    description: 'Path to liblammpc used by the LAMMPS MD session test.',
+)
+option(
     'lammps_src',
     type: 'string',
     value: '',
