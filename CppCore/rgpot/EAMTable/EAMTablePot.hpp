@@ -164,6 +164,13 @@ private:
   mutable std::vector<std::size_t> m_elScratch;
   mutable std::vector<double> m_rhoScratch;
   mutable std::vector<double> m_fprimeScratch;
+  mutable std::vector<std::int32_t> m_pairFirstScratch;
+  mutable std::vector<std::int32_t> m_pairSecondScratch;
+  mutable std::vector<double> m_pairDxScratch;
+  mutable std::vector<double> m_pairDyScratch;
+  mutable std::vector<double> m_pairDzScratch;
+  mutable std::vector<double> m_pairR2Scratch;
+  mutable std::vector<double> m_pairRScratch;
   mutable std::vector<int> m_stageElScratch;
   mutable std::vector<double> m_stageFprimeScratch;
   mutable nlist::Neighbours m_neighbours;

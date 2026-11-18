@@ -281,4 +281,31 @@ inline void visitHalf(const Neighbours &cells, std::int64_t begin, std::int64_t 
   cells.forHalf(begin, end, std::forward<Fn>(fn));
 }
 
+/// Gather half-list pairs into contiguous arrays, filtering by cutoff^2.
+inline void collectHalf(const Neighbours &cells, std::int64_t begin, std::int64_t end,
+                        double cutoff2, std::vector<std::int32_t> &first,
+                        std::vector<std::int32_t> &second, std::vector<double> &dx,
+                        std::vector<double> &dy, std::vector<double> &dz,
+                        std::vector<double> &r2) {
+  first.clear();
+  second.clear();
+  dx.clear();
+  dy.clear();
+  dz.clear();
+  r2.clear();
+  visitHalf(cells, begin, end,
+            [&](std::int32_t i, std::int32_t j, double x, double y, double z,
+                double d2) {
+              if (!(d2 > 0.0) || !(d2 < cutoff2)) {
+                return;
+              }
+              first.push_back(i);
+              second.push_back(j);
+              dx.push_back(x);
+              dy.push_back(y);
+              dz.push_back(z);
+              r2.push_back(d2);
+            });
+}
+
 } // namespace rgpot::nlist

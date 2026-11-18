@@ -422,20 +422,50 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
                        {m_periodic, m_periodic, m_periodic});
   }
 
+  const bool collect_pairs = pairs && !cells.streaming() && n_size < 100000;
+  if (collect_pairs) {
+    nlist::collectHalf(cells, 0, static_cast<std::int64_t>(n_size), cut2,
+                       m_pairFirstScratch, m_pairSecondScratch, m_pairDxScratch,
+                       m_pairDyScratch, m_pairDzScratch, m_pairR2Scratch);
+    m_pairRScratch.resize(m_pairR2Scratch.size());
+    for (std::size_t p = 0; p < m_pairR2Scratch.size(); ++p) {
+      m_pairRScratch[p] = std::sqrt(m_pairR2Scratch[p]);
+    }
+  } else {
+    m_pairFirstScratch.clear();
+    m_pairSecondScratch.clear();
+    m_pairDxScratch.clear();
+    m_pairDyScratch.clear();
+    m_pairDzScratch.clear();
+    m_pairR2Scratch.clear();
+    m_pairRScratch.clear();
+  }
+
   m_rhoScratch.assign(n_size, 0.0);
   std::vector<double> &rho = m_rhoScratch;
-  if (pairs) {
+  if (collect_pairs) {
+    for (std::size_t p = 0; p < m_pairFirstScratch.size(); ++p) {
+      const auto ui = static_cast<std::size_t>(m_pairFirstScratch[p]);
+      const auto uj = static_cast<std::size_t>(m_pairSecondScratch[p]);
+      const auto &c = terms.couple(el[ui], el[uj]);
+      const Place k = terms.radial(m_pairRScratch[p]);
+      rho[ui] += Knot(c.atI, k).value();
+      rho[uj] += Knot(c.atJ, k).value();
+    }
+  } else if (pairs) {
     nlist::visitHalf(cells, 0, static_cast<std::int64_t>(n_size),
-                  [&](int32_t i, int32_t j, double, double, double, double r2) {
-                    if (!(r2 > 0.0) || !(r2 < cut2)) {
-                      return;
-                    }
-                    const auto &c = terms.couple(el[static_cast<std::size_t>(i)],
-                                                 el[static_cast<std::size_t>(j)]);
-                    const Place k = terms.radial(std::sqrt(r2));
-                    rho[static_cast<std::size_t>(i)] += Knot(c.atI, k).value();
-                    rho[static_cast<std::size_t>(j)] += Knot(c.atJ, k).value();
-                  });
+                     [&](int32_t i, int32_t j, double, double, double,
+                         double r2) {
+                       if (!(r2 > 0.0) || !(r2 < cut2)) {
+                         return;
+                       }
+                       const auto &c =
+                           terms.couple(el[static_cast<std::size_t>(i)],
+                                        el[static_cast<std::size_t>(j)]);
+                       const Place k = terms.radial(std::sqrt(r2));
+                       rho[static_cast<std::size_t>(i)] += Knot(c.atI, k).value();
+                       rho[static_cast<std::size_t>(j)] += Knot(c.atJ, k).value();
+                     });
   }
 
   m_fprimeScratch.assign(n_size, 0.0);
@@ -450,7 +480,32 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
   }
 
   double strain[6] = {};
-  if (pairs) {
+  if (collect_pairs) {
+    for (std::size_t p = 0; p < m_pairFirstScratch.size(); ++p) {
+      const auto ui = static_cast<std::size_t>(m_pairFirstScratch[p]);
+      const auto uj = static_cast<std::size_t>(m_pairSecondScratch[p]);
+      const double dx = m_pairDxScratch[p];
+      const double dy = m_pairDyScratch[p];
+      const double dz = m_pairDzScratch[p];
+      double phi = 0.0;
+      const double fscale =
+          terms.pair(terms.couple(el[ui], el[uj]), m_pairRScratch[p], fprime[ui],
+                     fprime[uj], phi);
+      energy += phi;
+      F[3 * ui] += fscale * dx;
+      F[3 * ui + 1] += fscale * dy;
+      F[3 * ui + 2] += fscale * dz;
+      F[3 * uj] -= fscale * dx;
+      F[3 * uj + 1] -= fscale * dy;
+      F[3 * uj + 2] -= fscale * dz;
+      if (m_stress) {
+        accumulatePairStrain(strain, fscale, dx, dy, dz);
+      }
+      if (atoms != nullptr) {
+        tallyPair(*atoms, ui, uj, phi, fscale, dx, dy, dz);
+      }
+    }
+  } else if (pairs) {
     nlist::visitHalf(
         cells, 0, static_cast<std::int64_t>(n_size),
         [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {

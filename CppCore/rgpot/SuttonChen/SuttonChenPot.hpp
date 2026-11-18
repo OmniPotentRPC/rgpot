@@ -171,6 +171,12 @@ private:
   mutable std::vector<double> weight_;
   mutable std::vector<double> row_e_;
   mutable std::vector<double> row_s_;
+  mutable std::vector<std::int32_t> pair_first_;
+  mutable std::vector<std::int32_t> pair_second_;
+  mutable std::vector<double> pair_dx_;
+  mutable std::vector<double> pair_dy_;
+  mutable std::vector<double> pair_dz_;
+  mutable std::vector<double> pair_r2_;
 };
 
 } // namespace rgpot

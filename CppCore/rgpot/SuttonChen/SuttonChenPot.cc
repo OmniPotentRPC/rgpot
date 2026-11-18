@@ -198,6 +198,18 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   const bool rows = n_size >= kTeamMinAtoms;
   const int nt = nlist::teamSize(n_size);
   const bool by_row = rows && (nt > 1 || (stream && !neighbours_.allPairs()));
+  const bool collect_pairs = !by_row && !rows && n_size >= 256;
+  if (collect_pairs) {
+    nlist::collectHalf(neighbours_, 0, n_atoms, cutoff2, pair_first_, pair_second_,
+                       pair_dx_, pair_dy_, pair_dz_, pair_r2_);
+  } else {
+    pair_first_.clear();
+    pair_second_.clear();
+    pair_dx_.clear();
+    pair_dy_.clear();
+    pair_dz_.clear();
+    pair_r2_.clear();
+  }
   if (rows) {
     row_e_.assign(n_size, 0.0);
     if (cfg.stress) {
@@ -229,9 +241,10 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   }
   std::size_t expected = 0;
   if (!by_row) {
-    expected = neighbours_.allPairs() ? n_size * (n_size - 1) / 2
-               : stream               ? 0
-                                      : neighbours_.slots() / 2;
+    expected = collect_pairs
+                   ? pair_first_.size()
+                   : (neighbours_.allPairs() ? n_size * (n_size - 1) / 2
+                                             : stream ? 0 : neighbours_.slots() / 2);
   }
   for (std::size_t t = 0; t < lanes; ++t) {
     terms_[t].setLimit(term_limit_ / lanes);
@@ -275,24 +288,46 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   if (!by_row) {
     Terms &lane = terms_[0];
     by_stride([&](auto stride) {
-      nlist::visitHalf(neighbours_,
-          0, n_atoms,
-          [=, &lane](int32_t i, int32_t j, double, double, double,
-                     double r2) RGPOT_SC_PAIR_INLINE {
-            if (!(r2 > 0.0) || r2 > cutoff2) {
-              return;
-            }
-            double phi = 0.0;
-            double rep = 0.0;
-            pair_term(r2, phi, rep, lane);
-            rho[static_cast<std::size_t>(i)] += phi;
-            rho[static_cast<std::size_t>(j)] += phi;
-            e_sum[static_cast<std::size_t>(i) * decltype(stride)::value] += epsilon * rep;
-            if (atom_e != nullptr) {
-              atom_e[static_cast<std::size_t>(i)] += 0.5 * epsilon * rep;
-              atom_e[static_cast<std::size_t>(j)] += 0.5 * epsilon * rep;
-            }
-          });
+      if (collect_pairs) {
+        for (std::size_t p = 0; p < pair_first_.size(); ++p) {
+          const auto i = pair_first_[p];
+          const auto j = pair_second_[p];
+          const double r2 = pair_r2_[p];
+          double phi = 0.0;
+          double rep = 0.0;
+          pair_term(r2, phi, rep, lane);
+          rho[static_cast<std::size_t>(i)] += phi;
+          rho[static_cast<std::size_t>(j)] += phi;
+          e_sum[static_cast<std::size_t>(i) * decltype(stride)::value] +=
+              epsilon * rep;
+          if (atom_e != nullptr) {
+            atom_e[static_cast<std::size_t>(i)] += 0.5 * epsilon * rep;
+            atom_e[static_cast<std::size_t>(j)] += 0.5 * epsilon * rep;
+          }
+        }
+      } else {
+        nlist::visitHalf(neighbours_,
+                         0, n_atoms,
+                         [=, &lane](int32_t i, int32_t j, double, double, double,
+                                    double r2) RGPOT_SC_PAIR_INLINE {
+                           if (!(r2 > 0.0) || r2 > cutoff2) {
+                             return;
+                           }
+                           double phi = 0.0;
+                           double rep = 0.0;
+                           pair_term(r2, phi, rep, lane);
+                           rho[static_cast<std::size_t>(i)] += phi;
+                           rho[static_cast<std::size_t>(j)] += phi;
+                           e_sum[static_cast<std::size_t>(i) *
+                                 decltype(stride)::value] += epsilon * rep;
+                           if (atom_e != nullptr) {
+                             atom_e[static_cast<std::size_t>(i)] +=
+                                 0.5 * epsilon * rep;
+                             atom_e[static_cast<std::size_t>(j)] +=
+                                 0.5 * epsilon * rep;
+                           }
+                         });
+      }
     });
   } else {
     Terms *lane_terms = terms_.data();
@@ -381,12 +416,20 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
     Terms &lane = terms_[0];
     double *virial = s_sum;
     by_stride([&](auto stride) {
-      nlist::visitHalf(neighbours_,
-          0, n_atoms,
-          [=, &lane](int32_t i, int32_t j, double dx, double dy, double dz,
-                     double r2) RGPOT_SC_PAIR_INLINE {
-            apply(stride, i, j, dx, dy, dz, r2, F, virial, true, lane);
-          });
+      if (collect_pairs) {
+        for (std::size_t p = 0; p < pair_first_.size(); ++p) {
+          apply(stride, pair_first_[p], pair_second_[p], pair_dx_[p],
+                pair_dy_[p], pair_dz_[p], pair_r2_[p], F, virial, true, lane);
+        }
+      } else {
+        nlist::visitHalf(neighbours_,
+                         0, n_atoms,
+                         [=, &lane](int32_t i, int32_t j, double dx, double dy,
+                                    double dz, double r2) RGPOT_SC_PAIR_INLINE {
+                           apply(stride, i, j, dx, dy, dz, r2, F, virial, true,
+                                 lane);
+                         });
+      }
     });
   } else {
     double *virial = s_sum;
