@@ -1,0 +1,1 @@
+`NWChemPotMessageAbiTest` now drives `NWChemPot::setPotentialConfig` against a missing library and against parameters refused by `nwchemc_set_params` through `nwchemc_fake_engine`, pinning both the engine not loaded and rejected by embed diagnostics.
