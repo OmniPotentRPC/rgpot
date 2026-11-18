@@ -1,13 +1,22 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
-//! Physical constants from `CppCore/rgpot/units.hpp`.
+#![deny(missing_docs, rustdoc::broken_intra_doc_links)]
+
+//! CODATA 2018 physical constants and unit conversions from
+//! `CppCore/rgpot/units.hpp`.
 //!
-//! `build.rs` compiles that header and writes these values. Boltzmann's
-//! constant, the bohr and hartree conversions are the compile-time
-//! constants. The dalton in electron masses is
-//! `unit_conversion_factor("dalton", "electron_mass")`, and the atomic
-//! unit of time is `unit_conversion_factor("hbar", "hartree*s")`.
+//! `build.rs` compiles `CppCore/rgpot/units.hpp` together with
+//! `CppCore/rgpot/units.cc` and writes the exact IEEE-754 `f64` bit patterns
+//! of the header constants into this module, keeping `units.hpp` as the
+//! single table shared by C++ and Rust consumers.
+//!
+//! ```
+//! use rgpot_core::units;
+//!
+//! assert_eq!(units::ANGSTROM_TO_BOHR, 1.0 / units::BOHR_TO_ANGSTROM);
+//! assert_eq!(units::EV_TO_HARTREE, 1.0 / units::HARTREE_TO_EV);
+//! ```
 
 include!(concat!(env!("OUT_DIR"), "/units_generated.rs"));
 
