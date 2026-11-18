@@ -54,19 +54,27 @@ double ipow(double base, int exp) {
 
 /// (a/r)^exp from ar2 = (a/r)^2.
 double pow_ar(double ar2, int exp) {
-  const double ar4 = ar2 * ar2;
-  const double ar8 = ar4 * ar4;
   switch (exp) {
-  case 6:
+  case 6: {
+    const double ar4 = ar2 * ar2;
     return ar4 * ar2;
-  case 8:
-    return ar8;
-  case 9:
-    return ar8 * std::sqrt(ar2);
-  case 10:
-    return ar8 * ar2;
-  case 12:
-    return ar8 * ar4;
+  }
+  case 8: {
+    const double ar4 = ar2 * ar2;
+    return ar4 * ar4;
+  }
+  case 9: {
+    const double ar4 = ar2 * ar2;
+    return ar4 * ar4 * std::sqrt(ar2);
+  }
+  case 10: {
+    const double ar4 = ar2 * ar2;
+    return ar4 * ar4 * ar2;
+  }
+  case 12: {
+    const double ar4 = ar2 * ar2;
+    return ar4 * ar4 * ar4;
+  }
   default:
     break;
   }
