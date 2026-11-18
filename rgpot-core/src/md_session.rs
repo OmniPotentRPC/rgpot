@@ -21,18 +21,43 @@ pub const AMU_A2_PS2_PER_EV: f64 = KJ_PER_EV * 100.0;
 
 /// Error raised by an MD session or its C ABI boundary.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MdSessionError(String);
+pub struct MdSessionError {
+    message: String,
+    nlist_status: Option<MdNlistStatus>,
+}
 
 impl MdSessionError {
     /// Construct an MD session error with a diagnostic message.
     pub fn new(message: impl Into<String>) -> Self {
-        Self(message.into())
+        Self {
+            message: message.into(),
+            nlist_status: None,
+        }
+    }
+
+    /// Construct an MD session error carrying a typed neighbor-exchange status.
+    pub fn with_nlist_status(status: MdNlistStatus, message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            nlist_status: Some(status),
+        }
+    }
+
+    /// Neighbor-exchange status when this error came from `get_neighbors` or
+    /// `set_neighbors`.
+    pub fn nlist_status(&self) -> Option<MdNlistStatus> {
+        self.nlist_status
+    }
+
+    /// True when the backend reported the neighbor operation as unsupported.
+    pub fn is_unsupported(&self) -> bool {
+        self.nlist_status == Some(MdNlistStatus::Unsupported)
     }
 }
 
 impl fmt::Display for MdSessionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.message)
     }
 }
 
@@ -321,9 +346,11 @@ impl MdSessionState {
     }
 }
 
+const MD_NLIST_ABI: u32 = 4;
+
 /// Neighbour query request ABI shared with `rgpot_nlist_request`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct MdNlistRequest {
     pub bytes: u32,
     pub abi: u32,
@@ -338,9 +365,27 @@ pub struct MdNlistRequest {
     pub want_distances: i32,
 }
 
+impl Default for MdNlistRequest {
+    fn default() -> Self {
+        Self {
+            bytes: std::mem::size_of::<Self>() as u32,
+            abi: MD_NLIST_ABI,
+            cutoff: 0.0,
+            skin: 0.0,
+            shape: 0,
+            shell: 0,
+            cut: 0,
+            periodic: [1, 1, 1],
+            want_shifts: 1,
+            want_vectors: 1,
+            want_distances: 1,
+        }
+    }
+}
+
 /// Structure-of-arrays pair buffers shared with `rgpot_nlist_soa`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct MdNlistSoa {
     pub bytes: u32,
     pub first: *mut i32,
@@ -350,6 +395,21 @@ pub struct MdNlistSoa {
     pub distance: *mut f64,
     pub mask: *mut u8,
     pub cap: usize,
+}
+
+impl Default for MdNlistSoa {
+    fn default() -> Self {
+        Self {
+            bytes: std::mem::size_of::<Self>() as u32,
+            first: std::ptr::null_mut(),
+            second: std::ptr::null_mut(),
+            shift: std::ptr::null_mut(),
+            vector: std::ptr::null_mut(),
+            distance: std::ptr::null_mut(),
+            mask: std::ptr::null_mut(),
+            cap: 0,
+        }
+    }
 }
 
 /// Return statuses for neighbour exchange callbacks.
@@ -362,11 +422,12 @@ pub enum MdNlistStatus {
 }
 
 impl MdNlistStatus {
-    fn from_raw(value: i32) -> Self {
+    fn from_raw(value: i32) -> Option<Self> {
         match value {
-            0 => Self::Ok,
-            2 => Self::Unsupported,
-            _ => Self::Error,
+            0 => Some(Self::Ok),
+            1 => Some(Self::Error),
+            2 => Some(Self::Unsupported),
+            _ => None,
         }
     }
 }
@@ -460,7 +521,8 @@ pub trait MdSession {
         _request: &MdNlistRequest,
         _out: Option<&mut MdNlistSoa>,
     ) -> Result<(usize, usize), MdSessionError> {
-        Err(MdSessionError::new(
+        Err(MdSessionError::with_nlist_status(
+            MdNlistStatus::Unsupported,
             "MD engine does not expose neighbor queries",
         ))
     }
@@ -472,7 +534,8 @@ pub trait MdSession {
         _pairs: &MdNlistSoa,
         _count: usize,
     ) -> Result<(), MdSessionError> {
-        Err(MdSessionError::new(
+        Err(MdSessionError::with_nlist_status(
+            MdNlistStatus::Unsupported,
             "MD engine does not accept supplied neighbors",
         ))
     }
@@ -681,24 +744,25 @@ impl CAbiMdSession {
             ));
         }
         let mut ops = ops;
+        let slot_size = std::mem::size_of::<*const c_void>();
         // A vtable built against an older header ends before the optional
         // callbacks; whatever the struct holds there is not a callback.
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, set_periodic_box) + 8 {
+        if ops.struct_size < std::mem::offset_of!(MdSessionOps, set_periodic_box) + slot_size {
             ops.set_periodic_box = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, get_periodic_box) + 8 {
+        if ops.struct_size < std::mem::offset_of!(MdSessionOps, get_periodic_box) + slot_size {
             ops.get_periodic_box = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, initialize) + 8 {
+        if ops.struct_size < std::mem::offset_of!(MdSessionOps, initialize) + slot_size {
             ops.initialize = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, run_langevin) + 8 {
+        if ops.struct_size < std::mem::offset_of!(MdSessionOps, run_langevin) + slot_size {
             ops.run_langevin = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, get_neighbors) + 8 {
+        if ops.struct_size < std::mem::offset_of!(MdSessionOps, get_neighbors) + slot_size {
             ops.get_neighbors = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, set_neighbors) + 8 {
+        if ops.struct_size < std::mem::offset_of!(MdSessionOps, set_neighbors) + slot_size {
             ops.set_neighbors = None;
         }
         let Some(n3) = n_atoms.checked_mul(3) else {
@@ -796,18 +860,21 @@ impl Drop for CAbiMdSession {
     }
 }
 
-fn error_message(error: &[c_char]) -> String {
+fn raw_error_message(error: &[c_char]) -> Option<String> {
     let bytes: Vec<u8> = error.iter().map(|value| *value as u8).collect();
-    match CStr::from_bytes_until_nul(&bytes) {
-        Ok(value) => {
-            let text = value.to_string_lossy().into_owned();
-            if text.is_empty() {
-                "rgpot MD session failed".to_string()
-            } else {
-                text
-            }
-        }
-        Err(_) => "rgpot MD session failed".to_string(),
+    let value = CStr::from_bytes_until_nul(&bytes).ok()?;
+    let text = value.to_string_lossy().into_owned();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn error_message(error: &[c_char]) -> String {
+    match raw_error_message(error) {
+        Some(text) => text,
+        None => "rgpot MD session failed".to_string(),
     }
 }
 
@@ -1193,7 +1260,8 @@ impl MdSession for CAbiMdSession {
         out: Option<&mut MdNlistSoa>,
     ) -> Result<(usize, usize), MdSessionError> {
         let Some(callback) = self.ops.get_neighbors else {
-            return Err(MdSessionError::new(
+            return Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Unsupported,
                 "MD engine does not expose neighbor queries",
             ));
         };
@@ -1216,18 +1284,25 @@ impl MdSession for CAbiMdSession {
             )
         };
         match MdNlistStatus::from_raw(status) {
-            MdNlistStatus::Ok => Ok((count, needed)),
-            MdNlistStatus::Unsupported => {
-                let message = error_message(&error);
-                if message == "rgpot MD session failed" {
-                    Err(MdSessionError::new(
-                        "MD engine does not expose neighbor queries",
-                    ))
-                } else {
-                    Err(MdSessionError::new(message))
-                }
-            }
-            MdNlistStatus::Error => Err(MdSessionError::new(error_message(&error))),
+            Some(MdNlistStatus::Ok) => Ok((count, needed)),
+            Some(MdNlistStatus::Unsupported) => Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Unsupported,
+                match raw_error_message(&error) {
+                    Some(message) => message,
+                    None => "MD engine does not expose neighbor queries".to_string(),
+                },
+            )),
+            Some(MdNlistStatus::Error) => Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Error,
+                error_message(&error),
+            )),
+            None => Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Error,
+                match raw_error_message(&error) {
+                    Some(message) => message,
+                    None => format!("unexpected MD neighbor status {status}"),
+                },
+            )),
         }
     }
 
@@ -1238,7 +1313,8 @@ impl MdSession for CAbiMdSession {
         count: usize,
     ) -> Result<(), MdSessionError> {
         let Some(callback) = self.ops.set_neighbors else {
-            return Err(MdSessionError::new(
+            return Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Unsupported,
                 "MD engine does not accept supplied neighbors",
             ));
         };
@@ -1254,18 +1330,25 @@ impl MdSession for CAbiMdSession {
             )
         };
         match MdNlistStatus::from_raw(status) {
-            MdNlistStatus::Ok => Ok(()),
-            MdNlistStatus::Unsupported => {
-                let message = error_message(&error);
-                if message == "rgpot MD session failed" {
-                    Err(MdSessionError::new(
-                        "MD engine does not accept supplied neighbors",
-                    ))
-                } else {
-                    Err(MdSessionError::new(message))
-                }
-            }
-            MdNlistStatus::Error => Err(MdSessionError::new(error_message(&error))),
+            Some(MdNlistStatus::Ok) => Ok(()),
+            Some(MdNlistStatus::Unsupported) => Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Unsupported,
+                match raw_error_message(&error) {
+                    Some(message) => message,
+                    None => "MD engine does not accept supplied neighbors".to_string(),
+                },
+            )),
+            Some(MdNlistStatus::Error) => Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Error,
+                error_message(&error),
+            )),
+            None => Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Error,
+                match raw_error_message(&error) {
+                    Some(message) => message,
+                    None => format!("unexpected MD neighbor status {status}"),
+                },
+            )),
         }
     }
 }
@@ -1429,11 +1512,16 @@ mod tests {
         _out: *mut MdNlistSoa,
         count: *mut usize,
         needed: *mut usize,
-        _err: *mut c_char,
-        _err_len: usize,
+        err: *mut c_char,
+        err_len: usize,
     ) -> i32 {
         let state = unsafe { &mut *(ctx as *mut MockCtx) };
         state.nlist_calls += 1;
+        if state.fail_next {
+            state.fail_next = false;
+            write_c_err(err, err_len, "mock nlist error");
+            return MdNlistStatus::Error as i32;
+        }
         if !count.is_null() {
             unsafe { *count = 4 };
         }
@@ -1642,23 +1730,40 @@ mod tests {
         let destroyed = Arc::new(AtomicBool::new(false));
         let (mut session, ctx) = mock_session(mock_ops(), &destroyed);
         let request = MdNlistRequest::default();
+        assert_eq!(request.bytes as usize, std::mem::size_of::<MdNlistRequest>());
+        assert_eq!(request.abi, MD_NLIST_ABI);
+        assert_eq!(request.periodic, [1, 1, 1]);
+        assert_eq!(
+            (request.want_shifts, request.want_vectors, request.want_distances),
+            (1, 1, 1)
+        );
         let mut out = MdNlistSoa::default();
+        assert_eq!(out.bytes as usize, std::mem::size_of::<MdNlistSoa>());
         let (count, needed) = session.get_neighbors(&request, Some(&mut out)).unwrap();
         assert_eq!((count, needed), (4, 4));
         assert_eq!(unsafe { (*ctx).nlist_calls }, 1);
         let refused = session
             .set_neighbors(&request, &MdNlistSoa::default(), 0)
             .unwrap_err();
+        assert_eq!(refused.nlist_status(), Some(MdNlistStatus::Unsupported));
+        assert!(refused.is_unsupported());
         assert!(refused
             .to_string()
             .contains("does not accept supplied neighbors"));
 
+        unsafe { (*ctx).fail_next = true };
+        let failed = session.get_neighbors(&request, None).unwrap_err();
+        assert_eq!(failed.nlist_status(), Some(MdNlistStatus::Error));
+        assert!(!failed.is_unsupported());
+        assert_eq!(failed.to_string(), "mock nlist error");
+
         let mut short = mock_ops();
         short.struct_size = std::mem::offset_of!(MdSessionOps, destroy) + 8;
         let (mut bare, _ctx) = mock_session(short, &destroyed);
-        assert!(bare
-            .get_neighbors(&request, None)
-            .unwrap_err()
+        let missing = bare.get_neighbors(&request, None).unwrap_err();
+        assert_eq!(missing.nlist_status(), Some(MdNlistStatus::Unsupported));
+        assert!(missing.is_unsupported());
+        assert!(missing
             .to_string()
             .contains("does not expose neighbor queries"));
     }
