@@ -1,0 +1,4 @@
+Add a LAMMPS MD session engine over the lammpc profile ABI, including periodic
+box and state setters, deterministic Maxwell--Boltzmann reseeding, projected
+Langevin dynamics with a reported constraint force, planar-wall reflection,
+unconstrained NVE propagation, and energy/force reads.

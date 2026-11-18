@@ -45,6 +45,9 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_water= | boolean | =false= | Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option. |
 | =with_eam_table= | boolean | =false= | EAM and Finnis-Sinclair potentials read from LAMMPS funcfl, setfl and eam/fs tables. |
 | =with_lammps= | feature | =auto= | LAMMPS pair_style rgpot and the lj/cut comparison. Needs the lammps Python module. pair_style rgpot also needs lammps_src. |
+| =with_lammpc_session= | feature | =disabled= | LAMMPS MD session plugin over the lammpc profile ABI. Needs the RPC schema and lammpc headers. |
+| =lammpc_root= | string | =(empty)= | lammpc install or source root providing its public C header. |
+| =lammpc_library= | string | =(empty)= | Path to =liblammpc= used by the LAMMPS/OpenMM session test. |
 | =lammps_src= | string | =(empty)= | LAMMPS src directory that contains pair.h, matching the liblammps that will load the plugin. |
 | =lammps_exe= | string | =(empty)= | lmp built from lammps_src. When set, the LAMMPS test also runs pair_style rgpot. |
 | =with_gromacs= | feature | =auto= | GROMACS mdrun -plumed using the RGPOT collective variable. |

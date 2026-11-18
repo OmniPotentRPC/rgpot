@@ -430,9 +430,11 @@ std::vector<std::string> md_engine_paths(const char *engine,
 
 bool valid_md_ops(const rgpot_md_session_ops *ops) {
   return ops != nullptr && ops->struct_size >= sizeof(rgpot_md_session_ops) &&
-         ops->set_positions != nullptr && ops->set_velocities != nullptr &&
+         ops->set_periodic_box != nullptr && ops->set_positions != nullptr &&
+         ops->set_velocities != nullptr && ops->reseed_velocities != nullptr &&
          ops->step_langevin != nullptr && ops->step_nve != nullptr &&
          ops->get_state != nullptr && ops->get_masses != nullptr &&
+         ops->get_constraint_force != nullptr && ops->initialize != nullptr &&
          ops->destroy != nullptr;
 }
 
@@ -528,8 +530,8 @@ int rgpot_external_potential_energy_forces(rgpot_external_potential *pot,
                                            size_t err_len) {
   if (pot == nullptr || pot->pot == nullptr || energy == nullptr ||
       box9 == nullptr ||
-      (n > 0 && (xyz == nullptr || atomic_numbers == nullptr ||
-                 forces == nullptr))) {
+      (n > 0 &&
+       (xyz == nullptr || atomic_numbers == nullptr || forces == nullptr))) {
     write_err(err, err_len, "energy_forces needs a potential and a geometry");
     return 1;
   }
@@ -651,10 +653,30 @@ int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
                                 size_t n_atoms, char *err, size_t err_len) {
   clear_err(err, err_len);
   try {
-    if (session == nullptr || masses == nullptr || n_atoms != session->n_atoms) {
+    if (session == nullptr || masses == nullptr ||
+        n_atoms != session->n_atoms) {
       throw std::invalid_argument("MD mass output buffer has wrong length");
     }
     return session->ops.get_masses(session->ctx, masses, n_atoms, err, err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
+                                      const double *box9, char *err,
+                                      size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || !finite_array(box9, 9)) {
+      throw std::invalid_argument(
+          "MD periodic box must contain nine finite values");
+    }
+    return session->ops.set_periodic_box(session->ctx, box9, err, err_len);
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
     return 1;
@@ -705,6 +727,25 @@ int rgpot_md_session_set_velocities(rgpot_md_session *session,
   }
 }
 
+int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
+                                       uint64_t seed, char *err,
+                                       size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || !std::isfinite(kT) || kT <= 0.0) {
+      throw std::invalid_argument(
+          "MD velocity reseed needs a positive finite kT");
+    }
+    return session->ops.reseed_velocities(session->ctx, kT, seed, err, err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
 int rgpot_md_session_step_langevin(
     rgpot_md_session *session, double kT, double friction, double time_step,
     const double *plane_point, const double *plane_normal,
@@ -725,17 +766,16 @@ int rgpot_md_session_step_langevin(
       throw std::invalid_argument(
           "MD Langevin plane_point and plane_normal must be finite");
     }
-    if (n_walls > 0 &&
-        (n_walls > std::numeric_limits<size_t>::max() / n3 ||
-         !finite_array(wall_points, n_walls * n3) ||
-         !finite_array(wall_normals, n_walls * n3))) {
+    if (n_walls > 0 && (n_walls > std::numeric_limits<size_t>::max() / n3 ||
+                        !finite_array(wall_points, n_walls * n3) ||
+                        !finite_array(wall_normals, n_walls * n3))) {
       throw std::invalid_argument(
           "MD Langevin wall arrays must be finite n_walls*n3 buffers");
     }
-    return session->ops.step_langevin(
-        session->ctx, kT, friction, time_step, plane_point, plane_normal,
-        wall_points, wall_normals, n_walls, n3, steps, seed, wall_hits, err,
-        err_len);
+    return session->ops.step_langevin(session->ctx, kT, friction, time_step,
+                                      plane_point, plane_normal, wall_points,
+                                      wall_normals, n_walls, n3, steps, seed,
+                                      wall_hits, err, err_len);
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
     return 1;
@@ -779,6 +819,43 @@ int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
     return session->ops.get_state(session->ctx, positions, velocities, forces,
                                   n3, potential_energy, kinetic_energy, err,
                                   err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_get_constraint_force(rgpot_md_session *session,
+                                          double *constraint_force, char *err,
+                                          size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || constraint_force == nullptr) {
+      throw std::invalid_argument(
+          "MD constraint force needs a session and output");
+    }
+    return session->ops.get_constraint_force(session->ctx, constraint_force,
+                                             err, err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_initialize(rgpot_md_session *session, char *err,
+                                size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr) {
+      throw std::invalid_argument("null MD session");
+    }
+    return session->ops.initialize(session->ctx, err, err_len);
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
     return 1;

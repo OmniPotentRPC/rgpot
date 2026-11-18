@@ -1,0 +1,40 @@
+#+title: LAMMPS MD sessions through lammpc
+
+The =lammpc= MD engine keeps one LAMMPS instance behind lammpc's stable C ABI.
+Build it with:
+
+#+attr_rgpot: syntax configures the lammpc session engine
+#+begin_src sh
+meson setup build \
+  -Dwith_rpc=true -Dwith_openmm=enabled \
+  -Dwith_lammpc_session=enabled \
+  -Dlammpc_root=/path/to/lammpc \
+  -Dlammpc_library=/path/to/liblammpc.so
+#+end_src
+
+The engine itself does not link =liblammpc=.  It reuses
+=rgpot::abi::ProfileLoader=, loads the profile named =lammpc=, and resolves the
+additive MD entry points from the same handle.  Pass the =liblammpc= path as
+the =options= argument of =rgpot_md_session_create=.
+
+The opaque engine spec starts with =rgpot_lammpc_session_spec_header= from
+=engines/lammpc/lammpc_engine_spec.h=.  One flat =PotentialConfig= follows the
+header, then one flat =ForceInput=.  The latter supplies atom count, atomic
+numbers, initial positions, and the row-major periodic box; it must request
+=angstrom= and =eV= units.
+
+The session exposes positions, velocities, box, masses, raw forces and
+energies.  =rgpot_md_session_reseed_velocities= draws deterministic
+Maxwell--Boltzmann velocities from a full 64-bit seed.  Projected Langevin
+steps use lammpc's Cartesian mass-metric plane, reset lammpc's Langevin stream
+to the call seed without replacing the current velocities, and report the
+physical force along the positive unit plane normal through
+=rgpot_md_session_get_constraint_force=.  Planar walls are reflected in the
+plane tangent space through lammpc's hard-boundary callback.  NVE calls use
+lammpc's unconstrained =fix nve= route.
+
+The =lammpc_session= Meson test uses the same two-particle harmonic well in
+LAMMPS =pair_style lepton= and OpenMM.  It checks harmonic potential and
+kinetic equipartition and the constrained mean force against analytic
+=dF/dc= within sampled standard errors, then checks seed replay, walls, state,
+and NVE propagation.
