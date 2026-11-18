@@ -486,6 +486,12 @@ test(
     args: [rgpot.full_path(), abi_baselines],
     timeout: 30,
 )
+test(
+    'abi_symbols_md_session',
+    abi_script,
+    args: [rgpot.full_path(), files('../scripts/abi_baseline_md_session.txt')],
+    timeout: 30,
+)
 # abi_symbols above reads only the kind of librgpot this build makes. A
 # small fixture built as a shared object, a lib*.a archive and a *.lib
 # archive runs the script's other nm modes in every build. The two
@@ -601,18 +607,121 @@ if openmm_opt.allowed() and python3_engines.found()
             'openmm/Platform.h',
             include_directories: openmm_inc,
         )
+            openmm_session_lib = static_library(
+                'openmm_session',
+                files('../CppCore/rgpot/ExternalPot/OpenMM.cc'),
+                dependencies: [openmm_lib],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+                pic: true,
+                install: false,
+            )
+            # The engine keeps the only copy of the session code and the
+            # plugin guard. nodelete stops dlclose from resetting the guard,
+            # which would load the plugins again with the next session.
             openmm_engine = shared_library(
                 'openmm_engine',
                 files('openmm/openmm_engine.cpp'),
+                link_with: [openmm_session_lib, rgpot],
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+                link_args: cppc.get_supported_link_arguments(
+                    ['-Wl,-z,nodelete'],
+                ),
                 build_rpath: openmm_libdir,
                 install_rpath: openmm_libdir,
                 install: not meson.is_subproject(),
             )
             external_env.set('RGPOT_OPENMM_ENGINE', openmm_engine.full_path())
             external_env.set('OPENMM_PLUGIN_DIR', openmm_libdir / 'plugins')
+            # Every OpenMM test runs here. The plugin directory is named
+            # because OpenMM's compiled-in default may not exist, and
+            # LeakSanitizer reports OpenMM's own start-up registrations in a
+            # process that loads the engine library without loading a
+            # plugin directory.
+            openmm_session_env = environment()
+            openmm_session_env.set(
+                'RGPOT_OPENMM_ENGINE',
+                openmm_engine.full_path(),
+            )
+            openmm_session_env.set('OPENMM_PLUGIN_DIR', openmm_libdir / 'plugins')
+            openmm_session_test = executable(
+                'test_openmm_session',
+                files('openmm/test_openmm_session.cpp'),
+                link_with: [openmm_engine, rgpot],
+                dependencies: [openmm_lib, dl_dep],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+            )
+            test(
+                'openmm_session',
+                openmm_session_test,
+                env: openmm_session_env,
+                timeout: 120,
+            )
+            openmm_session_review_test = executable(
+                'test_openmm_session_review',
+                files('openmm/test_openmm_session_review.cpp'),
+                link_with: [openmm_engine, rgpot],
+                dependencies: [openmm_lib],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+            )
+            openmm_analytic_test = executable(
+                'test_openmm_analytic',
+                files('openmm/test_openmm_analytic.cpp'),
+                link_with: rgpot,
+                dependencies: [openmm_lib],
+                include_directories: [
+                    rgpot_inc,
+                    openmm_inc,
+                    include_directories('..'),
+                ],
+                cpp_args: _args,
+                build_rpath: openmm_libdir,
+            )
+            test(
+                'openmm_analytic',
+                openmm_analytic_test,
+                args: [openmm_engine.full_path()],
+                env: openmm_session_env,
+                timeout: 300,
+            )
+            openmm_abi_test = executable(
+                'test_openmm_abi',
+                files('openmm/test_openmm_abi.cpp'),
+                link_with: rgpot,
+                dependencies: [openmm_lib, dl_dep],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+                build_rpath: openmm_libdir,
+            )
+            test(
+                'openmm_abi',
+                openmm_abi_test,
+                args: [openmm_engine.full_path()],
+                env: openmm_session_env,
+                timeout: 120,
+            )
+            foreach review_case : [
+                'equipartition',
+                'mean-force',
+                'wall-energy',
+                'metric-seed',
+                'seed-chunking',
+                'wall-multi-bounce',
+                'off-plane-force',
+                'openmm-constraints',
+            ]
+                test(
+                    'openmm_review_' + review_case,
+                    openmm_session_review_test,
+                    args: [review_case],
+                    env: openmm_session_env,
+                    timeout: 180,
+                )
+            endforeach
         endif
     endif
 endif

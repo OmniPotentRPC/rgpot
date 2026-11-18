@@ -69,6 +69,11 @@ while IFS= read -r -d '' so; do
     echo "patchelf engine $rel (torch-$maj)"
     patchelf --set-rpath "$ENG_RPATH" "$so"
   elif [[ "$base" == _core* ]]; then
+    if ! readelf -d "$so" 2>/dev/null | grep -qE '\(NEEDED\).*\[librgpot\.so'; then
+      echo "ERROR: $base is missing librgpot in DT_NEEDED" >&2
+      readelf -d "$so" >&2 || true
+      exit 1
+    fi
     echo "patchelf core $(basename "$so")"
     patchelf --set-rpath "$CORE_RPATH" "$so"
   elif [[ "$base" == librgpot.so* ]]; then

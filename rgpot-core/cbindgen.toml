@@ -26,7 +26,7 @@ documentation_style = "doxy"
 # Named by the documentation of rgpot_potential_hvp and
 # rgpot_potential_set_hvp_callback, not by a signature.
 include = ["rgpot_hvp_scheme_t", "HessianVectorCallback"]
-exclude = []
+exclude = ["KJ_PER_EV", "NM_PER_ANGSTROM", "AMU_A2_PS2_PER_EV"]
 
 [export.rename]
 

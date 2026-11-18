@@ -47,6 +47,9 @@ fails when =librgpot_core.so= no longer exports a baseline name.
 =scripts/abi_baseline.txt= and =scripts/abi_baseline_fast.txt= are the same
 check for the neighbour-list and fast-list exports of =librgpot= (Meson test
 =abi_symbols=).
+=scripts/abi_baseline_md_session.txt= lists the =rgpot_md_session_*= exports.
+They are in =librgpot= itself, also in a static build.
+The test =abi_symbols_md_session= reads that library against the list.
 The neighbour-list C ABI has its own number, =RGPOT_NLIST_ABI= in
 =CppCore/rgpot/nlist/rgpot_nlist.h=.
 

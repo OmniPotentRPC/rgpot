@@ -5,6 +5,8 @@
 // are kJ/mol/nm. The expression is the shifted 12-6 potential the
 // openmm_lj test evaluates. The host constructor converts once.
 
+#include "rgpot/ExternalPot/OpenMM.hpp"
+#include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/engine_c_abi.h"
 
 #include <openmm/Context.h>
@@ -44,16 +46,6 @@ void set_error(char *errbuf, size_t errlen, const char *sentence) {
     return;
   }
   std::snprintf(errbuf, errlen, "%s", sentence);
-}
-
-void load_platforms() {
-  if (const char *dir = std::getenv("OPENMM_PLUGIN_DIR")) {
-    if (dir[0] != '\0') {
-      OpenMM::Platform::loadPluginsFromDirectory(dir);
-    }
-  }
-  OpenMM::Platform::loadPluginsFromDirectory(
-      OpenMM::Platform::getDefaultPluginsDirectory());
 }
 
 bool ensure(OpenMMLj *pot, long n, const double *box, std::string &error) {
@@ -111,7 +103,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
     return nullptr;
   }
   try {
-    load_platforms();
+    rgpot::openmm_load_plugins_once();
     (void)OpenMM::Platform::getPlatformByName("CPU");
   } catch (const std::exception &ex) {
     set_error(errbuf, errlen, ex.what());
@@ -180,5 +172,25 @@ int rgpot_md_native_force(void *pot, long nAtoms, const double *positions,
 }
 
 const char *rgpot_engine_name(void) { return "openmm"; }
+
+size_t rgpot_openmm_engine_plugin_loads(void) {
+  return rgpot::openmm_plugin_load_count();
+}
+
+int rgpot_md_session_engine_create(const void *spec, size_t spec_len,
+                                   const char *options,
+                                   rgpot_md_session_ops *ops, void **ctx,
+                                   size_t *n_atoms, char *err,
+                                   size_t err_len) {
+  if (spec == nullptr || spec_len == 0) {
+    set_error(err, err_len, "OpenMM MD session needs serialized System XML");
+    return 1;
+  }
+  const std::string xml(static_cast<const char *>(spec), spec_len);
+  const char *platform =
+      (options != nullptr && options[0] != '\0') ? options : "Reference";
+  return rgpot::openmm_md_session_init(xml.c_str(), platform, ops, ctx,
+                                       n_atoms, err, err_len);
+}
 
 } // extern "C"
