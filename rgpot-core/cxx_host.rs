@@ -1,22 +1,15 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
-// Host C++17 compiler invocation shared by `build.rs` (`units` feature) and
-// the `units` integration test. Kept separate from Cargo link directives so no
-// C++ objects or runtime libraries are linked into `librgpot_core`.
+// Host C++17 compiler invocation for the `units` integration test. Kept
+// separate from Cargo link directives so no C++ objects or runtime libraries
+// are linked into `librgpot_core`.
 
 use std::env;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-
-pub const ENV_KEYS: [&str; 5] = [
-    "HOST_CXX",
-    "CXX",
-    "SDKROOT",
-    "CONDA_PREFIX",
-    "CONDA_BUILD_SYSROOT",
-];
+use std::sync::atomic::{AtomicU64, Ordering};
 
 fn non_empty_env(key: &str) -> Option<String> {
     match env::var(key) {
@@ -49,11 +42,45 @@ fn split_compiler_spec(spec: &str) -> Option<(String, Vec<String>)> {
     Some((program, args))
 }
 
-fn probe_compiler(candidate: &str) -> bool {
-    match Command::new(candidate).arg("--version").output() {
-        Ok(out) => out.status.success(),
-        Err(_) => false,
+static NEXT_PROBE_ID: AtomicU64 = AtomicU64::new(0);
+
+fn probe_compiler(program: &str, extra_args: &[String]) -> bool {
+    let id = NEXT_PROBE_ID.fetch_add(1, Ordering::Relaxed);
+    let stem = format!("rgpot-cxx-probe-{}-{id}", std::process::id());
+    let source = env::temp_dir().join(format!("{stem}.cc"));
+    let object = env::temp_dir().join(format!("{stem}.o"));
+    if std::fs::write(
+        &source,
+        "#include <string>\nint main() { std::string value; return value.size(); }\n",
+    )
+    .is_err()
+    {
+        return false;
     }
+
+    let mut cmd = Command::new(program);
+    configure_compile_env(&mut cmd);
+    let status = cmd
+        .args(extra_args)
+        .args(["-std=c++17", "-c"])
+        .arg(&source)
+        .arg("-o")
+        .arg(&object)
+        .status();
+    let _ = std::fs::remove_file(&source);
+    let _ = std::fs::remove_file(&object);
+    matches!(status, Ok(status) if status.success())
+}
+
+fn select_fallback(candidates: &[&str]) -> Option<(String, Vec<String>)> {
+    candidates.iter().find_map(|candidate| {
+        let parsed = split_compiler_spec(candidate)?;
+        if probe_compiler(&parsed.0, &parsed.1) {
+            Some(parsed)
+        } else {
+            None
+        }
+    })
 }
 
 pub fn resolve_cxx() -> (String, Vec<String>) {
@@ -62,13 +89,6 @@ pub fn resolve_cxx() -> (String, Vec<String>) {
         None => non_empty_env("CXX"),
     };
     if let Some(spec) = configured {
-        if cfg!(target_os = "macos")
-            && spec.contains("-apple-darwin")
-            && conda_darwin_sysroot_missing()
-            && Path::new("/usr/bin/clang++").is_file()
-        {
-            return ("/usr/bin/clang++".to_owned(), Vec::new());
-        }
         if let Some(parsed) = split_compiler_spec(&spec) {
             return parsed;
         }
@@ -79,10 +99,8 @@ pub fn resolve_cxx() -> (String, Vec<String>) {
     } else {
         ["c++", "g++", "clang++"]
     };
-    for candidate in candidates {
-        if probe_compiler(candidate) {
-            return (candidate.to_owned(), Vec::new());
-        }
+    if let Some(selected) = select_fallback(&candidates) {
+        return selected;
     }
     (candidates[0].to_owned(), Vec::new())
 }
@@ -182,5 +200,58 @@ pub fn compile_cpp_binary(include_dir: &Path, sources: &[&Path], output_bin: &Pa
             out.status,
             String::from_utf8_lossy(&out.stderr)
         );
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::{probe_compiler, select_fallback};
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEST_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn write_executable(path: &Path, body: &str) {
+        std::fs::write(path, body).expect("write fake compiler");
+        let mut permissions = std::fs::metadata(path)
+            .expect("stat fake compiler")
+            .permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(path, permissions).expect("chmod fake compiler");
+    }
+
+    #[test]
+    fn fallback_rejects_compiler_without_standard_library_headers() {
+        let id = NEXT_TEST_ID.fetch_add(1, Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("rgpot-cxx-host-test-{}-{id}", std::process::id()));
+        std::fs::create_dir(&dir).expect("create compiler test directory");
+        let bad = dir.join("c++");
+        let good = dir.join("g++");
+        write_executable(
+            &bad,
+            "#!/bin/sh\nif test \"${1-}\" = --version; then exit 0; fi\nexit 1\n",
+        );
+        write_executable(&good, "#!/bin/sh\nexec g++ \"$@\"\n");
+
+        let bad_text = bad.to_string_lossy().into_owned();
+        let good_text = good.to_string_lossy().into_owned();
+        assert!(
+            std::process::Command::new(&bad)
+                .arg("--version")
+                .status()
+                .expect("run fake compiler version probe")
+                .success()
+        );
+        assert!(!probe_compiler(&bad_text, &[]));
+        assert_eq!(
+            select_fallback(&[&bad_text, &good_text]),
+            Some((good_text.clone(), Vec::new()))
+        );
+
+        std::fs::remove_file(bad).expect("remove fake c++");
+        std::fs::remove_file(good).expect("remove fake g++");
+        std::fs::remove_dir(dir).expect("remove compiler test directory");
     }
 }

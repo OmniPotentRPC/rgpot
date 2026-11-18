@@ -7,10 +7,6 @@ use std::path::PathBuf;
 #[path = "version_macros.rs"]
 mod version_macros;
 
-#[cfg(feature = "units")]
-#[path = "cxx_host.rs"]
-mod cxx_host;
-
 /// Generate C header via cbindgen (only when `gen-header` feature is active).
 /// Run `cargo build --features gen-header` or `pixi r gen-header` to regenerate.
 #[cfg(feature = "gen-header")]
@@ -93,50 +89,6 @@ fn main() {
 
     #[cfg(feature = "schema")]
     compile_capnp_schema(&crate_dir);
-
-    #[cfg(feature = "units")]
-    generate_units(&crate_dir);
-}
-
-/// Read `units.hpp` by compiling it, and write the resulting doubles.
-#[cfg(feature = "units")]
-fn generate_units(crate_dir: &str) {
-    use std::path::PathBuf;
-    use std::process::Command;
-
-    for key in cxx_host::ENV_KEYS {
-        println!("cargo::rerun-if-env-changed={key}");
-    }
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR");
-    let cpp_core = PathBuf::from(crate_dir).join("..").join("CppCore");
-    let header = cpp_core.join("rgpot").join("units.hpp");
-    let parser = cpp_core.join("rgpot").join("units.cc");
-    let export = cpp_core.join("rgpot").join("units_rust_export.cc");
-    for path in [&header, &parser, &export] {
-        println!("cargo::rerun-if-changed={}", path.display());
-    }
-    if !header.is_file() {
-        panic!(
-            "missing C++ header required for units export: {}",
-            header.display()
-        );
-    }
-
-    let out_path = PathBuf::from(&out_dir);
-    let bin = cxx_host::executable_path(&out_path, "units_rust_export");
-    cxx_host::compile_cpp_binary(&cpp_core, &[&export, &parser], &bin);
-
-    let mut run = Command::new(&bin);
-    cxx_host::configure_run_env(&mut run);
-    let printed = run.output().expect("units export");
-    if !printed.status.success() {
-        panic!(
-            "the units export failed: {}",
-            String::from_utf8_lossy(&printed.stderr)
-        );
-    }
-    let generated = out_path.join("units_generated.rs");
-    std::fs::write(&generated, &printed.stdout).expect("write units_generated.rs");
 }
 
 #[cfg(feature = "schema")]

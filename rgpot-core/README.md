@@ -17,6 +17,7 @@ Data exchange uses the [DLPack](https://github.com/dmlc/dlpack) tensor protocol 
 | `profile` | Prefix-generic in-process loader with one persistent backend session |
 | `engine` | Native loader for shared libraries that implement the generic engine C ABI |
 | `rpc` | Cap'n Proto RPC client and server for distributed calculations |
+| `units` | CODATA 2018 physical constants bit-checked against the C++ API |
 | `cache` | *(planned)* Result caching layer |
 
 ## Quick Start
@@ -51,6 +52,12 @@ Enable the generic engine C ABI loader:
 ```toml
 [dependencies]
 rgpot-core = { version = "3.7.0", features = ["engine"] }
+
+Enable the standalone physical constants module:
+
+```toml
+[dependencies]
+rgpot-core = { version = "3.7.0", features = ["units"] }
 ```
 
 ## Documentation

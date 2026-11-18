@@ -65,6 +65,9 @@ installs the result.
 Native rgpot units are eV and Angstrom.
 RPC clients may request compatible units through `ForceInput.lengthUnit` and
 `ForceInput.energyUnit`.
+The C++ `rgpot/units.hpp` API provides CODATA 2018 constants and compound-unit
+conversion, while the published Rust crate exposes matching constants through
+the opt-in `rgpot-core` `units` feature.
 
 EAM, Lennard-Jones, Sutton-Chen, Stillinger-Weber, Tersoff, Morse and ZBL take
 candidate pairs from one neighbour layer, `rgpot::nlist::Neighbours`.
