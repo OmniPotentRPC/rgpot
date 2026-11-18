@@ -50,6 +50,8 @@ pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 pub const ENGINE_ERR_UNSUPPORTED: c_int = 3;
 
 const ERROR_CAPACITY: usize = 1024;
+const UNSTAMPED_ENGINE_MINOR: u16 = 0;
+const UNSTAMPED_ENGINE_LAYOUT_REVISION: u16 = 1;
 const ANALYTIC_HVP_END: usize =
     std::mem::offset_of!(RgpotEngineCaps, analytic_hvp) + std::mem::size_of::<c_int>();
 
@@ -221,9 +223,9 @@ pub enum EngineError {
     },
     /// The engine's minor or layout revision cannot serve this loader.
     Incompatible {
-        /// Stamp required by this loader.
+        /// Stamp of this loader (`engine.abi_minor <= host.abi_minor` is accepted).
         host: RgpotEngineAbiStamp,
-        /// Engine stamp, when the engine exports it.
+        /// Engine stamp, when `rgpot_engine_abi_stamp` is exported (`None` means unstamped minor 0, layout 1).
         engine: Option<RgpotEngineAbiStamp>,
     },
     /// `rgpot_engine_available` reported that the engine cannot create instances.
@@ -388,16 +390,24 @@ impl EnginePotential {
             layout_revision: ENGINE_ABI_LAYOUT_REVISION,
         };
         let engine_stamp = symbols.abi_stamp.map(|stamp| unsafe { stamp() });
-        let stamp_accepts = match engine_stamp {
-            Some(engine) => {
-                engine.abi_major == host.abi_major
-                    && engine.layout_revision == host.layout_revision
-                    && engine.abi_minor >= host.abi_minor
-            }
-            None => true,
+        let effective = match engine_stamp {
+            Some(stamp) => stamp,
+            None => RgpotEngineAbiStamp {
+                abi_major: found as u16,
+                abi_minor: UNSTAMPED_ENGINE_MINOR,
+                layout_revision: UNSTAMPED_ENGINE_LAYOUT_REVISION,
+            },
         };
+        let baseline = RgpotEngineAbiStamp {
+            abi_major: host.abi_major,
+            abi_minor: UNSTAMPED_ENGINE_MINOR,
+            layout_revision: host.layout_revision,
+        };
+        let stamp_accepts = effective.abi_major == host.abi_major
+            && effective.layout_revision == host.layout_revision
+            && effective.abi_minor <= host.abi_minor;
         let engine_accepts = match symbols.abi_compatible {
-            Some(compatible) => unsafe { compatible(&host) != 0 },
+            Some(compatible) => unsafe { compatible(&baseline) != 0 },
             None => true,
         };
         if !stamp_accepts || !engine_accepts {

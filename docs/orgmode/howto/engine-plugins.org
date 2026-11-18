@@ -41,12 +41,20 @@ int main(int argc, char **argv) {
     fprintf(stderr, "not an rgpot engine of major %d\n", RGPOT_ENGINE_ABI_VERSION);
     return 1;
   }
-  int (*compatible)(const RgpotEngineAbiStamp *) =
-      (int (*)(const RgpotEngineAbiStamp *))dlsym(h, "rgpot_engine_abi_compatible");
-  const RgpotEngineAbiStamp mine = {RGPOT_ENGINE_ABI_VERSION, RGPOT_ENGINE_ABI_MINOR,
-                                    RGPOT_ENGINE_ABI_LAYOUT_REVISION};
-  if (compatible && !compatible(&mine)) {
-    fprintf(stderr, "engine is older than this host\n");
+  RgpotEngineAbiStamp (*stamp_fn)(void) =
+      (RgpotEngineAbiStamp (*)(void))dlsym(h, "rgpot_engine_abi_stamp");
+  const RgpotEngineAbiStamp stamp =
+      stamp_fn ? stamp_fn()
+               : (RgpotEngineAbiStamp){RGPOT_ENGINE_ABI_VERSION, 0, 1};
+  if (stamp.abi_major != RGPOT_ENGINE_ABI_VERSION ||
+      stamp.layout_revision != RGPOT_ENGINE_ABI_LAYOUT_REVISION ||
+      stamp.abi_minor > RGPOT_ENGINE_ABI_MINOR) {
+    fprintf(stderr, "engine ABI stamp is incompatible with this host\n");
+    return 1;
+  }
+  int (*available)(void) = (int (*)(void))dlsym(h, "rgpot_engine_available");
+  if (!available || !available()) {
+    fprintf(stderr, "engine runtime is unavailable\n");
     return 1;
   }
   const char *(*name)(void) = (const char *(*)(void))dlsym(h, "rgpot_engine_name");
@@ -55,8 +63,9 @@ int main(int argc, char **argv) {
 }
 #+end_src
 
-A host without =rgpot_engine_abi_compatible= in the engine treats the engine as
-minor 0, layout 1.
+An engine without
+=rgpot_engine_abi_stamp= has effective stamp minor 0, layout 1, and a host accepts =engine.abi_minor <=
+RGPOT_ENGINE_ABI_MINOR= while probing optional symbols with =dlsym=.
 To create an instance, pass =rgpot_engine_create= the Cap'n Proto flat-array
 message whose root is the library's params struct (=UmaParams=, =BuiltinParams=,
 ...).
@@ -82,8 +91,8 @@ params messages need the Cap'n Proto schema.
 =libmetatomic_engine= =-Dwith_metatomic=true=.
 =libuma_engine= needs =-Dwith_metatomic=true= and is not built with
 =-Dwith_python=true=.
-=libpotlibc_engine= is independent of RPC and is built only with
-=-Dwith_potlibc=enabled= after potlibc is installed.
+=libpotlibc_engine= is independent of RPC and is built only with =-Dwith_potlibc=enabled=
+after potlibc is installed.
 The classical, MOPAC, NWChem and Skala libraries are not built on Windows.
 
 The =umaenginebld= pixi environment has the rpc, metatomic and xtb dependencies.

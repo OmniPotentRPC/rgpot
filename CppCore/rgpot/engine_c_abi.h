@@ -90,14 +90,27 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
                                             double *positions, double *box);
 
 /**
- * ABI identity. `RGPOT_ENGINE_ABI_VERSION` is the major: an incompatible change
- * increments it, and a host compares it for equality. Additions that leave
- * every existing call valid (a new optional symbol, a new field at the end of
- * a size-prefixed struct) increment `RGPOT_ENGINE_ABI_MINOR`. The layout
- * revision increments when an existing struct changes size or field order.
- * Hosts that read only `rgpot_engine_abi_version()` keep working across minor
- * bumps; `rgpot_engine_abi_stamp()` is optional and an engine without it is
- * minor 0, layout 1.
+ * ABI identity and loader compatibility rule.
+ *
+ * - `RGPOT_ENGINE_ABI_VERSION` is the major: an incompatible change increments
+ *   it, and a loader requires exact equality (`engine.abi_major ==
+ *   loader.abi_major`).
+ * - `RGPOT_ENGINE_ABI_MINOR` increments for additions that leave every
+ *   existing call valid (a new optional symbol, a new field at the end of a
+ *   size-prefixed struct).
+ * - `RGPOT_ENGINE_ABI_LAYOUT_REVISION` increments when an existing struct
+ *   changes size or field order, and a loader requires exact equality
+ *   (`engine.layout_revision == loader.layout_revision`).
+ * - `rgpot_engine_abi_stamp()` is optional. An unstamped engine (omitting
+ *   `rgpot_engine_abi_stamp`) has the explicit effective stamp
+ *   `{ abi_major = rgpot_engine_abi_version(), abi_minor = 0,
+ *      layout_revision = 1 }`.
+ * - Loader rule: a loader built against `(major, loader_minor, layout)`
+ *   accepts an engine iff `engine.abi_major == major`,
+ *   `engine.layout_revision == layout`, and
+ *   `engine.abi_minor <= loader_minor`, rejecting `engine.abi_minor >
+ *   loader_minor`; optional features beyond `engine.abi_minor` are discovered
+ *   by `dlsym` symbol presence and size-prefixed structs.
  */
 #define RGPOT_ENGINE_ABI_VERSION 1
 #define RGPOT_ENGINE_ABI_MINOR 3
@@ -279,9 +292,10 @@ typedef struct {
 RGPOT_ENGINE_API RgpotEngineAbiStamp rgpot_engine_abi_stamp(void);
 
 /**
- * Nonzero when the loaded engine serves a host built against `stamp`: equal
- * major, equal layout revision, engine minor at least the host's. NULL
- * returns 0.
+ * Nonzero when the loaded engine satisfies the minimum required `stamp`: equal
+ * major, equal layout revision, and `stamp->abi_minor <= engine.abi_minor`.
+ * Loaders that discover optional features beyond minor 0 by symbol presence
+ * pass `{ major, 0, layout }` as their baseline requirement. NULL returns 0.
  */
 RGPOT_ENGINE_API int rgpot_engine_abi_compatible(
     const RgpotEngineAbiStamp *stamp);

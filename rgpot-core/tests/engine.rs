@@ -4,7 +4,8 @@ use std::ffi::c_int;
 use std::path::{Path, PathBuf};
 
 use rgpot_core::engine::{
-    EngineError, EnginePotential, EngineRequest, ENGINE_ABI_VERSION, ENGINE_ERR_UNSUPPORTED,
+    EngineError, EnginePotential, EngineRequest, RgpotEngineAbiStamp, ENGINE_ABI_LAYOUT_REVISION,
+    ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_UNSUPPORTED,
 };
 use rgpot_core::hvp::rgpot_hvp_scheme_t;
 use rgpot_core::status::rgpot_status_t;
@@ -277,9 +278,116 @@ fn an_incompatible_abi_stamp_is_refused() {
 }
 
 #[test]
-fn an_engine_without_stamp_symbols_uses_the_major_contract() {
-    let path = build("harmonic_nostamp", &["NO_STAMP"]);
-    load(&path);
+fn abi_minor_rule_accepts_unstamped_and_minors_0_2_3_and_rejects_minor_4() {
+    let request = EngineRequest {
+        positions: &[1.0, 0.0, 0.0],
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+
+    // Unstamped engine explicitly means minor 0, layout 1: accepted under 0 <= 3.
+    let unstamped = build(
+        "harmonic_minor0_unstamped",
+        &["NO_STAMP", "NO_CAPS", "NO_HVP"],
+    );
+    let mut engine = load(&unstamped);
+    let eval = engine.force(&request).expect("unstamped minor 0 force");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING, 3));
+    assert!(matches!(
+        engine.hvp(&request, &[1.0, 0.0, 0.0]),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_hvp",
+            ..
+        })
+    ));
+
+    // Unstamped engine exporting HVP: minor 0 is accepted and symbol presence discovers HVP.
+    let unstamped_hvp = build("harmonic_minor0_unstamped_hvp", &["NO_STAMP", "NO_CAPS"]);
+    let mut engine = load(&unstamped_hvp);
+    let product = engine
+        .hvp(&request, &[1.0, -2.0, 0.5])
+        .expect("symbol-presence HVP on unstamped engine");
+    assert!(all_within_roundoff(
+        &product,
+        &[SPRING, -2.0 * SPRING, 0.5 * SPRING]
+    ));
+
+    // Stamped minor 0: accepted under 0 <= 3.
+    let minor0 = build(
+        "harmonic_minor0_stamped",
+        &["FIXTURE_MINOR=0", "NO_CAPS", "NO_HVP"],
+    );
+    let mut engine = load(&minor0);
+    let eval = engine.force(&request).expect("stamped minor 0 force");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING, 3));
+
+    // Stamped minor 2 without minor-3 HVP symbol: accepted under 2 <= 3; HVP is Unsupported.
+    let minor2 = build(
+        "harmonic_minor2_nohvp",
+        &["FIXTURE_MINOR=2", "CAPS_SIZE_BEFORE_HVP", "NO_HVP"],
+    );
+    let mut engine = load(&minor2);
+    let eval = engine.force(&request).expect("stamped minor 2 force");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING, 3));
+    assert!(!engine.caps().expect("minor 2 caps").analytic_hvp);
+    assert!(matches!(
+        engine.hvp(&request, &[1.0, 0.0, 0.0]),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_hvp",
+            ..
+        })
+    ));
+    let handle = load(&minor2)
+        .into_potential()
+        .expect("minor 2 potential handle");
+    assert!(!handle.as_handle().has_hessian_vector_callback());
+
+    // Stamped minor 2 exporting HVP: accepted under 2 <= 3; symbol presence discovers HVP.
+    let minor2_hvp = build(
+        "harmonic_minor2_hvp",
+        &["FIXTURE_MINOR=2", "CAPS_SIZE_BEFORE_HVP"],
+    );
+    let mut engine = load(&minor2_hvp);
+    let product = engine
+        .hvp(&request, &[1.0, 2.0, -0.5])
+        .expect("minor 2 with HVP symbol");
+    assert!(all_within_roundoff(
+        &product,
+        &[SPRING, 2.0 * SPRING, -0.5 * SPRING]
+    ));
+
+    // Stamped minor 3: accepted under 3 <= 3.
+    let minor3 = build("harmonic_minor3", &["FIXTURE_MINOR=3"]);
+    let mut engine = load(&minor3);
+    let eval = engine.force(&request).expect("stamped minor 3 force");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING, 3));
+    let product = engine
+        .hvp(&request, &[2.0, 0.0, -1.0])
+        .expect("stamped minor 3 hvp");
+    assert!(all_within_roundoff(&product, &[2.0 * SPRING, 0.0, -SPRING]));
+
+    // Stamped minor 4: rejected because 4 > ENGINE_ABI_MINOR (3).
+    let minor4 = build("harmonic_minor4", &["FIXTURE_MINOR=4"]);
+    let before = created(&minor4);
+    let error = unsafe { EnginePotential::load(&minor4, &config()) }
+        .err()
+        .expect("minor 4 must be rejected by minor 3 loader");
+    assert_eq!(
+        error,
+        EngineError::Incompatible {
+            host: RgpotEngineAbiStamp {
+                abi_major: ENGINE_ABI_VERSION as u16,
+                abi_minor: ENGINE_ABI_MINOR,
+                layout_revision: ENGINE_ABI_LAYOUT_REVISION,
+            },
+            engine: Some(RgpotEngineAbiStamp {
+                abi_major: ENGINE_ABI_VERSION as u16,
+                abi_minor: 4,
+                layout_revision: ENGINE_ABI_LAYOUT_REVISION,
+            }),
+        }
+    );
+    assert_eq!(created(&minor4), before);
 }
 
 #[test]
