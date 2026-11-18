@@ -54,14 +54,8 @@
       const double d1 = x[base_i + 1] - x[base_j + 1];
       const double d2 = x[base_i + 2] - x[base_j + 2];
       const double r2 = d0 * d0 + d1 * d1 + d2 * d2;
-      /* A coincidence is not differentiable. NaN is not <= 0, so it
-       * falls through and the energy and the forces become NaN. */
-      if (r2 <= 0.0) {
-        free(pack_heap);
-        free(rho_heap);
-        *energy = INFINITY;
-        return;
-      }
+      /* A coincident pair has a finite energy. Its direction is undefined,
+       * so the force pass below assigns it zero pair force. */
       const size_t key = si * n_species + (size_t)slot[j];
       const double r = sqrt(r2);
       const double u = r / r0[key] - 1.0;
@@ -88,7 +82,7 @@
   for (size_t i = 0; i < n; i++) {
     const size_t base_i = 3 * i;
     const size_t si = (size_t)slot[i];
-    const double inv_i = 1.0 / sqrt(rho[i]);
+    const double inv_i = rho[i] == 0.0 ? 0.0 : 1.0 / sqrt(rho[i]);
     for (size_t j = i + 1; j < n; j++) {
       double d0, d1, d2, r, dphi, dpsi;
       if (m < pack_limit) {
@@ -112,7 +106,12 @@
         dphi = -(p[key] / r0[key]) * phi;
         dpsi = -(2.0 * q[key] / r0[key]) * psi;
       }
-      const double embed = -0.5 * (inv_i + 1.0 / sqrt(rho[j]));
+      if (r == 0.0) {
+        m++;
+        continue;
+      }
+      const double inv_j = rho[j] == 0.0 ? 0.0 : 1.0 / sqrt(rho[j]);
+      const double embed = -0.5 * (inv_i + inv_j);
       const double coef = (dphi + embed * dpsi) / r;
       gradient[3 * i] += coef * d0;
       gradient[3 * i + 1] += coef * d1;
