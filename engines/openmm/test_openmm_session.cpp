@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -22,7 +24,10 @@
 namespace {
 
 constexpr double kAcceptanceSigmas = 4.0;
-constexpr std::size_t kTemperatureBatches = 16;
+constexpr std::size_t kTemperatureBatches = 48;
+constexpr std::size_t kSamplesPerBatch = 250;
+constexpr std::size_t kTemperatureStride = 40;
+constexpr double kTemperatureFriction = 10.0;
 
 std::uint64_t test_seed(std::uint64_t fallback) {
   const char *value = std::getenv("RGPOT_TEST_SEED");
@@ -109,18 +114,21 @@ void test_cpp_session() {
   sample_session.setPositions(plane_point);
   sample_session.setVelocities(
       {OpenMM::Vec3(0.0, 0.0, 0.0), OpenMM::Vec3(0.0, 0.0, 0.0)});
-  sample_session.stepLangevin(config.temperature, config.friction,
+  sample_session.stepLangevin(config.temperature, kTemperatureFriction,
                               config.time_step, plane_point, plane_normal,
-                              wall_points, wall_normals, 2000, test_seed(19));
+                              wall_points, wall_normals, 5000, test_seed(19));
 
   const double tolerance =
       4096.0 * std::sqrt(std::numeric_limits<double>::epsilon());
+  constexpr std::size_t total_samples = kTemperatureBatches * kSamplesPerBatch;
   std::vector<double> temperatures;
-  for (int sample = 0; sample < 2048; ++sample) {
-    sample_session.stepLangevin(config.temperature, config.friction,
+  temperatures.reserve(total_samples);
+  const std::uint64_t sample_seed = test_seed(20);
+  for (std::size_t sample = 0; sample < total_samples; ++sample) {
+    sample_session.stepLangevin(config.temperature, kTemperatureFriction,
                                 config.time_step, plane_point, plane_normal,
-                                wall_points, wall_normals, 20,
-                                test_seed(20) + static_cast<uint64_t>(sample));
+                                wall_points, wall_normals, kTemperatureStride,
+                                sample_seed);
     const auto sampled = sample_session.state();
     // 5 free degrees of freedom: 2*3 - 1 hyperplane constraint.
     temperatures.push_back(2.0 * sampled.kinetic_energy / 5.0);
@@ -139,12 +147,12 @@ void test_cpp_session() {
           "OpenMM 3N hyperplane velocity was not projected");
     }
   }
-  // Sixteen batches of 128 observations span 1.28 ps each. That is longer
-  // than the kinetic-energy autocorrelation time set by the 1/ps thermostat,
-  // unlike a standard error that treats all 2048 observations as independent.
+  // Forty-eight batches of 250 observations span 5.0 ps (50 velocity
+  // relaxation times at 10/ps friction) each, so batch means are independent
+  // and resolve 10% temperature shifts within four standard errors.
   std::vector<double> batch_temperatures;
   batch_temperatures.reserve(kTemperatureBatches);
-  const std::size_t batch_size = temperatures.size() / kTemperatureBatches;
+  const std::size_t batch_size = kSamplesPerBatch;
   for (std::size_t batch = 0; batch < kTemperatureBatches; ++batch) {
     batch_temperatures.push_back(
         std::accumulate(temperatures.begin() + batch * batch_size,
