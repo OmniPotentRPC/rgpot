@@ -987,6 +987,9 @@ E = sum_i [ sum_{j != i} A * exp(-p * (r_ij / r_0 - 1))
 - Outputs :: the Cleri-Rosato Gupta energy and analytic forces, with no energy
   shift at the cutoff.
   Atomic numbers are not read.
+  A coincident pair retains its finite \(r_{ij}=0\) pair and embedding energy.
+  Its pair force is zero because the direction is undefined and cancels by
+  symmetry.
   Non-periodic unbounded calls without stress or per-atom output delegate to
   =rgpot_gupta=.
   With =periodic= false the cell is not used to fold pairs.
