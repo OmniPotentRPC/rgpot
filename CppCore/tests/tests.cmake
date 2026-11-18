@@ -208,8 +208,8 @@ rgpot_registry_feature_args(_rgpot_features)
 rgpot_add_test(test_list_parity
   COMMAND Python3::Interpreter
           "${RGPOT_TEST_ROOT}/CppCore/tests/check_test_registry.py" cmake
-          "${PROJECT_BINARY_DIR}" --ctest "${CMAKE_CTEST_COMMAND}"
-          ${_rgpot_features})
+          "${PROJECT_BINARY_DIR}" ${_rgpot_features}
+          --ctest "${CMAKE_CTEST_COMMAND}")
 
 rgpot_registry_tests(unit _rgpot_units)
 foreach(test IN LISTS _rgpot_units)

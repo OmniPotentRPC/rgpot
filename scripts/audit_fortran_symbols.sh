@@ -30,8 +30,10 @@ defined=$(nm -D --defined-only "$lib" | awk '{print $3}')
 
 # Fortran module symbols carry a compiler infix; bind(c) entries and
 # legacy entry points are lowercase C identifiers. C++ symbols (_Z...)
-# are the library's own interface and are expected.
+# and the public MD session C API are the library's own interface and are
+# expected.
 offenders=$(printf '%s\n' "$defined" \
+   | grep -v -E '^rgpot_md_session_' \
    | grep -E '__.*_MOD_|^rgpot_[a-z0-9_]*_force$|^[a-z0-9]+_$' || true)
 
 if [[ -n "$offenders" ]]; then
