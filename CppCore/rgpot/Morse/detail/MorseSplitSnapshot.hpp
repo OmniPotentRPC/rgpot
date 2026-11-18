@@ -19,8 +19,7 @@ class Neighbours;
 namespace detail {
 
 struct MorseSplitSnapshot {
-  const nlist::Neighbours *owner = nullptr;
-  std::uint64_t build_id = 0;
+  std::uint64_t generation = 0;
   std::size_t atoms = 0;
   int slices = 0;
   std::size_t total_up = 0;

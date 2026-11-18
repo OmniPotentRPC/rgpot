@@ -87,6 +87,16 @@ endif()
 
 # 1. Server/Physics Dependencies
 if(NOT RGPOT_RPC_CLIENT_ONLY)
+  include(CheckCXXSourceCompiles)
+  check_cxx_source_compiles(
+    "#include <version>\n#if defined(_LIBCPP_VERSION) && _LIBCPP_VERSION < 190000 && !defined(__GNUC__) && !defined(__clang__)\n#error \"libc++ < 19 lacks std::atomic_ref\"\n#endif\nint main() { return 0; }"
+    RGPOT_ATOMIC_REF_OR_FALLBACK_OK)
+  if(NOT RGPOT_ATOMIC_REF_OR_FALLBACK_OK)
+    message(
+      FATAL_ERROR
+        "std::atomic_ref requires libc++ 19 or newer (or a compiler with __atomic_fetch_or)"
+    )
+  endif()
   # Core builds provide every public Fortran potential. The RPC-only
   # bridge has no numerical kernels and does not need a Fortran compiler.
   enable_language(Fortran)
