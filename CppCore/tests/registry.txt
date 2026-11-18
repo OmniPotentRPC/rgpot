@@ -153,6 +153,7 @@ CalculatorAbortFlagTest | tests core | unit calculator_abort_flag_test Calculato
 LJClusterPotTest | tests core | unit ljcluster_pot_test LJClusterPotTest.cc |
 ZBLPotTest | tests core | unit zbl_pot_test ZBLPotTest.cc |
 PerAtomTest | tests core | unit per_atom_test PerAtomTest.cc |
+NullForceAbiTest | tests core | unit null_force_abi_test NullForceAbiTest.cc |
 LocalityTest | tests core | unit locality_test LocalityTest.cc |
 StagedTest | tests core | unit staged_test StagedTest.cc |
 FastNlistTest | tests core | unit fast_nlist_test FastNlistTest.cc fp_contract=off |

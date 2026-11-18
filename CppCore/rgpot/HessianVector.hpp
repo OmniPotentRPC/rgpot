@@ -59,6 +59,7 @@
 
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/FusedCache.hpp"
+#include "rgpot/PotHelpers.hpp"
 #include "rgpot/FusedSettings.hpp"
 
 namespace rgpot {
@@ -323,6 +324,7 @@ private:
                  .variance = 0.0,
                  .stress = {},
                  .has_stress = 0};
+    guardForceCall(moved, &out, kernelPeriodic(pot));
     forceCalls_.fetch_add(1, std::memory_order_relaxed);
     pot.forceImpl(moved, &out);
     if (!std::isfinite(out.energy)) {

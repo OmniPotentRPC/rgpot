@@ -681,6 +681,7 @@ endif
 # The crate also generates include/rgpot.h via cbindgen.
 
 if get_option('with_rust_core')
+    _args += ['-DRGPOT_HAS_RUST_CORE']
     cargo = find_program('cargo', required: true)
 
     # Determine Cargo build profile and library name

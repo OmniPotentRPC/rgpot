@@ -47,6 +47,7 @@
 
 #include "rgpot/FusedSettings.hpp"
 #include "rgpot/HessianVector.hpp"
+#include "rgpot/PotHelpers.hpp"
 #include "c_api.hpp"
 #include "errors.hpp"
 #include "types.hpp"
@@ -313,11 +314,14 @@ private:
                               //!< after move).
 
   /// Raw CPU pointers of the DLPack tensors in @a input, as a legacy
-  /// @c ForceInput. The positions tensor must be present.
+  /// @c ForceInput. The positions tensor and its shape must be present.
+  /// A non-positive row count is zero atoms, not a wrapped size.
   static ::rgpot::ForceInput legacy_input(const rgpot_force_input_t *input) {
     auto *pos_tensor = &input->positions->dl_tensor;
+    const auto rows = pos_tensor->shape[0];
+    const size_t n_atoms = rows > 0 ? static_cast<size_t>(rows) : 0;
     return ::rgpot::ForceInput{
-        .nAtoms = static_cast<size_t>(pos_tensor->shape[0]),
+        .nAtoms = n_atoms,
         .pos = static_cast<const double *>(pos_tensor->data),
         .atmnrs = input->atomic_numbers ? static_cast<const int *>(
                                               input->atomic_numbers->dl_tensor.data)
@@ -350,19 +354,32 @@ private:
                                             rgpot_force_out_t *output) {
     try {
       auto *self = static_cast<Impl *>(user_data);
-      if (!input->positions) {
+      if (input == nullptr || output == nullptr || input->positions == nullptr ||
+          input->positions->dl_tensor.shape == nullptr) {
+        rgpot_set_last_error("invalid parameter: positions is null");
         return RGPOT_INVALID_PARAMETER;
       }
       const ::rgpot::ForceInput fi = legacy_input(input);
       const size_t n_atoms = fi.nAtoms;
 
-      // Temporary buffer for forces
-      std::vector<double> forces(n_atoms * 3, 0.0);
+      // Allocate forces only for a positive count. An empty vector's
+      // data() may be null, and a zero-atom call must not be reported
+      // as a null force buffer. The check below still runs for zero
+      // atoms and names that case itself.
+      std::vector<double> forces;
+      if (n_atoms > 0) {
+        forces.assign(n_atoms * 3, 0.0);
+      }
       ::rgpot::ForceOut fo{.F = forces.data(),
                            .energy = 0.0,
                            .variance = 0.0,
                            .stress = {},
                            .has_stress = 0};
+      if (::rgpot::rejectForceCall(fi, &fo, ::rgpot::kernelPeriodic(*self)) !=
+          0) {
+        rgpot_set_last_error(::rgpot::forceLastError());
+        return RGPOT_INVALID_PARAMETER;
+      }
 
       self->forceImpl(fi, &fo);
 
@@ -395,11 +412,30 @@ private:
                                        const double *direction,
                                        double *hv_out) {
     try {
-      if (!input->positions) {
+      if (input == nullptr || input->positions == nullptr ||
+          input->positions->dl_tensor.shape == nullptr) {
+        rgpot_set_last_error("invalid parameter: positions is null");
         return RGPOT_INVALID_PARAMETER;
       }
       const auto *self = static_cast<const Impl *>(user_data);
-      self->hessianVectorImpl(legacy_input(input), direction, hv_out);
+      const ::rgpot::ForceInput fi = legacy_input(input);
+      // No force buffer here. Name a missing input directly so a
+      // zero-atom product is not reported as a null force array.
+      const char *why = nullptr;
+      if (fi.nAtoms == 0) {
+        why = "invalid parameter: nAtoms must be positive";
+      } else if (fi.pos == nullptr) {
+        why = "invalid parameter: positions is null";
+      } else if (fi.atmnrs == nullptr) {
+        why = "invalid parameter: atomic numbers are null";
+      } else if (::rgpot::kernelPeriodic(*self) && fi.box == nullptr) {
+        why = "invalid parameter: box is null";
+      }
+      if (why != nullptr) {
+        rgpot_set_last_error(why);
+        return RGPOT_INVALID_PARAMETER;
+      }
+      self->hessianVectorImpl(fi, direction, hv_out);
       return RGPOT_SUCCESS;
     } catch (...) {
       return RGPOT_INTERNAL_ERROR;
