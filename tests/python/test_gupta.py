@@ -82,29 +82,24 @@ def test_gupta_periodic_cutoff_rejects_half_box() -> None:
         rgpot.GuptaPot(**kwargs, cutoff=5.0).evaluate(pos, [1, 1], box)
 
 
-def test_gupta_degenerate_inputs_are_numerical_errors() -> None:
-    """Coincident atoms and a NaN coordinate are not a finite minimum.
-
-    The free cluster delegates to ``rgpot_gupta`` (+infinity) and poisons
-    the forces with NaN. A cutoff poisons both energy and forces with NaN.
-    ``evaluate`` and ``evaluate_per_atom`` raise ``NumericalError``.
-    """
+def test_gupta_rejects_degenerate_inputs() -> None:
+    """Coincident atoms and non-finite coordinates are invalid geometry."""
     kwargs = dict(A=0.2061, xi=0.8900, p=10.229, q=4.036, r0=2.5)
     pos = np.zeros((2, 3), dtype=np.float64)
     box = np.eye(3, dtype=np.float64) * 40.0
     types = [1, 1]
-    with pytest.raises(rgpot.NumericalError):
+    with pytest.raises(ValueError):
         rgpot.GuptaPot(**kwargs).evaluate(pos, types, box)
-    with pytest.raises(rgpot.NumericalError):
+    with pytest.raises(ValueError):
         rgpot.GuptaPot(**kwargs, cutoff=10.0).evaluate(pos, types, box)
-    with pytest.raises(rgpot.NumericalError):
+    with pytest.raises(ValueError):
         rgpot.GuptaPot(**kwargs, cutoff=10.0).evaluate_per_atom(pos, types, box)
     bad = np.array([[np.nan, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=np.float64)
-    with pytest.raises(rgpot.NumericalError):
+    with pytest.raises(ValueError):
         rgpot.GuptaPot(**kwargs, cutoff=10.0).evaluate(bad, types, box)
     far_box = np.eye(3, dtype=np.float64) * 1000.0
     far = np.array([[np.nan, 0.0, 0.0], [500.0, 0.0, 0.0]], dtype=np.float64)
-    with pytest.raises(rgpot.NumericalError):
+    with pytest.raises(ValueError):
         rgpot.GuptaPot(**kwargs, cutoff=6.0, periodic=True).evaluate(
             far, types, far_box
         )

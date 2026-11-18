@@ -1172,12 +1172,7 @@ TEST_CASE("a non-finite coordinate disables cell pruning across modes",
     gcfg.periodic = true;
     rgpot::GuptaPot gupta(gcfg);
     gupta.setNeighbourMode(mode);
-    const auto [ge, gf, gv] = gupta(xyz, types, cell);
-    (void)gv;
-    REQUIRE_FALSE(std::isfinite(ge));
-    for (int k = 0; k < 6; ++k) {
-      REQUIRE_FALSE(std::isfinite(gf.data()[k]));
-    }
+    REQUIRE_THROWS_AS(gupta(xyz, types, cell), std::invalid_argument);
 
     rgpot::LJConfig ljcfg;
     ljcfg.cutoff = 6.0;
