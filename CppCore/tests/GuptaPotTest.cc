@@ -415,7 +415,7 @@ TEST_CASE("GuptaPot degenerate pairs match all-pairs and neighbour paths",
     rgpot::GuptaConfig per_cfg = bounded;
     per_cfg.periodic = true;
     per_cfg.stress = true;
-    const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+    const double box[9] = {25.0, 0.0, 0.0, 0.0, 25.0, 0.0, 0.0, 0.0, 25.0};
     const rgpot::GuptaPot per_pot(per_cfg);
     std::vector<double> pa_forces(6, 0.0);
     double pa_e[2] = {};
@@ -1069,4 +1069,18 @@ TEST_CASE("rgpot_gupta large call matches the explicit wide cutoff",
     require_scaled_match(open.forces[k], -grad[k]);
     require_scaled_match(open.forces[k], ref.forces[k]);
   }
+}
+
+TEST_CASE("GuptaPot periodic cutoff must stay below half a face spacing",
+          "[Gupta]") {
+  const rgpot::GuptaPot pot({.A = 0.2061,
+                             .xi = 1.790,
+                             .p = 10.229,
+                             .q = 4.036,
+                             .r0 = 2.884,
+                             .cutoff = 5.0,
+                             .periodic = true});
+  const std::vector<double> pos = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+  const double box[9] = {10.0, 0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 0.0, 12.0};
+  REQUIRE_THROWS_AS(eval_stress(pot, pos, box), std::invalid_argument);
 }
