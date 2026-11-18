@@ -406,6 +406,7 @@ C_HEADERS = (
     "CppCore/rgpot/nlist/fastnlist.h",
     "include/rgpot/plugin.h",
     "include/rgpot/potlibc_engine.h",
+    "include/rgpot/coupled_well_engine.h",
     "CppCore/rgpot/engine_c_abi.h",
     "CppCore/rgpot/ExternalPot/external_potentials.h",
     "CppCore/rgpot/calculator_mpi_abi.h",

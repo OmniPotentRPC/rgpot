@@ -96,9 +96,25 @@ Enable the generic loader, not a potlibc-specific feature.
 rgpot-core = { version = "3.7.0", features = ["engine"] }
 #+end_src
 
-Serialize the bytes of =RgpotPotlibcConfigV1= in the host language and pass them
-to =EnginePotential::load= with the path to =libpotlibc_engine.so=.
+=rgpot_core::engine::PotlibcConfig= is the typed create message.
+It is =#[non_exhaustive]=: start from =PotlibcConfig::default()= or call
+=PotlibcConfig::new(surface_id, atom_count)=, which refuses an empty, over-long
+or NUL-containing surface id.
+=as_bytes= is the message to pass to =EnginePotential::load= with the path to
+=libpotlibc_engine.so=.
+
+#+attr_rgpot: fragment Rust excerpt; needs the rgpot-core crate and an installed potlibc
+#+begin_src rust
+let config = PotlibcConfig::default()
+    .with_surface_id("vbo-beta1")?
+    .with_atom_count(4);
+let mut engine =
+    unsafe { EnginePotential::load(path, config.as_bytes()) }?;
+#+end_src
+
 =EnginePotential::force= evaluates energy and forces.
+=EnginePotential::force_batch= evaluates systems of the surface's atom count in
+one =potlibc_evaluate= call; a failed batch writes nothing.
 =EnginePotential::hvp= uses =rgpot_engine_hvp= only when the surface advertises
 an analytic product, and =into_potential= exposes that same handle to in-process
 and RPC callers.
