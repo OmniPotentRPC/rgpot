@@ -49,13 +49,13 @@ void set_error(char *errbuf, size_t errlen, const char *sentence) {
 }
 
 void load_platforms() {
-  if (const char *dir = std::getenv("OPENMM_PLUGIN_DIR")) {
-    if (dir[0] != '\0') {
-      OpenMM::Platform::loadPluginsFromDirectory(dir);
-    }
+  const char *dir = std::getenv("OPENMM_PLUGIN_DIR");
+  if (dir != nullptr && dir[0] != '\0') {
+    OpenMM::Platform::loadPluginsFromDirectory(dir);
+  } else {
+    OpenMM::Platform::loadPluginsFromDirectory(
+        OpenMM::Platform::getDefaultPluginsDirectory());
   }
-  OpenMM::Platform::loadPluginsFromDirectory(
-      OpenMM::Platform::getDefaultPluginsDirectory());
 }
 
 bool ensure(OpenMMLj *pot, long n, const double *box, std::string &error) {
