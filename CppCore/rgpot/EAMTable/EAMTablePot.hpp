@@ -94,6 +94,12 @@ struct EAMTableConfig {
  */
 class EAMTablePot : public Potential<EAMTablePot> {
 public:
+  struct CouplePtrs {
+    const double *atI = nullptr;
+    const double *atJ = nullptr;
+    const double *z2 = nullptr;
+  };
+
   explicit EAMTablePot(const EAMTableConfig &c);
   EAMTablePot(const EAMTable &table, bool periodic, bool stress, double skin = 1.0);
 
@@ -154,6 +160,12 @@ private:
   double m_skin;
   uint64_t m_paramsKey{0};
   nlist::Mode m_mode = nlist::Mode::Auto;
+  std::vector<CouplePtrs> m_couples;
+  mutable std::vector<std::size_t> m_elScratch;
+  mutable std::vector<double> m_rhoScratch;
+  mutable std::vector<double> m_fprimeScratch;
+  mutable std::vector<int> m_stageElScratch;
+  mutable std::vector<double> m_stageFprimeScratch;
   mutable nlist::Neighbours m_neighbours;
 };
 

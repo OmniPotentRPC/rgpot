@@ -169,6 +169,8 @@ private:
   mutable std::vector<Terms> terms_;
   mutable std::vector<double> rho_;
   mutable std::vector<double> weight_;
+  mutable std::vector<double> row_e_;
+  mutable std::vector<double> row_s_;
 };
 
 } // namespace rgpot

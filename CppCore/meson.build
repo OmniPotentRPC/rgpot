@@ -2674,6 +2674,23 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 0,
         )
+        eam_sc_speed_bench = executable(
+            'eam_sc_speed_bench',
+            sources: ['tests/eam_sc_speed_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'eam_sc_speed_bench',
+            eam_sc_speed_bench,
+            workdir: meson.source_root(),
+            timeout: 0,
+        )
         thread_count_bench = executable(
             'thread_count_bench',
             sources: ['tests/thread_count_bench.cc'],

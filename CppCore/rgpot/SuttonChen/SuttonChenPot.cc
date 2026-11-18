@@ -54,6 +54,22 @@ double ipow(double base, int exp) {
 
 /// (a/r)^exp from ar2 = (a/r)^2.
 double pow_ar(double ar2, int exp) {
+  const double ar4 = ar2 * ar2;
+  const double ar8 = ar4 * ar4;
+  switch (exp) {
+  case 6:
+    return ar4 * ar2;
+  case 8:
+    return ar8;
+  case 9:
+    return ar8 * std::sqrt(ar2);
+  case 10:
+    return ar8 * ar2;
+  case 12:
+    return ar8 * ar4;
+  default:
+    break;
+  }
   double p = ipow(ar2, exp / 2);
   if ((exp % 2) != 0) {
     p *= std::sqrt(ar2);
@@ -182,10 +198,19 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   const bool rows = n_size >= kTeamMinAtoms;
   const int nt = nlist::teamSize(n_size);
   const bool by_row = rows && (nt > 1 || (stream && !neighbours_.allPairs()));
-  std::vector<double> row_e(rows ? n_size : 0, 0.0);
-  std::vector<double> row_s(rows && cfg.stress ? 6 * n_size : 0, 0.0);
-  double *e_sum = rows ? row_e.data() : &epair;
-  double *s_sum = !cfg.stress ? nullptr : (rows ? row_s.data() : strain);
+  if (rows) {
+    row_e_.assign(n_size, 0.0);
+    if (cfg.stress) {
+      row_s_.assign(6 * n_size, 0.0);
+    } else {
+      row_s_.clear();
+    }
+  } else {
+    row_e_.clear();
+    row_s_.clear();
+  }
+  double *e_sum = rows ? row_e_.data() : &epair;
+  double *s_sum = !cfg.stress ? nullptr : (rows ? row_s_.data() : strain);
   // The half walks take the stride of the sums as a type, so below
   // kTeamMinAtoms every pair adds to the one total with no index.
   auto by_stride = [rows](auto walk) {
@@ -377,12 +402,12 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   }
   if (rows) {
     for (std::size_t i = 0; i < n_size; ++i) {
-      epair += row_e[i];
+      epair += row_e_[i];
     }
     if (cfg.stress) {
       for (std::size_t i = 0; i < n_size; ++i) {
         for (std::size_t k = 0; k < 6; ++k) {
-          strain[k] += row_s[6 * i + k];
+          strain[k] += row_s_[6 * i + k];
         }
       }
     }

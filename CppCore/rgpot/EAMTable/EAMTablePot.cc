@@ -138,39 +138,17 @@ struct Knot {
   [[nodiscard]] double slope() const { return (c[0] * p + c[1]) * p + c[2]; }
 };
 
-/// The radial tables of a pair of an a atom i and a b atom j: the density
-/// j puts at i, the density i puts at j, and r phi_ab.
-struct Couple {
-  const double *atI;
-  const double *atJ;
-  const double *z2;
-};
-
 /// The terms of one EAMTablePot that compute() and the stages share.
 struct Terms {
   const rgpot::EAMTable &t;
   const std::vector<std::vector<double>> &frho;
-  const std::vector<std::vector<double>> &rhor;
-  const std::vector<std::vector<double>> &z2r;
+  const std::vector<rgpot::EAMTablePot::CouplePtrs> &couples;
   std::size_t nel = t.z.size();
   double rdr = 1.0 / t.dr;
   double rdrho = 1.0 / t.drho;
-  /// The Couple of an a atom and a b atom at a * nel + b.
-  std::vector<Couple> couples = coupled();
 
-  [[nodiscard]] std::vector<Couple> coupled() const {
-    std::vector<Couple> out(nel * nel);
-    for (std::size_t a = 0; a < nel; ++a) {
-      for (std::size_t b = 0; b < nel; ++b) {
-        const auto hi = std::max(a, b);
-        out[a * nel + b] = {rhor[b * nel + a].data(), rhor[a * nel + b].data(),
-                            z2r[hi * (hi + 1) / 2 + std::min(a, b)].data()};
-      }
-    }
-    return out;
-  }
-
-  [[nodiscard]] const Couple &couple(std::size_t a, std::size_t b) const {
+  [[nodiscard]] const rgpot::EAMTablePot::CouplePtrs &couple(std::size_t a,
+                                                              std::size_t b) const {
     return couples[a * nel + b];
   }
 
@@ -196,7 +174,8 @@ struct Terms {
 
   /// phi_ab(r), and the force scale of the pair @p c at distance r, with
   /// fi = F'_a(rho_i) and fj = F'_b(rho_j).
-  double pair(const Couple &c, double r, double fi, double fj, double &phi) const {
+  double pair(const rgpot::EAMTablePot::CouplePtrs &c, double r, double fi, double fj,
+              double &phi) const {
     const Place k = radial(r);
     const double rhoip = Knot(c.atJ, k).slope();
     const double rhojp = Knot(c.atI, k).slope();
@@ -218,12 +197,12 @@ int element_of(const std::vector<int> &element, int z) {
 /// Element index of each atom of a staged list, -1 for an atomic number
 /// the table lacks. The host may hold such atoms, as long as no listed
 /// pair reaches them.
-std::vector<int> elements(const std::vector<int> &element, const rgpot::HalfList &list) {
-  std::vector<int> el(list.nAtoms);
+void elements_into(const std::vector<int> &element, const rgpot::HalfList &list,
+                   std::vector<int> &el) {
+  el.resize(list.nAtoms);
   for (std::size_t i = 0; i < list.nAtoms; ++i) {
     el[i] = element_of(element, list.atmnrs[i]);
   }
-  return el;
 }
 
 [[noreturn]] void unmapped(const rgpot::HalfList &list, const std::vector<int> &el, int i,
@@ -360,6 +339,17 @@ EAMTablePot::EAMTablePot(const EAMTable &table, bool periodic, bool stress, doub
   add(table.frho, table.nrho, table.drho, m_frho);
   add(table.rhor, table.nr, table.dr, m_rhor);
   add(table.z2r, table.nr, table.dr, m_z2r);
+  m_couples.resize(n * n);
+  for (std::size_t a = 0; a < n; ++a) {
+    for (std::size_t b = 0; b < n; ++b) {
+      const auto hi = std::max(a, b);
+      m_couples[a * n + b] = {
+          m_rhor[b * n + a].data(),
+          m_rhor[a * n + b].data(),
+          m_z2r[hi * (hi + 1) / 2 + std::min(a, b)].data(),
+      };
+    }
+  }
   fp.b8(periodic);
   if (stress) {
     fp.u64(1);
@@ -385,7 +375,8 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
   out->energy = 0.0;
   out->variance = 0.0;
   const EAMTable &t = m_table;
-  std::vector<std::size_t> el(n_size);
+  m_elScratch.resize(n_size);
+  std::vector<std::size_t> &el = m_elScratch;
   for (std::size_t i = 0; i < n_size; ++i) {
     const int a = element_of(m_element, in.atmnrs[i]);
     if (a < 0) {
@@ -418,7 +409,7 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
   }
   nlist::Neighbours &cells = m_neighbours;
   const double cut2 = t.cutoff * t.cutoff;
-  const Terms terms{t, m_frho, m_rhor, m_z2r};
+  const Terms terms{t, m_frho, m_couples};
 
   const bool pairs = n_size >= 2;
   if (pairs) {
@@ -431,22 +422,24 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
                        {m_periodic, m_periodic, m_periodic});
   }
 
-  std::vector<double> rho(n_size, 0.0);
+  m_rhoScratch.assign(n_size, 0.0);
+  std::vector<double> &rho = m_rhoScratch;
   if (pairs) {
     nlist::visitHalf(cells, 0, static_cast<std::int64_t>(n_size),
                   [&](int32_t i, int32_t j, double, double, double, double r2) {
                     if (!(r2 > 0.0) || !(r2 < cut2)) {
                       return;
                     }
-                    const Couple &c = terms.couple(el[static_cast<std::size_t>(i)],
-                                                   el[static_cast<std::size_t>(j)]);
+                    const auto &c = terms.couple(el[static_cast<std::size_t>(i)],
+                                                 el[static_cast<std::size_t>(j)]);
                     const Place k = terms.radial(std::sqrt(r2));
                     rho[static_cast<std::size_t>(i)] += Knot(c.atI, k).value();
                     rho[static_cast<std::size_t>(j)] += Knot(c.atJ, k).value();
                   });
   }
 
-  std::vector<double> fprime(n_size, 0.0);
+  m_fprimeScratch.assign(n_size, 0.0);
+  std::vector<double> &fprime = m_fprimeScratch;
   double energy = 0.0;
   for (std::size_t i = 0; i < n_size; ++i) {
     const double embed = terms.embedding(el[i], rho[i], fprime[i]);
@@ -492,8 +485,9 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
 }
 
 void EAMTablePot::densityStage(const HalfList &list, double *densities) const {
-  const Terms terms{m_table, m_frho, m_rhor, m_z2r};
-  const std::vector<int> el = elements(m_element, list);
+  const Terms terms{m_table, m_frho, m_couples};
+  elements_into(m_element, list, m_stageElScratch);
+  const std::vector<int> &el = m_stageElScratch;
   const double cut2 = m_table.cutoff * m_table.cutoff;
   staged::forEachPair(list, [&](int i, int j, double, double, double, double r2, bool both) {
     if (!(r2 > 0.0) || !(r2 < cut2)) {
@@ -504,7 +498,7 @@ void EAMTablePot::densityStage(const HalfList &list, double *densities) const {
     if (a < 0 || b < 0) {
       unmapped(list, el, i, j);
     }
-    const Couple &c = terms.couple(static_cast<std::size_t>(a), static_cast<std::size_t>(b));
+    const auto &c = terms.couple(static_cast<std::size_t>(a), static_cast<std::size_t>(b));
     const Place k = terms.radial(std::sqrt(r2));
     densities[i] += Knot(c.atI, k).value();
     if (both) {
@@ -515,9 +509,11 @@ void EAMTablePot::densityStage(const HalfList &list, double *densities) const {
 
 void EAMTablePot::forceStage(const HalfList &list, const double *densities, double *forces,
                              StageTally *tally) const {
-  const Terms terms{m_table, m_frho, m_rhor, m_z2r};
-  const std::vector<int> el = elements(m_element, list);
-  std::vector<double> fprime(list.nAtoms, 0.0);
+  const Terms terms{m_table, m_frho, m_couples};
+  elements_into(m_element, list, m_stageElScratch);
+  const std::vector<int> &el = m_stageElScratch;
+  m_stageFprimeScratch.assign(list.nAtoms, 0.0);
+  std::vector<double> &fprime = m_stageFprimeScratch;
   for (std::size_t i = 0; i < list.nAtoms; ++i) {
     if (el[i] >= 0) {
       fprime[i] = terms.slope(static_cast<std::size_t>(el[i]), densities[i]);
