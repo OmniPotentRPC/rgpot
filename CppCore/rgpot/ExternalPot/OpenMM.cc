@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -26,18 +27,7 @@
 namespace rgpot {
 namespace {
 
-void ensure_plugins_loaded() {
-  static std::once_flag once;
-  std::call_once(once, []() {
-    const char *dir = std::getenv("OPENMM_PLUGIN_DIR");
-    if (dir != nullptr && dir[0] != '\0') {
-      OpenMM::Platform::loadPluginsFromDirectory(dir);
-    } else {
-      OpenMM::Platform::loadPluginsFromDirectory(
-          OpenMM::Platform::getDefaultPluginsDirectory());
-    }
-  });
-}
+std::atomic<std::size_t> g_plugin_loads{0};
 
 void require_positive(double value, const char *name) {
   if (!std::isfinite(value) || value <= 0.0) {
@@ -76,6 +66,24 @@ void unflatten(const double *values, std::vector<OpenMM::Vec3> &out) {
 }
 
 } // namespace
+
+void openmm_load_plugins_once() {
+  static std::once_flag once;
+  std::call_once(once, []() {
+    g_plugin_loads.fetch_add(1, std::memory_order_relaxed);
+    const char *dir = std::getenv("OPENMM_PLUGIN_DIR");
+    if (dir != nullptr && dir[0] != '\0') {
+      OpenMM::Platform::loadPluginsFromDirectory(dir);
+    } else {
+      OpenMM::Platform::loadPluginsFromDirectory(
+          OpenMM::Platform::getDefaultPluginsDirectory());
+    }
+  });
+}
+
+std::size_t openmm_plugin_load_count() noexcept {
+  return g_plugin_loads.load(std::memory_order_relaxed);
+}
 
 struct OpenMMSession::Impl {
   std::unique_ptr<OpenMM::System> system;
@@ -145,7 +153,7 @@ OpenMMSession::OpenMMSession(std::unique_ptr<OpenMM::System> system,
                                               std::move(distances));
   impl_->scratch.resize(impl_->particles);
   impl_->system = std::move(system);
-  ensure_plugins_loaded();
+  openmm_load_plugins_once();
   impl_->integrator = std::make_unique<OpenMM::VerletIntegrator>(config.time_step);
   OpenMM::Platform &platform =
       OpenMM::Platform::getPlatformByName(config.platform);

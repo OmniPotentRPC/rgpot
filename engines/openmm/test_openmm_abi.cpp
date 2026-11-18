@@ -13,6 +13,8 @@
 #include <openmm/System.h>
 #include <openmm/serialization/XmlSerializer.h>
 
+#include <dlfcn.h>
+
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -316,6 +318,29 @@ void check_short_vtable() {
           "a vtable without destroy was accepted");
 }
 
+// The engine reads the plugin directory once per process, however often its
+// library is opened and closed. The library stays resident, so the count it
+// reports is the count of the whole process.
+void check_plugins_load_once(const char *library) {
+  OpenMM::System system;
+  system.addParticle(12.0);
+  const std::string xml = xml_of(system);
+  { Owned first = open(library, xml); }
+  { Owned second = open(library, xml); }
+
+  void *resident = dlopen(library, RTLD_NOW | RTLD_NOLOAD);
+  require(resident != nullptr,
+          "the engine library was unloaded after its sessions closed");
+  using CountFn = std::size_t (*)();
+  auto count = reinterpret_cast<CountFn>(
+      dlsym(resident, "rgpot_openmm_engine_plugin_loads"));
+  require(count != nullptr, "the engine does not report its plugin loads");
+  const std::size_t loads = count();
+  dlclose(resident);
+  require(loads == 1, "the OpenMM plugins loaded " + std::to_string(loads) +
+                          " times in one process");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -324,6 +349,7 @@ int main(int argc, char **argv) {
     check_box_in_angstrom(argv[1]);
     check_constraint_force(argv[1]);
     check_short_vtable();
+    check_plugins_load_once(argv[1]);
     std::cout << "OpenMM session ABI checks passed\n";
     return EXIT_SUCCESS;
   } catch (const std::exception &failure) {

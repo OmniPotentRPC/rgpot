@@ -5,6 +5,8 @@
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "../common/test_seed.hpp"
 
+#include <dlfcn.h>
+
 #include <openmm/HarmonicBondForce.h>
 #include <openmm/System.h>
 #include <openmm/serialization/XmlSerializer.h>
@@ -539,10 +541,69 @@ void test_c_abi_session_neighbors() {
   }
 }
 
+// The test and the engine library share one copy of the session code, so a
+// session opened through the C ABI and one built in this process load the
+// plugins together, once. Run before any other check: it reads the count
+// from a process that has loaded nothing yet.
+void test_plugins_load_once() {
+  const char *engine = std::getenv("RGPOT_OPENMM_ENGINE");
+  if (engine == nullptr) {
+    throw std::runtime_error("RGPOT_OPENMM_ENGINE is not set");
+  }
+  if (rgpot::openmm_plugin_load_count() != 0) {
+    throw std::runtime_error(
+        "the OpenMM plugins loaded before the first session");
+  }
+  auto sys = make_harmonic_system(4.0, 39.9);
+  std::ostringstream xml_stream;
+  OpenMM::XmlSerializer::serialize<OpenMM::System>(sys.get(), "System",
+                                                   xml_stream);
+  const std::string xml = xml_stream.str();
+  for (int round = 0; round < 2; ++round) {
+    char err[512] = {};
+    rgpot_md_session *session = rgpot_md_session_create(
+        "openmm", nullptr, xml.data(), xml.size(), "Reference", err,
+        sizeof(err));
+    if (session == nullptr) {
+      throw std::runtime_error(std::string("rgpot_md_session_create failed: ") +
+                               err);
+    }
+    rgpot_md_session_destroy(session);
+  }
+
+  void *resident = dlopen(engine, RTLD_NOW | RTLD_NOLOAD);
+  if (resident == nullptr) {
+    throw std::runtime_error("the engine library was unloaded");
+  }
+  using CountFn = std::size_t (*)();
+  auto engine_loads = reinterpret_cast<CountFn>(
+      dlsym(resident, "rgpot_openmm_engine_plugin_loads"));
+  if (engine_loads == nullptr) {
+    throw std::runtime_error("the engine does not report its plugin loads");
+  }
+  const std::size_t from_engine = engine_loads();
+  dlclose(resident);
+  if (from_engine != 1 || rgpot::openmm_plugin_load_count() != 1) {
+    throw std::runtime_error(
+        "the engine and the test do not share one plugin load: engine " +
+        std::to_string(from_engine) + ", test " +
+        std::to_string(rgpot::openmm_plugin_load_count()));
+  }
+
+  rgpot::OpenMMSessionConfig config;
+  config.platform = "Reference";
+  rgpot::OpenMMSession local(make_harmonic_system(4.0, 39.9), config);
+  if (rgpot::openmm_plugin_load_count() != 1) {
+    throw std::runtime_error(
+        "a session built in the test reloaded the plugins");
+  }
+}
+
 } // namespace
 
 int main() {
   try {
+    test_plugins_load_once();
     test_seed_validation();
     test_cpp_session();
     test_c_abi_session();

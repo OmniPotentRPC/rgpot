@@ -157,4 +157,16 @@ int openmm_md_session_init(const char *system_xml, const char *platform,
                            rgpot_md_session_ops *ops, void **ctx,
                            size_t *n_atoms, char *err, size_t err_len);
 
+/**
+ * Load the OpenMM plugins once per process.
+ *
+ * OPENMM_PLUGIN_DIR names the directory when it is set and not empty; the
+ * OpenMM default directory is used otherwise. The guard lives in the shared
+ * object that defines this function, so every host of that object shares it.
+ */
+void openmm_load_plugins_once();
+
+/** How many times this object has run the plugin loader. */
+std::size_t openmm_plugin_load_count() noexcept;
+
 } // namespace rgpot
