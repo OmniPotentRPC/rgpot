@@ -1960,7 +1960,12 @@ if get_option('with_tests')
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
         )
-        test(_rt[0], _test_exe, kwargs: _rt_kw[_rt[0]])
+        test(
+            _rt[0],
+            _test_exe,
+            args: _rt[2].slice(2, _rt[2].length()),
+            kwargs: _rt_kw[_rt[0]],
+        )
         _rt_exes += {_rt[0]: _test_exe}
         if _rt[0] == 'CalculatorGroupTest'
             calculator_group_test_exe = _test_exe
@@ -1968,7 +1973,12 @@ if get_option('with_tests')
     endforeach
     foreach _rt : _rt_tests
         if _rt[1] == 'rerun'
-            test(_rt[0], _rt_exes[_rt[2][0]], kwargs: _rt_kw[_rt[0]])
+            test(
+                _rt[0],
+                _rt_exes[_rt[2][0]],
+                args: _rt[2].slice(1, _rt[2].length()),
+                kwargs: _rt_kw[_rt[0]],
+            )
         endif
     endforeach
     _nlist_link = [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma]

@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 OUT="${1:-cpp_lcov.info}"
 BUILD="${RGPOT_COV_BUILDDIR:-bbdir-cov}"
+COVERAGE_TIMEOUT_MULTIPLIER="${RGPOT_COV_TIMEOUT_MULTIPLIER:-3}"
 
 if ! command -v meson >/dev/null 2>&1; then
   echo "ERROR: meson not on PATH (use pixi -e devbld)" >&2
@@ -16,8 +17,7 @@ if ! command -v lcov >/dev/null 2>&1; then
 fi
 
 echo "==> meson setup ${BUILD} (coverage, tests, rpc)"
-rm -rf "$BUILD"
-meson setup "$BUILD" \
+SETUP_ARGS=(
   -Dwith_tests=true \
   -Dwith_examples=false \
   -Dwith_xtensor=false \
@@ -27,9 +27,43 @@ meson setup "$BUILD" \
   -Dpure_lib=false \
   -Db_coverage=true \
   --buildtype=debug
+)
+if [[ -d "$BUILD" ]]; then
+  meson setup --wipe "$BUILD" "${SETUP_ARGS[@]}"
+else
+  meson setup "$BUILD" "${SETUP_ARGS[@]}"
+fi
 
 meson compile -C "$BUILD"
-meson test -C "$BUILD" --print-errorlogs
+if ! meson test -C "$BUILD" --print-errorlogs \
+  --timeout-multiplier "$COVERAGE_TIMEOUT_MULTIPLIER"; then
+  python3 - "$BUILD/meson-logs/testlog.json" <<'PY'
+import collections
+import json
+import pathlib
+import sys
+
+log = pathlib.Path(sys.argv[1])
+unsuccessful = []
+if log.is_file():
+    for raw in log.read_text(encoding="utf-8", errors="replace").splitlines():
+        record = json.loads(raw)
+        if record["result"] not in {"OK", "SKIP", "EXPECTEDFAIL"}:
+            unsuccessful.append((record["name"], record["result"]))
+
+counts = collections.Counter(result for _, result in unsuccessful)
+detail = ", ".join(f"{result}: {count}" for result, count in sorted(counts.items()))
+print(
+    f"ERROR: {len(unsuccessful)} coverage tests were unsuccessful"
+    + (f" ({detail})" if detail else ""),
+    file=sys.stderr,
+)
+for name, result in unsuccessful:
+    print(f"  {result}: {name}", file=sys.stderr)
+raise SystemExit(1)
+PY
+  exit 1
+fi
 
 # lcov 2 renamed the branch-coverage rc option and rejects the old name. It
 # also checks gcov data against source lines and reports template instances in
@@ -47,12 +81,19 @@ echo "==> lcov capture"
 lcov --directory "$BUILD" --capture --output-file "$OUT" "${LCOV_ARGS[@]}"
 
 # Keep library sources: CppCore/rgpot (C++ and Fortran kernels)
-TMP=$(mktemp)
-trap 'rm -f "$TMP"' EXIT
+TMP_DIR=$(mktemp -d)
+TMP="$TMP_DIR/cpp.info"
+cleanup_tmp() {
+  rm -f -- "$TMP"
+  rmdir -- "$TMP_DIR"
+}
+trap cleanup_tmp EXIT
 lcov --extract "$OUT" \
   '*/CppCore/rgpot/*' '*/include/*' \
   --output-file "$TMP" "${LCOV_ARGS[@]}"
 mv "$TMP" "$OUT"
+cleanup_tmp
+trap - EXIT
 
 test -s "$OUT"
 python3 - "$OUT" <<'PY'
