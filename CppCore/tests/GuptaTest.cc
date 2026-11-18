@@ -6,6 +6,7 @@
 #include "rgpot/Gupta/gupta.h"
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 TEST_CASE("Gupta dimer at r0 is 2A - 2 xi", "[gupta]") {
@@ -39,4 +40,33 @@ TEST_CASE("Gupta keeps a distant pair", "[gupta]") {
   double unused[6];
   rgpot_gupta(near, 2, two, 1, &a, &xi, &p, &q, &r0, &contact, unused);
   REQUIRE(full != contact);
+}
+
+TEST_CASE("Gupta coincidence is infinite and a NaN coordinate stays NaN",
+          "[gupta]") {
+  const double a = 0.2061;
+  const double xi = 1.790;
+  const double p = 10.229;
+  const double q = 4.036;
+  const double r0 = 2.884;
+  const unsigned char slot[3] = {0, 0, 0};
+  const double stacked[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  double energy = 0.0;
+  double gradient[6] = {};
+  rgpot_gupta(stacked, 2, slot, 1, &a, &xi, &p, &q, &r0, &energy, gradient);
+  REQUIRE(std::isinf(energy));
+  REQUIRE(energy > 0.0);
+  for (double component : gradient) {
+    REQUIRE(component == 0.0);
+  }
+
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double bad[9] = {nan, 0.0, 0.0, 1.0, 0.0, 0.0, 0.2, 1.1, 0.0};
+  double bad_gradient[9] = {};
+  energy = 0.0;
+  rgpot_gupta(bad, 3, slot, 1, &a, &xi, &p, &q, &r0, &energy, bad_gradient);
+  REQUIRE(std::isnan(energy));
+  for (double component : bad_gradient) {
+    REQUIRE(std::isnan(component));
+  }
 }
