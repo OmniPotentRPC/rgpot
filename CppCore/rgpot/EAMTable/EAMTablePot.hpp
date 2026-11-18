@@ -94,9 +94,9 @@ struct EAMTableConfig {
  */
 class EAMTablePot : public Potential<EAMTablePot> {
 public:
-  /// Where the tables of one element couple sit: an index into m_rhor for
+  /// Where the tables of one element couple start: an offset into m_rhor for
   /// the density each end gets from the other, and one into m_z2r for phi.
-  /// Indices, not pointers, so a copy of the potential reads its own tables.
+  /// Offsets, not pointers, so a copy of the potential reads its own tables.
   struct CoupleIdx {
     std::size_t atI = 0;
     std::size_t atJ = 0;
@@ -155,7 +155,10 @@ private:
   EAMTable m_table;
   /// PairEAM::interpolate coefficients, seven per point, same layout as
   /// the m_table arrays.
-  std::vector<std::vector<double>> m_frho, m_rhor, m_z2r;
+  std::vector<std::vector<double>> m_frho;
+  /// The same for rho_ab and r phi_ab, one table after another, each
+  /// 7 * nr long, so a couple's table is one offset from the front.
+  std::vector<double> m_rhor, m_z2r;
   /// Element index of each atomic number, -1 for one the table lacks.
   std::vector<int> m_element;
   bool m_periodic;

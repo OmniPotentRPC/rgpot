@@ -23,6 +23,7 @@
 #include <istream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 // clang-format on
 
@@ -142,8 +143,8 @@ struct Knot {
 struct Terms {
   const rgpot::EAMTable &t;
   const std::vector<std::vector<double>> &frho;
-  const std::vector<std::vector<double>> &rhor;
-  const std::vector<std::vector<double>> &z2r;
+  const double *rhor;
+  const double *z2r;
   const std::vector<rgpot::EAMTablePot::CoupleIdx> &couples;
   std::size_t nel = t.z.size();
   double rdr = 1.0 / t.dr;
@@ -158,7 +159,7 @@ struct Terms {
 
   [[nodiscard]] Couple couple(std::size_t a, std::size_t b) const {
     const rgpot::EAMTablePot::CoupleIdx &c = couples[a * nel + b];
-    return {rhor[c.atI].data(), rhor[c.atJ].data(), z2r[c.z2].data()};
+    return {rhor + c.atI, rhor + c.atJ, z2r + c.z2};
   }
 
   /// Where r falls in the radial tables, which share their grid.
@@ -335,27 +336,34 @@ EAMTablePot::EAMTablePot(const EAMTable &table, bool periodic, bool stress, doub
     fp.i64(z);
   }
   auto add = [&](const std::vector<std::vector<double>> &src, int len, double d,
-                 std::vector<std::vector<double>> &dst) {
+                 auto &&keep) {
     for (const auto &f : src) {
       if (static_cast<int>(f.size()) != len) {
         bad("array length does not match");
       }
       fp.u64(f.size());
       fp.bytes(f.data(), f.size() * sizeof(double));
-      dst.push_back(spline(f, d));
+      keep(spline(f, d));
     }
   };
-  add(table.frho, table.nrho, table.drho, m_frho);
-  add(table.rhor, table.nr, table.dr, m_rhor);
-  add(table.z2r, table.nr, table.dr, m_z2r);
+  auto append = [](std::vector<double> &dst) {
+    return [&dst](const std::vector<double> &coeffs) {
+      dst.insert(dst.end(), coeffs.begin(), coeffs.end());
+    };
+  };
+  add(table.frho, table.nrho, table.drho,
+      [&](std::vector<double> &&coeffs) { m_frho.push_back(std::move(coeffs)); });
+  add(table.rhor, table.nr, table.dr, append(m_rhor));
+  add(table.z2r, table.nr, table.dr, append(m_z2r));
+  const auto stride = 7 * static_cast<std::size_t>(table.nr);
   m_couples.resize(n * n);
   for (std::size_t a = 0; a < n; ++a) {
     for (std::size_t b = 0; b < n; ++b) {
       const auto hi = std::max(a, b);
       m_couples[a * n + b] = {
-          b * n + a,
-          a * n + b,
-          hi * (hi + 1) / 2 + std::min(a, b),
+          (b * n + a) * stride,
+          (a * n + b) * stride,
+          (hi * (hi + 1) / 2 + std::min(a, b)) * stride,
       };
     }
   }
@@ -418,7 +426,7 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
   }
   nlist::Neighbours &cells = m_neighbours;
   const double cut2 = t.cutoff * t.cutoff;
-  const Terms terms{t, m_frho, m_rhor, m_z2r, m_couples};
+  const Terms terms{t, m_frho, m_rhor.data(), m_z2r.data(), m_couples};
 
   const bool pairs = n_size >= 2;
   if (pairs) {
@@ -549,7 +557,7 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
 }
 
 void EAMTablePot::densityStage(const HalfList &list, double *densities) const {
-  const Terms terms{m_table, m_frho, m_rhor, m_z2r, m_couples};
+  const Terms terms{m_table, m_frho, m_rhor.data(), m_z2r.data(), m_couples};
   elements_into(m_element, list, m_stageElScratch);
   const std::vector<int> &el = m_stageElScratch;
   const double cut2 = m_table.cutoff * m_table.cutoff;
@@ -573,7 +581,7 @@ void EAMTablePot::densityStage(const HalfList &list, double *densities) const {
 
 void EAMTablePot::forceStage(const HalfList &list, const double *densities, double *forces,
                              StageTally *tally) const {
-  const Terms terms{m_table, m_frho, m_rhor, m_z2r, m_couples};
+  const Terms terms{m_table, m_frho, m_rhor.data(), m_z2r.data(), m_couples};
   elements_into(m_element, list, m_stageElScratch);
   const std::vector<int> &el = m_stageElScratch;
   m_stageFprimeScratch.assign(list.nAtoms, 0.0);
