@@ -7,8 +7,10 @@
 #include <cstring>
 #include <fstream>
 #include <iomanip>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -99,10 +101,48 @@ struct Eval {
   std::vector<double> forces;
 };
 
+Eval evalEam(const rgpot::EAMTablePot &pot, const std::vector<double> &pos,
+             const std::vector<int> &z, const double *box) {
+  Eval r;
+  r.forces.assign(pos.size(), 0.0);
+  rgpot::ForceOut out{};
+  out.F = r.forces.data();
+  const rgpot::ForceInput in{pos.size() / 3, pos.data(), z.data(), box};
+  pot.forceImpl(in, &out);
+  r.energy = out.energy;
+  return r;
+}
+
 std::uint64_t evalBits(const Eval &e) {
   std::uint64_t bits = 1469598103934665603ULL;
   bits = fnv(bits, &e.energy, sizeof(e.energy));
   return fnv(bits, e.forces.data(), e.forces.size() * sizeof(double));
+}
+
+const char *const kAlloyPath = "CppCore/tests/data/eam_table/CuNi.eam.alloy";
+
+struct Alloy {
+  double box[9] = {};
+  std::vector<double> pos;
+  std::vector<int> z;
+};
+
+Alloy alloyCell() {
+  Alloy a;
+  a.pos = frames(fcc(6, 6, 6, 3.6, a.box), 0.05, 11, 1).front();
+  a.z.resize(a.pos.size() / 3);
+  for (std::size_t i = 0; i < a.z.size(); ++i) {
+    a.z[i] = i % 3 == 0 ? 28 : 29;
+  }
+  return a;
+}
+
+rgpot::EAMTablePot alloyPot() {
+  return rgpot::EAMTablePot({.path = kAlloyPath,
+                             .format = rgpot::EAMTableFormat::Setfl,
+                             .periodic = true,
+                             .stress = false,
+                             .skin = 1.0});
 }
 
 /// Energy and forces of the Sutton-Chen sums over every pair with r <= cutoff,
@@ -314,3 +354,60 @@ TEST_CASE("Sutton-Chen keeps pairs at exactly the cutoff on every path",
   }
 }
 
+TEST_CASE("EAMTablePot copies and moves read their own tables",
+          "[EAMTable][regression]") {
+  const Alloy cell = alloyCell();
+  const Eval ref = evalEam(alloyPot(), cell.pos, cell.z, cell.box);
+
+  // Freed tables are overwritten before the copy evaluates, so a pointer
+  // left into the source reads values that differ from the reference even
+  // without a sanitizer.
+  auto scribble = [] {
+    std::vector<std::vector<double>> noise;
+    for (int k = 0; k < 64; ++k) {
+      noise.emplace_back(4096, -1.0);
+    }
+    return noise.size();
+  };
+  auto same = [&](const rgpot::EAMTablePot &pot) {
+    const Eval got = evalEam(pot, cell.pos, cell.z, cell.box);
+    REQUIRE(got.energy == ref.energy);
+    REQUIRE(got.forces == ref.forces);
+  };
+
+  SECTION("copy construction") {
+    auto src = std::make_unique<rgpot::EAMTablePot>(alloyPot());
+    rgpot::EAMTablePot copy(*src);
+    src.reset();
+    scribble();
+    same(copy);
+  }
+
+  SECTION("move construction") {
+    auto src = std::make_unique<rgpot::EAMTablePot>(alloyPot());
+    rgpot::EAMTablePot moved(std::move(*src));
+    src.reset();
+    scribble();
+    same(moved);
+  }
+
+  SECTION("copy assignment") {
+    rgpot::EAMTablePot target = alloyPot();
+    {
+      auto src = std::make_unique<rgpot::EAMTablePot>(alloyPot());
+      target = *src;
+    }
+    scribble();
+    same(target);
+  }
+
+  SECTION("move assignment") {
+    rgpot::EAMTablePot target = alloyPot();
+    {
+      auto src = std::make_unique<rgpot::EAMTablePot>(alloyPot());
+      target = std::move(*src);
+    }
+    scribble();
+    same(target);
+  }
+}

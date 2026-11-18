@@ -94,10 +94,13 @@ struct EAMTableConfig {
  */
 class EAMTablePot : public Potential<EAMTablePot> {
 public:
-  struct CouplePtrs {
-    const double *atI = nullptr;
-    const double *atJ = nullptr;
-    const double *z2 = nullptr;
+  /// Where the tables of one element couple sit: an index into m_rhor for
+  /// the density each end gets from the other, and one into m_z2r for phi.
+  /// Indices, not pointers, so a copy of the potential reads its own tables.
+  struct CoupleIdx {
+    std::size_t atI = 0;
+    std::size_t atJ = 0;
+    std::size_t z2 = 0;
   };
 
   explicit EAMTablePot(const EAMTableConfig &c);
@@ -160,7 +163,7 @@ private:
   double m_skin;
   uint64_t m_paramsKey{0};
   nlist::Mode m_mode = nlist::Mode::Auto;
-  std::vector<CouplePtrs> m_couples;
+  std::vector<CoupleIdx> m_couples;
   mutable std::vector<std::size_t> m_elScratch;
   mutable std::vector<double> m_rhoScratch;
   mutable std::vector<double> m_fprimeScratch;
