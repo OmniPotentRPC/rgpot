@@ -663,7 +663,7 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
       "Zero hvp_counts(). The centre stays.");
   cls.def(
       "has_analytic_hvp",
-      [](const PotHolder<Pot> &self) {
+      [](PotHolder<Pot> &self) {
         return self.slot().caps().analyticHvp;
       },
       "Whether hvp(scheme='auto') uses the kernel's own product.");
