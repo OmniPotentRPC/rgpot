@@ -263,6 +263,53 @@ void check_short_vtable() {
           "get_energy did not pass 3N to get_state");
   rgpot_md_session_destroy(session);
 
+  // Mid-slot struct_size (0xff-filled tail) must report unsupported rather
+  // than reading a truncated function pointer.
+  rgpot_nlist_request nreq{};
+  rgpot_nlist_request_init(&nreq);
+  nreq.cutoff = 3.0;
+  rgpot_nlist_soa nsoa{};
+  nsoa.bytes = sizeof(nsoa);
+  for (const size_t mid_size :
+       {offsetof(rgpot_md_session_ops, get_neighbors) + 1,
+        offsetof(rgpot_md_session_ops, set_neighbors) + 1}) {
+    rgpot_md_session_ops mid;
+    std::memset(&mid, 0xff, sizeof(mid));
+    mid.struct_size = mid_size;
+    mid.set_positions = unsupported_set;
+    mid.set_velocities = unsupported_set;
+    mid.step_langevin = unsupported_step;
+    mid.step_nve = unsupported_nve;
+    mid.get_state = unsupported_state;
+    mid.get_masses = unsupported_masses;
+    mid.destroy = unsupported_destroy;
+    mid.set_periodic_box = nullptr;
+    mid.get_periodic_box = nullptr;
+    mid.initialize = nullptr;
+    mid.run_langevin = nullptr;
+    if (mid_size > offsetof(rgpot_md_session_ops, get_neighbors)) {
+      // Even a valid get_neighbors slot must not run if struct_size stops
+      // inside it; here mid_size == offsetof(set_neighbors) + 1 covers
+      // get_neighbors, so keep get_neighbors null there and test set_neighbors.
+      mid.get_neighbors = nullptr;
+    }
+    rgpot_md_session *short_nlist = rgpot_md_session_from_ops(
+        &token, &mid, 1, error, sizeof(error));
+    require(short_nlist != nullptr,
+            std::string("mid-slot from_ops: ") + error);
+    size_t count = 0;
+    size_t needed = 0;
+    const int get_rc = rgpot_md_session_get_neighbors(
+        short_nlist, &nreq, nullptr, &count, &needed, error, sizeof(error));
+    require(get_rc == RGPOT_MD_NLIST_UNSUPPORTED,
+            "mid-slot get_neighbors should return RGPOT_MD_NLIST_UNSUPPORTED");
+    const int set_rc = rgpot_md_session_set_neighbors(
+        short_nlist, &nreq, &nsoa, 0, error, sizeof(error));
+    require(set_rc == RGPOT_MD_NLIST_UNSUPPORTED,
+            "mid-slot set_neighbors should return RGPOT_MD_NLIST_UNSUPPORTED");
+    rgpot_md_session_destroy(short_nlist);
+  }
+
   ops.struct_size = offsetof(rgpot_md_session_ops, destroy);
   require(rgpot_md_session_from_ops(&token, &ops, 1, error, sizeof(error)) ==
               nullptr,
