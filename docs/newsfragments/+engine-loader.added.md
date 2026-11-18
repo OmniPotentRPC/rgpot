@@ -1,8 +1,5 @@
-`rgpot-core` loads any library that exports the generic engine C ABI
-(`rgpot/engine_c_abi.h`) from Rust. The `engine` feature adds
-`rgpot_core::engine::EnginePotential`: it opens the library, refuses another
-ABI major, creates an instance from the backend's configuration message, and
-answers energy and forces per geometry, or per batch when the library exports
-`rgpot_engine_force_batch`. A positive return code is a recoverable
-`EngineError`, a negative one a fatal one, with the engine's own message.
+`rgpot-core` loads any library that exports the generic engine C ABI (`rgpot/engine_c_abi.h`) from Rust.
+The `engine` feature adds `rgpot_core::engine::EnginePotential`: it checks ABI compatibility, creates an instance from the backend's configuration message, and answers energy and forces per geometry or batch.
+The optional `rgpot_engine_hvp` symbol exposes analytic Hessian-vector products through the same potential handle.
+A positive return code is a recoverable `EngineError`, while a negative code permanently marks the instance fatal.
 `EnginePotential::into_potential` wraps the instance as a `PotentialImpl`.

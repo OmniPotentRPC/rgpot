@@ -3,11 +3,12 @@
 
 //! Callback-based potential dispatch.
 //!
-//! This module defines [`PotentialImpl`], an opaque handle that wraps a C
-//! function pointer callback together with a `void* user_data` and an optional
-//! destructor. This is the core abstraction that lets existing C++ potentials
-//! (LJ, CuH2, or any future implementation) plug into the Rust infrastructure
-//! without the Rust side knowing the concrete type.
+//! This module defines [`PotentialImpl`], an owning wrapper around the full
+//! [`rgpot_potential_t`] handle. The handle stores a C callback, its
+//! `void* user_data`, an optional destructor, and optional analytic derivative
+//! callbacks. This is the core abstraction that lets existing C++ potentials
+//! plug into the Rust infrastructure without the Rust side knowing the
+//! concrete type.
 //!
 //! ## How it Works
 //!
@@ -20,15 +21,16 @@
 //!
 //! ## Lifetime Contract
 //!
-//! - The `user_data` pointer is borrowed by `PotentialImpl`. The caller must
-//!   keep the underlying object alive for the lifetime of the handle.
-//! - If a `free_fn` is provided, it is called on drop when `user_data` is
-//!   non-null, transferring ownership to `PotentialImpl`.
+//! - Without a `free_fn`, the caller keeps `user_data` alive for the lifetime
+//!   of the handle.
+//! - With a `free_fn`, the handle owns `user_data` and releases it on drop.
 //! - The handle is exposed to C as `rgpot_potential_t` — an opaque pointer
 //!   managed via `rgpot_potential_new` / `rgpot_potential_free`.
 
 use std::os::raw::c_void;
+use std::ptr::NonNull;
 
+use crate::eindir::{rgpot_potential_free_eindir, rgpot_potential_new_eindir};
 use crate::status::rgpot_status_t;
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
@@ -51,9 +53,7 @@ pub type FreeFn = unsafe extern "C" fn(*mut c_void);
 
 /// Opaque potential handle wrapping a callback + user data.
 pub struct PotentialImpl {
-    pub(crate) callback: PotentialCallback,
-    pub(crate) user_data: *mut c_void,
-    pub(crate) free_fn: Option<FreeFn>,
+    handle: NonNull<rgpot_potential_t>,
 }
 
 // PotentialImpl stores a raw pointer but we guarantee exclusive access
@@ -62,16 +62,32 @@ unsafe impl Send for PotentialImpl {}
 
 impl PotentialImpl {
     /// Create a new potential from a callback, user data, and optional destructor.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn new(
         callback: PotentialCallback,
         user_data: *mut c_void,
         free_fn: Option<FreeFn>,
     ) -> Self {
+        let handle = unsafe {
+            rgpot_potential_new_eindir(
+                callback,
+                user_data,
+                free_fn,
+                0,
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
         Self {
-            callback,
-            user_data,
-            free_fn,
+            handle: NonNull::new(handle).expect("potential allocation failed"),
         }
+    }
+
+    /// The full potential handle used by HVP and RPC capability dispatch.
+    pub fn as_handle(&self) -> &rgpot_potential_t {
+        unsafe { self.handle.as_ref() }
     }
 
     /// Invoke the underlying callback.
@@ -84,17 +100,14 @@ impl PotentialImpl {
         input: *const rgpot_force_input_t,
         output: *mut rgpot_force_out_t,
     ) -> rgpot_status_t {
-        (self.callback)(self.user_data, input, output)
+        let handle = self.as_handle();
+        unsafe { (handle.callback)(handle.pot_user_data, input, output) }
     }
 }
 
 impl Drop for PotentialImpl {
     fn drop(&mut self) {
-        if let Some(free) = self.free_fn {
-            if !self.user_data.is_null() {
-                unsafe { free(self.user_data) };
-            }
-        }
+        unsafe { rgpot_potential_free_eindir(self.handle.as_ptr()) };
     }
 }
 

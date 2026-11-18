@@ -25,7 +25,7 @@
 //! [`crate::profile`]: a backend may own threads or MPI state that does not
 //! survive `dlclose`.
 
-use std::ffi::{c_char, c_int, c_long, c_void};
+use std::ffi::{c_char, c_int, c_long, c_uint, c_void};
 use std::fmt;
 use std::mem::ManuallyDrop;
 use std::path::Path;
@@ -42,9 +42,11 @@ use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
 /// The ABI minor this loader speaks, `RGPOT_ENGINE_ABI_MINOR` of the header.
-pub const ENGINE_ABI_MINOR: u16 = 3;
+pub const ENGINE_ABI_MINOR: u16 = 4;
 /// The ABI layout revision this loader speaks.
 pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
+/// Engine code meaning the backend does not support the requested operation.
+pub const ENGINE_ERR_UNSUPPORTED: c_int = 3;
 
 const ERROR_CAPACITY: usize = 1024;
 
@@ -111,8 +113,71 @@ pub type ForceBatchFn = unsafe extern "C" fn(
     Option<CoordTransformFn>,
     *mut c_void,
 ) -> c_int;
+/// `rgpot_engine_hvp`.
+pub type HvpFn = unsafe extern "C" fn(
+    *mut RgpotEnginePot,
+    c_long,
+    *const f64,
+    *const c_int,
+    *const f64,
+    *mut f64,
+    *const f64,
+    Option<CoordTransformFn>,
+    *mut c_void,
+) -> c_int;
+/// `rgpot_engine_caps`.
+pub type CapsFn = unsafe extern "C" fn(*const RgpotEnginePot, *mut RgpotEngineCaps) -> c_int;
 /// `rgpot_engine_last_error`.
 pub type LastErrorFn = unsafe extern "C" fn(*const RgpotEnginePot, *mut c_char, usize) -> usize;
+
+/// Raw `RgpotEngineCaps` from `rgpot/engine_c_abi.h`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RgpotEngineCaps {
+    /// Struct size in bytes, set by the host before `rgpot_engine_caps`.
+    pub size: c_uint,
+    /// Reentrancy class: 0 shared instance, 1 per instance, 2 process serial.
+    pub reentrancy: c_int,
+    /// Nonzero when multi-image methods should clone one instance per image.
+    pub per_image_instances: c_int,
+    /// Nonzero when `rgpot_engine_force_batch` is served natively.
+    pub batched: c_int,
+    /// Nonzero when periodic boundary conditions are supported.
+    pub periodic: c_int,
+    /// Nonzero when cell stress is available.
+    pub stress: c_int,
+    /// Nonzero when every rank of a calculator group enters each call.
+    pub group_collective: c_int,
+    /// Nonzero when `rgpot_engine_select_orbitals` is supported.
+    pub orbital_selection: c_int,
+    /// Nonzero when `rgpot_engine_copy_orbitals` is supported.
+    pub orbital_copy: c_int,
+    /// Nonzero when analytic HVP (`rgpot_engine_hvp`) is supported.
+    pub analytic_hvp: c_int,
+}
+
+/// Capabilities advertised by an engine instance via `rgpot_engine_caps`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EngineCaps {
+    /// Reentrancy class: 0 shared instance, 1 per instance, 2 process serial.
+    pub reentrancy: i32,
+    /// Whether multi-image methods should clone one instance per image.
+    pub per_image_instances: bool,
+    /// Whether `rgpot_engine_force_batch` is served natively.
+    pub batched: bool,
+    /// Whether periodic boundary conditions are supported.
+    pub periodic: bool,
+    /// Whether cell stress is available.
+    pub stress: bool,
+    /// Whether every rank of a calculator group enters each call.
+    pub group_collective: bool,
+    /// Whether `rgpot_engine_select_orbitals` is supported.
+    pub orbital_selection: bool,
+    /// Whether `rgpot_engine_copy_orbitals` is supported.
+    pub orbital_copy: bool,
+    /// Whether analytic HVP (`rgpot_engine_hvp`) is supported.
+    pub analytic_hvp: bool,
+}
 
 /// The symbols of one engine library. Creation, destruction, force evaluation,
 /// and the ABI major are required; the remaining symbols are optional.
@@ -132,6 +197,10 @@ pub struct EngineSymbols {
     pub force: ForceFn,
     /// Optional symbol `rgpot_engine_force_batch`.
     pub force_batch: Option<ForceBatchFn>,
+    /// Optional symbol `rgpot_engine_hvp`.
+    pub hvp: Option<HvpFn>,
+    /// Optional symbol `rgpot_engine_caps`.
+    pub caps: Option<CapsFn>,
     /// Optional symbol `rgpot_engine_last_error`.
     pub last_error: Option<LastErrorFn>,
 }
@@ -161,8 +230,13 @@ pub enum EngineError {
     Create(String),
     /// The request does not fit the ABI: a length or a non-finite answer.
     Invalid(String),
-    /// The library does not export the optional symbol.
-    Unsupported(&'static str),
+    /// The requested optional operation is unavailable.
+    Unsupported {
+        /// Optional engine symbol for the operation.
+        operation: &'static str,
+        /// Why the operation is unavailable.
+        message: String,
+    },
     /// A positive code: the evaluation failed at this input.
     Recoverable {
         /// Positive error code returned by the engine.
@@ -206,7 +280,9 @@ impl fmt::Display for EngineError {
             },
             Self::Create(why) => write!(f, "rgpot_engine_create failed: {why}"),
             Self::Invalid(why) => write!(f, "invalid engine request: {why}"),
-            Self::Unsupported(name) => write!(f, "engine library does not export {name}"),
+            Self::Unsupported { operation, message } => {
+                write!(f, "engine does not support {operation}: {message}")
+            }
             Self::Recoverable { code, message } => {
                 write!(f, "engine evaluation failed with code {code}: {message}")
             }
@@ -218,6 +294,16 @@ impl fmt::Display for EngineError {
 }
 
 impl std::error::Error for EngineError {}
+
+impl EngineError {
+    /// Map this failure onto the rgpot-core C API status code.
+    pub fn status(&self) -> rgpot_status_t {
+        match self {
+            Self::Invalid(_) => rgpot_status_t::RGPOT_INVALID_PARAMETER,
+            _ => rgpot_status_t::RGPOT_INTERNAL_ERROR,
+        }
+    }
+}
 
 /// One geometry. Positions in Angstrom, row-major `[n_atoms, 3]`; the cell is
 /// the row-major 3 by 3 matrix in Angstrom.
@@ -361,7 +447,7 @@ impl EnginePotential {
                 std::ptr::null_mut(),
             )
         };
-        self.answer(code)?;
+        self.answer(code, "rgpot_engine_force")?;
         finite(energy, &forces)?;
         Ok(EngineEvaluation { energy, forces })
     }
@@ -380,7 +466,7 @@ impl EnginePotential {
         let batch = self
             .symbols
             .force_batch
-            .ok_or(EngineError::Unsupported("rgpot_engine_force_batch"))?;
+            .ok_or_else(|| unsupported_symbol("rgpot_engine_force_batch"))?;
         let n_atoms = atomic_numbers.len();
         if n_atoms == 0 || positions.is_empty() || !positions.len().is_multiple_of(3 * n_atoms) {
             return Err(EngineError::Invalid(format!(
@@ -413,7 +499,7 @@ impl EnginePotential {
                 std::ptr::null_mut(),
             )
         };
-        self.answer(code)?;
+        self.answer(code, "rgpot_engine_force_batch")?;
         let mut out = Vec::with_capacity(n_systems);
         for (energy, block) in energies.iter().zip(forces.chunks_exact(3 * n_atoms)) {
             finite(*energy, block)?;
@@ -425,12 +511,113 @@ impl EnginePotential {
         Ok(out)
     }
 
+    /// Query the engine's capabilities via `rgpot_engine_caps`.
+    pub fn caps(&mut self) -> Result<EngineCaps, EngineError> {
+        self.check_usable()?;
+        let caps_fn = self
+            .symbols
+            .caps
+            .ok_or_else(|| unsupported_symbol("rgpot_engine_caps"))?;
+        let mut raw = RgpotEngineCaps {
+            size: std::mem::size_of::<RgpotEngineCaps>() as c_uint,
+            ..Default::default()
+        };
+        let code = unsafe { caps_fn(self.handle.as_ptr(), &mut raw) };
+        self.answer(code, "rgpot_engine_caps")?;
+        Ok(EngineCaps {
+            reentrancy: raw.reentrancy,
+            per_image_instances: raw.per_image_instances != 0,
+            batched: raw.batched != 0,
+            periodic: raw.periodic != 0,
+            stress: raw.stress != 0,
+            group_collective: raw.group_collective != 0,
+            orbital_selection: raw.orbital_selection != 0,
+            orbital_copy: raw.orbital_copy != 0,
+            analytic_hvp: raw.analytic_hvp != 0,
+        })
+    }
+
+    /// Analytic Hessian-vector product `H(positions) * direction`.
+    ///
+    /// Positions and directions are in Angstrom; the result is in
+    /// eV/Angstrom^2 times the direction. No finite-difference fallback is
+    /// attempted.
+    pub fn hvp(
+        &mut self,
+        request: &EngineRequest<'_>,
+        direction: &[f64],
+    ) -> Result<Vec<f64>, EngineError> {
+        self.check_usable()?;
+        let hvp_fn = self
+            .symbols
+            .hvp
+            .ok_or_else(|| unsupported_symbol("rgpot_engine_hvp"))?;
+        if !self.caps()?.analytic_hvp {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_hvp",
+                message: "analytic_hvp is not advertised".into(),
+            });
+        }
+        let n_atoms = request.atomic_numbers.len();
+        check_lengths(n_atoms, request.positions.len())?;
+        if direction.len() != 3 * n_atoms {
+            return Err(EngineError::Invalid(format!(
+                "{} direction entries for {n_atoms} atoms; expected {}",
+                direction.len(),
+                3 * n_atoms
+            )));
+        }
+        if let Some(index) = request
+            .positions
+            .iter()
+            .position(|value| !value.is_finite())
+        {
+            return Err(EngineError::Invalid(format!(
+                "the engine position at element {index} is not finite"
+            )));
+        }
+        if let Some(index) = direction.iter().position(|value| !value.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine direction at element {index} is not finite"
+            )));
+        }
+        let mut product = vec![0.0; 3 * n_atoms];
+        let code = unsafe {
+            hvp_fn(
+                self.handle.as_ptr(),
+                n_atoms as c_long,
+                request.positions.as_ptr(),
+                request.atomic_numbers.as_ptr(),
+                direction.as_ptr(),
+                product.as_mut_ptr(),
+                request.box_matrix.as_ptr(),
+                None,
+                std::ptr::null_mut(),
+            )
+        };
+        self.answer(code, "rgpot_engine_hvp")?;
+        finite_product(&product)?;
+        Ok(product)
+    }
+
     /// The instance as a [`PotentialImpl`]. The handle owns the engine and
-    /// destroys it on drop. Its callback evaluates through [`Self::force`];
-    /// the cell tensor is the 3 by 3 matrix in Angstrom.
-    pub fn into_potential(self) -> PotentialImpl {
+    /// destroys it on drop. Calls through the handle are serialized. A
+    /// capability-query failure is returned rather than silently replacing an
+    /// advertised analytic product with finite differences.
+    pub fn into_potential(mut self) -> Result<PotentialImpl, EngineError> {
+        let analytic_hvp = if self.symbols.hvp.is_some() {
+            self.caps()?.analytic_hvp
+        } else {
+            false
+        };
         let owned = Box::into_raw(Box::new(Mutex::new(self))).cast::<c_void>();
-        PotentialImpl::new(engine_callback, owned, Some(drop_engine))
+        let potential = PotentialImpl::new(engine_callback, owned, Some(drop_engine));
+        if analytic_hvp {
+            potential
+                .as_handle()
+                .set_hessian_vector_callback(Some(engine_hessian_vector_callback));
+        }
+        Ok(potential)
     }
 
     fn check_usable(&self) -> Result<(), EngineError> {
@@ -440,12 +627,14 @@ impl EnginePotential {
         }
     }
 
-    fn answer(&mut self, code: c_int) -> Result<(), EngineError> {
+    fn answer(&mut self, code: c_int, operation: &'static str) -> Result<(), EngineError> {
         if code == 0 {
             return Ok(());
         }
         let message = self.last_error_text(code);
-        if code > 0 {
+        if code == ENGINE_ERR_UNSUPPORTED {
+            Err(EngineError::Unsupported { operation, message })
+        } else if code > 0 {
             Err(EngineError::Recoverable { code, message })
         } else {
             let error = EngineError::Fatal { code, message };
@@ -488,6 +677,13 @@ fn check_lengths(n_atoms: usize, n_positions: usize) -> Result<(), EngineError> 
     Ok(())
 }
 
+fn unsupported_symbol(operation: &'static str) -> EngineError {
+    EngineError::Unsupported {
+        operation,
+        message: "symbol is not exported".into(),
+    }
+}
+
 fn finite(energy: f64, forces: &[f64]) -> Result<(), EngineError> {
     if !energy.is_finite() {
         return Err(EngineError::Invalid(
@@ -497,6 +693,15 @@ fn finite(energy: f64, forces: &[f64]) -> Result<(), EngineError> {
     match forces.iter().position(|value| !value.is_finite()) {
         Some(index) => Err(EngineError::Invalid(format!(
             "the engine force at element {index} is not finite"
+        ))),
+        None => Ok(()),
+    }
+}
+
+fn finite_product(product: &[f64]) -> Result<(), EngineError> {
+    match product.iter().position(|value| !value.is_finite()) {
+        Some(index) => Err(EngineError::Invalid(format!(
+            "the engine Hessian-vector product at element {index} is not finite"
         ))),
         None => Ok(()),
     }
@@ -530,6 +735,8 @@ unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
         destroy: unsafe { required(library, "rgpot_engine_destroy")? },
         force: unsafe { required(library, "rgpot_engine_force")? },
         force_batch: unsafe { optional(library, "rgpot_engine_force_batch") },
+        hvp: unsafe { optional(library, "rgpot_engine_hvp") },
+        caps: unsafe { optional(library, "rgpot_engine_caps") },
         last_error: unsafe { optional(library, "rgpot_engine_last_error") },
     })
 }
@@ -595,13 +802,65 @@ unsafe extern "C" fn engine_callback(
                 }
                 rgpot_status_t::RGPOT_SUCCESS
             }
-            Err(EngineError::Invalid(why)) => {
+            Err(why) => {
+                set_last_error(&why.to_string());
+                why.status()
+            }
+        }
+    }))
+}
+
+unsafe extern "C" fn engine_hessian_vector_callback(
+    user_data: *mut c_void,
+    input: *const rgpot_force_input_t,
+    direction: *const f64,
+    hv_out: *mut f64,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if user_data.is_null() || input.is_null() || direction.is_null() || hv_out.is_null() {
+            set_last_error("engine HVP: null user data, input, direction or output");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let input = unsafe { &*input };
+        let Some(n_atoms) = (unsafe { input.n_atoms() }) else {
+            set_last_error("engine HVP: positions tensor has no shape");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        };
+        let positions = copy_f64_tensor(input.positions, "positions", 3 * n_atoms, true);
+        let numbers = copy_i32_tensor(input.atomic_numbers, "atomic_numbers", n_atoms);
+        let cell = copy_f64_tensor(input.box_matrix, "box_matrix", 9, false);
+        let (positions, numbers, cell) = match (positions, numbers, cell) {
+            (Ok(positions), Ok(numbers), Ok(cell)) => (positions, numbers, cell),
+            (Err(why), _, _) | (_, Err(why), _) | (_, _, Err(why)) => {
                 set_last_error(&why);
-                rgpot_status_t::RGPOT_INVALID_PARAMETER
+                return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+            }
+        };
+        let mut matrix = [0.0; 9];
+        matrix.copy_from_slice(&cell);
+        let request = EngineRequest {
+            positions: &positions,
+            atomic_numbers: &numbers,
+            box_matrix: &matrix,
+        };
+        let direction = unsafe { std::slice::from_raw_parts(direction, 3 * n_atoms) };
+        // The mutex and its pointee outlive this callback. The guard remains
+        // local, and poison permanently prevents another engine entry.
+        let mut engine = match unsafe { &*user_data.cast::<Mutex<EnginePotential>>() }.lock() {
+            Ok(engine) => engine,
+            Err(_) => {
+                set_last_error("engine HVP: callback lock is poisoned");
+                return rgpot_status_t::RGPOT_INTERNAL_ERROR;
+            }
+        };
+        match engine.hvp(&request, direction) {
+            Ok(product) => {
+                unsafe { std::ptr::copy_nonoverlapping(product.as_ptr(), hv_out, product.len()) };
+                rgpot_status_t::RGPOT_SUCCESS
             }
             Err(why) => {
                 set_last_error(&why.to_string());
-                rgpot_status_t::RGPOT_INTERNAL_ERROR
+                why.status()
             }
         }
     }))

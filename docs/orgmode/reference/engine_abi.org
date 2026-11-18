@@ -97,7 +97,7 @@ Required symbol.
 - Units :: none.
 - Outputs :: three =unsigned short= fields:
   =abi_major= (=RGPOT_ENGINE_ABI_VERSION=, 1),
-  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 3) and
+  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 4) and
   =layout_revision= (=RGPOT_ENGINE_ABI_LAYOUT_REVISION=, 1).
 - Errors :: none.
 
@@ -116,6 +116,7 @@ Minor 2 added =rgpot_engine_name=, =rgpot_engine_version=,
 Minor 3 added
 =RgpotEngineCaps.orbital_selection=, =RgpotEngineCaps.orbital_copy=,
 =rgpot_engine_select_orbitals= and =rgpot_engine_copy_orbitals=.
+Minor 4 added =rgpot_engine_hvp= and =RgpotEngineCaps.analytic_hvp=.
 The version does not cover the Cap'n Proto params schema, the tensor runtime the
 engine links, or the model.
 
@@ -253,7 +254,7 @@ Must not run concurrently with another call on the same handle.
 - Units :: none.
 - Outputs :: =size= (bytes the engine wrote), =reentrancy=,
   =per_image_instances=, =batched=, =periodic=, =stress=,
-  =group_collective=, =orbital_selection= and =orbital_copy=; the flags are 0 or 1.
+  =group_collective=, =orbital_selection=, =orbital_copy= and =analytic_hvp=; the flags are 0 or 1.
 - Errors :: none.
 
 The fields mirror rgpot's =PotCaps=.
@@ -266,6 +267,7 @@ returns it.
 =group_collective= means every rank of a calculator group enters each call.
 =orbital_selection= means the backend supports =rgpot_engine_select_orbitals=.
 =orbital_copy= means the backend supports =rgpot_engine_copy_orbitals=.
+=analytic_hvp= means =rgpot_engine_hvp= returns an exact analytic product.
 
 =reentrancy= decides how the table admits concurrent =rgpot_engine_force= and
 =rgpot_engine_force_batch= calls:
@@ -496,6 +498,32 @@ Required symbol.
 Any thread may call it on any handle; concurrency follows
 =RgpotEngineCaps.reentrancy=.
 When the host holds the Python GIL, the call releases it during the evaluation.
+
+*** =rgpot_engine_hvp=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
+                     const double *positions, const int *atomicNrs,
+                     const double *direction, double *hv_out,
+                     const double *box,
+                     rgpot_engine_coord_transform transform,
+                     void *transform_user);
+#+end_src
+
+- Inputs :: =pot=, =nAtoms=, =positions=, =atomicNrs= and =box= as for
+  =rgpot_engine_force=; =direction=, 3*nAtoms doubles; =transform= and
+  =transform_user=, an optional coordinate transform applied to an engine-owned
+  copy of =positions= and =box=.
+- Units :: =positions= and =box= in Angstrom; =direction= in Angstrom.
+- Outputs :: 0 on success; =hv_out= receives
+  =H(positions) * direction= in eV/Angstrom.
+- Errors :: returns 1 for invalid arguments, 2 when evaluation fails, 3 when
+  analytic HVP is unsupported, or the transform's nonzero code.
+
+Optional symbol.
+The engine also sets =RgpotEngineCaps.analytic_hvp=.
+The caller's position and box buffers are not modified.
 
 *** =rgpot_engine_force_batch=
 
@@ -1123,11 +1151,12 @@ No second engine abstraction is added: =EnginePotential::into_potential= wraps
 the handle as a =PotentialImpl=.
 
 - =ENGINE_ABI_VERSION=, =ENGINE_ABI_MINOR=, =ENGINE_ABI_LAYOUT_REVISION= ::
-  Expected ABI identity (1, 3, 1).
+  Expected ABI identity (1, 4, 1).
 - =RgpotEnginePot= :: Opaque handle type matching =struct RgpotEnginePot=.
 - =CoordTransformFn=, =AbiVersionFn=, =AbiStampFn=, =AbiCompatibleFn=,
-  =CreateFn=, =DestroyFn=, =ForceFn=, =ForceBatchFn=, =LastErrorFn= ::
-  =extern "C"= function-pointer types matching the C declarations above.
+  =CreateFn=, =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =CapsFn=,
+  =LastErrorFn= :: =extern "C"= function-pointer types matching the C
+  declarations above.
 - =EngineSymbols= :: Resolved symbol table holding required (=abi_version=,
   =create=, =destroy=, =force=) and optional (=force_batch=, =last_error=)
   function pointers.
@@ -1152,5 +1181,11 @@ the handle as a =PotentialImpl=.
   =EngineError::Recoverable= and negative codes to =EngineError::Fatal= using
   =rgpot_engine_last_error= when present. A fatal result is sticky: later calls
   return it without entering the engine.
+- =EnginePotential::caps()= :: Reads =rgpot_engine_caps=, including
+  =analytic_hvp=.
+- =EnginePotential::hvp(&request, direction)= :: Calls only the analytic
+  =rgpot_engine_hvp= path and returns =Unsupported= when the symbol or
+  capability is absent. It never finite-differences.
 - =EnginePotential::into_potential(self)= :: Converts the instance into a
-  =PotentialImpl= callback handle.
+  =PotentialImpl= callback handle and installs the analytic HVP callback when
+  advertised. A failed capability query is returned to the caller.
