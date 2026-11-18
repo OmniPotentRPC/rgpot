@@ -270,7 +270,18 @@ struct FusedEvaluation {
     /// `f64::to_bits` of each coordinate. Float equality would let `-0.0`
     /// be served the result computed at `+0.0`.
     positions: Vec<u64>,
-    gradient: Vec<f64>,
+    /// The gradient, or how the energy at these positions failed. A failed
+    /// energy is an answer too: the gradient asked for next at the same
+    /// geometry fails the same way without a second callback, so one failed
+    /// `value_and_gradient` costs the engine one evaluation.
+    outcome: Result<Vec<f64>, FusedFailure>,
+}
+
+enum FusedFailure {
+    /// The callback returned a status other than `RGPOT_SUCCESS`.
+    Callback,
+    /// The callback reported success with a malformed or non-finite result.
+    Rejected(String),
 }
 
 fn position_bits(x: &[f64]) -> Vec<u64> {
@@ -349,36 +360,33 @@ unsafe extern "C" fn rgpot_eval_cb(
     } else {
         Err(String::new())
     };
-    let fused = forces.as_ref().ok().map(|forces| FusedEvaluation {
-        positions: position_bits(&x_data),
-        gradient: forces.iter().map(|force| -*force).collect(),
-    });
+    let outcome = match forces {
+        Ok(forces) => Ok(forces.iter().map(|force| -*force).collect()),
+        Err(_) if status != rgpot_status_t::RGPOT_SUCCESS => Err(FusedFailure::Callback),
+        Err(msg) => Err(FusedFailure::Rejected(msg)),
+    };
     unsafe {
         rgpot_tensor_free(output.forces);
         rgpot_tensor_free(input.positions);
         rgpot_tensor_free(input.atomic_numbers);
         rgpot_tensor_free(input.box_matrix);
     }
-    if status != rgpot_status_t::RGPOT_SUCCESS {
-        *pot.fused_cache
-            .last
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
-        return eindir_status_t::EINDIR_INTERNAL_ERROR;
-    }
-    if let Err(msg) = forces {
-        *pot.fused_cache
-            .last
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
-        return reject(&msg);
-    }
+    let answer = match &outcome {
+        Ok(_) => {
+            unsafe { *value_out = output.energy };
+            eindir_status_t::EINDIR_SUCCESS
+        }
+        Err(FusedFailure::Callback) => eindir_status_t::EINDIR_INTERNAL_ERROR,
+        Err(FusedFailure::Rejected(msg)) => reject(msg),
+    };
     *pot.fused_cache
         .last
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = fused;
-    unsafe { *value_out = output.energy };
-    eindir_status_t::EINDIR_SUCCESS
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(FusedEvaluation {
+        positions: position_bits(&x_data),
+        outcome,
+    });
+    answer
 }
 
 unsafe extern "C" fn rgpot_grad_cb(
@@ -409,10 +417,16 @@ unsafe extern "C" fn rgpot_grad_cb(
         .take();
     if let Some(cached) = cached {
         if cached.positions == position_bits(&x_data) {
-            let dst = unsafe { std::slice::from_raw_parts_mut(dst_ptr, n) };
-            dst.copy_from_slice(&cached.gradient);
             pot.fused_cache.served.fetch_add(1, Ordering::Relaxed);
-            return eindir_status_t::EINDIR_SUCCESS;
+            return match cached.outcome {
+                Ok(gradient) => {
+                    let dst = unsafe { std::slice::from_raw_parts_mut(dst_ptr, n) };
+                    dst.copy_from_slice(&gradient);
+                    eindir_status_t::EINDIR_SUCCESS
+                }
+                Err(FusedFailure::Callback) => eindir_status_t::EINDIR_INTERNAL_ERROR,
+                Err(FusedFailure::Rejected(msg)) => reject(&msg),
+            };
         }
     }
     let mut pos = x_data.to_vec();
@@ -603,7 +617,8 @@ mod tests {
     use super::*;
     use crate::tensor::create_owned_f64_tensor;
     use eindir_core::ffi::EindirObjectiveWrapper;
-    use eindir_core::gradient::DifferentiableObjective;
+    use eindir_core::gradient::{DifferentiableObjective, Gradient};
+    use eindir_core::Objective;
     use ndarray::Array1;
 
     struct Ctx1d {
@@ -711,6 +726,83 @@ mod tests {
         assert!(gradient.iter().all(|&value| value == 1.0));
         assert_eq!(calls, 1, "a fused request must execute the engine once");
         unsafe { rgpot_potential_free_eindir(pot) };
+    }
+
+    unsafe extern "C" fn counting_failing_callback(
+        user_data: *mut c_void,
+        _input: *const rgpot_force_input_t,
+        _output: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        let calls = unsafe { &mut *(user_data as *mut usize) };
+        *calls += 1;
+        rgpot_status_t::RGPOT_INTERNAL_ERROR
+    }
+
+    unsafe extern "C" fn counting_nonfinite_callback(
+        user_data: *mut c_void,
+        input: *const rgpot_force_input_t,
+        output: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        let status = unsafe { counting_energy_callback(user_data, input, output) };
+        unsafe { (*output).energy = f64::NAN };
+        status
+    }
+
+    fn counted(callback: PotentialCallback, calls: &mut usize) -> *mut rgpot_potential_t {
+        let atmnrs = [1i32, 1];
+        let box_ = [10.0f64, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        let pot = unsafe {
+            rgpot_potential_new_eindir(
+                callback,
+                (calls as *mut usize).cast(),
+                None,
+                2,
+                atmnrs.as_ptr(),
+                box_.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        };
+        assert!(!pot.is_null());
+        pot
+    }
+
+    #[test]
+    fn a_failed_fused_request_executes_the_engine_once() {
+        for callback in [
+            counting_failing_callback as PotentialCallback,
+            counting_nonfinite_callback,
+        ] {
+            let mut calls = 0usize;
+            let pot = counted(callback, &mut calls);
+            let objective = unsafe { EindirObjectiveWrapper::new(&(*pot).base) };
+            let x = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+
+            let (energy, _) = objective.value_and_gradient(x.view());
+
+            assert!(energy.is_nan());
+            assert_eq!(
+                calls, 1,
+                "a failed fused request must execute the engine once"
+            );
+            let mut counts = rgpot_eval_counts_t {
+                computed: 0,
+                served: 0,
+            };
+            let status = unsafe { rgpot_potential_eval_counts(pot, &mut counts) };
+            assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+            assert_eq!((counts.computed, counts.served), (1, 1));
+
+            assert!(objective.eval(x.view()).is_nan());
+            assert_eq!(calls, 2, "a new energy request runs the engine again");
+            let elsewhere = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0, 7.0]);
+            let _ = objective.grad(elsewhere.view());
+            assert_eq!(
+                calls, 3,
+                "another geometry's gradient is not the cached failure"
+            );
+            unsafe { rgpot_potential_free_eindir(pot) };
+        }
     }
 
     /// The IS-A cast: a rgpot_potential_t* is passed to eindir functions by
