@@ -27,7 +27,12 @@ documentation_style = "doxy"
 # rgpot_potential_set_hvp_callback and rgpot_potential_set_taylor_jet, not
 # by a signature.
 include = ["rgpot_hvp_scheme_t", "HessianVectorCallback", "rgpot_taylor_jet_fn", "rgpot_interval_t"]
-exclude = []
+exclude = [
+    "ENGINE_ABI_VERSION",
+    "ENGINE_ABI_MINOR",
+    "ENGINE_ABI_LAYOUT_REVISION",
+    "ENGINE_ERR_UNSUPPORTED",
+]
 
 [export.rename]
 
