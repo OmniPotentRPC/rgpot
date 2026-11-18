@@ -99,10 +99,12 @@ int rgpot_engine_available(void) { return FIXTURE_AVAILABLE; }
 #endif
 
 #ifndef NO_STAMP
+#ifndef NO_STAMP_ONLY
 RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
   RgpotEngineAbiStamp stamp = {FIXTURE_ABI, FIXTURE_MINOR, FIXTURE_LAYOUT};
   return stamp;
 }
+#endif
 
 int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *host) {
   return host != NULL && host->abi_major == FIXTURE_ABI &&
