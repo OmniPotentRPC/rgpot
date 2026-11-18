@@ -16,7 +16,7 @@ extern int verbose;
 
 NeighborList::NeighborList(Atoms *a, double rCut, double driftfactor,
                            int defaultNeighborEstimate)
-    : atoms(a) {
+try : atoms(a), neighborList(0), indices(0) {
   // Driftfactor defaults to 0.05, but is set to 0.0 by CNA and friends
   if (verbose > 2)
     cerr << "NeighborList::NeighborList beginning" << endl;
@@ -51,6 +51,11 @@ NeighborList::NeighborList(Atoms *a, double rCut, double driftfactor,
   if (verbose > 2)
     cerr << "NeighborList::NeighborList completed." << endl;
   CheckAndUpdateNeighborList();
+} catch (...) {
+  // The destructor does not run when a constructor throws.
+  delete[] indices;
+  delete[] neighborList;
+  throw;
 }
 
 NeighborList::~NeighborList() {
