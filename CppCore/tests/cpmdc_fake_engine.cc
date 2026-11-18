@@ -109,6 +109,10 @@ constexpr long long kNoOrbitalKey = -1000000;
 long long g_last_orbital_key = kNoOrbitalKey;
 double g_last_initial_orbital_state = -1.0;
 double g_last_final_orbital_state = -1.0;
+// Text returned by cpmdc_last_error. A failing select stores its reason
+// and a successful select clears it, so a test can tell this fake from
+// one that ignores the call and always reports an empty string.
+std::string g_last_error;
 
 } // namespace
 
@@ -182,10 +186,14 @@ int cpmdc_session_set_params(CPMDCSession *session, const void *params_capnp,
 void cpmdc_session_destroy(CPMDCSession *session) { delete session; }
 
 int cpmdc_session_select_orbitals(CPMDCSession *session, long long key) {
-  if (session == nullptr)
+  if (session == nullptr) {
+    g_last_error = "null session";
     return -1;
-  if (key == -99)
+  }
+  if (key == -99) {
+    g_last_error = "orbital key refused";
     return -1;
+  }
   auto it = session->orbital_store.find(key);
   if (it == session->orbital_store.end()) {
     session->orbital_store.emplace(key, session->orbital_state);
@@ -194,6 +202,7 @@ int cpmdc_session_select_orbitals(CPMDCSession *session, long long key) {
   }
   session->orbital_key = key;
   session->has_orbital_key = true;
+  g_last_error.clear();
   return 0;
 }
 
@@ -412,7 +421,9 @@ RGPOT_FAKE_ONLY double cpmdc_fake_last_final_orbital_state(void) {
   return g_last_final_orbital_state;
 }
 
-RGPOT_FAKE_ONLY const char *cpmdc_last_error(void) { return ""; }
+RGPOT_FAKE_ONLY const char *cpmdc_last_error(void) {
+  return g_last_error.c_str();
+}
 
 RGPOT_FAKE_ONLY int cpmdc_configure(const void *config_capnp,
                                     size_t config_capnp_size_bytes) {

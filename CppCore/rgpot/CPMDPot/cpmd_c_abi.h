@@ -126,8 +126,11 @@ RGPOT_CPMDC_API void cpmdc_session_destroy(CPMDCSession *session);
  *         previously stored key's orbitals), and -1 when `session` is NULL,
  *         `key` is refused, or the library is the stub without an embedded
  *         runtime (leaving the session's active key and orbitals unchanged).
- *         Neither outcome sets or clears `cpmdc_last_error` (which this header
- *         does not declare and `CPMDPot` does not read).
+ *         `cpmdc_last_error` is not declared here and `CPMDPot` does not read
+ *         it. This note covers only the stub and the reference fake: the stub
+ *         does not define `cpmdc_last_error`, and the reference fake stores one
+ *         string that a failing select sets and a successful select clears.
+ *         Other engines are not described.
  */
 RGPOT_CPMDC_API int cpmdc_session_select_orbitals(CPMDCSession *session,
                                                   long long key);
