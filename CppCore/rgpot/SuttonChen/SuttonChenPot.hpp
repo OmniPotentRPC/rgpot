@@ -151,6 +151,15 @@ public:
   /// Stored Verlet list or a streaming cell walk.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// Atoms from which a call adds its terms atom by atom in index order,
+  /// on any thread count: the least in kTeamFrom.
+  static constexpr std::size_t kTeamMinAtoms = 64;
+  /// Atoms from which a team of two threads opens, of three, and of four
+  /// or more: the smallest clusters from which each took at most nine
+  /// tenths of the one-thread time in thread_count_bench. A team evaluates
+  /// each pair twice in each pass, and no team of two did.
+  static constexpr TeamFrom kTeamFrom{kNoTeam, 2048, kTeamMinAtoms};
+
   /// Pairs, over all threads, whose density-pass powers the force pass
   /// reads back. It computes the rest again, with the same bits. The
   /// default keeps 32 MiB of terms.

@@ -137,7 +137,8 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
   // Two different atoms on the same point make the energy NaN. Skipping
   // the pair would report a finite energy of zero and hide the singularity.
   nlist::sumPairs(
-      neighbours_, n_atoms, cutoff2, nlist::Overlap::Poison,
+      neighbours_, n_atoms, teamThreshold(kTeamMinAtoms), kTeamFrom, cutoff2,
+      nlist::Overlap::Poison,
       [&params](std::int32_t, std::int32_t, double r2, double &pair_e, double &fscale) {
         lj_pair(r2, params, pair_e, fscale);
       },

@@ -378,7 +378,8 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     }
   };
 
-  if (n_atoms < kTeamMinAtoms) {
+  const std::size_t from = teamThreshold(kTeamMinAtoms);
+  if (n_atoms < from) {
     std::vector<Bond> nb;
     for (int i = 0; i < n; ++i) {
       load(i, nb);
@@ -388,7 +389,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     return;
   }
   sumCentres<std::vector<Bond>>(
-      n_atoms,
+      n_atoms, from, kTeamFrom,
       [&](std::int32_t i, CentreTerms &terms, std::vector<Bond> &nb) {
         load(i, nb);
         terms.reset(i, nb);

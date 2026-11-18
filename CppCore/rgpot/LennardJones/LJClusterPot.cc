@@ -149,8 +149,8 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
       fscale = f_un * s - (v * dsdr) / r;
     }
   };
-  nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), cutoff2, nlist::Overlap::Skip, term,
-                  F, *U, nullptr, atoms);
+  nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), teamThreshold(kTeamMinAtoms),
+                  kTeamFrom, cutoff2, nlist::Overlap::Skip, term, F, *U, nullptr, atoms);
 }
 
 } // namespace rgpot

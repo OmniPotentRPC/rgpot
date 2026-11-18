@@ -66,6 +66,14 @@ public:
   /// thread agrees with the old ordered walk to within 1e-12.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// Atoms from which a call adds its terms atom by atom in index order,
+  /// on any thread count: the least in kTeamFrom.
+  static constexpr std::size_t kTeamMinAtoms = 32;
+  /// Atoms from which a team of two threads opens, of three, and of four
+  /// or more: the smallest clusters from which each took at most nine
+  /// tenths of the one-thread time in thread_count_bench.
+  static constexpr TeamFrom kTeamFrom{112, 56, kTeamMinAtoms};
+
   /**
    * @brief Energy and dE/dx for one configuration.
    *
