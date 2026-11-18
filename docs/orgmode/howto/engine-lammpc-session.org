@@ -3,6 +3,7 @@
 The =lammpc= MD engine keeps one LAMMPS instance behind lammpc's stable C ABI.
 Build it with:
 
+#+attr_rgpot: syntax configures the lammpc session engine
 #+begin_src sh
 meson setup build \
   -Dwith_rpc=true -Dwith_openmm=enabled \

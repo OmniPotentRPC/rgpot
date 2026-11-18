@@ -231,8 +231,9 @@ amu.
 *** =rgpot_md_session_ops=
 
 - Inputs :: =struct_size= (=sizeof(rgpot_md_session_ops)=) and backend
-  callbacks =set_positions=, =set_velocities=, =step_langevin=, =step_nve=,
-  =get_state=, =get_masses=, and =destroy=.
+  callbacks for the periodic box, positions, velocities, reseeding,
+  initialization, Langevin and NVE steps, state, masses, constraint force, and
+  destruction.
 - Units :: rgpot host units (Angstrom, eV, ps, amu).
 - Outputs :: vtable consumed by =rgpot_md_session_from_ops= and exported by
   engine plugins implementing =rgpot_md_session_engine_create_fn=.
@@ -337,6 +338,22 @@ int rgpot_md_session_set_positions(rgpot_md_session *session,
 - Errors :: returns 1 and writes =err= on null pointers, wrong length, or
   non-finite coordinates.
 
+*** =rgpot_md_session_set_periodic_box=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
+                                      const double *box9, char *err,
+                                      size_t err_len);
+#+end_src
+
+- Inputs :: =session=, nine row-major lattice-vector values, and
+  =err=/=err_len=.
+- Units :: Angstrom.
+- Outputs :: returns 0 after replacing the periodic box.
+- Errors :: returns 1 and writes =err= for null or non-finite input or a
+  backend failure.
+
 *** =rgpot_md_session_set_velocities=
 
 #+attr_rgpot: signature
@@ -352,6 +369,21 @@ int rgpot_md_session_set_velocities(rgpot_md_session *session,
 - Outputs :: returns 0 on success.
 - Errors :: returns 1 and writes =err= on null pointers, wrong length, or
   non-finite velocities.
+
+*** =rgpot_md_session_reseed_velocities=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
+                                       uint64_t seed, char *err,
+                                       size_t err_len);
+#+end_src
+
+- Inputs :: =session=, positive thermal energy =kT=, a full 64-bit =seed=, and
+  =err=/=err_len=.
+- Units :: =kT= in eV; generated velocities are Angstrom/ps.
+- Outputs :: returns 0 after a deterministic Maxwell--Boltzmann draw.
+- Errors :: returns 1 and writes =err= for invalid input or backend failure.
 
 *** =rgpot_md_session_step_langevin=
 
@@ -409,6 +441,35 @@ int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
 - Outputs :: returns 0 and fills any non-null output buffers.
 - Errors :: returns 1 and writes =err= on null session, length mismatch, or
   backend failure.
+
+*** =rgpot_md_session_get_constraint_force=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_constraint_force(rgpot_md_session *session,
+                                          double *constraint_force, char *err,
+                                          size_t err_len);
+#+end_src
+
+- Inputs :: =session=, scalar output =constraint_force=, and
+  =err=/=err_len=.
+- Units :: eV/Angstrom along the positive unit =3N= plane normal.
+- Outputs :: returns 0 and writes the latest physical normal force.
+- Errors :: returns 1 and writes =err= for null input or backend failure.
+
+*** =rgpot_md_session_initialize=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_initialize(rgpot_md_session *session, char *err,
+                                size_t err_len);
+#+end_src
+
+- Inputs :: =session= and =err=/=err_len= after box, position, and velocity
+  setters.
+- Units :: none.
+- Outputs :: returns 0 after evaluating the initial force and energy state.
+- Errors :: returns 1 and writes =err= for a null session or backend failure.
 
 *** =rgpot_md_session_destroy=
 
