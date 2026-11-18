@@ -19,9 +19,9 @@
  * rgpot_gupta when no stress or per-atom output is requested. A positive
  * cutoff truncates pairs at that distance with no energy shift.
  *
- * Coincident atoms retain the finite r_ij = 0 pair and embedding energy.
- * Their pair force is defined as zero because its direction is undefined and
- * cancels by symmetry.
+ * A coincident pair is not a minimum. rgpot_gupta sets the energy to
+ * +infinity and returns. Neighbour and staged evaluation sets the energy
+ * to NaN and adds no pair force, as LJPot does.
  */
 
 // clang-format off
