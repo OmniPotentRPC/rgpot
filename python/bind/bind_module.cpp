@@ -762,7 +762,33 @@ NB_MODULE(_core, m) {
            nb::arg("box").noconvert(),
            "Energy and dE/dx. positions is (n_atoms, 3) or "
            "(n_config, n_atoms, 3). A batch shares atom_types and box, "
-           "and crosses into the library once.");
+           "and crosses into the library once.")
+      .def(
+          "hessian",
+          [](const rgpot::StillingerWeberSi &self, const F64 &positions,
+             nb::handle atom_types, const F64 &box) {
+            auto geom =
+                rgpot::pybind::read_geom(positions, atom_types, box);
+            const std::size_t n = geom.pos.rows();
+            std::array<double, 9> flat{};
+            for (std::size_t i = 0; i < 3; ++i) {
+              for (std::size_t j = 0; j < 3; ++j) {
+                flat[3 * i + j] = geom.box[i][j];
+              }
+            }
+            std::vector<double> dense;
+            {
+              nb::gil_scoped_release release;
+              const rgpot::ForceInput in{
+                  .nAtoms = n, .pos = geom.pos.data(),
+                  .atmnrs = geom.types.data(), .box = flat.data()};
+              dense = rgpot::denseAnalyticHessian(self, in);
+            }
+            return rgpot::pybind::vector_to_numpy(dense, {3 * n, 3 * n});
+          },
+          nb::arg("positions").noconvert(), nb::arg("atom_types"),
+          nb::arg("box").noconvert(),
+          "Dense analytic Cartesian Hessian, shape (3N, 3N).");
 
   nb::class_<rgpot::TersoffSiC>(m, "TersoffSiC")
       .def(nb::init<>(),

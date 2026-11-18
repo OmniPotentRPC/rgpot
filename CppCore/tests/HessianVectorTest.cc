@@ -12,7 +12,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <limits>
+#include <random>
 #include <stdexcept>
 #include <vector>
 
@@ -22,6 +24,7 @@
 #include "rgpot/HessianVector.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/StillingerWeber/SWSi.hpp"
 
 using rgpot::ForceInput;
 using rgpot::ForceOut;
@@ -29,6 +32,7 @@ using rgpot::HessianVectorCache;
 using rgpot::HvpScheme;
 using rgpot::MorseConfig;
 using rgpot::MorsePot;
+using rgpot::StillingerWeberSi;
 
 namespace {
 
@@ -290,6 +294,80 @@ TEST_CASE("denseAnalyticHessian puts products in columns",
   pot.hessianVectorImpl(s.input(), v.data(), product.data());
   const auto from_dense = multiply(dense, v);
   CHECK(relativeError(from_dense, product) < 1e-13);
+}
+
+TEST_CASE("Stillinger-Weber analytic product at the diamond minimum",
+          "[HessianVector]") {
+  auto derivative = [](double u) {
+    const double s = 1.0 / (u - StillingerWeberSi::kCut);
+    const double inverse = 1.0 / u;
+    const double inverse4 = std::pow(inverse, StillingerWeberSi::kP);
+    const double shape = StillingerWeberSi::kB * inverse4 - 1.0;
+    const double shape_derivative =
+        -StillingerWeberSi::kP * StillingerWeberSi::kB * inverse4 * inverse;
+    return StillingerWeberSi::kA * std::exp(s) *
+           (shape_derivative - shape * s * s);
+  };
+  double u = 1.12;
+  const double root_step = 1e-6;
+  for (int iteration = 0; iteration < 12; ++iteration) {
+    const double curvature =
+        (derivative(u + root_step) - derivative(u - root_step)) /
+        (2.0 * root_step);
+    u -= derivative(u) / curvature;
+  }
+  const double side =
+      u * StillingerWeberSi::kSigma * 4.0 / std::sqrt(3.0);
+  const double basis[8][3] = {
+      {0.0, 0.0, 0.0},       {0.5, 0.5, 0.0},
+      {0.5, 0.0, 0.5},       {0.0, 0.5, 0.5},
+      {0.25, 0.25, 0.25},    {0.75, 0.75, 0.25},
+      {0.75, 0.25, 0.75},    {0.25, 0.75, 0.75}};
+  std::vector<double> x;
+  for (const auto &site : basis) {
+    for (double coordinate : site) {
+      x.push_back(side * coordinate);
+    }
+  }
+  std::vector<int> z(8, 14);
+  const auto box = cell(side);
+  const ForceInput in{.nAtoms = z.size(), .pos = x.data(),
+                      .atmnrs = z.data(), .box = box.data()};
+  StillingerWeberSi pot;
+  std::vector<double> forces(x.size());
+  ForceOut out{.F = forces.data(), .energy = 0.0, .variance = 0.0,
+               .stress = {}, .has_stress = 0};
+  pot.forceImpl(in, &out);
+  const double inverse = 1.0 / u;
+  const double pair_energy =
+      StillingerWeberSi::kEpsilon * StillingerWeberSi::kA *
+      (StillingerWeberSi::kB * std::pow(inverse, StillingerWeberSi::kP) -
+       1.0) *
+      std::exp(1.0 / (u - StillingerWeberSi::kCut));
+  CHECK_THAT(out.energy,
+             Catch::Matchers::WithinAbs(
+                 16.0 * pair_energy,
+                 128.0 * std::numeric_limits<double>::epsilon() *
+                     std::abs(out.energy)));
+  for (double force : forces) {
+    CHECK(std::abs(force) < 1e-11);
+  }
+  CHECK(pot.caps().analyticHvp);
+  static_assert(rgpot::AnalyticHessianVectorKernel<StillingerWeberSi>);
+
+  std::mt19937_64 random(0x53574);
+  std::uniform_real_distribution<double> displacement(-0.03, 0.03);
+  for (double &coordinate : x) {
+    coordinate += displacement(random);
+  }
+  const auto v = direction(x.size());
+  std::vector<double> analytic(x.size());
+  pot.hessianVectorImpl(in, v.data(), analytic.data());
+  const auto oracle = finiteDifferenceOracle(pot, x, z, box, v);
+  for (std::size_t k = 0; k < v.size(); ++k) {
+    CHECK(std::abs(analytic[k] - oracle.product[k]) <=
+          8.0 * oracle.bound[k]);
+  }
 }
 
 TEST_CASE("MorsePot hessianVectorImpl differentiates the switch", "[HessianVector]") {

@@ -12,6 +12,7 @@
 
 #include "rgpot/CentreTerms.hpp"
 #include "rgpot/ParamHash.hpp"
+#include "rgpot/nlist/MinimumImage.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
@@ -37,6 +38,66 @@ struct PairTerm {
   double dgdr;
 };
 
+struct HyperDual {
+  double value;
+  double first;
+  double second;
+  double mixed;
+};
+
+HyperDual operator+(const HyperDual &a, const HyperDual &b) {
+  return {a.value + b.value, a.first + b.first, a.second + b.second,
+          a.mixed + b.mixed};
+}
+
+HyperDual operator-(const HyperDual &a, const HyperDual &b) {
+  return {a.value - b.value, a.first - b.first, a.second - b.second,
+          a.mixed - b.mixed};
+}
+
+HyperDual operator*(const HyperDual &a, const HyperDual &b) {
+  return {a.value * b.value,
+          a.first * b.value + a.value * b.first,
+          a.second * b.value + a.value * b.second,
+          a.mixed * b.value + a.first * b.second +
+              a.second * b.first + a.value * b.mixed};
+}
+
+HyperDual inverse(const HyperDual &x) {
+  const double inv = 1.0 / x.value;
+  const double inv2 = inv * inv;
+  return {inv, -x.first * inv2, -x.second * inv2,
+          2.0 * x.first * x.second * inv2 * inv - x.mixed * inv2};
+}
+
+HyperDual operator/(const HyperDual &a, const HyperDual &b) {
+  return a * inverse(b);
+}
+
+HyperDual hdExp(const HyperDual &x) {
+  const double value = std::exp(x.value);
+  return {value, value * x.first, value * x.second,
+          value * (x.mixed + x.first * x.second)};
+}
+
+HyperDual hdSqrt(const HyperDual &x) {
+  const double value = std::sqrt(x.value);
+  const double twice = 2.0 * value;
+  return {value, x.first / twice, x.second / twice,
+          x.mixed / twice -
+              x.first * x.second / (4.0 * value * value * value)};
+}
+
+HyperDual constant(double value) { return {value, 0.0, 0.0, 0.0}; }
+
+struct DualBond {
+  HyperDual x;
+  HyperDual y;
+  HyperDual z;
+  HyperDual r;
+  HyperDual cutoff_exp;
+};
+
 PairTerm pairTerm(double r) {
   const double u = r / StillingerWeberSi::kSigma;
   const double gap = u - StillingerWeberSi::kCut;
@@ -60,6 +121,19 @@ PairTerm pairTerm(double r) {
   const double dgdr =
       gexp * (-StillingerWeberSi::kGamma * s * s) / StillingerWeberSi::kSigma;
   return {true, f2, dedr, gexp, dgdr};
+}
+
+bool activeDistance(double r) {
+  const double gap = r / StillingerWeberSi::kSigma -
+                     StillingerWeberSi::kCut;
+  return gap < 0.0 && gap <= -1.0 / 700.0;
+}
+
+HyperDual cutoffExponent(const HyperDual &r) {
+  const HyperDual gap =
+      r / constant(StillingerWeberSi::kSigma) -
+      constant(StillingerWeberSi::kCut);
+  return inverse(gap);
 }
 
 } // namespace
@@ -95,6 +169,92 @@ void StillingerWeberSi::forceImpl(const ForceInput &in, ForceOut *out) const {
   evaluate(in.pos, in.box, in.nAtoms, &out->energy, out->F, 1.0, nullptr,
            strain);
   publishCauchyStress(out, strain, cellVolume(in.box));
+}
+
+void StillingerWeberSi::hessianVectorImpl(const ForceInput &in,
+                                          const double *direction,
+                                          double *hv) const {
+  const std::size_t dim = 3 * in.nAtoms;
+  if (dim == 0) {
+    return;
+  }
+  if (in.pos == nullptr || in.box == nullptr || direction == nullptr ||
+      hv == nullptr) {
+    throw std::invalid_argument("StillingerWeberSi: null Hessian buffer");
+  }
+  for (std::size_t q = 0; q < dim; ++q) {
+    if (!std::isfinite(in.pos[q])) {
+      throw std::invalid_argument("StillingerWeberSi: non-finite position");
+    }
+  }
+
+  const nlist::MinimumImage image(in.box, {true, true, true});
+  const double cut = kCut * kSigma;
+  const double cut2 = cut * cut;
+  std::vector<HyperDual> positions(dim);
+  std::vector<DualBond> bonds;
+  bonds.reserve(in.nAtoms > 0 ? in.nAtoms - 1 : 0);
+
+  for (std::size_t row = 0; row < dim; ++row) {
+    for (std::size_t q = 0; q < dim; ++q) {
+      positions[q] = {in.pos[q], q == row ? 1.0 : 0.0, direction[q], 0.0};
+    }
+
+    HyperDual energy = constant(0.0);
+    for (std::size_t i = 0; i < in.nAtoms; ++i) {
+      bonds.clear();
+      for (std::size_t j = 0; j < in.nAtoms; ++j) {
+        if (j == i) {
+          continue;
+        }
+        HyperDual dx = positions[3 * j] - positions[3 * i];
+        HyperDual dy = positions[3 * j + 1] - positions[3 * i + 1];
+        HyperDual dz = positions[3 * j + 2] - positions[3 * i + 2];
+        double folded_x = dx.value;
+        double folded_y = dy.value;
+        double folded_z = dz.value;
+        image.fold(folded_x, folded_y, folded_z);
+        dx.value = folded_x;
+        dy.value = folded_y;
+        dz.value = folded_z;
+        const HyperDual r2 = dx * dx + dy * dy + dz * dz;
+        if (!(r2.value > 0.0) || r2.value >= cut2) {
+          continue;
+        }
+        const HyperDual r = hdSqrt(r2);
+        if (!activeDistance(r.value)) {
+          continue;
+        }
+        const HyperDual exponent = cutoffExponent(r);
+        bonds.push_back({dx, dy, dz, r, exponent});
+
+        if (j > i) {
+          const HyperDual inv_u = constant(kSigma) / r;
+          const HyperDual inv_u2 = inv_u * inv_u;
+          const HyperDual inv_u4 = inv_u2 * inv_u2;
+          const HyperDual shape = constant(kB) * inv_u4 - constant(1.0);
+          energy = energy + constant(kEpsilon * kA) * shape * hdExp(exponent);
+        }
+      }
+
+      for (std::size_t a = 0; a < bonds.size(); ++a) {
+        const DualBond &left = bonds[a];
+        for (std::size_t b = a + 1; b < bonds.size(); ++b) {
+          const DualBond &right = bonds[b];
+          const HyperDual dot =
+              left.x * right.x + left.y * right.y + left.z * right.z;
+          const HyperDual cosine = dot / (left.r * right.r);
+          const HyperDual angle = cosine + constant(1.0 / 3.0);
+          const HyperDual radial =
+              hdExp(constant(kGamma) * left.cutoff_exp) *
+              hdExp(constant(kGamma) * right.cutoff_exp);
+          energy = energy +
+                   constant(kEpsilon * kLambda) * radial * angle * angle;
+        }
+      }
+    }
+    hv[row] = energy.mixed;
+  }
 }
 
 void StillingerWeberSi::energyAndGradient(

@@ -50,7 +50,9 @@ public:
   StillingerWeberSi();
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .stress = true,
+            .analyticHvp = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -65,6 +67,15 @@ public:
   /// Auto, Stored and Stream all use the shared neighbour layer. One
   /// thread agrees with the old ordered walk to within 1e-12.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
+  /**
+   * @brief Analytic product of the position Hessian with @p direction.
+   *
+   * The product is obtained by second-order hyper-dual differentiation of
+   * the Stillinger-Weber energy, including both pair and three-body terms.
+   */
+  void hessianVectorImpl(const ForceInput &in, const double *direction,
+                         double *hv) const override;
 
   /**
    * @brief Energy and dE/dx for one configuration.
