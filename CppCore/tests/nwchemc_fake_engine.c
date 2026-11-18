@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 static int reject_params = 0;
+static int g_set_params_count = 0;
 
 static int has_flat_message(const void *params_capnp,
                             size_t params_capnp_size_bytes) {
@@ -16,6 +17,7 @@ static int has_flat_message(const void *params_capnp,
 
 int nwchemc_set_params(const void *params_capnp,
                        size_t params_capnp_size_bytes) {
+  ++g_set_params_count;
   if (reject_params)
     return -1;
   return has_flat_message(params_capnp, params_capnp_size_bytes) ? 0 : -1;
@@ -53,3 +55,14 @@ NWChemCResult nwchemc_energy_gradient(
 const char *nwchemc_version(void) { return "nwchemc-fake/0.1"; }
 
 int nwchemc_available(void) { return 1; }
+
+RGPOT_NWCHEMC_API void nwchemc_fake_set_refuse_params(int refuse);
+RGPOT_NWCHEMC_API int nwchemc_fake_set_params_count(void);
+
+RGPOT_NWCHEMC_API void nwchemc_fake_set_refuse_params(int refuse) {
+  reject_params = refuse ? 1 : 0;
+}
+
+RGPOT_NWCHEMC_API int nwchemc_fake_set_params_count(void) {
+  return g_set_params_count;
+}
