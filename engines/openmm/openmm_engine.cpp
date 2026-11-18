@@ -48,16 +48,6 @@ void set_error(char *errbuf, size_t errlen, const char *sentence) {
   std::snprintf(errbuf, errlen, "%s", sentence);
 }
 
-void load_platforms() {
-  const char *dir = std::getenv("OPENMM_PLUGIN_DIR");
-  if (dir != nullptr && dir[0] != '\0') {
-    OpenMM::Platform::loadPluginsFromDirectory(dir);
-  } else {
-    OpenMM::Platform::loadPluginsFromDirectory(
-        OpenMM::Platform::getDefaultPluginsDirectory());
-  }
-}
-
 bool ensure(OpenMMLj *pot, long n, const double *box, std::string &error) {
   try {
     if (pot->context != nullptr && pot->n == n) {
@@ -113,7 +103,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
     return nullptr;
   }
   try {
-    load_platforms();
+    rgpot::openmm_load_plugins_once();
     (void)OpenMM::Platform::getPlatformByName("CPU");
   } catch (const std::exception &ex) {
     set_error(errbuf, errlen, ex.what());
@@ -182,6 +172,10 @@ int rgpot_md_native_force(void *pot, long nAtoms, const double *positions,
 }
 
 const char *rgpot_engine_name(void) { return "openmm"; }
+
+size_t rgpot_openmm_engine_plugin_loads(void) {
+  return rgpot::openmm_plugin_load_count();
+}
 
 int rgpot_md_session_engine_create(const void *spec, size_t spec_len,
                                    const char *options,

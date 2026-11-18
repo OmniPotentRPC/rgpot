@@ -610,6 +610,9 @@ if openmm_opt.allowed() and python3_engines.found()
                 pic: true,
                 install: false,
             )
+            # The engine keeps the only copy of the session code and the
+            # plugin guard. nodelete stops dlclose from resetting the guard,
+            # which would load the plugins again with the next session.
             openmm_engine = shared_library(
                 'openmm_engine',
                 files('openmm/openmm_engine.cpp'),
@@ -617,6 +620,9 @@ if openmm_opt.allowed() and python3_engines.found()
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+                link_args: cppc.get_supported_link_arguments(
+                    ['-Wl,-z,nodelete'],
+                ),
                 build_rpath: openmm_libdir,
                 install_rpath: openmm_libdir,
                 install: not meson.is_subproject(),
@@ -637,8 +643,8 @@ if openmm_opt.allowed() and python3_engines.found()
             openmm_session_test = executable(
                 'test_openmm_session',
                 files('openmm/test_openmm_session.cpp'),
-                link_with: [openmm_session_lib, rgpot],
-                dependencies: [openmm_lib],
+                link_with: [openmm_engine, rgpot],
+                dependencies: [openmm_lib, dl_dep],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args,
             )
@@ -651,7 +657,7 @@ if openmm_opt.allowed() and python3_engines.found()
             openmm_session_review_test = executable(
                 'test_openmm_session_review',
                 files('openmm/test_openmm_session_review.cpp'),
-                link_with: [openmm_session_lib, rgpot],
+                link_with: [openmm_engine, rgpot],
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args,
@@ -680,7 +686,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 'test_openmm_abi',
                 files('openmm/test_openmm_abi.cpp'),
                 link_with: rgpot,
-                dependencies: [openmm_lib],
+                dependencies: [openmm_lib, dl_dep],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args,
                 build_rpath: openmm_libdir,
