@@ -20,7 +20,8 @@ back off.
 A negative value means the instance is unusable.
 The engines in this repository return 1 for an invalid argument, 2 when the
 evaluation or the setting failed (the reason is in =rgpot_engine_last_error=),
-and 3 when the backend does not support the operation.
+3 when the backend does not support the operation, and -2
+(=RGPOT_ENGINE_ERR_LOCK=) when acquiring an engine or handle lock fails.
 =rgpot_engine_force= and =rgpot_engine_force_batch= also return the nonzero code
 of the host's coordinate transform.
 
@@ -1241,6 +1242,7 @@ Enable the =engine= feature on =rgpot-core= to expose
 No second engine abstraction is added: =EnginePotential::into_potential= wraps
 the handle as a =PotentialImpl=.
 
+- =ENGINE_ERR_LOCK= :: Rust constant for =RGPOT_ENGINE_ERR_LOCK= (-2).
 - =ENGINE_ABI_VERSION=, =ENGINE_ABI_MINOR=,
   =ENGINE_ABI_LAYOUT_REVISION= :: Host ABI identity (=1=, =5=, =1=) matching =RGPOT_ENGINE_ABI_VERSION=,
   =RGPOT_ENGINE_ABI_MINOR= and =RGPOT_ENGINE_ABI_LAYOUT_REVISION=.
@@ -1261,8 +1263,8 @@ the handle as a =PotentialImpl=.
 - =EngineError= :: Typed error enum covering =Load=, =Missing=, =Abi=
   (=expected=, =found=), =AbiStamp= (=expected=, =found=), =Unavailable=,
   =Create=, =Invalid=,
-  =Unsupported=, =Recoverable= (=code=, =message=), and =Fatal= (=code=,
-  =message=).
+  =Unsupported=, =Recoverable= (=code=, =message=), =Fatal= (=code=,
+  =message=), and =Lock= (=operation=, =message=).
 - =EngineRequest= :: Single-geometry input with =positions= (Angstrom, row-major
   =[n_atoms, 3]=), =atomic_numbers=, and =box_matrix= (row-major 3x3 lattice in
   Angstrom).
@@ -1279,9 +1281,10 @@ the handle as a =PotentialImpl=.
   =rgpot_engine_force= or
   =rgpot_engine_force_batch=, and maps positive codes to =EngineError::Recoverable= and negative codes to =EngineError::Fatal= using =rgpot_engine_last_error=
   when present.
-  A negative status poisons the handle: every later call on that
+  A negative status, including =RGPOT_ENGINE_ERR_LOCK= (=EngineError::Lock=),
+  poisons the handle: every later call on that
   =EnginePotential= (or the =PotentialImpl= built from it) returns the same
-  =EngineError::Fatal= without calling into native code, while dropping the
+  error without calling into native code, while dropping the
   handle still calls =rgpot_engine_destroy= once to release the =RgpotEnginePot=
   allocation.
 - =EnginePotential::caps()= / =EnginePotential::hvp(&request, direction)= ::

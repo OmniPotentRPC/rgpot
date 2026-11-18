@@ -15,9 +15,10 @@
 //!
 //! Return codes follow the header: zero is success, a positive code is an
 //! evaluation that failed at this input ([`EngineError::Recoverable`]), and a
-//! negative code leaves the instance unusable ([`EngineError::Fatal`]) and
-//! poisons the handle so every later call returns the same [`EngineError::Fatal`]
-//! without re-entering native evaluation or query functions. Dropping a
+//! negative code leaves the instance unusable ([`EngineError::Fatal`], or
+//! [`EngineError::Lock`] for [`ENGINE_ERR_LOCK`]) and poisons the handle so
+//! every later call returns the same error without re-entering native
+//! evaluation or query functions. Dropping a
 //! poisoned handle still calls `rgpot_engine_destroy` once to free the
 //! `RgpotEnginePot` allocation, as required by `engine_c_abi.h`. The message of
 //! a failed call is the engine's `rgpot_engine_last_error` when it exports one.
@@ -43,6 +44,10 @@ use crate::potential::PotentialImpl;
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
 use crate::tensor::{copy_f64_tensor, copy_i32_tensor, rgpot_tensor_owned_cpu_f64_2d};
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+
+/// cbindgen:ignore
+/// Engine code meaning acquiring an engine or handle lock failed (`RGPOT_ENGINE_ERR_LOCK`).
+pub const ENGINE_ERR_LOCK: c_int = -2;
 
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
@@ -316,6 +321,14 @@ pub enum EngineError {
         /// Error message from `rgpot_engine_last_error`.
         message: String,
     },
+    /// Acquiring an engine or handle lock failed (`RGPOT_ENGINE_ERR_LOCK`); the
+    /// instance is unusable and the handle is poisoned like [`EngineError::Fatal`].
+    Lock {
+        /// Engine symbol whose lock acquisition failed.
+        operation: &'static str,
+        /// Error message from `rgpot_engine_last_error`.
+        message: String,
+    },
 }
 
 impl fmt::Display for EngineError {
@@ -348,6 +361,9 @@ impl fmt::Display for EngineError {
             }
             Self::Fatal { code, message } => {
                 write!(f, "engine instance is unusable, code {code}: {message}")
+            }
+            Self::Lock { operation, message } => {
+                write!(f, "engine lock failed in {operation}: {message}")
             }
         }
     }
@@ -386,18 +402,12 @@ pub struct EngineEvaluation {
     pub forces: Vec<f64>,
 }
 
-#[derive(Clone)]
-struct Poisoned {
-    code: i32,
-    message: String,
-}
-
 /// One engine instance behind the generic engine C ABI.
 pub struct EnginePotential {
     symbols: EngineSymbols,
     stamp: RgpotEngineAbiStamp,
     handle: NonNull<RgpotEnginePot>,
-    fatal: OnceLock<Poisoned>,
+    fatal: OnceLock<EngineError>,
     library: Option<ManuallyDrop<Library>>,
 }
 
@@ -517,7 +527,7 @@ impl EnginePotential {
                 std::ptr::null_mut(),
             )
         };
-        self.answer(code)?;
+        self.answer(code, "rgpot_engine_force")?;
         finite(energy, &forces)?;
         Ok(EngineEvaluation { energy, forces })
     }
@@ -569,7 +579,7 @@ impl EnginePotential {
                 std::ptr::null_mut(),
             )
         };
-        self.answer(code)?;
+        self.answer(code, "rgpot_engine_force_batch")?;
         let mut out = Vec::with_capacity(n_systems);
         for (energy, block) in energies.iter().zip(forces.chunks_exact(3 * n_atoms)) {
             finite(*energy, block)?;
@@ -593,7 +603,7 @@ impl EnginePotential {
             ..Default::default()
         };
         let code = unsafe { caps_fn(self.handle.as_ptr(), &mut raw) };
-        self.answer(code)?;
+        self.answer(code, "rgpot_engine_caps")?;
         Ok(EngineCaps {
             reentrancy: raw.reentrancy,
             per_image_instances: raw.per_image_instances != 0,
@@ -671,7 +681,7 @@ impl EnginePotential {
                 message: self.last_error_text(code),
             });
         }
-        self.answer(code)?;
+        self.answer(code, "rgpot_engine_hvp")?;
         finite_product(&hv_out)?;
         Ok(hv_out)
     }
@@ -759,35 +769,29 @@ impl EnginePotential {
     }
 
     fn check_alive(&self) -> Result<(), EngineError> {
-        if let Some(poisoned) = self.fatal.get() {
-            return Err(EngineError::Fatal {
-                code: poisoned.code,
-                message: poisoned.message.clone(),
-            });
+        match self.fatal.get() {
+            Some(error) => Err(error.clone()),
+            None => Ok(()),
         }
-        Ok(())
     }
 
-    fn answer(&self, code: c_int) -> Result<(), EngineError> {
+    fn answer(&self, code: c_int, operation: &'static str) -> Result<(), EngineError> {
         if code == 0 {
             return Ok(());
         }
         let message = self.last_error_text(code);
         if code > 0 {
-            Err(EngineError::Recoverable { code, message })
+            return Err(EngineError::Recoverable { code, message });
+        }
+        let error = if code == ENGINE_ERR_LOCK {
+            EngineError::Lock { operation, message }
         } else {
-            let _ = self.fatal.set(Poisoned {
-                code,
-                message: message.clone(),
-            });
-            let stored = match self.fatal.get() {
-                Some(poisoned) => poisoned.message.clone(),
-                None => message,
-            };
-            Err(EngineError::Fatal {
-                code,
-                message: stored,
-            })
+            EngineError::Fatal { code, message }
+        };
+        let _ = self.fatal.set(error.clone());
+        match self.fatal.get() {
+            Some(stored) => Err(stored.clone()),
+            None => Err(error),
         }
     }
 

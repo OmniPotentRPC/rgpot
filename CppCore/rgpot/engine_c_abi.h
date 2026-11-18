@@ -28,7 +28,8 @@
  * - Codes the engines in this repository return: 1 invalid argument, 2 the
  *   evaluation or the setting failed (the reason is in
  *   rgpot_engine_last_error), 3 the backend does not support the operation,
- *   and for force the host transform's own nonzero code.
+ *   -2 acquiring an engine or handle lock failed (leaving the handle
+ *   unusable), and for force the host transform's own nonzero code.
  *
  * Thread safety of a handle. Any thread may call force and force_batch on any
  * handle. What happens inside depends on the backend's capabilities
@@ -103,6 +104,8 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
 #define RGPOT_ENGINE_ERR_INVALID 1
 #define RGPOT_ENGINE_ERR_EVAL 2
 #define RGPOT_ENGINE_ERR_UNSUPPORTED 3
+/** Negative fatal code returned when acquiring an engine or handle lock fails. */
+#define RGPOT_ENGINE_ERR_LOCK (-2)
 
 RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
 
