@@ -31,12 +31,13 @@
 //! [`crate::profile`]: a backend may own threads or MPI state that does not
 //! survive `dlclose`.
 
+use std::collections::HashMap;
 use std::ffi::{c_char, c_int, c_long, c_uint, c_ushort, c_void};
 use std::fmt;
 use std::mem::ManuallyDrop;
 use std::path::Path;
 use std::ptr::NonNull;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use libloading::Library;
 
@@ -59,6 +60,11 @@ pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 pub const ENGINE_ERR_UNSUPPORTED: c_int = 3;
 
 const ERROR_CAPACITY: usize = 1024;
+const REENTRANCY_END: usize =
+    std::mem::offset_of!(RgpotEngineCaps, reentrancy) + std::mem::size_of::<c_int>();
+/// `RgpotEngineCaps.reentrancy` of an engine whose calls must not overlap in
+/// one process, even on distinct handles.
+const REENTRANCY_PROCESS_SERIAL: i32 = 2;
 
 /// Opaque engine instance, `RgpotEnginePot` of the header.
 #[repr(C)]
@@ -374,6 +380,7 @@ pub struct EnginePotential {
     stamp: RgpotEngineAbiStamp,
     handle: NonNull<RgpotEnginePot>,
     fatal: OnceLock<EngineError>,
+    process_lock: Option<Arc<Mutex<()>>>,
     _library: Option<ManuallyDrop<Library>>,
 }
 
@@ -451,13 +458,17 @@ impl EnginePotential {
             )
         };
         match NonNull::new(raw) {
-            Some(handle) => Ok(Self {
-                symbols,
-                stamp,
-                handle,
-                fatal: OnceLock::new(),
-                _library: None,
-            }),
+            Some(handle) => {
+                let process_lock = probe_process_serial(&symbols, handle);
+                Ok(Self {
+                    symbols,
+                    stamp,
+                    handle,
+                    fatal: OnceLock::new(),
+                    process_lock,
+                    _library: None,
+                })
+            }
             None => Err(EngineError::Create(text_of(&errbuf))),
         }
     }
@@ -474,19 +485,22 @@ impl EnginePotential {
         check_lengths(n_atoms, request.positions.len())?;
         let mut forces = vec![0.0; 3 * n_atoms];
         let mut energy = 0.0;
-        let code = unsafe {
-            (self.symbols.force)(
-                self.handle.as_ptr(),
-                n_atoms as c_long,
-                request.positions.as_ptr(),
-                request.atomic_numbers.as_ptr(),
-                forces.as_mut_ptr(),
-                &mut energy,
-                std::ptr::null_mut(),
-                request.box_matrix.as_ptr(),
-                None,
-                std::ptr::null_mut(),
-            )
+        let code = {
+            let _serial = self.lock_process("rgpot_engine_force")?;
+            unsafe {
+                (self.symbols.force)(
+                    self.handle.as_ptr(),
+                    n_atoms as c_long,
+                    request.positions.as_ptr(),
+                    request.atomic_numbers.as_ptr(),
+                    forces.as_mut_ptr(),
+                    &mut energy,
+                    std::ptr::null_mut(),
+                    request.box_matrix.as_ptr(),
+                    None,
+                    std::ptr::null_mut(),
+                )
+            }
         };
         self.answer(code, "rgpot_engine_force")?;
         finite(energy, &forces)?;
@@ -525,20 +539,23 @@ impl EnginePotential {
         }
         let mut forces = vec![0.0; positions.len()];
         let mut energies = vec![0.0; n_systems];
-        let code = unsafe {
-            batch(
-                self.handle.as_ptr(),
-                n_systems as c_long,
-                n_atoms as c_long,
-                positions.as_ptr(),
-                atomic_numbers.as_ptr(),
-                forces.as_mut_ptr(),
-                energies.as_mut_ptr(),
-                std::ptr::null_mut(),
-                boxes.as_ptr(),
-                None,
-                std::ptr::null_mut(),
-            )
+        let code = {
+            let _serial = self.lock_process("rgpot_engine_force_batch")?;
+            unsafe {
+                batch(
+                    self.handle.as_ptr(),
+                    n_systems as c_long,
+                    n_atoms as c_long,
+                    positions.as_ptr(),
+                    atomic_numbers.as_ptr(),
+                    forces.as_mut_ptr(),
+                    energies.as_mut_ptr(),
+                    std::ptr::null_mut(),
+                    boxes.as_ptr(),
+                    None,
+                    std::ptr::null_mut(),
+                )
+            }
         };
         self.answer(code, "rgpot_engine_force_batch")?;
         let mut out = Vec::with_capacity(n_systems);
@@ -563,7 +580,10 @@ impl EnginePotential {
             size: std::mem::size_of::<RgpotEngineCaps>() as c_uint,
             ..Default::default()
         };
-        let code = unsafe { caps_fn(self.handle.as_ptr(), &mut raw) };
+        let code = {
+            let _serial = self.lock_process("rgpot_engine_caps")?;
+            unsafe { caps_fn(self.handle.as_ptr(), &mut raw) }
+        };
         self.answer(code, "rgpot_engine_caps")?;
         Ok(EngineCaps {
             reentrancy: raw.reentrancy,
@@ -625,16 +645,19 @@ impl EnginePotential {
             )));
         }
         let mut hv_out = vec![0.0; 3 * n_atoms];
-        let code = unsafe {
-            hvp_fn(
-                self.handle.as_ptr(),
-                n_atoms as c_long,
-                request.positions.as_ptr(),
-                request.atomic_numbers.as_ptr(),
-                direction.as_ptr(),
-                hv_out.as_mut_ptr(),
-                request.box_matrix.as_ptr(),
-            )
+        let code = {
+            let _serial = self.lock_process("rgpot_engine_hvp")?;
+            unsafe {
+                hvp_fn(
+                    self.handle.as_ptr(),
+                    n_atoms as c_long,
+                    request.positions.as_ptr(),
+                    request.atomic_numbers.as_ptr(),
+                    direction.as_ptr(),
+                    hv_out.as_mut_ptr(),
+                    request.box_matrix.as_ptr(),
+                )
+            }
         };
         if code == ENGINE_ERR_UNSUPPORTED {
             return Err(EngineError::Unsupported {
@@ -663,6 +686,22 @@ impl EnginePotential {
                 .set_hessian_vector_callback(Some(engine_hessian_vector_callback));
         }
         potential
+    }
+
+    fn lock_process(
+        &self,
+        operation: &'static str,
+    ) -> Result<Option<MutexGuard<'_, ()>>, EngineError> {
+        match &self.process_lock {
+            Some(lock) => match lock.lock() {
+                Ok(guard) => Ok(Some(guard)),
+                Err(_) => Err(EngineError::Lock {
+                    operation,
+                    message: "process-serial engine lock is poisoned".into(),
+                }),
+            },
+            None => Ok(None),
+        }
     }
 
     fn check_alive(&self) -> Result<(), EngineError> {
@@ -715,7 +754,47 @@ impl EnginePotential {
 /// `&mut self`.
 impl Drop for EnginePotential {
     fn drop(&mut self) {
+        let _serial = match &self.process_lock {
+            Some(lock) => match lock.lock() {
+                Ok(guard) => Some(guard),
+                Err(poisoned) => Some(poisoned.into_inner()),
+            },
+            None => None,
+        };
         unsafe { (self.symbols.destroy)(self.handle.as_ptr()) };
+    }
+}
+
+fn process_serial_lock(key: usize) -> Arc<Mutex<()>> {
+    static LOCKS: OnceLock<Mutex<HashMap<usize, Arc<Mutex<()>>>>> = OnceLock::new();
+    let table = LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = match table.lock() {
+        Ok(map) => map,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    Arc::clone(map.entry(key).or_insert_with(|| Arc::new(Mutex::new(()))))
+}
+
+/// The library-wide lock of an engine whose `rgpot_engine_caps` reports
+/// `reentrancy == 2`, keyed by the library's force entry point. An engine
+/// that exports no caps or whose caps call fails is treated as reentrant.
+fn probe_process_serial(
+    symbols: &EngineSymbols,
+    handle: NonNull<RgpotEnginePot>,
+) -> Option<Arc<Mutex<()>>> {
+    let caps_fn = symbols.caps?;
+    let mut raw = RgpotEngineCaps {
+        size: std::mem::size_of::<RgpotEngineCaps>() as c_uint,
+        ..Default::default()
+    };
+    let code = unsafe { caps_fn(handle.as_ptr(), &mut raw) };
+    if code == 0
+        && (raw.size as usize) >= REENTRANCY_END
+        && raw.reentrancy == REENTRANCY_PROCESS_SERIAL
+    {
+        Some(process_serial_lock(symbols.force as usize))
+    } else {
+        None
     }
 }
 

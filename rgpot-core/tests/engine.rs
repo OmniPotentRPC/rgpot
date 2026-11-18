@@ -1198,3 +1198,281 @@ fn lock_error_code_matches_header_maps_on_rust_side_and_marks_handle_unusable() 
     let handle = load(&caps_lock).into_potential();
     assert!(!handle.as_handle().has_hessian_vector_callback());
 }
+
+fn fixture_max_concurrent(path: &Path) -> c_int {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen fixture");
+    let f: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_max_concurrent\0") }.expect("max concurrent symbol");
+    unsafe { f() }
+}
+
+fn fixture_max_handle_concurrent(path: &Path) -> c_int {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen fixture");
+    let f: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_max_handle_concurrent\0") }
+            .expect("max handle concurrent symbol");
+    unsafe { f() }
+}
+
+fn fixture_reset_concurrent(path: &Path) {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen fixture");
+    let f: libloading::Symbol<unsafe extern "C" fn()> =
+        unsafe { library.get(b"fixture_reset_concurrent\0") }.expect("reset concurrent symbol");
+    unsafe { f() };
+}
+
+#[test]
+fn concurrent_handles_serialize_each_handle_and_parallelize_distinct_handles() {
+    use rgpot_core::c_api::hvp::rgpot_potential_hvp;
+    use rgpot_core::c_api::potential::rgpot_potential_calculate;
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_concurrent_handles",
+        &["FIXTURE_REENTRANCY=1", "CONCURRENCY_PROBE"],
+    );
+    let probe = load(&path);
+    assert_eq!(probe.caps().expect("caps").reentrancy, 1);
+    drop(probe);
+
+    // 1. Overlapping force and analytic HVP calls on a single PotentialImpl handle
+    //    must serialize through the handle mutex.
+    fixture_reset_concurrent(&path);
+    let shared_potential = load(&path).into_potential();
+    let raw_addr = shared_potential.as_handle() as *const _ as usize;
+    let start = Arc::new(Barrier::new(4));
+    std::thread::scope(|scope| {
+        for worker in 0..4usize {
+            let start = Arc::clone(&start);
+            scope.spawn(move || {
+                let pot = raw_addr as *const rgpot_core::potential::rgpot_potential_t;
+                let scale = (worker + 1) as f64;
+                let mut positions = [0.5 * scale, -scale, 2.0 * scale];
+                let mut numbers = [1_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                start.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let mut output = rgpot_force_out_t {
+                            forces: std::ptr::null_mut(),
+                            energy: 0.0,
+                            variance: 0.0,
+                        };
+                        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                        unsafe { rgpot_tensor_free(output.forces) };
+                    } else {
+                        let direction = [scale, -0.5 * scale, 0.25 * scale];
+                        let mut hv = [0.0; 3];
+                        let status = unsafe {
+                            rgpot_potential_hvp(
+                                pot,
+                                &input,
+                                direction.as_ptr(),
+                                0.0,
+                                rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC as i32,
+                                hv.as_mut_ptr(),
+                            )
+                        };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let want: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
+                        assert!(all_within_roundoff(&hv, &want));
+                    }
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(fixture_max_concurrent(&path), 1);
+    assert_eq!(fixture_max_handle_concurrent(&path), 1);
+    drop(shared_potential);
+
+    // 2. Distinct PotentialImpl handles of a reentrancy==1 engine evaluate
+    //    concurrently on separate worker threads without blocking each other.
+    fixture_reset_concurrent(&path);
+    let before_destroy = destroyed(&path);
+    let handles: Vec<rgpot_core::potential::PotentialImpl> =
+        (0..4).map(|_| load(&path).into_potential()).collect();
+    let gate = Arc::new(Barrier::new(handles.len()));
+    std::thread::scope(|scope| {
+        for (idx, handle) in handles.into_iter().enumerate() {
+            let gate = Arc::clone(&gate);
+            scope.spawn(move || {
+                let factor = (idx + 1) as f64;
+                let mut positions = [factor, -2.0 * factor, 0.5 * factor];
+                let mut numbers = [8_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                gate.wait();
+                for _ in 0..4 {
+                    let mut output = rgpot_force_out_t {
+                        forces: std::ptr::null_mut(),
+                        energy: 0.0,
+                        variance: 0.0,
+                    };
+                    let status = unsafe { handle.calculate(&input, &mut output) };
+                    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                    let sum: f64 = positions.iter().map(|v| v * v).sum();
+                    assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                    unsafe { rgpot_tensor_free(output.forces) };
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(fixture_max_handle_concurrent(&path), 1);
+    let cpus = match std::thread::available_parallelism() {
+        Ok(count) => count.get(),
+        Err(_) => 1,
+    };
+    if cpus >= 2 {
+        assert!(
+            fixture_max_concurrent(&path) >= 2,
+            "expected parallel execution across distinct reentrancy==1 handles, got max_concurrent={}",
+            fixture_max_concurrent(&path)
+        );
+    }
+    assert_eq!(destroyed(&path), before_destroy + 4);
+}
+
+#[test]
+fn reentrancy_two_engines_serialize_across_handles() {
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_reentrancy2",
+        &["FIXTURE_REENTRANCY=2", "CONCURRENCY_PROBE"],
+    );
+    let probe = load(&path);
+    let caps = probe.caps().expect("reentrancy==2 caps");
+    assert_eq!(caps.reentrancy, 2);
+    assert!(caps.analytic_hvp);
+    drop(probe);
+
+    // Direct EnginePotential instances on separate threads must serialize across handles.
+    fixture_reset_concurrent(&path);
+    let direct_gate = Arc::new(Barrier::new(3));
+    std::thread::scope(|scope| {
+        for idx in 0..3usize {
+            let path_ref = &path;
+            let direct_gate = Arc::clone(&direct_gate);
+            scope.spawn(move || {
+                let mut engine = load(path_ref);
+                let factor = (idx + 1) as f64;
+                let positions = [factor, -factor, 0.5 * factor];
+                let request = EngineRequest {
+                    positions: &positions,
+                    atomic_numbers: &[1],
+                    box_matrix: &CELL,
+                };
+                direct_gate.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let eval = engine.force(&request).expect("reentrancy==2 direct force");
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(eval.energy, 0.5 * SPRING * sum, 9));
+                    } else {
+                        let dir = [1.0, -2.0, 0.5];
+                        let hv = engine
+                            .hvp(&request, &dir)
+                            .expect("reentrancy==2 direct hvp");
+                        assert!(all_within_roundoff(
+                            &hv,
+                            &[SPRING, -2.0 * SPRING, 0.5 * SPRING]
+                        ));
+                    }
+                }
+            });
+        }
+    });
+    assert_eq!(
+        fixture_max_concurrent(&path),
+        1,
+        "reentrancy==2 EnginePotential instances overlapped"
+    );
+
+    // PotentialImpl handles created via into_potential() must also serialize across handles.
+    fixture_reset_concurrent(&path);
+    let before_destroy = destroyed(&path);
+    let handles: Vec<rgpot_core::potential::PotentialImpl> =
+        (0..4).map(|_| load(&path).into_potential()).collect();
+    let handle_gate = Arc::new(Barrier::new(handles.len()));
+    std::thread::scope(|scope| {
+        for (idx, handle) in handles.into_iter().enumerate() {
+            let handle_gate = Arc::clone(&handle_gate);
+            scope.spawn(move || {
+                let factor = (idx + 1) as f64;
+                let mut positions = [0.5 * factor, 1.5 * factor, -factor];
+                let mut numbers = [1_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                handle_gate.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let mut output = rgpot_force_out_t {
+                            forces: std::ptr::null_mut(),
+                            energy: 0.0,
+                            variance: 0.0,
+                        };
+                        let status = unsafe { handle.calculate(&input, &mut output) };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                        unsafe { rgpot_tensor_free(output.forces) };
+                    } else {
+                        let direction = [factor, -0.5 * factor, 2.0 * factor];
+                        let mut hv = [0.0; 3];
+                        unsafe {
+                            handle
+                                .as_handle()
+                                .hessian_vector(
+                                    &input,
+                                    &direction,
+                                    0.0,
+                                    rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC,
+                                    &mut hv,
+                                )
+                                .expect("reentrancy==2 handle HVP");
+                        }
+                        let want: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
+                        assert!(all_within_roundoff(&hv, &want));
+                    }
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(
+        fixture_max_concurrent(&path),
+        1,
+        "reentrancy==2 PotentialImpl handles overlapped"
+    );
+    assert_eq!(destroyed(&path), before_destroy + 4);
+}
