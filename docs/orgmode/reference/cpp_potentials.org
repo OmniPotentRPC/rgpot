@@ -1438,6 +1438,20 @@ explicit D4Pot(const D4Config &config);
 - Outputs :: the =rgpot::D4Config= the instance was built with.
 - Errors :: none.
 
+*** =rgpot::D4Pot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: an FNV-1a digest over the D4 functional key, charge, ATM
+  switch and periodic switch.
+  The result separates cache entries for distinct D4 parameter sets.
+- Errors :: none.
+
 ** Expression of potentials
 
 *** =rgpot::ExprPot=

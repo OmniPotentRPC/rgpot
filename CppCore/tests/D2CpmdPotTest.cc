@@ -13,6 +13,7 @@
 #include <array>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -37,6 +38,11 @@ namespace {
 // OpenCPMD's bohr (1 / fbohr), which the reference files and D2CpmdPot's
 // input conversion use; the outputs use rgpot's, as cpmdc does.
 constexpr double kCpmdBohr = 0.529177210859;
+constexpr double kCpmdC6O = 0.70;
+constexpr double kCpmdR0O = 1.342;
+constexpr double kCpmdC6Conv = 1.733979e1;
+constexpr double kCpmdAlpha = 20.0;
+constexpr double kCpmdS6 = 1.2;
 
 struct Reference {
   std::vector<int> z;
@@ -110,6 +116,42 @@ Result run(Pot &&pot, const std::vector<int> &z, const std::vector<double> &pos,
 double volume(const std::array<double, 9> &h) {
   return std::abs(h[0] * (h[4] * h[8] - h[5] * h[7]) - h[1] * (h[3] * h[8] - h[5] * h[6]) +
                   h[2] * (h[3] * h[7] - h[4] * h[6]));
+}
+
+std::array<double, 3> cartesian_from_fractional(const std::array<double, 9> &h,
+                                                const std::array<double, 3> &s) {
+  return {s[0] * h[0] + s[1] * h[3] + s[2] * h[6],
+          s[0] * h[1] + s[1] * h[4] + s[2] * h[7],
+          s[0] * h[2] + s[1] * h[5] + s[2] * h[8]};
+}
+
+double norm(const std::array<double, 3> &v) {
+  return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+}
+
+double brute_minimum_image_distance(const std::array<double, 9> &h,
+                                    const std::array<double, 3> &fractional_delta) {
+  double best = std::numeric_limits<double>::infinity();
+  for (int nx = -1; nx <= 1; ++nx) {
+    for (int ny = -1; ny <= 1; ++ny) {
+      for (int nz = -1; nz <= 1; ++nz) {
+        const std::array<double, 3> shifted{fractional_delta[0] - static_cast<double>(nx),
+                                            fractional_delta[1] - static_cast<double>(ny),
+                                            fractional_delta[2] - static_cast<double>(nz)};
+        best = std::min(best, norm(cartesian_from_fractional(h, shifted)));
+      }
+    }
+  }
+  return best;
+}
+
+double cpmd_two_oxygen_energy_ev(double distance_angstrom) {
+  const double r_bohr = distance_angstrom / kCpmdBohr;
+  const double c6 = std::sqrt(kCpmdC6O * kCpmdC6O) * kCpmdC6Conv;
+  const double rr = (kCpmdR0O + kCpmdR0O) / kCpmdBohr;
+  const double damp = 1.0 + std::exp(-kCpmdAlpha * (r_bohr / rr - 1.0));
+  const double hartree = -kCpmdS6 * c6 / (std::pow(r_bohr, 6) * damp);
+  return hartree * HARTREE_TO_EV;
 }
 
 const char *kSystems[] = {"cubic_water",         "cubic_below_half",
@@ -260,4 +302,38 @@ TEST_CASE("a composite swaps CPMD's D2 for the lattice sum", "[d2cpmd][composite
             Catch::Approx(l.forces[k] - c.forces[k]).margin(kGradThr * HARTREE_TO_EV));
   }
   REQUIRE(sum.lastComponents()[0].energy == c.energy);
+}
+
+TEST_CASE("CPMD pbc3 image selection matches brute-force on key cell symmetries",
+          "[d2cpmd][pbc3]") {
+  struct CellCase {
+    const char *name;
+    std::array<double, 9> box;
+    std::array<double, 3> fractional_delta;
+  };
+  const std::array<CellCase, 4> kCases{{
+      {"fcc", {0.0, 2.0, 2.0, 2.0, 0.0, 2.0, 2.0, 2.0, 0.0},
+       {-0.13670875044881015, 0.26099462104158744, 0.45981805354846594}},
+      {"trigonal",
+       {3.0, 0.0, 0.0, 1.2, 2.749545416973504, 0.0, 1.2, 0.7855844048495726,
+        2.6349301969610393},
+       {-0.13895857209664464, 0.42371828161708736, 0.4258527661071376}},
+      {"hexagonal",
+       {3.0, 0.0, 0.0, -1.5, 2.598076211, 0.0, 0.0, 0.0, 5.0},
+       {-0.4908678763235309, 0.18057788068661407, 0.38419771091555066}},
+      {"monoclinic", {4.0, 0.0, 0.0, 0.0, 5.0, 0.0, 1.8, 0.0, 6.0},
+       {-0.39289603625100367, -0.2542605353421451, -0.24891177114900753}},
+  }};
+  rgpot::D2CpmdPot pot;
+  for (const auto &sample : kCases) {
+    INFO(sample.name);
+    const auto delta = cartesian_from_fractional(sample.box, sample.fractional_delta);
+    const std::vector<double> pos{0.0, 0.0, 0.0, delta[0], delta[1], delta[2]};
+    const std::vector<int> z{8, 8};
+    const Result got = run(pot, z, pos, sample.box);
+    const double r = brute_minimum_image_distance(sample.box, sample.fractional_delta);
+    const double want = cpmd_two_oxygen_energy_ev(r);
+    INFO("distance " << std::setprecision(16) << r << " A");
+    REQUIRE(got.energy == Catch::Approx(want).margin(kEnergyThr * HARTREE_TO_EV));
+  }
 }
