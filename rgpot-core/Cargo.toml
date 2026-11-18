@@ -42,6 +42,7 @@ tokio-util = { version = "0.7", features = ["compat"], optional = true }
 futures = { version = "0.3", optional = true }
 
 [dev-dependencies]
+cbindgen = "0.27"
 cc = "1.4.2"
 ndarray = "0.17.2"
 
