@@ -28,6 +28,7 @@
 
 #include "pot_holder.hpp"
 
+#include "rgpot/EMT/EMTPot.hpp"
 #include "rgpot/ExternalPot/ExternalPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -708,6 +709,26 @@ NB_MODULE(_core, m) {
     return out;
   });
   rgpot::pybind::bind_calls(morse_cls);
+
+  auto emt_cls = nb::class_<PotHolder<rgpot::EMTPot>>(m, "EMTPot");
+  emt_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::EMTPot> *self, bool rasmussen) {
+        new (self) PotHolder<rgpot::EMTPot>([=] {
+          rgpot::EMTConfig cfg;
+          cfg.rasmussen = rasmussen;
+          return std::make_unique<rgpot::EMTPot>(cfg);
+        });
+      },
+      nb::arg("rasmussen") = false,
+      "Asap effective-medium potential for H, Mg, Al, Ni, Cu, Pd, Ag, Pt "
+      "and Au. rasmussen selects the Al, Cu, Ag and Au parameter provider.");
+  emt_cls.def("config", [](const PotHolder<rgpot::EMTPot> &self) {
+    nb::dict out;
+    out["rasmussen"] = self.primary().config().rasmussen;
+    return out;
+  });
+  rgpot::pybind::bind_calls(emt_cls);
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
   bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");
