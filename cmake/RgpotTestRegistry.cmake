@@ -10,8 +10,9 @@
 #       An entry's args (its positional arguments) or unfused flag.
 #   rgpot_add_test(NAME COMMAND command... [ENVIRONMENT VAR=VALUE...])
 #       Registers an enabled entry with its timeout, suite, working
-#       directory, environment, serial and should_fail settings, and stops
-#       the configuration for any other name.
+#       directory, environment, serial, coverage_serial and should_fail
+#       settings, and stops the configuration for any other name.
+#       coverage_serial sets RUN_SERIAL only when RGPOT_COVERAGE is true.
 #   rgpot_registry_feature_args(OUT)
 #       FEATURE=0|1 for each feature the registry names, the arguments
 #       check_test_registry.py takes.
@@ -63,6 +64,7 @@ foreach(_line IN LISTS _rgpot_rt_lines)
   endif()
   set(_env)
   set(_serial FALSE)
+  set(_coverage_serial FALSE)
   set(_should_fail FALSE)
   set(_unfused FALSE)
   foreach(_word IN LISTS _words)
@@ -76,6 +78,8 @@ foreach(_line IN LISTS _rgpot_rt_lines)
       list(APPEND _env "${CMAKE_MATCH_1}")
     elseif(_word STREQUAL "serial")
       set(_serial TRUE)
+    elseif(_word STREQUAL "coverage_serial")
+      set(_coverage_serial TRUE)
     elseif(_word STREQUAL "should_fail")
       set(_should_fail TRUE)
     elseif(_word STREQUAL "fp_contract=off")
@@ -88,8 +92,8 @@ foreach(_line IN LISTS _rgpot_rt_lines)
     string(REPLACE "," ";" _alternatives "${_clause}")
     list(APPEND RGPOT_REGISTRY_FEATURES ${_alternatives})
   endforeach()
-  foreach(_field kind clauses args timeout suite workdir env serial should_fail
-                 unfused reason)
+  foreach(_field kind clauses args timeout suite workdir env serial
+                 coverage_serial should_fail unfused reason)
     set(_rgpot_rt_${_id}_${_field} "${_${_field}}")
   endforeach()
   list(APPEND RGPOT_REGISTRY_ENTRIES "${_name}")
@@ -187,6 +191,8 @@ function(rgpot_add_test name)
     set_tests_properties("${name}" PROPERTIES ENVIRONMENT "${environment}")
   endif()
   if(_rgpot_rt_${id}_serial)
+    set_tests_properties("${name}" PROPERTIES RUN_SERIAL TRUE)
+  elseif(_rgpot_rt_${id}_coverage_serial AND RGPOT_COVERAGE)
     set_tests_properties("${name}" PROPERTIES RUN_SERIAL TRUE)
   endif()
   if(_rgpot_rt_${id}_should_fail)

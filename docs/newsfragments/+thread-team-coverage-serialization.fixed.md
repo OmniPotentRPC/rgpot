@@ -1,3 +1,3 @@
-Coverage runs serialize the CPU-saturating thread-team registrations and
-report timeouts as unsuccessful tests instead of presenting only Meson's
-separate zero-failure count.
+Coverage instrumentation multiplies every C++ test timeout by 3. That multiplier is what lets the instrumented suite pass: the thread-team matrix and `NeighbourListTest` both run past their ordinary limits, and concurrency among the thread-team copies was only part of the thread-team failures.
+Each thread-team registration runs one Catch2 tag. Open Sutton-Chen is split across tags because one registration of every thread count stayed over half its coverage limit on 4 cores. A coverage build runs those registrations one at a time. An ordinary build still runs them in parallel, under the same 120 second limit.
+`NeighbourListTest` takes about 34 seconds once it is instrumented, past the 30 second default, so its limit is 120 seconds.

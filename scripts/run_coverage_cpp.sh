@@ -16,7 +16,6 @@ if ! command -v lcov >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> meson setup ${BUILD} (coverage, tests, rpc)"
 SETUP_ARGS=(
   -Dwith_tests=true \
   -Dwith_examples=false \
@@ -28,9 +27,21 @@ SETUP_ARGS=(
   -Db_coverage=true \
   --buildtype=debug
 )
-if [[ -d "$BUILD" ]]; then
+# A path in RGPOT_COV_BUILDDIR is never deleted from here. --wipe is only
+# for a directory meson already owns. Anything else is left untouched.
+if [[ -e "$BUILD" && ! -d "$BUILD" ]]; then
+  echo "ERROR: ${BUILD} exists and is not a directory" >&2
+  exit 1
+fi
+if [[ -d "$BUILD/meson-private" ]]; then
+  echo "==> meson setup --wipe ${BUILD} (coverage, tests, rpc)"
   meson setup --wipe "$BUILD" "${SETUP_ARGS[@]}"
+elif [[ -d "$BUILD" ]]; then
+  echo "ERROR: ${BUILD} exists but is not a meson build (no meson-private)." >&2
+  echo "Refusing to remove it. Set RGPOT_COV_BUILDDIR to a new directory or remove it." >&2
+  exit 1
 else
+  echo "==> meson setup ${BUILD} (coverage, tests, rpc)"
   meson setup "$BUILD" "${SETUP_ARGS[@]}"
 fi
 
@@ -67,12 +78,13 @@ fi
 
 # lcov 2 renamed the branch-coverage rc option and rejects the old name. It
 # also checks gcov data against source lines and reports template instances in
-# toolchain headers as inconsistent; that one class is tolerated, every other
+# toolchain headers as mismatched. lcov 2.0 calls that class "mismatch"; later
+# releases also say "inconsistent". That one class is tolerated. Every other
 # lcov error still fails the script.
 LCOV_MAJOR=$(lcov --version | sed -n 's/.*LCOV version \([0-9][0-9]*\)\..*/\1/p')
 LCOV_ARGS=()
 if [[ "${LCOV_MAJOR:-0}" -ge 2 ]]; then
-  LCOV_ARGS+=(--rc branch_coverage=1 --ignore-errors inconsistent)
+  LCOV_ARGS+=(--rc branch_coverage=1 --ignore-errors inconsistent,mismatch)
 else
   LCOV_ARGS+=(--rc lcov_branch_coverage=1)
 fi
