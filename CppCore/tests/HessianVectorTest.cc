@@ -335,13 +335,13 @@ TEST_CASE("Stillinger-Weber analytic product at the diamond minimum",
   }
   std::vector<int> z(8, 14);
   const auto box = cell(side);
-  const ForceInput in{.nAtoms = z.size(), .pos = x.data(),
-                      .atmnrs = z.data(), .box = box.data()};
+  const ForceInput initial_input{.nAtoms = z.size(), .pos = x.data(),
+                                 .atmnrs = z.data(), .box = box.data()};
   StillingerWeberSi pot;
   std::vector<double> forces(x.size());
   ForceOut out{.F = forces.data(), .energy = 0.0, .variance = 0.0,
                .stress = {}, .has_stress = 0};
-  pot.forceImpl(in, &out);
+  pot.forceImpl(initial_input, &out);
   const double inverse = 1.0 / u;
   const double pair_energy =
       StillingerWeberSi::kEpsilon * StillingerWeberSi::kA *
@@ -364,6 +364,8 @@ TEST_CASE("Stillinger-Weber analytic product at the diamond minimum",
   for (double &coordinate : x) {
     coordinate += displacement(random);
   }
+  const ForceInput in{.nAtoms = z.size(), .pos = x.data(),
+                      .atmnrs = z.data(), .box = box.data()};
   const auto v = direction(x.size());
   std::vector<double> analytic(x.size());
   pot.hessianVectorImpl(in, v.data(), analytic.data());

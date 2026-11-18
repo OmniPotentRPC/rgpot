@@ -19,6 +19,7 @@ documentation = true
 documentation_style = "doxy"
 
 [defines]
+"feature = engine" = "RGPOT_HAS_ENGINE"
 "feature = rpc" = "RGPOT_HAS_RPC"
 "feature = schema" = "RGPOT_HAS_SCHEMA"
 

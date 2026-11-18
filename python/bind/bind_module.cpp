@@ -82,6 +82,14 @@ void translate_invalid_argument(const std::exception_ptr &ptr, void *) {
   }
 }
 
+void translate_domain_error(const std::exception_ptr &ptr, void *payload) {
+  try {
+    std::rethrow_exception(ptr);
+  } catch (const std::domain_error &err) {
+    PyErr_SetString(static_cast<PyObject *>(payload), err.what());
+  }
+}
+
 #ifdef RGPOT_HAS_DFTD3
 rgpot::D3Damping d3_damping(const std::string &name) {
   if (name == "bj" || name == "BJ") {
@@ -461,6 +469,8 @@ NB_MODULE(_core, m) {
   // in-use translator. A second translator maps invalid_argument to
   // ValueError (F7).
   rgbind::install_policy(m);
+  nb::register_exception_translator(translate_domain_error,
+                                    m.attr("NumericalError").ptr());
   nb::register_exception_translator(translate_invalid_argument);
 
   m.doc() = "rgpot Python bindings (nanobind). Classes that need a build "

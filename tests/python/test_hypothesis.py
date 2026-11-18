@@ -89,8 +89,27 @@ def test_hessian_and_unknown_kind() -> None:
 
     calc = RgpotCalculator("lj")
     atoms = Atoms("H2", positions=[[0, 0, 0], [1, 0, 0]])
-    with pytest.raises(NotImplementedError):
-        calc.get_hessian(atoms)
+    hessian = calc.get_hessian(atoms)
+    assert hessian.shape == (3 * len(atoms), 3 * len(atoms))
+    np.testing.assert_allclose(hessian, hessian.T, rtol=1e-10, atol=1e-10)
+
+    step = 1e-5
+    numerical = np.empty_like(hessian)
+    for column in range(hessian.shape[1]):
+        plus = atoms.copy()
+        minus = atoms.copy()
+        plus.positions.flat[column] += step
+        minus.positions.flat[column] -= step
+        numerical[:, column] = (
+            calc.__rg_evaluate__(
+                minus.positions, minus.numbers, minus.cell.array, minus.pbc
+            )["forces"].ravel()
+            - calc.__rg_evaluate__(
+                plus.positions, plus.numbers, plus.cell.array, plus.pbc
+            )["forces"].ravel()
+        ) / (2.0 * step)
+    np.testing.assert_allclose(hessian, numerical, rtol=1e-5, atol=1e-5)
+
     with pytest.raises(ValueError):
         RgpotCalculator("missing")
 

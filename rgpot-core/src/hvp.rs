@@ -429,7 +429,10 @@ impl rgpot_potential_t {
                 "analytic Hessian: no Hessian-vector callback is registered",
             ));
         }
-        let mut dense = vec![0.0; dim * dim];
+        let dense_len = dim
+            .checked_mul(dim)
+            .ok_or_else(|| invalid("analytic Hessian dimension overflows"))?;
+        let mut dense = vec![0.0; dense_len];
         let mut direction = vec![0.0; dim];
         let mut product = vec![0.0; dim];
         for column in 0..dim {

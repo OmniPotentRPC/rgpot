@@ -43,7 +43,7 @@ pub struct rgpot_abi_stamp_t {
 /// ABI major of this build.
 pub const RGPOT_ABI_VERSION_MAJOR: u16 = 1;
 /// ABI minor of this build.
-pub const RGPOT_ABI_VERSION_MINOR: u16 = 2;
+pub const RGPOT_ABI_VERSION_MINOR: u16 = 3;
 /// Layout revision of this build.
 pub const RGPOT_ABI_LAYOUT_REVISION: u16 = 1;
 
@@ -249,6 +249,7 @@ mod tests {
             "rgpot_version_patch(void)",
             "rgpot_abi_stamp(void)",
             "rgpot_abi_compatible(const struct rgpot_abi_stamp_t *stamp)",
+            "rgpot_potential_hessian(const struct rgpot_potential_t *pot,",
             "rgpot_potential_hvp(const struct rgpot_potential_t *pot,",
             "rgpot_potential_hvp_centre(const struct rgpot_potential_t *pot,",
             "rgpot_potential_set_hvp_callback(const struct rgpot_potential_t *pot,",
@@ -285,6 +286,7 @@ mod tests {
             assert!(header.contains(&format!("{name}(")), "rgpot.h lacks {name}");
         }
         for name in [
+            "rgpot_potential_hessian",
             "rgpot_potential_hvp",
             "rgpot_potential_hvp_centre",
             "rgpot_potential_set_hvp_callback",
@@ -316,6 +318,27 @@ mod tests {
                 header[open..].starts_with("#if defined(RGPOT_HAS_SCHEMA)")
                     && !header[open..at].contains("#endif"),
                 "{name} is not behind #if defined(RGPOT_HAS_SCHEMA)"
+            );
+        }
+    }
+
+    #[test]
+    fn engine_only_constants_are_behind_rgpot_has_engine() {
+        let root = env!("CARGO_MANIFEST_DIR");
+        let header = std::fs::read_to_string(format!("{root}/include/rgpot.h")).unwrap();
+        for needle in [
+            "#define ENGINE_ABI_VERSION ",
+            "#define ENGINE_ERR_UNSUPPORTED ",
+        ] {
+            let name = needle.trim_end();
+            let at = header
+                .find(needle)
+                .unwrap_or_else(|| panic!("rgpot.h lacks {name}"));
+            let open = header[..at].rfind("#if").unwrap_or(0);
+            assert!(
+                header[open..].starts_with("#if defined(RGPOT_HAS_ENGINE)")
+                    && !header[open..at].contains("#endif"),
+                "{name} is not behind #if defined(RGPOT_HAS_ENGINE)"
             );
         }
     }

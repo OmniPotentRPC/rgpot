@@ -435,6 +435,9 @@ void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
 void EAMTablePot::hessianVectorImpl(const ForceInput &in,
                                     const double *direction,
                                     double *product) const {
+  if (direction == nullptr || product == nullptr) {
+    bad("Hessian-vector direction and product must not be null");
+  }
   const std::size_t n = in.nAtoms;
   const std::size_t dim = 3 * n;
   std::fill_n(product, dim, 0.0);
