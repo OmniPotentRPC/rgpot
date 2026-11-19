@@ -113,6 +113,28 @@ TEST_CASE("LJClusterPot ignores the cell", "[LJClusterPot]") {
   REQUIRE_FALSE(pot.caps().periodic);
 }
 
+TEST_CASE("LJClusterPot reports coincident atoms on the per atom path",
+          "[LJClusterPot]") {
+  // The total energy of two atoms on one point is not finite. The per
+  // atom walk must report that same energy, not a finite zero.
+  rgpot::LJClusterPot pot;
+  const double pos[6] = {};
+  const int types[2] = {1, 1};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double forces[6] = {};
+  rgpot::ForceOut total{forces, 0.0, 0.0, {}, 0};
+  pot.forceImpl({2, pos, types, box}, &total);
+  REQUIRE_FALSE(std::isfinite(total.energy));
+
+  double per_forces[6] = {};
+  double energies[2] = {};
+  double virials[12] = {};
+  rgpot::ForceOut per{per_forces, 0.0, 0.0, {}, 0};
+  pot.forcePerAtom({2, pos, types, box}, &per,
+                   rgpot::PerAtomOut{energies, virials});
+  REQUIRE_FALSE(std::isfinite(per.energy));
+}
+
 TEST_CASE("LJClusterPot parameter fingerprint tracks the config",
           "[LJClusterPot]") {
   const rgpot::LJClusterPot defaults;

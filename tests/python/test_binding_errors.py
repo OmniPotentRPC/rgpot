@@ -60,6 +60,15 @@ def test_d3_unknown_damping_is_value_error(damping: str) -> None:
         rgpot.D3Pot(damping=damping)
 
 
+def test_lj_cluster_per_atom_coincident_is_numerical_error() -> None:
+    coincident = np.zeros((2, 3), dtype=np.float64)
+    pot = rgpot.LJClusterPot()
+    with pytest.raises(rgpot.NumericalError, match="not finite"):
+        pot(coincident, [1, 1], BOX)
+    with pytest.raises(rgpot.NumericalError, match="not finite"):
+        pot.evaluate_per_atom(coincident, [1, 1], BOX)
+
+
 def test_lj_coincident_atoms_raise_numerical_error_everywhere() -> None:
     from ase import Atoms
     from rgpot.ase import RgpotCalculator

@@ -39,6 +39,19 @@ def test_lammps_missing_plugin_names_the_library():
         )
 
 
+def test_lammps_coincident_atoms_are_numerical_error():
+    path = os.environ.get("RGPOT_LJ_ENGINE", "")
+    if not path:
+        pytest.skip(
+            "liblj_engine.so was not provided (RGPOT_LJ_ENGINE); "
+            "the LAMMPS constructor keeps that plugin as its backend"
+        )
+    pot = rgpot.rgpot_lammps_potential(1.0, 8.0, 1.0, engine_path=path)
+    coincident = np.zeros((2, 3))
+    with pytest.raises(rgpot.NumericalError, match="Lennard-Jones"):
+        pot(coincident, [1, 1], BOX)
+
+
 def test_lammps_plugin_dimer():
     path = os.environ.get("RGPOT_LJ_ENGINE", "")
     if not path:

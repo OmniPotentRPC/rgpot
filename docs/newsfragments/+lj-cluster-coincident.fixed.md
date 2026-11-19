@@ -1,0 +1,1 @@
+`LJClusterPot.evaluate_per_atom` reports a nonfinite energy for coincident atoms, so Python raises `NumericalError`, matching the total energy path. An engine backed `LammpsPot`, `GromacsPot`, or `OpenMMPot` call raises the same error when the plugin rejects the geometry.

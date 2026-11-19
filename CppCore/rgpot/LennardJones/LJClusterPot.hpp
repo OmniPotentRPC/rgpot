@@ -56,10 +56,7 @@ public:
   LJClusterPot() : LJClusterPot(LJClusterConfig{}) {}
 
   explicit LJClusterPot(const LJClusterConfig &c)
-      : Potential(PotType::LJCluster),
-        u0{c.u0},
-        cuttOffR{c.cutoff},
-        psi{c.psi},
+      : Potential(PotType::LJCluster), u0{c.u0}, cuttOffR{c.cutoff}, psi{c.psi},
         m_config{c} {
     // Shift so U(cuttOffR) = 0 (standard shifted 12-6 LJ).
     const double a = std::pow(psi / cuttOffR, 6.0);
@@ -103,12 +100,16 @@ public:
 
   /// forceImpl plus each pair energy and virial split half to each atom.
   /// Always walks the cells, so the energy can differ from forceImpl's
-  /// direct all-pairs sum in the last bits.
-  void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const;
+  /// direct all-pairs sum in the last bits. A coincident pair makes the
+  /// energy NaN, as the direct walk does.
+  void forcePerAtom(const ForceInput &in, ForceOut *out,
+                    const PerAtomOut &atoms) const;
 
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
-  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+  [[nodiscard]] bool listReused() const noexcept {
+    return neighbours_.reused();
+  }
 
   /// Zero when the call used the direct all-pairs kernel or a stream.
   [[nodiscard]] std::size_t retainedPairs() const noexcept { return retained_; }
@@ -117,7 +118,8 @@ private:
   /// Bump when the kernel numerics change, so stale cache entries die.
   static constexpr uint64_t kKernelVersion = 2;
 
-  void compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms) const;
+  void compute(const ForceInput &in, ForceOut *out,
+               const PerAtomOut *atoms) const;
 
   double u0;       //!< Well depth parameter.
   double cuttOffR; //!< Distance beyond which potential is truncated.

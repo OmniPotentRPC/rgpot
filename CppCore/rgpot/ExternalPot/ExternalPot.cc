@@ -27,6 +27,7 @@ using EngineDestroy = void (*)(RgpotEnginePot *);
 using EngineForce = int (*)(RgpotEnginePot *, long, const double *, const int *,
                             double *, double *, double *, const double *,
                             rgpot_engine_coord_transform, void *);
+using EngineLastError = size_t (*)(const RgpotEnginePot *, char *, size_t);
 using NativeForce = int (*)(void *, long, const double *, const int *, double *,
                             double *, double *, const double *);
 
@@ -60,6 +61,7 @@ struct Loaded {
   EngineCreate create = nullptr;
   EngineDestroy destroy = nullptr;
   EngineForce force = nullptr;
+  EngineLastError last_error = nullptr;
   NativeForce native = nullptr;
   RgpotEnginePot *pot = nullptr;
 
@@ -77,7 +79,8 @@ struct Loaded {
   Loaded &operator=(const Loaded &) = delete;
   Loaded(Loaded &&other) noexcept
       : library(other.library), create(other.create), destroy(other.destroy),
-        force(other.force), native(other.native), pot(other.pot) {
+        force(other.force), last_error(other.last_error), native(other.native),
+        pot(other.pot) {
     other.library = nullptr;
     other.pot = nullptr;
     other.destroy = nullptr;
@@ -94,6 +97,7 @@ struct Loaded {
       create = other.create;
       destroy = other.destroy;
       force = other.force;
+      last_error = other.last_error;
       native = other.native;
       pot = other.pot;
       other.library = nullptr;
@@ -126,6 +130,8 @@ Loaded open_library(const std::vector<std::string> &paths, bool native) {
     } else {
       loaded.force = dyn::loadSym<EngineForce>(handle, "rgpot_engine_force");
     }
+    loaded.last_error =
+        dyn::loadSym<EngineLastError>(handle, "rgpot_engine_last_error");
     const bool have =
         loaded.create != nullptr && loaded.destroy != nullptr &&
         (native ? loaded.native != nullptr : loaded.force != nullptr);
@@ -171,6 +177,29 @@ void create_engine(Loaded &loaded, const void *config, size_t bytes) {
   }
 }
 
+std::string engine_failure_text(const Loaded &loaded, const char *fallback) {
+  if (loaded.last_error != nullptr && loaded.pot != nullptr) {
+    char buf[512] = {};
+    loaded.last_error(loaded.pot, buf, sizeof(buf));
+    if (buf[0] != '\0') {
+      return buf;
+    }
+  }
+  return fallback;
+}
+
+/// Status 2 is an evaluation failure. Python maps std::domain_error to
+/// NumericalError, the same path an in process LJ kernel uses.
+[[noreturn]] void throw_engine_status(int status, const std::string &message) {
+  if (status == 2) {
+    throw std::domain_error(message);
+  }
+  if (status == 1) {
+    throw std::invalid_argument(message);
+  }
+  throw std::runtime_error(message);
+}
+
 void check_geometry(const ForceInput &in, const ForceOut *out) {
   if (out == nullptr || out->F == nullptr || in.box == nullptr ||
       (in.nAtoms > 0 && (in.pos == nullptr || in.atmnrs == nullptr))) {
@@ -206,7 +235,9 @@ void LammpsPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       impl_->engine.pot, static_cast<long>(in.nAtoms), in.pos, in.atmnrs,
       out->F, &out->energy, &variance, in.box, nullptr, nullptr);
   if (status != 0) {
-    throw std::runtime_error("rgpot_engine_force failed");
+    throw_engine_status(
+        status,
+        engine_failure_text(impl_->engine, "rgpot_engine_force failed"));
   }
   out->variance = variance;
   out->has_stress = 0;
@@ -254,7 +285,10 @@ void eval_native(NativeState &state, const ForceInput &in, ForceOut *out,
       state.engine.pot, static_cast<long>(in.nAtoms), state.positions.data(),
       in.atmnrs, state.forces.data(), &energy_kj, &variance, state.box.data());
   if (status != 0) {
-    throw std::runtime_error("rgpot_md_native_force failed");
+    throw_engine_status(
+        status,
+        engine_failure_text(state.engine,
+                            "native Lennard-Jones rejected the geometry"));
   }
   out->energy = energy_kj * md::kEvPerKj;
   out->variance = variance * md::kEvPerKj * md::kEvPerKj;
@@ -445,8 +479,8 @@ int rgpot_external_potential_energy_forces(rgpot_external_potential *pot,
                                            size_t err_len) {
   if (pot == nullptr || pot->pot == nullptr || energy == nullptr ||
       box9 == nullptr ||
-      (n > 0 && (xyz == nullptr || atomic_numbers == nullptr ||
-                 forces == nullptr))) {
+      (n > 0 &&
+       (xyz == nullptr || atomic_numbers == nullptr || forces == nullptr))) {
     write_err(err, err_len, "energy_forces needs a potential and a geometry");
     return 1;
   }

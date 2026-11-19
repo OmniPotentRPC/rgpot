@@ -17,8 +17,8 @@
 #include <vector>
 // clang-format on
 
-#include "rgpot/LennardJones/LJClusterKernel.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
+#include "rgpot/LennardJones/LJClusterKernel.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/nlist/PairSum.hpp"
 #include "rgpot/simd/api.hpp"
@@ -103,8 +103,8 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
   if (!switched && mode_ != nlist::Mode::Stream && atoms == nullptr &&
       ((ex * ex + ey * ey) + ez * ez <= cutoff * cutoff)) {
     double energyAcc = 0.0;
-    lj_cluster_direct(R, static_cast<std::size_t>(N), cutoff, u0, psi, cuttOffU, F,
-                      &energyAcc);
+    lj_cluster_direct(R, static_cast<std::size_t>(N), cutoff, u0, psi, cuttOffU,
+                      F, &energyAcc);
     *U = energyAcc;
     retained_ = 0;
     return;
@@ -122,11 +122,12 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
   }
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
   const std::array<bool, 3> open{{false, false, false}};
-  nlist::updateCells(neighbours_, R, static_cast<std::size_t>(N), box_use, cutoff, skin,
-                     nlist::Image::Round, mode_, open);
+  nlist::updateCells(neighbours_, R, static_cast<std::size_t>(N), box_use,
+                     cutoff, skin, nlist::Image::Round, mode_, open);
   retained_ = neighbours_.streaming() ? 0 : neighbours_.slots();
   const double cutoff2 = cutoff * cutoff;
-  auto term = [&params](std::int32_t, std::int32_t, double r2, double &pair_e, double &fscale) {
+  auto term = [&params](std::int32_t, std::int32_t, double r2, double &pair_e,
+                        double &fscale) {
     const double inv_r2 = 1.0 / r2;
     const double sr2 = params.psi2 * inv_r2;
     const double a = (sr2 * sr2) * sr2;
@@ -142,15 +143,19 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
       const double t3 = t2 * t;
       const double poly = simd::fma_quick(t, 15.0 - 6.0 * t, -10.0);
       const double s = simd::fma_quick(t3, poly, 1.0);
-      const double dsdr = ((-30.0 * t2) * (1.0 - t) * (1.0 - t)) * params.inv_width;
+      const double dsdr =
+          ((-30.0 * t2) * (1.0 - t) * (1.0 - t)) * params.inv_width;
       const double v = b * (a - 1.0);
       const double f_un = ((6.0 * b) * inv_r2) * ((2.0 * a) - 1.0);
       pair_e = v * s;
       fscale = f_un * s - (v * dsdr) / r;
     }
   };
-  nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), cutoff2, nlist::Overlap::Skip, term,
-                  F, *U, nullptr, atoms);
+  // A coincident pair makes the energy NaN. The direct walk does the
+  // same by dividing by r^2, and Python reports that nonfinite energy as
+  // NumericalError. Skipping the pair would publish a finite zero.
+  nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), cutoff2,
+                  nlist::Overlap::Poison, term, F, *U, nullptr, atoms);
 }
 
 } // namespace rgpot
