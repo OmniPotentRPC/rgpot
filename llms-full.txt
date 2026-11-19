@@ -11365,8 +11365,15 @@ The code is in `CppCore/rgpot/LongRange/Electro.cc`.
   `phi'(rc) = -erfc(alpha rc)/rc^2 - (2 alpha/sqrt(pi)) exp(-alpha^2 rc^2)/rc`.
   The pair energy is `ke q_i q_j phi(r)`, and the self term is
   `- ke (erfc(alpha rc)/(2 rc) + alpha/sqrt(pi)) q_i^2`.
-- The stress is the Cauchy stress `(1/V) dE/d strain` and is written when the
-  cell volume is positive.
+- `CoulombConfig::stress` defaults to true.
+  It keeps the real-space pair strain, and for `SPME` it selects the
+  double-precision mesh.
+  With `stress` false that pair strain is skipped and the `SPME` mesh runs in
+  single precision.
+  `Ewald` and `SPME` do not support stress.
+  `ewald_reciprocal` and `spme_reciprocal` set `has_stress` whether or not
+  `stress` is set, so the flag is not a switch for a Cauchy stress.
+  `DSF` has no cell, and the force call writes no stress.
 - The header also has the free function `so3lr_erf_pair`, which is not a
   `PotType`.
   It gives the SO3LR real-space pair term
@@ -11435,7 +11442,6 @@ namespace {
 struct Result {
   double energy;
   double max_force;
-  double stress_xx;
 };
 
 // Rock-salt NaCl, 2 x 2 x 2 conventional cells (64 ions), a = 5.64 Angstrom.
@@ -11475,7 +11481,7 @@ Result evaluate(const rgpot::lr::CoulombConfig &cfg) {
   for (double f : forces) {
     fmax = std::max(fmax, std::fabs(f));
   }
-  return {out.energy, fmax, out.stress[0]};
+  return {out.energy, fmax};
 }
 
 double madelung(double energy) {
@@ -11548,7 +11554,6 @@ int main() {
               s.energy - ref.energy);
   std::printf("largest force below 1e-9 eV/Angstrom: %s\n",
               e.max_force < 1e-9 ? "yes" : "no");
-  std::printf("stress xx %.6f eV/Angstrom^3\n", e.stress_xx);
   cluster();
   return 0;
 }
@@ -11559,7 +11564,6 @@ tight Ewald   -285.552461 eV, Madelung constant 1.747565
 default Ewald -285.477356 eV, difference 7.5e-02 eV
 default SPME  -285.477356 eV, difference 7.5e-02 eV
 largest force below 1e-9 eV/Angstrom: yes
-stress xx 0.066018 eV/Angstrom^3
 cluster bare Coulomb -29.739454 eV, DSF -30.196430 eV
 ```
 
