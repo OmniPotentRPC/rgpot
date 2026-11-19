@@ -23,6 +23,7 @@
 #include "rgpot/Locality.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/PerAtom.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/Staged.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
@@ -412,6 +413,10 @@ TEST_CASE("Owners of staged hosts match the periodic box", "[Staged]") {
   }
   SECTION("SuttonChen") {
     check_staged(sutton_chen(), fcc(3.92, 4, triclinic, 78, 78), slabs, newton);
+  }
+  SECTION("QSC") {
+    const rgpot::QSCPot qsc({.cutoff = 6.5, .periodic = true, .stress = true});
+    check_staged(qsc, fcc(3.6, 4, triclinic, 29, 28), slabs, newton);
   }
 #ifdef RGPOT_HAS_EAM_TABLE
   SECTION("EAMTable") { check_staged(cu_ni(), fcc(3.6, 4, triclinic, 29, 28), slabs, newton); }

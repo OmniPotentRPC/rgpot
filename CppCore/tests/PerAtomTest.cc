@@ -19,6 +19,7 @@
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/PerAtom.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
@@ -211,6 +212,12 @@ TEST_CASE("forcePerAtom gives Sutton-Chen atoms their embedding", "[PerAtom]") {
   c.periodic = true;
   c.stress = true;
   check(rgpot::SuttonChenPot(c), fcc(3.92, 4, triclinic, 78, 78));
+}
+
+TEST_CASE("forcePerAtom gives QSC alloy atoms their embedding", "[PerAtom]") {
+  const bool triclinic = GENERATE(false, true);
+  const rgpot::QSCConfig c{.cutoff = 6.5, .periodic = true, .stress = true};
+  check(rgpot::QSCPot(c), fcc(3.6, 4, triclinic, 29, 47));
 }
 
 #ifdef RGPOT_HAS_EAM_TABLE
