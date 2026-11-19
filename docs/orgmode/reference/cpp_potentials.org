@@ -117,7 +117,9 @@ Stillinger--Weber, Tersoff Si/C, D3, D4, QDO and NLH dispersion, and DSF,
 Ewald and SPME electrostatics. A sum reports stress only when every summand
 does. XTB, TBLite, CPMD and i-PI report it only when their backend returned a
 complete virial. MBD, other external, plugin, water and analytic-coordinate
-potentials currently leave =has_stress= at 0.
+potentials currently leave =has_stress= at 0. Coulomb and dispersion terms
+with a geometry-dependent charge or ratio response also leave it at 0 until
+that response supplies its chain-rule strain derivative.
 
 The program below evaluates a Lennard-Jones dimer with the default parameters.
 It links against =librgpot=.
