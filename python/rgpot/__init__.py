@@ -34,6 +34,7 @@ MorsePot = _core.MorsePot
 D2Pot = _core.D2Pot
 D2CpmdPot = _core.D2CpmdPot
 SumPot = _core.SumPot
+MullerBrownPot = _core.MullerBrownPot
 NumericalError = _core.NumericalError
 evaluate_lj = _core.evaluate_lj
 neighbor_list = _core.neighbor_list
@@ -192,6 +193,7 @@ __all__ = [
     "D2Pot",
     "D2CpmdPot",
     "SumPot",
+    "MullerBrownPot",
     "LammpsPot",
     "GromacsPot",
     "OpenMMPot",
