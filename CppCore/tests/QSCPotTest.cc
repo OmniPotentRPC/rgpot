@@ -10,6 +10,12 @@
 //   Philos. Mag. Lett. 63, 217 (1991), doi:10.1080/09500839108205994),
 //   including half-integer exponents on Cu-Ag; the density uses the mixed
 //   a_ij and m_ij of Eq. (1c).
+// - Pure-element energies and forces from a real eOn build (commit 3b2586f) in
+//   CppCore/tests/data/qsc/eon_3b2586f_pure.dat, to 1e-12 relative.
+// - Mixture energies, forces and stress from an independent 50-digit
+//   evaluation of the published equations in
+//   CppCore/tests/data/qsc/oracle_mixtures.dat. eOn 3b2586f is not a reference
+//   for mixtures; see docs/orgmode/reference/qsc.org.
 // - Doye and Wales 10-8 cluster minima (Pt38 Oh and Pt75 D5h) via
 //   setElementParameter, and bit-parity with SuttonChenPot.
 // - Analytic forces, Cauchy stress, per-atom split, staged evaluation and
@@ -18,9 +24,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -46,6 +54,7 @@ constexpr double kShellPad = 1.0e-9;
 constexpr double kExactEcohTol = 1.0e-11;
 constexpr double kPublishedEcohTol = 5.0e-3;
 constexpr double kOracleTol = 1.0e-12;
+constexpr double kReferenceRelTol = 1.0e-12;
 constexpr double kDoyeClusterTol = 5.0e-5;
 constexpr double kFdForceStep = 1.0e-4;
 constexpr double kFdForceTol = 1.0e-8;
@@ -128,6 +137,131 @@ std::vector<double> fcc_cell(int cells, double lattice, double *box) {
     }
   }
   return pos;
+}
+
+/// One record of a generated reference file (see scripts/qsc_reference).
+struct RefCase {
+  std::string name;
+  bool periodic = false;
+  double cutoff = 0.0;
+  std::array<double, 9> box{};
+  std::vector<int> z;
+  std::vector<double> pos;
+  std::vector<double> forces;
+  double energy = 0.0;
+  bool has_stress = false;
+  std::array<double, 6> stress{};
+};
+
+struct RefFile {
+  std::vector<QscRow> params;
+  std::vector<RefCase> cases;
+};
+
+double parse_double(const std::string &token) {
+  return std::strtod(token.c_str(), nullptr);
+}
+
+RefFile load_reference(const std::string &path) {
+  std::ifstream in(path);
+  if (!in) {
+    throw std::runtime_error("cannot open " + path);
+  }
+  RefFile file;
+  RefCase cur;
+  std::string raw;
+  while (std::getline(in, raw)) {
+    const std::string line = raw.substr(0, raw.find('#'));
+    std::istringstream is(line);
+    std::string key;
+    if (!(is >> key)) {
+      continue;
+    }
+    std::vector<std::string> v;
+    for (std::string t; is >> t;) {
+      v.push_back(t);
+    }
+    if (key == "param") {
+      QscRow row{};
+      row.z = std::atoi(v[0].c_str());
+      row.n = parse_double(v[1]);
+      row.m = parse_double(v[2]);
+      row.epsilon = parse_double(v[3]);
+      row.c = parse_double(v[4]);
+      row.a = parse_double(v[5]);
+      file.params.push_back(row);
+    } else if (key == "case") {
+      cur = RefCase{};
+      cur.name = v[0];
+    } else if (key == "periodic") {
+      cur.periodic = v[0] == "1";
+    } else if (key == "cutoff") {
+      cur.cutoff = parse_double(v[0]);
+    } else if (key == "cell") {
+      for (std::size_t k = 0; k < 9; ++k) {
+        cur.box[k] = parse_double(v[k]);
+      }
+    } else if (key == "atom") {
+      cur.z.push_back(std::atoi(v[0].c_str()));
+      for (std::size_t k = 1; k <= 3; ++k) {
+        cur.pos.push_back(parse_double(v[k]));
+      }
+      for (std::size_t k = 4; k <= 6; ++k) {
+        cur.forces.push_back(parse_double(v[k]));
+      }
+    } else if (key == "energy") {
+      cur.energy = parse_double(v[0]);
+    } else if (key == "stress") {
+      cur.has_stress = true;
+      for (std::size_t k = 0; k < 6; ++k) {
+        cur.stress[k] = parse_double(v[k]);
+      }
+    } else if (key == "end") {
+      file.cases.push_back(cur);
+    }
+  }
+  return file;
+}
+
+/// Evaluates @p ref with the default table and returns the largest relative
+/// deviations: energy over |E|, force and stress over their largest entry.
+struct RefDeviation {
+  double energy = 0.0;
+  double force = 0.0;
+  double stress = 0.0;
+};
+
+RefDeviation compare_to_reference(const RefCase &ref) {
+  const std::size_t n = ref.z.size();
+  const rgpot::QSCPot pot({.cutoff = ref.cutoff,
+                           .periodic = ref.periodic,
+                           .stress = ref.has_stress});
+  std::vector<double> forces(3 * n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  pot.forceImpl({n, ref.pos.data(), ref.z.data(), ref.box.data()}, &out);
+
+  RefDeviation dev;
+  dev.energy = std::abs(out.energy - ref.energy) / std::abs(ref.energy);
+  double fmax = 0.0;
+  for (double f : ref.forces) {
+    fmax = std::max(fmax, std::abs(f));
+  }
+  for (std::size_t k = 0; k < 3 * n; ++k) {
+    dev.force = std::max(dev.force, std::abs(forces[k] - ref.forces[k]) / fmax);
+  }
+  if (ref.has_stress) {
+    REQUIRE(out.has_stress == 1);
+    double smax = 0.0;
+    for (double s : ref.stress) {
+      smax = std::max(smax, std::abs(s));
+    }
+    for (int c = 0; c < 6; ++c) {
+      const double got = out.stress[3 * kVoigt[c][0] + kVoigt[c][1]];
+      dev.stress = std::max(dev.stress, std::abs(got - ref.stress[c]) / smax);
+    }
+  }
+  return dev;
 }
 
 AtomMatrix load_sc_points(const std::string &path, double *epsilon, double *c,
@@ -232,6 +366,71 @@ TEST_CASE("QSC heteronuclear Cu-Ag and Cu-Ni dimers match alloy mixing rules",
     REQUIRE_THAT(e_swap, WithinAbs(energy, kDimerTol));
     REQUIRE_THAT(f_swap(0, 0), WithinAbs(forces(0, 0), kDimerTol));
   }
+}
+
+TEST_CASE("QSC pure elements match real eOn 3b2586f to 1e-12 relative",
+          "[QSC][eon]") {
+  // eon_3b2586f_pure.dat: the unmodified eOn QSC class, built from commit
+  // 3b2586f; generator, compile line and provenance are in its header and in
+  // scripts/qsc_reference/gen_eon_pure.py. Pure species only: eOn reuses pair
+  // parameters across species there, so mixtures use oracle_mixtures.dat.
+  const RefFile ref =
+      load_reference("CppCore/tests/data/qsc/eon_3b2586f_pure.dat");
+
+  // The table the reference was evaluated with is the default table.
+  REQUIRE(ref.params.size() == kQscTable.size());
+  for (const QscRow &want : kQscTable) {
+    const auto it = std::find_if(
+        ref.params.begin(), ref.params.end(),
+        [&](const QscRow &p) { return p.z == want.z; });
+    REQUIRE(it != ref.params.end());
+    INFO(want.symbol);
+    REQUIRE(it->n == want.n);
+    REQUIRE(it->m == want.m);
+    REQUIRE(it->epsilon == want.epsilon);
+    REQUIRE(it->c == want.c);
+    REQUIRE(it->a == want.a);
+  }
+
+  REQUIRE(ref.cases.size() == 20);
+  std::size_t cells = 0;
+  for (const RefCase &c : ref.cases) {
+    INFO(c.name);
+    REQUIRE(std::all_of(c.z.begin(), c.z.end(),
+                        [&](int z) { return z == c.z.front(); }));
+    cells += c.periodic ? 1 : 0;
+    const RefDeviation dev = compare_to_reference(c);
+    REQUIRE(dev.energy <= kReferenceRelTol);
+    REQUIRE(dev.force <= kReferenceRelTol);
+  }
+  REQUIRE(cells == 4);
+}
+
+TEST_CASE("QSC mixtures match an independent evaluation of the published "
+          "equations",
+          "[QSC][oracle]") {
+  // oracle_mixtures.dat: scripts/qsc_reference/qsc_oracle.py, 50-digit
+  // arithmetic on Eqs. (1a)-(1c) and (2) of Qi et al., Phys. Rev. B 59, 3527,
+  // summing every periodic image. LAMMPS pair_style eam/fs tables built from
+  // the same equations agree with the file to 2e-13 in energy and 2e-8 in
+  // force (scripts/qsc_reference/lammps_crosscheck.py).
+  const RefFile ref =
+      load_reference("CppCore/tests/data/qsc/oracle_mixtures.dat");
+  REQUIRE(ref.cases.size() == 9);
+  std::size_t with_stress = 0;
+  for (const RefCase &c : ref.cases) {
+    INFO(c.name);
+    std::vector<int> species = c.z;
+    std::sort(species.begin(), species.end());
+    species.erase(std::unique(species.begin(), species.end()), species.end());
+    REQUIRE(species.size() >= 2);
+    with_stress += c.has_stress ? 1 : 0;
+    const RefDeviation dev = compare_to_reference(c);
+    REQUIRE(dev.energy <= kReferenceRelTol);
+    REQUIRE(dev.force <= kReferenceRelTol);
+    REQUIRE(dev.stress <= kReferenceRelTol);
+  }
+  REQUIRE(with_stress == 2);
 }
 
 TEST_CASE("QSC reproduces Doye 10-8 cluster minima and matches SuttonChenPot",
