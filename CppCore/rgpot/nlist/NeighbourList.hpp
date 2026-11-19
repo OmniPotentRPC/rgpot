@@ -200,8 +200,6 @@ private:
   std::size_t n_ = 0;
   double box_[9]{};
   Query query_{};
-  int nmax_[3]{};
-  bool one_image_ = false;
   Neighbours cells_;
   std::size_t atom_ = 0;
   std::vector<std::int32_t> hold_first_;
@@ -253,8 +251,10 @@ void build(Batch &batch, const Systems &systems, const Query &query);
 /// Bind `cells` to this geometry. `cutoff` is the pair cutoff and `skin`
 /// is the Verlet buffer the kernels drop inside the cutoff. `image` is
 /// Round for an orthorhombic cell, Half after coordinates have been
-/// wrapped, and General for a sheared cell. `mode` stores the index when
-/// it fits and streams otherwise, unless the caller asks.
+/// wrapped, and General for an orthogonal cell with a short periodic side.
+/// A sheared cell takes its pairs from vesin and ignores `image`. `mode`
+/// stores the index when it fits and streams otherwise, unless the caller
+/// asks; a sheared cell is always stored.
 inline void updateCells(Neighbours &cells, const double *positions, std::size_t n,
                         const double *box9, double cutoff, double skin, Image image, Mode mode,
                         const std::array<bool, 3> &periodic) {

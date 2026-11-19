@@ -37,8 +37,9 @@ using rgpot::threadsRequested;
 /// How the minimum image is formed. Round is the orthorhombic truncation
 /// used by the pair kernels. Half is one correction about the half-box,
 /// used after coordinates have been wrapped into the cell. General is
-/// MinimumImage, for a non-orthogonal cell or a periodic side shorter
-/// than the search.
+/// MinimumImage, for an orthogonal cell or a periodic side shorter than
+/// the search. A sheared cell takes its pairs from vesin instead and
+/// ignores this value.
 enum class Image : std::uint8_t { Round, Half, General };
 
 /// Stored keeps a Verlet list of candidate pairs. Stream walks the cells
@@ -53,7 +54,17 @@ struct Spec {
   std::array<bool, 3> periodic{{true, true, true}};
   Image image = Image::Round;
   Mode mode = Mode::Auto;
+  /// Keep every periodic image of every pair inside the search, and the
+  /// images of an atom with itself, for `forImages`. The directed and half
+  /// walks then visit each image of a pair and skip the self images.
+  /// Without it the list holds the one nearest image of each pair.
+  bool images = false;
 };
+
+/// True when an atom lies outside [0, L) along a periodic axis of an
+/// orthogonal cell. The cell shifts of the tile walk assume it does not.
+[[nodiscard]] bool outsideCell(const double *xyz, std::size_t n, const double *box9,
+                               const std::array<bool, 3> &periodic) noexcept;
 
 /// Bytes the process may still allocate, from MemAvailable. Zero when
 /// that figure is not reported.
@@ -88,6 +99,14 @@ struct Spec {
 /// that read them. Skin 0 reuses the list only when the coordinates and
 /// the cell match.
 ///
+/// A sheared cell and a `Spec::images` request do not bin atoms. Their
+/// pairs, with the integer shift of each image, come from vesin, and the
+/// list is stored in every mode. A stored image is fixed by its shift, so
+/// such a list is reused only while no atom has moved by more than half
+/// the skin from its reference position, and a wrapped atom rebuilds it.
+/// An orthogonal cell bins the coordinates folded into the cell, so an
+/// atom outside it is found through its image inside.
+///
 /// An infinite cutoff or skin makes every pair a candidate. Such an
 /// update bins nothing and stores nothing, in any mode: each walk takes
 /// the pairs straight from the coordinates, i ascending and then j
@@ -113,6 +132,8 @@ public:
   /// True when the last update kept the previous list. The displacement
   /// test is `withinSkin` on the nearest image of each reference position.
   [[nodiscard]] bool reused() const noexcept { return reused_; }
+  /// True when the pairs come from vesin with a shift per image.
+  [[nodiscard]] bool imaged() const noexcept { return imaged_; }
   /// Stored lists built so far. A reuse does not count.
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
   /// Stored pair index. A stream leaves this empty.
@@ -131,7 +152,7 @@ public:
   /// index order. In stored mode and in an unbounded search a partner
   /// `j < i` takes the negated vector of `forHalf` from j, so the two
   /// visits of a pair see opposite vectors and the same `r2`, even where
-  /// two images tie under MinimumImage, which every sheared cell uses. A
+  /// two images tie under MinimumImage, which General uses. A
   /// walk may copy `fn`, so state the caller reads back is captured by
   /// reference.
   template <typename Fn>
@@ -246,6 +267,23 @@ public:
     });
   }
 
+  /// Every image of every pair inside the search, for atoms in
+  /// `[begin, end)`: `fn(i, j, sa, sb, sc)`. The image vector is
+  /// `r_j - r_i + sa a + sb b + sc c`. With `Spec::images` the images of
+  /// an atom with itself, `j == i`, are included. Only an update that
+  /// reports `imaged()` has shifts.
+  template <typename Fn>
+  void forImages(std::int64_t begin, std::int64_t end, Fn &&fn) const {
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto a = static_cast<std::size_t>(i);
+      for (std::int32_t p = off_[a]; p < off_[a + 1]; ++p) {
+        const auto q = static_cast<std::size_t>(p);
+        fn(static_cast<std::int32_t>(i), nbr_[q], shift_[3 * q], shift_[3 * q + 1],
+           shift_[3 * q + 2]);
+      }
+    }
+  }
+
   /// Neighbours of one atom from the bins already built. Does not allocate
   /// the tile stencil. A three-body stream uses this so the scratch is one
   /// atom, not every bond.
@@ -253,6 +291,10 @@ public:
   void forAtom(std::int32_t i, Fn fn) const {
     if (allPairs()) {
       walkAll(static_cast<std::int64_t>(i), static_cast<std::int64_t>(i) + 1, fn, false);
+      return;
+    }
+    if (imaged_) {
+      walkImaged(static_cast<std::int64_t>(i), static_cast<std::int64_t>(i) + 1, fn, false);
       return;
     }
     // One atom, often from several threads. The cached stencil is built
@@ -267,15 +309,17 @@ private:
     double skin = 0;
     Image image = Image::Round;
     Mode mode = Mode::Auto;
+    bool images = false;
     std::array<bool, 3> periodic{{true, true, true}};
     bool operator==(const SpecKey &o) const {
       return cutoff == o.cutoff && skin == o.skin && image == o.image &&
-             mode == o.mode && periodic == o.periodic;
+             mode == o.mode && images == o.images && periodic == o.periodic;
     }
   };
 
   void buildCells(const double *xyz, std::size_t n);
   void buildStored(const double *xyz, std::size_t n, std::uint64_t bound);
+  void buildImaged(const double *xyz, std::size_t n, const Spec &spec);
   [[nodiscard]] std::uint64_t candidateBound() const;
   /// `wrapped` is set when some atom is within the skin only through
   /// another periodic image of its reference position.
@@ -284,15 +328,49 @@ private:
                               bool &wrapped) const;
   void fold(double &dx, double &dy, double &dz) const;
 
+  /// The nearest image of each pair, from the shifts vesin returned. The
+  /// reverse of a row is its negation bit for bit, so a directed walk and
+  /// a half walk agree on every pair. An atom is not its own partner.
+  template <typename Fn>
+  void walkImaged(std::int64_t begin, std::int64_t end, Fn &fn, bool half) const {
+    const double *x = xyz_;
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto a = static_cast<std::size_t>(i);
+      const auto self = static_cast<std::int32_t>(i);
+      const double xi = x[3 * a];
+      const double yi = x[3 * a + 1];
+      const double zi = x[3 * a + 2];
+      for (std::int32_t p = off_[a]; p < off_[a + 1]; ++p) {
+        const auto q = static_cast<std::size_t>(p);
+        const auto j = nbr_[q];
+        if (j == self || (half && j < self)) {
+          continue;
+        }
+        const double sa = static_cast<double>(shift_[3 * q]);
+        const double sb = static_cast<double>(shift_[3 * q + 1]);
+        const double sc = static_cast<double>(shift_[3 * q + 2]);
+        const auto b = static_cast<std::size_t>(j);
+        const double dx = (xi - x[3 * b]) - (sa * box_[0] + sb * box_[3] + sc * box_[6]);
+        const double dy = (yi - x[3 * b + 1]) - (sa * box_[1] + sb * box_[4] + sc * box_[7]);
+        const double dz = (zi - x[3 * b + 2]) - (sa * box_[2] + sb * box_[5] + sc * box_[8]);
+        fn(self, j, dx, dy, dz, dx * dx + dy * dy + dz * dz);
+      }
+    }
+  }
+
   template <typename Fn>
   void walkStored(std::int64_t begin, std::int64_t end, Fn &fn,
                   bool half) const {
+    if (imaged_) {
+      walkImaged(begin, end, fn, half);
+      return;
+    }
     const auto row = nbr_.begin();
     // Round and Half fold the reverse of a pair to the negated vector; only
     // the sign of a zero component can differ, and a sum that starts at
-    // zero adds either sign alike. MinimumImage, which General and every
-    // sheared cell use, can tie two images, so there a directed walk takes
-    // the vector of a lower partner from that partner.
+    // zero adds either sign alike. MinimumImage, which General uses, can
+    // tie two images, so there a directed walk takes the vector of a lower
+    // partner from that partner.
     const bool reverse = !half && use_general_;
     for (std::int64_t i = begin; i < end; ++i) {
       const auto a = static_cast<std::size_t>(i);
@@ -414,7 +492,7 @@ private:
   template <typename Loop>
   bool fastTiles(Loop &&loop) const {
     // Half is the same orthorhombic minimum image once coordinates sit in
-    // the cell. A sheared box stays on the scattered walk. An unbounded
+    // the cell. A sheared box has no bins and takes the stored walk. An unbounded
     // search has no bins to tile, and a stored list walks its index.
     if (!streaming_ || allPairs() || use_general_ ||
         (image_ != Image::Round && image_ != Image::Half) || n_ < 2) {
@@ -426,8 +504,10 @@ private:
     const bool dense = tileStencilFits();
     const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
                         static_cast<std::size_t>(nz_);
-    const bool cell_shift = (!periodic_[0] || nx_ >= 5) && (!periodic_[1] || ny_ >= 5) &&
-                            (!periodic_[2] || nz_ >= 5);
+    // A cell shift is the image of a pair only when both atoms sit inside
+    // the cell. Otherwise each pair is rounded.
+    const bool cell_shift = inside_ && (!periodic_[0] || nx_ >= 5) &&
+                            (!periodic_[1] || ny_ >= 5) && (!periodic_[2] || nz_ >= 5);
     struct Nbor {
       int id;
       double sx;
@@ -894,6 +974,8 @@ private:
   std::vector<std::int32_t> cell_of_;
   std::vector<std::int32_t> cell_start_;
   std::vector<std::int32_t> cell_atoms_;
+  /// Three entries per stored pair of an imaged list, empty otherwise.
+  std::vector<std::int32_t> shift_;
   std::vector<double> ref_;
   double box_[9]{};
   double len_[3]{};
@@ -908,6 +990,8 @@ private:
   SpecKey key_{};
   MinimumImage general_;
   bool use_general_ = false;
+  bool imaged_ = false;
+  bool inside_ = true;
   bool streaming_ = true;
   bool built_ = false;
   bool reused_ = false;

@@ -120,33 +120,6 @@ bool keep_half(std::int32_t first, std::int32_t second, int sa, int sb, int sc) 
   return sa != 0 || sb != 0 || sc != 0;
 }
 
-void shift_bounds(const double *box, const std::array<bool, 3> &periodic,
-                  double search, int nmax[3]) {
-  const double a[3] = {box[0], box[1], box[2]};
-  const double b[3] = {box[3], box[4], box[5]};
-  const double c[3] = {box[6], box[7], box[8]};
-  const double bx[3] = {b[1] * c[2] - b[2] * c[1], b[2] * c[0] - b[0] * c[2],
-                        b[0] * c[1] - b[1] * c[0]};
-  const double cx[3] = {c[1] * a[2] - c[2] * a[1], c[2] * a[0] - c[0] * a[2],
-                        c[0] * a[1] - c[1] * a[0]};
-  const double ax[3] = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
-                        a[0] * b[1] - a[1] * b[0]};
-  const double vol = std::fabs(a[0] * bx[0] + a[1] * bx[1] + a[2] * bx[2]);
-  const double nb = std::sqrt(bx[0] * bx[0] + bx[1] * bx[1] + bx[2] * bx[2]);
-  const double nc = std::sqrt(cx[0] * cx[0] + cx[1] * cx[1] + cx[2] * cx[2]);
-  const double na = std::sqrt(ax[0] * ax[0] + ax[1] * ax[1] + ax[2] * ax[2]);
-  const double height[3] = {nb > 0.0 ? vol / nb : 0.0, nc > 0.0 ? vol / nc : 0.0,
-                            na > 0.0 ? vol / na : 0.0};
-  for (int k = 0; k < 3; ++k) {
-    if (!periodic[static_cast<std::size_t>(k)] || !(height[k] > 0.0) ||
-        !(search > 0.0)) {
-      nmax[k] = 0;
-    } else {
-      nmax[k] = static_cast<int>(std::ceil(search / height[k]));
-    }
-  }
-}
-
 void image_vector(const double *pos, std::size_t i, std::size_t j, int sa, int sb,
                   int sc, const double *box, double &vx, double &vy, double &vz) {
   vx = pos[3 * j] - pos[3 * i];
@@ -194,26 +167,25 @@ bool one_minimum_image(const double *box, const Query &query, double search) {
 Neighbours prepare_cells(const double *pos, std::size_t n, const double *box,
                          const Query &query) {
   Spec spec;
-  spec.cutoff = search_radius(query);
+  const double search = search_radius(query);
+  spec.cutoff = search;
   spec.skin = 0;
   spec.periodic = query.periodic;
-  const bool sheared = box[1] != 0.0 || box[2] != 0.0 || box[3] != 0.0 || box[5] != 0.0 ||
-                       box[6] != 0.0 || box[7] != 0.0;
-  spec.image = sheared ? Image::General : Image::Round;
+  spec.image = Image::Round;
   spec.mode = Mode::Stream;
+  spec.images = !one_minimum_image(box, query, search);
   Neighbours cells;
   cells.update(pos, n, box, spec);
   return cells;
 }
 
-// Cell-list candidates from Neighbours, then the same image test the brute
-// force used. A box at least two cutoffs wide has one image, so the folded
-// vector is that image. A narrower or sheared cell retries the shift stencil
-// on those candidates only.
+// Pairs from Neighbours. A box at least two cutoffs wide, with its atoms
+// inside, has one image per pair, so the folded vector is that image.
+// Any other cell takes every image with its shift from vesin through the
+// same table.
 template <typename Fn>
 void each_cell(const Neighbours &cells, const double *pos, const double *box,
-               const Query &query, const int nmax[3], bool one_image, std::size_t begin,
-               std::size_t end, Fn &&fn) {
+               const Query &query, std::size_t begin, std::size_t end, Fn &&fn) {
   auto accept = [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx,
                     double vy, double vz) {
     const double r2 = vx * vx + vy * vy + vz * vz;
@@ -225,61 +197,37 @@ void each_cell(const Neighbours &cells, const double *pos, const double *box,
     }
     fn(i, j, sa, sb, sc, vx, vy, vz, std::sqrt(r2));
   };
-  if (one_image) {
-    const double inv[3] = {box[0] > 0.0 ? 1.0 / box[0] : 0.0, box[4] > 0.0 ? 1.0 / box[4] : 0.0,
-                           box[8] > 0.0 ? 1.0 / box[8] : 0.0};
-    // forHalf is keep_half when a single image exists: j < i is dropped
-    // and a self pair is not emitted.
-    auto take = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
-      if (!accept_distance(r2, query)) {
-        return;
-      }
-      const auto ui = static_cast<std::size_t>(i);
-      const auto uj = static_cast<std::size_t>(j);
-      const int sa = axis_shift(pos[3 * ui] - pos[3 * uj], inv[0], query.periodic[0]);
-      const int sb = axis_shift(pos[3 * ui + 1] - pos[3 * uj + 1], inv[1], query.periodic[1]);
-      const int sc = axis_shift(pos[3 * ui + 2] - pos[3 * uj + 2], inv[2], query.periodic[2]);
-      fn(i, j, sa, sb, sc, -dx, -dy, -dz, std::sqrt(r2));
-    };
-    if (full_shell(query)) {
-      cells.forDirected(static_cast<std::int64_t>(begin), static_cast<std::int64_t>(end), take);
-    } else {
-      cells.forHalf(static_cast<std::int64_t>(begin), static_cast<std::int64_t>(end), take);
-    }
+  if (cells.imaged()) {
+    cells.forImages(static_cast<std::int64_t>(begin), static_cast<std::int64_t>(end),
+                    [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc) {
+                      double vx = 0;
+                      double vy = 0;
+                      double vz = 0;
+                      image_vector(pos, static_cast<std::size_t>(i),
+                                   static_cast<std::size_t>(j), sa, sb, sc, box, vx, vy, vz);
+                      accept(i, j, sa, sb, sc, vx, vy, vz);
+                    });
     return;
   }
-  cells.forDirected(static_cast<std::int64_t>(begin), static_cast<std::int64_t>(end),
-                    [&](std::int32_t i, std::int32_t j, double, double, double, double) {
-                      for (int sa = -nmax[0]; sa <= nmax[0]; ++sa) {
-                        for (int sb = -nmax[1]; sb <= nmax[1]; ++sb) {
-                          for (int sc = -nmax[2]; sc <= nmax[2]; ++sc) {
-                            double vx = 0;
-                            double vy = 0;
-                            double vz = 0;
-                            image_vector(pos, static_cast<std::size_t>(i),
-                                         static_cast<std::size_t>(j), sa, sb, sc, box, vx, vy,
-                                         vz);
-                            accept(i, j, sa, sb, sc, vx, vy, vz);
-                          }
-                        }
-                      }
-                    });
-  for (std::size_t i = begin; i < end; ++i) {
-    for (int sa = -nmax[0]; sa <= nmax[0]; ++sa) {
-      for (int sb = -nmax[1]; sb <= nmax[1]; ++sb) {
-        for (int sc = -nmax[2]; sc <= nmax[2]; ++sc) {
-          if (sa == 0 && sb == 0 && sc == 0) {
-            continue;
-          }
-          double vx = 0;
-          double vy = 0;
-          double vz = 0;
-          image_vector(pos, i, i, sa, sb, sc, box, vx, vy, vz);
-          accept(static_cast<std::int32_t>(i), static_cast<std::int32_t>(i), sa, sb, sc, vx,
-                 vy, vz);
-        }
-      }
+  const double inv[3] = {box[0] > 0.0 ? 1.0 / box[0] : 0.0, box[4] > 0.0 ? 1.0 / box[4] : 0.0,
+                         box[8] > 0.0 ? 1.0 / box[8] : 0.0};
+  // forHalf is keep_half when a single image exists: j < i is dropped
+  // and a self pair is not emitted.
+  auto take = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+    if (!accept_distance(r2, query)) {
+      return;
     }
+    const auto ui = static_cast<std::size_t>(i);
+    const auto uj = static_cast<std::size_t>(j);
+    const int sa = axis_shift(pos[3 * ui] - pos[3 * uj], inv[0], query.periodic[0]);
+    const int sb = axis_shift(pos[3 * ui + 1] - pos[3 * uj + 1], inv[1], query.periodic[1]);
+    const int sc = axis_shift(pos[3 * ui + 2] - pos[3 * uj + 2], inv[2], query.periodic[2]);
+    fn(i, j, sa, sb, sc, -dx, -dy, -dz, std::sqrt(r2));
+  };
+  if (full_shell(query)) {
+    cells.forDirected(static_cast<std::int64_t>(begin), static_cast<std::int64_t>(end), take);
+  } else {
+    cells.forHalf(static_cast<std::int64_t>(begin), static_cast<std::int64_t>(end), take);
   }
 }
 
@@ -352,15 +300,14 @@ void merge_clusters(std::vector<Rec> &rows) {
 }
 
 void collect(const Neighbours &cells, const double *pos, std::size_t n, const double *box,
-             const Query &query, const int nmax[3], bool one_image, std::size_t begin,
-             std::size_t end, std::vector<Rec> &out) {
+             const Query &query, std::size_t begin, std::size_t end, std::vector<Rec> &out) {
   if (clustered(query)) {
     const std::size_t c0 = begin & ~std::size_t{3};
     const std::size_t c1 = std::min(n, (end + 3) & ~std::size_t{3});
     Query full = query;
     full.shape = Pairs{Shell::Full};
     std::vector<Rec> raw;
-    each_cell(cells, pos, box, full, nmax, one_image, c0, c1,
+    each_cell(cells, pos, box, full, c0, c1,
               [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx, double vy,
                   double vz, double dist) {
                 if (static_cast<std::size_t>(i) < begin || static_cast<std::size_t>(i) >= end) {
@@ -374,7 +321,7 @@ void collect(const Neighbours &cells, const double *pos, std::size_t n, const do
     out.insert(out.end(), raw.begin(), raw.end());
     return;
   }
-  each_cell(cells, pos, box, query, nmax, one_image, begin, end,
+  each_cell(cells, pos, box, query, begin, end,
             [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx, double vy,
                 double vz, double dist) {
               push_rec(out, query, i, j, sa, sb, sc, vx, vy, vz, dist, 0xff);
@@ -564,8 +511,6 @@ Walk::Walk(const double *positions, std::size_t n, const double *box9, const Que
     : pos_(positions), n_(n), query_(query) {
   check_geometry(positions, n, box9, query);
   std::memcpy(box_, box9, sizeof(box_));
-  shift_bounds(box_, query_.periodic, search_radius(query_), nmax_);
-  one_image_ = one_minimum_image(box_, query_, search_radius(query_));
   cells_ = prepare_cells(positions, n, box9, query_);
 }
 
@@ -621,7 +566,7 @@ std::size_t Walk::pull(Buffers dest, bool &done) {
       const std::size_t end = std::min(
           n_, atom_ + (clustered(query_) ? std::size_t{4} : std::size_t{1}));
       std::vector<Rec> rows;
-      collect(cells_, pos_, n_, box_, query_, nmax_, one_image_, atom_, end, rows);
+      collect(cells_, pos_, n_, box_, query_, atom_, end, rows);
       atom_ = end;
       stash(rows);
       if (hold_first_.empty()) {
@@ -661,19 +606,19 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
     table.stored = true;
     return;
   }
-  int nmax[3];
   const double search = search_radius(query);
-  shift_bounds(box9, query.periodic, search, nmax);
-  const bool one_image = one_minimum_image(box9, query, search);
   // A handful of atoms is cheaper as a direct pair loop. The cell list
-  // spends its time building bins, and a sheared cell of this size has
-  // only a few bins, so the stencil visits every pair anyway.
-  if (!clustered(query) && n < 512) {
+  // spends its time building bins. The loop sees the nearest of the three
+  // images along an axis, which is every image when the box is two search
+  // radii wide and the atoms are inside it. Any other cell goes to the
+  // table below, where vesin finds the images.
+  if (!clustered(query) && n < 512 && one_minimum_image(box9, query, search) &&
+      !outsideCell(positions, n, box9, query.periodic)) {
+    const int nmax[3] = {query.periodic[0] ? 1 : 0, query.periodic[1] ? 1 : 0,
+                         query.periodic[2] ? 1 : 0};
     Columns cols;
     const bool full = full_shell(query);
-    const int stencil =
-        one_image ? 1 : (2 * nmax[0] + 1) * (2 * nmax[1] + 1) * (2 * nmax[2] + 1);
-    const std::size_t slots = pair_guess(n, n, box9, search, full, stencil);
+    const std::size_t slots = pair_guess(n, n, box9, search, full, 1);
     cols.first.reserve(slots);
     cols.second.reserve(slots);
     cols.mask.reserve(slots);
@@ -734,9 +679,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
     std::vector<Columns> parts(static_cast<std::size_t>(std::max(nt, 1)));
     const bool full = full_shell(query);
     auto fill = [&](Columns &cols, std::size_t begin, std::size_t end) {
-      const int stencil = one_image ? 1
-                                   : (2 * nmax[0] + 1) * (2 * nmax[1] + 1) * (2 * nmax[2] + 1);
-      const std::size_t slots = pair_guess(end - begin, n, box9, search, full, stencil);
+      const std::size_t slots = pair_guess(end - begin, n, box9, search, full, 1);
       grow_uninitialized(cols.first, slots);
       grow_uninitialized(cols.second, slots);
       grow_uninitialized(cols.mask, slots);
@@ -757,7 +700,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
       auto *distance = cols.distance.data();
       std::size_t count = 0;
       Columns extra;
-      each_cell(cells, positions, box9, query, nmax, one_image, begin, end,
+      each_cell(cells, positions, box9, query, begin, end,
                 [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx,
                     double vy, double vz, double dist) {
                   if (count == slots) {
@@ -856,10 +799,10 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
       move_columns(table, parts[0]);
       return;
     }
-    // The cell team walks one folded image per pair. A sheared cell, or one
-    // narrower than two search radii, needs the shift stencil, so each
-    // slice runs the serial walk on its own atom range instead.
-    if (!one_image) {
+    // The cell team walks one folded image per pair. A cell that takes its
+    // images from vesin is split by atom range, so each slice runs the
+    // serial walk on its own atoms instead.
+    if (cells.imaged()) {
       forEachSlice(nt, [&](int t) {
         const auto range = partition(static_cast<std::int64_t>(n), t, nt);
         fill(parts[static_cast<std::size_t>(t)], static_cast<std::size_t>(range.begin),
@@ -973,11 +916,11 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
   }
   std::vector<std::vector<Rec>> parts(static_cast<std::size_t>(std::max(nt, 1)));
   if (nt <= 1) {
-    collect(cells, positions, n, box9, query, nmax, one_image, 0, n, parts[0]);
+    collect(cells, positions, n, box9, query, 0, n, parts[0]);
   } else {
     forEachSlice(nt, [&](int t) {
       const auto range = partition(static_cast<std::int64_t>(n), t, nt);
-      collect(cells, positions, n, box9, query, nmax, one_image,
+      collect(cells, positions, n, box9, query,
               static_cast<std::size_t>(range.begin), static_cast<std::size_t>(range.end),
               parts[static_cast<std::size_t>(t)]);
     });
@@ -1000,15 +943,11 @@ void buildByAtom(Table &table, const double *positions, std::size_t n, const dou
     build(table, positions, n, box9, query);
     return;
   }
-  int nmax[3];
-  const double search = search_radius(query);
-  shift_bounds(box9, query.periodic, search, nmax);
-  const bool one_image = one_minimum_image(box9, query, search);
   const Neighbours cells = prepare_cells(positions, n, box9, query);
   std::vector<Rec> rows;
   rows.reserve(n * 8);
   for (std::size_t i = 0; i < n; ++i) {
-    collect(cells, positions, n, box9, query, nmax, one_image, i, i + 1, rows);
+    collect(cells, positions, n, box9, query, i, i + 1, rows);
   }
   store_records(table, query, rows);
 }

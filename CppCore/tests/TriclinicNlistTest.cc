@@ -633,6 +633,7 @@ TEST_CASE("a list on a sheared cell is kept within the skin and rebuilt after a 
   rgpot::nlist::Neighbours cells;
   cells.update(p.data(), n, cell.box.data(), spec);
   REQUIRE_FALSE(cells.reused());
+  REQUIRE(cells.imaged());
 
   auto requireMatches = [&](const char *what) {
     INFO(what);
