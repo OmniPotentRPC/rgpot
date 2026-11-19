@@ -428,3 +428,60 @@ fn bundled_cu_u3_matches_lammps_vacancy_reference() {
         &reference,
     );
 }
+
+#[test]
+fn verlet_skin_delegates_to_linkcell_and_matches_unskinned_evaluation() {
+    let reference = reference("cu_u3_vacancy.ref");
+    assert!(matches!(
+        EamTablePotential::cu_u3(true).unwrap().with_skin(-0.5),
+        Err(EamTableError::Invalid(_))
+    ));
+    let warm = EamTablePotential::cu_u3(true)
+        .expect("bundled Cu_u3.eam")
+        .with_skin(1.0)
+        .expect("skin 1.0");
+    let cold = EamTablePotential::cu_u3(true)
+        .expect("bundled Cu_u3.eam")
+        .with_skin(0.0)
+        .expect("skin 0.0");
+
+    let mut pos = reference.positions.clone();
+    let first = warm
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("first warm");
+    assert_matches(
+        "bundled Cu_u3 vacancy",
+        first.energy,
+        &first.forces,
+        &reference,
+    );
+    assert!(!warm.list_reused());
+    assert_eq!(warm.list_builds(), 1);
+    assert_eq!(warm.list_reuses(), 0);
+
+    for (idx, coord) in pos.iter_mut().enumerate() {
+        *coord += 0.03 * ((idx as f64) * 0.37).sin();
+    }
+    let second_warm = warm
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("second warm");
+    let second_cold = cold
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("second cold");
+    assert!(warm.list_reused());
+    assert_eq!(warm.list_builds(), 1);
+    assert_eq!(warm.list_reuses(), 1);
+    assert_eq!(second_warm, second_cold);
+
+    pos[0] += 0.6;
+    let third_warm = warm
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("third warm");
+    let third_cold = cold
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("third cold");
+    assert!(!warm.list_reused());
+    assert_eq!(warm.list_builds(), 2);
+    assert_eq!(warm.list_reuses(), 1);
+    assert_eq!(third_warm, third_cold);
+}
