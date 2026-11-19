@@ -9,8 +9,9 @@
 
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
-#include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_CBE
 #include "rgpot/CBEPot/CBEPot.hpp"
@@ -40,6 +41,8 @@ Created create(const void *config, std::size_t config_len) {
       pot = std::make_unique<MorsePot>();
     } else if (n == "zbl") {
       pot = std::make_unique<ZBLPot>();
+    } else if (n == "qsc") {
+      pot = std::make_unique<QSCPot>();
     } else if (n == "eckart") {
       pot = std::make_unique<EckartPot>();
     } else if (n == "muller_brown") {
