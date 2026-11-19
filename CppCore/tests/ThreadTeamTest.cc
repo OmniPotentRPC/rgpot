@@ -610,7 +610,7 @@ TEST_CASE("many-body potentials give the one-thread bits on any team",
   gupta.periodic = true;
   gupta.stress = true;
   for (const int side : {4, 13}) {
-    gupta.cutoff = side == 4 ? 3.0 : 1.5;
+    gupta.cutoff = side == 4 ? 2.7 : 1.5;
     const auto pt = fcc(side, std::sqrt(2.0), 78);
     checkPotential("stored Gupta", mode<rgpot::GuptaPot>(gupta, kStored), pt);
     checkPotential("streamed Gupta", mode<rgpot::GuptaPot>(gupta, kStream), pt);

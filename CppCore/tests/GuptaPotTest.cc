@@ -9,18 +9,22 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
+#include "lsan_libomp.hpp"
 #include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/Gupta/gupta.h"
 #include "rgpot/KeptPotential.hpp"
+#include "rgpot/Slices.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -389,71 +393,41 @@ TEST_CASE("GuptaPot degenerate pairs match all-pairs and neighbour paths",
 
   SECTION("coincident dimer") {
     const std::vector<double> positions(6, 0.0);
-    const StressEval all_pairs =
-        eval_stress(rgpot::GuptaPot(base), positions, nullptr);
-    // The free cluster delegates to rgpot_gupta (+infinity) and poisons forces.
-    REQUIRE(std::isinf(all_pairs.energy));
-    REQUIRE(all_pairs.energy > 0.0);
-    for (double force : all_pairs.forces) {
-      REQUIRE(std::isnan(force));
-    }
-    // The neighbour walk poisons both energy and forces across all modes.
+    REQUIRE_THROWS_AS(eval_stress(rgpot::GuptaPot(base), positions, nullptr),
+                      std::invalid_argument);
     for (const auto mode : {rgpot::nlist::Mode::Auto,
                             rgpot::nlist::Mode::Stored,
                             rgpot::nlist::Mode::Stream}) {
       INFO("mode " << static_cast<int>(mode));
       rgpot::GuptaPot pot(bounded);
       pot.setNeighbourMode(mode);
-      const StressEval neighbours = eval_stress(pot, positions, nullptr);
-      REQUIRE(std::isnan(neighbours.energy));
-      for (double force : neighbours.forces) {
-        REQUIRE(std::isnan(force));
-      }
+      REQUIRE_THROWS_AS(eval_stress(pot, positions, nullptr),
+                        std::invalid_argument);
     }
-    // Periodic stress and per-atom evaluation also poison energy, forces,
-    // stress, per-atom energy, and per-atom virial.
+    // Periodic stress and per-atom evaluation also reject coincidences.
     rgpot::GuptaConfig per_cfg = bounded;
     per_cfg.periodic = true;
     per_cfg.stress = true;
-    const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+    const double box[9] = {25.0, 0.0, 0.0, 0.0, 25.0, 0.0, 0.0, 0.0, 25.0};
     const rgpot::GuptaPot per_pot(per_cfg);
     std::vector<double> pa_forces(6, 0.0);
     double pa_e[2] = {};
     double pa_v[12] = {};
     rgpot::ForceOut pa_out{};
     pa_out.F = pa_forces.data();
-    per_pot.forcePerAtom(rgpot::ForceInput{2, positions.data(), nullptr, box},
-                         &pa_out, rgpot::PerAtomOut{pa_e, pa_v});
-    REQUIRE(std::isnan(pa_out.energy));
-    for (double force : pa_forces) {
-      REQUIRE(std::isnan(force));
-    }
-    for (double s : pa_out.stress) {
-      REQUIRE(std::isnan(s));
-    }
-    REQUIRE(std::isnan(pa_e[0]));
-    REQUIRE(std::isnan(pa_e[1]));
-    for (double v : pa_v) {
-      REQUIRE(std::isnan(v));
-    }
+    REQUIRE_THROWS_AS(
+        per_pot.forcePerAtom(rgpot::ForceInput{2, positions.data(), nullptr, box},
+                             &pa_out, rgpot::PerAtomOut{pa_e, pa_v}),
+        std::invalid_argument);
   }
 
   SECTION("trimer with one coincident pair") {
     const std::vector<double> positions = {
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, base.r0, 0.0, 0.0};
-    const StressEval all_pairs =
-        eval_stress(rgpot::GuptaPot(base), positions, nullptr);
-    const StressEval neighbours =
-        eval_stress(rgpot::GuptaPot(bounded), positions, nullptr);
-    REQUIRE(std::isinf(all_pairs.energy));
-    REQUIRE(all_pairs.energy > 0.0);
-    for (double force : all_pairs.forces) {
-      REQUIRE(std::isnan(force));
-    }
-    REQUIRE(std::isnan(neighbours.energy));
-    for (double force : neighbours.forces) {
-      REQUIRE(std::isnan(force));
-    }
+    REQUIRE_THROWS_AS(eval_stress(rgpot::GuptaPot(base), positions, nullptr),
+                      std::invalid_argument);
+    REQUIRE_THROWS_AS(eval_stress(rgpot::GuptaPot(bounded), positions, nullptr),
+                      std::invalid_argument);
   }
 
   SECTION("staged coincidence") {
@@ -474,15 +448,29 @@ TEST_CASE("GuptaPot degenerate pairs match all-pairs and neighbour paths",
     list.count = count;
     list.neighbours = neighs;
     double dens[2] = {};
-    pot.densityStage(list, dens);
-    REQUIRE(std::isnan(dens[0]));
-    REQUIRE(std::isnan(dens[1]));
+    REQUIRE_THROWS_AS(pot.densityStage(list, dens), std::invalid_argument);
     double forces[6] = {};
     rgpot::StageTally tally;
-    pot.forceStage(list, dens, forces, &tally);
-    REQUIRE(std::isnan(tally.energy));
-    for (double component : forces) {
-      REQUIRE(std::isnan(component));
+    REQUIRE_THROWS_AS(pot.forceStage(list, dens, forces, &tally),
+                      std::invalid_argument);
+  }
+
+  SECTION("coincident pair throws on team paths") {
+    std::vector<double> many(3 * 80, 0.0);
+    for (std::size_t i = 0; i < 80; ++i) {
+      many[3 * i] = 3.0 * static_cast<double>(i);
+      many[3 * i + 1] = 0.25 * static_cast<double>(i % 7);
+      many[3 * i + 2] = 0.5 * static_cast<double>(i % 5);
+    }
+    many[3] = many[0];
+    many[4] = many[1];
+    many[5] = many[2];
+    for (const auto mode : {rgpot::nlist::Mode::Stored,
+                            rgpot::nlist::Mode::Stream}) {
+      INFO("mode " << static_cast<int>(mode));
+      rgpot::GuptaPot pot(bounded);
+      pot.setNeighbourMode(mode);
+      REQUIRE_THROWS_AS(eval_stress(pot, many, nullptr), std::invalid_argument);
     }
   }
 }
@@ -509,11 +497,8 @@ TEST_CASE("GuptaPot forces match central differences near a coincidence",
   require_scaled_match(got.forces[3], -c_grad[3]);
 }
 
-TEST_CASE("GuptaPot propagates a NaN coordinate on the neighbour path",
+TEST_CASE("GuptaPot rejects non-finite coordinates",
           "[Gupta]") {
-  // The free-cluster kernel is covered by rgpot-pair. A positive cutoff
-  // takes the neighbour walk, which used to drop a NaN separation and
-  // leave a finite energy and zero force.
   const rgpot::GuptaConfig cfg{.A = 0.2061,
                                .xi = 1.790,
                                .p = 10.229,
@@ -523,12 +508,8 @@ TEST_CASE("GuptaPot propagates a NaN coordinate on the neighbour path",
   const double nan = std::numeric_limits<double>::quiet_NaN();
   const std::vector<double> pos = {
       nan, 0.0, 0.0, 1.0, 0.0, 0.0, 0.2, 1.1, 0.0};
-  const StressEval got = eval_stress(rgpot::GuptaPot(cfg), pos, nullptr);
-  REQUIRE(std::isnan(got.energy));
-  REQUIRE(got.forces.size() == pos.size());
-  for (double component : got.forces) {
-    REQUIRE(std::isnan(component));
-  }
+  REQUIRE_THROWS_AS(eval_stress(rgpot::GuptaPot(cfg), pos, nullptr),
+                    std::invalid_argument);
 
   // A partner in a non-adjacent bin of a 1000^3 box still reaches the NaN
   // atom across Auto, Stored, and Stream modes.
@@ -539,12 +520,7 @@ TEST_CASE("GuptaPot propagates a NaN coordinate on the neighbour path",
     INFO("mode " << static_cast<int>(mode));
     rgpot::GuptaPot pot(cfg);
     pot.setNeighbourMode(mode);
-    const StressEval cross = eval_stress(pot, far, box);
-    REQUIRE_FALSE(std::isfinite(cross.energy));
-    REQUIRE(cross.forces.size() == far.size());
-    for (double component : cross.forces) {
-      REQUIRE_FALSE(std::isfinite(component));
-    }
+    REQUIRE_THROWS_AS(eval_stress(pot, far, box), std::invalid_argument);
   }
 
   const rgpot::GuptaPot pot(cfg);
@@ -564,16 +540,11 @@ TEST_CASE("GuptaPot propagates a NaN coordinate on the neighbour path",
   list.count = count;
   list.neighbours = neighs;
   double dens[2] = {};
-  pot.densityStage(list, dens);
-  REQUIRE(std::isnan(dens[0]));
-  REQUIRE(std::isnan(dens[1]));
+  REQUIRE_THROWS_AS(pot.densityStage(list, dens), std::invalid_argument);
   double forces[6] = {};
   rgpot::StageTally tally;
-  pot.forceStage(list, dens, forces, &tally);
-  REQUIRE(std::isnan(tally.energy));
-  for (double component : forces) {
-    REQUIRE(std::isnan(component));
-  }
+  REQUIRE_THROWS_AS(pot.forceStage(list, dens, forces, &tally),
+                    std::invalid_argument);
 }
 
 TEST_CASE("GuptaPot zero density stays finite and a NaN density propagates",
@@ -868,8 +839,7 @@ TEST_CASE("GuptaPot C entry point matches GuptaPot and validates inputs",
   REQUIRE_THROWS_AS(rgpot::GuptaPot({.cutoff = 0.0, .periodic = true}),
                     std::invalid_argument);
 
-  // Coincident atoms: the free cluster is +infinity from rgpot_gupta, and a
-  // cutoff poisons the energy; both poison the forces with NaN.
+  // Coincident and non-finite coordinates are rejected.
   rgpot_gupta_config open = raw;
   open.cutoff = 0.0;
   open.periodic = 0;
@@ -877,21 +847,14 @@ TEST_CASE("GuptaPot C entry point matches GuptaPot and validates inputs",
   double stacked_energy = 0.0;
   double stacked_forces[6] = {};
   REQUIRE(rgpot_gupta_energy_forces(&open, 2, stacked, nullptr, &stacked_energy,
-                                    stacked_forces) == 0);
-  REQUIRE(std::isinf(stacked_energy));
-  REQUIRE(stacked_energy > 0.0);
-  for (double component : stacked_forces) {
-    REQUIRE(std::isnan(component));
-  }
+                                    stacked_forces) == 1);
   open.cutoff = 4.0;
-  stacked_energy = 0.0;
-  std::fill(stacked_forces, stacked_forces + 6, 0.0);
   REQUIRE(rgpot_gupta_energy_forces(&open, 2, stacked, nullptr, &stacked_energy,
-                                    stacked_forces) == 0);
-  REQUIRE(std::isnan(stacked_energy));
-  for (double component : stacked_forces) {
-    REQUIRE(std::isnan(component));
-  }
+                                    stacked_forces) == 1);
+  const double nan_pos[6] = {std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0,
+                             1.0, 0.0, 0.0};
+  REQUIRE(rgpot_gupta_energy_forces(&open, 2, nan_pos, nullptr, &stacked_energy,
+                                    stacked_forces) == 1);
 
   // Isolated atom beyond cutoff has rho_i = 0 and produces finite zero force.
   const rgpot::GuptaPot cut_pot({.cutoff = 2.5});
@@ -1068,5 +1031,101 @@ TEST_CASE("rgpot_gupta large call matches the explicit wide cutoff",
   for (std::size_t k = 0; k < 3 * n; ++k) {
     require_scaled_match(open.forces[k], -grad[k]);
     require_scaled_match(open.forces[k], ref.forces[k]);
+  }
+}
+
+TEST_CASE("GuptaPot periodic cutoff must stay below half a face spacing",
+          "[Gupta]") {
+  const rgpot::GuptaPot pot({.A = 0.2061,
+                             .xi = 1.790,
+                             .p = 10.229,
+                             .q = 4.036,
+                             .r0 = 2.884,
+                             .cutoff = 5.0,
+                             .periodic = true});
+  const std::vector<double> pos = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0};
+  const double box[9] = {10.0, 0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 0.0, 12.0};
+  REQUIRE_THROWS_AS(eval_stress(pot, pos, box), std::invalid_argument);
+}
+
+namespace {
+
+/// Sets OMP_NUM_THREADS for one scope. The thread count is read on each call.
+class ScopedOmpThreads {
+public:
+  explicit ScopedOmpThreads(const char *value) {
+    if (const char *old = std::getenv("OMP_NUM_THREADS")) {
+      had_ = true;
+      old_ = old;
+    }
+    set(value);
+  }
+  ~ScopedOmpThreads() { set(had_ ? old_.c_str() : nullptr); }
+  ScopedOmpThreads(const ScopedOmpThreads &) = delete;
+  ScopedOmpThreads &operator=(const ScopedOmpThreads &) = delete;
+
+private:
+  static void set(const char *value) {
+#if defined(_WIN32)
+    _putenv_s("OMP_NUM_THREADS", value == nullptr ? "" : value);
+#else
+    if (value == nullptr) {
+      unsetenv("OMP_NUM_THREADS");
+    } else {
+      setenv("OMP_NUM_THREADS", value, 1);
+    }
+#endif
+  }
+
+  bool had_ = false;
+  std::string old_;
+};
+
+} // namespace
+
+TEST_CASE("GuptaPot rejects a coincident pair on the team path", "[Gupta]") {
+  // Row teams start at kTeamMinAtoms atoms. A cell of 21^3 periodic atoms on
+  // a cubic grid is above it, with a cutoff under half the face spacing.
+  constexpr int side = 21;
+  constexpr double spacing = 1.05;
+  constexpr std::size_t n = side * side * side;
+  static_assert(n >= rgpot::nlist::kTeamMinAtoms);
+  std::vector<double> pos(3 * n, 0.0);
+  for (std::size_t i = 0; i < n; ++i) {
+    pos[3 * i] = spacing * static_cast<double>(i % side);
+    pos[3 * i + 1] = spacing * static_cast<double>((i / side) % side);
+    pos[3 * i + 2] = spacing * static_cast<double>(i / (side * side));
+  }
+  const double length = spacing * side;
+  const double box[9] = {length, 0.0, 0.0, 0.0, length, 0.0, 0.0, 0.0, length};
+  const rgpot::GuptaConfig cfg{.cutoff = 2.0, .periodic = true};
+
+  std::vector<double> stacked = pos;
+  std::copy(pos.begin() + 3 * (n / 2), pos.begin() + 3 * (n / 2) + 3,
+            stacked.begin() + 3 * (n - 1));
+
+  struct Case {
+    const char *threads;
+    rgpot::nlist::Mode mode;
+  };
+  const Case cases[] = {
+      {"1", rgpot::nlist::Mode::Stream},
+      {"4", rgpot::nlist::Mode::Stream},
+      {"4", rgpot::nlist::Mode::Stored},
+  };
+  for (const Case &c : cases) {
+    const ScopedOmpThreads threads(c.threads);
+    INFO("threads " << c.threads << " mode " << static_cast<int>(c.mode));
+    rgpot::GuptaPot pot(cfg);
+    pot.setNeighbourMode(c.mode);
+
+    const StressEval clean = eval_stress(pot, pos, box);
+    REQUIRE(std::isfinite(clean.energy));
+
+    const std::uint64_t teams = rgpot::teamsOpened();
+    REQUIRE_THROWS_AS(eval_stress(pot, stacked, box), std::invalid_argument);
+    if (rgpot::teamSize(n) > 1) {
+      REQUIRE(rgpot::teamsOpened() > teams);
+    }
   }
 }

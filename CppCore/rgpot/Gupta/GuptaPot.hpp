@@ -19,9 +19,12 @@
  * rgpot_gupta when no stress or per-atom output is requested. A positive
  * cutoff truncates pairs at that distance with no energy shift.
  *
- * A coincident pair is not a minimum. rgpot_gupta sets the energy to
- * +infinity and GuptaPot poisons its forces with NaN; neighbour and staged
- * evaluation sets both the energy and the forces to NaN.
+ * A coincident pair is not a minimum, and a coordinate that is not finite has
+ * no separation. GuptaPot throws std::invalid_argument for either, from the
+ * calling thread after any parallel walk has joined, and leaves no result;
+ * rgpot_gupta_energy_forces returns 1. The bare kernel rgpot_gupta does not
+ * check: it sets the energy to +infinity for a coincident pair and lets a NaN
+ * coordinate stay NaN.
  */
 
 // clang-format off
@@ -58,7 +61,8 @@ struct rgpot_gupta_config {
   int32_t periodic;
 };
 
-/// Energy and forces. Returns 0 on success, 1 on a bad argument.
+/// Energy and forces. Returns 0 on success, 1 on a bad argument or on
+/// coincident or non finite positions.
 /// @a box may be null when @c periodic is 0. @a forces has room for
 /// @c 3 * natoms doubles. Each thread keeps the potential of its last
 /// call: one with the same parameters and atom count reuses its neighbour
