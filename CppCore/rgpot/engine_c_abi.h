@@ -45,8 +45,9 @@
  * rgpot_engine_model_digest may run at any time.
  * - Capability discovery is by symbol presence: entry points marked
  *   optional are probed with dlsym. An absent symbol means the engine
- *   does not support the operation; a static (non-learning) engine
- *   simply omits the learning set.
+ *   does not support the operation, and rgpot_engine_hvp is supported only
+ *   when rgpot_engine_caps also reports analytic_hvp; a static
+ *   (non-learning) engine simply omits the learning set.
  * - Engines with internal mutable state (learning surrogates) carry a
  *   monotone model-state counter. Any refit, hyperparameter change,
  *   or observation incorporation increments it; host-visible caches
