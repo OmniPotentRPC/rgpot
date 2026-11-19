@@ -234,6 +234,19 @@ inline std::array<double, 9> flat_box(const Geom &g) {
   return flat;
 }
 
+/// Kernels throw std::domain_error when a value is not finite, for
+/// example coincident LJ atoms. Python entry points report that as
+/// NumericalError (F7). nanobind would otherwise map domain_error to
+/// ValueError.
+template <typename Fn>
+auto reject_domain_as_numerical(Fn &&fn) -> decltype(fn()) {
+  try {
+    return std::forward<Fn>(fn)();
+  } catch (const std::domain_error &err) {
+    throw rgbind::NumericalError(err.what());
+  }
+}
+
 /// forceImpl while the caller is already detached (F4).
 template <typename Pot>
 FullResult run_force(Pot &pot, const Geom &g) {
@@ -248,7 +261,7 @@ FullResult run_force(Pot &pot, const Geom &g) {
                 .pos = g.pos.data(),
                 .atmnrs = g.types.data(),
                 .box = flat.data()};
-  pot.forceImpl(in, &fo);
+  reject_domain_as_numerical([&] { pot.forceImpl(in, &fo); });
   if (!std::isfinite(fo.energy)) {
     throw rgbind::NumericalError("energy is not finite");
   }
@@ -285,8 +298,10 @@ PerAtomResult run_force_per_atom(Pot &pot, const Geom &g) {
                 .pos = g.pos.data(),
                 .atmnrs = g.types.data(),
                 .box = flat.data()};
-  pot.forcePerAtom(in, &fo,
-                   PerAtomOut{result.energies.data(), result.virials.data()});
+  reject_domain_as_numerical([&] {
+    pot.forcePerAtom(
+        in, &fo, PerAtomOut{result.energies.data(), result.virials.data()});
+  });
   if (!std::isfinite(fo.energy)) {
     throw rgbind::NumericalError("energy is not finite");
   }
@@ -426,11 +441,7 @@ inline HvpScheme parse_hvp_scheme(const std::string &name) {
 /// A non-finite kernel value is a NumericalError, as for evaluate().
 template <typename Fn> auto detached_hvp(Fn &&fn) {
   nb::gil_scoped_release release;
-  try {
-    return fn();
-  } catch (const std::domain_error &e) {
-    throw rgbind::NumericalError(e.what());
-  }
+  return reject_domain_as_numerical(std::forward<Fn>(fn));
 }
 
 /// (energy, forces, variance) of one call on a bare potential, made
@@ -442,7 +453,9 @@ template <typename Pot> nb::tuple call_detached(Pot &pot, const Geom &geom) {
   AtomMatrix forces;
   {
     nb::gil_scoped_release release;
-    std::tie(energy, forces, variance) = pot(geom.pos, geom.types, geom.box);
+    reject_domain_as_numerical([&] {
+      std::tie(energy, forces, variance) = pot(geom.pos, geom.types, geom.box);
+    });
   }
   if (!std::isfinite(energy)) {
     throw rgbind::NumericalError("energy is not finite");
@@ -465,9 +478,11 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
         AtomMatrix forces;
         {
           nb::gil_scoped_release release;
-          Pot &pot = self.slot();
-          std::tie(energy, forces, variance) =
-              pot(geom.pos, geom.types, geom.box);
+          reject_domain_as_numerical([&] {
+            Pot &pot = self.slot();
+            std::tie(energy, forces, variance) =
+                pot(geom.pos, geom.types, geom.box);
+          });
         }
         if (!std::isfinite(energy)) {
           throw rgbind::NumericalError("energy is not finite");
@@ -566,7 +581,8 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
           }
           nb::gil_scoped_release release;
           BatchEvaluator eval([&] { return self.make(); }, width);
-          results = eval.evaluate(inputs);
+          results = reject_domain_as_numerical(
+              [&] { return eval.evaluate(inputs); });
         }
         nb::list out;
         for (const BatchResult &item : results) {
