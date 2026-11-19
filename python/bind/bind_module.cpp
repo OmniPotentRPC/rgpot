@@ -28,6 +28,7 @@
 
 #include "pot_holder.hpp"
 
+#include "rgpot/EMT/EMTPot.hpp"
 #include "rgpot/ExternalPot/ExternalPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -74,11 +75,13 @@ using rgpot::types::AtomMatrix;
 
 namespace {
 
-void translate_invalid_argument(const std::exception_ptr &ptr, void *) {
+void translate_kernel_error(const std::exception_ptr &ptr, void *) {
   try {
     std::rethrow_exception(ptr);
   } catch (const std::invalid_argument &err) {
     PyErr_SetString(PyExc_ValueError, err.what());
+  } catch (const std::domain_error &err) {
+    throw rgbind::NumericalError(err.what());
   }
 }
 
@@ -459,9 +462,9 @@ nb::tuple tersoff_sic_energy_gradient(rgpot::TersoffSiC &self,
 NB_MODULE(_core, m) {
   // F1, F3, F7. install_policy registers NumericalError and the
   // in-use translator. A second translator maps invalid_argument to
-  // ValueError (F7).
+  // ValueError and domain_error to NumericalError (F7).
   rgbind::install_policy(m);
-  nb::register_exception_translator(translate_invalid_argument);
+  nb::register_exception_translator(translate_kernel_error);
 
   m.doc() = "rgpot Python bindings (nanobind). Classes that need a build "
             "option, such as ExprPot, D3Pot, D4Pot, XcKernel and the Fortran "
@@ -696,6 +699,26 @@ NB_MODULE(_core, m) {
     return out;
   });
   rgpot::pybind::bind_calls(morse_cls);
+
+  auto emt_cls = nb::class_<PotHolder<rgpot::EMTPot>>(m, "EMTPot");
+  emt_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::EMTPot> *self, bool rasmussen) {
+        new (self) PotHolder<rgpot::EMTPot>([=] {
+          rgpot::EMTConfig cfg;
+          cfg.rasmussen = rasmussen;
+          return std::make_unique<rgpot::EMTPot>(cfg);
+        });
+      },
+      nb::arg("rasmussen") = false,
+      "Asap effective-medium potential for H, Mg, Al, Ni, Cu, Pd, Ag, Pt "
+      "and Au. rasmussen selects the Al, Cu, Ag and Au parameter provider.");
+  emt_cls.def("config", [](const PotHolder<rgpot::EMTPot> &self) {
+    nb::dict out;
+    out["rasmussen"] = self.primary().config().rasmussen;
+    return out;
+  });
+  rgpot::pybind::bind_calls(emt_cls);
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
   bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");
