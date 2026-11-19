@@ -12,20 +12,29 @@ There is no potlibc potential type or potlibc feature in =librgpot= or
 
 ** Install potlibc
 
-Build and install potlibc first.
+Build and install potlibc first, at the revision the plugin tests run
+against.
+The reference energies in =engines/test_potlibc_engine.c= can change between
+potlibc revisions, so do not build the branch tip.
 Its [[https://omnipotentrpc.github.io/potlibc/][surface catalog]] lists the
 canonical surface ids and says which surfaces need an atom count.
+potlibc needs a Fortran compiler and a =lapack= pkg-config module.
 
 #+attr_rgpot: syntax
 #+begin_src bash
 git clone https://github.com/OmniPotentRPC/potlibc.git
-meson setup potlibc/build potlibc --prefix="$HOME/.local"
+git -C potlibc checkout 362e3d8fc4a82283b363665d1072ed4eb07e30c8
+meson setup potlibc/build potlibc --prefix="$HOME/.local" --libdir=lib
 meson compile -C potlibc/build
 meson install -C potlibc/build
 #+end_src
 
-Make the chosen prefix visible to =pkg-config= when it is not on the system
-search path.
+=--libdir=lib= puts =potlibc.pc= in =$HOME/.local/lib/pkgconfig= on every
+host.
+Without it, Debian and Ubuntu install into a multiarch directory such as
+=lib/x86_64-linux-gnu=, and the search path below would miss the file.
+Make the prefix visible to =pkg-config= when it is not on the system search
+path.
 
 #+attr_rgpot: syntax
 #+begin_src bash
