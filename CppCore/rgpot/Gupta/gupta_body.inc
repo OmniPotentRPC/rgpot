@@ -5,8 +5,23 @@
  */
 {
   size_t pairs = 0;
+  if (n > SIZE_MAX / 3) {
+    *energy = INFINITY;
+    return;
+  }
   if (n >= 2) {
-    pairs = n * (n - 1) / 2;
+    size_t lhs = n;
+    size_t rhs = n - 1;
+    if ((lhs & 1u) == 0u) {
+      lhs /= 2;
+    } else {
+      rhs /= 2;
+    }
+    if (lhs > SIZE_MAX / rhs) {
+      *energy = INFINITY;
+      return;
+    }
+    pairs = lhs * rhs;
   }
   if (rgpot_gupta_ensure(n, pairs) != 0) {
     *energy = INFINITY;
