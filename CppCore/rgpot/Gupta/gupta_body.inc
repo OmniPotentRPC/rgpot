@@ -5,7 +5,7 @@
  */
 {
   double rho_stack[RGPOT_GUPTA_STACK_ATOMS];
-  double pack_stack[6 * RGPOT_GUPTA_STACK_PAIRS];
+  double pack_stack[RGPOT_GUPTA_PACK_STRIDE * RGPOT_GUPTA_STACK_PAIRS];
   double *rho_heap = NULL;
   double *pack_heap = NULL;
   double *rho = rho_stack;
@@ -29,7 +29,7 @@
                      ? RGPOT_GUPTA_MAX_PACK_PAIRS
                      : a_n * b_n;
     if (pack_limit > RGPOT_GUPTA_STACK_PAIRS) {
-      pack_heap = (double *)malloc(pack_limit * 6 * sizeof(double));
+      pack_heap = (double *)malloc(pack_limit * RGPOT_GUPTA_PACK_STRIDE * sizeof(double));
       if (pack_heap == NULL) {
         pack_limit = RGPOT_GUPTA_STACK_PAIRS;
       } else {
@@ -71,12 +71,13 @@
       rho[i] += psi;
       rho[j] += psi;
       if (m < pack_limit) {
-        pack[6 * m] = d0;
-        pack[6 * m + 1] = d1;
-        pack[6 * m + 2] = d2;
-        pack[6 * m + 3] = r;
-        pack[6 * m + 4] = -(p[key] / r0[key]) * phi;
-        pack[6 * m + 5] = -(2.0 * q[key] / r0[key]) * psi;
+        double *rec = pack + RGPOT_GUPTA_PACK_STRIDE * m;
+        rec[RGPOT_GUPTA_PACK_DX] = d0;
+        rec[RGPOT_GUPTA_PACK_DY] = d1;
+        rec[RGPOT_GUPTA_PACK_DZ] = d2;
+        rec[RGPOT_GUPTA_PACK_R] = r;
+        rec[RGPOT_GUPTA_PACK_DPHI] = -(p[key] / r0[key]) * phi;
+        rec[RGPOT_GUPTA_PACK_DPSI] = -(2.0 * q[key] / r0[key]) * psi;
       }
       m++;
     }
@@ -92,12 +93,13 @@
     for (size_t j = i + 1; j < n; j++) {
       double d0, d1, d2, r, dphi, dpsi;
       if (m < pack_limit) {
-        d0 = pack[6 * m];
-        d1 = pack[6 * m + 1];
-        d2 = pack[6 * m + 2];
-        r = pack[6 * m + 3];
-        dphi = pack[6 * m + 4];
-        dpsi = pack[6 * m + 5];
+        const double *rec = pack + RGPOT_GUPTA_PACK_STRIDE * m;
+        d0 = rec[RGPOT_GUPTA_PACK_DX];
+        d1 = rec[RGPOT_GUPTA_PACK_DY];
+        d2 = rec[RGPOT_GUPTA_PACK_DZ];
+        r = rec[RGPOT_GUPTA_PACK_R];
+        dphi = rec[RGPOT_GUPTA_PACK_DPHI];
+        dpsi = rec[RGPOT_GUPTA_PACK_DPSI];
       } else {
         const size_t base_j = 3 * j;
         const size_t key = si * n_species + (size_t)slot[j];
