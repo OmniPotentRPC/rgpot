@@ -57,8 +57,8 @@ The =configure= arms are a separate list, on
 [[file:../reference/potential_config.org][PotentialConfig arms]].
 The fake engines and =potserv= are built with
 =-Dwith_rpc=true -Dwith_tests=true=.
-=tests/test_rpc_e2e_c_abi.py= needs =RGPOT_POTSERV= and one engine variable per
-backend, and fails when one is missing.
+=tests/test_rpc_e2e_c_abi.py= skips when =RGPOT_POTSERV= or an engine variable
+is unset, and fails when one of those variables is set to a missing path.
 
 #+attr_rgpot: syntax
 #+begin_src bash

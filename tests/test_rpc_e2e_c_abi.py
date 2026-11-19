@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""End-to-end potserv RPC: configure + calculate for NWChem and CPMD with fake engines.
+"""End to end potserv RPC: configure and calculate for NWChem and CPMD.
 
-Requires env:
-  RGPOT_POTSERV      path to potserv binary
-  RGPOT_NWCHEM_ENGINE / NWCHEMC_LIBRARY  path to libnwchemc_fake_engine.so (or real)
-  RGPOT_CPMD_ENGINE  / CPMDC_LIBRARY     path to libcpmdc_fake_engine.so (or real)
+Needs:
+  RGPOT_POTSERV      path to the potserv binary
+  RGPOT_NWCHEM_ENGINE / NWCHEMC_LIBRARY  path to libnwchemc (fake or real)
+  RGPOT_CPMD_ENGINE  / CPMDC_LIBRARY     path to libcpmdc (fake or real)
 
-Run via pixi rpctest; fails hard if env is incomplete (no skip).
+Skips when potserv or the named engine library is unset. A variable that
+is set to a missing path fails. capnp is imported only when a test runs.
 """
 
 from __future__ import annotations
@@ -18,35 +19,103 @@ import sys
 import time
 from pathlib import Path
 
-import capnp
 import numpy as np
+import pytest
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SCHEMA_PATH = SCRIPT_DIR / "../CppCore/rgpot/rpc/Potentials.capnp"
-pot_capnp = capnp.load(str(SCHEMA_PATH))
-
 sys.path.insert(0, str(SCRIPT_DIR))
-from cpmd_params import configure_cpmd  # noqa: E402
-from nwchem_params import configure_nwchem, make_potential_config_none  # noqa: E402
+
+capnp = None
+pot_capnp = None
+configure_nwchem = None
+configure_cpmd = None
+make_potential_config_none = None
+
+
+def test_potserv_unset_skips(monkeypatch) -> None:
+    monkeypatch.delenv("RGPOT_POTSERV", raising=False)
+    with pytest.raises(pytest.skip.Exception, match="unset"):
+        _require_env("RGPOT_POTSERV")
+
+
+def test_potserv_set_but_missing_fails(monkeypatch, tmp_path: Path) -> None:
+    missing = tmp_path / "missing-potserv"
+    monkeypatch.setenv("RGPOT_POTSERV", str(missing))
+    with pytest.raises(pytest.fail.Exception, match="not a file"):
+        _require_env("RGPOT_POTSERV")
+
+
+def test_engine_unset_skips(monkeypatch) -> None:
+    for name in ("NWCHEMC_LIBRARY", "RGPOT_NWCHEMC_ENGINE", "RGPOT_NWCHEM_ENGINE"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(pytest.skip.Exception, match="unset"):
+        _pick_engine("NWChem", "NWCHEMC_LIBRARY", "RGPOT_NWCHEMC_ENGINE", "RGPOT_NWCHEM_ENGINE")
+
+
+def test_engine_set_but_missing_fails(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("RGPOT_NWCHEMC_ENGINE", raising=False)
+    monkeypatch.delenv("RGPOT_NWCHEM_ENGINE", raising=False)
+    monkeypatch.setenv("NWCHEMC_LIBRARY", str(tmp_path / "missing-engine.so"))
+    with pytest.raises(pytest.fail.Exception, match="not a file"):
+        _pick_engine("NWChem", "NWCHEMC_LIBRARY", "RGPOT_NWCHEMC_ENGINE", "RGPOT_NWCHEM_ENGINE")
+
+
+def test_capnp_is_not_imported_at_module_level() -> None:
+    import ast
+
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+            assert "capnp" not in names
+        elif isinstance(node, ast.ImportFrom):
+            assert node.module != "capnp"
+
+
+def _prepare() -> None:
+    """Import capnp and the schema helpers on the first test that runs."""
+    global capnp, pot_capnp, configure_nwchem, configure_cpmd, make_potential_config_none
+    if capnp is not None:
+        return
+    try:
+        import capnp as capnp_mod
+    except ImportError as exc:
+        pytest.fail(f"pycapnp is required when potserv tests run: {exc}")
+    from cpmd_params import configure_cpmd as _configure_cpmd
+    from nwchem_params import configure_nwchem as _configure_nwchem
+    from nwchem_params import make_potential_config_none as _none
+
+    capnp = capnp_mod
+    pot_capnp = capnp.load(str(SCHEMA_PATH))
+    configure_nwchem = _configure_nwchem
+    configure_cpmd = _configure_cpmd
+    make_potential_config_none = _none
 
 
 def _require_env(name: str) -> str:
-    val = os.environ.get(name, "").strip()
-    if not val:
-        raise RuntimeError(f"required env {name} is unset (no skip allowed)")
-    if not Path(val).exists():
-        raise RuntimeError(f"required env {name}={val} does not exist")
-    return val
+    if name not in os.environ:
+        pytest.skip(f"{name} is unset")
+    raw = os.environ[name].strip()
+    if not raw or not Path(raw).is_file():
+        pytest.fail(f"{name} is set to {raw!r}, which is not a file")
+    return raw
 
 
-def _pick_engine(*names: str) -> str:
-    for n in names:
-        v = os.environ.get(n, "").strip()
-        if v and Path(v).exists():
-            return v
-    raise RuntimeError(
-        f"need one of {names} pointing at an existing engine .so (no skip allowed)"
-    )
+def _pick_engine(kind: str, *names: str) -> str:
+    saw = False
+    for name in names:
+        if name not in os.environ:
+            continue
+        saw = True
+        raw = os.environ[name].strip()
+        if raw and Path(raw).is_file():
+            return raw
+        pytest.fail(f"{name} is set to {raw!r}, which is not a file")
+    joined = ", ".join(names)
+    if not saw:
+        pytest.skip(f"optional {kind} engine library is unset ({joined})")
+    pytest.fail(f"optional {kind} engine library is not a file ({joined})")
 
 
 async def _connect(port: int, retries: int = 20):
@@ -124,7 +193,10 @@ async def _run_backend(
 
 def test_nwchem_rpc_configure_and_calculate() -> None:
     potserv = _require_env("RGPOT_POTSERV")
-    engine = _pick_engine("NWCHEMC_LIBRARY", "RGPOT_NWCHEMC_ENGINE", "RGPOT_NWCHEM_ENGINE")
+    engine = _pick_engine(
+        "NWChem", "NWCHEMC_LIBRARY", "RGPOT_NWCHEMC_ENGINE", "RGPOT_NWCHEM_ENGINE"
+    )
+    _prepare()
     port = int(os.environ.get("RGPOT_E2E_NWCHEM_PORT", "19101"))
 
     async def cfg(pot):
@@ -159,7 +231,10 @@ def test_nwchem_rpc_configure_and_calculate() -> None:
 
 def test_cpmd_rpc_configure_and_calculate() -> None:
     potserv = _require_env("RGPOT_POTSERV")
-    engine = _pick_engine("CPMDC_LIBRARY", "RGPOT_CPMDC_ENGINE", "RGPOT_CPMD_ENGINE")
+    engine = _pick_engine(
+        "CPMD", "CPMDC_LIBRARY", "RGPOT_CPMDC_ENGINE", "RGPOT_CPMD_ENGINE"
+    )
+    _prepare()
     port = int(os.environ.get("RGPOT_E2E_CPMD_PORT", "19102"))
 
     async def cfg(pot):
