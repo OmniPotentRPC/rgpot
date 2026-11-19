@@ -176,7 +176,7 @@ add_library(rgpot_halfshell STATIC
   CppCore/rgpot/nlist/HalfShellWalk.cc
   CppCore/rgpot/nlist/NeighbourList.cc
   CppCore/rgpot/nlist/Neighbours.cc)
-target_link_libraries(rgpot_halfshell PUBLIC Threads::Threads)
+target_link_libraries(rgpot_halfshell PUBLIC Threads::Threads rgpot_vesin)
 if(OpenMP_CXX_FOUND)
   target_link_libraries(rgpot_halfshell PUBLIC OpenMP::OpenMP_CXX)
 endif()

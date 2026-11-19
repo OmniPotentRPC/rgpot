@@ -357,6 +357,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   target_include_directories(rgpot_nlist PUBLIC
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/CppCore>)
   target_link_libraries(rgpot_nlist PUBLIC Threads::Threads)
+  target_link_libraries(rgpot_nlist PRIVATE rgpot_vesin)
   find_package(OpenMP)
   if(OpenMP_CXX_FOUND)
     target_link_libraries(rgpot_nlist PUBLIC OpenMP::OpenMP_CXX)
