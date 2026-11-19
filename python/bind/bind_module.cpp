@@ -32,6 +32,7 @@
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
@@ -751,6 +752,47 @@ NB_MODULE(_core, m) {
       "Radial cutoff read from the table.");
   rgpot::pybind::bind_calls(eam_table);
 #endif
+
+  auto qsc_cls = nb::class_<PotHolder<rgpot::QSCPot>>(m, "QSCPot");
+  qsc_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::QSCPot> *self, double cutoff, double verlet_skin,
+         bool periodic, bool stress) {
+        rgpot::QSCConfig cfg;
+        cfg.cutoff = cutoff;
+        cfg.verlet_skin = verlet_skin;
+        cfg.periodic = periodic;
+        cfg.stress = stress;
+        rgpot::QSCPot seed(cfg);
+        new (self) PotHolder<rgpot::QSCPot>(
+            [seed] { return std::make_unique<rgpot::QSCPot>(seed); });
+      },
+      nb::arg("cutoff") = 8.0, nb::arg("verlet_skin") = 0.5,
+      nb::arg("periodic") = true, nb::arg("stress") = false,
+      "Quantum Sutton-Chen multi-element alloy potential (Qi, Cagin, Kimura "
+      "and Goddard, Phys. Rev. B 59, 3527, 1999; Rafii-Tabar and Sutton, "
+      "Philos. Mag. Lett. 63, 217, 1991). Default table covers Ni (28), "
+      "Cu (29), Rh (45), Pd (46), Ag (47), Ir (77), Pt (78) and Au (79).");
+  qsc_cls.def("config", [](const PotHolder<rgpot::QSCPot> &self) {
+    const rgpot::QSCConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["cutoff"] = cfg.cutoff;
+    out["verlet_skin"] = cfg.verlet_skin;
+    out["periodic"] = cfg.periodic;
+    out["stress"] = cfg.stress;
+    return out;
+  });
+  qsc_cls.def(
+      "set_element_parameter",
+      [](PotHolder<rgpot::QSCPot> &self, int z, double n, double m,
+         double epsilon, double c, double a) {
+        self.primary().setElementParameter(z, n, m, epsilon, c, a);
+        self.hvp().invalidate();
+      },
+      nb::arg("z"), nb::arg("n"), nb::arg("m"), nb::arg("epsilon"),
+      nb::arg("c"), nb::arg("a"),
+      "Add or replace the Quantum Sutton-Chen parameters of atomic number z.");
+  rgpot::pybind::bind_calls(qsc_cls);
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
   bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");
