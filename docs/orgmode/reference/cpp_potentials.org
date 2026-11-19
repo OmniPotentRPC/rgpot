@@ -1085,6 +1085,8 @@ explicit QSCPot(const QSCConfig &c);
   With =periodic= false the cell is not used to fold pairs.
   With =stress= set the force call writes the stress when the cell volume is
   positive.
+  Mixtures follow the published equations and do not reproduce eOn 3b2586f; pure
+  elements do.
   See [[file:qsc.org][Quantum Sutton-Chen potential]].
 - Errors :: the errors of =rgpot::QSCConfig=.
   The force call throws =std::invalid_argument= for a null =ForceOut=, for a

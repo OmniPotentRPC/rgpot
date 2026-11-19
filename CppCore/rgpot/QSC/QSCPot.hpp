@@ -39,7 +39,7 @@ namespace rgpot {
 /**
  * @brief Parameters for the Quantum Sutton-Chen potential.
  *
- * Plain aggregate with inline defaults matching eOn's @c QSC settings.
+ * Plain aggregate with inline defaults; cutoff and skin equal the defaults of eOn's @c QSC class.
  */
 struct QSCConfig {
   double cutoff = 8.0;      //!< Truncation distance (Angstrom); 0 or less keeps every pair.
