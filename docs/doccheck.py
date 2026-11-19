@@ -2234,6 +2234,8 @@ COVERAGE_MARKERS = (
     ("docs/orgmode/reference/qsc.org", "10.1080/09500839108205994"),
     ("docs/orgmode/reference/qsc.org", "-3.519583146896"),
     ("docs/orgmode/reference/qsc.org", "-0.9770461806"),
+    ("docs/orgmode/reference/qsc.org", "3b2586f543b82cbf8dcdcbd07f2e1126705a3826"),
+    ("docs/orgmode/reference/qsc.org", "0.6658825150"),
     ("docs/orgmode/reference/cpp_potentials.org", "10.1098/rspa.1924.0082"),
     ("docs/orgmode/reference/cpp_potentials.org", "-0.999999648834"),
     ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRev.34.57"),
