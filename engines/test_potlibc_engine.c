@@ -341,14 +341,12 @@ static int destroy_frees_handle_when_lock_fails(const char *path) {
   if (create_sym == NULL || destroy_sym == NULL || force_sym == NULL ||
       caps_sym == NULL || last_error_sym == NULL || set_lock_fail == NULL) {
     fprintf(stderr, "lock-failure test library is missing symbols\n");
-    dlclose(library);
     return 1;
   }
   set_lock_fail(0);
   pot = create_sym(&message, sizeof message, error, sizeof error);
   if (pot == NULL) {
     fprintf(stderr, "lock-failure create failed: %s\n", error);
-    dlclose(library);
     return 1;
   }
   set_lock_fail(1);
@@ -362,7 +360,6 @@ static int destroy_frees_handle_when_lock_fails(const char *path) {
   /* Destroy while potlibc_mutex_lock fails: must still release surface and pot. */
   destroy_sym(pot);
   set_lock_fail(0);
-  dlclose(library);
   if (force_code != RGPOT_ENGINE_ERR_LOCK ||
       caps_code != RGPOT_ENGINE_ERR_LOCK || error[0] == '\0') {
     fprintf(stderr,
@@ -455,9 +452,7 @@ int main(int argc, char **argv) {
       oversized_atom_counts_are_refused(&engine) != 0 ||
       reentrant_lock_returns_named_code(&engine) != 0 ||
       (argc == 3 && destroy_frees_handle_when_lock_fails(argv[2]) != 0)) {
-    dlclose(library);
     return 1;
   }
-  dlclose(library);
   return 0;
 }

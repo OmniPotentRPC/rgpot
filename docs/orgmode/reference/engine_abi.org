@@ -1216,6 +1216,8 @@ the handle as a =PotentialImpl=.
   A positive code or a truncated answer is not trusted, so the engine is
   serialized process wide like =reentrancy= 2.
   Only a successful answer of 0 or 1 skips that lock.
+  The loader never calls =dlclose=: the library stays mapped for the life of
+  the process, including when the load fails after the library opened.
 - =EnginePotential::force(&request)= and
   =EnginePotential::force_batch(&atomic_numbers, &positions, &boxes)= ::
   Validates input lengths and output finiteness, dispatches to

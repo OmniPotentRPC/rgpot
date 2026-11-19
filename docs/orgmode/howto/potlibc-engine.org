@@ -47,6 +47,9 @@ meson test -C bbdir --print-errorlogs potlibc_engine
 
 The plugin is separate from =librgpot=.
 No potlibc symbols or headers enter the core library.
+As for every engine, do not =dlclose= it: the Rust loader keeps it mapped
+until the process exits, and a host that opens it with =dlopen= should do the
+same after destroying its handles.
 
 ** Create a surface
 

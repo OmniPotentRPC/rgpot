@@ -1355,6 +1355,31 @@ fn a_negative_caps_code_at_load_rejects_the_engine_and_frees_the_handle() {
 }
 
 #[test]
+fn a_library_stays_mapped_when_loading_fails_after_it_opened() {
+    let rejected = build("harmonic_mapped_caps", &["CAPS_ERROR_CODE=-1"]);
+    assert!(unsafe { EnginePotential::load(&rejected, &config()) }.is_err());
+    assert_eq!(
+        created(&rejected),
+        1,
+        "the library was unloaded after a failed load"
+    );
+    assert_eq!(destroyed(&rejected), 1);
+
+    let refused = build("harmonic_mapped_create", &[]);
+    let wrong_config = [0_u8; 3];
+    let error = unsafe { EnginePotential::load(&refused, &wrong_config) }
+        .err()
+        .expect("a create failure fails the load");
+    assert!(matches!(error, EngineError::Create(_)), "{error}");
+    assert_eq!(
+        created(&refused),
+        1,
+        "the library was unloaded after a failed create"
+    );
+    assert_eq!(destroyed(&refused), 0);
+}
+
+#[test]
 fn a_positive_caps_code_at_load_keeps_process_wide_serialization() {
     use std::sync::{Arc, Barrier};
 

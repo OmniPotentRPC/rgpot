@@ -29,7 +29,8 @@
 //!
 //! The library stays mapped for the life of the process, as for
 //! [`crate::profile`]: a backend may own threads or MPI state that does not
-//! survive `dlclose`.
+//! survive `dlclose`. That holds on every path, so a load that fails after
+//! the library opened does not unload it either.
 
 use std::collections::HashMap;
 use std::ffi::{c_char, c_int, c_long, c_uint, c_ushort, c_void};
@@ -399,11 +400,13 @@ impl EnginePotential {
     /// The library must implement the engine C ABI with the signatures of
     /// this module, and `config` must be the message its create call reads.
     pub unsafe fn load(path: &Path, config: &[u8]) -> Result<Self, EngineError> {
-        let library = unsafe { Library::new(path) }
-            .map_err(|why| EngineError::Load(format!("{}: {why}", path.display())))?;
+        let library = ManuallyDrop::new(
+            unsafe { Library::new(path) }
+                .map_err(|why| EngineError::Load(format!("{}: {why}", path.display())))?,
+        );
         let symbols = unsafe { resolve(&library)? };
         let mut engine = unsafe { Self::from_symbols(symbols, config)? };
-        engine._library = Some(ManuallyDrop::new(library));
+        engine._library = Some(library);
         Ok(engine)
     }
 
