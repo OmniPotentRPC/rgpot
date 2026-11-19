@@ -233,3 +233,27 @@ if is_variable('metatomic_engine')
         'metatomic_engine installs into the wheel; multi-ABI pack via scripts/rgpot_pack_multi_abi_engines.sh',
     )
 endif
+
+# The extension is imported from python/rgpot, so $ORIGIN is that
+# directory. RUNPATH already lists $ORIGIN/../.rgpot.mesonpy.libs. The
+# build keeps librgpot under CppCore, and an empty LD_LIBRARY_PATH
+# cannot open the SONAME from the package directory. Point the SONAME
+# at the library this build just linked.
+_pkg_libdir = meson.project_source_root() / 'python' / '.rgpot.mesonpy.libs'
+_soname = 'librgpot.so.' + rgpot_cxx_soversion
+custom_target(
+    'package_librgpot_soname',
+    input: rgpot,
+    output: 'package_librgpot_soname.stamp',
+    command: [
+        find_program('sh'),
+        '-c',
+        'mkdir -p "$1" && ln -sfn "$(readlink -f "$2")" "$1/$3" && touch "$4"',
+        'sh',
+        _pkg_libdir,
+        '@INPUT@',
+        _soname,
+        '@OUTPUT@',
+    ],
+    build_by_default: true,
+)
