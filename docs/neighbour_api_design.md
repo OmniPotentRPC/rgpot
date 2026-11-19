@@ -568,9 +568,9 @@ list of the 108000-atom copper block did not return within three
 minutes. It now bins atoms with `rgpot::nlist::Neighbours` and walks
 that cell list. A box at least two cutoffs wide, and not sheared, has
 one image, so the folded cell vector is the pair. A narrower or
-sheared cell still tests the shift stencil, but only for atoms that
-share a neighbouring cell. `Walk` keeps one cell list for its whole
-life.
+sheared cell takes every image of every pair inside the cutoff from
+vesin, with the shift of each image, and the table lists them all.
+`Walk` keeps one cell list for its whole life.
 
 `NeighbourListTest` rejects an all-pairs scan: the 108000-atom half
 list must finish in under 30 seconds and contain 21 neighbours per atom.
