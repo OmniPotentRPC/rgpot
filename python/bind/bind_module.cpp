@@ -787,14 +787,16 @@ NB_MODULE(_core, m) {
       .def(
           "evaluate",
           [](rgpot::StillingerWeberSi &self, const F64 &positions,
-             nb::handle atom_types, const F64 &box) {
+             nb::handle atom_types, const F64 &box, bool compute_stress) {
             auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
             rgpot::pybind::FullResult result = rgpot::pybind::run_detached(
-                [&] { return rgpot::pybind::run_force(self, geom); });
+                [&] {
+                  return rgpot::pybind::run_force(self, geom, compute_stress);
+                });
             return rgpot::pybind::result_dict(result);
           },
           nb::arg("positions").noconvert(), nb::arg("atom_types"),
-          nb::arg("box").noconvert(),
+          nb::arg("box").noconvert(), nb::arg("compute_stress") = false,
           "Energy, forces, variance, and the Cauchy stress, shape (3, 3), "
           "in eV/Angstrom^3. The kernel runs detached.")
       .def("energy_gradient", &stillinger_weber_energy_gradient,

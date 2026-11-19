@@ -1,6 +1,7 @@
 #include "rgpot/EAM/EAMPot.hpp"
 
 #include "EAM.h"
+#include "rgpot/stress.hpp"
 
 namespace rgpot {
 
@@ -42,13 +43,14 @@ void EAMPot::setNeighbourMode(nlist::Mode mode) noexcept {
 }
 
 void EAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  StressAccumulator stress(in, out);
   double energy = 0.0;
   double variance = 0.0;
   m_impl->kernel.force(static_cast<long>(in.nAtoms), in.pos, in.atmnrs, out->F,
-                       &energy, &variance, in.box);
+                       &energy, &variance, in.box, stress.data());
   out->energy = energy;
   out->variance = variance;
-  out->has_stress = 0;
+  stress.publish(in.box);
 }
 
 } // namespace rgpot

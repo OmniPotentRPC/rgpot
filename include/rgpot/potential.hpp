@@ -357,7 +357,8 @@ private:
                       : nullptr,
         .box = input->box_matrix ? static_cast<const double *>(
                                        input->box_matrix->dl_tensor.data)
-                                 : nullptr};
+                                 : nullptr,
+        .compute_stress = input->compute_stress};
   }
 
   /**
@@ -401,6 +402,9 @@ private:
 
       output->energy = fo.energy;
       output->variance = fo.variance;
+      std::copy(std::begin(fo.stress), std::end(fo.stress),
+                std::begin(output->stress));
+      output->has_stress = fo.has_stress;
 
       // Create an owning DLPack tensor that copies the forces data.
       // This is necessary because `forces` is a local vector that goes

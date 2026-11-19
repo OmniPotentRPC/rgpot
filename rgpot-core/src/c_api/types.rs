@@ -39,6 +39,7 @@ pub unsafe extern "C" fn rgpot_force_input_create(
         positions: unsafe { rgpot_tensor_cpu_f64_2d(pos, n_atoms as i64, 3) },
         atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(atmnrs, n_atoms as i64) },
         box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(box_) },
+        ..rgpot_force_input_t::default()
     }
 }
 
@@ -83,11 +84,7 @@ pub unsafe extern "C" fn rgpot_force_input_free(input: *mut rgpot_force_input_t)
 /// sets it.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_force_out_create() -> rgpot_force_out_t {
-    rgpot_force_out_t {
-        forces: std::ptr::null_mut(),
-        energy: 0.0,
-        variance: 0.0,
-    }
+    rgpot_force_out_t::default()
 }
 
 #[cfg(test)]

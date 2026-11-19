@@ -125,7 +125,8 @@ SwStress swStress(const Pot &pot, const std::vector<double> &R,
   rgpot::ForceInput in{.nAtoms = R.size() / 3,
                        .pos = R.data(),
                        .atmnrs = types.data(),
-                       .box = box.data()};
+                       .box = box.data(),
+                       .compute_stress = true};
   rgpot::ForceOut fo{.F = F.data(),
                      .energy = 0.0,
                      .variance = 0.0,
@@ -248,7 +249,9 @@ TEST_CASE("SW batch returns the forceImpl energies and forces without stress",
     got[s].F = gotF[s].data();
     std::fill(got[s].stress, got[s].stress + 9, 1.0);
     got[s].has_stress = 1;
-    pot.forceImpl(in[s], &ref[s]);
+    auto stress_in = in[s];
+    stress_in.compute_stress = true;
+    pot.forceImpl(stress_in, &ref[s]);
     REQUIRE(ref[s].has_stress == 1);
   }
 
@@ -408,7 +411,7 @@ TEST_CASE("Tersoff writes no stress into a reused output",
   };
 
   rgpot::fortranpots::TersoffPot pot;
-  REQUIRE_FALSE(pot.caps().stress);
+  REQUIRE(pot.caps().stress);
   const rgpot::ForceInput *order[2][2] = {{&in_sic, &in_si}, {&in_si, &in_sic}};
   for (const auto &seq : order) {
     double got[6];

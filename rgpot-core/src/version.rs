@@ -43,9 +43,9 @@ pub struct rgpot_abi_stamp_t {
 /// ABI major of this build.
 pub const RGPOT_ABI_VERSION_MAJOR: u16 = 1;
 /// ABI minor of this build.
-pub const RGPOT_ABI_VERSION_MINOR: u16 = 6;
+pub const RGPOT_ABI_VERSION_MINOR: u16 = 7;
 /// Layout revision of this build.
-pub const RGPOT_ABI_LAYOUT_REVISION: u16 = 1;
+pub const RGPOT_ABI_LAYOUT_REVISION: u16 = 2;
 
 static VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
 
@@ -165,35 +165,46 @@ mod tests {
         assert_eq!(unsafe { rgpot_abi_compatible(&stamp) }, 1);
     }
 
-    /// The engine and RPC Hessian-vector exports are additive, so the
-    /// minor moves to 5 after the Taylor jet exports.
+    /// Stress fields are additive but change the public struct layout.
     #[test]
-    fn the_minor_counts_the_engine_and_rpc_hvp_exports() {
+    fn stress_fields_bump_the_minor_and_layout_revision() {
         assert_eq!(RGPOT_ABI_VERSION_MAJOR, 1);
-        assert_eq!(rgpot_abi_stamp().abi_minor, RGPOT_ABI_VERSION_MINOR);
+        assert_eq!(RGPOT_ABI_VERSION_MINOR, 7);
+        assert_eq!(RGPOT_ABI_LAYOUT_REVISION, 2);
         assert_eq!(
             unsafe { rgpot_abi_compatible(&stamp(1, RGPOT_ABI_VERSION_MINOR - 1, 1)) },
+            0
+        );
+        assert_eq!(
+            unsafe {
+                rgpot_abi_compatible(&stamp(
+                    1,
+                    RGPOT_ABI_VERSION_MINOR - 1,
+                    RGPOT_ABI_LAYOUT_REVISION,
+                ))
+            },
             1
         );
-        assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, 2, 1)) }, 1);
         assert_eq!(
-            unsafe { rgpot_abi_compatible(&stamp(1, RGPOT_ABI_VERSION_MINOR + 1, 1)) },
+            unsafe {
+                rgpot_abi_compatible(&stamp(
+                    1,
+                    RGPOT_ABI_VERSION_MINOR + 1,
+                    RGPOT_ABI_LAYOUT_REVISION,
+                ))
+            },
             0
         );
     }
 
-    /// `rgpot_potential_new_eam_table` is additive, so the minor moves to 6
-    /// after the engine and RPC Hessian-vector exports, and a caller built
-    /// against any earlier minor still matches.
+    /// `rgpot_potential_new_eam_table` was the additive minor-6 export.
+    /// Stress follows it at minor 7 with a new layout revision.
     #[test]
     fn the_minor_counts_the_eam_table_constructor() {
         assert_eq!(RGPOT_ABI_VERSION_MAJOR, 1);
-        assert_eq!(RGPOT_ABI_VERSION_MINOR, 6);
-        assert_eq!(rgpot_abi_stamp().abi_minor, 6);
-        for earlier in 0..RGPOT_ABI_VERSION_MINOR {
-            assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, earlier, 1)) }, 1);
-        }
-        assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, 7, 1)) }, 0);
+        assert_eq!(RGPOT_ABI_VERSION_MINOR, 7);
+        assert_eq!(rgpot_abi_stamp().abi_minor, RGPOT_ABI_VERSION_MINOR);
+        assert!(6 < RGPOT_ABI_VERSION_MINOR);
     }
 
     fn stamp(major: u16, minor: u16, layout: u16) -> rgpot_abi_stamp_t {
