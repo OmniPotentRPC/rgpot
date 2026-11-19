@@ -115,6 +115,31 @@ size_t n_atoms() const;
 - Outputs :: the atom count given at construction.
 - Errors :: none.
 
+*** =rgpot::InputSpec::with_stress=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+InputSpec &with_stress(bool compute = true) noexcept;
+#+end_src
+
+- Inputs :: =compute=, true to request Cauchy stress; false to keep the
+  force-only path.
+- Units :: none.
+- Outputs :: a reference to the input object for setter chaining.
+- Errors :: none.
+
+*** =rgpot::InputSpec::computes_stress=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+bool computes_stress() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when this input requests Cauchy stress.
+- Errors :: none.
+
 *** =rgpot::CalcResult=
 
 #+attr_rgpot: signature
@@ -207,6 +232,31 @@ bool has_forces() const;
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =true= when a forces tensor is set.
+- Errors :: none.
+
+*** =rgpot::CalcResult::has_stress=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+bool has_stress() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true only when all nine stress components were computed.
+- Errors :: none.
+
+*** =rgpot::CalcResult::stress_data=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+const double *stress_data() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: eV/Angstrom^3 for built-in potentials.
+- Outputs :: a pointer to nine row-major Cauchy-stress components. Inspect
+  =has_stress()= before using them.
 - Errors :: none.
 
 ** include/rgpot/potential.hpp
