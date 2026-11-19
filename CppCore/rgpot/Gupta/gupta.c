@@ -16,7 +16,8 @@
 // at 32 MiB and free the heap scratch before returning, recomputing pairs
 // past the cap identically in the force pass.
 #define RGPOT_GUPTA_STACK_ATOMS 64
-#define RGPOT_GUPTA_STACK_PAIRS 512
+#define RGPOT_GUPTA_STACK_PAIRS \
+  (RGPOT_GUPTA_STACK_ATOMS * (RGPOT_GUPTA_STACK_ATOMS - 1) / 2)
 #define RGPOT_GUPTA_MAX_PACK_PAIRS ((32u << 20) / (6u * sizeof(double)))
 
 static void gupta_scalar(const double *x, size_t n, const unsigned char *slot,
