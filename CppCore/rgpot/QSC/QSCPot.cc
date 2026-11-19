@@ -248,6 +248,14 @@ struct QSCPot::TableState {
     return compiled;
   }
 
+  TableState(const TableState &other, std::lock_guard<std::mutex> &)
+      : elements(other.elements), compiled(other.compiled) {}
+
+  std::shared_ptr<TableState> clone() const {
+    std::lock_guard<std::mutex> lock(mtx);
+    return std::make_shared<TableState>(*this, lock);
+  }
+
   void update(int z, double n, double m, double epsilon, double c, double a,
               const QSCConfig &cfg) {
     std::lock_guard<std::mutex> lock(mtx);
@@ -278,6 +286,28 @@ QSCPot::QSCPot(const QSCConfig &c) : Potential(PotType::QSC), m_config{c} {
   }
   m_state = std::make_shared<TableState>(m_config);
 }
+
+QSCPot::QSCPot(const QSCPot &other)
+    : Potential(other), m_config{other.m_config},
+      m_state{other.m_state->clone()}, mode_{other.mode_},
+      neighbours_{other.neighbours_} {}
+
+QSCPot::QSCPot(const QSCPot &other, SharedTable)
+    : Potential(other), m_config{other.m_config}, m_state{other.m_state},
+      mode_{other.mode_}, neighbours_{other.neighbours_} {}
+
+QSCPot &QSCPot::operator=(const QSCPot &other) {
+  if (this != &other) {
+    Potential::operator=(other);
+    m_config = other.m_config;
+    m_state = other.m_state->clone();
+    mode_ = other.mode_;
+    neighbours_ = other.neighbours_;
+  }
+  return *this;
+}
+
+QSCPot QSCPot::sharedReplica() const { return QSCPot(*this, SharedTable{}); }
 
 void QSCPot::setElementParameter(int z, double n, double m, double epsilon,
                                  double c, double a) {

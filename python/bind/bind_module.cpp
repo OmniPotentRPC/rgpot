@@ -765,7 +765,8 @@ NB_MODULE(_core, m) {
         cfg.stress = stress;
         rgpot::QSCPot seed(cfg);
         new (self) PotHolder<rgpot::QSCPot>([seed] {
-          return std::make_unique<rgpot::QSCPot>(seed);
+          return std::unique_ptr<rgpot::QSCPot>(
+              new rgpot::QSCPot(seed.sharedReplica()));
         });
       },
       nb::arg("cutoff") = 8.0, nb::arg("verlet_skin") = 0.5,
