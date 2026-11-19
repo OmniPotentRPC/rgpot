@@ -163,7 +163,12 @@ bool uses_symmetry_specific_pbc3(const std::array<double, 9> &h) {
 void wrap_symmetry_specific(const d2::detail::Cell &cell, double *rlp) {
   double s[3];
   cell.fractional(rlp, s);
-  std::array<double, 3> best{rlp[0], rlp[1], rlp[2]};
+  for (double &v : s) {
+    v = wrap_axis(v, 1.0);
+  }
+  double folded[3];
+  cell.cartesian(s, folded);
+  std::array<double, 3> best{folded[0], folded[1], folded[2]};
   double best2 = best[0] * best[0] + best[1] * best[1] + best[2] * best[2];
   for (int nx = -1; nx <= 1; ++nx) {
     for (int ny = -1; ny <= 1; ++ny) {

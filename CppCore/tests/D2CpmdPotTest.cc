@@ -154,6 +154,29 @@ double cpmd_two_oxygen_energy_ev(double distance_angstrom) {
   return hartree * HARTREE_TO_EV;
 }
 
+struct CellCase {
+  const char *name;
+  std::array<double, 9> box;
+  std::array<double, 3> fractional_delta;
+};
+
+const std::array<CellCase, 4> &pbc3_cell_cases() {
+  static const std::array<CellCase, 4> kCases{{
+      {"fcc", {0.0, 2.0, 2.0, 2.0, 0.0, 2.0, 2.0, 2.0, 0.0},
+       {-0.13670875044881015, 0.26099462104158744, 0.45981805354846594}},
+      {"trigonal",
+       {3.0, 0.0, 0.0, 1.2, 2.749545416973504, 0.0, 1.2, 0.7855844048495726,
+        2.6349301969610393},
+       {-0.13895857209664464, 0.42371828161708736, 0.4258527661071376}},
+      {"hexagonal",
+       {3.0, 0.0, 0.0, -1.5, 2.598076211, 0.0, 0.0, 0.0, 5.0},
+       {-0.4908678763235309, 0.18057788068661407, 0.38419771091555066}},
+      {"monoclinic", {4.0, 0.0, 0.0, 0.0, 5.0, 0.0, 1.8, 0.0, 6.0},
+       {-0.39289603625100367, -0.2542605353421451, -0.24891177114900753}},
+  }};
+  return kCases;
+}
+
 const char *kSystems[] = {"cubic_water",         "cubic_below_half",
                           "cubic_above_half",    "ortho_water_methane",
                           "triclinic_water_methane", "cubic_truncation"};
@@ -306,26 +329,8 @@ TEST_CASE("a composite swaps CPMD's D2 for the lattice sum", "[d2cpmd][composite
 
 TEST_CASE("CPMD pbc3 image selection matches brute-force on key cell symmetries",
           "[d2cpmd][pbc3]") {
-  struct CellCase {
-    const char *name;
-    std::array<double, 9> box;
-    std::array<double, 3> fractional_delta;
-  };
-  const std::array<CellCase, 4> kCases{{
-      {"fcc", {0.0, 2.0, 2.0, 2.0, 0.0, 2.0, 2.0, 2.0, 0.0},
-       {-0.13670875044881015, 0.26099462104158744, 0.45981805354846594}},
-      {"trigonal",
-       {3.0, 0.0, 0.0, 1.2, 2.749545416973504, 0.0, 1.2, 0.7855844048495726,
-        2.6349301969610393},
-       {-0.13895857209664464, 0.42371828161708736, 0.4258527661071376}},
-      {"hexagonal",
-       {3.0, 0.0, 0.0, -1.5, 2.598076211, 0.0, 0.0, 0.0, 5.0},
-       {-0.4908678763235309, 0.18057788068661407, 0.38419771091555066}},
-      {"monoclinic", {4.0, 0.0, 0.0, 0.0, 5.0, 0.0, 1.8, 0.0, 6.0},
-       {-0.39289603625100367, -0.2542605353421451, -0.24891177114900753}},
-  }};
   rgpot::D2CpmdPot pot;
-  for (const auto &sample : kCases) {
+  for (const auto &sample : pbc3_cell_cases()) {
     INFO(sample.name);
     const auto delta = cartesian_from_fractional(sample.box, sample.fractional_delta);
     const std::vector<double> pos{0.0, 0.0, 0.0, delta[0], delta[1], delta[2]};
@@ -335,5 +340,36 @@ TEST_CASE("CPMD pbc3 image selection matches brute-force on key cell symmetries"
     const double want = cpmd_two_oxygen_energy_ev(r);
     INFO("distance " << std::setprecision(16) << r << " A");
     REQUIRE(got.energy == Catch::Approx(want).margin(kEnergyThr * HARTREE_TO_EV));
+  }
+}
+
+TEST_CASE("CPMD pbc3 folds a displacement of several cells like one inside the cell",
+          "[d2cpmd][pbc3]") {
+  const std::array<std::array<double, 3>, 3> kShifts{{
+      {2.0, -2.0, 2.0},
+      {3.0, -4.0, 2.0},
+      {-7.0, 5.0, -6.0},
+  }};
+  rgpot::D2CpmdPot pot;
+  const std::vector<int> z{8, 8};
+  for (const auto &sample : pbc3_cell_cases()) {
+    const auto inside = cartesian_from_fractional(sample.box, sample.fractional_delta);
+    const std::vector<double> pos_inside{0.0, 0.0, 0.0, inside[0], inside[1], inside[2]};
+    const Result want = run(pot, z, pos_inside, sample.box);
+    for (const auto &shift : kShifts) {
+      INFO(sample.name << " shift " << shift[0] << " " << shift[1] << " " << shift[2]);
+      const std::array<double, 3> far_fractional{sample.fractional_delta[0] + shift[0],
+                                                 sample.fractional_delta[1] + shift[1],
+                                                 sample.fractional_delta[2] + shift[2]};
+      const auto far = cartesian_from_fractional(sample.box, far_fractional);
+      const std::vector<double> pos_far{0.0, 0.0, 0.0, far[0], far[1], far[2]};
+      const Result got = run(pot, z, pos_far, sample.box);
+      REQUIRE(got.energy == Catch::Approx(want.energy).margin(kEnergyThr * HARTREE_TO_EV));
+      REQUIRE(got.forces.size() == want.forces.size());
+      for (std::size_t k = 0; k < want.forces.size(); ++k) {
+        REQUIRE(got.forces[k] ==
+                Catch::Approx(want.forces[k]).margin(kGradThr * HARTREE_TO_EV / BOHR_TO_ANGSTROM));
+      }
+    }
   }
 }
