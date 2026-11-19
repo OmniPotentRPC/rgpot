@@ -14,11 +14,11 @@ Backend options for a live =Potential= go in =PotentialConfig=
 It is a union whose arms and ordinals are =none= @0, =nwchem= @1, =cpmd= @2,
 =metatomic= @4, =lammps= @5, =xtb= @6, =tblite= @7, =uma= @8, =lj= @9, =morse=
 @10, =zbl= @11, =d3= @12, =d4= @13, =mopac= @14, =skala= @15, =expr= @16 and
-=cp2k= @17.
+=cp2k= @17, plus rgpot's local =mullerBrown= @18 arm.
 Outside the union, =common= @3 is a =CommonMethodSpec= overlay.
 Geometry stays on =ForceInput=; =configure(config)= applies method and backend
 setup only.
-=potserv= applies =nwchem=, =cpmd= and =morse= on the matching backend, and
+=potserv= applies =nwchem=, =cpmd=, =morse= and =mullerBrown= on the matching backend, and
 =cp2k= on a build with CP2K.
 =none= is a no-op on every backend.
 Every other arm gets =ok=false= with a message that names the arm.
@@ -49,6 +49,17 @@ so the next =calculate= uses them.
 A non-finite value, a cutoff that is not positive, or a cutoff below the switch
 width gets =ok=false= and leaves the pot as it was.
 =tests/rpc_integ.py= doubles =de= and checks that the energy at =re= doubles.
+
+** Muller-Brown arm (=PotentialConfig.mullerBrown= / =MullerBrownParams=)
+
+With =potserv <port> MullerBrown=, the =mullerBrown= arm rebuilds the surface.
+The six list fields are =amplitude=, =a=, =b=, =c=, =x0= and =y0=; each is
+empty to retain its published default or contains exactly four finite values.
+Their schema names are =MullerBrownParams.amplitude=, =MullerBrownParams.a=,
+=MullerBrownParams.b=, =MullerBrownParams.c=, =MullerBrownParams.x0= and
+=MullerBrownParams.y0=.
+The =libclassical_engine= accepts the same arm nested in =BuiltinParams.config=
+when =name= is =muller_brown=.
 
 ** CPMD arm (=PotentialConfig.cpmd= / =CPMDParams=)
 
