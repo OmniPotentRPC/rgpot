@@ -12783,10 +12783,10 @@ Feature bit 0 is `RGPOT_HAS_CACHE`, which adds the virtual `setCache` to
 Covered types:
 
 - `ForceInput`, `ForceOut`, `ForceBatch`, `PotCaps`, `CalculatorGroup`
-- `LJConfig`, `LJClusterConfig`, `MorseConfig`, `ZBLConfig`
+- `LJConfig`, `LJClusterConfig`, `MorseConfig`, `ZBLConfig`, `SuttonChenConfig`
 - `Reentrancy` and `PotType`
 - `PotentialBase`, `Potential<Derived>` (through one probe instantiation),
-  `LJPot`, `LJClusterPot`, `MorsePot`, `ZBLPot`
+  `LJPot`, `LJClusterPot`, `MorsePot`, `ZBLPot`, `SuttonChenPot`
 - with the cache: `cache::EvalCounts` and `cache::PotentialCache`
 
 The classes of the optional backends are not covered (xtb, tblite, dftd3, dftd4,
@@ -12811,7 +12811,7 @@ is not the hash.
 | 3.5.1   | 1, 0, 1         | 4                    |
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
-| next    | 1, 5, 1         | 7                    |
+| next    | 1, 5, 1         | 8                    |
 
 3.6.0 raised the minor for `rgpot_eindir_abi_compatible`; a caller built against
 minor 0 still matches it.
@@ -12829,8 +12829,7 @@ The next release also raises the minor to 4 for the Taylor jet functions and the
 statuses `RGPOT_NO_JET` (6), `RGPOT_JET_BRANCH` (7) and `RGPOT_JET_DOMAIN` (8).
 The jet callback also lives behind `fused_cache`, so the layout revision stays
 at 1.
-It also raises the minor to 5 for the engine and RPC Hessian-vector
-interfaces.
+It also raises the minor to 5 for the engine and RPC Hessian-vector interfaces.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.
@@ -17556,23 +17555,36 @@ explicit SuttonChenPot(const SuttonChenConfig &c);
 void setPairTermLimit(std::size_t pairs) noexcept;
 ```
 
-- Inputs :: `pairs`, the most pairs, summed over the threads of a call, whose
-  density-pass terms the force pass reads back.
-- Units :: none.
+- Inputs :: `pairs`, the pair-count limit: the maximum candidate upper pairs
+  (`total_up <` pairs=) for the three-phase stored OpenMP path, and the maximum
+  pairs, summed over the threads of a call, whose density-pass terms the
+  two-pass force pass reads back.
+- Units :: none (a pair count, not a byte count).
 - Outputs :: none.
-  On the three-phase stored path, this limit must satisfy
-  `total_up <` pairs= or that path is skipped and the call falls back to the
-  threaded two-pass row walk.
-  The three-phase scratch cost from the code's per-slot vectors is 69 bytes per
-  candidate upper pair:
-  `active` 1 byte + `pair_phi` 8 + `pair_force` 48 + `up_j` 4 + `lo_refs` 8.
-  With per-atom energies (`forcePerAtom` with `atoms.energy` non-null) it is 77
-  bytes, because `pair_he` adds 8.
-  The force pass computes terms of the pairs past the kept room again, with the
-  same bits.
-  The room for a call follows the pairs the previous call saw, so a walk whose
-  pair count is not known in advance keeps its terms from the second call on.
-  The default keeps 32 MiB of terms, and 0 keeps none.
+  On the three-phase stored path, the candidate upper-pair count must satisfy
+  `total_up <` pairs= and `pairScratchFits(total_up, atoms, scratch_avail)`, or that path is skipped before building the half-pair index when `est_half_pairs > pairs`
+  and otherwise falls back to the threaded two-pass row walk.
+  `pairScratchFits` checks that the per-slot vectors fit within half of
+  `nlist::availableBytes()` (or allows the path when `availableBytes()` returns
+  0): 69 bytes per candidate upper pair (`active` 1 byte +
+  `pair_phi` 8 + `pair_force` 48 + `up_j` 4 + `lo_refs` 8), or 77 bytes with
+  per-atom energies (`forcePerAtom` with `atoms.energy` non-null, where
+  `pair_he` adds 8).
+  Per-atom vectors (`up_off`, `lo_off`, `rho`, `weight`, `row_e`, `row_emb`, and
+  `row_s` with stress) are `O(nAtoms)`, already bounded by `Neighbours::buildCells` and present as `rho_`
+  and `weight_` on the two-pass path, so they are not counted against the
+  pair-slot budget; the per-call scratch vectors are released when the
+  three-phase call returns.
+  On the two-pass path, a force call keeps `epsilon n (a/r)^n`, `m (a/r)^m` and
+  `1/r^2` in `PairTerms<3>` for each accepted pair up to `pairs / lanes` per
+  lane (24 bytes per pair), and the force pass computes the terms of any pairs
+  past the kept room from the coordinates, with the same bits.
+  The room for a two-pass call follows the pairs the previous call saw, so a
+  walk whose pair count is not known in advance keeps its terms from the second
+  call on.
+  The default is `PairTerms<3>::kDefaultLimit` (1398101 pairs, which is 32 MiB
+  of two-pass `PairTerms<3>` storage at 24 bytes per pair), and 0 skips the
+  three-phase path and keeps no two-pass terms.
 - Errors :: none.
 
 #### `rgpot::EMTPot`
@@ -30390,33 +30402,46 @@ From 8192 atoms up each atom keeps the energy and strain of its pairs with
 higher-index partners, and the atoms are added in index order.
 On a stored neighbour list with at least 8192 atoms and at least 4096 candidate
 upper pairs, a team of `OMP_NUM_THREADS` threads runs one three-phase OpenMP
-region over an upper-pair index when `total_up <` term_limit=: phase 0 evaluates
-each upper pair once across work-balanced atom slices rounded to 8-atom
-boundaries, phase 1 accumulates per-atom densities and embedding weights in
-pair-index order, and phase 2 sums forces, stress, and per-atom virials from
-the stored pair terms.
-When `total_up > term_limit` the call skips that three-phase path and falls
-back to the threaded two-pass row walk.
+region over an upper-pair index when `total_up <` term_limit= and
+`pairScratchFits(total_up, atoms, scratch_avail)` holds: phase 0 evaluates each
+upper pair once across work-balanced atom slices rounded to 8-atom boundaries,
+phase 1 accumulates per-atom densities and embedding weights in pair-index
+order, and phase 2 sums forces, stress, and per-atom virials from the stored
+pair terms.
+`pairScratchFits` checks that the per-slot vectors fit within half of
+`nlist::availableBytes()` (or allows the path when `availableBytes()` returns
+0): 69 bytes per candidate upper pair (`active` 1 byte +
+`pair_phi` 8 + `pair_force` 48 + `up_j` 4 + `lo_refs` 8), or 77 bytes when
+`atoms.energy` is non-null (`pair_he` adds 8).
+Per-atom vectors (`up_off`, `lo_off`, `rho`, `weight`, `row_e`, `row_emb`, and
+`row_s` with stress) are `O(nAtoms)`, already bounded by `Neighbours::buildCells` and present as `rho_`
+and `weight_` on the two-pass walk, so they are not counted against the
+pair-slot budget; the per-call scratch vectors in the thread-local workspace are
+released when the three-phase call finishes while the half-pair index and slice
+splits stay cached for Verlet reuse.
+When
+`est_half_pairs > term_limit` the three-phase path is skipped before `buildStoredHalfIndex`, and when `total_up > term_limit`
+or `pairScratchFits` refuses the call falls back to the threaded two-pass row
+walk.
 Sparser stored lists stay on one thread, and streaming or unbounded walks still
 evaluate each atom's row on its owning slice.
 The energy, the forces, the stress and the per-atom terms therefore keep the
 bits of one thread on any thread count, also when the runtime starts fewer
 threads.
-One pass builds the densities and a second pass writes the forces.
-The density pass keeps the powers and `1/r^2` that the force of each pair takes,
-and the force pass reads them back instead of raising the distance to `n` and
-`m` again.
+On the two-pass walks, one pass builds the densities and a second pass writes
+the forces.
+The density pass keeps the powers and `1/r^2` that the force of each pair takes
+in `PairTerms<3>` (24 bytes per pair), and the force pass reads them back
+instead of raising the distance to `n= and =m` in the second pass.
 With `a = 1` those are the density's own powers; otherwise the force's powers of
 `a^2 (1/r^2)` are kept, since they can differ from those of `a^2 / r^2` in the
 last bit.
-`SuttonChenPot::setPairTermLimit` bounds the three-phase scratch, 32 MiB by
-default.
-The candidate-slot cost from the code's allocations is 69 bytes, or 77 bytes
-when per-atom energies are requested:
-`active` 1 byte + `pair_phi` 8 + `pair_force` 48 + `up_j` 4 + `lo_refs` 8, and
-`pair_he` adds 8 when `atoms.energy` is non-null.
-The force pass computes any pair terms outside the kept room again, with the
-same bits.
+`SuttonChenPot::setPairTermLimit` takes a pair count `pairs`, defaulting to
+`PairTerms<3>::kDefaultLimit` (1398101 pairs, which is 32 MiB of two-pass
+`PairTerms<3>` storage at 24 bytes per pair): it requires `total_up <` pairs= on
+the three-phase stored path and caps the two-pass `PairTerms<3>` buffer at
+`pairs / lanes` per lane, while the two-pass force pass computes the terms of
+any pairs past the kept room from the coordinates, with the same bits.
 
 `rgpot_sutton_chen_energy_forces` is the C entry point.
 It takes an `rgpot_sc_config` and writes one energy and one force array.
