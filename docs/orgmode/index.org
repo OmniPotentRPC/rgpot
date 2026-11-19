@@ -94,6 +94,13 @@ meson compile -C bbdir && meson test -C bbdir
    howto/engine-plugins
    howto/eindir-anneal
    howto/eon-rgpot
+   howto/potentials-pair
+   howto/potentials-metals
+   howto/potentials-silicon
+   howto/potentials-water
+   howto/potentials-model
+   howto/potentials-quantum
+   howto/potentials-composite
    howto/sutton-chen-stress
    howto/cpu-scaling
 
