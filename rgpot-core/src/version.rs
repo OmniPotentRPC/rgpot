@@ -363,6 +363,7 @@ mod tests {
         for (declared, mirrored) in [
             ("RGPOT_ENGINE_ABI_VERSION", "ENGINE_ABI_VERSION"),
             ("RGPOT_ENGINE_ABI_MINOR", "ENGINE_ABI_MINOR"),
+            ("RGPOT_ENGINE_ABI_MINIMUM_MINOR", "ENGINE_ABI_MINIMUM_MINOR"),
             (
                 "RGPOT_ENGINE_ABI_LAYOUT_REVISION",
                 "ENGINE_ABI_LAYOUT_REVISION",
@@ -376,7 +377,10 @@ mod tests {
         }
         #[cfg(feature = "engine")]
         {
-            use crate::engine::{ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINOR, ENGINE_ABI_VERSION};
+            use crate::engine::{
+                ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINIMUM_MINOR, ENGINE_ABI_MINOR,
+                ENGINE_ABI_VERSION,
+            };
             assert_eq!(
                 ENGINE_ABI_VERSION as u32,
                 define_value(&engine_header, "RGPOT_ENGINE_ABI_VERSION")
@@ -384,6 +388,10 @@ mod tests {
             assert_eq!(
                 u32::from(ENGINE_ABI_MINOR),
                 define_value(&engine_header, "RGPOT_ENGINE_ABI_MINOR")
+            );
+            assert_eq!(
+                u32::from(ENGINE_ABI_MINIMUM_MINOR),
+                define_value(&engine_header, "RGPOT_ENGINE_ABI_MINIMUM_MINOR")
             );
             assert_eq!(
                 u32::from(ENGINE_ABI_LAYOUT_REVISION),

@@ -7,8 +7,9 @@
 //! exports one symbol set. Which backend runs is which library is loaded, and
 //! the backend's configuration is the opaque message the library's create
 //! call reads. [`EnginePotential::load`] resolves that symbol set, checks both
-//! [`ENGINE_ABI_VERSION`] and [`RgpotEngineAbiStamp::HOST`] against the
-//! library's ABI identity, and keeps one engine instance. [`EnginePotential::force`] is one
+//! [`ENGINE_ABI_VERSION`] and [`RgpotEngineAbiStamp::MINIMUM`] against the
+//! library's ABI identity (an older minor than the current one loads, and the
+//! optional operations it lacks report [`EngineError::Unsupported`]), and keeps one engine instance. [`EnginePotential::force`] is one
 //! geometry in Angstrom and one answer in eV and eV/Angstrom, the units the
 //! header fixes.
 //!
@@ -29,7 +30,7 @@
 //! [`crate::profile`]: a backend may own threads or MPI state that does not
 //! survive `dlclose`.
 
-use std::ffi::{c_char, c_int, c_long, c_uint, c_ushort, c_void};
+use std::ffi::{c_char, c_int, c_long, c_longlong, c_uint, c_ushort, c_void};
 use std::fmt;
 use std::mem::ManuallyDrop;
 use std::path::Path;
@@ -45,8 +46,13 @@ use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
-/// The ABI minor this loader requires, `RGPOT_ENGINE_ABI_MINOR` of the header.
-pub const ENGINE_ABI_MINOR: u16 = 4;
+/// The current ABI minor, `RGPOT_ENGINE_ABI_MINOR` of the header: what an
+/// engine built with this header stamps.
+pub const ENGINE_ABI_MINOR: u16 = 5;
+/// The lowest engine minor this loader accepts, `RGPOT_ENGINE_ABI_MINIMUM_MINOR`
+/// of the header. Optional symbols and trailing caps fields added since are
+/// probed; an engine that predates them reports the capability as absent.
+pub const ENGINE_ABI_MINIMUM_MINOR: u16 = 4;
 /// The struct layout revision this loader expects, `RGPOT_ENGINE_ABI_LAYOUT_REVISION` of the header.
 pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 /// Engine code meaning the backend does not support the requested operation.
@@ -85,6 +91,14 @@ impl RgpotEngineAbiStamp {
     pub const HOST: Self = Self {
         abi_major: ENGINE_ABI_VERSION as c_ushort,
         abi_minor: ENGINE_ABI_MINOR,
+        layout_revision: ENGINE_ABI_LAYOUT_REVISION,
+    };
+
+    /// The oldest stamp this loader accepts: [`Self::HOST`] with the minimum
+    /// minor. [`Self::serves`] is checked against this one.
+    pub const MINIMUM: Self = Self {
+        abi_major: ENGINE_ABI_VERSION as c_ushort,
+        abi_minor: ENGINE_ABI_MINIMUM_MINOR,
         layout_revision: ENGINE_ABI_LAYOUT_REVISION,
     };
 
@@ -153,6 +167,30 @@ pub type HvpFn = unsafe extern "C" fn(
     *mut f64,
     *const f64,
 ) -> c_int;
+/// `RgpotEngineDerivativeReport` of `rgpot/engine_c_abi.h`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RgpotEngineDerivativeReport {
+    /// Nonzero when `operations` and `scale` are meaningful.
+    pub tracked: c_int,
+    /// Arithmetic operations of the derivative evaluation.
+    pub operations: c_longlong,
+    /// Largest magnitude in the units of the jet.
+    pub scale: f64,
+}
+/// `rgpot_engine_taylor_jet`.
+pub type TaylorJetFn = unsafe extern "C" fn(
+    *mut RgpotEnginePot,
+    c_long,
+    c_long,
+    *const f64,
+    *const c_int,
+    *const f64,
+    c_long,
+    *mut f64,
+    *mut RgpotEngineDerivativeReport,
+    *const f64,
+) -> c_int;
 /// `rgpot_engine_caps`.
 pub type CapsFn = unsafe extern "C" fn(*const RgpotEnginePot, *mut RgpotEngineCaps) -> c_int;
 /// `rgpot_engine_last_error`.
@@ -182,6 +220,8 @@ pub struct RgpotEngineCaps {
     pub orbital_copy: c_int,
     /// Nonzero when analytic HVP (`rgpot_engine_hvp`) is supported.
     pub analytic_hvp: c_int,
+    /// Highest order of `rgpot_engine_taylor_jet`; 0 when it is not served.
+    pub jet_order: c_int,
 }
 
 /// Capabilities advertised by an engine instance via `rgpot_engine_caps`.
@@ -201,6 +241,89 @@ pub struct EngineCaps {
     pub group_collective: bool,
     /// Whether analytic HVP (`rgpot_engine_hvp`) is supported.
     pub analytic_hvp: bool,
+    /// Highest order of `rgpot_engine_taylor_jet`; 0 when it is not served.
+    pub jet_order: usize,
+}
+
+/// Roundoff report of one derivative call: `operations` times the machine
+/// epsilon times `scale` is the engine's first-order estimate (not a rigorous
+/// bound) of the roundoff of the returned derivatives. `scale` is in the units
+/// of the jet. For a batch, `operations` is the sum over the systems and
+/// `scale` the largest.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DerivativeReport {
+    /// Arithmetic operations of the evaluation.
+    pub operations: u64,
+    /// Largest magnitude among the gradient and the returned orders.
+    pub scale: f64,
+}
+
+/// A uniform batch of jet requests: `n_systems` systems of one composition.
+#[derive(Debug, Clone, Copy)]
+pub struct JetBatchRequest<'a> {
+    /// Atomic numbers, one per atom, shared by every system.
+    pub atomic_numbers: &'a [i32],
+    /// Positions in Angstrom, `n_systems` blocks of `3 * n_atoms`.
+    pub positions: &'a [f64],
+    /// Directions in Angstrom, laid out like `positions`.
+    pub directions: &'a [f64],
+    /// Row-major 3 by 3 cells in Angstrom, `n_systems` blocks of 9.
+    pub boxes: &'a [f64],
+}
+
+/// Directional derivatives of the gradient along a line, from
+/// `rgpot_engine_taylor_jet`, for a uniform batch. Derivative `k` of system
+/// `s` is the `k`-th derivative with respect to the line parameter of the
+/// gradient at the request positions of that system, in eV/Angstrom for a
+/// direction in Angstrom (every derivative of the gradient is a force, and the
+/// Angstrom of the line parameter is absorbed by the direction). Derivative 1
+/// is the Hessian-vector product. These are derivatives, not Taylor
+/// coefficients.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GradientJet {
+    order: usize,
+    n_atoms: usize,
+    n_systems: usize,
+    derivatives: Vec<f64>,
+    report: Option<DerivativeReport>,
+}
+
+impl GradientJet {
+    /// Highest derivative order held.
+    pub fn order(&self) -> usize {
+        self.order
+    }
+
+    /// Number of systems in the batch.
+    pub fn n_systems(&self) -> usize {
+        self.n_systems
+    }
+
+    /// The `k`-th derivative of every system, `n_systems * 3 * n_atoms`
+    /// entries in system order, for `k` in `1..=order`.
+    pub fn derivative(&self, k: usize) -> Option<&[f64]> {
+        if k == 0 || k > self.order {
+            return None;
+        }
+        let block = self.n_systems * 3 * self.n_atoms;
+        self.derivatives.get((k - 1) * block..k * block)
+    }
+
+    /// The `k`-th derivative of system `system`, `3 * n_atoms` entries.
+    pub fn system_derivative(&self, k: usize, system: usize) -> Option<&[f64]> {
+        if system >= self.n_systems {
+            return None;
+        }
+        let width = 3 * self.n_atoms;
+        self.derivative(k)?
+            .get(system * width..(system + 1) * width)
+    }
+
+    /// The roundoff report of the call, `None` when the engine does not count
+    /// operations.
+    pub fn report(&self) -> Option<DerivativeReport> {
+        self.report
+    }
 }
 
 /// The symbols of one engine library. `abi_version`, `create`, `destroy` and
@@ -222,6 +345,8 @@ pub struct EngineSymbols {
     pub force_batch: Option<ForceBatchFn>,
     /// Optional symbol `rgpot_engine_hvp`.
     pub hvp: Option<HvpFn>,
+    /// Optional symbol `rgpot_engine_taylor_jet`.
+    pub taylor_jet: Option<TaylorJetFn>,
     /// Optional symbol `rgpot_engine_caps`.
     pub caps: Option<CapsFn>,
     /// Optional symbol `rgpot_engine_last_error`.
@@ -351,6 +476,7 @@ pub struct EnginePotential {
     stamp: RgpotEngineAbiStamp,
     handle: NonNull<RgpotEnginePot>,
     fatal: OnceLock<Poisoned>,
+    caps: OnceLock<EngineCaps>,
     _library: Option<ManuallyDrop<Library>>,
 }
 
@@ -401,9 +527,9 @@ impl EnginePotential {
                 layout_revision: 1,
             },
         };
-        if !stamp.serves(RgpotEngineAbiStamp::HOST) {
+        if !stamp.serves(RgpotEngineAbiStamp::MINIMUM) {
             return Err(EngineError::AbiStamp {
-                expected: RgpotEngineAbiStamp::HOST,
+                expected: RgpotEngineAbiStamp::MINIMUM,
                 found: stamp,
             });
         }
@@ -430,6 +556,7 @@ impl EnginePotential {
                 stamp,
                 handle,
                 fatal: OnceLock::new(),
+                caps: OnceLock::new(),
                 _library: None,
             }),
             None => Err(EngineError::Create(text_of(&errbuf))),
@@ -526,9 +653,15 @@ impl EnginePotential {
         Ok(out)
     }
 
-    /// Query the engine's capabilities via `rgpot_engine_caps`.
+    /// The engine's capabilities from `rgpot_engine_caps`, queried once per
+    /// instance. A caps struct shorter than this host's (an older engine
+    /// minor) leaves the missing trailing fields at zero, so `jet_order` of a
+    /// minor-4 engine is 0.
     pub fn caps(&self) -> Result<EngineCaps, EngineError> {
         self.check_alive()?;
+        if let Some(caps) = self.caps.get() {
+            return Ok(*caps);
+        }
         let caps_fn = self
             .symbols
             .caps
@@ -539,7 +672,16 @@ impl EnginePotential {
         };
         let code = unsafe { caps_fn(self.handle.as_ptr(), &mut raw) };
         self.answer(code)?;
-        Ok(EngineCaps {
+        let written = raw.size as usize;
+        let jet_end =
+            std::mem::offset_of!(RgpotEngineCaps, jet_order) + std::mem::size_of::<c_int>();
+        let served_jet = if written >= jet_end { raw.jet_order } else { 0 };
+        let jet_order = usize::try_from(served_jet).map_err(|_| {
+            EngineError::Invalid(format!(
+                "the engine reports a negative jet order {served_jet}"
+            ))
+        })?;
+        let caps = EngineCaps {
             reentrancy: raw.reentrancy,
             per_image_instances: raw.per_image_instances != 0,
             batched: raw.batched != 0,
@@ -547,7 +689,9 @@ impl EnginePotential {
             stress: raw.stress != 0,
             group_collective: raw.group_collective != 0,
             analytic_hvp: raw.analytic_hvp != 0,
-        })
+            jet_order,
+        };
+        Ok(*self.caps.get_or_init(|| caps))
     }
 
     /// Analytic Hessian-vector product `H(positions) * direction` in eV/Angstrom^2
@@ -621,6 +765,132 @@ impl EnginePotential {
         Ok(hv_out)
     }
 
+    /// Directional derivatives of the gradient up to `order` along the
+    /// directions (Angstrom) of a uniform batch, in one engine call, with the
+    /// engine's roundoff report when it tracks one.
+    ///
+    /// Returns [`EngineError::Unsupported`] when the library omits
+    /// `rgpot_engine_taylor_jet` or `rgpot_engine_caps` (an older ABI minor),
+    /// when `jet_order` is below `order`, or when the call returns
+    /// `ENGINE_ERR_UNSUPPORTED` (3). No finite-difference fallback is
+    /// attempted.
+    pub fn taylor_jet(
+        &mut self,
+        request: &JetBatchRequest<'_>,
+        order: usize,
+    ) -> Result<GradientJet, EngineError> {
+        self.check_alive()?;
+        let jet_fn = self
+            .symbols
+            .taylor_jet
+            .ok_or_else(|| unsupported_symbol("rgpot_engine_taylor_jet"))?;
+        if self.symbols.caps.is_none() {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_taylor_jet",
+                message: "rgpot_engine_caps is not exported".into(),
+            });
+        }
+        if order == 0 {
+            return Err(EngineError::Invalid("a jet needs order at least 1".into()));
+        }
+        let served = self.caps()?.jet_order;
+        if served < order {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_taylor_jet",
+                message: format!("jet order {order} requested; the engine serves {served}"),
+            });
+        }
+        let n_atoms = request.atomic_numbers.len();
+        if n_atoms == 0
+            || request.positions.is_empty()
+            || !request.positions.len().is_multiple_of(3 * n_atoms)
+        {
+            return Err(EngineError::Invalid(format!(
+                "{} coordinates are not a whole number of {n_atoms}-atom systems",
+                request.positions.len()
+            )));
+        }
+        let n_systems = request.positions.len() / (3 * n_atoms);
+        if request.directions.len() != request.positions.len() {
+            return Err(EngineError::Invalid(format!(
+                "{} direction entries for {} coordinates",
+                request.directions.len(),
+                request.positions.len()
+            )));
+        }
+        if request.boxes.len() != 9 * n_systems {
+            return Err(EngineError::Invalid(format!(
+                "{} cell values for {n_systems} systems; expected {}",
+                request.boxes.len(),
+                9 * n_systems
+            )));
+        }
+        if let Some(i) = request.positions.iter().position(|v| !v.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine position at element {i} is not finite"
+            )));
+        }
+        if let Some(i) = request.directions.iter().position(|v| !v.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine direction at element {i} is not finite"
+            )));
+        }
+        let mut derivatives = vec![0.0; order * request.positions.len()];
+        let mut raw = RgpotEngineDerivativeReport::default();
+        let code = unsafe {
+            jet_fn(
+                self.handle.as_ptr(),
+                n_systems as c_long,
+                n_atoms as c_long,
+                request.positions.as_ptr(),
+                request.atomic_numbers.as_ptr(),
+                request.directions.as_ptr(),
+                order as c_long,
+                derivatives.as_mut_ptr(),
+                &mut raw,
+                request.boxes.as_ptr(),
+            )
+        };
+        if code == ENGINE_ERR_UNSUPPORTED {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_taylor_jet",
+                message: self.last_error_text(code),
+            });
+        }
+        self.answer(code)?;
+        if let Some(i) = derivatives.iter().position(|v| !v.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine jet at element {i} is not finite"
+            )));
+        }
+        let report = if raw.tracked != 0 {
+            let operations = u64::try_from(raw.operations).map_err(|_| {
+                EngineError::Invalid(format!(
+                    "the engine reports a negative operation count {}",
+                    raw.operations
+                ))
+            })?;
+            if !raw.scale.is_finite() {
+                return Err(EngineError::Invalid(
+                    "the engine jet scale is not finite".into(),
+                ));
+            }
+            Some(DerivativeReport {
+                operations,
+                scale: raw.scale,
+            })
+        } else {
+            None
+        };
+        Ok(GradientJet {
+            order,
+            n_atoms,
+            n_systems,
+            derivatives,
+            report,
+        })
+    }
+
     /// The instance as a [`PotentialImpl`]. The handle owns the engine and
     /// destroys it on drop. Calls through the handle are serialized. When
     /// both the optional capability and HVP symbols are present and
@@ -683,6 +953,17 @@ impl EnginePotential {
         }
         text_of(&buffer)
     }
+}
+
+/// The create message of a backend selected by name alone: a flat Cap'n Proto
+/// `BuiltinParams` carrying `name`, as read by the in-tree engine libraries.
+#[cfg(feature = "schema")]
+pub fn builtin_config(name: &str) -> Vec<u8> {
+    let mut message = capnp::message::Builder::new_default();
+    message
+        .init_root::<crate::Potentials_capnp::builtin_params::Builder<'_>>()
+        .set_name(name);
+    capnp::serialize::write_message_to_words(&message)
 }
 
 /// Releases the native handle with `rgpot_engine_destroy`.
@@ -772,6 +1053,7 @@ unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
         force: unsafe { required(library, "rgpot_engine_force")? },
         force_batch: unsafe { optional(library, "rgpot_engine_force_batch") },
         hvp: unsafe { optional(library, "rgpot_engine_hvp") },
+        taylor_jet: unsafe { optional(library, "rgpot_engine_taylor_jet") },
         caps: unsafe { optional(library, "rgpot_engine_caps") },
         last_error: unsafe { optional(library, "rgpot_engine_last_error") },
     })
