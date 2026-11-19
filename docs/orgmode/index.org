@@ -114,6 +114,7 @@ meson compile -C bbdir && meson test -C bbdir
    reference/cpp_backends
    reference/cpp_support
    reference/ipi_driver
+   reference/cli
    reference/build_options
    reference/potential_config
    reference/sw_si
