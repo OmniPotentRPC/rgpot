@@ -149,6 +149,7 @@ mod tests {
                     rgpot_tensor_cpu_i32_1d(self.atmnrs.as_mut_ptr(), n as i64)
                 },
                 box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(self.box_.as_mut_ptr()) },
+                ..rgpot_force_input_t::default()
             }
         }
 
@@ -205,11 +206,7 @@ mod tests {
 
         let mut io = TestIO::new(3);
         let input = io.make_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
 
         let status = unsafe { pot.calculate(&input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
@@ -226,11 +223,7 @@ mod tests {
         let pot = PotentialImpl::new(error_callback, std::ptr::null_mut(), None);
         let mut io = TestIO::new(1);
         let input = io.make_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { pot.calculate(&input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { io.free_input(&input) };
@@ -241,11 +234,7 @@ mod tests {
         let pot = PotentialImpl::new(writing_callback, std::ptr::null_mut(), None);
         let mut io = TestIO::new(2);
         let input = io.make_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
 
         let status = unsafe { pot.calculate(&input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
@@ -317,11 +306,7 @@ mod tests {
 
         let mut io = TestIO::new(1);
         let input = io.make_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
 
         unsafe { pot.calculate(&input, &mut output) };
         assert_eq!(CALL_COUNT.load(Ordering::SeqCst), 1);

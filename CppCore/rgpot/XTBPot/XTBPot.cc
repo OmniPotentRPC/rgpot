@@ -288,6 +288,7 @@ FusedSettingsSpec XTBPot::fusedSettings() const {
 }
 
 void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  StressAccumulator stress(in, out);
   if (!m_env || !m_calc || !m_res)
     throw std::runtime_error("xTB Error: calculator is not initialized");
 
@@ -386,20 +387,17 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->F[i] *= NEG_GRAD_TO_FORCE;
   }
 
-  // xtb stores dE/dε in Hartree. sigma = virial / V in eV/Angstrom^3.
-  double virial[9] = {};
-  xtb_getVirial(m_env, m_res, virial);
-  const double volume = cellVolume(in.box);
-  if (volume > 0.0) {
-    const double scale = units::HARTREE_TO_EV / volume;
-    for (int col = 0; col < 3; ++col) {
-      for (int row = 0; row < 3; ++row) {
-        out->stress[row * 3 + col] = virial[row + 3 * col] * scale;
-      }
-    }
-    out->has_stress = 1;
-  } else {
-    out->has_stress = 0;
+  if (double *strain = stress.data()) {
+    // xtb stores dE/dε in Hartree, column-major.
+    double virial[9] = {};
+    xtb_getVirial(m_env, m_res, virial);
+    strain[0] = virial[0] * units::HARTREE_TO_EV;
+    strain[1] = virial[4] * units::HARTREE_TO_EV;
+    strain[2] = virial[8] * units::HARTREE_TO_EV;
+    strain[3] = virial[7] * units::HARTREE_TO_EV;
+    strain[4] = virial[6] * units::HARTREE_TO_EV;
+    strain[5] = virial[3] * units::HARTREE_TO_EV;
+    stress.publish(in.box);
   }
 
   out->variance = 0.0;

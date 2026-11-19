@@ -92,11 +92,13 @@ impl potential::Server for PotentialServer {
             positions: pos_tensor,
             atomic_numbers: atm_tensor,
             box_matrix: box_tensor,
+            ..rgpot_force_input_t::default()
         };
         let mut output = rgpot_force_out_t {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            ..rgpot_force_out_t::default()
         };
 
         let status = unsafe { (self.callback)(self.user_data, &input, &mut output) };
@@ -175,6 +177,7 @@ impl potential::Server for PotentialServer {
             positions: pos_tensor,
             atomic_numbers: atom_tensor,
             box_matrix: box_tensor,
+            ..rgpot_force_input_t::default()
         };
         let mut product = vec![0.0; dimension];
         let answer = unsafe {

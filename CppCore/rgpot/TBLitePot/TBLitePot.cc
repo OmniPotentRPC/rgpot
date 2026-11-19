@@ -91,6 +91,7 @@ void TBLitePot::createCalculator() const {
 }
 
 void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  StressAccumulator stress(in, out);
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
 
@@ -157,20 +158,19 @@ void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->F[i] *= NEG_GRAD_TO_FORCE;
   }
 
-  // tblite stores dE/dε in Hartree, column-major. sigma = virial / V.
-  double virial[9] = {};
-  tblite_get_result_virial(err, m_res, virial);
-  const double volume = cellVolume(in.box);
-  if (volume > 0.0 && tblite_check_error(err) == 0) {
-    const double scale = units::HARTREE_TO_EV / volume;
-    for (int col = 0; col < 3; ++col) {
-      for (int row = 0; row < 3; ++row) {
-        out->stress[row * 3 + col] = virial[row + 3 * col] * scale;
-      }
+  if (double *strain = stress.data()) {
+    // tblite stores dE/dε in Hartree, column-major.
+    double virial[9] = {};
+    tblite_get_result_virial(err, m_res, virial);
+    if (tblite_check_error(err) == 0) {
+      strain[0] = virial[0] * units::HARTREE_TO_EV;
+      strain[1] = virial[4] * units::HARTREE_TO_EV;
+      strain[2] = virial[8] * units::HARTREE_TO_EV;
+      strain[3] = virial[7] * units::HARTREE_TO_EV;
+      strain[4] = virial[6] * units::HARTREE_TO_EV;
+      strain[5] = virial[3] * units::HARTREE_TO_EV;
+      stress.publish(in.box);
     }
-    out->has_stress = 1;
-  } else {
-    out->has_stress = 0;
   }
 
   out->variance = 0.0;

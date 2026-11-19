@@ -16,6 +16,7 @@
 #include "rgpot/units.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -281,10 +282,6 @@ BesideCache &beside_cache() {
 
 void ensure_beside_cache(const CoulombConfig &cfg, const std::vector<Pair> &pairs) {
   BesideCache &cache = beside_cache();
-  if (cache.seen == pairs.data() && cache.seen_n == pairs.size() && cache.alpha == cfg.alpha &&
-      cache.rc == cfg.cutoff) {
-    return;
-  }
   const ScreenTable &screen = screen_table(cfg.alpha, cfg.cutoff);
   cache.ord.resize(pairs.size());
   cache.phi.resize(pairs.size());
@@ -350,6 +347,10 @@ void real_beside_rank(const CoulombConfig &cfg, const double *q, const std::vect
     slot.f[3 * pr.j] -= fx;
     slot.f[3 * pr.j + 1] -= fy;
     slot.f[3 * pr.j + 2] -= fz;
+    if (cfg.stress) {
+      accumulatePairStrain(slot.strain, -dedr * invr, -pr.x, -pr.y,
+                           -pr.z);
+    }
   }
   flush();
   slot.energy.add(energy);
@@ -370,91 +371,6 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
   const ScreenTable &screen = screen_table(alpha, rc);
   const int nt = thread_count();
   std::vector<Scratch> &parts = scratch_for(nt, 3 * n, dE_dq != nullptr ? n : 0);
-  if (!dsf && !cfg.stress && dE_dq == nullptr) {
-    // The screen depends only on distance. The benchmark repeats one
-    // geometry, so the interpolation is done once and the timed calls
-    // only scatter forces. Neighbours of one atom stay together.
-    static const Pair *seen = nullptr;
-    static std::size_t seen_n = 0;
-    static double seen_alpha = 0.0;
-    static double seen_rc = 0.0;
-    static std::vector<int> ord;
-    static std::vector<double> cached_phi;
-    static std::vector<double> cached_dphi;
-    if (seen != pairs.data() || seen_n != pairs.size() || seen_alpha != alpha || seen_rc != rc) {
-      ord.resize(pairs.size());
-      cached_phi.resize(pairs.size());
-      cached_dphi.resize(pairs.size());
-      for (std::size_t t = 0; t < pairs.size(); ++t) {
-        ord[t] = static_cast<int>(t);
-        screened_pair(screen, pairs[t].r, &cached_phi[t], &cached_dphi[t]);
-      }
-      std::sort(ord.begin(), ord.end(), [&](int a, int b) {
-        return pairs[static_cast<std::size_t>(a)].i < pairs[static_cast<std::size_t>(b)].i;
-      });
-      seen = pairs.data();
-      seen_n = pairs.size();
-      seen_alpha = alpha;
-      seen_rc = rc;
-    }
-    const auto nord = static_cast<std::int64_t>(ord.size());
-    forEachSlice(nt, [&](int slice) {
-      auto &p = parts[static_cast<std::size_t>(slice)];
-      double energy = 0.0;
-      int cur = -1;
-      double ax = 0.0;
-      double ay = 0.0;
-      double az = 0.0;
-      auto flush = [&]() {
-        if (cur >= 0) {
-          p.f[3 * cur] += ax;
-          p.f[3 * cur + 1] += ay;
-          p.f[3 * cur + 2] += az;
-        }
-      };
-      const Range run = partition(nord, slice, nt);
-      for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
-        const Pair &pr = pairs[static_cast<std::size_t>(ord[t])];
-        if (!(pr.r > 0.0) || pr.r >= rc) {
-          continue;
-        }
-        if (pr.i != cur) {
-          flush();
-          cur = pr.i;
-          ax = 0.0;
-          ay = 0.0;
-          az = 0.0;
-        }
-        const std::size_t slot = static_cast<std::size_t>(ord[t]);
-        const double phi = cached_phi[slot];
-        const double dphi = cached_dphi[slot];
-        const double qq = q[pr.i] * q[pr.j];
-        energy += kKe * qq * phi;
-        const double dedr = kKe * qq * dphi;
-        const double invr = 1.0 / pr.r;
-        const double fx = dedr * pr.x * invr;
-        const double fy = dedr * pr.y * invr;
-        const double fz = dedr * pr.z * invr;
-        ax += fx;
-        ay += fy;
-        az += fz;
-        p.f[3 * pr.j] -= fx;
-        p.f[3 * pr.j + 1] -= fy;
-        p.f[3 * pr.j + 2] -= fz;
-      }
-      flush();
-      p.energy.add(energy);
-    });
-    add_scratch(parts, F, out);
-    const double self = -kKe * alpha / std::sqrt(kPi);
-    for (std::size_t i = 0; i < n; ++i) {
-      out->energy += self * q[i] * q[i];
-    }
-    g_pme_trace.real_us =
-        std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t_real0).count();
-    g_pme_trace.real_team = nt;
-    return;
-  }
   const auto npairs = static_cast<std::int64_t>(pairs.size());
   forEachSlice(nt, [&](int slice) {
     auto &p = parts[static_cast<std::size_t>(slice)];
@@ -599,27 +515,21 @@ void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doub
           p.dq[i] += common * 2.0 * (C * ct + D * st);
         }
       }
-      // Strain derivative at fixed fractional coordinates. |S| is invariant.
-      const double inv4a = 1.0 / (4.0 * alpha * alpha);
-      for (int b = 0; b < 3; ++b) {
-        for (int c = 0; c < 3; ++c) {
-          const double dfac = -((b == c) ? 1.0 : 0.0) +
-                              2.0 * (inv4a + 1.0 / k2) * kv[b] * kv[c];
-          const double dE = s2 * common * f * 0.0 + s2 * pref * f * dfac / 1.0;
-          // d(pref * f)/d eps_bc * |S|^2, and pref's 1/V piece is -pref * delta.
-          // dfac already holds -delta + 2 (1/(4 a^2) + 1/k^2) k_b k_c,
-          // and d(pref f)/deps = pref * f * dfac.
-          (void)dE;
-          const int voigt = b == 0 && c == 0   ? 0
-                            : b == 1 && c == 1 ? 1
-                            : b == 2 && c == 2 ? 2
-                            : (b == 1 && c == 2) || (b == 2 && c == 1) ? 3
-                            : (b == 0 && c == 2) || (b == 2 && c == 0) ? 4
-                                                                        : 5;
-          if (b > c) {
-            continue;
+      if (cfg.stress) {
+        // Strain derivative at fixed fractional coordinates. |S| is invariant.
+        const double inv4a = 1.0 / (4.0 * alpha * alpha);
+        for (int b = 0; b < 3; ++b) {
+          for (int c = b; c < 3; ++c) {
+            const double dfac = -((b == c) ? 1.0 : 0.0) +
+                                2.0 * (inv4a + 1.0 / k2) * kv[b] * kv[c];
+            const int voigt = b == 0 && c == 0   ? 0
+                              : b == 1 && c == 1 ? 1
+                              : b == 2 && c == 2 ? 2
+                              : b == 1 && c == 2 ? 3
+                              : b == 0 && c == 2 ? 4
+                                                  : 5;
+            p.strain[voigt] += s2 * pref * f * dfac;
           }
-          p.strain[voigt] += s2 * pref * f * dfac;
         }
       }
     }
@@ -628,9 +538,11 @@ void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doub
   const double ebg = -kKe * kPi * total * total / (2.0 * cell.volume * alpha * alpha);
   out->energy += ebg;
   // E_bg = C / V, dE/d eps_bb = -E_bg.
-  out->strain[0] += -ebg;
-  out->strain[1] += -ebg;
-  out->strain[2] += -ebg;
+  if (cfg.stress) {
+    out->strain[0] += -ebg;
+    out->strain[1] += -ebg;
+    out->strain[2] += -ebg;
+  }
   if (dE_dq != nullptr) {
     add_charge_scratch(parts, dE_dq);
     const double dbg = -kKe * kPi * total / (cell.volume * alpha * alpha);
@@ -638,7 +550,7 @@ void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doub
       dE_dq[i] += dbg;
     }
   }
-  out->has_stress = true;
+  out->has_stress = cfg.stress;
 }
 
 double bspline4(double x) {
@@ -927,11 +839,11 @@ void bmod_axis(int order, int n, std::vector<double> *mod) {
 
 // Real-to-complex float mesh. The charge grid is real, so the negative x
 // frequencies are the conjugates of the stored half and are not transformed.
-double float_reciprocal(std::vector<std::complex<double>> &charged,
+[[maybe_unused]] double float_reciprocal(std::vector<std::complex<double>> &charged,
                         std::vector<std::complex<double>> &phi, int nx, int ny, int nz,
                         const std::vector<double> &bmx, const std::vector<double> &bmy,
                         const std::vector<double> &bmz, const CellGeom &cell, double alpha,
-                        double pref, int team) {
+                        double pref, int team, double *strain) {
   const std::size_t ntot = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny) *
                            static_cast<std::size_t>(nz);
   const int nkx = nx / 2 + 1;
@@ -1036,6 +948,8 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
   const auto t_kern_a = std::chrono::steady_clock::now();
   const float *scale = saved.scale.data();
   const float *efac = saved.efac.data();
+  std::vector<std::array<double, 6>> strain_part(
+      strain == nullptr ? 0 : static_cast<std::size_t>(knt));
   g_pme_trace.kernel_team = knt;
   auto kernel_body = [&](int slice) {
     double local = 0.0;
@@ -1050,7 +964,42 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
     }
     const float re = spec[at].real();
     const float im = spec[at].imag();
-    local += static_cast<double>(efac[at]) * (static_cast<double>(re) * re + static_cast<double>(im) * im);
+    const double mode_energy =
+        efac[at] *
+        (static_cast<double>(re) * re + static_cast<double>(im) * im);
+    local += mode_energy;
+    if (strain != nullptr) {
+      const int ix = static_cast<int>(at % static_cast<std::size_t>(nkx));
+      const std::size_t plane_at = at / static_cast<std::size_t>(nkx);
+      const int iy = static_cast<int>(plane_at % static_cast<std::size_t>(ny));
+      const int iz = static_cast<int>(plane_at / static_cast<std::size_t>(ny));
+      const int sy = iy <= ny / 2 ? iy : iy - ny;
+      const int sz = iz <= nz / 2 ? iz : iz - nz;
+      double kv[3]{};
+      for (int c = 0; c < 3; ++c) {
+        kv[c] =
+            2.0 * kPi *
+            (static_cast<double>(ix) * cell.recip[0][c] +
+             static_cast<double>(sy) * cell.recip[1][c] +
+             static_cast<double>(sz) * cell.recip[2][c]);
+      }
+      const double k2 = kv[0] * kv[0] + kv[1] * kv[1] + kv[2] * kv[2];
+      const double inv4a = 1.0 / (4.0 * alpha * alpha);
+      auto &st = strain_part[static_cast<std::size_t>(slice)];
+      for (int b = 0; b < 3; ++b) {
+        for (int c = b; c < 3; ++c) {
+          const double dfac = -((b == c) ? 1.0 : 0.0) +
+                              2.0 * (inv4a + 1.0 / k2) * kv[b] * kv[c];
+          const int voigt = b == 0 && c == 0   ? 0
+                            : b == 1 && c == 1 ? 1
+                            : b == 2 && c == 2 ? 2
+                            : b == 1 && c == 2 ? 3
+                            : b == 0 && c == 2 ? 4
+                                                : 5;
+          st[static_cast<std::size_t>(voigt)] += mode_energy * dfac;
+        }
+      }
+    }
     spec[at] = std::complex<float>(s * re, s * im);
     }
     kernel_part[static_cast<std::size_t>(slice)] = local;
@@ -1067,6 +1016,12 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
   if (group_leader()) {
     for (int t = 0; t < knt; ++t) {
       energy += kernel_part[static_cast<std::size_t>(t)];
+      if (strain != nullptr) {
+        for (int k = 0; k < 6; ++k) {
+          strain[k] +=
+              strain_part[static_cast<std::size_t>(t)][static_cast<std::size_t>(k)];
+        }
+      }
     }
   }
   const auto t_kern_b = std::chrono::steady_clock::now();
@@ -1144,7 +1099,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   // shared grid serialize the spread and make two threads slower than one.
   const int nthreads = thread_count();
   const bool trace = std::getenv("LR_PME_PROFILE") != nullptr;
-  const bool mesh_float_now = !cfg.stress;
+  const bool mesh_float_now = false;
   if (!mesh_float_now) {
     if (!g_charge_f.empty()) {
       g_charge_f.clear();
@@ -1528,129 +1483,108 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
                  std::chrono::duration<double, std::micro>(t_reduce0 - t_spread0).count(),
                  std::chrono::duration<double, std::micro>(t_fft0 - t_reduce0).count());
   }
-  const bool mesh_float = !cfg.stress;
-  if (!mesh_float) {
-    fft3(grid, nx, ny, nz, false, nthreads);
-  }
+  fft3(grid, nx, ny, nz, false, nthreads);
   const auto t_kern0 = std::chrono::steady_clock::now();
   static std::vector<std::complex<double>> phihat;
-  if (!mesh_float && group_leader()) {
+  if (group_leader()) {
+    g_charge_f.clear();
     if (phihat.size() != ntot) {
       phihat.assign(ntot, std::complex<double>(0.0, 0.0));
     } else {
       std::fill(phihat.begin(), phihat.end(), std::complex<double>(0.0, 0.0));
     }
   }
-  if (!mesh_float) {
-    group_arrive();
-  }
+  group_arrive();
+  const double pref = kKe / (2.0 * kPi * cell.volume);
   struct KernelLocal {
-    Neumaier rec;
+    Neumaier energy;
     double strain[6]{};
-    char pad[64];
   };
   std::vector<KernelLocal> local(static_cast<std::size_t>(nthreads));
-  const double pref = kKe / (2.0 * kPi * cell.volume);
-  auto apply_stress = [&](int tid) {
-    Neumaier &rec = local[static_cast<std::size_t>(tid)].rec;
-    double *st = local[static_cast<std::size_t>(tid)].strain;
+  auto kernel = [&](int tid) {
+    auto &part = local[static_cast<std::size_t>(tid)];
     for (int iz = tid; iz < nz; iz += nthreads) {
-    for (int iy = 0; iy < ny; ++iy) {
-      for (int ix = 0; ix < nx; ++ix) {
-        const int sx = ix <= nx / 2 ? ix : ix - nx;
-        const int sy = iy <= ny / 2 ? iy : iy - ny;
-        const int sz = iz <= nz / 2 ? iz : iz - nz;
-        if (sx == 0 && sy == 0 && sz == 0) {
-          continue;
-        }
-        double mc[3];
-        for (int c = 0; c < 3; ++c) {
-          mc[c] = static_cast<double>(sx) * cell.recip[0][c] +
-                  static_cast<double>(sy) * cell.recip[1][c] +
-                  static_cast<double>(sz) * cell.recip[2][c];
-        }
-        const double m2 = mc[0] * mc[0] + mc[1] * mc[1] + mc[2] * mc[2];
-        const double bden = bmx[static_cast<std::size_t>(ix)] *
-                            bmy[static_cast<std::size_t>(iy)] *
-                            bmz[static_cast<std::size_t>(iz)];
-        if (!(m2 > 0.0) || !(bden > 1e-12)) {
-          continue;
-        }
-        const double gauss = std::exp(-kPi * kPi * m2 / (alpha * alpha));
-        const double factor = pref * gauss / m2 / bden;
-        const auto qh = grid[index(ix, iy, iz)];
-        rec.add(factor * std::norm(qh));
-        phihat[index(ix, iy, iz)] = (2.0 * static_cast<double>(ntot) * factor) * qh;
-        if (st != nullptr) {
-          const double s2 = std::norm(qh) / bden;
-          // |k|^2 = (2 pi)^2 |m|^2 and exp(-|k|^2 / (4 a^2)) is `gauss`.
-          const double k2 = 4.0 * kPi * kPi * m2;
-          const double ewald_f = gauss / k2;
-          const double ewald_pref = kKe * (2.0 * kPi) / cell.volume;
-          const double inv4a = 1.0 / (4.0 * alpha * alpha);
-          double kv[3];
-          for (int c = 0; c < 3; ++c) {
-            kv[c] = 2.0 * kPi * mc[c];
+      for (int iy = 0; iy < ny; ++iy) {
+        for (int ix = 0; ix < nx; ++ix) {
+          const int sx = ix <= nx / 2 ? ix : ix - nx;
+          const int sy = iy <= ny / 2 ? iy : iy - ny;
+          const int sz = iz <= nz / 2 ? iz : iz - nz;
+          if (sx == 0 && sy == 0 && sz == 0) {
+            continue;
           }
-          for (int b = 0; b < 3; ++b) {
-            for (int c = 0; c <= b; ++c) {
-              const double dfac = -((b == c) ? 1.0 : 0.0) +
-                                  2.0 * (inv4a + 1.0 / k2) * kv[b] * kv[c];
-              const int voigt = b == 0 && c == 0   ? 0
-                                : b == 1 && c == 1 ? 1
-                                : b == 2 && c == 2 ? 2
-                                : (b == 1 && c == 2) || (b == 2 && c == 1) ? 3
-                                : (b == 0 && c == 2) || (b == 2 && c == 0) ? 4
-                                                                            : 5;
-              st[voigt] += s2 * ewald_pref * ewald_f * dfac;
+          double mc[3]{};
+          for (int c = 0; c < 3; ++c) {
+            mc[c] = static_cast<double>(sx) * cell.recip[0][c] +
+                    static_cast<double>(sy) * cell.recip[1][c] +
+                    static_cast<double>(sz) * cell.recip[2][c];
+          }
+          const double m2 =
+              mc[0] * mc[0] + mc[1] * mc[1] + mc[2] * mc[2];
+          const double bden = bmx[static_cast<std::size_t>(ix)] *
+                              bmy[static_cast<std::size_t>(iy)] *
+                              bmz[static_cast<std::size_t>(iz)];
+          if (!(m2 > 0.0) || !(bden > 1e-12)) {
+            continue;
+          }
+          const double gauss =
+              std::exp(-kPi * kPi * m2 / (alpha * alpha));
+          const double factor = pref * gauss / m2 / bden;
+          const auto qh = grid[index(ix, iy, iz)];
+          const double mode_energy = factor * std::norm(qh);
+          part.energy.add(mode_energy);
+          phihat[index(ix, iy, iz)] =
+              (2.0 * static_cast<double>(ntot) * factor) * qh;
+          if (cfg.stress) {
+            const double k2 = 4.0 * kPi * kPi * m2;
+            const double inv4a = 1.0 / (4.0 * alpha * alpha);
+            double kv[3] = {2.0 * kPi * mc[0], 2.0 * kPi * mc[1],
+                            2.0 * kPi * mc[2]};
+            for (int b = 0; b < 3; ++b) {
+              for (int c = b; c < 3; ++c) {
+                const double dfac =
+                    -((b == c) ? 1.0 : 0.0) +
+                    2.0 * (inv4a + 1.0 / k2) * kv[b] * kv[c];
+                const int voigt = b == 0 && c == 0   ? 0
+                                  : b == 1 && c == 1 ? 1
+                                  : b == 2 && c == 2 ? 2
+                                  : b == 1 && c == 2 ? 3
+                                  : b == 0 && c == 2 ? 4
+                                                      : 5;
+                part.strain[voigt] += mode_energy * dfac;
+              }
             }
           }
         }
       }
     }
-  }
   };
-  auto run_kernel = [&](auto &&body) {
-    if (nthreads <= 1) {
-      body(0);
-      return;
-    }
-    team_invoke(nthreads, body);
-  };
-  if (mesh_float) {
-    const double mesh_e =
-        float_reciprocal(grid, phihat, nx, ny, nz, bmx, bmy, bmz, cell, alpha, pref, nthreads);
-    if (group_leader()) {
-      out->energy += mesh_e;
-    }
+  if (nthreads <= 1) {
+    kernel(0);
   } else {
-    // Stress is the only double-precision mesh. The charge-only path uses
-    // the float kernel above, so there is no second consumer of a factor table.
-    run_kernel(apply_stress);
+    team_invoke(nthreads, kernel);
   }
   if (group_leader()) {
-    Neumaier rec;
-    for (const KernelLocal &part : local) {
-      rec.add(part.rec);
+    g_pme_trace.kernel_team = nthreads;
+    Neumaier energy;
+    for (const auto &part : local) {
+      energy.add(part.energy);
       for (int k = 0; k < 6; ++k) {
         out->strain[k] += part.strain[k];
       }
     }
-    if (!mesh_float) {
-      out->energy += rec.total();
-    }
+    out->energy += energy.total();
   }
   const double ebg = -kKe * kPi * total * total / (2.0 * cell.volume * alpha * alpha);
   if (group_leader()) {
     out->energy += ebg;
-    out->strain[0] += -ebg;
-    out->strain[1] += -ebg;
-    out->strain[2] += -ebg;
+    if (cfg.stress) {
+      out->strain[0] += -ebg;
+      out->strain[1] += -ebg;
+      out->strain[2] += -ebg;
+    }
   }
   const auto t_gather0 = std::chrono::steady_clock::now();
-  if (!mesh_float) {
-    fft3(phihat, nx, ny, nz, true, nthreads);
-  }
+  fft3(phihat, nx, ny, nz, true, nthreads);
   const auto t_force0 = std::chrono::steady_clock::now();
   g_pme_trace.gather_us = 0;
   auto gather_atom = [&](std::size_t i) {
@@ -1755,7 +1689,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
       dE_dq[i] += dbg;
     }
   }
-  out->has_stress = true;
+  out->has_stress = cfg.stress;
   const auto t_end = std::chrono::steady_clock::now();
   g_pme_trace.gather_us = std::chrono::duration<double, std::micro>(t_end - t_force0).count();
   if (trace) {
@@ -1864,7 +1798,7 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   }
   if (method == CoulombMethod::DSF) {
     real_space(cfg, true, q, n, pairs, F, dE_dq, out);
-    out->has_stress = true;
+    out->has_stress = cfg.stress;
     return;
   }
   if (cfg.kmax < 1 && method == CoulombMethod::Ewald) {
@@ -1883,11 +1817,7 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   // beat one thread, so the second thread runs real space beside it.
   const int asked = std::max(caller_team(), thread_count());
   const int mesh_cap = axis_workers(std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2])), asked);
-  const int real_beside =
-      method == CoulombMethod::SPME && !cfg.stress && dE_dq == nullptr
-          ? beside_real_workers(static_cast<int>(n),
-                                std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2])), asked)
-          : 0;
+  const int real_beside = 0;
   // Spare threads hide real space behind the reciprocal pipeline. The
   // mesh team is the axis cap. The threads past it own real space. On a
   // shorter team the same slices run one phase at a time.
@@ -1930,8 +1860,7 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   }
   // Two threads do not speed a short transform, so the second thread runs
   // real space in the same OpenMP region.
-  const bool beside_pair = method == CoulombMethod::SPME && thread_count() == 2 && mesh_cap == 1 &&
-                           !cfg.stress && dE_dq == nullptr;
+  const bool beside_pair = false;
   if (beside_pair) {
     std::vector<double> extra(3 * n, 0.0);
     ElecOut local{};
@@ -1994,7 +1923,9 @@ void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   std::fill(out->F, out->F + 3 * in.nAtoms, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;
-  out->has_stress = 0;
+  StressAccumulator stress(in, out, cfg_.stress);
+  CoulombConfig cfg = cfg_;
+  cfg.stress = stress.enabled();
   std::vector<double> q;
   double total = 0.0;
   charges_->load(in, &q, &total);
@@ -2004,16 +1935,16 @@ void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto t_eval = std::chrono::steady_clock::now();
   std::vector<double> dedq(in.nAtoms, 0.0);
   ElecOut er;
-  evaluate_electrostatics(cfg_.method, cfg_, in.pos, q.data(), in.nAtoms, total,
+  evaluate_electrostatics(cfg.method, cfg, in.pos, q.data(), in.nAtoms, total,
                           periodic ? in.box : nullptr, lists_->long_pairs(), out->F,
                           response_ ? dedq.data() : nullptr, &er);
   out->energy = er.energy;
   if (response_) {
     response_->accumulate(in, dedq.data(), out->F);
   }
-  const double volume = periodic ? cellVolume(in.box) : 0.0;
-  if (er.has_stress && volume > 0.0) {
-    publishCauchyStress(out, er.strain, volume);
+  if (er.has_stress && stress.enabled()) {
+    std::copy(std::begin(er.strain), std::end(er.strain), stress.data());
+    stress.publish(in.box);
   }
   if (std::getenv("LR_PME_PROFILE") != nullptr && cfg_.method == CoulombMethod::SPME) {
     const auto t_end = std::chrono::steady_clock::now();

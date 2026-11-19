@@ -63,12 +63,12 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * ABI minor of this build.
  */
-#define RGPOT_ABI_VERSION_MINOR 6
+#define RGPOT_ABI_VERSION_MINOR 7
 
 /**
  * Layout revision of this build.
  */
-#define RGPOT_ABI_LAYOUT_REVISION 1
+#define RGPOT_ABI_LAYOUT_REVISION 2
 
 #if defined(RGPOT_HAS_SCHEMA)
 /**
@@ -237,6 +237,10 @@ typedef struct rgpot_force_input_t {
    * Box matrix tensor: `[3, 3]`, dtype f64, any device.
    */
   DLManagedTensorVersioned *box_matrix;
+  /**
+   * Nonzero requests Cauchy stress. The default force-only path is false.
+   */
+  bool compute_stress;
 } rgpot_force_input_t;
 
 /**
@@ -265,6 +269,14 @@ typedef struct rgpot_force_out_t {
    * Variance / uncertainty of the calculation (0.0 when unused).
    */
   double variance;
+  /**
+   * Row-major Cauchy stress in eV/Angstrom^3.
+   */
+  double stress[9];
+  /**
+   * Nonzero only when the callback computed every stress component.
+   */
+  int32_t has_stress;
 } rgpot_force_out_t;
 
 /**

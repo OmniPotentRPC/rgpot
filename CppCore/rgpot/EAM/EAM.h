@@ -57,7 +57,8 @@ public:
 
   void cleanMemory();
   void force(long N, const double *R, const int *atomicNrs, double *F,
-             double *U, double *variance, const double *fullbox)
+             double *U, double *variance, const double *fullbox,
+             double *strain = nullptr)
 #ifndef EAM_STANDALONE
       override
 #endif
@@ -143,6 +144,8 @@ private:
   rgpot::nlist::Neighbours neighbours_;
 
   double box_len_[3]{};
+  double box_[9]{};
+  bool orthorhombic_ = true;
   long n_atoms_ = 0;
   long part_n_ = -1;
   int part_nt_ = -1;
@@ -155,6 +158,7 @@ private:
   void ensureRev();
   void ensureParts(long N, int nt);
   void evaluate(long N, const int *atomicNrs, double *F, double *U);
+  void virial(long N, const int *atomicNrs, double strain[6]);
   void evaluateStoredParallel(long N, const int *atomicNrs, double *F,
                               double *U);
   void evaluateDensityStream(long N, const int *atomicNrs, double *F,

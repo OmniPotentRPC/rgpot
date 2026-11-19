@@ -11,6 +11,7 @@
 */
 #include "EAM.h"
 #include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/stress.hpp"
 #include "Parameters.h"
 #include "StreamSpline.hpp"
 
@@ -58,6 +59,20 @@ EAM::element_parameters EAM::get_element_parameters(int atomic_number) const {
 }
 
 void EAM::prepare(long N, const double *R, const double *box) {
+  std::memcpy(box_, box, sizeof(box_));
+  orthorhombic_ = box[1] == 0.0 && box[2] == 0.0 && box[3] == 0.0 &&
+                  box[5] == 0.0 && box[6] == 0.0 && box[7] == 0.0;
+  box_len_[0] = box[0];
+  box_len_[1] = box[4];
+  box_len_[2] = box[8];
+  if (!orthorhombic_) {
+    wrapped_.assign(R, R + static_cast<std::size_t>(3 * N));
+    return;
+  }
+
+  // Preserve the historical orthorhombic arithmetic exactly. Besides keeping
+  // the force-only result bitwise stable, this leaves triclinic image
+  // selection entirely to the shared neighbour-list implementation below.
   wrapped_.resize(static_cast<std::size_t>(3 * N));
   double xmin = std::numeric_limits<double>::max();
   double ymin = xmin;
@@ -70,28 +85,25 @@ void EAM::prepare(long N, const double *R, const double *box) {
     ymin = std::min(ymin, R[i + 1]);
     zmin = std::min(zmin, R[i + 2]);
   }
-  if (xmin > 0) {
-    xmin = 0;
+  if (xmin > 0.0) {
+    xmin = 0.0;
   }
-  if (ymin > 0) {
-    ymin = 0;
+  if (ymin > 0.0) {
+    ymin = 0.0;
   }
-  if (zmin > 0) {
-    zmin = 0;
+  if (zmin > 0.0) {
+    zmin = 0.0;
   }
   for (long i = 0; i < 3 * N; i += 3) {
     wrapped_[static_cast<std::size_t>(i)] += std::abs(xmin);
     wrapped_[static_cast<std::size_t>(i + 1)] += std::abs(ymin);
     wrapped_[static_cast<std::size_t>(i + 2)] += std::abs(zmin);
   }
-  for (long i = 0; i < 3 * N; i++) {
-    while (wrapped_[static_cast<std::size_t>(i)] > box[i % 3]) {
-      wrapped_[static_cast<std::size_t>(i)] -= box[i % 3];
+  for (long i = 0; i < 3 * N; ++i) {
+    while (wrapped_[static_cast<std::size_t>(i)] > box_len_[i % 3]) {
+      wrapped_[static_cast<std::size_t>(i)] -= box_len_[i % 3];
     }
   }
-  box_len_[0] = box[0];
-  box_len_[1] = box[1];
-  box_len_[2] = box[2];
 }
 
 void EAM::buildList(long N) {
@@ -99,11 +111,10 @@ void EAM::buildList(long N) {
   for (int i = 0; i < NPARAMS; i++) {
     widest = std::max(widest, el_params[i].r_cut);
   }
-  double box9[9] = {box_len_[0], 0, 0, 0, box_len_[1], 0, 0, 0, box_len_[2]};
   // A stream does not reuse bins unless the coordinates match, so the
   // skin only adds pairs the kernel then rejects.
   const double skin = mode_ == rgpot::nlist::Mode::Stream ? 0.0 : kEamSkinOverCutoff * widest;
-  rgpot::nlist::updateCells(neighbours_, wrapped_.data(), static_cast<std::size_t>(N), box9,
+  rgpot::nlist::updateCells(neighbours_, wrapped_.data(), static_cast<std::size_t>(N), box_,
                             widest, skin, rgpot::nlist::Image::Half, mode_, {true, true, true});
   n_atoms_ = N;
   if (neighbours_.streaming()) {
@@ -158,12 +169,6 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
   deltas.clear();
   const element_parameters epar = get_element_parameters(atomicNrs[i]);
   const double cutoff2 = epar.r_cut * epar.r_cut;
-  const double half0 = box_len_[0] * 0.5;
-  const double half1 = box_len_[1] * 0.5;
-  const double half2 = box_len_[2] * 0.5;
-  const double xi = wrapped_[static_cast<std::size_t>(3 * i)];
-  const double yi = wrapped_[static_cast<std::size_t>(3 * i + 1)];
-  const double zi = wrapped_[static_cast<std::size_t>(3 * i + 2)];
   double dens = 0.0;
   double dix = 0.0;
   double diy = 0.0;
@@ -179,25 +184,11 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
     const long j =
         stream ? stream_ids[static_cast<std::size_t>(p)]
                : nbr[static_cast<std::size_t>(p)];
-    double dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
-    double dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
-    double dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
-    if (dx > half0) {
-      dx -= box_len_[0];
-    } else if (dx < -half0) {
-      dx += box_len_[0];
-    }
-    if (dy > half1) {
-      dy -= box_len_[1];
-    } else if (dy < -half1) {
-      dy += box_len_[1];
-    }
-    if (dz > half2) {
-      dz -= box_len_[2];
-    } else if (dz < -half2) {
-      dz += box_len_[2];
-    }
-    const double r2 = dx * dx + dy * dy + dz * dz;
+    double dx = 0.0;
+    double dy = 0.0;
+    double dz = 0.0;
+    double r2 = 0.0;
+    geometry(i, j, dx, dy, dz, r2);
     if (r2 > cutoff2) {
       continue;
     }
@@ -257,31 +248,36 @@ void EAM::accumulate(long i, const int *atomicNrs, double *F, double &U,
 
 void EAM::geometry(long i, long j, double &dx, double &dy, double &dz,
                    double &r2) const {
-  const double half0 = box_len_[0] * 0.5;
-  const double half1 = box_len_[1] * 0.5;
-  const double half2 = box_len_[2] * 0.5;
-  const double xi = wrapped_[static_cast<std::size_t>(3 * i)];
-  const double yi = wrapped_[static_cast<std::size_t>(3 * i + 1)];
-  const double zi = wrapped_[static_cast<std::size_t>(3 * i + 2)];
-  dx = xi - wrapped_[static_cast<std::size_t>(3 * j)];
-  dy = yi - wrapped_[static_cast<std::size_t>(3 * j + 1)];
-  dz = zi - wrapped_[static_cast<std::size_t>(3 * j + 2)];
-  if (dx > half0) {
-    dx -= box_len_[0];
-  } else if (dx < -half0) {
-    dx += box_len_[0];
+  if (orthorhombic_) {
+    dx = wrapped_[static_cast<std::size_t>(3 * i)] -
+         wrapped_[static_cast<std::size_t>(3 * j)];
+    dy = wrapped_[static_cast<std::size_t>(3 * i + 1)] -
+         wrapped_[static_cast<std::size_t>(3 * j + 1)];
+    dz = wrapped_[static_cast<std::size_t>(3 * i + 2)] -
+         wrapped_[static_cast<std::size_t>(3 * j + 2)];
+    const double half0 = 0.5 * box_len_[0];
+    const double half1 = 0.5 * box_len_[1];
+    const double half2 = 0.5 * box_len_[2];
+    if (dx > half0) {
+      dx -= box_len_[0];
+    } else if (dx < -half0) {
+      dx += box_len_[0];
+    }
+    if (dy > half1) {
+      dy -= box_len_[1];
+    } else if (dy < -half1) {
+      dy += box_len_[1];
+    }
+    if (dz > half2) {
+      dz -= box_len_[2];
+    } else if (dz < -half2) {
+      dz += box_len_[2];
+    }
+    r2 = dx * dx + dy * dy + dz * dz;
+    return;
   }
-  if (dy > half1) {
-    dy -= box_len_[1];
-  } else if (dy < -half1) {
-    dy += box_len_[1];
-  }
-  if (dz > half2) {
-    dz -= box_len_[2];
-  } else if (dz < -half2) {
-    dz += box_len_[2];
-  }
-  r2 = dx * dx + dy * dy + dz * dz;
+  neighbours_.pairGeometry(static_cast<std::int32_t>(i),
+                           static_cast<std::int32_t>(j), dx, dy, dz, r2);
 }
 
 // The terms of accumulate, by atom. A first pass walks each row as
@@ -712,15 +708,73 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
   }
   evaluateStoredParallel(N, atomicNrs, F, U);
 }
-void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
-                double *U, double *variance, const double *fullbox) {
-  (void)variance;
-  const double box[3] = {fullbox[0], fullbox[4], fullbox[8]};
-  for (int axis = 0; axis < 3; ++axis) {
-    if (!(box[axis] > 0.0)) {
-      throw std::invalid_argument(
-          "EAM::force: box diagonal and cutoff must be positive");
+
+void EAM::virial(long N, const int *atomicNrs, double strain[6]) {
+  if (!neighbours_.streaming() && threads_used_ == 1) {
+    dF_.resize(static_cast<std::size_t>(N));
+    const auto &off = neighbours_.offsets();
+    const auto &nbr = neighbours_.neighbours();
+    for (long i = 0; i < N; ++i) {
+      const element_parameters epar = get_element_parameters(atomicNrs[i]);
+      const double cutoff2 = epar.r_cut * epar.r_cut;
+      double density = 0.0;
+      for (std::int32_t p = off[static_cast<std::size_t>(i)];
+           p < off[static_cast<std::size_t>(i) + 1]; ++p) {
+        double dx = 0.0;
+        double dy = 0.0;
+        double dz = 0.0;
+        double r2 = 0.0;
+        geometry(i, nbr[static_cast<std::size_t>(p)], dx, dy, dz, r2);
+        if (!(r2 > 0.0) || r2 > cutoff2) {
+          continue;
+        }
+        const double r = std::sqrt(r2);
+        const double r6 = r2 * r2 * r2;
+        density +=
+            r6 * (std::exp(-epar.beta1 * r) +
+                  512.0 * std::exp(-2.0 * epar.beta2 * r));
+      }
+      dF_[static_cast<std::size_t>(i)] =
+          embedding_force(epar.func_coeff, density);
     }
+  }
+  std::vector<const rgpot::eam::ElementSpline *> kind(
+      static_cast<std::size_t>(N));
+  for (long i = 0; i < N; ++i) {
+    kind[static_cast<std::size_t>(i)] = &splineFor(atomicNrs[i]);
+  }
+  neighbours_.forHalf(
+      0, N,
+      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+          double r2) {
+        if (!(r2 > 0.0)) {
+          return;
+        }
+        const auto ui = static_cast<std::size_t>(i);
+        const auto uj = static_cast<std::size_t>(j);
+        const auto *si = kind[ui];
+        const auto *sj = kind[uj];
+        const double r = std::sqrt(r2);
+        double scale = 0.0;
+        if (r2 <= si->cutoff2) {
+          scale += si->pairForce(r);
+          scale -= dF_[ui] * si->densityForce(r);
+        }
+        if (r2 <= sj->cutoff2) {
+          scale -= dF_[uj] * sj->densityForce(r);
+        }
+        if (scale != 0.0) {
+          rgpot::accumulatePairStrain(strain, scale, dx, dy, dz);
+        }
+      });
+}
+
+void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
+                double *U, double *variance, const double *fullbox,
+                double *strain) {
+  (void)variance;
+  if (!(rgpot::cellVolume(fullbox) > 0.0)) {
+    throw std::invalid_argument("EAM::force: cell volume must be positive");
   }
   *U = 0;
   for (long k = 0; k < 3 * N; k++) {
@@ -732,9 +786,12 @@ void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
   for (long i = 0; i < N; ++i) {
     (void)get_element_parameters(atomicNrs[i]);
   }
-  prepare(N, R, box);
+  prepare(N, R, fullbox);
   buildList(N);
   evaluate(N, atomicNrs, F, U);
+  if (strain != nullptr) {
+    virial(N, atomicNrs, strain);
+  }
 }
 
 double EAM::embedding_function(const double *func_coeff, double rho) {

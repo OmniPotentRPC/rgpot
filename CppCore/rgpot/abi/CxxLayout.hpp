@@ -122,9 +122,6 @@
 // Listed platforms. Each branch matches one kCxxSoversionTable row.
 // The string is the row's tag. check_cxx_soversion.py requires the two
 // sets to be equal. No branch means every platform is unlisted.
-// aarch64, macOS and Windows stay unlisted until a no-cache CI stamp
-// line for soversion 5 is copied in. Their soversion-4 hashes are the
-// layouts from before LJPot and MorsePot grew their neighbour members.
 #if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                    \
     defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
 #define RGPOT_CXX_PLATFORM_LISTED 1
@@ -165,12 +162,13 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// did not increase.
 ///
 /// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
-/// is major 1, minor 6, layout revision 1. Minor 1 added
+/// is major 1, minor 7, layout revision 2. Minor 1 added
 /// `rgpot_eindir_abi_compatible`, minor 2 the Hessian-vector functions,
 /// minor 3 the fused-cache settings and error kind, minor 4 the Taylor
-/// jet functions, minor 5 the engine and RPC Hessian-vector exports and
-/// minor 6 `rgpot_potential_new_eam_table`. No exported C struct
-/// of that header changed layout. The neighbour query is `RGPOT_NLIST_ABI` 4.
+/// jet functions, minor 5 the engine and RPC Hessian-vector exports,
+/// minor 6 `rgpot_potential_new_eam_table`, and minor 7 the opt-in stress
+/// request and result fields.
+/// The neighbour query is `RGPOT_NLIST_ABI` 4.
 /// The C API is exported from librgpot, so it has no shared library of
 /// its own and rides this SONAME. `librgpot_mpi` stays at soversion 3
 /// (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
@@ -183,7 +181,7 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
 /// 8 stamps SuttonChenConfig, PotType::SuttonChen and SuttonChenPot.
-inline constexpr std::uint32_t kCxxSoversion = 8;
+inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -196,7 +194,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x0a33f3aa4b4e5162ull},
+    {"linux-x86_64-libstdc++-lp64", 0x7d0589a5ef0ec19aull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -290,6 +288,7 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(ForceInput, pos));
   f.add(offsetof(ForceInput, atmnrs));
   f.add(offsetof(ForceInput, box));
+  f.add(offsetof(ForceInput, compute_stress));
   f.type<ForceOut>();
   f.add(offsetof(ForceOut, F));
   f.add(offsetof(ForceOut, energy));

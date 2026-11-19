@@ -115,6 +115,15 @@ public:
    */
   size_t n_atoms() const { return n_atoms_; }
 
+  /// Set whether the calculation should compute Cauchy stress.
+  InputSpec &with_stress(bool compute = true) noexcept {
+    input_.compute_stress = compute;
+    return *this;
+  }
+
+  /// Whether this input requests Cauchy stress.
+  bool computes_stress() const noexcept { return input_.compute_stress; }
+
 private:
   size_t n_atoms_;
   rgpot_force_input_t input_;
@@ -181,6 +190,12 @@ public:
    * @return Variance (0.0 when not applicable).
    */
   double variance() const { return output_.variance; }
+
+  /// True only when every stress component was computed.
+  bool has_stress() const noexcept { return output_.has_stress != 0; }
+
+  /// Row-major Cauchy stress in eV/Angstrom^3.
+  const double *stress_data() const noexcept { return output_.stress; }
 
   /**
    * @brief Returns a raw pointer to the forces data (CPU only).

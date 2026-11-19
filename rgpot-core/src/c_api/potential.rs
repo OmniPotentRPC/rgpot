@@ -101,7 +101,15 @@ pub unsafe extern "C" fn rgpot_potential_calculate(
             set_last_error(&why);
             return rgpot_status_t::RGPOT_INVALID_PARAMETER;
         }
-        unsafe { (p.callback)(p.pot_user_data, input, output) }
+        let out = unsafe { &mut *output };
+        out.stress = [0.0; 9];
+        out.has_stress = 0;
+        let status = unsafe { (p.callback)(p.pot_user_data, input, output) };
+        if !unsafe { (*input).compute_stress } {
+            out.stress = [0.0; 9];
+            out.has_stress = 0;
+        }
+        status
     }))
 }
 
@@ -168,6 +176,20 @@ mod tests {
         rgpot_status_t::RGPOT_INTERNAL_ERROR
     }
 
+    unsafe extern "C" fn stress_callback(
+        _ud: *mut c_void,
+        input: *const rgpot_force_input_t,
+        output: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        let inp = unsafe { &*input };
+        let out = unsafe { &mut *output };
+        let n = unsafe { inp.n_atoms() }.unwrap_or(0);
+        out.forces = create_owned_f64_tensor(vec![0.0; n * 3], vec![n as i64, 3]);
+        out.stress = [1.0, 0.2, 0.3, 0.2, 2.0, 0.4, 0.3, 0.4, 3.0];
+        out.has_stress = 1;
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+
     unsafe extern "C" fn counting_callback(
         ud: *mut c_void,
         _input: *const rgpot_force_input_t,
@@ -218,11 +240,7 @@ mod tests {
     #[test]
     fn calculate_null_pot_returns_invalid_parameter() {
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { rgpot_potential_calculate(std::ptr::null(), &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { crate::c_api::types::rgpot_force_input_free(&mut input) };
@@ -231,11 +249,7 @@ mod tests {
     #[test]
     fn calculate_null_input_returns_invalid_parameter() {
         let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { rgpot_potential_calculate(pot, std::ptr::null(), &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { rgpot_potential_free(pot as *mut _) };
@@ -257,11 +271,7 @@ mod tests {
     fn full_lifecycle_new_calculate_free() {
         let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
         assert_eq!(output.energy, 2.0);
@@ -273,14 +283,34 @@ mod tests {
     }
 
     #[test]
+    fn stress_is_explicitly_requested_across_the_c_abi() {
+        let pot = unsafe { rgpot_potential_new(stress_callback, std::ptr::null_mut(), None) };
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t::default();
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(output.has_stress, 0);
+        assert_eq!(output.stress, [0.0; 9]);
+        unsafe { rgpot_tensor_free(output.forces) };
+        output.forces = std::ptr::null_mut();
+
+        input.compute_stress = true;
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(output.has_stress, 1);
+        assert_eq!(output.stress[0], 1.0);
+        assert_eq!(output.stress[8], 3.0);
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
     fn callback_error_propagates() {
         let pot = unsafe { rgpot_potential_new(failing_callback, std::ptr::null_mut(), None) };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INTERNAL_ERROR);
         let msg = unsafe { std::ffi::CStr::from_ptr(crate::status::rgpot_last_error()) };
@@ -298,11 +328,7 @@ mod tests {
             rgpot_potential_new(counting_callback, &counter as *const _ as *mut c_void, None)
         };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
         assert_eq!(counter.load(Ordering::SeqCst), 1);
         assert_eq!(output.energy, 1.0);
@@ -352,11 +378,7 @@ mod tests {
                     box_.as_mut_ptr(),
                 )
             };
-            let mut output = rgpot_force_out_t {
-                forces: std::ptr::null_mut(),
-                energy: 0.0,
-                variance: 0.0,
-            };
+            let mut output = rgpot_force_out_t::default();
             let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
             assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
             assert_eq!(output.energy, n as f64);
