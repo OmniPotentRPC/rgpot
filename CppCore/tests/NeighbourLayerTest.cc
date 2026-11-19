@@ -512,13 +512,14 @@ TEST_CASE("periodic and long-cutoff streams match the direct pair sum", "[nlist]
   requireSamePairs(walkedPairs(tiles, wide.size() / 3, long_cut), many);
 }
 
-TEST_CASE("a sheared cell wider than twice the search needs no image search",
+TEST_CASE("a sheared cell takes its pairs from vesin and needs no image search",
           "[nlist][triclinic]") {
   // The kernel cell of the ASE morse-bulk check: a jittered copper cell,
   // sheared as tests/python/test_ase_dropin.py shears it and tiled 3x3x3 by
   // the calculator, 864 atoms. Every lattice plane spacing is above twice
-  // the cutoff plus the MorsePot skin, so the image bounds settle all 745k
-  // candidate pairs and neither the build nor the walks search over images.
+  // the cutoff plus the MorsePot skin. A sheared cell is stored in either
+  // mode, from vesin with a shift per image, so neither the build nor the
+  // walks search over images.
   setThreads("1");
   const double a = 3.6;
   const double side = 6 * a;
@@ -552,7 +553,8 @@ TEST_CASE("a sheared cell wider than twice the search needs no image search",
     rgpot::nlist::Neighbours cells;
     const auto before = rgpot::nlist::MinimumImage::searches();
     cells.update(pos.data(), n, cell, spec);
-    REQUIRE(cells.streaming() == (mode == rgpot::nlist::Mode::Stream));
+    REQUIRE(cells.imaged());
+    REQUIRE_FALSE(cells.streaming());
     const auto walked = walkedPairs(cells, n, cutoff);
     REQUIRE(rgpot::nlist::MinimumImage::searches() == before);
     requireSamePairs(walked, direct);
@@ -564,18 +566,18 @@ TEST_CASE("a stored half walk folds only the pairs it visits",
   // The cell is wider than twice the cutoff but not twice the cutoff plus
   // the skin, so folds of stored pairs near half its width search over
   // images. A pair and its reverse search alike, so a half walk that folds
-  // only j > i searches half as often as the directed walk.
+  // only j > i searches half as often as the directed walk. MinimumImage
+  // is what Image::General folds with on a cell that vesin does not list.
   setThreads("1");
   const double a = 3.6;
   const double side = 3 * a;
-  const double cell[9] = {
-      side, 0, 0, 0.08 * side, side, 0, 0.04 * side, -0.06 * side, side};
+  const double cell[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
   const auto pos = shearedFcc(3, a, cell);
   const auto n = static_cast<std::int64_t>(pos.size() / 3);
   rgpot::nlist::Spec spec;
   spec.cutoff = 5.0;
   spec.skin = 1.0;
-  spec.image = rgpot::nlist::Image::Round;
+  spec.image = rgpot::nlist::Image::General;
   spec.mode = rgpot::nlist::Mode::Stored;
   rgpot::nlist::Neighbours cells;
   cells.update(pos.data(), pos.size() / 3, cell, spec);

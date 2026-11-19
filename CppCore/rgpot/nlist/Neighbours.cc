@@ -5,9 +5,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #include <string>
+
+#include "vesin.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -38,6 +42,23 @@ int axisCount(double length, double edge) {
 }
 
 } // namespace
+
+bool outsideCell(const double *xyz, std::size_t n, const double *box9,
+                 const std::array<bool, 3> &periodic) noexcept {
+  for (int k = 0; k < 3; ++k) {
+    const double len = box9[4 * k];
+    if (!periodic[static_cast<std::size_t>(k)] || !(len > 0.0)) {
+      continue;
+    }
+    for (std::size_t a = 0; a < n; ++a) {
+      const double v = xyz[3 * a + static_cast<std::size_t>(k)];
+      if (!(v >= 0.0 && v < len)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 std::uint64_t availableBytes() {
 #if defined(_WIN32)
@@ -84,12 +105,16 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
   key.skin = spec.skin;
   key.image = spec.image;
   key.mode = spec.mode;
+  key.images = spec.images;
   key.periodic = spec.periodic;
   if (!(key == key_) || std::memcmp(box_, box9, sizeof(box_)) != 0) {
     return false;
   }
   if (allPairs()) {
     return true;
+  }
+  if (imaged_) {
+    return withinSkin(ref_.data(), xyz, n, spec.skin);
   }
   // A streaming walk trusts the bins. Atoms that have moved may sit in
   // another cell, so the bins are reused only for an identical geometry.
@@ -185,10 +210,22 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     }
     return i;
   };
+  // A periodic axis bins the coordinate folded into [0, L), so an atom
+  // outside the cell lands in the bin of its image inside it. A coordinate
+  // already inside is unchanged, bit for bit.
+  auto folded = [&](const double *r, int k) {
+    const double x = r[k] - origin[k];
+    if (!periodic_[k] || !(len_[k] > 0.0) || (x >= 0.0 && x < len_[k])) {
+      return x;
+    }
+    const double f = x - len_[k] * std::floor(x / len_[k]);
+    return f >= 0.0 && f < len_[k] ? f : 0.0;
+  };
   for (std::size_t a = 0; a < n; ++a) {
-    const int ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
-    const int iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
-    const int iz = bin(xyz[3 * a + 2] - origin[2], span[2], nz_);
+    const double *r = xyz + 3 * a;
+    const int ix = bin(folded(r, 0), span[0], nx_);
+    const int iy = bin(folded(r, 1), span[1], ny_);
+    const int iz = bin(folded(r, 2), span[2], nz_);
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
@@ -368,6 +405,116 @@ void Neighbours::buildStored(const double *xyz, std::size_t n,
   off_[n] = static_cast<std::int32_t>(nbr_.size());
 }
 
+void Neighbours::buildImaged(const double *xyz, std::size_t n, const Spec &spec) {
+  bool periodic[3];
+  for (int k = 0; k < 3; ++k) {
+    const double *row = box_ + 3 * k;
+    periodic[k] = spec.periodic[static_cast<std::size_t>(k)] &&
+                  (row[0] != 0.0 || row[1] != 0.0 || row[2] != 0.0);
+  }
+  double box[3][3];
+  std::memcpy(box, box_, sizeof(box));
+  VesinOptions options{};
+  options.cutoff = std::nextafter(search_, std::numeric_limits<double>::infinity());
+  options.full = true;
+  options.sorted = false;
+  options.algorithm = VesinCellList;
+  options.skin = 0.0;
+  options.n_threads = teamSize(n);
+  options.return_shifts = true;
+  options.return_distances = true;
+  options.return_vectors = false;
+  VesinNeighborList found;
+  const char *message = nullptr;
+  const int status =
+      vesin_neighbors(reinterpret_cast<const double(*)[3]>(xyz), n, box, periodic,
+                      VesinDevice{VesinCPU, 0}, options, &found, &message);
+  if (status != 0) {
+    vesin_free(&found);
+    throw std::runtime_error(std::string("vesin neighbour search failed: ") +
+                             (message != nullptr ? message : "no message"));
+  }
+  struct Row {
+    std::int32_t i;
+    std::int32_t j;
+    std::int32_t s[3];
+    double r;
+  };
+  std::vector<Row> rows;
+  rows.reserve(found.length);
+  for (std::size_t p = 0; p < found.length; ++p) {
+    const auto i = static_cast<std::int32_t>(found.pairs[p][0]);
+    const auto j = static_cast<std::int32_t>(found.pairs[p][1]);
+    // An atom is never its own partner in a walk. Only the image list
+    // keeps those rows.
+    if (!spec.images && i >= j) {
+      continue;
+    }
+    rows.push_back(Row{i, j,
+                       {found.shifts[p][0], found.shifts[p][1], found.shifts[p][2]},
+                       found.distances[p]});
+  }
+  vesin_free(&found);
+  auto shift_less = [](const std::int32_t *a, const std::int32_t *b) {
+    return std::lexicographical_compare(a, a + 3, b, b + 3);
+  };
+  // One nearest image per pair. Equal lengths take the smaller shift of the
+  // pair as listed with i < j, and the reverse row is its negation, so the
+  // two directions of a pair name the same image.
+  if (!spec.images) {
+    std::sort(rows.begin(), rows.end(), [&](const Row &a, const Row &b) {
+      if (a.i != b.i) {
+        return a.i < b.i;
+      }
+      if (a.j != b.j) {
+        return a.j < b.j;
+      }
+      if (a.r != b.r) {
+        return a.r < b.r;
+      }
+      return shift_less(a.s, b.s);
+    });
+    std::size_t kept = 0;
+    for (std::size_t p = 0; p < rows.size(); ++p) {
+      if (kept > 0 && rows[kept - 1].i == rows[p].i && rows[kept - 1].j == rows[p].j) {
+        continue;
+      }
+      rows[kept++] = rows[p];
+    }
+    rows.resize(kept);
+    const std::size_t forward = rows.size();
+    for (std::size_t p = 0; p < forward; ++p) {
+      const Row r = rows[p];
+      rows.push_back(Row{r.j, r.i, {-r.s[0], -r.s[1], -r.s[2]}, r.r});
+    }
+  }
+  if (rows.size() > static_cast<std::size_t>(0x7fffffff)) {
+    throw std::runtime_error("the neighbour list holds more pairs than an int32 index");
+  }
+  std::sort(rows.begin(), rows.end(), [&](const Row &a, const Row &b) {
+    if (a.i != b.i) {
+      return a.i < b.i;
+    }
+    if (a.j != b.j) {
+      return a.j < b.j;
+    }
+    return shift_less(a.s, b.s);
+  });
+  off_.assign(n + 1, 0);
+  nbr_.resize(rows.size());
+  shift_.resize(3 * rows.size());
+  for (std::size_t p = 0; p < rows.size(); ++p) {
+    ++off_[static_cast<std::size_t>(rows[p].i) + 1];
+    nbr_[p] = rows[p].j;
+    shift_[3 * p] = rows[p].s[0];
+    shift_[3 * p + 1] = rows[p].s[1];
+    shift_[3 * p + 2] = rows[p].s[2];
+  }
+  for (std::size_t a = 0; a < n; ++a) {
+    off_[a + 1] += off_[a];
+  }
+}
+
 void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
                         const Spec &spec) {
   xyz_ = xyz;
@@ -395,20 +542,32 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
                        box9[5] != 0.0 || box9[6] != 0.0 || box9[7] != 0.0;
   image_ = spec.image;
   use_general_ = image_ == Image::General || sheared;
-  if (use_general_) {
-    general_ = MinimumImage(box9, spec.periodic);
-  }
   search_ = spec.cutoff + spec.skin;
   if (!(search_ > 0.0)) {
     search_ = 0.0;
+  }
+  imaged_ = false;
+  inside_ = true;
+  if (n >= 2 && search_ > 0.0 && std::isfinite(search_)) {
+    std::array<bool, 3> periodic{};
+    for (int k = 0; k < 3; ++k) {
+      periodic[static_cast<std::size_t>(k)] = periodic_[k];
+    }
+    imaged_ = sheared || spec.images;
+    inside_ = !outsideCell(xyz, n, box9, periodic);
+  }
+  if (use_general_ && !imaged_) {
+    general_ = MinimumImage(box9, spec.periodic);
   }
   key_.cutoff = spec.cutoff;
   key_.skin = spec.skin;
   key_.image = spec.image;
   key_.mode = spec.mode;
+  key_.images = spec.images;
   key_.periodic = spec.periodic;
   off_.clear();
   nbr_.clear();
+  shift_.clear();
   streaming_ = true;
   if (n < 2 || !(search_ > 0.0)) {
     streaming_ = false;
@@ -425,6 +584,15 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   if (std::isinf(search_)) {
     mode_ = Mode::Stream;
     built_ = true;
+    return;
+  }
+  if (imaged_) {
+    buildImaged(xyz, n, spec);
+    streaming_ = false;
+    mode_ = Mode::Stored;
+    ++builds_;
+    built_ = true;
+    ref_.assign(xyz, xyz + 3 * n);
     return;
   }
   buildCells(xyz, n);
