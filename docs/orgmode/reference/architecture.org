@@ -78,6 +78,9 @@ Configurable via =ZBLConfig= (=cut_inner=, =cut_global=); the constructor throws
 - =SuttonChenPot= (=PotType::SuttonChen=) :: Sutton-Chen 10-8 many-body
   potential, in reduced units by default.
 See [[file:sutton_chen.org][Sutton-Chen potential]].
+- =QSCPot= (=PotType::QSC=) :: Quantum Sutton-Chen multi-element alloy potential
+  for Ni, Cu, Rh, Pd, Ag, Ir, Pt and Au, with customizable element parameters.
+See [[file:qsc.org][Quantum Sutton-Chen potential]].
 - =EMTPot= (=PotType::EMT=, =CppCore/rgpot/EMT/=) :: Effective medium theory
   from Asap.
 =EMTConfig::rasmussen= selects the Rasmussen parameters; the default is the Asap

@@ -1,0 +1,101 @@
+#+TITLE: Quantum Sutton-Chen potential
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Quantum Sutton-Chen potential
+
+=QSCPot= (=PotType::QSC=) evaluates the multi-element Quantum Sutton-Chen (Q-SC)
+many-body potential of Qi, Cagin, Kimura and Goddard, Physical Review B 59, 3527
+(1999),
+doi:10.1103/PhysRevB.59.3527, with the fcc alloy mixing rules of Rafii-Tabar and Sutton, Philosophical Magazine Letters 63, 217 (1991), doi:10.1080/09500839108205994:
+
+#+attr_rgpot: skip the energy formula, not code
+#+begin_example
+E = sum_{i < j} epsilon_ab * (a_ab / r_ij)^(n_ab)
+    - sum_i c_a * epsilon_aa * sqrt(rho_i)
+rho_i = sum_{j != i} (a_bb / r_ij)^(m_b)
+#+end_example
+
+where =a= is the species of atom =i= and =b= is the species of atom =j=.
+For unlike species =a != b= the pair parameters follow the Rafii-Tabar and
+Sutton mixing rules:
+
+#+attr_rgpot: skip the mixing rules, not code
+#+begin_example
+epsilon_ab = sqrt(epsilon_a * epsilon_b)
+a_ab = (a_a + a_b) / 2
+n_ab = (n_a + n_b) / 2
+m_ab = (m_a + m_b) / 2
+#+end_example
+
+Each neighbour =j= of species =b= contributes its pure-species density
+=(a_b / r_ij)^(m_b)= to =rho_i=.
+The repulsive exponent
+=n_ab= can be a half-integer on an alloy pair such as copper and silver, where =n_Cu = 10=
+and =n_Ag = 11= give =n_CuAg = 10.5=.
+
+** Parameter table and reference values
+
+The default table carries the eight fcc transition-metal rows fitted with
+zero-point quantum corrections (Qi, Cagin, Kimura and Goddard, Physical Review B
+59, 3527 (1999),
+doi:10.1103/PhysRevB.59.3527, Table I; Ozdemir Kart, Tomak, Uludogan and Cagin, Journal of Non-Crystalline Solids 337, 101 (2004), doi:10.1016/j.jnoncrysol.2004.03.121,
+Table 1; eOn =client/potentials/QSC/Parameters.h=):
+
+| Metal |  Z |  n | m | epsilon (eV) |       c | a (Angstrom) | Published E_coh (eV) | fcc energy at 2a (eV/atom) |
+|-------+----+----+---+--------------+---------+--------------+----------------------+----------------------------|
+| Ni    | 28 | 10 | 5 |    0.0073767 |  84.745 |       3.5157 |                 4.48 |            -4.475613277589 |
+| Cu    | 29 | 10 | 5 |    0.0057921 |  84.843 |       3.5200 |                 3.52 |            -3.519583146896 |
+| Rh    | 45 | 13 | 5 |    0.0024612 | 305.499 |       3.7984 |                 5.78 |            -5.784242765216 |
+| Pd    | 46 | 12 | 6 |    0.0032864 | 148.205 |       3.8813 |                 3.92 |            -3.916719132725 |
+| Ag    | 47 | 11 | 6 |    0.0039450 |  96.524 |       4.0691 |                 2.97 |            -2.970491740121 |
+| Ir    | 77 | 13 | 6 |    0.0037674 | 224.815 |       3.8344 |                 6.97 |            -6.968651001492 |
+| Pt    | 78 | 11 | 7 |    0.0097894 |  71.336 |       3.9163 |                 5.86 |            -5.862273780458 |
+| Au    | 79 | 11 | 8 |    0.0078052 |  53.581 |       4.0651 |                 3.83 |            -3.826503292017 |
+
+A homonuclear dimer at separation =r = a= has energy =epsilon * (1 - 2 c)= and
+force =epsilon * (m * c - n) / a= on the atom at the origin toward its partner:
+-1.2429001830 eV for nickel and -0.9770461806 eV for copper.
+=QSCPotTest= checks all eight homonuclear dimers to 1e-14 eV and all eight fcc
+crystals at the paper's =2 a= cutoff (8 neighbour shells, 140 neighbours) to
+1e-11
+eV/atom. =setElementParameter= overrides an existing element or adds a new atomic number. With the reduced 10-8 parameters of Sutton and Chen, Philosophical Magazine Letters 61, 139 (1990), doi:10.1080/09500839008206493,
+=QSCPot= reproduces the deposited Doye and Wales =Pt38= (-10117.2454) and =Pt75=
+(-20431.3452) minima and matches =SuttonChenPot= bit for bit.
+
+** Neighbour list, stress, staging and Hessian-vector products
+
+Pairs come from =rgpot::nlist::Neighbours= with a Verlet skin of
+=QSCConfig::verlet_skin= (0.5 Angstrom by default, 0 in =nlist::Mode::Stream=).
+A cutoff of 0 or less with =periodic= false keeps every pair.
+With =QSCConfig::stress= set, =forceImpl= writes the Cauchy stress of Thompson,
+Plimpton and Mattson, Journal of Chemical Physics 131, 154107 (2009),
+doi:10.1063/1.3245303.
+=forcePerAtom= splits each pair energy and virial half to each atom and puts the
+embedding energy on its own atom.
+=locality=, =densityStage= and =forceStage= evaluate a domain-decomposed host's
+half list by exchanging one scalar density =rho_i= per atom.
+=hessianVectorImpl= evaluates the exact analytic second-derivative product =H v=
+in two passes over the pairs, including the embedding curvature term
+=F''(rho_i) (d rho_i / dt)=, with zero force calls.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/QSC/QSCPot.hpp"
+
+int main() {
+  rgpot::QSCPot pot({.cutoff = 8.0, .periodic = false});
+  const double pos[6] = {0.0, 0.0, 0.0, 2.65, 0.0, 0.0};
+  const int z[2] = {29, 47};
+  const double box[9] = {30.0, 0.0, 0.0, 0.0, 30.0, 0.0, 0.0, 0.0, 30.0};
+  double forces[6] = {};
+  rgpot::ForceInput in{2, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("Cu-Ag dimer energy: %.6f eV\n", out.energy);
+  return 0;
+}
+#+end_src
