@@ -12,41 +12,35 @@
 #define RGPOT_TARGET_AVX2 __attribute__((target("avx2,fma")))
 #endif
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#define RGPOT_THREAD_LOCAL __declspec(thread)
-#else
-#define RGPOT_THREAD_LOCAL _Thread_local
-#endif
+// Small clusters use stack scratch; larger calls cap stored pair derivatives
+// at 32 MiB and free the heap scratch before returning, recomputing pairs
+// past the cap identically in the force pass.
+//
+// Stack scratch covers every cluster of up to RGPOT_GUPTA_STACK_ATOMS atoms,
+// so it holds one pair record for each of the N (N - 1) / 2 pairs of the
+// largest such cluster. Fewer pairs would send the upper atom counts to malloc.
+#define RGPOT_GUPTA_STACK_ATOMS 64
+#define RGPOT_GUPTA_STACK_PAIRS \
+  (RGPOT_GUPTA_STACK_ATOMS * (RGPOT_GUPTA_STACK_ATOMS - 1) / 2)
 
-static RGPOT_THREAD_LOCAL double *rho_buf;
-static RGPOT_THREAD_LOCAL size_t rho_cap;
-static RGPOT_THREAD_LOCAL double *pack_buf;
-static RGPOT_THREAD_LOCAL size_t pack_cap;
+// One stored pair is RGPOT_GUPTA_PACK_STRIDE doubles: the separation
+// (dx, dy, dz) and its length r, then the derivatives d(phi)/dr of the
+// repulsive term and d(psi)/dr of the density term.
+#define RGPOT_GUPTA_PACK_STRIDE 6
+#define RGPOT_GUPTA_PACK_DX 0
+#define RGPOT_GUPTA_PACK_DY 1
+#define RGPOT_GUPTA_PACK_DZ 2
+#define RGPOT_GUPTA_PACK_R 3
+#define RGPOT_GUPTA_PACK_DPHI 4
+#define RGPOT_GUPTA_PACK_DPSI 5
 
-static int rgpot_gupta_ensure(size_t n, size_t pairs) {
-  if (rho_cap < n) {
-    double *next = (double *)realloc(rho_buf, n * sizeof(double));
-    if (next == 0) {
-      return 1;
-    }
-    rho_buf = next;
-    rho_cap = n;
-  }
-  const size_t need = pairs * 6;
-  if (pack_cap < need) {
-    double *next = (double *)realloc(pack_buf, need * sizeof(double));
-    if (next == 0) {
-      return 1;
-    }
-    pack_buf = next;
-    pack_cap = need;
-  }
-  return 0;
-}
-
-static double *rgpot_gupta_rho(void) { return rho_buf; }
-
-static double *rgpot_gupta_pack(void) { return pack_buf; }
+// Byte budget for stored pairs. It is the 32 MiB that PairTerms::kDefaultLimit
+// in rgpot/PairTerms.hpp keeps for the C++ potentials, repeated here because
+// this file is C.
+#define RGPOT_GUPTA_PACK_BUDGET_BYTES (32u << 20)
+#define RGPOT_GUPTA_MAX_PACK_PAIRS \
+  (RGPOT_GUPTA_PACK_BUDGET_BYTES /  \
+   (RGPOT_GUPTA_PACK_STRIDE * sizeof(double)))
 
 static void gupta_scalar(const double *x, size_t n, const unsigned char *slot,
                          size_t n_species, const double *a, const double *xi, const double *p,

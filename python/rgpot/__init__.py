@@ -31,6 +31,7 @@ GromacsPot = _core.GromacsPot
 OpenMMPot = _core.OpenMMPot
 LJClusterPot = _core.LJClusterPot
 MorsePot = _core.MorsePot
+GuptaPot = _core.GuptaPot
 NumericalError = _core.NumericalError
 evaluate_lj = _core.evaluate_lj
 neighbor_list = _core.neighbor_list
@@ -183,6 +184,7 @@ __all__ = [
     "LJPot",
     "LJClusterPot",
     "MorsePot",
+    "GuptaPot",
     "LammpsPot",
     "GromacsPot",
     "OpenMMPot",

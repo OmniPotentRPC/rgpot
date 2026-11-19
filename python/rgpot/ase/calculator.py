@@ -468,11 +468,13 @@ class RgpotCalculator(Calculator):
     ----------
     potential:
         An rgpot potential object, or a kind string naming any potential
-        class of this build (``"lj"``, ``"morse"``, ``"eam_al"``, ``"sw"``,
-        ...; :func:`available_kinds` lists them). Keyword arguments that
-        are not ASE calculator arguments are the constructor arguments of
+        class of this build (``"lj"``, ``"morse"``, ``"gupta"``, ``"eam_al"``,
+        ``"sw"``, ...; :func:`available_kinds` lists them). Keyword arguments
+        that are not ASE calculator arguments are the constructor arguments of
         that class (``u0``, ``cutoff``, ``psi``, ``switch_width`` for LJ;
-        ``De``, ``a``, ``re``, ``cutoff``, ``switch_width`` for Morse).
+        ``De``, ``a``, ``re``, ``cutoff``, ``switch_width`` for Morse;
+        ``A``, ``xi``, ``p``, ``q``, ``r0``, ``cutoff``, ``periodic``,
+        ``stress`` for Gupta).
     numerical_stress:
         For a potential whose kernel writes no stress, add ``stress``
         from a central difference of the energy under six cell strains
