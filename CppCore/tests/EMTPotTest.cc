@@ -255,7 +255,7 @@ TEST_CASE("EMT stress is opt-in and matches triclinic strain",
 
   static constexpr int slots[6] = {0, 4, 8, 5, 2, 1};
   double target_error = 0.0;
-  double best_error = std::numeric_limits<double>::infinity();
+  double best_other = std::numeric_limits<double>::infinity();
   for (double step : {1e-3, 1e-4, 1e-5, 1e-6, 1e-7}) {
     double max_error = 0.0;
     double scale = 0.0;
@@ -298,15 +298,16 @@ TEST_CASE("EMT stress is opt-in and matches triclinic strain",
       scale = std::max(scale, std::abs(value));
     }
     const double relative = max_error / std::max(scale, 1e-12);
-    best_error = std::min(best_error, relative);
     if (step == 1e-5) {
       target_error = relative;
+    } else {
+      best_other = std::min(best_other, relative);
     }
   }
   std::cout << "STRESS_ERROR emt " << std::setprecision(12) << target_error
             << '\n';
   CHECK(target_error <= 2e-7);
-  CHECK(best_error <= target_error * 1.25 + 1e-12);
+  CHECK(target_error <= best_other * 2.0 + 1e-12);
 }
 
 TEST_CASE("EMT OpenMP force path is bit-identical across threads",

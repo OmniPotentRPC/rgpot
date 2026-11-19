@@ -109,7 +109,7 @@ template <typename P> Whole evaluate(const P &pot, const Box &b) {
   Whole r;
   r.forces.assign(3 * b.z.size(), 0.0);
   rgpot::ForceOut out{r.forces.data(), 0.0, 0.0, {}, 0};
-  pot.forceImpl({b.z.size(), b.pos.data(), b.z.data(), b.cell}, &out);
+  pot.forceImpl({b.z.size(), b.pos.data(), b.z.data(), b.cell, true}, &out);
   r.energy = out.energy;
   std::copy(out.stress, out.stress + 9, r.stress);
   REQUIRE(out.has_stress != 0);
@@ -405,6 +405,54 @@ void check_staged_3body(const P &pot, const Box &box, int slabs, Width expect) {
   CHECK(vgap < kStagedThreeBodyRel * vscale);
 }
 
+Box strained(const Box &box, int a, int b, double amount) {
+  Box changed = box;
+  for (std::size_t k = 0; k < changed.pos.size(); k += 3) {
+    const double old[3] = {changed.pos[k], changed.pos[k + 1], changed.pos[k + 2]};
+    changed.pos[k + static_cast<std::size_t>(a)] += amount * old[b];
+    if (a != b) {
+      changed.pos[k + static_cast<std::size_t>(b)] += amount * old[a];
+    }
+  }
+  for (int row = 0; row < 3; ++row) {
+    const double old[3] = {changed.cell[3 * row], changed.cell[3 * row + 1],
+                           changed.cell[3 * row + 2]};
+    changed.cell[3 * row + a] += amount * old[b];
+    if (a != b) {
+      changed.cell[3 * row + b] += amount * old[a];
+    }
+  }
+  return changed;
+}
+
+template <typename P> void check_staged_fd(const P &pot, const Box &box) {
+  constexpr double h = 1.0e-5;
+  constexpr int voigt[3][3] = {{0, 5, 4}, {5, 1, 3}, {4, 3, 2}};
+  std::vector<Host> hosts = split(box, 2, pot.locality().ghostReach() + kListSkin,
+                                  pot.locality().ghostReach());
+  const Result centre = run(pot, box, hosts);
+  double worst = 0.0;
+  for (int a = 0; a < 3; ++a) {
+    for (int b = a; b < 3; ++b) {
+      const Box plus = strained(box, a, b, h);
+      const Box minus = strained(box, a, b, -h);
+      std::vector<Host> plus_hosts =
+          split(plus, 2, pot.locality().ghostReach() + kListSkin, pot.locality().ghostReach());
+      std::vector<Host> minus_hosts =
+          split(minus, 2, pot.locality().ghostReach() + kListSkin, pot.locality().ghostReach());
+      const double ep = run(pot, plus, plus_hosts).energy;
+      const double em = run(pot, minus, minus_hosts).energy;
+      const double fd = (ep - em) / (2.0 * h);
+      const double analytic = -(a == b ? 1.0 : 2.0) * centre.virial[voigt[a][b]];
+      const double rel =
+          std::abs(analytic - fd) / std::max({std::abs(analytic), std::abs(fd), 1.0e-8});
+      worst = std::max(worst, rel);
+    }
+  }
+  INFO("staged triclinic FD max relative error " << worst);
+  CHECK(worst < 1.0e-6);
+}
+
 template <typename P>
 void check_or_fail(const P &pot, bool sic, int nx, int ny, int nz, int slabs, bool triclinic,
                    Width expect) {
@@ -456,4 +504,13 @@ TEST_CASE("Staged Stillinger Weber matches a thin subdomain", "[Staged][3body]")
 
 TEST_CASE("Staged Tersoff matches a thin subdomain", "[Staged][3body]") {
   check_or_fail(rgpot::TersoffSiC{}, true, 2, 2, 2, 2, false, Width::ThinnerThanReach);
+}
+
+TEST_CASE("Staged three body virials match triclinic energy strain", "[Staged][3body][stress]") {
+  SECTION("Stillinger Weber") {
+    check_staged_fd(rgpot::StillingerWeberSi{}, diamond(kLatticeA, 2, 2, 2, true, false));
+  }
+  SECTION("Tersoff") {
+    check_staged_fd(rgpot::TersoffSiC{}, diamond(kLatticeA, 2, 2, 2, true, true));
+  }
 }

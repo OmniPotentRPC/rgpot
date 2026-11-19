@@ -133,16 +133,14 @@ fd_stress(Pot &pot, const std::vector<double> &pos, const std::vector<int> &z,
 double stress_relative_error(const Eval &analytic,
                              const std::array<double, 6> &numerical) {
   constexpr int slots[6] = {0, 4, 8, 5, 2, 1};
-  double largest = 0.0;
   double error = 0.0;
   for (int component = 0; component < 6; ++component) {
-    largest =
-        std::max(largest, std::abs(analytic.stress[slots[component]]));
-    error = std::max(
-        error, std::abs(analytic.stress[slots[component]] -
-                        numerical[static_cast<std::size_t>(component)]));
+    const double exact = analytic.stress[slots[component]];
+    const double fd = numerical[static_cast<std::size_t>(component)];
+    const double scale = std::max({std::abs(exact), std::abs(fd), 1e-8});
+    error = std::max(error, std::abs(exact - fd) / scale);
   }
-  return error / std::max(largest, 1e-8);
+  return error;
 }
 
 #if !defined(RGPOT_HAS_DFTD3) || !defined(RGPOT_HAS_DFTD4)
@@ -371,19 +369,20 @@ void test_forces_and_stress() {
                              const char *name, double tolerance) {
     constexpr double steps[] = {1e-3, 1e-4, 1e-5, 1e-6, 1e-7};
     double at_target = 0.0;
-    double best = std::numeric_limits<double>::infinity();
+    double best_other = std::numeric_limits<double>::infinity();
     for (double step : steps) {
       const double error =
           stress_relative_error(analytic, fd_stress(candidate, pos, z, box, step));
-      best = std::min(best, error);
       if (step == 1e-5) {
         at_target = error;
+      } else {
+        best_other = std::min(best_other, error);
       }
     }
     std::cout << "STRESS_ERROR " << name << ' ' << std::setprecision(12)
               << at_target << '\n';
     check(at_target <= tolerance, "stress agrees with triclinic strain FD");
-    check(best <= at_target * 1.25 + 1e-12,
+    check(at_target <= best_other * 1.25 + 1e-12,
           "stress strain-step sweep has a convergence plateau");
     check(analytic.stress[1] == analytic.stress[3] &&
               analytic.stress[2] == analytic.stress[6] &&
@@ -463,6 +462,8 @@ void test_forces_and_stress() {
       small_cfg,
       std::make_shared<FixedCharges>(std::vector<double>{1.0}, 1.0));
   const Eval small_analytic = run(small, one_pos, one_z, small_box, true);
+  check(!small.neighbours().long_pairs().empty(),
+        "small-cell Ewald includes real-space self images");
   check(small_analytic.has_stress,
         "small-cell Ewald self-image stress is available");
   check(stress_relative_error(
@@ -488,6 +489,20 @@ void test_dsf() {
         [&](const std::vector<double> &p) { return run(pot, p, z, nullptr).energy; }, pos, i, 1e-6);
     check_close(e0.f[i], f, 2e-6, "DSF force");
   }
+  const double box[9] = {12.0, 0.4, -0.2, -0.3, 11.0,
+                         0.5,  0.2, -0.4, 13.0};
+  const Eval plain = run(pot, pos, z, box);
+  const Eval analytic = run(pot, pos, z, box, true);
+  check(!plain.has_stress && analytic.has_stress,
+        "DSF stress is opt-in");
+  check(plain.energy == analytic.energy && plain.f == analytic.f,
+        "DSF stress opt-in preserves energy and forces bit for bit");
+  const double dsf_stress_error =
+      stress_relative_error(analytic, fd_stress(pot, pos, z, box, 1e-5));
+  std::cout << "STRESS_ERROR DSF " << std::setprecision(12)
+            << dsf_stress_error << '\n';
+  check(dsf_stress_error <= 3e-6,
+        "DSF stress matches a triclinic strain derivative");
   double ene = 0, dedr = 0;
   so3lr_erf_pair(0.2, -0.3, 1.4, 2.0, 6.0, 9.0, 14.399645351950548, &ene, &dedr);
   check(std::isfinite(ene) && dedr != 0.0, "SO3LR erf pair is finite");
@@ -926,6 +941,11 @@ void test_edges() {
                     std::make_shared<Hook>());
   const Eval eh = run(hooked, pos, z, nullptr);
   check(std::isfinite(eh.energy), "backend charges evaluate");
+  check(!hooked.caps().stress,
+        "geometry-dependent charges do not advertise incomplete stress");
+  const double hook_box[9] = {8, 0, 0, 0, 8, 0, 0, 0, 8};
+  check(!run(hooked, pos, z, hook_box, true).has_stress,
+        "geometry-dependent charges leave stress unset");
 
   threw = false;
   try {
@@ -999,6 +1019,15 @@ void test_edges() {
   const Eval el = run(legacy, tri, z3, nullptr);
   check(std::isfinite(el.energy), "legacy undamped QDO with a ratio response");
   const double cell[9] = {12, 0, 0, 0, 12, 0, 0, 0, 12};
+  check(!legacy.caps().stress,
+        "geometry-dependent ratios do not advertise incomplete stress");
+  check(!run(legacy, tri, z3, cell, true).has_stress,
+        "geometry-dependent ratios leave stress unset");
+  DispersionConfig mbd_cfg;
+  mbd_cfg.kind = DispersionKind::MBD;
+  DispersionPot unsupported_mbd(mbd_cfg);
+  check(!unsupported_mbd.caps().stress,
+        "MBD does not advertise unavailable stress");
   dc.periodic = true;
   DispersionPot periodic(dc);
   const Eval ep = run(periodic, tri, z3, cell, true);

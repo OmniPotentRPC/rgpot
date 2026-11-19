@@ -118,6 +118,7 @@ impl RpcClient {
                 atm_builder.set(i as u32, val);
             }
 
+            fip.set_compute_stress(input.compute_stress);
             let mut box_builder = fip.init_box(9);
             for (i, &val) in box_data.iter().enumerate() {
                 box_builder.set(i as u32, val);
@@ -154,6 +155,23 @@ impl RpcClient {
         // Create an owning DLPack tensor for the forces
         let forces_vec: Vec<f64> = (0..forces.len()).map(|i| forces.get(i)).collect();
         output.forces = create_owned_f64_tensor(forces_vec, vec![n as i64, 3]);
+        output.stress = [0.0; 9];
+        output.has_stress = 0;
+        let stress = result
+            .get_stress()
+            .map_err(|e| format!("failed to read stress: {e}"))?;
+        if stress.len() != 0 {
+            if stress.len() != 9 {
+                return Err(format!(
+                    "stress array size mismatch: expected 9, got {}",
+                    stress.len()
+                ));
+            }
+            for i in 0..9 {
+                output.stress[i] = stress.get(i as u32);
+            }
+            output.has_stress = 1;
+        }
 
         Ok(())
     }
