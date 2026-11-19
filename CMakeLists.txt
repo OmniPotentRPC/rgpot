@@ -253,6 +253,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/CuH2/cuh2Utils.cc
       CppCore/rgpot/fortran/FortranPots.cc
       CppCore/rgpot/SuttonChen/SuttonChenPot.cc
+      CppCore/rgpot/QSC/QSCPot.cc
       CppCore/rgpot/ReducedPair/ReducedPair.cc
       CppCore/rgpot/SuttonChen/SuttonChenScales.cc
       CppCore/rgpot/nlist/HalfShellWalk.cc
@@ -401,6 +402,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/Gupta/gupta.c
       CppCore/rgpot/SuttonChen/SuttonChenPot.cc
       CppCore/rgpot/SuttonChen/SuttonChenScales.cc
+      CppCore/rgpot/QSC/QSCPot.cc
       CppCore/rgpot/Tersoff/TersoffSiC.cc
       CppCore/rgpot/ReducedPair/ReducedPair.cc
       CppCore/rgpot/EAM/EAM.cpp
