@@ -43,6 +43,7 @@
 #include "rgpot/types/AtomMatrix.hpp"
 
 using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
 using rgpot::types::AtomMatrix;
 
 namespace {
@@ -55,6 +56,7 @@ constexpr double kExactEcohTol = 1.0e-11;
 constexpr double kPublishedEcohTol = 5.0e-3;
 constexpr double kOracleTol = 1.0e-12;
 constexpr double kReferenceRelTol = 1.0e-12;
+constexpr double kPermutationRelTol = 1.0e-14;
 constexpr double kDoyeClusterTol = 5.0e-5;
 constexpr double kFdForceStep = 1.0e-4;
 constexpr double kFdForceTol = 1.0e-8;
@@ -630,6 +632,80 @@ TEST_CASE("QSC analytic Hessian-vector product matches 4th-order force differenc
   for (std::size_t k = 0; k < pos.size(); ++k) {
     REQUIRE(hv_cached[k] == hv[k]);
   }
+}
+
+TEST_CASE("QSC energy, forces and stress do not depend on the atom order",
+          "[QSC][permutation]") {
+  // 3x3x3 fcc cells of a Cu-Ag alloy. The input lists the 54 Cu atoms and
+  // then the 54 Ag atoms; the permuted system alternates Cu and Ag.
+  double box[9];
+  std::vector<double> lattice_pos = fcc_cell(3, 3.8, box);
+  const std::size_t n = lattice_pos.size() / 3;
+  REQUIRE(n == 108);
+  for (std::size_t i = 0; i < lattice_pos.size(); ++i) {
+    lattice_pos[i] += 0.12 * std::sin(1.31 * static_cast<double>(i) + 0.4);
+  }
+  std::vector<int> z(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    z[i] = i < n / 2 ? 29 : 47;
+  }
+
+  std::vector<std::size_t> perm(n); // perm[k] is the original index at slot k
+  for (std::size_t k = 0; k < n / 2; ++k) {
+    perm[2 * k] = k;
+    perm[2 * k + 1] = n / 2 + k;
+  }
+  std::vector<double> pos_perm(3 * n);
+  std::vector<int> z_perm(n);
+  for (std::size_t k = 0; k < n; ++k) {
+    z_perm[k] = z[perm[k]];
+    for (std::size_t d = 0; d < 3; ++d) {
+      pos_perm[3 * k + d] = lattice_pos[3 * perm[k] + d];
+    }
+  }
+  for (std::size_t k = 1; k < n; ++k) {
+    REQUIRE(z_perm[k] != z_perm[k - 1]);
+  }
+
+  const rgpot::QSCPot pot({.cutoff = 5.2, .periodic = true, .stress = true});
+  std::vector<double> f(3 * n, 0.0);
+  std::vector<double> f_perm(3 * n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = f.data();
+  pot.forceImpl({n, lattice_pos.data(), z.data(), box}, &out);
+  rgpot::ForceOut out_perm{};
+  out_perm.F = f_perm.data();
+  pot.forceImpl({n, pos_perm.data(), z_perm.data(), box}, &out_perm);
+  REQUIRE(out.has_stress == 1);
+  REQUIRE(out_perm.has_stress == 1);
+
+  REQUIRE(out.energy < 0.0);
+  CHECK_THAT(out_perm.energy,
+             WithinRel(out.energy, kPermutationRelTol));
+
+  double f_scale = 0.0;
+  for (const double v : f) {
+    f_scale = std::max(f_scale, std::abs(v));
+  }
+  REQUIRE(f_scale > 1.0e-3);
+  double f_gap = 0.0;
+  for (std::size_t k = 0; k < n; ++k) {
+    for (std::size_t d = 0; d < 3; ++d) {
+      f_gap = std::max(f_gap, std::abs(f_perm[3 * k + d] - f[3 * perm[k] + d]));
+    }
+  }
+  CHECK(f_gap <= kPermutationRelTol * f_scale);
+
+  double s_scale = 0.0;
+  for (const double v : out.stress) {
+    s_scale = std::max(s_scale, std::abs(v));
+  }
+  REQUIRE(s_scale > 0.0);
+  double s_gap = 0.0;
+  for (int i = 0; i < 9; ++i) {
+    s_gap = std::max(s_gap, std::abs(out_perm.stress[i] - out.stress[i]));
+  }
+  CHECK(s_gap <= kPermutationRelTol * s_scale);
 }
 
 TEST_CASE("QSC copies keep their own parameter table and replicas share it",
