@@ -9,18 +9,22 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
+#include "lsan_libomp.hpp"
 #include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/Gupta/gupta.h"
 #include "rgpot/KeptPotential.hpp"
+#include "rgpot/Slices.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -1042,4 +1046,86 @@ TEST_CASE("GuptaPot periodic cutoff must stay below half a face spacing",
   const std::vector<double> pos = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0};
   const double box[9] = {10.0, 0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 0.0, 12.0};
   REQUIRE_THROWS_AS(eval_stress(pot, pos, box), std::invalid_argument);
+}
+
+namespace {
+
+/// Sets OMP_NUM_THREADS for one scope. The thread count is read on each call.
+class ScopedOmpThreads {
+public:
+  explicit ScopedOmpThreads(const char *value) {
+    if (const char *old = std::getenv("OMP_NUM_THREADS")) {
+      had_ = true;
+      old_ = old;
+    }
+    set(value);
+  }
+  ~ScopedOmpThreads() { set(had_ ? old_.c_str() : nullptr); }
+  ScopedOmpThreads(const ScopedOmpThreads &) = delete;
+  ScopedOmpThreads &operator=(const ScopedOmpThreads &) = delete;
+
+private:
+  static void set(const char *value) {
+#if defined(_WIN32)
+    _putenv_s("OMP_NUM_THREADS", value == nullptr ? "" : value);
+#else
+    if (value == nullptr) {
+      unsetenv("OMP_NUM_THREADS");
+    } else {
+      setenv("OMP_NUM_THREADS", value, 1);
+    }
+#endif
+  }
+
+  bool had_ = false;
+  std::string old_;
+};
+
+} // namespace
+
+TEST_CASE("GuptaPot rejects a coincident pair on the team path", "[Gupta]") {
+  // Row teams start at kTeamMinAtoms atoms. A cell of 21^3 periodic atoms on
+  // a cubic grid is above it, with a cutoff under half the face spacing.
+  constexpr int side = 21;
+  constexpr double spacing = 1.05;
+  constexpr std::size_t n = side * side * side;
+  static_assert(n >= rgpot::nlist::kTeamMinAtoms);
+  std::vector<double> pos(3 * n, 0.0);
+  for (std::size_t i = 0; i < n; ++i) {
+    pos[3 * i] = spacing * static_cast<double>(i % side);
+    pos[3 * i + 1] = spacing * static_cast<double>((i / side) % side);
+    pos[3 * i + 2] = spacing * static_cast<double>(i / (side * side));
+  }
+  const double length = spacing * side;
+  const double box[9] = {length, 0.0, 0.0, 0.0, length, 0.0, 0.0, 0.0, length};
+  const rgpot::GuptaConfig cfg{.cutoff = 2.0, .periodic = true};
+
+  std::vector<double> stacked = pos;
+  std::copy(pos.begin() + 3 * (n / 2), pos.begin() + 3 * (n / 2) + 3,
+            stacked.begin() + 3 * (n - 1));
+
+  struct Case {
+    const char *threads;
+    rgpot::nlist::Mode mode;
+  };
+  const Case cases[] = {
+      {"1", rgpot::nlist::Mode::Stream},
+      {"4", rgpot::nlist::Mode::Stream},
+      {"4", rgpot::nlist::Mode::Stored},
+  };
+  for (const Case &c : cases) {
+    const ScopedOmpThreads threads(c.threads);
+    INFO("threads " << c.threads << " mode " << static_cast<int>(c.mode));
+    rgpot::GuptaPot pot(cfg);
+    pot.setNeighbourMode(c.mode);
+
+    const StressEval clean = eval_stress(pot, pos, box);
+    REQUIRE(std::isfinite(clean.energy));
+
+    const std::uint64_t teams = rgpot::teamsOpened();
+    REQUIRE_THROWS_AS(eval_stress(pot, stacked, box), std::invalid_argument);
+    if (rgpot::teamSize(n) > 1) {
+      REQUIRE(rgpot::teamsOpened() > teams);
+    }
+  }
 }
