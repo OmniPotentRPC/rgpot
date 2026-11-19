@@ -323,6 +323,7 @@ mod tests {
             positions: pos_t,
             atomic_numbers: atm_t,
             box_matrix: box_t,
+            ..rgpot_force_input_t::default()
         };
         TestInput {
             input,
@@ -341,6 +342,7 @@ mod tests {
             positions: std::ptr::null_mut(),
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let err = unsafe { extract_cpu_input(&input, 1) }.unwrap_err();
         assert_eq!(err, "positions tensor is NULL");
@@ -353,6 +355,7 @@ mod tests {
             positions: guard.input.positions,
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let err = unsafe { extract_cpu_input(&input, 1) }.unwrap_err();
         assert_eq!(err, "atomic_numbers tensor is NULL");
@@ -365,6 +368,7 @@ mod tests {
             positions: guard.input.positions,
             atomic_numbers: guard.input.atomic_numbers,
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let err = unsafe { extract_cpu_input(&input, 1) }.unwrap_err();
         assert_eq!(err, "box_matrix tensor is NULL");
@@ -423,6 +427,7 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            ..rgpot_force_out_t::default()
         };
         let err = client.calculate(&guard.input, &mut output).unwrap_err();
         assert!(err.contains("connection failed"), "{err}");
@@ -436,6 +441,7 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            ..rgpot_force_out_t::default()
         };
         let err = client.calculate(&guard.input, &mut output).unwrap_err();
         assert!(err.contains("connection failed"), "{err}");

@@ -121,9 +121,11 @@ class CountingPotential:
     def config(self):
         return self.inner.config()
 
-    def evaluate(self, positions, numbers, box):
+    def evaluate(self, positions, numbers, box, *, compute_stress=False):
         self.calls += 1
-        return self.inner.evaluate(positions, numbers, box)
+        return self.inner.evaluate(
+            positions, numbers, box, compute_stress=compute_stress
+        )
 
 
 # --- properties and units ----------------------------------------------------
@@ -204,11 +206,13 @@ def test_unchanged_atoms_do_not_call_the_potential() -> None:
     atoms.get_forces()
     atoms.get_stress()
     atoms.get_potential_energy()
-    assert pot.calls == 1
+    # The force-only result intentionally does not precompute stress. ASE
+    # performs one additional evaluation when stress is first requested.
+    assert pot.calls == 2
     same = atoms.copy()
     same.calc = atoms.calc
     same.get_forces()
-    assert pot.calls == 1
+    assert pot.calls == 2
 
 
 @pytest.mark.parametrize("change", ["positions", "cell", "pbc", "numbers"])

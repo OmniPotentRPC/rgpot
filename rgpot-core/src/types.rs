@@ -14,7 +14,7 @@
 //! - **Output forces** are *callee-allocated* — the callback sets
 //!   `output.forces` to a DLPack tensor it creates.  After the call, the
 //!   caller takes ownership and must free it via `rgpot_tensor_free`.
-//! - **Energy and variance** are plain `f64` scalars, always on the host.
+//! - **Energy, variance, and optional stress** are plain host values.
 //!
 //! ## DLPack Tensor Shapes
 //!
@@ -44,6 +44,7 @@ use dlpk::sys::DLManagedTensorVersioned;
 /// rgpot_force_input_free(&input);
 /// ```
 #[repr(C)]
+#[non_exhaustive]
 pub struct rgpot_force_input_t {
     /// Positions tensor: `[n_atoms, 3]`, dtype f64, any device.
     pub positions: *mut DLManagedTensorVersioned,
@@ -51,6 +52,8 @@ pub struct rgpot_force_input_t {
     pub atomic_numbers: *mut DLManagedTensorVersioned,
     /// Box matrix tensor: `[3, 3]`, dtype f64, any device.
     pub box_matrix: *mut DLManagedTensorVersioned,
+    /// Nonzero requests Cauchy stress. The default force-only path is false.
+    pub compute_stress: bool,
 }
 
 /// Results from a potential energy evaluation.
@@ -65,6 +68,7 @@ pub struct rgpot_force_input_t {
 /// - `energy`: the calculated potential energy.
 /// - `variance`: uncertainty estimate; zero when not applicable.
 #[repr(C)]
+#[non_exhaustive]
 pub struct rgpot_force_out_t {
     /// Forces tensor `[n_atoms, 3]`, f64 — set by the callback.
     pub forces: *mut DLManagedTensorVersioned,
@@ -72,9 +76,19 @@ pub struct rgpot_force_out_t {
     pub energy: f64,
     /// Variance / uncertainty of the calculation (0.0 when unused).
     pub variance: f64,
+    /// Row-major Cauchy stress in eV/Angstrom^3.
+    pub stress: [f64; 9],
+    /// Nonzero only when the callback computed every stress component.
+    pub has_stress: i32,
 }
 
 impl rgpot_force_input_t {
+    /// Request stress while preserving the other input tensors.
+    pub fn with_stress(mut self, compute: bool) -> Self {
+        self.compute_stress = compute;
+        self
+    }
+
     /// Extract `n_atoms` from the positions tensor's `shape[0]`.
     ///
     /// Returns `None` if `positions` is null or has no shape.
@@ -94,6 +108,29 @@ impl rgpot_force_input_t {
     }
 }
 
+impl Default for rgpot_force_input_t {
+    fn default() -> Self {
+        Self {
+            positions: std::ptr::null_mut(),
+            atomic_numbers: std::ptr::null_mut(),
+            box_matrix: std::ptr::null_mut(),
+            compute_stress: false,
+        }
+    }
+}
+
+impl Default for rgpot_force_out_t {
+    fn default() -> Self {
+        Self {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+            stress: [0.0; 9],
+            has_stress: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,6 +144,7 @@ mod tests {
             positions: tensor,
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         assert_eq!(unsafe { input.n_atoms() }, Some(2));
         unsafe { rgpot_tensor_free(tensor) };
@@ -118,17 +156,14 @@ mod tests {
             positions: std::ptr::null_mut(),
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         assert_eq!(unsafe { input.n_atoms() }, None);
     }
 
     #[test]
     fn force_out_starts_with_null_forces() {
-        let out = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let out = rgpot_force_out_t::default();
         assert!(out.forces.is_null());
         assert_eq!(out.energy, 0.0);
         assert_eq!(out.variance, 0.0);
@@ -140,6 +175,7 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 1.5,
             variance: 2.5,
+            ..rgpot_force_out_t::default()
         };
         assert_eq!(out.energy, 1.5);
         assert_eq!(out.variance, 2.5);
@@ -162,6 +198,7 @@ mod tests {
             positions: pos_t,
             atomic_numbers: atm_t,
             box_matrix: box_t,
+            ..rgpot_force_input_t::default()
         };
 
         assert_eq!(unsafe { input.n_atoms() }, Some(2));
