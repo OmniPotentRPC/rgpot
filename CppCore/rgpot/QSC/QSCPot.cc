@@ -57,14 +57,17 @@ struct PairSpec {
   double a = 0.0;
 };
 
-// Default Quantum Sutton-Chen parameters from Qi, Cagin, Kimura and Goddard,
-// Phys. Rev. B 59, 3527 (1999), doi:10.1103/PhysRevB.59.3527, Table I;
+// Default Quantum Sutton-Chen parameters. Ni and Cu rows are Table I of Qi,
+// Cagin, Kimura and Goddard, Phys. Rev. B 59, 3527 (1999),
+// doi:10.1103/PhysRevB.59.3527. The other rows follow the eight-metal table of
 // Ozdemir Kart, Tomak, Uludogan and Cagin, J. Non-Cryst. Solids 337, 101
-// (2004), doi:10.1016/j.jnoncrysol.2004.03.121, Table 1; and eOn
-// client/potentials/QSC/Parameters.h.
+// (2004), doi:10.1016/j.jnoncrysol.2004.03.121, Table 1, as tabulated in eOn
+// client/potentials/QSC/Parameters.h. eOn lists a = 3.5200 for Cu; Table I
+// gives 3.6030, which is used here. Table I prints a different Ag row
+// (4.0072 meV, c = 94.948); the table below keeps 3.9450 meV and c = 96.524.
 constexpr std::array<ElementSpec, 8> kDefaultElements = {{
     {28, 10.0, 5.0, 0.0073767, 84.745, 3.5157},  // Ni
-    {29, 10.0, 5.0, 0.0057921, 84.843, 3.5200},  // Cu
+    {29, 10.0, 5.0, 0.0057921, 84.843, 3.6030},  // Cu
     {45, 13.0, 5.0, 0.0024612, 305.499, 3.7984}, // Rh
     {46, 12.0, 6.0, 0.0032864, 148.205, 3.8813}, // Pd
     {47, 11.0, 6.0, 0.0039450, 96.524, 4.0691},  // Ag
