@@ -1103,7 +1103,7 @@ explicit QSCPot(const QSCConfig &c);
 Parameter source: Qi, Cagin, Kimura and Goddard, Phys.
 Rev. B 59, 3527 (1999),
 doi:10.1103/PhysRevB.59.3527, and the fcc alloy mixing rules of Rafii-Tabar and Sutton, Philos. Mag. Lett. 63, 217 (1991), doi:10.1080/09500839108205994.
-Reference value: a copper dimer at =r = 3.5200= Angstrom is -0.9770461806 eV,
+Reference value: a copper dimer at =r = 3.6030= Angstrom is -0.9770461806 eV,
 and the copper fcc crystal at the =2 a= cutoff is -3.519583146896 eV/atom.
 
 *** =rgpot::QSCPot::config=

@@ -69,13 +69,15 @@ struct QscRow {
   double exact_2a_ecoh;
 };
 
-// Table I and Table II of Qi, Cagin, Kimura and Goddard, Phys. Rev. B 59,
-// 3527 (1999), doi:10.1103/PhysRevB.59.3527, and the eight-metal Q-SC table of
-// Ozdemir Kart et al., J. Non-Cryst. Solids 337, 101 (2004), Table 1, and eOn
-// client/potentials/QSC/Parameters.h.
+// Ni and Cu rows: Table I of Qi, Cagin, Kimura and Goddard, Phys. Rev. B 59,
+// 3527 (1999), doi:10.1103/PhysRevB.59.3527 (Cu a = 3.6030; eOn lists 3.5200).
+// Other rows: the eight-metal Q-SC table of Ozdemir Kart et al., J. Non-Cryst.
+// Solids 337, 101 (2004), Table 1, as in eOn
+// client/potentials/QSC/Parameters.h. Table I prints a different Ag row (4.0072
+// meV, c = 94.948) that is not used.
 constexpr std::array<QscRow, 8> kQscTable = {{
     {28, "Ni", 10.0, 5.0, 0.0073767, 84.745, 3.5157, 4.48, -4.475613277589},
-    {29, "Cu", 10.0, 5.0, 0.0057921, 84.843, 3.5200, 3.52, -3.519583146896},
+    {29, "Cu", 10.0, 5.0, 0.0057921, 84.843, 3.6030, 3.52, -3.519583146896},
     {45, "Rh", 13.0, 5.0, 0.0024612, 305.499, 3.7984, 5.78, -5.784242765216},
     {46, "Pd", 12.0, 6.0, 0.0032864, 148.205, 3.8813, 3.92, -3.916719132725},
     {47, "Ag", 11.0, 6.0, 0.0039450, 96.524, 4.0691, 2.97, -2.970491740121},
