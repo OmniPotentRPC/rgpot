@@ -11,11 +11,20 @@
 
 #include <algorithm>
 #include <array>
-#include <cstring>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <utility>
 #include <vector>
+
+#if defined(_WIN32) && defined(RGPOT_NLIST_BUILDING)
+#define RGPOT_NLIST_API __declspec(dllexport)
+#elif defined(_WIN32)
+#define RGPOT_NLIST_API __declspec(dllimport)
+#else
+#define RGPOT_NLIST_API __attribute__((visibility("default")))
+#endif
 
 #if defined(__GNUC__) || defined(__clang__)
 #define RGPOT_NLIST_NOINLINE __attribute__((noinline))
@@ -101,6 +110,107 @@ struct Spec {
 /// does not fit in the memory the OS reports is binned on the atom span.
 class Neighbours {
 public:
+  Neighbours() : generation_(nextGeneration()) {}
+
+  Neighbours(const Neighbours &other)
+      : off_(other.off_), nbr_(other.nbr_), cell_of_(other.cell_of_),
+        cell_start_(other.cell_start_), cell_atoms_(other.cell_atoms_),
+        ref_(other.ref_), nx_(other.nx_), ny_(other.ny_), nz_(other.nz_),
+        search_(other.search_), image_(other.image_), mode_(other.mode_),
+        key_(other.key_), general_(other.general_),
+        use_general_(other.use_general_), streaming_(other.streaming_),
+        built_(other.built_), reused_(other.reused_), n_(other.n_),
+        builds_(other.builds_), generation_(nextGeneration()),
+        xyz_(other.xyz_) {
+    std::memcpy(box_, other.box_, sizeof(box_));
+    std::memcpy(len_, other.len_, sizeof(len_));
+    std::memcpy(inv_, other.inv_, sizeof(inv_));
+    std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
+  }
+
+  Neighbours &operator=(const Neighbours &other) {
+    if (this != &other) {
+      off_ = other.off_;
+      nbr_ = other.nbr_;
+      cell_of_ = other.cell_of_;
+      cell_start_ = other.cell_start_;
+      cell_atoms_ = other.cell_atoms_;
+      ref_ = other.ref_;
+      std::memcpy(box_, other.box_, sizeof(box_));
+      std::memcpy(len_, other.len_, sizeof(len_));
+      std::memcpy(inv_, other.inv_, sizeof(inv_));
+      std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
+      nx_ = other.nx_;
+      ny_ = other.ny_;
+      nz_ = other.nz_;
+      search_ = other.search_;
+      image_ = other.image_;
+      mode_ = other.mode_;
+      key_ = other.key_;
+      general_ = other.general_;
+      use_general_ = other.use_general_;
+      streaming_ = other.streaming_;
+      built_ = other.built_;
+      reused_ = other.reused_;
+      n_ = other.n_;
+      builds_ = other.builds_;
+      xyz_ = other.xyz_;
+    }
+    generation_ = nextGeneration();
+    return *this;
+  }
+
+  Neighbours(Neighbours &&other) noexcept
+      : off_(std::move(other.off_)), nbr_(std::move(other.nbr_)),
+        cell_of_(std::move(other.cell_of_)),
+        cell_start_(std::move(other.cell_start_)),
+        cell_atoms_(std::move(other.cell_atoms_)), ref_(std::move(other.ref_)),
+        nx_(other.nx_), ny_(other.ny_), nz_(other.nz_), search_(other.search_),
+        image_(other.image_), mode_(other.mode_), key_(other.key_),
+        general_(other.general_), use_general_(other.use_general_),
+        streaming_(other.streaming_), built_(other.built_),
+        reused_(other.reused_), n_(other.n_), builds_(other.builds_),
+        generation_(nextGeneration()), xyz_(other.xyz_) {
+    std::memcpy(box_, other.box_, sizeof(box_));
+    std::memcpy(len_, other.len_, sizeof(len_));
+    std::memcpy(inv_, other.inv_, sizeof(inv_));
+    std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
+    other.generation_ = nextGeneration();
+  }
+
+  Neighbours &operator=(Neighbours &&other) noexcept {
+    if (this != &other) {
+      off_ = std::move(other.off_);
+      nbr_ = std::move(other.nbr_);
+      cell_of_ = std::move(other.cell_of_);
+      cell_start_ = std::move(other.cell_start_);
+      cell_atoms_ = std::move(other.cell_atoms_);
+      ref_ = std::move(other.ref_);
+      std::memcpy(box_, other.box_, sizeof(box_));
+      std::memcpy(len_, other.len_, sizeof(len_));
+      std::memcpy(inv_, other.inv_, sizeof(inv_));
+      std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
+      nx_ = other.nx_;
+      ny_ = other.ny_;
+      nz_ = other.nz_;
+      search_ = other.search_;
+      image_ = other.image_;
+      mode_ = other.mode_;
+      key_ = other.key_;
+      general_ = other.general_;
+      use_general_ = other.use_general_;
+      streaming_ = other.streaming_;
+      built_ = other.built_;
+      reused_ = other.reused_;
+      n_ = other.n_;
+      builds_ = other.builds_;
+      xyz_ = other.xyz_;
+      other.generation_ = nextGeneration();
+    }
+    generation_ = nextGeneration();
+    return *this;
+  }
+
   void update(const double *xyz, std::size_t n, const double *box9,
               const Spec &spec);
 
@@ -115,6 +225,11 @@ public:
   [[nodiscard]] bool reused() const noexcept { return reused_; }
   /// Stored lists built so far. A reuse does not count.
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
+  /// Process-unique generation id, updated at construction and on every
+  /// rebuild, copy and move.
+  [[nodiscard]] std::uint64_t generation() const noexcept {
+    return generation_;
+  }
   /// Stored pair index. A stream leaves this empty.
   [[nodiscard]] std::size_t slots() const noexcept { return nbr_.size(); }
   [[nodiscard]] const std::vector<std::int32_t> &offsets() const noexcept {
@@ -443,7 +558,7 @@ private:
     // The stencil depends only on the coordinates. A warm call with
     // the same positions reuses it.
     struct Cache {
-      const Neighbours *owner = nullptr;
+      std::uint64_t generation = 0;
       int nx = 0;
       int ny = 0;
       int nz = 0;
@@ -460,8 +575,9 @@ private:
     thread_local Cache cache;
     // Only a streaming walk can reuse this stencil cache across calls. A
     // stored walk has its own pair index and rebuilds tile data per walk.
-    const bool same_grid = cache.owner == this && cache.nx == nx_ && cache.ny == ny_ &&
-                           cache.nz == nz_ && cache.search == search_ && cache.compact == !dense;
+    const bool same_grid = cache.generation == generation_ && cache.nx == nx_ &&
+                           cache.ny == ny_ && cache.nz == nz_ &&
+                           cache.search == search_ && cache.compact == !dense;
     // update() already compared the coordinates when it reused the bins.
     const bool reuse =
         streaming_ && same_grid &&
@@ -589,7 +705,7 @@ private:
         }
       }
       if (overflow) {
-        cache.owner = nullptr;
+        cache.generation = 0;
         cache.neigh.clear();
         cache.head.clear();
         cache.nneigh.clear();
@@ -688,7 +804,7 @@ private:
     }
     }
     if (streaming_) {
-      cache.owner = this;
+      cache.generation = generation_;
       cache.nx = nx_;
       cache.ny = ny_;
       cache.nz = nz_;
@@ -889,6 +1005,9 @@ private:
                                     double &dz) const;
   [[nodiscard]] int cellId(int ix, int iy, int iz) const;
 
+  [[nodiscard]] RGPOT_NLIST_API static std::uint64_t
+  nextGeneration() noexcept;
+
   std::vector<std::int32_t> off_;
   std::vector<std::int32_t> nbr_;
   std::vector<std::int32_t> cell_of_;
@@ -913,6 +1032,7 @@ private:
   bool reused_ = false;
   std::size_t n_ = 0;
   std::uint64_t builds_ = 0;
+  std::uint64_t generation_ = 0;
   const double *xyz_ = nullptr;
 };
 
@@ -1029,3 +1149,4 @@ inline int Neighbours::cellId(int ix, int iy, int iz) const {
 } // namespace rgpot::nlist
 
 #undef RGPOT_NLIST_NOINLINE
+#undef RGPOT_NLIST_API

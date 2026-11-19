@@ -594,7 +594,6 @@ if not get_option('with_rpc_client_only')
             morse,
             zbl,
             model_pots,
-            rgpot_halfshell,
         ]
         if has_cbe
             _classical_whole += [cbe_pot]
@@ -609,7 +608,7 @@ if not get_option('with_rpc_client_only')
             'classical_engine',
             [_engine_common, files('rgpot/engine/ClassicalEngine.cc')],
             dependencies: _engine_deps,
-            link_with: [rgpot_core],
+            link_with: [rgpot],
             link_whole: _classical_whole,
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -640,7 +639,7 @@ if not get_option('with_rpc_client_only')
             'mopac_engine',
             [_engine_common, files('rgpot/engine/MopacEngine.cc')],
             dependencies: _engine_deps + [mopac_dl_dep],
-            link_with: [rgpot_core],
+            link_with: [rgpot],
             link_whole: [mopacpot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -651,7 +650,7 @@ if not get_option('with_rpc_client_only')
             'nwchem_engine',
             [_engine_common, files('rgpot/engine/NWChemEngine.cc')],
             dependencies: _engine_deps + [nwchem_dl_dep],
-            link_with: [rgpot_core],
+            link_with: [rgpot],
             link_whole: [nwchempot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -663,7 +662,7 @@ if not get_option('with_rpc_client_only')
                 'skala_engine',
                 [_engine_common, files('rgpot/engine/SkalaEngine.cc')],
                 dependencies: _engine_deps + [nwchem_dl_dep],
-                link_with: [rgpot_core],
+                link_with: [rgpot],
                 link_whole: [nwchempot, skala],
                 cpp_args: _engine_args,
                 include_directories: _incdirs,
@@ -2341,21 +2340,26 @@ if get_option('with_tests')
             sources: ['tests/layout_fixture.cc'],
             include_directories: _incdirs + ['.'],
             cpp_args: test_args,
-            dependencies: test_deps,
+            link_with: rgpot,
+            gnu_symbol_visibility: 'hidden',
             install: false,
         )
+        _layout_env = {'RGPOT_LAYOUT_FIXTURE': layout_fixture.full_path()}
+        if get_option('default_library') != 'static'
+            _layout_env += {'RGPOT_SHARED_LIBRARY': '1'}
+        endif
         test(
             'CxxLayoutTest',
             executable(
                 'cxx_layout_test',
                 sources: ['tests/CxxLayoutTest.cc'],
-                dependencies: test_deps,
+                dependencies: [catch2_dep, _dl_dep],
                 include_directories: _incdirs + ['.'],
                 cpp_args: test_args,
-                link_with: _linkto,
+                link_with: rgpot,
                 link_language: 'cpp',
             ),
-            env: {'RGPOT_LAYOUT_FIXTURE': layout_fixture.full_path()},
+            env: _layout_env,
             depends: [layout_fixture],
             kwargs: _rt_kw['CxxLayoutTest'],
         )
@@ -2536,16 +2540,30 @@ if get_option('with_tests')
                 cpp_args: _args,
                 link_language: 'cpp',
             )
+            _soversion_args = [
+                files('tests/check_cxx_soversion.py'),
+                rgpot_cxx_soversion,
+                rgpot.full_path(),
+                cxx_layout_stamp.full_path(),
+            ]
+            _soversion_depends = [rgpot, cxx_layout_stamp]
+            if _rpc_stack and host_system != 'windows'
+                _soversion_args += [
+                    classical_engine.full_path(),
+                    mopac_engine.full_path(),
+                    nwchem_engine.full_path(),
+                ]
+                _soversion_depends += [
+                    classical_engine,
+                    mopac_engine,
+                    nwchem_engine,
+                ]
+            endif
             test(
                 'CxxSoversion',
                 python3_prog,
-                args: [
-                    files('tests/check_cxx_soversion.py'),
-                    rgpot_cxx_soversion,
-                    rgpot.full_path(),
-                    cxx_layout_stamp.full_path(),
-                ],
-                depends: [rgpot, cxx_layout_stamp],
+                args: _soversion_args,
+                depends: _soversion_depends,
             )
         endif
     endif

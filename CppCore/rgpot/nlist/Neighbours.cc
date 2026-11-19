@@ -1,9 +1,11 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#define RGPOT_NLIST_BUILDING
 #include "rgpot/nlist/Neighbours.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -38,6 +40,11 @@ int axisCount(double length, double edge) {
 }
 
 } // namespace
+
+std::uint64_t Neighbours::nextGeneration() noexcept {
+  static std::atomic<std::uint64_t> counter{0};
+  return counter.fetch_add(1, std::memory_order_relaxed) + 1;
+}
 
 std::uint64_t availableBytes() {
 #if defined(_WIN32)
@@ -133,6 +140,35 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
            static_cast<double>(nz_) * static_cast<double>(sizeof(std::int32_t));
   };
   set_axes();
+  double frac_inv[9]{};
+  bool use_frac = false;
+  if (use_general_ && periodic_[0] && periodic_[1] && periodic_[2]) {
+    const double m0 = box_[4] * box_[8] - box_[5] * box_[7];
+    const double m1 = box_[3] * box_[8] - box_[5] * box_[6];
+    const double m2 = box_[3] * box_[7] - box_[4] * box_[6];
+    const double det = box_[0] * m0 - box_[1] * m1 + box_[2] * m2;
+    if (std::isfinite(det) && det != 0.0) {
+      frac_inv[0] = m0 / det;
+      frac_inv[1] = (box_[2] * box_[7] - box_[1] * box_[8]) / det;
+      frac_inv[2] = (box_[1] * box_[5] - box_[2] * box_[4]) / det;
+      frac_inv[3] = -m1 / det;
+      frac_inv[4] = (box_[0] * box_[8] - box_[2] * box_[6]) / det;
+      frac_inv[5] = (box_[2] * box_[3] - box_[0] * box_[5]) / det;
+      frac_inv[6] = m2 / det;
+      frac_inv[7] = (box_[1] * box_[6] - box_[0] * box_[7]) / det;
+      frac_inv[8] = (box_[0] * box_[4] - box_[1] * box_[3]) / det;
+      const double d0 = std::hypot(frac_inv[0], frac_inv[3], frac_inv[6]);
+      const double d1 = std::hypot(frac_inv[1], frac_inv[4], frac_inv[7]);
+      const double d2 = std::hypot(frac_inv[2], frac_inv[5], frac_inv[8]);
+      if (std::isfinite(d0) && std::isfinite(d1) && std::isfinite(d2) &&
+          d0 > 0.0 && d1 > 0.0 && d2 > 0.0) {
+        nx_ = axisCount(1.0, edge * d0);
+        ny_ = axisCount(1.0, edge * d1);
+        nz_ = axisCount(1.0, edge * d2);
+        use_frac = true;
+      }
+    }
+  }
   const auto avail = availableBytes();
   if (avail > 0 && bytes_of() > static_cast<double>(avail)) {
     bool any_open = false;
@@ -186,9 +222,38 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     return i;
   };
   for (std::size_t a = 0; a < n; ++a) {
-    const int ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
-    const int iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
-    const int iz = bin(xyz[3 * a + 2] - origin[2], span[2], nz_);
+    int ix = 0;
+    int iy = 0;
+    int iz = 0;
+    if (use_frac) {
+      auto bin_frac = [](double s, int naxis) {
+        if (naxis <= 1 || !std::isfinite(s)) {
+          return 0;
+        }
+        double wrapped = s - std::floor(s);
+        if (!(wrapped >= 0.0) || wrapped >= 1.0) {
+          wrapped = 0.0;
+        }
+        auto i = static_cast<int>(wrapped * static_cast<double>(naxis));
+        if (i >= naxis) {
+          i = naxis - 1;
+        }
+        if (i < 0) {
+          i = 0;
+        }
+        return i;
+      };
+      const double x = xyz[3 * a];
+      const double y = xyz[3 * a + 1];
+      const double z = xyz[3 * a + 2];
+      ix = bin_frac(x * frac_inv[0] + y * frac_inv[3] + z * frac_inv[6], nx_);
+      iy = bin_frac(x * frac_inv[1] + y * frac_inv[4] + z * frac_inv[7], ny_);
+      iz = bin_frac(x * frac_inv[2] + y * frac_inv[5] + z * frac_inv[8], nz_);
+    } else {
+      ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
+      iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
+      iz = bin(xyz[3 * a + 2] - origin[2], span[2], nz_);
+    }
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
@@ -382,6 +447,7 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     return;
   }
   reused_ = false;
+  generation_ = nextGeneration();
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
   len_[0] = box9[0];

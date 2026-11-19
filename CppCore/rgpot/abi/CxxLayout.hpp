@@ -55,6 +55,8 @@
 
 #if defined(_WIN32) && defined(RGPOT_CXX_LAYOUT_BUILDING)
 #define RGPOT_CXX_LAYOUT_API __declspec(dllexport)
+#elif !defined(_WIN32)
+#define RGPOT_CXX_LAYOUT_API __attribute__((visibility("default")))
 #else
 #define RGPOT_CXX_LAYOUT_API
 #endif

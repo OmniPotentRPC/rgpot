@@ -9,6 +9,7 @@
 #include <cstring>
 #include <limits>
 #include <map>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -1097,4 +1098,137 @@ TEST_CASE("a directed walk gives a lower partner the negated vector of the half 
       }
     }
   }
+}
+
+TEST_CASE(
+    "Neighbours generation id advances on construction, rebuild, copy and move",
+    "[nlist][generation]") {
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  auto pos = fcc(3, a);
+  const std::size_t n = pos.size() / 3;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 5.0;
+  spec.skin = 1.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+
+  rgpot::nlist::Neighbours first;
+  const auto g_ctor = first.generation();
+  REQUIRE(g_ctor > 0);
+
+  first.update(pos.data(), n, box, spec);
+  const auto g_build1 = first.generation();
+  REQUIRE(g_build1 > g_ctor);
+
+  // Within-skin reuse preserves the generation id.
+  for (double &x : pos) {
+    x += 0.05;
+  }
+  first.update(pos.data(), n, box, spec);
+  REQUIRE(first.reused());
+  REQUIRE(first.generation() == g_build1);
+
+  // Past-skin rebuild assigns a new generation id.
+  pos[0] += 1.0;
+  first.update(pos.data(), n, box, spec);
+  REQUIRE_FALSE(first.reused());
+  const auto g_build2 = first.generation();
+  REQUIRE(g_build2 > g_build1);
+
+  // Copy construction and copy assignment assign fresh generation ids.
+  rgpot::nlist::Neighbours copy_ctor(first);
+  const auto g_copy_ctor = copy_ctor.generation();
+  REQUIRE(g_copy_ctor > g_build2);
+
+  rgpot::nlist::Neighbours copy_assign;
+  const auto g_before_copy_assign = copy_assign.generation();
+  copy_assign = first;
+  const auto g_copy_assign = copy_assign.generation();
+  REQUIRE(g_copy_assign > g_before_copy_assign);
+  REQUIRE(g_copy_assign != first.generation());
+
+  // Move construction and move assignment assign fresh generation ids to both
+  // destination and moved-from instances.
+  rgpot::nlist::Neighbours move_ctor(std::move(copy_ctor));
+  const auto g_move_ctor = move_ctor.generation();
+  REQUIRE(g_move_ctor > g_copy_assign);
+  REQUIRE(copy_ctor.generation() != g_copy_ctor);
+  REQUIRE(copy_ctor.generation() != g_move_ctor);
+
+  rgpot::nlist::Neighbours move_assign;
+  move_assign = std::move(copy_assign);
+  REQUIRE(move_assign.generation() > g_move_ctor);
+  REQUIRE(copy_assign.generation() != g_copy_assign);
+  REQUIRE(copy_assign.generation() != move_assign.generation());
+}
+
+TEST_CASE("fastTiles stencil cache invalidates when a streaming Neighbours "
+          "reuses a destroyed address",
+          "[nlist][generation]") {
+  const double a = 3.6;
+  const double side = 6 * a;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const auto pos1 = fcc(6, a);
+  const std::size_t n = pos1.size() / 3;
+  // Displace atom 0 by 0.2 A in x so pos2 has distinct pair distances while
+  // keeping the same grid dimensions (nx_, ny_, nz_) and search radius.
+  auto pos2 = pos1;
+  pos2[0] += 0.2;
+
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 4.5;
+  spec.skin = 0.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stream;
+
+  auto totalR2 = [&](rgpot::nlist::Neighbours &nb) {
+    double sum = 0.0;
+    nb.forHalf(0, static_cast<std::int64_t>(n),
+               [&](std::int32_t, std::int32_t, double, double, double,
+                   double r2) { sum += r2; });
+    return sum;
+  };
+
+  double want1 = 0.0;
+  {
+    rgpot::nlist::Neighbours ref1;
+    ref1.update(pos1.data(), n, box, spec);
+    want1 = totalR2(ref1);
+  }
+  double want2 = 0.0;
+  {
+    rgpot::nlist::Neighbours ref2;
+    ref2.update(pos2.data(), n, box, spec);
+    want2 = totalR2(ref2);
+  }
+  REQUIRE(std::abs(want2 - want1) > 1e-3);
+
+  // Use a single coordinate buffer and in-place std::optional<Neighbours> so
+  // both `this` and `xyz_` are identical across the two instances, and step 2
+  // on the second instance has `reused() == true` so `reused_ || memcmp(...)`
+  // is true without comparing `cache.xyz`.
+  std::vector<double> xyz_buf = pos1;
+  std::optional<rgpot::nlist::Neighbours> opt;
+  opt.emplace();
+  const void *addr1 = &(*opt);
+  opt->update(xyz_buf.data(), n, box, spec);
+  REQUIRE(totalR2(*opt) == want1);
+  opt.reset();
+
+  // Reconstruct in place at the exact same address with pos2 in xyz_buf.
+  xyz_buf = pos2;
+  opt.emplace();
+  REQUIRE(&(*opt) == addr1);
+  // First update builds bins on pos2 (without calling forHalf yet, so fastTiles
+  // cache still holds instance 1's tile). Second update with identical xyz_buf
+  // sets reused_ = true.
+  opt->update(xyz_buf.data(), n, box, spec);
+  REQUIRE_FALSE(opt->reused());
+  opt->update(xyz_buf.data(), n, box, spec);
+  REQUIRE(opt->reused());
+
+  const double got2 = totalR2(*opt);
+  REQUIRE(got2 == want2);
 }

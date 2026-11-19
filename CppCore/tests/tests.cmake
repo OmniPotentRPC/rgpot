@@ -377,9 +377,16 @@ target_include_directories(rgpot_layout_fixture PRIVATE CppCore)
 target_compile_definitions(rgpot_layout_fixture PRIVATE ${_rgpot_test_definitions})
 target_link_libraries(rgpot_layout_fixture PRIVATE rgpot::rgpot)
 set_target_properties(rgpot_layout_fixture PROPERTIES PREFIX "lib")
+set_target_properties(rgpot_layout_fixture PROPERTIES
+                      CXX_VISIBILITY_PRESET hidden)
 rgpot_test_executable(cxx_layout_test CppCore/tests/CxxLayoutTest.cc)
-rgpot_add_test(CxxLayoutTest COMMAND cxx_layout_test
-  ENVIRONMENT "RGPOT_LAYOUT_FIXTURE=$<TARGET_FILE:rgpot_layout_fixture>")
+set(_rgpot_layout_env
+    "RGPOT_LAYOUT_FIXTURE=$<TARGET_FILE:rgpot_layout_fixture>")
+if(BUILD_SHARED_LIBS)
+  list(APPEND _rgpot_layout_env "RGPOT_SHARED_LIBRARY=1")
+endif()
+rgpot_add_test(CxxLayoutTest COMMAND cxx_layout_test ENVIRONMENT
+               ${_rgpot_layout_env})
 
 # The stamp program does not link librgpot, but takes its feature macros.
 add_executable(print_cxx_layout_stamp CppCore/tests/print_cxx_layout_stamp.cc)
