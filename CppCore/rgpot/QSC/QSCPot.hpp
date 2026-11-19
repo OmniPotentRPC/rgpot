@@ -10,10 +10,14 @@
  *
  * Implements the Quantum Sutton-Chen (Q-SC) many-body potential of Y. Qi,
  * T. Cagin, Y. Kimura and W. A. Goddard III, Phys. Rev. B 59, 3527 (1999),
- * doi:10.1103/PhysRevB.59.3527, with the fcc alloy mixing rules of
- * H. Rafii-Tabar and A. P. Sutton, Philos. Mag. Lett. 63, 217 (1991),
- * doi:10.1080/09500839108205994, and the eight transition-metal parameter
- * rows (Ni, Cu, Rh, Pd, Ag, Ir, Pt, Au) of eOn (client/potentials/QSC).
+ * doi:10.1103/PhysRevB.59.3527, Eqs. (1a)-(1c) with the combination rules of
+ * Eq. (2) (after H. Rafii-Tabar and A. P. Sutton, Philos. Mag. Lett. 63, 217
+ * (1991), doi:10.1080/09500839108205994). The repulsive term and the density
+ * both use the pair-mixed parameters: rho_i = sum_j (a_ij / r_ij)^m_ij. The
+ * quantum correction of the Q-SC force field is carried by the fitted
+ * parameters; the functional form is that of Sutton-Chen. The default table
+ * holds eight metals (Ni, Cu, Rh, Pd, Ag, Ir, Pt, Au) as tabulated in eOn
+ * client/potentials/QSC/Parameters.h, with the Cu length scale of Table I.
  */
 
 // clang-format off

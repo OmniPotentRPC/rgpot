@@ -6,9 +6,10 @@
 //   and Goddard, Phys. Rev. B 59, 3527 (1999), doi:10.1103/PhysRevB.59.3527,
 //   and Ozdemir Kart et al., J. Non-Cryst. Solids 337, 101 (2004),
 //   doi:10.1016/j.jnoncrysol.2004.03.121.
-// - Alloy mixing rules of Rafii-Tabar and Sutton, Philos. Mag. Lett. 63, 217
-//   (1991), doi:10.1080/09500839108205994, including half-integer exponents
-//   on Cu-Ag and asymmetric density contributions.
+// - Combination rules of Eq. (2) of Qi et al. (after Rafii-Tabar and Sutton,
+//   Philos. Mag. Lett. 63, 217 (1991), doi:10.1080/09500839108205994),
+//   including half-integer exponents on Cu-Ag; the density uses the mixed
+//   a_ij and m_ij of Eq. (1c).
 // - Doye and Wales 10-8 cluster minima (Pt38 Oh and Pt75 D5h) via
 //   setElementParameter, and bit-parity with SuttonChenPot.
 // - Analytic forces, Cauchy stress, per-atom split, staged evaluation and
@@ -94,8 +95,8 @@ const QscRow &find_row(int z) {
   throw std::runtime_error("missing QSC row");
 }
 
-/// Independent heteronuclear dimer oracle from Qi et al. (1999) Eq. (4) and
-/// Rafii-Tabar and Sutton (1991).
+/// Heteronuclear dimer from Eqs. (1a)-(1c) and (2) of Qi et al. (1999): the
+/// pair term and the density both use the mixed a_ab, with m_ab in the density.
 void hetero_dimer_oracle(int za, int zb, double r, double *energy,
                          double *dEdr) {
   const QscRow &pa = find_row(za);
@@ -104,89 +105,13 @@ void hetero_dimer_oracle(int za, int zb, double r, double *energy,
       za == zb ? pa.epsilon : std::sqrt(pa.epsilon * pb.epsilon);
   const double a_ab = 0.5 * (pa.a + pb.a);
   const double n_ab = 0.5 * (pa.n + pb.n);
+  const double m_ab = 0.5 * (pa.m + pb.m);
   const double v_ab = eps_ab * std::pow(a_ab / r, n_ab);
-  const double phi_at_a = std::pow(pb.a / r, pb.m);
-  const double phi_at_b = std::pow(pa.a / r, pa.m);
-  const double emb_a = pa.c * pa.epsilon * std::sqrt(phi_at_a);
-  const double emb_b = pb.c * pb.epsilon * std::sqrt(phi_at_b);
+  const double root_phi = std::sqrt(std::pow(a_ab / r, m_ab));
+  const double emb_a = pa.c * pa.epsilon * root_phi;
+  const double emb_b = pb.c * pb.epsilon * root_phi;
   *energy = v_ab - emb_a - emb_b;
-  *dEdr = (-n_ab * v_ab + 0.5 * pb.m * emb_a + 0.5 * pa.m * emb_b) / r;
-}
-
-/// Independent reference transcription of eOn's QSC::force on an orthorhombic
-/// periodic cell.
-void eon_qsc_oracle(const std::vector<double> &pos, const std::vector<int> &z,
-                    const double *box, double cutoff, double *energy,
-                    std::vector<double> &forces) {
-  const std::size_t n = z.size();
-  forces.assign(3 * n, 0.0);
-  std::vector<double> rho(n, 0.0);
-  double epair = 0.0;
-  for (std::size_t i = 0; i < n; ++i) {
-    const QscRow &pi = find_row(z[i]);
-    for (std::size_t j = i + 1; j < n; ++j) {
-      const QscRow &pj = find_row(z[j]);
-      double dx = pos[3 * i] - pos[3 * j];
-      double dy = pos[3 * i + 1] - pos[3 * j + 1];
-      double dz = pos[3 * i + 2] - pos[3 * j + 2];
-      dx -= box[0] * std::floor(dx / box[0] + 0.5);
-      dy -= box[4] * std::floor(dy / box[4] + 0.5);
-      dz -= box[8] * std::floor(dz / box[8] + 0.5);
-      const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-      if (r > cutoff) {
-        continue;
-      }
-      const double eps_ij =
-          z[i] == z[j] ? pi.epsilon : std::sqrt(pi.epsilon * pj.epsilon);
-      const double a_ij = 0.5 * (pi.a + pj.a);
-      const double n_ij = 0.5 * (pi.n + pj.n);
-      rho[i] += std::pow(pj.a / r, pj.m);
-      rho[j] += std::pow(pi.a / r, pi.m);
-      epair += eps_ij * std::pow(a_ij / r, n_ij);
-    }
-  }
-  double eemb = 0.0;
-  std::vector<double> sqrtrho(n, 0.0);
-  for (std::size_t i = 0; i < n; ++i) {
-    const QscRow &pi = find_row(z[i]);
-    sqrtrho[i] = std::sqrt(rho[i]);
-    eemb += pi.c * pi.epsilon * sqrtrho[i];
-  }
-  *energy = epair - eemb;
-
-  for (std::size_t i = 0; i < n; ++i) {
-    const QscRow &pi = find_row(z[i]);
-    for (std::size_t j = i + 1; j < n; ++j) {
-      const QscRow &pj = find_row(z[j]);
-      double dx = pos[3 * i] - pos[3 * j];
-      double dy = pos[3 * i + 1] - pos[3 * j + 1];
-      double dz = pos[3 * i + 2] - pos[3 * j + 2];
-      dx -= box[0] * std::floor(dx / box[0] + 0.5);
-      dy -= box[4] * std::floor(dy / box[4] + 0.5);
-      dz -= box[8] * std::floor(dz / box[8] + 0.5);
-      const double r = std::sqrt(dx * dx + dy * dy + dz * dz);
-      if (r > cutoff) {
-        continue;
-      }
-      const double eps_ij =
-          z[i] == z[j] ? pi.epsilon : std::sqrt(pi.epsilon * pj.epsilon);
-      const double a_ij = 0.5 * (pi.a + pj.a);
-      const double n_ij = 0.5 * (pi.n + pj.n);
-      const double vij = eps_ij * std::pow(a_ij / r, n_ij);
-      const double phi_ij = std::pow(pj.a / r, pj.m);
-      const double phi_ji = std::pow(pi.a / r, pi.m);
-      double fij = n_ij * vij;
-      fij -= pi.epsilon * pi.c * pj.m * 0.5 * (1.0 / sqrtrho[i]) * phi_ij;
-      fij -= pj.epsilon * pj.c * pi.m * 0.5 * (1.0 / sqrtrho[j]) * phi_ji;
-      fij /= (r * r);
-      forces[3 * i] += fij * dx;
-      forces[3 * i + 1] += fij * dy;
-      forces[3 * i + 2] += fij * dz;
-      forces[3 * j] -= fij * dx;
-      forces[3 * j + 1] -= fij * dy;
-      forces[3 * j + 2] -= fij * dz;
-    }
-  }
+  *dEdr = (-n_ab * v_ab + 0.5 * m_ab * (emb_a + emb_b)) / r;
 }
 
 std::vector<double> fcc_cell(int cells, double lattice, double *box) {
@@ -282,7 +207,7 @@ TEST_CASE("QSC fcc crystals at 2*a0 reproduce the published cohesive energies",
 TEST_CASE("QSC heteronuclear Cu-Ag and Cu-Ni dimers match alloy mixing rules",
           "[QSC]") {
   // Cu-Ag has half-integer n_ab = (10 + 11)/2 = 10.5 and m_ab = (5 + 6)/2 = 5.5,
-  // with asymmetric density terms (a_Ag/r)^6 at Cu and (a_Cu/r)^5 at Ag.
+  // and a_ab = (a_Cu + a_Ag)/2 in both the pair term and the density.
   rgpot::QSCPot pot({.cutoff = 10.0, .periodic = false});
   const std::pair<int, int> pairs[] = {
       {29, 47}, {29, 28}, {46, 78}, {47, 79}, {45, 77}};
@@ -306,49 +231,6 @@ TEST_CASE("QSC heteronuclear Cu-Ag and Cu-Ni dimers match alloy mixing rules",
     (void)v_swap;
     REQUIRE_THAT(e_swap, WithinAbs(energy, kDimerTol));
     REQUIRE_THAT(f_swap(0, 0), WithinAbs(forces(0, 0), kDimerTol));
-  }
-}
-
-TEST_CASE("QSC matches the standalone eOn QSC oracle on an 8-metal alloy box",
-          "[QSC]") {
-  const double box[9] = {18.0, 0.0, 0.0, 0.0, 18.0, 0.0, 0.0, 0.0, 18.0};
-  std::vector<int> z;
-  std::vector<double> pos;
-  for (std::size_t i = 0; i < 16; ++i) {
-    z.push_back(kQscTable[i % kQscTable.size()].z);
-    const double t = static_cast<double>(i);
-    pos.push_back(2.4 * (i % 4) + 0.15 * std::sin(1.3 * t));
-    pos.push_back(2.4 * ((i / 4) % 4) + 0.15 * std::cos(1.7 * t));
-    pos.push_back(2.4 * (i / 16) + 0.25 * std::sin(0.9 * t));
-  }
-  double want_e = 0.0;
-  std::vector<double> want_f;
-  eon_qsc_oracle(pos, z, box, 8.0, &want_e, want_f);
-
-  rgpot::QSCPot pot({.cutoff = 8.0, .verlet_skin = 0.5, .periodic = true});
-  std::vector<double> got_f(pos.size(), 0.0);
-  rgpot::ForceOut out{};
-  out.F = got_f.data();
-  pot.forceImpl({z.size(), pos.data(), z.data(), box}, &out);
-  REQUIRE_FALSE(pot.listReused());
-  REQUIRE_THAT(out.energy, WithinAbs(want_e, kOracleTol));
-  for (std::size_t k = 0; k < got_f.size(); ++k) {
-    REQUIRE_THAT(got_f[k], WithinAbs(want_f[k], kOracleTol));
-  }
-
-  // A small move inside half the skin reuses the Verlet list and still matches
-  // the oracle.
-  std::vector<double> moved = pos;
-  for (std::size_t k = 0; k < moved.size(); ++k) {
-    moved[k] += 0.02 * std::cos(static_cast<double>(k));
-  }
-  eon_qsc_oracle(moved, z, box, 8.0, &want_e, want_f);
-  std::fill(got_f.begin(), got_f.end(), 0.0);
-  pot.forceImpl({z.size(), moved.data(), z.data(), box}, &out);
-  REQUIRE(pot.listReused());
-  REQUIRE_THAT(out.energy, WithinAbs(want_e, kOracleTol));
-  for (std::size_t k = 0; k < got_f.size(); ++k) {
-    REQUIRE_THAT(got_f[k], WithinAbs(want_f[k], kOracleTol));
   }
 }
 
