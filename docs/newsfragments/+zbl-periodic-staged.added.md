@@ -1,0 +1,1 @@
+`ZBLPot` now evaluates periodic cells through the shared neighbour layer (`caps().periodic` is `true`), declares pairwise `locality()`, and provides `densityStage` and `forceStage` hooks so `pair_style rgpot` can domain-decompose `ZBL` across ranks.
