@@ -21,6 +21,10 @@
 
 #include "rgpot/D4Pot/D4Pot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+#ifdef RGPOT_HAS_CACHE
+#include "rgpot/PotentialCache.hpp"
+#include <rocksdb/options.h>
+#endif
 
 using rgpot::types::AtomMatrix;
 using Catch::Matchers::WithinAbs;
@@ -174,6 +178,50 @@ TEST_CASE("D4Pot warm update_structure path is stable", "[d4][capi]") {
   REQUIRE(e1 != e2);
 }
 
+TEST_CASE("D4Pot paramsKey separates distinct configurations", "[d4][params]") {
+  rgpot::D4Config pbe;
+  pbe.functional = "pbe";
+  pbe.charge = 0.0;
+  pbe.atm = true;
+  pbe.periodic = false;
+  rgpot::D4Config blyp = pbe;
+  blyp.functional = "blyp";
+  rgpot::D4Config charged = pbe;
+  charged.charge = 1.0;
+  rgpot::D4Config no_atm = pbe;
+  no_atm.atm = false;
+  rgpot::D4Config periodic = pbe;
+  periodic.periodic = true;
+
+  rgpot::D4Pot a(pbe);
+  rgpot::D4Pot b(blyp);
+  rgpot::D4Pot c(charged);
+  rgpot::D4Pot d(no_atm);
+  rgpot::D4Pot e(periodic);
+  REQUIRE(a.paramsKey() != b.paramsKey());
+  REQUIRE(a.paramsKey() != c.paramsKey());
+  REQUIRE(a.paramsKey() != d.paramsKey());
+  REQUIRE(a.paramsKey() != e.paramsKey());
+
+#ifdef RGPOT_HAS_CACHE
+  AtomMatrix positions(3, 3);
+  std::vector<int> atmtypes;
+  std::array<std::array<double, 3>, 3> box{};
+  fill_water(positions, atmtypes, box);
+  const std::string db_path = "/tmp/rgpot_test_rocksdb_d4_params";
+  rocksdb::DestroyDB(db_path, rocksdb::Options());
+  rgpot::cache::PotentialCache cache(db_path);
+  a.setCache(&cache);
+  b.setCache(&cache);
+  (void)a(positions, atmtypes, box);
+  (void)b(positions, atmtypes, box);
+  REQUIRE(cache.counts().computed == 2);
+  (void)a(positions, atmtypes, box);
+  (void)b(positions, atmtypes, box);
+  REQUIRE(cache.counts().served == 2);
+#endif
+}
+
 TEST_CASE("D4Pot reads the species again when only the species change",
           "[d4]") {
   AtomMatrix positions(3, 3);
@@ -195,4 +243,35 @@ TEST_CASE("D4Pot reads the species again when only the species change",
       REQUIRE_THAT(f_reused(i, k), WithinAbs(f_fresh(i, k), 1e-12));
     }
   }
+}
+
+TEST_CASE("D4Pot of a molecule reads no box", "[d4][box]") {
+  const std::vector<double> pos(kWaterPos, kWaterPos + 9);
+  auto run = [&](rgpot::D4Pot &pot, const double *box) {
+    std::vector<double> forces(9, 0.0);
+    const rgpot::ForceInput in{3, pos.data(), kWaterZ, box};
+    rgpot::ForceOut out{};
+    out.F = forces.data();
+    pot.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
+    return std::make_pair(out.energy, forces);
+  };
+  const double wide[9] = {100.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 100.0};
+
+  rgpot::D4Pot boxed;
+  const auto with_box = run(boxed, wide);
+
+  // The first call builds the structure, the second updates it; neither
+  // may read a box that was not passed.
+  rgpot::D4Pot open;
+  const auto first = run(open, nullptr);
+  const auto warm = run(open, nullptr);
+  REQUIRE(first.first == with_box.first);
+  REQUIRE(first.second == with_box.second);
+  REQUIRE(warm.first == with_box.first);
+  REQUIRE(warm.second == with_box.second);
+
+  rgpot::D4Config lattice_config;
+  lattice_config.periodic = true;
+  rgpot::D4Pot lattice(lattice_config);
+  REQUIRE_THROWS_AS(run(lattice, nullptr), std::invalid_argument);
 }
