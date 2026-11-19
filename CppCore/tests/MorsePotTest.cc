@@ -11,6 +11,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -526,8 +528,7 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
       CHECK(par_pot.retainedPairs() == retained_front);
 
       const auto snap_back = rgpot::detail::morseStoredSplitSnapshot();
-      CHECK(snap_back.owner == snap_front.owner);
-      CHECK(snap_back.build_id == snap_front.build_id + 1);
+      CHECK(snap_back.generation > snap_front.generation);
       CHECK(snap_back.atoms == snap_front.atoms);
       CHECK(snap_back.slices == snap_front.slices);
       CHECK(snap_back.total_up == snap_front.total_up);
@@ -542,5 +543,153 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
       }
       CHECK(countBitDiffs(got_back, ref_back) == 0);
     }
+  }
+}
+
+TEST_CASE("MorsePot workspace invalidates when a new potential reuses a "
+          "destroyed address",
+          "[MorsePot][threads][b1]") {
+  ThreadGuard guard;
+  const rgpot::MorseConfig cu_vacancy{.De = 1.0,
+                                      .a = 4.0 / 2.55,
+                                      .re = 2.55,
+                                      .cutoff = 5.3,
+                                      .switch_width = 0.0};
+  const auto sys1 = fccVacancy(13, 2.55 * std::sqrt(2.0), 29);
+  const std::size_t n = sys1.z.size();
+  REQUIRE(n >= rgpot::kTeamMinAtoms);
+
+  // Rotate atom numbering so sys2 is a distinct system with the same atom and
+  // stored candidate slot counts as sys1.
+  auto sys2 = sys1;
+  std::rotate(sys2.pos.begin(), sys2.pos.begin() + 3 * (n / 3), sys2.pos.end());
+
+  ThreadGuard::set("1");
+  rgpot::MorsePot ref_pot(cu_vacancy);
+  ref_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto want = runFullEval(ref_pot, sys2.pos, sys2.z, sys2.box);
+
+  // Preallocate buffers before pot1 so destroying pot1 and constructing pot2
+  // back-to-back encourages the allocator to recycle the same address.
+  std::vector<double> fbuf(3 * n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = fbuf.data();
+
+  ThreadGuard::set("4");
+  auto pot = std::make_unique<rgpot::MorsePot>(cu_vacancy);
+  pot->setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const void *addr1 = pot.get();
+  pot->forceImpl({n, sys1.pos.data(), sys1.z.data(), sys1.box.data()}, &out);
+  const std::size_t slots1 = pot->retainedPairs();
+  pot.reset();
+
+  pot = std::make_unique<rgpot::MorsePot>(cu_vacancy);
+  pot->setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const void *addr2 = pot.get();
+  const bool heap_reused = (addr1 == addr2);
+
+  // Build pot2's stored list on 1 thread, then evaluate on 4 threads where
+  // neighbours_.reused() is true and builds() == 1 matches pot1.
+  ThreadGuard::set("1");
+  pot->forceImpl({n, sys2.pos.data(), sys2.z.data(), sys2.box.data()}, &out);
+  REQUIRE(pot->retainedPairs() == slots1);
+
+  ThreadGuard::set("4");
+  const auto got_heap = runFullEval(*pot, sys2.pos, sys2.z, sys2.box);
+  double max_df_heap = 0.0;
+  double max_fresh = 0.0;
+  for (std::size_t k = 0; k < 3 * n; ++k) {
+    max_df_heap =
+        std::max(max_df_heap, std::abs(got_heap.forces[k] - want.forces[k]));
+    max_fresh = std::max(max_fresh, std::abs(want.forces[k]));
+  }
+  INFO("heap MorsePot address1=" << addr1 << " address2=" << addr2 << " reused="
+                                 << heap_reused << " max_df=" << max_df_heap
+                                 << " max_fresh=" << max_fresh);
+  CHECK(pot->listReused());
+  CHECK(countBitDiffs(got_heap, want) == 0);
+  pot.reset();
+
+  // Also exercise in-place reconstruction via std::optional so address reuse
+  // is guaranteed even when a sanitizer quarantines heap frees.
+  std::optional<rgpot::MorsePot> inplace;
+  ThreadGuard::set("4");
+  inplace.emplace(cu_vacancy);
+  inplace->setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const void *opt_addr1 = &(*inplace);
+  inplace->forceImpl({n, sys1.pos.data(), sys1.z.data(), sys1.box.data()},
+                     &out);
+  inplace.reset();
+
+  inplace.emplace(cu_vacancy);
+  inplace->setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const void *opt_addr2 = &(*inplace);
+  REQUIRE(opt_addr1 == opt_addr2);
+
+  ThreadGuard::set("1");
+  inplace->forceImpl({n, sys2.pos.data(), sys2.z.data(), sys2.box.data()},
+                     &out);
+  ThreadGuard::set("4");
+  const auto got_inplace = runFullEval(*inplace, sys2.pos, sys2.z, sys2.box);
+  double max_df_inplace = 0.0;
+  for (std::size_t k = 0; k < 3 * n; ++k) {
+    max_df_inplace = std::max(max_df_inplace,
+                              std::abs(got_inplace.forces[k] - want.forces[k]));
+  }
+  INFO("in-place MorsePot address=" << opt_addr2 << " max_df=" << max_df_inplace
+                                    << " max_fresh=" << max_fresh);
+  CHECK(inplace->listReused());
+  CHECK(countBitDiffs(got_inplace, want) == 0);
+
+  // Copy and move transitions on MorsePot must also assign fresh Neighbours
+  // generation ids, so an in-place replacement or move-assignment cannot reuse
+  // a stale stored half-index or split cache.
+  {
+    std::optional<rgpot::MorsePot> copy_slot;
+    ThreadGuard::set("1");
+    rgpot::MorsePot src2(cu_vacancy);
+    src2.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    src2.forceImpl({n, sys2.pos.data(), sys2.z.data(), sys2.box.data()}, &out);
+
+    ThreadGuard::set("4");
+    copy_slot.emplace(cu_vacancy);
+    copy_slot->setNeighbourMode(rgpot::nlist::Mode::Stored);
+    copy_slot->forceImpl({n, sys1.pos.data(), sys1.z.data(), sys1.box.data()},
+                         &out);
+    const void *copy_addr1 = &(*copy_slot);
+
+    // Copy-construct in place at the destroyed address.
+    copy_slot.reset();
+    copy_slot.emplace(src2);
+    REQUIRE(&(*copy_slot) == copy_addr1);
+    CHECK(countBitDiffs(runFullEval(*copy_slot, sys2.pos, sys2.z, sys2.box),
+                        want) == 0);
+
+    // Copy-assign over an active instance that just evaluated sys1 on 4
+    // threads.
+    copy_slot->forceImpl({n, sys1.pos.data(), sys1.z.data(), sys1.box.data()},
+                         &out);
+    *copy_slot = src2;
+    CHECK(countBitDiffs(runFullEval(*copy_slot, sys2.pos, sys2.z, sys2.box),
+                        want) == 0);
+
+    // Move-construct in place at the destroyed address.
+    rgpot::MorsePot move_src_ctor = src2;
+    copy_slot->forceImpl({n, sys1.pos.data(), sys1.z.data(), sys1.box.data()},
+                         &out);
+    copy_slot.reset();
+    copy_slot.emplace(std::move(move_src_ctor));
+    REQUIRE(&(*copy_slot) == copy_addr1);
+    CHECK(countBitDiffs(runFullEval(*copy_slot, sys2.pos, sys2.z, sys2.box),
+                        want) == 0);
+
+    // Move-assign over an active instance that just evaluated sys1 on 4
+    // threads.
+    rgpot::MorsePot move_src_assign = src2;
+    copy_slot->forceImpl({n, sys1.pos.data(), sys1.z.data(), sys1.box.data()},
+                         &out);
+    *copy_slot = std::move(move_src_assign);
+    CHECK(countBitDiffs(runFullEval(*copy_slot, sys2.pos, sys2.z, sys2.box),
+                        want) == 0);
   }
 }

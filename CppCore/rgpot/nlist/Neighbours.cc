@@ -382,6 +382,7 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     return;
   }
   reused_ = false;
+  generation_ = nextGeneration();
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
   len_[0] = box9[0];
