@@ -10,6 +10,7 @@
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
+#include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_EAM_TABLE
 #include "rgpot/EAMTable/EAMTablePot.hpp"
 #endif
@@ -201,6 +202,14 @@ Built make(const std::string &key, Reader &r, double fallback) {
     c.switch_width = r.real("switch_width", c.switch_width);
     return ownCut<MorsePot>(c);
   }
+  if (key == "zbl") {
+    ZBLConfig c;
+    c.cut_inner = r.real("cut_inner", c.cut_inner);
+    c.cut_global = r.real("cut_global", fallback > 0.0 ? fallback : c.cut_global);
+    Built out = own<ZBLPot>(c);
+    out.cutoff = c.cut_global;
+    return out;
+  }
   if (key == "suttonchen") {
     const std::string preset = lower(r.text("preset", ""));
     SuttonChenConfig c;
@@ -280,7 +289,7 @@ Built make(const std::string &key, Reader &r, double fallback) {
 } // namespace
 
 std::string names() {
-  std::string out = "LJ Morse SuttonChen";
+  std::string out = "LJ Morse ZBL SuttonChen";
 #ifdef RGPOT_HAS_EAM_TABLE
   out += " EAMTable";
 #endif
