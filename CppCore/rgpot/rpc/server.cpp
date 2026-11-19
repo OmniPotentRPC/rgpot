@@ -396,9 +396,14 @@ int runServer(int argc, char *argv[]
 ) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
-    std::cerr << "  Available PotentialTypes: LJ, LJCluster, Morse, ZBL"
+    std::cerr << "  Available PotentialTypes: LJ, LJCluster, Morse, ZBL, "
+                 "Eckart, MullerBrown, ModifiedMullerBrown, LEPS-HH2, "
+                 "LEPS-HCl2, LEPS-FH2, DoubleWell, CoupledProtonWell"
 #ifdef RGPOT_HAS_FORTRAN_POTS
               << ", CuH2"
+#endif
+#ifdef RGPOT_HAS_CBE
+              << ", CBE"
 #endif
 #ifdef RGPOT_HAS_IPI
               << ", IPI:unix:<path>, IPI:tcp:<host>:<port>"
@@ -429,7 +434,6 @@ int runServer(int argc, char *argv[]
 #ifdef RGPOT_HAS_CP2K
               << ", CP2K"
 #endif
-              << ", DoubleWell, CoupledProtonWell"
               << std::endl;
     return 1;
   }
