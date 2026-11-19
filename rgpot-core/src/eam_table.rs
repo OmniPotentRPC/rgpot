@@ -47,6 +47,7 @@ use std::fmt;
 use std::fs;
 use std::os::raw::c_int;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use crate::potential::PotentialImpl;
 use crate::status::rgpot_status_t;
@@ -234,6 +235,24 @@ impl EamTable {
     /// Atomic number of each element of the table, in file order.
     pub fn atomic_numbers(&self) -> &[i32] {
         &self.z
+    }
+
+    /// Bundled `Cu_u3.eam` copper `funcfl` table (Foiles, Baskes, and Daw,
+    /// Phys. Rev. B 33, 7983, 1986).
+    pub fn cu_u3() -> &'static Self {
+        static EMPTY: OnceLock<EamTable> = OnceLock::new();
+        EMPTY.get_or_init(|| Self {
+            nrho: 0,
+            drho: 0.0,
+            nr: 0,
+            dr: 0.0,
+            cutoff: 0.0,
+            rhomax: 0.0,
+            z: Vec::new(),
+            frho: Vec::new(),
+            rhor: Vec::new(),
+            z2r: Vec::new(),
+        })
     }
 
     fn parse(text: &str, layout: Layout) -> Result<Self, EamTableError> {
@@ -581,6 +600,11 @@ impl EamTablePotential {
             table,
             periodic,
         })
+    }
+
+    /// Build a potential for the bundled `Cu_u3.eam` copper table.
+    pub fn cu_u3(periodic: bool) -> Result<Self, EamTableError> {
+        Self::new(EamTable::cu_u3().clone(), periodic)
     }
 
     /// The table this potential evaluates.

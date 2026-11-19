@@ -23,7 +23,7 @@ use rgpot_core::c_api::eam_table::rgpot_potential_new_eam_table;
 use rgpot_core::c_api::potential::{rgpot_potential_calculate, rgpot_potential_free};
 use rgpot_core::c_api::types::{rgpot_force_input_create, rgpot_force_input_free};
 use rgpot_core::eam_table::{
-    EamTableError, EamTableFormat, EamTablePotential, RGPOT_EAM_TABLE_AUTO,
+    EamTable, EamTableError, EamTableFormat, EamTablePotential, RGPOT_EAM_TABLE_AUTO,
     RGPOT_EAM_TABLE_FINNIS_SINCLAIR, RGPOT_EAM_TABLE_FUNCFL, RGPOT_EAM_TABLE_SETFL,
 };
 use rgpot_core::status::{rgpot_last_error, rgpot_status_t};
@@ -409,4 +409,22 @@ fn a_free_cluster_ignores_the_box_and_loses_the_bonds_past_its_surface() {
     assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS, "{}", last_error());
     assert!(output.energy > periodic.energy, "{}", output.energy);
     unsafe { rgpot_tensor_free(output.forces) };
+}
+
+#[test]
+fn bundled_cu_u3_matches_lammps_vacancy_reference() {
+    let reference = reference("cu_u3_vacancy.ref");
+    let table = EamTable::cu_u3();
+    assert_eq!(table.atomic_numbers(), &[29]);
+    assert!((table.cutoff() - 4.95).abs() < 1.0e-12);
+    let potential = EamTablePotential::cu_u3(true).expect("bundled Cu_u3.eam");
+    let answer = potential
+        .force(&reference.positions, &reference.z, &reference.cell)
+        .expect("evaluate bundled Cu_u3 vacancy");
+    assert_matches(
+        "bundled Cu_u3 vacancy",
+        answer.energy,
+        &answer.forces,
+        &reference,
+    );
 }
