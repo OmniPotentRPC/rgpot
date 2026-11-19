@@ -559,7 +559,7 @@ private:
                   double dy = 0;
                   double dz = 0;
                   foldPair(i, j, dx, dy, dz);
-                  if (!(dx * dx + dy * dy + dz * dz > search2)) {
+                  if (dx * dx + dy * dy + dz * dz <= search2) {
                     hit = true;
                     break;
                   }
