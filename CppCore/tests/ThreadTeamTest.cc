@@ -145,6 +145,15 @@ System cluster(std::size_t n, double a, int z) {
   return s;
 }
 
+// Species from `table` in a fixed irregular order, so that most neighbour
+// pairs have two different species (s_lo != s_hi).
+System alloy(System s, const std::vector<int> &table) {
+  for (std::size_t k = 0; k < s.z.size(); ++k) {
+    s.z[k] = table[(7 * k + k / 5) % table.size()];
+  }
+  return s;
+}
+
 // Everything a call reports: the energy, forces and stress of forceImpl,
 // then, with `split` and where the potential splits its sums over the
 // atoms, those of forcePerAtom with the per-atom energies and virials.
@@ -623,6 +632,33 @@ TEST_CASE("many-body potentials give the one-thread bits on any team",
     checkPotential("stored Tersoff", mode<rgpot::TersoffSiC>(kStored), si);
     checkPotential("streamed Tersoff", mode<rgpot::TersoffSiC>(kStream), si);
   }
+}
+
+TEST_CASE("multi-species QSC gives the one-thread bits on any team",
+          "[threads][manybody][qsc]") {
+  const std::vector<int> metals = {29, 47, 28, 79};
+  rgpot::QSCConfig qsc;
+  qsc.periodic = true;
+  qsc.stress = true;
+  for (const int side : {4, 13}) {
+    qsc.cutoff = side == 4 ? 7.0 : 4.2;
+    const auto cell = alloy(fcc(side, 3.9, 29), metals);
+    std::size_t unlike = 0;
+    for (std::size_t k = 1; k < cell.z.size(); ++k) {
+      unlike += cell.z[k] != cell.z[k - 1];
+    }
+    REQUIRE(unlike > cell.z.size() / 2);
+    checkPotential("stored multi-species QSC", mode<rgpot::QSCPot>(qsc, kStored), cell);
+    checkPotential("streamed multi-species QSC", mode<rgpot::QSCPot>(qsc, kStream), cell);
+  }
+
+  rgpot::QSCConfig open;
+  open.periodic = false;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto block = alloy(cluster(55, 3.9, 29), metals);
+  checkPotential("stored multi-species QSC on every pair", mode<rgpot::QSCPot>(open, kStored), block);
+  checkPotential("streamed multi-species QSC on every pair", mode<rgpot::QSCPot>(open, kStream), block);
 }
 
 namespace {
