@@ -118,6 +118,7 @@ impl RpcClient {
                 atm_builder.set(i as u32, val);
             }
 
+            fip.set_compute_stress(input.compute_stress);
             let mut box_builder = fip.init_box(9);
             for (i, &val) in box_data.iter().enumerate() {
                 box_builder.set(i as u32, val);
@@ -154,6 +155,23 @@ impl RpcClient {
         // Create an owning DLPack tensor for the forces
         let forces_vec: Vec<f64> = (0..forces.len()).map(|i| forces.get(i)).collect();
         output.forces = create_owned_f64_tensor(forces_vec, vec![n as i64, 3]);
+        output.stress = [0.0; 9];
+        output.has_stress = 0;
+        let stress = result
+            .get_stress()
+            .map_err(|e| format!("failed to read stress: {e}"))?;
+        if stress.len() != 0 {
+            if stress.len() != 9 {
+                return Err(format!(
+                    "stress array size mismatch: expected 9, got {}",
+                    stress.len()
+                ));
+            }
+            for i in 0..9 {
+                output.stress[i] = stress.get(i as u32);
+            }
+            output.has_stress = 1;
+        }
 
         Ok(())
     }
@@ -323,6 +341,7 @@ mod tests {
             positions: pos_t,
             atomic_numbers: atm_t,
             box_matrix: box_t,
+            ..rgpot_force_input_t::default()
         };
         TestInput {
             input,
@@ -341,6 +360,7 @@ mod tests {
             positions: std::ptr::null_mut(),
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let err = unsafe { extract_cpu_input(&input, 1) }.unwrap_err();
         assert_eq!(err, "positions tensor is NULL");
@@ -353,6 +373,7 @@ mod tests {
             positions: guard.input.positions,
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let err = unsafe { extract_cpu_input(&input, 1) }.unwrap_err();
         assert_eq!(err, "atomic_numbers tensor is NULL");
@@ -365,6 +386,7 @@ mod tests {
             positions: guard.input.positions,
             atomic_numbers: guard.input.atomic_numbers,
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let err = unsafe { extract_cpu_input(&input, 1) }.unwrap_err();
         assert_eq!(err, "box_matrix tensor is NULL");
@@ -423,6 +445,7 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            ..rgpot_force_out_t::default()
         };
         let err = client.calculate(&guard.input, &mut output).unwrap_err();
         assert!(err.contains("connection failed"), "{err}");
@@ -436,6 +459,7 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            ..rgpot_force_out_t::default()
         };
         let err = client.calculate(&guard.input, &mut output).unwrap_err();
         assert!(err.contains("connection failed"), "{err}");

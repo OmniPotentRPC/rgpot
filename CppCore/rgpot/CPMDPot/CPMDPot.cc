@@ -692,7 +692,7 @@ void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
   for (int i = 0; i < n * 3; ++i)
     out->F[static_cast<size_t>(i)] =
         grad[static_cast<size_t>(i)] * NEG_GRAD_TO_FORCE;
-  if (impl_->bundle.last_stress) {
+  if (in.compute_stress && impl_->bundle.last_stress) {
     CPMDCStressTensor tensor{};
     if (impl_->bundle.last_stress(&tensor) == 0 && tensor.valid) {
       for (int i = 0; i < 9; ++i)
@@ -737,7 +737,7 @@ void CPMDPot::Impl::forceSession(const ForceInput &in, ForceOut *out) {
     out->F[i] = forces[i];
   out->has_stress = 0;
   const auto stress = result.getStress();
-  if (stress.size() == 9) {
+  if (in.compute_stress && stress.size() == 9) {
     for (unsigned int i = 0; i < 9; ++i)
       out->stress[i] = stress[i];
     out->has_stress = 1;

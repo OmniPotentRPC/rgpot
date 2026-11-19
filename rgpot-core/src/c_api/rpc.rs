@@ -216,6 +216,7 @@ mod tests {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            ..rgpot_force_out_t::default()
         }
     }
 
@@ -225,6 +226,7 @@ mod tests {
             positions: std::ptr::null_mut(),
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let mut output = make_output();
         let status = unsafe { rgpot_rpc_calculate(std::ptr::null_mut(), &input, &mut output) };
@@ -257,6 +259,7 @@ mod tests {
             positions: std::ptr::null_mut(),
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let status = unsafe { rgpot_rpc_calculate(client, &input, std::ptr::null_mut()) };
         assert_eq!(
@@ -279,6 +282,7 @@ mod tests {
             positions: std::ptr::null_mut(),
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let mut output = make_output();
         let status = unsafe { rgpot_rpc_calculate(client, &input, &mut output) };
@@ -301,6 +305,7 @@ mod tests {
             positions: pos_t,
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let mut output = make_output();
         let status = unsafe { rgpot_rpc_calculate(client, &input, &mut output) };
@@ -328,6 +333,7 @@ mod tests {
             positions: pos_t,
             atomic_numbers: atm_t,
             box_matrix: std::ptr::null_mut(),
+            ..rgpot_force_input_t::default()
         };
         let mut output = make_output();
         let status = unsafe { rgpot_rpc_calculate(client, &input, &mut output) };
@@ -362,6 +368,7 @@ mod tests {
             positions: pos_t,
             atomic_numbers: atm_t,
             box_matrix: box_t,
+            ..rgpot_force_input_t::default()
         };
         let mut output = make_output();
         let status = unsafe { rgpot_rpc_calculate(client, &input, &mut output) };

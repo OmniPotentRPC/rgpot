@@ -142,11 +142,7 @@ impl rgpot_potential_t {
         input: &rgpot_force_input_t,
         n_atoms: usize,
     ) -> Result<Arc<FusedValue>, FusedError> {
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         set_last_error("");
         let status = unsafe { (self.callback)(self.pot_user_data, input, &mut output) };
         let outcome = if status == rgpot_status_t::RGPOT_SUCCESS {
@@ -195,6 +191,7 @@ impl rgpot_potential_t {
                     rgpot_tensor_cpu_i32_1d(atmnrs.as_mut_ptr(), self.n_atoms as i64)
                 },
                 box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(box_.as_mut_ptr()) },
+                ..rgpot_force_input_t::default()
             };
             let outcome = unsafe { self.run_engine(&input, self.n_atoms) };
             unsafe {
@@ -1412,11 +1409,13 @@ mod tests {
                     positions: unsafe { rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), 2, 3) },
                     atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(atm.as_mut_ptr(), 2) },
                     box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(box_.as_mut_ptr()) },
+                    ..rgpot_force_input_t::default()
                 };
                 let mut out = rgpot_force_out_t {
                     forces: std::ptr::null_mut(),
                     energy: 0.0,
                     variance: 0.0,
+                    ..rgpot_force_out_t::default()
                 };
                 let s = unsafe { rgpot_potential_calculate(self.pot, &input, &mut out) };
                 unsafe {
@@ -2275,6 +2274,7 @@ mod tests {
                 positions: unsafe { rgpot_tensor_cpu_f64_2d(pos.as_mut_ptr(), 2, 3) },
                 atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(atm.as_mut_ptr(), 2) },
                 box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                ..rgpot_force_input_t::default()
             };
             let pot = unsafe { &*rig.pot };
             let first = unsafe { pot.hvp_centre(&input) }.unwrap_err();

@@ -25,7 +25,11 @@ public:
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    bool stress = !terms_.empty();
+    for (const auto &term : terms_) {
+      stress = stress && term->caps().stress;
+    }
+    return {.reentrancy = Reentrancy::PerInstance, .stress = stress};
   }
 
   [[nodiscard]] std::size_t size() const noexcept { return terms_.size(); }

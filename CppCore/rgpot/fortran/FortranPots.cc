@@ -148,15 +148,15 @@ RGPOT_FORTRAN_POT_IMPL(EAMAlPot, rgpot_eam_al_force_ws, "EAM-Al")
 
 void SWPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   ensure_fortran_params();
-  double strain[6] = {};
+  StressAccumulator stress(in, out);
   const int status =
       rgpot_sw_force_ws(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos,
-                        in.box, out->F, &out->energy, strain);
+                        in.box, out->F, &out->energy, stress.data());
   if (status != 0) {
     raise("SW", status, m_ws.get());
   }
   out->variance = 0.0;
-  publishCauchyStress(out, strain, cellVolume(in.box));
+  stress.publish(in.box);
 }
 
 void SWPot::forceBatchImpl(const ForceBatch &batch) const {
@@ -164,13 +164,15 @@ void SWPot::forceBatchImpl(const ForceBatch &batch) const {
   for (size_t i = 0; i < batch.nSystems; ++i) {
     const ForceInput &in = batch.in[i];
     ForceOut &out = batch.out[i];
+    StressAccumulator stress(in, &out);
     const int status =
         rgpot_sw_force_ws(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos,
-                          in.box, out.F, &out.energy, nullptr);
+                          in.box, out.F, &out.energy, stress.data());
     if (status != 0) {
       raise("SW", status, m_ws.get());
     }
     out.variance = 0.0;
+    stress.publish(in.box);
   }
 }
 
@@ -180,7 +182,7 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // slower than the warm Fortran gather, so all-silicon stays
   // there. Any other Z needs the 1989 silicon-carbon parameters, which the
   // gather does not have.
-  if (siliconOnly(in)) {
+  if (siliconOnly(in) && !in.compute_stress) {
     ensure_fortran_params();
     const int status = rgpot_tersoff_force_ws(
         m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
@@ -192,10 +194,10 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   } else {
     m_sic.forceImpl(in, out);
   }
-  // The gather writes no stress and caps().stress is false, so no call
-  // reports one, and a reused output keeps no earlier tensor.
-  out->has_stress = 0;
-  std::fill(out->stress, out->stress + 9, 0.0);
+  if (!in.compute_stress) {
+    out->has_stress = 0;
+    std::fill(out->stress, out->stress + 9, 0.0);
+  }
 }
 
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \

@@ -50,6 +50,7 @@ use std::path::Path;
 
 use crate::potential::PotentialImpl;
 use crate::status::rgpot_status_t;
+use crate::stress::StressAccumulator;
 use crate::tensor::create_owned_f64_tensor;
 
 /// Format code of the C ABI: choose from the suffix of the file name.
@@ -704,6 +705,17 @@ impl EamTablePotential {
         atomic_numbers: &[i32],
         cell: &[f64; 9],
     ) -> Result<EamEvaluation, EamTableError> {
+        self.evaluate(positions, atomic_numbers, cell, false)
+            .map(|(answer, _)| answer)
+    }
+
+    fn evaluate(
+        &self,
+        positions: &[f64],
+        atomic_numbers: &[i32],
+        cell: &[f64; 9],
+        compute_stress: bool,
+    ) -> Result<(EamEvaluation, Option<[f64; 9]>), EamTableError> {
         let n = atomic_numbers.len();
         if positions.len() != 3 * n {
             return geometry(format!(
@@ -744,6 +756,7 @@ impl EamTablePotential {
         }
 
         let mut forces = vec![0.0; 3 * n];
+        let mut stress = StressAccumulator::new(compute_stress && self.periodic);
         for pair in &pairs {
             let (at_i, at_j, z2) = self.couple(element[pair.i], element[pair.j]);
             let at = place(pair.r, 1.0 / self.table.dr, self.table.nr);
@@ -759,12 +772,13 @@ impl EamTablePotential {
                 forces[3 * pair.i + k] += fscale * pair.d[k];
                 forces[3 * pair.j + k] -= fscale * pair.d[k];
             }
+            stress.pair_force(fscale, pair.d);
         }
 
         if !energy.is_finite() || forces.iter().any(|f| !f.is_finite()) {
             return Err(EamTableError::NonFinite);
         }
-        Ok(EamEvaluation { energy, forces })
+        Ok((EamEvaluation { energy, forces }, stress.publish(cell)))
     }
 
     /// The potential as a [`PotentialImpl`], the handle the rest of the crate
@@ -836,13 +850,17 @@ pub(crate) unsafe extern "C" fn eam_table_callback(
         };
         let mut matrix = [0.0; 9];
         matrix.copy_from_slice(&cell);
-        match potential.force(&positions, &numbers, &matrix) {
-            Ok(answer) => {
+        match potential.evaluate(&positions, &numbers, &matrix, input.compute_stress) {
+            Ok((answer, stress)) => {
                 let forces = create_owned_f64_tensor(answer.forces, vec![n_atoms as i64, 3]);
                 unsafe {
                     (*output).forces = forces;
                     (*output).energy = answer.energy;
                     (*output).variance = 0.0;
+                    if let Some(stress) = stress {
+                        (*output).stress = stress;
+                        (*output).has_stress = 1;
+                    }
                 }
                 rgpot_status_t::RGPOT_SUCCESS
             }

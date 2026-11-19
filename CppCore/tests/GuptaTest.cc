@@ -141,6 +141,15 @@ TEST_CASE("Gupta evaluates a reached NaN pair", "[gupta]") {
   }
 }
 
+TEST_CASE("Gupta rejects overflowing workspace sizes", "[gupta]") {
+  double energy = 0.0;
+  const std::size_t too_many = std::numeric_limits<std::size_t>::max() / 3 + 1;
+  rgpot_gupta(nullptr, too_many, nullptr, 0, nullptr, nullptr, nullptr,
+              nullptr, nullptr, &energy, nullptr);
+  REQUIRE(std::isinf(energy));
+  REQUIRE(energy > 0.0);
+}
+
 TEST_CASE("Gupta gradient matches the energy derivative", "[gupta][force]") {
   // No existing Gupta test checks the gradient against the energy it came
   // from; only the energy itself (dimer closed form, distant-pair

@@ -40,6 +40,8 @@ void SumPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   out->variance = 0.0;
   out->has_stress = 0;
   std::fill(out->stress, out->stress + 9, 0.0);
+  double total_stress[9] = {};
+  bool complete_stress = in.compute_stress && !terms_.empty();
   for (const auto &term : terms_) {
     ForceOut part{};
     std::vector<double> f(3 * in.nAtoms, 0.0);
@@ -50,12 +52,17 @@ void SumPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     for (std::size_t i = 0; i < f.size(); ++i) {
       out->F[i] += f[i];
     }
-    if (part.has_stress) {
+    if (in.compute_stress && part.has_stress) {
       for (int k = 0; k < 9; ++k) {
-        out->stress[k] += part.stress[k];
+        total_stress[k] += part.stress[k];
       }
-      out->has_stress = 1;
+    } else if (in.compute_stress) {
+      complete_stress = false;
     }
+  }
+  if (complete_stress) {
+    std::copy(std::begin(total_stress), std::end(total_stress), out->stress);
+    out->has_stress = 1;
   }
 }
 

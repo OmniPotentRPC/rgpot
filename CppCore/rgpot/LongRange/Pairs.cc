@@ -174,6 +174,13 @@ void gather(const double *pos, std::size_t n, const CellGeom &cell, double reach
               if (j == static_cast<int>(i) && sa == 0 && sb == 0 && sc == 0) {
                 continue;
               }
+              if (j == static_cast<int>(i) &&
+                  (sa < 0 || (sa == 0 && sb < 0) ||
+                   (sa == 0 && sb == 0 && sc < 0))) {
+                // Keep one of each +/- self-image pair. Its full weight is
+                // the 1/2 sum over both equal-energy lattice images.
+                continue;
+              }
               const double dx = pos[3 * j] - ri[0] + sa * cell.H[0][0] + sb * cell.H[1][0] + sc * cell.H[2][0];
               const double dy = pos[3 * j + 1] - ri[1] + sa * cell.H[0][1] + sb * cell.H[1][1] + sc * cell.H[2][1];
               const double dz = pos[3 * j + 2] - ri[2] + sa * cell.H[0][2] + sb * cell.H[1][2] + sc * cell.H[2][2];
@@ -317,7 +324,7 @@ void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
 void DualList::update(const double *pos, std::size_t n, const double *box, bool periodic) {
   short_rebuilt_ = false;
   long_rebuilt_ = false;
-  if (n < 2) {
+  if (n == 0 || (n == 1 && (!periodic || box == nullptr))) {
     short_.clear();
     long_.clear();
     return;

@@ -390,6 +390,7 @@ private:
     hash_val ^= XXH3_64bits(fi.pos, fi.nAtoms * 3 * sizeof(double));
     hash_val ^= XXH3_64bits(fi.atmnrs, fi.nAtoms * sizeof(int));
     hash_val ^= XXH3_64bits(fi.box, 9 * sizeof(double));
+    hash_val ^= XXH3_64bits(&fi.compute_stress, sizeof(fi.compute_stress));
     size_t type_val = static_cast<size_t>(m_type);
     hash_val ^= XXH3_64bits(&type_val, sizeof(size_t));
     // Parameter fingerprint: two instances of one PotType with different

@@ -247,18 +247,14 @@ void TersoffSiC::forceImpl(const ForceInput &in, ForceOut *out) const {
     throw std::invalid_argument("TersoffSiC: null ForceOut");
   }
   out->variance = 0.0;
-  out->has_stress = 0;
-  for (double &s : out->stress) {
-    s = 0.0;
-  }
+  StressAccumulator stress(in, out);
   if (in.nAtoms > 0 && (in.pos == nullptr || in.box == nullptr ||
                         in.atmnrs == nullptr || out->F == nullptr)) {
     throw std::invalid_argument("TersoffSiC: null force buffer");
   }
-  double strain[6] = {};
   evaluate(in.pos, in.atmnrs, in.box, in.nAtoms, &out->energy, out->F, 1.0,
-           m_held.skin > 0.0 ? &m_held : nullptr, strain);
-  publishCauchyStress(out, strain, cellVolume(in.box));
+           m_held.skin > 0.0 ? &m_held : nullptr, stress.data());
+  stress.publish(in.box);
 }
 
 void TersoffSiC::setHeldSkin(double skin) {

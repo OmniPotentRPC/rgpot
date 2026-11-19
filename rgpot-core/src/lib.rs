@@ -64,6 +64,7 @@ pub mod hvp;
 pub mod jet;
 pub mod potential;
 pub mod status;
+mod stress;
 pub mod taylor;
 pub mod tensor;
 pub mod types;

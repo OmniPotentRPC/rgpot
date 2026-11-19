@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/D3Pot/D3Pot.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
 #include <algorithm>
@@ -73,6 +74,7 @@ D3Pot::~D3Pot() {
 }
 
 void D3Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  StressAccumulator stress(in, out);
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
   const bool periodicity[3] = {false, false, false};
@@ -119,6 +121,15 @@ void D3Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->F[i] *= NEG_GRAD_TO_FORCE;
   }
   out->variance = 0.0;
+  if (double *strain = stress.data()) {
+    strain[0] = sigma[0] * HARTREE_TO_EV;
+    strain[1] = sigma[4] * HARTREE_TO_EV;
+    strain[2] = sigma[8] * HARTREE_TO_EV;
+    strain[3] = sigma[5] * HARTREE_TO_EV;
+    strain[4] = sigma[2] * HARTREE_TO_EV;
+    strain[5] = sigma[1] * HARTREE_TO_EV;
+  }
+  stress.publish(in.box);
 }
 
 } // namespace rgpot
