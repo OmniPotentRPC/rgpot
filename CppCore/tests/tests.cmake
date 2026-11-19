@@ -242,6 +242,15 @@ endforeach()
 if(TARGET fast_nlist_test AND TARGET rgpot_fortran_kernels)
   target_link_libraries(fast_nlist_test PRIVATE rgpot_fortran_kernels)
 endif()
+# MorsePotTest and SuttonChenPotTest call private workspace snapshot hooks that
+# carry hidden visibility so shared librgpot does not export detail symbols.
+if(TARGET morse_pot_test AND BUILD_SHARED_LIBS)
+  target_sources(morse_pot_test PRIVATE CppCore/rgpot/Morse/MorsePot.cc)
+endif()
+if(TARGET sutton_chen_pot_test AND BUILD_SHARED_LIBS)
+  target_sources(sutton_chen_pot_test PRIVATE
+                 CppCore/rgpot/SuttonChen/SuttonChenPot.cc)
+endif()
 
 rgpot_registry_tests(rerun _rgpot_reruns)
 foreach(test IN LISTS _rgpot_reruns)
