@@ -9,7 +9,10 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <optional>
+#include <stdexcept>
 #include <string>
 
 #include <capnp/message.h>
@@ -21,8 +24,18 @@
 namespace rgpot::engine {
 
 struct Builtin {
+  struct MullerBrown {
+    std::array<double, 4> amplitude{-200.0, -100.0, -170.0, 15.0};
+    std::array<double, 4> a{-1.0, -1.0, -6.5, 0.7};
+    std::array<double, 4> b{0.0, 0.0, 11.0, 0.6};
+    std::array<double, 4> c{-10.0, -10.0, -6.5, 0.7};
+    std::array<double, 4> x0{1.0, 0.0, -0.5, -1.0};
+    std::array<double, 4> y0{0.0, 0.5, 1.5, 1.0};
+  };
+
   std::string name;    ///< Lowercased.
   std::string library; ///< Optional explicit engine library path.
+  std::optional<MullerBrown> mullerBrown;
 };
 
 inline Builtin read_builtin(const void *config, std::size_t config_len) {
@@ -36,6 +49,26 @@ inline Builtin read_builtin(const void *config, std::size_t config_len) {
   std::transform(out.name.begin(), out.name.end(), out.name.begin(),
                  [](unsigned char c) { return std::tolower(c); });
   out.library = params.getLibrary().cStr();
+  const auto nativeConfig = params.getConfig();
+  if (nativeConfig.which() == ::PotentialConfig::MULLER_BROWN) {
+    out.mullerBrown.emplace();
+    const auto wire = nativeConfig.getMullerBrown();
+    const auto copy = [](const auto &source, auto &target,
+                         const char *name) {
+      if (source.size() == 0)
+        return;
+      if (source.size() != target.size())
+        throw std::invalid_argument(std::string("Muller-Brown ") + name +
+                                    " must contain four values");
+      std::copy(source.begin(), source.end(), target.begin());
+    };
+    copy(wire.getAmplitude(), out.mullerBrown->amplitude, "amplitude");
+    copy(wire.getA(), out.mullerBrown->a, "a");
+    copy(wire.getB(), out.mullerBrown->b, "b");
+    copy(wire.getC(), out.mullerBrown->c, "c");
+    copy(wire.getX0(), out.mullerBrown->x0, "x0");
+    copy(wire.getY0(), out.mullerBrown->y0, "y0");
+  }
   return out;
 }
 
