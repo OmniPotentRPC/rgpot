@@ -33,6 +33,7 @@
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/PerAtom.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/Slices.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
@@ -604,6 +605,16 @@ TEST_CASE("many-body potentials give the one-thread bits on any team",
   checkPotential("Sutton-Chen on every pair", every_pair, cluster(55, std::sqrt(2.0), 78));
   checkPotential("Sutton-Chen on every pair", every_pair,
                  cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts);
+
+  rgpot::QSCConfig qsc;
+  qsc.periodic = true;
+  qsc.stress = true;
+  for (const int side : {4, 13}) {
+    qsc.cutoff = side == 4 ? 7.0 : 4.2;
+    const auto pt = fcc(side, 3.92, 78);
+    checkPotential("stored QSC", mode<rgpot::QSCPot>(qsc, kStored), pt);
+    checkPotential("streamed QSC", mode<rgpot::QSCPot>(qsc, kStream), pt);
+  }
 
   for (const int side : {3, 11}) {
     const auto si = diamond(side, 5.431, 14);
