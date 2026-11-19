@@ -9,25 +9,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <thread>
 #include <vector>
-
-#if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 33))
-#if !defined(__SANITIZE_ADDRESS__) && !defined(__SANITIZE_THREAD__)
-#if defined(__has_feature)
-#if !__has_feature(address_sanitizer) && !__has_feature(thread_sanitizer)
-#define RGPOT_HAS_MALLINFO2 1
-#include <malloc.h>
-#endif
-#else
-#define RGPOT_HAS_MALLINFO2 1
-#include <malloc.h>
-#endif
-#endif
-#endif
 
 #include <catch2/catch_all.hpp>
 
@@ -36,6 +23,104 @@
 #include "rgpot/KeptPotential.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+
+// Heap probe. rgpot_gupta takes its pair scratch from malloc, so the tests
+// that it stays off the heap, and releases what it takes, count the calls the
+// test thread makes to malloc, calloc, realloc and free. This file's own
+// definitions of those four replace the allocator's for the whole executable
+// and hand every request to the glibc entry points, which exist on every
+// glibc, the 2.17 era conda sysroot included. Nothing here reads mallinfo2,
+// so the count does not depend on which glibc builds the tests, and a thread
+// is counted on its own: tcache and arena bookkeeping that glibc keeps for a
+// new thread never passes through these functions.
+//
+// A sanitizer runtime brings its own malloc, and a non glibc host has no such
+// entry points, so the probe and the tests that use it are compiled out there.
+#if defined(__linux__) && defined(__GLIBC__)
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#elif defined(__has_feature)
+#if !__has_feature(address_sanitizer) && !__has_feature(thread_sanitizer) && \
+    !__has_feature(memory_sanitizer)
+#define RGPOT_HEAP_PROBE 1
+#endif
+#else
+#define RGPOT_HEAP_PROBE 1
+#endif
+#endif
+
+#ifdef RGPOT_HEAP_PROBE
+#include <malloc.h>
+
+extern "C" {
+void *__libc_malloc(std::size_t size);
+void *__libc_calloc(std::size_t count, std::size_t size);
+void *__libc_realloc(void *ptr, std::size_t size);
+void __libc_free(void *ptr);
+}
+
+namespace {
+
+/// What the calling thread has asked of the allocator since measure_heap
+/// armed it: requests, bytes still held, and the most bytes held at once.
+struct HeapWindow {
+  bool armed;
+  long calls;
+  long long live;
+  long long peak;
+};
+
+__thread HeapWindow t_heap;
+
+inline void heap_gain(void *ptr) noexcept {
+  ++t_heap.calls;
+  t_heap.live += static_cast<long long>(malloc_usable_size(ptr));
+  if (t_heap.live > t_heap.peak) {
+    t_heap.peak = t_heap.live;
+  }
+}
+
+} // namespace
+
+extern "C" {
+
+void *malloc(std::size_t size) noexcept {
+  void *ptr = __libc_malloc(size);
+  if (t_heap.armed && ptr != nullptr) {
+    heap_gain(ptr);
+  }
+  return ptr;
+}
+
+void *calloc(std::size_t count, std::size_t size) noexcept {
+  void *ptr = __libc_calloc(count, size);
+  if (t_heap.armed && ptr != nullptr) {
+    heap_gain(ptr);
+  }
+  return ptr;
+}
+
+void *realloc(void *ptr, std::size_t size) noexcept {
+  const long long held =
+      t_heap.armed && ptr != nullptr
+          ? static_cast<long long>(malloc_usable_size(ptr))
+          : 0;
+  void *next = __libc_realloc(ptr, size);
+  if (t_heap.armed && next != nullptr) {
+    t_heap.live -= held;
+    heap_gain(next);
+  }
+  return next;
+}
+
+void free(void *ptr) noexcept {
+  if (t_heap.armed && ptr != nullptr) {
+    t_heap.live -= static_cast<long long>(malloc_usable_size(ptr));
+  }
+  __libc_free(ptr);
+}
+
+} // extern "C"
+#endif
 
 using Catch::Matchers::WithinAbs;
 using rgpot::types::AtomMatrix;
@@ -47,6 +132,43 @@ constexpr int kVoigt[6][2] = {{0, 0}, {1, 1}, {2, 2}, {1, 2}, {0, 2}, {0, 1}};
 std::array<std::array<double, 3>, 3> cube(double length) {
   return {{{length, 0.0, 0.0}, {0.0, length, 0.0}, {0.0, 0.0, length}}};
 }
+
+/// Atoms on a cubic grid at 1.05 spacing, no two coincident.
+std::vector<double> lattice_cluster(std::size_t n) {
+  std::vector<double> pos(3 * n, 0.0);
+  for (std::size_t i = 0; i < n; ++i) {
+    pos[3 * i] = 1.05 * static_cast<double>(i % 12);
+    pos[3 * i + 1] = 1.05 * static_cast<double>((i / 12) % 12);
+    pos[3 * i + 2] = 1.05 * static_cast<double>(i / 144);
+  }
+  return pos;
+}
+
+#ifdef RGPOT_HEAP_PROBE
+/// Allocator traffic of the calling thread over one measure_heap call.
+struct HeapUse {
+  long calls = 0;
+  long long net = 0;
+  long long peak = 0;
+};
+
+/// Runs `work` with the probe armed. `work` must not use Catch2, which
+/// allocates; check the returned numbers afterwards.
+template <class Work> HeapUse measure_heap(Work &&work) {
+  t_heap = HeapWindow{true, 0, 0, 0};
+  work();
+  t_heap.armed = false;
+  return {t_heap.calls, t_heap.live, t_heap.peak};
+}
+
+bool probe_sees_malloc() {
+  const HeapUse use = measure_heap([] {
+    void *volatile block = std::malloc(256);
+    std::free(block);
+  });
+  return use.calls == 1 && use.net == 0 && use.peak >= 256;
+}
+#endif
 
 bool same_bits(double a, double b) {
   return std::memcmp(&a, &b, sizeof(double)) == 0;
@@ -782,61 +904,162 @@ TEST_CASE("GuptaPot C entry point matches GuptaPot and validates inputs",
   REQUIRE(iso.forces[8] == 0.0);
 }
 
+#ifdef RGPOT_HEAP_PROBE
+TEST_CASE("rgpot_gupta keeps small clusters off the heap", "[Gupta][heap]") {
+  REQUIRE(probe_sees_malloc());
+  const rgpot::GuptaConfig cfg{};
+  for (std::size_t n = 2; n <= 65; ++n) {
+    const std::vector<double> pos = lattice_cluster(n);
+    const std::vector<unsigned char> slot(n, 0);
+    std::vector<double> grad(3 * n, 0.0);
+    double energy = 0.0;
+    auto call = [&] {
+      rgpot_gupta(pos.data(), n, slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p,
+                  &cfg.q, &cfg.r0, &energy, grad.data());
+    };
+    call();
+    const HeapUse use = measure_heap([&] {
+      for (int rep = 0; rep < 3; ++rep) {
+        call();
+      }
+    });
+    INFO("atoms " << n);
+    REQUIRE(std::isfinite(energy));
+    if (n <= 64) {
+      // The stack scratch holds every pair of the largest small cluster.
+      REQUIRE(use.calls == 0);
+    } else {
+      // One atom more takes the heap path, and each call gives it back. This
+      // keeps the probe honest: a count of zero above is not a dead probe.
+      REQUIRE(use.calls >= 3);
+      REQUIRE(use.net == 0);
+    }
+  }
+}
+
+TEST_CASE("GuptaPot keeps a 64 atom call off the heap in steady state",
+          "[Gupta][heap]") {
+  REQUIRE(probe_sees_malloc());
+  constexpr std::size_t n = 64;
+  const std::vector<double> pos = lattice_cluster(n);
+  std::vector<double> forces(3 * n, 0.0);
+  const rgpot::GuptaPot pot{rgpot::GuptaConfig{}};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  const rgpot::ForceInput in{n, pos.data(), nullptr, nullptr};
+  pot.forceImpl(in, &out);
+  const HeapUse use = measure_heap([&] {
+    for (int rep = 0; rep < 3; ++rep) {
+      pot.forceImpl(in, &out);
+    }
+  });
+  REQUIRE(std::isfinite(out.energy));
+  REQUIRE(use.calls == 0);
+}
+
+namespace {
+
+/// 32 MiB, the pair derivative cap of gupta.c.
+constexpr long long kPairScratchCap = 32LL << 20;
+
+/// The first call of a thread, then repeats of it.
+struct HeapRuns {
+  HeapUse first;
+  std::array<HeapUse, 4> repeats;
+};
+
+template <class Call> HeapRuns measure_runs(Call &&call) {
+  HeapRuns runs;
+  runs.first = measure_heap(call);
+  for (HeapUse &use : runs.repeats) {
+    use = measure_heap(call);
+  }
+  return runs;
+}
+
+/// A call over the cap takes at most two blocks, the density array and the
+/// capped pair derivatives, gives both back before it returns, and never
+/// holds more than the cap and the density array. The repeats do exactly what
+/// the first call did, so nothing is kept for a later call and nothing new is
+/// asked for in steady state.
+void require_bounded_scratch(const HeapRuns &runs, std::size_t n) {
+  const long long bound =
+      kPairScratchCap + static_cast<long long>(n * sizeof(double)) + 4096;
+  const auto check = [&](const HeapUse &use) {
+    REQUIRE(use.calls >= 1);
+    REQUIRE(use.calls <= 2);
+    REQUIRE(use.net == 0);
+    REQUIRE(use.peak <= bound);
+  };
+  check(runs.first);
+  for (const HeapUse &use : runs.repeats) {
+    check(use);
+    REQUIRE(use.calls == runs.first.calls);
+    REQUIRE(use.peak == runs.first.peak);
+  }
+}
+
+} // namespace
+
 TEST_CASE("rgpot_gupta bounds and releases pair scratch after a large call",
-          "[Gupta]") {
+          "[Gupta][heap]") {
   // 1500 atoms form 1,124,250 pairs, exceeding the 32 MiB pair-derivative
   // buffer cap so both the recomputation path and buffer release are exercised.
+  REQUIRE(probe_sees_malloc());
   constexpr std::size_t n = 1500;
-  std::vector<double> pos(3 * n, 0.0);
-  for (std::size_t i = 0; i < n; ++i) {
-    const std::size_t ix = i % 12;
-    const std::size_t iy = (i / 12) % 12;
-    const std::size_t iz = i / 144;
-    pos[3 * i] = 1.05 * static_cast<double>(ix);
-    pos[3 * i + 1] = 1.05 * static_cast<double>(iy);
-    pos[3 * i + 2] = 1.05 * static_cast<double>(iz);
-  }
+  const std::vector<double> pos = lattice_cluster(n);
   const rgpot::GuptaConfig cfg{};
   const std::vector<unsigned char> slot(n, 0);
   std::vector<double> grad(3 * n, 0.0);
   double c_energy = 0.0;
+  const HeapRuns main_runs = measure_runs([&] {
+    rgpot_gupta(pos.data(), n, slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p, &cfg.q,
+                &cfg.r0, &c_energy, grad.data());
+  });
+  require_bounded_scratch(main_runs, n);
 
-#ifdef RGPOT_HAS_MALLINFO2
-  const struct mallinfo2 before = mallinfo2();
-#endif
-  rgpot_gupta(pos.data(), n, slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p, &cfg.q,
-              &cfg.r0, &c_energy, grad.data());
-#ifdef RGPOT_HAS_MALLINFO2
-  const struct mallinfo2 after_c = mallinfo2();
-  REQUIRE(after_c.uordblks == before.uordblks);
-  REQUIRE(after_c.hblkhd == before.hblkhd);
-#endif
-
-  // A worker thread exit also leaves no pair scratch pinned.
+  // A fresh thread also leaves no pair scratch pinned: its first call, and
+  // every repeat, hands back what it took before the thread exits.
   double thread_energy = 0.0;
   std::vector<double> thread_grad(3 * n, 0.0);
+  HeapRuns worker_runs;
   std::thread worker([&] {
-    rgpot_gupta(pos.data(), n, slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p,
-                &cfg.q, &cfg.r0, &thread_energy, thread_grad.data());
+    worker_runs = measure_runs([&] {
+      rgpot_gupta(pos.data(), n, slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p,
+                  &cfg.q, &cfg.r0, &thread_energy, thread_grad.data());
+    });
   });
   worker.join();
+  require_bounded_scratch(worker_runs, n);
   REQUIRE(same_bits(thread_energy, c_energy));
   REQUIRE(same_bits(thread_grad, grad));
-#ifdef RGPOT_HAS_MALLINFO2
-  const struct mallinfo2 after_thread = mallinfo2();
-  REQUIRE(after_thread.uordblks == before.uordblks);
-  REQUIRE(after_thread.hblkhd == before.hblkhd);
+
+  // GuptaPot delegation (cutoff = 0) adds no allocation of its own once its
+  // buffers are sized.
+  const rgpot::GuptaPot direct(cfg);
+  std::vector<double> forces(3 * n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  const rgpot::ForceInput in{n, pos.data(), nullptr, nullptr};
+  direct.forceImpl(in, &out);
+  const HeapRuns pot_runs = measure_runs([&] { direct.forceImpl(in, &out); });
+  require_bounded_scratch(pot_runs, n);
+  REQUIRE(same_bits(out.energy, c_energy));
+}
 #endif
 
-  // GuptaPot delegation (cutoff = 0) matches the explicit large-cutoff path
-  // and retains no O(N^2) pair buffer.
+TEST_CASE("rgpot_gupta large call matches the explicit wide cutoff",
+          "[Gupta]") {
+  constexpr std::size_t n = 1500;
+  const std::vector<double> pos = lattice_cluster(n);
+  const rgpot::GuptaConfig cfg{};
+  const std::vector<unsigned char> slot(n, 0);
+  std::vector<double> grad(3 * n, 0.0);
+  double c_energy = 0.0;
+  rgpot_gupta(pos.data(), n, slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p, &cfg.q,
+              &cfg.r0, &c_energy, grad.data());
   const rgpot::GuptaPot direct(cfg);
   const StressEval open = eval_stress(direct, pos, nullptr);
-#ifdef RGPOT_HAS_MALLINFO2
-  const struct mallinfo2 after_pot = mallinfo2();
-  REQUIRE(after_pot.uordblks + after_pot.hblkhd <=
-          before.uordblks + before.hblkhd + 128 * 1024);
-#endif
   rgpot::GuptaConfig wide = cfg;
   wide.cutoff = 1.0e5;
   const StressEval ref = eval_stress(rgpot::GuptaPot(wide), pos, nullptr);
