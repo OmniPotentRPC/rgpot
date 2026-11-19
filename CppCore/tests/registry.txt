@@ -31,6 +31,7 @@
 #   linux         the host is Linux
 #   posix         the host is not Windows
 #   python        a python3 interpreter
+#   with_python   the Python extension (meson option with_python)
 #   capnp         the capnp and capnpc libraries
 #   capnp_tool    the capnp compiler
 #   rustc         a Rust compiler
@@ -332,6 +333,7 @@ gromacs_dropin_mdrun | core posix probe | custom timeout=1800 | @engines
 openmm_lj | core posix probe | custom timeout=120 | @engines
 optional_engine_install | tests core posix python toplevel | custom timeout=300 | @meson
 installed_sources | tests python toplevel | custom timeout=180 | @meson
+uninstalled_rgpot_import | tests python toplevel with_python | custom | @meson
 eigen_subproject_fallback | tests core posix python toplevel | custom timeout=300 | @meson
 gromacs_include_prefix | tests core posix python toplevel | custom timeout=300 | @meson
 fortran_sw_module_order | tests core posix python toplevel fortran | custom timeout=600 | @meson

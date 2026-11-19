@@ -1,0 +1,1 @@
+The uninstalled Python extension records the build directory of `librgpot` on its RUNPATH, so `import rgpot` works with an empty `LD_LIBRARY_PATH`. The installed wheel still looks in `$ORIGIN/../.rgpot.mesonpy.libs`.

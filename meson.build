@@ -1184,6 +1184,7 @@ if get_option('with_tests') and _rt_atoms['python']
         ),
         'isa_variants': _rt_isa_variants,
         'toplevel': not meson.is_subproject(),
+        'with_python': get_option('with_python'),
         'xtb': has_xtb,
         'xckernel': has_xckernel,
         'expr': has_expr,

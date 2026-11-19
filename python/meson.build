@@ -11,6 +11,7 @@
 #   rgpot/lib/torch-X.Y/libmetatomic_engine.so  (multi-ABI engines, post-pack)
 
 py_mod = import('python')
+fs = import('fs')
 py = py_mod.find_installation(pure: false)
 py_dep = py.dependency()
 
@@ -74,7 +75,17 @@ if not is_variable('metatomic_dlopen')
 endif
 
 _py_incs = [_incdirs, include_directories('../bind/include')]
+# Install layout: the extension is imported from rgpot/ and meson-python
+# copies librgpot into the sibling directory .rgpot.mesonpy.libs.
+# build_rpath is the absolute directory of the librgpot this build
+# linked. An uninstalled extension, including one reached through a
+# symlink, opens the SONAME with an empty LD_LIBRARY_PATH. Leaving
+# build_rpath equal to the install path hides that directory. A symlink
+# written into the source tree breaks a read only source tree, a static
+# library has no SONAME to link, and Darwin uses Meson's install name
+# rather than a Linux soname symlink.
 _py_rpath = '$ORIGIN:$ORIGIN/../.rgpot.mesonpy.libs:$ORIGIN/lib'
+_py_build_rpath = fs.parent(rgpot.full_path())
 # The umbrella librgpot link_wholes every pot and the dlopen frontends;
 # linking the static convenience libs again would just duplicate symbols
 # into the extension.
@@ -142,7 +153,7 @@ if _nb_free_threaded
         link_args: _core_link_args,
         install: true,
         install_rpath: _py_rpath,
-        build_rpath: _py_rpath,
+        build_rpath: _py_build_rpath,
         subdir: 'rgpot',
         gnu_symbol_visibility: 'hidden',
     )
@@ -160,7 +171,7 @@ else
             link_args: _core_link_args,
             install: true,
             install_rpath: _py_rpath,
-            build_rpath: _py_rpath,
+            build_rpath: _py_build_rpath,
             subdir: 'rgpot',
             gnu_symbol_visibility: 'hidden',
             limited_api: '3.12',
@@ -179,7 +190,7 @@ else
             link_args: _core_link_args,
             install: true,
             install_rpath: _py_rpath,
-            build_rpath: _py_rpath,
+            build_rpath: _py_build_rpath,
             subdir: 'rgpot',
             gnu_symbol_visibility: 'hidden',
         )
@@ -233,3 +244,20 @@ if is_variable('metatomic_engine')
         'metatomic_engine installs into the wheel; multi-ABI pack via scripts/rgpot_pack_multi_abi_engines.sh',
     )
 endif
+
+# The extension is staged beside the pure sources under the build tree
+# and imported with an empty library path. The stage symlinks live in
+# the build directory, so a read only source tree still configures.
+_uninstalled_env = environment()
+_uninstalled_env.set('RGPOT_CORE_DIR', meson.current_build_dir())
+_uninstalled_env.set('RGPOT_SRC_PKG', meson.current_source_dir() / 'rgpot')
+_uninstalled_env.set('RGPOT_STAGE', meson.current_build_dir() / 'uninstalled-stage')
+_uninstalled_env.set('LD_LIBRARY_PATH', '')
+_uninstalled_env.set('DYLD_LIBRARY_PATH', '')
+test(
+    'uninstalled_rgpot_import',
+    find_program(py.full_path()),
+    args: [files('uninstalled_import.py')],
+    env: _uninstalled_env,
+    depends: [_py_core],
+)
