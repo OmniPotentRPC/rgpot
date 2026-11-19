@@ -122,6 +122,8 @@ meson compile -C bbdir && meson test -C bbdir
    reference/nlist_abi
    reference/fast_nlist
    reference/engine_abi
+   reference/quantum_abi
+   reference/capnp_schema
    reference/gromacs_dropin
    reference/plugin_abi
    reference/external_abi
