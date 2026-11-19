@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the documentation against the source tree.
 
-Three checks, each a subcommand:
+Six checks, each a subcommand:
 
 ``blocks``
     Every code block in ``readme_src.org``, ``CONTRIBUTING.md``,
@@ -28,6 +28,19 @@ Three checks, each a subcommand:
     Every org page under ``docs/orgmode`` is reachable from
     ``docs/orgmode/index.org``, every design note named there exists, and
     the pinned citations and reference values are still on their pages.
+
+``inventory``
+    Every public item has documentation: each potential has a section under
+    ``docs/orgmode/howto/potentials-*.org``, each public C, C++ and Python
+    name a reference entry, each Cap'n Proto field a row, each Rust item a
+    doc comment, each program and ``potctl`` command a heading.  See
+    ``docs/inventory.py``, which also prints the coverage table.
+
+``generated``
+    The generated files are current: the Cap'n Proto reference page
+    (``docs/gen_capnp_reference.py``), ``llms.txt`` and ``llms-full.txt``
+    (``scripts/gen_llms.py``), and the DOI manifest ``docs/dois.json``
+    (``scripts/verify_dois.py``).
 
 The module uses the standard library only, so meson can run it without
 pytest.  ``tests/docs`` wraps the same functions for pytest.
@@ -2393,7 +2406,7 @@ COVERAGE_MARKERS = (
     ("docs/orgmode/reference/cpp_potentials.org", "-0.710164462003"),
     ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.29.6443"),
     ("docs/orgmode/reference/cpp_potentials.org", "3.63262"),
-    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.35.7423"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1016/0039-6028(96)00816-3"),
     ("docs/orgmode/reference/cpp_potentials.org", "5.129167"),
     ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.445869"),
     ("docs/orgmode/reference/cpp_potentials.org", "10.1021/j100308a038"),
@@ -2526,11 +2539,42 @@ def coverage_errors(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def _load_module(name: str, relpath: str, root: Path):
+    import importlib.util
+
+    path = root / relpath
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def inventory_errors(root: Path = ROOT) -> list[str]:
+    """One message per public item with no documentation."""
+    return _load_module("rgpot_inventory", "docs/inventory.py", root).errors(root)
+
+
+def generated_errors(root: Path = ROOT) -> list[str]:
+    """Generated files that no longer match their sources."""
+    errors = []
+    capnp = _load_module("rgpot_gen_capnp", "docs/gen_capnp_reference.py", root)
+    page = root / capnp.PAGE
+    if not page.is_file() or page.read_text(encoding="utf-8") != capnp.render(root):
+        errors.append(f"{capnp.PAGE} is stale; run python docs/gen_capnp_reference.py")
+    errors.extend(_load_module("rgpot_gen_llms", "scripts/gen_llms.py", root).stale(root))
+    errors.extend(_load_module("rgpot_verify_dois", "scripts/verify_dois.py", root).check(root))
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("check", choices=("blocks", "reference", "facts", "coverage", "all"))
+    parser.add_argument(
+        "check",
+        choices=("blocks", "reference", "facts", "coverage", "inventory", "generated", "all"),
+    )
     parser.add_argument("--build-dir", type=Path, default=None)
     parser.add_argument("--root", type=lambda p: Path(p).resolve(), default=ROOT)
     parser.add_argument(
@@ -2559,6 +2603,10 @@ def main(argv: list[str] | None = None) -> int:
         errors.extend(facts_errors(args.root))
     if args.check in ("coverage", "all"):
         errors.extend(coverage_errors(args.root))
+    if args.check in ("inventory", "all"):
+        errors.extend(inventory_errors(args.root))
+    if args.check in ("generated", "all"):
+        errors.extend(generated_errors(args.root))
     if pages:
         errors = [e for e in errors if wanted(e)]
     for error in errors:

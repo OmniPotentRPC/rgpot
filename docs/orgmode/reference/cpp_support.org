@@ -4,8 +4,8 @@
 
 * C++ support types
 
-=meson.build= installs every header under =CppCore/rgpot=, so each type
-declared there at namespace scope is part of the C++ surface.
+=meson.build= installs every header under =CppCore/rgpot=, so each type declared
+there at namespace scope is part of the C++ surface.
 This page covers the value types, handles, enums and helper classes that the
 potential classes of [[file:cpp_potentials.org][C++ potentials]] and
 [[file:cpp_backends.org][C++ engine-backed potentials]] take or return.
@@ -26,8 +26,8 @@ entry says otherwise.
 - Units :: none; the units are those of the data stored.
 - Outputs :: a row-major matrix of doubles.
   =operator()(row, col)= reads or writes an element, =rows()=, =cols()= and
-  =size()= give the extents, and the raw data pointer is available for
-  mutation and for reading.
+  =size()= give the extents, and the raw data pointer is available for mutation
+  and for reading.
   Positions and forces cross the =PotentialBase::operator()= interface as
   =n x 3= matrices.
 - Errors :: none declared; an index outside the matrix is the caller's error.
@@ -36,8 +36,8 @@ entry says otherwise.
 
 - Inputs :: none; a struct.
 - Units :: Angstrom for =positions= and =box=.
-- Outputs :: one configuration: =positions= (an =AtomMatrix=),
-  =atomic_numbers= and =box=, a 3 by 3 array with one cell vector per row.
+- Outputs :: one configuration: =positions= (an =AtomMatrix=), =atomic_numbers=
+  and =box=, a 3 by 3 array with one cell vector per row.
 - Errors :: none.
 
 *** =rgpot::BatchResult=
@@ -76,13 +76,14 @@ entry says otherwise.
   =sym_optional<T>(name)= resolve a symbol.
   The =MOPACPot= and =NWChemPot= directories each carry one; the class is the
   same on both.
-- Errors :: =open= and =sym= throw =std::runtime_error= when the library or a
-  required symbol is missing; =sym_optional= returns a null pointer.
+- Errors :: =open= and =sym= throw
+  =std::runtime_error= when the library or a required symbol is missing; =sym_optional=
+  returns a null pointer.
 
 *** =rgpot::Fnv1a=
 
-- Inputs :: bytes, doubles, integers, booleans or strings fed through
-  =bytes=, =f64=, =i64=, =u64=, =b8= and =str=.
+- Inputs :: bytes, doubles, integers, booleans or strings fed through =bytes=,
+  =f64=, =i64=, =u64=, =b8= and =str=.
 - Units :: none.
 - Outputs :: a 64-bit FNV-1a state in =h=, starting at 0xcbf29ce484222325 with
   prime 0x100000001b3.
@@ -112,8 +113,9 @@ entry says otherwise.
 
 *** =rgpot::cache::PotentialCache=
 
-- Inputs :: =PotentialCache(db_path, create_if_missing = true)= opens a RocksDB
-  database; the default constructor holds none, and =set_db= adopts an open one.
+- Inputs ::
+  =PotentialCache(db_path, create_if_missing = true)= opens a RocksDB database; the default constructor holds none, and =set_db=
+  adopts an open one.
 - Units :: none; the stored energy, forces, variance and stress are in the units
   of the potential that produced them.
 - Outputs :: a result cache.
@@ -133,11 +135,10 @@ entry says otherwise.
 - Inputs :: none; an enum whose values match =rgpot_hvp_scheme_t=.
 - Units :: none.
 - Outputs :: =Auto= (0; analytic when the potential has it, otherwise
-  =Forward=), =Forward= (1; one displaced force call against the cached
-  centre), =Central= (2; two displaced force calls, one on each side) and
-  =Analytic= (3; the potential's =hessianVectorImpl=).
-- Errors :: =Analytic= is refused for a potential without
-  =hessianVectorImpl=.
+  =Forward=), =Forward= (1; one displaced force call against the cached centre),
+  =Central= (2; two displaced force calls, one on each side) and =Analytic= (3;
+  the potential's =hessianVectorImpl=).
+- Errors :: =Analytic= is refused for a potential without =hessianVectorImpl=.
 
 *** =rgpot::HvpCentre=
 
@@ -163,8 +164,8 @@ entry says otherwise.
   =apply(pot, in, v, hv, step = 0.0, scheme = HvpScheme::Auto)= takes a
   direction =v= and an output =hv=, each 3 * =in.nAtoms= doubles that must not
   overlap.
-- Units :: Angstrom for =step=, which is the displacement along the direction;
-  0 selects =kHvpDefaultStep= (1.0e-3).
+- Units :: Angstrom for =step=, which is the displacement along the direction; 0
+  selects =kHvpDefaultStep= (1.0e-3).
   The product has units eV/Angstrom^2 times the direction.
 - Outputs :: =centre= returns the energy and forces at =in=, served from the
   cached centre when positions, species and cell carry the same bits, and
@@ -176,8 +177,9 @@ entry says otherwise.
   potential changes while the geometry does not.
   The cache may be shared between threads; the lock covers the cached centre,
   not the force calls.
-- Errors :: =std::invalid_argument= for a malformed request and
-  =std::domain_error= when the kernel returns a non-finite value.
+- Errors ::
+  =std::invalid_argument= for a malformed request and =std::domain_error= when
+  the kernel returns a non-finite value.
 
 ** Fused engine calls and kept potentials
 
@@ -346,8 +348,9 @@ entry says otherwise.
 
 *** =rgpot::CentreTerms=
 
-- Inputs :: =CentreTerms(strained)=; =reset(i, bonds)= starts centre =i= with one
-  row per bond in the order of =bonds=, whose entries carry the partner in =.j=.
+- Inputs :: =CentreTerms(strained)=; =reset(i, bonds)= starts centre =i= with
+  one row per bond in the order of =bonds=, whose entries carry the partner in
+  =.j=.
 - Units :: those of the potential.
 - Outputs :: the same calls as =CentreDirect=, summed per atom, so the
   contribution of one centre can be added to the totals in a fixed order with
@@ -376,8 +379,8 @@ entry says otherwise.
 
 - Inputs :: none; an enum.
 - Units :: none.
-- Outputs :: =Funcfl= (LAMMPS =eam=, one element), =Setfl= (=eam/alloy=) and
-  =FinnisSinclair= (=eam/fs=), the three file layouts of
+- Outputs :: =Funcfl= (LAMMPS =eam=, one element), =Setfl=
+  (=eam/alloy=) and =FinnisSinclair= (=eam/fs=), the three file layouts of
   [[file:eam_table.org][Tabulated EAM]].
 - Errors :: none.
 
@@ -429,8 +432,8 @@ entry says otherwise.
 - Units :: =zze= in eV Angstrom; the others are dimensionless coefficients.
 - Outputs :: the screening exponents =d1= to =d4= scaled by the pair radius,
   =zze= (Z_i Z_j e^2), the quadratic and cubic switching coefficients of the
-  force (=sw1=, =sw2=), the cubic and quartic coefficients of the energy
-  (=sw3=, =sw4=) and the constant energy offset at the cutoff (=sw5=).
+  force (=sw1=, =sw2=), the cubic and quartic coefficients of the energy (=sw3=,
+  =sw4=) and the constant energy offset at the cutoff (=sw5=).
 - Errors :: none.
 
 *** =rgpot::ZblTables=
@@ -531,8 +534,9 @@ entry says otherwise.
 - Inputs :: none; a struct.
 - Units :: =e_ia= is in the energy unit of the host.
 - Outputs :: occupied and virtual MO blocks for TDA and RPA: =nao=, =nocc=,
-  =nvir=, =Co= (=nao= by =nocc=), =Cv= (=nao= by =nvir=) and =e_ia= (=nocc= by
-  =nvir=, with =e_ia[i, a] = e_vir[a] - e_occ[i]=), all row-major.
+  =nvir=, =Co= (=nao= by =nocc=), =Cv= (=nao= by =nvir=) and
+  =e_ia= (=nocc= by =nvir=, with =e_ia[i, a] = e_vir[a] - e_occ[i]=), all
+  row-major.
 - Errors :: none.
 
 *** =rgpot::XcFields=
@@ -559,8 +563,8 @@ entry says otherwise.
   =projectOv=, =tdaSigma= and =rpaSigma= build fields and sigma vectors from the
   MO blocks, and =applyFxc=, =tdaSigma= and =rpaSigma= take a ground-state
   operand map and a host Coulomb matrix.
-  The C kernels are reentrant on distinct output buffers, and distinct
-  instances may run concurrently.
+  The C kernels are reentrant on distinct output buffers, and distinct instances
+  may run concurrently.
 - Errors :: =contract= returns 2 for an incomplete grid and otherwise the C ABI
   code, 0 on success.
   Laplacian kernels need =lapl_chi=.
@@ -590,8 +594,8 @@ entry says otherwise.
 
 *** =rgpot::lr::DualList=
 
-- Inputs :: =DualList(short_cut, long_cut, skin)=; =update(pos, n, box, periodic)=
-  takes a row-major box of nine values.
+- Inputs :: =DualList(short_cut, long_cut, skin)=;
+  =update(pos, n, box, periodic)= takes a row-major box of nine values.
 - Units :: Angstrom.
 - Outputs :: two pair lists at two cutoffs, =short_pairs()= and =long_pairs()=,
   each rebuilt only when an atom has moved past the skin.
@@ -647,8 +651,8 @@ entry says otherwise.
 
 *** =rgpot::lr::FnCharges=
 
-- Inputs :: =FnCharges(fn, user)=, where =fn= has the signature =void (const
-  ForceInput &, double *, double *, void *)=.
+- Inputs :: =FnCharges(fn, user)=, where =fn= has the signature
+  =void (const ForceInput &, double *, double *, void *)=.
 - Units :: elementary charges.
 - Outputs :: a =ChargeSource= that calls =fn= with the user pointer.
 - Errors :: set by the function.
@@ -684,9 +688,9 @@ entry says otherwise.
 - Inputs :: none; a struct for the CUDA Coulomb path.
 - Units :: Angstrom.
 - Outputs :: =method= (0 Ewald, 1 PME), the positions =pos=, charges =q=, the
-  count =n=, the net charge =total=, the =box=, the pair arrays (=pair_i=,
-  =pair_j=, =pair_x=, =pair_y=, =pair_z=, =pair_r=) with =npair=, and the
-  parameters =alpha= (0.3), =cutoff= (9.0), =kmax= (4), =grid= (16) and
+  count =n=, the net charge =total=, the =box=, the pair arrays
+  (=pair_i=, =pair_j=, =pair_x=, =pair_y=, =pair_z=, =pair_r=) with =npair=, and
+  the parameters =alpha= (0.3), =cutoff= (9.0), =kmax= (4), =grid= (16) and
   =order= (4).
 - Errors :: none.
 
@@ -760,8 +764,8 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 
 - Inputs :: none; an enum shared with the C ABI.
 - Units :: none.
-- Outputs :: =Ok= (0, never thrown), =Abi= (1), =Null= (2), =Cutoff= (3),
-  =Box= (4), =Shape= (5), =Short= (6), =Nomem= (7) and =Skin= (8), matching the
+- Outputs :: =Ok= (0, never thrown), =Abi= (1), =Null= (2), =Cutoff= (3), =Box=
+  (4), =Shape= (5), =Short= (6), =Nomem= (7) and =Skin= (8), matching the
   =RGPOT_NLIST_*= values.
 - Errors :: none.
 
@@ -795,8 +799,8 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 - Units :: none.
 - Outputs :: the shape of four consecutive central atoms, one partner and a
   4-bit mask.
-  The interactions are the full set; there is no half cluster, so the type has no
-  shell.
+  The interactions are the full set; there is no half cluster, so the type has
+  no shell.
 - Errors :: none.
 
 *** =rgpot::nlist::Cut=
@@ -841,8 +845,8 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 
 - Inputs :: none; a struct.
 - Units :: as =View=.
-- Outputs :: the owning arrays =first=, =second=, =shift=, =vector=,
-  =distance= and =mask=, the =device= (0 for host memory) and =stored=.
+- Outputs :: the owning arrays =first=, =second=, =shift=, =vector=, =distance=
+  and =mask=, the =device= (0 for host memory) and =stored=.
   =size()= is the pair count, =view()= returns a =View= and
   =column_major_vectors()= the vectors as a Fortran =(3, npairs)= array over the
   same memory.
@@ -928,8 +932,8 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 
 - Inputs :: none; a struct.
 - Units :: =cutoff= and =skin= in Angstrom.
-- Outputs :: =cutoff=, =skin=, =periodic= (all true), =image= (default
-  =Round=) and =mode= (default =Auto=).
+- Outputs :: =cutoff=, =skin=, =periodic= (all true), =image= (default =Round=)
+  and =mode= (default =Auto=).
 - Errors :: none.
 
 *** =rgpot::nlist::MinimumImage=
@@ -937,10 +941,9 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 - Inputs :: =MinimumImage(cell, periodic)=, a row-major cell of nine values and
   three periodic flags.
 - Units :: Angstrom.
-- Outputs :: the nearest periodic image d - n H.
-  =fold(dx, dy, dz)= folds a displacement in place, and =foldWithin(dx, dy, dz,
-  within2)= returns false when every image is longer than the squared length
-  =within2=.
+- Outputs :: the nearest periodic image d - n H. =fold(dx, dy, dz)= folds a
+  displacement in place, and =foldWithin(dx, dy, dz, within2)= returns false
+  when every image is longer than the squared length =within2=.
   A cell whose condition estimate would spend more than half the double
   significand is Minkowski-reduced, and a basis that is still ill-conditioned
   searches the 27 images with coefficients in -1, 0 and 1.
@@ -1002,10 +1005,9 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 
 - Inputs :: none; a struct a backend hands the adapter at create.
 - Units :: none.
-- Outputs :: the potential =pot=, the =model_path= whose SHA-256 identifies the
-  loaded model (empty without a model file), and the optional hooks
-  =set_charge_spin(charge, spin)=, =set_num_threads(intra_op, inter_op)=,
-  =select_orbitals(key)= and =copy_orbitals(from_key, to_key)=.
+- Outputs :: the potential =pot=, the
+  =model_path= whose SHA-256 identifies the loaded model (empty without a model file), and the optional hooks =set_charge_spin(charge, spin)=, =set_num_threads(intra_op, inter_op)=, =select_orbitals(key)=
+  and =copy_orbitals(from_key, to_key)=.
   An empty hook means the backend does not support that setting.
 - Errors :: =set_charge_spin= throws =Unsupported=, before changing anything,
   for a value it cannot take.
@@ -1032,8 +1034,8 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 - Inputs :: data fed through =update(data, size)=; =reset()= restarts.
 - Units :: none.
 - Outputs :: a SHA-256 digest.
-  =hex_digest()= returns the lowercase hexadecimal digest and resets the
-  object, and the static =of_file(path)= digests a whole file.
+  =hex_digest()= returns the lowercase hexadecimal digest and resets the object, and the static =of_file(path)=
+  digests a whole file.
 - Errors :: =of_file= returns an empty string when the file cannot be read.
 
 *** =rgpot::abi::CxxSoversionEntry=
@@ -1052,11 +1054,11 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 - Inputs :: none; a struct with defaults.
 - Units :: none.
 - Outputs :: what the host requires of a backend: the protocol =family= (default
-  =rgpot.potentials=) and =protocol_major= (1) with =protocol_minor_min=, the
-  =schema_id=, the bridge =bridge_abi_major=, =bridge_abi_minor_max=,
-  =bridge_layout=, the DLPack =dlpack_major= and =dlpack_minor_max=,
-  =bridge_features= (0x3, gradient and batch) and =required_operations=
-  (default energy and forces).
+  =rgpot.potentials=) and
+  =protocol_major= (1) with =protocol_minor_min=, the =schema_id=, the bridge
+  =bridge_abi_major=, =bridge_abi_minor_max=, =bridge_layout=, the DLPack
+  =dlpack_major= and =dlpack_minor_max=, =bridge_features= (0x3, gradient and
+  batch) and =required_operations= (default energy and forces).
 - Errors :: none.
 
 *** =rgpot::abi::ProfileResult=
@@ -1064,21 +1066,22 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 - Inputs :: none; a struct.
 - Units :: =energy_h= is in Hartree.
 - Outputs :: =ok=, =energy_h= and =message=, 512 bytes.
-  The layout equals that of every backend result (=NWChemCResult=,
-  =CPMDCResult= and the others), which makes the prefix-generic function
-  pointers of =ProfileLoader= well defined.
+  The layout equals that of every backend result (=NWChemCResult=, =CPMDCResult=
+  and the others), which makes the prefix-generic function pointers of
+  =ProfileLoader= well defined.
 - Errors :: none.
 
 *** =rgpot::abi::ProfileLoader=
 
-- Inputs :: =load(prefix, explicit_path = "")=; the static
-  =candidates(prefix, explicit_path)= lists the library paths tried.
+- Inputs ::
+  =load(prefix, explicit_path = "")=; the static =candidates(prefix, explicit_path)=
+  lists the library paths tried.
 - Units :: those of the profile functions.
 - Outputs :: a loader that opens the first loadable candidate and resolves the
-  full minimum profile into the public function pointers =abi_version=,
-  =version=, =last_error=, =available=, =finalize=, =configure=,
-  =session_create_from_config=, =session_configure=, =session_destroy=,
-  =session_calculate_result=, =calculate_result_from_config=,
+  full minimum profile into the public function pointers
+  =abi_version=, =version=, =last_error=, =available=, =finalize=, =configure=,
+  =session_create_from_config=, =session_configure=,
+  =session_destroy=, =session_calculate_result=, =calculate_result_from_config=,
   =potential_result_size_for_force_input= and =capabilities_result=.
   =loaded()=, =prefix()= and =capabilities()= (the flat =Capabilities= message
   bytes) report the state.
@@ -1099,10 +1102,10 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
   object is not copyable.
 - Units :: none.
 - Outputs :: =discover()= loads descriptors from the directories named by
-  =RGPOT_PLUGIN_PATH=, =load_plugin(path)= loads one library,
-  =register_builtin(desc)= adds a descriptor of static lifetime,
-  =list_plugins()= returns the names, =find(name)= returns the entry (valid
-  across later registrations) and =retain_library(desc)= keeps a registered
-  library mapped for a live instance.
+  =RGPOT_PLUGIN_PATH=,
+  =load_plugin(path)= loads one library, =register_builtin(desc)= adds a
+  descriptor of static lifetime,
+  =list_plugins()= returns the names, =find(name)= returns the entry (valid across later registrations) and =retain_library(desc)=
+  keeps a registered library mapped for a live instance.
 - Errors :: =load_plugin= returns false for an invalid library or an existing
   plugin name.
