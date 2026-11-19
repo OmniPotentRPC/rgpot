@@ -2280,7 +2280,8 @@ if get_option('with_tests')
             sources: ['tests/layout_fixture.cc'],
             include_directories: _incdirs + ['.'],
             cpp_args: test_args,
-            dependencies: test_deps,
+            link_with: rgpot,
+            gnu_symbol_visibility: 'hidden',
             install: false,
         )
         test(
@@ -2288,13 +2289,16 @@ if get_option('with_tests')
             executable(
                 'cxx_layout_test',
                 sources: ['tests/CxxLayoutTest.cc'],
-                dependencies: test_deps,
+                dependencies: [catch2_dep, _dl_dep],
                 include_directories: _incdirs + ['.'],
                 cpp_args: test_args,
-                link_with: _linkto,
+                link_with: rgpot,
                 link_language: 'cpp',
             ),
-            env: {'RGPOT_LAYOUT_FIXTURE': layout_fixture.full_path()},
+            env: {
+                'RGPOT_LAYOUT_FIXTURE': layout_fixture.full_path(),
+                'RGPOT_SHARED_LIBRARY': '1',
+            },
             depends: [layout_fixture],
             kwargs: _rt_kw['CxxLayoutTest'],
         )

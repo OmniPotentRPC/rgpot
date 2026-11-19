@@ -1,9 +1,11 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#define RGPOT_NLIST_BUILDING
 #include "rgpot/nlist/Neighbours.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -38,6 +40,11 @@ int axisCount(double length, double edge) {
 }
 
 } // namespace
+
+std::uint64_t Neighbours::nextGeneration() noexcept {
+  static std::atomic<std::uint64_t> counter{0};
+  return counter.fetch_add(1, std::memory_order_relaxed) + 1;
+}
 
 std::uint64_t availableBytes() {
 #if defined(_WIN32)
@@ -382,6 +389,7 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     return;
   }
   reused_ = false;
+  generation_ = nextGeneration();
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
   len_[0] = box9[0];
