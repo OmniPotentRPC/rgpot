@@ -38,10 +38,8 @@
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
-#ifdef RGPOT_HAS_METATOMIC
 #include "rgpot/MetatomicPot/MetatomicConfig.hpp"
 #include "rgpot/MetatomicPot/MetatomicDlopen.hpp"
-#endif
 
 #ifdef RGPOT_HAS_CACHE
 #include "rgpot/PotentialCache.hpp"
@@ -468,11 +466,9 @@ NB_MODULE(_core, m) {
             "kernels, are absent when the build left them out. Evaluations "
             "release the interpreter while the kernel runs.";
   m.attr("__version__") = RGPOT_PY_VERSION;
-#ifdef RGPOT_HAS_METATOMIC
+  // MetatomicDlopen is linked into every librgpot. Torch is not.
+  // The engine plugin itself stays optional and is opened at runtime.
   m.attr("has_metatomic_dlopen") = true;
-#else
-  m.attr("has_metatomic_dlopen") = false;
-#endif
 #ifdef RGPOT_HAS_CACHE
   m.attr("has_cache") = true;
 #else
@@ -524,7 +520,6 @@ NB_MODULE(_core, m) {
       nb::arg("positions").noconvert(), nb::arg("atom_types"),
       nb::arg("box").noconvert());
 
-#ifdef RGPOT_HAS_METATOMIC
   m.def(
       "evaluate_metatomic_dlopen",
       [](const F64 &positions, nb::handle atom_types, const F64 &box,
@@ -572,7 +567,6 @@ NB_MODULE(_core, m) {
       "the directories in EON_POTENTIALS_PATH and RGPOT_ENGINE_PATH. "
       "rgpot.evaluate_metatomic also tries the engines bundled with the "
       "package. Each call builds its own frontend.");
-#endif
 
 #ifdef RGPOT_HAS_CACHE
   nb::class_<rgpot::cache::PotentialCache>(m, "PotentialCache")
@@ -1168,8 +1162,8 @@ NB_MODULE(_core, m) {
                    make_cfg(u0, cutoff, psi, engine_path))
             .release();
       },
-      nb::rv_policy::take_ownership,
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::rv_policy::take_ownership, nb::arg("u0") = 1.0,
+      nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
       nb::arg("engine_path") = "",
       "Shifted 12-6 Lennard-Jones. The constructor dlopens an engine "
       "plugin, which stays the backend. engine_path empty searches "
@@ -1183,8 +1177,8 @@ NB_MODULE(_core, m) {
                    make_cfg(u0, cutoff, psi, engine_path))
             .release();
       },
-      nb::rv_policy::take_ownership,
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::rv_policy::take_ownership, nb::arg("u0") = 1.0,
+      nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
       nb::arg("engine_path") = "",
       "Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once. "
       "An empty engine_path evaluates in process. A path is a library "
@@ -1197,8 +1191,8 @@ NB_MODULE(_core, m) {
                    make_cfg(u0, cutoff, psi, engine_path))
             .release();
       },
-      nb::rv_policy::take_ownership,
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::rv_policy::take_ownership, nb::arg("u0") = 1.0,
+      nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
       nb::arg("engine_path") = "",
       "Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once. "
       "An empty engine_path evaluates in process. A path is a library "
