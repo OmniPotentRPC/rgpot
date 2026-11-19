@@ -41,6 +41,11 @@ struct LJConfig {
   /// takes each pair term to zero over [cutoff - switch_width, cutoff].
   /// 0 keeps the shifted truncation, whose force jumps at the cutoff.
   double switch_width = 0.0;
+  /// Add the analytic continuum long-range tail correction for energy and
+  /// Cauchy stress on a fully periodic cell, with an unshifted pair
+  /// truncation at the cutoff (Allen and Tildesley; LAMMPS
+  /// `pair_modify tail yes`; OpenMM `setUseDispersionCorrection`).
+  bool tail_correction = false;
 };
 
 /**
@@ -55,9 +60,10 @@ public:
   explicit LJPot(const LJConfig &c)
       : Potential(PotType::LJ), u0{c.u0}, cuttOffR{c.cutoff}, psi{c.psi},
         m_config{c} {
-    // Shift so U(cuttOffR) = 0 (standard shifted 12-6 LJ).
+    // Shift so U(cuttOffR) = 0 (standard shifted 12-6 LJ), unless the
+    // analytic tail correction is active (LAMMPS pair_modify tail yes).
     const double a = std::pow(psi / cuttOffR, 6.0);
-    cuttOffU = 4.0 * u0 * a * (a - 1.0);
+    cuttOffU = c.tail_correction ? 0.0 : 4.0 * u0 * a * (a - 1.0);
     if (c.switch_width != 0.0) {
       m_switch = QuinticSwitch::endingAt(c.cutoff, c.switch_width);
     }
@@ -69,6 +75,9 @@ public:
     // Hashed only when set, so unswitched configs keep their cache keys.
     if (c.switch_width != 0.0) {
       fp.f64(c.switch_width);
+    }
+    if (c.tail_correction) {
+      fp.u64(1);
     }
     m_paramsKey = fp.h;
   }

@@ -1,0 +1,1 @@
+`LJPot` takes an opt-in `tail_correction` flag on `LJConfig` (default `false`) that leaves the pair cutoff unshifted and adds the continuum long-range energy and Cauchy stress tail correction per species pair on a fully periodic cell. `kCxxSoversion` is bumped to 9 for the new `LJConfig` field.

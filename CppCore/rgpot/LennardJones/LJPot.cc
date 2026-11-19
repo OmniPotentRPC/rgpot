@@ -15,7 +15,9 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <numbers>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 // clang-format on
 
@@ -104,6 +106,80 @@ KeptKey ljNeighbourKey(const LJPot *self, double cutoff,
   return key;
 }
 
+bool isFullyPeriodicCell(const double *box, double volume) noexcept {
+  if (box == nullptr || !(volume > 0.0) || !std::isfinite(volume)) {
+    return false;
+  }
+  for (int k = 0; k < 9; ++k) {
+    if (!std::isfinite(box[k])) {
+      return false;
+    }
+  }
+  return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0;
+}
+
+void applyLjTail(const ForceInput &in, double u0, double psi, double cutoff,
+                 double volume, double &energy, double strain[6],
+                 const PerAtomOut *atoms) {
+  if (in.nAtoms == 0 || !(cutoff > 0.0) || !(psi > 0.0) ||
+      !isFullyPeriodicCell(in.box, volume)) {
+    return;
+  }
+  std::vector<std::pair<int, std::size_t>> species;
+  if (in.atmnrs == nullptr) {
+    species.emplace_back(0, in.nAtoms);
+  } else {
+    for (std::size_t k = 0; k < in.nAtoms; ++k) {
+      const int z = in.atmnrs[k];
+      auto it = std::find_if(species.begin(), species.end(),
+                             [z](const auto &e) { return e.first == z; });
+      if (it == species.end()) {
+        species.emplace_back(z, 1);
+      } else {
+        ++it->second;
+      }
+    }
+  }
+  const double sig2 = psi * psi;
+  const double sig6 = sig2 * sig2 * sig2;
+  const double rc3 = cutoff * cutoff * cutoff;
+  const double rc6 = rc3 * rc3;
+  const double rc9 = rc3 * rc6;
+  double etail = 0.0;
+  double ptail = 0.0;
+  for (std::size_t i = 0; i < species.size(); ++i) {
+    const double ni = static_cast<double>(species[i].second);
+    for (std::size_t j = i; j < species.size(); ++j) {
+      const double nj = static_cast<double>(species[j].second);
+      const double pre = (8.0 * std::numbers::pi * ni * nj * u0 * sig6) / (9.0 * rc9);
+      const double w = (i == j) ? 1.0 : 2.0;
+      etail += w * pre * (sig6 - 3.0 * rc6);
+      ptail += w * 2.0 * pre * (2.0 * sig6 - 3.0 * rc6);
+    }
+  }
+  const double e_tail = etail / volume;
+  const double w_tail = ptail / volume;
+  energy += e_tail;
+  strain[0] -= w_tail;
+  strain[1] -= w_tail;
+  strain[2] -= w_tail;
+  if (atoms != nullptr) {
+    const double inv_n = 1.0 / static_cast<double>(in.nAtoms);
+    if (atoms->energy != nullptr) {
+      for (std::size_t i = 0; i < in.nAtoms; ++i) {
+        atoms->energy[i] += e_tail * inv_n;
+      }
+    }
+    if (atoms->virial != nullptr) {
+      for (std::size_t i = 0; i < in.nAtoms; ++i) {
+        atoms->virial[6 * i] += w_tail * inv_n;
+        atoms->virial[6 * i + 1] += w_tail * inv_n;
+        atoms->virial[6 * i + 2] += w_tail * inv_n;
+      }
+    }
+  }
+}
+
 } // namespace
 
 LJPot::~LJPot() {
@@ -170,6 +246,9 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
   }
   if (N < 2 || cuttOffR <= 0.0) {
     KeptLjNeighbours::release(ljNeighbourKey(this, cuttOffR, mode_));
+    if (m_config.tail_correction && N == 1 && cuttOffR > 0.0) {
+      applyLjTail(in, u0, psi, cuttOffR, volume, *U, strain, atoms);
+    }
     publishCauchyStress(out, strain, volume);
     return;
   }
@@ -192,6 +271,9 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
       });
   if (std::isnan(*U)) {
     throw std::domain_error("LJPot force is undefined for coincident atoms");
+  }
+  if (m_config.tail_correction) {
+    applyLjTail(in, u0, psi, cuttOffR, volume, *U, strain, atoms);
   }
   publishCauchyStress(out, strain, volume);
 }
