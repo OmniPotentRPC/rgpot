@@ -123,6 +123,8 @@ enum CiCmd {
         rpc: String,
         #[arg(long)]
         cache: String,
+        #[arg(long, default_value = "false")]
+        eam_table: String,
         #[arg(long, default_value = "build")]
         build_dir: String,
         #[arg(long)]
@@ -276,16 +278,33 @@ fn run() -> Result<(), String> {
             CiCmd::CmakeTest {
                 rpc,
                 cache,
+                eam_table,
                 build_dir,
                 no_darwin,
-            } => ci::run_build_test(&root, "cmake", &rpc, &cache, Some(&build_dir), no_darwin),
+            } => ci::run_build_test(
+                &root,
+                "cmake",
+                &rpc,
+                &cache,
+                Some(&build_dir),
+                no_darwin,
+                Some(&eam_table),
+            ),
             CiCmd::BuildTest {
                 sys,
                 rpc,
                 cache,
                 build_dir,
                 no_darwin,
-            } => ci::run_build_test(&root, &sys, &rpc, &cache, build_dir.as_deref(), no_darwin),
+            } => ci::run_build_test(
+                &root,
+                &sys,
+                &rpc,
+                &cache,
+                build_dir.as_deref(),
+                no_darwin,
+                None,
+            ),
             CiCmd::ReleaseAssert => ci::run_release_assert(&root),
             CiCmd::TowncrierDraft => ci::run_towncrier_draft(&root),
             CiCmd::CogBumpDryRun { bump } => ci::run_cog_bump_dry_run(&root, bump.as_deref()),

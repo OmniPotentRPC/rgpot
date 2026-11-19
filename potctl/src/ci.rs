@@ -147,7 +147,7 @@ pub fn cmake_macos_extra_args(
 }
 
 /// Pure: core cmake configure flags (RGPOT_*), not including macOS extras.
-pub fn cmake_configure_core_args(rpc: bool, cache: bool) -> Vec<String> {
+pub fn cmake_configure_core_args(rpc: bool, cache: bool, eam_table: bool) -> Vec<String> {
     vec![
         "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache".into(),
         "-DCMAKE_C_COMPILER_LAUNCHER=ccache".into(),
@@ -158,6 +158,10 @@ pub fn cmake_configure_core_args(rpc: bool, cache: bool) -> Vec<String> {
         "-DRGPOT_WITH_EIGEN=OFF".into(),
         format!("-DRGPOT_WITH_RPC={}", if rpc { "ON" } else { "OFF" }),
         format!("-DRGPOT_WITH_CACHE={}", if cache { "ON" } else { "OFF" }),
+        format!(
+            "-DRGPOT_WITH_EAM_TABLE={}",
+            if eam_table { "ON" } else { "OFF" }
+        ),
         "-DRGPOT_PURE_LIB=OFF".into(),
     ]
 }
@@ -241,6 +245,7 @@ pub fn run_cmake_test(
     root: &Path,
     rpc: bool,
     cache: bool,
+    eam_table: bool,
     build_dir: &str,
     apply_darwin: bool,
 ) -> Result<()> {
@@ -254,7 +259,7 @@ pub fn run_cmake_test(
     let fc = env::var("FC").ok();
 
     let mut args: Vec<String> = vec!["-S".into(), ".".into(), "-B".into(), build_dir.into()];
-    args.extend(cmake_configure_core_args(rpc, cache));
+    args.extend(cmake_configure_core_args(rpc, cache, eam_table));
     args.extend(cmake_macos_extra_args(
         is_macos,
         sdk.as_deref(),
@@ -281,10 +286,15 @@ pub fn run_build_test(
     cache: &str,
     build_dir: Option<&str>,
     no_darwin: bool,
+    eam_table: Option<&str>,
 ) -> Result<()> {
     let sys = BuildSys::parse(sys)?;
     let rpc = parse_bool_flag(rpc, "rpc")?;
     let cache = parse_bool_flag(cache, "cache")?;
+    let eam_table = match eam_table {
+        Some(flag) => parse_bool_flag(flag, "eam_table")?,
+        None => false,
+    };
     let apply_darwin = !no_darwin;
     match sys {
         BuildSys::Meson => {
@@ -293,7 +303,7 @@ pub fn run_build_test(
         }
         BuildSys::Cmake => {
             let dir = build_dir.unwrap_or("build");
-            run_cmake_test(root, rpc, cache, dir, apply_darwin)
+            run_cmake_test(root, rpc, cache, eam_table, dir, apply_darwin)
         }
     }
 }
@@ -1690,12 +1700,14 @@ mod tests {
 
     #[test]
     fn cmake_configure_core_rpc_cache_on_off() {
-        let on = cmake_configure_core_args(true, true);
+        let on = cmake_configure_core_args(true, true, false);
         assert!(on.iter().any(|x| x == "-DRGPOT_WITH_RPC=ON"));
         assert!(on.iter().any(|x| x == "-DRGPOT_WITH_CACHE=ON"));
-        let off = cmake_configure_core_args(false, false);
+        assert!(on.iter().any(|x| x == "-DRGPOT_WITH_EAM_TABLE=OFF"));
+        let off = cmake_configure_core_args(false, false, true);
         assert!(off.iter().any(|x| x == "-DRGPOT_WITH_RPC=OFF"));
         assert!(off.iter().any(|x| x == "-DRGPOT_WITH_CACHE=OFF"));
+        assert!(off.iter().any(|x| x == "-DRGPOT_WITH_EAM_TABLE=ON"));
     }
 
     #[test]
@@ -1956,8 +1968,16 @@ Options:
 
     #[test]
     fn run_build_test_rejects_bad_sys() {
-        let err = run_build_test(Path::new("/tmp/nope"), "make", "true", "false", None, true)
-            .unwrap_err();
+        let err = run_build_test(
+            Path::new("/tmp/nope"),
+            "make",
+            "true",
+            "false",
+            None,
+            true,
+            None,
+        )
+        .unwrap_err();
         assert!(err.contains("unknown build sys") || err.contains("make"));
     }
 }

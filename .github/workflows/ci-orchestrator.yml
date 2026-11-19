@@ -322,7 +322,12 @@ jobs:
       - if: matrix.sys == 'cmake'
         name: Build & Test (CMake)
         shell: pixi run bash -e {0}
-        run: potctl ci cmake-test --rpc ${{ matrix.rpc }} --cache ${{ matrix.cache }}
+        run: |
+          args=(--rpc "${{ matrix.rpc }}" --cache "${{ matrix.cache }}")
+          if [ "${{ matrix.rpc }}" = "false" ] && [ "${{ matrix.cache }}" = "false" ]; then
+            args+=(--eam-table true)
+          fi
+          potctl ci cmake-test "${args[@]}"
       - if: matrix.rpc == 'true' && matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
         name: RPC Integration Test
         shell: pixi run -e rpctest bash -e {0}
