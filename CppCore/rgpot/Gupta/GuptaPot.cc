@@ -39,6 +39,11 @@ namespace {
 /// minimum-image wrapping does not fold cluster pairs.
 constexpr double kFreeBoxSideAngstrom = 1.0e6;
 
+/// The Verlet skin is the cutoff divided by this, a fifth, the fraction that
+/// LJClusterPot, SuttonChenPot, SWSi, TersoffSiC, ZBLPot and MorsePot use.
+/// A stored list is rebuilt once an atom has moved half the skin.
+constexpr double kCutoffPerSkin = 5.0;
+
 /// cutoff <= 0 keeps every pair; the unbounded search walks them all without
 /// bins or a pair list.
 double searchCutoff(const rgpot::GuptaConfig &cfg) {
@@ -176,7 +181,8 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
   rho_.assign(n_size, 0.0);
   double *rho = rho_.data();
   double epair = 0.0;
-  const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
+  const double skin =
+      mode_ == nlist::Mode::Stream ? 0.0 : cutoff / kCutoffPerSkin;
   nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin,
                      nlist::Image::Round, mode_, periodic);
   const bool stream = neighbours_.streaming();
