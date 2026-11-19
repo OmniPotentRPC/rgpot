@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <numbers>
 #include <stdexcept>
 #include <vector>
 // clang-format on
@@ -104,6 +105,127 @@ KeptKey ljNeighbourKey(const LJPot *self, double cutoff,
   return key;
 }
 
+bool isFullyPeriodicCell(const double *box, double volume) noexcept {
+  if (box == nullptr || !(volume > 0.0) || !std::isfinite(volume)) {
+    return false;
+  }
+  for (int k = 0; k < 9; ++k) {
+    if (!std::isfinite(box[k])) {
+      return false;
+    }
+  }
+  return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0;
+}
+
+// Integral of r^n over [lo, hi] for an integer n.
+long double powerIntegral(int n, long double lo, long double hi) noexcept {
+  if (n == -1) {
+    return std::log(hi / lo);
+  }
+  const auto p = static_cast<long double>(n + 1);
+  return (std::pow(hi, p) - std::pow(lo, p)) / p;
+}
+
+// Integral of r^n (1 - S(r)) over the switch window [r_on, r_on + width],
+// with 1 - S = 10 t^3 - 15 t^4 + 6 t^5 and t = (r - r_on) / width. The
+// polynomial is expanded in r, so each term integrates in closed form. The
+// alternating coefficients grow like (r_on / width)^5, and the sum loses
+// about that many digits, so it runs in long double.
+double switchWindowIntegral(int n, double r_on, double width) noexcept {
+  constexpr long double kBinomial[6][6] = {
+      {1, 0, 0, 0, 0, 0}, {1, 1, 0, 0, 0, 0}, {1, 2, 1, 0, 0, 0},
+      {1, 3, 3, 1, 0, 0}, {1, 4, 6, 4, 1, 0}, {1, 5, 10, 10, 5, 1}};
+  constexpr long double kCoeff[6] = {0.0L, 0.0L, 0.0L, 10.0L, -15.0L, 6.0L};
+  const auto a = static_cast<long double>(r_on);
+  const auto w = static_cast<long double>(width);
+  long double q[6] = {};
+  long double inv_wk = 1.0L;
+  for (int k = 0; k < 6; ++k) {
+    if (k > 0) {
+      inv_wk /= w;
+    }
+    if (kCoeff[k] == 0.0L) {
+      continue;
+    }
+    for (int j = 0; j <= k; ++j) {
+      q[j] += kCoeff[k] * kBinomial[k][j] * std::pow(-a, k - j) * inv_wk;
+    }
+  }
+  long double sum = 0.0L;
+  for (int j = 0; j < 6; ++j) {
+    sum += q[j] * powerIntegral(n + j, a, a + w);
+  }
+  return static_cast<double>(sum);
+}
+
+// Radial moments of the part of the bare 12-6 pair term that the truncated
+// sum does not carry, taken over a uniform fluid (g = 1).
+// With dphi = V - phi_used (phi_used = the pair term the kernel evaluates):
+//   energy  = integral of r^2 dphi dr,
+//   virial  = -1/3 integral of r^3 dphi' dr over the pair force the kernel
+//             does not apply.
+// An unswitched cutoff leaves dphi = V beyond rc. The kernel applies no
+// force at the jump, so the virial keeps the surface term rc^3 V(rc) / 3.
+// A switch takes phi_used to zero continuously, so dphi is continuous and
+// integration by parts makes the two moments equal.
+struct LjTailMoments {
+  double energy;
+  double virial;
+};
+
+LjTailMoments ljTailMoments(const LJConfig &c) {
+  const double sig2 = c.psi * c.psi;
+  const double sig6 = sig2 * sig2 * sig2;
+  const double rc3 = c.cutoff * c.cutoff * c.cutoff;
+  const double rc6 = rc3 * rc3;
+  const double rc9 = rc3 * rc6;
+  const double pre = (4.0 * c.u0 * sig6) / (9.0 * rc9);
+  const double beyond = pre * (sig6 - 3.0 * rc6);
+  if (c.switch_width == 0.0) {
+    return {beyond, 2.0 * pre * (2.0 * sig6 - 3.0 * rc6)};
+  }
+  const double r_on = c.cutoff - c.switch_width;
+  const double window =
+      4.0 * c.u0 *
+      (sig6 * sig6 * switchWindowIntegral(-10, r_on, c.switch_width) -
+       sig6 * switchWindowIntegral(-4, r_on, c.switch_width));
+  return {beyond + window, beyond + window};
+}
+
+// Adds the continuum correction for N atoms in one cell. Every pair shares
+// one (u0, psi), so the correction depends on N alone and not on atmnrs.
+void applyLjTail(const ForceInput &in, const LJConfig &c, double volume,
+                 double &energy, double strain[6], const PerAtomOut *atoms) {
+  if (in.nAtoms == 0 || !(c.cutoff > 0.0) || !(c.psi > 0.0) ||
+      !isFullyPeriodicCell(in.box, volume)) {
+    return;
+  }
+  const double n = static_cast<double>(in.nAtoms);
+  const LjTailMoments moments = ljTailMoments(c);
+  const double scale = 2.0 * std::numbers::pi * n * n / volume;
+  const double e_tail = scale * moments.energy;
+  const double w_tail = scale * moments.virial;
+  energy += e_tail;
+  strain[0] -= w_tail;
+  strain[1] -= w_tail;
+  strain[2] -= w_tail;
+  if (atoms != nullptr) {
+    const double inv_n = 1.0 / n;
+    if (atoms->energy != nullptr) {
+      for (std::size_t i = 0; i < in.nAtoms; ++i) {
+        atoms->energy[i] += e_tail * inv_n;
+      }
+    }
+    if (atoms->virial != nullptr) {
+      for (std::size_t i = 0; i < in.nAtoms; ++i) {
+        atoms->virial[6 * i] += w_tail * inv_n;
+        atoms->virial[6 * i + 1] += w_tail * inv_n;
+        atoms->virial[6 * i + 2] += w_tail * inv_n;
+      }
+    }
+  }
+}
+
 } // namespace
 
 LJPot::~LJPot() {
@@ -170,6 +292,9 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
   }
   if (N < 2 || cuttOffR <= 0.0) {
     KeptLjNeighbours::release(ljNeighbourKey(this, cuttOffR, mode_));
+    if (m_config.tail_correction && N == 1 && cuttOffR > 0.0) {
+      applyLjTail(in, m_config, volume, *U, strain, atoms);
+    }
     publishCauchyStress(out, strain, volume);
     return;
   }
@@ -192,6 +317,9 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
       });
   if (std::isnan(*U)) {
     throw std::domain_error("LJPot force is undefined for coincident atoms");
+  }
+  if (m_config.tail_correction) {
+    applyLjTail(in, m_config, volume, *U, strain, atoms);
   }
   publishCauchyStress(out, strain, volume);
 }

@@ -133,7 +133,7 @@ is not the hash.
 | 3.5.1   | 1, 0, 1         | 4                    |
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
-| next    | 1, 6, 1         | 8                    |
+| next    | 1, 6, 1         | 9                    |
 
 3.6.0 raised the minor for =rgpot_eindir_abi_compatible=; a caller built against
 minor 0 still matches it.
@@ -162,4 +162,6 @@ Soversion 5 recorded =LJPot= and =MorsePot= gaining a neighbour list and a
 cached pair table.
 Soversion 6 drops the copied half-list from LJ and Morse and gives ZBL and the
 open Lennard-Jones cluster a neighbour list.
+Soversion 9 adds =LJConfig::tail_correction=, a new member of a configuration
+struct.
 A program linked against soversion 4 does not load =librgpot.so.6=.

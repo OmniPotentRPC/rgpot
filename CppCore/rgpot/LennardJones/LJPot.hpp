@@ -41,6 +41,18 @@ struct LJConfig {
   /// takes each pair term to zero over [cutoff - switch_width, cutoff].
   /// 0 keeps the shifted truncation, whose force jumps at the cutoff.
   double switch_width = 0.0;
+  /// Add the analytic continuum long-range tail correction to the energy,
+  /// the Cauchy stress and the per-atom outputs of @c forceImpl and
+  /// @c forcePerAtom on a fully periodic cell. It assumes a uniform fluid
+  /// (g(r) = 1) from @c cutoff - @c switch_width outward, and turns the
+  /// shift off (Allen and Tildesley; LAMMPS `pair_modify tail yes`; OpenMM
+  /// `setUseDispersionCorrection`). With a switch, the correction also adds
+  /// back the part of the bare 12-6 term that the switch removes inside
+  /// [cutoff - switch_width, cutoff], so the corrected result approximates
+  /// the untruncated, unswitched fluid. The constructor then throws
+  /// @c std::invalid_argument unless @c switch_width < @c cutoff. The staged
+  /// hooks (@c forceStage) return the pair terms only.
+  bool tail_correction = false;
 };
 
 /**
@@ -55,11 +67,16 @@ public:
   explicit LJPot(const LJConfig &c)
       : Potential(PotType::LJ), u0{c.u0}, cuttOffR{c.cutoff}, psi{c.psi},
         m_config{c} {
-    // Shift so U(cuttOffR) = 0 (standard shifted 12-6 LJ).
+    // Shift so U(cuttOffR) = 0 (standard shifted 12-6 LJ), unless the
+    // analytic tail correction is active (LAMMPS pair_modify tail yes).
     const double a = std::pow(psi / cuttOffR, 6.0);
-    cuttOffU = 4.0 * u0 * a * (a - 1.0);
+    cuttOffU = c.tail_correction ? 0.0 : 4.0 * u0 * a * (a - 1.0);
     if (c.switch_width != 0.0) {
       m_switch = QuinticSwitch::endingAt(c.cutoff, c.switch_width);
+      if (c.tail_correction && !(c.switch_width < c.cutoff)) {
+        throw std::invalid_argument(
+            "LJConfig: tail_correction with a switch needs switch_width < cutoff");
+      }
     }
     Fnv1a fp;
     fp.u64(kKernelVersion);
@@ -69,6 +86,9 @@ public:
     // Hashed only when set, so unswitched configs keep their cache keys.
     if (c.switch_width != 0.0) {
       fp.f64(c.switch_width);
+    }
+    if (c.tail_correction) {
+      fp.u64(1);
     }
     m_paramsKey = fp.h;
   }

@@ -119,11 +119,22 @@ class.
 - Inputs :: =u0= (well depth, default 1.0), =cutoff= (truncation distance,
   default 15.0), =psi= (zero-crossing distance, default 1.0), =switch_width=
   (width of the quintic switch that ends at =cutoff=, default 0.0, which keeps
-  the shifted truncation).
+  the shifted truncation), =tail_correction= (default =false=).
 - Units :: =u0= in eV; =cutoff=, =psi= and =switch_width= in Angstrom.
 - Outputs :: the parameters of =rgpot::LJPot=.
+  With =tail_correction= set, a fully periodic cell gets the continuum
+  long-range correction of a uniform fluid added to the energy, the stress and
+  the per-atom energies and virials, and the pair term is not shifted.
+  The correction covers everything of the bare 12-6 term that the truncated sum
+  leaves out: the part beyond =cutoff=, and with a switch also the part the
+  switch removes over [cutoff - switch_width, cutoff].
+  It assumes g(r) = 1 from =cutoff - switch_width= outward.
+  A cell that is not periodic in every direction gets no correction.
+  The staged hooks return the pair terms only.
 - Errors :: the constructor throws =std::invalid_argument= when =switch_width=
-  is non-zero and not in (0, cutoff]. No other field is checked.
+  is non-zero and not in (0, cutoff], and when =tail_correction= is set with a
+  =switch_width= that is not below =cutoff=.
+  No other field is checked.
 
 *** =rgpot::LJClusterConfig=
 

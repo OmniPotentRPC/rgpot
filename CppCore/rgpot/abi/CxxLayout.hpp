@@ -183,7 +183,8 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
 /// 8 stamps SuttonChenConfig, PotType::SuttonChen and SuttonChenPot.
-inline constexpr std::uint32_t kCxxSoversion = 8;
+/// 9 adds LJConfig::tail_correction.
+inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -196,7 +197,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x0a33f3aa4b4e5162ull},
+    {"linux-x86_64-libstdc++-lp64", 0x342d5b357d278322ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -318,6 +319,7 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(LJConfig, cutoff));
   f.add(offsetof(LJConfig, psi));
   f.add(offsetof(LJConfig, switch_width));
+  f.add(offsetof(LJConfig, tail_correction));
   f.type<LJClusterConfig>();
   f.add(offsetof(LJClusterConfig, u0));
   f.add(offsetof(LJClusterConfig, cutoff));
