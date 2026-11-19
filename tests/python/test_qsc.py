@@ -114,3 +114,20 @@ def test_qsc_set_element_parameter_and_ase_calculator():
     pot = rgpot.QSCPot()
     with pytest.raises(rgpot.NumericalError):
         pot(np.zeros((2, 3), dtype=np.float64), [29, 29], np.eye(3) * 20.0)
+
+
+def test_qsc_set_element_parameter_reaches_batch_replicas():
+    pot = rgpot.QSCPot(cutoff=8.0, periodic=False)
+    pos = np.array([[0.0, 0.0, 0.0], [2.5, 0.0, 0.0]])
+    box = np.eye(3) * 20.0
+    frames = [pos] * 4
+
+    def batch_energies():
+        rows = pot.evaluate_batch(frames, [[29, 29]] * 4, [box] * 4, n_threads=4)
+        return [row["energy"] for row in rows]
+
+    before = batch_energies()
+    pot.set_element_parameter(29, 10.0, 5.0, 0.006, 84.843, 3.52)
+    after = batch_energies()
+    assert before[0] != after[0]
+    assert after == [pot(pos, [29, 29], box)[0]] * 4

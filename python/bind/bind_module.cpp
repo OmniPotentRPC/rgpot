@@ -764,8 +764,10 @@ NB_MODULE(_core, m) {
         cfg.periodic = periodic;
         cfg.stress = stress;
         rgpot::QSCPot seed(cfg);
-        new (self) PotHolder<rgpot::QSCPot>(
-            [seed] { return std::make_unique<rgpot::QSCPot>(seed); });
+        new (self) PotHolder<rgpot::QSCPot>([seed]() mutable {
+          return std::unique_ptr<rgpot::QSCPot>(
+              new rgpot::QSCPot(seed.sharedReplica()));
+        });
       },
       nb::arg("cutoff") = 8.0, nb::arg("verlet_skin") = 0.5,
       nb::arg("periodic") = true, nb::arg("stress") = false,

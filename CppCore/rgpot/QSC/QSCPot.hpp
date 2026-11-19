@@ -70,6 +70,47 @@ public:
   explicit QSCPot(const QSCConfig &c);
 
   /**
+   * @brief Copies the potential with its own parameter table.
+   *
+   * The copy starts with the elements of @a other, and a later
+   * setElementParameter() on either one does not reach the other.
+   * @param other Potential to copy.
+   */
+  QSCPot(const QSCPot &other);
+
+  /**
+   * @brief Replaces this potential by a copy with its own parameter table.
+   * @param other Potential to copy.
+   * @return This potential.
+   */
+  QSCPot &operator=(const QSCPot &other);
+
+  /**
+   * @brief Moves the potential and its parameter table.
+   *
+   * A moved-from potential can be destroyed, assigned to, or copied.
+   * @param other Potential to move from.
+   */
+  QSCPot(QSCPot &&other) = default;
+
+  /**
+   * @brief Move-assigns the potential and its parameter table.
+   * @param other Potential to move from.
+   * @return This potential.
+   */
+  QSCPot &operator=(QSCPot &&other) = default;
+
+  /**
+   * @brief Makes a replica that shares this potential's parameter table.
+   *
+   * A host that keeps one replica per thread uses this so that
+   * setElementParameter() on any of them reaches all of them. Each replica
+   * has its own neighbour list and counters.
+   * @return A potential backed by the same parameter table.
+   */
+  [[nodiscard]] QSCPot sharedReplica();
+
+  /**
    * @brief Returns the configuration struct used at construction.
    * @return Reference to the @c QSCConfig.
    */
@@ -180,6 +221,9 @@ private:
   static constexpr uint64_t kKernelVersion = 1;
 
   struct TableState;
+  struct SharedTable {};
+
+  QSCPot(const QSCPot &other, SharedTable);
 
   void compute(const ForceInput &in, ForceOut *out,
                const PerAtomOut *atoms) const;

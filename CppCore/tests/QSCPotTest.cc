@@ -631,6 +631,72 @@ TEST_CASE(
   }
 }
 
+TEST_CASE("QSC copies keep their own parameter table and replicas share it",
+          "[QSC]") {
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  const double pos[6] = {0.0, 0.0, 0.0, 2.5, 0.0, 0.0};
+  const int z[2] = {29, 29};
+  const auto dimer_energy = [&](const rgpot::QSCPot &pot) {
+    double forces[6] = {};
+    rgpot::ForceOut out{};
+    out.F = forces;
+    pot.forceImpl({2, pos, z, box}, &out);
+    return out.energy;
+  };
+
+  rgpot::QSCPot original({.cutoff = 8.0, .periodic = false});
+  const uint64_t key0 = original.paramsKey();
+  const double energy0 = dimer_energy(original);
+
+  rgpot::QSCPot copied(original);
+  rgpot::QSCPot assigned;
+  assigned = original;
+  rgpot::QSCPot replica = original.sharedReplica();
+  REQUIRE(copied.config().periodic == false);
+  REQUIRE(assigned.config().periodic == false);
+
+  original.setElementParameter(29, 10.0, 5.0, 0.006, 84.843, 3.52);
+  const double energy1 = dimer_energy(original);
+  REQUIRE(energy1 != energy0);
+  REQUIRE(original.paramsKey() != key0);
+
+  REQUIRE(copied.paramsKey() == key0);
+  REQUIRE(assigned.paramsKey() == key0);
+  REQUIRE(dimer_energy(copied) == energy0);
+  REQUIRE(dimer_energy(assigned) == energy0);
+
+  REQUIRE(replica.paramsKey() == original.paramsKey());
+  REQUIRE(dimer_energy(replica) == energy1);
+
+  copied.setElementParameter(29, 10.0, 5.0, 0.007, 84.843, 3.60);
+  REQUIRE(original.paramsKey() != copied.paramsKey());
+  REQUIRE(dimer_energy(original) == energy1);
+  REQUIRE(dimer_energy(replica) == energy1);
+
+  replica.setElementParameter(29, 10.0, 5.0, 0.008, 84.843, 3.55);
+  REQUIRE(original.paramsKey() == replica.paramsKey());
+  REQUIRE(dimer_energy(original) == dimer_energy(replica));
+  REQUIRE(dimer_energy(original) != energy1);
+  REQUIRE(dimer_energy(assigned) == energy0);
+
+  const uint64_t keep = copied.paramsKey();
+  const double energy_copied = dimer_energy(copied);
+  rgpot::QSCPot moved(std::move(copied));
+  REQUIRE(moved.paramsKey() == keep);
+  REQUIRE(dimer_energy(moved) == energy_copied);
+
+  // Copying or copy-assigning a moved-from QSCPot does not dereference null.
+  rgpot::QSCPot copy_of_moved(copied);
+  rgpot::QSCPot assigned_from_moved({.cutoff = 8.0, .periodic = false});
+  assigned_from_moved = copied;
+  copy_of_moved = moved;
+  assigned_from_moved = moved;
+  REQUIRE(copy_of_moved.paramsKey() == keep);
+  REQUIRE(assigned_from_moved.paramsKey() == keep);
+  REQUIRE(dimer_energy(copy_of_moved) == energy_copied);
+  REQUIRE(dimer_energy(assigned_from_moved) == energy_copied);
+}
+
 TEST_CASE("QSC validates configuration, element parameters and force inputs",
           "[QSC]") {
   REQUIRE_THROWS_AS(rgpot::QSCPot({.cutoff = 0.0, .periodic = true}),
