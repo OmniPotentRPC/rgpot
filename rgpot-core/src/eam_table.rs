@@ -53,6 +53,9 @@ use crate::potential::PotentialImpl;
 use crate::status::rgpot_status_t;
 use crate::tensor::create_owned_f64_tensor;
 
+const CU_U3_FUNCFL: &str = include_str!("../../CppCore/tests/data/eam_table/Cu_u3.eam");
+static CU_U3_TABLE: OnceLock<EamTable> = OnceLock::new();
+
 /// Format code of the C ABI: choose from the suffix of the file name.
 /// `.eam.alloy` and `.setfl` are setfl, `.eam.fs` is Finnis-Sinclair and
 /// `.eam` is funcfl.
@@ -240,18 +243,9 @@ impl EamTable {
     /// Bundled `Cu_u3.eam` copper `funcfl` table (Foiles, Baskes, and Daw,
     /// Phys. Rev. B 33, 7983, 1986).
     pub fn cu_u3() -> &'static Self {
-        static EMPTY: OnceLock<EamTable> = OnceLock::new();
-        EMPTY.get_or_init(|| Self {
-            nrho: 0,
-            drho: 0.0,
-            nr: 0,
-            dr: 0.0,
-            cutoff: 0.0,
-            rhomax: 0.0,
-            z: Vec::new(),
-            frho: Vec::new(),
-            rhor: Vec::new(),
-            z2r: Vec::new(),
+        CU_U3_TABLE.get_or_init(|| {
+            Self::from_text(CU_U3_FUNCFL, EamTableFormat::Funcfl)
+                .expect("bundled Cu_u3.eam must parse")
         })
     }
 
