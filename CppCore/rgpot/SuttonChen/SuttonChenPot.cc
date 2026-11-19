@@ -366,6 +366,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   const int n_exp = cfg.n;
   const int m_exp = cfg.m;
   const auto n_size = static_cast<std::size_t>(n_atoms);
+  pair_term_scratch_pairs_ = 0;
   double *atom_e = atoms != nullptr ? atoms->energy : nullptr;
 
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
@@ -397,6 +398,8 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
       }
       const auto total_up = static_cast<std::size_t>(ws.up_off[n_size]);
       if (total_up < kMinParallelHalfPairs) {
+        sparse_stored = true;
+      } else if (total_up > term_limit_) {
         sparse_stored = true;
       } else if (pairScratchFits(total_up, atoms, scratch_avail)) {
         ws.active.resize(total_up);
@@ -654,6 +657,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
           }
         }
         out->energy = epair + eemb;
+        pair_term_scratch_pairs_ = total_up;
         if (cfg.stress) {
           publishCauchyStress(out, strain, cellVolume(in.box));
         }
@@ -798,6 +802,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   }
 
   for (std::size_t t = 0; t < lanes; ++t) {
+    pair_term_scratch_pairs_ += terms_[t].size();
     terms_[t].replay();
   }
   auto apply = [=](auto stride, int32_t i, int32_t j, double dx, double dy, double dz, double r2,

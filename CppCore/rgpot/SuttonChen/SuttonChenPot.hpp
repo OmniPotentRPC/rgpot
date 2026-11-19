@@ -159,6 +159,11 @@ public:
   /// default keeps 32 MiB of terms.
   void setPairTermLimit(std::size_t pairs) noexcept { term_limit_ = pairs; }
 
+  /// Pair-term slots kept from the last force call, for tests.
+  [[nodiscard]] std::size_t pairTermScratchPairs() const noexcept {
+    return pair_term_scratch_pairs_;
+  }
+
 private:
   static constexpr uint64_t kKernelVersion = 1;
   using Terms = PairTerms<3>;
@@ -169,6 +174,7 @@ private:
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
   std::size_t term_limit_ = Terms::kDefaultLimit;
+  mutable std::size_t pair_term_scratch_pairs_ = 0;
   mutable nlist::Neighbours neighbours_;
   mutable std::vector<Terms> terms_;
   mutable std::vector<double> rho_;

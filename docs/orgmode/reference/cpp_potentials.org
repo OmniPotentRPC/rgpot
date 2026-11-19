@@ -939,6 +939,22 @@ void setPairTermLimit(std::size_t pairs) noexcept;
   The default keeps 32 MiB of terms, and 0 keeps none.
 - Errors :: none.
 
+*** =rgpot::SuttonChenPot::pairTermScratchPairs=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::size_t pairTermScratchPairs() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the number of pair-term slots the last force call kept for the
+  second pass.
+  On the row-team stored path that is the number of stored upper pairs.
+  On the two-pass =PairTerms= path it is the sum of the per-thread stored
+  pair counts.
+- Errors :: none.
+
 *** =rgpot::EMTPot=
 
 #+attr_rgpot: signature

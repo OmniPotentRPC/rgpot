@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -658,6 +659,45 @@ TEST_CASE("Sutton-Chen force terms read back keep the bits of computing them aga
           REQUIRE(same_bits(got.atom_virial, want.atom_virial));
         }
       }
+    }
+  }
+  setThreads("1");
+}
+
+TEST_CASE("pair-term limit bounds retained Sutton-Chen scratch on row teams",
+          "[SuttonChen][terms][nlist]") {
+  double box[9] = {};
+  rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
+  cfg.cutoff = 1.6 * cfg.a;
+  cfg.periodic = true;
+  const auto pos = fcc_cell(13, cfg.a, box);
+  REQUIRE(pos.size() / 3 >= rgpot::kTeamMinAtoms);
+
+  auto run_eval = [&](const char *threads, std::size_t *limit) {
+    setThreads(threads);
+    rgpot::SuttonChenPot pot(cfg);
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    if (limit != nullptr) {
+      pot.setPairTermLimit(*limit);
+    }
+    std::vector<double> forces(pos.size(), 0.0);
+    rgpot::ForceOut out{};
+    out.F = forces.data();
+    pot.forceImpl({pos.size() / 3, pos.data(), nullptr, box}, &out);
+    return std::tuple<double, std::vector<double>, std::size_t>{
+        out.energy, std::move(forces), pot.pairTermScratchPairs()};
+  };
+
+  for (const char *threads : {"1", "4"}) {
+    INFO("OMP_NUM_THREADS=" << threads);
+    auto [want_energy, want_forces, want_scratch] = run_eval(threads, nullptr);
+    REQUIRE(want_scratch > 3);
+    for (const std::size_t limit : {std::size_t{1}, std::size_t{3}}) {
+      auto use_limit = limit;
+      auto [got_energy, got_forces, got_scratch] = run_eval(threads, &use_limit);
+      REQUIRE(got_scratch <= limit);
+      REQUIRE(std::memcmp(&got_energy, &want_energy, sizeof(double)) == 0);
+      REQUIRE(same_bits(got_forces, want_forces));
     }
   }
   setThreads("1");
