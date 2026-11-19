@@ -332,29 +332,25 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
     if (r2 > cutoff2) {
       return;
     }
-    double fscale = std::numeric_limits<double>::quiet_NaN();
-    if (!(r2 <= 0.0)) {
-      double r = 0.0;
-      double dphi = 0.0;
-      double dpsi = 0.0;
-      if (const double *kept = terms.next()) {
-        r = kept[0];
-        dphi = kept[1];
-        dpsi = kept[2];
-      } else {
-        r = std::sqrt(r2);
-        const double u = r / r0 - 1.0;
-        const double phi = 2.0 * A * std::exp(-p * u);
-        const double psi = xi2 * std::exp(-2.0 * q * u);
-        dphi = -(p / r0) * phi;
-        dpsi = -(2.0 * q / r0) * psi;
-      }
-      const double wi = weight[static_cast<std::size_t>(i)];
-      const double wj = weight[static_cast<std::size_t>(j)];
-      const double embed = -0.5 * (wi + wj);
-      const double coef = (dphi + embed * dpsi) / r;
-      fscale = -coef;
+    double r = 0.0;
+    double dphi = 0.0;
+    double dpsi = 0.0;
+    if (const double *kept = terms.next()) {
+      r = kept[0];
+      dphi = kept[1];
+      dpsi = kept[2];
+    } else {
+      r = std::sqrt(r2);
+      const double u = r / r0 - 1.0;
+      const double phi = 2.0 * A * std::exp(-p * u);
+      const double psi = xi2 * std::exp(-2.0 * q * u);
+      dphi = -(p / r0) * phi;
+      dpsi = -(2.0 * q / r0) * psi;
     }
+    const double wi = weight[static_cast<std::size_t>(i)];
+    const double wj = weight[static_cast<std::size_t>(j)];
+    const double embed = -0.5 * (wi + wj);
+    const double fscale = -(dphi + embed * dpsi) / r;
     const double fx = fscale * dx;
     const double fy = fscale * dy;
     const double fz = fscale * dz;
