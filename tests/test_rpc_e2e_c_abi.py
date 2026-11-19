@@ -22,8 +22,24 @@ import capnp
 import numpy as np
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-SCHEMA_PATH = SCRIPT_DIR / "../CppCore/rgpot/rpc/Potentials.capnp"
-pot_capnp = capnp.load(str(SCHEMA_PATH))
+def _load_schema() -> capnp.lib.capnp._StructModule:
+    parser = capnp.SchemaParser()
+    potserv = os.environ.get("RGPOT_POTSERV", "").strip()
+    if potserv:
+        cand = Path(potserv).resolve().parent.parent / "CppCore/rgpot/rpc/Potentials.capnp"
+        if cand.is_file():
+            return parser.load(str(cand))
+    sys.path.insert(0, str(SCRIPT_DIR.parent / "CppCore" / "rgpot" / "rpc"))
+    import schema_ledger
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "Potentials.capnp"
+        schema_ledger.main(["apply", "--root", str(SCRIPT_DIR.parent), "--out", str(out)])
+        return parser.load(str(out))
+
+
+pot_capnp = _load_schema()
 
 sys.path.insert(0, str(SCRIPT_DIR))
 from cpmd_params import configure_cpmd  # noqa: E402
@@ -116,6 +132,51 @@ async def _run_backend(
         assert all(np.isfinite(f) for f in forces), f"non-finite forces: {forces}"
         # At least one non-zero force from fake engines
         assert any(abs(f) > 1e-12 for f in forces), f"all-zero forces: {forces}"
+
+        from rpc_integ import _compare_nlist, _local_neighbours
+
+        geometries = [
+            (
+                "open_cluster",
+                [0.0, 0.0, 0.0, 0.96, 0.0, 0.0, -0.24, 0.93, 0.0],
+                [20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0],
+                [False, False, False],
+                2.0,
+            ),
+            (
+                "cubic",
+                [0.2, 0.2, 0.2, 1.4, 0.3, 0.4, 3.8, 0.2, 0.1],
+                [4.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 4.0],
+                [True, True, True],
+                2.2,
+            ),
+            (
+                "triclinic",
+                [0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7],
+                [4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2],
+                [True, True, True],
+                3.2,
+            ),
+        ]
+        for _gname, pos, box, pbc, cutoff in geometries:
+            for full in (False, True):
+                nfip = pot_capnp.ForceInput.new_message()
+                nfip.pos = pos
+                nfip.atmnrs = [8, 1, 1]
+                nfip.box = box
+                req = pot_capnp.NeighborRequest.new_message()
+                req.cutoff = cutoff
+                req.skin = 0.2
+                req.format = 1 if full else 0
+                req.cut = 1
+                req.periodic = pbc
+                req.shifts = True
+                req.vectors = True
+                req.distances = True
+                req.mode = 1
+                reply = (await pot.neighbours(nfip, req)).neighbors
+                ref = _local_neighbours(pos, box, cutoff, 0.2, full, True, pbc)
+                _compare_nlist(reply, ref)
         return energy, forces
     finally:
         proc.kill()
