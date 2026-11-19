@@ -14,27 +14,65 @@ import pytest
 rgpot = pytest.importorskip("rgpot")
 
 
-def _engine_path() -> Path | None:
-    p = rgpot.default_metatomic_engine_path()
-    if p:
-        return Path(p)
+def _env_file(name: str) -> Path | None:
+    """Return a set path. Skip is not used here: a missing set path fails."""
+    if name not in os.environ:
+        return None
+    raw = os.environ[name].strip()
+    path = Path(raw)
+    if not raw or not path.is_file():
+        pytest.fail(f"{name} is set to {raw!r}, which is not a file")
+    return path
+
+
+def _packaged_engine() -> Path | None:
     root = Path(rgpot.__file__).resolve().parent
-    for c in (
+    for candidate in (
         root.parent / ".rgpot.mesonpy.libs" / "libmetatomic_engine.so",
         root / "lib" / "libmetatomic_engine.so",
+        root / "libmetatomic_engine.so",
     ):
-        if c.is_file():
-            return c
-    env = os.environ.get("RGPOT_METATOMIC_ENGINE")
-    if env and Path(env).is_file():
-        return Path(env)
+        if candidate.is_file():
+            return candidate
+    lib_root = root / "lib"
+    if lib_root.is_dir():
+        for directory in sorted(lib_root.glob("torch-*")):
+            for name in ("librgpot_metatomic_engine.so", "libmetatomic_engine.so"):
+                candidate = directory / name
+                if candidate.is_file():
+                    return candidate
     return None
 
 
+def _engine_path() -> Path | None:
+    for name in ("RGPOT_METATOMIC_ENGINE", "METATOMIC_ENGINE"):
+        env = _env_file(name)
+        if env is not None:
+            return env
+    packaged = _packaged_engine()
+    if packaged is not None:
+        return packaged
+    # default_metatomic_engine_path also reads the env vars. Those were
+    # unset or already returned above, so a hit here is a packaged file.
+    bundled = rgpot.default_metatomic_engine_path()
+    if bundled and Path(bundled).is_file():
+        return Path(bundled)
+    return None
+
+
+def _require_engine() -> Path:
+    eng = _engine_path()
+    if eng is None:
+        pytest.skip(
+            "libmetatomic_engine.so is absent (optional metatomic engine library)"
+        )
+    return eng
+
+
 def _model_path() -> Path | None:
-    env = os.environ.get("RGPOT_METATOMIC_MODEL")
-    if env and Path(env).is_file():
-        return Path(env)
+    env = _env_file("RGPOT_METATOMIC_MODEL")
+    if env is not None:
+        return env
     candidates = [
         Path.home()
         / "Git/Github/lab-cosmo/atomistic-cookbook/examples/eon-pet-neb/models/pet-mad-xs-v1.5.0.pt",
@@ -62,16 +100,40 @@ def test_has_dlopen_frontend():
     assert callable(rgpot.evaluate_metatomic)
 
 
+def test_engine_env_set_but_missing_is_an_error(monkeypatch, tmp_path: Path) -> None:
+    missing = tmp_path / "absent-engine.so"
+    monkeypatch.setenv("RGPOT_METATOMIC_ENGINE", str(missing))
+    with pytest.raises(pytest.fail.Exception, match="not a file"):
+        _engine_path()
+
+
+def test_model_env_set_but_missing_is_an_error(monkeypatch, tmp_path: Path) -> None:
+    missing = tmp_path / "absent-model.pt"
+    monkeypatch.setenv("RGPOT_METATOMIC_MODEL", str(missing))
+    with pytest.raises(pytest.fail.Exception, match="not a file"):
+        _model_path()
+
+
 def test_engine_plugin_in_install_or_env():
-    eng = _engine_path()
-    assert eng is not None and eng.is_file(), (
-        "libmetatomic_engine.so missing from package — not LJ-only packaging"
-    )
+    eng = _require_engine()
+    env = os.environ.get("RGPOT_METATOMIC_ENGINE")
+    if env is not None:
+        assert eng.resolve() == Path(env.strip()).resolve()
+    else:
+        root = Path(rgpot.__file__).resolve().parent
+        assert root == eng.parent or root in eng.parents
+    magic = eng.read_bytes()[:4]
+    assert magic in {
+        b"\x7fELF",
+        b"\xfe\xed\xfa\xcf",
+        b"\xcf\xfa\xed\xfe",
+        b"\xfe\xed\xfa\xce",
+        b"\xce\xfa\xed\xfe",
+    }
 
 
 def test_engine_is_portable_plugin():
-    eng = _engine_path()
-    assert eng is not None
+    eng = _require_engine()
     if not shutil.which("readelf"):
         pytest.skip("readelf missing")
     out = subprocess.check_output(["readelf", "-d", str(eng)], text=True)
@@ -88,12 +150,11 @@ def test_engine_is_portable_plugin():
 
 
 def test_dlopen_force_evaluation():
-    eng = _engine_path()
+    eng = _require_engine()
     model = _model_path()
-    assert eng is not None, "engine required"
     if model is None:
-        pytest.fail(
-            "No metatomic model file; set RGPOT_METATOMIC_MODEL to a .pt path"
+        pytest.skip(
+            "metatomic model file is absent; set RGPOT_METATOMIC_MODEL to a .pt path"
         )
 
     os.environ.pop("LD_LIBRARY_PATH", None)
@@ -121,8 +182,12 @@ def test_dlopen_force_evaluation():
 def test_available_engine_abis_and_torch_match():
     """Picker prefers lib/torch-X.Y matching installed torch when present."""
     abis = rgpot.available_metatomic_engine_abis()
-    eng = rgpot.default_metatomic_engine_path()
-    assert eng is not None
+    found = _engine_path()
+    if found is None:
+        pytest.skip(
+            "libmetatomic_engine.so is absent (optional metatomic engine library)"
+        )
+    eng = str(found)
     # If multi-ABI pack is present, path should mention torch-X.Y
     if abis:
         assert "torch-" in eng or Path(eng).name == "libmetatomic_engine.so"
