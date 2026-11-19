@@ -50,6 +50,8 @@
 
 #if defined(_WIN32) && defined(RGPOT_CXX_LAYOUT_BUILDING)
 #define RGPOT_CXX_LAYOUT_API __declspec(dllexport)
+#elif !defined(_WIN32)
+#define RGPOT_CXX_LAYOUT_API __attribute__((visibility("default")))
 #else
 #define RGPOT_CXX_LAYOUT_API
 #endif
@@ -183,7 +185,9 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
 /// 8 stamps SuttonChenConfig, PotType::SuttonChen and SuttonChenPot.
-inline constexpr std::uint32_t kCxxSoversion = 8;
+/// 9 adds a process-unique generation id to Neighbours so thread-local
+/// scratch caches cannot collide when an address is recycled.
+inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -196,7 +200,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x0a33f3aa4b4e5162ull},
+    {"linux-x86_64-libstdc++-lp64", 0x2cbd3550a557ad6aull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
