@@ -41,6 +41,7 @@ intersphinx_mapping = {
 # -- sphinxcontrib-rust configuration ----------------------------------------
 rust_crates = {
     "rgpot_core": os.path.abspath("../../rgpot-core/"),
+    "rgpot_pair": os.path.abspath("../../rgpot-pair/"),
 }
 rust_doc_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crates")
 rust_rustdoc_fmt = "rst"
@@ -49,13 +50,14 @@ rust_generate_mode = "always"
 # -- sphinx-rustdoc-postprocess configuration --------------------------------
 rustdoc_postprocess_toctree_target = "api/index.rst"
 rustdoc_postprocess_toctree_rst = """
-Rust API (``rgpot-core``)
--------------------------
+Rust API (``rgpot-core`` and ``rgpot-pair``)
+---------------------------------------------
 
 .. toctree::
    :maxdepth: 2
 
    ../crates/rgpot_core/lib
+   ../crates/rgpot_pair/lib
 """
 
 # -- Options for HTML output -------------------------------------------------
