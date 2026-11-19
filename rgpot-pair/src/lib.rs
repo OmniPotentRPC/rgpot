@@ -33,8 +33,8 @@ pub fn lj_unit(r2: f64) -> (f64, f64, f64) {
 
 /// Pair energy, `(dV/dr) / r`, and `d2V/dr2`.
 ///
-/// `r2 <= 0` returns zeros. `epsilon == 1` and `sigma == 1` takes the
-/// unit branch.
+/// A zero, negative or non finite `r2` returns zeros.
+/// Unit `epsilon` and `sigma` take the unit branch.
 #[inline(always)]
 pub fn lj_pair(epsilon: f64, sigma: f64, r2: f64) -> (f64, f64, f64) {
     if !is_strictly_positive(r2) || !r2.is_finite() {
@@ -233,7 +233,7 @@ pub fn morse_unit(rho: f64, r2: f64) -> (f64, f64, f64) {
     (energy, coef, curv)
 }
 
-/// Morse pair. `epsilon == 1` and `re == 1` takes the Doye branch.
+/// Morse pair. Unit `epsilon` and `re` take the Doye branch.
 #[inline(always)]
 pub fn morse_pair(epsilon: f64, rho: f64, re: f64, r2: f64) -> (f64, f64, f64) {
     if !is_strictly_positive(r2) || !is_strictly_positive(re) {

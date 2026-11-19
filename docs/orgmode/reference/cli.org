@@ -6,13 +6,13 @@
 
 The build installs five programs for users, and the repository carries one
 project tool, =potctl=.
-Each entry lists the arguments, the units on the wire or on the pipe, and how the
-program fails.
+Each entry lists the arguments, the units on the wire or on the pipe, and how
+the program fails.
 
 ** Potential programs
 
-=potserv=, =potserv_mpi=, =rgpot-lj= and =rgpot-ipi-driver= are installed
-unless rgpot is built as a Meson subproject.
+=potserv=, =potserv_mpi=, =rgpot-lj= and =rgpot-ipi-driver= are installed unless
+rgpot is built as a Meson subproject.
 =rgpot-eval= is built for the tests and the how-to pages and is not installed.
 
 *** =potserv=
@@ -35,11 +35,10 @@ potserv <port> <PotentialType>
   =Skala[:<basis>]= and =CP2K=.
   The program is built only with the RPC stack and not with
   =with_rpc_client_only=.
-- Units :: those of the =ForceInput= of [[file:capnp_schema.org][the
-  schema]], which default to Angstrom and eV.
-- Outputs :: a server on =localhost= that prints
-  "Server running on port N with TYPE potential." and serves the =Potential=
-  interface until it is stopped.
+- Units :: those of the =ForceInput= of [[file:capnp_schema.org][the schema]],
+  which default to Angstrom and eV.
+- Outputs :: a server on =localhost= that prints "Server running on port N with
+  TYPE potential." and serves the =Potential= interface until it is stopped.
 - Errors :: fewer than two arguments print the usage with the names of this
   build and exit with 1.
   A port that is not an integer prints a notice and falls back to 12345.
@@ -71,10 +70,9 @@ rgpot-eval Name [key value ...] < geometry
 #+end_src
 
 - Inputs :: =Name= and key value options, built the way a LAMMPS
-  =pair_coeff * * Name ...= line builds them (see
-  [[file:potential_names.org][Potential names]]), and a geometry on standard
-  input: the atom count, nine cell values (one vector per row) and one
-  =z x y z= line per atom.
+  =pair_coeff * * Name ...= line builds them (see [[file:potential_names.org][Potential
+  names]]), and a geometry on standard input: the atom count, nine cell values
+  (one vector per row) and one =z x y z= line per atom.
   The argument count must be even and at least two.
 - Units :: positions in Angstrom; the stress is in eV/Angstrom^3.
 - Outputs :: =energy E=, one =force i fx fy fz= line per atom and, when the
@@ -96,11 +94,11 @@ rgpot-lj --kJ-per-eV
   values and one =z x y z= line per atom.
   =--kJ-per-eV= prints a factor and exits without reading input.
 - Units :: as =LJPot=; the factor is the library's kJ/mol per eV.
-- Outputs :: =energy E= and one =force i fx fy fz= line per atom, in
-  =%.16e= form.
+- Outputs :: =energy E= and one =force i fx fy fz= line per atom, in =%.16e=
+  form.
   No stress is printed.
-- Errors :: exit status 2 for a malformed input, and 1 with the text
-  "evaluation rejected the geometry" when the kernel returns a non-zero status.
+- Errors :: exit status 2 for a malformed input, and 1 with the text "evaluation
+  rejected the geometry" when the kernel returns a non-zero status.
 
 *** =rgpot-ipi-driver=
 
@@ -116,9 +114,8 @@ rgpot-ipi-driver --pot "Name [key value ...]" (--species LIST | --species-from F
   =--species-from FILE= (an =.xyz=, =.extxyz= or eOn =.con= file).
   The i-PI protocol carries no species, so the list has one entry per atom in
   server order.
-  Socket options follow =i-pi-py_driver=: =-u, --unix=, =-a, --address=
-  (default =localhost=), =-p, --port= (default 12345, ignored with =-u=) and
-  =-S, --sockets-prefix= (default =/tmp/ipi_=).
+  Socket options follow
+  =i-pi-py_driver=: =-u, --unix=, =-a, --address= (default =localhost=), =-p, --port= (default 12345, ignored with =-u=) and =-S, --sockets-prefix= (default =/tmp/ipi_=).
   Other options are =--cutoff A=, =--stress-step H=, =--timeout S= (0 waits
   forever), =--connect-timeout S= (default 30), =--no-extras= (send an empty
   extra string instead of JSON), =-v, --verbose=, =--list= (print the names of
@@ -167,15 +164,15 @@ potctl release assert [VERSION] [--require-changelog]
 #+end_src
 
 - Inputs :: an optional =VERSION=, usually the tag without the =v=, and
-  =--require-changelog= (or the environment variable =REQUIRE_CHANGELOG=),
-  which also demands a =## [version]= section in =CHANGELOG.md=.
+  =--require-changelog= (or the environment variable =REQUIRE_CHANGELOG=), which
+  also demands a =## [version]= section in =CHANGELOG.md=.
 - Units :: none.
 - Outputs :: nothing on success.
   Every version copy, among them =meson.build=, =CMakeLists.txt=,
   =towncrier.toml=, =pixi.toml= and the C header, agrees with =Cargo.toml=.
-- Errors :: a copy that differs, a release version that is not semver, a
-  version that differs from =VERSION=, or a missing changelog section when one
-  is required.
+- Errors :: a copy that differs, a release version that is not semver, a version
+  that differs from =VERSION=, or a missing changelog section when one is
+  required.
 
 *** =potctl release notes=
 
@@ -186,8 +183,8 @@ potctl release notes VERSION [-o PATH]
 
 - Inputs :: =VERSION= and =-o, --out PATH=.
 - Units :: none.
-- Outputs :: the =CHANGELOG.md= section of the version, on standard output or
-  in the file, for the body of a release.
+- Outputs :: the =CHANGELOG.md= section of the version, on standard output or in
+  the file, for the body of a release.
 - Errors :: a version that has no section.
 
 *** =potctl ci preflight=
@@ -265,8 +262,8 @@ potctl ci build-test --sys meson|cmake --rpc true|false --cache true|false [--bu
   =build= for CMake.
 - Units :: none.
 - Outputs :: the run of =meson-test= or =cmake-test=.
-- Errors :: "unknown build sys" for another =--sys= value, and the errors of
-  the chosen command.
+- Errors :: "unknown build sys" for another =--sys= value, and the errors of the
+  chosen command.
 
 *** =potctl ci release-assert=
 
@@ -281,8 +278,8 @@ potctl ci build-test --sys meson|cmake --rpc true|false --cache true|false [--bu
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: =towncrier build --draft= when =docs/newsfragments= holds a
-  =.md= file; otherwise a note that the draft is skipped.
+- Outputs :: =towncrier build --draft= when =docs/newsfragments= holds a =.md=
+  file; otherwise a note that the draft is skipped.
 - Errors :: no usable =towncrier=, or its failure.
 
 *** =potctl ci cog-bump-dry-run=
@@ -434,8 +431,9 @@ potctl ci bridge-client-build [--build-dir DIR]
 potctl ci bridge-stress [--server-build-dir DIR] [--client-build-dir DIR] [--port N] [--potential NAME]
 #+end_src
 
-- Inputs :: the two build directories (defaults =bbdir_server= and
-  =build_client=), =--port= (default 12345) and =--potential= (default =LJ=).
+- Inputs :: the two build directories (defaults
+  =bbdir_server= and =build_client=), =--port= (default 12345) and =--potential=
+  (default =LJ=).
 - Units :: none.
 - Outputs :: starts =potserv= from the server build, waits two seconds, runs
   =ctest= in the client build against it, then stops the server.
@@ -455,9 +453,9 @@ potctl ci bridge-stress [--server-build-dir DIR] [--client-build-dir DIR] [--por
 - Inputs :: none; the environment variables =COSMO=, =POTCTL_COSMO_OUT=,
   =POTCTL_COSMO_ARCHS=, =COSMO_CC= and =COSMOCC_ARCHES= configure the build.
 - Units :: none.
-- Outputs :: builds =potctl= as a Cosmopolitan APE binary with a nightly
-  =rustc= and a =cosmocc= linker shim, and builds the host =potctl-cosmo-ld=
-  when it is missing.
+- Outputs :: builds =potctl= as a Cosmopolitan APE binary with a nightly =rustc=
+  and a =cosmocc= linker shim, and builds the host =potctl-cosmo-ld= when it is
+  missing.
   The command exists only in a build with the =cosmo-host= feature and is not
   compiled into the APE binary itself.
 - Errors :: a missing toolchain or an unset =COSMO=.

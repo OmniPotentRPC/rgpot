@@ -150,9 +150,8 @@ explicit LepsPot(LepsSystem system);
   coordinates ordered atom by atom, with E = sum_p Q_p - sqrt(sum_p J_p^2 -
   J_1 J_2 - J_2 J_3 - J_3 J_1) over the pairs (0, 1), (1, 2) and (0, 2).
   Each pair has a Morse curve (De, re, exponent, Sato parameter S):
-  Q = (De / 2) [(t^2 - 2t) / (1 + S) + (t^2 + 2t) / (1 - S)] / 2 and J the
-  half difference of the singlet and triplet terms, with t = exp(-exponent (r -
-  re)).
+  Q = (De / 2) [(t^2 - 2t) / (1 + S) + (t^2 + 2t) / (1 - S)] and J the
+  half difference of the same two terms, with t = exp(-exponent (r - re)).
   The potential types are =PotType::LepsHH2=, =LepsHCl2= and =LepsFH2=.
   Atom 0 is the single atom of H + H2, H + Cl2 and F + H2 for =HH2=, =HCl2= and
   =FH2=: atom 0 is the first H, a hydrogen and a fluorine respectively, and
@@ -264,8 +263,10 @@ class.
 - Units :: =u0= in eV; =cutoff=, =psi= and =switch_width= in Angstrom.
 - Outputs :: the parameters of =rgpot::LJClusterPot=.
 - Errors :: the constructor throws =std::invalid_argument= when =switch_width=
-  is non-zero and not in (0, cutoff]. A =cutoff= of 0 or less is accepted and
-  keeps every pair.
+  is non-zero and not in (0, cutoff]. A =cutoff= of 0 or less is accepted, and
+  the pair kernel then keeps every pair, but the energy shift is computed from
+  the configured value, so a =cutoff= of 0 gives an infinite energy.
+  Give a positive =cutoff=.
 
 *** =rgpot::MorseConfig=
 
@@ -819,7 +820,8 @@ explicit LJClusterPot(const LJClusterConfig &c);
 - Units :: energy in eV, forces in eV/Angstrom.
 - Outputs :: the pair kernel of =rgpot::LJPot= with free boundaries.
   The cell is never used to fold pair vectors, and =caps().periodic= is false.
-  A cutoff of 0 or less keeps every pair.
+  A cutoff of 0 or less keeps every pair in the kernel, and a cutoff of 0 makes
+  the energy shift infinite.
   Atomic numbers are not read.
   The force call does not write a stress.
 - Errors :: the errors of =rgpot::LJClusterConfig=.
@@ -1177,8 +1179,8 @@ explicit EMTPot(const EMTConfig &config);
 - Errors :: an element the provider does not cover throws the Asap =Exception=
   class, which does not derive from =std::exception=.
 
-Parameter source: Jacobsen, Norskov and Puska, Phys.
-Rev. B 35, 7423 (1987), doi:10.1103/PhysRevB.35.7423.
+Parameter source: Jacobsen, Stoltze and Norskov, Surf. Sci. 366, 394 (1996),
+doi:10.1016/0039-6028(96)00816-3.
 The numbers are the Asap tables vendored from eOn.
 Reference value: the four-atom copper cluster in =EMTPotTest= is 5.129167 eV
 within 5e-4, the pin from eOn =EMTCuTest=.
@@ -1262,8 +1264,9 @@ Phys. 79, 926 (1983), doi:10.1063/1.445869. SPC/E is Berendsen, Grigera and
 Straatsma, J. Phys.
 Chem. 91, 6269 (1987),
 doi:10.1021/j100308a038, made flexible by Amira, Spangberg and Hermansson, Chem. Phys. 303, 327 (2004), doi:10.1016/j.chemphys.2004.04.024.
-TIP4P on platinum is Zhu and Philpott, J. Chem.
-Phys. 100, 6961 (1994), doi:10.1063/1.467012.
+The platinum-water terms are Zhu and Philpott, J. Chem.
+Phys. 100, 6961 (1994), doi:10.1063/1.467012; the water is the flexible SPC/E
+model with the CCL intramolecular terms.
 The cutoff 8.5 Angstrom and the switching width 1.0 Angstrom are what the eOn
 wrappers pass.
 Reference value: =WaterPotTest= pins one distorted TIP4P molecule at
@@ -1317,7 +1320,7 @@ explicit TIP4PPtPot(const WaterConfig &config);
 
 - Inputs :: a =rgpot::WaterConfig=.
 - Units :: energy in eV, forces in eV/Angstrom.
-- Outputs :: TIP4P water on platinum (Zhu-Philpott).
+- Outputs :: flexible SPC/E water on platinum (Zhu-Philpott).
   The hydrogens come first in pairs, then one oxygen per pair, then the platinum
   atoms.
   The leading run of atomic number 1, read two atoms at a time, sets the number
@@ -1705,8 +1708,11 @@ Eight silicon atoms in a 20 Angstrom cube give -18.838135 eV within a relative
 
 The iron part is Ackland and coauthors, Journal of Physics: Condensed Matter 16,
 S2629-S2642 (2004), doi:10.1088/0953-8984/16/27/003.
-A pure helium configuration reduces to the HFD-B dimer of Aziz, McCourt and
-Wong, Molecular Physics 61, 1487-1511 (1987), doi:10.1080/00268978700101941.
+A pure helium configuration reduces to an HFD-B dimer: the form is Aziz,
+McCourt and Wong, Molecular Physics 61, 1487-1511 (1987),
+doi:10.1080/00268978700101941, and the constants are those of Aziz, Janzen and
+Moldover, Physical Review Letters 74, 1586-1589 (1995),
+doi:10.1103/PhysRevLett.74.1586.
 Sixteen iron atoms in a 20 Angstrom cube give -43.959774 eV within a relative
 1e-4.
 

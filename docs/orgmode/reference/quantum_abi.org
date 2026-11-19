@@ -7,18 +7,19 @@
 NWChem, CPMD, MOPAC and CP2K run outside =librgpot=.
 Each frontend (=NWChemPot=, =CPMDPot=, =MOPACPot=, =CP2KPot=) opens an engine
 library with =dlopen= and calls the symbols declared in the headers below.
-The four ABIs keep their own prefixes: =nwchemc_=, =cpmdc_=, =mopacc_= and
-=cp2kc_=.
+The four ABIs keep their own prefixes: =nwchemc_=, =cpmdc_=,
+=mopacc_= and =cp2kc_=.
 The generic engine table of [[file:engine_abi.org][Engine plugin ABI]] is a
 separate interface with its own units.
 
 Every engine library ships with a stub that the repository builds: the stub
-exports the same symbols, reports =*_available= as 0, fails every evaluation
-and returns the version string =nwchemc-stub/1.0.0=, =cpmdc-stub/0.1.0= or
+exports the same symbols, reports =*_available= as 0, fails every evaluation and
+returns the version string =nwchemc-stub/1.0.0=, =cpmdc-stub/0.1.0= or
 =mopacc-stub/1.0.0=.
 A frontend that finds only the stub reports that the embed is not available.
 The behaviour of a real engine beyond what the headers state is documented by
-its own project; this page states what the headers promise and what the stubs do.
+its own project; this page states what the headers promise and what the stubs
+do.
 
 Units at these ABIs are not the units of =librgpot=.
 Geometry is in Angstrom (Bohr for CP2K), energy in Hartree and gradients in
@@ -31,8 +32,9 @@ MOPAC, and as input-deck text for CP2K.
 ** NWChem: =nwchem_c_abi.h=
 
 The header is =CppCore/rgpot/NWChemPot/nwchem_c_abi.h=.
-=RGPOT_NWCHEMC_API= expands to =__declspec(dllexport)= when
-=RGPOT_NWCHEMC_BUILD= is defined on Windows and to nothing elsewhere.
+=RGPOT_NWCHEMC_API= expands to
+=__declspec(dllexport)= when =RGPOT_NWCHEMC_BUILD= is defined on Windows and to
+nothing elsewhere.
 
 *** =NWChemCResult=
 
@@ -64,9 +66,9 @@ int nwchemc_set_params(const void *params_capnp, size_t params_capnp_size_bytes)
 NWChemCResult nwchemc_energy_gradient(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params_capnp, size_t params_capnp_size_bytes, double *grad_h_bohr);
 #+end_src
 
-- Inputs :: =n_atoms=; =positions_ang=, 3*n doubles, row-major xyz;
-  =atomic_numbers=, n atomic numbers; =params_capnp= and its size, as for
-  =nwchemc_set_params=; =grad_h_bohr=, room for 3*n doubles.
+- Inputs :: =n_atoms=; =positions_ang=,
+  3*n doubles, row-major xyz; =atomic_numbers=, n atomic numbers; =params_capnp= and its size, as for =nwchemc_set_params=; =grad_h_bohr=, room for 3*n
+  doubles.
 - Units :: positions in Angstrom, energy in Hartree, gradient in Hartree/Bohr.
 - Outputs :: an =NWChemCResult= with the energy, and the gradient written to
   =grad_h_bohr= row-major.
@@ -144,10 +146,10 @@ The result-message calls convert to =ForceInput.energyUnit= and
 
 - Inputs :: none; a struct.
 - Units :: none.
-- Outputs :: =feature_id=, a string such as =section.dft= or
-  =catalog.section.DFT=; =kind=, a =CPMDCFeatureKind=; =stub_applicable= and
-  =embed_applicable=, non-zero when the feature applies to the stub and to the
-  real embed.
+- Outputs ::
+  =feature_id=, a string such as =section.dft= or =catalog.section.DFT=; =kind=, a =CPMDCFeatureKind=; =stub_applicable=
+  and =embed_applicable=, non-zero when the feature applies to the stub and to
+  the real embed.
 - Errors :: none.
 
 *** =cpmdc_set_params=
@@ -170,8 +172,8 @@ int cpmdc_set_params(const void *params_capnp, size_t params_capnp_size_bytes);
 CPMDCResult cpmdc_energy_gradient(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params_capnp, size_t params_capnp_size_bytes, double *grad_h_bohr);
 #+end_src
 
-- Inputs :: =n_atoms=; =positions_ang=, 3*n doubles; =atomic_numbers=, n
-  values; the parameter message and its size; =grad_h_bohr=, room for 3*n
+- Inputs :: =n_atoms=; =positions_ang=,
+  3*n doubles; =atomic_numbers=, n values; the parameter message and its size; =grad_h_bohr=, room for 3*n
   doubles.
 - Units :: Angstrom in, Hartree and Hartree/Bohr out.
   CPMD's ionic forces are negated into a nuclear gradient, as =nwchemc= does.
@@ -253,8 +255,8 @@ int cpmdc_session_select_orbitals(CPMDCSession *session, long long key);
 - Inputs :: =session= and =key=, the name of the calculation the next
   evaluations belong to.
   The engine keeps the converged orbitals per key, so a calculator that
-  evaluates several images or beads in turn starts each SCF from that image's
-  or bead's own previous orbitals.
+  evaluates several images or beads in turn starts each SCF from that image's or
+  bead's own previous orbitals.
   The symbol is optional: an engine without it keeps one stored copy.
 - Units :: none.
 - Outputs :: 0 when =session= is non-null and the runtime accepts =key=.
@@ -272,8 +274,8 @@ int cpmdc_session_copy_orbitals(CPMDCSession *session, long long from_key, long 
 
 - Inputs :: =session=, and the two keys.
 - Units :: none.
-- Outputs :: 0 after the orbitals stored under =from_key= are copied to
-  =to_key=.
+- Outputs :: 0 after the orbitals stored under
+  =from_key= are copied to =to_key=.
 - Errors :: -1 when either key is invalid or unsupported; the stub returns -1.
 
 *** =cpmdc_session_energy_gradient=
@@ -283,8 +285,8 @@ int cpmdc_session_copy_orbitals(CPMDCSession *session, long long from_key, long 
 CPMDCResult cpmdc_session_energy_gradient(CPMDCSession *session, int n_atoms, const double *positions_ang, const int *atomic_numbers, double *grad_h_bohr);
 #+end_src
 
-- Inputs :: =session=; the geometry as for =cpmdc_energy_gradient=; the
-  gradient buffer.
+- Inputs :: =session=; the geometry as for =cpmdc_energy_gradient=; the gradient
+  buffer.
 - Units :: Angstrom in, Hartree and Hartree/Bohr out.
 - Outputs :: a =CPMDCResult= with the energy; the gradient in =grad_h_bohr=.
 - Errors :: =ok= equal to 0 with the reason in =message=; the stub returns the
@@ -458,9 +460,9 @@ The header is =CppCore/rgpot/MOPACPot/mopac_c_abi.h=; it must stay in lockstep
 with =mopacc.h= of the =mopacc= project.
 Options are the packed struct =MopacCParams=, not Cap'n Proto.
 The version macro =RGPOT_MOPACC_C_ABI_VERSION= is 1.
-The model codes are =MOPACC_MODEL_PM7= (0), =MOPACC_MODEL_PM6_D3H4= (1),
-=MOPACC_MODEL_PM6_ORG= (2), =MOPACC_MODEL_PM6= (3), =MOPACC_MODEL_AM1= (4) and
-=MOPACC_MODEL_RM1= (5).
+The model codes are =MOPACC_MODEL_PM7= (0),
+=MOPACC_MODEL_PM6_D3H4= (1), =MOPACC_MODEL_PM6_ORG= (2), =MOPACC_MODEL_PM6= (3),
+=MOPACC_MODEL_AM1= (4) and =MOPACC_MODEL_RM1= (5).
 
 *** =MopacCParams=
 
@@ -558,9 +560,9 @@ forces in Hartree/Bohr.
 Every rank of a calculator calls the session functions together, in the same
 order and with the same arguments.
 The macro =CP2KC_ABI_VERSION= is 1.
-The return codes of =cp2kc_session_calculate= are =CP2KC_OK= (0),
-=CP2KC_BAD_ARGUMENT= (1), =CP2KC_SCF_NOT_CONVERGED= (2) and =CP2KC_FATAL= (-1,
-and any other negative value).
+The return codes of =cp2kc_session_calculate= are
+=CP2KC_OK= (0), =CP2KC_BAD_ARGUMENT= (1), =CP2KC_SCF_NOT_CONVERGED= (2) and
+=CP2KC_FATAL= (-1, and any other negative value).
 
 *** =CP2KCSession=
 
@@ -633,14 +635,14 @@ CP2KCSession *cp2kc_session_create(const char *deck, const char *dir, char *err,
 
 - Inputs :: =deck=, the complete CP2K input text; =dir=, an existing directory;
   =err=, a buffer of =err_len= bytes for a message.
-  The shim writes the deck to =dir/input.inp=; CP2K writes its output to
-  =dir/cp2k.out= for the first force environment and =dir/cp2k-<n>.out= for
-  later ones.
+  The shim writes the deck to
+  =dir/input.inp=; CP2K writes its output to =dir/cp2k.out= for the first force
+  environment and =dir/cp2k-<n>.out= for later ones.
 - Units :: none.
 - Outputs :: a new session.
-  The first session initialises libcp2k, with =cp2k_init_without_mpi= when MPI is
-  already initialised and =cp2k_init= otherwise; in that second case the shim
-  finalises CP2K and MPI at exit.
+  The first session initialises libcp2k, with
+  =cp2k_init_without_mpi= when MPI is already initialised and =cp2k_init=
+  otherwise; in that second case the shim finalises CP2K and MPI at exit.
 - Errors :: NULL, with the reason in =err=.
 
 *** =cp2kc_session_select_orbitals=
@@ -652,9 +654,9 @@ int cp2kc_session_select_orbitals(CP2KCSession *session, long long key);
 
 - Inputs :: =session= and =key=, the name of the calculation the following
   evaluations belong to.
-  The shim creates one force environment per key on the key's first
-  evaluation, so each band image or ring-polymer bead keeps its own
-  wavefunction and extrapolation history.
+  The shim creates one force environment per key on the key's first evaluation,
+  so each band image or ring-polymer bead keeps its own wavefunction and
+  extrapolation history.
   Before the first call the key is 0.
 - Units :: none.
 - Outputs :: 0.
@@ -668,14 +670,13 @@ int cp2kc_session_calculate(CP2KCSession *session, int n_atoms, const double *po
 #+end_src
 
 - Inputs :: =session=; =n_atoms=, which must match the deck; =pos_bohr=, 3*n
-  Cartesian positions; =cell_bohr9=, the cell vectors a, b and c as the rows of a
-  row-major 3x3 matrix (the shim calls =cp2k_set_cell= only when the cell
-  differs from the one the key's force environment last saw); =e_ha= and
-  =f_ha_bohr=, the outputs; =err= and =err_len=, a message buffer.
-- Units :: positions and cell in Bohr, energy in Hartree, forces (not
-  gradients) in Hartree/Bohr.
-- Outputs :: 0 with the potential energy in =e_ha= and 3*n forces in
-  =f_ha_bohr=.
+  Cartesian positions;
+  =cell_bohr9=, the cell vectors a, b and c as the rows of a row-major 3x3 matrix (the shim calls =cp2k_set_cell= only when the cell differs from the one the key's force environment last saw); =e_ha=
+  and =f_ha_bohr=, the outputs; =err= and =err_len=, a message buffer.
+- Units :: positions and cell in Bohr, energy in Hartree, forces (not gradients)
+  in Hartree/Bohr.
+- Outputs :: 0 with the potential energy in
+  =e_ha= and 3*n forces in =f_ha_bohr=.
 - Errors :: =CP2KC_BAD_ARGUMENT= for a null argument or an atom count that
   differs from the deck; =CP2KC_SCF_NOT_CONVERGED= when the SCF failed, returned
   on every rank for the same call with the energy and forces not valid; a
