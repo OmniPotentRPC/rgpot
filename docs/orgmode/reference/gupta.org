@@ -48,9 +48,11 @@ zero.
 The call keeps thread local scratch that only grows.
 It holds one double per atom for the density and 6 doubles per pair, which is
 8 bytes per atom and 48 bytes per pair, with =n (n - 1) / 2= pairs.
-When =realloc= returns null for either buffer, the call sets the energy to
-positive infinity, zeroes the 3 n gradient entries and returns before it reads
-a coordinate.
+A new buffer is allocated with =malloc= before any pointer or capacity is
+replaced.
+When =malloc= returns null for either buffer, the new buffers are freed and
+the call sets the energy to positive infinity, zeroes the 3 n gradient entries
+and returns before it reads a coordinate.
 There is no status code, so the caller sees the same outputs as for a
 coincident pair and cannot tell the two apart from the outputs alone.
 The buffers keep their earlier size, so a later call that fits them still
@@ -119,9 +121,12 @@ void rgpot_gupta(const double *x, size_t n, const unsigned char *slot,
   For =n < 2= the pair loop does not run, so the energy is 0 and the gradient is
   zero.
 - Errors :: no status code and no error message.
-  A failed scratch allocation (=realloc= returning null for the density or the
+  A failed scratch allocation (=malloc= returning null for the density or the
   pair buffer) sets =*energy= to =+INFINITY=, zeroes the 3 n entries of
   =gradient= and returns.
+  Each new buffer is allocated before any pointer or capacity is replaced.
+  On failure the new buffers are freed and the old buffers keep their earlier
+  size.
   The outputs are those of a coincident pair, and no coordinate is read.
   The first pair with ~r2 <= 0.0~ sets =*energy= to =+INFINITY= and returns.
   The gradient is left at the zeros written before that pair, and later pairs

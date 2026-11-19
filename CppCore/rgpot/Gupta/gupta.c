@@ -1,5 +1,7 @@
 #include "gupta.h"
 
+#include "detail/gupta_test.h"
+
 #include <math.h>
 #include <stdlib.h>
 
@@ -22,26 +24,66 @@ static RGPOT_THREAD_LOCAL double *rho_buf;
 static RGPOT_THREAD_LOCAL size_t rho_cap;
 static RGPOT_THREAD_LOCAL double *pack_buf;
 static RGPOT_THREAD_LOCAL size_t pack_cap;
+static RGPOT_THREAD_LOCAL void *(*gupta_alloc_hook)(size_t);
 
+static void *gupta_alloc(size_t bytes) {
+  if (gupta_alloc_hook != 0) {
+    return gupta_alloc_hook(bytes);
+  }
+  return malloc(bytes);
+}
+
+// Allocate every new buffer before replacing a pointer or a capacity.
+// A failed pair allocation leaves the density buffer and its capacity.
 static int rgpot_gupta_ensure(size_t n, size_t pairs) {
+  double *next_rho = 0;
+  double *next_pack = 0;
+  const size_t need = pairs * 6;
   if (rho_cap < n) {
-    double *next = (double *)realloc(rho_buf, n * sizeof(double));
-    if (next == 0) {
+    next_rho = (double *)gupta_alloc(n * sizeof(double));
+    if (next_rho == 0) {
       return 1;
     }
-    rho_buf = next;
+  }
+  if (pack_cap < need) {
+    next_pack = (double *)gupta_alloc(need * sizeof(double));
+    if (next_pack == 0) {
+      free(next_rho);
+      return 1;
+    }
+  }
+  if (next_rho != 0) {
+    free(rho_buf);
+    rho_buf = next_rho;
     rho_cap = n;
   }
-  const size_t need = pairs * 6;
-  if (pack_cap < need) {
-    double *next = (double *)realloc(pack_buf, need * sizeof(double));
-    if (next == 0) {
-      return 1;
-    }
-    pack_buf = next;
+  if (next_pack != 0) {
+    free(pack_buf);
+    pack_buf = next_pack;
     pack_cap = need;
   }
   return 0;
+}
+
+// The header undefines this after the declarations. Repeat it so the
+// definitions stay hidden in the shared library.
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_WIN32) &&           \
+    !defined(__CYGWIN__)
+#define RGPOT_GUPTA_TEST_HIDDEN __attribute__((visibility("hidden")))
+#else
+#define RGPOT_GUPTA_TEST_HIDDEN
+#endif
+
+RGPOT_GUPTA_TEST_HIDDEN void rgpot_gupta_test_set_alloc(void *(*fn)(size_t)) {
+  gupta_alloc_hook = fn;
+}
+
+RGPOT_GUPTA_TEST_HIDDEN size_t rgpot_gupta_test_rho_cap(void) {
+  return rho_cap;
+}
+
+RGPOT_GUPTA_TEST_HIDDEN size_t rgpot_gupta_test_pack_cap(void) {
+  return pack_cap;
 }
 
 static double *rgpot_gupta_rho(void) { return rho_buf; }

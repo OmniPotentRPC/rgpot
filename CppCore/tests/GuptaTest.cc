@@ -3,12 +3,39 @@
 
 #include <catch2/catch_all.hpp>
 
+#include "rgpot/Gupta/detail/gupta_test.h"
 #include "rgpot/Gupta/gupta.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <vector>
+
+namespace {
+
+int gupta_alloc_calls = 0;
+
+extern "C" void *gupta_fail_second(size_t bytes) {
+  ++gupta_alloc_calls;
+  if (gupta_alloc_calls == 2) {
+    return nullptr;
+  }
+  return std::malloc(bytes);
+}
+
+struct GuptaAllocRestore {
+  ~GuptaAllocRestore() { rgpot_gupta_test_set_alloc(nullptr); }
+};
+
+std::size_t gupta_pack_doubles(std::size_t atoms) {
+  if (atoms < 2) {
+    return 0;
+  }
+  return (atoms * (atoms - 1) / 2) * 6;
+}
+
+} // namespace
 
 TEST_CASE("Gupta dimer at r0 is 2A - 2 xi", "[gupta]") {
   const double a = 0.1477;
@@ -172,4 +199,57 @@ TEST_CASE("Gupta gradient matches the energy derivative", "[gupta][force]") {
     const double scale = std::max(1.0, std::max(std::abs(numeric), std::abs(gradient[coord])));
     REQUIRE(std::abs(numeric - gradient[coord]) <= 1e-4 * scale);
   }
+}
+
+TEST_CASE("Gupta pair allocation failure keeps the density capacity",
+          "[gupta]") {
+  const double a = 0.2061;
+  const double xi = 1.790;
+  const double p = 10.229;
+  const double q = 4.036;
+  const double r0 = 2.884;
+  const unsigned char two[2] = {0, 0};
+  const double dimer[6] = {0.0, 0.0, 0.0, r0, 0.0, 0.0};
+  double first = 0.0;
+  double dimer_gradient[6] = {};
+  rgpot_gupta(dimer, 2, two, 1, &a, &xi, &p, &q, &r0, &first, dimer_gradient);
+  REQUIRE(std::isfinite(first));
+  const std::size_t rho_before = rgpot_gupta_test_rho_cap();
+  const std::size_t pack_before = rgpot_gupta_test_pack_cap();
+  REQUIRE(rho_before >= 2);
+  REQUIRE(pack_before >= 6);
+
+  std::size_t n = rho_before + 1;
+  while (gupta_pack_doubles(n) <= pack_before) {
+    ++n;
+  }
+  REQUIRE(n > rho_before);
+  REQUIRE(gupta_pack_doubles(n) > pack_before);
+
+  std::vector<double> x(3 * n, 0.0);
+  std::vector<unsigned char> slot(n, 0);
+  std::vector<double> gradient(3 * n, 7.0);
+  for (std::size_t i = 0; i < n; ++i) {
+    x[3 * i] = static_cast<double>(i) * r0;
+  }
+  double energy = -1.0;
+  gupta_alloc_calls = 0;
+  rgpot_gupta_test_set_alloc(gupta_fail_second);
+  const GuptaAllocRestore restore;
+  rgpot_gupta(x.data(), n, slot.data(), 1, &a, &xi, &p, &q, &r0, &energy,
+              gradient.data());
+  REQUIRE(gupta_alloc_calls == 2);
+  REQUIRE(std::isinf(energy));
+  REQUIRE(energy > 0.0);
+  for (double component : gradient) {
+    REQUIRE(component == 0.0);
+  }
+  INFO("density capacity changed after the pair allocation failed");
+  REQUIRE(rgpot_gupta_test_rho_cap() == rho_before);
+  REQUIRE(rgpot_gupta_test_pack_cap() == pack_before);
+
+  rgpot_gupta_test_set_alloc(nullptr);
+  double second = 0.0;
+  rgpot_gupta(dimer, 2, two, 1, &a, &xi, &p, &q, &r0, &second, dimer_gradient);
+  REQUIRE(second == first);
 }

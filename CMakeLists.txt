@@ -646,6 +646,7 @@ if(RGPOT_IS_TOP_LEVEL)
       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
       FILES_MATCHING
       PATTERN "Morse/detail" EXCLUDE
+      PATTERN "Gupta/detail" EXCLUDE
       PATTERN "*.hpp"
       PATTERN "*.h")
   endif()
