@@ -79,9 +79,45 @@ A force call takes a =rgpot::ForceInput=: =nAtoms=, =pos= (3 * nAtoms doubles, x
 y z per atom, Angstrom), =atmnrs= (one atomic number per atom) and =box= (nine
 doubles, one cell vector per row, Angstrom).
 It writes a =rgpot::ForceOut=: =F= (3 * nAtoms doubles, same layout as =pos=,
-eV/Angstrom), =energy= (eV), =variance=, and =stress= with =has_stress=. =stress= is the Cauchy stress in eV/Angstrom^3,
-nine entries row-major. A potential that writes it sets =has_stress= to 1, and
-to 0 when the cell volume is not positive.
+eV/Angstrom), =energy= (eV), =variance=, and optional =stress= with
+=has_stress=.
+
+** Opt-in stress
+
+Set =ForceInput::compute_stress= to true to request the row-major 3 by 3
+Cauchy stress. The default is false. The C API field
+=rgpot_force_input_t.compute_stress=, Rust =with_stress(true)= setter and
+Python =evaluate(..., compute_stress=True)= keyword make the same request.
+On the RPC wire, =ForceInput.computeStress= requests the same tensor in
+=PotentialResult.stress=.
+The ASE calculator requests it only for a =stress= property.
+
+The convention is
+
+#+attr_rgpot: skip stress convention, not code
+#+begin_example
+sigma = (1 / abs(det(box))) dE / d epsilon
+#+end_example
+
+for the homogeneous right strain that maps both Cartesian positions and the
+cell rows as =r -> r (I + epsilon)=. Energy is in eV, lengths and cell volume
+are in Angstrom and Angstrom^3, and stress is in eV/Angstrom^3. Positive
+diagonal stress is tension; static pressure is =-trace(sigma)/3=. The
+reported tensor contains no kinetic contribution.
+
+When requested and computed, =ForceOut::has_stress= is 1 and all nine tensor
+entries are filled. Otherwise it is 0 and the tensor is zero. In particular,
+a missing or singular cell and an enabled term that cannot provide stress
+leave =has_stress= at 0. Turning the request on does not change the energy or
+forces.
+
+Native support is available for Lennard-Jones (periodic and cluster), Morse,
+ZBL, EAM, tabulated EAM/Finnis--Sinclair, EMT, Sutton--Chen,
+Stillinger--Weber, Tersoff Si/C, D3, D4, QDO and NLH dispersion, and DSF,
+Ewald and SPME electrostatics. A sum reports stress only when every summand
+does. XTB, TBLite, CPMD and i-PI report it only when their backend returned a
+complete virial. MBD, other external, plugin, water and analytic-coordinate
+potentials currently leave =has_stress= at 0.
 
 The program below evaluates a Lennard-Jones dimer with the default parameters.
 It links against =librgpot=.
@@ -99,6 +135,7 @@ int main() {
   const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
   double forces[6] = {};
   rgpot::ForceInput in{2, pos, z, box};
+  in.compute_stress = true;
   rgpot::ForceOut out{};
   out.F = forces;
   pot.forceImpl(in, &out);
@@ -161,7 +198,8 @@ class.
 - Inputs :: =epsilon= (default 1.0), =c= (default 34.408), =a= (default 1.0),
   =n= (repulsive exponent, default 10), =m= (density exponent, default 8),
   =cutoff= (default 40.0; 0 or less keeps every pair), =periodic= (minimum
-  image, default false), =stress= (write the stress, default false).
+  image, default false), =stress= (legacy compatibility request, default
+  false; new callers use =ForceInput::compute_stress=).
   The defaults are the reduced platinum and gold 10-8 potential.
 - Units :: =epsilon= sets the energy unit and =a= the length unit; =cutoff= is
   in the coordinate unit; =c=, =n= and =m= are dimensionless.
@@ -182,9 +220,9 @@ class.
 
 - Inputs :: =path= (the table file, no default), =format=
   (=EAMTableFormat::Funcfl=, =Setfl= or =FinnisSinclair=, default =Setfl=),
-  =periodic= (sum over periodic images, default true), =stress= (write the
-  stress, default false), =skin= (Verlet skin of the potential's own pair
-  list, default 1.0).
+  =periodic= (sum over periodic images, default true), =stress= (legacy compatibility
+  request, default false; new callers use =ForceInput::compute_stress=),
+  =skin= (Verlet skin of the potential's own pair list, default 1.0).
 - Units :: none; the table carries its own units, eV and Angstrom for the LAMMPS
   metal files.
   =skin= is in the length unit of the table.
