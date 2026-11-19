@@ -158,6 +158,17 @@ def test_stillinger_weber_si_stress_matches_finite_difference() -> None:
     np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)
 
 
+def test_tersoff_sic_stress_matches_finite_difference() -> None:
+    pot = rgpot.TersoffSiC()
+    assert pot.caps()["stress"] is True
+    atoms = si_crystal()
+    atoms.calc = RgpotCalculator(pot)
+    assert "stress" in atoms.calc.implemented_properties
+    analytic = atoms.get_stress()
+    numeric = calculate_numerical_stress(atoms, eps=1e-6, voigt=True)
+    np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)
+
+
 @pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no SWPot in this build")
 def test_sw_stress_matches_finite_difference() -> None:
     atoms = si_crystal()

@@ -92,7 +92,7 @@ TEST_CASE("Cell-list EAM opt-in stress matches triclinic strain",
   constexpr double steps[5] = {1e-3, 1e-4, 1e-5, 1e-6, 1e-7};
   const double volume = rgpot::cellVolume(box.data());
   double target_error = 0.0;
-  double best_error = std::numeric_limits<double>::infinity();
+  double best_other = std::numeric_limits<double>::infinity();
   for (double step : steps) {
     double max_abs_error = 0.0;
     double max_stress = 0.0;
@@ -123,12 +123,13 @@ TEST_CASE("Cell-list EAM opt-in stress matches triclinic strain",
           std::max(max_stress, std::abs(analytic.stress[slots[component]]));
     }
     const double error = max_abs_error / std::max(max_stress, 1e-8);
-    best_error = std::min(best_error, error);
     if (step == 1e-5) {
       target_error = error;
+    } else {
+      best_other = std::min(best_other, error);
     }
   }
   std::cout << "STRESS_ERROR EAM " << target_error << '\n';
   REQUIRE(target_error <= 1e-6);
-  REQUIRE(best_error <= target_error * 1.25 + 1e-12);
+  REQUIRE(target_error <= best_other * 1.25 + 1e-12);
 }

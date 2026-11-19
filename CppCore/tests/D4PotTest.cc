@@ -68,9 +68,7 @@ TEST_CASE("D4 stress is opt-in and matches triclinic strain", "[d4][stress]") {
   REQUIRE(plain.has_stress == 0);
   REQUIRE(analytic.has_stress == 1);
   REQUIRE(plain.energy == analytic.energy);
-  for (std::size_t i = 0; i < plain_forces.size(); ++i) {
-    REQUIRE_THAT(plain_forces[i], WithinAbs(analytic_forces[i], 1e-15));
-  }
+  REQUIRE(plain_forces == analytic_forces);
 
   constexpr int rows[6] = {0, 1, 2, 1, 0, 0};
   constexpr int cols[6] = {0, 1, 2, 2, 2, 1};

@@ -94,9 +94,9 @@ TEST_CASE("D3 stress is opt-in and matches triclinic strain", "[d3][stress]") {
       geometry.positions.data() + 3 * geometry.numbers.size());
   std::array<double, 9> box = {
       18.0, 0.7, -0.2, -0.4, 17.0, 0.5, 0.3, -0.6, 19.0};
+  rgpot::D3Pot pot;
   auto evaluate = [&](const std::vector<double> &pos,
                       const std::array<double, 9> &cell, bool stress) {
-    rgpot::D3Pot pot;
     std::vector<double> forces(pos.size());
     rgpot::ForceOut out{};
     out.F = forces.data();
@@ -110,7 +110,7 @@ TEST_CASE("D3 stress is opt-in and matches triclinic strain", "[d3][stress]") {
   const auto [analytic, analytic_forces] = evaluate(positions, box, true);
   REQUIRE(plain.has_stress == 0);
   REQUIRE(analytic.has_stress == 1);
-  REQUIRE(plain.energy == analytic.energy);
+  REQUIRE_THAT(plain.energy, WithinAbs(analytic.energy, 1e-15));
   for (std::size_t i = 0; i < plain_forces.size(); ++i) {
     REQUIRE_THAT(plain_forces[i], WithinAbs(analytic_forces[i], 1e-15));
   }

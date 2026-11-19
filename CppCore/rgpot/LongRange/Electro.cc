@@ -1942,7 +1942,9 @@ void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   if (response_) {
     response_->accumulate(in, dedq.data(), out->F);
   }
-  if (er.has_stress && stress.enabled()) {
+  // A geometry-dependent charge response contributes an additional chain-rule
+  // strain that this fixed-charge kernel does not compute.
+  if (er.has_stress && stress.enabled() && response_ == nullptr) {
     std::copy(std::begin(er.strain), std::end(er.strain), stress.data());
     stress.publish(in.box);
   }
