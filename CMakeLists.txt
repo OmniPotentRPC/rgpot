@@ -60,7 +60,7 @@ endif()
 
 option(RGPOT_WITH_EAM_TABLE
        "EAM and Finnis-Sinclair potentials read from LAMMPS tables" OFF)
-option(RGPOT_WITH_CBE "Linked external cbe-pes frontend" OFF)
+option(RGPOT_WITH_CBE "CH5 2008 surface of the linked potlibc library" OFF)
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
 option(RGPOT_WITH_CP2K
        "CP2KPot, the potserv CP2K backend and libcp2kc_rgpot against libcp2k (pkg-config libcp2k)" OFF)
@@ -438,10 +438,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   add_subdirectory(CppCore/rgpot/fortran)
   if(RGPOT_WITH_CBE)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(CBE REQUIRED cbe)
-    find_path(CBE_HEADER_DIR NAMES cbe.h HINTS ${CBE_INCLUDE_DIRS}
+    pkg_check_modules(POTLIBC REQUIRED potlibc)
+    find_path(POTLIBC_HEADER_DIR NAMES potlibc.h HINTS ${POTLIBC_INCLUDE_DIRS}
               NO_DEFAULT_PATH REQUIRED)
-    find_library(CBE_LIBRARY NAMES cbe HINTS ${CBE_LIBRARY_DIRS}
+    find_library(POTLIBC_LIBRARY NAMES potlibc HINTS ${POTLIBC_LIBRARY_DIRS}
                  NO_DEFAULT_PATH REQUIRED)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/CBEPot/CBEPot.cc)
   endif()
@@ -457,8 +457,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
                                         SOVERSION ${RGPOT_CXX_SOVERSION})
   target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels rgpot_nlist Threads::Threads)
   if(RGPOT_WITH_CBE)
-    target_include_directories(rgpot PRIVATE ${CBE_HEADER_DIR})
-    target_link_libraries(rgpot PRIVATE ${CBE_LIBRARY})
+    target_include_directories(rgpot PRIVATE ${POTLIBC_HEADER_DIR})
+    target_link_libraries(rgpot PRIVATE ${POTLIBC_LIBRARY})
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_CBE)
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

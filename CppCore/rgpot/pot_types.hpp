@@ -73,7 +73,7 @@ enum class PotType {
   LepsFH2,
   DoubleWell,
   CoupledProtonWell,
-  CBE           //!< External cbe-pes frontend.
+  CBE           //!< CH5 2008 surface of the linked potlibc.
 };
 
 } // namespace rgpot
