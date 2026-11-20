@@ -59,6 +59,7 @@ if potlibc_dep.found()
             potlibc_engine.full_path(),
             potlibc_engine_fail_lock.full_path(),
         ],
+        depends: [potlibc_engine, potlibc_engine_fail_lock],
         timeout: 120,
     )
 endif
