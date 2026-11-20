@@ -1213,8 +1213,8 @@ Enable the =engine= feature on =rgpot-core= to expose
 No second engine abstraction is added: =EnginePotential::into_potential= wraps
 the handle as a =PotentialImpl=.
 The loader does not =dlclose= an engine.
-A backend may keep threads, MPI state, TLS destructors or =atexit= handlers,
-and a tensor runtime tears its static state down unsafely if the library is
+A backend may keep threads, MPI state, TLS destructors or =atexit= handlers, and
+a tensor runtime tears its static state down unsafely if the library is
 unmapped.
 The first successful load of a path stays mapped for the life of the process.
 A later load of that same path reuses the handle, so opening and dropping
