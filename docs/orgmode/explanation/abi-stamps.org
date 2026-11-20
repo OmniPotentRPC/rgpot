@@ -170,7 +170,7 @@ Soversion 5 recorded =LJPot= and =MorsePot= gaining a neighbour list and a
 cached pair table.
 Soversion 6 drops the copied half-list from LJ and Morse and gives ZBL and the
 open Lennard-Jones cluster a neighbour list.
-Soversion 10 adds =compute_stress= to the C++ =ForceInput=, the opt-in stress request.
+Soversion 9 adds =compute_stress= to the C++ =ForceInput=, the opt-in stress request.
 The C ABI is not involved: that struct is a C++ layout, so the soversion moves
 and the C stamp keeps layout revision 1.
 A program linked against soversion 4 does not load =librgpot.so.6=.
