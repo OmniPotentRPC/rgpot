@@ -492,6 +492,22 @@ def test_deepcopy_and_copy_are_independent() -> None:
         assert atoms.get_potential_energy() == reference.get_potential_energy()
 
 
+class NoStressKeyword(CountingPotential):
+    """Advertises a stress through caps() but cannot be asked for one."""
+
+    def evaluate(self, positions, numbers, box):
+        self.calls += 1
+        return self.inner.evaluate(positions, numbers, box)
+
+
+def test_a_stress_request_reaches_the_potential_or_fails() -> None:
+    atoms = argon()
+    atoms.calc = RgpotCalculator(NoStressKeyword(rgpot.LJPot(**AR)))
+    assert atoms.get_potential_energy() < 0.0
+    with pytest.raises(TypeError, match="compute_stress"):
+        atoms.get_stress()
+
+
 def test_unpicklable_wrapper_says_why() -> None:
     calc = RgpotCalculator(CountingPotential(rgpot.LJPot()))
     with pytest.raises(TypeError, match="cannot pickle"):
