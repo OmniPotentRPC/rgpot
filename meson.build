@@ -934,7 +934,7 @@ if has_fast_nlist
     # without linking the object a second time.
     if _fast_as_object
         fastnlist_dep = declare_dependency(
-            sources: [_fastnlist_tgt],
+            sources: _fast_bundled ? [_fastnlist_tgt[0], _fastnlist_tgt[1]] : [_fastnlist_tgt[0]],
             link_args: _fast_native,
         )
         fastnlist_native_dep = declare_dependency(
@@ -942,8 +942,8 @@ if has_fast_nlist
         )
     else
         fastnlist_dep = declare_dependency(
-            sources: [_fastnlist_tgt],
-            link_args: [_fastnlist_tgt.full_path()] + _fast_native,
+            sources: [_fast_bundled ? _fastnlist_tgt[1] : _fastnlist_tgt],
+            link_args: [_fastnlist_tgt[0].full_path()] + _fast_native,
         )
         fastnlist_native_dep = fastnlist_dep
     endif
@@ -1003,6 +1003,7 @@ if get_option('with_rust_core')
                 _rust_archive,
                 '--features',
                 ','.join(_cargo_features),
+                '--fast-toolchain',
                 '@OUTPUT0@',
                 '@OUTPUT1@',
             ],

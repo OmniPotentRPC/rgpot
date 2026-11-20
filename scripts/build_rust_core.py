@@ -76,6 +76,7 @@ def main() -> None:
     base = fast.cargo_argv(args.cargo) if args.fast_toolchain else [args.cargo]
     cmd = base + [
         "build",
+        "--locked",
         "--manifest-path",
         args.manifest,
         "--target-dir",
