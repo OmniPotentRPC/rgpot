@@ -113,6 +113,25 @@ std::set<Key> from_table(const rgpot::nlist::Table &table) {
   return out;
 }
 
+std::vector<double> fractional_positions(const double box[9], std::size_t n) {
+  std::mt19937_64 rng(731);
+  std::uniform_real_distribution<double> unit(0.0, 1.0);
+  std::vector<double> pos;
+  pos.reserve(3 * n);
+  for (std::size_t i = 0; i < n; ++i) {
+    const double f[3] = {unit(rng), unit(rng), unit(rng)};
+    for (int c = 0; c < 3; ++c) {
+      pos.push_back(f[0] * box[c] + f[1] * box[3 + c] + f[2] * box[6 + c]);
+    }
+  }
+  // Pin a short pair so a missed near neighbour is not hidden by aggregate
+  // pair counts.
+  pos[3] = pos[0] + 0.3;
+  pos[4] = pos[1];
+  pos[5] = pos[2];
+  return pos;
+}
+
 } // namespace
 
 TEST_CASE("neighbour query matches a triclinic brute force", "[nlist][api]") {
@@ -335,6 +354,34 @@ TEST_CASE("a wide orthorhombic cell matches the brute force", "[nlist][api]") {
     rgpot::nlist::Table table;
     rgpot::nlist::build(table, pos.data(), pos.size() / 3, box, query);
     REQUIRE(from_table(table) == brute(pos, box, 6.0, full, true, periodic));
+  }
+}
+
+TEST_CASE("large general cells match the brute force", "[nlist][api]") {
+  constexpr std::size_t n = 512;
+  constexpr double cutoff = 3.0;
+  const std::array<bool, 3> periodic{{true, true, true}};
+  const std::array<std::array<double, 9>, 3> boxes{{
+      {{16.0, 0.5, 0.2, 0.0, 15.5, 0.4, 0.0, 0.0, 16.5}},
+      {{16.0, 0.0, 0.0, 8.0, 13.856406460551018, 0.0, 0.0, 0.0, 16.0}},
+      {{14.142135623730951, 14.142135623730950, 0.0, -14.142135623730950,
+        14.142135623730951, 0.0, 0.0, 0.0, 20.0}},
+  }};
+
+  for (const auto &box : boxes) {
+    const auto pos = fractional_positions(box.data(), n);
+    rgpot::nlist::Query query;
+    query.cutoff = cutoff;
+    query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+    query.cut = rgpot::nlist::Cut::Strict;
+    query.periodic = periodic;
+    rgpot::nlist::Table table;
+    rgpot::nlist::build(table, pos.data(), n, box.data(), query);
+    const auto got = from_table(table);
+    const auto ref = brute(pos, box.data(), cutoff, false, true, periodic, 1);
+    INFO("builder " << got.size() << " brute " << ref.size());
+    CHECK(got == ref);
+    CHECK(ref.count(Key{0, 1, 0, 0, 0}) == 1);
   }
 }
 
@@ -718,6 +765,19 @@ TEST_CASE("a negative skin is not inside the skin", "[nlist][api]") {
   REQUIRE_FALSE(rgpot::nlist::withinSkin(pos, pos, 1, box, sheared, span, -0.1));
   REQUIRE(rgpot::nlist::withinSkin(pos, pos, 1, 0.0));
   REQUIRE(rgpot::nlist::withinSkin(pos, pos, 1, box, box, span, 0.0));
+}
+
+TEST_CASE("a non-finite displacement is not inside the skin", "[nlist][api]") {
+  const double pos[3] = {1.0, 2.0, 3.0};
+  const double current[3] = {std::numeric_limits<double>::quiet_NaN(), 2.0,
+                             3.0};
+  const double box[9] = {5, 0, 0, 0, 6, 0, 0, 0, 7};
+  double changed[9] = {5, 0, 0, 0, 6, 0, 0, 0, 7};
+  changed[1] = std::numeric_limits<double>::quiet_NaN();
+  const double span[3] = {1, 1, 1};
+  REQUIRE_FALSE(rgpot::nlist::withinSkin(pos, current, 1, 1.0));
+  REQUIRE_FALSE(rgpot::nlist::withinSkin(pos, current, 1, box, box, span, 1.0));
+  REQUIRE_FALSE(rgpot::nlist::withinSkin(pos, pos, 1, box, changed, span, 1.0));
 }
 
 TEST_CASE("a positive skin with a strict cut is rejected", "[nlist][api]") {
