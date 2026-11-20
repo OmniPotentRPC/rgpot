@@ -254,3 +254,70 @@ TEST_CASE("ZBLPot parameter fingerprint tracks the config", "[ZBLPot]") {
   REQUIRE(defaults.config().cut_inner == 2.0);
   REQUIRE(defaults.config().cut_global == 2.5);
 }
+
+TEST_CASE("ZBLPot folds pairs on a rotated cell and rejects malformed cells",
+          "[ZBLPot][periodic][stress]") {
+  const rgpot::ZBLPot pot;
+  const double side = 5.0;
+  const double std_box[9] = {side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side};
+  // 90-degree rotation in the xy plane: a = (0, L, 0), b = (-L, 0, 0),
+  // c = (0, 0, L), so the diagonal entries in x and y are zero while
+  // det(H) = L^3 > 0.
+  const double rot_box[9] = {0.0, side, 0.0, -side, 0.0, 0.0, 0.0, 0.0, side};
+
+  // Si-Si dimer separated by 0.2 A across the first periodic boundary:
+  // unwrapped separation is 4.8 A > cut_global (2.5 A), so dropping
+  // periodicity gives 0 eV while the folded image gives ~4053.35 eV.
+  const std::vector<double> pos_std{0.1, 0.0, 0.0, 4.9, 0.0, 0.0};
+  const std::vector<double> pos_rot{0.0, 0.1, 0.0, 0.0, 4.9, 0.0};
+  const std::vector<int> z{14, 14};
+
+  std::vector<double> f_std(6, 0.0), f_rot(6, 0.0), e_std(2, 0.0), e_rot(2, 0.0),
+      v_std(12, 0.0), v_rot(12, 0.0);
+  rgpot::ForceOut out_std{f_std.data(), 0.0, 0.0, {}, 0};
+  rgpot::ForceOut out_rot{f_rot.data(), 0.0, 0.0, {}, 0};
+  pot.forcePerAtom({2, pos_std.data(), z.data(), std_box}, &out_std,
+                   {e_std.data(), v_std.data()});
+  pot.forcePerAtom({2, pos_rot.data(), z.data(), rot_box}, &out_rot,
+                   {e_rot.data(), v_rot.data()});
+
+  CHECK_THAT(out_std.energy, WithinRel(4053.35, 1e-4));
+  CHECK_THAT(out_rot.energy, WithinRel(out_std.energy, 1e-14));
+  CHECK(out_std.has_stress == 1);
+  CHECK(out_rot.has_stress == 1);
+  for (std::size_t i = 0; i < 2; ++i) {
+    CHECK_THAT(e_rot[i], WithinRel(e_std[i], 1e-14));
+  }
+  // Forces and stress rotate by (x, y, z) -> (-y, x, z).
+  CHECK_THAT(f_rot[0], WithinAbs(-f_std[1], 1e-12));
+  CHECK_THAT(f_rot[1], WithinAbs(f_std[0], 1e-12));
+  CHECK_THAT(f_rot[2], WithinAbs(f_std[2], 1e-12));
+  CHECK_THAT(out_rot.stress[4], WithinRel(out_std.stress[0], 1e-14));
+  CHECK_THAT(out_rot.stress[0], WithinRel(out_std.stress[4], 1e-14));
+  CHECK_THAT(out_rot.stress[8], WithinRel(out_std.stress[8], 1e-14));
+
+  // Null and all-zero cells use free boundaries.
+  const double zero_box[9] = {};
+  std::vector<double> f_null(6, 0.0), f_zero(6, 0.0);
+  rgpot::ForceOut out_null{f_null.data(), 0.0, 0.0, {}, 0};
+  rgpot::ForceOut out_zero{f_zero.data(), 0.0, 0.0, {}, 0};
+  pot.forceImpl({2, pos_std.data(), z.data(), nullptr}, &out_null);
+  pot.forceImpl({2, pos_std.data(), z.data(), zero_box}, &out_zero);
+  CHECK(out_null.energy == 0.0);
+  CHECK(out_zero.energy == 0.0);
+  CHECK(out_null.has_stress == 0);
+  CHECK(out_zero.has_stress == 0);
+
+  // Malformed non-zero cells (non-positive diagonal or singular sheared cell)
+  // throw std::invalid_argument instead of silently falling back to free_box.
+  const double neg_diag[9] = {-side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side};
+  const double zero_diag[9] = {side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, 0.0};
+  const double singular_shear[9] = {side, side, 0.0, side, side, 0.0, 0.0, 0.0, side};
+  rgpot::ForceOut out_bad{f_std.data(), 0.0, 0.0, {}, 0};
+  CHECK_THROWS_AS(pot.forceImpl({2, pos_std.data(), z.data(), neg_diag}, &out_bad),
+                  std::invalid_argument);
+  CHECK_THROWS_AS(pot.forceImpl({2, pos_std.data(), z.data(), zero_diag}, &out_bad),
+                  std::invalid_argument);
+  CHECK_THROWS_AS(pot.forceImpl({2, pos_std.data(), z.data(), singular_shear}, &out_bad),
+                  std::invalid_argument);
+}
