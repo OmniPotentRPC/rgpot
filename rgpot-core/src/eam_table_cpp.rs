@@ -15,22 +15,22 @@ use crate::tensor::{copy_f64_tensor, copy_i32_tensor, create_owned_f64_tensor};
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
 unsafe extern "C" {
-    fn rgpot_eam_cpp_new_from_file(
+    fn rgpot_core_eam_cpp_new_from_file(
         path: *const c_char,
         format: c_int,
         periodic: bool,
         stress: bool,
         skin: f64,
     ) -> *mut c_void;
-    fn rgpot_eam_cpp_new_from_text(
+    fn rgpot_core_eam_cpp_new_from_text(
         text: *const c_char,
         format: c_int,
         periodic: bool,
         stress: bool,
         skin: f64,
     ) -> *mut c_void;
-    fn rgpot_eam_cpp_free(handle: *mut c_void);
-    fn rgpot_eam_cpp_force(
+    fn rgpot_core_eam_cpp_free(handle: *mut c_void);
+    fn rgpot_core_eam_cpp_force(
         handle: *mut c_void,
         n_atoms: usize,
         positions: *const f64,
@@ -39,16 +39,16 @@ unsafe extern "C" {
         forces: *mut f64,
         energy: *mut f64,
     ) -> c_int;
-    fn rgpot_eam_cpp_last_error() -> *const c_char;
+    fn rgpot_core_eam_cpp_last_error() -> *const c_char;
     #[cfg(test)]
-    fn rgpot_eam_cpp_drop_count() -> i64;
+    fn rgpot_core_eam_cpp_drop_count() -> i64;
     #[cfg(test)]
-    fn rgpot_eam_cpp_reset_drop_count();
+    fn rgpot_core_eam_cpp_reset_drop_count();
 }
 
 fn cpp_error(fallback: &str) -> RgpotError {
     let message = unsafe {
-        let ptr = rgpot_eam_cpp_last_error();
+        let ptr = rgpot_core_eam_cpp_last_error();
         if ptr.is_null() {
             fallback.to_owned()
         } else {
@@ -73,7 +73,7 @@ pub(crate) fn cpp_potential_from_file(
         RgpotError::EamTable(EamTableError::Invalid("path has interior NUL".into()))
     })?;
     let user_data = unsafe {
-        rgpot_eam_cpp_new_from_file(path.as_ptr(), format as c_int, periodic, stress, skin)
+        rgpot_core_eam_cpp_new_from_file(path.as_ptr(), format as c_int, periodic, stress, skin)
     };
     if user_data.is_null() {
         return Err(cpp_error("EAM table: C++ constructor failed"));
@@ -95,7 +95,7 @@ pub(crate) fn cpp_potential_from_data(
         RgpotError::EamTable(EamTableError::Invalid("table text has interior NUL".into()))
     })?;
     let user_data = unsafe {
-        rgpot_eam_cpp_new_from_text(
+        rgpot_core_eam_cpp_new_from_text(
             text.as_ptr(),
             RGPOT_EAM_TABLE_FINNIS_SINCLAIR,
             periodic,
@@ -115,16 +115,16 @@ pub(crate) fn cpp_potential_from_data(
 
 #[cfg(test)]
 pub(crate) fn cpp_drop_count() -> i64 {
-    unsafe { rgpot_eam_cpp_drop_count() }
+    unsafe { rgpot_core_eam_cpp_drop_count() }
 }
 
 #[cfg(test)]
 pub(crate) fn cpp_reset_drop_count() {
-    unsafe { rgpot_eam_cpp_reset_drop_count() };
+    unsafe { rgpot_core_eam_cpp_reset_drop_count() };
 }
 
 unsafe extern "C" fn drop_cpp_eam_table(user_data: *mut c_void) {
-    unsafe { rgpot_eam_cpp_free(user_data) };
+    unsafe { rgpot_core_eam_cpp_free(user_data) };
 }
 
 unsafe extern "C" fn cpp_eam_table_callback(
@@ -155,7 +155,7 @@ unsafe extern "C" fn cpp_eam_table_callback(
     let mut forces = vec![0.0_f64; 3 * n_atoms];
     let mut energy = 0.0_f64;
     let status = unsafe {
-        rgpot_eam_cpp_force(
+        rgpot_core_eam_cpp_force(
             user_data,
             n_atoms,
             positions.as_ptr(),

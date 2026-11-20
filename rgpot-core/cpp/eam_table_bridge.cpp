@@ -542,10 +542,10 @@ int to_status(const std::exception& e) {
 
 extern "C" {
 
-const char* rgpot_eam_cpp_last_error() { return g_last_error.c_str(); }
+const char* rgpot_core_eam_cpp_last_error() { return g_last_error.c_str(); }
 
-void* rgpot_eam_cpp_new_from_file(const char* path, int32_t format, bool periodic, bool stress,
-                                  double skin) {
+void* rgpot_core_eam_cpp_new_from_file(const char* path, int32_t format, bool periodic,
+                                       bool stress, double skin) {
   try {
     const auto layout = layout_of(static_cast<Format>(format), path == nullptr ? "" : path);
     auto table = parse_table(read_file(path), layout);
@@ -559,8 +559,8 @@ void* rgpot_eam_cpp_new_from_file(const char* path, int32_t format, bool periodi
   }
 }
 
-void* rgpot_eam_cpp_new_from_text(const char* text, int32_t format, bool periodic, bool stress,
-                                  double skin) {
+void* rgpot_core_eam_cpp_new_from_text(const char* text, int32_t format, bool periodic,
+                                       bool stress, double skin) {
   try {
     if (text == nullptr) {
       throw std::invalid_argument("EAM table: text is NULL");
@@ -576,7 +576,7 @@ void* rgpot_eam_cpp_new_from_text(const char* text, int32_t format, bool periodi
   }
 }
 
-void rgpot_eam_cpp_free(void* handle) {
+void rgpot_core_eam_cpp_free(void* handle) {
   if (handle != nullptr) {
     delete static_cast<EAMTablePot*>(handle);
     std::lock_guard<std::mutex> hold(g_drop_count_mutex);
@@ -584,9 +584,9 @@ void rgpot_eam_cpp_free(void* handle) {
   }
 }
 
-int32_t rgpot_eam_cpp_force(void* handle, std::size_t n_atoms, const double* positions,
-                            const int32_t* atomic_numbers, const double* cell, double* forces,
-                            double* energy) {
+int32_t rgpot_core_eam_cpp_force(void* handle, std::size_t n_atoms, const double* positions,
+                                 const int32_t* atomic_numbers, const double* cell,
+                                 double* forces, double* energy) {
   try {
     if (handle == nullptr) {
       throw std::invalid_argument("EAM table: null potential handle");
@@ -602,12 +602,12 @@ int32_t rgpot_eam_cpp_force(void* handle, std::size_t n_atoms, const double* pos
   }
 }
 
-int64_t rgpot_eam_cpp_drop_count() {
+int64_t rgpot_core_eam_cpp_drop_count() {
   std::lock_guard<std::mutex> hold(g_drop_count_mutex);
   return g_drop_count;
 }
 
-void rgpot_eam_cpp_reset_drop_count() {
+void rgpot_core_eam_cpp_reset_drop_count() {
   std::lock_guard<std::mutex> hold(g_drop_count_mutex);
   g_drop_count = 0;
 }
