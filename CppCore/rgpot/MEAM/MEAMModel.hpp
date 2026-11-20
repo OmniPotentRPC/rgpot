@@ -202,7 +202,7 @@ public:
   };
 
   /// Builds the tables. Throws std::invalid_argument when a pair table
-  /// cannot be built: ibar 2, an unknown reference lattice mixture, or a
+  /// cannot be built: an unsupported ibar, nn2 set for a c11 pair, or a
   /// non positive rc or delr.
   explicit MEAMModel(MEAMParameters parameters);
 
@@ -321,6 +321,9 @@ private:
                    double *t22, double *t32, double ta1, double ta2, double ta3,
                    double tb1, double tb2, double tb3, double r, int a, int b,
                    MEAMLattice latt) const;
+  /// What the second neighbour recursion adds to phi_meam at r for a pair
+  /// with nn2 set (equation 21 of the 2000 paper).
+  double second_neighbour_series(double r, int a, int b) const;
   double screening(int i, int j, int k, double c) const;
   int second_neighbours(MEAMLattice latt, double cmin, double cmax,
                         double stheta, double *a, double *s) const;

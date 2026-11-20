@@ -487,12 +487,6 @@ MEAMModel::MEAMModel(MEAMParameters parameters) : m_p(std::move(parameters)) {
     }
   }
 
-  for (int v : m_p.m_nn2) {
-    if (v == 1) {
-      bad("nn2 = 1 is not implemented");
-    }
-  }
-
   m_t.resize(m_n);
   for (std::size_t i = 0; i < m_n; ++i) {
     for (int l = 0; l < 4; ++l) {
@@ -502,6 +496,16 @@ MEAMModel::MEAMModel(MEAMParameters parameters) : m_p(std::move(parameters)) {
   }
 
   mix_pairs();
+
+  for (std::size_t i = 0; i < m_n; ++i) {
+    for (std::size_t j = 0; j < m_n; ++j) {
+      const std::size_t ij = m_p.pair(static_cast<int>(i), static_cast<int>(j));
+      if (m_p.m_nn2[ij] == 1 &&
+          static_cast<MEAMLattice>(m_p.m_lattice[ij]) == MEAMLattice::C11) {
+        bad("nn2 = 1 is not defined for the c11 lattice");
+      }
+    }
+  }
 
   std::size_t at = 0;
   m_eltind.assign(m_n * m_n, 0);
@@ -701,6 +705,7 @@ int MEAMModel::second_neighbours(MEAMLattice latt, double cmin, double cmax,
     numscr = 4;
     break;
   case MEAMLattice::C11:
+    *a = 1.0;
     break;
   }
   const double c = latt == MEAMLattice::DIA3 ? 1.0 : 4.0 / (*a * *a) - 1.0;
@@ -742,7 +747,17 @@ void MEAMModel::reference_density() {
       double dg = 0.0;
       static_cast<void>(G(gam, m_p.m_elements[ia].ibar, &gbar, &dg));
     }
-    m_rho_ref[ia] = m_p.m_elements[ia].rho0 * z * gbar;
+    double rho0 = m_p.m_elements[ia].rho0 * z;
+    if (m_p.m_nn2[m_p.pair(a, a)] == 1) {
+      double arat = 0.0;
+      double scrn = 0.0;
+      const int z2 = second_neighbours(latt, cmin(a, a, a), cmax(a, a, a),
+                                       stheta(a, a), &arat, &scrn);
+      const double rho0_2nn =
+          m_p.m_elements[ia].rho0 * std::exp(-m_p.m_elements[ia].beta[0] * (arat - 1.0));
+      rho0 += z2 * rho0_2nn * scrn;
+    }
+    m_rho_ref[ia] = rho0 * gbar;
   }
 }
 
@@ -946,6 +961,31 @@ void MEAMModel::reference_densities(double r, int a, int b, double *rho01,
     *rho31 = s[2] * rhoa32 * rhoa32;
     break;
   }
+
+  if (m_p.m_nn2[m_p.pair(a, b)] == 1) {
+    double arat = 0.0;
+    double scrn = 0.0;
+    int z2nn = second_neighbours(lat, cmin(a, a, b), cmax(a, a, b), stheta(a, b),
+                                 &arat, &scrn);
+    const double rhoa01nn = rho0(a) * std::exp(-beta(a, 0) * (arat * r / re(a) - 1.0));
+    const double rhoa02nn = rho0(b) * std::exp(-beta(b, 0) * (arat * r / re(b) - 1.0));
+    if (lat == MEAMLattice::L12) {
+      // The second neighbours of an L12 pair are screened by a different
+      // mix of first neighbours for each of the two elements.
+      const double s111 = screening(a, a, a, 1.0);
+      const double s112 = screening(a, a, b, 1.0);
+      const double s221 = screening(b, b, a, 1.0);
+      const double big_s11 = s111 * s111 * s112 * s112;
+      const double big_s22 = s221 * s221 * s221 * s221;
+      *rho01 += 6.0 * big_s11 * rhoa01nn;
+      *rho02 += 6.0 * big_s22 * rhoa02nn;
+    } else {
+      *rho01 += z2nn * scrn * rhoa01nn;
+      z2nn = second_neighbours(lat, cmin(b, b, a), cmax(b, b, a), stheta(a, b),
+                               &arat, &scrn);
+      *rho02 += z2nn * scrn * rhoa02nn;
+    }
+  }
 }
 
 double MEAMModel::phi_meam_series(double scrn, int z1, int z2, int a, int b,
@@ -1136,6 +1176,55 @@ double MEAMModel::phi_meam(double r, int a, int b) const {
   return phi_m;
 }
 
+double MEAMModel::second_neighbour_series(double r, int a, int b) const {
+  const MEAMLattice lab = lattice(a, b);
+  double arat = 0.0;
+  double scrn = 0.0;
+  double scrn2 = 0.0;
+  int z1 = meam_coordination(lab);
+  int z2 = second_neighbours(lab, cmin(a, a, b), cmax(a, a, b), stheta(a, b),
+                             &arat, &scrn);
+  const bool reference_pair = lab == MEAMLattice::B1 || lab == MEAMLattice::B2 ||
+                              lab == MEAMLattice::L12 || lab == MEAMLattice::DIA;
+  if (!reference_pair) {
+    return phi_meam_series(scrn, z1, z2, a, b, r, arat);
+  }
+
+  // The second neighbours of these pairs are like atoms, so their pair
+  // term is the pair term of the element with its own second neighbours.
+  const double rarat = r * arat;
+  double phiaa = phi_meam(rarat, a, a);
+  z1 = meam_coordination(lattice(a, a));
+  z2 = second_neighbours(lattice(a, a), cmin(a, a, a), cmax(a, a, a), stheta(a, a),
+                         &arat, &scrn);
+  phiaa += phi_meam_series(scrn, z1, z2, a, a, rarat, arat);
+
+  double phibb = phi_meam(rarat, b, b);
+  z1 = meam_coordination(lattice(b, b));
+  z2 = second_neighbours(lattice(b, b), cmin(b, b, b), cmax(b, b, b), stheta(b, b),
+                         &arat, &scrn);
+  phibb += phi_meam_series(scrn, z1, z2, b, b, rarat, arat);
+
+  if (lab == MEAMLattice::L12) {
+    // 1-1 second neighbours are screened by two atoms of each element and
+    // 2-2 second neighbours by four atoms of the first.
+    const double s111 = screening(a, a, a, 1.0);
+    const double s112 = screening(a, a, b, 1.0);
+    const double s221 = screening(b, b, a, 1.0);
+    const double big_s11 = s111 * s111 * s112 * s112;
+    const double big_s22 = s221 * s221 * s221 * s221;
+    return -0.75 * big_s11 * phiaa - 0.25 * big_s22 * phibb;
+  }
+  z1 = meam_coordination(lab);
+  z2 = second_neighbours(lab, cmin(a, a, b), cmax(a, a, b), stheta(a, b), &arat,
+                         &scrn);
+  double sum = -z2 * scrn / (2.0 * z1) * phiaa;
+  z2 = second_neighbours(lab, cmin(b, b, a), cmax(b, b, a), stheta(a, b), &arat,
+                         &scrn2);
+  sum -= z2 * scrn2 / (2.0 * z1) * phibb;
+  return sum;
+}
+
 void MEAMModel::build_pair_tables() {
   const MEAMParameters &p = m_p;
   const std::size_t npairs = m_n * (m_n + 1) / 2;
@@ -1152,6 +1241,9 @@ void MEAMModel::build_pair_tables() {
         double v = phi_meam(r, a, b);
 
         const std::size_t ab = p.pair(a, b);
+        if (p.m_nn2[ab] == 1) {
+          v += second_neighbour_series(r, a, b);
+        }
         if (p.m_zbl[ab] == 1) {
           const double astar = p.m_alpha[ab] * (r / p.m_re[ab] - 1.0);
           const int za = p.m_elements[static_cast<std::size_t>(a)].z;
