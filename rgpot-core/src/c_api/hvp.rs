@@ -78,8 +78,9 @@ pub unsafe extern "C" fn rgpot_potential_set_hvp_callback(
 /// like the positions and must not overlap. `scheme` is a
 /// `rgpot_hvp_scheme_t` value:
 ///
-/// - `RGPOT_HVP_AUTO`: the analytic callback when one is registered,
-///   otherwise `RGPOT_HVP_FORWARD`.
+/// - `RGPOT_HVP_AUTO`: the analytic Hessian-vector callback when one is
+///   registered, otherwise the cached analytic dense Hessian when that
+///   callback is registered, otherwise `RGPOT_HVP_FORWARD`.
 /// - `RGPOT_HVP_FORWARD`: `(F(x) - F(x + h u)) |v| / h` with `u = v / |v|`.
 ///   `F(x)` comes from the handle's cached centre when the positions,
 ///   atomic numbers and cell carry the same bits as the last centre, so

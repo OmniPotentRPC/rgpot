@@ -273,6 +273,63 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
   }
 }
 
+int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
+                         const double *positions, const int *atomicNrs,
+                         double *hessian_out, const double *box) {
+  if (!pot || !pot->backend) {
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  if (!pot->caps.analyticHvp) {
+    return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
+                "potential has no analytic Hessian");
+  }
+  if (!positions || !atomicNrs || !hessian_out || !box || nAtoms <= 0 ||
+      nAtoms > std::numeric_limits<long>::max() / 3) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID, "invalid Hessian argument");
+  }
+  const size_t dim = static_cast<size_t>(nAtoms) * 3;
+  if (dim > std::numeric_limits<size_t>::max() / dim) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID, "Hessian dimension overflows");
+  }
+  const size_t n2 = dim * dim;
+  const auto hb = reinterpret_cast<std::uintptr_t>(hessian_out);
+  const std::uintptr_t bytes = n2 * sizeof(double);
+  const auto overlaps = [hb, bytes](const void *input, std::uintptr_t inputBytes) {
+    const auto begin = reinterpret_cast<std::uintptr_t>(input);
+    return hb < begin + inputBytes && begin < hb + bytes;
+  };
+  if (overlaps(positions, dim * sizeof(double)) ||
+      overlaps(atomicNrs, static_cast<std::uintptr_t>(nAtoms) * sizeof(int)) ||
+      overlaps(box, 9 * sizeof(double))) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID,
+                "Hessian output overlaps an input buffer");
+  }
+  try {
+    RgpotEnginePot::CallGuard guard(*pot);
+    SoftGilRelease no_gil;
+    const rgpot::ForceInput in{static_cast<size_t>(nAtoms), positions, atomicNrs,
+                               box};
+    std::vector<double> matrix(n2, 0.0);
+    std::vector<double> direction(dim, 0.0);
+    std::vector<double> column(dim, 0.0);
+    for (size_t column_index = 0; column_index < dim; ++column_index) {
+      std::fill(direction.begin(), direction.end(), 0.0);
+      direction[column_index] = 1.0;
+      pot->backend->pot->hessianVectorImpl(in, direction.data(), column.data());
+      for (size_t row = 0; row < dim; ++row) {
+        matrix[row * dim + column_index] = column[row];
+      }
+    }
+    std::memcpy(hessian_out, matrix.data(), bytes);
+    pot->clear_error();
+    return RGPOT_ENGINE_OK;
+  } catch (const std::exception &e) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, e.what());
+  } catch (...) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, "unknown exception");
+  }
+}
+
 int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
                              const double *positions, const int *atomicNrs,
                              double *forces, double *energies,
@@ -356,6 +413,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   filled.orbital_selection = pot->backend->select_orbitals ? 1 : 0;
   filled.orbital_copy = pot->backend->copy_orbitals ? 1 : 0;
   filled.analytic_hvp = pot->caps.analyticHvp ? 1 : 0;
+  filled.analytic_hessian = pot->caps.analyticHvp ? 1 : 0;
   // The host's struct may be older (smaller) than this engine's: write only
   // the bytes it announced room for.
   const unsigned room = out->size < sizeof(filled) ? out->size : sizeof(filled);

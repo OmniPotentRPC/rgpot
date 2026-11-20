@@ -46,7 +46,7 @@ use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
 /// The ABI minor this loader advertises, `RGPOT_ENGINE_ABI_MINOR` of the header.
-pub const ENGINE_ABI_MINOR: u16 = 5;
+pub const ENGINE_ABI_MINOR: u16 = 6;
 /// The struct layout revision this loader expects, `RGPOT_ENGINE_ABI_LAYOUT_REVISION` of the header.
 pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 /// Engine code meaning the backend does not support the requested operation.
@@ -155,6 +155,15 @@ pub type HvpFn = unsafe extern "C" fn(
     *mut f64,
     *const f64,
 ) -> c_int;
+/// `rgpot_engine_hessian`.
+pub type HessianFn = unsafe extern "C" fn(
+    *mut RgpotEnginePot,
+    c_long,
+    *const f64,
+    *const c_int,
+    *mut f64,
+    *const f64,
+) -> c_int;
 /// `rgpot_engine_caps`.
 pub type CapsFn = unsafe extern "C" fn(*const RgpotEnginePot, *mut RgpotEngineCaps) -> c_int;
 /// `rgpot_engine_last_error`.
@@ -212,6 +221,8 @@ pub struct RgpotEngineCaps {
     pub orbital_copy: c_int,
     /// Nonzero when analytic HVP (`rgpot_engine_hvp`) is supported.
     pub analytic_hvp: c_int,
+    /// Nonzero when the exact energy Hessian (`rgpot_engine_hessian`) is supported.
+    pub analytic_hessian: c_int,
 }
 
 /// Capabilities advertised by an engine instance via `rgpot_engine_caps`.
@@ -231,6 +242,8 @@ pub struct EngineCaps {
     pub group_collective: bool,
     /// Whether analytic HVP (`rgpot_engine_hvp`) is supported.
     pub analytic_hvp: bool,
+    /// Whether the exact energy Hessian (`rgpot_engine_hessian`) is supported.
+    pub analytic_hessian: bool,
 }
 
 /// The symbols of one engine library. `abi_version`, `create`, `destroy` and
@@ -252,6 +265,8 @@ pub struct EngineSymbols {
     pub force_batch: Option<ForceBatchFn>,
     /// Optional symbol `rgpot_engine_hvp`.
     pub hvp: Option<HvpFn>,
+    /// Optional symbol `rgpot_engine_hessian`.
+    pub hessian: Option<HessianFn>,
     /// Optional symbol `rgpot_engine_caps`.
     pub caps: Option<CapsFn>,
     /// Optional symbol `rgpot_engine_last_error`.
@@ -586,6 +601,7 @@ impl EnginePotential {
             stress: raw.stress != 0,
             group_collective: raw.group_collective != 0,
             analytic_hvp: raw.analytic_hvp != 0,
+            analytic_hessian: raw.analytic_hessian != 0,
         })
     }
 
@@ -660,6 +676,63 @@ impl EnginePotential {
         Ok(hv_out)
     }
 
+    /// Exact energy Hessian, row-major `(3N)²` doubles, in eV/Angstrom².
+    ///
+    /// Returns [`EngineError::Unsupported`] when the library omits
+    /// `rgpot_engine_hessian`, when `rgpot_engine_caps` reports
+    /// `analytic_hessian == 0`, or when the call returns
+    /// `ENGINE_ERR_UNSUPPORTED` (3). No finite-difference fallback is attempted.
+    pub fn hessian(&mut self, request: &EngineRequest<'_>) -> Result<Vec<f64>, EngineError> {
+        self.check_alive()?;
+        let hessian_fn = self
+            .symbols
+            .hessian
+            .ok_or_else(|| unsupported_symbol("rgpot_engine_hessian"))?;
+        if self.symbols.caps.is_none() {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_hessian",
+                message: "rgpot_engine_caps is not exported".into(),
+            });
+        }
+        if !self.caps()?.analytic_hessian {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_hessian",
+                message: "analytic_hessian is not advertised".into(),
+            });
+        }
+        let n_atoms = request.atomic_numbers.len();
+        check_lengths(n_atoms, request.positions.len())?;
+        let dim = 3 * n_atoms;
+        let n2 = dim.checked_mul(dim).ok_or_else(|| {
+            EngineError::Invalid(format!("Hessian of {n_atoms} atoms does not fit"))
+        })?;
+        if let Some(i) = request.positions.iter().position(|v| !v.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine position at element {i} is not finite"
+            )));
+        }
+        let mut hessian_out = vec![0.0; n2];
+        let code = unsafe {
+            hessian_fn(
+                self.handle.as_ptr(),
+                n_atoms as c_long,
+                request.positions.as_ptr(),
+                request.atomic_numbers.as_ptr(),
+                hessian_out.as_mut_ptr(),
+                request.box_matrix.as_ptr(),
+            )
+        };
+        if code == ENGINE_ERR_UNSUPPORTED {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_hessian",
+                message: self.last_error_text(code),
+            });
+        }
+        self.answer(code)?;
+        finite_product(&hessian_out)?;
+        Ok(hessian_out)
+    }
+
     /// Per-term record of the last successful force call on a composite engine
     /// via `rgpot_engine_last_components`. Returns [`EngineError::Unsupported`]
     /// when the plugin does not export `rgpot_engine_last_components`.
@@ -728,16 +801,25 @@ impl EnginePotential {
     /// destroys it on drop. Calls through the handle are serialized. When
     /// both the optional capability and HVP symbols are present and
     /// `analytic_hvp` is advertised, the handle also receives an analytic
-    /// Hessian-vector callback.
+    /// Hessian-vector callback. When `rgpot_engine_hessian` is exported and
+    /// `analytic_hessian` is advertised, the handle receives an analytic
+    /// dense-Hessian callback as well.
     pub fn into_potential(self) -> PotentialImpl {
         let analytic_hvp =
             self.symbols.hvp.is_some() && matches!(self.caps(), Ok(caps) if caps.analytic_hvp);
+        let analytic_hessian = self.symbols.hessian.is_some()
+            && matches!(self.caps(), Ok(caps) if caps.analytic_hessian);
         let owned = Box::into_raw(Box::new(Mutex::new(self))).cast::<c_void>();
         let potential = PotentialImpl::new(engine_callback, owned, Some(drop_engine));
         if analytic_hvp {
             potential
                 .as_handle()
                 .set_hessian_vector_callback(Some(engine_hessian_vector_callback));
+        }
+        if analytic_hessian {
+            potential
+                .as_handle()
+                .set_hessian_callback(Some(engine_hessian_callback));
         }
         potential
     }
@@ -875,6 +957,7 @@ unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
         force: unsafe { required(library, "rgpot_engine_force")? },
         force_batch: unsafe { optional(library, "rgpot_engine_force_batch") },
         hvp: unsafe { optional(library, "rgpot_engine_hvp") },
+        hessian: unsafe { optional(library, "rgpot_engine_hessian") },
         caps: unsafe { optional(library, "rgpot_engine_caps") },
         last_error: unsafe { optional(library, "rgpot_engine_last_error") },
         last_components: unsafe { optional(library, "rgpot_engine_last_components") },
@@ -1008,6 +1091,62 @@ unsafe extern "C" fn engine_hessian_vector_callback(
         match engine.hvp(&request, direction) {
             Ok(product) => {
                 unsafe { std::ptr::copy_nonoverlapping(product.as_ptr(), hv_out, product.len()) };
+                rgpot_status_t::RGPOT_SUCCESS
+            }
+            Err(why) => {
+                set_last_error(&why.to_string());
+                why.status()
+            }
+        }
+    }))
+}
+
+unsafe extern "C" fn engine_hessian_callback(
+    user_data: *mut c_void,
+    input: *const rgpot_force_input_t,
+    hessian_out: *mut f64,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if user_data.is_null() || input.is_null() || hessian_out.is_null() {
+            set_last_error("engine Hessian: null user data, input or output");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let mut engine = lock_engine(user_data);
+        if let Err(why) = engine.check_alive() {
+            set_last_error(&why.to_string());
+            return why.status();
+        }
+        let input = unsafe { &*input };
+        let Some(n_atoms) = (unsafe { input.n_atoms() }) else {
+            set_last_error("engine Hessian: positions tensor has no shape");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        };
+        let Some(dim) = n_atoms.checked_mul(3) else {
+            set_last_error("engine Hessian: atom count overflows coordinate length");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        };
+        let positions = copy_f64_tensor(input.positions, "positions", dim, true);
+        let numbers = copy_i32_tensor(input.atomic_numbers, "atomic_numbers", n_atoms);
+        let cell = copy_f64_tensor(input.box_matrix, "box_matrix", 9, false);
+        let (positions, numbers, cell) = match (positions, numbers, cell) {
+            (Ok(positions), Ok(numbers), Ok(cell)) => (positions, numbers, cell),
+            (Err(why), _, _) | (_, Err(why), _) | (_, _, Err(why)) => {
+                set_last_error(&why);
+                return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+            }
+        };
+        let mut matrix = [0.0; 9];
+        matrix.copy_from_slice(&cell);
+        let request = EngineRequest {
+            positions: &positions,
+            atomic_numbers: &numbers,
+            box_matrix: &matrix,
+        };
+        match engine.hessian(&request) {
+            Ok(hessian) => {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(hessian.as_ptr(), hessian_out, hessian.len())
+                };
                 rgpot_status_t::RGPOT_SUCCESS
             }
             Err(why) => {

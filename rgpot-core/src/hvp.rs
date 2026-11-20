@@ -18,9 +18,12 @@
 //! without a second call. Another geometry, species list, cell or engine
 //! setting is a new centre, and
 //! [`rgpot_potential_t::invalidate_hvp_centre`] makes the next one new when
-//! the potential itself changes. A potential that knows its Hessian
-//! registers a [`HessianVectorCallback`] and the products make no force
-//! call at all.
+//! the potential itself changes. A potential that knows its Hessian-vector
+//! product registers a [`HessianVectorCallback`] and the products make no
+//! force call at all. A potential that knows the dense energy Hessian
+//! registers that instead: `RGPOT_HVP_AUTO` multiplies the cached matrix,
+//! still with no force call. An explicit forward or central scheme still
+//! differences forces.
 //!
 //! | Scheme | Force calls per product | Error |
 //! |--------|-------------------------|-------|
@@ -171,16 +174,25 @@ impl From<FusedError> for HvpError {
     }
 }
 
-struct Geometry {
-    n_atoms: usize,
-    positions: Vec<f64>,
-    atomic_numbers: Option<Vec<i32>>,
-    cell: Option<Vec<f64>>,
+pub(crate) struct Geometry {
+    pub(crate) n_atoms: usize,
+    pub(crate) positions: Vec<f64>,
+    pub(crate) atomic_numbers: Option<Vec<i32>>,
+    pub(crate) cell: Option<Vec<f64>>,
+}
+
+/// How [`rgpot_potential_t::hessian_vector`] resolves a scheme.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Product {
+    Analytic,
+    Hessian,
+    Central,
+    Forward,
 }
 
 /// Copy the positions, species and cell of `input` after checking them.
 /// Species and cell are optional, as for the force callback.
-unsafe fn read_geometry(input: &rgpot_force_input_t) -> Result<Geometry, HvpError> {
+pub(crate) unsafe fn read_geometry(input: &rgpot_force_input_t) -> Result<Geometry, HvpError> {
     let n_atoms = unsafe { input.n_atoms() }.ok_or_else(|| invalid("positions: tensor is NULL"))?;
     let dim = n_atoms
         .checked_mul(3)
@@ -224,6 +236,7 @@ impl rgpot_potential_t {
     /// `user_data`.
     pub fn set_hessian_vector_callback(&self, callback: Option<HessianVectorCallback>) {
         *lock(&self.hvp_state().callback) = callback;
+        self.invalidate_hessian_cache();
     }
 
     /// Whether an analytic Hessian-vector callback is registered.
@@ -231,10 +244,16 @@ impl rgpot_potential_t {
         lock(&self.hvp_state().callback).is_some()
     }
 
+    /// The registered analytic product, if any.
+    pub(crate) fn hessian_vector_callback(&self) -> Option<HessianVectorCallback> {
+        *lock(&self.hvp_state().callback)
+    }
+
     /// Drop the cached centre. Call it when the potential behind the handle
     /// changes while the geometry does not.
     pub fn invalidate_hvp_centre(&self) {
         self.fused().invalidate();
+        self.invalidate_hessian_cache();
     }
 
     /// The counters of the Hessian-vector entry points.
@@ -327,14 +346,15 @@ impl rgpot_potential_t {
         }
         let state = self.hvp_state();
         let analytic = *lock(&state.callback);
-        let scheme = match scheme {
-            rgpot_hvp_scheme_t::RGPOT_HVP_AUTO if analytic.is_some() => {
-                rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC
-            }
-            rgpot_hvp_scheme_t::RGPOT_HVP_AUTO => rgpot_hvp_scheme_t::RGPOT_HVP_FORWARD,
-            other => other,
+        let resolved = match scheme {
+            rgpot_hvp_scheme_t::RGPOT_HVP_AUTO if analytic.is_some() => Product::Analytic,
+            rgpot_hvp_scheme_t::RGPOT_HVP_AUTO if self.has_hessian_callback() => Product::Hessian,
+            rgpot_hvp_scheme_t::RGPOT_HVP_AUTO => Product::Forward,
+            rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC => Product::Analytic,
+            rgpot_hvp_scheme_t::RGPOT_HVP_CENTRAL => Product::Central,
+            rgpot_hvp_scheme_t::RGPOT_HVP_FORWARD => Product::Forward,
         };
-        if scheme == rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC && analytic.is_none() {
+        if resolved == Product::Analytic && analytic.is_none() {
             return Err(invalid(
                 "RGPOT_HVP_ANALYTIC: no Hessian-vector callback is registered",
             ));
@@ -353,8 +373,8 @@ impl rgpot_potential_t {
                 .map(|(x, v)| x + sign * h * (v / length))
                 .collect()
         };
-        match scheme {
-            rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC => {
+        match resolved {
+            Product::Analytic => {
                 let callback = analytic.expect("checked above");
                 let status = unsafe {
                     callback(
@@ -382,7 +402,17 @@ impl rgpot_potential_t {
                 }
                 state.analytic.fetch_add(1, Ordering::Relaxed);
             }
-            rgpot_hvp_scheme_t::RGPOT_HVP_CENTRAL => {
+            Product::Hessian => {
+                let matrix = unsafe { self.energy_hessian_of(input, &geometry) }?;
+                crate::hessian::apply_hessian(&matrix, direction, hv_out);
+                if let Some(i) = hv_out.iter().position(|v| !v.is_finite()) {
+                    return Err(invalid(format!(
+                        "Hessian matrix product: non-finite value at element {i}"
+                    )));
+                }
+                self.note_hessian_product();
+            }
+            Product::Central => {
                 let plus = unsafe { self.forces_at(input, displaced(1.0), geometry.n_atoms) }?;
                 let minus = unsafe { self.forces_at(input, displaced(-1.0), geometry.n_atoms) }?;
                 let scale = length / (2.0 * h);
@@ -390,7 +420,7 @@ impl rgpot_potential_t {
                     *out = (fm - fp) * scale;
                 }
             }
-            _ => {
+            Product::Forward => {
                 let centre = unsafe { self.centre_of(input, &geometry) }?;
                 let plus = unsafe { self.forces_at(input, displaced(1.0), geometry.n_atoms) }?;
                 let scale = length / h;

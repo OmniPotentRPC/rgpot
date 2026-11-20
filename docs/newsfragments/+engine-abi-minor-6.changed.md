@@ -1,0 +1,1 @@
+The engine ABI minor is now 6, in `RGPOT_ENGINE_ABI_MINOR` and `ENGINE_ABI_MINOR`, for the additive `rgpot_engine_hessian` entry point and the trailing `RgpotEngineCaps.analytic_hessian` field. A host built against minor 6 accepts an engine of minor 6 or earlier. The field is set only when the potential's Hessian-vector product is analytic.

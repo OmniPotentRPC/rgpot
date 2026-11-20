@@ -180,6 +180,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   filled.periodic = 1;
 #if !defined(NO_HVP) && !defined(NO_HVP_CAP)
   filled.analytic_hvp = 1;
+  filled.analytic_hessian = 1;
 #endif
   room = out->size < sizeof filled ? out->size : sizeof filled;
   memcpy(out, &filled, room);
@@ -259,6 +260,43 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
 #else
     hv_out[i] = pot->k * direction[i];
 #endif
+  }
+  pot->error[0] = '\0';
+  return 0;
+#endif
+}
+#endif
+
+#ifndef NO_HESSIAN
+int rgpot_engine_hessian(RgpotEnginePot *pot, long n, const double *positions,
+                         const int *atomic_nrs, double *hessian_out,
+                         const double *box) {
+  native_calls += 1;
+  (void)positions;
+  (void)box;
+#if defined(NO_HVP) || defined(NO_HVP_CAP) || defined(HESSIAN_UNSUPPORTED)
+  (void)n;
+  (void)atomic_nrs;
+  (void)hessian_out;
+  if (pot) {
+    snprintf(pot->error, sizeof pot->error, "harmonic engine built without analytic Hessian");
+  }
+  return RGPOT_ENGINE_ERR_UNSUPPORTED;
+#else
+  long i;
+  long dim;
+  if (!pot || !positions || !atomic_nrs || !hessian_out || !box || n <= 0) {
+    if (pot) {
+      snprintf(pot->error, sizeof pot->error, "invalid Hessian argument");
+    }
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  dim = 3 * n;
+  for (i = 0; i < dim * dim; i++) {
+    hessian_out[i] = 0.0;
+  }
+  for (i = 0; i < dim; i++) {
+    hessian_out[i * dim + i] = pot->k;
   }
   pot->error[0] = '\0';
   return 0;

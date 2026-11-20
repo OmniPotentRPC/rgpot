@@ -63,7 +63,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * ABI minor of this build.
  */
-#define RGPOT_ABI_VERSION_MINOR 6
+#define RGPOT_ABI_VERSION_MINOR 7
 
 /**
  * Layout revision of this build.
@@ -92,7 +92,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * The ABI minor this loader advertises, `RGPOT_ENGINE_ABI_MINOR` of the header.
  */
-#define ENGINE_ABI_MINOR 5
+#define ENGINE_ABI_MINOR 6
 
 /**
  * The struct layout revision this loader expects,
@@ -191,6 +191,11 @@ typedef enum rgpot_status_t {
    * A Taylor jet left the analytic domain of a function or a division.
    */
   RGPOT_JET_DOMAIN = 8,
+  /**
+   * The potential has no analytic energy Hessian and no analytic
+   * Hessian-vector product. Finite differences are not substituted.
+   */
+  RGPOT_NO_HESSIAN = 9,
 } rgpot_status_t;
 
 #if defined(RGPOT_HAS_RPC)
@@ -326,6 +331,28 @@ typedef struct rgpot_potential_t {
    */
   struct rgpot_fused_cache_t *fused_cache;
 } rgpot_potential_t;
+
+/**
+ * Counters of the dense-Hessian entry points.
+ */
+typedef struct rgpot_hessian_counts_t {
+  /**
+   * Matrices computed by a callback or by column assembly.
+   */
+  uint64_t evaluations;
+  /**
+   * Requests answered from the cached matrix.
+   */
+  uint64_t cache_hits;
+  /**
+   * Evaluations assembled from an analytic Hessian-vector callback.
+   */
+  uint64_t from_hvp;
+  /**
+   * `RGPOT_HVP_AUTO` products served by multiplying the cached matrix.
+   */
+  uint64_t products;
+} rgpot_hessian_counts_t;
 
 /**
  * Work done by the Hessian-vector entry points of one handle.
@@ -511,6 +538,71 @@ struct rgpot_potential_t *
 rgpot_potential_new_eam_table(const char *path, int format, bool periodic);
 
 /**
+ * Register `callback` as the analytic dense energy Hessian of `pot`, or
+ * clear it with NULL.
+ *
+ * The callback receives the `user_data` the handle was created with. It
+ * writes `(3 * n_atoms)²` row-major doubles, `d²E/dx_i dx_j`. With a
+ * callback registered, `rgpot_potential_hessian` calls it and
+ * `RGPOT_HVP_AUTO` products multiply the matrix when no Hessian-vector
+ * callback is registered. Neither path differences forces.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live handle. A NULL `pot` returns
+ * `RGPOT_INVALID_PARAMETER`. `callback` must be safe to call with the
+ * handle's `user_data` for as long as it stays registered, and must not
+ * re-enter this handle's Hessian entry points.
+ */
+enum rgpot_status_t rgpot_potential_set_hessian_callback(
+    const struct rgpot_potential_t *pot,
+    enum rgpot_status_t (*callback)(void *user_data,
+                                    const struct rgpot_force_input_t *input,
+                                    double *hessian_out));
+
+/**
+ * Write the energy Hessian at the geometry of `input` to `hessian_out`.
+ *
+ * `hessian_out` holds `(3 * n_atoms)²` doubles, row-major. The matrix comes
+ * from the Hessian callback when one is registered, otherwise from the
+ * analytic Hessian-vector callback applied to each unit direction. A handle
+ * with neither returns `RGPOT_NO_HESSIAN`. A repeated request at the same
+ * geometry, species, cell and engine settings is the cached matrix.
+ *
+ * # Safety
+ *
+ * NULL pointers return `RGPOT_INVALID_PARAMETER`. Otherwise `pot` must be a
+ * live handle, `input` must point to a valid `rgpot_force_input_t` whose
+ * tensors stay alive for the call, and `hessian_out` must point to
+ * `(3 * n_atoms)²` writable doubles that do not overlap the position buffer.
+ */
+enum rgpot_status_t
+rgpot_potential_hessian(const struct rgpot_potential_t *pot,
+                        const struct rgpot_force_input_t *input,
+                        double *hessian_out);
+
+/**
+ * Read the dense-Hessian counters of `pot` into `out`.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live handle, and `out` NULL or writable. NULL
+ * for either returns `RGPOT_INVALID_PARAMETER`.
+ */
+enum rgpot_status_t
+rgpot_potential_hessian_counts(const struct rgpot_potential_t *pot,
+                               struct rgpot_hessian_counts_t *out);
+
+/**
+ * Zero the dense-Hessian counters of `pot`. The cached matrix stays.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live handle. NULL is a no-op.
+ */
+void rgpot_potential_reset_hessian_counts(const struct rgpot_potential_t *pot);
+
+/**
  * Register `callback` as the analytic Hessian-vector product of `pot`, or
  * clear it with NULL.
  *
@@ -540,8 +632,9 @@ enum rgpot_status_t rgpot_potential_set_hvp_callback(
  * like the positions and must not overlap. `scheme` is a
  * `rgpot_hvp_scheme_t` value:
  *
- * - `RGPOT_HVP_AUTO`: the analytic callback when one is registered,
- *   otherwise `RGPOT_HVP_FORWARD`.
+ * - `RGPOT_HVP_AUTO`: the analytic Hessian-vector callback when one is
+ *   registered, otherwise the cached analytic dense Hessian when that
+ *   callback is registered, otherwise `RGPOT_HVP_FORWARD`.
  * - `RGPOT_HVP_FORWARD`: `(F(x) - F(x + h u)) |v| / h` with `u = v / |v|`.
  *   `F(x)` comes from the handle's cached centre when the positions,
  *   atomic numbers and cell carry the same bits as the last centre, so
