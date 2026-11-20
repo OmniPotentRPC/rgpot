@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -312,6 +313,126 @@ void test_list_edges() {
     }
     check(message == "skin must be finite and non-negative",
           "a non-finite or negative skin is rejected by name");
+  }
+}
+
+// Every periodic image of the cell as an atom of a supercell, m cells on
+// each side.
+void supercell(const std::vector<double> &pos, const std::vector<int> &z, const double *box,
+               int m, std::vector<double> *spos, std::vector<int> *sz, double *sbox) {
+  spos->clear();
+  sz->clear();
+  for (int a = 0; a < m; ++a) {
+    for (int b = 0; b < m; ++b) {
+      for (int c = 0; c < m; ++c) {
+        for (std::size_t i = 0; i < z.size(); ++i) {
+          for (int k = 0; k < 3; ++k) {
+            spos->push_back(pos[3 * i + static_cast<std::size_t>(k)] + a * box[k] +
+                            b * box[3 + k] + c * box[6 + k]);
+          }
+          sz->push_back(z[i]);
+        }
+      }
+    }
+  }
+  for (int k = 0; k < 9; ++k) {
+    sbox[k] = m * box[k];
+  }
+}
+
+struct Native {
+  double energy = 0;
+  std::vector<double> f;
+  double strain[6]{};
+};
+
+// A cell shorter than the cutoffs, so an atom sees its own images. A
+// supercell of m cells a side is wider than twice every cutoff and has no
+// self image: each image is an atom and its pairs are counted directly. The
+// cell energy is then the supercell energy over m^3, which counts +S and -S
+// for every self image.
+void test_native_dispersion_images() {
+  constexpr double cut2 = 7.3;
+  constexpr double cut3 = 5.1;
+  constexpr double cut_cn = 5.1;
+  const double reach = std::max(cut2, std::max(cut3, cut_cn));
+  auto d3 = [&](const std::vector<double> &pos, const std::vector<int> &z, const double *box) {
+    rgpot::lr::D3BjParam param;
+    rgpot::lr::d3bj_param("pbe", &param);
+    DualList lists(2.0, reach, 0.0);
+    lists.update(pos.data(), z.size(), box, true);
+    Native out;
+    out.f.assign(pos.size(), 0.0);
+    rgpot::lr::d3bj_evaluate(pos.data(), z.data(), z.size(), box, true, lists.long_pairs(), param,
+                             cut2, cut3, cut_cn, &out.energy, out.f.data(), out.strain);
+    return out;
+  };
+  auto d4 = [&](const std::vector<double> &pos, const std::vector<int> &z, const double *box) {
+    rgpot::lr::D4BjParam param;
+    rgpot::lr::d4bj_param("pbe", &param);
+    Native out;
+    out.f.assign(pos.size(), 0.0);
+    rgpot::lr::d4_evaluate(pos.data(), z.data(), z.size(), box, true, 0.0, param, cut2, cut3,
+                           cut_cn, &out.energy, out.f.data(), out.strain);
+    return out;
+  };
+  auto net_force = [](const Native &e) {
+    double s[3] = {};
+    for (std::size_t i = 0; i < e.f.size(); ++i) {
+      s[i % 3] += e.f[i];
+    }
+    return std::sqrt(s[0] * s[0] + s[1] * s[1] + s[2] * s[2]);
+  };
+  struct Model {
+    const char *name;
+    std::function<Native(const std::vector<double> &, const std::vector<int> &, const double *)>
+        eval;
+    int m;
+    double energy_tol;
+  };
+  // D4 solves the supercell charges by conjugate gradient on a real-space
+  // sum cut at about 0.45 of the supercell, and the cell charges by a dense
+  // lattice factorization. Nine cells a side puts that cut far enough out
+  // that the two agree to 1e-8.
+  const Model models[] = {{"D3", d3, 6, 1e-10}, {"D4", d4, 9, 1e-8}};
+  const double cell[9] = {2.6, 0.0, 0.0, 0.4, 2.7, 0.0, 0.3, 0.2, 2.8};
+  const std::vector<double> one_pos = {0.1, 0.2, 0.3};
+  const std::vector<int> one_z = {6};
+  const std::vector<double> two_pos = {0.1, 0.2, 0.3, 1.2, 0.5, 0.45};
+  const std::vector<int> two_z = {6, 1};
+  for (const Model &model : models) {
+    for (const auto *system : {&one_pos, &two_pos}) {
+      const std::vector<double> &pos = *system;
+      const std::vector<int> &z = system == &one_pos ? one_z : two_z;
+      const std::string tag = std::string(model.name) + (system == &one_pos ? " one" : " two") +
+                              "-atom periodic cell";
+      const Native e = model.eval(pos, z, cell);
+      std::vector<double> spos;
+      std::vector<int> sz;
+      double sbox[9];
+      supercell(pos, z, cell, model.m, &spos, &sz, sbox);
+      const Native ref = model.eval(spos, sz, sbox);
+      const double cells = static_cast<double>(model.m * model.m * model.m);
+      std::cout << "CASE " << tag << ' ' << e.energy << ' ' << ref.energy / cells << '\n';
+      check(e.energy < 0.0, (tag + " energy is negative").c_str());
+      check_close(e.energy * cells, ref.energy, model.energy_tol,
+                  (tag + " energy matches the supercell sum").c_str());
+      check(net_force(e) < 1e-10, (tag + " net force is zero").c_str());
+      for (std::size_t i = 0; i < pos.size(); ++i) {
+        const double fd = fd_force(
+            [&](const std::vector<double> &p) { return model.eval(p, z, cell).energy; }, pos, i,
+            1e-4);
+        check_close(e.f[i], fd, 1e-6, (tag + " force matches a finite difference").c_str());
+        // Atom i of the cell is atom i of the first supercell cell.
+        check_close(e.f[i], ref.f[i], 1e-6, (tag + " force matches the supercell").c_str());
+      }
+      if (std::string(model.name) == "D3") {
+        for (int k = 0; k < 6; ++k) {
+          check_close(e.strain[k] * cells, ref.strain[k], 1e-9,
+                      (tag + " virial matches the supercell").c_str());
+        }
+      }
+    }
   }
 }
 
@@ -639,7 +760,29 @@ void test_library_dispersion() {
     std::vector<int> iz = {1, 8};
     rgpot::lr::DispersionPot ipot(img);
     const Eval ie = run(ipot, ipos, iz, ibox);
-    check(std::isfinite(ie.energy), "periodic D3 with a self image is finite");
+    // Three cells a side are wider than twice every cutoff, so the
+    // supercell counts each image of the cell as an atom.
+    std::vector<double> spos;
+    std::vector<int> sz;
+    double sbox[9];
+    supercell(ipos, iz, ibox, 3, &spos, &sz, sbox);
+    rgpot::lr::DispersionPot spot(img);
+    const Eval se = run(spot, spos, sz, sbox);
+    std::cout << "CASE d3_self_image " << ie.energy << ' ' << se.energy / 27.0 << '\n';
+    check(ie.energy < 0.0, "periodic D3 with a self image is negative");
+    check_close(ie.energy * 27.0, se.energy, 1e-10,
+                "periodic D3 with a self image matches the supercell sum");
+    double net[3] = {};
+    for (std::size_t i = 0; i < ipos.size(); ++i) {
+      net[i % 3] += ie.f[i];
+      const double fd = fd_force(
+          [&](const std::vector<double> &p) { return run(ipot, p, iz, ibox).energy; }, ipos, i,
+          1e-4);
+      check_close(ie.f[i], fd, 1e-6, "periodic D3 with a self image force");
+      check_close(ie.f[i], se.f[i], 1e-8, "periodic D3 with a self image force matches the supercell");
+    }
+    check(std::abs(net[0]) + std::abs(net[1]) + std::abs(net[2]) < 1e-10,
+          "periodic D3 with a self image has no net force");
   }
   for (std::size_t i = 0; i < 3; ++i) {
     const double f = fd_force(
@@ -708,16 +851,36 @@ void test_library_dispersion() {
     }
     rgpot::lr::DispersionPot pot(cfg);
     const Eval e = run(pot, pos, z, box);
-    check(std::isfinite(e.energy) && e.energy < 0.0, "periodic D4 energy is finite and negative");
-    bool finite_force = true;
-    for (double f : e.f) {
-      finite_force = finite_force && std::isfinite(f);
+    check(e.energy < 0.0, "periodic D4 energy is negative");
+    // Two cells a side hold 64 atoms, so both use the dense lattice charge
+    // solve, and the supercell is wider than twice every cutoff.
+    std::vector<double> spos;
+    std::vector<int> sz;
+    double sbox[9];
+    supercell(pos, z, box, 2, &spos, &sz, sbox);
+    rgpot::lr::DispersionPot spot(cfg);
+    const Eval se = run(spot, spos, sz, sbox);
+    std::cout << "CASE d4_periodic " << e.energy << ' ' << se.energy / 8.0 << '\n';
+    check_close(e.energy * 8.0, se.energy, 1e-9, "periodic D4 matches the supercell sum");
+    double net[3] = {};
+    for (std::size_t i = 0; i < pos.size(); ++i) {
+      net[i % 3] += e.f[i];
+      check_close(e.f[i], se.f[i], 1e-8, "periodic D4 force matches the supercell");
     }
-    check(finite_force, "periodic D4 forces are finite");
+    check(std::abs(net[0]) + std::abs(net[1]) + std::abs(net[2]) < 1e-9,
+          "periodic D4 has no net force");
+    for (std::size_t i : {std::size_t{0}, std::size_t{4}, std::size_t{11}}) {
+      const double fd = fd_force(
+          [&](const std::vector<double> &p) { return run(pot, p, z, box).energy; }, pos, i, 1e-4);
+      check_close(e.f[i], fd, 1e-6, "periodic D4 force matches a finite difference");
+    }
     cfg.atm = false;
     rgpot::lr::DispersionPot noatm(cfg);
     const Eval bare = run(noatm, pos, z, box);
-    check(std::isfinite(bare.energy), "periodic D4 without the three-body term is finite");
+    rgpot::lr::DispersionPot snoatm(cfg);
+    const Eval sbare = run(snoatm, spos, sz, sbox);
+    check_close(bare.energy * 8.0, sbare.energy, 1e-9,
+                "periodic D4 without the three-body term matches the supercell sum");
     bool threw = false;
     try {
       std::vector<int> badz = z;
@@ -1923,6 +2086,7 @@ int main() {
   try {
     test_lists();
     test_list_edges();
+    test_native_dispersion_images();
     test_madelung();
     test_dispersion_lattice_sum();
     test_forces_and_stress();

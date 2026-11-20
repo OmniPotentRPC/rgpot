@@ -10,7 +10,8 @@
 // the filter when positions and the cell are unchanged). Positions may lie
 // any whole number of cells outside the box. The skin test compares them
 // as given, so wrapping an atom back into the cell rebuilds. The skin must
-// be finite and non-negative.
+// be finite and non-negative. A list holds one of +S and -S for an atom's
+// own image S; a consumer that expands it to a full list adds the other.
 
 #include <cstddef>
 #include <memory>

@@ -181,9 +181,7 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
         continue;
       }
       mine[pr.i] += 1;
-      if (pr.i != pr.j) {
-        mine[pr.j] += 1;
-      }
+      mine[pr.j] += 1;
     }
   });
   std::vector<int> off(n + 1, 0);
@@ -212,14 +210,14 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
       a.z = pr.z * to_b;
       a.r = pr.r * to_b;
       nb[static_cast<std::size_t>(slot[pr.i]++)] = a;
-      if (pr.i != pr.j) {
-        Nb b = a;
-        b.j = pr.i;
-        b.x = -a.x;
-        b.y = -a.y;
-        b.z = -a.z;
-        nb[static_cast<std::size_t>(slot[pr.j]++)] = b;
-      }
+      // The half list holds one of +S and -S for a self image. The loops
+      // below weight a self image by one half and expect both.
+      Nb b = a;
+      b.j = pr.i;
+      b.x = -a.x;
+      b.y = -a.y;
+      b.z = -a.z;
+      nb[static_cast<std::size_t>(slot[pr.j]++)] = b;
     }
   });
   const auto neigh = [&](std::size_t i) {
@@ -296,26 +294,27 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
         const double gx = c6 * gdisp * a.x;
         const double gy = c6 * gdisp * a.y;
         const double gz = c6 * gdisp * a.z;
-        ene += (a.j == static_cast<int>(i) ? dE : 2.0 * dE);
-        dedcn[i] -= dci * edisp;
-        floc[3 * i] += gx;
-        floc[3 * i + 1] += gy;
-        floc[3 * i + 2] += gz;
-        if (a.j != static_cast<int>(i)) {
-          dedcn[static_cast<std::size_t>(a.j)] -= dcj * edisp;
-          floc[3 * a.j] -= gx;
-          floc[3 * a.j + 1] -= gy;
-          floc[3 * a.j + 2] -= gz;
-          sig[0] += gx * (-a.x);
-          sig[4] += gy * (-a.y);
-          sig[8] += gz * (-a.z);
-          sig[1] += gy * (-a.x);
-          sig[3] += gx * (-a.y);
-          sig[2] += gz * (-a.x);
-          sig[6] += gx * (-a.z);
-          sig[5] += gz * (-a.y);
-          sig[7] += gy * (-a.z);
-        }
+        // A self image is in the list as +S and -S, each carrying half of
+        // the pair. Its force on i cancels, and its virial does not.
+        const double w = a.j == static_cast<int>(i) ? 0.5 : 1.0;
+        ene += 2.0 * w * dE;
+        dedcn[i] -= w * dci * edisp;
+        dedcn[static_cast<std::size_t>(a.j)] -= w * dcj * edisp;
+        floc[3 * i] += w * gx;
+        floc[3 * i + 1] += w * gy;
+        floc[3 * i + 2] += w * gz;
+        floc[3 * a.j] -= w * gx;
+        floc[3 * a.j + 1] -= w * gy;
+        floc[3 * a.j + 2] -= w * gz;
+        sig[0] += w * gx * (-a.x);
+        sig[4] += w * gy * (-a.y);
+        sig[8] += w * gz * (-a.z);
+        sig[1] += w * gy * (-a.x);
+        sig[3] += w * gx * (-a.y);
+        sig[2] += w * gz * (-a.x);
+        sig[6] += w * gx * (-a.z);
+        sig[5] += w * gz * (-a.y);
+        sig[7] += w * gy * (-a.z);
       }
     }
     for (std::size_t i = static_cast<std::size_t>(slice); i < n; i += static_cast<std::size_t>(nt)) {
