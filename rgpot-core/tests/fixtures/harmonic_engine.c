@@ -24,6 +24,10 @@
 #define FIXTURE_ABI_MINOR RGPOT_ENGINE_ABI_MINOR
 #endif
 
+#ifndef FIXTURE_JET_ORDER
+#define FIXTURE_JET_ORDER 3
+#endif
+
 #ifndef FIXTURE_ABI_LAYOUT
 #define FIXTURE_ABI_LAYOUT RGPOT_ENGINE_ABI_LAYOUT_REVISION
 #endif
@@ -177,7 +181,16 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 #if !defined(NO_HVP) && !defined(NO_HVP_CAP)
   filled.analytic_hvp = 1;
 #endif
+#if !defined(NO_JET) && !defined(NO_JET_CAP)
+  filled.jet_order = FIXTURE_JET_ORDER;
+#endif
   room = out->size < sizeof filled ? out->size : sizeof filled;
+#ifdef FIXTURE_CAPS_MINOR4
+  /* A minor-4 engine's caps struct ends before jet_order. */
+  if (room > offsetof(RgpotEngineCaps, jet_order)) {
+    room = (unsigned)offsetof(RgpotEngineCaps, jet_order);
+  }
+#endif
   memcpy(out, &filled, room);
   out->size = room;
   return 0;
@@ -256,6 +269,76 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
     hv_out[i] = pot->k * direction[i];
 #endif
   }
+  pot->error[0] = '\0';
+  return 0;
+#endif
+}
+#endif
+
+#ifndef NO_JET
+/* The gradient of the harmonic energy is k x, so along x + t v its first
+ * derivative is k v and every higher one is zero. The report counts one
+ * product per coordinate and system and the larger of |k x| and |k v| over
+ * all systems as the scale. Layout of jet_out: [order][system][3 * n]. */
+int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long systems, long n,
+                            const double *positions, const int *atomic_nrs,
+                            const double *directions, long order,
+                            double *jet_out,
+                            RgpotEngineDerivativeReport *report,
+                            const double *boxes) {
+  native_calls += 1;
+  if (!pot || !positions || !atomic_nrs || !directions || !jet_out || !boxes ||
+      systems <= 0 || n <= 0 || order < 1) {
+    if (pot) {
+      snprintf(pot->error, sizeof pot->error, "invalid jet argument");
+    }
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+#ifdef JET_UNSUPPORTED
+  (void)report;
+  snprintf(pot->error, sizeof pot->error, "harmonic engine built without a jet");
+  return RGPOT_ENGINE_ERR_UNSUPPORTED;
+#else
+  long i;
+  long k;
+  long s;
+  double scale = 0.0;
+  if (order > FIXTURE_JET_ORDER) {
+    snprintf(pot->error, sizeof pot->error, "jet order %ld is not served", order);
+    return RGPOT_ENGINE_ERR_UNSUPPORTED;
+  }
+  for (i = 0; i < n; i++) {
+    if (atomic_nrs[i] == 0) {
+      snprintf(pot->error, sizeof pot->error, "atom %ld has atomic number 0", i);
+      return 1;
+    }
+  }
+  for (k = 0; k < order; k++) {
+    for (i = 0; i < systems * 3 * n; i++) {
+      jet_out[k * systems * 3 * n + i] = k == 0 ? pot->k * directions[i] : 0.0;
+    }
+  }
+  for (s = 0; s < systems; s++) {
+    for (i = 0; i < 3 * n; i++) {
+      double a = fabs(pot->k * positions[s * 3 * n + i]);
+      double b = fabs(pot->k * directions[s * 3 * n + i]);
+      if (a > scale) scale = a;
+      if (b > scale) scale = b;
+    }
+  }
+#ifdef JET_UNTRACKED
+  if (report) {
+    report->tracked = 0;
+    report->operations = 0;
+    report->scale = 0.0;
+  }
+#else
+  if (report) {
+    report->tracked = 1;
+    report->operations = systems * 3 * n;
+    report->scale = scale;
+  }
+#endif
   pot->error[0] = '\0';
   return 0;
 #endif

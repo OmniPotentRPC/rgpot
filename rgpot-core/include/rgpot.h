@@ -90,9 +90,17 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define ENGINE_ABI_VERSION 1
 
 /**
- * The ABI minor this loader requires, `RGPOT_ENGINE_ABI_MINOR` of the header.
+ * The current ABI minor, `RGPOT_ENGINE_ABI_MINOR` of the header: what an
+ * engine built with this header stamps.
  */
-#define ENGINE_ABI_MINOR 4
+#define ENGINE_ABI_MINOR 5
+
+/**
+ * The lowest engine minor this loader accepts, `RGPOT_ENGINE_ABI_MINIMUM_MINOR`
+ * of the header. Optional symbols and trailing caps fields added since are
+ * probed; an engine that predates them reports the capability as absent.
+ */
+#define ENGINE_ABI_MINIMUM_MINOR 4
 
 /**
  * The struct layout revision this loader expects,
