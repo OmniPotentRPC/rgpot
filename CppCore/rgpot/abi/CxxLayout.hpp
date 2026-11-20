@@ -198,6 +198,7 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// `D4Config` is stamped too, from a header of its own. Its new `periodic`
 /// field fits the padding after `atm`, so only the field offsets show it.
 /// `D2CpmdConfig` gains `symmetry`.
+/// 9 also adds a process-unique generation id to `Neighbours`.
 inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
@@ -211,7 +212,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0xf7ebab6b64626bf2ull},
+    {"linux-x86_64-libstdc++-lp64", 0xfbade4126cebe85aull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
