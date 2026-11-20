@@ -115,8 +115,10 @@ Native support is available for Lennard-Jones (periodic and cluster), Morse,
 ZBL, EAM, tabulated EAM/Finnis--Sinclair, EMT, Sutton--Chen,
 Stillinger--Weber, Tersoff Si/C, D3, D4, QDO and NLH dispersion, and DSF,
 Ewald and SPME electrostatics. A sum reports stress only when every summand
-does. XTB, TBLite, CPMD and i-PI report it only when their backend returned a
-complete virial. MBD, other external, plugin, water and analytic-coordinate
+does. TBLite reports it for GFN1 only, from the strain derivative of its
+energy. XTB does not: a request throws, because its molecule is not periodic and
+the library returns no virial. CPMD and i-PI report it only when their backend
+returned a complete virial. MBD, other external, plugin, water and analytic-coordinate
 potentials currently leave =has_stress= at 0. Coulomb and dispersion terms
 with a geometry-dependent charge or ratio response also leave it at 0 until
 that response supplies its chain-rule strain derivative.
@@ -893,7 +895,12 @@ explicit EAMPot(const EAMCellConfig &);
   The cell is periodic in every direction and only its diagonal (=box[0]=,
   =box[4]=, =box[8]=) is used.
   A stored list adds a skin of one fifth of the widest cutoff.
-  The force call does not write a stress.
+  A force-only call gives the same bits as before stress existed, on every cell.
+  A stress request is answered for an orthorhombic cell (every off-diagonal
+  entry of the box zero): the stress is the strain derivative of that model, and
+  =has_stress= is 1.
+  For any other cell the kernel does not model the tilt, so =has_stress= stays 0
+  and the tensor is zero.
 - Errors :: the force call throws =std::invalid_argument= when a diagonal entry
   of the box is not positive.
   An atomic number outside the table throws =std::invalid_argument=.
@@ -1112,7 +1119,7 @@ explicit EMTPot(const EMTConfig &config);
   From =rgpot::kTeamMinAtoms= up it uses OpenMP with per-atom row ownership and
   a second incoming-partner reduction pass, so energies and forces match the
   one-thread bits at 1, 2, 4 and 8 threads.
-  The force call does not write a stress.
+  =caps().stress= is true, and a request writes the Cauchy stress.
 - Errors :: an element the provider does not cover throws the Asap =Exception=
   class, which does not derive from =std::exception=.
 
