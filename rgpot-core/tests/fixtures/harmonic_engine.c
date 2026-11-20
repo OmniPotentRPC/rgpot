@@ -169,8 +169,30 @@ size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buf, size_t len)
 #endif
 
 #ifndef NO_CAPS
+#ifdef SHORT_CAPS
+/* The layout before analytic_hessian was appended. The host must keep a
+ * field it did not receive as the zero it wrote, not as a bit this plugin
+ * never stored. */
+typedef struct {
+  unsigned size;
+  int reentrancy;
+  int per_image_instances;
+  int batched;
+  int periodic;
+  int stress;
+  int group_collective;
+  int orbital_selection;
+  int orbital_copy;
+  int analytic_hvp;
+} RgpotEngineCapsPrefix;
+#endif
+
 int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
+#ifdef SHORT_CAPS
+  RgpotEngineCapsPrefix filled;
+#else
   RgpotEngineCaps filled;
+#endif
   unsigned room;
   native_calls += 1;
   (void)pot;
@@ -180,9 +202,11 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   filled.periodic = 1;
 #if !defined(NO_HVP) && !defined(NO_HVP_CAP)
   filled.analytic_hvp = 1;
+#ifndef SHORT_CAPS
   filled.analytic_hessian = 1;
 #endif
-  room = out->size < sizeof filled ? out->size : sizeof filled;
+#endif
+  room = out->size < sizeof filled ? out->size : (unsigned)sizeof filled;
   memcpy(out, &filled, room);
   out->size = room;
   return 0;

@@ -21,32 +21,37 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Largest Cartesian dimension of a dense Hessian this library allocates.
+/// Element count of a dense Hessian.
 ///
-/// `8192` components is `8192²` doubles, 512 MiB. A larger shape is a typed
-/// invalid-parameter error. The C entry point checks the same limit before
-/// it reserves, so an untrusted quadratic size does not abort the process.
-pub const RGPOT_HESSIAN_MAX_DIM: usize = 8192;
-
-/// Element count of a dense Hessian, or a typed error when `dim` is above
-/// [`RGPOT_HESSIAN_MAX_DIM`] or the byte count overflows.
-pub(crate) fn hessian_len(dim: usize) -> Result<usize, HessianError> {
-    if dim > RGPOT_HESSIAN_MAX_DIM {
-        return Err(HessianError::Invalid(format!(
-            "Hessian dimension {dim} exceeds {RGPOT_HESSIAN_MAX_DIM}"
-        )));
-    }
+/// The structural limit is a byte count that fits in `usize`. `budget` is the
+/// caller's optional ceiling in bytes. `None` installs no ceiling: there is
+/// no built-in component count or MiB default. A `Some` budget, including
+/// zero, refuses a larger matrix before any reservation.
+pub(crate) fn hessian_len(dim: usize, budget: Option<u64>) -> Result<usize, HessianError> {
     let n2 = dim
         .checked_mul(dim)
         .ok_or_else(|| HessianError::Invalid("Hessian dimension overflows".into()))?;
-    if n2.checked_mul(std::mem::size_of::<f64>()).is_none() {
-        return Err(HessianError::Invalid("Hessian byte count overflows".into()));
+    let bytes = n2
+        .checked_mul(std::mem::size_of::<f64>())
+        .ok_or_else(|| HessianError::Invalid("Hessian byte count overflows".into()))?;
+    if let Some(limit) = budget {
+        let bytes = u64::try_from(bytes).map_err(|_| {
+            HessianError::Invalid("Hessian byte count does not fit in 64 bits".into())
+        })?;
+        if bytes > limit {
+            return Err(HessianError::Invalid(format!(
+                "Hessian of {bytes} bytes exceeds the caller budget of {limit} bytes"
+            )));
+        }
     }
     Ok(n2)
 }
 
-fn allocate_hessian(dim: usize) -> Result<Vec<f64>, HessianError> {
-    let n2 = hessian_len(dim)?;
+fn allocate_hessian(dim: usize, budget: Option<u64>) -> Result<Vec<f64>, HessianError> {
+    // `try_reserve_exact` reports an allocation failure. On an overcommitting
+    // kernel, writing the reserved buffer can still kill the process. The
+    // caller budget is what bounds the request before that point.
+    let n2 = hessian_len(dim, budget)?;
     let mut matrix = Vec::new();
     matrix
         .try_reserve_exact(n2)
@@ -159,6 +164,9 @@ pub(crate) struct HessianState {
     /// matrix is published only when this is still the value sampled before
     /// the computation.
     generation: AtomicU64,
+    /// `None` means no caller byte budget. The only limits are a representable
+    /// byte count and `try_reserve_exact`.
+    byte_budget: Mutex<Option<u64>>,
     evaluations: AtomicU64,
     cache_hits: AtomicU64,
     from_hvp: AtomicU64,
@@ -183,6 +191,19 @@ impl rgpot_potential_t {
     pub fn set_hessian_callback(&self, callback: Option<HessianCallback>) {
         *lock(&self.hessian_state().callback) = callback;
         self.invalidate_hessian_cache();
+    }
+
+    /// Install or clear the dense-Hessian byte budget.
+    ///
+    /// `None` clears it. There is no default size. `Some(0)` refuses every
+    /// positive allocation. A matrix already stored stays stored; the budget
+    /// gates the next reservation.
+    pub fn set_hessian_byte_budget(&self, max_bytes: Option<u64>) {
+        *lock(&self.hessian_state().byte_budget) = max_bytes;
+    }
+
+    pub(crate) fn hessian_byte_budget(&self) -> Option<u64> {
+        *lock(&self.hessian_state().byte_budget)
     }
 
     /// Whether an analytic dense-Hessian callback is registered.
@@ -252,6 +273,12 @@ impl rgpot_potential_t {
     ) -> Result<Arc<Vec<f64>>, HessianError> {
         let dim = geometry.positions.len();
         if dim == 0 {
+            let state = self.hessian_state();
+            if lock(&state.callback).is_none() && self.hessian_vector_callback().is_none() {
+                return Err(HessianError::NoHessian(
+                    "potential has no analytic Hessian".into(),
+                ));
+            }
             return Ok(Arc::new(Vec::new()));
         }
         let key = self.fused().key(
@@ -303,10 +330,11 @@ impl rgpot_potential_t {
         dim: usize,
     ) -> Result<Vec<f64>, HessianError> {
         let state = self.hessian_state();
-        hessian_len(dim)?;
+        let budget = *lock(&state.byte_budget);
+        hessian_len(dim, budget)?;
         let callback = *lock(&state.callback);
         if let Some(callback) = callback {
-            let mut matrix = allocate_hessian(dim)?;
+            let mut matrix = allocate_hessian(dim, budget)?;
             let status = unsafe { callback(self.pot_user_data, input, matrix.as_mut_ptr()) };
             if status != rgpot_status_t::RGPOT_SUCCESS {
                 return Err(callback_error(status, "Hessian callback"));
@@ -320,7 +348,7 @@ impl rgpot_potential_t {
                 "potential has no analytic Hessian".into(),
             ));
         };
-        let mut matrix = allocate_hessian(dim)?;
+        let mut matrix = allocate_hessian(dim, budget)?;
         let mut direction = vec![0.0; dim];
         let mut column = vec![0.0; dim];
         for j in 0..dim {
@@ -366,5 +394,27 @@ fn callback_error(status: rgpot_status_t, what: &str) -> HessianError {
         } else {
             message
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hessian_len;
+
+    #[test]
+    fn a_byte_count_that_does_not_fit_in_usize_is_refused() {
+        let dim = 1usize << (usize::BITS / 2);
+        let err = hessian_len(dim, None).expect_err("overflow");
+        let text = err.to_string();
+        assert!(text.contains("overflows"), "{text}");
+    }
+
+    #[test]
+    fn a_caller_budget_is_the_only_practical_ceiling() {
+        assert_eq!(hessian_len(3, None).expect("no budget"), 9);
+        let err = hessian_len(3, Some(8)).expect_err("over budget");
+        assert!(err.to_string().contains("caller budget"));
+        assert_eq!(hessian_len(1, Some(8)).expect("one double fits"), 1);
+        assert!(hessian_len(1, Some(0)).is_err());
     }
 }

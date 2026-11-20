@@ -643,6 +643,27 @@ fn minor_4_and_5_plugins_are_served_and_a_newer_minor_is_rejected() {
 }
 
 #[test]
+fn a_prefix_caps_layout_leaves_the_trailing_bit_clear() {
+    let path = build(
+        "harmonic_short_caps",
+        &["SHORT_CAPS", "FIXTURE_ABI_MINOR=4"],
+    );
+    let mut engine = load(&path);
+    let caps = engine.caps().expect("prefix caps");
+    assert!(caps.periodic);
+    assert!(caps.analytic_hvp);
+    assert!(!caps.analytic_hessian);
+    let req = EngineRequest {
+        positions: &[1.0, -2.0, 0.5],
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+    let answer = engine.force(&req).expect("force on a prefix-caps plugin");
+    let sum: f64 = req.positions.iter().map(|x| x * x).sum();
+    assert!(within_roundoff(answer.energy, 0.5 * SPRING * sum, 9));
+}
+
+#[test]
 fn a_missing_required_symbol_is_named() {
     let path = build("harmonic_noforce", &["NO_FORCE", "NO_BATCH"]);
     let error = unsafe { EnginePotential::load(&path, &config()) }

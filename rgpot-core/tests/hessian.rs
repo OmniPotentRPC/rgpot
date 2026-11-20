@@ -351,29 +351,44 @@ fn analytic_scheme_uses_a_dense_hessian_when_that_is_the_exact_source() {
 }
 
 #[test]
-fn an_oversized_hessian_is_a_typed_error_and_does_not_call_the_callback() {
+fn a_caller_byte_budget_refuses_before_the_callback() {
+    use rgpot_core::c_api::hessian::rgpot_potential_set_hessian_byte_budget;
     let handle = Handle::bare();
     unsafe { rgpot_potential_set_hessian_callback(handle.pot, Some(quad_hessian)) };
-    let n_atoms = (rgpot_core::hessian::RGPOT_HESSIAN_MAX_DIM / 3) + 1;
-    let mut positions = vec![0.0; 3 * n_atoms];
-    let mut species = vec![1; n_atoms];
+    let budget = 8u64;
+    let status =
+        unsafe { rgpot_potential_set_hessian_byte_budget(handle.pot, &budget) };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    let mut geom = Geom::new([0.1, 0.2, -0.3]);
+    let mut input = geom.input();
+    let mut scratch = [0.0; 9];
+    let status = unsafe { rgpot_potential_hessian(handle.pot, &input, scratch.as_mut_ptr()) };
+    assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+    assert!(last_error().contains("caller budget"));
+    assert_eq!(handle.quad.hessian_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(
+        unsafe { rgpot_potential_set_hessian_byte_budget(handle.pot, std::ptr::null()) },
+        rgpot_status_t::RGPOT_SUCCESS
+    );
+    let status = unsafe { rgpot_potential_hessian(handle.pot, &input, scratch.as_mut_ptr()) };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_eq!(handle.quad.hessian_calls.load(Ordering::Relaxed), 1);
+    unsafe { rgpot_force_input_free(&mut input) };
+}
+
+#[test]
+fn a_zero_atom_hessian_without_a_provider_is_refused() {
+    let handle = Handle::bare();
+    let mut positions = [];
+    let mut species = [];
     let mut cell = [0.0; 9];
-    cell[0] = 10.0;
-    cell[4] = 10.0;
-    cell[8] = 10.0;
     let mut input = unsafe {
-        rgpot_force_input_create(
-            n_atoms,
-            positions.as_mut_ptr(),
-            species.as_mut_ptr(),
-            cell.as_mut_ptr(),
-        )
+        rgpot_force_input_create(0, positions.as_mut_ptr(), species.as_mut_ptr(), cell.as_mut_ptr())
     };
     let mut scratch = [0.0];
     let status = unsafe { rgpot_potential_hessian(handle.pot, &input, scratch.as_mut_ptr()) };
-    assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
-    assert!(last_error().contains("exceeds"));
-    assert_eq!(handle.quad.hessian_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(status, rgpot_status_t::RGPOT_NO_HESSIAN);
+    assert!(last_error().contains("no analytic Hessian"));
     unsafe { rgpot_force_input_free(&mut input) };
 }
 

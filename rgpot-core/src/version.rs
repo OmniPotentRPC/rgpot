@@ -422,6 +422,7 @@ mod tests {
             "rgpot_potential_set_taylor_jet",
             "rgpot_potential_taylor_jet",
             "rgpot_ch5_2008_taylor_jet",
+            "rgpot_potential_set_hessian_byte_budget",
             "rgpot_potential_set_hessian_callback",
             "rgpot_potential_hessian",
             "rgpot_potential_hessian_counts",

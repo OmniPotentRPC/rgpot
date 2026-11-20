@@ -62,6 +62,36 @@ pub unsafe extern "C" fn rgpot_potential_set_hessian_callback(
     rgpot_status_t::RGPOT_SUCCESS
 }
 
+/// Install or clear the caller's dense-Hessian byte budget.
+///
+/// A NULL `max_bytes` clears the budget. No component count or byte size is
+/// assumed in its place: a request is then refused only when the byte count
+/// does not fit in `size_t`, or when the allocation itself fails. A non-NULL
+/// pointer installs that many bytes, and zero is a budget that refuses every
+/// positive matrix. The pointer is read once; it need not stay alive.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a live handle. A NULL `pot` returns
+/// `RGPOT_INVALID_PARAMETER`. A non-NULL `max_bytes` must point at a readable
+/// `uint64_t`.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_set_hessian_byte_budget(
+    pot: *const rgpot_potential_t,
+    max_bytes: *const u64,
+) -> rgpot_status_t {
+    if pot.is_null() {
+        return refuse("rgpot_potential_set_hessian_byte_budget: pot is NULL");
+    }
+    let budget = if max_bytes.is_null() {
+        None
+    } else {
+        Some(unsafe { *max_bytes })
+    };
+    unsafe { &*pot }.set_hessian_byte_budget(budget);
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
 /// Write the energy Hessian at the geometry of `input` to `hessian_out`.
 ///
 /// `hessian_out` holds `(3 * n_atoms)²` doubles, row-major. The matrix comes
@@ -96,18 +126,22 @@ pub unsafe extern "C" fn rgpot_potential_hessian(
         let Some(dim) = (unsafe { input.n_atoms() }).and_then(|n| n.checked_mul(3)) else {
             return refuse("rgpot_potential_hessian: positions tensor is NULL or too large");
         };
-        if dim > crate::hessian::RGPOT_HESSIAN_MAX_DIM {
-            return refuse(&format!(
-                "rgpot_potential_hessian: dimension {dim} exceeds {}",
-                crate::hessian::RGPOT_HESSIAN_MAX_DIM
-            ));
-        }
         let Some(n2) = dim.checked_mul(dim) else {
             return refuse("rgpot_potential_hessian: Hessian dimension overflows");
         };
         let Some(bytes) = n2.checked_mul(std::mem::size_of::<f64>()) else {
             return refuse("rgpot_potential_hessian: Hessian byte count overflows");
         };
+        if let Some(limit) = unsafe { &*pot }.hessian_byte_budget() {
+            let Ok(bytes) = u64::try_from(bytes) else {
+                return refuse("rgpot_potential_hessian: Hessian byte count does not fit in 64 bits");
+            };
+            if bytes > limit {
+                return refuse(&format!(
+                    "rgpot_potential_hessian: Hessian of {bytes} bytes exceeds the caller budget of {limit} bytes"
+                ));
+            }
+        }
         if dim > 0 && !input.positions.is_null() {
             let positions = unsafe { (*input.positions).dl_tensor.data } as usize;
             let Some(position_bytes) = dim.checked_mul(std::mem::size_of::<f64>()) else {
