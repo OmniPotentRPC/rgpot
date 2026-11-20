@@ -97,10 +97,15 @@ void updateScratchCells(LjNeighbours &scratch, const ForceInput &in,
                      in.box, cutoff, skin, nlist::Image::Round, mode, periodic);
 }
 
-KeptKey ljNeighbourKey(const LJPot *self, double cutoff,
+// A destructor releases only its own thread's slots. Keyed on the
+// address, a potential built where another died would find that one's
+// list on every other thread.
+KeptKey ljNeighbourKey(std::uint64_t generation, double cutoff,
                        nlist::Mode mode) noexcept {
   KeptKey key;
-  key.ptr(self).f64(cutoff).i64(static_cast<std::int64_t>(mode));
+  key.i64(static_cast<std::int64_t>(generation))
+      .f64(cutoff)
+      .i64(static_cast<std::int64_t>(mode));
   return key;
 }
 
@@ -109,19 +114,19 @@ KeptKey ljNeighbourKey(const LJPot *self, double cutoff,
 LJPot::~LJPot() {
   for (const nlist::Mode mode :
        {nlist::Mode::Auto, nlist::Mode::Stored, nlist::Mode::Stream}) {
-    KeptLjNeighbours::release(ljNeighbourKey(this, cuttOffR, mode));
+    KeptLjNeighbours::release(ljNeighbourKey(neighbours_.generation(), cuttOffR, mode));
   }
 }
 
 bool LJPot::listReused() const noexcept {
   const LjNeighbours *kept =
-      KeptLjNeighbours::peek(ljNeighbourKey(this, cuttOffR, mode_));
+      KeptLjNeighbours::peek(ljNeighbourKey(neighbours_.generation(), cuttOffR, mode_));
   return kept != nullptr && kept->cells.reused();
 }
 
 std::size_t LJPot::retainedPairs() const noexcept {
   const LjNeighbours *kept =
-      KeptLjNeighbours::peek(ljNeighbourKey(this, cuttOffR, mode_));
+      KeptLjNeighbours::peek(ljNeighbourKey(neighbours_.generation(), cuttOffR, mode_));
   if (kept == nullptr || kept->cells.streaming()) {
     return 0;
   }
@@ -169,7 +174,7 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
     F[3 * i + 2] = 0;
   }
   if (N < 2 || cuttOffR <= 0.0) {
-    KeptLjNeighbours::release(ljNeighbourKey(this, cuttOffR, mode_));
+    KeptLjNeighbours::release(ljNeighbourKey(neighbours_.generation(), cuttOffR, mode_));
     publishCauchyStress(out, strain, volume);
     return;
   }
@@ -180,7 +185,7 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
   // Two different atoms on the same point make the energy NaN. Skipping
   // the pair would report a finite energy of zero and hide the singularity.
   KeptLjNeighbours::with(
-      ljNeighbourKey(this, cuttOffR, mode_),
+      ljNeighbourKey(neighbours_.generation(), cuttOffR, mode_),
       [] { return std::make_unique<LjNeighbours>(); },
       [&](LjNeighbours &scratch) {
         updateScratchCells(scratch, in, cuttOffR, mode_);
@@ -261,7 +266,7 @@ void LJPot::hessianVectorImpl(const ForceInput &in, const double *v, double *hv)
     hj[2] -= kz;
   };
   KeptLjNeighbours::with(
-      ljNeighbourKey(this, cuttOffR, mode_),
+      ljNeighbourKey(neighbours_.generation(), cuttOffR, mode_),
       [] { return std::make_unique<LjNeighbours>(); },
       [&](LjNeighbours &scratch) {
         updateScratchCells(scratch, in, cuttOffR, mode_);

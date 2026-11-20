@@ -153,7 +153,9 @@ private:
   QuinticSwitch m_switch{}; //!< In use when m_config.switch_width != 0.
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
-  mutable nlist::Neighbours neighbours_; //!< Unused. Kept so the potential object layout stays.
+  /// Never updated. Its generation() names this object in the per-thread
+  /// lists the force calls keep, and is new on every copy and move.
+  mutable nlist::Neighbours neighbours_;
 };
 
 } // namespace rgpot
