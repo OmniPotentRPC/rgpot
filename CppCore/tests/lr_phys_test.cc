@@ -278,6 +278,29 @@ void test_list_edges() {
     }
     check(lists.short_pairs().empty(), "the unwrapped pair is past the short cutoff");
   }
+  {
+    // Clearing the lists for no atoms must not leave a builder that
+    // reports the next geometry as unchanged.
+    const double box[9] = {8, 0, 0, 0, 8, 0, 0, 0, 8};
+    const std::vector<double> pos = {0.5, 0.5, 0.5, 1.6, 0.7, 0.4, 7.6, 0.4, 0.6};
+    DualList lists(2.0, 3.0, 0.2);
+    lists.update(pos.data(), 3, box, true);
+    const std::size_t n_short = lists.short_pairs().size();
+    const std::size_t n_long = lists.long_pairs().size();
+    check(n_short > 0 && n_long > n_short, "three atoms have short and long pairs");
+    lists.update(nullptr, 0, box, true);
+    check(lists.short_pairs().empty() && lists.long_pairs().empty(), "no atoms have no pairs");
+    lists.update(pos.data(), 3, box, true);
+    check(lists.short_pairs().size() == n_short && lists.long_pairs().size() == n_long,
+          "the same atoms after an empty update get their pairs back");
+    check(lists.short_rebuilt() && lists.long_rebuilt(),
+          "the update after an empty one rebuilds");
+    lists.update(pos.data(), 1, nullptr, false);
+    check(lists.long_pairs().empty(), "one molecular atom has no pairs");
+    lists.update(pos.data(), 3, box, true);
+    check(lists.short_pairs().size() == n_short && lists.long_pairs().size() == n_long,
+          "the same atoms after a one-atom update get their pairs back");
+  }
   for (const double skin : {std::numeric_limits<double>::infinity(),
                             -std::numeric_limits<double>::infinity(),
                             std::numeric_limits<double>::quiet_NaN(), -0.1}) {
