@@ -1404,16 +1404,21 @@ fn abs_zero_symbols_are_none_when_optional_and_missing_when_required() {
     assert!(!handle.as_handle().has_hessian_vector_callback());
 
     // An ABS-zero stamp symbol is absent, and a loader that finds no stamp
-    // treats the engine as minor 0, which cannot serve this loader.
+    // serves the engine as minor 0, layout 1.
     let null_stamp = build_with_abs_zero(
         "harmonic_abs0_stamp",
         &["NO_STAMP"],
         &["rgpot_engine_abi_stamp", "rgpot_engine_abi_compatible"],
     );
-    let error = unsafe { EnginePotential::load(&null_stamp, &config()) }
-        .err()
-        .expect("an ABS-zero stamp symbol is a missing stamp");
-    assert!(matches!(error, EngineError::AbiStamp { .. }), "{error}");
+    let engine = load(&null_stamp);
+    assert_eq!(
+        engine.abi_stamp(),
+        RgpotEngineAbiStamp {
+            abi_major: ENGINE_ABI_VERSION as u16,
+            abi_minor: 0,
+            layout_revision: 1,
+        }
+    );
 
     let null_force = build_with_abs_zero(
         "harmonic_abs0_force",
