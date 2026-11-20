@@ -89,8 +89,13 @@ process.
 It needs no GROMACS installation.
 The meson test =gromacs_unit_reference= compares the stored factors with
 =gromacs/math/units.h=.
-It is defined only when that header is found under the Python prefix, and meson
-prints nothing when it is not.
+It is defined when that header is found under the Python prefix, and the
+prefix include directory exists, or through pkg-config =gromacs= when the
+prefix directory is missing.
+A missing directory does not fail configure.
+Meson prints nothing when the header is not found.
+=-Dwith_gromacs=enabled= is unchanged: a missing =gmx= or PLUMED module is
+still a configure error.
 
 #+attr_rgpot: run
 #+begin_src python
