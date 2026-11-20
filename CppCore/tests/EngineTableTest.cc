@@ -17,6 +17,7 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <filesystem>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
