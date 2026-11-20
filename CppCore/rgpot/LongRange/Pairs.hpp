@@ -9,7 +9,8 @@
 // DualList filters them to cutoff on the current OpenMP team (skipping
 // the filter when positions and the cell are unchanged). Positions may lie
 // any whole number of cells outside the box. The skin test compares them
-// as given, so wrapping an atom back into the cell rebuilds.
+// as given, so wrapping an atom back into the cell rebuilds. The skin must
+// be finite and non-negative.
 
 #include <cstddef>
 #include <memory>
