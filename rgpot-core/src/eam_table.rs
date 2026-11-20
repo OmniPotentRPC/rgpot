@@ -280,8 +280,8 @@ impl EamTable {
             let zr = input.block(grid.nr)?;
             let rho = input.block(grid.nr)?;
             let rhomax = (grid.nrho - 1) as f64 * grid.drho;
-            let nrho = (rhomax / grid.drho).round() as usize;
-            let nr = ((grid.nr - 1) as f64 * grid.dr / grid.dr).round() as usize;
+            let nrho = grid.nrho;
+            let nr = grid.nr;
             let mut z2 = resample(&zr, grid.dr, nr, grid.dr);
             for v in &mut z2 {
                 *v = HARTREE_BOHR * *v * *v;
@@ -896,6 +896,9 @@ pub(crate) unsafe extern "C" fn eam_table_callback(
 }
 
 #[cfg(test)]
+static DROP_SEEN: OnceLock<Mutex<HashMap<usize, usize>>> = OnceLock::new();
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::c_api::potential::rgpot_potential_calculate;
@@ -927,6 +930,37 @@ mod tests {
             s += &row(&|_| 0.0);
         }
         s
+    }
+
+    #[test]
+    fn minimal_funcfl_round_trip_preserves_both_grid_endpoints() {
+        let text = concat!(
+            "minimal funcfl\n",
+            "29 63.546 3.615 fcc\n",
+            "5 0.5 5 0.25 1.0\n",
+            "0.0 1.0 2.0 3.0 4.0\n",
+            "1.0 1.0 1.0 1.0 1.0\n",
+            "0.0 0.0 0.0 0.0 0.0\n",
+        );
+        let table = EamTable::from_text(text, EamTableFormat::Funcfl).unwrap();
+        assert_eq!(table.nrho, 5);
+        assert_eq!(table.nr, 5);
+        assert_eq!(table.rhomax, 2.0);
+        assert_eq!(table.frho[0].len(), 5);
+        assert_eq!(table.rhor[0].len(), 5);
+        assert_eq!(table.z2r[0].len(), 5);
+
+        let round_trip = EamTable::from_text(
+            &table.to_finnis_sinclair_text(),
+            EamTableFormat::FinnisSinclair,
+        )
+        .unwrap();
+        assert_eq!(round_trip.nrho, 5);
+        assert_eq!(round_trip.nr, 5);
+        assert_eq!(round_trip.rhomax, 2.0);
+        assert_eq!(round_trip.frho[0], table.frho[0]);
+        assert_eq!(round_trip.rhor[0], table.rhor[0]);
+        assert_eq!(round_trip.z2r[0], table.z2r[0]);
     }
 
     fn dimer(pot: &EamTablePotential, z: [i32; 2]) -> f64 {
@@ -1065,6 +1099,3 @@ mod tests {
         assert_eq!(handle_drop_count(user_data), 1);
     }
 }
-
-#[cfg(test)]
-static DROP_SEEN: OnceLock<Mutex<HashMap<usize, usize>>> = OnceLock::new();
