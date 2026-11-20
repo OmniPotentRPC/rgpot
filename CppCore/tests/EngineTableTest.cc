@@ -251,6 +251,8 @@ TEST_CASE("classical engine reports the origin of geometry results",
       return std::make_pair(energy, forces);
     };
     const auto reference = eval(kCluster);
+    const auto missing_parent = dir + "/missing/results";
+    REQUIRE(set(pot.get(), missing_parent.c_str()) == 2);
     REQUIRE(eval(kCluster) == reference);
     auto moved = kCluster;
     moved[0] += 0.05;
