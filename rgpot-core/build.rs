@@ -136,6 +136,7 @@ fn main() {
     println!("cargo::rerun-if-changed=src/engine.rs");
     println!("cargo::rerun-if-changed=cbindgen.toml");
     println!("cargo::rerun-if-changed=../CppCore/rgpot/engine_c_abi.h");
+    println!("cargo::rerun-if-changed=cpp/eam_table_bridge.cpp");
     println!(
         "cargo::rustc-env=RGPOT_SOURCE_REVISION={}",
         source_revision(&crate_dir)
@@ -143,6 +144,12 @@ fn main() {
     if let Ok(target) = env::var("TARGET") {
         println!("cargo::rustc-env=RGPOT_BUILD_TARGET={target}");
     }
+    cc::Build::new()
+        .cpp(true)
+        .std("c++20")
+        .flag_if_supported("-fexceptions")
+        .file("cpp/eam_table_bridge.cpp")
+        .compile("rgpot_eam_table_bridge");
 
     // eindir-core is a normal Cargo dependency now; its capi #[no_mangle] symbols
     // resolve through the shared crate, so no prebuilt static lib link is needed.

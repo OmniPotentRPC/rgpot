@@ -58,7 +58,10 @@
 pub mod c_api;
 pub mod ch5_2008;
 pub mod eam_table;
+mod eam_table_cpp;
+pub mod eam_table_factory;
 pub mod eindir;
+pub mod error;
 pub mod fused;
 pub mod hvp;
 pub mod jet;
@@ -68,6 +71,8 @@ pub mod taylor;
 pub mod tensor;
 pub mod types;
 pub mod version;
+
+pub use error::RgpotError;
 
 #[cfg(feature = "schema")]
 #[allow(dead_code, non_snake_case, unused_parens, clippy::all)]
