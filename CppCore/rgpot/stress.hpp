@@ -104,6 +104,11 @@ inline void publishCauchyStress(ForceOut *out, const double acc[6],
  * unless the caller set `ForceInput::compute_stress`, allowing existing pair
  * and many-body loops to skip every stress allocation and operation on the
  * force-only path. `publish()` is the only operation that sets has_stress.
+ *
+ * A force-only call clears the ten stress fields of the output, so a caller
+ * that reuses a ForceOut never reads a stale tensor, and does nothing else:
+ * the strain accumulator is left alone and every accumulating member returns
+ * at the `enabled_` test.
  */
 class StressAccumulator {
 public:
@@ -113,6 +118,9 @@ public:
     if (out_ != nullptr) {
       out_->has_stress = 0;
       std::fill(out_->stress, out_->stress + 9, 0.0);
+    }
+    if (enabled_) {
+      std::fill(strain_, strain_ + 6, 0.0);
     }
   }
 
@@ -170,7 +178,7 @@ public:
 private:
   ForceOut *out_;
   bool enabled_;
-  double strain_[6]{};
+  double strain_[6];
 };
 
 } // namespace rgpot
