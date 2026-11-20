@@ -36,6 +36,7 @@ void EMTPot::reset() const {
 }
 
 void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   const long n = static_cast<long>(in.nAtoms);
   std::vector<double> pos(in.pos, in.pos + 3 * n);
   Vec basis[3] = {

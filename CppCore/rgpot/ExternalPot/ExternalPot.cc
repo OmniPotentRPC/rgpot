@@ -199,6 +199,7 @@ LammpsPot::LammpsPot(LammpsPot &&) noexcept = default;
 LammpsPot &LammpsPot::operator=(LammpsPot &&) noexcept = default;
 
 void LammpsPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   check_geometry(in, out);
   std::lock_guard<std::mutex> lock(impl_->mutex);
   double variance = 0.0;
@@ -291,6 +292,7 @@ PotCaps GromacsPot::caps() const noexcept {
 }
 
 void GromacsPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   check_geometry(in, out);
   std::lock_guard<std::mutex> lock(impl_->state.mutex);
   if (impl_->state.use_native) {
@@ -327,6 +329,7 @@ PotCaps OpenMMPot::caps() const noexcept {
 }
 
 void OpenMMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   check_geometry(in, out);
   std::lock_guard<std::mutex> lock(impl_->state.mutex);
   if (impl_->state.use_native) {

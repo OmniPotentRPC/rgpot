@@ -462,6 +462,7 @@ int CP2KPot::bindCalculators(int ranks_per_calc) {
 }
 
 void CP2KPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   std::string error;
   try {
     forceImplOrThrow(in, out);
@@ -480,6 +481,7 @@ void CP2KPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 }
 
 void CP2KPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (thisCalculator().index < 0)
     fail_force("CP2KPot: calculator binding was refused");
   if (!impl_->bundle.loaded)

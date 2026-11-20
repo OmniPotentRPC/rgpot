@@ -69,6 +69,7 @@ void SkalaPot::setChargeMultiplicity(int charge, int multiplicity) {
 }
 
 void SkalaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   m_nwchem.forceImpl(in, out);
 }
 

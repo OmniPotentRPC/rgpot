@@ -206,7 +206,14 @@ count of every call, and `teamsOpened` counts the regions a thread has
 opened, so a test can see that a small call opened none.
 
 From 8192 atoms up a result has the bits of one thread on any
-`OMP_NUM_THREADS`. Each atom keeps the energy and strain of its pairs
+`OMP_NUM_THREADS`, and on any count passed to `rgpot::setThreadCount`,
+`rgpot::ThreadCount` or `PotentialBase::setThreadCount`. Those calls are
+opt-in: with none of them set, the count is still `OMP_NUM_THREADS`
+(unset, empty or below 1 is one thread). `clearThreadCount` drops the
+sticky override. A `ThreadCount` already on the stack is not replaced by
+a potential's own setting. Without OpenMP the request is reported by
+`explicitThreadCount` and the call stays one thread.
+Each atom keeps the energy and strain of its pairs
 with higher-index partners, and the atoms are added in index order. The
 pair potentials (`nlist::sumPairs` in `CppCore/rgpot/nlist/PairSum.hpp`),
 Sutton-Chen and EAM give each slice a contiguous range of atoms, and

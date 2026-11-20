@@ -633,6 +633,7 @@ bool CPMDPot::abiAvailable() {
 }
 
 void CPMDPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   std::string error;
   try {
     forceImplOrThrow(in, out);
@@ -647,6 +648,7 @@ void CPMDPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 }
 
 void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   // A configured instance can outlive a refused calculator binding.
   if (thisCalculator().index < 0)
     fail_force("CPMDPot: calculator binding was refused");
