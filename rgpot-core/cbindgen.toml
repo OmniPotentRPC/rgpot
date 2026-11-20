@@ -27,7 +27,15 @@ documentation_style = "doxy"
 # rgpot_potential_set_hvp_callback and rgpot_potential_set_taylor_jet, not
 # by a signature.
 include = ["rgpot_hvp_scheme_t", "HessianVectorCallback", "rgpot_taylor_jet_fn", "rgpot_interval_t"]
-exclude = []
+exclude = [
+  "rgpot_core_eam_cpp_new_from_file",
+  "rgpot_core_eam_cpp_new_from_text",
+  "rgpot_core_eam_cpp_free",
+  "rgpot_core_eam_cpp_force",
+  "rgpot_core_eam_cpp_last_error",
+  "rgpot_core_eam_cpp_drop_count",
+  "rgpot_core_eam_cpp_reset_drop_count",
+]
 
 [export.rename]
 

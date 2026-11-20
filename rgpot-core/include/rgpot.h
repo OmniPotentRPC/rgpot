@@ -862,34 +862,6 @@ enum rgpot_status_t rgpot_ch5_2008_taylor_jet(void *user_data,
                                               double *lower,
                                               double *upper);
 
-extern void *rgpot_core_eam_cpp_new_from_file(const char *path,
-                                              int format,
-                                              bool periodic,
-                                              bool stress,
-                                              double skin);
-
-extern void *rgpot_core_eam_cpp_new_from_text(const char *text,
-                                              int format,
-                                              bool periodic,
-                                              bool stress,
-                                              double skin);
-
-extern void rgpot_core_eam_cpp_free(void *handle);
-
-extern int rgpot_core_eam_cpp_force(void *handle,
-                                    uintptr_t n_atoms,
-                                    const double *positions,
-                                    const int32_t *atomic_numbers,
-                                    const double *cell,
-                                    double *forces,
-                                    double *energy);
-
-extern const char *rgpot_core_eam_cpp_last_error(void);
-
-extern int64_t rgpot_core_eam_cpp_drop_count(void);
-
-extern void rgpot_core_eam_cpp_reset_drop_count(void);
-
 /**
  * The eindir ABI stamp of the `eindir_objective_t` base that
  * `rgpot_potential_t` embeds as its first member.

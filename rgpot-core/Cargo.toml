@@ -10,7 +10,7 @@ documentation = "https://rgpot.rgoswami.me"
 readme = "README.md"
 keywords = ["potential-energy", "rpc", "molecular-dynamics", "dlpack", "ffi"]
 categories = ["science", "api-bindings"]
-exclude = ["Cargo.lock"]
+include = ["**/*"]
 
 [lib]
 name = "rgpot_core"

@@ -309,6 +309,7 @@ Temporary Items
 /docs/source/**/*.rst
 /docs/doctrees/
 /crates/
+/rgpot-core/cppcore-staging/
 
 # Nickel CI plan / audit exports (local or CI artifact source)
 ci/gha/out/

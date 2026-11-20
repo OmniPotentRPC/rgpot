@@ -58,7 +58,8 @@
 pub mod c_api;
 pub mod ch5_2008;
 pub mod eam_table;
-mod eam_table_cpp;
+#[doc(hidden)]
+pub mod eam_table_cpp;
 pub mod eam_table_factory;
 pub mod eindir;
 pub mod error;

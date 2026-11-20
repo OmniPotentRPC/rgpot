@@ -113,6 +113,48 @@ pub(crate) fn cpp_potential_from_data(
     ))
 }
 
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn cpp_eval_file(
+    path: &Path,
+    format: EamTableFormat,
+    periodic: bool,
+    stress: bool,
+    skin: f64,
+    positions: &[f64],
+    atomic_numbers: &[i32],
+    cell: &[f64; 9],
+) -> Result<(f64, Vec<f64>), RgpotError> {
+    let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| {
+        RgpotError::EamTable(EamTableError::Invalid("path has interior NUL".into()))
+    })?;
+    let handle = unsafe {
+        rgpot_core_eam_cpp_new_from_file(path.as_ptr(), format as c_int, periodic, stress, skin)
+    };
+    if handle.is_null() {
+        return Err(cpp_error("EAM table: C++ constructor failed"));
+    }
+    let mut forces = vec![0.0_f64; positions.len()];
+    let mut energy = 0.0_f64;
+    let status = unsafe {
+        rgpot_core_eam_cpp_force(
+            handle,
+            atomic_numbers.len(),
+            positions.as_ptr(),
+            atomic_numbers.as_ptr(),
+            cell.as_ptr(),
+            forces.as_mut_ptr(),
+            &mut energy,
+        )
+    };
+    unsafe { rgpot_core_eam_cpp_free(handle) };
+    if status == 0 {
+        Ok((energy, forces))
+    } else {
+        Err(cpp_error("EAM table: C++ direct evaluation failed"))
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn cpp_drop_count() -> i64 {
     unsafe { rgpot_core_eam_cpp_drop_count() }
