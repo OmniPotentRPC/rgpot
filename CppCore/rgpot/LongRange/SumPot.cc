@@ -35,6 +35,7 @@ void SumPot::shareNeighbours(std::shared_ptr<DualList> lists) {
 }
 
 void SumPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   std::fill(out->F, out->F + 3 * in.nAtoms, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;

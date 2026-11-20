@@ -463,20 +463,23 @@ public:
       alpha[i] = alpha_tab[z - 1] * hi;
       c6[i] = c6_tab[z - 1] * ratio;
     }
-    const int nt = poolThreads();
-    std::vector<Neumaier> enes(static_cast<std::size_t>(nt));
-    std::vector<std::vector<double>> forces(static_cast<std::size_t>(nt));
-    std::vector<std::array<double, 6>> strains(static_cast<std::size_t>(nt));
+    // Partials are one per fixed pair chunk, not one per thread, and the
+    // fold below is in chunk order. A one-thread call walks the same chunks.
+    const int team = rgpot::activeThreads(poolThreads());
+    const int chunks = rgpot::fixedChunks(std::max<std::size_t>(pairs.size(), 1), 1024);
+    std::vector<Neumaier> enes(static_cast<std::size_t>(chunks));
+    std::vector<std::vector<double>> forces(static_cast<std::size_t>(chunks));
+    std::vector<std::array<double, 6>> strains(static_cast<std::size_t>(chunks));
     if (F != nullptr) {
       for (auto &buf : forces) {
         buf.assign(3 * in.nAtoms, 0.0);
       }
     }
-    forEachSlice(nt, [&](int slice) {
+    forEachChunk(chunks, team, [&](int slice) {
       auto &ene = enes[static_cast<std::size_t>(slice)];
       auto &floc = forces[static_cast<std::size_t>(slice)];
       auto &sloc = strains[static_cast<std::size_t>(slice)];
-      const Range run = partition(static_cast<std::int64_t>(pairs.size()), slice, nt);
+      const Range run = partition(static_cast<std::int64_t>(pairs.size()), slice, chunks);
       for (auto ti = static_cast<std::size_t>(run.begin); ti < static_cast<std::size_t>(run.end); ++ti) {
       const Pair &pr = pairs[ti];
       const double R = pr.r / kBohr;
@@ -801,6 +804,7 @@ DispersionPot::DispersionPot(DispersionConfig cfg, std::shared_ptr<RatioSource> 
 }
 
 void DispersionPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   std::fill(out->F, out->F + 3 * in.nAtoms, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;

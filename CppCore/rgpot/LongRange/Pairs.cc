@@ -286,7 +286,7 @@ void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
     }
   }
   *rebuilt = rebuild;
-  const int team = poolThreads();
+  const int team = rgpot::activeThreads(poolThreads());
   if (rebuild) {
     // One slice per pool thread. omp_set_num_threads(1) keeps this serial.
     gather(pos, n, cell, cutoff + skin_, team, &skin.cand);

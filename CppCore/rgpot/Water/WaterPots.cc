@@ -65,6 +65,7 @@ TIP4PPot::TIP4PPot(const WaterConfig &config)
 TIP4PPot::~TIP4PPot() = default;
 
 void TIP4PPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   const int n = static_cast<int>(in.nAtoms);
   prepare(in, out);
   if (n == 0) {
@@ -90,6 +91,7 @@ SPCEPot::SPCEPot(const WaterConfig &config)
 SPCEPot::~SPCEPot() = default;
 
 void SPCEPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   const int n = static_cast<int>(in.nAtoms);
   prepare(in, out);
   if (n == 0) {
@@ -115,6 +117,7 @@ TIP4PPtPot::TIP4PPtPot(const WaterConfig &config)
 TIP4PPtPot::~TIP4PPtPot() = default;
 
 void TIP4PPtPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   const int n = static_cast<int>(in.nAtoms);
   prepare(in, out);
   if (n == 0) {

@@ -288,6 +288,7 @@ FusedSettingsSpec XTBPot::fusedSettings() const {
 }
 
 void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (!m_env || !m_calc || !m_res)
     throw std::runtime_error("xTB Error: calculator is not initialized");
 

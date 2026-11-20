@@ -185,6 +185,7 @@ ExprPot &ExprPot::operator=(ExprPot &&other) noexcept {
 }
 
 void ExprPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   const size_t n3 = 3 * in.nAtoms;
   if (out->F != nullptr) {
     for (size_t i = 0; i < n3; ++i) {
