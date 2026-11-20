@@ -181,19 +181,9 @@ endif
 # ------------------------ vesin (neighbour lists)
 # One vesin for the whole tree: the nlist headers, MetatomicPot, and the
 # Fortran pots all consume this dependency. Prefer an installed vesin
-# >= 0.6; fall back to the vendored single-TU build, which is
-# v0.6.0 plus local eOn patches.
+# >= 0.6; fall back to the vendored single-TU build. The release line
+# lives only in third_party/vesin/VERSION.
 fs = import('fs')
-vesin_expected = 'v0.6.0 plus local eOn patches'
-vesin_pin = vesin_expected.split(' ')[0].substring(1)
-if vesin_pin.split('.').length() != 3
-    error('vendored vesin pin ' + vesin_pin + ' is not major.minor.patch')
-endif
-foreach _vesin_part : vesin_pin.split('.')
-    if _vesin_part.to_int() < 0
-        error('vendored vesin pin ' + vesin_pin + ' is not major.minor.patch')
-    endif
-endforeach
 vesin_version_lines = []
 foreach _vesin_line : fs.read('third_party/vesin/VERSION').split('\n')
     _vesin_line = _vesin_line.strip()
@@ -205,18 +195,37 @@ if vesin_version_lines.length() != 1
     error('third_party/vesin/VERSION must contain exactly one release line')
 endif
 vesin_version = vesin_version_lines[0]
-if vesin_version != vesin_expected
+_vesin_suffix = ' plus local eOn patches'
+_vesin_pieces = vesin_version.split(_vesin_suffix)
+if (
+    _vesin_pieces.length() != 2
+    or _vesin_pieces[1] != ''
+    or not _vesin_pieces[0].startswith('v')
+)
     error(
-        'third_party/vesin/VERSION is "'
+        'third_party/vesin/VERSION must be vX.Y.Z plus local eOn patches, not "'
         + vesin_version
-        + '", expected "'
-        + vesin_expected
         + '"',
     )
 endif
-if not fs.read('third_party/vesin/vesin-single-build.cpp').contains(
-    '// vesin version: ' + vesin_pin + '\n',
+vesin_pin = _vesin_pieces[0].substring(1)
+if vesin_pin.split('.').length() != 3
+    error('vendored vesin pin ' + vesin_pin + ' is not major.minor.patch')
+endif
+foreach _vesin_part : vesin_pin.split('.')
+    if _vesin_part == ''
+        error('vendored vesin pin ' + vesin_pin + ' is not major.minor.patch')
+    endif
+    if _vesin_part.to_int() < 0
+        error('vendored vesin pin ' + vesin_pin + ' is not major.minor.patch')
+    endif
+endforeach
+# The marker line may end with LF or CRLF.
+_vesin_source = fs.read('third_party/vesin/vesin-single-build.cpp').replace(
+    '\r\n',
+    '\n',
 )
+if not _vesin_source.contains('// vesin version: ' + vesin_pin + '\n')
     error(
         'third_party/vesin/vesin-single-build.cpp does not record vesin version '
         + vesin_pin,

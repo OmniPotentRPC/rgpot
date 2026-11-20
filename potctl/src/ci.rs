@@ -1979,6 +1979,17 @@ Options:
             .any(|p| p.ends_with("metatomic/torch/torch-2.10/include")));
     }
 
+    fn quoted_constraint<'a>(text: &'a str, key: &str) -> &'a str {
+        let start = text
+            .find(key)
+            .unwrap_or_else(|| panic!("ci/gha/potentials.ncl must contain {key}"));
+        let rest = &text[start..];
+        let end = rest.find('"').unwrap_or_else(|| {
+            panic!("ci/gha/potentials.ncl constraint {key} has no closing quote")
+        });
+        &rest[..end]
+    }
+
     #[test]
     fn vesin_specs_match_vendored_minor() {
         let pin = vendored_vesin_pin();
@@ -1986,6 +1997,29 @@ Options:
             specs_match_vendored_minor(pin, VESIN_SPEC, VESIN_TORCH_SPEC),
             "{pin} does not match {VESIN_SPEC} and {VESIN_TORCH_SPEC}"
         );
+    }
+
+    #[test]
+    fn potentials_ncl_vesin_specs_match_vendored_minor() {
+        let pin = vendored_vesin_pin();
+        let ncl = include_str!("../../ci/gha/potentials.ncl");
+        let vesin = quoted_constraint(ncl, "vesin>=");
+        let torch = quoted_constraint(ncl, "vesin-torch>=");
+        assert!(
+            specs_match_vendored_minor(pin, vesin, torch),
+            "{pin} does not match {vesin} and {torch}"
+        );
+    }
+
+    #[test]
+    fn potentials_ncl_stale_spec_is_detected() {
+        let pin = vendored_vesin_pin();
+        let stale = r#"need+=("vesin>=0.5.2,<0.6" "vesin-torch>=0.5.2,<0.6")"#;
+        assert!(!specs_match_vendored_minor(
+            pin,
+            quoted_constraint(stale, "vesin>="),
+            quoted_constraint(stale, "vesin-torch>="),
+        ));
     }
 
     #[test]
