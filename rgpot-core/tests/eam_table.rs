@@ -301,12 +301,14 @@ impl Drop for CInput<'_> {
 fn the_c_abi_input_keeps_the_cell_at_its_borrowed_address() {
     let reference = reference("cu_u3_vacancy.ref");
     let mut owner = Input::new(&reference);
+    let expected_cell_ptr = owner.cell.as_ptr();
+    let expected_cell = owner.cell;
     let input = owner.as_c();
     let tensor_cell = unsafe { rgpot_tensor_data(input.input.box_matrix).cast::<f64>() };
-    assert_eq!(tensor_cell, owner.cell.as_ptr());
+    assert_eq!(tensor_cell, expected_cell_ptr);
     assert_eq!(
-        unsafe { std::slice::from_raw_parts(tensor_cell, owner.cell.len()) },
-        owner.cell.as_slice()
+        unsafe { std::slice::from_raw_parts(tensor_cell, expected_cell.len()) },
+        expected_cell.as_slice()
     );
 }
 
