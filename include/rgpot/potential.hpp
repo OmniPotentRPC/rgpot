@@ -11,7 +11,8 @@
  * Provides @c PotentialHandle, the primary C++ entry point for performing
  * force/energy calculations through the Rust core.  The handle owns an
  * opaque @c rgpot_potential_t pointer obtained from @c rgpot_potential_new()
- * or @c rgpot_potential_new_eindir() and releases it via @c rgpot_potential_free() on destruction.
+ * or @c rgpot_potential_new_eindir() and releases it via @c
+ * rgpot_potential_free() on destruction.
  *
  * Two factory functions are offered:
  *
@@ -42,13 +43,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "rgpot/FusedSettings.hpp"
-#include "rgpot/HessianVector.hpp"
 #include "c_api.hpp"
 #include "errors.hpp"
+#include "rgpot/FusedSettings.hpp"
+#include "rgpot/HessianVector.hpp"
 #include "types.hpp"
 
 namespace rgpot {
@@ -140,10 +142,11 @@ public:
    * @throws rgpot::Error on a malformed request or a failing callback.
    */
   void hvp(const InputSpec &input, const double *direction, double *hv_out,
-           double step = 0.0, rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO) const {
-    detail::check_status(rgpot_potential_hvp(
-        handle_, &input.c_struct(), direction, step,
-        static_cast<int32_t>(scheme), hv_out));
+           double step = 0.0,
+           rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO) const {
+    detail::check_status(
+        rgpot_potential_hvp(handle_, &input.c_struct(), direction, step,
+                            static_cast<int32_t>(scheme), hv_out));
   }
 
   /// @c hvp() into a new vector of @c 3*n_atoms doubles.
@@ -168,8 +171,8 @@ public:
    */
   CalcResult hvp_centre(const InputSpec &input) const {
     CalcResult result;
-    detail::check_status(rgpot_potential_hvp_centre(
-        handle_, &input.c_struct(), &result.c_struct()));
+    detail::check_status(rgpot_potential_hvp_centre(handle_, &input.c_struct(),
+                                                    &result.c_struct()));
     return result;
   }
 
@@ -210,16 +213,16 @@ public:
    * @c eindir_objective_t (first-member IS-A). Child terms stay inside
    * @a impl; this factory does not build a list of objectives.
    *
-   * When @a Impl has @c hessianVectorImpl (see HessianVector.hpp), it is
-   * registered as the analytic product of the handle.
+   * The analytic callback is registered only when this specific instance
+   * advertises @c caps().analyticHvp. This gate is done at registration time
+   * on @a impl because @c caps() is an instance query.
    */
   template <typename Impl> static PotentialHandle from_impl(Impl &impl) {
-    auto *handle = rgpot_potential_new_eindir(&trampoline_callback<Impl>,
-                                              static_cast<void *>(&impl),
-                                              nullptr, 0, nullptr, nullptr,
-                                              nullptr, nullptr);
+    auto *handle = rgpot_potential_new_eindir(
+        &trampoline_callback<Impl>, static_cast<void *>(&impl), nullptr, 0,
+        nullptr, nullptr, nullptr, nullptr);
     return with_analytic_hvp<Impl>(
-        with_fused_settings<Impl>(PotentialHandle(handle), impl));
+        with_fused_settings<Impl>(PotentialHandle(handle), impl), impl);
   }
 
   /**
@@ -231,16 +234,15 @@ public:
    * species. @c rgpot_potential_calculate still uses the input tensors.
    */
   template <typename Impl>
-  static PotentialHandle from_impl(Impl &impl, size_t n_atoms,
-                                   const int32_t *atomic_numbers,
-                                   const double *box_matrix,
-                                   const double *bounds_low = nullptr,
-                                   const double *bounds_high = nullptr) {
+  static PotentialHandle
+  from_impl(Impl &impl, size_t n_atoms, const int32_t *atomic_numbers,
+            const double *box_matrix, const double *bounds_low = nullptr,
+            const double *bounds_high = nullptr) {
     auto *handle = rgpot_potential_new_eindir(
         &trampoline_callback<Impl>, static_cast<void *>(&impl), nullptr,
         n_atoms, atomic_numbers, box_matrix, bounds_low, bounds_high);
     return with_analytic_hvp<Impl>(
-        with_fused_settings<Impl>(PotentialHandle(handle), impl));
+        with_fused_settings<Impl>(PotentialHandle(handle), impl), impl);
   }
 
   /**
@@ -262,6 +264,36 @@ public:
                                            rgpot_force_out_t *),
                 void *user_data, void (*free_fn)(void *) = nullptr) {
     auto *handle = rgpot_potential_new(callback, user_data, free_fn);
+    return PotentialHandle(handle);
+  }
+
+  /**
+   * @brief Build the tabulated EAM potential of the Rust core.
+   *
+   * Reads a LAMMPS funcfl, setfl or Finnis-Sinclair file in process, with
+   * no C++ kernel and no engine plugin. See
+   * @c rgpot_potential_new_eam_table for the grid, the cutoff and the
+   * cells it refuses.
+   *
+   * @param path     Table file.
+   * @param format   One of @c RGPOT_EAM_TABLE_AUTO (the suffix chooses),
+   *                 @c RGPOT_EAM_TABLE_FUNCFL, @c RGPOT_EAM_TABLE_SETFL and
+   *                 @c RGPOT_EAM_TABLE_FINNIS_SINCLAIR.
+   * @param periodic Minimum image on the cell, or a free cluster.
+   * @throws rgpot::Error when the path is empty, the file is missing or
+   *         malformed, or the format code is unknown.
+   */
+  static PotentialHandle eam_table(const std::string &path,
+                                   int format = RGPOT_EAM_TABLE_AUTO,
+                                   bool periodic = true) {
+    auto *handle =
+        rgpot_potential_new_eam_table(path.c_str(), format, periodic);
+    if (handle == nullptr) {
+      const char *msg = rgpot_last_error();
+      throw Error(std::string("invalid parameter: ") +
+                      (msg != nullptr ? msg : "EAM table refused"),
+                  RGPOT_INVALID_PARAMETER);
+    }
     return PotentialHandle(handle);
   }
 
@@ -319,12 +351,13 @@ private:
     return ::rgpot::ForceInput{
         .nAtoms = static_cast<size_t>(pos_tensor->shape[0]),
         .pos = static_cast<const double *>(pos_tensor->data),
-        .atmnrs = input->atomic_numbers ? static_cast<const int *>(
-                                              input->atomic_numbers->dl_tensor.data)
-                                        : nullptr,
-        .box = input->box_matrix
-                   ? static_cast<const double *>(input->box_matrix->dl_tensor.data)
-                   : nullptr};
+        .atmnrs = input->atomic_numbers
+                      ? static_cast<const int *>(
+                            input->atomic_numbers->dl_tensor.data)
+                      : nullptr,
+        .box = input->box_matrix ? static_cast<const double *>(
+                                       input->box_matrix->dl_tensor.data)
+                                 : nullptr};
   }
 
   /**
@@ -390,10 +423,9 @@ private:
 
   /// @c HessianVectorCallback over @c Impl::hessianVectorImpl.
   template <typename Impl>
-  static rgpot_status_t hvp_trampoline(void *user_data,
-                                       const rgpot_force_input_t *input,
-                                       const double *direction,
-                                       double *hv_out) {
+  static rgpot_status_t
+  hvp_trampoline(void *user_data, const rgpot_force_input_t *input,
+                 const double *direction, double *hv_out) {
     try {
       if (!input->positions) {
         return RGPOT_INVALID_PARAMETER;
@@ -401,7 +433,14 @@ private:
       const auto *self = static_cast<const Impl *>(user_data);
       self->hessianVectorImpl(legacy_input(input), direction, hv_out);
       return RGPOT_SUCCESS;
+    } catch (const ::rgpot::SccNotConverged &e) {
+      rgpot_set_last_error(e.what());
+      return RGPOT_SCC_NOT_CONVERGED;
+    } catch (const std::exception &e) {
+      rgpot_set_last_error(e.what());
+      return RGPOT_INTERNAL_ERROR;
     } catch (...) {
+      rgpot_set_last_error("unknown exception in the potential HVP");
       return RGPOT_INTERNAL_ERROR;
     }
   }
@@ -419,10 +458,19 @@ private:
   }
 
   template <typename Impl>
-  static PotentialHandle with_analytic_hvp(PotentialHandle handle) {
+  static PotentialHandle with_analytic_hvp(PotentialHandle handle,
+                                           const Impl &impl) {
     if constexpr (::rgpot::AnalyticHessianVector<Impl>) {
-      if (handle.raw() != nullptr) {
-        handle.set_hvp_callback(&hvp_trampoline<Impl>);
+      if (handle.raw() != nullptr && impl.caps().analyticHvp) {
+        if constexpr (requires(const Impl &self, const ::rgpot::ForceInput &in,
+                               const double *direction, double *product) {
+                        self.hessianVectorImpl(in, direction, product);
+                      }) {
+          handle.set_hvp_callback(&hvp_trampoline<Impl>);
+        } else {
+          throw std::invalid_argument("from_impl: caps().analyticHvp is true "
+                                      "but hessianVectorImpl is missing");
+        }
       }
     }
     return handle;

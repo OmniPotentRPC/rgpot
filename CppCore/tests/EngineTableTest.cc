@@ -17,6 +17,7 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -49,6 +50,8 @@ struct Engine {
   int (*force)(RgpotEnginePot *, long, const double *, const int *, double *,
                double *, double *, const double *,
                rgpot_engine_coord_transform, void *) = nullptr;
+  int (*hvp)(RgpotEnginePot *, long, const double *, const int *,
+             const double *, double *, const double *) = nullptr;
   int (*force_batch)(RgpotEnginePot *, long, long, const double *, const int *,
                      double *, double *, double *, const double *,
                      rgpot_engine_coord_transform, void *) = nullptr;
@@ -95,6 +98,7 @@ bool open_engine(const std::string &key, Engine &out) {
   out.create = sym<decltype(out.create)>(h, "rgpot_engine_create");
   out.destroy = sym<decltype(out.destroy)>(h, "rgpot_engine_destroy");
   out.force = sym<decltype(out.force)>(h, "rgpot_engine_force");
+  out.hvp = sym<decltype(out.hvp)>(h, "rgpot_engine_hvp");
   out.force_batch = sym<decltype(out.force_batch)>(h, "rgpot_engine_force_batch");
   out.stamp = sym<decltype(out.stamp)>(h, "rgpot_engine_abi_stamp");
   out.caps = sym<decltype(out.caps)>(h, "rgpot_engine_caps");
@@ -115,6 +119,18 @@ kj::Array<capnp::word> builtin_params(const std::string &name) {
   capnp::MallocMessageBuilder msg;
   auto p = msg.initRoot<::BuiltinParams>();
   p.setName(name);
+  return capnp::messageToFlatArray(msg);
+}
+
+kj::Array<capnp::word> xtb_params(const std::string &method) {
+  capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::BuiltinParams>();
+  p.setName("xtb");
+  auto x = p.initConfig().initXtb();
+  x.setMethod(method);
+  x.setAccuracy(0.1);
+  x.setElectronicTemperature(100.0);
+  x.setMaxIterations(300);
   return capnp::messageToFlatArray(msg);
 }
 
@@ -168,9 +184,8 @@ TEST_CASE("classical engine matches the directly compiled LJPot",
   RgpotEngineCaps caps;
   caps.size = sizeof(caps);
   REQUIRE(e.caps(pot, &caps) == 0);
-  // Neighbour scratch is per instance. The engine serializes this handle;
-  // the following test calls it from several threads.
-  REQUIRE(caps.reentrancy == 1);
+  // Neighbour scratch is kept per thread, so one LJPot instance is shared.
+  REQUIRE(caps.reentrancy == 0);
 
   const long n = 5;
   std::vector<double> forces(3 * n, 0.0);
@@ -278,6 +293,81 @@ TEST_CASE("classical engine reports the origin of geometry results",
 #endif
   }
   dlclose(e.handle);
+}
+
+TEST_CASE("classical engine LJPot analytic HVP rejects in-place aliasing",
+          "[engine][classical][hvp]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("lj"));
+  REQUIRE(pot != nullptr);
+
+  const long n = 5;
+  const std::vector<double> direction = {
+      0.2, -0.3, 0.4, -0.1, 0.5, -0.2, 0.3, 0.1,
+      -0.4, 0.6, -0.5, 0.2, -0.3, 0.4, -0.1};
+  std::vector<double> product(direction.size(), 0.0);
+  REQUIRE(e.hvp(pot, n, kCluster.data(), kZ.data(), direction.data(),
+                product.data(), kBox.data()) == RGPOT_ENGINE_OK);
+
+  rgpot::LJPot direct;
+  std::vector<double> ref_product(direction.size(), 0.0);
+  const rgpot::ForceInput fi{.nAtoms = static_cast<size_t>(n),
+                             .pos = kCluster.data(),
+                             .atmnrs = kZ.data(),
+                             .box = kBox.data()};
+  direct.hessianVectorImpl(fi, direction.data(), ref_product.data());
+  const double tol =
+      64.0 * std::numeric_limits<double>::epsilon();
+  for (std::size_t k = 0; k < direction.size(); ++k) {
+    REQUIRE(product[k] == Catch::Approx(ref_product[k]).margin(tol));
+  }
+
+  std::vector<double> aliased = direction;
+  REQUIRE(e.hvp(pot, n, kCluster.data(), kZ.data(), aliased.data(),
+                aliased.data(), kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(error_of(e, pot).find("overlap") != std::string::npos);
+  REQUIRE(aliased == direction);
+  e.destroy(pot);
+}
+
+TEST_CASE("classical engine LJPot reports coincident atoms as evaluation errors",
+          "[engine][classical][lj]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("lj"));
+  REQUIRE(pot != nullptr);
+
+  const std::array<double, 6> coincident{};
+  const std::array<int, 2> z{1, 1};
+  const std::array<double, 6> direction{0.2, -0.3, 0.4, -0.1, 0.5, -0.2};
+  std::array<double, 6> forces{};
+  std::array<double, 6> product{};
+  double energy = 0.0;
+
+  REQUIRE(e.force(pot, 2, coincident.data(), z.data(), forces.data(), &energy,
+                  nullptr, kBox.data(), nullptr, nullptr) ==
+          RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(error_of(e, pot).find("coincident atoms") != std::string::npos);
+
+  REQUIRE(e.force_batch(pot, 1, 2, coincident.data(), z.data(), forces.data(),
+                        &energy, nullptr, kBox.data(), nullptr, nullptr) ==
+          RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(error_of(e, pot).find("coincident atoms") != std::string::npos);
+
+  REQUIRE(e.hvp(pot, 2, coincident.data(), z.data(), direction.data(),
+                product.data(), kBox.data()) == RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(error_of(e, pot).find("coincident atoms") != std::string::npos);
+
+  const std::array<double, 6> separated{0.0, 0.0, 0.0, 1.5, 0.0, 0.0};
+  REQUIRE(e.force(pot, 2, separated.data(), z.data(), forces.data(), &energy,
+                  nullptr, kBox.data(), nullptr, nullptr) == RGPOT_ENGINE_OK);
+  REQUIRE(error_of(e, pot).empty());
+  e.destroy(pot);
 }
 
 TEST_CASE("one classical handle serves many threads", "[engine][classical][threads]") {
@@ -496,6 +586,18 @@ TEST_CASE("xtb engine matches the generic table contract", "[engine][xtb]") {
                   nullptr, nullptr) == 0);
   REQUIRE(energy < -100.0); // eV, GFN2 water is about -137 eV
   e.destroy(pot);
+
+  std::string error;
+  REQUIRE(create(e, xtb_params("nonesuch"), &error) == nullptr);
+  REQUIRE(error.find("unknown method 'nonesuch'") != std::string::npos);
+  RgpotEnginePot *gfn1 = create(e, xtb_params("gfn1"), &error);
+  INFO(error);
+  REQUIRE(gfn1 != nullptr);
+  double gfn1_energy = 0.0;
+  REQUIRE(e.force(gfn1, 3, pos, z, forces.data(), &gfn1_energy, nullptr,
+                  box.data(), nullptr, nullptr) == 0);
+  REQUIRE(gfn1_energy != energy);
+  e.destroy(gfn1);
 }
 
 TEST_CASE("metatomic engine keeps its own table and adds the generic one",

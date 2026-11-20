@@ -23,16 +23,18 @@
 //! - [`potential`] — Lifecycle functions for
 //!   [`rgpot_potential_t`](crate::potential::rgpot_potential_t): create,
 //!   calculate, free.
+//! - [`eam_table`] — Constructor of the tabulated EAM potential handle.
 //! - [`hvp`] — Hessian-vector products of a potential handle: the product,
 //!   the cached centre, the analytic callback and the counters.
 //! - [`jet`] — Validated Taylor jets of a potential handle and their callback.
 //! - [`rpc`] — RPC client functions (feature-gated on `rpc`): connect,
 //!   calculate, disconnect.
 
-pub mod types;
-pub mod potential;
+pub mod eam_table;
 pub mod hvp;
 pub mod jet;
+pub mod potential;
+pub mod types;
 
 #[cfg(feature = "rpc")]
 pub mod rpc;

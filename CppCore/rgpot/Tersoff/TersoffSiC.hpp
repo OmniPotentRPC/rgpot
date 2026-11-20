@@ -23,6 +23,7 @@
 #include <cstdint>
 
 #include "rgpot/Potential.hpp"
+#include "rgpot/Staged.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
 
@@ -64,6 +65,23 @@ public:
     return m_paramsKey;
   }
 
+  /// The bond order of a neighbour needs that neighbour's full list, so
+  /// the copies reach twice the widest taper. Silicon's outer cutoff is
+  /// the widest.
+  [[nodiscard]] Locality locality() const noexcept;
+
+  /// Staged.hpp: a three body kernel has no densities to exchange.
+  void densityStage(const HalfList &list, double *densities) const {
+    (void)list;
+    (void)densities;
+  }
+
+  /// Staged.hpp: owned centres on a full list. Each directed bond keeps
+  /// the one half already in the 1989 sum. With newton on, forces written
+  /// on copies are for the host to reverse sum.
+  void forceStage(const HalfList &list, const double *densities, double *forces,
+                  StageTally *tally) const;
+
   /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
   /// eV/Angstrom^3, the convention of stress.hpp. The virial sums each
   /// folded bond vector times the energy gradient with respect to it.
@@ -83,6 +101,11 @@ public:
   /// Auto, Stored and Stream all use the shared neighbour layer. One
   /// thread agrees with the old ordered walk to within 1e-12.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
+  /// True when the last energy or force call kept the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept {
+    return neighbours_.reused();
+  }
 
   /// The list forceImpl keeps. Not built until a call with a positive skin.
   [[nodiscard]] const nlist::NeighborList &heldList() const noexcept {

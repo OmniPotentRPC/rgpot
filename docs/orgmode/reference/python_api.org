@@ -64,8 +64,8 @@ The checks run in this order and raise these exceptions:
   =std::invalid_argument= raises =ValueError=; a kernel that fails with =std::runtime_error=
   raises =RuntimeError=.
   The message is the kernel's own text.
-- A non-finite energy raises =rgpot.NumericalError=, except where an entry says
-  otherwise.
+- A non-finite energy or a kernel =std::domain_error= raises
+  =rgpot.NumericalError=, except where an entry says otherwise.
 
 #+attr_rgpot: run
 #+begin_src python
@@ -117,7 +117,7 @@ except rgpot.NumericalError as err:
 TypeError
 positions: expected shape (N, 3), got (2, 2)
 atom_types: expected shape (2,), got (1,)
-energy is not finite
+LJPot force is undefined for coincident atoms
 #+end_example
 
 ** Module attributes
@@ -153,6 +153,15 @@ energy is not finite
 - Units :: none.
 - Outputs :: =True= when the extension was compiled with =RGPOT_HAS_DFTD4=, so
   =rgpot.D4Pot= is a class and =ExprPot= accepts the ="d4"= kind.
+- Errors :: none.
+
+*** =rgpot.has_eam_table=
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =True= when the extension was compiled with =RGPOT_HAS_EAM_TABLE=,
+  so =rgpot.EAMTablePot= is a class.
+  The wheel build sets =-Dwith_eam_table=true=.
 - Errors :: none.
 
 *** =rgpot.has_expr=
@@ -220,7 +229,8 @@ energy is not finite
 - Inputs :: the message string.
 - Units :: none.
 - Outputs :: an exception class, a subclass of =ArithmeticError=.
-  Potential calls raise it when the energy is not finite.
+  Potential calls raise it when the energy is not finite or a kernel rejects a
+  singular geometry with =std::domain_error=.
   =hvp= and =hvp_centre= also raise it when a force or a product is not finite.
 - Errors :: none.
 
@@ -456,13 +466,14 @@ OpenMMPot -0.3203213355 96.48533212331002 0.8 0.1
 Each class entry gives the constructor.
 The methods are in the shared-method entries further down, and each lists the
 classes that have it.
-Only the fourteen classes =LJPot=, =LJClusterPot=, =MorsePot=, =SWPot=,
-=EDIPPot=, =LenoskyPot=, =TersoffPot=, =EAMAlPot=, =FeHePot=, =CuH2Pot=,
-=WaterHPot=, =D3Pot=, =D4Pot= and =ExprPot= have =hvp= and =evaluate_batch=.
+Only the fifteen classes =LJPot=, =LJClusterPot=, =MorsePot=, =SWPot=,
+=EDIPPot=, =LenoskyPot=, =TersoffPot=, =EAMAlPot=, =EAMTablePot=, =FeHePot=,
+=CuH2Pot=, =WaterHPot=, =D3Pot=, =D4Pot= and =ExprPot= have =hvp= and
+=evaluate_batch=.
 =StillingerWeberSi=, =TersoffSiC=, =IPIPot=, =LammpsPot=, =GromacsPot= and
 =OpenMMPot= do not.
 
-The fourteen classes build their kernel in the constructor.
+The fifteen classes build their kernel in the constructor.
 A constructor argument the kernel rejects raises there, not at the first call.
 They keep one kernel instance per calling thread, except for kernels that share
 one instance.
@@ -484,8 +495,10 @@ rgpot.LJPot(u0=1.0, cutoff=15.0, psi=1.0, switch_width=0.0)
 - Units :: =u0= eV; =cutoff=, =psi= and =switch_width= Angstrom.
 - Outputs :: a periodic Lennard-Jones potential.
   =evaluate= returns the stress.
+  It has an analytic Hessian-vector product: =has_analytic_hvp()= is true.
 - Errors :: a nonzero =switch_width= outside =0 < switch_width <= cutoff= raises
   =ValueError= =QuinticSwitch: switch width must satisfy 0 < width <= cutoff=.
+  Coincident atoms raise =rgpot.NumericalError=.
 
 *** =rgpot.LJClusterPot=
 
@@ -520,10 +533,38 @@ rgpot.MorsePot(De=0.7102, a=1.6047, re=2.897, cutoff=9.5, switch_width=0.0)
   cell (on a diagonal cell only axes with a positive diagonal entry wrap, and
   each distinct atom pair contributes at most one minimum image).
   =evaluate= returns the stress.
-  It is the only class here with an analytic Hessian-vector product:
-  =has_analytic_hvp()= is true.
+  It has an analytic Hessian-vector product: =has_analytic_hvp()= is true.
 - Errors :: as =rgpot.LJPot=; on a sheared cell a singular or non-finite =box=
   raises =ValueError=.
+
+*** =rgpot.EAMTablePot=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.EAMTablePot(file, format, periodic=True, stress=False, skin=1.0)
+#+end_src
+
+- Inputs :: =file= is a DYNAMO table path.
+  =format= is ="funcfl"= (or ="eam"=), ="setfl"= (="alloy"=,
+  ="eam/alloy"=) or ="fs"= (="eam/fs"=, ="finnis-sinclair"=); it has no default,
+  as a wrong guess gives wrong energies.
+  =periodic= takes the nearest image on the cell, and =False= makes the atoms a
+  free cluster.
+  =stress= makes =evaluate= return the stress, and =skin= is the pair-list skin
+  of =rgpot::EAMTableConfig=.
+  An atom takes its element from its atomic number, which =atom_types= carries.
+- Units :: energy eV, lengths Angstrom, =skin= Angstrom; =cutoff= is read in the
+  length unit of the table.
+- Outputs :: the tabulated embedded-atom or Finnis-Sinclair potential of
+  [[file:eam_table.org][Tabulated EAM and Finnis-Sinclair potentials]], in
+  process, with the interpreter released during the kernel.
+  The =cutoff= property is the radial cutoff of the table.
+  It agrees with LAMMPS =pair_style eam=, =eam/alloy= and =eam/fs= to rounding.
+- Errors :: =ValueError= for an unknown =format=, an unreadable or malformed
+  file, a negative or non-finite =skin=, a periodic call whose cell has a face
+  spacing not above twice the cutoff, or an atomic number that is in no element
+  line.
+  A non-finite energy raises =rgpot.NumericalError=.
 
 *** =rgpot.SWPot=
 
@@ -637,6 +678,7 @@ rgpot.CuH2Pot()
 - Units :: energy eV, lengths Angstrom.
 - Outputs :: the Fortran copper-hydrogen embedded-atom kernel.
   No stress.
+  It has an analytic Hessian-vector product: =has_analytic_hvp()= is true.
 - Errors :: any other atomic number raises =RuntimeError=
   =CuH2 potential failed (status 2): rgpot_cuh2: atom K has atomic number Z; ...=.
   Two atoms at the same position also raise =RuntimeError=.
@@ -859,9 +901,9 @@ __call__(positions, atom_types, box)
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot, rgpot.StillingerWeberSi, rgpot.TersoffSiC, rgpot.IPIPot,
-  rgpot.LammpsPot, rgpot.GromacsPot, rgpot.OpenMMPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.StillingerWeberSi, rgpot.TersoffSiC,
+  rgpot.IPIPot, rgpot.LammpsPot, rgpot.GromacsPot, rgpot.OpenMMPot
 - Inputs :: =positions= =(N, 3)=, =atom_types= (=N= integers) and =box=
   =(3, 3)=, as in the conventions.
 - Units :: positions and box in Angstrom; energy eV; forces eV/Angstrom;
@@ -881,8 +923,8 @@ caps()
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot, rgpot.StillingerWeberSi
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.StillingerWeberSi
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a dict with the keys =reentrancy= (="shared"=,
@@ -917,8 +959,8 @@ evaluate(positions, atom_types, box)
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot, rgpot.StillingerWeberSi
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.StillingerWeberSi
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions.
 - Units :: energy eV; forces eV/Angstrom; variance eV^2; stress eV/Angstrom^3,
   the Cauchy stress (1/V) dE/dε.
@@ -931,6 +973,19 @@ evaluate(positions, atom_types, box)
 - Errors :: the conventions list; a non-finite energy raises
   =rgpot.NumericalError=.
 
+*** =.cutoff=
+
+#+attr_rgpot: signature
+#+begin_src python
+cutoff
+#+end_src
+
+- Applies to :: rgpot.EAMTablePot
+- Inputs :: none; a read-only property.
+- Units :: the length unit of the table, Angstrom for the tables of LAMMPS.
+- Outputs :: the radial cutoff of the table as a float.
+- Errors :: none.
+
 *** =.evaluate_per_atom=
 
 #+attr_rgpot: signature
@@ -938,7 +993,8 @@ evaluate(positions, atom_types, box)
 evaluate_per_atom(positions, atom_types, box)
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.EAMTablePot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions.
 - Units :: as =evaluate=; =energies= and =virials= eV.
 - Outputs :: the dict of =evaluate=, with =energies= a =(N,)= float64 array,
@@ -985,8 +1041,8 @@ evaluate_batch(positions, atom_types, box, n_threads=0)
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot
 - Inputs :: three lists of equal length: =positions= arrays, =atom_types=
   sequences and =box= arrays, one entry per configuration, each as in the
   conventions.
@@ -1035,8 +1091,8 @@ hvp(positions, atom_types, box, direction, step=0.0, scheme='auto')
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions;
   =direction= is a float64 C-contiguous =(N, 3)= array.
   =step= is the length of the displacement along the unit direction; 0 means
@@ -1047,7 +1103,8 @@ hvp(positions, atom_types, box, direction, step=0.0, scheme='auto')
   order in =step=.
   ="central"= displaces both ways, two force calls a product, second order in
   =step=.
-  ="analytic"= uses the kernel's own product, which only =MorsePot= has.
+  ="analytic"= uses the kernel's own product, available for =MorsePot=, =LJPot=
+  and =CuH2Pot=.
   ="auto"= is ="analytic"= when =has_analytic_hvp()= is true and ="forward"=
   otherwise.
 - Units :: positions, box and =step= in Angstrom.
@@ -1097,7 +1154,7 @@ print(pot.has_analytic_hvp(), rgpot.MorsePot().has_analytic_hvp())
 #+begin_example
 {'products': 3, 'force_calls': 4, 'centre_reused': 3, 'analytic': 0}
 {'products': 1, 'force_calls': 2, 'centre_reused': 0, 'analytic': 0}
-False True
+True True
 #+end_example
 
 *** =.hvp_centre=
@@ -1109,8 +1166,8 @@ hvp_centre(positions, atom_types, box)
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions.
 - Units :: energy eV; forces eV/Angstrom; variance eV^2.
 - Outputs :: a tuple =(energy, forces, variance)= at the geometry.
@@ -1131,8 +1188,8 @@ invalidate_hvp()
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =None=; the next =hvp= or =hvp_centre= call computes a new centre.
@@ -1148,8 +1205,8 @@ hvp_counts()
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot
 - Inputs :: none.
 - Units :: none; the values are counts.
 - Outputs :: a dict with =products= (products answered),
@@ -1167,8 +1224,8 @@ reset_hvp_counts()
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =None=; every =hvp_counts()= value becomes 0.
@@ -1184,13 +1241,14 @@ has_analytic_hvp()
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =True= when the kernel has its own Hessian-vector product, so
   =scheme='auto'= uses it.
-  Of these classes only =MorsePot= returns =True=.
+  Of these classes =MorsePot=, =LJPot= and =CuH2Pot= return =True=.
+  The query is read-only and reads =primary().caps()=, as for =caps()=.
 - Errors :: none.
 
 *** =.energy_gradient=

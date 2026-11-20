@@ -154,6 +154,8 @@ int main() {
 EAM, EAMTable, Lennard-Jones, LJCluster, Sutton-Chen, Stillinger-Weber,
 Tersoff, Morse and ZBL take candidate pairs from
 `rgpot::nlist::Neighbours`.
+EMT uses the vendored Asap neighbour list and force kernel, not
+`rgpot::nlist::Neighbours`.
 
 The layer bins atoms into cells whose edge is at least the cutoff plus
 the skin.
@@ -173,6 +175,21 @@ The bins are reused only when the geometry is identical.
 `Mode::Stored` makes the same test and also falls back to a stream when the index does not fit.
 When `MemAvailable` cannot be read, both modes store.
 There is no cutoff on the atom count.
+
+From 8192 atoms, with more than one thread requested, the stored index
+is gathered on contiguous atom slices when the stencil holds at least
+4096 candidates and more candidates than atoms. The slices are joined
+in atom order. Each row is sorted by partner index, which is what one
+thread stores, so the list does not depend on the slice count. Each
+slice reserves its part of the index once. A shorter list, including a
+dilute system above 8192 atoms, stays on the calling thread. A reuse
+still skips that build.
+
+An open axis whose nominal grid does not fit in the memory the OS
+reports is binned on the atom span. A box of a million angstroms
+around a cluster then keeps a real cell list. A periodic axis is
+unchanged. When the tight grid also does not fit, the build uses one
+cell, as before.
 
 An infinite cutoff or skin has no search radius, in any mode.
 The update bins nothing and stores nothing, and `allPairs()` reports it with `streaming()` set.
@@ -204,7 +221,14 @@ candidate upper pairs (`kMinParallelHalfPairs`), `MorsePot` evaluates
 each upper pair once in a two-phase OpenMP region (`forEachSlicePhase`),
 batching `simd::exp_fixed_n` and partitioning atoms by pair count on
 8-atom boundaries before reducing forces in partner index order; sparser
-stored lists stay on one thread. `fastTiles` runs
+stored lists stay on one thread. Boundary words of the 1-bit active-pair
+mask are merged with `std::atomic_ref` (which on LLVM's C++ library
+requires `libc++` 19 or newer, `_LIBCPP_VERSION >= 190000`), falling
+back to `__atomic_fetch_or` on older `libc++`: Meson checks
+`_LIBCPP_VERSION < 190000` and probes `__atomic_fetch_or`, while CMake
+probes `std::atomic_ref<std::uint64_t>` directly and then probes the
+compiler intrinsic fallback, failing at configure time if neither is
+supported. `fastTiles` runs
 only when `streaming()` holds, so `forCellTeam` on a stored list walks
 `walkStored` instead of rebuilding a 27-cell tile stencil. A
 stream walks whole rows on any thread count, so on one thread a two-body
@@ -225,6 +249,11 @@ distorted 216-atom diamond the largest absolute difference was
 `3.4e-13` for Stillinger-Weber and `3.3e-16` for Tersoff. Morse and ZBL
 use the same half-list. The old `PairListCache` and its private cell
 walk are gone.
+EMT now follows the same OpenMP threshold as this layer: below
+`kTeamMinAtoms` it stays on one thread, and from `kTeamMinAtoms` up it
+evaluates the Asap half list in two phases, one row-owner pass and one
+incoming-partner pass, so energies and forces are bit-identical at 1, 2,
+4 and 8 threads.
 
 A streaming three-body call no longer reserves 32 bonds on every atom.
 The extra memory is the bins, the coordinates, and one scratch row.
@@ -453,10 +482,12 @@ At 100000 atoms:
 But for the LJ cluster, one thread costs at most 3.2% more than before
 (SW), and 8 threads are 3.4 to 5.9 times faster than one: up to 5.2
 times faster than the old team, and 1.2% slower for EAM. The LJ cluster
-takes no cell, so the layer bins a box a million wide, which falls back
-to one bin. At this size its candidates do not fit an index, so both
-builds stream that bin and test every pair on each call. ZBL takes no
-cell either and was not timed here.
+takes no cell, so that measurement binned a box a million angstroms
+wide, which fell back to one bin. At that size its candidates did not
+fit an index, so both builds streamed that bin and tested every pair
+on each call. ZBL takes no cell either and was not timed there. An
+open axis whose nominal grid does not fit is now binned on the atom
+span, as described above.
 
 A stream walks each atom's whole row on any thread count, so one thread
 has the bits of a team, and a two-body potential evaluates each pair

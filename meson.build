@@ -30,6 +30,7 @@ _deps = []  # Dependencies
 _linkto = []  # All the sub-libraries (potentials)
 _incdirs = []  # All the includes
 _rgpot_srcs = []
+_args += ['-DRGPOT_TEAM_MIN_ATOMS=' + get_option('team_min_atoms').to_string()]
 
 # Add conditionals
 if host_system == 'darwin'
@@ -92,6 +93,12 @@ if has_eam_table
     _args += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
 endif
 
+cbe_dep = dependency('cbe', required: get_option('with_cbe'))
+has_cbe = cbe_dep.found()
+if has_cbe
+    _args += ['-DRGPOT_HAS_CBE=TRUE']
+endif
+
 rpc_enabled = get_option('with_rpc') or get_option('with_rpc_client_only')
 
 if get_option('with_rpc_client_only')
@@ -121,6 +128,53 @@ if host_system != 'windows'
     endif
     if _cxx_rt_dep.found()
         _deps += [_cxx_rt_dep]
+    endif
+endif
+
+if not get_option('with_rpc_client_only')
+    _libcpp_ver = cppc.get_define(
+        '_LIBCPP_VERSION',
+        prefix: '#include <version>',
+        args: cppc.get_supported_arguments(['-std=c++20', '/std:c++20']),
+    ).strip()
+    if _libcpp_ver != '' and _libcpp_ver.to_int() < 190000
+        # compiles() never links. On targets where __atomic_fetch_or is a
+        # libcall, the builtin needs libatomic or the library fails at link.
+        _atomic_or_src = '''#include <stdint.h>
+int main(void) {
+    uint64_t word = 0;
+    uint64_t previous = __atomic_fetch_or(&word, (uint64_t)1, __ATOMIC_RELAXED);
+    return (int)(previous ^ word);
+}
+'''
+        if cc.links(_atomic_or_src, name: '__atomic_fetch_or')
+            message(
+                'libc++ ' + _libcpp_ver + ' (< 19): std::atomic_ref unavailable, using __atomic_fetch_or fallback',
+            )
+        else
+            _libatomic_dep = cc.find_library('atomic', required: false)
+            if (
+                _libatomic_dep.found()
+                and cc.links(
+                    _atomic_or_src,
+                    dependencies: _libatomic_dep,
+                    name: '__atomic_fetch_or with libatomic',
+                )
+            )
+                _deps += _libatomic_dep
+                message(
+                    'libc++ '
+                    + _libcpp_ver
+                    + ' (< 19): std::atomic_ref unavailable, using __atomic_fetch_or with libatomic',
+                )
+            else
+                error(
+                    'libc++ '
+                    + _libcpp_ver
+                    + ' (< 190000) lacks std::atomic_ref and __atomic_fetch_or does not link, with or without libatomic; upgrade to libc++ 19 or newer',
+                )
+            endif
+        endif
     endif
 endif
 
@@ -759,6 +813,33 @@ if get_option('with_rust_core')
         )
     endif
 
+    # The EAM table constructor as a C host calls it, on the archive itself.
+    if get_option('with_tests')
+        _eam_table_capi = executable(
+            'eam_table_capi_test',
+            'rgpot-core/tests/c/eam_table_capi.c',
+            include_directories: include_directories(
+                'rgpot-core' / 'include',
+                'include',
+            ),
+            dependencies: [
+                rgpot_rust_lib,
+                thread_dep,
+                dl_dep,
+                meson.get_compiler('c').find_library('m', required: false),
+            ],
+            link_language: 'c',
+            build_by_default: true,
+        )
+        test(
+            'EAMTableCAbiTest',
+            _eam_table_capi,
+            args: [meson.current_source_dir() / 'CppCore/tests/data/eam_table'],
+            depends: rgpot_rust_target,
+            timeout: 30,
+        )
+    endif
+
     # Include paths: generated C header + C++ RAII wrappers
     _incdirs += [
         include_directories('rgpot-core' / 'include'),  # rgpot.h (cbindgen)
@@ -999,6 +1080,70 @@ if not get_option('with_python')
     install_headers('bind/include/rgbind/rgbind.hpp', subdir: 'rgbind')
 endif
 
+if not meson.is_subproject() and get_option('with_tests')
+    _install_py = find_program('python3', required: false)
+    _install_meson = find_program('meson', required: false)
+    if _install_py.found() and _install_meson.found()
+        _installed_targets = []
+        foreach _tgt_name : [
+            'rgpot_mpi_lib',
+            'rgpot_effective_schema',
+            'gen_rpc',
+            'pot_bridge',
+            'cp2kc_shim',
+            'rgpot_cuh2',
+            'xtb_engine',
+            'metatomic_engine',
+            'uma_engine',
+            'rgpot',
+            'classical_engine',
+            'mopac_engine',
+            'nwchem_engine',
+            'skala_engine',
+            'server',
+            'mpi_server',
+            'nwchem_mpi_force_host',
+            'rgpot_ipi_driver',
+            'rgpot_lj',
+            'lj_engine',
+            'plumed_lib',
+            'gmx_dropin',
+            'native_lj_engine',
+            'openmm_engine',
+            '_py_core',
+            '_py_ase_schema',
+        ]
+            if is_variable(_tgt_name)
+                _tgt = get_variable(_tgt_name)
+                if not is_disabler(_tgt)
+                    _installed_targets += [_tgt]
+                endif
+            endif
+        endforeach
+        if get_option('with_rpc_client_only')
+            foreach _tgt_name : ['nwchempot', 'cpmdpot']
+                if is_variable(_tgt_name)
+                    _tgt = get_variable(_tgt_name)
+                    if not is_disabler(_tgt)
+                        _installed_targets += [_tgt]
+                    endif
+                endif
+            endforeach
+        endif
+        test(
+            'installed_sources',
+            _install_py,
+            args: [
+                files('CppCore/tests/check_installed_sources.py'),
+                meson.project_build_root(),
+                _install_meson.full_path(),
+            ],
+            depends: _installed_targets,
+            kwargs: _rt_kw['installed_sources'],
+        )
+    endif
+endif
+
 # The documentation's run and compile blocks against this build;
 # doccheck_static checks the rest against the source.
 _doc_python = find_program('python3', required: false)
@@ -1008,6 +1153,23 @@ if get_option('with_tests') and _doc_python.found()
     # -Wl,-rpath), and most run blocks link librgpot. Windows has cl.exe,
     # and rgpot.dll exports only rgpot_library_version, as for engines/.
     if host_system != 'windows'
+        _doccheck_depends = []
+        foreach _tgt_name : [
+            'rgpot',
+            'gen_rpc',
+            'rgpot_rust_target',
+            'rgpot_eval',
+            'capi_threads',
+            '_py_core',
+            '_py_ase_schema',
+        ]
+            if is_variable(_tgt_name)
+                _tgt = get_variable(_tgt_name)
+                if not is_disabler(_tgt)
+                    _doccheck_depends += [_tgt]
+                endif
+            endif
+        endforeach
         test(
             'doccheck_examples',
             _doc_python,
@@ -1019,6 +1181,7 @@ if get_option('with_tests') and _doc_python.found()
                 '--build-dir',
                 meson.project_build_root(),
             ],
+            depends: _doccheck_depends,
             suite: 'docs',
             timeout: 1200,
             priority: -10,

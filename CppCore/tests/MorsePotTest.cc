@@ -12,6 +12,7 @@
 #include <cstring>
 #include <limits>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -489,53 +490,485 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
     const auto ref_front = runFullEval(serial_pot, pos_front, z, box);
     const auto ref_back = runFullEval(serial_pot, pos_back, z, box);
 
-    ThreadGuard::set("4");
-    rgpot::MorsePot par_pot(cu_vacancy);
-    par_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
-    const auto got_front = runFullEval(par_pot, pos_front, z, box);
-    CHECK(par_pot.listReused());
-    const std::size_t retained_front = par_pot.retainedPairs();
-    const auto snap_front = rgpot::detail::morseStoredSplitSnapshot();
-    REQUIRE(snap_front.atoms == n);
-    REQUIRE(snap_front.slices == 4);
-    REQUIRE(snap_front.total_up >= 4096);
-    REQUIRE(snap_front.total_inc == 2 * snap_front.total_up);
-    REQUIRE(snap_front.p0_splits.size() == 5);
-    REQUIRE(snap_front.p1_splits.size() == 5);
-    for (std::size_t s = 1; s < 4; ++s) {
-      CHECK(snap_front.p0_splits[s] > 0);
-      CHECK(snap_front.p0_splits[s] <= m);
-      CHECK(snap_front.p1_splits[s] > 0);
-      CHECK(snap_front.p1_splits[s] <= m);
-    }
-    CHECK(countBitDiffs(got_front, ref_front) == 0);
+    for (const int slices : {4, 16}) {
+      INFO("slices = " << slices);
+      ThreadGuard::set(std::to_string(slices).c_str());
+      rgpot::MorsePot par_pot(cu_vacancy);
+      par_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+      const auto got_front = runFullEval(par_pot, pos_front, z, box);
+      CHECK(par_pot.listReused());
+      const std::size_t retained_front = par_pot.retainedPairs();
+      const auto snap_front = rgpot::detail::morseStoredSplitSnapshot();
+      REQUIRE(snap_front.atoms == n);
+      REQUIRE(snap_front.slices == slices);
+      REQUIRE(snap_front.total_up >= 4096);
+      REQUIRE(snap_front.total_inc == 2 * snap_front.total_up);
+      REQUIRE(snap_front.p0_splits.size() ==
+              static_cast<std::size_t>(slices + 1));
+      REQUIRE(snap_front.p1_splits.size() ==
+              static_cast<std::size_t>(slices + 1));
+      for (std::size_t s = 1; s < static_cast<std::size_t>(slices); ++s) {
+        CHECK(snap_front.p0_splits[s] > 0);
+        CHECK(snap_front.p0_splits[s] <= m);
+        CHECK(snap_front.p1_splits[s] > 0);
+        CHECK(snap_front.p1_splits[s] <= m);
+      }
+      CHECK(countBitDiffs(got_front, ref_front) == 0);
 
-    // First call on pos_back forces a Verlet rebuild with identical totals
-    // and the dense cluster moved to [n - m, n).
-    std::vector<double> probe_f(3 * n, 0.0);
-    rgpot::ForceOut probe_out{};
-    probe_out.F = probe_f.data();
-    par_pot.forceImpl({n, pos_back.data(), z.data(), box.data()}, &probe_out);
-    CHECK_FALSE(par_pot.listReused());
-    const auto got_back = runFullEval(par_pot, pos_back, z, box);
-    CHECK(par_pot.listReused());
-    CHECK(par_pot.retainedPairs() == retained_front);
+      // First call on pos_back forces a Verlet rebuild with identical totals
+      // and the dense cluster moved to [n - m, n).
+      std::vector<double> probe_f(3 * n, 0.0);
+      rgpot::ForceOut probe_out{};
+      probe_out.F = probe_f.data();
+      par_pot.forceImpl({n, pos_back.data(), z.data(), box.data()}, &probe_out);
+      CHECK_FALSE(par_pot.listReused());
+      const auto got_back = runFullEval(par_pot, pos_back, z, box);
+      CHECK(par_pot.listReused());
+      CHECK(par_pot.retainedPairs() == retained_front);
 
-    const auto snap_back = rgpot::detail::morseStoredSplitSnapshot();
-    CHECK(snap_back.owner == snap_front.owner);
-    CHECK(snap_back.build_id == snap_front.build_id + 1);
-    CHECK(snap_back.atoms == snap_front.atoms);
-    CHECK(snap_back.slices == snap_front.slices);
-    CHECK(snap_back.total_up == snap_front.total_up);
-    CHECK(snap_back.total_inc == snap_front.total_inc);
-    CHECK(snap_back.p0_splits != snap_front.p0_splits);
-    CHECK(snap_back.p1_splits != snap_front.p1_splits);
-    for (std::size_t s = 1; s < 4; ++s) {
-      CHECK(snap_back.p0_splits[s] >= n - m);
-      CHECK(snap_back.p0_splits[s] < n);
-      CHECK(snap_back.p1_splits[s] >= n - m);
-      CHECK(snap_back.p1_splits[s] < n);
+      const auto snap_back = rgpot::detail::morseStoredSplitSnapshot();
+      CHECK(snap_back.owner == snap_front.owner);
+      CHECK(snap_back.build_id == snap_front.build_id + 1);
+      CHECK(snap_back.atoms == snap_front.atoms);
+      CHECK(snap_back.slices == snap_front.slices);
+      CHECK(snap_back.total_up == snap_front.total_up);
+      CHECK(snap_back.total_inc == snap_front.total_inc);
+      CHECK(snap_back.p0_splits != snap_front.p0_splits);
+      CHECK(snap_back.p1_splits != snap_front.p1_splits);
+      for (std::size_t s = 1; s < static_cast<std::size_t>(slices); ++s) {
+        CHECK(snap_back.p0_splits[s] >= n - m);
+        CHECK(snap_back.p0_splits[s] < n);
+        CHECK(snap_back.p1_splits[s] >= n - m);
+        CHECK(snap_back.p1_splits[s] < n);
+      }
+      CHECK(countBitDiffs(got_back, ref_back) == 0);
     }
-    CHECK(countBitDiffs(got_back, ref_back) == 0);
   }
+}
+
+TEST_CASE(
+    "MorsePot boundary active-bit merge is loss-free under concurrent updates",
+    "[MorsePot][threads][atomic]") {
+  constexpr std::size_t kThreads = 8;
+  constexpr std::size_t kWords = 4096;
+  std::vector<std::uint64_t> words(kWords, 0ULL);
+  std::atomic<bool> start{false};
+  std::atomic<std::size_t> ready{0};
+
+  std::vector<std::thread> workers;
+  workers.reserve(kThreads);
+  for (std::size_t t = 0; t < kThreads; ++t) {
+    workers.emplace_back([&, t]() {
+      const std::uint64_t mask = 0x0101010101010101ULL << t;
+      ready.fetch_add(1, std::memory_order_release);
+      while (!start.load(std::memory_order_acquire)) {
+      }
+      for (std::size_t w = 0; w < kWords; ++w) {
+        rgpot::detail::morseAtomicFetchOrWord(words[w], mask);
+      }
+    });
+  }
+  while (ready.load(std::memory_order_acquire) < kThreads) {
+  }
+  start.store(true, std::memory_order_release);
+  for (auto &th : workers) {
+    th.join();
+  }
+
+  std::size_t lost_words = 0;
+  for (std::size_t w = 0; w < kWords; ++w) {
+    if (words[w] != ~0ULL) {
+      ++lost_words;
+    }
+  }
+  CHECK(lost_words == 0);
+
+  // Stress Phase 0 boundary word merging in MorsePot::compute. Team sizes
+  // 4, 8 and 16 place interior p0 splits inside different shared 64 pair
+  // active bit words (last_w of slice s equals first_w of slice s + 1).
+  // Energy and every force component must match the serial reference.
+  ThreadGuard guard;
+  const rgpot::MorseConfig cu_vacancy{.De = 1.0,
+                                      .a = 4.0 / 2.55,
+                                      .re = 2.55,
+                                      .cutoff = 5.3,
+                                      .switch_width = 0.0};
+  const auto sys = fccVacancy(13, 2.55 * std::sqrt(2.0), 29);
+  const std::size_t n = sys.z.size();
+  ThreadGuard::set("1");
+  rgpot::MorsePot ref_pot(cu_vacancy);
+  ref_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto want = runFullEval(ref_pot, sys.pos, sys.z, sys.box);
+  REQUIRE(want.forces.size() == 3 * n);
+
+  rgpot::MorsePot par_pot(cu_vacancy);
+  par_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  std::vector<double> fbuf(3 * n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = fbuf.data();
+  for (const char *threads : {"4", "8", "16"}) {
+    ThreadGuard::set(threads);
+    std::size_t bad_energy = 0;
+    std::size_t bad_force = 0;
+    for (int iter = 0; iter < 32; ++iter) {
+      par_pot.forceImpl({n, sys.pos.data(), sys.z.data(), sys.box.data()},
+                        &out);
+      if (f64Bits(out.energy) != f64Bits(want.energy)) {
+        ++bad_energy;
+      }
+      for (std::size_t k = 0; k < fbuf.size(); ++k) {
+        if (f64Bits(fbuf[k]) != f64Bits(want.forces[k])) {
+          ++bad_force;
+          break;
+        }
+      }
+    }
+    INFO("OMP_NUM_THREADS=" << threads);
+    CHECK(bad_energy == 0);
+    CHECK(bad_force == 0);
+  }
+}
+
+TEST_CASE("MorsePot workspace shrinks retained capacities when a smaller "
+          "evaluation follows a large one",
+          "[MorsePot][threads][shrink]") {
+  ThreadGuard guard;
+  const rgpot::MorseConfig cu_vacancy{.De = 1.0,
+                                      .a = 4.0 / 2.55,
+                                      .re = 2.55,
+                                      .cutoff = 5.3,
+                                      .switch_width = 0.0};
+
+  // 1. Evaluate a large 16x16x16 Cu vacancy system (16383 atoms, ~703k upper
+  // pairs) on 4 threads with per-atom energy and virial so all workspace
+  // buffers grow well above 4 * kShrinkFloor (16384 elements).
+  const auto large_sys = fccVacancy(16, 2.55 * std::sqrt(2.0), 29);
+  REQUIRE(large_sys.z.size() == 16383);
+  ThreadGuard::set("4");
+  rgpot::MorsePot pot(cu_vacancy);
+  pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto large_got =
+      runFullEval(pot, large_sys.pos, large_sys.z, large_sys.box);
+  (void)large_got;
+
+  const auto snap_large = rgpot::detail::morseStoredSplitSnapshot();
+  REQUIRE(snap_large.total_up > 500000);
+  REQUIRE(snap_large.up_off_cap >= large_sys.z.size() + 1);
+  REQUIRE(snap_large.lo_off_cap >= large_sys.z.size() + 1);
+  REQUIRE(snap_large.lo_count_cap >= large_sys.z.size());
+  REQUIRE(snap_large.lo_u_cap >= snap_large.total_up);
+  REQUIRE(snap_large.pair_forces_cap >= snap_large.total_up);
+  REQUIRE(snap_large.pair_he_cap >= snap_large.total_up);
+  REQUIRE(snap_large.pair_hv_cap >= 6 * snap_large.total_up);
+  REQUIRE(snap_large.row_e_cap >= large_sys.z.size());
+  REQUIRE(snap_large.row_s_cap >= 6 * large_sys.z.size());
+
+  // Calling forceImpl alone (without per-atom energy or virial) on the same
+  // large system must release pair_he and pair_hv down to zero capacity while
+  // keeping pair_forces at the high-water mark.
+  std::vector<double> fbuf(3 * large_sys.z.size(), 0.0);
+  rgpot::ForceOut out{};
+  out.F = fbuf.data();
+  pot.forceImpl({large_sys.z.size(), large_sys.pos.data(), large_sys.z.data(),
+                 large_sys.box.data()},
+                &out);
+  const auto snap_no_pa = rgpot::detail::morseStoredSplitSnapshot();
+  CHECK(snap_no_pa.pair_he_cap == 0);
+  CHECK(snap_no_pa.pair_hv_cap == 0);
+  CHECK(snap_no_pa.pair_forces_cap == snap_large.pair_forces_cap);
+
+  // Restore pair_he and pair_hv to the large high-water mark before step 2.
+  (void)runFullEval(pot, large_sys.pos, large_sys.z, large_sys.box);
+
+  // 2. Evaluate a medium system at kTeamMinAtoms = 8192 atoms (a compact
+  // 6x6x6 Cu cluster of ~37k upper pairs < 703k / 4, plus sparse atoms) on 4
+  // threads. Every pair buffer (lo_u, active_bits, pair_forces, pair_he,
+  // pair_hv) and row_s (6 * 8192 = 49152 > 4096) requires less than a quarter
+  // of its retained capacity and must shrink.
+  const std::size_t n_med = rgpot::kTeamMinAtoms;
+  const auto cluster = fccVacancy(6, 2.55 * std::sqrt(2.0), 29);
+  const std::size_t m = cluster.z.size();
+  const double spacing = 12.0;
+  const int grid = 22;
+  const double side = static_cast<double>(grid) * spacing;
+  const std::array<double, 9> med_box = {side, 0.0, 0.0, 0.0, side,
+                                         0.0,  0.0, 0.0, side};
+  std::vector<double> med_pos;
+  med_pos.reserve(3 * n_med);
+  for (std::size_t i = 0; i < m; ++i) {
+    med_pos.push_back(cluster.pos[3 * i] + 12.0);
+    med_pos.push_back(cluster.pos[3 * i + 1] + 12.0);
+    med_pos.push_back(cluster.pos[3 * i + 2] + 12.0);
+  }
+  for (std::size_t idx = 0; idx < n_med - m; ++idx) {
+    const std::size_t slot = idx + static_cast<std::size_t>(grid * grid * 4);
+    const std::size_t gx = slot % grid;
+    const std::size_t gy = (slot / grid) % grid;
+    const std::size_t gz = slot / (static_cast<std::size_t>(grid) *
+                                   static_cast<std::size_t>(grid));
+    med_pos.push_back((static_cast<double>(gx) + 0.5) * spacing);
+    med_pos.push_back((static_cast<double>(gy) + 0.5) * spacing);
+    med_pos.push_back((static_cast<double>(gz) + 0.5) * spacing);
+  }
+  const std::vector<int> med_z(n_med, 29);
+
+  ThreadGuard::set("1");
+  rgpot::MorsePot med_ref_pot(cu_vacancy);
+  med_ref_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto med_want = runFullEval(med_ref_pot, med_pos, med_z, med_box);
+
+  // Restore the calling thread's workspace to the 16x16x16 high-water mark
+  // (after med_ref_pot ran on 1 thread), then rebuild pot on med_pos on 4
+  // threads.
+  ThreadGuard::set("4");
+  (void)runFullEval(pot, large_sys.pos, large_sys.z, large_sys.box);
+  const auto med_got = runFullEval(pot, med_pos, med_z, med_box);
+  const auto snap_med = rgpot::detail::morseStoredSplitSnapshot();
+  CHECK(countBitDiffs(med_got, med_want) == 0);
+  REQUIRE(snap_med.total_up >= 4096);
+  REQUIRE(snap_med.total_up * 4 < snap_large.total_up);
+  CHECK(snap_med.lo_u_cap < snap_large.lo_u_cap);
+  CHECK(snap_med.active_bits_cap < snap_large.active_bits_cap);
+  CHECK(snap_med.pair_forces_cap < snap_large.pair_forces_cap);
+  CHECK(snap_med.pair_he_cap < snap_large.pair_he_cap);
+  CHECK(snap_med.pair_hv_cap < snap_large.pair_hv_cap);
+
+  // 3. Also verify that the atom-indexed buffers (up_off, lo_off, lo_count,
+  // row_e, row_s) shrink when an evaluation with > 4 * kTeamMinAtoms atoms
+  // (34000 atoms: the 6x6x6 Cu cluster plus sparse atoms) is followed by the
+  // 8192-atom system on 4 threads.
+  const std::size_t n_wide = 34000;
+  const int wide_grid = 36;
+  const double wide_side = static_cast<double>(wide_grid) * spacing;
+  const std::array<double, 9> wide_box = {
+      -wide_side, 0.0, 0.0, 0.0, -wide_side, 0.0, 0.0, 0.0, -wide_side};
+  std::vector<double> wide_pos;
+  wide_pos.reserve(3 * n_wide);
+  for (std::size_t i = 0; i < m; ++i) {
+    wide_pos.push_back(cluster.pos[3 * i] + 12.0);
+    wide_pos.push_back(cluster.pos[3 * i + 1] + 12.0);
+    wide_pos.push_back(cluster.pos[3 * i + 2] + 12.0);
+  }
+  for (std::size_t idx = 0; idx < n_wide - m; ++idx) {
+    const std::size_t slot =
+        idx + static_cast<std::size_t>(wide_grid * wide_grid * 4);
+    const std::size_t gx = slot % wide_grid;
+    const std::size_t gy = (slot / wide_grid) % wide_grid;
+    const std::size_t gz = slot / (static_cast<std::size_t>(wide_grid) *
+                                   static_cast<std::size_t>(wide_grid));
+    wide_pos.push_back((static_cast<double>(gx) + 0.5) * spacing);
+    wide_pos.push_back((static_cast<double>(gy) + 0.5) * spacing);
+    wide_pos.push_back((static_cast<double>(gz) + 0.5) * spacing);
+  }
+  const std::vector<int> wide_z(n_wide, 29);
+  (void)runFullEval(pot, wide_pos, wide_z, wide_box);
+  const auto snap_wide = rgpot::detail::morseStoredSplitSnapshot();
+  REQUIRE(snap_wide.up_off_cap >= n_wide + 1);
+  REQUIRE(snap_wide.lo_off_cap >= n_wide + 1);
+  REQUIRE(snap_wide.lo_count_cap >= n_wide);
+  REQUIRE(snap_wide.row_e_cap >= n_wide);
+  REQUIRE(snap_wide.row_s_cap >= 6 * n_wide);
+
+  (void)runFullEval(pot, med_pos, med_z, med_box);
+  const auto snap_after_wide = rgpot::detail::morseStoredSplitSnapshot();
+  CHECK(snap_after_wide.up_off_cap < snap_wide.up_off_cap);
+  CHECK(snap_after_wide.lo_off_cap < snap_wide.lo_off_cap);
+  CHECK(snap_after_wide.lo_count_cap < snap_wide.lo_count_cap);
+  CHECK(snap_after_wide.row_e_cap < snap_wide.row_e_cap);
+  CHECK(snap_after_wide.row_s_cap < snap_wide.row_s_cap);
+
+  // 4. Also verify that the serial fallback path shrinks row_e and row_s when
+  // a dilute 8192-atom system (0 close pairs < kMinParallelHalfPairs) follows
+  // the 34000-atom system on 1 thread.
+  ThreadGuard::set("1");
+  (void)runFullEval(pot, wide_pos, wide_z, wide_box);
+  const auto snap_1t_wide = rgpot::detail::morseStoredSplitSnapshot();
+  REQUIRE(snap_1t_wide.row_e_cap >= n_wide);
+  REQUIRE(snap_1t_wide.row_s_cap >= 6 * n_wide);
+
+  std::vector<double> dilute_pos;
+  dilute_pos.reserve(3 * n_med);
+  for (std::size_t idx = 0; idx < n_med; ++idx) {
+    const std::size_t gx = idx % grid;
+    const std::size_t gy = (idx / grid) % grid;
+    const std::size_t gz =
+        idx / (static_cast<std::size_t>(grid) * static_cast<std::size_t>(grid));
+    dilute_pos.push_back((static_cast<double>(gx) + 0.5) * spacing);
+    dilute_pos.push_back((static_cast<double>(gy) + 0.5) * spacing);
+    dilute_pos.push_back((static_cast<double>(gz) + 0.5) * spacing);
+  }
+  pot.forceImpl({n_med, dilute_pos.data(), med_z.data(), med_box.data()}, &out);
+  const auto snap_1t_dilute = rgpot::detail::morseStoredSplitSnapshot();
+  CHECK(snap_1t_dilute.row_e_cap < snap_1t_wide.row_e_cap);
+  CHECK(snap_1t_dilute.row_s_cap < snap_1t_wide.row_s_cap);
+}
+
+namespace {
+
+rgpot::MorseConfig cuVacancyConfig() {
+  return rgpot::MorseConfig{.De = 1.0,
+                            .a = 4.0 / 2.55,
+                            .re = 2.55,
+                            .cutoff = 5.3,
+                            .switch_width = 0.0};
+}
+
+void requireScratchAboveCap(const rgpot::detail::MorseSplitSnapshot &snap,
+                            std::size_t cap) {
+  REQUIRE(snap.total_up > cap * 64);
+  REQUIRE(snap.slices > 1);
+  REQUIRE(snap.up_off_cap > cap);
+  REQUIRE(snap.lo_off_cap > cap);
+  REQUIRE(snap.lo_u_cap > cap);
+  REQUIRE(snap.lo_count_cap > cap);
+  REQUIRE(snap.active_bits_cap > cap);
+  REQUIRE(snap.pair_forces_cap > cap);
+  REQUIRE(snap.pair_he_cap > cap);
+  REQUIRE(snap.pair_hv_cap > cap);
+  REQUIRE(snap.row_e_cap > cap);
+  REQUIRE(snap.row_s_cap > cap);
+}
+
+void checkReleasedAtCap(const rgpot::detail::MorseSplitSnapshot &snap, std::size_t cap,
+                        bool rows) {
+  CHECK(snap.up_off_cap <= cap);
+  CHECK(snap.lo_off_cap <= cap);
+  CHECK(snap.lo_u_cap <= cap);
+  CHECK(snap.lo_count_cap <= cap);
+  CHECK(snap.active_bits_cap <= cap);
+  CHECK(snap.pair_forces_cap <= cap);
+  CHECK(snap.pair_he_cap <= cap);
+  CHECK(snap.pair_hv_cap <= cap);
+  if (rows) {
+    CHECK(snap.row_e_cap <= cap);
+    CHECK(snap.row_s_cap <= cap);
+  }
+}
+
+/// 16x16x16 Cu vacancy. Upper pairs are far above the retain cap, including
+/// the active bit words (total_up / 64).
+VacancyLattice largeCuVacancy() {
+  auto sys = fccVacancy(16, 2.55 * std::sqrt(2.0), 29);
+  REQUIRE(sys.z.size() == 16383);
+  return sys;
+}
+
+void growWorkspaceAboveCap(rgpot::MorsePot &pot, const VacancyLattice &sys) {
+  ThreadGuard::set("4");
+  (void)runFullEval(pot, sys.pos, sys.z, sys.box);
+  requireScratchAboveCap(rgpot::detail::morseStoredSplitSnapshot(),
+                         rgpot::detail::morseWorkspaceRetainCap());
+}
+
+struct DiluteLattice {
+  std::vector<double> pos;
+  std::vector<int> z;
+  std::array<double, 9> box{};
+};
+
+/// Atoms at kTeamMinAtoms and above, with a handful of pairs inside the
+/// cutoff, so the stored list stays under the parallel pair threshold.
+DiluteLattice diluteAboveTeamMin() {
+  const std::size_t n = rgpot::kTeamMinAtoms + 16;
+  const double spacing = 12.0;
+  const int grid = 22;
+  const double side = static_cast<double>(grid) * spacing;
+  DiluteLattice out;
+  out.box = {side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side};
+  out.pos.reserve(3 * n);
+  for (std::size_t a = 0; a < n; ++a) {
+    const auto g = static_cast<std::size_t>(grid);
+    const std::size_t gx = a % g;
+    const std::size_t gy = (a / g) % g;
+    const std::size_t gz = a / (g * g);
+    out.pos.push_back((static_cast<double>(gx) + 0.5) * spacing);
+    out.pos.push_back((static_cast<double>(gy) + 0.5) * spacing);
+    out.pos.push_back((static_cast<double>(gz) + 0.5) * spacing);
+  }
+  for (std::size_t p = 0; p < 10; ++p) {
+    out.pos[3 * (2 * p + 1)] = out.pos[3 * (2 * p)] + 2.6;
+    out.pos[3 * (2 * p + 1) + 1] = out.pos[3 * (2 * p) + 1];
+    out.pos[3 * (2 * p + 1) + 2] = out.pos[3 * (2 * p) + 2];
+  }
+  out.z.assign(n, 29);
+  return out;
+}
+
+} // namespace
+
+TEST_CASE("MorsePot tiny call drops retained workspace capacity to the cap",
+          "[MorsePot][threads][shrink][cap]") {
+  ThreadGuard guard;
+  const auto cfg = cuVacancyConfig();
+  const auto tiny = fccVacancy(2, 2.55 * std::sqrt(2.0), 29);
+  REQUIRE(tiny.z.size() >= 2);
+  REQUIRE(tiny.z.size() < rgpot::kTeamMinAtoms);
+
+  ThreadGuard::set("4");
+  rgpot::MorsePot ref(cfg);
+  ref.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto want = runFullEval(ref, tiny.pos, tiny.z, tiny.box);
+
+  const auto large = largeCuVacancy();
+  rgpot::MorsePot pot(cfg);
+  pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  growWorkspaceAboveCap(pot, large);
+
+  const auto got = runFullEval(pot, tiny.pos, tiny.z, tiny.box);
+  CHECK(countBitDiffs(got, want) == 0);
+  checkReleasedAtCap(rgpot::detail::morseStoredSplitSnapshot(),
+                     rgpot::detail::morseWorkspaceRetainCap(), true);
+}
+
+TEST_CASE("MorsePot serial call drops retained workspace capacity to the cap",
+          "[MorsePot][threads][shrink][cap]") {
+  ThreadGuard guard;
+  const auto cfg = cuVacancyConfig();
+  const auto serial_sys = fccVacancy(13, 2.55 * std::sqrt(2.0), 29);
+  REQUIRE(serial_sys.z.size() >= rgpot::kTeamMinAtoms);
+
+  ThreadGuard::set("1");
+  rgpot::MorsePot ref(cfg);
+  ref.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto want = runFullEval(ref, serial_sys.pos, serial_sys.z, serial_sys.box);
+
+  const auto large = largeCuVacancy();
+  rgpot::MorsePot pot(cfg);
+  pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  growWorkspaceAboveCap(pot, large);
+
+  ThreadGuard::set("1");
+  const auto got = runFullEval(pot, serial_sys.pos, serial_sys.z, serial_sys.box);
+  CHECK(countBitDiffs(got, want) == 0);
+  // Row accumulators hold one entry per atom, so they stay above the cap.
+  // Pair scratch and the transpose index are not used on this path.
+  checkReleasedAtCap(rgpot::detail::morseStoredSplitSnapshot(),
+                     rgpot::detail::morseWorkspaceRetainCap(), false);
+}
+
+TEST_CASE("MorsePot sparse call drops retained workspace capacity to the cap",
+          "[MorsePot][threads][shrink][cap]") {
+  ThreadGuard guard;
+  const auto cfg = cuVacancyConfig();
+  const auto dilute = diluteAboveTeamMin();
+  REQUIRE(dilute.z.size() >= rgpot::kTeamMinAtoms);
+
+  ThreadGuard::set("1");
+  rgpot::MorsePot ref(cfg);
+  ref.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto want = runFullEval(ref, dilute.pos, dilute.z, dilute.box);
+  REQUIRE(ref.retainedPairs() < rgpot::detail::morseWorkspaceRetainCap());
+
+  const auto large = largeCuVacancy();
+  rgpot::MorsePot pot(cfg);
+  pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  growWorkspaceAboveCap(pot, large);
+
+  ThreadGuard::set("4");
+  const auto teams_before = rgpot::teamsOpened();
+  const auto got = runFullEval(pot, dilute.pos, dilute.z, dilute.box);
+  CHECK(rgpot::teamsOpened() == teams_before);
+  CHECK(countBitDiffs(got, want) == 0);
+  checkReleasedAtCap(rgpot::detail::morseStoredSplitSnapshot(),
+                     rgpot::detail::morseWorkspaceRetainCap(), false);
 }

@@ -122,10 +122,12 @@ capi_threads_tsan | tests core posix tsan | custom timeout=120 |
 
 # Potentials and the neighbour machinery.
 FortranPotsTest | tests core fortran | unit fortran_pots_test FortranPotsTest.cc |
-MorsePotTest | tests core | unit morse_pot_test MorsePotTest.cc |
+MorsePotTest | tests core | unit morse_pot_test MorsePotTest.cc timeout=120 |
+CPMDPotConfigMessageTest | tests core | unit cpmd_pot_config_message_test CPMDPotConfigMessageTest.cc suite=cpmd |
 CambridgeMorseTest | tests core | unit cambridge_morse_test CambridgeMorseTest.cc |
 GuptaTest | tests core | unit gupta_test GuptaTest.cc |
 HessianVectorTest | tests core | unit hessian_vector_test HessianVectorTest.cc |
+ModelPotsTest | tests core | unit model_pots_test ModelPotsTest.cc |
 SWSiTest | tests core | unit sw_si_test SWSiTest.cc |
 TersoffSiCTest | tests core | unit tersoff_sic_test TersoffSiCTest.cc fp_contract=off |
 HalfShellScanTest | tests core | unit half_shell_scan_test HalfShellScanTest.cc |
@@ -140,21 +142,25 @@ NeighbourLayerTest | tests core | unit neighbour_layer_test NeighbourLayerTest.c
 # Eight potentials on 1, 2, 3 and 8 threads, on up to 10648 atoms. Meson
 # scales explicit timeouts by 3 under ASan/UBSan and 8 under TSan.
 ThreadTeamTest | tests core | unit thread_team_test ThreadTeamTest.cc timeout=120 |
+TersoffZblBuildTest | tests core | unit tersoff_zbl_build_test TersoffZblBuildTest.cc fp_contract=off timeout=180 |
 StreamParityTest | tests core | unit stream_parity_test StreamParityTest.cc fp_contract=off timeout=900 |
 NeighbourListTest | tests core | unit neighbour_list_test NeighbourListTest.cc |
 VesinEmptyResetTest | tests core | unit vesin_empty_reset_test VesinEmptyResetTest.cc |
 EAMCellVerletTest | tests core | unit eam_cell_verlet_test EAMCellVerletTest.cc fp_contract=off |
 ManyBodyForceTest | tests core | unit many_body_force_test ManyBodyForceTest.cc |
+PairForceFDTest | tests core | unit pair_force_fd_test PairForceFDTest.cc |
 SkinPairTest | tests core | unit skin_pair_test SkinPairTest.cc |
 MinImageIsaHash | tests core | unit minimage_isa_hash MinImageIsaHash.cc |
 BatchEvaluatorTest | tests core | unit batch_evaluator_test BatchEvaluatorTest.cc |
 CalculatorGroupTest | tests core | unit calculator_group_test CalculatorGroupTest.cc |
 CalculatorAbortFlagTest | tests core | unit calculator_abort_flag_test CalculatorAbortFlagTest.cc |
 LJClusterPotTest | tests core | unit ljcluster_pot_test LJClusterPotTest.cc |
+LJPotThreadsTest | tests core | unit lj_pot_threads_test LJPotThreadsTest.cc timeout=120 |
 ZBLPotTest | tests core | unit zbl_pot_test ZBLPotTest.cc |
 PerAtomTest | tests core | unit per_atom_test PerAtomTest.cc |
 LocalityTest | tests core | unit locality_test LocalityTest.cc |
 StagedTest | tests core | unit staged_test StagedTest.cc |
+Staged3BodyTest | tests core | unit staged_3body_test Staged3BodyTest.cc timeout=60 |
 FastNlistTest | tests core | unit fast_nlist_test FastNlistTest.cc fp_contract=off |
 IsaDispatchTest | tests core | unit isa_dispatch_test IsaDispatchTest.cc |
 FmaExactTest | tests core | unit fma_exact_test FmaExactTest.cc |
@@ -163,6 +169,7 @@ FoldDegenerateTest | tests core | unit fold_degenerate_test FoldDegenerateTest.c
 IPIPotTest | tests core ipi | unit ipi_pot_test IPIPotTest.cc |
 IPIDriverTest | tests core ipi | unit ipi_driver_test IPIDriverTest.cc |
 EAMTablePotTest | tests core eam_table | unit eam_table_pot_test EAMTablePotTest.cc |
+EAMMultiImageTest | tests core eam_table | unit eam_multi_image_test EAMMultiImageTest.cc |
 CuH2 Utils Test | tests core xtensor | unit cuh2_util_test cuh2UtilsTest.cc |
 CacheTest | tests cache | unit cache_test CacheTest.cc |
 InvarianceTest | tests cache | unit invariance_test InvarianceTest.cc |
@@ -171,6 +178,11 @@ XTBDlopenTest | tests core,xtb | custom suite=xtb workdir=. |
 ThreadTeamTest_limit1 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=1 timeout=120 |
 ThreadTeamTest_limit2 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=2 timeout=120 |
 openmp_confined | tests python | py CppCore/tests/test_openmp_confined.py @root@ |
+omp_crossover_v3_provenance | tests python | py bench/test_omp_crossover_v3_provenance.py --repo @root@ --json @root@ --json-relative bench/results/rgpot_omp_crossover_v3_results.json --report bench/results/rgpot_omp_crossover_v3d_report.md |
+omp_crossover_v3_provenance_cases | tests python | py bench/test_omp_crossover_v3_provenance_cases.py |
+omp_crossover_v3_report | tests python | py bench/test_omp_crossover_v3_report.py --repo @root@ --harness bench/run_omp_crossover_v3.py --json bench/results/rgpot_omp_crossover_v3_results.json --report bench/results/rgpot_omp_crossover_v3_report.md --analysis-report bench/results/rgpot_omp_crossover_v3d_report.md --clarified-report bench/results/rgpot_omp_crossover_v3e_report.md |
+omp_crossover_v3_analysis | tests python | py bench/test_omp_crossover_v3_analysis.py |
+omp_crossover_v3_verification | tests python | py bench/test_omp_crossover_v3_verification.py |
 MinImageIsaVariants | tests core isa_variants | custom |
 ExactFmaEq | tests core | custom |
 ExpFixedEq | tests core | custom |
@@ -304,6 +316,8 @@ UmaProvenanceTest | tests metatomic | custom workdir=. | @metatomic
 SkalaPotTest | tests core rpc skala | custom suite=skala workdir=. | @skala
 PotentialHvpTest | tests core rust_core | unit potential_hvp_test PotentialHvpTest.cc | @rust_core
 abi_core_symbols | rust_core linux | custom | @rust_core
+EAMTableCAbiTest | tests rust_core | custom | @rust_core
+EAMTableHandleTest | tests core rust_core | unit eam_table_handle_test EAMTableHandleTest.cc | @rust_core
 EngineTableTest | tests core rpc posix | custom workdir=. | @engine_plugins
 lj_eval | core posix | custom timeout=60 | @engines
 lj_engine | core posix | custom timeout=60 | @engines
@@ -322,6 +336,7 @@ gromacs_dropin_api | core posix probe | custom timeout=300 | @engines
 gromacs_dropin_mdrun | core posix probe | custom timeout=1800 | @engines
 openmm_lj | core posix probe | custom timeout=120 | @engines
 optional_engine_install | tests core posix python toplevel | custom timeout=300 | @meson
+installed_sources | tests python toplevel | custom timeout=180 | @meson
 eigen_subproject_fallback | tests core posix python toplevel | custom timeout=300 | @meson
 gromacs_include_prefix | tests core posix python toplevel | custom timeout=300 | @meson
-fortran_sw_module_order | tests core posix python toplevel | custom timeout=600 | @meson
+fortran_sw_module_order | tests core posix python toplevel fortran | custom timeout=600 | @meson

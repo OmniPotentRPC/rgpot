@@ -62,8 +62,8 @@ The prefixes are "invalid parameter: " for =RGPOT_INVALID_PARAMETER=, "RPC
 error: " for =RGPOT_RPC_ERROR=, "buffer size error: " for
 =RGPOT_BUFFER_SIZE_ERROR=, "SCC not converged: " for =RGPOT_SCC_NOT_CONVERGED=,
 "no Taylor jet: " for =RGPOT_NO_JET=, "Taylor jet branch: " for
-=RGPOT_JET_BRANCH=, "Taylor jet domain: " for =RGPOT_JET_DOMAIN=, and
-"internal error: " for =RGPOT_INTERNAL_ERROR= and any other code.
+=RGPOT_JET_BRANCH=, "Taylor jet domain: " for =RGPOT_JET_DOMAIN=, and "internal
+error: " for =RGPOT_INTERNAL_ERROR= and any other code.
 Every category throws the same type, =rgpot::Error=.
 
 ** include/rgpot/types.hpp
@@ -278,6 +278,32 @@ static PotentialHandle from_callback(rgpot_status_t (*callback)(void *, const rg
 - Errors :: none; the result of =rgpot_potential_new= is not checked for NULL.
   A non-success status from =callback= is thrown as =rgpot::Error= by the method
   that called it.
+
+*** =rgpot::PotentialHandle::eam_table=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+static PotentialHandle eam_table(const std::string &path, int format = RGPOT_EAM_TABLE_AUTO,
+                                 bool periodic = true);
+#+end_src
+
+- Inputs :: =path=, a funcfl, setfl or Finnis-Sinclair table; =format=, one of
+  =RGPOT_EAM_TABLE_AUTO=, =RGPOT_EAM_TABLE_FUNCFL=,
+  =RGPOT_EAM_TABLE_SETFL= and =RGPOT_EAM_TABLE_FINNIS_SINCLAIR=; =periodic=,
+  nearest image on the cell or a free cluster.
+- Units :: positions and cell in Angstrom, energy in eV, forces in eV per
+  Angstrom.
+- Outputs :: a handle from =rgpot_potential_new_eam_table=: the tabulated EAM
+  potential of the Rust core, evaluated in process with no C++ kernel and no
+  engine plugin.
+  The handle needs a build with =with_rust_core=.
+  See [[file:c_abi.org][C ABI of rgpot-core]] for what it evaluates.
+- Errors :: throws =rgpot::Error= with status =RGPOT_INVALID_PARAMETER= and a
+  message starting =invalid parameter: EAM table:= when the core returns NULL:
+  an empty =path=, an unknown =format=, a file that cannot be opened or is not a
+  table of that format.
+  A calculation on a cell whose face spacing is not above twice the cutoff
+  throws the same status from =calculate=.
 
 *** =rgpot::PotentialHandle::calculate=
 
@@ -526,9 +552,24 @@ explicit PotentialBase(PotType inp_type);
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a =PotCaps= with the reentrancy, per-image, batched, periodic,
-  group-collective and stress flags; the default is a value-initialised
-  =PotCaps= (=SharedInstance=, periodic, nothing else set).
+  group-collective, stress and analytic-HVP flags; the default is a
+  value-initialised =PotCaps= (=SharedInstance=, periodic, nothing else set).
 - Errors :: none; the method is =noexcept=.
+
+*** =rgpot::PotentialBase::hessianVectorImpl=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+virtual void hessianVectorImpl(const ForceInput &, const double *,
+                               double *) const;
+#+end_src
+
+- Inputs :: =in= and =direction=, with =3 * in.nAtoms= Cartesian entries.
+- Units :: the energy Hessian times a direction, so eV/Angstrom when the
+  coordinates and direction are in Angstrom.
+- Outputs :: =product= receives =H direction=.
+- Errors :: the base throws =std::runtime_error=.
+  Potentials whose =caps().analyticHvp= is true override this method.
 
 *** =rgpot::PotentialBase::forceBatch=
 

@@ -39,6 +39,7 @@
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/CalculatorGroup.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/pot_types.hpp"
@@ -164,9 +165,12 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// did not increase.
 ///
 /// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
-/// is major 1, minor 4, layout revision 1. Minor 1 added
-/// `rgpot_eindir_abi_compatible`. No exported C struct of that header
-/// changed layout. The neighbour query is `RGPOT_NLIST_ABI` 4.
+/// is major 1, minor 6, layout revision 1. Minor 1 added
+/// `rgpot_eindir_abi_compatible`, minor 2 the Hessian-vector functions,
+/// minor 3 the fused-cache settings and error kind, minor 4 the Taylor
+/// jet functions, minor 5 the engine and RPC Hessian-vector exports and
+/// minor 6 `rgpot_potential_new_eam_table`. No exported C struct
+/// of that header changed layout. The neighbour query is `RGPOT_NLIST_ABI` 4.
 /// The C API is exported from librgpot, so it has no shared library of
 /// its own and rides this SONAME. `librgpot_mpi` stays at soversion 3
 /// (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
@@ -178,7 +182,8 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// 6 drops the copied half-list from LJ and Morse, and gives ZBL and the
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
-inline constexpr std::uint32_t kCxxSoversion = 6;
+/// 8 stamps SuttonChenConfig, PotType::SuttonChen and SuttonChenPot.
+inline constexpr std::uint32_t kCxxSoversion = 8;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -191,7 +196,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x0bba2f6c8fb3f542ull},
+    {"linux-x86_64-libstdc++-lp64", 0x0a33f3aa4b4e5162ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -234,7 +239,7 @@ static_assert(soversion_tags_unique(), "kCxxSoversionTable tags must be unique")
 /// The cache hook @c setCache adds one when @c RGPOT_HAS_CACHE is defined.
 /// A test counts the @c virtual declarations in Potential.hpp and fails when
 /// this and the header disagree.
-inline constexpr std::uint32_t kPotentialBaseVirtuals = 5;
+inline constexpr std::uint32_t kPotentialBaseVirtuals = 6;
 inline constexpr std::uint32_t kPotentialBaseCacheVirtuals = 1;
 /// Virtual functions @c Potential<Derived> declares itself (@c forceImpl and
 /// @c forceBatchImpl).
@@ -302,6 +307,7 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(PotCaps, periodic));
   f.add(offsetof(PotCaps, groupCollective));
   f.add(offsetof(PotCaps, stress));
+  f.add(offsetof(PotCaps, analyticHvp));
   f.type<CalculatorGroup>();
   f.add(offsetof(CalculatorGroup, index));
   f.add(offsetof(CalculatorGroup, ranks));
@@ -326,6 +332,15 @@ constexpr std::uint64_t compute_hash() {
   f.type<ZBLConfig>();
   f.add(offsetof(ZBLConfig, cut_inner));
   f.add(offsetof(ZBLConfig, cut_global));
+  f.type<SuttonChenConfig>();
+  f.add(offsetof(SuttonChenConfig, epsilon));
+  f.add(offsetof(SuttonChenConfig, c));
+  f.add(offsetof(SuttonChenConfig, a));
+  f.add(offsetof(SuttonChenConfig, n));
+  f.add(offsetof(SuttonChenConfig, m));
+  f.add(offsetof(SuttonChenConfig, cutoff));
+  f.add(offsetof(SuttonChenConfig, periodic));
+  f.add(offsetof(SuttonChenConfig, stress));
 
   // Enumerations: underlying width and the values consumers switch on.
   f.type<Reentrancy>();
@@ -339,6 +354,16 @@ constexpr std::uint64_t compute_hash() {
   f.add(static_cast<std::uint64_t>(PotType::Morse));
   f.add(static_cast<std::uint64_t>(PotType::LJCluster));
   f.add(static_cast<std::uint64_t>(PotType::ZBL));
+  f.add(static_cast<std::uint64_t>(PotType::SuttonChen));
+  f.add(static_cast<std::uint64_t>(PotType::Eckart));
+  f.add(static_cast<std::uint64_t>(PotType::MullerBrown));
+  f.add(static_cast<std::uint64_t>(PotType::ModifiedMullerBrown));
+  f.add(static_cast<std::uint64_t>(PotType::LepsHH2));
+  f.add(static_cast<std::uint64_t>(PotType::LepsHCl2));
+  f.add(static_cast<std::uint64_t>(PotType::LepsFH2));
+  f.add(static_cast<std::uint64_t>(PotType::DoubleWell));
+  f.add(static_cast<std::uint64_t>(PotType::CoupledProtonWell));
+  f.add(static_cast<std::uint64_t>(PotType::CBE));
 
   // Polymorphic classes: size, alignment and the virtual-function counts.
   // offsetof is not defined for them.
@@ -351,6 +376,7 @@ constexpr std::uint64_t compute_hash() {
   f.type<LJClusterPot>();
   f.type<MorsePot>();
   f.type<ZBLPot>();
+  f.type<SuttonChenPot>();
 #ifdef RGPOT_HAS_CACHE
   f.type<cache::EvalCounts>();
   f.add(offsetof(cache::EvalCounts, computed));

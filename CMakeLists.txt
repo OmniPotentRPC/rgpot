@@ -1,9 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 
-if(POLICY CMP0110)
-  cmake_policy(SET CMP0110 NEW)
-endif()
-
 project(
   rgpot
   # [[[cog import rgpot_version as v; cog.outl(f"  VERSION {v.VERSION}")]]]
@@ -60,6 +56,7 @@ endif()
 
 option(RGPOT_WITH_EAM_TABLE
        "EAM and Finnis-Sinclair potentials read from LAMMPS tables" OFF)
+option(RGPOT_WITH_CBE "Linked external cbe-pes frontend" OFF)
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
 option(RGPOT_WITH_CP2K
        "CP2KPot, the potserv CP2K backend and libcp2kc_rgpot against libcp2k (pkg-config libcp2k)" OFF)
@@ -87,6 +84,24 @@ endif()
 
 # 1. Server/Physics Dependencies
 if(NOT RGPOT_RPC_CLIENT_ONLY)
+  include(CheckCXXSourceCompiles)
+  check_cxx_source_compiles(
+    "#include <atomic>\n#include <cstdint>\nint main() { std::uint64_t w = 0; std::atomic_ref<std::uint64_t>(w).fetch_or(1u, std::memory_order_relaxed); return 0; }"
+    RGPOT_HAS_STD_ATOMIC_REF)
+  if(NOT RGPOT_HAS_STD_ATOMIC_REF)
+    check_cxx_source_compiles(
+      "#include <cstdint>\n#if defined(_MSC_VER)\n#include <intrin.h>\n#endif\nint main() {\n  std::uint64_t w = 0;\n#if defined(__GNUC__) || defined(__clang__)\n  __atomic_fetch_or(&w, 1u, __ATOMIC_RELAXED);\n#elif defined(_MSC_VER)\n  _InterlockedOr64(reinterpret_cast<volatile long long *>(&w), 1LL);\n#else\n#error \"no atomic_fetch_or fallback\"\n#endif\n  return 0;\n}"
+      RGPOT_HAS_ATOMIC_FETCH_OR_FALLBACK)
+    if(NOT RGPOT_HAS_ATOMIC_FETCH_OR_FALLBACK)
+      message(
+        FATAL_ERROR
+          "std::atomic_ref requires libc++ 19 or newer (or a compiler with __atomic_fetch_or)"
+      )
+    endif()
+    message(
+      STATUS
+        "std::atomic_ref unavailable, using compiler atomic fetch_or fallback")
+  endif()
   # Core builds provide every public Fortran potential. The RPC-only
   # bridge has no numerical kernels and does not need a Fortran compiler.
   enable_language(Fortran)
@@ -230,6 +245,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/LennardJones/LJClusterPot.cc
       CppCore/rgpot/LennardJones/LJClusterKernel.cc
       CppCore/rgpot/Morse/MorsePot.cc
+      CppCore/rgpot/Models/ModelPots.cc
+      CppCore/rgpot/Models/ModelCapi.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
       CppCore/rgpot/simd/dispatch.cc
       CppCore/rgpot/simd/scalar_kernels.cc
@@ -322,7 +339,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   endif()
 
   if(RGPOT_WITH_EAM_TABLE)
-    list(APPEND RGPOT_SOURCES CppCore/rgpot/EAMTable/EAMTablePot.cc)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/EAMTable/EAMTablePot.cc
+         CppCore/rgpot/EAMTable/EAMTableImages.cc)
   endif()
 
   if(RGPOT_BUILD_TESTS)
@@ -414,7 +432,17 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       APPEND PROPERTY COMPILE_OPTIONS ${RGPOT_VECTOR_LOOP_FLAGS})
   endif()
   add_subdirectory(CppCore/rgpot/fortran)
+  if(RGPOT_WITH_CBE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(CBE REQUIRED cbe)
+    find_path(CBE_HEADER_DIR NAMES cbe.h HINTS ${CBE_INCLUDE_DIRS}
+              NO_DEFAULT_PATH REQUIRED)
+    find_library(CBE_LIBRARY NAMES cbe HINTS ${CBE_LIBRARY_DIRS}
+                 NO_DEFAULT_PATH REQUIRED)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/CBEPot/CBEPot.cc)
+  endif()
   add_library(rgpot ${RGPOT_SOURCES})
+  target_compile_definitions(rgpot PRIVATE RGPOT_MODEL_BUILD)
   if(RGPOT_WITH_HIGHWAY)
     target_link_libraries(rgpot PRIVATE hwy)
     target_compile_definitions(rgpot PRIVATE RGPOT_WITH_HIGHWAY)
@@ -424,6 +452,11 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
                                         VERSION ${PROJECT_VERSION}
                                         SOVERSION ${RGPOT_CXX_SOVERSION})
   target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels rgpot_nlist Threads::Threads)
+  if(RGPOT_WITH_CBE)
+    target_include_directories(rgpot PRIVATE ${CBE_HEADER_DIR})
+    target_link_libraries(rgpot PRIVATE ${CBE_LIBRARY})
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_CBE)
+  endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(
       rgpot PRIVATE
@@ -614,6 +647,7 @@ if(RGPOT_IS_TOP_LEVEL)
       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
       FILES_MATCHING
       PATTERN "Morse/detail" EXCLUDE
+      PATTERN "SuttonChen/detail" EXCLUDE
       PATTERN "*.hpp"
       PATTERN "*.h")
   endif()

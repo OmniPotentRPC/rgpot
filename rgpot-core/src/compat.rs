@@ -18,7 +18,7 @@ pub const PROTOCOL_FAMILY: &str = "rgpot.potentials";
 /// Wire-incompatible protocol revision.
 pub const PROTOCOL_MAJOR: u16 = 1;
 /// Additive protocol revision.
-pub const PROTOCOL_MINOR: u16 = 0;
+pub const PROTOCOL_MINOR: u16 = 1;
 /// Cap'n Proto identity of `Potentials.capnp`.
 pub const SCHEMA_ID: &str = "0xbd1f89fa17369103";
 
@@ -157,8 +157,7 @@ pub fn check_capabilities(caps: Reader<'_>, want: &Expectation) -> Result<(), St
 
 /// Decode a flat `Capabilities` message held as aligned words and check it.
 pub fn check_capabilities_words(words: &[u64], want: &Expectation) -> Result<(), String> {
-    let bytes =
-        unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), words.len() * 8) };
+    let bytes = unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), words.len() * 8) };
     let mut cursor = bytes;
     let message = capnp::serialize::read_message_from_flat_slice(
         &mut cursor,
@@ -192,13 +191,17 @@ pub fn fill_compatibility(mut caps: Builder<'_>) {
 }
 
 /// Fill `caps` as the self-description of an rgpot RPC server.
-pub fn describe_server(mut caps: Builder<'_>) {
+pub fn describe_server(mut caps: Builder<'_>, analytic_hvp: bool) {
     caps.set_backend_name("rgpot");
     caps.set_backend_version(env!("CARGO_PKG_VERSION"));
     caps.set_available(true);
-    let mut ops = caps.reborrow().init_operations(2);
+    let count = if analytic_hvp { 3 } else { 2 };
+    let mut ops = caps.reborrow().init_operations(count);
     ops.set(0, Operation::Energy);
     ops.set(1, Operation::Forces);
+    if analytic_hvp {
+        ops.set(2, Operation::HessianVector);
+    }
     fill_compatibility(caps);
 }
 
@@ -273,15 +276,51 @@ mod tests {
         let want = Expectation::default();
         type Edit = Box<dyn FnOnce(&mut Builder<'_>)>;
         let cases: Vec<(&str, Edit, &str)> = vec![
-            ("family", Box::new(|c| c.set_protocol_family("other.family")), "protocol family"),
-            ("major", Box::new(|c| c.set_protocol_major(2)), "protocol major"),
-            ("schema", Box::new(|c| c.set_schema_id("0xdeadbeef")), "schema id"),
-            ("bridge major", Box::new(|c| c.set_bridge_abi_major(2)), "bridge ABI major"),
-            ("bridge minor", Box::new(|c| c.set_bridge_abi_minor(9)), "bridge ABI minor"),
-            ("layout", Box::new(|c| c.set_bridge_layout(7)), "objective layout"),
-            ("features", Box::new(|c| c.set_bridge_features(1 << 40)), "bridge features"),
-            ("dlpack major", Box::new(|c| c.set_dlpack_major(2)), "DLPack major"),
-            ("dlpack minor", Box::new(|c| c.set_dlpack_minor(9)), "DLPack minor"),
+            (
+                "family",
+                Box::new(|c| c.set_protocol_family("other.family")),
+                "protocol family",
+            ),
+            (
+                "major",
+                Box::new(|c| c.set_protocol_major(2)),
+                "protocol major",
+            ),
+            (
+                "schema",
+                Box::new(|c| c.set_schema_id("0xdeadbeef")),
+                "schema id",
+            ),
+            (
+                "bridge major",
+                Box::new(|c| c.set_bridge_abi_major(2)),
+                "bridge ABI major",
+            ),
+            (
+                "bridge minor",
+                Box::new(|c| c.set_bridge_abi_minor(9)),
+                "bridge ABI minor",
+            ),
+            (
+                "layout",
+                Box::new(|c| c.set_bridge_layout(7)),
+                "objective layout",
+            ),
+            (
+                "features",
+                Box::new(|c| c.set_bridge_features(1 << 40)),
+                "bridge features",
+            ),
+            (
+                "dlpack major",
+                Box::new(|c| c.set_dlpack_major(2)),
+                "DLPack major",
+            ),
+            (
+                "dlpack minor",
+                Box::new(|c| c.set_dlpack_minor(9)),
+                "DLPack minor",
+            ),
             (
                 "operation",
                 Box::new(|c| {
@@ -358,7 +397,7 @@ mod server_tests {
             _p: potential::GetCapabilitiesParams,
             mut r: potential::GetCapabilitiesResults,
         ) -> Promise<(), capnp::Error> {
-            describe_server(r.get().init_capabilities());
+            describe_server(r.get().init_capabilities(), false);
             Promise::ok(())
         }
     }
@@ -371,14 +410,16 @@ mod server_tests {
             mut r: potential::GetCapabilitiesResults,
         ) -> Promise<(), capnp::Error> {
             let mut caps = r.get().init_capabilities();
-            describe_server(caps.reborrow());
+            describe_server(caps.reborrow(), false);
             caps.set_protocol_family("other.family");
             Promise::ok(())
         }
     }
 
     fn verdict<S: potential::Server + 'static>(server: S) -> Result<(), String> {
-        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
         let local = tokio::task::LocalSet::new();
         local.block_on(&rt, async {
             let client: potential::Client = capnp_rpc::new_client(server);

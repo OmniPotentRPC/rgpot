@@ -350,6 +350,14 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/Morse')  # 'morse'
     rgpotentials += [morse]
 
+    subdir('rgpot/Models')
+    rgpotentials += [model_pots]
+
+    if has_cbe
+        subdir('rgpot/CBEPot')
+        rgpotentials += [cbe_pot]
+    endif
+
     subdir('rgpot/Gupta')  # 'gupta'
     rgpotentials += [gupta]
 
@@ -507,6 +515,19 @@ if not get_option('with_rpc_client_only')
     if has_fortran
         _rgpot_link_args += _fortran_hide_args
     endif
+    if has_fast_nlist and not _fast_as_object and host_system != 'windows'
+        if host_system == 'darwin'
+            _rgpot_link_args += [
+                '-Wl,-force_load,' + _fastnlist_tgt.full_path(),
+            ]
+        else
+            _rgpot_link_args += [
+                '-Wl,--whole-archive',
+                _fastnlist_tgt.full_path(),
+                '-Wl,--no-whole-archive',
+            ]
+        endif
+    endif
     _rgpot_srcs = []
     _rgpot_cpp_args = _args
     if host_system == 'windows'
@@ -550,7 +571,16 @@ if not get_option('with_rpc_client_only')
             capnp_rpc_dep,
             ptlrpc_dep,
         ] + fortran_rt_deps
-        _classical_whole = [lennard_jones, morse, zbl]
+        _classical_whole = [
+            lennard_jones,
+            morse,
+            zbl,
+            model_pots,
+            rgpot_halfshell,
+        ]
+        if has_cbe
+            _classical_whole += [cbe_pot]
+        endif
         if has_water
             _classical_whole += [water_pots]
         endif
@@ -1998,6 +2028,11 @@ if get_option('with_tests')
         else
             _export_dynamic = false
         endif
+        if _rt[0] == 'ModelPotsTest'
+            # This test links the model C API archive directly. On Windows its
+            # declarations must not name DLL import thunks.
+            case_args += ['-DRGPOT_MODEL_BUILD']
+        endif
         _test_exe = executable(
             _rt[2][0],
             sources: ['tests/' + _rt[2][1]],
@@ -2115,9 +2150,12 @@ if get_option('with_tests')
         if _sanitize != 'none'
             _nlist_rust_args += ['-fsanitize=' + _sanitize]
         endif
+        _nlist_rust_cc = cc.cmd_array()
         _nlist_rust_cxx = cppc.cmd_array()
         _nlist_rust_env = {
+            'CC': _nlist_rust_cc[_nlist_rust_cc.length() - 1],
             'CXX': _nlist_rust_cxx[_nlist_rust_cxx.length() - 1],
+            'RUSTC': _rustc.full_path(),
         }
         if 'thread' in _sanitize
             _nlist_rust_env += {'TSAN_OPTIONS': _tsan_options}
@@ -2881,23 +2919,39 @@ endif
 if not meson.is_subproject()
     install_headers('../include/rgpot/plugin.h', subdir: 'rgpot')
     # Headers: #include "rgpot/NWChemPot/..." with -I${prefix}/include
+    # install_subdir matches exclude_files against each file's path
+    # relative to rgpot/. A glob is not such a path, so '*.cc' drops
+    # nothing and PotHelpers.cc, EMT/EMTPot.cc and the other
+    # implementation files are installed. Pass every implementation path
+    # literally. rpc/Potentials.capnp stays out because rpc/meson.build
+    # installs the effective schema in its place.
+    _install_py = find_program('python3', required: false)
+    if not _install_py.found()
+        error('installing headers needs python3 to list implementation sources')
+    endif
+    _install_impl = run_command(
+        _install_py,
+        meson.current_source_dir() / 'tests' / 'check_installed_sources.py',
+        '--list',
+        meson.current_source_dir() / 'rgpot',
+        check: true,
+    ).stdout().strip().split('\n')
+    _install_exclude = ['rpc/Potentials.capnp']
+    foreach _rel : _install_impl
+        if _rel != ''
+            _install_exclude += [_rel]
+        endif
+    endforeach
     install_subdir(
         'rgpot',
         install_dir: get_option('includedir'),
-        exclude_directories: ['__pycache__', 'rpc/local', 'Morse/detail'],
-        exclude_files: [
-            '*.o',
-            '*.a',
-            '*.so',
-            '*.cc',
-            '*.c',
-            '*.cpp',
-            '*.f90',
-            '*.F',
-            '*.py',
-            # rpc/meson.build installs the effective schema in its place.
-            'rpc/Potentials.capnp',
+        exclude_directories: [
+            '__pycache__',
+            'rpc/local',
+            'Morse/detail',
+            'SuttonChen/detail',
         ],
+        exclude_files: _install_exclude,
     )
 
     # The .pc always ships: consumers discover whatever this build enabled
