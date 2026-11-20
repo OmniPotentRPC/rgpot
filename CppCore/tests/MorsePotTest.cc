@@ -1323,14 +1323,22 @@ TEST_CASE("MorsePot workspace invalidates when a new potential reuses a "
   const void *addr2 = pot.get();
   const bool heap_reused = (addr1 == addr2);
 
-  // Build pot2's stored list on 1 thread, then evaluate on 4 threads where
-  // neighbours_.reused() is true and builds() == 1 matches pot1.
-  ThreadGuard::set("1");
-  pot->forceImpl({n, sys2.pos.data(), sys2.z.data(), sys2.box.data()}, &out);
+  // hessianVectorImpl builds pot2's stored list and leaves the pair
+  // workspace as pot1's 4-thread call left it. A force call on one thread
+  // would release that workspace first, and then no stale index is left
+  // to find. The 4-thread call sees reused() and builds() == 1, as pot1's
+  // list had.
+  std::vector<double> direction(3 * n, 0.0);
+  std::vector<double> hv(3 * n, 0.0);
+  direction[0] = 1.0;
+  pot->hessianVectorImpl({n, sys2.pos.data(), sys2.z.data(), sys2.box.data()},
+                         direction.data(), hv.data());
   REQUIRE(pot->retainedPairs() == slots1);
 
   ThreadGuard::set("4");
-  const auto got_heap = runFullEval(*pot, sys2.pos, sys2.z, sys2.box);
+  bool heap_first_reused = false;
+  const auto got_heap = runFullEval(*pot, sys2.pos, sys2.z, sys2.box, &heap_first_reused);
+  CHECK(heap_first_reused);
   double max_df_heap = 0.0;
   double max_fresh = 0.0;
   for (std::size_t k = 0; k < 3 * n; ++k) {
@@ -1361,11 +1369,14 @@ TEST_CASE("MorsePot workspace invalidates when a new potential reuses a "
   const void *opt_addr2 = &(*inplace);
   REQUIRE(opt_addr1 == opt_addr2);
 
-  ThreadGuard::set("1");
-  inplace->forceImpl({n, sys2.pos.data(), sys2.z.data(), sys2.box.data()},
-                     &out);
+  inplace->hessianVectorImpl({n, sys2.pos.data(), sys2.z.data(), sys2.box.data()},
+                             direction.data(), hv.data());
+  REQUIRE(inplace->retainedPairs() == slots1);
   ThreadGuard::set("4");
-  const auto got_inplace = runFullEval(*inplace, sys2.pos, sys2.z, sys2.box);
+  bool inplace_first_reused = false;
+  const auto got_inplace =
+      runFullEval(*inplace, sys2.pos, sys2.z, sys2.box, &inplace_first_reused);
+  CHECK(inplace_first_reused);
   double max_df_inplace = 0.0;
   for (std::size_t k = 0; k < 3 * n; ++k) {
     max_df_inplace = std::max(max_df_inplace,
