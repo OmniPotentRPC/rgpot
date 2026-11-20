@@ -59,8 +59,7 @@ NWChem and CPMD keep the prefix-parameterized profile ABI that =NWChemPot= and
 The plugin interface in =include/rgpot/plugin.h= is a separate family. tblite,
 dftd3, dftd4, ExprPot, XcKernel, CPMD and CP2K have no engine library.
 
-Every library above except
-=libpotlibc_engine= exports =rgpot_engine_force_batch=, =rgpot_engine_hvp=,
+Every library above except =libpotlibc_engine= exports =rgpot_engine_force_batch=, =rgpot_engine_hvp=,
 =rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible=, =rgpot_engine_name=,
 =rgpot_engine_version=,
 =rgpot_engine_model_digest=, =rgpot_engine_caps=, =rgpot_engine_last_error=,
@@ -68,8 +67,6 @@ Every library above except
 =rgpot_engine_select_orbitals=, =rgpot_engine_copy_orbitals=,
 =rgpot_engine_last_components= and =rgpot_engine_component_name=.
 Only =libcomposite_engine= has components; the others report none.
-=libpotlibc_engine= exports the stamp, compatibility, name, version, caps,
-last-error and analytic-HVP symbols; it omits the batch and setting symbols.
 None of them exports =rgpot_engine_model_state=, =rgpot_engine_set_callbacks=,
 =rgpot_engine_hint= or =rgpot_engine_neighbor_options=.
 
