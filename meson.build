@@ -986,6 +986,9 @@ if get_option('with_rust_core')
         # The library is a generated file, so ninja runs cargo before
         # anything links it. A find_library on the cargo output fails on a
         # fresh setup: nothing has built the file when meson configures.
+        # Without the pair list the crate needs only the workspace
+        # rust-version. The script applies the Darwin archiver override
+        # on every run, so this command does not pass --fast-toolchain.
         rgpot_rust_target = custom_target(
             'rgpot_rust_core',
             command: [
@@ -1003,7 +1006,6 @@ if get_option('with_rust_core')
                 _rust_archive,
                 '--features',
                 ','.join(_cargo_features),
-                '--fast-toolchain',
                 '@OUTPUT0@',
                 '@OUTPUT1@',
             ],
