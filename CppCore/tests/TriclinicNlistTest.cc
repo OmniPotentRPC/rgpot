@@ -40,7 +40,8 @@ using Periodic = std::array<bool, 3>;
 constexpr Periodic kAll{{true, true, true}};
 
 double det3(const Box &b) {
-  return b[0] * (b[4] * b[8] - b[5] * b[7]) - b[1] * (b[3] * b[8] - b[5] * b[6]) +
+  return b[0] * (b[4] * b[8] - b[5] * b[7]) -
+         b[1] * (b[3] * b[8] - b[5] * b[6]) +
          b[2] * (b[3] * b[7] - b[4] * b[6]);
 }
 
@@ -50,7 +51,9 @@ void cross(const double *u, const double *v, double *o) {
   o[2] = u[0] * v[1] - u[1] * v[0];
 }
 
-double norm(const double *v) { return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); }
+double norm(const double *v) {
+  return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+}
 
 /// Perpendicular face heights: volume over the area of the other two vectors.
 std::array<double, 3> faceHeights(const Box &b) {
@@ -69,7 +72,8 @@ double minHeight(const Box &b) {
   return std::min({h[0], h[1], h[2]});
 }
 
-/// Rows k of the inverse of the cell: reciprocal vectors with b_k . a_m = delta.
+/// Rows k of the inverse of the cell: reciprocal vectors with b_k . a_m =
+/// delta.
 std::array<std::array<double, 3>, 3> reciprocal(const Box &b) {
   const double volume = det3(b);
   std::array<std::array<double, 3>, 3> rec{};
@@ -99,7 +103,8 @@ std::vector<Image> oracle(const std::vector<double> &p, const Box &b, double rc,
   const auto rec = reciprocal(b);
   double reach[3];
   for (int k = 0; k < 3; ++k) {
-    reach[k] = periodic[static_cast<std::size_t>(k)] ? rc * norm(rec[k].data()) : 0.0;
+    reach[k] =
+        periodic[static_cast<std::size_t>(k)] ? rc * norm(rec[k].data()) : 0.0;
   }
   std::vector<Image> out;
   const double rc2 = rc * rc;
@@ -114,7 +119,8 @@ std::vector<Image> oracle(const std::vector<double> &p, const Box &b, double rc,
           lo[k] = hi[k] = 0;
           continue;
         }
-        const double f = rec[k][0] * d0[0] + rec[k][1] * d0[1] + rec[k][2] * d0[2];
+        const double f =
+            rec[k][0] * d0[0] + rec[k][1] * d0[1] + rec[k][2] * d0[2];
         lo[k] = static_cast<int>(std::ceil(f - reach[k] - 1e-9));
         hi[k] = static_cast<int>(std::floor(f + reach[k] + 1e-9));
       }
@@ -130,8 +136,11 @@ std::vector<Image> oracle(const std::vector<double> &p, const Box &b, double rc,
             }
             const double r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
             if (r2 <= rc2) {
-              out.push_back(Image{static_cast<int>(i), static_cast<int>(j), {s0, s1, s2},
-                                  {d[0], d[1], d[2]}, r2});
+              out.push_back(Image{static_cast<int>(i),
+                                  static_cast<int>(j),
+                                  {s0, s1, s2},
+                                  {d[0], d[1], d[2]},
+                                  r2});
             }
           }
         }
@@ -143,8 +152,8 @@ std::vector<Image> oracle(const std::vector<double> &p, const Box &b, double rc,
 
 /// Atoms at least `dmin` apart through every image. Unwrapped places each
 /// atom in a random image within two cells of the one inside the cell.
-std::vector<double> atoms(const Box &b, std::size_t n, unsigned seed, bool unwrapped,
-                          double dmin = 0.9) {
+std::vector<double> atoms(const Box &b, std::size_t n, unsigned seed,
+                          bool unwrapped, double dmin = 0.9) {
   std::mt19937 g(seed);
   std::uniform_real_distribution<double> u(0.0, 1.0);
   std::uniform_int_distribution<int> k(-2, 2);
@@ -164,7 +173,8 @@ std::vector<double> atoms(const Box &b, std::size_t n, unsigned seed, bool unwra
     }
     bool ok = true;
     for (std::size_t j = 0; j < p.size() / 3 && ok; ++j) {
-      const double d0[3] = {r[0] - p[3 * j], r[1] - p[3 * j + 1], r[2] - p[3 * j + 2]};
+      const double d0[3] = {r[0] - p[3 * j], r[1] - p[3 * j + 1],
+                            r[2] - p[3 * j + 2]};
       double ff[3];
       for (int q = 0; q < 3; ++q) {
         ff[q] = rec[q][0] * d0[0] + rec[q][1] * d0[1] + rec[q][2] * d0[2];
@@ -174,7 +184,8 @@ std::vector<double> atoms(const Box &b, std::size_t n, unsigned seed, bool unwra
         for (int s1 = static_cast<int>(std::ceil(ff[1] - reach[1]));
              s1 <= static_cast<int>(std::floor(ff[1] + reach[1])) && ok; ++s1) {
           for (int s2 = static_cast<int>(std::ceil(ff[2] - reach[2]));
-               s2 <= static_cast<int>(std::floor(ff[2] + reach[2])) && ok; ++s2) {
+               s2 <= static_cast<int>(std::floor(ff[2] + reach[2])) && ok;
+               ++s2) {
             double d[3];
             for (int x = 0; x < 3; ++x) {
               d[x] = d0[x] - (s0 * b[x] + s1 * b[3 + x] + s2 * b[6 + x]);
@@ -237,11 +248,12 @@ struct Visit {
 };
 
 /// Pairs with r2 <= rc^2 from one half walk. The vector is r_i - r_j.
-std::map<Pair, std::vector<Visit>> halfVisits(const rgpot::nlist::Neighbours &cells,
-                                              std::size_t n, double rc) {
+std::map<Pair, std::vector<Visit>>
+halfVisits(const rgpot::nlist::Neighbours &cells, std::size_t n, double rc) {
   std::map<Pair, std::vector<Visit>> out;
   cells.forHalf(0, static_cast<std::int64_t>(n),
-                [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+                [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                    double dz, double r2) {
                   if (r2 <= rc * rc) {
                     REQUIRE(i < j);
                     out[{i, j}].push_back(Visit{{dx, dy, dz}, r2});
@@ -250,8 +262,9 @@ std::map<Pair, std::vector<Visit>> halfVisits(const rgpot::nlist::Neighbours &ce
   return out;
 }
 
-rgpot::nlist::Neighbours build(const std::vector<double> &p, const Box &box, double rc,
-                               rgpot::nlist::Mode mode, const Periodic &periodic = kAll) {
+rgpot::nlist::Neighbours build(const std::vector<double> &p, const Box &box,
+                               double rc, rgpot::nlist::Mode mode,
+                               const Periodic &periodic = kAll) {
   rgpot::nlist::Spec spec;
   spec.cutoff = rc;
   spec.skin = mode == rgpot::nlist::Mode::Stream ? 0.0 : 0.2 * rc;
@@ -268,8 +281,8 @@ const char *modeName(rgpot::nlist::Mode m) {
 
 /// The walk of `cells` holds exactly the images of `want` that are the
 /// nearest of their pair, with the oracle's vector.
-void requireNearestImages(const rgpot::nlist::Neighbours &cells, std::size_t n, double rc,
-                          const std::vector<Image> &want) {
+void requireNearestImages(const rgpot::nlist::Neighbours &cells, std::size_t n,
+                          double rc, const std::vector<Image> &want) {
   std::map<Pair, Image> nearest;
   for (const auto &m : want) {
     if (m.i == m.j) {
@@ -306,11 +319,13 @@ void requireNearestImages(const rgpot::nlist::Neighbours &cells, std::size_t n, 
 }
 
 /// A directed walk visits each pair twice, with opposite vectors bit for bit.
-void requireOpposite(const rgpot::nlist::Neighbours &cells, std::size_t n, double rc) {
+void requireOpposite(const rgpot::nlist::Neighbours &cells, std::size_t n,
+                     double rc) {
   std::map<Pair, std::array<double, 3>> seen;
   std::size_t visits = 0;
   cells.forDirected(0, static_cast<std::int64_t>(n),
-                    [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+                    [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                        double dz, double r2) {
                       if (r2 <= rc * rc) {
                         seen[{i, j}] = {dx, dy, dz};
                         ++visits;
@@ -328,7 +343,8 @@ void requireOpposite(const rgpot::nlist::Neighbours &cells, std::size_t n, doubl
 
 } // namespace
 
-TEST_CASE("every pair inside half the smallest face height is visited on skewed and large cells",
+TEST_CASE("every pair inside half the smallest face height is visited on "
+          "skewed and large cells",
           "[nlist][triclinic][oracle]") {
   for (const Cell &cell : allCells()) {
     const double hmin = minHeight(cell.box);
@@ -337,7 +353,8 @@ TEST_CASE("every pair inside half the smallest face height is visited on skewed 
         const double rc = std::min(fraction * hmin, 9.0);
         INFO(cell.name << " rc " << rc << " unwrapped " << unwrapped);
         REQUIRE(2.0 * rc <= hmin * (1.0 + 1e-12));
-        const auto p = atoms(cell.box, cell.atoms, 12345, unwrapped, std::min(0.9, 0.3 * rc));
+        const auto p = atoms(cell.box, cell.atoms, 12345, unwrapped,
+                             std::min(0.9, 0.3 * rc));
         const auto want = oracle(p, cell.box, rc);
         std::size_t pairs = 0;
         for (const auto &m : want) {
@@ -353,7 +370,8 @@ TEST_CASE("every pair inside half the smallest face height is visited on skewed 
         if (fraction == 0.5) {
           REQUIRE(pairs > 5);
         }
-        for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+        for (const auto mode :
+             {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
           INFO("mode " << modeName(mode));
           const auto cells = build(p, cell.box, rc, mode);
           requireNearestImages(cells, p.size() / 3, rc, want);
@@ -364,7 +382,8 @@ TEST_CASE("every pair inside half the smallest face height is visited on skewed 
   }
 }
 
-TEST_CASE("a cutoff past half the smallest face height keeps the nearest image of a pair",
+TEST_CASE("a cutoff past half the smallest face height keeps the nearest image "
+          "of a pair",
           "[nlist][triclinic][oracle]") {
   // One image per pair is what the pair kernels sum. Past 2 rc <= h it is
   // the nearest image, not every image, that a walk visits.
@@ -375,7 +394,8 @@ TEST_CASE("a cutoff past half the smallest face height keeps the nearest image o
       INFO(cell.name << " rc " << rc);
       const auto p = atoms(cell.box, cell.atoms, 777, false);
       const auto want = oracle(p, cell.box, rc);
-      for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+      for (const auto mode :
+           {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
         INFO("mode " << modeName(mode));
         const auto cells = build(p, cell.box, rc, mode);
         requireNearestImages(cells, p.size() / 3, rc, want);
@@ -389,8 +409,8 @@ namespace {
 
 /// Energy and forces of a pair potential summed over every image in `want`.
 template <typename Phi>
-void oracleSum(const std::vector<Image> &want, std::size_t n, double shift, Phi phi, double &energy,
-               std::vector<double> &forces) {
+void oracleSum(const std::vector<Image> &want, std::size_t n, double shift,
+               Phi phi, double &energy, std::vector<double> &forces) {
   energy = 0.0;
   forces.assign(3 * n, 0.0);
   for (const auto &m : want) {
@@ -410,8 +430,8 @@ std::array<std::array<double, 3>, 3> rows(const Box &b) {
   return {{{b[0], b[1], b[2]}, {b[3], b[4], b[5]}, {b[6], b[7], b[8]}}};
 }
 
-void requireSameForces(const rgpot::types::AtomMatrix &f, const std::vector<double> &want,
-                       std::size_t n) {
+void requireSameForces(const rgpot::types::AtomMatrix &f,
+                       const std::vector<double> &want, std::size_t n) {
   double scale = 0.0;
   for (const double v : want) {
     scale = std::max(scale, std::fabs(v));
@@ -425,10 +445,12 @@ void requireSameForces(const rgpot::types::AtomMatrix &f, const std::vector<doub
 
 } // namespace
 
-TEST_CASE("evaluate sums every image inside the cutoff on skewed and large cells",
-          "[nlist][triclinic][oracle][evaluate]") {
+TEST_CASE(
+    "evaluate sums every image inside the cutoff on skewed and large cells",
+    "[nlist][triclinic][oracle][evaluate]") {
   for (const Cell &cell : allCells()) {
-    if (std::string(cell.name) == "half tilt" || std::string(cell.name) == "cube 30, tilts 4x") {
+    if (std::string(cell.name) == "half tilt" ||
+        std::string(cell.name) == "cube 30, tilts 4x") {
       continue;
     }
     const double hmin = minHeight(cell.box);
@@ -508,7 +530,8 @@ std::set<Key> fullImages(const std::vector<Image> &want) {
 
 } // namespace
 
-TEST_CASE("the neighbour table lists every image with its shift on skewed and large cells",
+TEST_CASE("the neighbour table lists every image with its shift on skewed and "
+          "large cells",
           "[nlist][triclinic][oracle][table]") {
   struct Case {
     Cell cell;
@@ -545,14 +568,15 @@ TEST_CASE("the neighbour table lists every image with its shift on skewed and la
     std::set<Key> got;
     REQUIRE(table.size() == expected.size());
     for (std::size_t q = 0; q < table.size(); ++q) {
-      const Key key{table.first[q], table.second[q], table.shift[3 * q], table.shift[3 * q + 1],
-                    table.shift[3 * q + 2]};
+      const Key key{table.first[q], table.second[q], table.shift[3 * q],
+                    table.shift[3 * q + 1], table.shift[3 * q + 2]};
       REQUIRE(got.insert(key).second);
       // r_j - r_i + S.H
       for (int x = 0; x < 3; ++x) {
         const double v = p[3 * static_cast<std::size_t>(table.second[q]) + x] -
                          p[3 * static_cast<std::size_t>(table.first[q]) + x] +
-                         table.shift[3 * q] * c.cell.box[x] + table.shift[3 * q + 1] * c.cell.box[3 + x] +
+                         table.shift[3 * q] * c.cell.box[x] +
+                         table.shift[3 * q + 1] * c.cell.box[3 + x] +
                          table.shift[3 * q + 2] * c.cell.box[6 + x];
         REQUIRE(table.vector[3 * q + x] == Catch::Approx(v).margin(1e-9));
       }
@@ -564,20 +588,22 @@ TEST_CASE("the neighbour table lists every image with its shift on skewed and la
     rgpot::nlist::build(half, p.data(), n, c.cell.box.data(), query);
     std::set<Key> halved;
     for (std::size_t q = 0; q < half.size(); ++q) {
-      const Key key{half.first[q], half.second[q], half.shift[3 * q], half.shift[3 * q + 1],
-                    half.shift[3 * q + 2]};
+      const Key key{half.first[q], half.second[q], half.shift[3 * q],
+                    half.shift[3 * q + 1], half.shift[3 * q + 2]};
       REQUIRE(expected.count(key) == 1);
       REQUIRE(halved.insert(key).second);
     }
     REQUIRE(2 * half.size() == expected.size());
     for (const auto &key : halved) {
-      REQUIRE(halved.count({std::get<1>(key), std::get<0>(key), -std::get<2>(key),
-                            -std::get<3>(key), -std::get<4>(key)}) == 0);
+      REQUIRE(
+          halved.count({std::get<1>(key), std::get<0>(key), -std::get<2>(key),
+                        -std::get<3>(key), -std::get<4>(key)}) == 0);
     }
   }
 }
 
-TEST_CASE("an orthogonal cell finds the pairs of atoms outside it", "[nlist][triclinic][oracle]") {
+TEST_CASE("an orthogonal cell finds the pairs of atoms outside it",
+          "[nlist][triclinic][oracle]") {
   // Atoms in other images of an orthogonal cell, with many bins along each
   // axis. The bins hold the coordinate folded into the cell.
   struct Ortho {
@@ -591,7 +617,8 @@ TEST_CASE("an orthogonal cell finds the pairs of atoms outside it", "[nlist][tri
   };
   for (const Ortho &cell : cells) {
     for (const bool unwrapped : {false, true}) {
-      INFO("cell " << cell.box[0] << " rc " << cell.rc << " unwrapped " << unwrapped);
+      INFO("cell " << cell.box[0] << " rc " << cell.rc << " unwrapped "
+                   << unwrapped);
       auto p = atoms(cell.box, cell.atoms, 99, unwrapped);
       if (!unwrapped) {
         // Atoms exactly on the upper face, and a hair below the lower one.
@@ -600,7 +627,8 @@ TEST_CASE("an orthogonal cell finds the pairs of atoms outside it", "[nlist][tri
       }
       const auto want = oracle(p, cell.box, cell.rc);
       REQUIRE(want.size() > 100);
-      for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+      for (const auto mode :
+           {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
         INFO("mode " << modeName(mode));
         const auto cells_built = build(p, cell.box, cell.rc, mode);
         std::set<Pair> expected;
@@ -619,8 +647,9 @@ TEST_CASE("an orthogonal cell finds the pairs of atoms outside it", "[nlist][tri
   }
 }
 
-TEST_CASE("a list on a sheared cell is kept within the skin and rebuilt after a wrap",
-          "[nlist][triclinic][skin]") {
+TEST_CASE(
+    "a list on a sheared cell is kept within the skin and rebuilt after a wrap",
+    "[nlist][triclinic][skin]") {
   const Cell cell = kSkewed[1];
   const double rc = 0.5 * minHeight(cell.box);
   const double skin = 0.5;
@@ -663,7 +692,8 @@ TEST_CASE("a list on a sheared cell is kept within the skin and rebuilt after a 
   requireMatches("one atom past half the skin");
 }
 
-TEST_CASE("a sheared slab with an open axis keeps its pairs", "[nlist][triclinic][oracle]") {
+TEST_CASE("a sheared slab with an open axis keeps its pairs",
+          "[nlist][triclinic][oracle]") {
   // The c axis is open and perpendicular to the sheared a, b plane.
   const Box box = {10, 0, 0, 14, 9, 0, 0, 0, 12};
   const Periodic periodic{{true, true, false}};
@@ -681,15 +711,17 @@ TEST_CASE("a sheared slab with an open axis keeps its pairs", "[nlist][triclinic
   const double rc = 2.2;
   const auto want = oracle(p, box, rc, periodic);
   REQUIRE(want.size() > 50);
-  for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+  for (const auto mode :
+       {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
     INFO("mode " << modeName(mode));
     const auto cells = build(p, box, rc, mode, periodic);
     requireNearestImages(cells, p.size() / 3, rc, want);
   }
 }
 
-TEST_CASE("MinimumImage folds a displacement to its nearest image on skewed cells",
-          "[nlist][triclinic][oracle]") {
+TEST_CASE(
+    "MinimumImage folds a displacement to its nearest image on skewed cells",
+    "[nlist][triclinic][oracle]") {
   std::mt19937 g(3);
   std::uniform_real_distribution<double> u(-1.0, 1.0);
   for (const Cell &cell : allCells()) {
@@ -721,7 +753,8 @@ TEST_CASE("MinimumImage folds a displacement to its nearest image on skewed cell
           for (int s2 = lo[2]; s2 <= hi[2]; ++s2) {
             double v[3];
             for (int y = 0; y < 3; ++y) {
-              v[y] = d[y] - (s0 * cell.box[y] + s1 * cell.box[3 + y] + s2 * cell.box[6 + y]);
+              v[y] = d[y] - (s0 * cell.box[y] + s1 * cell.box[3 + y] +
+                             s2 * cell.box[6 + y]);
             }
             best = std::min(best, norm(v));
           }

@@ -33,11 +33,11 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "rgpot/CalculatorGroup.hpp"
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
-#include "rgpot/CalculatorGroup.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
@@ -121,8 +121,8 @@
 #endif
 
 #define RGPOT_CXX_PLATFORM_TAG                                                 \
-  RGPOT_CXX_OS_NAME "-" RGPOT_CXX_ARCH_NAME "-" RGPOT_CXX_STDLIB_NAME "-"      \
-      RGPOT_CXX_MODEL_NAME
+  RGPOT_CXX_OS_NAME "-" RGPOT_CXX_ARCH_NAME "-" RGPOT_CXX_STDLIB_NAME          \
+                    "-" RGPOT_CXX_MODEL_NAME
 
 // Listed platforms. Each branch matches one kCxxSoversionTable row.
 // The string is the row's tag. check_cxx_soversion.py requires the two
@@ -130,7 +130,7 @@
 // aarch64, macOS and Windows stay unlisted until a no-cache CI stamp
 // line for soversion 5 is copied in. Their soversion-4 hashes are the
 // layouts from before LJPot and MorsePot grew their neighbour members.
-#if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                    \
+#if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                   \
     defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
 #define RGPOT_CXX_PLATFORM_LISTED 1
 #define RGPOT_CXX_PLATFORM_LISTED_TAG "linux-x86_64-libstdc++-lp64"
@@ -248,7 +248,8 @@ constexpr bool soversion_tags_unique() noexcept {
   return true;
 }
 
-static_assert(soversion_tags_unique(), "kCxxSoversionTable tags must be unique");
+static_assert(soversion_tags_unique(),
+              "kCxxSoversionTable tags must be unique");
 
 /// Virtual functions declared by @c PotentialBase, destructor included.
 /// The cache hook @c setCache adds one when @c RGPOT_HAS_CACHE is defined.
