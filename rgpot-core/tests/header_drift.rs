@@ -129,14 +129,32 @@ fn regenerated_rgpot_h_matches_committed_header() {
 }
 
 /// `ENGINE_ERR_LOCK` mirrors the `RGPOT_ENGINE_ERR_LOCK` macro of
-/// `engine_c_abi.h` and carries `cbindgen:ignore`, so the generated header
-/// must not define it.
+/// `engine_c_abi.h` and carries `cbindgen:ignore`. The `units` constants are
+/// listed in the `export.exclude` array of `cbindgen.toml`. None of them may
+/// appear in the generated header.
 #[test]
-fn generated_rgpot_h_leaves_out_the_ignored_engine_lock_constant() {
+fn generated_rgpot_h_leaves_out_the_rust_only_constants() {
     let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let generated = regenerate_raw_header(crate_dir);
-    assert!(
-        !generated.contains("ENGINE_ERR_LOCK"),
-        "regenerated rgpot.h leaked the ignored constant ENGINE_ERR_LOCK"
-    );
+    for constant in [
+        "ENGINE_ERR_LOCK",
+        "BOLTZMANN_CONSTANT_J_PER_K",
+        "ELEMENTARY_CHARGE_C",
+        "HARTREE_ENERGY_J",
+        "REDUCED_PLANCK_CONSTANT_J_S",
+        "BOHR_TO_ANGSTROM",
+        "ANGSTROM_TO_BOHR",
+        "HARTREE_TO_EV",
+        "EV_TO_HARTREE",
+        "KB_HARTREE",
+        "KB_EV",
+        "ELECTRON_MASS_IN_DALTON",
+        "DALTON_IN_ELECTRON_MASSES",
+        "ATOMIC_UNIT_OF_TIME_S",
+    ] {
+        assert!(
+            !generated.contains(constant),
+            "regenerated rgpot.h leaked Rust-only constant {constant}"
+        );
+    }
 }

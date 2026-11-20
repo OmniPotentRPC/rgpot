@@ -10,6 +10,7 @@
 // GROMACS reports is the rgpot energy times rgpot::md::kKjPerEv.
 
 #include "rgpot/ExternalPot/md_units.hpp"
+#include "rgpot/units.hpp"
 
 namespace rgpot::gromacs {
 
@@ -18,13 +19,13 @@ inline constexpr double kKilo = 1e3;
 inline constexpr double kNano = 1e-9;
 inline constexpr double kPico = 1e-12;
 inline constexpr double kNm2A = kNano / kAngstrom;
-inline constexpr double kAvogadro = 6.02214076e23;
+inline constexpr double kAvogadro = units::AVOGADRO_CONSTANT_PER_MOL;
 inline constexpr double kPlanck1 = 6.62607015e-34;
 inline constexpr double kPlanck = (kPlanck1 * kAvogadro / (kPico * kKilo));
 inline constexpr double kSpeedOfLight = 2.99792458e05;
 inline constexpr double kRydberg = 1.0973731568160e-02;
 inline constexpr double kHartree2Kj = ((2.0 * kRydberg * kPlanck * kSpeedOfLight) / kAvogadro);
-inline constexpr double kBohr2Nm = 0.0529177210903;
+inline constexpr double kBohr2Nm = units::BOHR_TO_ANGSTROM / 10.0;
 inline constexpr double kHartreeBohr2Md = (kHartree2Kj * kAvogadro / kBohr2Nm);
 
 /// Bohr as GROMACS sends it, to Angstrom.

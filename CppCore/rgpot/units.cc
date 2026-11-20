@@ -127,7 +127,7 @@ static const auto BASE_UNITS = std::unordered_map<std::string, UnitValue>{
     // Length
     {"angstrom", {1e-10, DIM_LENGTH}},
     {"a", {1e-10, DIM_LENGTH}},
-    {"bohr", {5.2917721054482e-11, DIM_LENGTH}},
+    {"bohr", {BOHR_RADIUS_M, DIM_LENGTH}},
     {"nm", {1e-9, DIM_LENGTH}},
     {"nanometer", {1e-9, DIM_LENGTH}},
     {"meter", {1.0, DIM_LENGTH}},
@@ -141,11 +141,11 @@ static const auto BASE_UNITS = std::unordered_map<std::string, UnitValue>{
     {"micrometer", {1e-6, DIM_LENGTH}},
 
     // Energy
-    {"ev", {1.602176634e-19, DIM_ENERGY}},
-    {"mev", {1.602176634e-19 * 1e-3, DIM_ENERGY}},
-    {"hartree", {4.359744722206048e-18, DIM_ENERGY}},
-    {"ry", {2.179872361103024e-18, DIM_ENERGY}},
-    {"rydberg", {2.179872361103024e-18, DIM_ENERGY}},
+    {"ev", {ELEMENTARY_CHARGE_C, DIM_ENERGY}},
+    {"mev", {ELEMENTARY_CHARGE_C * 1e-3, DIM_ENERGY}},
+    {"hartree", {HARTREE_ENERGY_J, DIM_ENERGY}},
+    {"ry", {2.1798723611035e-18, DIM_ENERGY}},
+    {"rydberg", {2.1798723611035e-18, DIM_ENERGY}},
     {"joule", {1.0, DIM_ENERGY}},
     {"j", {1.0, DIM_ENERGY}},
     {"kcal", {4184.0, DIM_ENERGY}},
@@ -167,25 +167,25 @@ static const auto BASE_UNITS = std::unordered_map<std::string, UnitValue>{
     {"femtosecond", {1e-15, DIM_TIME}},
 
     // Mass
-    {"u", {1.6605390689252e-27, DIM_MASS}},
-    {"dalton", {1.6605390689252e-27, DIM_MASS}},
+    {"u", {DALTON_MASS_KG, DIM_MASS}},
+    {"dalton", {DALTON_MASS_KG, DIM_MASS}},
     {"kg", {1.0, DIM_MASS}},
     {"kilogram", {1.0, DIM_MASS}},
     {"g", {1e-3, DIM_MASS}},
     {"gram", {1e-3, DIM_MASS}},
-    {"electron_mass", {9.109383713928e-31, DIM_MASS}},
-    {"m_e", {9.109383713928e-31, DIM_MASS}},
+    {"electron_mass", {ELECTRON_MASS_KG, DIM_MASS}},
+    {"m_e", {ELECTRON_MASS_KG, DIM_MASS}},
 
     // Charge
-    {"e", {1.602176634e-19, DIM_CHARGE}},
+    {"e", {ELEMENTARY_CHARGE_C, DIM_CHARGE}},
     {"coulomb", {1.0, DIM_CHARGE}},
     {"c", {1.0, DIM_CHARGE}},
 
     // Dimensionless
-    {"mol", {6.02214076e23, DIM_NONE}},
+    {"mol", {AVOGADRO_CONSTANT_PER_MOL, DIM_NONE}},
 
     // Derived
-    {"hbar", {1.0545718176462e-34, {{2, -1, 1, 0, 0}}}},
+    {"hbar", {REDUCED_PLANCK_CONSTANT_J_S, {{2, -1, 1, 0, 0}}}},
 };
 
 // ---- Tokenizer ----

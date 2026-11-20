@@ -24,6 +24,8 @@ engine = ["dep:libloading"]
 rpc = ["schema", "dep:capnp-rpc", "dep:tokio", "dep:tokio-util", "dep:futures"]
 cache = []
 gen-header = ["dep:cbindgen"]
+# Expose CODATA constants bit-checked against `CppCore/rgpot/units.hpp`.
+units = []
 
 [dependencies]
 dlpk = { version = "0.1.5" }
@@ -60,6 +62,11 @@ required-features = ["profile"]
 name = "potential_config"
 path = "tests/potential_config.rs"
 required-features = ["schema"]
+
+[[test]]
+name = "units"
+path = "tests/units.rs"
+required-features = ["units"]
 
 [build-dependencies]
 cbindgen = { version = "0.27", optional = true }

@@ -23,9 +23,17 @@ namespace rgpot::units {
 
 // ---- Compile-time constants (CODATA 2018) ----
 
+// Exact SI defining constants and CODATA 2018 derived constants
+inline constexpr double BOLTZMANN_CONSTANT_J_PER_K = 1.380649e-23;
+inline constexpr double ELEMENTARY_CHARGE_C = 1.602176634e-19;
+inline constexpr double HARTREE_ENERGY_J = 4.3597447222071e-18;
+inline constexpr double REDUCED_PLANCK_CONSTANT_J_S = 1.0545718176461565e-34;
+
 // Length
 inline constexpr double BOHR_TO_ANGSTROM = 0.529177210903;
 inline constexpr double ANGSTROM_TO_BOHR = 1.0 / BOHR_TO_ANGSTROM;
+// Bohr radius in meters (CODATA 2018): a0 = 5.29177210903e-11 m.
+inline constexpr double BOHR_RADIUS_M = 5.29177210903e-11;
 
 // Energy
 inline constexpr double HARTREE_TO_EV = 27.211386245988;
@@ -43,7 +51,25 @@ inline constexpr double HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3 =
 
 // Temperature / Boltzmann
 inline constexpr double KB_HARTREE = 3.1668115634556e-6; // k_B in Hartree/K
-inline constexpr double KB_EV = 8.617333262e-5;          // k_B in eV/K
+inline constexpr double KB_EV =
+    BOLTZMANN_CONSTANT_J_PER_K / ELEMENTARY_CHARGE_C; // k_B in eV/K
+
+// Mass (electron mass in u: 5.48579909065e-4 u)
+inline constexpr double ELECTRON_MASS_IN_DALTON = 5.48579909065e-4;
+inline constexpr double DALTON_IN_ELECTRON_MASSES =
+    1.0 / ELECTRON_MASS_IN_DALTON;
+// Unified atomic mass unit in kilograms (CODATA 2018): 1 u = 1.66053906660e-27 kg.
+inline constexpr double DALTON_MASS_KG = 1.66053906660e-27;
+// Electron rest mass in kilograms (CODATA 2018): m_e = 9.1093837015e-31 kg.
+inline constexpr double ELECTRON_MASS_KG = 9.1093837015e-31;
+
+// Amount of substance
+// Avogadro constant, exact SI 2019 defining value.
+inline constexpr double AVOGADRO_CONSTANT_PER_MOL = 6.02214076e23;
+
+// Time (hbar / E_h in seconds)
+inline constexpr double ATOMIC_UNIT_OF_TIME_S =
+    REDUCED_PLANCK_CONSTANT_J_S / HARTREE_ENERGY_J;
 
 // ---- Runtime unit expression parser ----
 

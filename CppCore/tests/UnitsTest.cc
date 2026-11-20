@@ -7,11 +7,21 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cstdint>
+#include <cstring>
 #include <stdexcept>
 
 #include "rgpot/units.hpp"
 
 using Catch::Matchers::WithinRel;
+
+namespace {
+std::uint64_t bits(double value) {
+  std::uint64_t out = 0;
+  std::memcpy(&out, &value, sizeof(out));
+  return out;
+}
+} // namespace
 
 TEST_CASE("unit_conversion_factor basic conversions", "[units]") {
   SECTION("identity") {
@@ -100,15 +110,25 @@ TEST_CASE("validate_unit", "[units]") {
 
 TEST_CASE("constexpr constants match parser", "[units]") {
   double parsed_bohr = rgpot::units::unit_conversion_factor("bohr", "angstrom");
-  REQUIRE_THAT(parsed_bohr, WithinRel(rgpot::units::BOHR_TO_ANGSTROM, 1e-8));
+  REQUIRE_THAT(parsed_bohr, WithinRel(rgpot::units::BOHR_TO_ANGSTROM, 1e-11));
 
   double parsed_hartree = rgpot::units::unit_conversion_factor("hartree", "eV");
-  REQUIRE_THAT(parsed_hartree, WithinRel(rgpot::units::HARTREE_TO_EV, 1e-8));
+  REQUIRE_THAT(parsed_hartree, WithinRel(rgpot::units::HARTREE_TO_EV, 1e-11));
 
   double parsed_force =
       rgpot::units::unit_conversion_factor("hartree/bohr", "eV/angstrom");
   REQUIRE_THAT(parsed_force,
-               WithinRel(rgpot::units::HARTREE_BOHR_TO_EV_ANGSTROM, 1e-8));
+               WithinRel(rgpot::units::HARTREE_BOHR_TO_EV_ANGSTROM, 1e-11));
+
+  double parsed_dalton =
+      rgpot::units::unit_conversion_factor("dalton", "electron_mass");
+  REQUIRE_THAT(parsed_dalton,
+               WithinRel(rgpot::units::DALTON_IN_ELECTRON_MASSES, 1e-11));
+
+  double parsed_au_time =
+      rgpot::units::unit_conversion_factor("hbar", "hartree*s");
+  REQUIRE_THAT(parsed_au_time,
+               WithinRel(rgpot::units::ATOMIC_UNIT_OF_TIME_S, 1e-11));
 }
 
 TEST_CASE("round-trip conversions are inverses", "[units]") {
@@ -123,4 +143,26 @@ TEST_CASE("round-trip conversions are inverses", "[units]") {
     double g = rgpot::units::unit_conversion_factor(pair[1], pair[0]);
     REQUIRE_THAT(f * g, WithinRel(1.0, 1e-10));
   }
+}
+
+TEST_CASE("refactored SI factors keep their exact bits", "[units]") {
+  const double bohr_m = rgpot::units::unit_conversion_factor("bohr", "meter");
+  const double ev_j = rgpot::units::unit_conversion_factor("eV", "joule");
+  const double mev_j = rgpot::units::unit_conversion_factor("meV", "joule");
+  const double hartree_j = rgpot::units::unit_conversion_factor("hartree", "joule");
+  const double dalton_kg = rgpot::units::unit_conversion_factor("dalton", "kg");
+  const double emass_kg =
+      rgpot::units::unit_conversion_factor("electron_mass", "kg");
+  const double charge_c = rgpot::units::unit_conversion_factor("e", "coulomb");
+  const double hbar_js =
+      rgpot::units::unit_conversion_factor("hbar", "joule*second");
+
+  REQUIRE(bits(bohr_m) == bits(5.29177210903e-11));
+  REQUIRE(bits(ev_j) == bits(1.602176634e-19));
+  REQUIRE(bits(mev_j) == bits(1.602176634e-19 * 1e-3));
+  REQUIRE(bits(hartree_j) == bits(4.3597447222071e-18));
+  REQUIRE(bits(dalton_kg) == bits(1.66053906660e-27));
+  REQUIRE(bits(emass_kg) == bits(9.1093837015e-31));
+  REQUIRE(bits(charge_c) == bits(1.602176634e-19));
+  REQUIRE(bits(hbar_js) == bits(1.0545718176461565e-34));
 }
