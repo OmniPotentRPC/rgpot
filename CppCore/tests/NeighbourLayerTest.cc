@@ -1292,3 +1292,159 @@ TEST_CASE("a fully periodic general cell without a reciprocal basis is not "
       ortho_cells.update(pos.data(), pos.size() / 3, ortho, spec));
   REQUIRE(ortho_cells.streaming());
 }
+
+namespace {
+
+struct HalfPair {
+  std::int32_t i;
+  std::int32_t j;
+  double r2;
+};
+
+std::vector<HalfPair> halfPairsWithin(const rgpot::nlist::Neighbours &cells, std::size_t n,
+                                      double cutoff) {
+  std::vector<HalfPair> pairs;
+  cells.forHalf(0, static_cast<std::int64_t>(n),
+                [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+                  if (r2 <= cutoff * cutoff) {
+                    pairs.push_back({i, j, r2});
+                  }
+                });
+  std::sort(pairs.begin(), pairs.end(), [](const HalfPair &x, const HalfPair &y) {
+    return x.i != y.i ? x.i < y.i : x.j < y.j;
+  });
+  return pairs;
+}
+
+bool samePairs(const std::vector<HalfPair> &got, const std::vector<HalfPair> &want) {
+  if (got.size() != want.size()) {
+    return false;
+  }
+  for (std::size_t p = 0; p < got.size(); ++p) {
+    if (got[p].i != want[p].i || got[p].j != want[p].j || got[p].r2 != want[p].r2) {
+      return false;
+    }
+  }
+  return true;
+}
+
+} // namespace
+
+TEST_CASE("a failed update leaves nothing a later update can reuse",
+          "[nlist][generation][throw]") {
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0.2 * side, side, 0, 0.1 * side, 0.15 * side, side};
+  // c = a + b, so this sheared cell has no reciprocal basis.
+  const double flat[9] = {side, 0, 0.5 * side, 0, side, 0.5 * side, side, side, side};
+  const auto pos = fcc(3, a);
+  const std::size_t n = pos.size() / 3;
+  auto bad = pos;
+  bad[0] = std::numeric_limits<double>::quiet_NaN();
+  const double cutoff = 4.0;
+
+  for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = mode == rgpot::nlist::Mode::Stored ? 0.5 : 0.0;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = mode;
+    INFO("mode " << static_cast<int>(mode));
+
+    rgpot::nlist::Neighbours fresh;
+    fresh.update(pos.data(), n, box, spec);
+    const auto want = halfPairsWithin(fresh, n, cutoff);
+    REQUIRE_FALSE(want.empty());
+
+    SECTION("a non-finite coordinate") {
+      // A stored list measures the move through MinimumImage first, and
+      // that is where the coordinate is refused. A stream, and an empty
+      // object in either mode, bins it.
+      const char *binned = "Neighbours: non-finite fractional coordinate";
+      const char *refused = mode == rgpot::nlist::Mode::Stored
+                                ? "pair displacement must be finite"
+                                : binned;
+      rgpot::nlist::Neighbours cells;
+      cells.update(pos.data(), n, box, spec);
+      REQUIRE(samePairs(halfPairsWithin(cells, n, cutoff), want));
+      const auto built = cells.generation();
+      REQUIRE_THROWS_WITH(cells.update(bad.data(), n, box, spec), refused);
+      CHECK(cells.generation() != built);
+      CHECK(cells.slots() == 0);
+      CHECK_FALSE(cells.reused());
+      REQUIRE_THROWS_WITH(cells.update(bad.data(), n, box, spec), binned);
+      cells.update(pos.data(), n, box, spec);
+      CHECK_FALSE(cells.reused());
+      CHECK(samePairs(halfPairsWithin(cells, n, cutoff), want));
+    }
+
+    SECTION("a cell without a reciprocal basis") {
+      rgpot::nlist::Neighbours cells;
+      cells.update(pos.data(), n, box, spec);
+      const auto built = cells.generation();
+      const char *refused =
+          "Neighbours: fully periodic general cell has no finite positive "
+          "reciprocal basis";
+      REQUIRE_THROWS_WITH(cells.update(pos.data(), n, flat, spec), refused);
+      CHECK(cells.generation() != built);
+      // The same call again must report the same error, not reuse the
+      // coordinates the failed call left behind.
+      REQUIRE_THROWS_WITH(cells.update(pos.data(), n, flat, spec), refused);
+      cells.update(pos.data(), n, box, spec);
+      CHECK_FALSE(cells.reused());
+      CHECK(samePairs(halfPairsWithin(cells, n, cutoff), want));
+    }
+  }
+}
+
+TEST_CASE("a moved-from Neighbours is empty and builds again",
+          "[nlist][generation][move]") {
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const auto pos = fcc(3, a);
+  const std::size_t n = pos.size() / 3;
+  const double cutoff = 4.0;
+
+  for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = mode == rgpot::nlist::Mode::Stored ? 0.5 : 0.0;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = mode;
+    INFO("mode " << static_cast<int>(mode));
+
+    rgpot::nlist::Neighbours fresh;
+    fresh.update(pos.data(), n, box, spec);
+    const auto want = halfPairsWithin(fresh, n, cutoff);
+    REQUIRE_FALSE(want.empty());
+
+    auto checkEmptyThenRebuild = [&](rgpot::nlist::Neighbours &from) {
+      CHECK(from.slots() == 0);
+      CHECK(from.offsets().empty());
+      CHECK_FALSE(from.reused());
+      CHECK(from.builds() == 0);
+      CHECK(halfPairsWithin(from, 0, cutoff).empty());
+      from.update(pos.data(), n, box, spec);
+      CHECK_FALSE(from.reused());
+      CHECK(samePairs(halfPairsWithin(from, n, cutoff), want));
+    };
+
+    SECTION("move construction") {
+      rgpot::nlist::Neighbours src;
+      src.update(pos.data(), n, box, spec);
+      rgpot::nlist::Neighbours dst(std::move(src));
+      CHECK(samePairs(halfPairsWithin(dst, n, cutoff), want));
+      checkEmptyThenRebuild(src);
+    }
+
+    SECTION("move assignment") {
+      rgpot::nlist::Neighbours src;
+      src.update(pos.data(), n, box, spec);
+      rgpot::nlist::Neighbours dst;
+      dst = std::move(src);
+      CHECK(samePairs(halfPairsWithin(dst, n, cutoff), want));
+      checkEmptyThenRebuild(src);
+    }
+  }
+}

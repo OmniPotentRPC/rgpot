@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <utility>
 #include <vector>
 
@@ -166,6 +167,7 @@ public:
     return *this;
   }
 
+  /// The moved-from object is left as a default-constructed one.
   Neighbours(Neighbours &&other) noexcept
       : off_(std::move(other.off_)), nbr_(std::move(other.nbr_)),
         cell_of_(std::move(other.cell_of_)),
@@ -181,7 +183,7 @@ public:
     std::memcpy(len_, other.len_, sizeof(len_));
     std::memcpy(inv_, other.inv_, sizeof(inv_));
     std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
-    other.generation_ = nextGeneration();
+    other.reset();
   }
 
   Neighbours &operator=(Neighbours &&other) noexcept {
@@ -211,12 +213,14 @@ public:
       n_ = other.n_;
       builds_ = other.builds_;
       xyz_ = other.xyz_;
-      other.generation_ = nextGeneration();
+      other.reset();
     }
     generation_ = nextGeneration();
     return *this;
   }
 
+  /// A throw leaves the object as a default-constructed one with a new
+  /// generation, so the next update builds from its own coordinates.
   void update(const double *xyz, std::size_t n, const double *box9,
               const Spec &spec);
 
@@ -395,6 +399,36 @@ private:
     }
   };
 
+  void refresh(const double *xyz, std::size_t n, const double *box9,
+               const Spec &spec);
+  /// The state of a default-constructed object, with a new generation.
+  /// A moved-from object and a failed update are left this way.
+  void reset() noexcept {
+    std::vector<std::int32_t>().swap(off_);
+    std::vector<std::int32_t>().swap(nbr_);
+    std::vector<std::int32_t>().swap(cell_of_);
+    std::vector<std::int32_t>().swap(cell_start_);
+    std::vector<std::int32_t>().swap(cell_atoms_);
+    std::vector<double>().swap(ref_);
+    std::fill(std::begin(box_), std::end(box_), 0.0);
+    std::fill(std::begin(len_), std::end(len_), 0.0);
+    std::fill(std::begin(inv_), std::end(inv_), 0.0);
+    std::fill(std::begin(periodic_), std::end(periodic_), false);
+    nx_ = ny_ = nz_ = 1;
+    search_ = 0;
+    image_ = Image::Round;
+    mode_ = Mode::Auto;
+    key_ = SpecKey{};
+    general_ = MinimumImage{};
+    use_general_ = false;
+    streaming_ = true;
+    built_ = false;
+    reused_ = false;
+    n_ = 0;
+    builds_ = 0;
+    generation_ = nextGeneration();
+    xyz_ = nullptr;
+  }
   void buildCells(const double *xyz, std::size_t n);
   void buildStored(const double *xyz, std::size_t n, std::uint64_t bound);
   [[nodiscard]] std::uint64_t candidateBound() const;

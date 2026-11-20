@@ -484,6 +484,19 @@ void Neighbours::buildStored(const double *xyz, std::size_t n,
 
 void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
                         const Spec &spec) {
+  // A partial refresh can keep the reference coordinates of the last
+  // build beside bins or a list it has already cleared. reusable() would
+  // then accept those coordinates and walk the cleared state.
+  try {
+    refresh(xyz, n, box9, spec);
+  } catch (...) {
+    reset();
+    throw;
+  }
+}
+
+void Neighbours::refresh(const double *xyz, std::size_t n, const double *box9,
+                         const Spec &spec) {
   xyz_ = xyz;
   bool wrapped = false;
   if (reusable(xyz, n, box9, spec, wrapped)) {
