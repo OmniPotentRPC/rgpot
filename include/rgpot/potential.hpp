@@ -450,7 +450,9 @@ private:
    *
    * Registered only for an @a Impl whose @c caps().stress is true, and run
    * only by @c rgpot_potential_calculate_stress. The force-only trampoline
-   * above never asks the potential for stress and never copies one.
+   * above never asks the potential for stress and never copies one. A
+   * potential that refuses the input with @c std::invalid_argument returns
+   * @c RGPOT_INVALID_PARAMETER and its message.
    */
   template <typename Impl>
   static rgpot_status_t
@@ -483,6 +485,9 @@ private:
     } catch (const ::rgpot::SccNotConverged &e) {
       rgpot_set_last_error(e.what());
       return RGPOT_SCC_NOT_CONVERGED;
+    } catch (const std::invalid_argument &e) {
+      rgpot_set_last_error(e.what());
+      return RGPOT_INVALID_PARAMETER;
     } catch (const std::exception &e) {
       rgpot_set_last_error(e.what());
       return RGPOT_INTERNAL_ERROR;

@@ -182,6 +182,11 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // slower than the warm Fortran gather, so all-silicon stays
   // there. Any other Z needs the 1989 silicon-carbon parameters, which the
   // gather does not have.
+  if (in.compute_stress && in.atmnrs == nullptr && in.nAtoms > 0) {
+    throw std::invalid_argument(
+        "TersoffPot: a stress request needs atomic numbers. A null species "
+        "pointer selects the Fortran silicon gather, which computes no stress");
+  }
   if (siliconOnly(in) && !in.compute_stress) {
     ensure_fortran_params();
     const int status = rgpot_tersoff_force_ws(

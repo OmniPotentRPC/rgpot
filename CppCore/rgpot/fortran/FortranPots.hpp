@@ -115,6 +115,9 @@ private:
 /// uses the 1989 silicon-carbon kernel. There is no second PotType.
 /// A stress request uses the C++ Si-C kernel because the Fortran gather has
 /// no virial output. Force-only all-silicon calls retain the gather path.
+/// A stress request with a null species pointer throws
+/// std::invalid_argument, which the C ABI stress path reports as
+/// RGPOT_INVALID_PARAMETER.
 class TersoffPot : public Potential<TersoffPot> {
 public:
   TersoffPot() : Potential(PotType::TersoffSi) {}
