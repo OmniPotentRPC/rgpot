@@ -211,6 +211,26 @@ TEST_CASE("MEAM matches LAMMPS pair_style meam", "[meam][lammps]") {
     check_against(make_pot("library.meam", "SiC.meam", {"Si", "C"}),
                   load_ref("sic_zincblende"), 1e-8, 1e-8, 1e-9);
   }
+  // The Lee-Baskes second-neighbour sets: bcc Fe and fcc Ni, a seven element
+  // alloy with the B1, B2 and L12 reference pairs, and the five element
+  // Al-Si-Mg-Cu-Fe set with dynamic background density.
+  const std::vector<std::string> hea = {"Mo", "Co", "Ni", "V", "Fe", "Al", "Cr"};
+  SECTION("2NN Fe, bcc") {
+    check_against(make_pot("library_2nn.meam", "MoCoNiVFeAlCr_2nn.meam", hea),
+                  load_ref("fe_2nn"), 1e-8, 1e-8, 1e-9);
+  }
+  SECTION("2NN Ni, sheared fcc") {
+    check_against(make_pot("library_2nn.meam", "MoCoNiVFeAlCr_2nn.meam", hea),
+                  load_ref("ni_2nn_sheared"), 1e-8, 1e-8, 1e-9);
+  }
+  SECTION("2NN seven element alloy") {
+    check_against(make_pot("library_2nn.meam", "MoCoNiVFeAlCr_2nn.meam", hea),
+                  load_ref("hea_2nn"), 1e-8, 1e-8, 1e-9);
+  }
+  SECTION("2NN Al-Si-Mg-Cu-Fe") {
+    check_against(make_pot("library.meam", "AlSiMgCuFe.meam", {"AlS", "SiS", "MgS", "CuS", "FeS"}),
+                  load_ref("alsimgcufe_2nn"), 1e-8, 1e-8, 1e-9);
+  }
   // Five elements with every G(gamma) selector the library offers and the
   // options of the data/meam/opts_*.meam files.
   const std::vector<std::string> five = {"Ni", "AlS", "Cu", "Fe", "WL"};
@@ -263,15 +283,25 @@ TEST_CASE("MEAM forces are the gradient of the energy", "[meam][fd]") {
   }
 }
 
-TEST_CASE("MEAM forces of the option files are the gradient of the energy",
+TEST_CASE("MEAM forces of the parameter sets are the gradient of the energy",
           "[meam][fd]") {
+  struct Set {
+    const char *library, *parameters, *ref;
+    std::vector<std::string> elements;
+  };
   const std::vector<std::string> five = {"Ni", "AlS", "Cu", "Fe", "WL"};
-  for (const char *file : {"opts_a.meam", "opts_b.meam", "opts_c.meam"}) {
-    DYNAMIC_SECTION(file) {
-      const rgpot::MEAMPot pot = make_pot("library.meam", file, five);
-      const LammpsRef ref = std::string(file) == "opts_a.meam"   ? load_ref("alloy_opts_a")
-                            : std::string(file) == "opts_b.meam" ? load_ref("alloy_opts_b")
-                                                                 : load_ref("alloy_opts_c");
+  const std::vector<std::string> hea = {"Mo", "Co", "Ni", "V", "Fe", "Al", "Cr"};
+  const Set sets[] = {
+      {"library.meam", "opts_a.meam", "alloy_opts_a", five},
+      {"library.meam", "opts_b.meam", "alloy_opts_b", five},
+      {"library.meam", "opts_c.meam", "alloy_opts_c", five},
+      {"library_2nn.meam", "MoCoNiVFeAlCr_2nn.meam", "hea_2nn", hea},
+      {"library.meam", "AlSiMgCuFe.meam", "alsimgcufe_2nn", {"AlS", "SiS", "MgS", "CuS", "FeS"}},
+  };
+  for (const Set &set : sets) {
+    DYNAMIC_SECTION(set.ref) {
+      const rgpot::MEAMPot pot = make_pot(set.library, set.parameters, set.elements);
+      const LammpsRef ref = load_ref(set.ref);
       const Eval e = eval(pot, ref.pos, ref.z, ref.box);
       // The first four atoms are enough: every term of the energy reaches them.
       std::vector<double> pos = ref.pos;
@@ -326,9 +356,12 @@ TEST_CASE("MEAM stress is the strain derivative of the energy", "[meam][fd]") {
 
 TEST_CASE("MEAM reference crystals follow the Rose equation of state", "[meam][rose]") {
   // The pair term is built so that the energy per atom of the reference
-  // structure is the Rose energy of its nearest neighbour distance.
+  // structure is the Rose energy of its nearest neighbour distance. The
+  // second-neighbour sets reach past the second shell, so under
+  // compression a third shell leaks in and the match is looser.
   struct Case {
     const char *name;
+    const char *library;
     const char *parameters;
     int z;
     const std::vector<std::array<double, 3>> *basis;
@@ -337,14 +370,28 @@ TEST_CASE("MEAM reference crystals follow the Rose equation of state", "[meam][r
   const std::vector<std::array<double, 3>> dia = {
       {0, 0, 0},      {0.5, 0.5, 0},  {0.5, 0, 0.5},  {0, 0.5, 0.5},
       {0.25, 0.25, 0.25}, {0.75, 0.75, 0.25}, {0.75, 0.25, 0.75}, {0.25, 0.75, 0.75}};
-  const Case cases[] = {{"Ni", "Ni.meam", 28, &kFcc, std::sqrt(0.5)},
-                        {"Cu", "", 29, &kFcc, std::sqrt(0.5)},
-                        {"Si", "", 14, &dia, std::sqrt(3.0) / 4.0}};
+  const Case cases[] = {{"Ni", "library.meam", "Ni.meam", 28, &kFcc, std::sqrt(0.5)},
+                        {"Cu", "library.meam", "", 29, &kFcc, std::sqrt(0.5)},
+                        {"Si", "library.meam", "", 14, &dia, std::sqrt(3.0) / 4.0},
+                        {"Ni", "library_2nn.meam", "MoCoNiVFeAlCr_2nn.meam", 28, &kFcc,
+                         std::sqrt(0.5)},
+                        {"Fe", "library_2nn.meam", "MoCoNiVFeAlCr_2nn.meam", 26, &kBcc,
+                         std::sqrt(3.0) / 2.0},
+                        {"Al", "library_2nn.meam", "MoCoNiVFeAlCr_2nn.meam", 13, &kFcc,
+                         std::sqrt(0.5)}};
   for (const Case &k : cases) {
-    DYNAMIC_SECTION(k.name) {
-      const rgpot::MEAMPot pot = make_pot("library.meam", k.parameters, {k.name});
+    DYNAMIC_SECTION(k.name << " from " << k.library << " " << k.parameters) {
+      // The parameter file names seven elements; the potential takes one of
+      // them, so the file's indices need all seven.
+      const bool second = std::string(k.library) == "library_2nn.meam";
+      const std::vector<std::string> names =
+          second ? std::vector<std::string>{"Mo", "Co", "Ni", "V", "Fe", "Al", "Cr"}
+                 : std::vector<std::string>{k.name};
+      const rgpot::MEAMPot pot = make_pot(k.library, k.parameters, names);
+      const int self = static_cast<int>(
+          std::find(names.begin(), names.end(), std::string(k.name)) - names.begin());
       const rgpot::MEAMModel &m = pot.model();
-      const double nn0 = m.re(0);
+      const double nn0 = m.re(self);
       for (double scale : {0.94, 0.98, 1.0, 1.03, 1.08}) {
         const double a = scale * nn0 / k.nn_per_a;
         const Config c = jittered(*k.basis, a, 3, std::vector<int>(k.basis->size(), k.z),
@@ -352,7 +399,7 @@ TEST_CASE("MEAM reference crystals follow the Rose equation of state", "[meam][r
         const Eval e = eval(pot, c.pos, c.z, c.box);
         const double per_atom = e.energy / static_cast<double>(c.z.size());
         INFO("scale " << scale);
-        REQUIRE_THAT(per_atom, WithinAbs(m.rose(scale * nn0, 0, 0), 1e-6));
+        REQUIRE_THAT(per_atom, WithinAbs(m.rose(scale * nn0, self, self), second ? 5e-4 : 1e-6));
       }
     }
   }
