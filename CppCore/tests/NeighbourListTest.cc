@@ -640,6 +640,8 @@ TEST_CASE("whole-cell drift keeps the canonical periodic pair set", "[nlist][api
     for (int drift : {0, 1, 2, 3, -3}) {
       std::vector<int> offsets(wrapped.size(), 0);
       offsets[0] = drift;
+      offsets[1] = drift;
+      offsets[2] = drift;
       const auto pos = unwrap(wrapped, box.data(), offsets);
       rgpot::nlist::Table table;
       rgpot::nlist::build(table, pos.data(), pos.size() / 3, box.data(), query);
@@ -653,6 +655,8 @@ TEST_CASE("whole-cell drift keeps the canonical periodic pair set", "[nlist][api
     const auto buffered = from_table(builder.table());
     std::vector<int> offsets(wrapped.size(), 0);
     offsets[0] = 3;
+    offsets[1] = 3;
+    offsets[2] = 3;
     const auto drifted = unwrap(wrapped, box.data(), offsets);
     builder.update(drifted.data(), drifted.size() / 3, box.data(), query);
     REQUIRE(builder.reused());
