@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# MIT License
+# Copyright 2023--present rgpot developers
 """Regression test for intermixed CLI parsing in check_test_registry.py."""
 from __future__ import annotations
 
