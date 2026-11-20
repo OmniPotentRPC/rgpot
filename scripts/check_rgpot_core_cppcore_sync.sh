@@ -7,15 +7,17 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 staging="${repo_root}/rgpot-core/cppcore-staging"
 scratch="$(mktemp -d)"
-trap 'rm -rf "${scratch}" "${staging}"' EXIT
+trap 'rm -rf "${scratch}"' EXIT
 
 pushd "${repo_root}" >/dev/null
 
 scripts/sync_rgpot_core_cppcore.sh --dest "${scratch}"
+if ! diff -qr "${staging}/rgpot" "${scratch}/rgpot"; then
+  echo "rgpot-core cppcore staging is stale; run scripts/sync_rgpot_core_cppcore.sh" >&2
+  exit 1
+fi
 
 RGPOT_CPPCORE_ROOT="${scratch}" cargo check -p rgpot-core
-
-scripts/sync_rgpot_core_cppcore.sh
 
 cargo package -p rgpot-core --list > "${scratch}/package-list.txt"
 if ! rg '^cppcore-staging/rgpot/EAMTable/EAMTablePot.cc$' "${scratch}/package-list.txt" >/dev/null; then
