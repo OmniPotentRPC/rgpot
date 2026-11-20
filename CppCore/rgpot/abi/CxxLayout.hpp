@@ -181,8 +181,8 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
 /// 8 stamps SuttonChenConfig, PotType::SuttonChen and SuttonChenPot.
-/// 10 adds ForceInput::compute_stress, the opt-in stress request.
-inline constexpr std::uint32_t kCxxSoversion = 10;
+/// 9 adds ForceInput::compute_stress, the opt-in stress request.
+inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
