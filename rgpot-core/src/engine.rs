@@ -1036,6 +1036,58 @@ impl CallbackState {
     }
 }
 
+/// The heap cell behind the context pointer handed to native code.
+///
+/// The cell is created by `Box::into_raw` and freed by `Box::from_raw` in
+/// `Drop`, and the context pointer is derived from the same raw pointer. A
+/// `Box` kept in a field would be reborrowed uniquely whenever it moves, which
+/// invalidates a context pointer that native code stored earlier.
+struct CallbackOwner {
+    state: NonNull<CallbackState>,
+}
+
+impl CallbackOwner {
+    fn new(state: CallbackState) -> Self {
+        Self {
+            // SAFETY: `Box::into_raw` never returns null.
+            state: unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(state))) },
+        }
+    }
+
+    fn ctx(&self) -> *mut c_void {
+        self.state.as_ptr().cast()
+    }
+
+    fn state(&self) -> &CallbackState {
+        // SAFETY: `state` came from `Box::into_raw` and stays allocated until
+        // `Drop`; only shared references are made from it.
+        unsafe { self.state.as_ref() }
+    }
+
+    fn take_failure(&self) -> Option<EngineFailure> {
+        self.state().take_failure()
+    }
+}
+
+impl Drop for CallbackOwner {
+    fn drop(&mut self) {
+        // SAFETY: the pointer owns the allocation made in `new` and this is
+        // the only place that frees it.
+        drop(unsafe { Box::from_raw(self.state.as_ptr()) });
+    }
+}
+
+// SAFETY: the owner only hands out `&CallbackState`, and it owns the state the
+// way a `Box<CallbackState>` would, so it is `Send` and `Sync` exactly when
+// `CallbackState` is.
+unsafe impl Send for CallbackOwner where CallbackState: Send {}
+unsafe impl Sync for CallbackOwner where CallbackState: Sync {}
+
+const _: fn() = || {
+    fn send_and_sync<T: Send + Sync>() {}
+    send_and_sync::<CallbackOwner>();
+};
+
 unsafe extern "C" fn oracle_trampoline(
     ctx: *mut c_void,
     n_atoms: c_long,
@@ -1149,8 +1201,10 @@ unsafe extern "C" fn model_update_trampoline(ctx: *mut c_void, model_state: u64)
 
 /// Owning session over one version-checked engine instance.
 pub struct EngineSession {
+    // `engine` is declared first so that its `Drop` calls `rgpot_engine_destroy`
+    // while the callback context native code may still read is alive.
     engine: EnginePotential,
-    callbacks: Option<Box<CallbackState>>,
+    callbacks: Option<CallbackOwner>,
 }
 
 impl EngineSession {
@@ -1213,15 +1267,15 @@ impl EngineSession {
             .symbols
             .set_callbacks
             .ok_or_else(|| unsupported_symbol("rgpot_engine_set_callbacks"))?;
-        let mut next = callbacks.map(|callbacks| {
-            Box::new(CallbackState {
+        let next = callbacks.map(|callbacks| {
+            CallbackOwner::new(CallbackState {
                 callbacks: Mutex::new(callbacks),
                 failure: Mutex::new(None),
             })
         });
-        let raw = match &mut next {
-            Some(state) => RgpotEngineCallbacks {
-                ctx: (&mut **state as *mut CallbackState).cast(),
+        let raw = match &next {
+            Some(owner) => RgpotEngineCallbacks {
+                ctx: owner.ctx(),
                 oracle: Some(oracle_trampoline),
                 on_acquire: Some(acquire_trampoline),
                 on_model_update: Some(model_update_trampoline),
@@ -1239,7 +1293,7 @@ impl EngineSession {
             std::ptr::null()
         };
         let code = unsafe { set_callbacks(self.engine.handle.as_ptr(), raw_ptr) };
-        let direct = next.as_ref().and_then(|state| state.take_failure());
+        let direct = next.as_ref().and_then(CallbackOwner::take_failure);
         if code == 0 {
             // The native side now owns a copy of `raw`, so keep its context
             // alive even if a synchronously reported callback failure poisons
@@ -1553,6 +1607,9 @@ unsafe extern "C" fn engine_hessian_vector_callback(
         }
     }))
 }
+
+#[cfg(test)]
+mod session_tests;
 
 #[cfg(test)]
 mod tests {
