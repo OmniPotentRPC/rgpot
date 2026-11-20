@@ -1,3 +1,5 @@
+<!-- Copyright 2023--present rgpot developers -->
+
 `Neighbours.hpp` no longer marks `Neighbours::nextGeneration`
 `__declspec(dllimport)` for consumers on Windows, so a program linked to a
 static `librgpot` resolves it.

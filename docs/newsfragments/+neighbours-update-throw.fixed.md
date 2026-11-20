@@ -1,3 +1,5 @@
+<!-- Copyright 2023--present rgpot developers -->
+
 A `Neighbours::update` that throws leaves the object as a default-constructed
 one with a new generation.
 Before, the reference coordinates of the last build stayed beside bins and a

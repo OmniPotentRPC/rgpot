@@ -1,3 +1,5 @@
+<!-- Copyright 2023--present rgpot developers -->
+
 `Neighbours::generation()` is a process-unique identifier that changes at
 construction and on every rebuild, copy and move.
 It comes from one counter exported by `librgpot`.

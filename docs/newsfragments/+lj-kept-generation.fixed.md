@@ -1,3 +1,5 @@
+<!-- Copyright 2023--present rgpot developers -->
+
 `LJPot` keys the neighbour list it keeps on each thread on
 `Neighbours::generation()` instead of its own address.
 A destructor releases only the lists of the thread it runs on, so an `LJPot`
