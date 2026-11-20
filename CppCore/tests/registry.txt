@@ -96,6 +96,7 @@ RPCTest | tests rpc | unit test_rpc CapnpAdapterTest.cc |
 RPCClientTest | tests client | unit test_rpc_client BridgeStressTest.cc |
 test_list_parity | tests python | custom |
 test_list_parity_selftest | tests python | py CppCore/tests/check_test_registry.py selftest |
+check_test_registry_selftest | tests python | py CppCore/tests/test_check_test_registry.py |
 
 # Runnable examples.
 CallCuH2Pot | tests core examples fortran | custom workdir=. | @examples
@@ -321,6 +322,7 @@ EAMTableHandleTest | tests core rust_core | unit eam_table_handle_test EAMTableH
 EngineTableTest | tests core rpc posix | custom workdir=. | @engine_plugins
 lj_eval | core posix | custom timeout=60 | @engines
 lj_engine | core posix | custom timeout=60 | @engines
+potlibc_engine | core posix probe | custom timeout=120 | @engines
 external_potentials | core posix | custom timeout=120 | @engines
 ipi_driver_ase | core posix ipi probe | custom timeout=600 | @engines
 lammps_lj | core posix probe | custom timeout=180 | @engines
