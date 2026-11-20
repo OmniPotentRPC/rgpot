@@ -269,7 +269,9 @@ TEST_CASE("Persistent cache keys distinguish ordered potential identities across
   FingerprintedPotential b(PotType::LJ, static_cast<uint64_t>(PotType::CuH2), 2.5);
   FingerprintedPotential c(PotType::LJ, UINT64_C(0x1234567800000001), 3.75);
   rgpot::types::AtomMatrix positions(1, 3);
-  positions << 0.125, 0.25, 0.5;
+  positions(0, 0) = 0.125;
+  positions(0, 1) = 0.25;
+  positions(0, 2) = 0.5;
   const std::vector<int> species{1};
   const std::array<std::array<double, 3>, 3> box{{{6, 0, 0}, {0, 7, 0}, {0, 0, 8}}};
   const auto path = resultCachePath();
@@ -289,10 +291,11 @@ TEST_CASE("Persistent cache keys distinguish ordered potential identities across
   }
   {
     rgpot::cache::PotentialCache warm(path);
-    for (auto *pot : {&c, &b, &a}) {
+    using Case = std::pair<FingerprintedPotential *, double>;
+    for (const auto &[pot, energy] : {Case{&c, 3.75}, Case{&b, 2.5}, Case{&a, 1.25}}) {
       pot->setCache(&warm);
       const auto answer = (*pot)(positions, species, box);
-      REQUIRE(std::get<0>(answer) == (pot == &a ? 1.25 : pot == &b ? 2.5 : 3.75));
+      REQUIRE(std::get<0>(answer) == energy);
       pot->setCache(nullptr);
     }
     REQUIRE(warm.counts().computed == 0);
