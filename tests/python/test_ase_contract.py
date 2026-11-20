@@ -367,3 +367,50 @@ def test_kind_string_matches_object() -> None:
     assert raw_bytes(left["energy"], left["forces"]) == raw_bytes(
         right["energy"], right["forces"]
     )
+
+
+def test_lj_tail_correction_binding() -> None:
+    import math
+
+    pot_off = rgpot.LJPot(u0=1.0, cutoff=5.0, psi=1.0)
+    pot_on = rgpot.LJPot(u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True)
+    assert pot_off.config()["tail_correction"] is False
+    assert pot_on.config()["tail_correction"] is True
+
+    with pytest.raises(ValueError, match="switch_width"):
+        rgpot.LJPot(cutoff=5.0, switch_width=5.0, tail_correction=True)
+
+    # Single atom in a 20 A periodic cube: energy and stress are purely the
+    # analytic continuum tail correction.
+    side = 20.0
+    vol = side**3
+    pos = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
+    box = np.eye(3, dtype=np.float64) * side
+    res_off = pot_off.evaluate_per_atom(pos, [18], box)
+    res_on = pot_on.evaluate_per_atom(pos, [18], box)
+    assert res_off["energy"] == 0.0
+    rc = 5.0
+    want_e = (8.0 * math.pi / (9.0 * vol)) * (1.0 / rc**9 - 3.0 / rc**3)
+    want_w = (16.0 * math.pi / (9.0 * vol)) * (2.0 / rc**9 - 3.0 / rc**3)
+    assert res_on["energy"] == pytest.approx(want_e, rel=1e-14)
+    assert res_on["energies"][0] == pytest.approx(want_e, rel=1e-14)
+    np.testing.assert_allclose(res_on["forces"], 0.0, atol=0.0)
+    np.testing.assert_allclose(
+        res_on["stress"], np.eye(3) * (-want_w / vol), rtol=1e-14, atol=0.0
+    )
+    np.testing.assert_allclose(
+        res_on["virials"][0, :3], want_w, rtol=1e-14, atol=0.0
+    )
+
+    # RgpotCalculator forwards tail_correction by keyword and preserves it across copy.
+    crystal = lj_crystal()
+    calc_on = RgpotCalculator("lj", u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True)
+    calc_off = RgpotCalculator("lj", u0=1.0, cutoff=5.0, psi=1.0, tail_correction=False)
+    crystal.calc = calc_on
+    e_on = crystal.get_potential_energy()
+    f_on = crystal.get_forces()
+    crystal.calc = calc_off
+    e_off = crystal.get_potential_energy()
+    f_off = crystal.get_forces()
+    assert e_on != pytest.approx(e_off, rel=1e-6)
+    np.testing.assert_array_equal(f_on, f_off)

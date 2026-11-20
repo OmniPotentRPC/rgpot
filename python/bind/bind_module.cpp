@@ -618,22 +618,25 @@ NB_MODULE(_core, m) {
   lj.def(
       "__init__",
       [](PotHolder<rgpot::LJPot> *self, double u0, double cutoff, double psi,
-         double switch_width) {
+         double switch_width, bool tail_correction) {
         new (self) PotHolder<rgpot::LJPot>([=] {
           rgpot::LJConfig cfg;
           cfg.u0 = u0;
           cfg.cutoff = cutoff;
           cfg.psi = psi;
           cfg.switch_width = switch_width;
+          cfg.tail_correction = tail_correction;
           return std::make_unique<rgpot::LJPot>(cfg);
         });
       },
       nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
-      nb::arg("switch_width") = 0.0,
+      nb::arg("switch_width") = 0.0, nb::arg("tail_correction") = false,
       "Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff "
       "and psi are Angstrom. A positive switch_width (Angstrom) "
       "replaces the shift with the C^2 quintic switch over "
-      "[cutoff - switch_width, cutoff]; it must not exceed cutoff.");
+      "[cutoff - switch_width, cutoff]; it must not exceed cutoff. "
+      "tail_correction adds the continuum long-range correction on a "
+      "periodic cell and leaves the pair term unshifted.");
   lj.def("config", [](const PotHolder<rgpot::LJPot> &self) {
     const rgpot::LJConfig &cfg = self.primary().config();
     nb::dict out;
@@ -641,6 +644,7 @@ NB_MODULE(_core, m) {
     out["cutoff"] = cfg.cutoff;
     out["psi"] = cfg.psi;
     out["switch_width"] = cfg.switch_width;
+    out["tail_correction"] = cfg.tail_correction;
     return out;
   });
 #ifdef RGPOT_HAS_CACHE

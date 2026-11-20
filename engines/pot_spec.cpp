@@ -100,6 +100,22 @@ public:
     return v == nullptr ? fallback : *v;
   }
 
+  bool flag(const std::string &key, bool fallback) {
+    const std::string *v = find(key);
+    if (v == nullptr) {
+      return fallback;
+    }
+    const std::string f = lower(*v);
+    if (f == "true" || f == "1" || f == "yes" || f == "on") {
+      return true;
+    }
+    if (f == "false" || f == "0" || f == "no" || f == "off") {
+      return false;
+    }
+    throw std::invalid_argument(name_ + ": " + key +
+                                " is not a boolean: " + *v);
+  }
+
   void finish() const {
     for (std::size_t k = 0; k < options_.size(); ++k) {
       if (!used_[k]) {
@@ -191,6 +207,7 @@ Built make(const std::string &key, Reader &r, double fallback) {
     c.psi = r.real("psi", c.psi);
     c.cutoff = r.real("cutoff", fallback > 0.0 ? fallback : c.cutoff);
     c.switch_width = r.real("switch_width", c.switch_width);
+    c.tail_correction = r.flag("tail_correction", c.tail_correction);
     return ownCut<LJPot>(c);
   }
   if (key == "morse") {

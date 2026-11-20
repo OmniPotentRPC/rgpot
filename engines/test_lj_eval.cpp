@@ -5,6 +5,7 @@
 // evaluator the engines call, and the potential it keeps between calls.
 
 #include "lj_eval.hpp"
+#include "pot_spec.hpp"
 
 #include "rgpot/KeptPotential.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -166,6 +167,68 @@ int kept_checks() {
   return 0;
 }
 
+int spec_checks() {
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  const double pos[6] = {0.0, 0.0, 0.0, 1.5, 0.0, 0.0};
+  const int z[2] = {18, 18};
+
+  rgpot::LJPot direct_on(rgpot::LJConfig{
+      .u0 = 1.0, .cutoff = 5.0, .psi = 1.0, .switch_width = 1.0, .tail_correction = true});
+  rgpot::LJPot direct_off(rgpot::LJConfig{
+      .u0 = 1.0, .cutoff = 5.0, .psi = 1.0, .switch_width = 1.0, .tail_correction = false});
+  double f_direct_on[6] = {}, f_direct_off[6] = {};
+  rgpot::ForceOut out_direct_on{f_direct_on, 0.0, 0.0, {}, 0};
+  rgpot::ForceOut out_direct_off{f_direct_off, 0.0, 0.0, {}, 0};
+  direct_on.forceImpl({2, pos, z, box}, &out_direct_on);
+  direct_off.forceImpl({2, pos, z, box}, &out_direct_off);
+
+  for (const char *val : {"true", "1", "yes", "on"}) {
+    const rgpot::spec::Built b = rgpot::spec::build(
+        "LJ",
+        {{"u0", "1.0"}, {"cutoff", "5.0"}, {"psi", "1.0"},
+         {"switch_width", "1.0"}, {"tail_correction", val}},
+        0.0);
+    if (!b.pot) {
+      return fail(b.error.c_str());
+    }
+    double f[6] = {};
+    rgpot::ForceOut out{f, 0.0, 0.0, {}, 0};
+    b.eval({2, pos, z, box}, &out);
+    if (out.energy != out_direct_on.energy ||
+        std::memcmp(out.stress, out_direct_on.stress, sizeof(out.stress)) != 0) {
+      return fail("spec::build LJ tail_correction on did not match LJPot");
+    }
+  }
+  for (const char *val : {"false", "0", "no", "off"}) {
+    const rgpot::spec::Built b = rgpot::spec::build(
+        "LJ",
+        {{"u0", "1.0"}, {"cutoff", "5.0"}, {"psi", "1.0"},
+         {"switch_width", "1.0"}, {"tail_correction", val}},
+        0.0);
+    if (!b.pot) {
+      return fail(b.error.c_str());
+    }
+    double f[6] = {};
+    rgpot::ForceOut out{f, 0.0, 0.0, {}, 0};
+    b.eval({2, pos, z, box}, &out);
+    if (out.energy != out_direct_off.energy ||
+        std::memcmp(out.stress, out_direct_off.stress, sizeof(out.stress)) != 0) {
+      return fail("spec::build LJ tail_correction off did not match LJPot");
+    }
+  }
+  const rgpot::spec::Built bad_bool =
+      rgpot::spec::build("LJ", {{"tail_correction", "maybe"}}, 0.0);
+  if (bad_bool.pot || bad_bool.error.find("tail_correction") == std::string::npos) {
+    return fail("spec::build LJ accepted non-boolean tail_correction");
+  }
+  const rgpot::spec::Built bad_window = rgpot::spec::build(
+      "LJ", {{"cutoff", "5.0"}, {"switch_width", "5.0"}, {"tail_correction", "true"}}, 0.0);
+  if (bad_window.pot) {
+    return fail("spec::build LJ accepted switch_width == cutoff with tail_correction");
+  }
+  return 0;
+}
+
 } // namespace
 
 int main() {
@@ -226,5 +289,8 @@ int main() {
       recovered != first_energy) {
     return fail("rgpot_lj_eval did not recover after coincident atoms");
   }
-  return kept_checks();
+  if (kept_checks() != 0) {
+    return 1;
+  }
+  return spec_checks();
 }
