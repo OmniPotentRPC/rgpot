@@ -62,10 +62,9 @@ struct Spec {
 /// True when every atom has moved by at most half of `skin` from
 /// `reference`. Skin 0 is true only when the coordinates match. A
 /// negative or non-finite skin returns false, so the list is not reused.
-/// Coordinates are compared as stored. Callers leave them unwrapped, so a
-/// periodic crossing is a small step; wrapping a coordinate back by about
-/// one lattice vector rebuilds. The same test decides `Builder::update`'s
-/// reused flag when the cell is unchanged.
+/// Coordinates are compared as supplied. `Builder` folds periodic coordinates
+/// before this test. The same test decides `Builder::update`'s reused flag
+/// when the cell is unchanged.
 [[nodiscard]] inline bool withinSkin(const double *reference, const double *current,
                                      std::size_t n, double skin) noexcept {
   // A negative skin is not a buffer. NaN fails the same comparison.
@@ -104,9 +103,8 @@ struct Spec {
 /// the same size as the check it replaces, so that is the bound used.
 ///
 /// A negative or non-finite skin returns false and the list is rebuilt.
-/// Coordinates are compared as stored. Callers leave them unwrapped; wrapping
-/// a coordinate back by about one lattice vector is outside the skin and
-/// rebuilds.
+/// Coordinates are compared as supplied. `Builder` supplies coordinates
+/// folded along every periodic axis.
 [[nodiscard]] inline bool withinSkin(const double *reference, const double *current,
                                      std::size_t n, const double *reference_box,
                                      const double *current_box, const double span[3],
@@ -187,6 +185,11 @@ public:
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
   /// Stored pair index. A stream leaves this empty.
   [[nodiscard]] std::size_t slots() const noexcept { return nbr_.size(); }
+  /// Number of spatial bins in the current cell grid.
+  [[nodiscard]] std::size_t cellCount() const noexcept {
+    return static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+           static_cast<std::size_t>(nz_);
+  }
   [[nodiscard]] const std::vector<std::int32_t> &offsets() const noexcept {
     return off_;
   }
