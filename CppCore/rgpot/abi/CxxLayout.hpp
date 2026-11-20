@@ -162,12 +162,12 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// did not increase.
 ///
 /// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
-/// is major 1, minor 7, layout revision 2. Minor 1 added
+/// is major 1, minor 7, layout revision 1. Minor 1 added
 /// `rgpot_eindir_abi_compatible`, minor 2 the Hessian-vector functions,
 /// minor 3 the fused-cache settings and error kind, minor 4 the Taylor
 /// jet functions, minor 5 the engine and RPC Hessian-vector exports,
 /// minor 6 `rgpot_potential_new_eam_table`, and minor 7 the opt-in stress
-/// request and result fields.
+/// entry points. No exported C struct of that header changed layout.
 /// The neighbour query is `RGPOT_NLIST_ABI` 4.
 /// The C API is exported from librgpot, so it has no shared library of
 /// its own and rides this SONAME. `librgpot_mpi` stays at soversion 3
@@ -181,7 +181,8 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
 /// 8 stamps SuttonChenConfig, PotType::SuttonChen and SuttonChenPot.
-inline constexpr std::uint32_t kCxxSoversion = 9;
+/// 10 adds ForceInput::compute_stress, the opt-in stress request.
+inline constexpr std::uint32_t kCxxSoversion = 10;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
