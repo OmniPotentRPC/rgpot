@@ -61,12 +61,13 @@ class MpiPefSession;
 #include "rgpot/CPMDPot/CPMDPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
-#include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/NWChemPot/NWChemPot.hpp"
 #include "rgpot/Potential.hpp"
-#include "rgpot/abi/Handshake.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
+#include "rgpot/abi/Handshake.hpp"
 #ifdef RGPOT_HAS_CBE
 #include "rgpot/CBEPot/CBEPot.hpp"
 #endif
@@ -396,7 +397,7 @@ int runServer(int argc, char *argv[]
 ) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
-    std::cerr << "  Available PotentialTypes: LJ, LJCluster, Morse, ZBL"
+    std::cerr << "  Available PotentialTypes: LJ, LJCluster, Morse, ZBL, QSC"
 #ifdef RGPOT_HAS_FORTRAN_POTS
               << ", CuH2"
 #endif
@@ -424,13 +425,11 @@ int runServer(int argc, char *argv[]
 #ifdef RGPOT_HAS_SKALA
               << ", Skala, Skala:<basis>"
 #endif
-              << ", NWChem[:basis[:theory[:xc]]]"
-              << ", CPMD"
+              << ", NWChem[:basis[:theory[:xc]]]" << ", CPMD"
 #ifdef RGPOT_HAS_CP2K
               << ", CP2K"
 #endif
-              << ", DoubleWell, CoupledProtonWell"
-              << std::endl;
+              << ", DoubleWell, CoupledProtonWell" << std::endl;
     return 1;
   }
 
@@ -476,6 +475,9 @@ int runServer(int argc, char *argv[]
   } else if (pot_type == "ZBL") {
     std::cout << "Loading ZBL potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::ZBLPot>();
+  } else if (pot_type == "QSC") {
+    std::cout << "Loading QSC potential..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::QSCPot>();
   } else if (pot_type == "Eckart") {
     potential_to_use = std::make_unique<rgpot::EckartPot>();
   } else if (pot_type == "MullerBrown") {

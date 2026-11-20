@@ -170,6 +170,20 @@ class.
   below 1, when =a= is not positive, when =epsilon=, =c= or =cutoff= is not
   finite, and when =periodic= is set with a =cutoff= that is not positive.
 
+*** =rgpot::QSCConfig=
+
+- Inputs :: =cutoff= (truncation distance, default 8.0; 0 or less keeps every
+  pair), =verlet_skin= (Verlet neighbour-list skin, default 0.5), =periodic=
+  (minimum image, default true), =stress= (write the Cauchy stress, default
+  false).
+- Units :: =cutoff= and =verlet_skin= in Angstrom; =periodic= and =stress= are
+  boolean flags.
+- Outputs :: the parameters of =rgpot::QSCPot=.
+- Errors :: the constructor throws
+  =std::invalid_argument= when =cutoff= or =verlet_skin= is not finite, when
+  =verlet_skin= is negative, and when =periodic= is set with a =cutoff= that is
+  not positive.
+
 *** =rgpot::EAMCellConfig=
 
 - Inputs :: none; the struct has no fields.
@@ -299,7 +313,7 @@ A sentence after the fields names a class whose behaviour differs in detail.
 
 - Applies to :: rgpot::EAMPot, rgpot::EAMTablePot, rgpot::EMTPot,
   rgpot::ExprPot, rgpot::LJClusterPot, rgpot::LJPot, rgpot::MorsePot,
-  rgpot::SPCEPot, rgpot::StillingerWeberSi, rgpot::SuttonChenPot,
+  rgpot::QSCPot, rgpot::SPCEPot, rgpot::StillingerWeberSi, rgpot::SuttonChenPot,
   rgpot::TIP4PPot, rgpot::TIP4PPtPot, rgpot::TersoffSiC, rgpot::ZBLPot,
   rgpot::lr::CoulombPot, rgpot::lr::DispersionPot, rgpot::lr::NlhPot
 - Inputs :: none.
@@ -324,8 +338,8 @@ void setNeighbourMode(nlist::Mode mode) noexcept;
 #+end_src
 
 - Applies to :: rgpot::EAMPot, rgpot::EAMTablePot, rgpot::LJClusterPot,
-  rgpot::LJPot, rgpot::MorsePot, rgpot::StillingerWeberSi, rgpot::SuttonChenPot,
-  rgpot::TersoffSiC, rgpot::ZBLPot
+  rgpot::LJPot, rgpot::MorsePot, rgpot::QSCPot, rgpot::StillingerWeberSi,
+  rgpot::SuttonChenPot, rgpot::TersoffSiC, rgpot::ZBLPot
 - Inputs :: =mode=: =nlist::Mode::Stored= keeps a Verlet list of candidate
   pairs, =nlist::Mode::Stream= walks the cells and stores no pairs,
   =nlist::Mode::Auto= (the default) stores when the index fits in the memory the
@@ -345,7 +359,7 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
 #+end_src
 
 - Applies to :: rgpot::EAMTablePot, rgpot::LJClusterPot, rgpot::LJPot,
-  rgpot::MorsePot, rgpot::SuttonChenPot, rgpot::ZBLPot
+  rgpot::MorsePot, rgpot::QSCPot, rgpot::SuttonChenPot, rgpot::ZBLPot
 - Inputs :: =in= and =out= as for =forceImpl=; =atoms.energy= (nAtoms doubles or
   null) and =atoms.virial= (6 * nAtoms doubles or null).
 - Units :: per-atom energy and per-atom virial in eV.
@@ -368,12 +382,13 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
 #+end_src
 
 - Applies to :: rgpot::EAMTablePot, rgpot::LJPot, rgpot::MorsePot,
-  rgpot::StillingerWeberSi, rgpot::SuttonChenPot, rgpot::TersoffSiC
+  rgpot::QSCPot, rgpot::StillingerWeberSi, rgpot::SuttonChenPot,
+  rgpot::TersoffSiC
 - Inputs :: none.
 - Units :: =cutoff= in the length unit of the potential: Angstrom for
-  =rgpot::LJPot=, =rgpot::MorsePot=, =rgpot::StillingerWeberSi= and
-  =rgpot::TersoffSiC=, the unit of =a= for =rgpot::SuttonChenPot= and the unit
-  of the table for =rgpot::EAMTablePot=.
+  =rgpot::LJPot=, =rgpot::MorsePot=, =rgpot::QSCPot=,
+  =rgpot::StillingerWeberSi= and =rgpot::TersoffSiC=, the unit of =a= for
+  =rgpot::SuttonChenPot= and the unit of the table for =rgpot::EAMTablePot=.
 - Outputs :: a =rgpot::Locality= from =CppCore/rgpot/Locality.hpp=.
   =cutoff= is the range of each site energy, =pairwise= is true when every
   energy term is a function of one pair distance, and =densities= is the number
@@ -397,10 +412,10 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
 
 =rgpot::LJPot= and =rgpot::MorsePot= return their cutoff with =pairwise= set,
 and 0 when the cutoff is 0 or less.
-=rgpot::SuttonChenPot= and =rgpot::EAMTablePot= return their cutoff as a
-many-body range with =densities= 1.
-=rgpot::SuttonChenPot= returns 0 when its cutoff is 0 or less, since it then
-keeps every pair.
+=rgpot::EAMTablePot=, =rgpot::QSCPot= and =rgpot::SuttonChenPot= return their
+cutoff as a many-body range with =densities= 1.
+=rgpot::QSCPot= and =rgpot::SuttonChenPot= return 0 when their cutoff is 0 or
+less, since they then keep every pair.
 =rgpot::StillingerWeberSi= returns =kCut * kSigma= with =full= set and =reach=
 2.
 =rgpot::TersoffSiC= returns the silicon outer cutoff, 3 Angstrom, with =full=
@@ -414,7 +429,7 @@ Both have =densities= 0, and =ghostReach()= is twice the cutoff.
 void densityStage(const HalfList &list, double *densities) const;
 #+end_src
 
-- Applies to :: rgpot::EAMTablePot, rgpot::SuttonChenPot
+- Applies to :: rgpot::EAMTablePot, rgpot::QSCPot, rgpot::SuttonChenPot
 - Inputs :: =list=, a =rgpot::HalfList= from =CppCore/rgpot/Staged.hpp=.
   It holds the positions and atomic numbers of the host's =nOwned= atoms
   followed by their copies, =nAtoms= in all, and a half neighbour list over the
@@ -422,8 +437,9 @@ void densityStage(const HalfList &list, double *densities) const;
   =densities= holds =locality().densities= values per atom for all =nAtoms=
   atoms, zeroed by the caller.
 - Units :: positions in the length unit of the potential.
-  The densities are those of the table for =rgpot::EAMTablePot= and sums of
-  \((a/r)^m\) for =rgpot::SuttonChenPot=.
+  The densities are those of the table for =rgpot::EAMTablePot=, sums of
+  \((a_{ab}/r)^{m_{ab}}\) for =rgpot::QSCPot= and sums of \((a/r)^m\) for
+  =rgpot::SuttonChenPot=.
 - Outputs :: adds the density of each listed pair to its row atom, and to the
   other atom when that one is owned or =list.newton= is set.
   Pairs beyond the cutoff are skipped, so a list built with a skin works.
@@ -432,6 +448,9 @@ void densityStage(const HalfList &list, double *densities) const;
   its copies.
 - Errors :: =rgpot::EAMTablePot= throws =std::invalid_argument= when a pair
   within the cutoff has an atomic number in no element line.
+  =rgpot::QSCPot= throws =std::invalid_argument= when =list.atmnrs= is null and
+  =list.nAtoms > 0=, or when a pair within the cutoff has an atomic number not
+  in the element table.
   =rgpot::SuttonChenPot= throws nothing.
 
 =rgpot::LJPot= and =rgpot::MorsePot= have no densities; their =densityStage= is
@@ -446,7 +465,7 @@ void forceStage(const HalfList &list, const double *densities, double *forces,
 #+end_src
 
 - Applies to :: rgpot::EAMTablePot, rgpot::LJPot, rgpot::MorsePot,
-  rgpot::SuttonChenPot
+  rgpot::QSCPot, rgpot::SuttonChenPot
 - Inputs :: =list= as for =.densityStage=, and =densities= after the host
   completed them; the pair potentials do not read =densities=.
   =forces= holds 3 * nAtoms doubles, and =tally= is a =rgpot::StageTally= or
@@ -466,6 +485,9 @@ void forceStage(const HalfList &list, const double *densities, double *forces,
 - Errors :: =rgpot::EAMTablePot= throws =std::invalid_argument= when a pair
   within the cutoff, or with a tally an owned atom, has an atomic number in no
   element line.
+  =rgpot::QSCPot= throws =std::invalid_argument= when =list.atmnrs= is null and
+  =list.nAtoms > 0=, or when a pair within the cutoff or with a tally an owned
+  atom has an atomic number not in the element table.
   The other classes throw nothing.
 
 =rgpot::LJPot= sets =tally->energy= to NaN when two listed atoms coincide.
@@ -478,8 +500,8 @@ void forceStage(const HalfList &list, const double *densities, double *forces,
 #+end_src
 
 - Applies to :: rgpot::EAMPot, rgpot::EAMTablePot, rgpot::LJClusterPot,
-  rgpot::LJPot, rgpot::MorsePot, rgpot::SuttonChenPot, rgpot::TersoffSiC,
-  rgpot::ZBLPot
+  rgpot::LJPot, rgpot::MorsePot, rgpot::QSCPot, rgpot::SuttonChenPot,
+  rgpot::TersoffSiC, rgpot::ZBLPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: true when the last force call kept the Verlet list, because no atom
@@ -1049,6 +1071,107 @@ void setPairTermLimit(std::size_t pairs) noexcept;
   The default is =PairTerms<3>::kDefaultLimit= (1398101 pairs, which is 32 MiB
   of two-pass =PairTerms<3>= storage at 24 bytes per pair), and 0 skips the
   three-phase path and keeps no two-pass terms.
+- Errors :: none.
+
+*** =rgpot::QSCPot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+QSCPot();
+explicit QSCPot(const QSCConfig &c);
+#+end_src
+
+- Inputs :: a =rgpot::QSCConfig=.
+- Units :: energy in eV, lengths in Angstrom, forces in
+  eV/Angstrom, stress in eV/Angstrom^3.
+- Outputs :: the multi-element Quantum Sutton-Chen energy, analytic forces,
+  optional Cauchy stress and exact analytic Hessian-vector product, with no
+  energy shift at the cutoff.
+  The default element table covers Ni (28), Cu (29), Rh (45), Pd (46), Ag (47),
+  Ir (77), Pt (78) and Au (79).
+  With =periodic= false the cell is not used to fold pairs.
+  With =stress= set the force call writes the stress when the cell volume is
+  positive.
+  Mixtures follow the published equations and do not reproduce eOn 3b2586f; pure
+  elements do.
+  See [[file:qsc.org][Quantum Sutton-Chen potential]].
+- Errors :: the errors of =rgpot::QSCConfig=.
+  The force call throws =std::invalid_argument= for a null =ForceOut=, for a
+  null position, atomic-number or force buffer when =nAtoms > 0=, for a
+  non-finite coordinate, for an atomic number not in the element table, and when
+  =periodic= is set and the cell has no positive volume.
+  Coincident atoms within the cutoff throw =std::domain_error=.
+
+Parameter source: Qi, Cagin, Kimura and Goddard, Phys.
+Rev. B 59, 3527 (1999),
+doi:10.1103/PhysRevB.59.3527, and the fcc alloy mixing rules of Rafii-Tabar and Sutton, Philos. Mag. Lett. 63, 217 (1991), doi:10.1080/09500839108205994.
+Reference value: a copper dimer at =r = 3.6030= Angstrom is -0.9770461806 eV,
+and the copper fcc crystal at the =2 a= cutoff is -3.519583146896 eV/atom.
+
+*** =rgpot::QSCPot::config=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const QSCConfig &config() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: as in =rgpot::QSCConfig=.
+- Outputs :: the =rgpot::QSCConfig= the instance was built with.
+- Errors :: none.
+
+*** =rgpot::QSCPot::setElementParameter=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setElementParameter(int z, double n, double m, double epsilon, double c,
+                         double a);
+#+end_src
+
+- Inputs :: =z= (atomic number), =n= (repulsive exponent), =m= (density
+  exponent), =epsilon= (energy scale), =c= (embedding coefficient) and =a=
+  (lattice length scale).
+- Units :: =epsilon= in eV, =a= in Angstrom; =z=, =n=, =m= and =c= are
+  dimensionless.
+- Outputs :: adds or replaces the element row of =z= and updates =paramsKey()=.
+- Errors :: throws =std::invalid_argument= when =z < 1=, when =n < 1= or
+  =m < 1=, when =epsilon=, =c= or =a= is not positive, or when any parameter is
+  not finite.
+  The change reaches this instance and the replicas made by =sharedReplica=,
+  and no copy made by the copy constructor or copy assignment.
+
+*** =rgpot::QSCPot= copy and move
+
+#+attr_rgpot: signature
+#+begin_src cpp
+QSCPot(const QSCPot &other);
+QSCPot &operator=(const QSCPot &other);
+QSCPot(QSCPot &&other) = default;
+QSCPot &operator=(QSCPot &&other) = default;
+#+end_src
+
+- Inputs :: the potential to copy or move from.
+- Units :: none.
+- Outputs :: a copy has its own parameter table, holding the elements of the
+  original at the time of the copy, so =setElementParameter= on either one does
+  not change the other.
+  A move takes the table along, and the moved-from object can be destroyed,
+  assigned to, or copied.
+- Errors :: none.
+
+*** =rgpot::QSCPot::sharedReplica=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] QSCPot sharedReplica();
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a potential backed by the same parameter table, for a host that
+  keeps one instance per thread: =setElementParameter= on any of them reaches
+  all of them, and =paramsKey()= agrees.
+  Each replica has its own neighbour list and counters.
 - Errors :: none.
 
 *** =rgpot::EMTPot=

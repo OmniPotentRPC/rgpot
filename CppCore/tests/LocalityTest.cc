@@ -18,6 +18,7 @@
 #include "rgpot/Locality.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/PerAtom.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
 #ifdef RGPOT_HAS_EAM_TABLE
@@ -252,6 +253,10 @@ TEST_CASE("Owned atoms of a cluster match the periodic box", "[Locality]") {
     c.periodic = true;
     c.stress = true;
     check_owned(rgpot::SuttonChenPot(c), fcc(3.92, 4, triclinic, 78, 78));
+  }
+  SECTION("QSC") {
+    const rgpot::QSCConfig c{.cutoff = 6.5, .periodic = true, .stress = true};
+    check_owned(rgpot::QSCPot(c), fcc(3.6, 4, triclinic, 29, 28));
   }
 #ifdef RGPOT_HAS_EAM_TABLE
   SECTION("EAMTable") {

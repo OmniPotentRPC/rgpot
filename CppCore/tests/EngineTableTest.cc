@@ -29,6 +29,7 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #ifdef RGPOT_HAS_WATER
 #include "rgpot/Water/WaterPots.hpp"
 #endif
@@ -346,11 +347,39 @@ TEST_CASE("classical engine names its potentials", "[engine][classical]") {
   if (!open_engine("CLASSICAL", e)) {
     SKIP("no classical engine in this build");
   }
-  for (const char *name : {"lj", "ljcluster", "morse", "zbl"}) {
+  for (const char *name : {"lj", "ljcluster", "morse", "zbl", "qsc"}) {
     INFO(name);
     RgpotEnginePot *pot = create(e, builtin_params(name));
     REQUIRE(pot != nullptr);
     e.destroy(pot);
+  }
+  {
+    RgpotEnginePot *qpot = create(e, builtin_params("qsc"));
+    REQUIRE(qpot != nullptr);
+    const std::array<double, 6> dimer = {0.0, 0.0, 0.0, 3.52, 0.0, 0.0};
+    const std::array<int, 2> z2 = {29, 29};
+    std::vector<double> f(6, 0.0);
+    double en = 0.0;
+    REQUIRE(e.force(qpot, 2, dimer.data(), z2.data(), f.data(), &en, nullptr,
+                    kBox.data(), nullptr, nullptr) == 0);
+    rgpot::QSCPot direct;
+    rgpot::types::AtomMatrix pos(2, 3);
+    pos(0, 0) = 0.0;
+    pos(0, 1) = 0.0;
+    pos(0, 2) = 0.0;
+    pos(1, 0) = 3.52;
+    pos(1, 1) = 0.0;
+    pos(1, 2) = 0.0;
+    auto [ref_e, ref_f, ref_v] =
+        direct(pos, {29, 29}, {{{40, 0, 0}, {0, 40, 0}, {0, 0, 40}}});
+    (void)ref_v;
+    constexpr double kEngineParityMargin = 1.0e-12;
+    REQUIRE(en == Catch::Approx(ref_e).margin(kEngineParityMargin));
+    for (int i = 0; i < 6; ++i) {
+      REQUIRE(f[static_cast<std::size_t>(i)] ==
+              Catch::Approx(ref_f.data()[i]).margin(kEngineParityMargin));
+    }
+    e.destroy(qpot);
   }
   std::string error;
   REQUIRE(create(e, builtin_params("nonesuch"), &error) == nullptr);
