@@ -169,7 +169,10 @@ The list holds partner indices and each walk takes the image from the current co
 The bins are redone after such a wrap.
 A change of the cell, of the atom count or of the spec rebuilds the list.
 `Builder`, whose table stores the image shifts, compares the coordinates it is given.
-Callers leave those coordinates unwrapped, so crossing a periodic face remains a small step.
+Those coordinates may lie any whole number of cells outside the box.
+The shifts to try for a pair are taken from the fractional coordinates of its two atoms, and a stored shift is the one for the coordinates as given.
+A coordinate more than 2^29 cells from the origin is rejected with `Code::Box`.
+Coordinates left unwrapped make crossing a periodic face a small step.
 Wrapping a coordinate back by about one lattice vector is outside the skin, so the table is rebuilt.
 The same update reuses the table across a cell change when the largest image displacement, at every sign of the shift stencil, fits in the skin together with the atom moves.
 `Mode::Stream` walks the 27 neighbouring cells and stores no pair list.
