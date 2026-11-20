@@ -153,14 +153,14 @@ void DualList::update(const double *pos, std::size_t n, const double *box,
                       bool periodic) {
   short_rebuilt_ = false;
   long_rebuilt_ = false;
-  if (n == 0) {
+  // The builders skip the filter when the next geometry matches the one
+  // they hold, which would keep these cleared lists. Dropping them makes
+  // the next update rebuild.
+  if (n == 0 || (n == 1 && (!periodic || box == nullptr))) {
     short_.clear();
     long_.clear();
-    return;
-  }
-  if (n == 1 && (!periodic || box == nullptr)) {
-    short_.clear();
-    long_.clear();
+    short_skin_.reset();
+    long_skin_.reset();
     return;
   }
   if (pos == nullptr) {
