@@ -10,6 +10,11 @@ files copied unchanged from its potentials/ directory:
   library.meam    element table of the 1NN MEAM files.
   Ni.meam         parameter file for Ni, Baskes, Phys. Rev. B 46, 2727 (1992).
   SiC.meam        parameter file for the Si-C pair.
+  library_2nn.meam, MoCoNiVFeAlCr_2nn.meam
+                  second-neighbour (Lee-Baskes 2NN) set for Mo Co Ni V Fe Al
+                  Cr, Wang et al., npj Comput. Mater. 9, 60 (2023).
+  AlSiMgCuFe.meam 2NN parameter file for the AlS SiS MgS CuS FeS entries of
+                  library.meam, Jelinek et al., Phys. Rev. B 85, 245102 (2012).
 
 and on parameter files written for this repository (opts_*.meam), which
 switch on the options the LAMMPS files do not reach: ialloy 0, 1 and 2,
@@ -36,7 +41,9 @@ import lammps
 import numpy as np
 
 HERE = pathlib.Path(__file__).parent
-ZNUM = {"C": 6, "AlS": 13, "Si": 14, "Fe": 26, "Ni": 28, "Cu": 29, "WL": 74}
+ZNUM = {"C": 6, "AlS": 13, "SiS": 14, "MgS": 12, "Si": 14, "FeS": 26, "CuS": 29,
+        "Fe": 26, "Ni": 28, "Cu": 29, "WL": 74, "Mo": 42, "Co": 27, "V": 23,
+        "Al": 13, "Cr": 24}
 
 FCC = np.array([[0, 0, 0], [0.5, 0.5, 0], [0.5, 0, 0.5], [0, 0.5, 0.5]])
 BCC = np.array([[0, 0, 0], [0.5, 0.5, 0.5]])
@@ -44,7 +51,9 @@ ZINCBLENDE = np.concatenate([FCC, FCC + 0.25])
 
 # name, library, library elements (type order), parameter file or None,
 # basis, lattice constant, cells, shear, jitter, species rule, seed
-# The species rule is "random" or "zincblende" (types 1 and 2 by sublattice).
+# The species rule is "random", "zincblende" (types 1 and 2 by sublattice) or
+# "only:N" (every atom of type N).
+HEA = ("Mo", "Co", "Ni", "V", "Fe", "Al", "Cr")
 CASES = (
     ("ni_cubic", "library.meam", ("Ni",), "Ni.meam", FCC, 3.52, 3, False, 0.10,
      "random", 31),
@@ -54,6 +63,14 @@ CASES = (
      "random", 33),
     ("sic_zincblende", "library.meam", ("Si", "C"), "SiC.meam", ZINCBLENDE, 4.36,
      3, True, 0.08, "zincblende", 34),
+    ("fe_2nn", "library_2nn.meam", HEA, "MoCoNiVFeAlCr_2nn.meam", BCC, 2.87, 4, False,
+     0.08, "only:5", 41),
+    ("ni_2nn_sheared", "library_2nn.meam", HEA, "MoCoNiVFeAlCr_2nn.meam", FCC, 3.52, 3,
+     True, 0.09, "only:3", 42),
+    ("hea_2nn", "library_2nn.meam", HEA, "MoCoNiVFeAlCr_2nn.meam", BCC, 2.9, 4, True,
+     0.07, "random", 43),
+    ("alsimgcufe_2nn", "library.meam", ("AlS", "SiS", "MgS", "CuS", "FeS"),
+     "AlSiMgCuFe.meam", FCC, 4.0, 3, True, 0.08, "random", 44),
     ("alloy_opts_a", "library.meam", ("Ni", "AlS", "Cu", "Fe", "WL"), "opts_a.meam",
      FCC, 3.6, 3, True, 0.08, "random", 35),
     ("alloy_opts_b", "library.meam", ("Ni", "AlS", "Cu", "Fe", "WL"), "opts_b.meam",
@@ -72,7 +89,9 @@ def crystal(basis, lattice, cells, sheared, jitter, rule, seed, ntypes):
     rng = np.random.default_rng(seed)
     pos = frac @ box + rng.uniform(-jitter, jitter, frac.shape)
     pos = np.mod(pos @ np.linalg.inv(box), 1.0) @ box
-    if rule == "zincblende":
+    if rule.startswith("only:"):
+        types = np.full(len(pos), int(rule[5:]))
+    elif rule == "zincblende":
         types = np.tile(np.repeat([1, 2], len(basis) // 2), cells ** 3)
     else:
         types = rng.integers(1, ntypes + 1, len(pos))
