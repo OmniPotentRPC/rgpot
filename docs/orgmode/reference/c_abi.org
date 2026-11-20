@@ -584,9 +584,9 @@ enum rgpot_status_t rgpot_potential_calculate(const struct rgpot_potential_t *po
 - Inputs :: none; a struct.
 - Units :: stress in energy per volume of the potential.
 - Outputs :: =struct_size=, =has_stress= and =stress[9]=.
-  =struct_size= is the version field: the caller sets it to
-  =sizeof(rgpot_stress_out_t)= of the header it was built with, and the library
-  refuses a smaller value instead of writing past the storage.
+  =struct_size= is the version field: the caller sets it to =sizeof(rgpot_stress_out_t)=
+  of the header it was built with, and the library refuses a smaller value
+  instead of writing past the storage.
   =stress= is the row-major Cauchy stress, \(\sigma = \frac{1}{|\det h|}
   \partial E / \partial \epsilon\), with =h= the cell.
   =has_stress= is nonzero only when all nine components were computed.
@@ -653,9 +653,9 @@ enum rgpot_status_t rgpot_potential_calculate_stress(
   =stress->has_stress= stays 0 when a component could not be computed, for
   example for a singular cell or a cell the potential does not support.
   =rgpot_potential_calculate= never computes stress.
-- Errors :: =RGPOT_INVALID_PARAMETER= for a NULL argument, a =struct_size= that is
-  too small (the block is not touched), or a potential with no stress callback,
-  with a message that names the missing capability.
+- Errors :: =RGPOT_INVALID_PARAMETER= for a NULL argument, a =struct_size= that
+  is too small (the block is not touched), or a potential with no stress
+  callback, with a message that names the missing capability.
   Otherwise the callback's status, unchanged.
   =RGPOT_INTERNAL_ERROR= for a caught panic.
 
@@ -1383,8 +1383,8 @@ enum rgpot_status_t rgpot_rpc_calculate_stress(
 - Inputs :: as for =rgpot_rpc_calculate=, plus =stress= writable storage whose
   =struct_size= is at least =sizeof(rgpot_stress_out_t)=.
 - Units :: those of the remote potential; the stress is in energy per volume.
-- Outputs :: the outputs of =rgpot_rpc_calculate=, and the nine components of the
-  Cauchy stress, row-major, in =stress->stress=.
+- Outputs :: the outputs of =rgpot_rpc_calculate=, and the nine components of
+  the Cauchy stress, row-major, in =stress->stress=.
   =stress->has_stress= is nonzero only when the reply carried all nine.
   =rgpot_rpc_calculate= never asks the server for stress, and a stress that
   arrives anyway is discarded.

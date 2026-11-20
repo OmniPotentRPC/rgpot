@@ -256,8 +256,9 @@ rgpot_stress_out_t &stress_struct();
 - Inputs :: none.
 - Units :: none.
 - Outputs :: the stress block that the stress entry points of the C API write.
-  It is created with =struct_size= set, and it is the only place a stress is
-  stored; =rgpot_force_out_t= carries none.
+  It is created with
+  =struct_size= set, and it is the only place a stress is stored; =rgpot_force_out_t=
+  carries none.
 - Errors :: none.
 
 *** =rgpot::CalcResult::stress_data=
@@ -269,8 +270,8 @@ const double *stress_data() const noexcept;
 
 - Inputs :: none.
 - Units :: eV/Angstrom^3 for built-in potentials.
-- Outputs :: a pointer to nine row-major Cauchy-stress components. Inspect
-  =has_stress()= before using them.
+- Outputs :: a pointer to nine row-major Cauchy-stress components.
+  Inspect =has_stress()= before using them.
 - Errors :: none.
 
 ** include/rgpot/potential.hpp
@@ -380,8 +381,8 @@ CalcResult calculate(const InputSpec &input);
 - Units :: those of the wrapped potential.
 - Outputs :: a =CalcResult= with energy, variance and the =[n, 3]= forces tensor
   set by the callback.
-  An =InputSpec= that did not call =with_stress= takes the force-only entry point
-  and never sees a stress; one that did takes =rgpot_potential_calculate_stress=,
+  An =InputSpec= that did not call
+  =with_stress= takes the force-only entry point and never sees a stress; one that did takes =rgpot_potential_calculate_stress=,
   and =has_stress()= tells whether the potential produced all nine components.
 - Errors :: throws =rgpot::Error= when =rgpot_potential_calculate= returns a
   non-success status: a NULL handle gives "invalid parameter", and a failing
