@@ -1448,3 +1448,53 @@ TEST_CASE("a moved-from Neighbours is empty and builds again",
     }
   }
 }
+
+TEST_CASE("a box too long for an int grid is binned as one cell",
+          "[nlist][cells]") {
+  // 3e9 cells of edge 1 per axis is past the largest int.
+  const double L = 3.0e9;
+  const double box[9] = {L, 0, 0, 0, L, 0, 0, 0, L};
+  const std::vector<double> pos = {0.0, 0.0, 0.0, 0.6, 0.0, 0.0,
+                                   0.0, 0.7, 0.0, L - 0.5, 0.0, 0.0};
+  const std::size_t n = pos.size() / 3;
+  const double cutoff = 1.0;
+
+  for (const bool periodic : {true, false}) {
+    std::vector<HalfPair> want;
+    for (std::size_t i = 0; i < n; ++i) {
+      for (std::size_t j = i + 1; j < n; ++j) {
+        double r2 = 0.0;
+        for (std::size_t k = 0; k < 3; ++k) {
+          double d = pos[3 * i + k] - pos[3 * j + k];
+          if (periodic) {
+            d -= L * std::round(d / L);
+          }
+          r2 += d * d;
+        }
+        if (r2 <= cutoff * cutoff) {
+          want.push_back({static_cast<std::int32_t>(i), static_cast<std::int32_t>(j), r2});
+        }
+      }
+    }
+    REQUIRE(want.size() == (periodic ? 5U : 3U));
+
+    for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+      rgpot::nlist::Spec spec;
+      spec.cutoff = cutoff;
+      spec.skin = 0.0;
+      spec.image = rgpot::nlist::Image::Round;
+      spec.mode = mode;
+      spec.periodic = {periodic, periodic, periodic};
+      INFO("periodic " << periodic << " mode " << static_cast<int>(mode));
+      rgpot::nlist::Neighbours cells;
+      REQUIRE_NOTHROW(cells.update(pos.data(), n, box, spec));
+      const auto got = halfPairsWithin(cells, n, cutoff);
+      REQUIRE(got.size() == want.size());
+      for (std::size_t p = 0; p < got.size(); ++p) {
+        CHECK(got[p].i == want[p].i);
+        CHECK(got[p].j == want[p].j);
+        CHECK(got[p].r2 == Catch::Approx(want[p].r2).epsilon(1e-12));
+      }
+    }
+  }
+}

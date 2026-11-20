@@ -26,18 +26,39 @@
 namespace rgpot::nlist {
 namespace {
 
-int axisCount(double length, double edge) {
+/// Largest grid whose cell ids, and the offsets past them, fit an int.
+constexpr std::uint64_t kMaxCells = 0x7ffffffe;
+
+/// Cells of edge at least `edge` along `length`. A count past kMaxCells
+/// is returned as kMaxCells + 1, which no grid accepts.
+std::uint64_t axisCount(double length, double edge) {
   if (!(length > 0.0) || !(edge > 0.0)) {
     return 1;
   }
-  auto n = static_cast<long>(std::floor(length / edge));
-  if (n < 1) {
-    n = 1;
+  const double cells = std::floor(length / edge);
+  if (!(cells >= 1.0)) {
+    return 1;
   }
+  if (!(cells <= static_cast<double>(kMaxCells))) {
+    return kMaxCells + 1;
+  }
+  auto n = static_cast<std::uint64_t>(cells);
   while (n > 1 && length / static_cast<double>(n) < edge) {
     --n;
   }
-  return static_cast<int>(n);
+  return n;
+}
+
+/// Cells of the grid, or zero when there are more than kMaxCells.
+std::uint64_t gridCells(const std::uint64_t (&axes)[3]) {
+  std::uint64_t cells = 1;
+  for (const std::uint64_t axis : axes) {
+    if (axis > kMaxCells / cells) {
+      return 0;
+    }
+    cells *= axis;
+  }
+  return cells;
 }
 
 /// Reciprocal basis of a row-major cell. `ok` is false when the
@@ -173,21 +194,27 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
-  // A grid that does not fit is one cell. An open axis can instead be
-  // binned on the atom span, which is what a cluster in a huge box needs.
-  // A periodic axis keeps the cell length. One cell remains when the
-  // tight grid does not fit either. A grid that fits is unchanged, so
-  // subtracting a zero origin leaves those bins as they were.
+  // A grid that does not fit, because an int cannot name its cells or
+  // the OS reports too little memory for its offsets, is one cell. An
+  // open axis can instead be binned on the atom span, which is what a
+  // cluster in a huge box needs. A periodic axis keeps the cell length.
+  // One cell remains when the tight grid does not fit either. A grid
+  // that fits is unchanged, so subtracting a zero origin leaves those
+  // bins as they were.
   double origin[3] = {0.0, 0.0, 0.0};
   double span[3] = {len_[0], len_[1], len_[2]};
+  std::uint64_t axes[3] = {1, 1, 1};
   auto set_axes = [&]() {
-    nx_ = axisCount(span[0], edge);
-    ny_ = axisCount(span[1], edge);
-    nz_ = axisCount(span[2], edge);
+    for (int k = 0; k < 3; ++k) {
+      axes[k] = axisCount(span[k], edge);
+    }
   };
-  auto bytes_of = [&]() {
-    return static_cast<double>(nx_) * static_cast<double>(ny_) *
-           static_cast<double>(nz_) * static_cast<double>(sizeof(std::int32_t));
+  // A grid fits when an int names every cell and, when the OS reports
+  // it, the offsets fit in the memory available.
+  auto fits = [](const std::uint64_t (&grid)[3], std::uint64_t avail) {
+    const std::uint64_t cells = gridCells(grid);
+    return cells != 0 &&
+           (avail == 0 || cells <= avail / sizeof(std::int32_t));
   };
   set_axes();
   double frac_inv[9]{};
@@ -209,13 +236,13 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     for (int k = 0; k < 9; ++k) {
       frac_inv[k] = basis.inv[k];
     }
-    nx_ = axisCount(1.0, edge * basis.dual[0]);
-    ny_ = axisCount(1.0, edge * basis.dual[1]);
-    nz_ = axisCount(1.0, edge * basis.dual[2]);
+    for (int k = 0; k < 3; ++k) {
+      axes[k] = axisCount(1.0, edge * basis.dual[k]);
+    }
     use_frac = true;
   }
   const auto avail = availableBytes();
-  if (avail > 0 && bytes_of() > static_cast<double>(avail)) {
+  if (!fits(axes, avail)) {
     bool any_open = false;
     for (int k = 0; k < 3; ++k) {
       if (periodic_[k] || n == 0) {
@@ -240,10 +267,13 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     if (any_open) {
       set_axes();
     }
-    if (bytes_of() > static_cast<double>(avail)) {
-      nx_ = ny_ = nz_ = 1;
+    if (!fits(axes, avail)) {
+      axes[0] = axes[1] = axes[2] = 1;
     }
   }
+  nx_ = static_cast<int>(axes[0]);
+  ny_ = static_cast<int>(axes[1]);
+  nz_ = static_cast<int>(axes[2]);
   const auto ncells = static_cast<std::size_t>(nx_) *
                       static_cast<std::size_t>(ny_) *
                       static_cast<std::size_t>(nz_);
@@ -253,18 +283,14 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     if (!(length > 0.0) || naxis <= 1) {
       return 0;
     }
-    double t = x / length * static_cast<double>(naxis);
+    const double t = x / length * static_cast<double>(naxis);
     if (!(t >= 0.0)) {
-      t = 0.0;
+      return 0;
     }
-    auto i = static_cast<int>(t);
-    if (i >= naxis) {
-      i = naxis - 1;
+    if (t >= static_cast<double>(naxis)) {
+      return naxis - 1;
     }
-    if (i < 0) {
-      i = 0;
-    }
-    return i;
+    return static_cast<int>(t);
   };
   for (std::size_t a = 0; a < n; ++a) {
     int ix = 0;
