@@ -19,12 +19,14 @@
 #include <utility>
 #include <vector>
 
+// No dllimport: a static librgpot has no import library to resolve it,
+// and a shared one still links the call through its import library.
 #if defined(_WIN32) && defined(RGPOT_NLIST_BUILDING)
 #define RGPOT_NLIST_API __declspec(dllexport)
-#elif defined(_WIN32)
-#define RGPOT_NLIST_API __declspec(dllimport)
-#else
+#elif !defined(_WIN32)
 #define RGPOT_NLIST_API __attribute__((visibility("default")))
+#else
+#define RGPOT_NLIST_API
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
