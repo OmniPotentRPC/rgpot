@@ -163,6 +163,13 @@ the skin.
 is one correction about the half-box, which is what EAM uses after
 wrapping coordinates into the cell. `General`, and any sheared cell,
 calls `MinimumImage`.
+A fully periodic general cell is binned by wrapped fractional
+coordinates scaled by the dual-lattice norms.
+A non-finite fractional coordinate is rejected.
+A fully periodic general cell whose reciprocal basis is not finite and
+positive is rejected and is not binned in Cartesian coordinates.
+Cartesian binning is the path when the cell is not general, or when an
+axis is open or its edge is not positive.
 
 `Mode::Stored` keeps a Verlet list and reuses it while every atom has moved by at most half the skin.
 The list holds partner indices and each walk takes the image from the current coordinates, so the move is measured to the nearest periodic image of the reference position: an atom that the caller wraps back through a face of the cell has moved by its step, not by a cell vector, and keeps the list.
@@ -222,7 +229,8 @@ each upper pair once in a two-phase OpenMP region (`forEachSlicePhase`),
 batching `simd::exp_fixed_n` and partitioning atoms by pair count on
 8-atom boundaries before reducing forces in partner index order; sparser
 stored lists stay on one thread. The thread-local transpose index, split
-vectors and pair scratch (`MorseWorkspace`) are keyed on the
+vectors and pair scratch (`MorseWorkspace`, and the Sutton-Chen
+workspace beside it) are keyed on the
 process-unique `Neighbours::generation()` counter (assigned at
 construction and on every rebuild, copy and move), retain their
 per-thread high-water capacity across calls of comparable size, and
