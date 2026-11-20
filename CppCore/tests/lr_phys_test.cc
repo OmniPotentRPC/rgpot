@@ -22,6 +22,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #ifdef _OPENMP
@@ -156,20 +157,22 @@ void test_lists() {
   };
   auto check_matches_brute = [&](const std::vector<double> &p, const double *b,
                                  const char *what) {
-    auto less = [](const rgpot::lr::Pair &lhs, const rgpot::lr::Pair &rhs) {
-      if (lhs.i != rhs.i) {
-        return lhs.i < rhs.i;
-      }
-      if (lhs.j != rhs.j) {
-        return lhs.j < rhs.j;
-      }
-      if (std::abs(lhs.x - rhs.x) > 1e-12) {
-        return lhs.x < rhs.x;
-      }
-      if (std::abs(lhs.y - rhs.y) > 1e-12) {
-        return lhs.y < rhs.y;
-      }
-      return lhs.z < rhs.z - 1e-12;
+    // Pairs of one (i, j) differ by a whole lattice vector, so the rounded
+    // shift orders them exactly. A tolerance on the vector would not be a
+    // strict weak ordering.
+    const CellGeom g = cell_from_box(b);
+    auto key = [&](const rgpot::lr::Pair &pr) {
+      const auto i = static_cast<std::size_t>(pr.i);
+      const auto j = static_cast<std::size_t>(pr.j);
+      double r[3] = {pr.x - (p[3 * j] - p[3 * i]), pr.y - (p[3 * j + 1] - p[3 * i + 1]),
+                     pr.z - (p[3 * j + 2] - p[3 * i + 2])};
+      double s[3];
+      g.fractional(r, s);
+      return std::make_tuple(pr.i, pr.j, std::lround(s[0]), std::lround(s[1]),
+                             std::lround(s[2]));
+    };
+    auto less = [&](const rgpot::lr::Pair &lhs, const rgpot::lr::Pair &rhs) {
+      return key(lhs) < key(rhs);
     };
     for (bool is_long : {false, true}) {
       auto got = is_long ? lists.long_pairs() : lists.short_pairs();
