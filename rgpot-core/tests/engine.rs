@@ -109,7 +109,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 5,
+            abi_minor: 6,
             layout_revision: 1,
         }
     );
@@ -554,7 +554,7 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 
 #[test]
 fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newer_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 5);
+    assert_eq!(ENGINE_ABI_MINOR, 6);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -602,7 +602,13 @@ fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newe
     // and calls them.
     let minor5_path = build("harmonic_stamp_minor5", &["FIXTURE_ABI_MINOR=5"]);
     let mut minor5 = load(&minor5_path);
-    assert_eq!(minor5.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert_eq!(
+        minor5.abi_stamp(),
+        RgpotEngineAbiStamp {
+            abi_minor: 5,
+            ..RgpotEngineAbiStamp::HOST
+        }
+    );
     assert!(minor5.symbols().last_components.is_some());
     assert!(minor5.symbols().component_name.is_some());
     assert_eq!(minor5.component_name(0).expect("component 0"), "harmonic");
@@ -1250,4 +1256,49 @@ fn coincident_pair_reports_recoverable_eval_error_and_internal_status() {
         rgpot_tensor_free(sep_input.atomic_numbers);
         rgpot_tensor_free(sep_input.box_matrix);
     }
+}
+
+#[test]
+fn result_cache_queries_preserve_native_status_and_counter_width() {
+    use rgpot_core::engine::EngineCacheCounts;
+
+    let mut engine = load(&build("harmonic_cache", &["FIXTURE_CACHE"]));
+    assert_eq!(
+        engine.cache_counts().unwrap_err(),
+        EngineError::Unsupported {
+            operation: "rgpot_engine_cache_counts",
+            message: "cache detached".into()
+        }
+    );
+    engine
+        .set_cache(Some(Path::new("cache/geometry results")))
+        .unwrap();
+    assert_eq!(
+        engine.cache_counts().unwrap(),
+        EngineCacheCounts {
+            computed: 1_u64 << 32,
+            served: 7,
+        }
+    );
+    engine.set_cache(None).unwrap();
+    assert!(matches!(
+        engine.cache_counts(),
+        Err(EngineError::Unsupported { .. })
+    ));
+
+    let mut older = load(&build("harmonic_no_cache", &["FIXTURE_ABI_MINOR=5"]));
+    assert!(matches!(
+        older.set_cache(None),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_set_cache",
+            ..
+        })
+    ));
+    assert!(matches!(
+        older.cache_counts(),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_cache_counts",
+            ..
+        })
+    ));
 }

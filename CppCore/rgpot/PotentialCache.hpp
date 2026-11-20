@@ -10,6 +10,7 @@
  */
 
 #include "rgpot/ForceStructs.hpp"
+#include "rgpot/pot_types.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include <atomic>
 #include <cstdint>
@@ -52,6 +53,9 @@ struct KeyHash {
   }
 };
 
+/// Hash the ordered geometry, species, cell and potential identity.
+KeyHash result_key(const ForceInput &input, PotType type, uint64_t parameters);
+
 /**
  * @brief Evaluations a cache handle has answered, split by origin.
  *
@@ -77,7 +81,7 @@ private:
   bool own_db_ = false;       //!< Ownership flag for the DB pointer.
   /// F2: covers db_ only. Callers detach before taking it. The counters
   /// below stay atomic and are not under this mutex.
-  std::mutex db_mu_;
+  mutable std::mutex db_mu_;
   std::atomic<uint64_t> computed_{0}; //!< Kernel-produced result count.
   std::atomic<uint64_t> served_{0};   //!< Cache-served result count.
 
@@ -126,6 +130,12 @@ public:
    */
   void add_serialized(const KeyHash &key, double energy,
                       const rgpot::types::AtomMatrix &forces);
+
+  /// Whether a database is attached.
+  [[nodiscard]] bool is_open() const {
+    std::lock_guard<std::mutex> lock(db_mu_);
+    return db_ != nullptr;
+  }
 
   /// Result records retain the energy/force prefix and append versioned
   /// variance and stress metadata. Energy/force-only records remain readable.

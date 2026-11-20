@@ -66,6 +66,50 @@ Only =libcomposite_engine= has components; the others report none.
 None of them exports =rgpot_engine_model_state=, =rgpot_engine_set_callbacks=,
 =rgpot_engine_hint= or =rgpot_engine_neighbor_options=.
 
+** Persistent result cache and evaluation counts
+
+Probe for =rgpot_engine_set_cache= and =rgpot_engine_cache_counts= when loading
+a plugin. Pass an engine handle and a database directory to the setter before
+submitting force calls. Use a separate directory for each model and parameter
+set. A cache-enabled build opens or creates the directory. The handle owns the
+open database until detachment (a null path) or destruction.
+
+Read the two unsigned 64-bit counters after all requests in a phase return.
+=computed= counts geometry results produced by the kernel. =served= counts
+geometry results supplied by the cache. One successful batch can contribute
+to both counters. Take differences between snapshots to measure a phase.
+Attaching an existing database starts both counters at zero and retains its
+stored results. A count query returns status 3 when the handle has no active
+cache. Older plugins can omit the symbols. Record counters as unavailable in
+both cases.
+
+*** =rgpot_engine_set_cache=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_engine_set_cache(RgpotEnginePot *pot, const char *path);
+#+end_src
+
+- Inputs :: a handle and a database path, or a null path to detach.
+- Units :: none.
+- Outputs :: a successful call replaces the current attachment.
+- Errors :: 1 for an invalid argument, 2 when opening fails, 3 for a build
+  without cache support or a composite potential with per-term records.
+  An open failure preserves the current attachment.
+
+*** =rgpot_engine_cache_counts=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_engine_cache_counts(RgpotEnginePot *pot, uint64_t *computed,
+                              uint64_t *served);
+#+end_src
+
+- Inputs :: a handle and two output pointers.
+- Units :: geometry results.
+- Outputs :: the two counts since the current cache attachment.
+- Errors :: 1 for a null argument, 3 when the handle has no attached cache.
+
 ** Identity and version
 
 *** =rgpot_engine_abi_version=
@@ -104,7 +148,7 @@ Required symbol.
 - Units :: none.
 - Outputs :: three =unsigned short= fields:
   =abi_major= (=RGPOT_ENGINE_ABI_VERSION=, 1),
-  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 5) and
+  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 6) and
   =layout_revision= (=RGPOT_ENGINE_ABI_LAYOUT_REVISION=, 1).
 - Errors :: none.
 
@@ -127,6 +171,7 @@ Minor 4 added =rgpot_engine_hvp= and the trailing =RgpotEngineCaps.analytic_hvp=
 field.
 Minor 5 added =RgpotEngineComponent=,
 =rgpot_engine_last_components= and =rgpot_engine_component_name=.
+Minor 6 adds =rgpot_engine_set_cache= and =rgpot_engine_cache_counts=.
 The version does not cover the Cap'n Proto params schema, the tensor runtime the
 engine links, or the model.
 
