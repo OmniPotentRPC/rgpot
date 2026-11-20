@@ -15,13 +15,12 @@
 
 namespace rgpot::nlist {
 
-// The image shifts of a pair come from the coordinates as given, which may
-// lie any whole number of cells outside the box. `frac` holds each atom's
-// fractional coordinates. A pair within `search` has |df_k + S_k| at most
-// `reach[k]`, since the distance is at least that times the cell height, so
-// the shifts to try are those around -df. `span` bounds |S_k| over every
-// pair. Binning needs coordinates inside the cell, so `cell_pos` is either
-// the caller's positions or `wrapped`, the same atoms moved by whole cells.
+// Periodic coordinates are folded into the primary cell before both binning
+// and image enumeration. `frac` holds those folded fractional coordinates.
+// A pair within `search` has |df_k + S_k| at most `reach[k]`, since the
+// distance is at least that times the cell height, so the shifts to try are
+// those around -df. `span` bounds |S_k| over every pair. `cell_pos` aliases
+// the caller's positions when they are already folded and `wrapped` otherwise.
 struct Frame {
   double normal[3][3]{};
   double reach[3]{};
@@ -191,9 +190,10 @@ void lattice_normals(const double *box, const std::array<bool, 3> &periodic, dou
   }
 }
 
-// Fractional extent of the atoms on each periodic axis, and the span that
-// bounds |S_k| for any pair inside `search`. Rejects a coordinate whose
-// shift would not fit an int32.
+// Folded fractional extent of the atoms on each periodic axis, and the span
+// that bounds |S_k| for any pair inside `search`. `frac` receives the raw
+// fractions so make_frame can fold the Cartesian positions. Rejects a
+// coordinate whose shift would not fit an int32.
 void image_span(const double *pos, std::size_t n, const double *box,
                 const std::array<bool, 3> &periodic, double search, int span[3],
                 std::vector<double> *frac) {
@@ -217,11 +217,12 @@ void image_span(const double *pos, std::size_t n, const double *box,
         throw Error(Code::Box, "a periodic coordinate is not finite or lies more than 2^29 "
                                "cells from the origin");
       }
-      if (i == 0 || f < lo[k]) {
-        lo[k] = f;
+      const double folded = f - std::floor(f);
+      if (i == 0 || folded < lo[k]) {
+        lo[k] = folded;
       }
-      if (i == 0 || f > hi[k]) {
-        hi[k] = f;
+      if (i == 0 || folded > hi[k]) {
+        hi[k] = folded;
       }
       if (frac != nullptr) {
         (*frac)[3 * i + static_cast<std::size_t>(k)] = f;
@@ -266,7 +267,9 @@ Frame make_frame(const double *pos, std::size_t n, const double *box,
       if (!frame.periodic[k]) {
         continue;
       }
-      const double cells = std::floor(frame.frac[3 * i + static_cast<std::size_t>(k)]);
+      const auto u = static_cast<std::size_t>(k);
+      const double cells = std::floor(frame.frac[3 * i + u]);
+      frame.frac[3 * i + u] -= cells;
       for (int c = 0; c < 3; ++c) {
         frame.wrapped[3 * i + static_cast<std::size_t>(c)] -= cells * box[3 * k + c];
       }
@@ -338,8 +341,8 @@ bool one_minimum_image(const double *box, const Query &query, double search) {
   return true;
 }
 
-// The cells see `frame.cell_pos`, which is inside the cell on every periodic
-// axis. The walks take only the partner and the folded length from them.
+// The cells and image walks see `frame.cell_pos`, which is inside the cell on
+// every periodic axis.
 void prepare_cells(Neighbours &cells, const Frame &frame, std::size_t n, const double *box,
                    const Query &query) {
   Spec spec;
@@ -355,9 +358,9 @@ void prepare_cells(Neighbours &cells, const Frame &frame, std::size_t n, const d
 
 // Cell-list candidates from Neighbours, then the same image test the brute
 // force used. A box at least two cutoffs wide has one image, the nearest one,
-// and its shift is rounded from the caller's coordinates. A narrower or
+// and its shift is rounded from the folded coordinates. A narrower or
 // sheared cell tries the shifts of `shift_range` on those candidates only.
-// Every vector is r_j + S H - r_i from the caller's coordinates.
+// Every vector is r_j + S H - r_i from the folded coordinates.
 template <typename Fn>
 void each_cell(const Neighbours &cells, const double *pos, const double *box,
                const Query &query, const Frame &frame, bool one_image, std::size_t begin,
@@ -699,6 +702,9 @@ void move_columns(Table &table, Columns &cols) {
 void Builder::update(const double *positions, std::size_t n, const double *box9,
                      const Query &query) {
   check_geometry(positions, n, box9, query);
+  const Frame frame =
+      make_frame(positions, n, box9, query.periodic, search_radius(query));
+  const double *current = frame.cell_pos;
   reused_ = false;
   unchanged_ = false;
   if (have_ && n_ == n && query_.cutoff == query.cutoff && query_.skin == query.skin &&
@@ -707,7 +713,11 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
       query_.fields.vectors == query.fields.vectors &&
       query_.fields.distances == query.fields.distances) {
     if (std::memcmp(box_, box9, sizeof(box_)) == 0 &&
-        (n == 0 || std::memcmp(ref_.data(), positions, 3 * n * sizeof(double)) == 0)) {
+        (n == 0 || std::memcmp(ref_.data(), current, 3 * n * sizeof(double)) == 0)) {
+      current_.clear();
+      if (n != 0) {
+        current_.assign(current, current + 3 * n);
+      }
       reused_ = true;
       unchanged_ = true;
       return;
@@ -715,26 +725,31 @@ void Builder::update(const double *positions, std::size_t n, const double *box9,
     const bool same_box = std::memcmp(box_, box9, sizeof(box_)) == 0;
     bool fits = true;
     if (!same_box) {
-      // The stored shifts reach span_, which grows with the fractional
-      // extent of unwrapped coordinates. A cell change that needs a wider
-      // span rebuilds.
-      int cur_span[3];
-      image_span(positions, n, box9, query.periodic, search_radius(query), cur_span, nullptr);
-      fits = cur_span[0] <= span_[0] && cur_span[1] <= span_[1] && cur_span[2] <= span_[2];
+      // A cell change that needs a wider folded-image span rebuilds.
+      fits = frame.span[0] <= span_[0] && frame.span[1] <= span_[1] &&
+             frame.span[2] <= span_[2];
     }
     const double span[3] = {
         static_cast<double>(span_[0]),
         static_cast<double>(span_[1]),
         static_cast<double>(span_[2]),
     };
-    if (fits && withinSkin(ref_.data(), positions, n, box_, box9, span, query.skin)) {
+    if (fits && withinSkin(ref_.data(), current, n, box_, box9, span, query.skin)) {
+      current_.clear();
+      if (n != 0) {
+        current_.assign(current, current + 3 * n);
+      }
       reused_ = true;
       return;
     }
   }
   build(table_, positions, n, box9, query);
-  image_span(positions, n, box9, query.periodic, search_radius(query), span_, nullptr);
-  ref_.assign(positions, positions + 3 * n);
+  std::copy(frame.span, frame.span + 3, span_);
+  ref_.clear();
+  if (n != 0) {
+    ref_.assign(current, current + 3 * n);
+  }
+  current_ = ref_;
   std::memcpy(box_, box9, sizeof(box_));
   query_ = query;
   n_ = n;
@@ -748,6 +763,7 @@ Walk::Walk(const double *positions, std::size_t n, const double *box9, const Que
   std::memcpy(box_, box9, sizeof(box_));
   frame_ = std::make_unique<Frame>(
       make_frame(positions, n, box_, query_.periodic, search_radius(query_)));
+  pos_ = frame_->cell_pos;
   one_image_ = one_minimum_image(box_, query_, search_radius(query_));
   prepare_cells(cells_, *frame_, n, box_, query_);
 }
@@ -888,7 +904,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
               double vx = 0;
               double vy = 0;
               double vz = 0;
-              image_vector(positions, i, j, sa, sb, sc, box9, vx, vy, vz);
+              image_vector(frame.cell_pos, i, j, sa, sb, sc, box9, vx, vy, vz);
               const double r2 = vx * vx + vy * vy + vz * vz;
               if (!accept_distance(r2, query)) {
                 continue;
@@ -947,7 +963,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
       auto *distance = cols.distance.data();
       std::size_t count = 0;
       Columns extra;
-      each_cell(cells, positions, box9, query, frame, one_image, begin, end,
+      each_cell(cells, frame.cell_pos, box9, query, frame, one_image, begin, end,
                 [&](std::int32_t i, std::int32_t j, int sa, int sb, int sc, double vx,
                     double vy, double vz, double dist) {
                   if (count == slots) {
@@ -1093,15 +1109,19 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
         [&](int thread, std::int32_t i, std::int32_t j, double, double, double, double) {
           const auto ui = static_cast<std::size_t>(i);
           const auto uj = static_cast<std::size_t>(j);
-          const int sa = axis_shift(positions[3 * ui] - positions[3 * uj], inv0, query.periodic[0]);
+          const int sa =
+              axis_shift(frame.cell_pos[3 * ui] - frame.cell_pos[3 * uj], inv0,
+                         query.periodic[0]);
           const int sb =
-              axis_shift(positions[3 * ui + 1] - positions[3 * uj + 1], inv1, query.periodic[1]);
+              axis_shift(frame.cell_pos[3 * ui + 1] - frame.cell_pos[3 * uj + 1], inv1,
+                         query.periodic[1]);
           const int sc =
-              axis_shift(positions[3 * ui + 2] - positions[3 * uj + 2], inv2, query.periodic[2]);
+              axis_shift(frame.cell_pos[3 * ui + 2] - frame.cell_pos[3 * uj + 2], inv2,
+                         query.periodic[2]);
           double vx = 0;
           double vy = 0;
           double vz = 0;
-          image_vector(positions, ui, uj, sa, sb, sc, box9, vx, vy, vz);
+          image_vector(frame.cell_pos, ui, uj, sa, sb, sc, box9, vx, vy, vz);
           const double r2 = vx * vx + vy * vy + vz * vz;
           if (!accept_distance(r2, query)) {
             return;
@@ -1167,11 +1187,11 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
   }
   std::vector<std::vector<Rec>> parts(static_cast<std::size_t>(std::max(nt, 1)));
   if (nt <= 1) {
-    collect(cells, positions, n, box9, query, frame, one_image, 0, n, parts[0]);
+    collect(cells, frame.cell_pos, n, box9, query, frame, one_image, 0, n, parts[0]);
   } else {
     forEachSlice(nt, [&](int t) {
       const auto range = partition(static_cast<std::int64_t>(n), t, nt);
-      collect(cells, positions, n, box9, query, frame, one_image,
+      collect(cells, frame.cell_pos, n, box9, query, frame, one_image,
               static_cast<std::size_t>(range.begin), static_cast<std::size_t>(range.end),
               parts[static_cast<std::size_t>(t)]);
     });
@@ -1202,7 +1222,7 @@ void buildByAtom(Table &table, const double *positions, std::size_t n, const dou
   std::vector<Rec> rows;
   rows.reserve(n * 8);
   for (std::size_t i = 0; i < n; ++i) {
-    collect(cells, positions, n, box9, query, frame, one_image, i, i + 1, rows);
+    collect(cells, frame.cell_pos, n, box9, query, frame, one_image, i, i + 1, rows);
   }
   store_records(table, query, rows);
 }

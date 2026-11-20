@@ -1,2 +1,4 @@
+<!-- Copyright 2023--present rgpot developers -->
+
 `rgpot::lr::DualList` now builds its half-shell candidate lists through `rgpot::nlist::Builder`, enumerating every periodic image inside the cutoff once (including one canonical direction for self images when the cutoff exceeds a cubic or triclinic cell vector), and filters candidates on the active OpenMP team while skipping the distance pass when coordinates and the cell are unchanged.
-`rgpot::nlist::Builder::update` keeps a stored candidate table across a variable-cell step while atom moves and image shifts of both signs stay inside the Verlet skin, instead of rebuilding on every box change. The shifts are those of the coordinates as given, which may lie outside the cell.
+`rgpot::nlist::Builder::update` keeps a stored candidate table across a variable-cell step while atom moves and image shifts of both signs stay inside the Verlet skin, instead of rebuilding on every box change. Periodic coordinates are folded before the canonical shifts are chosen, so whole-cell drift in the input keeps the same pair set.

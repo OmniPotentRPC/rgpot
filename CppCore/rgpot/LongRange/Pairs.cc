@@ -73,6 +73,7 @@ void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
   query.fields.distances = false;
   skin.builder.update(pos, n, box9, query);
   *rebuilt = !skin.builder.reused();
+  const double *pair_pos = skin.builder.positions().data();
   if (skin.builder.unchanged()) {
     return;
   }
@@ -88,17 +89,17 @@ void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
       const int i = candidates.first[p];
       const int j = candidates.second[p];
       const double x =
-          pos[3 * j] - pos[3 * i] +
+          pair_pos[3 * j] - pair_pos[3 * i] +
           static_cast<double>(candidates.shift[3 * p]) * box9[0] +
           static_cast<double>(candidates.shift[3 * p + 1]) * box9[3] +
           static_cast<double>(candidates.shift[3 * p + 2]) * box9[6];
       const double y =
-          pos[3 * j + 1] - pos[3 * i + 1] +
+          pair_pos[3 * j + 1] - pair_pos[3 * i + 1] +
           static_cast<double>(candidates.shift[3 * p]) * box9[1] +
           static_cast<double>(candidates.shift[3 * p + 1]) * box9[4] +
           static_cast<double>(candidates.shift[3 * p + 2]) * box9[7];
       const double z =
-          pos[3 * j + 2] - pos[3 * i + 2] +
+          pair_pos[3 * j + 2] - pair_pos[3 * i + 2] +
           static_cast<double>(candidates.shift[3 * p]) * box9[2] +
           static_cast<double>(candidates.shift[3 * p + 1]) * box9[5] +
           static_cast<double>(candidates.shift[3 * p + 2]) * box9[8];
@@ -118,17 +119,17 @@ void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
       const int i = candidates.first[p];
       const int j = candidates.second[p];
       const double x =
-          pos[3 * j] - pos[3 * i] +
+          pair_pos[3 * j] - pair_pos[3 * i] +
           static_cast<double>(candidates.shift[3 * p]) * box9[0] +
           static_cast<double>(candidates.shift[3 * p + 1]) * box9[3] +
           static_cast<double>(candidates.shift[3 * p + 2]) * box9[6];
       const double y =
-          pos[3 * j + 1] - pos[3 * i + 1] +
+          pair_pos[3 * j + 1] - pair_pos[3 * i + 1] +
           static_cast<double>(candidates.shift[3 * p]) * box9[1] +
           static_cast<double>(candidates.shift[3 * p + 1]) * box9[4] +
           static_cast<double>(candidates.shift[3 * p + 2]) * box9[7];
       const double z =
-          pos[3 * j + 2] - pos[3 * i + 2] +
+          pair_pos[3 * j + 2] - pair_pos[3 * i + 2] +
           static_cast<double>(candidates.shift[3 * p]) * box9[2] +
           static_cast<double>(candidates.shift[3 * p + 1]) * box9[5] +
           static_cast<double>(candidates.shift[3 * p + 2]) * box9[8];
