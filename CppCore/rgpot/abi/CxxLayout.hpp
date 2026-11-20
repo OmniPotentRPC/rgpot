@@ -211,7 +211,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x88d538ff3f92397aull},
+    {"linux-x86_64-libstdc++-lp64", 0xf4acd6df7b34840aull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
