@@ -18,6 +18,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#if RGPOT_ABI_VERSION_MAJOR != 1 || RGPOT_ABI_VERSION_MINOR < 7
+#error "the stress entry points need C ABI 1.7 or newer"
+#endif
+
 typedef struct {
   DLManagedTensorVersioned *positions;
   DLManagedTensorVersioned *atomic_numbers;

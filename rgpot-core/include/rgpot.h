@@ -63,7 +63,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * ABI minor of this build.
  */
-#define RGPOT_ABI_VERSION_MINOR 6
+#define RGPOT_ABI_VERSION_MINOR 7
 
 /**
  * Layout revision of this build.
