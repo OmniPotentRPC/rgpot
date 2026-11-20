@@ -68,8 +68,10 @@ Its skin is the same default.
 
 ** Stress
 
-=forceImpl= writes the Cauchy stress, sets =has_stress=, and =caps().stress= is
-true.
+=ForceInput::compute_stress= asks =forceImpl= for the Cauchy stress.
+It then sets =has_stress= to 1.
+=caps().stress= is true.
+A force-only call leaves =has_stress= at 0 and the nine entries at zero.
 The convention is the one of =LJPot=, =MorsePot= and =ZBLPot=, set in
 =stress.hpp=.
 The stress is sigma = dE/dε / V for the strain that sends every position and
@@ -97,13 +99,14 @@ Both kernels are linear in epsilon, so the =SWPot= stress is the
 =StillingerWeberSi= stress times 1.068176741337.
 =FortranPotsTest= checks that ratio to 1e-14 eV/Angstrom^3, and the strain
 difference to 5e-10, on a compressed cubic cell and a sheared, rattled cell.
-=SWPot::forceBatch=, the call eOn's engine makes, skips the virial, and its
-outputs have =has_stress= 0 and a zero tensor.
+=SWPot::forceBatch=, the call eOn's engine makes, follows the same request: an
+input without =compute_stress= skips the virial and its output has =has_stress=
+0 and a zero tensor.
 =FortranPotsTest= checks that its energies and forces equal those of
 =forceImpl=.
 
-In Python, =evaluate= on =StillingerWeberSi= or =SWPot= returns the stress as a
-3 × 3 array, and =caps()= reports it.
+In Python, =evaluate(..., compute_stress=True)= on =StillingerWeberSi= or
+=SWPot= returns the stress as a 3 × 3 array, and =caps()= reports it.
 =RgpotCalculator= then gives the ASE stress for either potential.
 
 ** Domain decomposition

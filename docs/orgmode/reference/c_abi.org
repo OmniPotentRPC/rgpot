@@ -656,6 +656,7 @@ enum rgpot_status_t rgpot_potential_calculate_stress(
 - Errors :: =RGPOT_INVALID_PARAMETER= for a NULL argument, a =struct_size= that
   is too small (the block is not touched), or a potential with no stress
   callback, with a message that names the missing capability.
+  A refusal after the size check leaves =has_stress= 0 and =stress= zeroed.
   Otherwise the callback's status, unchanged.
   =RGPOT_INTERNAL_ERROR= for a caught panic.
 
