@@ -278,6 +278,18 @@ void test_list_edges() {
     }
     check(lists.short_pairs().empty(), "the unwrapped pair is past the short cutoff");
   }
+  for (const double skin : {std::numeric_limits<double>::infinity(),
+                            -std::numeric_limits<double>::infinity(),
+                            std::numeric_limits<double>::quiet_NaN(), -0.1}) {
+    std::string message;
+    try {
+      DualList bad(1.0, 2.0, skin);
+    } catch (const std::invalid_argument &ex) {
+      message = ex.what();
+    }
+    check(message == "skin must be finite and non-negative",
+          "a non-finite or negative skin is rejected by name");
+  }
 }
 
 void test_madelung() {

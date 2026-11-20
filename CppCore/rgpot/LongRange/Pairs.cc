@@ -42,9 +42,11 @@ struct DualList::Skin {
 
 DualList::DualList(double short_cut, double long_cut, double skin)
     : short_cut_(short_cut), long_cut_(long_cut), skin_(skin) {
-  if (!(short_cut > 0.0) || !(long_cut > 0.0) || !(skin >= 0.0)) {
-    throw std::invalid_argument(
-        "cutoffs must be positive and skin non-negative");
+  if (!(short_cut > 0.0) || !(long_cut > 0.0)) {
+    throw std::invalid_argument("cutoffs must be positive");
+  }
+  if (!std::isfinite(skin) || skin < 0.0) {
+    throw std::invalid_argument("skin must be finite and non-negative");
   }
   if (short_cut > long_cut) {
     throw std::invalid_argument("short cutoff exceeds the long cutoff");
