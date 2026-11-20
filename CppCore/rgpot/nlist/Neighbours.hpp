@@ -62,10 +62,10 @@ struct Spec {
 /// True when every atom has moved by at most half of `skin` from
 /// `reference`. Skin 0 is true only when the coordinates match. A
 /// negative or non-finite skin returns false, so the list is not reused.
-/// Coordinates are compared as stored. Callers wrap them into the cell
-/// before the call; a periodic jump is then a small step, and an
-/// unwrapped jump of about one lattice vector rebuilds. The same test
-/// decides `Builder::update`'s reused flag when the cell is unchanged.
+/// Coordinates are compared as stored. Callers leave them unwrapped, so a
+/// periodic crossing is a small step; wrapping a coordinate back by about
+/// one lattice vector rebuilds. The same test decides `Builder::update`'s
+/// reused flag when the cell is unchanged.
 [[nodiscard]] inline bool withinSkin(const double *reference, const double *current,
                                      std::size_t n, double skin) noexcept {
   // A negative skin is not a buffer. NaN fails the same comparison.
@@ -77,7 +77,7 @@ struct Spec {
     const double dx = current[3 * a] - reference[3 * a];
     const double dy = current[3 * a + 1] - reference[3 * a + 1];
     const double dz = current[3 * a + 2] - reference[3 * a + 2];
-    if (dx * dx + dy * dy + dz * dz > limit2) {
+    if (!(dx * dx + dy * dy + dz * dz <= limit2)) {
       return false;
     }
   }
@@ -104,9 +104,9 @@ struct Spec {
 /// the same size as the check it replaces, so that is the bound used.
 ///
 /// A negative or non-finite skin returns false and the list is rebuilt.
-/// Coordinates are compared as stored. Callers wrap them into the cell
-/// before the call. An unwrapped jump of about one lattice vector is
-/// outside the skin, which rebuilds.
+/// Coordinates are compared as stored. Callers leave them unwrapped; wrapping
+/// a coordinate back by about one lattice vector is outside the skin and
+/// rebuilds.
 [[nodiscard]] inline bool withinSkin(const double *reference, const double *current,
                                      std::size_t n, const double *reference_box,
                                      const double *current_box, const double span[3],
@@ -133,7 +133,11 @@ struct Spec {
         d[c] += s[a] * (current_box[3 * a + c] - reference_box[3 * a + c]);
       }
     }
-    corner = std::max(corner, std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]));
+    const double distance = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    if (!std::isfinite(distance)) {
+      return false;
+    }
+    corner = std::max(corner, distance);
   }
   // The image alone already spends the skin. Atom motion cannot be negative.
   if (!(corner <= skin)) {

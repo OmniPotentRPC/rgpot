@@ -37,6 +37,36 @@ int axisCount(double length, double edge) {
   return static_cast<int>(n);
 }
 
+bool inverseCell(const double cell[9], double inverse[9], double height[3]) {
+  const double c00 = cell[4] * cell[8] - cell[5] * cell[7];
+  const double c01 = cell[5] * cell[6] - cell[3] * cell[8];
+  const double c02 = cell[3] * cell[7] - cell[4] * cell[6];
+  const double det = cell[0] * c00 + cell[1] * c01 + cell[2] * c02;
+  if (!std::isfinite(det) || det == 0.0) {
+    return false;
+  }
+  const double scale = 1.0 / det;
+  inverse[0] = c00 * scale;
+  inverse[1] = (cell[2] * cell[7] - cell[1] * cell[8]) * scale;
+  inverse[2] = (cell[1] * cell[5] - cell[2] * cell[4]) * scale;
+  inverse[3] = c01 * scale;
+  inverse[4] = (cell[0] * cell[8] - cell[2] * cell[6]) * scale;
+  inverse[5] = (cell[2] * cell[3] - cell[0] * cell[5]) * scale;
+  inverse[6] = c02 * scale;
+  inverse[7] = (cell[1] * cell[6] - cell[0] * cell[7]) * scale;
+  inverse[8] = (cell[0] * cell[4] - cell[1] * cell[3]) * scale;
+  for (int k = 0; k < 3; ++k) {
+    const double norm =
+        std::sqrt(inverse[k] * inverse[k] + inverse[3 + k] * inverse[3 + k] +
+                  inverse[6 + k] * inverse[6 + k]);
+    if (!(norm > 0.0) || !std::isfinite(norm)) {
+      return false;
+    }
+    height[k] = 1.0 / norm;
+  }
+  return true;
+}
+
 } // namespace
 
 std::uint64_t availableBytes() {
@@ -116,13 +146,26 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
+  const bool all_periodic = periodic_[0] && periodic_[1] && periodic_[2];
+  double inverse[9]{};
+  double height[3]{};
+  const bool fractional =
+      use_general_ && all_periodic && inverseCell(box_, inverse, height);
+  // A fractional slab has physical width height[k] / n[k]. Keeping that
+  // width at least edge makes the 27-cell stencil complete for a skew cell.
+  // Mixed periodicity is not separable in fractional space, so it uses one
+  // cell and the general minimum-image check below.
   // A grid that does not fit is one cell. An open axis can instead be
   // binned on the atom span, which is what a cluster in a huge box needs.
   // A periodic axis keeps the cell length. One cell remains when the
   // tight grid does not fit either. A grid that fits is unchanged, so
   // subtracting a zero origin leaves those bins as they were.
   double origin[3] = {0.0, 0.0, 0.0};
-  double span[3] = {len_[0], len_[1], len_[2]};
+  double span[3] = {
+      fractional ? height[0] : len_[0],
+      fractional ? height[1] : len_[1],
+      fractional ? height[2] : len_[2],
+  };
   auto set_axes = [&]() {
     nx_ = axisCount(span[0], edge);
     ny_ = axisCount(span[1], edge);
@@ -132,9 +175,15 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     return static_cast<double>(nx_) * static_cast<double>(ny_) *
            static_cast<double>(nz_) * static_cast<double>(sizeof(std::int32_t));
   };
-  set_axes();
+  if (use_general_ && !fractional) {
+    nx_ = ny_ = nz_ = 1;
+  } else {
+    set_axes();
+  }
   const auto avail = availableBytes();
-  if (avail > 0 && bytes_of() > static_cast<double>(avail)) {
+  if (use_general_ && avail > 0 && bytes_of() > static_cast<double>(avail)) {
+    nx_ = ny_ = nz_ = 1;
+  } else if (avail > 0 && bytes_of() > static_cast<double>(avail)) {
     bool any_open = false;
     for (int k = 0; k < 3; ++k) {
       if (periodic_[k] || n == 0) {
@@ -186,9 +235,24 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     return i;
   };
   for (std::size_t a = 0; a < n; ++a) {
-    const int ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
-    const int iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
-    const int iz = bin(xyz[3 * a + 2] - origin[2], span[2], nz_);
+    int ix = 0;
+    int iy = 0;
+    int iz = 0;
+    if (fractional) {
+      double f[3];
+      for (int k = 0; k < 3; ++k) {
+        f[k] = xyz[3 * a] * inverse[k] + xyz[3 * a + 1] * inverse[3 + k] +
+               xyz[3 * a + 2] * inverse[6 + k];
+        f[k] -= std::floor(f[k]);
+      }
+      ix = bin(f[0], 1.0, nx_);
+      iy = bin(f[1], 1.0, ny_);
+      iz = bin(f[2], 1.0, nz_);
+    } else {
+      ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
+      iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
+      iz = bin(xyz[3 * a + 2] - origin[2], span[2], nz_);
+    }
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
