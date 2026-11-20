@@ -35,7 +35,8 @@ public:
   /// Native handles are per-instance; concurrent use needs one instance
   /// per thread.
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .stress = m_config.method == TBLiteMethod::GFN1};
   }
 
 private:
@@ -47,6 +48,10 @@ private:
   mutable tblite_result m_res = nullptr;
   mutable bool m_initialized = false;
   mutable std::vector<double> m_pos_bohr; //!< Preallocated position buffer.
+
+  void strainDerivative(const std::vector<double> &pos_bohr,
+                        const double box_bohr[9], const int *numbers,
+                        double strain[6]) const;
 
   void initHandles();
   void createCalculator() const;
