@@ -30,12 +30,17 @@ To open, build and test an engine, see
 
 ** Libraries
 
-=CppCore/rgpot/engine/EngineTable.cc= implements every function the engine
+=CppCore/rgpot/engine/EngineTable.cc= implements every function the C++ engine
 libraries export except =rgpot_engine_abi_stamp=, for any =PotentialBase=.
 =CppCore/rgpot/engine/EngineAbiStamp.cc= defines =rgpot_engine_abi_stamp=.
-Every engine plugin, including the standalone ones that do not use the table,
-adds that file, so all of them report the same ABI major, minor and layout
-revision.
+Every C++ engine plugin, including the standalone ones that do not use the
+table, adds that file.
+=libpotlibc_engine= is C and uses neither file: =engines/potlibc_engine.c=
+defines every symbol it exports, and its
+=rgpot_engine_abi_stamp= returns =RGPOT_ENGINE_ABI_VERSION=,
+=RGPOT_ENGINE_ABI_MINOR= and =RGPOT_ENGINE_ABI_LAYOUT_REVISION= from =engine_c_abi.h=,
+as =EngineAbiStamp.cc= does.
+So all of them report the same ABI major, minor and layout revision.
 Each library adds one file that defines =rgpot::engine::create= (build the
 potential from the params message) and =rgpot::engine::backend_name=.
 
@@ -70,6 +75,13 @@ Every library above except
 Only =libcomposite_engine= has components; the others report none.
 None of them exports =rgpot_engine_model_state=, =rgpot_engine_set_callbacks=,
 =rgpot_engine_hint= or =rgpot_engine_neighbor_options=.
+
+Of the optional symbols,
+=libpotlibc_engine= exports seven: =rgpot_engine_abi_stamp=,
+=rgpot_engine_abi_compatible=, =rgpot_engine_name= (=potlibc=), =rgpot_engine_version= (=potlibc/= and the rgpot version), =rgpot_engine_caps=, =rgpot_engine_last_error=
+and =rgpot_engine_hvp=.
+It does not export =rgpot_engine_force_batch=, =rgpot_engine_model_digest=, the
+setting, orbital and component symbols, or the learning-engine symbols.
 
 ** Identity and version
 
@@ -252,6 +264,20 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
   A =MetatomicParams.charge= or =spin= the model does not read, other than
   charge 0 or multiplicity 1, gives =rgpot_engine_create(metatomic):= followed
   by the reason =rgpot_engine_set_charge_spin= gives.
+  =libpotlibc_engine= gives =potlibc engine requires RgpotPotlibcConfigV1= for a null =config= or a =config_len=
+  other than =sizeof(RgpotPotlibcConfigV1)=,
+  =potlibc engine config magic or version= for a wrong magic or version,
+  =potlibc engine config needs a NUL-terminated surface id= for an empty
+  =surface_id= or one with no NUL in its =RGPOT_POTLIBC_SURFACE_ID_CAPACITY= bytes, and =potlibc engine atom count is too large for the coordinate buffers= for an =atom_count=
+  that does not fit =size_t= or whose coordinates would not fit a buffer.
+  A failed =potlibc_create=, =potlibc_create_sized= or =potlibc_get_metadata=
+  gives =potlibc create: <status>= or =potlibc metadata: <status>= with the
+  potlibc status string.
+  A surface whose metadata lacks a field gives
+  =potlibc surface metadata is incomplete=, one whose units are not =bohr=,
+  =hartree= and =hartree/bohr= gives =potlibc surface has unsupported units=,
+  and one without analytic forces gives
+  =potlibc surface has no analytic forces=.
 
 Required symbol.
 =RgpotPotlibcConfigV1= carries a magic, version, atom count and canonical
@@ -314,7 +340,7 @@ returns it.
 
 - 0, shared instance: calls run concurrently on one handle (UMA, Metatomic).
 - 1, per instance: one call at a time per handle; calls on different handles run
-  concurrently (XTB and every potential of the classical engine).
+  concurrently (XTB, potlibc and every potential of the classical engine).
 - 2, process serial: one call at a time across all handles of the library in the
   process (MOPAC, NWChem, Skala).
 
@@ -333,8 +359,13 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out);
 - Errors :: returns 1 when =pot= or =out= is null, or when =out->size= is
   smaller than an =unsigned=; =out= is then not written and
   =rgpot_engine_last_error= is not set.
+  =libpotlibc_engine= returns -2 (=RGPOT_ENGINE_ERR_LOCK=) when it cannot
+  acquire the handle lock, with =potlibc engine handle lock failed= in
+  =rgpot_engine_last_error=; =out= is then not written.
 
 Optional symbol.
+=libpotlibc_engine= reports =reentrancy= 1, =per_image_instances= 1 and =analytic_hvp=
+from the surface's =POTLIBC_CAP_HVP= bit; every other flag is 0.
 
 *** =rgpot_engine_last_error=
 
@@ -587,6 +618,14 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms, const double *positions
   Returns 2 when the backend throws, with the exception text in
   =rgpot_engine_last_error= and on standard error as =rgpot_engine(<name>): <text>=.
   On failure =forces=, =*energy= and =*variance= are not written.
+  =libpotlibc_engine= returns -2 (=RGPOT_ENGINE_ERR_LOCK=) with
+  =potlibc engine handle lock failed= when it cannot acquire the handle lock.
+  It returns 1 with =potlibc surface <id> requires <n> atoms, got <nAtoms>= for
+  the wrong atom count, a message naming the surface, the atom index, the
+  catalog atomic number and the given one for a mismatched nonzero catalog
+  atomic number, and
+  =atom count <nAtoms> is too large for the coordinate buffers=; it returns 2
+  with =potlibc force: <status>= when potlibc fails.
 
 Required symbol.
 Any thread may call it on any handle; concurrency follows
@@ -642,6 +681,15 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
   =RGPOT_ENGINE_ERR_UNSUPPORTED= when the potential does not advertise =analytic_hvp=;
   and =RGPOT_ENGINE_ERR_EVAL= when the implementation throws.
   The reason is available from =rgpot_engine_last_error=.
+  =libpotlibc_engine= also returns =RGPOT_ENGINE_ERR_INVALID= with
+  =HVP output overlaps an input buffer= when the =3 * nAtoms= doubles of
+  =hv_out= overlap =direction=, =positions=, the =nAtoms= entries of =atomicNrs= or the nine doubles of =box=; it checks the atom count and atomic numbers as =rgpot_engine_force=
+  does first.
+  It returns
+  =RGPOT_ENGINE_ERR_UNSUPPORTED= with =potlibc surface <id> has no analytic HVP= when the surface lacks =POTLIBC_CAP_HVP=, =RGPOT_ENGINE_ERR_EVAL=
+  with =potlibc HVP: <status>= when potlibc fails, and -2
+  (=RGPOT_ENGINE_ERR_LOCK=) with =potlibc engine handle lock failed= when it
+  cannot acquire the handle lock.
 
 Optional symbol.
 Absence of the symbol or a false =analytic_hvp= is a hard unsupported result;
