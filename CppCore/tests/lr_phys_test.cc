@@ -262,6 +262,24 @@ void test_lists() {
   check_matches_brute(pos, large_box, "large move matches brute force");
 }
 
+void test_list_edges() {
+  {
+    // 18.5 is 1.5 from the image of the origin two cells back.
+    const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+    const std::vector<double> pos = {0, 0, 0, 18.5, 0, 0};
+    DualList lists(1.0, 2.0, 0.3);
+    lists.update(pos.data(), 2, box, true);
+    check(lists.long_pairs().size() == 1, "an atom two cells out keeps its pair");
+    if (lists.long_pairs().size() == 1) {
+      const rgpot::lr::Pair &pr = lists.long_pairs()[0];
+      check(pr.i == 0 && pr.j == 1, "the unwrapped pair joins atoms 0 and 1");
+      check_close(pr.x, -1.5, 1e-12, "the unwrapped pair vector is r_j + S H - r_i");
+      check_close(pr.r, 1.5, 1e-12, "the unwrapped pair distance");
+    }
+    check(lists.short_pairs().empty(), "the unwrapped pair is past the short cutoff");
+  }
+}
+
 void test_madelung() {
   const double ke = rgpot::units::HARTREE_TO_EV * rgpot::units::BOHR_TO_ANGSTROM;
   const double a = 5.64;
@@ -1869,6 +1887,7 @@ int main() {
 #endif
   try {
     test_lists();
+    test_list_edges();
     test_madelung();
     test_dispersion_lattice_sum();
     test_forces_and_stress();

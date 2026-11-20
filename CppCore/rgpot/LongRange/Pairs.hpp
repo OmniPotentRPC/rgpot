@@ -7,8 +7,9 @@
 // Verlet skin: nlist::Builder keeps candidates at cutoff + skin until
 // atom moves or an image shift of either sign leaves the skin, and
 // DualList filters them to cutoff on the current OpenMP team (skipping
-// the filter when positions and the cell are unchanged). Positions are
-// wrapped into the cell before the skin test.
+// the filter when positions and the cell are unchanged). Positions may lie
+// any whole number of cells outside the box. The skin test compares them
+// as given, so wrapping an atom back into the cell rebuilds.
 
 #include <cstddef>
 #include <memory>

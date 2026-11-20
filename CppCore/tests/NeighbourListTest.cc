@@ -385,6 +385,203 @@ TEST_CASE("large general cells match the brute force", "[nlist][api]") {
   }
 }
 
+namespace {
+
+// Moves atom a by offsets[3a + k] lattice vectors k.
+std::vector<double> unwrap(const std::vector<double> &pos, const double *box,
+                           const std::vector<int> &offsets) {
+  std::vector<double> out = pos;
+  for (std::size_t a = 0; a < pos.size() / 3; ++a) {
+    for (int k = 0; k < 3; ++k) {
+      for (int c = 0; c < 3; ++c) {
+        out[3 * a + static_cast<std::size_t>(c)] +=
+            offsets[3 * a + static_cast<std::size_t>(k)] * box[3 * k + c];
+      }
+    }
+  }
+  return out;
+}
+
+std::vector<int> random_offsets(std::size_t n, const std::array<bool, 3> &periodic,
+                                std::uint64_t seed) {
+  std::mt19937_64 rng(seed);
+  std::uniform_int_distribution<int> cells(-3, 3);
+  std::vector<int> out(3 * n, 0);
+  for (std::size_t a = 0; a < n; ++a) {
+    for (std::size_t k = 0; k < 3; ++k) {
+      out[3 * a + k] = periodic[k] ? cells(rng) : 0;
+    }
+  }
+  return out;
+}
+
+// The keys a wrapped build gives, moved to the shifts of the unwrapped
+// coordinates: r_j + S H - r_i is unchanged when S = S_w - n_j + n_i.
+std::set<Key> shifted_keys(const std::set<Key> &wrapped, const std::vector<int> &offsets) {
+  std::set<Key> out;
+  for (const Key &k : wrapped) {
+    const auto i = static_cast<std::size_t>(k.i);
+    const auto j = static_cast<std::size_t>(k.j);
+    out.insert(Key{k.i, k.j, k.sa - offsets[3 * j] + offsets[3 * i],
+                   k.sb - offsets[3 * j + 1] + offsets[3 * i + 1],
+                   k.sc - offsets[3 * j + 2] + offsets[3 * i + 2]});
+  }
+  return out;
+}
+
+void require_vectors(const rgpot::nlist::Table &table, const std::vector<double> &pos,
+                     const double *box) {
+  for (std::size_t p = 0; p < table.size(); ++p) {
+    const auto i = static_cast<std::size_t>(table.first[p]);
+    const auto j = static_cast<std::size_t>(table.second[p]);
+    for (int c = 0; c < 3; ++c) {
+      const double v = pos[3 * j + static_cast<std::size_t>(c)] -
+                       pos[3 * i + static_cast<std::size_t>(c)] +
+                       table.shift[3 * p] * box[c] + table.shift[3 * p + 1] * box[3 + c] +
+                       table.shift[3 * p + 2] * box[6 + c];
+      REQUIRE(std::abs(v - table.vector[3 * p + static_cast<std::size_t>(c)]) < 1e-12);
+    }
+  }
+}
+
+} // namespace
+
+TEST_CASE("an atom several cells out keeps its pair", "[nlist][api]") {
+  // 18.5 is 1.5 from the image of the origin two cells back. A stencil of
+  // one image around zero sees 8.5 and drops the pair.
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  const std::vector<double> pos = {0, 0, 0, 18.5, 0, 0};
+  rgpot::nlist::Query query;
+  query.cutoff = 2.0;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+  query.cut = rgpot::nlist::Cut::Strict;
+  rgpot::nlist::Table table;
+  rgpot::nlist::build(table, pos.data(), 2, box, query);
+  REQUIRE(table.size() == 1);
+  REQUIRE(from_table(table) == std::set<Key>{Key{0, 1, -2, 0, 0}});
+  REQUIRE(std::abs(table.vector[0] + 1.5) < 1e-12);
+  REQUIRE(std::abs(table.distance[0] - 1.5) < 1e-12);
+
+  rgpot::nlist::Walk walk(pos.data(), 2, box, query);
+  std::vector<std::int32_t> first(4), second(4), shift(12);
+  std::vector<double> vector(12), distance(4);
+  std::vector<std::uint8_t> mask(4);
+  bool done = false;
+  rgpot::nlist::Buffers dest{first, second, shift, vector, distance, mask};
+  REQUIRE(walk.pull(dest, done) == 1);
+  REQUIRE(shift[0] == -2);
+
+  query.skin = 0.5;
+  query.cut = rgpot::nlist::Cut::Loose;
+  rgpot::nlist::Builder builder;
+  builder.update(pos.data(), 2, box, query);
+  REQUIRE(from_table(builder.table()) == std::set<Key>{Key{0, 1, -2, 0, 0}});
+}
+
+TEST_CASE("unwrapped coordinates match the brute force", "[nlist][api]") {
+  struct Case {
+    std::array<double, 9> box;
+    double cutoff;
+    std::array<bool, 3> periodic;
+  };
+  // A wide cell with one image, a cell narrower than the cutoff, a sheared
+  // cell, and a slab.
+  const std::array<Case, 4> cases{{
+      {{{12, 0, 0, 0, 11, 0, 0, 0, 13}}, 3.0, {{true, true, true}}},
+      {{{4, 0, 0, 0, 4.5, 0, 0, 0, 5}}, 3.2, {{true, true, true}}},
+      {{{6.0, 0.4, 0.2, 0.8, 6.5, -0.3, 0.5, 0.6, 5.5}}, 3.4, {{true, true, true}}},
+      {{{7, 0.5, 0, 0.3, 6, 0, 0, 0, 9}}, 3.0, {{true, true, false}}},
+  }};
+  constexpr std::size_t n = 24;
+  for (const Case &c : cases) {
+    const auto wrapped = fractional_positions(c.box.data(), n);
+    const auto offsets = random_offsets(n, c.periodic, 17);
+    const auto pos = unwrap(wrapped, c.box.data(), offsets);
+    for (bool full : {false, true}) {
+      rgpot::nlist::Query query;
+      query.cutoff = c.cutoff;
+      query.shape =
+          rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full : rgpot::nlist::Shell::Half};
+      query.cut = rgpot::nlist::Cut::Strict;
+      query.periodic = c.periodic;
+      rgpot::nlist::Table table;
+      rgpot::nlist::build(table, pos.data(), n, c.box.data(), query);
+      const auto ref = brute(pos, c.box.data(), c.cutoff, full, true, c.periodic, 9);
+      REQUIRE_FALSE(ref.empty());
+      REQUIRE(from_table(table) == ref);
+      require_vectors(table, pos, c.box.data());
+    }
+  }
+}
+
+TEST_CASE("large unwrapped systems match the wrapped list", "[nlist][api]") {
+  struct Case {
+    std::array<double, 9> box;
+    double cutoff;
+  };
+  // Past the direct loop, so the cells bin the atoms. The wide cell takes
+  // the one-image walk; the narrow and sheared ones try several shifts.
+  const std::array<Case, 3> cases{{
+      {{{20, 0, 0, 0, 21, 0, 0, 0, 22}}, 3.0},
+      {{{9, 0, 0, 0, 9.5, 0, 0, 0, 10}}, 5.0},
+      {{{16.0, 0.5, 0.2, 0.4, 15.5, 0.4, 0.2, 0.3, 16.0}}, 3.0},
+  }};
+  constexpr std::size_t n = 700;
+  const std::array<bool, 3> periodic{{true, true, true}};
+  for (const Case &c : cases) {
+    const auto wrapped = fractional_positions(c.box.data(), n);
+    const auto offsets = random_offsets(n, periodic, 29);
+    const auto pos = unwrap(wrapped, c.box.data(), offsets);
+    for (bool full : {false, true}) {
+      rgpot::nlist::Query query;
+      query.cutoff = c.cutoff;
+      query.shape =
+          rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full : rgpot::nlist::Shell::Half};
+      query.cut = rgpot::nlist::Cut::Strict;
+      query.periodic = periodic;
+      rgpot::nlist::Table in_cell;
+      rgpot::nlist::build(in_cell, wrapped.data(), n, c.box.data(), query);
+      const auto expect = shifted_keys(from_table(in_cell), offsets);
+      REQUIRE(expect.size() > n);
+
+      rgpot::nlist::Table table;
+      rgpot::nlist::build(table, pos.data(), n, c.box.data(), query);
+      REQUIRE(from_table(table) == expect);
+      require_vectors(table, pos, c.box.data());
+
+      rgpot::nlist::Table by_atom;
+      rgpot::nlist::buildByAtom(by_atom, pos.data(), n, c.box.data(), query);
+      REQUIRE(from_table(by_atom) == expect);
+    }
+    rgpot::nlist::Query query;
+    query.cutoff = c.cutoff;
+    query.shape = rgpot::nlist::Cluster4{};
+    query.cut = rgpot::nlist::Cut::Strict;
+    query.periodic = periodic;
+    rgpot::nlist::Table clustered;
+    rgpot::nlist::build(clustered, pos.data(), n, c.box.data(), query);
+    query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
+    rgpot::nlist::Table in_cell;
+    rgpot::nlist::build(in_cell, wrapped.data(), n, c.box.data(), query);
+    REQUIRE(from_table(clustered) == shifted_keys(from_table(in_cell), offsets));
+  }
+}
+
+TEST_CASE("a coordinate too many cells out is rejected", "[nlist][api][edge]") {
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  const std::vector<double> pos = {0, 0, 0, 1.0e12, 0, 0};
+  rgpot::nlist::Query query;
+  query.cutoff = 2.0;
+  rgpot::nlist::Table table;
+  try {
+    rgpot::nlist::build(table, pos.data(), 2, box, query);
+    FAIL("a coordinate 1e11 cells out was accepted");
+  } catch (const rgpot::nlist::Error &err) {
+    REQUIRE(err.code() == rgpot::nlist::Code::Box);
+    REQUIRE(std::string(err.what()).find("2^29 cells") != std::string::npos);
+  }
+}
+
 TEST_CASE("a large orthorhombic list is not an all-pairs scan", "[nlist][api][perf]") {
   // 30^3 FCC cells, the 108000-atom copper block. An all-pairs scan does
   // not finish in tens of seconds. A cell list does. macOS CI measured
@@ -753,6 +950,69 @@ TEST_CASE("random cell perturbations match a brute force pair set", "[nlist][api
     ++done;
   }
   REQUIRE(done >= 24);
+}
+
+TEST_CASE("a builder on unwrapped coordinates matches a brute force pair set",
+          "[nlist][api]") {
+  const double box0[9] = {5, 0.3, 0, 0.2, 6, 0, 0, -0.4, 7};
+  const std::vector<double> start = {0.4, 0.5, 0.6, 1.2, 2.0, 1.1, 3.3, 4.1, 2.4, 4.6, 0.8, 5.5,
+                                     2.5, 5.7, 6.8, 4.9, 3.0, 0.1};
+  const std::size_t n = start.size() / 3;
+  const std::array<bool, 3> periodic{{true, true, true}};
+  const std::vector<int> offsets = {2, 0, -1, -3, 1, 0, 0, 0, 0, 1, -2, 3, 0, 4, 0, -1, -1, -1};
+  std::vector<double> pos = unwrap(start, box0, offsets);
+  const double cutoff = 3.5;
+  rgpot::nlist::Query query;
+  query.cutoff = cutoff;
+  query.skin = 0.6;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+  query.cut = rgpot::nlist::Cut::Loose;
+  query.periodic = periodic;
+  query.fields = {true, false, false};
+
+  auto strict_keys = [&](const rgpot::nlist::Table &table, const double *b) {
+    std::set<Key> out;
+    for (std::size_t k = 0; k < table.size(); ++k) {
+      const auto i = static_cast<std::size_t>(table.first[k]);
+      const auto j = static_cast<std::size_t>(table.second[k]);
+      const int s[3] = {table.shift[3 * k], table.shift[3 * k + 1], table.shift[3 * k + 2]};
+      double r2 = 0.0;
+      for (int c = 0; c < 3; ++c) {
+        const double v = pos[3 * j + static_cast<std::size_t>(c)] -
+                         pos[3 * i + static_cast<std::size_t>(c)] + s[0] * b[c] +
+                         s[1] * b[3 + c] + s[2] * b[6 + c];
+        r2 += v * v;
+      }
+      if (r2 > 0.0 && r2 < cutoff * cutoff) {
+        out.insert(Key{table.first[k], table.second[k], s[0], s[1], s[2]});
+      }
+    }
+    return out;
+  };
+
+  // Small steps that carry atoms across faces, and a cell that drifts.
+  std::mt19937 rng(5);
+  std::uniform_real_distribution<double> step(-0.12, 0.12);
+  rgpot::nlist::Builder builder;
+  double box[9];
+  std::copy(box0, box0 + 9, box);
+  int reused = 0;
+  for (int t = 0; t < 40; ++t) {
+    builder.update(pos.data(), n, box, query);
+    reused += builder.reused() ? 1 : 0;
+    INFO("step " << t << " reused " << builder.reused());
+    REQUIRE(strict_keys(builder.table(), box) ==
+            brute(pos, box, cutoff, false, true, periodic, 9));
+    for (double &x : pos) {
+      x += step(rng);
+    }
+    pos[0] += 0.1;
+    for (int k : {0, 4, 8}) {
+      box[k] += 0.25 * step(rng);
+    }
+    box[1] += 0.1 * step(rng);
+  }
+  REQUIRE(reused > 0);
 }
 
 TEST_CASE("a negative skin is not inside the skin", "[nlist][api]") {

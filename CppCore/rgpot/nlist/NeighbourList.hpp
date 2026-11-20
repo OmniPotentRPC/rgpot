@@ -21,6 +21,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -158,12 +159,14 @@ struct Table {
 /// Stored list with a skin rebuild. A later update keeps the table while
 /// atom moves and the image shifts, including both signs of the stored
 /// stencil, stay within the skin and the query is unchanged. Skin 0
-/// rebuilds unless the coordinates and the cell match. Positions are
-/// wrapped into the cell: the skin test reads the coordinates it is
-/// given and does not fold a periodic jump the caller left unwrapped.
-/// A negative skin is rejected before that test. Throws Error and keeps
-/// the previous table when the geometry is rejected. The same builder is
-/// used by one thread. Two builders may update at the same time.
+/// rebuilds unless the coordinates and the cell match. Positions may lie
+/// any whole number of cells outside the box; the shifts are those of the
+/// coordinates as given. The skin test compares those coordinates, so a
+/// caller that wraps an atom back into the cell moves it by about one
+/// lattice vector and rebuilds. A negative or non-finite skin is rejected
+/// before that test. Throws Error and keeps the previous table when the
+/// geometry is rejected. The same builder is used by one thread. Two
+/// builders may update at the same time.
 class Builder {
 public:
   void update(const double *positions, std::size_t n, const double *box9,
@@ -179,12 +182,15 @@ private:
   std::vector<double> ref_;
   double box_[9]{};
   Query query_{};
+  int span_[3]{};
   std::size_t n_ = 0;
   std::uint64_t builds_ = 0;
   bool have_ = false;
   bool reused_ = false;
   bool unchanged_ = false;
 };
+
+struct Frame;
 
 /// Walk pairs for one central atom, or one cluster of four, at a time
 /// into caller storage. The walk does not keep a list of the whole
@@ -197,6 +203,9 @@ class Walk {
 public:
   Walk(const double *positions, std::size_t n, const double *box9,
        const Query &query);
+  ~Walk();
+  Walk(const Walk &) = delete;
+  Walk &operator=(const Walk &) = delete;
 
   std::size_t pull(Buffers dest, bool &done);
 
@@ -205,7 +214,7 @@ private:
   std::size_t n_ = 0;
   double box_[9]{};
   Query query_{};
-  int nmax_[3]{};
+  std::unique_ptr<Frame> frame_;
   bool one_image_ = false;
   Neighbours cells_;
   std::size_t atom_ = 0;

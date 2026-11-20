@@ -164,6 +164,11 @@ void DualList::update(const double *pos, std::size_t n, const double *box,
   if (pos == nullptr) {
     throw std::invalid_argument("positions are null");
   }
+  for (std::size_t k = 0; k < 3 * n; ++k) {
+    if (!std::isfinite(pos[k])) {
+      throw std::invalid_argument("positions must be finite");
+    }
+  }
   const double *use = box;
   if (!periodic || box == nullptr) {
     double need[9];
