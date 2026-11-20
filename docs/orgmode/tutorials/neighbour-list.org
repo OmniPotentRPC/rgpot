@@ -73,11 +73,12 @@ pairs 1 energy -1.000000
 The next =build= into that table invalidates it.
 =Builder= keeps its table while atom moves and the image shifts, including both
 signs of the stencil, stay inside the skin and the query is unchanged.
-Positions may lie any whole number of cells outside the box, and each shift is
-the one for the coordinates as given.
-Left unwrapped, crossing a periodic face is a small step.
-Wrapping a coordinate back into the cell makes a jump of about one lattice
-vector and rebuilds the table.
+Positions may lie any whole number of cells outside the box.
+The builder folds periodic coordinates in fractional space before it chooses
+image shifts or applies the skin test, so whole-cell drift keeps the same
+canonical pair set.
+A physical crossing of the primary-cell face can change a canonical stored
+shift and rebuilds the table.
 
 ** A three-body angle
 

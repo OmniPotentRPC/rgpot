@@ -159,14 +159,14 @@ struct Table {
 /// Stored list with a skin rebuild. A later update keeps the table while
 /// atom moves and the image shifts, including both signs of the stored
 /// stencil, stay within the skin and the query is unchanged. Skin 0
-/// rebuilds unless the coordinates and the cell match. Positions may lie
-/// any whole number of cells outside the box; the shifts are those of the
-/// coordinates as given. The skin test compares those coordinates, so a
-/// caller that wraps an atom back into the cell moves it by about one
-/// lattice vector and rebuilds. A negative or non-finite skin is rejected
-/// before that test. Throws Error and keeps the previous table when the
-/// geometry is rejected. The same builder is used by one thread. Two
-/// builders may update at the same time.
+/// rebuilds unless the folded coordinates and the cell match. Positions may
+/// lie any whole number of cells outside the box. Periodic coordinates are
+/// folded before image shifts and the skin test, so changing only their
+/// whole-cell representation keeps the table. Crossing a primary-cell face
+/// can change a stored canonical shift and rebuilds the table. A negative or
+/// non-finite skin is rejected before that test. Throws Error and keeps the
+/// previous table when the geometry is rejected. The same builder is used by
+/// one thread. Two builders may update at the same time.
 class Builder {
 public:
   void update(const double *positions, std::size_t n, const double *box9,
@@ -176,10 +176,13 @@ public:
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
   [[nodiscard]] bool reused() const noexcept { return reused_; }
   [[nodiscard]] bool unchanged() const noexcept { return unchanged_; }
+  /// Positions from the latest update, folded along periodic axes.
+  [[nodiscard]] std::span<const double> positions() const noexcept { return current_; }
 
 private:
   Table table_;
   std::vector<double> ref_;
+  std::vector<double> current_;
   double box_[9]{};
   Query query_{};
   int span_[3]{};

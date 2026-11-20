@@ -8,10 +8,12 @@
 // atom moves or an image shift of either sign leaves the skin, and
 // DualList filters them to cutoff on the current OpenMP team (skipping
 // the filter when positions and the cell are unchanged). Positions may lie
-// any whole number of cells outside the box. The skin test compares them
-// as given, so wrapping an atom back into the cell rebuilds. The skin must
-// be finite and non-negative. A list holds one of +S and -S for an atom's
-// own image S; a consumer that expands it to a full list adds the other.
+// any whole number of cells outside the box. Periodic coordinates are folded
+// before image shifts and the skin test, so whole-cell drift does not move an
+// atom. Crossing a primary-cell face can change a canonical shift and rebuild
+// the table. The skin must be finite and non-negative. A list holds one of +S
+// and -S for an atom's own image S; a consumer that expands it to a full list
+// adds the other.
 
 #include <cstddef>
 #include <memory>
