@@ -1245,6 +1245,7 @@ pub fn run_bridge_stress(
     std::thread::sleep(std::time::Duration::from_secs(sleep_secs));
     let ctest = Command::new("ctest")
         .args(["--test-dir", client_build_dir, "--output-on-failure"])
+        .env("RGPOT_REQUIRE_POTSERV", "1")
         .current_dir(root)
         .status();
     let _ = child.kill();
@@ -1277,22 +1278,68 @@ pub fn run_rpc_integ(root: &Path, server_bin: &str) -> Result<()> {
     }
     let st = Command::new("python")
         .arg(&script)
-        .args(["--server-bin", server_bin])
+        .args(["--server-bin", server_bin, "--nwchem-smoke", "--cpmd-smoke"])
         .current_dir(root)
         .status()
         .or_else(|_| {
             Command::new("python3")
                 .arg(&script)
-                .args(["--server-bin", server_bin])
+                .args(["--server-bin", server_bin, "--nwchem-smoke", "--cpmd-smoke"])
                 .current_dir(root)
                 .status()
         })
         .map_err(|e| format!("rpc_integ: {e}"))?;
-    if st.success() {
+    if !st.success() {
+        return Err(format!("rpc_integ failed with {st}"));
+    }
+    let e2e = root.join("tests/test_rpc_e2e_c_abi.py");
+    if !e2e.is_file() {
+        return Err(format!("missing {}", e2e.display()));
+    }
+    let potserv_path = root.join(server_bin);
+    let cpp_dir = potserv_path
+        .parent()
+        .ok_or_else(|| format!("invalid server_bin path: {server_bin}"))?;
+    let nw_fake = find_fake_engine(cpp_dir, "nwchemc_fake_engine")?;
+    let cp_fake = find_fake_engine(cpp_dir, "cpmdc_fake_engine")?;
+    let run_e2e = |py: &str| {
+        Command::new(py)
+            .arg(&e2e)
+            .current_dir(root)
+            .env("RGPOT_POTSERV", &potserv_path)
+            .env("NWCHEMC_LIBRARY", &nw_fake)
+            .env("RGPOT_NWCHEMC_ENGINE", &nw_fake)
+            .env("RGPOT_NWCHEM_ENGINE", &nw_fake)
+            .env("CPMDC_LIBRARY", &cp_fake)
+            .env("RGPOT_CPMDC_ENGINE", &cp_fake)
+            .env("RGPOT_CPMD_ENGINE", &cp_fake)
+            .status()
+    };
+    let st_e2e = run_e2e("python")
+        .or_else(|_| run_e2e("python3"))
+        .map_err(|e| format!("test_rpc_e2e_c_abi: {e}"))?;
+    if st_e2e.success() {
         Ok(())
     } else {
-        Err(format!("rpc_integ failed with {st}"))
+        Err(format!("test_rpc_e2e_c_abi failed with {st_e2e}"))
     }
+}
+
+fn find_fake_engine(dir: &Path, stem: &str) -> Result<PathBuf> {
+    for candidate in [
+        format!("lib{stem}.so"),
+        format!("lib{stem}.dylib"),
+        format!("{stem}.dll"),
+    ] {
+        let p = dir.join(candidate);
+        if p.is_file() {
+            return Ok(p);
+        }
+    }
+    Err(format!(
+        "missing fake engine {stem} under {} (no silent skip allowed)",
+        dir.display()
+    ))
 }
 
 fn enforce_pr_commit_subjects(root: &Path, base: &str) -> Result<()> {

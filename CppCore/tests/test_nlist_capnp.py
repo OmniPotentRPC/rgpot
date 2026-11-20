@@ -30,6 +30,7 @@ def run(capnp: str, mode: str, schema: Path, type_name: str, text: str | None = 
 
 def main() -> int:
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]
+    check_ordinals(root)
     capnp = sys.argv[2] if len(sys.argv) > 2 else shutil.which("capnp")
     if capnp is None:
         raise SystemExit("capnp is required")
@@ -103,6 +104,41 @@ def check(capnp: str, schema: Path) -> int:
         raise SystemExit(f"chunk lost the system ids: {decoded_tagged}")
     print("nlist capnp round-trip ok")
     return 0
+
+
+def check_ordinals(root: Path) -> None:
+    sys.path.insert(0, str(root / "CppCore" / "rgpot" / "rpc"))
+    import schema_ledger
+
+    vendored = (root / "CppCore" / "rgpot" / "rpc" / "Potentials.capnp").read_text(encoding="utf-8")
+    effective = schema_ledger.apply_series(
+        vendored,
+        schema_ledger.read_series(root / "CppCore" / "rgpot" / "rpc" / "local"),
+    )
+    entries = {(e.scope, e.ordinal): (e.kind, e.name, e.type) for e in schema_ledger.schema_entries(effective, "effective")}
+    expected_methods = {
+        0: ("calculate", "(fip:ForceInput)->(result:PotentialResult)"),
+        1: ("configure", "(config:PotentialConfig)->(ok:Bool,message:Text)"),
+        2: ("calculateEnergy", "(fip:ForceInput)->(result:PotentialResult)"),
+        3: ("calculateForces", "(fip:ForceInput)->(result:PotentialResult)"),
+        4: ("calculateHessian", "(fip:ForceInput)->(result:PotentialResult)"),
+        5: ("calculateDipole", "(fip:ForceInput)->(result:PotentialResult)"),
+        6: ("calculateQuadrupole", "(fip:ForceInput)->(result:PotentialResult)"),
+        7: ("calculateStress", "(fip:ForceInput)->(result:PotentialResult)"),
+        8: ("calculateOptimize", "(fip:ForceInput)->(result:PotentialResult)"),
+        9: ("calculateFrequencies", "(fip:ForceInput)->(result:PotentialResult)"),
+        10: ("calculatePolarizability", "(fip:ForceInput)->(result:PotentialResult)"),
+        11: ("calculateGradient", "(fip:ForceInput)->(result:PotentialResult)"),
+        12: ("getCapabilities", "()->(capabilities:Capabilities)"),
+        13: ("neighbours", "(fip:ForceInput,request:NeighborRequest)->(neighbors:NeighborList)"),
+        14: ("calculateHvp", "(fip:ForceInput,direction:List(Float64))->(product:List(Float64))"),
+    }
+    for ordinal, (name, sig) in expected_methods.items():
+        got = entries.get(("Potential", ordinal))
+        if got != ("method", name, sig):
+            raise SystemExit(f"Potential @{ordinal} expected {name} {sig}, got {got}")
+    if entries.get(("Capabilities.Operation", 11)) != ("enumerant", "neighbors", "-"):
+        raise SystemExit(f"Capabilities.Operation @11 missing or wrong: {entries.get(('Capabilities.Operation', 11))}")
 
 
 if __name__ == "__main__":
