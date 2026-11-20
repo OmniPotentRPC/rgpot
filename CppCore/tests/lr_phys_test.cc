@@ -283,6 +283,43 @@ void test_list_edges() {
     check(lists.short_pairs().empty(), "the unwrapped pair is past the short cutoff");
   }
   {
+    const double box[9] = {5, 0, 0, 0, 6, 0, 0, 0, 7};
+    const std::vector<double> wrapped = {
+        0.4, 0.5, 0.6, 1.2, 2.0, 1.1, 2.5, 5.7, 6.8,
+    };
+    DualList lists(6.01, 6.01, 0.4);
+    lists.update(wrapped.data(), 3, box, true);
+    auto expected = lists.long_pairs();
+    std::vector<double> drifted = wrapped;
+    drifted[0] += 3.0 * box[0];
+    drifted[1] += 3.0 * box[1];
+    drifted[2] += 3.0 * box[2];
+    lists.update(drifted.data(), 3, box, true);
+    check(!lists.short_rebuilt() && !lists.long_rebuilt(),
+          "whole-cell drift stays inside the DualList skin");
+    const auto &got = lists.long_pairs();
+    check(got.size() == expected.size(), "whole-cell drift keeps the DualList pair count");
+    if (got.size() == expected.size()) {
+      auto less = [](const rgpot::lr::Pair &a, const rgpot::lr::Pair &b) {
+        return std::tie(a.i, a.j, a.x, a.y, a.z) <
+               std::tie(b.i, b.j, b.x, b.y, b.z);
+      };
+      std::sort(expected.begin(), expected.end(), less);
+      auto sorted = got;
+      std::sort(sorted.begin(), sorted.end(), less);
+      for (std::size_t k = 0; k < sorted.size(); ++k) {
+        check(sorted[k].i == expected[k].i && sorted[k].j == expected[k].j,
+              "whole-cell drift keeps the DualList atom pairs");
+        check_close(sorted[k].x, expected[k].x, 1e-12,
+                    "whole-cell drift keeps the DualList x vector");
+        check_close(sorted[k].y, expected[k].y, 1e-12,
+                    "whole-cell drift keeps the DualList y vector");
+        check_close(sorted[k].z, expected[k].z, 1e-12,
+                    "whole-cell drift keeps the DualList z vector");
+      }
+    }
+  }
+  {
     // Clearing the lists for no atoms must not leave a builder that
     // reports the next geometry as unchanged.
     const double box[9] = {8, 0, 0, 0, 8, 0, 0, 0, 8};
