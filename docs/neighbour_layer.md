@@ -172,6 +172,12 @@ An orthogonal cell bins coordinates folded into the cell, so an atom
 outside it is found through its image inside. A stored list on a sheared
 cell is rebuilt when an atom changes image, because its shifts are fixed.
 
+To reproduce the old misses, configure the CMake test build and run
+`ctest --test-dir build-cmake -R TriclinicNlistTest --output-on-failure`.
+The old Cartesian-bin walk missed pairs in the `skew above half`, `hex skew`
+and open-axis sheared slab cases. The corrected walk reports no misses in all
+three.
+
 `Mode::Stored` keeps a Verlet list and reuses it while every atom has moved by at most half the skin.
 The list holds partner indices and each walk takes the image from the current coordinates, so the move is measured to the nearest periodic image of the reference position: an atom that the caller wraps back through a face of the cell has moved by its step, not by a cell vector, and keeps the list.
 The bins are redone after such a wrap.
