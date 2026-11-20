@@ -1132,6 +1132,8 @@ if get_option('with_rpc_client_only')
         compile_args: _args,
         dependencies: _deps + [ptlrpc_dep, fastnlist_dep],
     )
+    # The client-only archives take no OpenMP flags.
+    rgpot_dep_no_openmp = rgpot_dep
 endif
 
 # Engine drivers link the umbrella. A client-only build has no LJPot.
