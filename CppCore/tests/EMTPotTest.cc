@@ -230,6 +230,15 @@ void rightTransform(std::vector<double> &pos, std::array<double, 9> &box,
 
 } // namespace
 
+TEST_CASE("EMT advertises the stress it computes", "[emt][stress]") {
+  rgpot::EMTPot plain;
+  rgpot::EMTConfig rasmussen;
+  rasmussen.rasmussen = true;
+  rgpot::EMTPot other(rasmussen);
+  CHECK(plain.caps().stress);
+  CHECK(other.caps().stress);
+}
+
 TEST_CASE("EMT stress is opt-in and matches triclinic strain",
           "[emt][stress]") {
   auto system = fccCu(4, 3.615);
