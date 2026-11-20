@@ -10,7 +10,19 @@ documentation = "https://rgpot.rgoswami.me"
 readme = "README.md"
 keywords = ["potential-energy", "rpc", "molecular-dynamics", "dlpack", "ffi"]
 categories = ["science", "api-bindings"]
-include = ["**/*"]
+include = [
+  "Cargo.toml",
+  "README.md",
+  "build.rs",
+  "cbindgen.toml",
+  "cpp/**/*",
+  "cppcore-staging/**/*",
+  "include/**/*",
+  "schema/**/*",
+  "src/**/*",
+  "tests/**/*",
+  "version_macros.rs",
+]
 
 [lib]
 name = "rgpot_core"

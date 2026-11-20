@@ -7,23 +7,17 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 staging="${repo_root}/rgpot-core/cppcore-staging"
 scratch="$(mktemp -d)"
-trap 'rm -rf "${scratch}"' EXIT
+trap 'rm -rf "${scratch}" "${staging}"' EXIT
 
 pushd "${repo_root}" >/dev/null
 
 scripts/sync_rgpot_core_cppcore.sh --dest "${scratch}"
 
-if command -v rustup >/dev/null 2>&1; then
-  cargo_cmd=(rustup run 1.88.0 cargo)
-else
-  cargo_cmd=(cargo)
-fi
-
-RGPOT_CPPCORE_ROOT="${scratch}" "${cargo_cmd[@]}" check -p rgpot-core
+RGPOT_CPPCORE_ROOT="${scratch}" cargo check -p rgpot-core
 
 scripts/sync_rgpot_core_cppcore.sh
 
-"${cargo_cmd[@]}" package -p rgpot-core --allow-dirty --list > "${scratch}/package-list.txt"
+cargo package -p rgpot-core --list > "${scratch}/package-list.txt"
 if ! rg '^cppcore-staging/rgpot/EAMTable/EAMTablePot.cc$' "${scratch}/package-list.txt" >/dev/null; then
   echo "packaged crate misses cppcore-staging EAM source files" >&2
   exit 1
