@@ -25,16 +25,23 @@
 //! [`PotentialImpl`], the handle the rest of the crate evaluates through, so
 //! an engine library takes part in everything that takes a potential.
 //!
-//! The library stays mapped for the life of the process, as for
-//! [`crate::profile`]: a backend may own threads or MPI state that does not
-//! survive `dlclose`.
+//! The loaded library stays mapped for the life of the process, as for
+//! [`crate::profile`]. Unloading is unsafe. A backend may own threads or MPI
+//! state, and it may have registered TLS destructors or `atexit` handlers
+//! that still call into the library. A tensor runtime crashes if `dlclose`
+//! runs its static teardown, and `libuma_engine` is linked with `-z nodelete`
+//! for that reason. [`EnginePotential::load`] keeps the first successful open
+//! of a path and reuses that handle, so creating and dropping engines does
+//! not accumulate linker references. A failed open, symbol lookup or
+//! `rgpot_engine_create` still releases that attempt.
 
+use std::collections::HashMap;
 use std::ffi::{c_char, c_int, c_long, c_uint, c_ushort, c_void};
 use std::fmt;
 use std::mem::ManuallyDrop;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{LazyLock, Mutex, MutexGuard, OnceLock};
 
 use libloading::Library;
 
@@ -385,7 +392,44 @@ pub struct EnginePotential {
     stamp: RgpotEngineAbiStamp,
     handle: NonNull<RgpotEnginePot>,
     fatal: OnceLock<Poisoned>,
-    _library: Option<ManuallyDrop<Library>>,
+}
+
+/// One `dlopen` per canonical path, never closed.
+///
+/// `ManuallyDrop` is the unloading policy: the cached handle is not passed to
+/// `dlclose` when the map is dropped at process exit. Distinct paths take one
+/// handle each. That is the cost of leaving every successfully opened engine
+/// mapped.
+static ENGINE_LIBRARIES: LazyLock<Mutex<HashMap<PathBuf, ManuallyDrop<Library>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn engine_libraries() -> MutexGuard<'static, HashMap<PathBuf, ManuallyDrop<Library>>> {
+    ENGINE_LIBRARIES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn library_key(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn cached_symbols(key: &Path) -> Result<Option<EngineSymbols>, EngineError> {
+    let libraries = engine_libraries();
+    match libraries.get(key) {
+        Some(library) => Ok(Some(unsafe { resolve(library)? })),
+        None => Ok(None),
+    }
+}
+
+fn retain_library(key: PathBuf, library: Library) {
+    let mut libraries = engine_libraries();
+    if libraries.contains_key(&key) {
+        // The other load published this path. Closing this extra reference
+        // leaves the cached handle mapped.
+        drop(library);
+        return;
+    }
+    libraries.insert(key, ManuallyDrop::new(library));
 }
 
 // The instance is used by one caller at a time through `&mut self`. The
@@ -397,16 +441,26 @@ impl EnginePotential {
     /// Open the engine library at `path` and create an instance from the
     /// backend's configuration message.
     ///
+    /// The first successful load of a path keeps that library mapped for the
+    /// life of the process. A later load of the same path reuses the handle
+    /// and does not call `dlopen` again.
+    ///
     /// # Safety
     ///
     /// The library must implement the engine C ABI with the signatures of
     /// this module, and `config` must be the message its create call reads.
     pub unsafe fn load(path: &Path, config: &[u8]) -> Result<Self, EngineError> {
+        let key = library_key(path);
+        if let Some(symbols) = cached_symbols(&key)? {
+            return unsafe { Self::from_symbols(symbols, config) };
+        }
+        // Open outside the cache lock. `rgpot_engine_create` may load another
+        // engine, and holding the lock across that call would deadlock.
         let library = unsafe { Library::new(path) }
             .map_err(|why| EngineError::Load(format!("{}: {why}", path.display())))?;
         let symbols = unsafe { resolve(&library)? };
-        let mut engine = unsafe { Self::from_symbols(symbols, config)? };
-        engine._library = Some(ManuallyDrop::new(library));
+        let engine = unsafe { Self::from_symbols(symbols, config)? };
+        retain_library(key, library);
         Ok(engine)
     }
 
@@ -464,7 +518,6 @@ impl EnginePotential {
                 stamp,
                 handle,
                 fatal: OnceLock::new(),
-                _library: None,
             }),
             None => Err(EngineError::Create(text_of(&errbuf))),
         }
@@ -795,7 +848,8 @@ impl EnginePotential {
 /// still reads from `pot` afterwards, and every handle created by
 /// `rgpot_engine_create` is freed by `rgpot_engine_destroy`). `Drop` therefore
 /// still calls `rgpot_engine_destroy` once on a poisoned handle, serialized by
-/// `&mut self`.
+/// `&mut self`. The plugin stays mapped: the process-lifetime cache owns the
+/// `dlopen` handle, so `destroy` runs before any unload could happen.
 impl Drop for EnginePotential {
     fn drop(&mut self) {
         unsafe { (self.symbols.destroy)(self.handle.as_ptr()) };

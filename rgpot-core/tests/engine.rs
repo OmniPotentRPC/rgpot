@@ -1179,3 +1179,203 @@ fn coincident_pair_reports_recoverable_eval_error_and_internal_status() {
         rgpot_tensor_free(sep_input.box_matrix);
     }
 }
+
+/// Lines of `/proc/self/maps` that name `needle`.
+#[cfg(target_os = "linux")]
+fn plugin_maps(needle: &str) -> usize {
+    let text = std::fs::read_to_string("/proc/self/maps").expect("read /proc/self/maps");
+    text.lines().filter(|line| line.contains(needle)).count()
+}
+
+/// `dl_iterate_phdr` entries whose object name contains `needle`.
+#[cfg(target_os = "linux")]
+fn plugin_phdrs(needle: &str) -> usize {
+    use std::ffi::{c_char, c_int, c_void, CStr};
+
+    #[repr(C)]
+    struct DlPhdrInfo {
+        _addr: usize,
+        name: *const c_char,
+    }
+
+    struct Hits {
+        needle: *const u8,
+        len: usize,
+        count: usize,
+    }
+
+    unsafe extern "C" fn callback(info: *mut DlPhdrInfo, _size: usize, data: *mut c_void) -> c_int {
+        let hits = unsafe { &mut *data.cast::<Hits>() };
+        let name = unsafe { (*info).name };
+        if name.is_null() {
+            return 0;
+        }
+        let text = unsafe { CStr::from_ptr(name) };
+        let needle = unsafe { std::slice::from_raw_parts(hits.needle, hits.len) };
+        if text
+            .to_bytes()
+            .windows(needle.len())
+            .any(|window| window == needle)
+        {
+            hits.count += 1;
+        }
+        0
+    }
+
+    #[link(name = "dl")]
+    extern "C" {
+        fn dl_iterate_phdr(
+            callback: unsafe extern "C" fn(*mut DlPhdrInfo, usize, *mut c_void) -> c_int,
+            data: *mut c_void,
+        ) -> c_int;
+    }
+
+    let bytes = needle.as_bytes();
+    let mut hits = Hits {
+        needle: bytes.as_ptr(),
+        len: bytes.len(),
+        count: 0,
+    };
+    unsafe { dl_iterate_phdr(callback, (&mut hits as *mut Hits).cast()) };
+    hits.count
+}
+
+/// Dynamic-linker references to `path`, not counting the probe's own open.
+///
+/// glibc keeps one link map for repeated `dlopen` of the same file, so
+/// `/proc/self/maps` and `dl_iterate_phdr` stay flat while the open count
+/// grows. Closing the probe handle decrements that shared count; the number
+/// of closes required to unmap the file is the resident count plus one.
+#[cfg(target_os = "linux")]
+fn resident_references(path: &Path, needle: &str) -> usize {
+    use std::ffi::{c_char, c_int, c_void, CStr, CString};
+    use std::os::unix::ffi::OsStrExt;
+
+    #[link(name = "dl")]
+    extern "C" {
+        fn dlopen(filename: *const c_char, flags: c_int) -> *mut c_void;
+        fn dlclose(handle: *mut c_void) -> c_int;
+        fn dlerror() -> *mut c_char;
+    }
+
+    // glibc and musl: RTLD_LAZY is 1, RTLD_LOCAL is 0. libloading opens
+    // engine plugins with those flags, so this probe shares their link map.
+    const RTLD_LAZY: c_int = 1;
+    const RTLD_LOCAL: c_int = 0;
+
+    let c_path =
+        CString::new(path.as_os_str().as_bytes()).expect("plugin path has no interior nul");
+    let handle = unsafe { dlopen(c_path.as_ptr(), RTLD_LAZY | RTLD_LOCAL) };
+    assert!(
+        !handle.is_null(),
+        "probe dlopen of {} failed: {}",
+        path.display(),
+        unsafe {
+            let err = dlerror();
+            if err.is_null() {
+                String::from("unknown")
+            } else {
+                CStr::from_ptr(err).to_string_lossy().into_owned()
+            }
+        }
+    );
+    let mut closes = 0usize;
+    while plugin_maps(needle) > 0 {
+        assert!(
+            closes < 10_000,
+            "dlclose did not unmap {needle} after {closes} closes"
+        );
+        let rc = unsafe { dlclose(handle) };
+        assert_eq!(rc, 0, "dlclose of {needle} failed");
+        closes += 1;
+    }
+    closes.saturating_sub(1)
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn failed_create_releases_the_plugin() {
+    let path = build("harmonic_create_unmap", &[]);
+    let needle = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("plugin file name")
+        .to_owned();
+    let error = unsafe { EnginePotential::load(&path, &[1, 2, 3]) }
+        .err()
+        .expect("create must fail");
+    assert!(matches!(error, EngineError::Create(_)), "{error}");
+    assert_eq!(
+        plugin_maps(&needle),
+        0,
+        "a failed create left {needle} mapped"
+    );
+    assert_eq!(plugin_phdrs(&needle), 0);
+}
+
+/// Load and drop one plugin many times. The mapping count must not grow,
+/// and one resident `dlopen` must remain: the library is not unloaded.
+#[test]
+#[cfg(target_os = "linux")]
+fn repeated_loads_do_not_grow_plugin_handles() {
+    const LOADS: usize = 24;
+    let path = build("harmonic_handles", &[]);
+    let needle = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("plugin file name")
+        .to_owned();
+    assert_eq!(
+        plugin_maps(&needle),
+        0,
+        "plugin is mapped before the first load"
+    );
+    assert_eq!(plugin_phdrs(&needle), 0);
+
+    let positions = [0.5, -1.0, 2.0, 0.0, 3.0, -0.25];
+    let request = EngineRequest {
+        positions: &positions,
+        atomic_numbers: &[1, 8],
+        box_matrix: &CELL,
+    };
+    let expected = {
+        let mut engine = load(&path);
+        engine.force(&request).expect("force").energy
+    };
+    let maps_once = plugin_maps(&needle);
+    let phdr_once = plugin_phdrs(&needle);
+    assert!(maps_once > 0, "the first load did not map {needle}");
+    assert_eq!(
+        phdr_once, 1,
+        "the first load mapped {needle} more than once"
+    );
+
+    for _ in 1..LOADS {
+        let mut engine = load(&path);
+        let answer = engine.force(&request).expect("force");
+        assert!(within_roundoff(
+            answer.energy,
+            expected,
+            3 * positions.len()
+        ));
+    }
+    assert_eq!(destroyed(&path) as usize, LOADS);
+
+    let maps_after = plugin_maps(&needle);
+    let phdr_after = plugin_phdrs(&needle);
+    assert_eq!(
+        maps_after, maps_once,
+        "/proc/self/maps entries for {needle} grew from {maps_once} to {maps_after}"
+    );
+    assert_eq!(
+        phdr_after, phdr_once,
+        "dl_iterate_phdr entries for {needle} grew from {phdr_once} to {phdr_after}"
+    );
+
+    let refs = resident_references(&path, &needle);
+    assert_eq!(
+        refs, 1,
+        "{LOADS} load/drop cycles left {refs} dlopen references to {needle} \
+         (maps {maps_once}->{maps_after}, phdr {phdr_once}->{phdr_after})"
+    );
+}
