@@ -828,7 +828,8 @@ if get_option('with_rust_core')
                 dl_dep,
                 meson.get_compiler('c').find_library('m', required: false),
             ],
-            link_language: 'c',
+            # rgpot-core's archive contains the packaged C++ EAM bridge.
+            link_language: 'cpp',
             build_by_default: true,
         )
         test(
@@ -896,6 +897,13 @@ if _fast_minor < 89 and _fast_rustup.found()
 endif
 
 if _fast_opt.disabled()
+    has_fast_nlist = false
+elif get_option('with_rust_core')
+    # Both crates are Rust static libraries. Linking them into the same C++
+    # test or shared library would pull in two copies of the Rust runtime.
+    if _fast_opt.enabled()
+        error('with_fast_nlist=enabled cannot be combined with with_rust_core')
+    endif
     has_fast_nlist = false
 elif _fast_minor >= 89 and _fast_cargo.found()
     has_fast_nlist = true
