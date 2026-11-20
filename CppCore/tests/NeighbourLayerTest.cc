@@ -1232,3 +1232,63 @@ TEST_CASE("fastTiles stencil cache invalidates when a streaming Neighbours "
   const double got2 = totalR2(*opt);
   REQUIRE(got2 == want2);
 }
+
+TEST_CASE("fractional binning rejects a non-finite coordinate",
+          "[nlist][fractional]") {
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0.2 * side, side, 0,
+                         0.1 * side, 0.15 * side, side};
+  auto pos = fcc(3, a);
+  pos[0] = std::numeric_limits<double>::quiet_NaN();
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 4.0;
+  spec.skin = 0.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stream;
+  rgpot::nlist::Neighbours cells;
+  REQUIRE_THROWS_WITH(
+      cells.update(pos.data(), pos.size() / 3, box, spec),
+      "Neighbours: non-finite fractional coordinate");
+}
+
+TEST_CASE("a fully periodic general cell without a reciprocal basis is not "
+          "binned in Cartesian coordinates",
+          "[nlist][fractional]") {
+  // c = a + b, so the volume is zero, while every diagonal entry is
+  // positive and the cell is sheared. That is the condition that used
+  // to leave fractional binning and continue in Cartesian coordinates.
+  const double box[9] = {2, 0, 1, 0, 2, 1, 2, 2, 2};
+  const double m0 = box[4] * box[8] - box[5] * box[7];
+  const double m1 = box[3] * box[8] - box[5] * box[6];
+  const double m2 = box[3] * box[7] - box[4] * box[6];
+  const double det = box[0] * m0 - box[1] * m1 + box[2] * m2;
+  REQUIRE(det == 0.0);
+  REQUIRE(box[0] > 0.0);
+  REQUIRE(box[4] > 0.0);
+  REQUIRE(box[8] > 0.0);
+  auto pos = fcc(2, 1.0);
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 1.5;
+  spec.skin = 0.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stream;
+  spec.periodic = {true, true, true};
+  rgpot::nlist::Neighbours cells;
+  REQUIRE_THROWS_WITH(
+      cells.update(pos.data(), pos.size() / 3, box, spec),
+      "Neighbours: fully periodic general cell has no finite positive "
+      "reciprocal basis");
+
+  // An open axis, and an orthogonal cell, stay on Cartesian binning.
+  spec.periodic = {true, true, false};
+  const double open_box[9] = {4, 0, 0.4, 0.3, 4, 0, 0.2, 0.5, 4};
+  REQUIRE_NOTHROW(cells.update(pos.data(), pos.size() / 3, open_box, spec));
+
+  spec.periodic = {true, true, true};
+  const double ortho[9] = {4, 0, 0, 0, 4, 0, 0, 0, 4};
+  rgpot::nlist::Neighbours ortho_cells;
+  REQUIRE_NOTHROW(
+      ortho_cells.update(pos.data(), pos.size() / 3, ortho, spec));
+  REQUIRE(ortho_cells.streaming());
+}

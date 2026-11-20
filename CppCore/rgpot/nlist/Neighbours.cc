@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 
 #if defined(_WIN32)
@@ -37,6 +38,55 @@ int axisCount(double length, double edge) {
     --n;
   }
   return static_cast<int>(n);
+}
+
+/// Reciprocal basis of a row-major cell. `ok` is false when the
+/// determinant is not finite and nonzero, an inverse element is not
+/// finite, or a dual-lattice column norm is not finite and positive.
+/// That is the condition under which a fully periodic general cell is
+/// not binned in Cartesian coordinates.
+struct ReciprocalBasis {
+  bool ok = false;
+  double inv[9]{};
+  double dual[3]{};
+};
+
+ReciprocalBasis reciprocalBasis(const double box[9]) {
+  ReciprocalBasis out;
+  const double m0 = box[4] * box[8] - box[5] * box[7];
+  const double m1 = box[3] * box[8] - box[5] * box[6];
+  const double m2 = box[3] * box[7] - box[4] * box[6];
+  const double det = box[0] * m0 - box[1] * m1 + box[2] * m2;
+  if (!std::isfinite(det) || det == 0.0) {
+    return out;
+  }
+  out.inv[0] = m0 / det;
+  out.inv[1] = (box[2] * box[7] - box[1] * box[8]) / det;
+  out.inv[2] = (box[1] * box[5] - box[2] * box[4]) / det;
+  out.inv[3] = -m1 / det;
+  out.inv[4] = (box[0] * box[8] - box[2] * box[6]) / det;
+  out.inv[5] = (box[2] * box[3] - box[0] * box[5]) / det;
+  out.inv[6] = m2 / det;
+  out.inv[7] = (box[1] * box[6] - box[0] * box[7]) / det;
+  out.inv[8] = (box[0] * box[4] - box[1] * box[3]) / det;
+  for (double value : out.inv) {
+    if (!std::isfinite(value)) {
+      return out;
+    }
+  }
+  out.dual[0] = std::hypot(out.inv[0], out.inv[3], out.inv[6]);
+  out.dual[1] = std::hypot(out.inv[1], out.inv[4], out.inv[7]);
+  out.dual[2] = std::hypot(out.inv[2], out.inv[5], out.inv[8]);
+  out.ok = std::isfinite(out.dual[0]) && std::isfinite(out.dual[1]) &&
+           std::isfinite(out.dual[2]) && out.dual[0] > 0.0 &&
+           out.dual[1] > 0.0 && out.dual[2] > 0.0;
+  return out;
+}
+
+[[noreturn]] void refuseCartesianBinning() {
+  throw std::invalid_argument(
+      "Neighbours: fully periodic general cell has no finite positive "
+      "reciprocal basis");
 }
 
 } // namespace
@@ -142,32 +192,26 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
   set_axes();
   double frac_inv[9]{};
   bool use_frac = false;
-  if (use_general_ && periodic_[0] && periodic_[1] && periodic_[2]) {
-    const double m0 = box_[4] * box_[8] - box_[5] * box_[7];
-    const double m1 = box_[3] * box_[8] - box_[5] * box_[6];
-    const double m2 = box_[3] * box_[7] - box_[4] * box_[6];
-    const double det = box_[0] * m0 - box_[1] * m1 + box_[2] * m2;
-    if (std::isfinite(det) && det != 0.0) {
-      frac_inv[0] = m0 / det;
-      frac_inv[1] = (box_[2] * box_[7] - box_[1] * box_[8]) / det;
-      frac_inv[2] = (box_[1] * box_[5] - box_[2] * box_[4]) / det;
-      frac_inv[3] = -m1 / det;
-      frac_inv[4] = (box_[0] * box_[8] - box_[2] * box_[6]) / det;
-      frac_inv[5] = (box_[2] * box_[3] - box_[0] * box_[5]) / det;
-      frac_inv[6] = m2 / det;
-      frac_inv[7] = (box_[1] * box_[6] - box_[0] * box_[7]) / det;
-      frac_inv[8] = (box_[0] * box_[4] - box_[1] * box_[3]) / det;
-      const double d0 = std::hypot(frac_inv[0], frac_inv[3], frac_inv[6]);
-      const double d1 = std::hypot(frac_inv[1], frac_inv[4], frac_inv[7]);
-      const double d2 = std::hypot(frac_inv[2], frac_inv[5], frac_inv[8]);
-      if (std::isfinite(d0) && std::isfinite(d1) && std::isfinite(d2) &&
-          d0 > 0.0 && d1 > 0.0 && d2 > 0.0) {
-        nx_ = axisCount(1.0, edge * d0);
-        ny_ = axisCount(1.0, edge * d1);
-        nz_ = axisCount(1.0, edge * d2);
-        use_frac = true;
-      }
+  // Fractional bins are required for a fully periodic general cell,
+  // including every sheared cell whose three edges are positive.
+  // Cartesian bins are the path when the cell is not general, or when
+  // an axis is open or its edge is not positive. A fully periodic
+  // general cell whose reciprocal basis is not finite and positive is
+  // an error: it is not binned in Cartesian coordinates.
+  const bool fractional_required =
+      use_general_ && periodic_[0] && periodic_[1] && periodic_[2];
+  if (fractional_required) {
+    const ReciprocalBasis basis = reciprocalBasis(box_);
+    if (!basis.ok) {
+      refuseCartesianBinning();
     }
+    for (int k = 0; k < 9; ++k) {
+      frac_inv[k] = basis.inv[k];
+    }
+    nx_ = axisCount(1.0, edge * basis.dual[0]);
+    ny_ = axisCount(1.0, edge * basis.dual[1]);
+    nz_ = axisCount(1.0, edge * basis.dual[2]);
+    use_frac = true;
   }
   const auto avail = availableBytes();
   if (avail > 0 && bytes_of() > static_cast<double>(avail)) {
@@ -227,7 +271,11 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     int iz = 0;
     if (use_frac) {
       auto bin_frac = [](double s, int naxis) {
-        if (naxis <= 1 || !std::isfinite(s)) {
+        if (!std::isfinite(s)) {
+          throw std::invalid_argument(
+              "Neighbours: non-finite fractional coordinate");
+        }
+        if (naxis <= 1) {
           return 0;
         }
         double wrapped = s - std::floor(s);
@@ -461,9 +509,6 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
                        box9[5] != 0.0 || box9[6] != 0.0 || box9[7] != 0.0;
   image_ = spec.image;
   use_general_ = image_ == Image::General || sheared;
-  if (use_general_) {
-    general_ = MinimumImage(box9, spec.periodic);
-  }
   search_ = spec.cutoff + spec.skin;
   if (!(search_ > 0.0)) {
     search_ = 0.0;
@@ -476,6 +521,14 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   off_.clear();
   nbr_.clear();
   streaming_ = true;
+  // Bin before MinimumImage when this update builds cells, so a fully
+  // periodic general cell with no reciprocal basis reports that error
+  // instead of a Cartesian grid. Paths that store no bins still need
+  // the image for later walks.
+  const bool bins = n >= 2 && search_ > 0.0 && !std::isinf(search_);
+  if (!bins && use_general_) {
+    general_ = MinimumImage(box9, spec.periodic);
+  }
   if (n < 2 || !(search_ > 0.0)) {
     streaming_ = false;
     mode_ = Mode::Stored;
@@ -494,6 +547,9 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     return;
   }
   buildCells(xyz, n);
+  if (use_general_) {
+    general_ = MinimumImage(box9, spec.periodic);
+  }
   // A stream never stores the pairs, so the candidate count is unused.
   // Counting it walks every stencil the search is about to walk.
   if (spec.mode == Mode::Stream) {

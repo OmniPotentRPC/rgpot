@@ -108,6 +108,12 @@ struct Spec {
 /// joined in atom order. Each row is sorted by partner index, so the
 /// list matches the one thread build. An open axis whose nominal grid
 /// does not fit in the memory the OS reports is binned on the atom span.
+/// A fully periodic general cell is binned by wrapped fractional
+/// coordinates. A non-finite fractional coordinate is an error. A fully
+/// periodic general cell whose reciprocal basis is not finite and
+/// positive is an error and is not binned in Cartesian coordinates.
+/// Cartesian binning is used when the cell is not general, or when an
+/// axis is open or its edge is not positive.
 class Neighbours {
 public:
   Neighbours() : generation_(nextGeneration()) {}
