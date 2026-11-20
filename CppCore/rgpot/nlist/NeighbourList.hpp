@@ -156,11 +156,14 @@ struct Table {
 };
 
 /// Stored list with a skin rebuild. A later update keeps the table while
-/// atom and cell-corner displacements stay within the skin and the query
-/// is unchanged. Skin 0 rebuilds unless the coordinates and the cell match.
-/// Throws Error and keeps the previous table when the geometry is
-/// rejected. The same builder is used by one thread. Two builders may
-/// update at the same time.
+/// atom moves and the image shifts, including both signs of the stored
+/// stencil, stay within the skin and the query is unchanged. Skin 0
+/// rebuilds unless the coordinates and the cell match. Positions are
+/// wrapped into the cell: the skin test reads the coordinates it is
+/// given and does not fold a periodic jump the caller left unwrapped.
+/// A negative skin is rejected before that test. Throws Error and keeps
+/// the previous table when the geometry is rejected. The same builder is
+/// used by one thread. Two builders may update at the same time.
 class Builder {
 public:
   void update(const double *positions, std::size_t n, const double *box9,
