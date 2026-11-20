@@ -165,6 +165,56 @@ fn main() {
         // must use its OpenMP-enabled rgpot::threadsRequested rather than the
         // non-OpenMP copy Cargo compiles here.
         .define("rgpot", "rgpot_core_bundled")
+        .define(
+            "rgpot_nlist_abi_version",
+            "rgpot_core_bundled_nlist_abi_version",
+        )
+        .define("rgpot_nlist_strerror", "rgpot_core_bundled_nlist_strerror")
+        .define(
+            "rgpot_nlist_request_init",
+            "rgpot_core_bundled_nlist_request_init",
+        )
+        .define("rgpot_nlist_build", "rgpot_core_bundled_nlist_build")
+        .define(
+            "rgpot_nlist_walk_open",
+            "rgpot_core_bundled_nlist_walk_open",
+        )
+        .define(
+            "rgpot_nlist_walk_pull",
+            "rgpot_core_bundled_nlist_walk_pull",
+        )
+        .define(
+            "rgpot_nlist_walk_close",
+            "rgpot_core_bundled_nlist_walk_close",
+        )
+        .define(
+            "rgpot_nlist_build_systems",
+            "rgpot_core_bundled_nlist_build_systems",
+        )
+        .define(
+            "rgpot_nlist_builder_open",
+            "rgpot_core_bundled_nlist_builder_open",
+        )
+        .define(
+            "rgpot_nlist_builder_update",
+            "rgpot_core_bundled_nlist_builder_update",
+        )
+        .define(
+            "rgpot_nlist_builder_close",
+            "rgpot_core_bundled_nlist_builder_close",
+        )
+        .define(
+            "rgpot_nlist_fortran_open",
+            "rgpot_core_bundled_nlist_fortran_open",
+        )
+        .define(
+            "rgpot_nlist_fortran_close",
+            "rgpot_core_bundled_nlist_fortran_close",
+        )
+        .define(
+            "rgpot_nlist_fortran_build",
+            "rgpot_core_bundled_nlist_fortran_build",
+        )
         .flag_if_supported("-fexceptions")
         .flag_if_supported("-ffp-contract=off")
         .flag_if_supported("/fp:precise")
