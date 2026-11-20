@@ -144,8 +144,6 @@ private:
   rgpot::nlist::Neighbours neighbours_;
 
   double box_len_[3]{};
-  double box_[9]{};
-  bool orthorhombic_ = true;
   long n_atoms_ = 0;
   long part_n_ = -1;
   int part_nt_ = -1;
