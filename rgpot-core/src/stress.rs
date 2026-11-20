@@ -1,6 +1,27 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+use std::sync::Mutex;
+
+use crate::potential::PotentialStressCallback;
+
+/// Per-handle stress state, kept in the handle's opaque cache so the C
+/// layout of `rgpot_potential_t` does not change.
+#[derive(Default)]
+pub(crate) struct StressState {
+    callback: Mutex<Option<PotentialStressCallback>>,
+}
+
+impl StressState {
+    pub(crate) fn set(&self, callback: Option<PotentialStressCallback>) {
+        *self.callback.lock().unwrap_or_else(|p| p.into_inner()) = callback;
+    }
+
+    pub(crate) fn get(&self) -> Option<PotentialStressCallback> {
+        *self.callback.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
+
 /// Opt-in pair virial accumulator for Rust-native potential callbacks.
 ///
 /// The six entries are `dE/dε` in `xx, yy, zz, yz, xz, xy` order. Callers

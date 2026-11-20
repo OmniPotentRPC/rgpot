@@ -784,11 +784,13 @@ impl EamTablePotential {
     /// The potential as a [`PotentialImpl`], the handle the rest of the crate
     /// evaluates through. The handle owns the potential.
     pub fn into_potential(self) -> PotentialImpl {
-        PotentialImpl::new(
+        let potential = PotentialImpl::new(
             eam_table_callback,
             Box::into_raw(Box::new(self)).cast::<c_void>(),
             Some(drop_eam_table),
-        )
+        );
+        potential.set_stress_callback(Some(eam_table_stress_callback));
+        potential
     }
 }
 
@@ -820,6 +822,28 @@ pub(crate) unsafe extern "C" fn eam_table_callback(
     input: *const crate::types::rgpot_force_input_t,
     output: *mut crate::types::rgpot_force_out_t,
 ) -> rgpot_status_t {
+    unsafe { eam_table_run(user_data, input, output, std::ptr::null_mut()) }
+}
+
+/// The `PotentialStressCallback` of a handle made from an
+/// [`EamTablePotential`]. A cluster has no cell volume, so its block keeps
+/// `has_stress` at zero.
+pub(crate) unsafe extern "C" fn eam_table_stress_callback(
+    user_data: *mut c_void,
+    input: *const crate::types::rgpot_force_input_t,
+    output: *mut crate::types::rgpot_force_out_t,
+    stress: *mut crate::types::rgpot_stress_out_t,
+) -> rgpot_status_t {
+    unsafe { eam_table_run(user_data, input, output, stress) }
+}
+
+/// Evaluate once. A null `stress_out` is the force-only path.
+unsafe fn eam_table_run(
+    user_data: *mut c_void,
+    input: *const crate::types::rgpot_force_input_t,
+    output: *mut crate::types::rgpot_force_out_t,
+    stress_out: *mut crate::types::rgpot_stress_out_t,
+) -> rgpot_status_t {
     use crate::status::{catch_unwind, set_last_error};
     use crate::tensor::{copy_f64_tensor, copy_i32_tensor};
 
@@ -850,16 +874,16 @@ pub(crate) unsafe extern "C" fn eam_table_callback(
         };
         let mut matrix = [0.0; 9];
         matrix.copy_from_slice(&cell);
-        match potential.evaluate(&positions, &numbers, &matrix, input.compute_stress) {
+        match potential.evaluate(&positions, &numbers, &matrix, !stress_out.is_null()) {
             Ok((answer, stress)) => {
                 let forces = create_owned_f64_tensor(answer.forces, vec![n_atoms as i64, 3]);
                 unsafe {
                     (*output).forces = forces;
                     (*output).energy = answer.energy;
                     (*output).variance = 0.0;
-                    if let Some(stress) = stress {
-                        (*output).stress = stress;
-                        (*output).has_stress = 1;
+                    if let (Some(stress), false) = (stress, stress_out.is_null()) {
+                        (*stress_out).stress = stress;
+                        (*stress_out).has_stress = 1;
                     }
                 }
                 rgpot_status_t::RGPOT_SUCCESS

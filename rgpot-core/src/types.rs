@@ -14,7 +14,11 @@
 //! - **Output forces** are *callee-allocated* — the callback sets
 //!   `output.forces` to a DLPack tensor it creates.  After the call, the
 //!   caller takes ownership and must free it via `rgpot_tensor_free`.
-//! - **Energy, variance, and optional stress** are plain host values.
+//! - **Energy and variance** are plain `f64` scalars, always on the host.
+//! - **Stress** never travels in these two structs. Their layout is the one
+//!   every ABI 1.x caller was built against, so it must not grow. The
+//!   opt-in stress entry points take a separate, size-checked
+//!   [`rgpot_stress_out_t`].
 //!
 //! ## DLPack Tensor Shapes
 //!
@@ -44,7 +48,6 @@ use dlpk::sys::DLManagedTensorVersioned;
 /// rgpot_force_input_free(&input);
 /// ```
 #[repr(C)]
-#[non_exhaustive]
 pub struct rgpot_force_input_t {
     /// Positions tensor: `[n_atoms, 3]`, dtype f64, any device.
     pub positions: *mut DLManagedTensorVersioned,
@@ -52,8 +55,6 @@ pub struct rgpot_force_input_t {
     pub atomic_numbers: *mut DLManagedTensorVersioned,
     /// Box matrix tensor: `[3, 3]`, dtype f64, any device.
     pub box_matrix: *mut DLManagedTensorVersioned,
-    /// Nonzero requests Cauchy stress. The default force-only path is false.
-    pub compute_stress: bool,
 }
 
 /// Results from a potential energy evaluation.
@@ -68,7 +69,6 @@ pub struct rgpot_force_input_t {
 /// - `energy`: the calculated potential energy.
 /// - `variance`: uncertainty estimate; zero when not applicable.
 #[repr(C)]
-#[non_exhaustive]
 pub struct rgpot_force_out_t {
     /// Forces tensor `[n_atoms, 3]`, f64 — set by the callback.
     pub forces: *mut DLManagedTensorVersioned,
@@ -76,19 +76,9 @@ pub struct rgpot_force_out_t {
     pub energy: f64,
     /// Variance / uncertainty of the calculation (0.0 when unused).
     pub variance: f64,
-    /// Row-major Cauchy stress in eV/Angstrom^3.
-    pub stress: [f64; 9],
-    /// Nonzero only when the callback computed every stress component.
-    pub has_stress: i32,
 }
 
 impl rgpot_force_input_t {
-    /// Request stress while preserving the other input tensors.
-    pub fn with_stress(mut self, compute: bool) -> Self {
-        self.compute_stress = compute;
-        self
-    }
-
     /// Extract `n_atoms` from the positions tensor's `shape[0]`.
     ///
     /// Returns `None` if `positions` is null or has no shape.
@@ -114,7 +104,6 @@ impl Default for rgpot_force_input_t {
             positions: std::ptr::null_mut(),
             atomic_numbers: std::ptr::null_mut(),
             box_matrix: std::ptr::null_mut(),
-            compute_stress: false,
         }
     }
 }
@@ -125,8 +114,43 @@ impl Default for rgpot_force_out_t {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
-            stress: [0.0; 9],
+        }
+    }
+}
+
+/// Stress block of the opt-in stress entry points, such as
+/// `rgpot_potential_calculate_stress`.
+///
+/// The block is separate from [`rgpot_force_out_t`] so that struct keeps the
+/// layout of ABI minor 6. `struct_size` is the version field: the caller sets
+/// it to `sizeof(rgpot_stress_out_t)` of the header it was built with, and
+/// the library refuses a smaller value instead of writing past the caller's
+/// storage. A later minor may append fields and will only touch them when
+/// `struct_size` covers them. `rgpot_stress_out_create` returns a block with
+/// the size set.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct rgpot_stress_out_t {
+    /// `sizeof(rgpot_stress_out_t)` as the caller was compiled.
+    pub struct_size: u32,
+    /// Nonzero only when the callback computed every stress component.
+    pub has_stress: i32,
+    /// Row-major Cauchy stress in eV/Angstrom^3. All zeros when
+    /// `has_stress` is zero.
+    pub stress: [f64; 9],
+}
+
+impl rgpot_stress_out_t {
+    /// Size of this block in the layout of this build.
+    pub const SIZE: u32 = std::mem::size_of::<Self>() as u32;
+}
+
+impl Default for rgpot_stress_out_t {
+    fn default() -> Self {
+        Self {
+            struct_size: Self::SIZE,
             has_stress: 0,
+            stress: [0.0; 9],
         }
     }
 }

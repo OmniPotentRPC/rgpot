@@ -1,2 +1,2 @@
 <!-- Copyright 2023--present rgpot developers -->
-The C ABI minor is now 7 and its layout revision is 2 for the opt-in stress request and result fields.
+The C ABI minor is now 7. It adds the stress entry points `rgpot_potential_calculate_stress`, `rgpot_potential_set_stress_callback`, `rgpot_potential_supports_stress`, `rgpot_stress_out_create` and `rgpot_rpc_calculate_stress`, and the versioned result struct `rgpot_stress_out_t`. `rgpot_force_input_t` and `rgpot_force_out_t` keep the layout of minor 6, so the layout revision stays 1 and a caller built against minor 6 or lower keeps evaluating unchanged.
