@@ -362,7 +362,7 @@ TEST_CASE("large general cells match the brute force", "[nlist][api]") {
   constexpr double cutoff = 3.0;
   const std::array<bool, 3> periodic{{true, true, true}};
   const std::array<std::array<double, 9>, 3> boxes{{
-      {{16.0, 0.5, 0.2, 0.0, 15.5, 0.4, 0.0, 0.0, 16.5}},
+      {{15.0, 0.5, 0.2, 0.4, 15.5, 0.4, 0.2, 0.3, 16.0}},
       {{16.0, 0.0, 0.0, 8.0, 13.856406460551018, 0.0, 0.0, 0.0, 16.0}},
       {{14.142135623730951, 14.142135623730950, 0.0, -14.142135623730950,
         14.142135623730951, 0.0, 0.0, 0.0, 20.0}},
