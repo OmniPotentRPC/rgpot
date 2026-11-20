@@ -146,26 +146,53 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
-  const bool all_periodic = periodic_[0] && periodic_[1] && periodic_[2];
   double inverse[9]{};
   double height[3]{};
-  const bool fractional =
-      use_general_ && all_periodic && inverseCell(box_, inverse, height);
-  // A fractional slab has physical width height[k] / n[k]. Keeping that
+  const bool fractional = use_general_ && inverseCell(box_, inverse, height);
+  // A fractional bin has physical width height[k] / n[k]. Keeping that
   // width at least edge makes the 27-cell stencil complete for a skew cell.
-  // Mixed periodicity is not separable in fractional space, so it uses one
-  // cell and the general minimum-image check below.
+  // Periodic axes use the full cell height. Open axes use the fractional
+  // atom span measured along the same reciprocal-cell normal.
   // A grid that does not fit is one cell. An open axis can instead be
   // binned on the atom span, which is what a cluster in a huge box needs.
   // A periodic axis keeps the cell length. One cell remains when the
   // tight grid does not fit either. A grid that fits is unchanged, so
   // subtracting a zero origin leaves those bins as they were.
   double origin[3] = {0.0, 0.0, 0.0};
+  double coordinate_span[3] = {1.0, 1.0, 1.0};
   double span[3] = {
       fractional ? height[0] : len_[0],
       fractional ? height[1] : len_[1],
       fractional ? height[2] : len_[2],
   };
+  if (fractional && n > 0) {
+    double lo[3]{};
+    double hi[3]{};
+    for (std::size_t a = 0; a < n; ++a) {
+      for (int k = 0; k < 3; ++k) {
+        if (periodic_[k]) {
+          continue;
+        }
+        const double f = xyz[3 * a] * inverse[k] + xyz[3 * a + 1] * inverse[3 + k] +
+                         xyz[3 * a + 2] * inverse[6 + k];
+        if (a == 0 || f < lo[k]) {
+          lo[k] = f;
+        }
+        if (a == 0 || f > hi[k]) {
+          hi[k] = f;
+        }
+      }
+    }
+    for (int k = 0; k < 3; ++k) {
+      if (periodic_[k]) {
+        continue;
+      }
+      origin[k] = lo[k];
+      const double extent = (hi[k] - lo[k]) * height[k];
+      span[k] = extent > edge ? extent : edge;
+      coordinate_span[k] = span[k] / height[k];
+    }
+  }
   auto set_axes = [&]() {
     nx_ = axisCount(span[0], edge);
     ny_ = axisCount(span[1], edge);
@@ -243,11 +270,13 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
       for (int k = 0; k < 3; ++k) {
         f[k] = xyz[3 * a] * inverse[k] + xyz[3 * a + 1] * inverse[3 + k] +
                xyz[3 * a + 2] * inverse[6 + k];
-        f[k] -= std::floor(f[k]);
+        if (periodic_[k]) {
+          f[k] -= std::floor(f[k]);
+        }
       }
-      ix = bin(f[0], 1.0, nx_);
-      iy = bin(f[1], 1.0, ny_);
-      iz = bin(f[2], 1.0, nz_);
+      ix = bin(f[0] - origin[0], coordinate_span[0], nx_);
+      iy = bin(f[1] - origin[1], coordinate_span[1], ny_);
+      iz = bin(f[2] - origin[2], coordinate_span[2], nz_);
     } else {
       ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
       iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
