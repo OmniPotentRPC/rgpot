@@ -1536,7 +1536,7 @@ def engine_table_export_errors(root: Path = ROOT, page: Path | None = None) -> l
     omitted = optional - exported
     doc_text = page.read_text(encoding="utf-8")
     m = re.search(
-        r"Every library above(?: except =\w+=)? exports\s+(.*?)\s+None of them exports\s+(.*?)(?:\n\s*\n|\Z)",
+        r"Every library above(?: except\s*\n?=\w+=)? exports\s+(.*?)\s+None of them exports\s+(.*?)(?:\n\s*\n|\Z)",
         doc_text,
         re.S,
     )
