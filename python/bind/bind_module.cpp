@@ -31,6 +31,7 @@
 #include "rgpot/ExternalPot/ExternalPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Models/ModelPots.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
@@ -751,6 +752,42 @@ NB_MODULE(_core, m) {
       "Radial cutoff read from the table.");
   rgpot::pybind::bind_calls(eam_table);
 #endif
+
+  auto muller =
+      nb::class_<PotHolder<rgpot::MullerBrownPot>>(m, "MullerBrownPot");
+  muller.def(
+      "__init__",
+      [](PotHolder<rgpot::MullerBrownPot> *self,
+         const std::vector<double> &amplitude, const std::vector<double> &a,
+         const std::vector<double> &b, const std::vector<double> &c,
+         const std::vector<double> &x0, const std::vector<double> &y0) {
+        const auto config =
+            rgpot::mullerBrownConfigFromLists(amplitude, a, b, c, x0, y0);
+        new (self) PotHolder<rgpot::MullerBrownPot>([config] {
+          return std::make_unique<rgpot::MullerBrownPot>(config);
+        });
+      },
+      nb::arg("amplitude") = std::vector<double>{-200, -100, -170, 15},
+      nb::arg("a") = std::vector<double>{-1, -1, -6.5, 0.7},
+      nb::arg("b") = std::vector<double>{0, 0, 11, 0.6},
+      nb::arg("c") = std::vector<double>{-10, -10, -6.5, 0.7},
+      nb::arg("x0") = std::vector<double>{1, 0, -0.5, -1},
+      nb::arg("y0") = std::vector<double>{0, 0.5, 1.5, 1},
+      "The Muller-Brown two-dimensional model surface. The first atom's x "
+      "and y coordinates are active; every other coordinate has zero force.");
+  muller.def("config", [](const PotHolder<rgpot::MullerBrownPot> &self) {
+    const auto &config = self.primary().config();
+    nb::dict out;
+    out["amplitude"] =
+        std::vector<double>(config.amplitude.begin(), config.amplitude.end());
+    out["a"] = std::vector<double>(config.a.begin(), config.a.end());
+    out["b"] = std::vector<double>(config.b.begin(), config.b.end());
+    out["c"] = std::vector<double>(config.c.begin(), config.c.end());
+    out["x0"] = std::vector<double>(config.x0.begin(), config.x0.end());
+    out["y0"] = std::vector<double>(config.y0.begin(), config.y0.end());
+    return out;
+  });
+  rgpot::pybind::bind_calls(muller);
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
   bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");

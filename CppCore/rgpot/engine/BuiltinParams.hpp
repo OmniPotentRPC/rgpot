@@ -18,8 +18,9 @@
 #include <capnp/serialize.h>
 #include <kj/io.h>
 
-#include "rgpot/rpc/Potentials.capnp.h"
+#include "rgpot/Models/MullerBrownConfig.hpp"
 #include "rgpot/XTBPot/XTBConfig.hpp"
+#include "rgpot/rpc/Potentials.capnp.h"
 
 namespace rgpot::engine {
 
@@ -27,6 +28,8 @@ struct Builtin {
   std::string name;    ///< Lowercased.
   std::string library; ///< Optional explicit engine library path.
   std::optional<rgpot::XTBConfig> xtb; ///< Present for the XTB config arm.
+  std::optional<rgpot::MullerBrownConfig>
+      mullerBrown; ///< Present for the Muller-Brown config arm.
 };
 
 inline Builtin read_builtin(const void *config, std::size_t config_len) {
@@ -65,6 +68,12 @@ inline Builtin read_builtin(const void *config, std::size_t config_len) {
     target.charge = source.getCharge();
     target.uhf = source.getUhf();
     out.xtb = target;
+  }
+  if (native.which() == ::PotentialConfig::MULLER_BROWN) {
+    const auto wire = native.getMullerBrown();
+    out.mullerBrown = rgpot::mullerBrownConfigFromLists(
+        wire.getAmplitude(), wire.getA(), wire.getB(), wire.getC(),
+        wire.getX0(), wire.getY0());
   }
   return out;
 }

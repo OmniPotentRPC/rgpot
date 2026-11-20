@@ -2,6 +2,7 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#include "rgpot/Models/MullerBrownConfig.hpp"
 #include "rgpot/Potential.hpp"
 
 #include <cstddef>
@@ -47,7 +48,8 @@ public:
 
 class MullerBrownPot final : public AnalyticModelPot {
 public:
-  MullerBrownPot();
+  explicit MullerBrownPot(MullerBrownConfig config = {});
+  [[nodiscard]] const MullerBrownConfig &config() const noexcept;
 };
 
 class ModifiedMullerBrownPot final : public AnalyticModelPot {

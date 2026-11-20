@@ -14,12 +14,13 @@ Backend options for a live =Potential= go in =PotentialConfig=
 It is a union whose arms and ordinals are =none= @0, =nwchem= @1, =cpmd= @2,
 =metatomic= @4, =lammps= @5, =xtb= @6, =tblite= @7, =uma= @8, =lj= @9, =morse=
 @10, =zbl= @11, =d3= @12, =d4= @13, =mopac= @14, =skala= @15, =expr= @16 and
-=cp2k= @17.
+=cp2k= @17, plus rgpot's local =mullerBrown= @18 arm.
 Outside the union, =common= @3 is a =CommonMethodSpec= overlay.
 Geometry stays on =ForceInput=; =configure(config)= applies method and backend
 setup only.
-=potserv= applies =nwchem=, =cpmd= and =morse= on the matching backend, and
-=cp2k= on a build with CP2K.
+=potserv= applies the =nwchem=, =cpmd=, =morse= and =mullerBrown= arms.
+Each needs the matching backend.
+It applies =cp2k= on a build with CP2K.
 =none= is a no-op on every backend.
 Every other arm gets =ok=false= with a message that names the arm.
 An arm from a newer schema is named by its discriminant.
@@ -49,6 +50,35 @@ so the next =calculate= uses them.
 A non-finite value, a cutoff that is not positive, or a cutoff below the switch
 width gets =ok=false= and leaves the pot as it was.
 =tests/rpc_integ.py= doubles =de= and checks that the energy at =re= doubles.
+
+** Muller-Brown arm (=PotentialConfig.mullerBrown= / =MullerBrownParams=)
+
+With =potserv <port> MullerBrown=, the =mullerBrown= arm rebuilds the surface.
+The six list fields are =amplitude=, =a=, =b=, =c=, =x0= and =y0=.
+Their schema names are =MullerBrownParams.amplitude=, =MullerBrownParams.a=,
+=MullerBrownParams.b=, =MullerBrownParams.c=, =MullerBrownParams.x0= and
+=MullerBrownParams.y0=.
+
+The parameter rule is the same wherever these lists are set.
+Each call describes the whole surface.
+Nothing carries over from an earlier call or from the pot it replaces.
+A list that is empty, or not set, takes its published default.
+A list of four finite values replaces that default.
+Any other length, or a non-finite value, is an error.
+An unset list reads as an empty one, so the wire cannot tell them apart.
+That leaves no way to keep a value from an earlier call.
+
+The rule applies to these entry points.
+- =configure= on a =MullerBrown= server.
+  An error gets =ok=false= and leaves the pot as it was.
+- The classical engine reads =BuiltinParams.config= when =name= is
+  =muller_brown=.
+- The =rgpot.MullerBrownPot= constructor.
+  An error raises =ValueError=.
+- =rgpot::MullerBrownConfig=, whose members start at the published defaults.
+  A field that is not assigned stays at its default.
+- =rgpot_builtin_muller_brown_new=, where a NULL config is the defaults.
+  Its arrays are fixed at four values, so it has no empty form.
 
 ** CPMD arm (=PotentialConfig.cpmd= / =CPMDParams=)
 

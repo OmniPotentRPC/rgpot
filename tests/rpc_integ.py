@@ -395,6 +395,102 @@ async def run_hvp_unit_smoke(port):
     return True
 
 
+MULLER_BROWN_PUBLISHED = {
+    "amplitude": [-200.0, -100.0, -170.0, 15.0],
+    "a": [-1.0, -1.0, -6.5, 0.7],
+    "b": [0.0, 0.0, 11.0, 0.6],
+    "c": [-10.0, -10.0, -6.5, 0.7],
+    "x0": [1.0, 0.0, -0.5, -1.0],
+    "y0": [0.0, 0.5, 1.5, 1.0],
+}
+
+
+def muller_brown_energy(x, y, **lists):
+    """The Muller-Brown energy; a list not given is the published one."""
+    p = {**MULLER_BROWN_PUBLISHED, **lists}
+    return sum(
+        p["amplitude"][i]
+        * math.exp(
+            p["a"][i] * (x - p["x0"][i]) ** 2
+            + p["b"][i] * (x - p["x0"][i]) * (y - p["y0"][i])
+            + p["c"][i] * (y - p["y0"][i]) ** 2
+        )
+        for i in range(4)
+    )
+
+
+async def run_muller_brown_configure(port):
+    """configure(mullerBrown) describes the whole surface on every call."""
+    for _ in range(10):
+        try:
+            connection = await capnp.AsyncIoStream.create_connection(
+                host="localhost", port=port
+            )
+            break
+        except OSError:
+            await asyncio.sleep(0.5)
+    else:
+        print("Muller-Brown configure: failed to connect to server.")
+        return False
+
+    client = capnp.TwoPartyClient(connection)
+    pot = client.bootstrap().cast_as(pot_capnp.Potential)
+    fip = pot_capnp.ForceInput.new_message()
+    fip.init("pos", 3)
+    for i, value in enumerate([0.23, -0.17, 0.0]):
+        fip.pos[i] = value
+    fip.init("atmnrs", 1)
+    fip.atmnrs[0] = 1
+    fip.init("box", 9)
+    for i, b in enumerate([40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0]):
+        fip.box[i] = b
+
+    defaults = (await pot.calculate(fip)).result.energy
+
+    async def configure_muller_brown(**lists):
+        cfg = pot_capnp.PotentialConfig.new_message()
+        params = cfg.init("mullerBrown")
+        for name, values in lists.items():
+            slots = params.init(name, len(values))
+            for i, value in enumerate(values):
+                slots[i] = value
+        reply = await pot.configure(cfg)
+        assert reply.ok, reply.message
+        return (await pot.calculate(fip)).result.energy
+
+    # Each call describes the whole surface: override, then empty, then partial.
+    x, y = 0.23, -0.17
+    override = {
+        "amplitude": [-400.0, -200.0, -340.0, 30.0],
+        "x0": [2.0, 1.0, 0.0, -1.0],
+    }
+    expected = muller_brown_energy(x, y, **override)
+    assert expected != muller_brown_energy(x, y)
+    energy = await configure_muller_brown(**override)
+    assert math.isclose(energy, expected, rel_tol=1e-12), (energy, expected)
+
+    energy = await configure_muller_brown()
+    print(f"Muller-Brown configure(empty lists): energy={energy}")
+    assert energy == defaults
+
+    partial = {"a": [-2.0, -2.0, -13.0, 1.4]}
+    expected = muller_brown_energy(x, y, **partial)
+    assert expected != defaults
+    energy = await configure_muller_brown(**partial)
+    assert math.isclose(energy, expected, rel_tol=1e-12), (energy, expected)
+
+    assert await configure_muller_brown(amplitude=[], a=[], x0=[]) == defaults
+
+    bad = pot_capnp.PotentialConfig.new_message()
+    bad.init("mullerBrown").init("a", 3)
+    reply = await pot.configure(bad)
+    assert not reply.ok and "four values" in reply.message, reply.message
+    assert (await pot.calculate(fip)).result.energy == defaults
+
+    await refuse_every_arm(pot, "Muller-Brown", applied=("mullerBrown",))
+    return True
+
+
 async def run_model_surface_smoke(port, name):
     for _ in range(10):
         try:
@@ -510,6 +606,30 @@ def main():
     if not morse_ok:
         sys.exit(1)
     print("Morse configure passed.")
+
+    muller_port = args.port + 12
+    print(f"Starting Muller-Brown server: {args.server_bin} {muller_port} MullerBrown")
+    muller_proc = subprocess.Popen(
+        [args.server_bin, str(muller_port), "MullerBrown"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        muller_ok = asyncio.run(capnp.run(run_muller_brown_configure(muller_port)))
+    except BaseException as e:
+        print(f"Muller-Brown configure exception: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        muller_proc.kill()
+        out, err = muller_proc.communicate(timeout=30)
+        print("Server stdout:", out.decode(errors="replace")[-4000:])
+        print("Server stderr:", err.decode(errors="replace")[-4000:])
+        muller_ok = False
+    finally:
+        muller_proc.kill()
+        muller_proc.wait()
+    if not muller_ok:
+        sys.exit(1)
+    print("Muller-Brown configure passed.")
 
     model_port = args.port + 6
     for name in ("DoubleWell", "CoupledProtonWell"):

@@ -50,9 +50,30 @@ fn morse_arm_defaults_are_the_platinum_parameters() {
     assert_eq!(morse.get_cutoff(), 9.5);
 }
 
+#[test]
+fn muller_brown_lists_are_empty_unless_set() {
+    let mut message = Builder::new_default();
+    message
+        .init_root::<potential_config::Builder>()
+        .init_muller_brown();
+    let config = message
+        .get_root_as_reader::<potential_config::Reader>()
+        .expect("PotentialConfig root");
+    let potential_config::Which::MullerBrown(params) = config.which().expect("known arm") else {
+        panic!("PotentialConfig decoded to another arm");
+    };
+    let params = params.expect("mullerBrown arm");
+    assert_eq!(params.get_amplitude().expect("amplitude").len(), 0);
+    assert_eq!(params.get_a().expect("a").len(), 0);
+    assert_eq!(params.get_b().expect("b").len(), 0);
+    assert_eq!(params.get_c().expect("c").len(), 0);
+    assert_eq!(params.get_x0().expect("x0").len(), 0);
+    assert_eq!(params.get_y0().expect("y0").len(), 0);
+}
+
 /// potentials-schema's arm ordinals, shared with gpridge and every other
 /// consumer. A renumbered arm would decode as another backend on the wire.
-const UPSTREAM_ARMS: [(&str, u16); 17] = [
+const CONFIG_ARMS: [(&str, u16); 18] = [
     ("none", 0),
     ("nwchem", 1),
     ("cpmd", 2),
@@ -70,6 +91,7 @@ const UPSTREAM_ARMS: [(&str, u16); 17] = [
     ("skala", 15),
     ("expr", 16),
     ("cp2k", 17),
+    ("mullerBrown", 18),
 ];
 
 #[test]
@@ -92,7 +114,7 @@ fn union_arms_keep_the_upstream_ordinals() {
         };
         seen.push((name.to_owned(), ordinal));
     }
-    let want: Vec<(String, u16)> = UPSTREAM_ARMS
+    let want: Vec<(String, u16)> = CONFIG_ARMS
         .iter()
         .map(|(name, ordinal)| ((*name).to_owned(), *ordinal))
         .collect();

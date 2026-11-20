@@ -43,7 +43,8 @@ Created create(const void *config, std::size_t config_len) {
     } else if (n == "eckart") {
       pot = std::make_unique<EckartPot>();
     } else if (n == "muller_brown") {
-      pot = std::make_unique<MullerBrownPot>();
+      pot = std::make_unique<MullerBrownPot>(
+          builtin.mullerBrown.value_or(MullerBrownConfig{}));
     } else if (n == "modified_muller_brown") {
       pot = std::make_unique<ModifiedMullerBrownPot>();
     } else if (n == "leps_hh2") {
