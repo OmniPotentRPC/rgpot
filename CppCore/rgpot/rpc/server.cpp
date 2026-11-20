@@ -156,6 +156,16 @@ public:
         m_cp2k(static_cast<rgpot::CP2KPot *>(m_potential.get())), m_pef(pef) {}
 #endif
 
+  /// Only the i-PI backend carries a stress to serve: the driver returns the
+  /// virial with every force reply. Any other backend answers force-only.
+  bool servesStress() const {
+#ifdef RGPOT_HAS_IPI
+    return m_ipi != nullptr;
+#else
+    return false;
+#endif
+  }
+
   /**
    * @brief Reports what this server speaks, so a client can refuse an
    * incompatible peer before the first calculate call.
@@ -165,11 +175,17 @@ public:
     caps.setBackendName("rgpot");
     caps.setBackendVersion(RGPOT_BUILD_VERSION);
     caps.setAvailable(true);
-    auto ops = caps.initOperations(m_potential->caps().analyticHvp ? 3 : 2);
-    ops.set(0, ::Capabilities::Operation::ENERGY);
-    ops.set(1, ::Capabilities::Operation::FORCES);
-    if (m_potential->caps().analyticHvp)
-      ops.set(2, ::Capabilities::Operation::HESSIAN_VECTOR);
+    const bool serves_hvp = m_potential->caps().analyticHvp;
+    const bool serves_stress = servesStress();
+    auto ops = caps.initOperations(2 + (serves_hvp ? 1 : 0) +
+                                   (serves_stress ? 1 : 0));
+    unsigned int next = 0;
+    ops.set(next++, ::Capabilities::Operation::ENERGY);
+    ops.set(next++, ::Capabilities::Operation::FORCES);
+    if (serves_hvp)
+      ops.set(next++, ::Capabilities::Operation::HESSIAN_VECTOR);
+    if (serves_stress)
+      ops.set(next++, ::Capabilities::Operation::STRESS);
     rgpot::abi::fill_compatibility(caps);
     return kj::READY_NOW;
   }
@@ -192,6 +208,9 @@ public:
     const size_t numAtoms = fip.getPos().size() / 3;
 
     KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
+    const bool wantStress = fip.getComputeStress();
+    KJ_REQUIRE(!wantStress || servesStress(),
+               "this potential does not compute stress");
 
     // Unit conversion factors (caller units -> internal angstrom/eV)
     std::string lengthUnit = fip.getLengthUnit();
@@ -255,7 +274,7 @@ public:
     rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
 
 #ifdef RGPOT_HAS_IPI
-    if (m_ipi != nullptr) {
+    if (wantStress && m_ipi != nullptr) {
       double stress[9];
       if (m_ipi->copyStress(stress)) {
         // sigma_caller = sigma_eV/A^3 * (eV -> caller) * (A -> caller length)^3

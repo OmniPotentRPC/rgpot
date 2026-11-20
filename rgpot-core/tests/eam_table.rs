@@ -20,7 +20,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rgpot_core::c_api::eam_table::rgpot_potential_new_eam_table;
-use rgpot_core::c_api::potential::{rgpot_potential_calculate, rgpot_potential_free};
+use rgpot_core::c_api::potential::{
+    rgpot_potential_calculate, rgpot_potential_calculate_stress, rgpot_potential_free,
+    rgpot_stress_out_create,
+};
 use rgpot_core::c_api::types::{rgpot_force_input_create, rgpot_force_input_free};
 use rgpot_core::eam_table::{
     EamTableError, EamTableFormat, EamTablePotential, RGPOT_EAM_TABLE_AUTO,
@@ -28,7 +31,7 @@ use rgpot_core::eam_table::{
 };
 use rgpot_core::status::{rgpot_last_error, rgpot_status_t};
 use rgpot_core::tensor::{rgpot_tensor_data, rgpot_tensor_free};
-use rgpot_core::types::{rgpot_force_input_t, rgpot_force_out_t};
+use rgpot_core::types::{rgpot_force_input_t, rgpot_force_out_t, rgpot_stress_out_t};
 
 /// Energy agreement with LAMMPS, eV. The largest gap of the four cells is
 /// 2.6e-12.
@@ -256,13 +259,13 @@ struct Input {
 }
 
 impl Input {
-    fn new(reference: &Reference, compute_stress: bool) -> Self {
+    fn new(reference: &Reference) -> Self {
         let mut positions = reference.positions.clone();
         let mut numbers = reference.z.clone();
         // The DLPack tensor borrows this buffer, so its address must remain
         // stable when the Input is returned from this constructor.
         let mut cell = Box::new(reference.cell);
-        let mut input = unsafe {
+        let input = unsafe {
             rgpot_force_input_create(
                 numbers.len(),
                 positions.as_mut_ptr(),
@@ -270,7 +273,6 @@ impl Input {
                 cell.as_mut_ptr(),
             )
         };
-        input.compute_stress = compute_stress;
         Self {
             _positions: positions,
             _numbers: numbers,
@@ -298,15 +300,24 @@ impl Drop for Input {
     }
 }
 
-fn calculate(
-    handle: &Handle,
-    reference: &Reference,
-    compute_stress: bool,
-) -> (rgpot_status_t, rgpot_force_out_t) {
-    let input = Input::new(reference, compute_stress);
+fn calculate(handle: &Handle, reference: &Reference) -> (rgpot_status_t, rgpot_force_out_t) {
+    let input = Input::new(reference);
     let mut output = rgpot_force_out_t::default();
     let status = unsafe { rgpot_potential_calculate(handle.0, &input.input, &mut output) };
     (status, output)
+}
+
+fn calculate_stress(
+    handle: &Handle,
+    reference: &Reference,
+) -> (rgpot_status_t, rgpot_force_out_t, rgpot_stress_out_t) {
+    let input = Input::new(reference);
+    let mut output = rgpot_force_out_t::default();
+    let mut stress = rgpot_stress_out_create();
+    let status = unsafe {
+        rgpot_potential_calculate_stress(handle.0, &input.input, &mut output, &mut stress)
+    };
+    (status, output, stress)
 }
 
 #[test]
@@ -315,7 +326,7 @@ fn copper_vacancy_matches_lammps_through_the_c_abi() {
     let table = data_dir().join("Cu_u3.eam");
     for format in [RGPOT_EAM_TABLE_FUNCFL, RGPOT_EAM_TABLE_AUTO] {
         let handle = new_handle(table.to_str().unwrap(), format, true);
-        let (status, output) = calculate(&handle, &reference, false);
+        let (status, output) = calculate(&handle, &reference);
         assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS, "{}", last_error());
         let forces = unsafe {
             let data = rgpot_tensor_data(output.forces).cast::<f64>();
@@ -372,12 +383,12 @@ fn c_abi_eam_table_stress_matches_triclinic_energy_strain() {
         RGPOT_EAM_TABLE_SETFL,
         true,
     );
-    let (status, requested) = calculate(&handle, &reference, true);
+    let (status, requested, stress) = calculate_stress(&handle, &reference);
     assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS, "{}", last_error());
-    assert_eq!(requested.has_stress, 1);
-    assert_eq!(requested.stress[1], requested.stress[3]);
-    assert_eq!(requested.stress[2], requested.stress[6]);
-    assert_eq!(requested.stress[5], requested.stress[7]);
+    assert_eq!(stress.has_stress, 1);
+    assert_eq!(stress.stress[1], stress.stress[3]);
+    assert_eq!(stress.stress[2], stress.stress[6]);
+    assert_eq!(stress.stress[5], stress.stress[7]);
 
     let volume = reference.cell[0]
         * (reference.cell[4] * reference.cell[8] - reference.cell[5] * reference.cell[7])
@@ -388,13 +399,13 @@ fn c_abi_eam_table_stress_matches_triclinic_energy_strain() {
     let h = 1.0e-5;
     let mut worst = 0.0_f64;
     for (a, b) in [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)] {
-        let (plus_status, plus) = calculate(&handle, &strained(&reference, a, b, h), false);
-        let (minus_status, minus) = calculate(&handle, &strained(&reference, a, b, -h), false);
+        let (plus_status, plus) = calculate(&handle, &strained(&reference, a, b, h));
+        let (minus_status, minus) = calculate(&handle, &strained(&reference, a, b, -h));
         assert_eq!(plus_status, rgpot_status_t::RGPOT_SUCCESS);
         assert_eq!(minus_status, rgpot_status_t::RGPOT_SUCCESS);
         let finite_difference = (plus.energy - minus.energy) / (2.0 * h);
         let multiplicity = if a == b { 1.0 } else { 2.0 };
-        let analytic = volume.abs() * multiplicity * requested.stress[3 * a + b];
+        let analytic = volume.abs() * multiplicity * stress.stress[3 * a + b];
         let relative = (analytic - finite_difference).abs()
             / analytic.abs().max(finite_difference.abs()).max(1.0e-8);
         eprintln!(
@@ -410,12 +421,19 @@ fn c_abi_eam_table_stress_matches_triclinic_energy_strain() {
     assert!(worst < 1.0e-6, "max relative stress error {worst}");
 
     let requested_forces = output_forces(&requested, reference.z.len());
-    let (plain_status, plain) = calculate(&handle, &reference, false);
+    let (plain_status, plain) = calculate(&handle, &reference);
     assert_eq!(plain_status, rgpot_status_t::RGPOT_SUCCESS);
-    assert_eq!(plain.has_stress, 0);
-    assert_eq!(plain.stress, [0.0; 9]);
     assert_eq!(plain.energy.to_bits(), requested.energy.to_bits());
-    assert_eq!(output_forces(&plain, reference.z.len()), requested_forces);
+    assert_eq!(
+        output_forces(&plain, reference.z.len())
+            .iter()
+            .map(|f| f.to_bits())
+            .collect::<Vec<_>>(),
+        requested_forces
+            .iter()
+            .map(|f| f.to_bits())
+            .collect::<Vec<_>>()
+    );
     unsafe {
         rgpot_tensor_free(requested.forces);
         rgpot_tensor_free(plain.forces);
@@ -431,7 +449,7 @@ fn the_c_abi_refuses_a_cell_smaller_than_the_cutoff_allows() {
         RGPOT_EAM_TABLE_FUNCFL,
         true,
     );
-    let (status, output) = calculate(&handle, &reference, false);
+    let (status, output) = calculate(&handle, &reference);
     assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
     assert!(output.forces.is_null());
     assert!(
@@ -515,7 +533,7 @@ fn a_free_cluster_ignores_the_box_and_loses_the_bonds_past_its_surface() {
         .unwrap();
     reference.cell = [0.0; 9];
     let handle = new_handle(table.to_str().unwrap(), RGPOT_EAM_TABLE_FUNCFL, false);
-    let (status, output) = calculate(&handle, &reference, false);
+    let (status, output) = calculate(&handle, &reference);
     assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS, "{}", last_error());
     assert!(output.energy > periodic.energy, "{}", output.energy);
     unsafe { rgpot_tensor_free(output.forces) };

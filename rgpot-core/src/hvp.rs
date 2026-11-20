@@ -444,7 +444,6 @@ impl rgpot_potential_t {
             },
             atomic_numbers: input.atomic_numbers,
             box_matrix: input.box_matrix,
-            compute_stress: false,
         };
         let result = unsafe { self.evaluate(&moved, n_atoms) };
         unsafe { rgpot_tensor_free(moved.positions) };

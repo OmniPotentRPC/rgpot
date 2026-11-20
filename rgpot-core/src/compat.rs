@@ -191,16 +191,27 @@ pub fn fill_compatibility(mut caps: Builder<'_>) {
 }
 
 /// Fill `caps` as the self-description of an rgpot RPC server.
-pub fn describe_server(mut caps: Builder<'_>, analytic_hvp: bool) {
+pub fn describe_server(caps: Builder<'_>, analytic_hvp: bool) {
+    describe_server_with(caps, analytic_hvp, false);
+}
+
+/// Like [`describe_server`], and also advertises `Operation::Stress` when
+/// `stress` is true, that is when the potential behind the server computes
+/// Cauchy stress.
+pub fn describe_server_with(mut caps: Builder<'_>, analytic_hvp: bool, stress: bool) {
     caps.set_backend_name("rgpot");
     caps.set_backend_version(env!("CARGO_PKG_VERSION"));
     caps.set_available(true);
-    let count = if analytic_hvp { 3 } else { 2 };
-    let mut ops = caps.reborrow().init_operations(count);
-    ops.set(0, Operation::Energy);
-    ops.set(1, Operation::Forces);
+    let mut served = vec![Operation::Energy, Operation::Forces];
     if analytic_hvp {
-        ops.set(2, Operation::HessianVector);
+        served.push(Operation::HessianVector);
+    }
+    if stress {
+        served.push(Operation::Stress);
+    }
+    let mut ops = caps.reborrow().init_operations(served.len() as u32);
+    for (i, op) in served.into_iter().enumerate() {
+        ops.set(i as u32, op);
     }
     fill_compatibility(caps);
 }
