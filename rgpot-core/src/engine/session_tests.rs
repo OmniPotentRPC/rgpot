@@ -137,6 +137,28 @@ fn session() -> EngineSession {
     }
 }
 
+fn request() -> EngineRequest<'static> {
+    EngineRequest {
+        positions: &POSITIONS,
+        atomic_numbers: &NUMBERS,
+        box_matrix: &BOX,
+    }
+}
+
+fn recoverable(code: c_int, message: &str) -> EngineFailure {
+    EngineFailure {
+        status: EngineStatus::recoverable(code).expect("a positive code"),
+        message: message.into(),
+    }
+}
+
+fn fatal(code: c_int, message: &str) -> EngineFailure {
+    EngineFailure {
+        status: EngineStatus::fatal(code).expect("a negative code"),
+        message: message.into(),
+    }
+}
+
 /// Host callbacks whose oracle answers from a script and counts its calls.
 struct Scripted {
     calls: Arc<AtomicUsize>,
@@ -175,10 +197,58 @@ impl EngineCallbacks for Scripted {
     }
 }
 
+/// Panics on its first call and would succeed on any later one.
+struct PanicsOnce {
+    calls: Arc<AtomicUsize>,
+}
+
+impl EngineCallbacks for PanicsOnce {
+    fn oracle(&mut self, _request: &EngineRequest<'_>) -> Result<EngineEvaluation, EngineFailure> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+            panic!("the first oracle call panics");
+        }
+        Ok(EngineEvaluation {
+            energy: 1.0,
+            forces: vec![0.0; 3],
+        })
+    }
+
+    fn on_acquire(&mut self, _reason: AcquireReason) {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn on_model_update(&mut self, _model_state: u64) {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 fn evaluation(energy: f64) -> EngineEvaluation {
     EngineEvaluation {
         energy,
         forces: vec![0.5; 3],
+    }
+}
+
+fn state_of(callbacks: impl EngineCallbacks + 'static) -> CallbackState {
+    CallbackState {
+        callbacks: Mutex::new(Box::new(callbacks)),
+        failure: Mutex::new(None),
+    }
+}
+
+unsafe fn call_oracle(state: &CallbackState) -> c_int {
+    let mut forces = [0.0; 3];
+    let mut energy = 0.0;
+    unsafe {
+        oracle_trampoline(
+            (state as *const CallbackState).cast_mut().cast(),
+            1,
+            POSITIONS.as_ptr(),
+            NUMBERS.as_ptr(),
+            forces.as_mut_ptr(),
+            &mut energy,
+            BOX.as_ptr(),
+        )
     }
 }
 
@@ -222,4 +292,130 @@ fn engine_destroy_runs_before_the_callback_state_is_freed() {
 fn callback_ownership_is_send() {
     fn is_send<T: Send>() {}
     is_send::<EngineSession>();
+}
+
+#[test]
+fn a_fatal_callback_failure_is_never_replaced() {
+    let (callbacks, _) = Scripted::new(vec![Ok(evaluation(0.0))]);
+    let state = state_of(callbacks);
+    state.record(fatal(-9, "first fatal"));
+    state.record(recoverable(5, "later recoverable"));
+    state.record(fatal(-3, "later fatal"));
+    let held = state.take_failure().expect("a failure is held");
+    assert_eq!(held.status.code(), -9);
+    assert_eq!(held.message, "first fatal");
+    assert!(state.take_failure().is_none());
+}
+
+#[test]
+fn a_recoverable_callback_failure_gives_way_to_a_later_one() {
+    let (callbacks, _) = Scripted::new(vec![Ok(evaluation(0.0))]);
+    let state = state_of(callbacks);
+    state.record(recoverable(5, "first"));
+    state.record(recoverable(6, "second"));
+    assert_eq!(state.take_failure().expect("held").status.code(), 6);
+    state.record(recoverable(5, "recoverable"));
+    state.record(fatal(-9, "fatal"));
+    assert_eq!(state.take_failure().expect("held").status.code(), -9);
+}
+
+#[test]
+fn a_poisoned_callback_lock_is_fatal_and_runs_nothing() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let state = state_of(PanicsOnce {
+        calls: Arc::clone(&calls),
+    });
+    assert_eq!(unsafe { call_oracle(&state) }, -1, "the panic is fatal");
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let first = state.take_failure().expect("the panic is recorded");
+    assert_eq!(first.status.code(), -1);
+
+    assert!(
+        unsafe { call_oracle(&state) } < 0,
+        "a poisoned oracle must not be reported as recovered"
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "the oracle was re-entered");
+    let second = state.take_failure().expect("the poisoning is recorded");
+    assert_eq!(second.status.code(), -1);
+
+    let ctx = (&state as *const CallbackState).cast_mut().cast();
+    unsafe {
+        acquire_trampoline(ctx, 1);
+        model_update_trampoline(ctx, 7);
+    }
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "a hook ran on poisoned state"
+    );
+    assert_eq!(state.take_failure().expect("recorded").status.code(), -1);
+}
+
+#[test]
+fn a_negative_engine_code_beats_a_recoverable_callback_failure_in_the_session() {
+    let mut session = session();
+    let (callbacks, _) = Scripted::new(vec![Err(recoverable(5, "bad input"))]);
+    session
+        .set_callbacks(Some(Box::new(callbacks)))
+        .expect("register");
+    FORCE_CODE.with(|code| code.set(Some(-3)));
+    let error = session.force(&request(), None).expect_err("the call fails");
+    assert!(
+        matches!(error, EngineError::Fatal { .. }),
+        "an engine code below zero is fatal, got {error:?}"
+    );
+    assert!(matches!(
+        session.force(&request(), None),
+        Err(EngineError::Fatal { .. })
+    ));
+}
+
+#[test]
+fn a_negative_engine_code_beats_a_recoverable_failure_in_answer_with_failure() {
+    let engine = engine();
+    let error = engine
+        .answer_with_failure(-4, Some(recoverable(5, "bad input")))
+        .expect_err("the call fails");
+    assert!(
+        matches!(error, EngineError::Fatal { code: -4, .. }),
+        "an engine code below zero is fatal, got {error:?}"
+    );
+    assert!(matches!(
+        engine.check_alive(),
+        Err(EngineError::Fatal { code: -4, .. })
+    ));
+}
+
+#[test]
+fn a_negative_engine_code_beats_a_success_status_failure() {
+    let engine = engine();
+    let success = EngineFailure {
+        status: EngineStatus::Success,
+        message: "success".into(),
+    };
+    let error = engine
+        .answer_with_failure(-4, Some(success))
+        .expect_err("the call fails");
+    assert!(matches!(error, EngineError::Fatal { code: -4, .. }));
+}
+
+#[test]
+fn a_second_fatal_failure_reports_the_stored_first_one() {
+    let engine = engine();
+    let first = engine
+        .fail(EngineStatus::from_code(-3), "first".into())
+        .expect_err("fatal");
+    assert_eq!(
+        first,
+        EngineError::Fatal {
+            code: -3,
+            message: "first".into()
+        }
+    );
+    let second = engine
+        .fail(EngineStatus::from_code(-9), "second".into())
+        .expect_err("fatal");
+    assert_eq!(second, first, "the stored failure is what is reported");
+    let third = engine.answer(-7).expect_err("fatal");
+    assert!(matches!(third, EngineError::Fatal { code: -3, .. }));
 }

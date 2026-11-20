@@ -714,6 +714,18 @@ impl EnginePotential {
         request: &EngineRequest<'_>,
         transform: Option<&mut dyn CoordinateTransform>,
     ) -> Result<EngineEvaluation, EngineError> {
+        self.force_hosted(request, transform, None)
+    }
+
+    /// [`Self::force_with_transform`] that also reads the failure recorded by
+    /// the host callbacks of a session, so that it takes part in classifying
+    /// the call before the engine's own message can poison the instance.
+    fn force_hosted(
+        &mut self,
+        request: &EngineRequest<'_>,
+        transform: Option<&mut dyn CoordinateTransform>,
+        host: Option<&CallbackOwner>,
+    ) -> Result<EngineEvaluation, EngineError> {
         self.check_alive()?;
         let n_atoms = request.atomic_numbers.len();
         check_lengths(n_atoms, request.positions.len())?;
@@ -740,7 +752,7 @@ impl EnginePotential {
                 transform_user,
             )
         };
-        let failure = transform.as_ref().and_then(TransformCall::take_failure);
+        let failure = host_failure(host, transform.as_ref());
         self.answer_with_failure(code, failure)?;
         finite(energy, &forces)?;
         Ok(EngineEvaluation { energy, forces })
@@ -767,6 +779,17 @@ impl EnginePotential {
         positions: &[f64],
         boxes: &[f64],
         transform: Option<&mut dyn CoordinateTransform>,
+    ) -> Result<Vec<EngineEvaluation>, EngineError> {
+        self.force_batch_hosted(atomic_numbers, positions, boxes, transform, None)
+    }
+
+    fn force_batch_hosted(
+        &mut self,
+        atomic_numbers: &[i32],
+        positions: &[f64],
+        boxes: &[f64],
+        transform: Option<&mut dyn CoordinateTransform>,
+        host: Option<&CallbackOwner>,
     ) -> Result<Vec<EngineEvaluation>, EngineError> {
         self.check_alive()?;
         let batch = self
@@ -812,7 +835,7 @@ impl EnginePotential {
                 transform_user,
             )
         };
-        let failure = transform.as_ref().and_then(TransformCall::take_failure);
+        let failure = host_failure(host, transform.as_ref());
         self.answer_with_failure(code, failure)?;
         let mut out = Vec::with_capacity(n_systems);
         for (energy, block) in energies.iter().zip(forces.chunks_exact(3 * n_atoms)) {
@@ -956,18 +979,18 @@ impl EnginePotential {
         if code > 0 {
             Err(EngineError::Recoverable { code, message })
         } else {
-            let _ = self.fatal.set(Poisoned {
-                code,
-                message: message.clone(),
-            });
-            let stored = match self.fatal.get() {
-                Some(poisoned) => poisoned.message.clone(),
-                None => message,
-            };
-            Err(EngineError::Fatal {
-                code,
-                message: stored,
-            })
+            Err(self.poison(code, message))
+        }
+    }
+
+    /// Record a fatal failure and return the error for it. The first fatal
+    /// failure is kept: a later one reports the stored code and message, so
+    /// the error always matches what [`Self::check_alive`] will report.
+    fn poison(&self, code: c_int, message: String) -> EngineError {
+        let poisoned = self.fatal.get_or_init(|| Poisoned { code, message });
+        EngineError::Fatal {
+            code: poisoned.code,
+            message: poisoned.message.clone(),
         }
     }
 
@@ -976,8 +999,12 @@ impl EnginePotential {
         code: c_int,
         direct: Option<EngineFailure>,
     ) -> Result<(), EngineError> {
+        let direct = direct.map(|failure| self.fail(failure.status, failure.message));
         match direct {
-            Some(failure) => self.fail(failure.status, failure.message),
+            Some(Err(fatal @ EngineError::Fatal { .. })) => Err(fatal),
+            // A negative engine code is fatal whatever the host recorded.
+            _ if code < 0 => self.answer(code),
+            Some(direct) => direct,
             None => self.answer(code),
         }
     }
@@ -991,14 +1018,7 @@ impl EnginePotential {
                 code: status.code(),
                 message,
             }),
-            EngineStatus::FatalInstanceFailure(_) => {
-                let code = status.code();
-                let _ = self.fatal.set(Poisoned {
-                    code,
-                    message: message.clone(),
-                });
-                Err(EngineError::Fatal { code, message })
-            }
+            EngineStatus::FatalInstanceFailure(_) => Err(self.poison(status.code(), message)),
         }
     }
 
@@ -1021,10 +1041,24 @@ struct CallbackState {
 }
 
 impl CallbackState {
+    /// Remember `failure` for the next [`Self::take_failure`]. A fatal failure
+    /// is sticky: it is never replaced by a later one, because the instance is
+    /// unusable once a fatal failure has been seen and a later recoverable
+    /// error must not hide that.
     fn record(&self, failure: EngineFailure) {
-        match self.failure.lock() {
-            Ok(mut slot) => *slot = Some(failure),
-            Err(mut poisoned) => **poisoned.get_mut() = Some(failure),
+        let mut slot = match self.failure.lock() {
+            Ok(slot) => slot,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let held_fatal = matches!(
+            slot.as_ref(),
+            Some(EngineFailure {
+                status: EngineStatus::FatalInstanceFailure(_),
+                ..
+            })
+        );
+        if !held_fatal {
+            *slot = Some(failure);
         }
     }
 
@@ -1032,6 +1066,22 @@ impl CallbackState {
         match self.failure.lock() {
             Ok(mut slot) => slot.take(),
             Err(mut poisoned) => poisoned.get_mut().take(),
+        }
+    }
+
+    /// Lock the host callbacks. A lock poisoned by an earlier panic means the
+    /// host state is in an unknown condition, so it is recorded as a fatal
+    /// failure and no callback runs.
+    fn lock_callbacks(&self) -> Option<MutexGuard<'_, Box<dyn EngineCallbacks>>> {
+        match self.callbacks.lock() {
+            Ok(callbacks) => Some(callbacks),
+            Err(_) => {
+                self.record(EngineFailure {
+                    status: PANIC_STATUS,
+                    message: "host callbacks are poisoned by an earlier panic".into(),
+                });
+                None
+            }
         }
     }
 }
@@ -1121,18 +1171,24 @@ unsafe extern "C" fn oracle_trampoline(
         box_matrix: unsafe { &*box_matrix.cast::<[f64; 9]>() },
     };
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut callbacks = match state.callbacks.lock() {
-            Ok(callbacks) => callbacks,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        callbacks.oracle(&request)
+        state
+            .lock_callbacks()
+            .map(|mut callbacks| callbacks.oracle(&request))
     }));
-    let failure = match result {
-        Ok(Ok(answer)) if answer.forces.len() != position_len => EngineFailure {
+    let outcome = match result {
+        Ok(Some(outcome)) => outcome,
+        Ok(None) => return PANIC_STATUS.code(),
+        Err(_) => Err(EngineFailure {
+            status: PANIC_STATUS,
+            message: "oracle callback panicked".into(),
+        }),
+    };
+    let failure = match outcome {
+        Ok(answer) if answer.forces.len() != position_len => EngineFailure {
             status: INVALID_STATUS,
             message: "oracle returned the wrong force length".into(),
         },
-        Ok(Ok(answer)) => match non_finite_output(answer.energy, &answer.forces) {
+        Ok(answer) => match non_finite_output(answer.energy, &answer.forces) {
             Some(message) => EngineFailure {
                 status: INVALID_STATUS,
                 message: format!("oracle {message}"),
@@ -1145,13 +1201,9 @@ unsafe extern "C" fn oracle_trampoline(
                 return 0;
             }
         },
-        Ok(Err(failure)) => EngineFailure {
+        Err(failure) => EngineFailure {
             status: failure.status.or_invalid(),
             message: failure.message,
-        },
-        Err(_) => EngineFailure {
-            status: PANIC_STATUS,
-            message: "oracle callback panicked".into(),
         },
     };
     let code = failure.status.code();
@@ -1165,11 +1217,9 @@ unsafe extern "C" fn acquire_trampoline(ctx: *mut c_void, reason: c_int) {
     }
     let state = unsafe { &*ctx.cast::<CallbackState>() };
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut callbacks = match state.callbacks.lock() {
-            Ok(callbacks) => callbacks,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        callbacks.on_acquire(reason.into());
+        if let Some(mut callbacks) = state.lock_callbacks() {
+            callbacks.on_acquire(reason.into());
+        }
     }));
     if result.is_err() {
         state.record(EngineFailure {
@@ -1185,11 +1235,9 @@ unsafe extern "C" fn model_update_trampoline(ctx: *mut c_void, model_state: u64)
     }
     let state = unsafe { &*ctx.cast::<CallbackState>() };
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut callbacks = match state.callbacks.lock() {
-            Ok(callbacks) => callbacks,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        callbacks.on_model_update(model_state);
+        if let Some(mut callbacks) = state.lock_callbacks() {
+            callbacks.on_model_update(model_state);
+        }
     }));
     if result.is_err() {
         state.record(EngineFailure {
@@ -1235,8 +1283,8 @@ impl EngineSession {
         request: &EngineRequest<'_>,
         transform: Option<&mut dyn CoordinateTransform>,
     ) -> Result<EngineEvaluation, EngineError> {
-        let answer = self.engine.force_with_transform(request, transform);
-        self.finish(answer)
+        self.engine
+            .force_hosted(request, transform, self.callbacks.as_ref())
     }
 
     /// Evaluate a strided-uniform batch in one engine call.
@@ -1247,10 +1295,13 @@ impl EngineSession {
         boxes: &[f64],
         transform: Option<&mut dyn CoordinateTransform>,
     ) -> Result<Vec<EngineEvaluation>, EngineError> {
-        let answer =
-            self.engine
-                .force_batch_with_transform(atomic_numbers, positions, boxes, transform);
-        self.finish(answer)
+        self.engine.force_batch_hosted(
+            atomic_numbers,
+            positions,
+            boxes,
+            transform,
+            self.callbacks.as_ref(),
+        )
     }
 
     /// Register owned learning-engine callbacks, or clear them with `None`.
@@ -1341,36 +1392,16 @@ impl EngineSession {
                 error.len(),
             )
         };
-        let direct = if code == 0 {
-            None
-        } else {
-            Some(EngineFailure {
-                status: EngineStatus::from_code(code),
-                message: text_of(&error),
-            })
-        };
-        let answer = self.engine.answer_with_failure(code, direct);
-        self.finish(answer)
-    }
-
-    fn finish<T>(&mut self, answer: Result<T, EngineError>) -> Result<T, EngineError> {
-        let direct = self
+        let hint_failure = (code != 0).then(|| EngineFailure {
+            status: EngineStatus::from_code(code),
+            message: text_of(&error),
+        });
+        let callback_failure = self
             .callbacks
             .as_ref()
-            .and_then(|callbacks| callbacks.take_failure());
-        match direct {
-            Some(EngineFailure {
-                status: EngineStatus::Success,
-                ..
-            }) => Err(EngineError::Invalid(
-                "callback returned a failure with success status".into(),
-            )),
-            Some(failure) => self
-                .engine
-                .fail(failure.status, failure.message)
-                .and(answer),
-            None => answer,
-        }
+            .and_then(CallbackOwner::take_failure);
+        self.engine
+            .answer_with_failure(code, prefer_fatal(callback_failure, hint_failure))
     }
 }
 
@@ -1385,6 +1416,34 @@ impl EngineSession {
 impl Drop for EnginePotential {
     fn drop(&mut self) {
         unsafe { (self.symbols.destroy)(self.handle.as_ptr()) };
+    }
+}
+
+/// The failure that classifies a native call: the one the host callbacks
+/// recorded, or the transform's. A fatal failure is preferred over a
+/// recoverable one, and the callbacks over the transform otherwise.
+fn host_failure(
+    host: Option<&CallbackOwner>,
+    transform: Option<&TransformCall<'_>>,
+) -> Option<EngineFailure> {
+    let callbacks = host.and_then(CallbackOwner::take_failure);
+    let transform = transform.and_then(TransformCall::take_failure);
+    prefer_fatal(callbacks, transform)
+}
+
+fn prefer_fatal(
+    first: Option<EngineFailure>,
+    second: Option<EngineFailure>,
+) -> Option<EngineFailure> {
+    let fatal =
+        |failure: &EngineFailure| matches!(failure.status, EngineStatus::FatalInstanceFailure(_));
+    match (first, second) {
+        (Some(first), Some(second)) => Some(if fatal(&second) && !fatal(&first) {
+            second
+        } else {
+            first
+        }),
+        (first, second) => first.or(second),
     }
 }
 
