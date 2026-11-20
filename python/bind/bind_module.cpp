@@ -779,8 +779,9 @@ NB_MODULE(_core, m) {
         copy_model_parameter(c, config.c, "c");
         copy_model_parameter(x0, config.x0, "x0");
         copy_model_parameter(y0, config.y0, "y0");
-        new (self) PotHolder<rgpot::MullerBrownPot>(
-            [config] { return std::make_unique<rgpot::MullerBrownPot>(config); });
+        new (self) PotHolder<rgpot::MullerBrownPot>([config] {
+          return std::make_unique<rgpot::MullerBrownPot>(config);
+        });
       },
       nb::arg("amplitude") = std::vector<double>{-200, -100, -170, 15},
       nb::arg("a") = std::vector<double>{-1, -1, -6.5, 0.7},

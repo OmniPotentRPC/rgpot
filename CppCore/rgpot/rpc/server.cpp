@@ -131,8 +131,7 @@ public:
   GenericPotImpl(std::unique_ptr<rgpot::PotentialBase> pot)
       : m_potential(std::move(pot)),
         m_morse(dynamic_cast<rgpot::MorsePot *>(m_potential.get())),
-        m_muller_brown(
-            dynamic_cast<rgpot::MullerBrownPot *>(m_potential.get()))
+        m_muller_brown(dynamic_cast<rgpot::MullerBrownPot *>(m_potential.get()))
 #ifdef RGPOT_HAS_IPI
         ,
         m_ipi(dynamic_cast<rgpot::IPIPot *>(m_potential.get()))

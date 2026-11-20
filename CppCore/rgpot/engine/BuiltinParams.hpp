@@ -80,8 +80,7 @@ inline Builtin read_builtin(const void *config, std::size_t config_len) {
   if (native.which() == ::PotentialConfig::MULLER_BROWN) {
     out.mullerBrown.emplace();
     const auto wire = native.getMullerBrown();
-    const auto copy = [](const auto &source, auto &target,
-                         const char *name) {
+    const auto copy = [](const auto &source, auto &target, const char *name) {
       if (source.size() == 0)
         return;
       if (source.size() != target.size())

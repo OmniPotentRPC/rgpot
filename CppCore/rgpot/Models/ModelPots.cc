@@ -35,8 +35,7 @@ ModelEvaluation muller(std::span<const double> x, std::span<const double> v,
     const double sx = 2.0 * config.a[i] * dx + config.b[i] * dy;
     const double sy = config.b[i] * dx + 2.0 * config.c[i] * dy;
     const double term = config.amplitude[i] *
-                        std::exp(config.a[i] * dx * dx +
-                                 config.b[i] * dx * dy +
+                        std::exp(config.a[i] * dx * dx + config.b[i] * dx * dy +
                                  config.c[i] * dy * dy);
     const double ds = sx * v[0] + sy * v[1];
     out.energy += term;
@@ -247,14 +246,13 @@ EckartPot::EckartPot(double v0, double width)
               }})) {}
 
 MullerBrownPot::MullerBrownPot(MullerBrownConfig config)
-    : AnalyticModelPot(
-          PotType::MullerBrown,
-          std::make_unique<Impl>(Impl{
-              2,
-              [config](auto x, auto v) {
-                return muller(x, v, config, 0.0, 0.0);
-              },
-              config})) {
+    : AnalyticModelPot(PotType::MullerBrown,
+                       std::make_unique<Impl>(Impl{2,
+                                                   [config](auto x, auto v) {
+                                                     return muller(x, v, config,
+                                                                   0.0, 0.0);
+                                                   },
+                                                   config})) {
   const auto finite = [](const auto &values) {
     return std::all_of(values.begin(), values.end(),
                        [](double value) { return std::isfinite(value); });
@@ -268,14 +266,13 @@ const MullerBrownConfig &MullerBrownPot::config() const noexcept {
   return impl_->mullerConfig;
 }
 
-ModifiedMullerBrownPot::ModifiedMullerBrownPot(double amplitude,
-                                               double wave)
+ModifiedMullerBrownPot::ModifiedMullerBrownPot(double amplitude, double wave)
     : AnalyticModelPot(
           PotType::ModifiedMullerBrown,
-          std::make_unique<Impl>(Impl{
-              2, [amplitude, wave](auto x, auto v) {
-                return muller(x, v, MullerBrownConfig{}, amplitude, wave);
-              }})) {}
+          std::make_unique<Impl>(Impl{2, [amplitude, wave](auto x, auto v) {
+                                        return muller(x, v, MullerBrownConfig{},
+                                                      amplitude, wave);
+                                      }})) {}
 
 LepsPot::LepsPot(LepsSystem system)
     : AnalyticModelPot(
