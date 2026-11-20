@@ -34,10 +34,12 @@ struct Eval {
 };
 
 Eval run(rgpot::PotentialBase &pot, const std::vector<double> &pos,
-         const std::vector<int> &z, const std::array<double, 9> &box) {
+         const std::vector<int> &z, const std::array<double, 9> &box,
+         bool compute_stress = true) {
   Eval e;
   e.f.assign(pos.size(), 0.0);
   rgpot::ForceInput in{z.size(), pos.data(), z.data(), box.data()};
+  in.compute_stress = compute_stress;
   rgpot::ForceOut out{};
   out.F = e.f.data();
   pot.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
@@ -211,6 +213,26 @@ TEST_CASE("SumPot variance follows the squared weights", "[SumPot]") {
   REQUIRE_THAT(es.variance, WithinAbs((9.0 + 4.0) * 0.5, kTight));
   REQUIRE_THAT(es.energy, WithinAbs(0.25, kTight));
   REQUIRE_THAT(es.f[1], WithinAbs(0.125, kTight));
+}
+
+TEST_CASE("SumPot reports no stress for a force-only call", "[SumPot]") {
+  rgpot::SumPot sum;
+  sum.add(std::make_unique<rgpot::LJPot>(lj()));
+  sum.add(std::make_unique<rgpot::MorsePot>(morse()));
+  REQUIRE(sum.caps().stress);
+  const Eval stressed = run(sum, kPos, kZ, kBox);
+  const Eval plain = run(sum, kPos, kZ, kBox, false);
+  REQUIRE(stressed.has_stress);
+  REQUIRE_FALSE(plain.has_stress);
+  for (double s : plain.stress) {
+    REQUIRE(s == 0.0);
+  }
+  REQUIRE(plain.energy == stressed.energy);
+  REQUIRE(plain.f == stressed.f);
+  for (const rgpot::SumComponent &c : sum.lastComponents()) {
+    REQUIRE(c.evaluated);
+    REQUIRE_FALSE(c.has_stress);
+  }
 }
 
 TEST_CASE("SumPot caps are the intersection of the enabled terms", "[SumPot]") {

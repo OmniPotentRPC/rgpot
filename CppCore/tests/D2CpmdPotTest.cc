@@ -119,10 +119,11 @@ struct Result {
 
 template <typename Pot>
 Result run(Pot &&pot, const std::vector<int> &z, const std::vector<double> &pos,
-           const std::array<double, 9> &box) {
+           const std::array<double, 9> &box, bool compute_stress = true) {
   Result r;
   r.forces.assign(pos.size(), 0.0);
-  const rgpot::ForceInput in{z.size(), pos.data(), z.data(), box.data()};
+  rgpot::ForceInput in{z.size(), pos.data(), z.data(), box.data()};
+  in.compute_stress = compute_stress;
   rgpot::ForceOut out{};
   out.F = r.forces.data();
   pot.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
@@ -306,7 +307,8 @@ TEST_CASE("CPMD's D2 tables, functionals and limits", "[d2cpmd]") {
   auto run_ptr = [&](rgpot::D2CpmdPot &p, const double *b) {
     Result r;
     r.forces.assign(pos.size(), 0.0);
-    const rgpot::ForceInput in{z_pair.size(), pos.data(), z_pair.data(), b};
+    rgpot::ForceInput in{z_pair.size(), pos.data(), z_pair.data(), b};
+    in.compute_stress = true;
     rgpot::ForceOut out{};
     out.F = r.forces.data();
     p.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
@@ -357,6 +359,21 @@ TEST_CASE("CPMD's D2 tables, functionals and limits", "[d2cpmd]") {
                          std::vector<double>{0.0, 0.0, 0.0, cut * (1.0 + rel), 0.0, 0.0}, none);
   REQUIRE(in.energy < 0.0);
   REQUIRE(out.energy == 0.0);
+}
+
+TEST_CASE("a force-only CPMD D2 call reports no stress and the same forces",
+          "[d2cpmd][stress]") {
+  const Reference ref = load("cubic_water");
+  rgpot::D2CpmdPot pot;
+  const Result stressed = run(pot, ref.z, ref.pos, ref.box);
+  const Result plain = run(pot, ref.z, ref.pos, ref.box, false);
+  REQUIRE(stressed.has_stress);
+  REQUIRE_FALSE(plain.has_stress);
+  REQUIRE(plain.energy == stressed.energy);
+  REQUIRE(plain.forces == stressed.forces);
+  for (int k = 0; k < 9; ++k) {
+    REQUIRE(plain.stress[k] == 0.0);
+  }
 }
 
 TEST_CASE("a composite swaps CPMD's D2 for the lattice sum", "[d2cpmd][composite]") {

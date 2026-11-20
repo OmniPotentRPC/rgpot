@@ -101,10 +101,11 @@ struct Result {
 
 template <typename Pot>
 Result run(Pot &&pot, const std::vector<int> &z, const std::vector<double> &pos,
-           const std::array<double, 9> &box) {
+           const std::array<double, 9> &box, bool compute_stress = false) {
   Result r;
   r.forces.assign(pos.size(), 0.0);
-  const rgpot::ForceInput in{z.size(), pos.data(), z.data(), box.data()};
+  rgpot::ForceInput in{z.size(), pos.data(), z.data(), box.data()};
+  in.compute_stress = compute_stress;
   rgpot::ForceOut out{};
   out.F = r.forces.data();
   pot.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
@@ -135,7 +136,11 @@ TEST_CASE("D4 BLYP matches dftd4 energies, gradients and virials", "[d4][referen
     const Reference ref = load(name);
     rgpot::D4Pot pot(blyp(ref.periodic));
     REQUIRE(pot.caps().stress == ref.periodic);
-    const Result r = run(pot, ref.z, ref.pos, ref.box);
+    const Result plain = run(pot, ref.z, ref.pos, ref.box);
+    REQUIRE_FALSE(plain.has_stress);
+    const Result r = run(pot, ref.z, ref.pos, ref.box, true);
+    REQUIRE(r.energy == plain.energy);
+    REQUIRE(r.forces == plain.forces);
 
     const double e_ha = r.energy / HARTREE_TO_EV;
     INFO("energy " << e_ha << " Ha, dftd4 " << ref.energy);
@@ -193,7 +198,7 @@ TEST_CASE("D4 forces and stress are derivatives of its energy", "[d4][fd]") {
   const std::array<double, 9> box = kWideCell;
   rgpot::D4Pot pot(blyp(true));
   requireForcesAreGradients(pot, ref, box);
-  const Result r = run(pot, ref.z, ref.pos, box);
+  const Result r = run(pot, ref.z, ref.pos, box, true);
   REQUIRE(r.has_stress);
   const double step = std::cbrt(std::numeric_limits<double>::epsilon());
   const double v = volume(box);
@@ -224,7 +229,7 @@ TEST_CASE("molecular D4 ignores the box and periodic D4 needs one", "[d4]") {
   REQUIRE_FALSE(pot.caps().periodic);
   const Result open = run(pot, ref.z, ref.pos, ref.box);
   const std::array<double, 9> wide{40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
-  const Result boxed = run(pot, ref.z, ref.pos, wide);
+  const Result boxed = run(pot, ref.z, ref.pos, wide, true);
   REQUIRE(std::abs(open.energy - boxed.energy) <= kEnergyThr * HARTREE_TO_EV);
   for (std::size_t k = 0; k < open.forces.size(); ++k) {
     REQUIRE(std::abs(open.forces[k] - boxed.forces[k]) <=
@@ -241,14 +246,14 @@ TEST_CASE("D4 is a composite term whose stress joins D2's", "[d4][composite]") {
   const std::array<double, 9> box = kWideCell;
   rgpot::D4Pot d4(blyp(true));
   rgpot::D2Pot d2;
-  const Result d4_only = run(d4, ref.z, ref.pos, box);
-  const Result d2_only = run(d2, ref.z, ref.pos, box);
+  const Result d4_only = run(d4, ref.z, ref.pos, box, true);
+  const Result d2_only = run(d2, ref.z, ref.pos, box, true);
 
   rgpot::SumPot sum;
   sum.add({.name = "d2", .weight = -1.0}, std::make_unique<rgpot::D2Pot>());
   sum.add({.name = "d4"}, std::make_unique<rgpot::D4Pot>(blyp(true)));
   REQUIRE(sum.caps().stress);
-  const Result swapped = run(sum, ref.z, ref.pos, box);
+  const Result swapped = run(sum, ref.z, ref.pos, box, true);
   const double scale = std::max(std::abs(d4_only.energy), std::abs(d2_only.energy));
   REQUIRE(std::abs(swapped.energy - (d4_only.energy - d2_only.energy)) <=
           kEnergyThr * HARTREE_TO_EV + scale * std::numeric_limits<double>::epsilon());

@@ -28,7 +28,7 @@ use std::os::raw::c_void;
 use crate::eindir::rgpot_potential_t;
 use crate::potential::PotentialCallback;
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
-use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+use crate::types::{rgpot_force_input_t, rgpot_force_out_t, rgpot_stress_out_t};
 
 /// Create a new potential handle from a callback function pointer.
 ///
@@ -105,6 +105,123 @@ pub unsafe extern "C" fn rgpot_potential_calculate(
     }))
 }
 
+/// Install the callback that also computes stress for `pot`, or clear it
+/// with NULL.
+///
+/// The callback receives the `user_data` the handle was created with, so one
+/// potential object answers both the force-only and the stress request. A
+/// potential that computes no stress registers none, and
+/// `rgpot_potential_calculate_stress` then reports that instead of returning
+/// zeros.
+///
+/// # Safety
+///
+/// A NULL `pot` returns `RGPOT_INVALID_PARAMETER`. `callback` must be safe
+/// to call with the handle's `user_data` for as long as it stays registered.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_set_stress_callback(
+    pot: *const rgpot_potential_t,
+    callback: Option<
+        unsafe extern "C" fn(
+            user_data: *mut c_void,
+            input: *const rgpot_force_input_t,
+            output: *mut rgpot_force_out_t,
+            stress: *mut rgpot_stress_out_t,
+        ) -> rgpot_status_t,
+    >,
+) -> rgpot_status_t {
+    if pot.is_null() {
+        set_last_error("rgpot_potential_set_stress_callback: pot is NULL");
+        return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+    }
+    unsafe { &*pot }.set_stress_callback(callback);
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+/// Nonzero when `pot` computes Cauchy stress, that is when a stress
+/// callback is registered. A NULL `pot` returns zero.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a live handle.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_supports_stress(pot: *const rgpot_potential_t) -> i32 {
+    if pot.is_null() {
+        return 0;
+    }
+    i32::from(unsafe { &*pot }.stress_callback().is_some())
+}
+
+/// Build a zeroed stress block with `struct_size` set for this build.
+#[no_mangle]
+pub extern "C" fn rgpot_stress_out_create() -> rgpot_stress_out_t {
+    rgpot_stress_out_t::default()
+}
+
+/// Perform a force/energy calculation that also returns the Cauchy stress.
+///
+/// This is `rgpot_potential_calculate` plus the stress block. It is a
+/// separate entry point so `rgpot_force_input_t` and `rgpot_force_out_t`
+/// keep the layout callers built against ABI minor 6 already use.
+///
+/// `stress->struct_size` must be at least `sizeof(rgpot_stress_out_t)` of
+/// the header the library was built with, or the call returns
+/// `RGPOT_INVALID_PARAMETER` without touching the block. A potential with no
+/// stress callback also returns `RGPOT_INVALID_PARAMETER` and a message that
+/// names the missing capability; the block stays zero. On success
+/// `stress->has_stress` is nonzero only when every component was computed,
+/// for example it stays zero for a singular cell.
+///
+/// # Safety
+///
+/// A NULL `pot`, `input`, `output` or `stress` returns
+/// `RGPOT_INVALID_PARAMETER`. Otherwise the pointers must satisfy the
+/// requirements of `rgpot_potential_calculate`, and `stress` must point to
+/// writable storage of `stress->struct_size` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_calculate_stress(
+    pot: *const rgpot_potential_t,
+    input: *const rgpot_force_input_t,
+    output: *mut rgpot_force_out_t,
+    stress: *mut rgpot_stress_out_t,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if pot.is_null() || input.is_null() || output.is_null() || stress.is_null() {
+            set_last_error("rgpot_potential_calculate_stress: NULL argument");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let size = unsafe { std::ptr::addr_of!((*stress).struct_size).read() };
+        if size < rgpot_stress_out_t::SIZE {
+            set_last_error(&format!(
+                "rgpot_potential_calculate_stress: stress block of {size} bytes is smaller than \
+                 the {} bytes this library writes; set struct_size = sizeof(rgpot_stress_out_t)",
+                rgpot_stress_out_t::SIZE
+            ));
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let block = unsafe { &mut *stress };
+        block.has_stress = 0;
+        block.stress = [0.0; 9];
+        let p = unsafe { &*pot };
+        if let Some(why) = p.fused_cache_peer_refusal() {
+            set_last_error(&why);
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let Some(callback) = p.stress_callback() else {
+            set_last_error(
+                "rgpot_potential_calculate_stress: this potential does not compute stress",
+            );
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        };
+        let status = unsafe { callback(p.pot_user_data, input, output, stress) };
+        if status != rgpot_status_t::RGPOT_SUCCESS {
+            block.has_stress = 0;
+            block.stress = [0.0; 9];
+        }
+        status
+    }))
+}
+
 /// Free a potential handle previously obtained from `rgpot_potential_new` or
 /// `rgpot_potential_new_eindir`.
 ///
@@ -168,6 +285,23 @@ mod tests {
         rgpot_status_t::RGPOT_INTERNAL_ERROR
     }
 
+    unsafe extern "C" fn stress_callback(
+        _ud: *mut c_void,
+        input: *const rgpot_force_input_t,
+        output: *mut rgpot_force_out_t,
+        stress: *mut rgpot_stress_out_t,
+    ) -> rgpot_status_t {
+        let inp = unsafe { &*input };
+        let out = unsafe { &mut *output };
+        let n = unsafe { inp.n_atoms() }.unwrap_or(0);
+        out.forces = create_owned_f64_tensor(vec![0.0; n * 3], vec![n as i64, 3]);
+        out.energy = n as f64;
+        let block = unsafe { &mut *stress };
+        block.stress = [1.0, 0.2, 0.3, 0.2, 2.0, 0.4, 0.3, 0.4, 3.0];
+        block.has_stress = 1;
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+
     unsafe extern "C" fn counting_callback(
         ud: *mut c_void,
         _input: *const rgpot_force_input_t,
@@ -222,11 +356,7 @@ mod tests {
     #[test]
     fn calculate_null_pot_returns_invalid_parameter() {
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { rgpot_potential_calculate(std::ptr::null(), &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { crate::c_api::types::rgpot_force_input_free(&mut input) };
@@ -235,11 +365,7 @@ mod tests {
     #[test]
     fn calculate_null_input_returns_invalid_parameter() {
         let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { rgpot_potential_calculate(pot, std::ptr::null(), &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { rgpot_potential_free(pot as *mut _) };
@@ -261,11 +387,7 @@ mod tests {
     fn full_lifecycle_new_calculate_free() {
         let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
         assert_eq!(output.energy, 2.0);
@@ -277,14 +399,169 @@ mod tests {
     }
 
     #[test]
-    fn callback_error_propagates() {
-        let pot = unsafe { rgpot_potential_new(failing_callback, std::ptr::null_mut(), None) };
+    fn stress_has_its_own_entry_point_and_force_calls_never_carry_it() {
+        let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
+        unsafe { rgpot_potential_set_stress_callback(pot, Some(stress_callback)) };
+        assert_eq!(unsafe { rgpot_potential_supports_stress(pot) }, 1);
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let mut output = rgpot_force_out_t {
+
+        let mut output = rgpot_force_out_t::default();
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(output.energy, 2.0);
+        unsafe { rgpot_tensor_free(output.forces) };
+        output.forces = std::ptr::null_mut();
+
+        let mut stress = rgpot_stress_out_create();
+        assert_eq!(stress.struct_size, rgpot_stress_out_t::SIZE);
+        let status =
+            unsafe { rgpot_potential_calculate_stress(pot, &input, &mut output, &mut stress) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(stress.has_stress, 1);
+        assert_eq!(stress.stress[0], 1.0);
+        assert_eq!(stress.stress[8], 3.0);
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
+    fn stress_request_without_a_stress_callback_is_an_error_not_zeros() {
+        let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
+        assert_eq!(unsafe { rgpot_potential_supports_stress(pot) }, 0);
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t::default();
+        let mut stress = rgpot_stress_out_create();
+        stress.has_stress = 1;
+        stress.stress = [7.0; 9];
+        let status =
+            unsafe { rgpot_potential_calculate_stress(pot, &input, &mut output, &mut stress) };
+        assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+        assert!(output.forces.is_null());
+        assert_eq!(stress.has_stress, 0);
+        assert_eq!(stress.stress, [0.0; 9]);
+        let msg = unsafe { std::ffi::CStr::from_ptr(crate::status::rgpot_last_error()) };
+        assert!(msg.to_string_lossy().contains("does not compute stress"));
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
+    fn undersized_stress_block_is_refused_before_it_is_written() {
+        let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
+        unsafe { rgpot_potential_set_stress_callback(pot, Some(stress_callback)) };
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t::default();
+        let mut stress = rgpot_stress_out_create();
+        stress.struct_size = rgpot_stress_out_t::SIZE - 1;
+        stress.stress = [7.0; 9];
+        let status =
+            unsafe { rgpot_potential_calculate_stress(pot, &input, &mut output, &mut stress) };
+        assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+        assert!(output.forces.is_null());
+        assert_eq!(stress.stress, [7.0; 9]);
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
+    fn null_stress_block_is_refused() {
+        let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t::default();
+        let status = unsafe {
+            rgpot_potential_calculate_stress(pot, &input, &mut output, std::ptr::null_mut())
+        };
+        assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    /// The two ABI structs of minor 6, frozen here as a caller built against
+    /// that header lays them out. A canary follows each one in memory: a
+    /// library that wrote a field it added later would clobber it.
+    #[repr(C)]
+    struct Minor6Input {
+        positions: *mut dlpk::sys::DLManagedTensorVersioned,
+        atomic_numbers: *mut dlpk::sys::DLManagedTensorVersioned,
+        box_matrix: *mut dlpk::sys::DLManagedTensorVersioned,
+        canary: [u64; 16],
+    }
+
+    #[repr(C)]
+    struct Minor6Out {
+        forces: *mut dlpk::sys::DLManagedTensorVersioned,
+        energy: f64,
+        variance: f64,
+        canary: [u64; 16],
+    }
+
+    const CANARY: u64 = 0xA5A5_5A5A_DEAD_BEEF;
+
+    #[test]
+    fn minor_6_structs_keep_their_size_and_still_evaluate() {
+        assert_eq!(
+            std::mem::size_of::<rgpot_force_input_t>(),
+            3 * std::mem::size_of::<usize>()
+        );
+        assert_eq!(
+            std::mem::size_of::<rgpot_force_out_t>(),
+            std::mem::size_of::<usize>() + 2 * std::mem::size_of::<f64>()
+        );
+        assert_eq!(
+            std::mem::offset_of!(Minor6Input, canary),
+            std::mem::size_of::<rgpot_force_input_t>()
+        );
+        assert_eq!(
+            std::mem::offset_of!(Minor6Out, canary),
+            std::mem::size_of::<rgpot_force_out_t>()
+        );
+
+        let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
+        let (_pos, _atmnrs, _box_, mut built) = make_test_input();
+        let input = Minor6Input {
+            positions: built.positions,
+            atomic_numbers: built.atomic_numbers,
+            box_matrix: built.box_matrix,
+            canary: [CANARY; 16],
+        };
+        let mut out = Minor6Out {
             forces: std::ptr::null_mut(),
             energy: 0.0,
             variance: 0.0,
+            canary: [CANARY; 16],
         };
+        let status = unsafe {
+            rgpot_potential_calculate(
+                pot,
+                (&input as *const Minor6Input).cast(),
+                (&mut out as *mut Minor6Out).cast(),
+            )
+        };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(out.energy, 2.0);
+        assert!(!out.forces.is_null());
+        assert_eq!(input.canary, [CANARY; 16]);
+        assert_eq!(out.canary, [CANARY; 16]);
+        unsafe {
+            rgpot_tensor_free(out.forces);
+            crate::c_api::types::rgpot_force_input_free(&mut built);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
+    fn callback_error_propagates() {
+        let pot = unsafe { rgpot_potential_new(failing_callback, std::ptr::null_mut(), None) };
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INTERNAL_ERROR);
         let msg = unsafe { std::ffi::CStr::from_ptr(crate::status::rgpot_last_error()) };
@@ -302,11 +579,7 @@ mod tests {
             rgpot_potential_new(counting_callback, &counter as *const _ as *mut c_void, None)
         };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
         assert_eq!(counter.load(Ordering::SeqCst), 1);
         assert_eq!(output.energy, 1.0);
@@ -356,11 +629,7 @@ mod tests {
                     box_.as_mut_ptr(),
                 )
             };
-            let mut output = rgpot_force_out_t {
-                forces: std::ptr::null_mut(),
-                energy: 0.0,
-                variance: 0.0,
-            };
+            let mut output = rgpot_force_out_t::default();
             let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
             assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
             assert_eq!(output.energy, n as f64);

@@ -5,6 +5,7 @@
 #include "EMTRasmussenParameterProvider.h"
 #include "SuperCell.h"
 #include "Vec.h"
+#include "rgpot/stress.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -36,6 +37,7 @@ void EMTPot::reset() const {
 }
 
 void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  StressAccumulator stress(in, out);
   const long n = static_cast<long>(in.nAtoms);
   std::vector<double> pos(in.pos, in.pos + 3 * n);
   Vec basis[3] = {
@@ -44,8 +46,8 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       Vec(in.box[6], in.box[7], in.box[8]),
   };
   bool periodic[3] = {true, true, true};
-  if (m_nAtoms != n || !std::equal(in.atmnrs, in.atmnrs + n,
-                                   m_numbers.begin(), m_numbers.end())) {
+  if (m_nAtoms != n || !std::equal(in.atmnrs, in.atmnrs + n, m_numbers.begin(),
+                                   m_numbers.end())) {
     reset();
     m_nAtoms = n;
     m_numbers.assign(in.atmnrs, in.atmnrs + n);
@@ -75,7 +77,18 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const Vec *forces = emt->GetCartesianForces();
   std::memcpy(out->F, forces, static_cast<size_t>(n) * sizeof(Vec));
   out->variance = 0.0;
-  out->has_stress = 0;
+  if (stress.enabled()) {
+    double native[6]{};
+    emt->GetStress(native);
+    double *strain = stress.data();
+    const double volume = cellVolume(in.box);
+    for (int k = 0; k < 6; ++k) {
+      // ASAP has already divided dE/d epsilon by the cell volume. Convert it
+      // back to the common accumulator before publishing.
+      strain[k] = native[k] * volume;
+    }
+    stress.publish(in.box);
+  }
 }
 
 } // namespace rgpot
