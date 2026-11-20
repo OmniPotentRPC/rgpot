@@ -82,8 +82,8 @@ params messages need the Cap'n Proto schema.
 =libmetatomic_engine= =-Dwith_metatomic=true=.
 =libuma_engine= needs =-Dwith_metatomic=true= and is not built with
 =-Dwith_python=true=.
-=libpotlibc_engine= is independent of RPC and is built only with
-=-Dwith_potlibc=enabled= after potlibc is installed.
+=libpotlibc_engine= is independent of RPC and is built only with =-Dwith_potlibc=enabled=
+after potlibc is installed.
 The classical, MOPAC, NWChem and Skala libraries are not built on Windows.
 
 The =umaenginebld= pixi environment has the rpc, metatomic and xtb dependencies.

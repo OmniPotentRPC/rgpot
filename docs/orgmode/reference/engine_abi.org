@@ -8,9 +8,9 @@
 engine shared library through =dlopen= and =dlsym=.
 The host selects the backend by the library it opens.
 The configuration is a versioned binary message defined by each engine.
-The core engines use a Cap'n Proto flat-array message whose root is the
-engine's params struct in =Potentials.capnp=. The potlibc engine uses
-=RgpotPotlibcConfigV1= from =rgpot/potlibc_engine.h=.
+The core engines use a Cap'n Proto flat-array message whose root is the engine's
+params struct in =Potentials.capnp=.
+The potlibc engine uses =RgpotPotlibcConfigV1= from =rgpot/potlibc_engine.h=.
 Positions and cells are in Angstrom, energies in eV and forces in eV/Angstrom.
 A cell is nine doubles in row-major order.
 
@@ -19,9 +19,9 @@ A positive value means the evaluation failed at this input and the caller may
 back off.
 A negative value means the instance is unusable.
 The engines in this repository return 1 for an invalid argument, 2 when the
-evaluation or the setting failed (the reason is in =rgpot_engine_last_error=),
-3 when the backend does not support the operation, and -2
-(=RGPOT_ENGINE_ERR_LOCK=) when acquiring an engine or handle lock fails.
+evaluation or the setting failed (the reason is in
+=rgpot_engine_last_error=), 3 when the backend does not support the operation, and -2 (=RGPOT_ENGINE_ERR_LOCK=)
+when acquiring an engine or handle lock fails.
 =rgpot_engine_force= and =rgpot_engine_force_batch= also return the nonzero code
 of the host's coordinate transform.
 
@@ -59,13 +59,14 @@ NWChem and CPMD keep the prefix-parameterized profile ABI that =NWChemPot= and
 The plugin interface in =include/rgpot/plugin.h= is a separate family. tblite,
 dftd3, dftd4, ExprPot, XcKernel, CPMD and CP2K have no engine library.
 
-Every library above except =libpotlibc_engine= exports
-=rgpot_engine_force_batch=, =rgpot_engine_hvp=, =rgpot_engine_abi_stamp=,
-=rgpot_engine_abi_compatible=, =rgpot_engine_name=, =rgpot_engine_version=, =rgpot_engine_model_digest=,
-=rgpot_engine_caps=,
-=rgpot_engine_last_error=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=,
-=rgpot_engine_copy_orbitals=, =rgpot_engine_last_components= and
-=rgpot_engine_component_name=.
+Every library above except
+=libpotlibc_engine= exports =rgpot_engine_force_batch=, =rgpot_engine_hvp=,
+=rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible=, =rgpot_engine_name=,
+=rgpot_engine_version=,
+=rgpot_engine_model_digest=, =rgpot_engine_caps=, =rgpot_engine_last_error=,
+=rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
+=rgpot_engine_select_orbitals=, =rgpot_engine_copy_orbitals=,
+=rgpot_engine_last_components= and =rgpot_engine_component_name=.
 Only =libcomposite_engine= has components; the others report none.
 =libpotlibc_engine= exports the stamp, compatibility, name, version, caps,
 last-error and analytic-HVP symbols; it omits the batch and setting symbols.
@@ -202,8 +203,9 @@ Optional symbol.
 
 *** =RgpotPotlibcConfigV1=
 
-- Inputs :: =magic= (=RGPOT_POTLIBC_CONFIG_MAGIC=), =version=
-  (=RGPOT_POTLIBC_CONFIG_VERSION=), =atom_count= and =surface_id=.
+- Inputs :: =magic=
+  (=RGPOT_POTLIBC_CONFIG_MAGIC=), =version= (=RGPOT_POTLIBC_CONFIG_VERSION=),
+  =atom_count= and =surface_id=.
 - Units :: =atom_count= is a count; the other fields have no unit.
 - Outputs :: passed as the exact create message for =libpotlibc_engine=.
 - Errors :: an unknown magic or version, an empty or unterminated catalog id,
@@ -234,12 +236,12 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                                     char *errbuf, size_t errlen);
 #+end_src
 
-- Inputs :: =config=, the library's versioned binary message; core engines use
-  a Cap'n Proto flat-array message (as produced by
-  =capnp::messageToFlatArray=) whose root is their params struct, while
-  =libpotlibc_engine= uses =RgpotPotlibcConfigV1=;
-  =config_len=, its length in bytes; =errbuf= and =errlen=, a buffer for the
-  failure reason (may be null or 0).
+- Inputs :: =config=, the library's versioned binary message; core engines use a
+  Cap'n Proto flat-array message (as produced by =capnp::messageToFlatArray=)
+  whose root is their params struct, while
+  =libpotlibc_engine= uses =RgpotPotlibcConfigV1=; =config_len=, its length in
+  bytes; =errbuf= and =errlen=, a buffer for the failure reason (may be null or
+  0).
 - Units :: none.
 - Outputs :: a new handle, or NULL on failure.
 - Errors :: returns NULL and writes the reason to =errbuf= (at most =errlen - 1=
@@ -1262,9 +1264,8 @@ the handle as a =PotentialImpl=.
   =last_components=, =component_name=) function pointers.
 - =EngineError= :: Typed error enum covering =Load=, =Missing=, =Abi=
   (=expected=, =found=), =AbiStamp= (=expected=, =found=), =Unavailable=,
-  =Create=, =Invalid=,
-  =Unsupported=, =Recoverable= (=code=, =message=), =Fatal= (=code=,
-  =message=), and =Lock= (=operation=, =message=).
+  =Create=, =Invalid=, =Unsupported=, =Recoverable= (=code=, =message=), =Fatal=
+  (=code=, =message=), and =Lock= (=operation=, =message=).
 - =EngineRequest= :: Single-geometry input with =positions= (Angstrom, row-major
   =[n_atoms, 3]=), =atomic_numbers=, and =box_matrix= (row-major 3x3 lattice in
   Angstrom).
@@ -1289,12 +1290,9 @@ the handle as a =PotentialImpl=.
   =rgpot_engine_force= or
   =rgpot_engine_force_batch=, and maps positive codes to =EngineError::Recoverable= and negative codes to =EngineError::Fatal= using =rgpot_engine_last_error=
   when present.
-  A negative status, including =RGPOT_ENGINE_ERR_LOCK= (=EngineError::Lock=),
-  poisons the handle: every later call on that
-  =EnginePotential= (or the =PotentialImpl= built from it) returns the same
-  error without calling into native code, while dropping the
-  handle still calls =rgpot_engine_destroy= once to release the =RgpotEnginePot=
-  allocation.
+  A negative status, including
+  =RGPOT_ENGINE_ERR_LOCK= (=EngineError::Lock=), poisons the handle: every later call on that =EnginePotential= (or the =PotentialImpl= built from it) returns the same error without calling into native code, while dropping the handle still calls =rgpot_engine_destroy=
+  once to release the =RgpotEnginePot= allocation.
 - =EnginePotential::caps()= / =EnginePotential::hvp(&request, direction)= ::
   Reads the size-prefixed engine capability structure and dispatches the exact
   product.
