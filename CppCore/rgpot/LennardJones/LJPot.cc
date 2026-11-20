@@ -114,48 +114,56 @@ bool isFullyPeriodicCell(const double *box, double volume) noexcept {
       return false;
     }
   }
+  const bool sheared = box[1] != 0.0 || box[2] != 0.0 || box[3] != 0.0 ||
+                       box[5] != 0.0 || box[6] != 0.0 || box[7] != 0.0;
+  if (sheared) {
+    return true;
+  }
   return box[0] > 0.0 && box[4] > 0.0 && box[8] > 0.0;
 }
 
-// Integral of r^n over [lo, hi] for an integer n.
-long double powerIntegral(int n, long double lo, long double hi) noexcept {
-  if (n == -1) {
-    return std::log(hi / lo);
-  }
-  const auto p = static_cast<long double>(n + 1);
-  return (std::pow(hi, p) - std::pow(lo, p)) / p;
-}
-
 // Integral of r^n (1 - S(r)) over the switch window [r_on, r_on + width],
-// with 1 - S = 10 t^3 - 15 t^4 + 6 t^5 and t = (r - r_on) / width. The
-// polynomial is expanded in r, so each term integrates in closed form. The
-// alternating coefficients grow like (r_on / width)^5, and the sum loses
-// about that many digits, so it runs in long double.
+// with 1 - S(u) = u^3 (10 - 15 u + 6 u^2) and u = (r - r_on) / width in [0, 1].
+// Substituting r = r_on (1 + alpha u) with alpha = width / r_on factors out
+// width * r_on^n and leaves an integrand that is smooth and strictly positive
+// on (0, 1], so 16-point Gauss-Legendre quadrature on [0, 1] sums positive
+// terms without cancellation for any width in (0, cutoff).
 double switchWindowIntegral(int n, double r_on, double width) noexcept {
-  constexpr long double kBinomial[6][6] = {
-      {1, 0, 0, 0, 0, 0}, {1, 1, 0, 0, 0, 0}, {1, 2, 1, 0, 0, 0},
-      {1, 3, 3, 1, 0, 0}, {1, 4, 6, 4, 1, 0}, {1, 5, 10, 10, 5, 1}};
-  constexpr long double kCoeff[6] = {0.0L, 0.0L, 0.0L, 10.0L, -15.0L, 6.0L};
+  // 16-point Gauss-Legendre nodes and weights on [-1, 1] (symmetric pairs).
+  constexpr long double kXi[8] = {
+      0.0950125098376374401853193354249581L,
+      0.2816035507792589132304605014604961L,
+      0.4580167776572273863424194429835776L,
+      0.6178762444026437484466717640487910L,
+      0.7554044083550030338951011948474423L,
+      0.8656312023878317438804678977123932L,
+      0.9445750230732325760779884155346084L,
+      0.9894009349916499325961541734503326L};
+  constexpr long double kWi[8] = {
+      0.1894506104550684962853967232082831L,
+      0.1826034150449235888667636679692196L,
+      0.1691565193950025381893120790303599L,
+      0.1495959888165767320815017305474786L,
+      0.1246289712555338720524762821920164L,
+      0.0951585116824927848099251076022462L,
+      0.0622535239386478928628438369943777L,
+      0.0271524594117540948517805724560184L};
   const auto a = static_cast<long double>(r_on);
   const auto w = static_cast<long double>(width);
-  long double q[6] = {};
-  long double inv_wk = 1.0L;
-  for (int k = 0; k < 6; ++k) {
-    if (k > 0) {
-      inv_wk /= w;
-    }
-    if (kCoeff[k] == 0.0L) {
-      continue;
-    }
-    for (int j = 0; j <= k; ++j) {
-      q[j] += kCoeff[k] * kBinomial[k][j] * std::pow(-a, k - j) * inv_wk;
-    }
-  }
+  const long double alpha = w / a;
+  const auto exp_n = static_cast<long double>(n);
+  auto eval = [&](long double u) noexcept {
+    const long double one_minus_s =
+        u * u * u * (10.0L + u * (-15.0L + 6.0L * u));
+    return std::pow(1.0L + alpha * u, exp_n) * one_minus_s;
+  };
   long double sum = 0.0L;
-  for (int j = 0; j < 6; ++j) {
-    sum += q[j] * powerIntegral(n + j, a, a + w);
+  for (int k = 0; k < 8; ++k) {
+    const long double u_lo = 0.5L * (1.0L - kXi[k]);
+    const long double u_hi = 0.5L * (1.0L + kXi[k]);
+    sum += kWi[k] * (eval(u_lo) + eval(u_hi));
   }
-  return static_cast<double>(sum);
+  return static_cast<double>(0.5L * w * std::pow(a, exp_n) * sum);
 }
 
 // Radial moments of the part of the bare 12-6 pair term that the truncated

@@ -284,13 +284,13 @@ TEST_CASE(
     double width;
     double tol;
   };
-  // The closed form of the window expands a polynomial in r, so its error
-  // grows like (r_on / width)^5. The tolerances follow that, for a platform
-  // whose long double is no wider than double.
+  // The window is integrated in u = (r - r_on) / width over [0, 1], so it
+  // avoids the cancellation of expanding (r - r_on)^k around 0.
   for (const Case c :
-       {Case{11.9, 0.0, 1e-14}, Case{11.9, 2.38, 1e-8}, Case{11.9, 0.85, 1e-7},
-        Case{8.5, 4.25, 1e-8}, Case{15.0, 1.0, 1e-8}, Case{9.0, 0.36, 1e-6},
-        Case{7.0, 3.0, 1e-8}}) {
+       {Case{11.9, 0.0, 1e-14}, Case{11.9, 2.38, 1e-12},
+        Case{11.9, 0.85, 1e-12}, Case{8.5, 4.25, 1e-12},
+        Case{15.0, 1.0, 1e-12}, Case{9.0, 0.36, 1e-12},
+        Case{7.0, 3.0, 1e-12}}) {
     DYNAMIC_SECTION("cutoff " << c.cutoff << " width " << c.width) {
       const rgpot::LJConfig cfg{.u0 = kU0,
                                 .cutoff = c.cutoff,
@@ -466,4 +466,248 @@ TEST_CASE(
                   .cutoff = 5.0, .switch_width = 2.0, .tail_correction = true})
             .paramsKey() !=
         LJPot(LJConfig{.cutoff = 5.0, .switch_width = 2.0}).paramsKey());
+}
+
+TEST_CASE("LJPot switch window integral stays accurate for narrow widths",
+          "[LJPot][tail][narrow]") {
+  // At rc = 15 and L = 50, a narrow switch window w << r_on makes the
+  // monomial expansion in r cancel like (r_on / w)^6. Check the window
+  // contribution (with the unswitched tail subtracted) and the total tail
+  // at w = 1e-2, 1e-3 and 1e-6 against an independent power series in
+  // u = (r - r_on) / w and adaptive Simpson quadrature in long double.
+  const double rc = 15.0;
+  const double side = 50.0;
+  const double volume = side * side * side;
+  const std::array<double, 9> box{side, 0.0, 0.0, 0.0, side,
+                                  0.0,  0.0, 0.0, side};
+  const std::array<double, 3> pos{1.0, 2.0, 3.0};
+  const std::array<int, 1> z{18};
+
+  const rgpot::LJPot unswitched(rgpot::LJConfig{
+      .u0 = 1.0, .cutoff = rc, .psi = 1.0, .tail_correction = true});
+  std::vector<double> f0(3, 0.0);
+  rgpot::ForceOut out0{f0.data(), 0.0, 0.0, {}, 0};
+  unswitched.forceImpl({1, pos.data(), z.data(), box.data()}, &out0);
+
+  // Adaptive Simpson quadrature on [0, 1] in long double, where the
+  // integrand (1 + alpha * u)^n * u^3 * (10 - 15 u + 6 u^2) is positive.
+  auto quad01 = [](auto &&fn) {
+    auto panel = [&](long double a, long double b) {
+      const long double m = 0.5L * (a + b);
+      return (b - a) / 6.0L * (fn(a) + 4.0L * fn(m) + fn(b));
+    };
+    auto adapt = [&](auto &self, long double a, long double b, long double whole,
+                     long double tol, int depth) -> long double {
+      const long double m = 0.5L * (a + b);
+      const long double left = panel(a, m);
+      const long double right = panel(m, b);
+      const long double sum = left + right;
+      if (depth <= 0 || std::abs(sum - whole) <= 15.0L * tol) {
+        return sum + (sum - whole) / 15.0L;
+      }
+      return self(self, a, m, left, 0.5L * tol, depth - 1) +
+             self(self, m, b, right, 0.5L * tol, depth - 1);
+    };
+    const long double whole = panel(0.0L, 1.0L);
+    return adapt(adapt, 0.0L, 1.0L, whole, 1e-18L, 20);
+  };
+
+  // Independent power series of integral_0^1 (1 + alpha u)^n (1 - S(u)) du,
+  // with int_0^1 u^k (10 u^3 - 15 u^4 + 6 u^5) du = 10/(k+4) - 15/(k+5) + 6/(k+6).
+  auto seriesWindow = [](int n, long double r_on, long double w) {
+    const long double alpha = w / r_on;
+    long double binom = 1.0L;
+    long double pow_a = 1.0L;
+    long double sum = 0.0L;
+    for (int k = 0; k < 64; ++k) {
+      const auto kk = static_cast<long double>(k);
+      const long double moment =
+          10.0L / (kk + 4.0L) - 15.0L / (kk + 5.0L) + 6.0L / (kk + 6.0L);
+      const long double term = binom * pow_a * moment;
+      sum += term;
+      if (std::abs(term) <= 1e-20L * std::abs(sum)) {
+        break;
+      }
+      binom *= static_cast<long double>(n - k) / (kk + 1.0L);
+      pow_a *= alpha;
+    }
+    return w * std::pow(r_on, static_cast<long double>(n)) * sum;
+  };
+
+  for (const double w : {1e-2, 1e-3, 1e-6}) {
+    DYNAMIC_SECTION("width " << w) {
+      const rgpot::LJPot pot(rgpot::LJConfig{.u0 = 1.0,
+                                             .cutoff = rc,
+                                             .psi = 1.0,
+                                             .switch_width = w,
+                                             .tail_correction = true});
+      std::vector<double> forces(3, 0.0);
+      rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
+      pot.forceImpl({1, pos.data(), z.data(), box.data()}, &out);
+
+      const auto r_on = static_cast<long double>(rc - w);
+      const auto wl = static_cast<long double>(w);
+      const long double alpha = wl / r_on;
+      auto quadWindow = [&](int n) {
+        const long double i01 = quad01([&](long double u) {
+          const long double one_minus_s =
+              u * u * u * (10.0L + u * (-15.0L + 6.0L * u));
+          return std::pow(1.0L + alpha * u, static_cast<long double>(n)) *
+                 one_minus_s;
+        });
+        return wl * std::pow(r_on, static_cast<long double>(n)) * i01;
+      };
+
+      const long double i_m10_q = quadWindow(-10);
+      const long double i_m4_q = quadWindow(-4);
+      const long double i_m10_s = seriesWindow(-10, r_on, wl);
+      const long double i_m4_s = seriesWindow(-4, r_on, wl);
+      CHECK(std::abs(i_m10_q - i_m10_s) <= 1e-13L * std::abs(i_m10_s));
+      CHECK(std::abs(i_m4_q - i_m4_s) <= 1e-13L * std::abs(i_m4_s));
+
+      const auto scale =
+          static_cast<long double>(2.0 * std::numbers::pi / volume);
+      const auto want_window =
+          static_cast<double>(scale * 4.0L * (i_m10_q - i_m4_q));
+      const double got_window = out.energy - out0.energy;
+      const double want_total = out0.energy + want_window;
+      const double got_p =
+          -(out.stress[0] + out.stress[4] + out.stress[8]) / 3.0;
+      const double want_p = want_total / volume;
+      INFO("w = " << w << ": i_m10_q = " << static_cast<double>(i_m10_q)
+                  << ", i_m10_s = " << static_cast<double>(i_m10_s)
+                  << ", i_m4_q = " << static_cast<double>(i_m4_q)
+                  << ", i_m4_s = " << static_cast<double>(i_m4_s)
+                  << ", got_window = " << got_window
+                  << ", want_window = " << want_window);
+      CHECK(got_window < 0.0);
+      if (w >= 1e-3) {
+        CHECK(std::abs(got_window - want_window) <=
+              1e-3 * std::abs(want_window));
+      }
+      CHECK(std::abs(out.energy - want_total) <= 1e-14 * std::abs(want_total));
+      CHECK(std::abs(got_p - want_p) <= 1e-14 * std::abs(want_p));
+    }
+  }
+}
+
+TEST_CASE("LJPot rotated and standard periodic cells give the same tail",
+          "[LJPot][tail][periodic]") {
+  const double side = 50.0;
+  const std::array<double, 9> std_box{side, 0.0,  0.0, 0.0, side,
+                                      0.0,  0.0,  0.0, side};
+  // 90-degree rotation in the xy plane: a = (0, L, 0), b = (-L, 0, 0),
+  // c = (0, 0, L), with det(H) = L^3 > 0 and zero x/y diagonal entries.
+  const std::array<double, 9> rot_box{0.0,   side, 0.0, -side, 0.0,
+                                      0.0,   0.0,  0.0, side};
+
+  // Single atom: pure tail contribution.
+  {
+    const std::array<double, 3> pos_std{1.0, 2.0, 3.0};
+    const std::array<double, 3> pos_rot{-2.0, 1.0, 3.0};
+    const std::array<int, 1> z{18};
+    for (const double w : {0.0, 1.5}) {
+      const rgpot::LJPot pot(rgpot::LJConfig{.u0 = 1.0,
+                                             .cutoff = 15.0,
+                                             .psi = 1.0,
+                                             .switch_width = w,
+                                             .tail_correction = true});
+      std::vector<double> f_std(3), f_rot(3), e_std(1), e_rot(1), v_std(6),
+          v_rot(6);
+      rgpot::ForceOut out_std{f_std.data(), 0.0, 0.0, {}, 0};
+      rgpot::ForceOut out_rot{f_rot.data(), 0.0, 0.0, {}, 0};
+      pot.forcePerAtom({1, pos_std.data(), z.data(), std_box.data()}, &out_std,
+                       {e_std.data(), v_std.data()});
+      pot.forcePerAtom({1, pos_rot.data(), z.data(), rot_box.data()}, &out_rot,
+                       {e_rot.data(), v_rot.data()});
+      REQUIRE(out_std.energy < 0.0);
+      CHECK(out_rot.energy == out_std.energy);
+      CHECK(e_rot == e_std);
+      CHECK(v_rot == v_std);
+      CHECK(std::equal(std::begin(out_rot.stress), std::end(out_rot.stress),
+                       std::begin(out_std.stress)));
+    }
+  }
+
+  // Multi-atom periodic system: rotated cell matches standard cell in energy,
+  // per-atom energy, and hydrostatic pressure, with and without tail.
+  {
+    const std::size_t n = 4;
+    const std::vector<double> pos_std{
+        0.2, 0.5,  1.0,  // atom 0
+        1.5, -0.3, 1.2,  // atom 1
+        0.1, 49.1, 0.8,  // atom 2 (wraps across y in std, x in rot)
+        48.9, 0.4, 49.2  // atom 3 (wraps across x and z)
+    };
+    std::vector<double> pos_rot(3 * n);
+    for (std::size_t i = 0; i < n; ++i) {
+      // r_rot = (-y, x, z) maps fractional coordinates identically into rot_box.
+      pos_rot[3 * i] = -pos_std[3 * i + 1];
+      pos_rot[3 * i + 1] = pos_std[3 * i];
+      pos_rot[3 * i + 2] = pos_std[3 * i + 2];
+    }
+    const std::vector<int> z(n, 18);
+    const rgpot::LJPot pot_off(rgpot::LJConfig{
+        .u0 = 1.0, .cutoff = 15.0, .psi = 1.0, .tail_correction = false});
+    const rgpot::LJPot pot_on(rgpot::LJConfig{
+        .u0 = 1.0, .cutoff = 15.0, .psi = 1.0, .tail_correction = true});
+
+    std::vector<double> f_std_off(3 * n), f_rot_off(3 * n);
+    std::vector<double> f_std_on(3 * n), f_rot_on(3 * n);
+    std::vector<double> ea_std(n), ea_rot(n), va_std(6 * n), va_rot(6 * n);
+    rgpot::ForceOut o_std_off{f_std_off.data(), 0.0, 0.0, {}, 0};
+    rgpot::ForceOut o_rot_off{f_rot_off.data(), 0.0, 0.0, {}, 0};
+    rgpot::ForceOut o_std_on{f_std_on.data(), 0.0, 0.0, {}, 0};
+    rgpot::ForceOut o_rot_on{f_rot_on.data(), 0.0, 0.0, {}, 0};
+
+    pot_off.forceImpl({n, pos_std.data(), z.data(), std_box.data()}, &o_std_off);
+    pot_off.forceImpl({n, pos_rot.data(), z.data(), rot_box.data()}, &o_rot_off);
+    pot_on.forcePerAtom({n, pos_std.data(), z.data(), std_box.data()}, &o_std_on,
+                        {ea_std.data(), va_std.data()});
+    pot_on.forcePerAtom({n, pos_rot.data(), z.data(), rot_box.data()}, &o_rot_on,
+                        {ea_rot.data(), va_rot.data()});
+
+    const double tail_std = o_std_on.energy - o_std_off.energy;
+    const double tail_rot = o_rot_on.energy - o_rot_off.energy;
+    const Totals want_tail =
+        standardTail(n, side * side * side, 1.0, 1.0, 15.0);
+    // All 6 pairs lie inside the 15 A cutoff, so turning on tail_correction
+    // adds 6 * V(rc) (removing the shift) plus want_tail.energy.
+    CHECK_THAT(tail_std - 6.0 * bareV(1.0, 1.0, 15.0),
+               WithinRel(want_tail.energy, 1e-9));
+    CHECK_THAT(tail_rot, WithinRel(tail_std, 1e-14));
+    CHECK_THAT(o_rot_on.energy, WithinRel(o_std_on.energy, 1e-12));
+    for (std::size_t i = 0; i < n; ++i) {
+      CHECK_THAT(ea_rot[i], WithinRel(ea_std[i], 1e-12));
+    }
+    const double p_std =
+        -(o_std_on.stress[0] + o_std_on.stress[4] + o_std_on.stress[8]) / 3.0;
+    const double p_rot =
+        -(o_rot_on.stress[0] + o_rot_on.stress[4] + o_rot_on.stress[8]) / 3.0;
+    CHECK_THAT(p_rot, WithinRel(p_std, 1e-12));
+  }
+
+  // Single atom at rc = 2.5, L = 20: E_tail = -3.24e-5 eV.
+  {
+    const double l20 = 20.0;
+    const std::array<double, 9> box20_std{l20, 0.0, 0.0, 0.0, l20,
+                                          0.0, 0.0, 0.0, l20};
+    const std::array<double, 9> box20_rot{0.0,  l20, 0.0, -l20, 0.0,
+                                          0.0,  0.0, 0.0, l20};
+    const std::array<double, 3> p{0.0, 0.0, 0.0};
+    const std::array<int, 1> z{18};
+    const rgpot::LJPot pot(rgpot::LJConfig{
+        .u0 = 1.0, .cutoff = 2.5, .psi = 1.0, .tail_correction = true});
+    std::vector<double> f_s(3), f_r(3);
+    rgpot::ForceOut o_s{f_s.data(), 0.0, 0.0, {}, 0};
+    rgpot::ForceOut o_r{f_r.data(), 0.0, 0.0, {}, 0};
+    pot.forceImpl({1, p.data(), z.data(), box20_std.data()}, &o_s);
+    pot.forceImpl({1, p.data(), z.data(), box20_rot.data()}, &o_r);
+    CHECK_THAT(o_s.energy,
+               WithinRel(standardTail(1, l20 * l20 * l20, 1.0, 1.0, 2.5).energy,
+                         1e-14));
+    CHECK(o_r.energy == o_s.energy);
+    CHECK(std::equal(std::begin(o_r.stress), std::end(o_r.stress),
+                     std::begin(o_s.stress)));
+  }
 }
