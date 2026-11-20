@@ -9,11 +9,13 @@ object reports more than one rank.
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+import importlib
+from collections.abc import Mapping
+from typing import Any, Sequence, cast
 
 import numpy as np
 
-from rgpot import atomic_number, unit_conversion_factor
+from . import atomic_number, unit_conversion_factor
 
 __all__ = ["UNIT_STYLES", "FixExternal", "box_rows", "type_numbers", "unit_factors"]
 
@@ -83,7 +85,7 @@ def type_numbers(elements: str | Sequence[str | int], n_types: int) -> np.ndarra
 def _mpi_world(comm: Any, size: int) -> Any:
     if comm is None:
         try:
-            from mpi4py import MPI
+            MPI = importlib.import_module("mpi4py").MPI
         except ImportError as exc:
             raise RuntimeError(
                 f"LAMMPS runs on {size} MPI ranks; rgpot.lammps needs mpi4py "
@@ -210,11 +212,19 @@ class FixExternal:
                 if self.error is None:
                     self.error = recovery_error
 
-    def _unwrapped(self, nlocal: int, x: Any, rows: np.ndarray) -> np.ndarray:
+    def _require_lmp(self) -> Any:
+        lmp = self._lmp
+        if lmp is None:
+            raise RuntimeError("FixExternal is closed")
+        return lmp
+
+    def _unwrapped(
+        self, lmp: Any, nlocal: int, x: Any, rows: np.ndarray
+    ) -> np.ndarray:
         xu = np.array(x[:nlocal], dtype=float).reshape(nlocal, 3)
         if self.periodic and nlocal:
             image = np.asarray(
-                self._lmp.numpy.extract_atom("image")[:nlocal], dtype=np.int64
+                lmp.numpy.extract_atom("image")[:nlocal], dtype=np.int64
             )
             shifts = np.empty((nlocal, 3), dtype=float)
             shifts[:, 0] = (image & self._imgmask) - self._imgmax
@@ -230,12 +240,17 @@ class FixExternal:
     ) -> tuple[float, np.ndarray, np.ndarray | None]:
         evaluate = getattr(self.potential, "evaluate", None)
         if callable(evaluate):
-            result = evaluate(positions, numbers, rows)
+            result = cast(Mapping[str, Any], evaluate(positions, numbers, rows))
             energy = float(result["energy"])
             forces = np.asarray(result["forces"], dtype=float)
             stress = result.get("stress")
         else:
-            energy, forces, _variance = self.potential(positions, numbers, rows)
+            potential = self.potential
+            if not callable(potential):
+                raise TypeError("potential must be a Python rgpot potential object")
+            energy, forces, _variance = cast(
+                tuple[Any, Any, Any], potential(positions, numbers, rows)
+            )
             energy = float(energy)
             forces = np.asarray(forces, dtype=float)
             stress_method = getattr(self.potential, "stress", None)
@@ -332,14 +347,18 @@ class FixExternal:
                     problem = f"rank {rank} failed while {phase}: {item}"
                     break
             assert problem is not None
-        return comm.bcast(problem, root=0)
+        broadcast = comm.bcast(problem, root=0)
+        if broadcast is not None and not isinstance(broadcast, str):
+            raise TypeError("MPI broadcast returned a non-string error report")
+        return broadcast
 
     def _step(self, nlocal: int, tag: Any, x: Any, f: Any) -> None:
         local_error: BaseException | None = None
+        prepared: tuple[Any, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = (
+            None
+        )
         try:
-            lmp = self._lmp
-            if lmp is None:
-                raise RuntimeError("FixExternal is closed")
+            lmp = self._require_lmp()
             boxlo, boxhi, xy, yz, xz = lmp.extract_box()[:5]
             rows = box_rows(boxlo, boxhi, xy, yz, xz)
             tags = np.asarray(tag[:nlocal], dtype=np.int64)
@@ -347,19 +366,26 @@ class FixExternal:
                 lmp.numpy.extract_atom("type")[:nlocal], dtype=np.int64
             )
             numbers = self.type_numbers[types - 1]
-            xu = self._unwrapped(nlocal, x, rows)
+            xu = self._unwrapped(lmp, nlocal, x, rows)
+            prepared = (lmp, tags, xu, numbers, rows)
         except BaseException as exc:
             local_error = exc
 
         if self._comm is None:
             if local_error is not None:
                 raise local_error
-            energy, forces, virial = self._evaluate(tags, xu, numbers, rows)
         else:
-            comm = self._comm
             problem = self._collective_problem(local_error, "preparing local atoms")
             if problem is not None:
                 raise _CollectiveError(problem, local_error)
+
+        assert prepared is not None
+        lmp, tags, xu, numbers, rows = prepared
+
+        if self._comm is None:
+            energy, forces, virial = self._evaluate(tags, xu, numbers, rows)
+        else:
+            comm = self._comm
             parts = comm.gather((tags, xu, numbers), root=0)
             outcome: tuple[float, np.ndarray] | None = None
             shares: list[Any] | None = None
@@ -423,7 +449,7 @@ class FixExternal:
 
     def _take_error(self) -> BaseException:
         error, self.error = self.error, None
-        self._lmp.set_internal_variable(self._flag, 0.0)
+        self._require_lmp().set_internal_variable(self._flag, 0.0)
         assert error is not None
         return error
 
