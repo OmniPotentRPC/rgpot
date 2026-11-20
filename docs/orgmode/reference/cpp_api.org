@@ -246,6 +246,20 @@ bool has_stress() const noexcept;
 - Outputs :: true only when all nine stress components were computed.
 - Errors :: none.
 
+*** =rgpot::CalcResult::stress_struct=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+rgpot_stress_out_t &stress_struct();
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the stress block that the stress entry points of the C API write.
+  It is created with =struct_size= set, and it is the only place a stress is
+  stored; =rgpot_force_out_t= carries none.
+- Errors :: none.
+
 *** =rgpot::CalcResult::stress_data=
 
 #+attr_rgpot: signature
@@ -366,9 +380,41 @@ CalcResult calculate(const InputSpec &input);
 - Units :: those of the wrapped potential.
 - Outputs :: a =CalcResult= with energy, variance and the =[n, 3]= forces tensor
   set by the callback.
+  An =InputSpec= that did not call =with_stress= takes the force-only entry point
+  and never sees a stress; one that did takes =rgpot_potential_calculate_stress=,
+  and =has_stress()= tells whether the potential produced all nine components.
 - Errors :: throws =rgpot::Error= when =rgpot_potential_calculate= returns a
   non-success status: a NULL handle gives "invalid parameter", and a failing
   callback gives the category of its status.
+
+*** =rgpot::PotentialHandle::supports_stress=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool supports_stress() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when a stress callback is registered on the handle.
+- Errors :: none.
+
+*** =rgpot::PotentialHandle::set_stress_callback=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void set_stress_callback(rgpot_status_t (*callback)(
+    void *, const rgpot_force_input_t *, rgpot_force_out_t *,
+    rgpot_stress_out_t *)) const;
+#+end_src
+
+- Inputs :: =callback=, a function that fills the force output and the stress
+  block, or =nullptr= to clear it.
+- Units :: none.
+- Outputs :: the callback is stored on the handle.
+  =PotentialHandle::calculate= uses it only for an =InputSpec= that asked for
+  stress; a potential whose =caps().stress= is false registers none.
+- Errors :: throws =rgpot::Error= for a NULL handle.
 
 *** =rgpot::PotentialHandle::hvp=
 
