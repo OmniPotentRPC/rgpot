@@ -21,14 +21,9 @@ if [[ ! -d "${src_root}" ]]; then
   exit 1
 fi
 
-dirs=(
-  "EAMTable"
-  "nlist"
-  "simd"
-  "types"
-)
 files=(
   "Slices.cc"
+  "Slices.hpp"
   "ForceStructs.hpp"
   "Locality.hpp"
   "ParamHash.hpp"
@@ -41,17 +36,40 @@ files=(
   "pot_caps.hpp"
   "pot_types.hpp"
   "stress.hpp"
+  "EAMTable/EAMTableImages.cc"
+  "EAMTable/EAMTablePot.cc"
+  "EAMTable/EAMTablePot.hpp"
+  "EAMTable/EAMTableTerms.hpp"
+  "nlist/HalfShell.cc"
+  "nlist/HalfShell.hpp"
+  "nlist/HalfShellDetail.hpp"
+  "nlist/HalfShellWalk.cc"
+  "nlist/MinimumImage.cpp"
+  "nlist/MinimumImage.hpp"
+  "nlist/MultiImage.hpp"
+  "nlist/NeighbourList.cc"
+  "nlist/NeighbourList.hpp"
+  "nlist/Neighbours.cc"
+  "nlist/Neighbours.hpp"
+  "nlist/rgpot_nlist.h"
+  "simd/clones.hpp"
+  "simd/eam_body.inc"
+  "simd/exact_fma.hpp"
+  "simd/exact_fma_hw.cc"
+  "simd/exp.cc"
+  "simd/exp.hpp"
+  "simd/pair_loops.hpp"
+  "simd/pods.hpp"
+  "simd/reduce.hpp"
+  "simd/sse_soft.hpp"
+  "types/AtomMatrix.hpp"
 )
 
 rm -rf "${dst_root}"
 mkdir -p "${dst_root}"
 
-for dir in "${dirs[@]}"; do
-  mkdir -p "${dst_root}/${dir}"
-  cp -a "${src_root}/${dir}/." "${dst_root}/${dir}/"
-done
-
 for file in "${files[@]}"; do
+  mkdir -p "$(dirname "${dst_root}/${file}")"
   cp -a "${src_root}/${file}" "${dst_root}/${file}"
 done
 
