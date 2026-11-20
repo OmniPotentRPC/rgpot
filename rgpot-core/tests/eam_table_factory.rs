@@ -120,6 +120,39 @@ fn finite_difference_forces(
 }
 
 #[test]
+fn cpp_eval_file_rejects_mismatched_geometry_before_opening() {
+    let missing = data_dir().join("does-not-exist.eam");
+    let err = cpp_eval_file(
+        &missing,
+        EamTableFormat::Funcfl,
+        false,
+        false,
+        1.0,
+        &[0.0; 4],
+        &[29],
+        &[0.0; 9],
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("4 coordinates for 1 atoms"),
+        "{err}"
+    );
+
+    let err = cpp_eval_file(
+        &missing,
+        EamTableFormat::Funcfl,
+        false,
+        false,
+        1.0,
+        &[0.0; 3],
+        &[29],
+        &[0.0; 8],
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("cell has 8 entries"), "{err}");
+}
+
+#[test]
 fn from_file_funcfl_matches_reference_and_finite_difference() {
     let path = data_dir().join("Cu_u3.eam");
     let reference = reference("cu_u3_cubic.ref");

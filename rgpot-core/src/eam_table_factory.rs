@@ -123,7 +123,7 @@ pub fn eam_table_from_data_with(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eam_table_cpp::{cpp_drop_count, cpp_reset_drop_count};
+    use crate::eam_table_cpp::{cpp_drop_count, cpp_reset_drop_count, CPP_TEST_LOCK};
     use std::path::PathBuf;
 
     fn data_dir() -> PathBuf {
@@ -132,6 +132,7 @@ mod tests {
 
     #[test]
     fn drop_frees_cpp_potential_exactly_once() {
+        let _lock = CPP_TEST_LOCK.lock().unwrap();
         cpp_reset_drop_count();
         {
             let _potential = eam_table_from_file(

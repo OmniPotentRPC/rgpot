@@ -160,6 +160,11 @@ fn main() {
     cc::Build::new()
         .cpp(true)
         .std("c++20")
+        // Keep the packaged CppCore closure distinct from a CppCore library
+        // linked by the embedding application. In particular, a Meson build
+        // must use its OpenMP-enabled rgpot::threadsRequested rather than the
+        // non-OpenMP copy Cargo compiles here.
+        .define("rgpot", "rgpot_core_bundled")
         .flag_if_supported("-fexceptions")
         .flag_if_supported("-ffp-contract=off")
         .flag_if_supported("/fp:precise")
