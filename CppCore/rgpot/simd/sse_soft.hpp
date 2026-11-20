@@ -1,3 +1,6 @@
+// MIT License
+// Copyright 2023--present rgpot developers
+
 // Included from the SSE2 and SSE4 Highway passes. No include guard: each
 // pass needs its own static copy under that pass's target pragma.
 // r+rem matches a hardware fma on normals; a half-ulp tie, a zero, a
