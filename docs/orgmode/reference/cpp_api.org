@@ -344,7 +344,8 @@ std::vector<double> hvp(const InputSpec &input,
 - Errors :: throws =rgpot::Error= when =rgpot_potential_hvp= returns a
   non-success status: NULL pointers, an unknown scheme, a negative or non-finite
   step, a non-finite direction value, overlapping buffers, or
-  =RGPOT_HVP_ANALYTIC= with no analytic callback give "invalid parameter"; a
+  =RGPOT_HVP_ANALYTIC= with neither an exact Hessian nor a Hessian-vector
+  callback give "invalid parameter"; a
   failing force callback gives the category of its status.
   The vector overload throws =rgpot::Error= ("invalid parameter: direction must
   hold 3 * n_atoms values") when =direction.size()= is not 3*n.

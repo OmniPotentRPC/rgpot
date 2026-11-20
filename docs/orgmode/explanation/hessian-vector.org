@@ -21,7 +21,7 @@ A potential handle answers =H v= itself and keeps the forces of that centre.
 |----------------------+--------------------------------+----------------|
 | =RGPOT_HVP_FORWARD=  | 1, plus 1 for each new centre  | =O(h)=         |
 | =RGPOT_HVP_CENTRAL=  | 2                              | =O(h^2)=       |
-| =RGPOT_HVP_ANALYTIC= | 0                              | the callback's |
+| =RGPOT_HVP_ANALYTIC= | 0                              | the exact source's |
 
 The forward scheme reuses the forces of the centre.
 =k= forward products at one centre therefore cost =k + 1= force calls instead of

@@ -21,6 +21,40 @@ use std::os::raw::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// Largest Cartesian dimension of a dense Hessian this library allocates.
+///
+/// `8192` components is `8192²` doubles, 512 MiB. A larger shape is a typed
+/// invalid-parameter error. The C entry point checks the same limit before
+/// it reserves, so an untrusted quadratic size does not abort the process.
+pub const RGPOT_HESSIAN_MAX_DIM: usize = 8192;
+
+/// Element count of a dense Hessian, or a typed error when `dim` is above
+/// [`RGPOT_HESSIAN_MAX_DIM`] or the byte count overflows.
+pub(crate) fn hessian_len(dim: usize) -> Result<usize, HessianError> {
+    if dim > RGPOT_HESSIAN_MAX_DIM {
+        return Err(HessianError::Invalid(format!(
+            "Hessian dimension {dim} exceeds {RGPOT_HESSIAN_MAX_DIM}"
+        )));
+    }
+    let n2 = dim
+        .checked_mul(dim)
+        .ok_or_else(|| HessianError::Invalid("Hessian dimension overflows".into()))?;
+    if n2.checked_mul(std::mem::size_of::<f64>()).is_none() {
+        return Err(HessianError::Invalid("Hessian byte count overflows".into()));
+    }
+    Ok(n2)
+}
+
+fn allocate_hessian(dim: usize) -> Result<Vec<f64>, HessianError> {
+    let n2 = hessian_len(dim)?;
+    let mut matrix = Vec::new();
+    matrix
+        .try_reserve_exact(n2)
+        .map_err(|_| HessianError::Invalid(format!("Hessian allocation of {n2} doubles failed")))?;
+    matrix.resize(n2, 0.0);
+    Ok(matrix)
+}
+
 use crate::eindir::rgpot_potential_t;
 use crate::fused::{lock, FusedKey};
 use crate::hvp::{read_geometry, Geometry, HvpError};
@@ -121,6 +155,10 @@ struct StoredHessian {
 pub(crate) struct HessianState {
     callback: Mutex<Option<HessianCallback>>,
     stored: Mutex<Option<StoredHessian>>,
+    /// Bumped on callback replacement and cache invalidation. An in-flight
+    /// matrix is published only when this is still the value sampled before
+    /// the computation.
+    generation: AtomicU64,
     evaluations: AtomicU64,
     cache_hits: AtomicU64,
     from_hvp: AtomicU64,
@@ -155,7 +193,9 @@ impl rgpot_potential_t {
     /// Drop the cached matrix. The geometry key already changes when the
     /// fused centre is invalidated; this drops a matrix whose callback changed.
     pub(crate) fn invalidate_hessian_cache(&self) {
-        *lock(&self.hessian_state().stored) = None;
+        let state = self.hessian_state();
+        state.generation.fetch_add(1, Ordering::AcqRel);
+        *lock(&state.stored) = None;
     }
 
     /// The counters of the dense-Hessian entry points.
@@ -220,17 +260,23 @@ impl rgpot_potential_t {
             geometry.cell.as_deref(),
         );
         let state = self.hessian_state();
+        let generation = state.generation.load(Ordering::Acquire);
         {
             let stored = lock(&state.stored);
-            if let Some(hit) = stored.as_ref() {
-                if hit.key == key {
-                    state.cache_hits.fetch_add(1, Ordering::Relaxed);
-                    return Ok(Arc::clone(&hit.matrix));
+            if state.generation.load(Ordering::Acquire) == generation {
+                if let Some(hit) = stored.as_ref() {
+                    if hit.key == key {
+                        state.cache_hits.fetch_add(1, Ordering::Relaxed);
+                        return Ok(Arc::clone(&hit.matrix));
+                    }
                 }
             }
         }
         let matrix = Arc::new(unsafe { self.compute_hessian(input, dim) }?);
         let mut stored = lock(&state.stored);
+        if state.generation.load(Ordering::Acquire) != generation {
+            return Ok(matrix);
+        }
         if let Some(hit) = stored.as_ref() {
             if hit.key == key {
                 state.cache_hits.fetch_add(1, Ordering::Relaxed);
@@ -257,11 +303,10 @@ impl rgpot_potential_t {
         dim: usize,
     ) -> Result<Vec<f64>, HessianError> {
         let state = self.hessian_state();
-        let n2 = dim
-            .checked_mul(dim)
-            .ok_or_else(|| HessianError::Invalid("Hessian dimension overflows".into()))?;
-        if let Some(callback) = *lock(&state.callback) {
-            let mut matrix = vec![0.0; n2];
+        hessian_len(dim)?;
+        let callback = *lock(&state.callback);
+        if let Some(callback) = callback {
+            let mut matrix = allocate_hessian(dim)?;
             let status = unsafe { callback(self.pot_user_data, input, matrix.as_mut_ptr()) };
             if status != rgpot_status_t::RGPOT_SUCCESS {
                 return Err(callback_error(status, "Hessian callback"));
@@ -275,7 +320,7 @@ impl rgpot_potential_t {
                 "potential has no analytic Hessian".into(),
             ));
         };
-        let mut matrix = vec![0.0; n2];
+        let mut matrix = allocate_hessian(dim)?;
         let mut direction = vec![0.0; dim];
         let mut column = vec![0.0; dim];
         for j in 0..dim {

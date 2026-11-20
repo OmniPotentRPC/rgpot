@@ -87,8 +87,10 @@ pub unsafe extern "C" fn rgpot_potential_set_hvp_callback(
 ///   `k` products at one geometry make `k + 1` force calls. Error `O(h)`.
 /// - `RGPOT_HVP_CENTRAL`: `(F(x - h u) - F(x + h u)) |v| / (2 h)`, two
 ///   force calls, error `O(h^2)`.
-/// - `RGPOT_HVP_ANALYTIC`: the registered callback; `RGPOT_INVALID_PARAMETER`
-///   when none is registered.
+/// - `RGPOT_HVP_ANALYTIC`: the Hessian-vector callback when one is
+///   registered, otherwise the registered dense Hessian. `RGPOT_INVALID_PARAMETER`
+///   when neither exact source is registered. This scheme does not difference
+///   forces.
 ///
 /// `step` is `h`, a length in the units of the positions; 0 selects
 /// `RGPOT_HVP_DEFAULT_STEP`. A zero direction writes zeros without a call.

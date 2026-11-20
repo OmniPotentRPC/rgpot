@@ -96,16 +96,27 @@ pub unsafe extern "C" fn rgpot_potential_hessian(
         let Some(dim) = (unsafe { input.n_atoms() }).and_then(|n| n.checked_mul(3)) else {
             return refuse("rgpot_potential_hessian: positions tensor is NULL or too large");
         };
+        if dim > crate::hessian::RGPOT_HESSIAN_MAX_DIM {
+            return refuse(&format!(
+                "rgpot_potential_hessian: dimension {dim} exceeds {}",
+                crate::hessian::RGPOT_HESSIAN_MAX_DIM
+            ));
+        }
         let Some(n2) = dim.checked_mul(dim) else {
             return refuse("rgpot_potential_hessian: Hessian dimension overflows");
         };
+        let Some(bytes) = n2.checked_mul(std::mem::size_of::<f64>()) else {
+            return refuse("rgpot_potential_hessian: Hessian byte count overflows");
+        };
         if dim > 0 && !input.positions.is_null() {
             let positions = unsafe { (*input.positions).dl_tensor.data } as usize;
-            let bytes = n2 * std::mem::size_of::<f64>();
+            let Some(position_bytes) = dim.checked_mul(std::mem::size_of::<f64>()) else {
+                return refuse("rgpot_potential_hessian: position byte count overflows");
+            };
             let out = hessian_out as usize;
             if positions != 0
                 && positions < out.saturating_add(bytes)
-                && out < positions.saturating_add(dim * std::mem::size_of::<f64>())
+                && out < positions.saturating_add(position_bytes)
             {
                 return refuse("rgpot_potential_hessian: hessian_out overlaps positions");
             }

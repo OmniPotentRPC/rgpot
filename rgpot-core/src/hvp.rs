@@ -29,7 +29,7 @@
 //! |--------|-------------------------|-------|
 //! | `RGPOT_HVP_FORWARD` | 1, plus 1 for each new centre | `O(h)` |
 //! | `RGPOT_HVP_CENTRAL` | 2 | `O(h^2)` |
-//! | `RGPOT_HVP_ANALYTIC` | 0 | that of the callback |
+//! | `RGPOT_HVP_ANALYTIC` | 0 | the product callback, or the dense Hessian |
 //!
 //! `h` is the length of the displacement along the unit direction
 //! `v / |v|`, in the units of the positions. The difference is scaled back
@@ -71,13 +71,16 @@ pub const RGPOT_HVP_DEFAULT_STEP: f64 = 1.0e-3;
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum rgpot_hvp_scheme_t {
-    /// The analytic callback when one is registered, otherwise forward.
+    /// The analytic callback when one is registered, otherwise a registered
+    /// dense Hessian, otherwise forward differences.
     RGPOT_HVP_AUTO = 0,
     /// One displaced force call against the cached centre forces.
     RGPOT_HVP_FORWARD = 1,
     /// Two displaced force calls, one on each side of the centre.
     RGPOT_HVP_CENTRAL = 2,
-    /// The registered callback. Refused when none is registered.
+    /// Exact curvature. The Hessian-vector callback when one is registered,
+    /// otherwise the registered dense Hessian. Refused when neither is
+    /// registered. This scheme does not difference forces.
     RGPOT_HVP_ANALYTIC = 3,
 }
 
@@ -350,15 +353,18 @@ impl rgpot_potential_t {
             rgpot_hvp_scheme_t::RGPOT_HVP_AUTO if analytic.is_some() => Product::Analytic,
             rgpot_hvp_scheme_t::RGPOT_HVP_AUTO if self.has_hessian_callback() => Product::Hessian,
             rgpot_hvp_scheme_t::RGPOT_HVP_AUTO => Product::Forward,
-            rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC => Product::Analytic,
+            rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC if analytic.is_some() => Product::Analytic,
+            rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC if self.has_hessian_callback() => {
+                Product::Hessian
+            }
+            rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC => {
+                return Err(invalid(
+                    "RGPOT_HVP_ANALYTIC: no analytic Hessian or Hessian-vector callback",
+                ));
+            }
             rgpot_hvp_scheme_t::RGPOT_HVP_CENTRAL => Product::Central,
             rgpot_hvp_scheme_t::RGPOT_HVP_FORWARD => Product::Forward,
         };
-        if resolved == Product::Analytic && analytic.is_none() {
-            return Err(invalid(
-                "RGPOT_HVP_ANALYTIC: no Hessian-vector callback is registered",
-            ));
-        }
         let length = norm(direction);
         if length == 0.0 {
             hv_out.fill(0.0);

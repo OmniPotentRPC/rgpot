@@ -778,13 +778,14 @@ bits.
 
 - Inputs :: none; an enum passed as =int32_t=.
 - Units :: none.
-- Outputs :: =RGPOT_HVP_AUTO= (0): the analytic callback when one is registered,
-  else forward.
+- Outputs :: =RGPOT_HVP_AUTO= (0): the analytic Hessian-vector callback when one
+  is registered, else a registered dense Hessian, else forward.
   =RGPOT_HVP_FORWARD= (1): =(F(x) - F(x + h u)) |v| / h= with =u = v / |v|=,
   =F(x)= from the cached centre.
   =RGPOT_HVP_CENTRAL= (2): =(F(x - h u) - F(x + h u)) |v| / (2 h)=, two force
   calls.
-  =RGPOT_HVP_ANALYTIC= (3): the registered callback.
+  =RGPOT_HVP_ANALYTIC= (3): the Hessian-vector callback, else the registered
+  dense Hessian. Refused when neither is registered. No force difference.
 - Errors :: none; =rgpot_potential_hvp= refuses any other value.
 
 *** =rgpot_hvp_counts_t=
@@ -871,7 +872,8 @@ enum rgpot_status_t rgpot_potential_hvp(const struct rgpot_potential_t *pot,
   tensor of =3 * n_atoms= finite elements; a non-null =atomic_numbers= that is
   not int32 with =n_atoms= elements, or a non-null =box_matrix= that is not
   float64 with 9 elements; a non-finite =direction= element; a negative or
-  non-finite =step=; =RGPOT_HVP_ANALYTIC= with no callback registered; a force
+  non-finite =step=; =RGPOT_HVP_ANALYTIC= with neither an exact Hessian nor a
+  Hessian-vector callback; a force
   callback output that fails the checks of =PotentialCallback=; a non-finite
   analytic output.
   A force or analytic callback's error status is returned unchanged, and

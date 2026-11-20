@@ -51,6 +51,15 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define RGPOT_EAM_TABLE_FINNIS_SINCLAIR 3
 
 /**
+ * Largest Cartesian dimension of a dense Hessian this library allocates.
+ *
+ * `8192` components is `8192²` doubles, 512 MiB. A larger shape is a typed
+ * invalid-parameter error. The C entry point checks the same limit before
+ * it reserves, so an untrusted quadratic size does not abort the process.
+ */
+#define RGPOT_HESSIAN_MAX_DIM 8192
+
+/**
  * Displacement length used when a caller passes a step of 0.
  */
 #define RGPOT_HVP_DEFAULT_STEP 1.0e-3
@@ -132,7 +141,8 @@ typedef enum rgpot_fused_error_kind_t {
  */
 typedef enum rgpot_hvp_scheme_t {
   /**
-   * The analytic callback when one is registered, otherwise forward.
+   * The analytic callback when one is registered, otherwise a registered
+   * dense Hessian, otherwise forward differences.
    */
   RGPOT_HVP_AUTO = 0,
   /**
@@ -144,7 +154,9 @@ typedef enum rgpot_hvp_scheme_t {
    */
   RGPOT_HVP_CENTRAL = 2,
   /**
-   * The registered callback. Refused when none is registered.
+   * Exact curvature. The Hessian-vector callback when one is registered,
+   * otherwise the registered dense Hessian. Refused when neither is
+   * registered. This scheme does not difference forces.
    */
   RGPOT_HVP_ANALYTIC = 3,
 } rgpot_hvp_scheme_t;
@@ -641,8 +653,10 @@ enum rgpot_status_t rgpot_potential_set_hvp_callback(
  *   `k` products at one geometry make `k + 1` force calls. Error `O(h)`.
  * - `RGPOT_HVP_CENTRAL`: `(F(x - h u) - F(x + h u)) |v| / (2 h)`, two
  *   force calls, error `O(h^2)`.
- * - `RGPOT_HVP_ANALYTIC`: the registered callback; `RGPOT_INVALID_PARAMETER`
- *   when none is registered.
+ * - `RGPOT_HVP_ANALYTIC`: the Hessian-vector callback when one is
+ *   registered, otherwise the registered dense Hessian.
+ * `RGPOT_INVALID_PARAMETER` when neither exact source is registered. This
+ * scheme does not difference forces.
  *
  * `step` is `h`, a length in the units of the positions; 0 selects
  * `RGPOT_HVP_DEFAULT_STEP`. A zero direction writes zeros without a call.

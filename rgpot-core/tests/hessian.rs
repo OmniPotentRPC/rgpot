@@ -326,7 +326,7 @@ fn auto_prefers_the_product_callback_when_both_are_registered() {
 }
 
 #[test]
-fn analytic_scheme_still_requires_the_product_callback() {
+fn analytic_scheme_uses_a_dense_hessian_when_that_is_the_exact_source() {
     let handle = Handle::bare();
     unsafe { rgpot_potential_set_hessian_callback(handle.pot, Some(quad_hessian)) };
     let mut geom = Geom::new([0.1, 0.2, -0.3]);
@@ -343,7 +343,126 @@ fn analytic_scheme_still_requires_the_product_callback() {
             product.as_mut_ptr(),
         )
     };
-    assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
-    assert!(last_error().contains("no Hessian-vector callback"));
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_eq!(product, [2.0, 0.5, 0.0]);
+    assert_eq!(handle.quad.force_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(handle.quad.hessian_calls.load(Ordering::Relaxed), 1);
     unsafe { rgpot_force_input_free(&mut input) };
+}
+
+#[test]
+fn an_oversized_hessian_is_a_typed_error_and_does_not_call_the_callback() {
+    let handle = Handle::bare();
+    unsafe { rgpot_potential_set_hessian_callback(handle.pot, Some(quad_hessian)) };
+    let n_atoms = (rgpot_core::hessian::RGPOT_HESSIAN_MAX_DIM / 3) + 1;
+    let mut positions = vec![0.0; 3 * n_atoms];
+    let mut species = vec![1; n_atoms];
+    let mut cell = [0.0; 9];
+    cell[0] = 10.0;
+    cell[4] = 10.0;
+    cell[8] = 10.0;
+    let mut input = unsafe {
+        rgpot_force_input_create(
+            n_atoms,
+            positions.as_mut_ptr(),
+            species.as_mut_ptr(),
+            cell.as_mut_ptr(),
+        )
+    };
+    let mut scratch = [0.0];
+    let status = unsafe { rgpot_potential_hessian(handle.pot, &input, scratch.as_mut_ptr()) };
+    assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+    assert!(last_error().contains("exceeds"));
+    assert_eq!(handle.quad.hessian_calls.load(Ordering::Relaxed), 0);
+    unsafe { rgpot_force_input_free(&mut input) };
+}
+
+#[test]
+fn replacing_the_callback_during_evaluation_does_not_publish_the_old_matrix() {
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    struct Gate {
+        entered: AtomicBool,
+        release: AtomicBool,
+    }
+    unsafe extern "C" fn idle_force(
+        _user_data: *mut c_void,
+        _input: *const rgpot_force_input_t,
+        _out: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+    unsafe extern "C" fn first_hessian(
+        user_data: *mut c_void,
+        _input: *const rgpot_force_input_t,
+        hessian_out: *mut f64,
+    ) -> rgpot_status_t {
+        let gate = unsafe { &*(user_data as *const Gate) };
+        gate.entered.store(true, Ordering::Release);
+        while !gate.release.load(Ordering::Acquire) {
+            std::thread::yield_now();
+        }
+        for value in unsafe { std::slice::from_raw_parts_mut(hessian_out, 9) } {
+            *value = 1.0;
+        }
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+    unsafe extern "C" fn second_hessian(
+        _user_data: *mut c_void,
+        _input: *const rgpot_force_input_t,
+        hessian_out: *mut f64,
+    ) -> rgpot_status_t {
+        for value in unsafe { std::slice::from_raw_parts_mut(hessian_out, 9) } {
+            *value = 2.0;
+        }
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+
+    let gate = Arc::new(Gate {
+        entered: AtomicBool::new(false),
+        release: AtomicBool::new(false),
+    });
+    let pot = unsafe {
+        rgpot_potential_new(
+            idle_force as PotentialCallback,
+            Arc::as_ptr(&gate) as *mut c_void,
+            None,
+        )
+    };
+    assert!(!pot.is_null());
+    unsafe { rgpot_potential_set_hessian_callback(pot, Some(first_hessian)) };
+    let pot_addr = pot as usize;
+    let worker = std::thread::spawn(move || {
+        let mut geom = Geom::new([0.1, 0.2, -0.3]);
+        let mut input = geom.input();
+        let mut matrix = [0.0; 9];
+        let status = unsafe {
+            rgpot_potential_hessian(
+                pot_addr as *mut rgpot_potential_t,
+                &input,
+                matrix.as_mut_ptr(),
+            )
+        };
+        unsafe { rgpot_force_input_free(&mut input) };
+        (status, matrix)
+    });
+    while !gate.entered.load(Ordering::Acquire) {
+        std::thread::yield_now();
+    }
+    unsafe { rgpot_potential_set_hessian_callback(pot, Some(second_hessian)) };
+    gate.release.store(true, Ordering::Release);
+    let (status, first_matrix) = worker.join().expect("hessian thread");
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_eq!(first_matrix, [1.0; 9]);
+    let mut geom = Geom::new([0.1, 0.2, -0.3]);
+    let mut input = geom.input();
+    let mut matrix = [0.0; 9];
+    let status = unsafe { rgpot_potential_hessian(pot, &input, matrix.as_mut_ptr()) };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_eq!(matrix, [2.0; 9]);
+    unsafe {
+        rgpot_force_input_free(&mut input);
+        rgpot_potential_free(pot);
+    }
 }
