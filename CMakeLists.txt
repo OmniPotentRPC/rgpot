@@ -81,6 +81,47 @@ if(NOT CMAKE_MATCH_1)
 endif()
 set(RGPOT_CXX_SOVERSION "${CMAKE_MATCH_1}")
 
+# Vendored vesin is v0.6.0 plus local eOn patches. VERSION names that
+# release; vesin-single-build.cpp records the numeric pin on its own line.
+set(_rgpot_vesin_expected "v0.6.0 plus local eOn patches")
+if(NOT _rgpot_vesin_expected MATCHES
+   "^v([0-9]+\\.[0-9]+\\.[0-9]+) plus local eOn patches$")
+  message(FATAL_ERROR
+          "vendored vesin release must be vX.Y.Z plus local eOn patches")
+endif()
+set(_rgpot_vesin_pin "${CMAKE_MATCH_1}")
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin/VERSION"
+     _rgpot_vesin_raw)
+set(_rgpot_vesin_lines)
+foreach(_rgpot_vesin_line IN LISTS _rgpot_vesin_raw)
+  string(STRIP "${_rgpot_vesin_line}" _rgpot_vesin_line)
+  if(NOT _rgpot_vesin_line STREQUAL "" AND NOT _rgpot_vesin_line MATCHES "^#")
+    list(APPEND _rgpot_vesin_lines "${_rgpot_vesin_line}")
+  endif()
+endforeach()
+list(LENGTH _rgpot_vesin_lines _rgpot_vesin_count)
+if(NOT _rgpot_vesin_count EQUAL 1)
+  message(FATAL_ERROR
+          "third_party/vesin/VERSION must contain exactly one release line")
+endif()
+list(GET _rgpot_vesin_lines 0 RGPOT_VESIN_VERSION)
+if(NOT RGPOT_VESIN_VERSION STREQUAL "${_rgpot_vesin_expected}")
+  message(
+    FATAL_ERROR
+      "third_party/vesin/VERSION is \"${RGPOT_VESIN_VERSION}\", expected \"${_rgpot_vesin_expected}\""
+  )
+endif()
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin/vesin-single-build.cpp"
+     _rgpot_vesin_source)
+string(FIND "${_rgpot_vesin_source}" "// vesin version: ${_rgpot_vesin_pin}\n"
+             _rgpot_vesin_marker)
+if(_rgpot_vesin_marker EQUAL -1)
+  message(
+    FATAL_ERROR
+      "third_party/vesin/vesin-single-build.cpp does not record vesin version ${_rgpot_vesin_pin}"
+  )
+endif()
+
 # --- Dependencies ---
 include(FetchContent)
 

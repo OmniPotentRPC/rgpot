@@ -181,10 +181,47 @@ endif
 # ------------------------ vesin (neighbour lists)
 # One vesin for the whole tree: the nlist headers, MetatomicPot, and the
 # Fortran pots all consume this dependency. Prefer an installed vesin
-# >= 0.6; fall back to the vendored single-TU build, which carries the
-# local patches maintained as vesin upstream candidates.
+# >= 0.6; fall back to the vendored single-TU build, which is
+# v0.6.0 plus local eOn patches.
 fs = import('fs')
-vesin_version = fs.read('third_party/vesin/VERSION').strip()
+vesin_expected = 'v0.6.0 plus local eOn patches'
+vesin_pin = vesin_expected.split(' ')[0].substring(1)
+if vesin_pin.split('.').length() != 3
+    error('vendored vesin pin ' + vesin_pin + ' is not major.minor.patch')
+endif
+foreach _vesin_part : vesin_pin.split('.')
+    if _vesin_part.to_int() < 0
+        error('vendored vesin pin ' + vesin_pin + ' is not major.minor.patch')
+    endif
+endforeach
+vesin_version_lines = []
+foreach _vesin_line : fs.read('third_party/vesin/VERSION').split('\n')
+    _vesin_line = _vesin_line.strip()
+    if _vesin_line != '' and not _vesin_line.startswith('#')
+        vesin_version_lines += _vesin_line
+    endif
+endforeach
+if vesin_version_lines.length() != 1
+    error('third_party/vesin/VERSION must contain exactly one release line')
+endif
+vesin_version = vesin_version_lines[0]
+if vesin_version != vesin_expected
+    error(
+        'third_party/vesin/VERSION is "'
+        + vesin_version
+        + '", expected "'
+        + vesin_expected
+        + '"',
+    )
+endif
+if not fs.read('third_party/vesin/vesin-single-build.cpp').contains(
+    '// vesin version: ' + vesin_pin + '\n',
+)
+    error(
+        'third_party/vesin/vesin-single-build.cpp does not record vesin version '
+        + vesin_pin,
+    )
+endif
 vesin_threads_dep = dependency('threads')
 vesin_dep = dependency('vesin', version: '>=0.6', required: false)
 # vesin_hdr_dep carries compile information only. Meson copies the objects
@@ -210,7 +247,7 @@ if not vesin_dep.found()
         link_with: vesin_int,
         dependencies: [vesin_hdr_dep],
     )
-    message('vesin: vendored third_party/vesin')
+    message('vesin: vendored third_party/vesin (' + vesin_version + ')')
 else
     message('vesin: system / pkg-config')
 endif
