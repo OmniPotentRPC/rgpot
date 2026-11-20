@@ -895,7 +895,9 @@ if _fast_minor < 89 and _fast_rustup.found()
     endif
 endif
 
-if _fast_opt.disabled()
+if _fast_opt.disabled() or get_option('with_rust_core')
+    # Both crates are Rust static libraries. Linking them into the same C++
+    # test or shared library would pull in two copies of the Rust runtime.
     has_fast_nlist = false
 elif _fast_minor >= 89 and _fast_cargo.found()
     has_fast_nlist = true
