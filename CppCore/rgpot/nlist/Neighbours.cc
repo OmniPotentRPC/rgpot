@@ -5,9 +5,9 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -405,7 +405,8 @@ void Neighbours::buildStored(const double *xyz, std::size_t n,
   off_[n] = static_cast<std::int32_t>(nbr_.size());
 }
 
-void Neighbours::buildImaged(const double *xyz, std::size_t n, const Spec &spec) {
+void Neighbours::buildImaged(const double *xyz, std::size_t n,
+                             const Spec &spec) {
   bool periodic[3];
   for (int k = 0; k < 3; ++k) {
     const double *row = box_ + 3 * k;
@@ -415,7 +416,8 @@ void Neighbours::buildImaged(const double *xyz, std::size_t n, const Spec &spec)
   double box[3][3];
   std::memcpy(box, box_, sizeof(box));
   VesinOptions options{};
-  options.cutoff = std::nextafter(search_, std::numeric_limits<double>::infinity());
+  options.cutoff =
+      std::nextafter(search_, std::numeric_limits<double>::infinity());
   options.full = true;
   options.sorted = false;
   options.algorithm = VesinCellList;
@@ -426,9 +428,9 @@ void Neighbours::buildImaged(const double *xyz, std::size_t n, const Spec &spec)
   options.return_vectors = false;
   VesinNeighborList found;
   const char *message = nullptr;
-  const int status =
-      vesin_neighbors(reinterpret_cast<const double(*)[3]>(xyz), n, box, periodic,
-                      VesinDevice{VesinCPU, 0}, options, &found, &message);
+  const int status = vesin_neighbors(reinterpret_cast<const double(*)[3]>(xyz),
+                                     n, box, periodic, VesinDevice{VesinCPU, 0},
+                                     options, &found, &message);
   if (status != 0) {
     vesin_free(&found);
     throw std::runtime_error(std::string("vesin neighbour search failed: ") +
@@ -450,9 +452,11 @@ void Neighbours::buildImaged(const double *xyz, std::size_t n, const Spec &spec)
     if (!spec.images && i >= j) {
       continue;
     }
-    rows.push_back(Row{i, j,
-                       {found.shifts[p][0], found.shifts[p][1], found.shifts[p][2]},
-                       found.distances[p]});
+    rows.push_back(
+        Row{i,
+            j,
+            {found.shifts[p][0], found.shifts[p][1], found.shifts[p][2]},
+            found.distances[p]});
   }
   vesin_free(&found);
   auto shift_less = [](const std::int32_t *a, const std::int32_t *b) {
@@ -476,7 +480,8 @@ void Neighbours::buildImaged(const double *xyz, std::size_t n, const Spec &spec)
     });
     std::size_t kept = 0;
     for (std::size_t p = 0; p < rows.size(); ++p) {
-      if (kept > 0 && rows[kept - 1].i == rows[p].i && rows[kept - 1].j == rows[p].j) {
+      if (kept > 0 && rows[kept - 1].i == rows[p].i &&
+          rows[kept - 1].j == rows[p].j) {
         continue;
       }
       rows[kept++] = rows[p];
@@ -489,7 +494,8 @@ void Neighbours::buildImaged(const double *xyz, std::size_t n, const Spec &spec)
     }
   }
   if (rows.size() > static_cast<std::size_t>(0x7fffffff)) {
-    throw std::runtime_error("the neighbour list holds more pairs than an int32 index");
+    throw std::runtime_error(
+        "the neighbour list holds more pairs than an int32 index");
   }
   std::sort(rows.begin(), rows.end(), [&](const Row &a, const Row &b) {
     if (a.i != b.i) {
@@ -546,14 +552,13 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   if (!(search_ > 0.0)) {
     search_ = 0.0;
   }
-  imaged_ = false;
+  imaged_ = sheared || spec.images;
   inside_ = true;
-  if (n >= 2 && search_ > 0.0 && std::isfinite(search_)) {
+  if (n > 0 && search_ > 0.0 && std::isfinite(search_)) {
     std::array<bool, 3> periodic{};
     for (int k = 0; k < 3; ++k) {
       periodic[static_cast<std::size_t>(k)] = periodic_[k];
     }
-    imaged_ = sheared || spec.images;
     inside_ = !outsideCell(xyz, n, box9, periodic);
   }
   if (use_general_ && !imaged_) {
@@ -569,7 +574,7 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   nbr_.clear();
   shift_.clear();
   streaming_ = true;
-  if (n < 2 || !(search_ > 0.0)) {
+  if (n == 0 || (n < 2 && !imaged_) || !(search_ > 0.0)) {
     streaming_ = false;
     mode_ = Mode::Stored;
     off_.assign(n + 1, 0);

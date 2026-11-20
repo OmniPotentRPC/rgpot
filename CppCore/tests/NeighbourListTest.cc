@@ -40,8 +40,9 @@ struct Key {
   }
 };
 
-std::set<Key> brute(const std::vector<double> &pos, const double *box, double cutoff,
-                    bool full, bool strict, const std::array<bool, 3> &periodic) {
+std::set<Key> brute(const std::vector<double> &pos, const double *box,
+                    double cutoff, bool full, bool strict,
+                    const std::array<bool, 3> &periodic) {
   const int n = static_cast<int>(pos.size() / 3);
   const int span = 3;
   std::set<Key> out;
@@ -98,8 +99,8 @@ std::set<Key> from_table(const rgpot::nlist::Table &table) {
     const int mask = table.mask[p];
     const int origin = table.first[p];
     if (mask == 0xff) {
-      out.insert(Key{origin, table.second[p], table.shift[3 * p], table.shift[3 * p + 1],
-                     table.shift[3 * p + 2]});
+      out.insert(Key{origin, table.second[p], table.shift[3 * p],
+                     table.shift[3 * p + 1], table.shift[3 * p + 2]});
     } else {
       for (int lane = 0; lane < 4; ++lane) {
         if ((mask & (1 << lane)) != 0) {
@@ -112,12 +113,82 @@ std::set<Key> from_table(const rgpot::nlist::Table &table) {
   return out;
 }
 
+void require_image_sum(const std::vector<double> &pos, const double *box,
+                       double cutoff, bool full,
+                       const std::array<bool, 3> &periodic) {
+  rgpot::nlist::Query query;
+  query.cutoff = cutoff;
+  query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
+                                         : rgpot::nlist::Shell::Half};
+  query.cut = rgpot::nlist::Cut::Strict;
+  query.periodic = periodic;
+  rgpot::nlist::Table table;
+  rgpot::nlist::build(table, pos.data(), pos.size() / 3, box, query);
+  const auto ref = brute(pos, box, cutoff, full, true, periodic);
+  REQUIRE(table.size() == ref.size());
+  REQUIRE(from_table(table) == ref);
+  for (std::size_t p = 0; p < table.size(); ++p) {
+    const std::size_t i = static_cast<std::size_t>(table.first[p]);
+    const std::size_t j = static_cast<std::size_t>(table.second[p]);
+    const int sa = table.shift[3 * p];
+    const int sb = table.shift[3 * p + 1];
+    const int sc = table.shift[3 * p + 2];
+    const double vx =
+        pos[3 * j] - pos[3 * i] + sa * box[0] + sb * box[3] + sc * box[6];
+    const double vy = pos[3 * j + 1] - pos[3 * i + 1] + sa * box[1] +
+                      sb * box[4] + sc * box[7];
+    const double vz = pos[3 * j + 2] - pos[3 * i + 2] + sa * box[2] +
+                      sb * box[5] + sc * box[8];
+    REQUIRE(
+        table.distance[p] ==
+        Catch::Approx(std::sqrt(vx * vx + vy * vy + vz * vz)).margin(1e-12));
+  }
+}
+
 } // namespace
+
+TEST_CASE("small periodic cells enumerate every image", "[nlist][api]") {
+  const std::array<bool, 3> periodic{{true, true, true}};
+
+  SECTION("one atom in a cubic cell") {
+    const double box[9] = {2, 0, 0, 0, 2, 0, 0, 0, 2};
+    const std::vector<double> pos{0.2, 0.3, 0.4};
+    for (bool full : {false, true}) {
+      require_image_sum(pos, box, 3.0, full, periodic);
+      rgpot::nlist::Query query;
+      query.cutoff = 3.0;
+      query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
+                                             : rgpot::nlist::Shell::Half};
+      rgpot::nlist::Table table;
+      rgpot::nlist::build(table, pos.data(), 1, box, query);
+      REQUIRE(table.size() == (full ? 18 : 9));
+    }
+  }
+
+  SECTION("one atom in a triclinic cell") {
+    const double box[9] = {2.0, 0, 0, 0.6, 1.9, 0, 0.2, 0.4, 2.1};
+    const std::vector<double> pos{0.2, 0.3, 0.4};
+    for (bool full : {false, true}) {
+      require_image_sum(pos, box, 3.0, full, periodic);
+    }
+  }
+
+  SECTION("two atoms across image-count thresholds") {
+    const double box[9] = {4, 0, 0, 0, 4, 0, 0, 0, 4};
+    const std::vector<double> pos{0.2, 0.3, 0.4, 1.3, 1.1, 0.9};
+    for (double ratio : {0.49, 0.51, 0.99, 1.01, 1.49, 1.51}) {
+      for (bool full : {false, true}) {
+        CAPTURE(ratio, full);
+        require_image_sum(pos, box, ratio * 4.0, full, periodic);
+      }
+    }
+  }
+}
 
 TEST_CASE("neighbour query matches a triclinic brute force", "[nlist][api]") {
   const double box[9] = {4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2};
-  const std::vector<double> pos = {0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7,
-                                   2.2, 2.1, 3.9};
+  const std::vector<double> pos = {0.2, 0.3, 0.4, 3.6, 0.5, 0.2,
+                                   1.0, 3.8, 0.7, 2.2, 2.1, 3.9};
   const double cutoff = 3.2;
   const std::array<bool, 3> periodic{{true, true, false}};
   for (bool full : {false, true}) {
@@ -126,7 +197,7 @@ TEST_CASE("neighbour query matches a triclinic brute force", "[nlist][api]") {
       query.cutoff = cutoff;
       query.skin = 0;
       query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
-                                            : rgpot::nlist::Shell::Half};
+                                             : rgpot::nlist::Shell::Half};
       query.cut = strict ? rgpot::nlist::Cut::Strict : rgpot::nlist::Cut::Loose;
       query.periodic = periodic;
       rgpot::nlist::Table table;
@@ -141,14 +212,16 @@ TEST_CASE("neighbour query matches a triclinic brute force", "[nlist][api]") {
           continue;
         }
         const int j = table.second[p];
-        const double vx = pos[3 * j] - pos[3 * table.first[p]] +
-                          table.shift[3 * p] * box[0] + table.shift[3 * p + 1] * box[3] +
-                          table.shift[3 * p + 2] * box[6];
+        const double vx =
+            pos[3 * j] - pos[3 * table.first[p]] + table.shift[3 * p] * box[0] +
+            table.shift[3 * p + 1] * box[3] + table.shift[3 * p + 2] * box[6];
         const double vy = pos[3 * j + 1] - pos[3 * table.first[p] + 1] +
-                          table.shift[3 * p] * box[1] + table.shift[3 * p + 1] * box[4] +
+                          table.shift[3 * p] * box[1] +
+                          table.shift[3 * p + 1] * box[4] +
                           table.shift[3 * p + 2] * box[7];
         const double vz = pos[3 * j + 2] - pos[3 * table.first[p] + 2] +
-                          table.shift[3 * p] * box[2] + table.shift[3 * p + 1] * box[5] +
+                          table.shift[3 * p] * box[2] +
+                          table.shift[3 * p + 1] * box[5] +
                           table.shift[3 * p + 2] * box[8];
         REQUIRE(std::abs(vx - table.vector[3 * p]) < 1e-12);
         REQUIRE(std::abs(vy - table.vector[3 * p + 1]) < 1e-12);
@@ -183,7 +256,8 @@ TEST_CASE("a chunked walk returns the stored pairs", "[nlist][api]") {
     dest.mask = mask;
     const std::size_t n = walk.pull(dest, done);
     for (std::size_t p = 0; p < n; ++p) {
-      got.insert(Key{first[p], second[p], shift[3 * p], shift[3 * p + 1], shift[3 * p + 2]});
+      got.insert(Key{first[p], second[p], shift[3 * p], shift[3 * p + 1],
+                     shift[3 * p + 2]});
     }
   }
   REQUIRE(got == from_table(table));
@@ -218,16 +292,19 @@ TEST_CASE("the C ABI round-trips a stored list and a stream", "[nlist][api]") {
   soa.distance = distance.data();
   soa.mask = mask.data();
   soa.cap = needed;
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &soa, &count, &needed) == RGPOT_NLIST_OK);
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &soa, &count, &needed) ==
+          RGPOT_NLIST_OK);
   REQUIRE(count == needed);
   soa.cap = 1;
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &soa, &count, &needed) == RGPOT_NLIST_SHORT);
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &soa, &count, &needed) ==
+          RGPOT_NLIST_SHORT);
   REQUIRE(count == 1);
   REQUIRE(needed > 1);
   REQUIRE(std::string(rgpot_nlist_strerror(RGPOT_NLIST_SHORT)).find("needed") !=
           std::string::npos);
   rgpot_nlist_request zero{};
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &zero, nullptr, &count, &needed) == RGPOT_NLIST_ERR_ABI);
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &zero, nullptr, &count, &needed) ==
+          RGPOT_NLIST_ERR_ABI);
   request.shape = 9;
   REQUIRE(rgpot_nlist_build(pos, 3, box, &request, nullptr, &count, &needed) ==
           RGPOT_NLIST_SHAPE);
@@ -242,9 +319,11 @@ TEST_CASE("the C ABI round-trips a stored list and a stream", "[nlist][api]") {
           RGPOT_NLIST_CUTOFF);
   request.cutoff = 3.0;
   soa.cap = needed;
-  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &soa, &count, &needed) == RGPOT_NLIST_OK);
+  REQUIRE(rgpot_nlist_build(pos, 3, box, &request, &soa, &count, &needed) ==
+          RGPOT_NLIST_OK);
   rgpot_nlist_walk *walk = nullptr;
-  REQUIRE(rgpot_nlist_walk_open(pos, 3, box, &request, &walk) == RGPOT_NLIST_OK);
+  REQUIRE(rgpot_nlist_walk_open(pos, 3, box, &request, &walk) ==
+          RGPOT_NLIST_OK);
   REQUIRE(walk != nullptr);
   std::vector<std::int32_t> streamed_first, streamed_second, streamed_shift;
   int32_t done = 0;
@@ -264,8 +343,10 @@ TEST_CASE("the C ABI round-trips a stored list and a stream", "[nlist][api]") {
     std::size_t n = 0;
     REQUIRE(rgpot_nlist_walk_pull(walk, &chunk, &n, &done) == RGPOT_NLIST_OK);
     streamed_first.insert(streamed_first.end(), chunk_first, chunk_first + n);
-    streamed_second.insert(streamed_second.end(), chunk_second, chunk_second + n);
-    streamed_shift.insert(streamed_shift.end(), chunk_shift, chunk_shift + 3 * n);
+    streamed_second.insert(streamed_second.end(), chunk_second,
+                           chunk_second + n);
+    streamed_shift.insert(streamed_shift.end(), chunk_shift,
+                          chunk_shift + 3 * n);
   }
   rgpot_nlist_walk_close(walk);
   REQUIRE(streamed_first.size() == first.size());
@@ -278,7 +359,8 @@ TEST_CASE("the C ABI round-trips a stored list and a stream", "[nlist][api]") {
   }
 }
 
-TEST_CASE("a rejected geometry throws and keeps the previous table", "[nlist][api]") {
+TEST_CASE("a rejected geometry throws and keeps the previous table",
+          "[nlist][api]") {
   const double box[9] = {4, 0, 0, 0, 4, 0, 0, 0, 4};
   const std::vector<double> pos = {0, 0, 0, 1, 0, 0};
   rgpot::nlist::Query query;
@@ -295,8 +377,8 @@ TEST_CASE("a rejected geometry throws and keeps the previous table", "[nlist][ap
 
 TEST_CASE("a cluster of four expands to the full list", "[nlist][api]") {
   const double box[9] = {4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2};
-  const std::vector<double> pos = {0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7,
-                                   2.2, 2.1, 3.9};
+  const std::vector<double> pos = {0.2, 0.3, 0.4, 3.6, 0.5, 0.2,
+                                   1.0, 3.8, 0.7, 2.2, 2.1, 3.9};
   rgpot::nlist::Query query;
   query.cutoff = 3.2;
   query.shape = rgpot::nlist::Cluster4{};
@@ -328,7 +410,7 @@ TEST_CASE("a wide orthorhombic cell matches the brute force", "[nlist][api]") {
     query.cutoff = 6.0;
     query.skin = 0;
     query.shape = rgpot::nlist::Pairs{full ? rgpot::nlist::Shell::Full
-                                          : rgpot::nlist::Shell::Half};
+                                           : rgpot::nlist::Shell::Half};
     query.cut = rgpot::nlist::Cut::Strict;
     query.periodic = periodic;
     rgpot::nlist::Table table;
@@ -337,14 +419,16 @@ TEST_CASE("a wide orthorhombic cell matches the brute force", "[nlist][api]") {
   }
 }
 
-TEST_CASE("a large orthorhombic list is not an all-pairs scan", "[nlist][api][perf]") {
+TEST_CASE("a large orthorhombic list is not an all-pairs scan",
+          "[nlist][api][perf]") {
   // 30^3 FCC cells, the 108000-atom copper block. An all-pairs scan does
   // not finish in tens of seconds. A cell list does. macOS CI measured
   // 5.4s, so the bound stays well under an all-pairs run, and each atom
   // has the twelve, six and twenty-four shells inside 5.
   constexpr int ncell = 30;
   constexpr double lattice = 3.615;
-  const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  const double basis[4][3] = {
+      {0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
   std::vector<double> pos;
   pos.reserve(static_cast<std::size_t>(ncell) * ncell * ncell * 4 * 3);
   for (int ix = 0; ix < ncell; ++ix) {
@@ -368,7 +452,9 @@ TEST_CASE("a large orthorhombic list is not an all-pairs scan", "[nlist][api][pe
   rgpot::nlist::Table table;
   const auto t0 = std::chrono::steady_clock::now();
   rgpot::nlist::build(table, pos.data(), pos.size() / 3, box, query);
-  const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+  const auto seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
+          .count();
   REQUIRE(pos.size() / 3 == 108000);
   REQUIRE(table.size() == 108000 * 21);
   REQUIRE(seconds < 30.0);
@@ -376,12 +462,15 @@ TEST_CASE("a large orthorhombic list is not an all-pairs scan", "[nlist][api][pe
     const int i = table.first[p];
     const int j = table.second[p];
     const double vx = pos[3 * j] - pos[3 * i] + table.shift[3 * p] * box[0];
-    const double vy = pos[3 * j + 1] - pos[3 * i + 1] + table.shift[3 * p + 1] * box[4];
-    const double vz = pos[3 * j + 2] - pos[3 * i + 2] + table.shift[3 * p + 2] * box[8];
+    const double vy =
+        pos[3 * j + 1] - pos[3 * i + 1] + table.shift[3 * p + 1] * box[4];
+    const double vz =
+        pos[3 * j + 2] - pos[3 * i + 2] + table.shift[3 * p + 2] * box[8];
     REQUIRE(std::abs(vx - table.vector[3 * p]) < 1e-9);
     REQUIRE(std::abs(vy - table.vector[3 * p + 1]) < 1e-9);
     REQUIRE(std::abs(vz - table.vector[3 * p + 2]) < 1e-9);
-    REQUIRE(std::abs(std::sqrt(vx * vx + vy * vy + vz * vz) - table.distance[p]) < 1e-9);
+    REQUIRE(std::abs(std::sqrt(vx * vx + vy * vy + vz * vz) -
+                     table.distance[p]) < 1e-9);
     REQUIRE(table.distance[p] < 5.0);
     REQUIRE(table.distance[p] > 0.0);
   }
@@ -454,15 +543,17 @@ TEST_CASE("the skin rebuild follows half the skin", "[nlist][api]") {
     const int sa = kept.shift[3 * p];
     const int sb = kept.shift[3 * p + 1];
     const int sc = kept.shift[3 * p + 2];
-    const double vx = pos[3 * static_cast<std::size_t>(j)] - pos[3 * static_cast<std::size_t>(i)] +
-                      sa * box[0] + sb * box[3] + sc * box[6];
+    const double vx = pos[3 * static_cast<std::size_t>(j)] -
+                      pos[3 * static_cast<std::size_t>(i)] + sa * box[0] +
+                      sb * box[3] + sc * box[6];
     const double vy = pos[3 * static_cast<std::size_t>(j) + 1] -
-                      pos[3 * static_cast<std::size_t>(i) + 1] + sa * box[1] + sb * box[4] +
-                      sc * box[7];
+                      pos[3 * static_cast<std::size_t>(i) + 1] + sa * box[1] +
+                      sb * box[4] + sc * box[7];
     const double vz = pos[3 * static_cast<std::size_t>(j) + 2] -
-                      pos[3 * static_cast<std::size_t>(i) + 2] + sa * box[2] + sb * box[5] +
-                      sc * box[8];
-    got[{i, j, sa, sb, sc}] = {vx, vy, vz, std::sqrt(vx * vx + vy * vy + vz * vz)};
+                      pos[3 * static_cast<std::size_t>(i) + 2] + sa * box[2] +
+                      sb * box[5] + sc * box[8];
+    got[{i, j, sa, sb, sc}] = {vx, vy, vz,
+                               std::sqrt(vx * vx + vy * vy + vz * vz)};
   }
   for (std::size_t p = 0; p < fresh.size(); ++p) {
     const auto key = key_of(fresh, p);
@@ -482,7 +573,8 @@ TEST_CASE("a positive skin with a strict cut is rejected", "[nlist][api]") {
   query.skin = 0.2;
   query.cut = rgpot::nlist::Cut::Strict;
   rgpot::nlist::Table table;
-  REQUIRE_THROWS_AS(rgpot::nlist::build(table, pos, 2, box, query), rgpot::nlist::Error);
+  REQUIRE_THROWS_AS(rgpot::nlist::build(table, pos, 2, box, query),
+                    rgpot::nlist::Error);
   try {
     rgpot::nlist::build(table, pos, 2, box, query);
   } catch (const rgpot::nlist::Error &err) {
@@ -584,7 +676,8 @@ TEST_CASE("a negative or non-finite skin is rejected", "[nlist][api][edge]") {
   }
 }
 
-TEST_CASE("an out-of-range shell or cut mode is rejected", "[nlist][api][edge]") {
+TEST_CASE("an out-of-range shell or cut mode is rejected",
+          "[nlist][api][edge]") {
   // The validation checks `pairs->shell != Shell::Half && != Shell::Full`
   // and `cut != Strict && != Loose`: defensive guards against a Query
   // built with a value outside the enum's named set, which the type
@@ -617,8 +710,8 @@ TEST_CASE("an out-of-range shell or cut mode is rejected", "[nlist][api][edge]")
 }
 
 TEST_CASE("a non-finite box element is rejected", "[nlist][api][edge]") {
-  const double nan_box[9] = {10, 0, 0, 0, 10, 0, 0, 0,
-                             std::numeric_limits<double>::quiet_NaN()};
+  const double nan_box[9] = {
+      10, 0, 0, 0, 10, 0, 0, 0, std::numeric_limits<double>::quiet_NaN()};
   const double pos[] = {0, 0, 0, 1, 0, 0};
   rgpot::nlist::Query query;
   query.cutoff = 2.0;
@@ -667,7 +760,8 @@ TEST_CASE("a streaming walk rejects buffers too short for the pair cap",
 
   struct Storage {
     explicit Storage(std::size_t cap)
-        : first(cap), second(cap), shift(3 * cap), vector(3 * cap), distance(cap), mask(cap) {}
+        : first(cap), second(cap), shift(3 * cap), vector(3 * cap),
+          distance(cap), mask(cap) {}
     std::vector<std::int32_t> first, second, shift;
     std::vector<double> vector, distance;
     std::vector<std::uint8_t> mask;
@@ -694,16 +788,20 @@ TEST_CASE("a streaming walk rejects buffers too short for the pair cap",
 
   const std::size_t cap = pairs + 1;
   expect_short(
-      query, cap, [&](rgpot::nlist::Buffers &d) { d.second = d.second.first(cap - 1); },
+      query, cap,
+      [&](rgpot::nlist::Buffers &d) { d.second = d.second.first(cap - 1); },
       "first and second buffers have different lengths");
   expect_short(
-      query, cap, [&](rgpot::nlist::Buffers &d) { d.shift = d.shift.first(3 * cap - 1); },
+      query, cap,
+      [&](rgpot::nlist::Buffers &d) { d.shift = d.shift.first(3 * cap - 1); },
       "shift buffer needs 3 entries per pair");
   expect_short(
-      query, cap, [&](rgpot::nlist::Buffers &d) { d.vector = d.vector.first(3 * cap - 1); },
+      query, cap,
+      [&](rgpot::nlist::Buffers &d) { d.vector = d.vector.first(3 * cap - 1); },
       "vector buffer needs 3 entries per pair");
   expect_short(
-      query, cap, [&](rgpot::nlist::Buffers &d) { d.distance = d.distance.first(cap - 1); },
+      query, cap,
+      [&](rgpot::nlist::Buffers &d) { d.distance = d.distance.first(cap - 1); },
       "distance buffer is shorter than the pair buffer");
   const std::size_t cluster_cap = cluster_pairs + 1;
   expect_short(
@@ -740,10 +838,12 @@ TEST_CASE("a batch keeps the systems apart", "[nlist][api]") {
   REQUIRE(batch.pairs.distance[0] == one.distance[0]);
 }
 
-TEST_CASE("one atom per thread matches the stored list", "[nlist][api][device]") {
+TEST_CASE("one atom per thread matches the stored list",
+          "[nlist][api][device]") {
   constexpr int ncell = 8;
   constexpr double lattice = 3.615;
-  const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  const double basis[4][3] = {
+      {0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
   std::vector<double> pos;
   for (int ix = 0; ix < ncell; ++ix) {
     for (int iy = 0; iy < ncell; ++iy) {
@@ -769,7 +869,8 @@ TEST_CASE("one atom per thread matches the stored list", "[nlist][api][device]")
   REQUIRE(from_table(bulk) == from_table(by_atom));
 }
 
-TEST_CASE("the fortran bridge reuses the builder and refreshes vectors", "[nlist][api]") {
+TEST_CASE("the fortran bridge reuses the builder and refreshes vectors",
+          "[nlist][api]") {
   double pos[] = {0, 0, 0, 1.2, 0, 0};
   const double box[9] = {8, 0, 0, 0, 8, 0, 0, 0, 8};
   const int32_t periodic[3] = {1, 1, 1};
@@ -777,19 +878,22 @@ TEST_CASE("the fortran bridge reuses the builder and refreshes vectors", "[nlist
   REQUIRE(list != nullptr);
   size_t needed = 0;
   int32_t reused = 1;
-  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, nullptr, nullptr,
-                                    nullptr, nullptr, 0, &needed, &reused) == RGPOT_NLIST_OK);
+  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic,
+                                    nullptr, nullptr, nullptr, nullptr, 0,
+                                    &needed, &reused) == RGPOT_NLIST_OK);
   REQUIRE(needed == 2);
   REQUIRE(reused == 0);
   std::vector<int32_t> first(needed), second(needed);
   std::vector<double> vector(needed * 3), distance(needed);
-  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, first.data(),
-                                    second.data(), vector.data(), distance.data(), needed, &needed,
+  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic,
+                                    first.data(), second.data(), vector.data(),
+                                    distance.data(), needed, &needed,
                                     &reused) == RGPOT_NLIST_OK);
   REQUIRE(distance[0] == Catch::Approx(1.2));
   pos[0] = 0.05;
-  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic, first.data(),
-                                    second.data(), vector.data(), distance.data(), needed, &needed,
+  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 2.0, 0.4, periodic,
+                                    first.data(), second.data(), vector.data(),
+                                    distance.data(), needed, &needed,
                                     &reused) == RGPOT_NLIST_OK);
   REQUIRE(reused == 1);
   REQUIRE(distance[0] == Catch::Approx(1.15));
@@ -801,7 +905,8 @@ TEST_CASE("the fortran bridge reuses the builder and refreshes vectors", "[nlist
 TEST_CASE("eight threads match the serial list", "[nlist][api]") {
   constexpr int ncell = 14;
   constexpr double lattice = 3.615;
-  const double basis[4][3] = {{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  const double basis[4][3] = {
+      {0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
   std::vector<double> pos;
   for (int ix = 0; ix < ncell; ++ix) {
     for (int iy = 0; iy < ncell; ++iy) {
@@ -831,11 +936,13 @@ TEST_CASE("eight threads match the serial list", "[nlist][api]") {
   REQUIRE(from_table(serial) == from_table(threaded));
 }
 
-TEST_CASE("threads match the serial list when a thin or sheared box needs several images",
+TEST_CASE("threads match the serial list when a thin or sheared box needs "
+          "several images",
           "[nlist][api]") {
   constexpr std::size_t n = 9000;
-  const auto box = GENERATE(std::array<double, 9>{240.0, 0, 0, 0, 240.0, 0, 0, 0, 4.0},
-                            std::array<double, 9>{120.0, 0, 0, 3.0, 120.0, 0, 2.0, 1.5, 5.0});
+  const auto box = GENERATE(
+      std::array<double, 9>{240.0, 0, 0, 0, 240.0, 0, 0, 0, 4.0},
+      std::array<double, 9>{120.0, 0, 0, 3.0, 120.0, 0, 2.0, 1.5, 5.0});
   std::vector<double> pos(3 * n);
   std::uint64_t state = 12345;
   auto uniform = [&state]() {
@@ -850,7 +957,8 @@ TEST_CASE("threads match the serial list when a thin or sheared box needs severa
       pos[3 * i + k] = a * box[k] + b * box[3 + k] + c * box[6 + k];
     }
   }
-  const auto shell = GENERATE(rgpot::nlist::Shell::Full, rgpot::nlist::Shell::Half);
+  const auto shell =
+      GENERATE(rgpot::nlist::Shell::Full, rgpot::nlist::Shell::Half);
   rgpot::nlist::Query query;
   query.cutoff = 3.0;
   query.shape = rgpot::nlist::Pairs{shell};
