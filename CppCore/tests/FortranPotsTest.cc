@@ -17,13 +17,13 @@
  * rather than the bindings.
  */
 
-#include <catch2/catch_all.hpp>
 #include "rgpot/ForceStructs.hpp"
-#include <thread>
-#include <functional>
-#include <atomic>
 #include <algorithm>
+#include <atomic>
+#include <catch2/catch_all.hpp>
 #include <cmath>
+#include <functional>
+#include <thread>
 #include <vector>
 
 #include "rgpot/StillingerWeber/SWSi.hpp"
@@ -43,10 +43,11 @@ namespace {
 /// eOn fixture data/systems/si_diamond/pos.con: eight silicon atoms in a
 /// 20 Angstrom cube.
 AtomMatrix siDiamond() {
-  return AtomMatrix{{7.28500, 7.28500, 7.28500},   {8.64250, 8.64250, 8.64250},
-                    {10.00000, 10.00000, 7.28500}, {11.35750, 11.35750, 8.64250},
-                    {10.00000, 7.28500, 10.00000}, {11.35750, 8.64250, 11.35750},
-                    {7.28500, 10.00000, 10.00000}, {8.64250, 11.35750, 11.35750}};
+  return AtomMatrix{
+      {7.28500, 7.28500, 7.28500},   {8.64250, 8.64250, 8.64250},
+      {10.00000, 10.00000, 7.28500}, {11.35750, 11.35750, 8.64250},
+      {10.00000, 7.28500, 10.00000}, {11.35750, 8.64250, 11.35750},
+      {7.28500, 10.00000, 10.00000}, {8.64250, 11.35750, 11.35750}};
 }
 
 /// eOn fixture data/systems/al_fcc/pos.con: four aluminium atoms.
@@ -141,10 +142,10 @@ SwStress swStress(const Pot &pot, const std::vector<double> &R,
 /// 216 diamond silicon atoms at fractions of `box`, moved by up to
 /// `wobble` Angstrom along each Cartesian direction.
 std::vector<double> siBlock(const std::array<double, 9> &box, double wobble) {
-  static const double basis[8][3] = {
-      {0.00, 0.00, 0.00}, {0.00, 0.50, 0.50}, {0.50, 0.00, 0.50},
-      {0.50, 0.50, 0.00}, {0.25, 0.25, 0.25}, {0.25, 0.75, 0.75},
-      {0.75, 0.25, 0.75}, {0.75, 0.75, 0.25}};
+  static const double basis[8][3] = {{0.00, 0.00, 0.00}, {0.00, 0.50, 0.50},
+                                     {0.50, 0.00, 0.50}, {0.50, 0.50, 0.00},
+                                     {0.25, 0.25, 0.25}, {0.25, 0.75, 0.75},
+                                     {0.75, 0.25, 0.75}, {0.75, 0.75, 0.25}};
   std::vector<double> R;
   for (int ix = 0; ix < 3; ++ix)
     for (int iy = 0; iy < 3; ++iy)
@@ -193,7 +194,7 @@ TEST_CASE("SW stress matches a strain difference and the 1985 kernel",
   const double ratio =
       2.16826 * 1.06767385 / rgpot::StillingerWeberSi::kEpsilon;
   const double l = 3 * 5.431;
-  const std::array<double, 9> compressed{0.98 * l, 0, 0, 0, 0.98 * l,
+  const std::array<double, 9> compressed{0.98 * l, 0, 0, 0,       0.98 * l,
                                          0,        0, 0, 0.98 * l};
   const std::array<double, 9> sheared{l, 0,        0,         0.10 * l, l,
                                       0, 0.05 * l, -0.07 * l, l};
@@ -225,7 +226,7 @@ TEST_CASE("SW batch returns the forceImpl energies and forces without stress",
           "[fortran][sw][stress]") {
   rgpot::fortranpots::SWPot pot;
   const double l = 3 * 5.431;
-  const std::array<double, 9> compressed{0.98 * l, 0, 0, 0, 0.98 * l,
+  const std::array<double, 9> compressed{0.98 * l, 0, 0, 0,       0.98 * l,
                                          0,        0, 0, 0.98 * l};
   const std::array<double, 9> sheared{l, 0,        0,         0.10 * l, l,
                                       0, 0.05 * l, -0.07 * l, l};
@@ -319,17 +320,19 @@ TEST_CASE("Tersoff null species stays on the silicon kernel",
 
   std::vector<double> got(pos.size(), 0.0);
   const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
-  rgpot::ForceInput in{.nAtoms = pos.rows(),
-                       .pos = pos.data(),
-                       .atmnrs = nullptr,
-                       .box = box};
+  rgpot::ForceInput in{
+      .nAtoms = pos.rows(), .pos = pos.data(), .atmnrs = nullptr, .box = box};
   rgpot::ForceOut fo{.F = got.data(),
                      .energy = 0.0,
                      .variance = 0.0,
-                     .stress = {},
-                     .has_stress = 0};
+                     .stress = {1, 2, 3, 4, 5, 6, 7, 8, 9},
+                     .has_stress = 1};
   pot.forceImpl(in, &fo);
   REQUIRE(fo.energy == energy);
+  REQUIRE(fo.has_stress == 0);
+  for (double component : fo.stress) {
+    REQUIRE(component == 0.0);
+  }
   for (size_t i = 0; i < got.size(); ++i) {
     REQUIRE(got[i] == forces.data()[i]);
   }
@@ -480,10 +483,10 @@ TEST_CASE("Fortran potentials report per-instance reentrancy",
           "[fortran][caps]") {
   // Each instance owns its neighbour table, so separate instances evaluate
   // concurrently and multi-image callers keep one per image.
-  for (const rgpot::PotCaps caps :
-       {rgpot::fortranpots::SWPot{}.caps(), rgpot::fortranpots::EAMAlPot{}.caps(),
-        rgpot::fortranpots::FeHePot{}.caps(),
-        rgpot::fortranpots::CuH2Pot{}.caps()}) {
+  for (const rgpot::PotCaps caps : {rgpot::fortranpots::SWPot{}.caps(),
+                                    rgpot::fortranpots::EAMAlPot{}.caps(),
+                                    rgpot::fortranpots::FeHePot{}.caps(),
+                                    rgpot::fortranpots::CuH2Pot{}.caps()}) {
     REQUIRE(caps.reentrancy == rgpot::Reentrancy::PerInstance);
     REQUIRE(caps.perImageInstances);
   }
