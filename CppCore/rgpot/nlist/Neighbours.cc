@@ -195,7 +195,8 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
   // Fractional bins are required for a fully periodic general cell,
   // including every sheared cell whose three edges are positive.
   // Cartesian bins are the path when the cell is not general, or when
-  // an axis is open or its edge is not positive. A fully periodic
+  // an axis is open or its diagonal entry is not positive. A fully
+  // periodic
   // general cell whose reciprocal basis is not finite and positive is
   // an error: it is not binned in Cartesian coordinates.
   const bool fractional_required =

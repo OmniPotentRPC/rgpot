@@ -2,5 +2,5 @@
 A fully periodic general cell, including a triclinic cell with three positive edges, is binned by wrapped fractional coordinates so streaming sheared walks with zero skin do not miss pairs across cell faces.
 A non-finite fractional coordinate is rejected.
 A fully periodic general cell whose reciprocal basis is not finite and positive is rejected and is not binned in Cartesian coordinates.
-Cartesian binning remains the path when the cell is not general, or when an axis is open or its edge is not positive.
+Cartesian binning remains the path when the cell is not general, or when an axis is open or its diagonal entry is not positive.
 `librgpot`'s C++ soversion is bumped to 9.

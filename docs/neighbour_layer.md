@@ -169,7 +169,7 @@ A non-finite fractional coordinate is rejected.
 A fully periodic general cell whose reciprocal basis is not finite and
 positive is rejected and is not binned in Cartesian coordinates.
 Cartesian binning is the path when the cell is not general, or when an
-axis is open or its edge is not positive.
+axis is open or its diagonal entry is not positive.
 
 `Mode::Stored` keeps a Verlet list and reuses it while every atom has moved by at most half the skin.
 The list holds partner indices and each walk takes the image from the current coordinates, so the move is measured to the nearest periodic image of the reference position: an atom that the caller wraps back through a face of the cell has moved by its step, not by a cell vector, and keeps the list.

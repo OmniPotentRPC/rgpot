@@ -113,7 +113,7 @@ struct Spec {
 /// periodic general cell whose reciprocal basis is not finite and
 /// positive is an error and is not binned in Cartesian coordinates.
 /// Cartesian binning is used when the cell is not general, or when an
-/// axis is open or its edge is not positive.
+/// axis is open or its diagonal entry is not positive.
 class Neighbours {
 public:
   Neighbours() : generation_(nextGeneration()) {}
