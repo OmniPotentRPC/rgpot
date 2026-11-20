@@ -25,6 +25,13 @@
 //! [`PotentialImpl`], the handle the rest of the crate evaluates through, so
 //! an engine library takes part in everything that takes a potential.
 //!
+//! [`EngineSession`] owns callbacks and transform calls around one
+//! [`EnginePotential`]. Loading either type is unsafe because a dynamic
+//! library's initializers and exported signatures cannot be verified by Rust.
+//! Once loaded, session evaluation is safe: callback state is owned for the
+//! native registration lifetime, and transform invocations are serialized
+//! even when an engine parallelizes a batch.
+//!
 //! The library stays mapped for the life of the process, as for
 //! [`crate::profile`]: a backend may own threads or MPI state that does not
 //! survive `dlclose`.
@@ -32,6 +39,7 @@
 use std::ffi::{c_char, c_int, c_long, c_uint, c_ushort, c_void};
 use std::fmt;
 use std::mem::ManuallyDrop;
+use std::num::NonZeroU32;
 use std::path::Path;
 use std::ptr::NonNull;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -49,10 +57,112 @@ pub const ENGINE_ABI_VERSION: c_int = 1;
 pub const ENGINE_ABI_MINOR: u16 = 4;
 /// The struct layout revision this loader expects, `RGPOT_ENGINE_ABI_LAYOUT_REVISION` of the header.
 pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
+/// Engine code meaning an argument is invalid.
+pub const ENGINE_ERR_INVALID: c_int = 1;
 /// Engine code meaning the backend does not support the requested operation.
 pub const ENGINE_ERR_UNSUPPORTED: c_int = 3;
 
 const ERROR_CAPACITY: usize = 1024;
+
+/// Status recorded when a host callback or transform panics.
+const PANIC_STATUS: EngineStatus = EngineStatus::from_code(-1);
+/// Status recorded when a host callback hands back something the ABI cannot carry.
+const INVALID_STATUS: EngineStatus = EngineStatus::from_code(ENGINE_ERR_INVALID);
+
+/// Three-valued status of an engine ABI call.
+///
+/// The payload of each failure variant is the magnitude of the C return code,
+/// so a recoverable failure is always positive and a fatal one is always
+/// negative on the wire, and no failure can encode as zero. Magnitudes beyond
+/// the range of `c_int` saturate to `c_int::MAX` and `c_int::MIN`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineStatus {
+    /// Return code zero.
+    Success,
+    /// A positive return code of this magnitude: the call failed at this input.
+    RecoverableInputFailure(NonZeroU32),
+    /// A negative return code of this magnitude: the instance is unusable.
+    FatalInstanceFailure(NonZeroU32),
+}
+
+impl EngineStatus {
+    /// A recoverable failure with the positive `code`, or `None` when `code`
+    /// is not positive.
+    pub const fn recoverable(code: c_int) -> Option<Self> {
+        if code > 0 {
+            Some(Self::from_code(code))
+        } else {
+            None
+        }
+    }
+
+    /// A fatal failure with the negative `code`, or `None` when `code` is not
+    /// negative.
+    pub const fn fatal(code: c_int) -> Option<Self> {
+        if code < 0 {
+            Some(Self::from_code(code))
+        } else {
+            None
+        }
+    }
+
+    /// Classify an engine return code without inspecting its error text.
+    pub const fn from_code(code: c_int) -> Self {
+        let magnitude = code.unsigned_abs();
+        match NonZeroU32::new(magnitude) {
+            None => Self::Success,
+            Some(magnitude) if code > 0 => Self::RecoverableInputFailure(magnitude),
+            Some(magnitude) => Self::FatalInstanceFailure(magnitude),
+        }
+    }
+
+    /// The C ABI return code. Its sign is the class of the status, so
+    /// `from_code(status.code())` is the same status.
+    pub const fn code(self) -> c_int {
+        match self {
+            Self::Success => 0,
+            Self::RecoverableInputFailure(magnitude) => {
+                if magnitude.get() > c_int::MAX as u32 {
+                    c_int::MAX
+                } else {
+                    magnitude.get() as c_int
+                }
+            }
+            Self::FatalInstanceFailure(magnitude) => {
+                if magnitude.get() > c_int::MIN.unsigned_abs() {
+                    c_int::MIN
+                } else {
+                    (magnitude.get() as c_int).wrapping_neg()
+                }
+            }
+        }
+    }
+
+    /// The same status with a failure's code guaranteed nonzero: a success
+    /// becomes the recoverable [`ENGINE_ERR_INVALID`].
+    pub const fn or_invalid(self) -> Self {
+        match self {
+            Self::Success => Self::from_code(ENGINE_ERR_INVALID),
+            failure => failure,
+        }
+    }
+}
+
+/// A typed failure returned by a host transform or oracle callback.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineFailure {
+    pub status: EngineStatus,
+    pub message: String,
+}
+
+/// A host-side coordinate transform applied to the engine's scratch geometry.
+pub trait CoordinateTransform: Send {
+    fn transform(
+        &mut self,
+        positions: &mut [f64],
+        box_matrix: &mut [f64; 9],
+    ) -> Result<(), EngineFailure>;
+}
 
 /// Opaque engine instance, `RgpotEnginePot` of the header.
 #[repr(C)]
@@ -157,6 +267,64 @@ pub type HvpFn = unsafe extern "C" fn(
 pub type CapsFn = unsafe extern "C" fn(*const RgpotEnginePot, *mut RgpotEngineCaps) -> c_int;
 /// `rgpot_engine_last_error`.
 pub type LastErrorFn = unsafe extern "C" fn(*const RgpotEnginePot, *mut c_char, usize) -> usize;
+/// `rgpot_engine_model_state`.
+pub type ModelStateFn = unsafe extern "C" fn(*const RgpotEnginePot) -> u64;
+/// `rgpot_engine_set_callbacks`.
+pub type SetCallbacksFn =
+    unsafe extern "C" fn(*mut RgpotEnginePot, *const RgpotEngineCallbacks) -> c_int;
+/// `rgpot_engine_hint`.
+pub type HintFn =
+    unsafe extern "C" fn(*mut RgpotEnginePot, *const c_void, usize, *mut c_char, usize) -> c_int;
+
+/// Why a learning engine acquired an oracle point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcquireReason {
+    Variance,
+    Certify,
+    Batch,
+    Reject,
+    Unknown(c_int),
+}
+
+impl From<c_int> for AcquireReason {
+    fn from(value: c_int) -> Self {
+        match value {
+            1 => Self::Variance,
+            2 => Self::Certify,
+            3 => Self::Batch,
+            4 => Self::Reject,
+            other => Self::Unknown(other),
+        }
+    }
+}
+
+/// Host callbacks owned by an [`EngineSession`].
+pub trait EngineCallbacks: Send {
+    fn oracle(&mut self, request: &EngineRequest<'_>) -> Result<EngineEvaluation, EngineFailure>;
+
+    fn on_acquire(&mut self, _reason: AcquireReason) {}
+
+    fn on_model_update(&mut self, _model_state: u64) {}
+}
+
+/// Raw callback table copied by `rgpot_engine_set_callbacks`.
+#[repr(C)]
+pub struct RgpotEngineCallbacks {
+    ctx: *mut c_void,
+    oracle: Option<
+        unsafe extern "C" fn(
+            *mut c_void,
+            c_long,
+            *const f64,
+            *const c_int,
+            *mut f64,
+            *mut f64,
+            *const f64,
+        ) -> c_int,
+    >,
+    on_acquire: Option<unsafe extern "C" fn(*mut c_void, c_int)>,
+    on_model_update: Option<unsafe extern "C" fn(*mut c_void, u64)>,
+}
 
 /// Raw `RgpotEngineCaps` from `rgpot/engine_c_abi.h`.
 #[repr(C)]
@@ -226,6 +394,12 @@ pub struct EngineSymbols {
     pub caps: Option<CapsFn>,
     /// Optional symbol `rgpot_engine_last_error`.
     pub last_error: Option<LastErrorFn>,
+    /// Optional symbol `rgpot_engine_model_state`.
+    pub model_state: Option<ModelStateFn>,
+    /// Optional symbol `rgpot_engine_set_callbacks`.
+    pub set_callbacks: Option<SetCallbacksFn>,
+    /// Optional symbol `rgpot_engine_hint`.
+    pub hint: Option<HintFn>,
 }
 
 /// Why an engine could not be loaded or an evaluation failed.
@@ -309,6 +483,15 @@ impl fmt::Display for EngineError {
 impl std::error::Error for EngineError {}
 
 impl EngineError {
+    /// The engine ABI status when this error came from an engine call.
+    pub const fn engine_status(&self) -> Option<EngineStatus> {
+        match self {
+            Self::Recoverable { code, .. } => EngineStatus::recoverable(*code),
+            Self::Fatal { code, .. } => EngineStatus::fatal(*code),
+            _ => None,
+        }
+    }
+
     /// Map this failure onto the rgpot-core C API status code.
     pub fn status(&self) -> rgpot_status_t {
         match self {
@@ -343,6 +526,85 @@ pub struct EngineEvaluation {
 struct Poisoned {
     code: i32,
     message: String,
+}
+
+struct TransformState<'a> {
+    transform: &'a mut dyn CoordinateTransform,
+    failure: Option<EngineFailure>,
+}
+
+struct TransformCall<'a> {
+    state: Mutex<TransformState<'a>>,
+}
+
+impl TransformCall<'_> {
+    fn take_failure(&self) -> Option<EngineFailure> {
+        match self.state.lock() {
+            Ok(mut state) => state.failure.take(),
+            Err(mut poisoned) => poisoned.get_mut().failure.take(),
+        }
+    }
+}
+
+unsafe extern "C" fn transform_trampoline(
+    user: *mut c_void,
+    n_atoms: c_long,
+    positions: *mut f64,
+    box_matrix: *mut f64,
+) -> c_int {
+    if user.is_null() || n_atoms <= 0 || positions.is_null() || box_matrix.is_null() {
+        return ENGINE_ERR_INVALID;
+    }
+    let call = unsafe { &*user.cast::<TransformCall<'_>>() };
+    let count = match usize::try_from(n_atoms) {
+        Ok(count) => count,
+        Err(_) => return -1,
+    };
+    let Some(position_len) = count.checked_mul(3) else {
+        return -1;
+    };
+    let positions = unsafe { std::slice::from_raw_parts_mut(positions, position_len) };
+    let box_matrix = unsafe { &mut *box_matrix.cast::<[f64; 9]>() };
+    let mut state = match call.state.lock() {
+        Ok(state) => state,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        state.transform.transform(positions, box_matrix)
+    })) {
+        Ok(Ok(())) => 0,
+        Ok(Err(failure)) => {
+            let code = match failure.status {
+                EngineStatus::Success => ENGINE_ERR_INVALID,
+                status => status.code(),
+            };
+            if state.failure.is_none() {
+                state.failure = Some(failure);
+            }
+            code
+        }
+        Err(_) => {
+            if state.failure.is_none() {
+                state.failure = Some(EngineFailure {
+                    status: PANIC_STATUS,
+                    message: "coordinate transform panicked".into(),
+                });
+            }
+            -1
+        }
+    }
+}
+
+fn transform_parts(
+    transform: &mut Option<TransformCall<'_>>,
+) -> (Option<CoordTransformFn>, *mut c_void) {
+    match transform {
+        Some(call) => (
+            Some(transform_trampoline),
+            (call as *const TransformCall<'_>).cast_mut().cast(),
+        ),
+        None => (None, std::ptr::null_mut()),
+    }
 }
 
 /// One engine instance behind the generic engine C ABI.
@@ -443,11 +705,39 @@ impl EnginePotential {
 
     /// Energy and forces of one geometry.
     pub fn force(&mut self, request: &EngineRequest<'_>) -> Result<EngineEvaluation, EngineError> {
+        self.force_with_transform(request, None)
+    }
+
+    /// Energy and forces of one geometry after an optional host transform.
+    pub fn force_with_transform(
+        &mut self,
+        request: &EngineRequest<'_>,
+        transform: Option<&mut dyn CoordinateTransform>,
+    ) -> Result<EngineEvaluation, EngineError> {
+        self.force_hosted(request, transform, None)
+    }
+
+    /// [`Self::force_with_transform`] that also reads the failure recorded by
+    /// the host callbacks of a session, so that it takes part in classifying
+    /// the call before the engine's own message can poison the instance.
+    fn force_hosted(
+        &mut self,
+        request: &EngineRequest<'_>,
+        transform: Option<&mut dyn CoordinateTransform>,
+        host: Option<&CallbackOwner>,
+    ) -> Result<EngineEvaluation, EngineError> {
         self.check_alive()?;
         let n_atoms = request.atomic_numbers.len();
         check_lengths(n_atoms, request.positions.len())?;
         let mut forces = vec![0.0; 3 * n_atoms];
         let mut energy = 0.0;
+        let mut transform = transform.map(|transform| TransformCall {
+            state: Mutex::new(TransformState {
+                transform,
+                failure: None,
+            }),
+        });
+        let (transform_fn, transform_user) = transform_parts(&mut transform);
         let code = unsafe {
             (self.symbols.force)(
                 self.handle.as_ptr(),
@@ -458,11 +748,12 @@ impl EnginePotential {
                 &mut energy,
                 std::ptr::null_mut(),
                 request.box_matrix.as_ptr(),
-                None,
-                std::ptr::null_mut(),
+                transform_fn,
+                transform_user,
             )
         };
-        self.answer(code)?;
+        let failure = host_failure(host, transform.as_ref());
+        self.answer_with_failure(code, failure)?;
         finite(energy, &forces)?;
         Ok(EngineEvaluation { energy, forces })
     }
@@ -476,6 +767,29 @@ impl EnginePotential {
         atomic_numbers: &[i32],
         positions: &[f64],
         boxes: &[f64],
+    ) -> Result<Vec<EngineEvaluation>, EngineError> {
+        self.force_batch_with_transform(atomic_numbers, positions, boxes, None)
+    }
+
+    /// Batched energy and forces after applying an optional transform to each
+    /// engine-owned scratch geometry.
+    pub fn force_batch_with_transform(
+        &mut self,
+        atomic_numbers: &[i32],
+        positions: &[f64],
+        boxes: &[f64],
+        transform: Option<&mut dyn CoordinateTransform>,
+    ) -> Result<Vec<EngineEvaluation>, EngineError> {
+        self.force_batch_hosted(atomic_numbers, positions, boxes, transform, None)
+    }
+
+    fn force_batch_hosted(
+        &mut self,
+        atomic_numbers: &[i32],
+        positions: &[f64],
+        boxes: &[f64],
+        transform: Option<&mut dyn CoordinateTransform>,
+        host: Option<&CallbackOwner>,
     ) -> Result<Vec<EngineEvaluation>, EngineError> {
         self.check_alive()?;
         let batch = self
@@ -499,6 +813,13 @@ impl EnginePotential {
         }
         let mut forces = vec![0.0; positions.len()];
         let mut energies = vec![0.0; n_systems];
+        let mut transform = transform.map(|transform| TransformCall {
+            state: Mutex::new(TransformState {
+                transform,
+                failure: None,
+            }),
+        });
+        let (transform_fn, transform_user) = transform_parts(&mut transform);
         let code = unsafe {
             batch(
                 self.handle.as_ptr(),
@@ -510,11 +831,12 @@ impl EnginePotential {
                 energies.as_mut_ptr(),
                 std::ptr::null_mut(),
                 boxes.as_ptr(),
-                None,
-                std::ptr::null_mut(),
+                transform_fn,
+                transform_user,
             )
         };
-        self.answer(code)?;
+        let failure = host_failure(host, transform.as_ref());
+        self.answer_with_failure(code, failure)?;
         let mut out = Vec::with_capacity(n_systems);
         for (energy, block) in energies.iter().zip(forces.chunks_exact(3 * n_atoms)) {
             finite(*energy, block)?;
@@ -657,18 +979,46 @@ impl EnginePotential {
         if code > 0 {
             Err(EngineError::Recoverable { code, message })
         } else {
-            let _ = self.fatal.set(Poisoned {
-                code,
-                message: message.clone(),
-            });
-            let stored = match self.fatal.get() {
-                Some(poisoned) => poisoned.message.clone(),
-                None => message,
-            };
-            Err(EngineError::Fatal {
-                code,
-                message: stored,
-            })
+            Err(self.poison(code, message))
+        }
+    }
+
+    /// Record a fatal failure and return the error for it. The first fatal
+    /// failure is kept: a later one reports the stored code and message, so
+    /// the error always matches what [`Self::check_alive`] will report.
+    fn poison(&self, code: c_int, message: String) -> EngineError {
+        let poisoned = self.fatal.get_or_init(|| Poisoned { code, message });
+        EngineError::Fatal {
+            code: poisoned.code,
+            message: poisoned.message.clone(),
+        }
+    }
+
+    fn answer_with_failure(
+        &self,
+        code: c_int,
+        direct: Option<EngineFailure>,
+    ) -> Result<(), EngineError> {
+        let direct = direct.map(|failure| self.fail(failure.status, failure.message));
+        match direct {
+            Some(Err(fatal @ EngineError::Fatal { .. })) => Err(fatal),
+            // A negative engine code is fatal whatever the host recorded.
+            _ if code < 0 => self.answer(code),
+            Some(direct) => direct,
+            None => self.answer(code),
+        }
+    }
+
+    fn fail(&self, status: EngineStatus, message: String) -> Result<(), EngineError> {
+        match status {
+            EngineStatus::Success => Err(EngineError::Invalid(
+                "a host failure was reported with success status".into(),
+            )),
+            EngineStatus::RecoverableInputFailure(_) => Err(EngineError::Recoverable {
+                code: status.code(),
+                message,
+            }),
+            EngineStatus::FatalInstanceFailure(_) => Err(self.poison(status.code(), message)),
         }
     }
 
@@ -685,6 +1035,376 @@ impl EnginePotential {
     }
 }
 
+struct CallbackState {
+    callbacks: Mutex<Box<dyn EngineCallbacks>>,
+    failure: Mutex<Option<EngineFailure>>,
+}
+
+impl CallbackState {
+    /// Remember `failure` for the next [`Self::take_failure`]. A fatal failure
+    /// is sticky: it is never replaced by a later one, because the instance is
+    /// unusable once a fatal failure has been seen and a later recoverable
+    /// error must not hide that.
+    fn record(&self, failure: EngineFailure) {
+        let mut slot = match self.failure.lock() {
+            Ok(slot) => slot,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let held_fatal = matches!(
+            slot.as_ref(),
+            Some(EngineFailure {
+                status: EngineStatus::FatalInstanceFailure(_),
+                ..
+            })
+        );
+        if !held_fatal {
+            *slot = Some(failure);
+        }
+    }
+
+    fn take_failure(&self) -> Option<EngineFailure> {
+        match self.failure.lock() {
+            Ok(mut slot) => slot.take(),
+            Err(mut poisoned) => poisoned.get_mut().take(),
+        }
+    }
+
+    /// Lock the host callbacks. A lock poisoned by an earlier panic means the
+    /// host state is in an unknown condition, so it is recorded as a fatal
+    /// failure and no callback runs.
+    fn lock_callbacks(&self) -> Option<MutexGuard<'_, Box<dyn EngineCallbacks>>> {
+        match self.callbacks.lock() {
+            Ok(callbacks) => Some(callbacks),
+            Err(_) => {
+                self.record(EngineFailure {
+                    status: PANIC_STATUS,
+                    message: "host callbacks are poisoned by an earlier panic".into(),
+                });
+                None
+            }
+        }
+    }
+}
+
+/// The heap cell behind the context pointer handed to native code.
+///
+/// The cell is created by `Box::into_raw` and freed by `Box::from_raw` in
+/// `Drop`, and the context pointer is derived from the same raw pointer. A
+/// `Box` kept in a field would be reborrowed uniquely whenever it moves, which
+/// invalidates a context pointer that native code stored earlier.
+struct CallbackOwner {
+    state: NonNull<CallbackState>,
+}
+
+impl CallbackOwner {
+    fn new(state: CallbackState) -> Self {
+        Self {
+            // SAFETY: `Box::into_raw` never returns null.
+            state: unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(state))) },
+        }
+    }
+
+    fn ctx(&self) -> *mut c_void {
+        self.state.as_ptr().cast()
+    }
+
+    fn state(&self) -> &CallbackState {
+        // SAFETY: `state` came from `Box::into_raw` and stays allocated until
+        // `Drop`; only shared references are made from it.
+        unsafe { self.state.as_ref() }
+    }
+
+    fn take_failure(&self) -> Option<EngineFailure> {
+        self.state().take_failure()
+    }
+}
+
+impl Drop for CallbackOwner {
+    fn drop(&mut self) {
+        // SAFETY: the pointer owns the allocation made in `new` and this is
+        // the only place that frees it.
+        drop(unsafe { Box::from_raw(self.state.as_ptr()) });
+    }
+}
+
+// SAFETY: the owner only hands out `&CallbackState`, and it owns the state the
+// way a `Box<CallbackState>` would, so it is `Send` and `Sync` exactly when
+// `CallbackState` is.
+unsafe impl Send for CallbackOwner where CallbackState: Send {}
+unsafe impl Sync for CallbackOwner where CallbackState: Sync {}
+
+const _: fn() = || {
+    fn send_and_sync<T: Send + Sync>() {}
+    send_and_sync::<CallbackOwner>();
+};
+
+unsafe extern "C" fn oracle_trampoline(
+    ctx: *mut c_void,
+    n_atoms: c_long,
+    positions: *const f64,
+    atomic_numbers: *const c_int,
+    forces: *mut f64,
+    energy: *mut f64,
+    box_matrix: *const f64,
+) -> c_int {
+    if ctx.is_null()
+        || n_atoms <= 0
+        || positions.is_null()
+        || atomic_numbers.is_null()
+        || forces.is_null()
+        || energy.is_null()
+        || box_matrix.is_null()
+    {
+        return ENGINE_ERR_INVALID;
+    }
+    let state = unsafe { &*ctx.cast::<CallbackState>() };
+    let count = match usize::try_from(n_atoms) {
+        Ok(count) => count,
+        Err(_) => return -1,
+    };
+    let Some(position_len) = count.checked_mul(3) else {
+        return -1;
+    };
+    let request = EngineRequest {
+        positions: unsafe { std::slice::from_raw_parts(positions, position_len) },
+        atomic_numbers: unsafe { std::slice::from_raw_parts(atomic_numbers, count) },
+        box_matrix: unsafe { &*box_matrix.cast::<[f64; 9]>() },
+    };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        state
+            .lock_callbacks()
+            .map(|mut callbacks| callbacks.oracle(&request))
+    }));
+    let outcome = match result {
+        Ok(Some(outcome)) => outcome,
+        Ok(None) => return PANIC_STATUS.code(),
+        Err(_) => Err(EngineFailure {
+            status: PANIC_STATUS,
+            message: "oracle callback panicked".into(),
+        }),
+    };
+    let failure = match outcome {
+        Ok(answer) if answer.forces.len() != position_len => EngineFailure {
+            status: INVALID_STATUS,
+            message: "oracle returned the wrong force length".into(),
+        },
+        Ok(answer) => match non_finite_output(answer.energy, &answer.forces) {
+            Some(message) => EngineFailure {
+                status: INVALID_STATUS,
+                message: format!("oracle {message}"),
+            },
+            None => {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(answer.forces.as_ptr(), forces, position_len);
+                    *energy = answer.energy;
+                }
+                return 0;
+            }
+        },
+        Err(failure) => EngineFailure {
+            status: failure.status.or_invalid(),
+            message: failure.message,
+        },
+    };
+    let code = failure.status.code();
+    state.record(failure);
+    code
+}
+
+unsafe extern "C" fn acquire_trampoline(ctx: *mut c_void, reason: c_int) {
+    if ctx.is_null() {
+        return;
+    }
+    let state = unsafe { &*ctx.cast::<CallbackState>() };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if let Some(mut callbacks) = state.lock_callbacks() {
+            callbacks.on_acquire(reason.into());
+        }
+    }));
+    if result.is_err() {
+        state.record(EngineFailure {
+            status: PANIC_STATUS,
+            message: "acquisition callback panicked".into(),
+        });
+    }
+}
+
+unsafe extern "C" fn model_update_trampoline(ctx: *mut c_void, model_state: u64) {
+    if ctx.is_null() {
+        return;
+    }
+    let state = unsafe { &*ctx.cast::<CallbackState>() };
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if let Some(mut callbacks) = state.lock_callbacks() {
+            callbacks.on_model_update(model_state);
+        }
+    }));
+    if result.is_err() {
+        state.record(EngineFailure {
+            status: PANIC_STATUS,
+            message: "model-update callback panicked".into(),
+        });
+    }
+}
+
+/// Owning session over one version-checked engine instance.
+pub struct EngineSession {
+    // `engine` is declared first so that its `Drop` calls `rgpot_engine_destroy`
+    // while the callback context native code may still read is alive.
+    engine: EnginePotential,
+    callbacks: Option<CallbackOwner>,
+}
+
+impl EngineSession {
+    /// Load a version-compatible engine and create one session.
+    ///
+    /// The engine is created before any callback can be registered, because
+    /// `rgpot_engine_create` takes none. Register an oracle afterwards with
+    /// [`Self::set_callbacks`]; a learning engine that needs one fails its
+    /// evaluations until then.
+    ///
+    /// # Safety
+    ///
+    /// The library is trusted to run initializers safely and to implement the
+    /// versioned `rgpot_engine_*` ABI exactly. The version and optional ABI
+    /// stamp checks cannot prove that arbitrary machine code obeys that
+    /// contract.
+    pub unsafe fn load(path: &Path, config: &[u8]) -> Result<Self, EngineError> {
+        let engine = unsafe { EnginePotential::load(path, config) }?;
+        Ok(Self {
+            engine,
+            callbacks: None,
+        })
+    }
+
+    /// Evaluate one geometry.
+    pub fn force(
+        &mut self,
+        request: &EngineRequest<'_>,
+        transform: Option<&mut dyn CoordinateTransform>,
+    ) -> Result<EngineEvaluation, EngineError> {
+        self.engine
+            .force_hosted(request, transform, self.callbacks.as_ref())
+    }
+
+    /// Evaluate a strided-uniform batch in one engine call.
+    pub fn force_batch(
+        &mut self,
+        atomic_numbers: &[i32],
+        positions: &[f64],
+        boxes: &[f64],
+        transform: Option<&mut dyn CoordinateTransform>,
+    ) -> Result<Vec<EngineEvaluation>, EngineError> {
+        self.engine.force_batch_hosted(
+            atomic_numbers,
+            positions,
+            boxes,
+            transform,
+            self.callbacks.as_ref(),
+        )
+    }
+
+    /// Register owned learning-engine callbacks, or clear them with `None`.
+    ///
+    /// `None` is represented by a null callback-table pointer. If native
+    /// replacement fails, the previous owned callbacks remain registered.
+    pub fn set_callbacks(
+        &mut self,
+        callbacks: Option<Box<dyn EngineCallbacks>>,
+    ) -> Result<(), EngineError> {
+        self.engine.check_alive()?;
+        let set_callbacks = self
+            .engine
+            .symbols
+            .set_callbacks
+            .ok_or_else(|| unsupported_symbol("rgpot_engine_set_callbacks"))?;
+        let next = callbacks.map(|callbacks| {
+            CallbackOwner::new(CallbackState {
+                callbacks: Mutex::new(callbacks),
+                failure: Mutex::new(None),
+            })
+        });
+        let raw = match &next {
+            Some(owner) => RgpotEngineCallbacks {
+                ctx: owner.ctx(),
+                oracle: Some(oracle_trampoline),
+                on_acquire: Some(acquire_trampoline),
+                on_model_update: Some(model_update_trampoline),
+            },
+            None => RgpotEngineCallbacks {
+                ctx: std::ptr::null_mut(),
+                oracle: None,
+                on_acquire: None,
+                on_model_update: None,
+            },
+        };
+        let raw_ptr = if next.is_some() {
+            &raw
+        } else {
+            std::ptr::null()
+        };
+        let code = unsafe { set_callbacks(self.engine.handle.as_ptr(), raw_ptr) };
+        let direct = next.as_ref().and_then(CallbackOwner::take_failure);
+        if code == 0 {
+            // The native side now owns a copy of `raw`, so keep its context
+            // alive even if a synchronously reported callback failure poisons
+            // the session.
+            self.callbacks = next;
+        }
+        self.engine.answer_with_failure(code, direct)
+    }
+
+    /// Monotone model state, or zero for a static engine.
+    pub fn model_state(&self) -> Result<u64, EngineError> {
+        self.engine.check_alive()?;
+        Ok(match self.engine.symbols.model_state {
+            Some(model_state) => unsafe { model_state(self.engine.handle.as_ptr()) },
+            None => 0,
+        })
+    }
+
+    /// Send a typed runtime hint message to a learning engine.
+    pub fn hint(&mut self, message: &[u8]) -> Result<(), EngineError> {
+        self.engine.check_alive()?;
+        if message.is_empty() {
+            return Err(EngineError::Invalid(
+                "an engine hint cannot be empty".into(),
+            ));
+        }
+        let hint = self
+            .engine
+            .symbols
+            .hint
+            .ok_or_else(|| unsupported_symbol("rgpot_engine_hint"))?;
+        let mut aligned = vec![0_u64; message.len().div_ceil(8)];
+        for (word, chunk) in aligned.iter_mut().zip(message.chunks(8)) {
+            let mut bytes = [0_u8; 8];
+            bytes[..chunk.len()].copy_from_slice(chunk);
+            *word = u64::from_ne_bytes(bytes);
+        }
+        let mut error = vec![0 as c_char; ERROR_CAPACITY];
+        let code = unsafe {
+            hint(
+                self.engine.handle.as_ptr(),
+                aligned.as_ptr().cast(),
+                message.len(),
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        let hint_failure = (code != 0).then(|| EngineFailure {
+            status: EngineStatus::from_code(code),
+            message: text_of(&error),
+        });
+        let callback_failure = self
+            .callbacks
+            .as_ref()
+            .and_then(CallbackOwner::take_failure);
+        self.engine
+            .answer_with_failure(code, prefer_fatal(callback_failure, hint_failure))
+    }
+}
+
 /// Releases the native handle with `rgpot_engine_destroy`.
 ///
 /// In `engine_c_abi.h`, a negative return code means the instance is unusable
@@ -696,6 +1416,34 @@ impl EnginePotential {
 impl Drop for EnginePotential {
     fn drop(&mut self) {
         unsafe { (self.symbols.destroy)(self.handle.as_ptr()) };
+    }
+}
+
+/// The failure that classifies a native call: the one the host callbacks
+/// recorded, or the transform's. A fatal failure is preferred over a
+/// recoverable one, and the callbacks over the transform otherwise.
+fn host_failure(
+    host: Option<&CallbackOwner>,
+    transform: Option<&TransformCall<'_>>,
+) -> Option<EngineFailure> {
+    let callbacks = host.and_then(CallbackOwner::take_failure);
+    let transform = transform.and_then(TransformCall::take_failure);
+    prefer_fatal(callbacks, transform)
+}
+
+fn prefer_fatal(
+    first: Option<EngineFailure>,
+    second: Option<EngineFailure>,
+) -> Option<EngineFailure> {
+    let fatal =
+        |failure: &EngineFailure| matches!(failure.status, EngineStatus::FatalInstanceFailure(_));
+    match (first, second) {
+        (Some(first), Some(second)) => Some(if fatal(&second) && !fatal(&first) {
+            second
+        } else {
+            first
+        }),
+        (first, second) => first.or(second),
     }
 }
 
@@ -721,16 +1469,19 @@ fn unsupported_symbol(operation: &'static str) -> EngineError {
     }
 }
 
-fn finite(energy: f64, forces: &[f64]) -> Result<(), EngineError> {
+fn non_finite_output(energy: f64, forces: &[f64]) -> Option<String> {
     if !energy.is_finite() {
-        return Err(EngineError::Invalid(
-            "the engine energy is not finite".into(),
-        ));
+        return Some("energy is not finite".into());
     }
-    match forces.iter().position(|value| !value.is_finite()) {
-        Some(index) => Err(EngineError::Invalid(format!(
-            "the engine force at element {index} is not finite"
-        ))),
+    forces
+        .iter()
+        .position(|value| !value.is_finite())
+        .map(|index| format!("force at element {index} is not finite"))
+}
+
+fn finite(energy: f64, forces: &[f64]) -> Result<(), EngineError> {
+    match non_finite_output(energy, forces) {
+        Some(message) => Err(EngineError::Invalid(format!("the engine {message}"))),
         None => Ok(()),
     }
 }
@@ -774,6 +1525,9 @@ unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
         hvp: unsafe { optional(library, "rgpot_engine_hvp") },
         caps: unsafe { optional(library, "rgpot_engine_caps") },
         last_error: unsafe { optional(library, "rgpot_engine_last_error") },
+        model_state: unsafe { optional(library, "rgpot_engine_model_state") },
+        set_callbacks: unsafe { optional(library, "rgpot_engine_set_callbacks") },
+        hint: unsafe { optional(library, "rgpot_engine_hint") },
     })
 }
 
@@ -911,4 +1665,97 @@ unsafe extern "C" fn engine_hessian_vector_callback(
             }
         }
     }))
+}
+
+#[cfg(test)]
+mod session_tests;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingTransform {
+        calls: AtomicUsize,
+    }
+
+    impl CoordinateTransform for CountingTransform {
+        fn transform(
+            &mut self,
+            _positions: &mut [f64],
+            _box_matrix: &mut [f64; 9],
+        ) -> Result<(), EngineFailure> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            std::thread::yield_now();
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn null_context_trampolines_are_rejected_or_noops() {
+        assert_eq!(
+            unsafe {
+                transform_trampoline(
+                    std::ptr::null_mut(),
+                    1,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            },
+            ENGINE_ERR_INVALID
+        );
+        assert_eq!(
+            unsafe {
+                oracle_trampoline(
+                    std::ptr::null_mut(),
+                    1,
+                    std::ptr::null(),
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null(),
+                )
+            },
+            ENGINE_ERR_INVALID
+        );
+        unsafe {
+            acquire_trampoline(std::ptr::null_mut(), 1);
+            model_update_trampoline(std::ptr::null_mut(), 1);
+        }
+    }
+
+    #[test]
+    fn transform_trampoline_serializes_concurrent_batch_invocations() {
+        const THREADS: usize = 8;
+        let mut transform = CountingTransform {
+            calls: AtomicUsize::new(0),
+        };
+        let call = TransformCall {
+            state: Mutex::new(TransformState {
+                transform: &mut transform,
+                failure: None,
+            }),
+        };
+        let user = (&call as *const TransformCall<'_>).addr();
+        std::thread::scope(|scope| {
+            for _ in 0..THREADS {
+                scope.spawn(move || {
+                    let mut positions = [0.0; 3];
+                    let mut box_matrix = [0.0; 9];
+                    let code = unsafe {
+                        transform_trampoline(
+                            user as *mut c_void,
+                            1,
+                            positions.as_mut_ptr(),
+                            box_matrix.as_mut_ptr(),
+                        )
+                    };
+                    assert_eq!(code, 0);
+                });
+            }
+        });
+        assert!(call.take_failure().is_none());
+        drop(call);
+        assert_eq!(transform.calls.load(Ordering::SeqCst), THREADS);
+    }
 }
