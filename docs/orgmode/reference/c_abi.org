@@ -111,7 +111,7 @@ uint32_t rgpot_version_patch(void);
   =RGPOT_SUCCESS= (0), =RGPOT_INVALID_PARAMETER= (1), =RGPOT_INTERNAL_ERROR= (2), =RGPOT_RPC_ERROR= (3), =RGPOT_BUFFER_SIZE_ERROR=
   (4),
   =RGPOT_SCC_NOT_CONVERGED= (5), =RGPOT_NO_JET= (6), =RGPOT_JET_BRANCH= (7), =RGPOT_JET_DOMAIN=
-  (8).
+  (8), =RGPOT_NO_HESSIAN= (9).
 - Errors :: none.
   The only functions of =rgpot-core= that return
   =RGPOT_BUFFER_SIZE_ERROR= themselves are =rgpot_potential_taylor_jet= and
@@ -760,6 +760,143 @@ enum rgpot_fused_error_kind_t rgpot_potential_fused_error_kind(const struct rgpo
 - Outputs :: the kind of the failure the cache stores, or =RGPOT_FUSED_OK=.
   A NULL =pot= gives =RGPOT_FUSED_OK=.
 - Errors :: none.
+
+** Dense Hessians
+
+The dense energy Hessian is =H = d²E/dx_i dx_j = -dF/dx=, a row-major matrix of
+=(3 * n_atoms)²= doubles in energy per length squared, with the positions' own
+component order.
+It is the Hessian at fixed cell: it holds no cell or strain derivative and
+no stress response.
+A potential supplies it through a registered dense callback, or through the
+analytic Hessian-vector callback applied to each unit direction.
+A handle with neither is refused with =RGPOT_NO_HESSIAN=; forces are never
+differenced in its place.
+The handle keeps the last matrix, keyed like the
+[[#fused-cache][fused cache]] centre, so a second request at the same bits does
+not call the callback again.
+Registering or clearing the dense callback drops the stored matrix.
+
+*** =rgpot_hessian_counts_t=
+
+- Inputs :: none; a struct filled by =rgpot_potential_hessian_counts=.
+- Units :: none; counts.
+- Outputs :: =evaluations=, the matrices computed by the dense callback or
+  assembled from the product callback; =cache_hits=, the requests answered from
+  the stored matrix; =from_hvp=, the evaluations assembled column by column from
+  the analytic Hessian-vector callback; =products=, the =RGPOT_HVP_AUTO=
+  products answered by multiplying the stored matrix.
+- Errors :: none.
+
+*** =rgpot_potential_set_hessian_callback=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_potential_set_hessian_callback(const struct rgpot_potential_t *pot,
+                                                         enum rgpot_status_t (*callback)(void *user_data,
+                                                                                         const struct rgpot_force_input_t *input,
+                                                                                         double *hessian_out));
+#+end_src
+
+- Inputs :: =pot= a live handle; =callback= a function that receives the
+  handle's =user_data=, the geometry, and room for =(3 * n_atoms)²= doubles,
+  writes the row-major energy Hessian and returns =RGPOT_SUCCESS= or an error
+  status; or NULL to clear the registered one.
+- Units :: =hessian_out= in energy per length squared.
+- Outputs :: the callback is stored on the handle and the stored matrix is
+  dropped.
+  Replacing or clearing returns only after every call of the previous callback
+  that was already running has returned, and the previous callback is not
+  started again.
+  The caller may therefore release the old callback and its state as soon as
+  this function returns.
+  A running callback holds the registration, so the call waits for it.
+  The callback must not call this function or any Hessian or Hessian-vector
+  entry point of the same handle, and no thread inside such an entry point may
+  call this function: the wait would be on itself and never end.
+- Errors :: =RGPOT_INVALID_PARAMETER= with
+  =rgpot_potential_set_hessian_callback: pot is NULL= for a NULL =pot=.
+
+*** =rgpot_potential_set_hessian_byte_budget=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_potential_set_hessian_byte_budget(const struct rgpot_potential_t *pot,
+                                                            const uint64_t *max_bytes);
+#+end_src
+
+- Inputs :: =pot= a live handle; =max_bytes= NULL to clear the budget, or a
+  pointer to the largest matrix, in bytes, that a request may need.
+- Units :: bytes.
+- Outputs :: the budget is stored; the pointer is read once and need not stay
+  alive.
+  There is no default: with no budget a request is refused only when its byte
+  count does not fit in =size_t=, or when the allocation fails.
+  A budget of zero refuses every matrix with a positive size.
+  =rgpot_potential_hessian= checks the budget on each request before it looks at
+  the stored matrix, so a lowered budget also refuses a request whose matrix is
+  already stored.
+  The budget bounds one matrix, not the peak memory of an evaluation.
+- Errors :: =RGPOT_INVALID_PARAMETER= with
+  =rgpot_potential_set_hessian_byte_budget: pot is NULL= for a NULL =pot=.
+
+*** =rgpot_potential_hessian=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_potential_hessian(const struct rgpot_potential_t *pot,
+                                            const struct rgpot_force_input_t *input,
+                                            double *hessian_out);
+#+end_src
+
+- Inputs :: =pot= a live handle; =input= the geometry; =hessian_out= with room
+  for =(3 * n_atoms)²= doubles that do not overlap the positions.
+- Units :: =hessian_out= in energy per length squared, for positions in length
+  units.
+- Outputs :: =hessian_out= holds the row-major Hessian at the geometry of
+  =input=, at fixed cell.
+  The matrix comes from the dense callback when one is registered, else from the
+  analytic Hessian-vector callback on each unit direction =e_j=, whose product is
+  column =j=.
+  A request at the stored geometry, species, cell and settings is answered from
+  the stored matrix.
+  A zero-atom input writes nothing.
+- Errors :: =RGPOT_INVALID_PARAMETER=, with a message naming the problem, for: a
+  NULL =pot=, =input= or =hessian_out=; a positions tensor that is NULL or too
+  large; a byte count that overflows or exceeds the byte budget; a =hessian_out=
+  that overlaps the positions; a refused peer; an input that fails the tensor
+  checks of =rgpot_potential_hvp=; a non-finite callback output.
+  =RGPOT_NO_HESSIAN= with =potential has no analytic Hessian= when neither
+  callback is registered.
+  A callback's error status is returned unchanged.
+  =RGPOT_INTERNAL_ERROR= for a caught panic.
+
+*** =rgpot_potential_hessian_counts=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_potential_hessian_counts(const struct rgpot_potential_t *pot,
+                                                   struct rgpot_hessian_counts_t *out);
+#+end_src
+
+- Inputs :: =pot= a live handle; =out= writable.
+- Units :: none.
+- Outputs :: =*out= holds the four counters of the handle.
+- Errors :: =RGPOT_INVALID_PARAMETER= with
+  =rgpot_potential_hessian_counts: NULL argument= when either pointer is NULL.
+
+*** =rgpot_potential_reset_hessian_counts=
+
+#+attr_rgpot: signature
+#+begin_src c
+void rgpot_potential_reset_hessian_counts(const struct rgpot_potential_t *pot);
+#+end_src
+
+- Inputs :: =pot= NULL or a live handle.
+- Units :: none.
+- Outputs :: the four counters are set to 0; the stored matrix is kept.
+- Errors :: none.
+  NULL is a no-op.
 
 ** Hessian-vector products
 
