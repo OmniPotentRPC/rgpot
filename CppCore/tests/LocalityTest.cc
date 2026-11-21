@@ -20,6 +20,7 @@
 #include "rgpot/PerAtom.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
+#include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_EAM_TABLE
 #include "rgpot/EAMTable/EAMTablePot.hpp"
 #endif
@@ -214,6 +215,11 @@ TEST_CASE("Pair potentials declare their cutoff as a pairwise range", "[Locality
   const rgpot::Locality morse = rgpot::MorsePot({.cutoff = 7.0}).locality();
   CHECK(morse.cutoff == 7.0);
   CHECK(morse.pairwise);
+  const rgpot::Locality zbl = rgpot::ZBLPot({.cut_inner = 1.5, .cut_global = 2.4}).locality();
+  CHECK(zbl.cutoff == 2.4);
+  CHECK(zbl.pairwise);
+  CHECK(zbl.forceRange() == 2.4);
+  CHECK(zbl.densities == 0);
   CHECK_FALSE(rgpot::LJPot({.cutoff = 0.0}).locality().finite());
 }
 
@@ -246,6 +252,10 @@ TEST_CASE("Owned atoms of a cluster match the periodic box", "[Locality]") {
                 fcc(5.26, 4, triclinic, 18, 18));
   }
   SECTION("Morse") { check_owned(rgpot::MorsePot({.cutoff = 7.0}), fcc(3.92, 4, triclinic, 78, 78)); }
+  SECTION("ZBL") {
+    check_owned(rgpot::ZBLPot({.cut_inner = 1.5, .cut_global = 2.4}),
+                fcc(2.6, 4, triclinic, 14, 79));
+  }
   SECTION("SuttonChen") {
     rgpot::SuttonChenConfig c = rgpot::sutton_chen_platinum();
     c.cutoff = 7.0;
