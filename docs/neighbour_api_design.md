@@ -32,6 +32,8 @@ What it gets right:
 - One options struct and one list struct. Pairs, shifts, distances and
   vectors are parallel arrays. The vector is documented as
   `r_j - r_i + S @ H`, and the box is one lattice vector per row.
+  rgpot keeps that relation for the positions as passed: the search folds
+  periodic components first and reports `S` for the unfolded positions.
 - `full` is a bool, not a pile of flags. Upstream Python refuses
   `padded_to` unless `full_list` is true (`_neighbors.py`, the
   constructor). That combination cannot succeed by accident.
@@ -294,8 +296,9 @@ From that reading, the public query should:
 - Put `bytes` first on every C struct the caller allocates, so a later
   field can be added without a new major (the gap in `VesinOptions`).
 - Document the cell as ASE's row vectors, the vector as
-  `r_j - r_i + S H`, the strict test as `r < cutoff`, and the skin
-  rebuild as half the skin. Say which calls may run on two threads.
+  `r_j - r_i + S H` for the positions as passed, the strict test as
+  `r < cutoff`, and the skin rebuild as half the skin, less the image
+  move of a cell change. Say which calls may run on two threads.
 
 ## Baseline, before any pass
 
@@ -692,9 +695,10 @@ runtime would do when the grid degenerates.
 
 `neighbor_table_t` used to ask vesin for a full list. It now calls
 `rgpot_nlist_fortran_build`, which keeps an `rgpot_nlist_builder`.
-The search radius is the cutoff plus the skin. While every atom stays
-within half the skin the builder reuses that candidate list. Each call
-still writes `r_j - r_i + S H` for the positions it was given and keeps
+The search radius is the cutoff plus the skin. While the atom moves and
+the image moves of a cell change fit in the skin, the builder reuses that
+candidate list. Each call still writes `r_j - r_i + S H` for the positions
+it was given, with the shifts kept relative to those positions, and keeps
 only pairs strictly inside the cutoff. `vec(3, npairs)` has the layout
 of `Table::column_major_vectors()`: column `p` is the vector of pair `p`.
 On 4000 FCC atoms and a cutoff of 5 with skin 0.5, a fresh search

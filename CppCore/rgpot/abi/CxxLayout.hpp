@@ -46,6 +46,7 @@
 #include "rgpot/D4Pot/D4Config.hpp"
 #include "rgpot/LongRange/SumPot.hpp"
 #include "rgpot/SumPot/SumPot.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/pot_types.hpp"
 
@@ -196,6 +197,8 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// `D4Config` is stamped too, from a header of its own. Its new `periodic`
 /// field fits the padding after `atm`, so only the field offsets show it.
 /// `D2CpmdConfig` gains `symmetry`.
+/// `nlist::Builder` and `nlist::Walk` are stamped too. Each holds only a
+/// pointer to its state, so a change to that state is not a layout change.
 inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
@@ -209,7 +212,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0xf7ebab6b64626bf2ull},
+    {"linux-x86_64-libstdc++-lp64", 0x71a2fbd47cb206f2ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -412,6 +415,8 @@ constexpr std::uint64_t compute_hash() {
   f.type<lr::SumPot>();
   f.type<D2Pot>();
   f.type<D2CpmdPot>();
+  f.type<nlist::Builder>();
+  f.type<nlist::Walk>();
 #ifdef RGPOT_HAS_CACHE
   f.type<cache::EvalCounts>();
   f.add(offsetof(cache::EvalCounts, computed));
