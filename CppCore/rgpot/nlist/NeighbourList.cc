@@ -32,6 +32,7 @@ struct Frame {
   std::vector<double> wrapped;
   std::vector<std::int32_t> wrap;
   const double *caller = nullptr;
+  bool geometry = true;
   const double *cell_pos = nullptr;
 };
 
@@ -247,8 +248,9 @@ void image_span(const double *pos, std::size_t n, const double *box,
 }
 
 Frame make_frame(const double *pos, std::size_t n, const double *box,
-                 const std::array<bool, 3> &periodic, double search) {
+                 const std::array<bool, 3> &periodic, double search, const Fields &fields) {
   Frame frame;
+  frame.geometry = fields.vectors || fields.distances;
   lattice_normals(box, periodic, search, frame.normal, frame.reach, frame.periodic);
   image_span(pos, n, box, periodic, search, frame.span, &frame.frac);
   frame.caller = pos;
@@ -338,13 +340,17 @@ void image_vector(const double *pos, std::size_t i, std::size_t j, int sa, int s
 // r'_j - r'_i + S' H. The caller's positions give the same image with
 // S = S' + W_i - W_j, and the vector and distance are taken from those
 // positions, so a table holds r_j - r_i + S H for the coordinates as
-// given. Every |W| is at most 2^29 and so is |S'|, so S fits an int32.
+// given. A query that stores neither vectors nor distances keeps the folded
+// ones. Every |W| is at most 2^29 and so is |S'|, so S fits an int32.
 void to_caller(const Frame &frame, const double *box, std::size_t i, std::size_t j, int &sa,
                int &sb, int &sc, double &vx, double &vy, double &vz, double &dist) {
   if (frame.wrap.empty()) {
     return;
   }
   caller_shift(frame.wrap.data(), i, j, sa, sb, sc);
+  if (!frame.geometry) {
+    return;
+  }
   image_vector(frame.caller, i, j, sa, sb, sc, box, vx, vy, vz);
   dist = std::sqrt(vx * vx + vy * vy + vz * vz);
 }
@@ -820,7 +826,7 @@ struct BuilderState {
   void update(const double *positions, std::size_t natoms, const double *box9,
               const Query &q) {
     check_geometry(positions, natoms, box9, q);
-    const Frame frame = make_frame(positions, natoms, box9, q.periodic, search_radius(q));
+    const Frame frame = make_frame(positions, natoms, box9, q.periodic, search_radius(q), q.fields);
     const double *current = frame.cell_pos;
     reused = false;
     unchanged = false;
@@ -941,7 +947,8 @@ Walk::Walk(const double *positions, std::size_t n, const double *box9, const Que
   w.n = n;
   w.query = query;
   std::memcpy(w.box, box9, sizeof(w.box));
-  w.frame = make_frame(positions, n, w.box, w.query.periodic, search_radius(w.query));
+  w.frame = make_frame(positions, n, w.box, w.query.periodic, search_radius(w.query),
+                       w.query.fields);
   w.pos = w.frame.cell_pos;
   w.one_image = one_minimum_image(w.box, w.query, search_radius(w.query));
   prepare_cells(w.cells, w.frame, n, w.box, w.query);
@@ -1056,7 +1063,7 @@ void build(Table &table, const double *positions, std::size_t n, const double *b
   const double search = search_radius(query);
   shift_bounds(box9, query.periodic, search, nmax);
   const bool one_image = one_minimum_image(box9, query, search);
-  const Frame frame = make_frame(positions, n, box9, query.periodic, search);
+  const Frame frame = make_frame(positions, n, box9, query.periodic, search, query.fields);
   // A handful of atoms is cheaper as a direct pair loop. The cell list
   // spends its time building bins, and a sheared cell of this size has
   // only a few bins, so the stencil visits every pair anyway.
@@ -1414,7 +1421,7 @@ void buildByAtom(Table &table, const double *positions, std::size_t n, const dou
   }
   const double search = search_radius(query);
   const bool one_image = one_minimum_image(box9, query, search);
-  const Frame frame = make_frame(positions, n, box9, query.periodic, search);
+  const Frame frame = make_frame(positions, n, box9, query.periodic, search, query.fields);
   Neighbours cells;
   prepare_cells(cells, frame, n, box9, query);
   std::vector<Rec> rows;
