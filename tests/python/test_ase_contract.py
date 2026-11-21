@@ -407,9 +407,7 @@ def test_lj_tail_correction_binding() -> None:
     np.testing.assert_allclose(
         res_on["stress"], np.eye(3) * (-want_w / vol), rtol=1e-14, atol=0.0
     )
-    np.testing.assert_allclose(
-        res_on["virials"][0, :3], want_w, rtol=1e-14, atol=0.0
-    )
+    np.testing.assert_allclose(res_on["virials"][0, :3], want_w, rtol=1e-14, atol=0.0)
 
     # RgpotCalculator forwards tail_correction by keyword and preserves it across copy.
     crystal = lj_crystal()
@@ -427,7 +425,9 @@ def test_lj_tail_correction_binding() -> None:
     # RgpotCalculator refuses tail_correction=True when pbc is not 3D periodic.
     cluster = lj_dimer()
     cluster.pbc = False
-    cluster.calc = RgpotCalculator("lj", u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True)
+    cluster.calc = RgpotCalculator(
+        "lj", u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True
+    )
     with pytest.raises(
         ValueError, match="tail_correction=True requires 3D periodic"
     ) as plain_error:
@@ -449,13 +449,16 @@ def test_lj_tail_correction_binding() -> None:
         ValueError, match="tail_correction=True requires 3D periodic"
     ) as composite_error:
         cluster.get_potential_energy()
-    assert str(composite_error.value).partition(" with ")[2] == str(
-        plain_error.value
-    ).partition(" with ")[2]
+    assert (
+        str(composite_error.value).partition(" with ")[2]
+        == str(plain_error.value).partition(" with ")[2]
+    )
 
     slab = lj_crystal()
     slab.pbc = [True, True, False]
-    slab.calc = RgpotCalculator(rgpot.LJPot(u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True))
+    slab.calc = RgpotCalculator(
+        rgpot.LJPot(u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True)
+    )
     with pytest.raises(ValueError, match="tail_correction=True requires 3D periodic"):
         slab.get_potential_energy()
 
@@ -478,10 +481,14 @@ def test_lj_tail_correction_binding() -> None:
             u0=1.0, cutoff=5.0, psi=1.0, switch_width=1.0, tail_correction=True
         )
         e_expr, f_expr, _ = expr_on(
-            crystal.positions, crystal.numbers, np.asarray(crystal.cell.array, dtype=np.float64)
+            crystal.positions,
+            crystal.numbers,
+            np.asarray(crystal.cell.array, dtype=np.float64),
         )
         e_dir, f_dir, _ = direct_sw_on(
-            crystal.positions, crystal.numbers, np.asarray(crystal.cell.array, dtype=np.float64)
+            crystal.positions,
+            crystal.numbers,
+            np.asarray(crystal.cell.array, dtype=np.float64),
         )
         assert e_expr == pytest.approx(e_dir, rel=1e-14)
         np.testing.assert_allclose(f_expr, f_dir, rtol=1e-14, atol=1e-14)
