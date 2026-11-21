@@ -169,11 +169,12 @@ The list holds partner indices and each walk takes the image from the current co
 The bins are redone after such a wrap.
 A change of the cell, of the atom count or of the spec rebuilds the list.
 `Builder` accepts coordinates any whole number of cells outside the box.
-It folds every periodic coordinate into the primary cell in fractional space before binning, choosing image shifts and applying the skin test.
-Stored shifts, vectors and distances therefore describe the folded coordinates and do not depend on whole-cell drift in the input.
+It folds every periodic coordinate into the primary cell in fractional space before binning, the image search and the skin test.
+The stored shift of a pair is then reported for the coordinates as given, `S = S' + W_i - W_j` with `W` the whole cells folded off each atom, and the vector and distance are `r_j - r_i + S H` from those coordinates.
+`build`, `Walk`, `Builder`, the batch build and the C ABI all keep that relation, so a consumer that forms vectors from its own positions and the shifts, such as the Fortran bridge, metatomic or UMA, sees the right image.
 A coordinate more than 2^29 cells from the origin is rejected with `Code::Box`.
-Changing only an atom's whole-cell representation keeps the table.
-An atom that physically crosses the primary-cell face can change a canonical stored shift, so that update rebuilds the table.
+Changing only an atom's whole-cell representation keeps the search: a pair table rewrites its shifts in place, and a cluster table, whose four lanes share one shift, is searched again.
+An atom that physically crosses the primary-cell face moves its folded coordinate by a cell, so that update rebuilds the table.
 The same update reuses the table across a cell change when the largest image displacement, at every sign of the shift stencil, fits in the skin together with the atom moves.
 `Mode::Stream` walks the 27 neighbouring cells and stores no pair list.
 The bins are reused only when the geometry is identical.
