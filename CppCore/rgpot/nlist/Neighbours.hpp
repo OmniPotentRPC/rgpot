@@ -67,8 +67,8 @@ struct Spec {
 /// when the cell is unchanged.
 [[nodiscard]] inline bool withinSkin(const double *reference, const double *current,
                                      std::size_t n, double skin) noexcept {
-  // A negative skin is not a buffer. NaN fails the same comparison.
-  if (!(skin >= 0.0)) {
+  // A negative or infinite skin is not a buffer. NaN fails both tests.
+  if (!std::isfinite(skin) || !(skin >= 0.0)) {
     return false;
   }
   const double limit2 = 0.25 * skin * skin;
@@ -109,8 +109,8 @@ struct Spec {
                                      std::size_t n, const double *reference_box,
                                      const double *current_box, const double span[3],
                                      double skin) noexcept {
-  // A negative skin is not a buffer. NaN fails the same comparison.
-  if (!(skin >= 0.0)) {
+  // A negative or infinite skin is not a buffer. NaN fails both tests.
+  if (!std::isfinite(skin) || !(skin >= 0.0)) {
     return false;
   }
   if (std::memcmp(reference_box, current_box, 9 * sizeof(double)) == 0) {

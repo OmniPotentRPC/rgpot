@@ -1199,6 +1199,23 @@ TEST_CASE("a non-finite displacement is not inside the skin", "[nlist][api]") {
   REQUIRE_FALSE(rgpot::nlist::withinSkin(pos, pos, 1, box, changed, span, 1.0));
 }
 
+TEST_CASE("an infinite or NaN skin is not inside the skin", "[nlist][api]") {
+  const double pos[3] = {1.0, 2.0, 3.0};
+  const double moved[3] = {101.0, 2.0, 3.0};
+  const double box[9] = {5, 0, 0, 0, 6, 0, 0, 0, 7};
+  const double larger[9] = {50, 0, 0, 0, 6, 0, 0, 0, 7};
+  const double span[3] = {1, 1, 1};
+  for (double skin : {std::numeric_limits<double>::infinity(),
+                      -std::numeric_limits<double>::infinity(),
+                      std::numeric_limits<double>::quiet_NaN()}) {
+    INFO("skin " << skin);
+    REQUIRE_FALSE(rgpot::nlist::withinSkin(pos, pos, 1, skin));
+    REQUIRE_FALSE(rgpot::nlist::withinSkin(pos, moved, 1, skin));
+    REQUIRE_FALSE(rgpot::nlist::withinSkin(pos, pos, 1, box, box, span, skin));
+    REQUIRE_FALSE(rgpot::nlist::withinSkin(pos, moved, 1, box, larger, span, skin));
+  }
+}
+
 TEST_CASE("a positive skin with a strict cut is rejected", "[nlist][api]") {
   const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
   const double pos[] = {0, 0, 0, 1, 0, 0};
