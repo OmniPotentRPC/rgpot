@@ -19,15 +19,10 @@
 
 namespace rgpot {
 
-namespace nlist {
-class Neighbours;
-} // namespace nlist
-
 namespace detail {
 
 struct SuttonChenWorkspaceSnapshot {
-  const nlist::Neighbours *owner = nullptr;
-  std::uint64_t build_id = 0;
+  std::uint64_t generation = 0;
   std::uint64_t index_builds = 0;
   std::size_t atoms = 0;
   std::size_t total_up = 0;

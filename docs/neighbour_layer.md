@@ -164,6 +164,18 @@ is one correction about the half-box, which is what EAM uses after
 wrapping coordinates into the cell. `General`, and any sheared cell,
 calls `MinimumImage`.
 
+A fully periodic general cell is binned by wrapped fractional coordinates, with
+the number of bins along each axis set by the dual-lattice norms.
+A non-finite fractional coordinate is an error.
+A fully periodic general cell whose reciprocal basis is not finite and positive
+is an error and is not binned in Cartesian coordinates.
+Cartesian binning is used when the cell is not general, or when an axis is open
+or its diagonal entry is not positive.
+
+An update that throws leaves the object as a default-constructed one with a new
+generation, and so does a move from it.
+The next update then builds from its own coordinates.
+
 `Mode::Stored` keeps a Verlet list and reuses it while every atom has moved by at most half the skin.
 The list holds partner indices and each walk takes the image from the current coordinates, so the move is measured to the nearest periodic image of the reference position: an atom that the caller wraps back through a face of the cell has moved by its step, not by a cell vector, and keeps the list.
 The bins are redone after such a wrap.
@@ -190,6 +202,11 @@ reports is binned on the atom span. A box of a million angstroms
 around a cluster then keeps a real cell list. A periodic axis is
 unchanged. When the tight grid also does not fit, the build uses one
 cell, as before.
+
+A grid with more cells than an `int` can name is one cell as well, whether or
+not the OS reports its memory.
+The cells are counted in 64-bit arithmetic, so a periodic box of 3e9 Å with a
+1 Å search is one cell.
 
 An infinite cutoff or skin has no search radius, in any mode.
 The update bins nothing and stores nothing, and `allPairs()` reports it with `streaming()` set.
@@ -240,6 +257,17 @@ the centres in index order. `forEachSlice`, with every other OpenMP
 region, hands every slice to the threads the runtime starts, also when
 there are fewer of them, as under `OMP_THREAD_LIMIT` or inside another
 OpenMP region, so those teams give the same bits too.
+
+The thread-local transpose index, split vectors and pair scratch of `MorsePot`
+(`MorseWorkspace`), and the workspace of `SuttonChenPot`, are keyed on
+`Neighbours::generation()`.
+That counter is process-unique and changes at construction and on every
+rebuild, copy and move.
+`LJPot` keys the list it keeps on each thread on the same counter.
+Each workspace keeps its per-thread high-water capacity across calls of
+comparable size.
+It is reallocated down when a later call needs less than a quarter of the
+retained capacity above `kShrinkFloor` (4096 elements).
 
 Stillinger-Weber and Tersoff use this layer for `Auto` as well as
 `Stored` and `Stream`. Bonds are gathered for one atom at a time, sorted
@@ -601,14 +629,7 @@ differ, and hashes the bits of every energy and force, so two builds can
 be compared.
 
 `morse_omp_bench` (`CppCore/tests/morse_omp_bench.cc`, Meson benchmark
-`morse_omp_bench`) runs a smoke check for `MorsePot` at 1, 2, 4, 8 and
-16 threads on a 6×6×6 Cu vacancy (863 atoms, below `kTeamMinAtoms`), a
-14×14×14 Cu vacancy (10,975 atoms, stored list) and the 10,000-atom Pt
-cluster, checking bit-for-bit agreement against 1 thread. On the 8-core
-Xeon host above (GCC 13.3.0, release build), evaluating each stored
-upper pair once and batching `simd::exp_fixed_n` moves the 14×14×14 Cu
-vacancy median from 10,795 / 11,317 / 5,771 µs at 1 / 2 / 4 threads to
-5,591 / 3,459 / 1,789 µs (1.62× at 2 threads, 3.12× at 4 threads), the
-10,000-atom Pt cluster from 36,007 / 45,698 / 23,290 µs to 25,026 /
-17,672 / 9,185 µs (1.42× at 2 threads, 2.72× at 4 threads), and the
-863-atom Cu vacancy from 805 µs to 457 µs.
+`morse_omp_bench`) runs a smoke check for `MorsePot` at 1, 2, 4, 8 and 16
+threads on a 6×6×6 Cu vacancy (863 atoms, below `kTeamMinAtoms`), a 14×14×14 Cu
+vacancy (10,975 atoms, stored list) and the 10,000-atom Pt cluster, checking
+bit-for-bit agreement against 1 thread.

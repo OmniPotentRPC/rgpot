@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -1464,4 +1466,96 @@ TEST_CASE("Sutton-Chen matches one-thread bits at 1, 2, 4 and 8 threads across V
       CHECK(rgpot::teamsOpened() == built);
     }
   }
+}
+
+TEST_CASE("SuttonChenPot workspace invalidates when a new potential reuses a "
+          "destroyed address",
+          "[SuttonChen][threads][generation]") {
+  ScThreadGuard guard;
+  double box[9] = {};
+  rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
+  cfg.cutoff = 1.6 * cfg.a;
+  cfg.periodic = true;
+  cfg.stress = true;
+  const auto sys1 = fcc_cell(13, cfg.a, box);
+  const std::size_t n = sys1.size() / 3;
+  REQUIRE(n >= rgpot::kTeamMinAtoms);
+  // Reorder atoms so sys2 is a different index topology on the same sites
+  // and therefore the same stored slot count.
+  auto sys2 = sys1;
+  std::rotate(sys2.begin(), sys2.begin() + 3 * (n / 3), sys2.end());
+
+  auto slots_of = [&](const std::vector<double> &pos) {
+    rgpot::nlist::Neighbours cells;
+    rgpot::nlist::updateCells(cells, pos.data(), n, box, cfg.cutoff,
+                              cfg.cutoff / 5.0, rgpot::nlist::Image::Round,
+                              rgpot::nlist::Mode::Stored,
+                              std::array<bool, 3>{true, true, true});
+    return cells.slots();
+  };
+  REQUIRE(slots_of(sys1) == slots_of(sys2));
+  REQUIRE(slots_of(sys1) / 2 >= 4096);
+
+  setThreads("1");
+  rgpot::SuttonChenPot ref_pot(cfg);
+  ref_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto want = run_full_sc_eval(ref_pot, sys2, box);
+
+  std::vector<double> fbuf(3 * n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = fbuf.data();
+  const rgpot::ForceInput in1{n, sys1.data(), nullptr, box};
+  const rgpot::ForceInput in2{n, sys2.data(), nullptr, box};
+
+  auto prime = [&](rgpot::SuttonChenPot &pot) {
+    setThreads("4");
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    pot.forceImpl(in1, &out);
+    const auto after_first = rgpot::detail::suttonChenWorkspaceSnapshot();
+    REQUIRE(after_first.index_builds >= 1);
+    REQUIRE(after_first.generation != 0);
+    return after_first;
+  };
+
+  setThreads("4");
+  auto pot = std::make_unique<rgpot::SuttonChenPot>(cfg);
+  const void *addr1 = pot.get();
+  const auto first_snap = prime(*pot);
+  pot.reset();
+
+  pot = std::make_unique<rgpot::SuttonChenPot>(cfg);
+  const void *addr2 = pot.get();
+  pot->setNeighbourMode(rgpot::nlist::Mode::Stored);
+  // Build the new list on one thread so the three-phase workspace is not
+  // refreshed, then evaluate on four threads with the list reused.
+  setThreads("1");
+  pot->forceImpl(in2, &out);
+  setThreads("4");
+  const auto got_heap = run_full_sc_eval(*pot, sys2, box);
+  const auto heap_snap = rgpot::detail::suttonChenWorkspaceSnapshot();
+  INFO("heap address1=" << addr1 << " address2=" << addr2
+                        << " reused=" << (addr1 == addr2));
+  CHECK(pot->listReused());
+  CHECK(heap_snap.generation != first_snap.generation);
+  CHECK(heap_snap.index_builds == first_snap.index_builds + 1);
+  CHECK(count_sc_bit_diffs(got_heap, want) == 0);
+  pot.reset();
+
+  std::optional<rgpot::SuttonChenPot> inplace;
+  inplace.emplace(cfg);
+  const void *opt_addr = &(*inplace);
+  const auto opt_first = prime(*inplace);
+  inplace.reset();
+  inplace.emplace(cfg);
+  REQUIRE(&(*inplace) == opt_addr);
+  inplace->setNeighbourMode(rgpot::nlist::Mode::Stored);
+  setThreads("1");
+  inplace->forceImpl(in2, &out);
+  setThreads("4");
+  const auto got_inplace = run_full_sc_eval(*inplace, sys2, box);
+  const auto opt_snap = rgpot::detail::suttonChenWorkspaceSnapshot();
+  CHECK(inplace->listReused());
+  CHECK(opt_snap.generation != opt_first.generation);
+  CHECK(opt_snap.index_builds == opt_first.index_builds + 1);
+  CHECK(count_sc_bit_diffs(got_inplace, want) == 0);
 }

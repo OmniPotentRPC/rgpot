@@ -1,12 +1,15 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#define RGPOT_NLIST_BUILDING
 #include "rgpot/nlist/Neighbours.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 
 #if defined(_WIN32)
@@ -23,21 +26,96 @@
 namespace rgpot::nlist {
 namespace {
 
-int axisCount(double length, double edge) {
+/// Largest grid whose cell ids, and the offsets past them, fit an int.
+constexpr std::uint64_t kMaxCells = 0x7ffffffe;
+
+/// Cells of edge at least `edge` along `length`. A count past kMaxCells
+/// is returned as kMaxCells + 1, which no grid accepts.
+std::uint64_t axisCount(double length, double edge) {
   if (!(length > 0.0) || !(edge > 0.0)) {
     return 1;
   }
-  auto n = static_cast<long>(std::floor(length / edge));
-  if (n < 1) {
-    n = 1;
+  const double cells = std::floor(length / edge);
+  if (!(cells >= 1.0)) {
+    return 1;
   }
+  if (!(cells <= static_cast<double>(kMaxCells))) {
+    return kMaxCells + 1;
+  }
+  auto n = static_cast<std::uint64_t>(cells);
   while (n > 1 && length / static_cast<double>(n) < edge) {
     --n;
   }
-  return static_cast<int>(n);
+  return n;
+}
+
+/// Cells of the grid, or zero when there are more than kMaxCells.
+std::uint64_t gridCells(const std::uint64_t (&axes)[3]) {
+  std::uint64_t cells = 1;
+  for (const std::uint64_t axis : axes) {
+    if (axis > kMaxCells / cells) {
+      return 0;
+    }
+    cells *= axis;
+  }
+  return cells;
+}
+
+/// Reciprocal basis of a row-major cell. `ok` is false when the
+/// determinant is not finite and nonzero, an inverse element is not
+/// finite, or a dual-lattice column norm is not finite and positive.
+/// That is the condition under which a fully periodic general cell is
+/// not binned in Cartesian coordinates.
+struct ReciprocalBasis {
+  bool ok = false;
+  double inv[9]{};
+  double dual[3]{};
+};
+
+ReciprocalBasis reciprocalBasis(const double box[9]) {
+  ReciprocalBasis out;
+  const double m0 = box[4] * box[8] - box[5] * box[7];
+  const double m1 = box[3] * box[8] - box[5] * box[6];
+  const double m2 = box[3] * box[7] - box[4] * box[6];
+  const double det = box[0] * m0 - box[1] * m1 + box[2] * m2;
+  if (!std::isfinite(det) || det == 0.0) {
+    return out;
+  }
+  out.inv[0] = m0 / det;
+  out.inv[1] = (box[2] * box[7] - box[1] * box[8]) / det;
+  out.inv[2] = (box[1] * box[5] - box[2] * box[4]) / det;
+  out.inv[3] = -m1 / det;
+  out.inv[4] = (box[0] * box[8] - box[2] * box[6]) / det;
+  out.inv[5] = (box[2] * box[3] - box[0] * box[5]) / det;
+  out.inv[6] = m2 / det;
+  out.inv[7] = (box[1] * box[6] - box[0] * box[7]) / det;
+  out.inv[8] = (box[0] * box[4] - box[1] * box[3]) / det;
+  for (double value : out.inv) {
+    if (!std::isfinite(value)) {
+      return out;
+    }
+  }
+  out.dual[0] = std::hypot(out.inv[0], out.inv[3], out.inv[6]);
+  out.dual[1] = std::hypot(out.inv[1], out.inv[4], out.inv[7]);
+  out.dual[2] = std::hypot(out.inv[2], out.inv[5], out.inv[8]);
+  out.ok = std::isfinite(out.dual[0]) && std::isfinite(out.dual[1]) &&
+           std::isfinite(out.dual[2]) && out.dual[0] > 0.0 &&
+           out.dual[1] > 0.0 && out.dual[2] > 0.0;
+  return out;
+}
+
+[[noreturn]] void refuseCartesianBinning() {
+  throw std::invalid_argument(
+      "Neighbours: fully periodic general cell has no finite positive "
+      "reciprocal basis");
 }
 
 } // namespace
+
+std::uint64_t Neighbours::nextGeneration() noexcept {
+  static std::atomic<std::uint64_t> counter{0};
+  return counter.fetch_add(1, std::memory_order_relaxed) + 1;
+}
 
 std::uint64_t availableBytes() {
 #if defined(_WIN32)
@@ -116,25 +194,55 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const double *box9,
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
-  // A grid that does not fit is one cell. An open axis can instead be
-  // binned on the atom span, which is what a cluster in a huge box needs.
-  // A periodic axis keeps the cell length. One cell remains when the
-  // tight grid does not fit either. A grid that fits is unchanged, so
-  // subtracting a zero origin leaves those bins as they were.
+  // A grid that does not fit, because an int cannot name its cells or
+  // the OS reports too little memory for its offsets, is one cell. An
+  // open axis can instead be binned on the atom span, which is what a
+  // cluster in a huge box needs. A periodic axis keeps the cell length.
+  // One cell remains when the tight grid does not fit either. A grid
+  // that fits is unchanged, so subtracting a zero origin leaves those
+  // bins as they were.
   double origin[3] = {0.0, 0.0, 0.0};
   double span[3] = {len_[0], len_[1], len_[2]};
+  std::uint64_t axes[3] = {1, 1, 1};
   auto set_axes = [&]() {
-    nx_ = axisCount(span[0], edge);
-    ny_ = axisCount(span[1], edge);
-    nz_ = axisCount(span[2], edge);
+    for (int k = 0; k < 3; ++k) {
+      axes[k] = axisCount(span[k], edge);
+    }
   };
-  auto bytes_of = [&]() {
-    return static_cast<double>(nx_) * static_cast<double>(ny_) *
-           static_cast<double>(nz_) * static_cast<double>(sizeof(std::int32_t));
+  // A grid fits when an int names every cell and, when the OS reports
+  // it, the offsets fit in the memory available.
+  auto fits = [](const std::uint64_t (&grid)[3], std::uint64_t avail) {
+    const std::uint64_t cells = gridCells(grid);
+    return cells != 0 &&
+           (avail == 0 || cells <= avail / sizeof(std::int32_t));
   };
   set_axes();
+  double frac_inv[9]{};
+  bool use_frac = false;
+  // Fractional bins are required for a fully periodic general cell,
+  // including every sheared cell whose three edges are positive.
+  // Cartesian bins are the path when the cell is not general, or when
+  // an axis is open or its diagonal entry is not positive. A fully
+  // periodic
+  // general cell whose reciprocal basis is not finite and positive is
+  // an error: it is not binned in Cartesian coordinates.
+  const bool fractional_required =
+      use_general_ && periodic_[0] && periodic_[1] && periodic_[2];
+  if (fractional_required) {
+    const ReciprocalBasis basis = reciprocalBasis(box_);
+    if (!basis.ok) {
+      refuseCartesianBinning();
+    }
+    for (int k = 0; k < 9; ++k) {
+      frac_inv[k] = basis.inv[k];
+    }
+    for (int k = 0; k < 3; ++k) {
+      axes[k] = axisCount(1.0, edge * basis.dual[k]);
+    }
+    use_frac = true;
+  }
   const auto avail = availableBytes();
-  if (avail > 0 && bytes_of() > static_cast<double>(avail)) {
+  if (!fits(axes, avail)) {
     bool any_open = false;
     for (int k = 0; k < 3; ++k) {
       if (periodic_[k] || n == 0) {
@@ -159,10 +267,13 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     if (any_open) {
       set_axes();
     }
-    if (bytes_of() > static_cast<double>(avail)) {
-      nx_ = ny_ = nz_ = 1;
+    if (!fits(axes, avail)) {
+      axes[0] = axes[1] = axes[2] = 1;
     }
   }
+  nx_ = static_cast<int>(axes[0]);
+  ny_ = static_cast<int>(axes[1]);
+  nz_ = static_cast<int>(axes[2]);
   const auto ncells = static_cast<std::size_t>(nx_) *
                       static_cast<std::size_t>(ny_) *
                       static_cast<std::size_t>(nz_);
@@ -172,23 +283,52 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     if (!(length > 0.0) || naxis <= 1) {
       return 0;
     }
-    double t = x / length * static_cast<double>(naxis);
+    const double t = x / length * static_cast<double>(naxis);
     if (!(t >= 0.0)) {
-      t = 0.0;
+      return 0;
     }
-    auto i = static_cast<int>(t);
-    if (i >= naxis) {
-      i = naxis - 1;
+    if (t >= static_cast<double>(naxis)) {
+      return naxis - 1;
     }
-    if (i < 0) {
-      i = 0;
-    }
-    return i;
+    return static_cast<int>(t);
   };
   for (std::size_t a = 0; a < n; ++a) {
-    const int ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
-    const int iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
-    const int iz = bin(xyz[3 * a + 2] - origin[2], span[2], nz_);
+    int ix = 0;
+    int iy = 0;
+    int iz = 0;
+    if (use_frac) {
+      auto bin_frac = [](double s, int naxis) {
+        if (!std::isfinite(s)) {
+          throw std::invalid_argument(
+              "Neighbours: non-finite fractional coordinate");
+        }
+        if (naxis <= 1) {
+          return 0;
+        }
+        double wrapped = s - std::floor(s);
+        if (!(wrapped >= 0.0) || wrapped >= 1.0) {
+          wrapped = 0.0;
+        }
+        auto i = static_cast<int>(wrapped * static_cast<double>(naxis));
+        if (i >= naxis) {
+          i = naxis - 1;
+        }
+        if (i < 0) {
+          i = 0;
+        }
+        return i;
+      };
+      const double x = xyz[3 * a];
+      const double y = xyz[3 * a + 1];
+      const double z = xyz[3 * a + 2];
+      ix = bin_frac(x * frac_inv[0] + y * frac_inv[3] + z * frac_inv[6], nx_);
+      iy = bin_frac(x * frac_inv[1] + y * frac_inv[4] + z * frac_inv[7], ny_);
+      iz = bin_frac(x * frac_inv[2] + y * frac_inv[5] + z * frac_inv[8], nz_);
+    } else {
+      ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
+      iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
+      iz = bin(xyz[3 * a + 2] - origin[2], span[2], nz_);
+    }
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
@@ -370,6 +510,19 @@ void Neighbours::buildStored(const double *xyz, std::size_t n,
 
 void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
                         const Spec &spec) {
+  // A partial refresh can keep the reference coordinates of the last
+  // build beside bins or a list it has already cleared. reusable() would
+  // then accept those coordinates and walk the cleared state.
+  try {
+    refresh(xyz, n, box9, spec);
+  } catch (...) {
+    reset();
+    throw;
+  }
+}
+
+void Neighbours::refresh(const double *xyz, std::size_t n, const double *box9,
+                         const Spec &spec) {
   xyz_ = xyz;
   bool wrapped = false;
   if (reusable(xyz, n, box9, spec, wrapped)) {
@@ -382,6 +535,7 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     return;
   }
   reused_ = false;
+  generation_ = nextGeneration();
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
   len_[0] = box9[0];
@@ -395,9 +549,6 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
                        box9[5] != 0.0 || box9[6] != 0.0 || box9[7] != 0.0;
   image_ = spec.image;
   use_general_ = image_ == Image::General || sheared;
-  if (use_general_) {
-    general_ = MinimumImage(box9, spec.periodic);
-  }
   search_ = spec.cutoff + spec.skin;
   if (!(search_ > 0.0)) {
     search_ = 0.0;
@@ -410,6 +561,14 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   off_.clear();
   nbr_.clear();
   streaming_ = true;
+  // Bin before MinimumImage when this update builds cells, so a fully
+  // periodic general cell with no reciprocal basis reports that error
+  // instead of a Cartesian grid. Paths that store no bins still need
+  // the image for later walks.
+  const bool bins = n >= 2 && search_ > 0.0 && !std::isinf(search_);
+  if (!bins && use_general_) {
+    general_ = MinimumImage(box9, spec.periodic);
+  }
   if (n < 2 || !(search_ > 0.0)) {
     streaming_ = false;
     mode_ = Mode::Stored;
@@ -428,6 +587,9 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
     return;
   }
   buildCells(xyz, n);
+  if (use_general_) {
+    general_ = MinimumImage(box9, spec.periodic);
+  }
   // A stream never stores the pairs, so the candidate count is unused.
   // Counting it walks every stencil the search is about to walk.
   if (spec.mode == Mode::Stream) {
