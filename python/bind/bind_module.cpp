@@ -392,6 +392,24 @@ std::unique_ptr<rgpot::SumPot> sum_from_specs(const std::vector<SumSpec> &specs)
   return sum;
 }
 
+bool has_lj_tail_correction(const rgpot::PotentialBase &pot) {
+  if (const auto *lj = dynamic_cast<const rgpot::LJPot *>(&pot)) {
+    return lj->config().tail_correction;
+  }
+  const auto *sum = dynamic_cast<const rgpot::SumPot *>(&pot);
+  if (sum == nullptr) {
+    return false;
+  }
+  for (std::size_t i = 0; i < sum->size(); ++i) {
+    const rgpot::PotentialBase *child = sum->child(i);
+    if (sum->term(i).enabled && child != nullptr &&
+        has_lj_tail_correction(*child)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 nb::list sum_components(const rgpot::SumPot &pot) {
   nb::list out;
   for (const rgpot::SumComponent &c : pot.lastComponents()) {
@@ -1134,6 +1152,11 @@ NB_MODULE(_core, m) {
       "Per-term record of this thread's last call: name, weight, enabled, "
       "evaluated, energy (eV, before the weight), forces (N, 3), variance and "
       "stress (3, 3, or None).");
+  sum.def("config", [](const PotHolder<rgpot::SumPot> &self) {
+    nb::dict out;
+    out["tail_correction"] = has_lj_tail_correction(self.primary());
+    return out;
+  });
   rgpot::pybind::bind_calls(sum);
 
 #ifdef RGPOT_HAS_EXPR

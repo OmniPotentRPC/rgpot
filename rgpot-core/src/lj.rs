@@ -134,6 +134,7 @@ impl LjConfig {
         builder.set_psi(self.psi);
         builder.set_cutoff(self.cutoff);
         builder.set_tail_correction(self.tail_correction);
+        builder.set_switch_width(self.switch_width);
         Ok(())
     }
 
@@ -157,6 +158,7 @@ impl LjConfig {
             .with_u0(reader.get_u0())
             .with_psi(reader.get_psi())
             .with_cutoff(reader.get_cutoff())
+            .with_switch_width(reader.get_switch_width())
             .with_tail_correction(reader.get_tail_correction());
         cfg.validate()?;
         Ok(cfg)

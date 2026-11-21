@@ -41,5 +41,5 @@ d4-periodic.diff
 # that picks the branch of pbc3 for a box that does not name it (12).
 d2cpmd-symmetry.diff
 #
-# lj-tail-correction.diff: LennardJonesParams.tailCorrection @3.
+# lj-tail-correction.diff: LennardJonesParams.tailCorrection @3 and switchWidth @4.
 lj-tail-correction.diff

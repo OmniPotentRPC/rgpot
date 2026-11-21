@@ -85,6 +85,7 @@ fn lj_arm_round_trips_tail_correction_and_validates_config() {
     assert_eq!(decoded.u0, 0.85);
     assert_eq!(decoded.psi, 2.5);
     assert_eq!(decoded.cutoff, 9.0);
+    assert_eq!(decoded.switch_width, 1.5);
     assert!(decoded.tail_correction);
 
     // Rejects unsupported switch_width == cutoff when tail_correction is enabled.

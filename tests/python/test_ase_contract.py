@@ -428,8 +428,30 @@ def test_lj_tail_correction_binding() -> None:
     cluster = lj_dimer()
     cluster.pbc = False
     cluster.calc = RgpotCalculator("lj", u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True)
-    with pytest.raises(ValueError, match="tail_correction=True requires 3D periodic"):
+    with pytest.raises(
+        ValueError, match="tail_correction=True requires 3D periodic"
+    ) as plain_error:
         cluster.get_potential_energy()
+
+    composite = rgpot.SumPot(
+        [
+            {
+                "kind": "lj",
+                "u0": 1.0,
+                "cutoff": 5.0,
+                "psi": 1.0,
+                "tail_correction": True,
+            }
+        ]
+    )
+    cluster.calc = RgpotCalculator(composite)
+    with pytest.raises(
+        ValueError, match="tail_correction=True requires 3D periodic"
+    ) as composite_error:
+        cluster.get_potential_energy()
+    assert str(composite_error.value).partition(" with ")[2] == str(
+        plain_error.value
+    ).partition(" with ")[2]
 
     slab = lj_crystal()
     slab.pbc = [True, True, False]
