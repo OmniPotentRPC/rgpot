@@ -40,9 +40,9 @@ if nblib_lib.found() and nblib_gmx_core.found()
     nblib_engine = shared_library(
         'nblib_engine',
         files(
-            'NblibTopology.cc',
             'NblibEngine.cc',
             'NblibSession.cc',
+            'NblibTopology.cc',
             'SessionCApi.cc',
         ),
         dependencies: [nblib_lib, nblib_gmx_core],
