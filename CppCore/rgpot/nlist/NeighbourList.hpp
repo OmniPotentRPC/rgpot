@@ -156,6 +156,9 @@ struct Table {
   }
 };
 
+struct BuilderState;
+struct WalkState;
+
 /// Stored list with a skin rebuild. A later update keeps the table while
 /// atom moves and the image shifts, including both signs of the stored
 /// stencil, stay within the skin and the query is unchanged. Skin 0
@@ -167,33 +170,30 @@ struct Table {
 /// non-finite skin is rejected before that test. Throws Error and keeps the
 /// previous table when the geometry is rejected. The same builder is used by
 /// one thread. Two builders may update at the same time.
+/// The state is behind a pointer, so the size of a Builder does not depend
+/// on it. A moved-from builder reports an empty table until its next update.
 class Builder {
 public:
+  Builder();
+  ~Builder();
+  Builder(const Builder &other);
+  Builder &operator=(const Builder &other);
+  Builder(Builder &&other) noexcept;
+  Builder &operator=(Builder &&other) noexcept;
+
   void update(const double *positions, std::size_t n, const double *box9,
               const Query &query);
 
-  [[nodiscard]] const Table &table() const noexcept { return table_; }
-  [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
-  [[nodiscard]] bool reused() const noexcept { return reused_; }
-  [[nodiscard]] bool unchanged() const noexcept { return unchanged_; }
+  [[nodiscard]] const Table &table() const noexcept;
+  [[nodiscard]] std::uint64_t builds() const noexcept;
+  [[nodiscard]] bool reused() const noexcept;
+  [[nodiscard]] bool unchanged() const noexcept;
   /// Positions from the latest update, folded along periodic axes.
-  [[nodiscard]] std::span<const double> positions() const noexcept { return current_; }
+  [[nodiscard]] std::span<const double> positions() const noexcept;
 
 private:
-  Table table_;
-  std::vector<double> ref_;
-  std::vector<double> current_;
-  double box_[9]{};
-  Query query_{};
-  int span_[3]{};
-  std::size_t n_ = 0;
-  std::uint64_t builds_ = 0;
-  bool have_ = false;
-  bool reused_ = false;
-  bool unchanged_ = false;
+  std::unique_ptr<BuilderState> state_;
 };
-
-struct Frame;
 
 /// Walk pairs for one central atom, or one cluster of four, at a time
 /// into caller storage. The walk does not keep a list of the whole
@@ -201,7 +201,8 @@ struct Frame;
 /// `pull` writes at most `dest.first.size()` pairs and returns how
 /// many it wrote. `done` is set when the geometry has been exhausted.
 /// A requested field whose span is too short throws Error and does not
-/// advance. One walk is used by one thread.
+/// advance. One walk is used by one thread. The state is behind a pointer.
+/// A moved-from walk throws Error with Code::Null from `pull`.
 class Walk {
 public:
   Walk(const double *positions, std::size_t n, const double *box9,
@@ -209,26 +210,13 @@ public:
   ~Walk();
   Walk(const Walk &) = delete;
   Walk &operator=(const Walk &) = delete;
+  Walk(Walk &&other) noexcept;
+  Walk &operator=(Walk &&other) noexcept;
 
   std::size_t pull(Buffers dest, bool &done);
 
 private:
-  const double *pos_ = nullptr;
-  std::size_t n_ = 0;
-  double box_[9]{};
-  Query query_{};
-  std::unique_ptr<Frame> frame_;
-  bool one_image_ = false;
-  Neighbours cells_;
-  std::size_t atom_ = 0;
-  std::vector<std::int32_t> hold_first_;
-  std::vector<std::int32_t> hold_second_;
-  std::vector<std::int32_t> hold_shift_;
-  std::vector<double> hold_vector_;
-  std::vector<double> hold_distance_;
-  std::vector<std::uint8_t> hold_mask_;
-  std::size_t hold_at_ = 0;
-  bool finished_ = false;
+  std::unique_ptr<WalkState> state_;
 };
 
 /// Fill `table` from `query`. The table holds every pair. A caller that

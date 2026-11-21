@@ -1463,6 +1463,51 @@ TEST_CASE("a streaming walk rejects buffers too short for the pair cap",
   }
 }
 
+TEST_CASE("a moved-from builder and walk stay usable", "[nlist][api]") {
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  const double pos[] = {1, 1, 1, 2, 1, 1, 8, 8, 8};
+  rgpot::nlist::Query query;
+  query.cutoff = 2.0;
+  query.skin = 0.5;
+  query.cut = rgpot::nlist::Cut::Loose;
+  query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+
+  rgpot::nlist::Builder first;
+  first.update(pos, 3, box, query);
+  REQUIRE(first.table().size() == 1);
+  rgpot::nlist::Builder copy(first);
+  rgpot::nlist::Builder moved(std::move(first));
+  REQUIRE(moved.table().size() == 1);
+  REQUIRE(first.table().size() == 0);
+  REQUIRE(first.builds() == 0);
+  REQUIRE_FALSE(first.reused());
+  first.update(pos, 3, box, query);
+  REQUIRE(first.table().size() == 1);
+  REQUIRE(first.builds() == 1);
+  copy.update(pos, 3, box, query);
+  REQUIRE(copy.reused());
+  REQUIRE(copy.builds() == 1);
+  first = copy;
+  REQUIRE(first.builds() == 1);
+
+  rgpot::nlist::Walk walk(pos, 3, box, query);
+  rgpot::nlist::Walk taken(std::move(walk));
+  std::vector<std::int32_t> a(4);
+  std::vector<std::int32_t> b(4);
+  std::vector<std::int32_t> s(12);
+  std::vector<double> v(12);
+  std::vector<double> d(4);
+  bool done = false;
+  rgpot::nlist::Buffers buf{a, b, s, v, d, {}};
+  REQUIRE(taken.pull(buf, done) == 1);
+  try {
+    (void)walk.pull(buf, done);
+    FAIL("a moved-from walk pulled pairs");
+  } catch (const rgpot::nlist::Error &err) {
+    REQUIRE(err.code() == rgpot::nlist::Code::Null);
+  }
+}
+
 TEST_CASE("a batch keeps the systems apart", "[nlist][api]") {
   const double positions[] = {0, 0, 0, 1.2, 0, 0, 0, 0, 0, 1.2, 0, 0};
   const std::int32_t count[] = {2, 2};

@@ -699,158 +699,250 @@ void move_columns(Table &table, Columns &cols) {
 
 } // namespace
 
-void Builder::update(const double *positions, std::size_t n, const double *box9,
-                     const Query &query) {
-  check_geometry(positions, n, box9, query);
-  const Frame frame =
-      make_frame(positions, n, box9, query.periodic, search_radius(query));
-  const double *current = frame.cell_pos;
-  reused_ = false;
-  unchanged_ = false;
-  if (have_ && n_ == n && query_.cutoff == query.cutoff && query_.skin == query.skin &&
-      query_.shape == query.shape && query_.cut == query.cut &&
-      query_.periodic == query.periodic && query_.fields.shifts == query.fields.shifts &&
-      query_.fields.vectors == query.fields.vectors &&
-      query_.fields.distances == query.fields.distances) {
-    if (std::memcmp(box_, box9, sizeof(box_)) == 0 &&
-        (n == 0 || std::memcmp(ref_.data(), current, 3 * n * sizeof(double)) == 0)) {
-      current_.clear();
-      if (n != 0) {
-        current_.assign(current, current + 3 * n);
+struct BuilderState {
+  Table table;
+  std::vector<double> ref;
+  std::vector<double> current;
+  double box[9]{};
+  Query query{};
+  int span[3]{};
+  std::size_t n = 0;
+  std::uint64_t builds = 0;
+  bool have = false;
+  bool reused = false;
+  bool unchanged = false;
+
+  void update(const double *positions, std::size_t natoms, const double *box9,
+              const Query &q) {
+    check_geometry(positions, natoms, box9, q);
+    const Frame frame = make_frame(positions, natoms, box9, q.periodic, search_radius(q));
+    const double *now = frame.cell_pos;
+    reused = false;
+    unchanged = false;
+    if (have && n == natoms && query.cutoff == q.cutoff && query.skin == q.skin &&
+        query.shape == q.shape && query.cut == q.cut && query.periodic == q.periodic &&
+        query.fields.shifts == q.fields.shifts && query.fields.vectors == q.fields.vectors &&
+        query.fields.distances == q.fields.distances) {
+      if (std::memcmp(box, box9, sizeof(box)) == 0 &&
+          (natoms == 0 || std::memcmp(ref.data(), now, 3 * natoms * sizeof(double)) == 0)) {
+        current.clear();
+        if (natoms != 0) {
+          current.assign(now, now + 3 * natoms);
+        }
+        reused = true;
+        unchanged = true;
+        return;
       }
-      reused_ = true;
-      unchanged_ = true;
-      return;
-    }
-    const bool same_box = std::memcmp(box_, box9, sizeof(box_)) == 0;
-    bool fits = true;
-    if (!same_box) {
-      // A cell change that needs a wider folded-image span rebuilds.
-      fits = frame.span[0] <= span_[0] && frame.span[1] <= span_[1] &&
-             frame.span[2] <= span_[2];
-    }
-    const double span[3] = {
-        static_cast<double>(span_[0]),
-        static_cast<double>(span_[1]),
-        static_cast<double>(span_[2]),
-    };
-    if (fits && withinSkin(ref_.data(), current, n, box_, box9, span, query.skin)) {
-      current_.clear();
-      if (n != 0) {
-        current_.assign(current, current + 3 * n);
+      const bool same_box = std::memcmp(box, box9, sizeof(box)) == 0;
+      bool fits = true;
+      if (!same_box) {
+        // A cell change that needs a wider folded-image span rebuilds.
+        fits = frame.span[0] <= span[0] && frame.span[1] <= span[1] &&
+               frame.span[2] <= span[2];
       }
-      reused_ = true;
-      return;
+      const double reach[3] = {
+          static_cast<double>(span[0]),
+          static_cast<double>(span[1]),
+          static_cast<double>(span[2]),
+      };
+      if (fits && withinSkin(ref.data(), now, natoms, box, box9, reach, q.skin)) {
+        current.clear();
+        if (natoms != 0) {
+          current.assign(now, now + 3 * natoms);
+        }
+        reused = true;
+        return;
+      }
     }
+    build(table, positions, natoms, box9, q);
+    std::copy(frame.span, frame.span + 3, span);
+    ref.clear();
+    if (natoms != 0) {
+      ref.assign(now, now + 3 * natoms);
+    }
+    current = ref;
+    std::memcpy(box, box9, sizeof(box));
+    query = q;
+    n = natoms;
+    have = true;
+    ++builds;
   }
-  build(table_, positions, n, box9, query);
-  std::copy(frame.span, frame.span + 3, span_);
-  ref_.clear();
-  if (n != 0) {
-    ref_.assign(current, current + 3 * n);
+};
+
+Builder::Builder() : state_(std::make_unique<BuilderState>()) {}
+
+Builder::~Builder() = default;
+
+Builder::Builder(const Builder &other)
+    : state_(other.state_ ? std::make_unique<BuilderState>(*other.state_)
+                          : std::make_unique<BuilderState>()) {}
+
+Builder &Builder::operator=(const Builder &other) {
+  if (this != &other) {
+    Builder copy(other);
+    state_ = std::move(copy.state_);
   }
-  current_ = ref_;
-  std::memcpy(box_, box9, sizeof(box_));
-  query_ = query;
-  n_ = n;
-  have_ = true;
-  ++builds_;
+  return *this;
 }
 
+Builder::Builder(Builder &&other) noexcept = default;
+
+Builder &Builder::operator=(Builder &&other) noexcept = default;
+
+void Builder::update(const double *positions, std::size_t n, const double *box9,
+                     const Query &query) {
+  if (!state_) {
+    state_ = std::make_unique<BuilderState>();
+  }
+  state_->update(positions, n, box9, query);
+}
+
+const Table &Builder::table() const noexcept {
+  static const Table empty{};
+  return state_ ? state_->table : empty;
+}
+
+std::uint64_t Builder::builds() const noexcept { return state_ ? state_->builds : 0; }
+
+bool Builder::reused() const noexcept { return state_ && state_->reused; }
+
+bool Builder::unchanged() const noexcept { return state_ && state_->unchanged; }
+
+std::span<const double> Builder::positions() const noexcept {
+  if (!state_) {
+    return {};
+  }
+  return state_->current;
+}
+
+struct WalkState {
+  const double *pos = nullptr;
+  std::size_t n = 0;
+  double box[9]{};
+  Query query{};
+  Frame frame;
+  bool one_image = false;
+  Neighbours cells;
+  std::size_t atom = 0;
+  std::vector<std::int32_t> hold_first;
+  std::vector<std::int32_t> hold_second;
+  std::vector<std::int32_t> hold_shift;
+  std::vector<double> hold_vector;
+  std::vector<double> hold_distance;
+  std::vector<std::uint8_t> hold_mask;
+  std::size_t hold_at = 0;
+  bool finished = false;
+
+  std::size_t pull(Buffers dest, bool &done);
+};
+
 Walk::Walk(const double *positions, std::size_t n, const double *box9, const Query &query)
-    : pos_(positions), n_(n), query_(query) {
+    : state_(std::make_unique<WalkState>()) {
   check_geometry(positions, n, box9, query);
-  std::memcpy(box_, box9, sizeof(box_));
-  frame_ = std::make_unique<Frame>(
-      make_frame(positions, n, box_, query_.periodic, search_radius(query_)));
-  pos_ = frame_->cell_pos;
-  one_image_ = one_minimum_image(box_, query_, search_radius(query_));
-  prepare_cells(cells_, *frame_, n, box_, query_);
+  WalkState &w = *state_;
+  w.n = n;
+  w.query = query;
+  std::memcpy(w.box, box9, sizeof(w.box));
+  w.frame = make_frame(positions, n, w.box, w.query.periodic, search_radius(w.query));
+  w.pos = w.frame.cell_pos;
+  w.one_image = one_minimum_image(w.box, w.query, search_radius(w.query));
+  prepare_cells(w.cells, w.frame, n, w.box, w.query);
 }
 
 Walk::~Walk() = default;
 
+Walk::Walk(Walk &&other) noexcept = default;
+
+Walk &Walk::operator=(Walk &&other) noexcept = default;
+
 std::size_t Walk::pull(Buffers dest, bool &done) {
+  if (!state_) {
+    throw Error(Code::Null, "the walk was moved from");
+  }
+  return state_->pull(dest, done);
+}
+
+std::size_t WalkState::pull(Buffers dest, bool &done) {
   const std::size_t cap = dest.first.size();
   if (cap > 0 && dest.second.size() != cap) {
     throw Error(Code::Short, "first and second buffers have different lengths");
   }
-  if (cap > 0 && query_.fields.shifts && dest.shift.size() < cap * 3) {
+  if (cap > 0 && query.fields.shifts && dest.shift.size() < cap * 3) {
     throw Error(Code::Short, "shift buffer needs 3 entries per pair");
   }
-  if (cap > 0 && query_.fields.vectors && dest.vector.size() < cap * 3) {
+  if (cap > 0 && query.fields.vectors && dest.vector.size() < cap * 3) {
     throw Error(Code::Short, "vector buffer needs 3 entries per pair");
   }
-  if (cap > 0 && query_.fields.distances && dest.distance.size() < cap) {
+  if (cap > 0 && query.fields.distances && dest.distance.size() < cap) {
     throw Error(Code::Short, "distance buffer is shorter than the pair buffer");
   }
-  if (cap > 0 && clustered(query_) && dest.mask.size() < cap) {
+  if (cap > 0 && clustered(query) && dest.mask.size() < cap) {
     throw Error(Code::Short, "a cluster list needs one mask byte per pair");
   }
-  if (finished_ || cap == 0) {
-    done = finished_;
+  if (finished || cap == 0) {
+    done = finished;
     return 0;
   }
   auto stash = [&](const std::vector<Rec> &rows) {
     for (const Rec &rec : rows) {
-      hold_first_.push_back(rec.first);
-      hold_second_.push_back(rec.second);
-      hold_shift_.push_back(rec.shift[0]);
-      hold_shift_.push_back(rec.shift[1]);
-      hold_shift_.push_back(rec.shift[2]);
-      hold_vector_.push_back(rec.vector[0]);
-      hold_vector_.push_back(rec.vector[1]);
-      hold_vector_.push_back(rec.vector[2]);
-      hold_distance_.push_back(rec.distance);
-      hold_mask_.push_back(rec.mask);
+      hold_first.push_back(rec.first);
+      hold_second.push_back(rec.second);
+      hold_shift.push_back(rec.shift[0]);
+      hold_shift.push_back(rec.shift[1]);
+      hold_shift.push_back(rec.shift[2]);
+      hold_vector.push_back(rec.vector[0]);
+      hold_vector.push_back(rec.vector[1]);
+      hold_vector.push_back(rec.vector[2]);
+      hold_distance.push_back(rec.distance);
+      hold_mask.push_back(rec.mask);
     }
   };
   std::size_t written = 0;
   while (written < cap) {
-    if (hold_at_ >= hold_first_.size()) {
-      hold_first_.clear();
-      hold_second_.clear();
-      hold_shift_.clear();
-      hold_vector_.clear();
-      hold_distance_.clear();
-      hold_mask_.clear();
-      hold_at_ = 0;
-      if (atom_ >= n_) {
-        finished_ = true;
+    if (hold_at >= hold_first.size()) {
+      hold_first.clear();
+      hold_second.clear();
+      hold_shift.clear();
+      hold_vector.clear();
+      hold_distance.clear();
+      hold_mask.clear();
+      hold_at = 0;
+      if (atom >= n) {
+        finished = true;
         break;
       }
       const std::size_t end = std::min(
-          n_, atom_ + (clustered(query_) ? std::size_t{4} : std::size_t{1}));
+          n, atom + (clustered(query) ? std::size_t{4} : std::size_t{1}));
       std::vector<Rec> rows;
-      collect(cells_, pos_, n_, box_, query_, *frame_, one_image_, atom_, end, rows);
-      atom_ = end;
+      collect(cells, pos, n, box, query, frame, one_image, atom, end, rows);
+      atom = end;
       stash(rows);
-      if (hold_first_.empty()) {
+      if (hold_first.empty()) {
         continue;
       }
     }
-    dest.first[written] = hold_first_[hold_at_];
-    dest.second[written] = hold_second_[hold_at_];
+    dest.first[written] = hold_first[hold_at];
+    dest.second[written] = hold_second[hold_at];
     if (dest.shift.size() >= (written + 1) * 3) {
-      dest.shift[3 * written] = hold_shift_[3 * hold_at_];
-      dest.shift[3 * written + 1] = hold_shift_[3 * hold_at_ + 1];
-      dest.shift[3 * written + 2] = hold_shift_[3 * hold_at_ + 2];
+      dest.shift[3 * written] = hold_shift[3 * hold_at];
+      dest.shift[3 * written + 1] = hold_shift[3 * hold_at + 1];
+      dest.shift[3 * written + 2] = hold_shift[3 * hold_at + 2];
     }
     if (dest.vector.size() >= (written + 1) * 3) {
-      dest.vector[3 * written] = hold_vector_[3 * hold_at_];
-      dest.vector[3 * written + 1] = hold_vector_[3 * hold_at_ + 1];
-      dest.vector[3 * written + 2] = hold_vector_[3 * hold_at_ + 2];
+      dest.vector[3 * written] = hold_vector[3 * hold_at];
+      dest.vector[3 * written + 1] = hold_vector[3 * hold_at + 1];
+      dest.vector[3 * written + 2] = hold_vector[3 * hold_at + 2];
     }
     if (written < dest.distance.size()) {
-      dest.distance[written] = hold_distance_[hold_at_];
+      dest.distance[written] = hold_distance[hold_at];
     }
     if (written < dest.mask.size()) {
-      dest.mask[written] = hold_mask_[hold_at_];
+      dest.mask[written] = hold_mask[hold_at];
     }
-    ++hold_at_;
+    ++hold_at;
     ++written;
   }
-  done = finished_ && hold_at_ >= hold_first_.size();
+  done = finished && hold_at >= hold_first.size();
   return written;
 }
 
