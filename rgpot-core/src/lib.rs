@@ -22,8 +22,14 @@
 //! | [`status`] | Status codes, thread-local error message, panic safety |
 //! | [`potential`] | Callback-based potential dispatch (opaque handle) |
 //! | [`hvp`] | Hessian-vector products with a cached centre or an analytic callback |
+//! | [`fused`] | One cache of the outcome of a fused energy-and-gradient evaluation |
+//! | [`jet`] | Validated Taylor jets along a line, with typed refusals |
+//! | [`taylor`] | Interval Taylor series that implement a jet |
+//! | [`ch5_2008`] | Exact Taylor jet of the CH5 2008 surface |
+//! | [`eam_table`] | Tabulated EAM potentials read from DYNAMO tables |
 //! | [`c_api`] | `extern "C"` entry points collected by cbindgen |
 //! | [`version`] | Loaded library version, to check against `rgpot.h` |
+//! | [`engine`] | Loader for the generic engine C ABI (`engine` feature) |
 //! | [`rpc`] | Cap'n Proto RPC client and server (feature-gated) |
 //!
 //! ## Design Principles
@@ -49,13 +55,18 @@
 //! The core types use DLPack tensors for device-agnostic data exchange.
 //! See [`tensor`] for helpers to create DLPack tensors from raw pointers.
 
-pub mod types;
-pub mod tensor;
-pub mod status;
-pub mod potential;
-pub mod hvp;
-pub mod eindir;
 pub mod c_api;
+pub mod ch5_2008;
+pub mod eam_table;
+pub mod eindir;
+pub mod fused;
+pub mod hvp;
+pub mod jet;
+pub mod potential;
+pub mod status;
+pub mod taylor;
+pub mod tensor;
+pub mod types;
 pub mod version;
 
 #[cfg(feature = "schema")]
@@ -71,6 +82,9 @@ pub mod Potentials_capnp {
 
 #[cfg(feature = "schema")]
 pub mod compat;
+
+#[cfg(feature = "engine")]
+pub mod engine;
 
 #[cfg(feature = "profile")]
 pub mod profile;

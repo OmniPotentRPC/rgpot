@@ -24,6 +24,11 @@ Three checks, each a subcommand:
     their defaults, ``pixi`` tasks and environments, repository paths, and
     ``RGPOT_*`` identifiers, and the ``&RGPOT`` keys of the GROMACS drop-in.
 
+``coverage``
+    Every org page under ``docs/orgmode`` is reachable from
+    ``docs/orgmode/index.org``, every design note named there exists, and
+    the pinned citations and reference values are still on their pages.
+
 The module uses the standard library only, so meson can run it without
 pytest.  ``tests/docs`` wraps the same functions for pytest.
 """
@@ -404,10 +409,16 @@ C_HEADERS = (
     "rgpot-core/include/rgpot.h",
     "CppCore/rgpot/nlist/rgpot_nlist.h",
     "CppCore/rgpot/nlist/fastnlist.h",
+    "CppCore/rgpot/Gupta/gupta.h",
+    "CppCore/rgpot/Morse/cambridge_morse.h",
+    "CppCore/rgpot/ReducedPair/ReducedPair.hpp",
+    "CppCore/rgpot/SuttonChen/SuttonChenPot.hpp",
+    "CppCore/rgpot/SuttonChen/SuttonChenScales.hpp",
     "include/rgpot/plugin.h",
     "CppCore/rgpot/engine_c_abi.h",
     "CppCore/rgpot/ExternalPot/external_potentials.h",
     "CppCore/rgpot/calculator_mpi_abi.h",
+    "CppCore/rgpot/Models/ModelCapi.h",
     "CppCore/rgpot/MetatomicPot/metatomic_c_abi.h",
     "CppCore/rgpot/XTBPot/xtb_c_abi.h",
     "engines/gromacs/libcp2k.h",
@@ -1484,6 +1495,70 @@ def facts_errors(root: Path = ROOT, pages: list[Path] | None = None) -> list[str
                 errors.extend(_pixi_errors(loc, m.group(1), m.group(2), envs, tasks))
     errors.extend(build_option_table_errors(root, options, cmake))
     errors.extend(gromacs_key_errors(root))
+    errors.extend(engine_table_export_errors(root))
+    return errors
+
+
+ENGINE_ABI_HEADER = "CppCore/rgpot/engine_c_abi.h"
+ENGINE_TABLE_SOURCES = (
+    "CppCore/rgpot/engine/EngineTable.cc",
+    "CppCore/rgpot/engine/EngineAbiStamp.cc",
+)
+ENGINE_ABI_PAGE = "docs/orgmode/reference/engine_abi.org"
+
+
+def engine_table_export_errors(root: Path = ROOT, page: Path | None = None) -> list[str]:
+    """The library export list matches the engine implementation and C ABI header."""
+    hdr = root / ENGINE_ABI_HEADER
+    sources = [root / source for source in ENGINE_TABLE_SOURCES]
+    if not hdr.is_file() or any(not source.is_file() for source in sources):
+        return []
+    page = page if page is not None else root / ENGINE_ABI_PAGE
+    where = rel(page, root)
+    if not page.is_file():
+        return [f"{where} is missing"]
+    hdr_text = hdr.read_text(encoding="utf-8")
+    marker = "Optional symbols:"
+    if marker not in hdr_text:
+        return [f"{ENGINE_ABI_HEADER}: {marker!r} marker was not found"]
+    optional = set()
+    for stmt in _c_statements(hdr_text.split(marker, 1)[1]):
+        if stmt.startswith("typedef"):
+            continue
+        m = re.search(r"\b(rgpot_engine_\w+)\s*\(", stmt)
+        if m:
+            optional.add(m.group(1))
+    table_code = "\n".join(
+        strip_c_comments(source.read_text(encoding="utf-8")) for source in sources
+    )
+    exported = {name for name in optional if re.search(rf"\b{name}\s*\(", table_code)}
+    omitted = optional - exported
+    doc_text = page.read_text(encoding="utf-8")
+    m = re.search(
+        r"Every library above exports\s+(.*?)\s+None of them exports\s+(.*?)(?:\n\s*\n|\Z)",
+        doc_text,
+        re.S,
+    )
+    if not m:
+        return [f"{where}: the library export list was not found"]
+    doc_exported = set(re.findall(r"=(rgpot_engine_\w+)=", m.group(1)))
+    doc_omitted = set(re.findall(r"=(rgpot_engine_\w+)=", m.group(2)))
+    errors = [
+        f"{where}: engine source export {s} is not in the library export list"
+        for s in sorted(exported - doc_exported)
+    ]
+    errors += [
+        f"{where}: {s} is not an optional symbol exported by the engine sources"
+        for s in sorted(doc_exported - exported)
+    ]
+    errors += [
+        f"{where}: unexported optional symbol {s} is not listed"
+        for s in sorted(omitted - doc_omitted)
+    ]
+    errors += [
+        f"{where}: {s} is not an unexported optional symbol of {ENGINE_ABI_HEADER}"
+        for s in sorted(doc_omitted - omitted)
+    ]
     return errors
 
 
@@ -1843,6 +1918,7 @@ class BuildInfo:
     python_ok: bool
     features: dict[str, bool]
     targets: list[dict] = field(default_factory=list)
+    compilers: dict[str, str] = field(default_factory=dict)
 
 
 def _flags_from_compile_commands(build_dir: Path, suffix: str) -> list[str]:
@@ -1900,7 +1976,32 @@ def build_info(build_dir: Path | None, root: Path = ROOT) -> BuildInfo | None:
         targets = json.loads((build_dir / "meson-info" / "intro-targets.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         targets = []
-    return BuildInfo(build_dir, cpp, c, libs, python_ok, features, targets)
+    compilers = _build_compilers(build_dir)
+    return BuildInfo(build_dir, cpp, c, libs, python_ok, features, targets, compilers)
+
+
+def _build_compilers(build_dir: Path) -> dict[str, str]:
+    path = build_dir / "meson-info" / "intro-compilers.json"
+    try:
+        host = json.loads(path.read_text(encoding="utf-8")).get("host", {})
+    except (OSError, ValueError, AttributeError):
+        return {}
+    out: dict[str, str] = {}
+    extra_dirs = [str(Path(sys.executable).resolve().parent)]
+    for lang, meta in host.items():
+        exelist = meta.get("exelist") if isinstance(meta, dict) else None
+        if not exelist:
+            continue
+        dirs = list(extra_dirs)
+        for token in exelist:
+            if os.path.isabs(token):
+                dirs.insert(0, str(Path(token).parent))
+        search_path = os.pathsep.join([os.environ.get("PATH", ""), *dirs])
+        cand = exelist[-1]
+        resolved = cand if (os.path.isabs(cand) and os.access(cand, os.X_OK)) else shutil.which(cand, path=search_path)
+        if resolved:
+            out[lang] = resolved
+    return out
 
 
 def _stage_python(build_dir: Path, root: Path) -> Path | None:
@@ -1998,21 +2099,46 @@ def run_block(block: Block, info: BuildInfo, root: Path = ROOT) -> tuple[str, st
             return "skip", f"build lacks {', '.join(missing)}"
         return _compile_c(block, info, root)
     if block.lang == "fortran":
-        fc = shutil.which(os.environ.get("FC", "gfortran"))
+        fc_env = os.environ.get("FC")
+        fc = (shutil.which(fc_env) if fc_env else info.compilers.get("fortran")) or shutil.which("gfortran")
         if not fc:
             return "skip", "no Fortran compiler"
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "block.f90"
             src.write_text(block.body)
-            return _run([fc, "-fsyntax-only", "-ffree-line-length-none", str(src)], "", None, Path(tmp))
+            return _run([fc, "-fsyntax-only", "-ffree-line-length-none", str(src)], "", _tool_env(fc), Path(tmp))
     return "skip", f"no runner for {block.lang}"
+
+
+def _tool_env(*tools: str) -> dict[str, str] | None:
+    dirs: list[str] = []
+    for tool in tools:
+        if tool and os.path.isabs(tool):
+            parent = str(Path(tool).parent)
+            if parent not in dirs:
+                dirs.append(parent)
+    if not dirs:
+        return None
+    env = dict(os.environ)
+    cur = env.get("PATH", "")
+    parts = [p for p in cur.split(os.pathsep) if p]
+    for d in dirs:
+        if d not in parts:
+            parts.append(d)
+    env["PATH"] = os.pathsep.join(parts)
+    return env
 
 
 def _compile_c(block: Block, info: BuildInfo, root: Path) -> tuple[str, str]:
     cpp = block.lang == "cpp"
-    compiler = shutil.which(os.environ.get("CXX" if cpp else "CC", "c++" if cpp else "cc"))
+    env_key = "CXX" if cpp else "CC"
+    lang_key = "cpp" if cpp else "c"
+    default_key = "c++" if cpp else "cc"
+    env_val = os.environ.get(env_key)
+    compiler = (shutil.which(env_val) if env_val else info.compilers.get(lang_key)) or shutil.which(default_key)
     if not compiler:
         return "skip", "no compiler"
+    compile_env = _tool_env(compiler)
     flags = info.cpp_flags if cpp else (info.c_flags or [f for f in info.cpp_flags if not f.startswith("-std")])
     flags = flags + [f"-I{root / d}" for d in ("CppCore", "include", "rgpot-core/include")]
     if cpp and not any(f.startswith("-std") for f in flags):
@@ -2022,20 +2148,23 @@ def _compile_c(block: Block, info: BuildInfo, root: Path) -> tuple[str, str]:
         src = Path(tmp) / ("block.cc" if cpp else "block.c")
         src.write_text(block.body + "\n")
         if block.kind == "compile":
-            return _run([compiler, "-fsyntax-only", *flags, *extra, str(src)], "", None, root)
+            return _run([compiler, "-fsyntax-only", *flags, *extra, str(src)], "", compile_env, root)
         obj, exe = Path(tmp) / "block.o", Path(tmp) / "block"
-        status, detail = _run([compiler, "-c", *flags, *extra, str(src), "-o", str(obj)], "", None, root)
+        status, detail = _run([compiler, "-c", *flags, *extra, str(src), "-o", str(obj)], "", compile_env, root)
         if status != "ok":
             return status, detail
         names = [name for name in block.options.get("link", "").split(",") if name]
         linker, args = _meson_link(info, names, block.lang) or (
             [compiler], [f"-L{d}" for d in info.lib_dirs] + [f"-l{name}" for name in names]
         )
-        if not shutil.which(linker[0]):
+        search_path = (compile_env or os.environ).get("PATH", "")
+        resolved_linker = linker[0] if (os.path.isabs(linker[0]) and os.access(linker[0], os.X_OK)) else shutil.which(linker[0], path=search_path)
+        if not resolved_linker:
             return "skip", f"no linker {linker[0]}"
+        linker = [resolved_linker, *linker[1:]]
         rpath = [f"-Wl,-rpath,{d}" for d in info.lib_dirs]
         # Meson names its own outputs relative to the build directory.
-        status, detail = _run([*linker, str(obj), "-o", str(exe), *args, *rpath], "", None, info.build_dir)
+        status, detail = _run([*linker, str(obj), "-o", str(exe), *args, *rpath], "", _tool_env(compiler, resolved_linker), info.build_dir)
         if status != "ok":
             return status, detail
         return _run([str(exe)], "", None, root)
@@ -2098,11 +2227,159 @@ def execute_blocks(build_dir: Path | None, root: Path = ROOT, blocks=None):
 # ---------------------------------------------------------------- command
 
 
+# (page, text that must remain). Each token is a DOI or a reference value
+# checked while writing the page.
+COVERAGE_MARKERS = (
+    ("docs/orgmode/reference/gupta.org", "10.1103/PhysRevB.23.6265"),
+    ("docs/orgmode/reference/gupta.org", "10.1103/PhysRevB.48.22"),
+    ("docs/orgmode/reference/gupta.org", "-3.1678"),
+    ("docs/orgmode/reference/gupta.org", "10.1021/jp970984n"),
+    ("docs/orgmode/reference/gupta.org", "573.011875"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1098/rspa.1924.0082"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-0.999999648834"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRev.34.57"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.2841941"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-0.710164462003"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.29.6443"),
+    ("docs/orgmode/reference/cpp_potentials.org", "3.63262"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.35.7423"),
+    ("docs/orgmode/reference/cpp_potentials.org", "5.129167"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.445869"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1021/j100308a038"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1016/j.chemphys.2004.04.024"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.467012"),
+    ("docs/orgmode/reference/cpp_potentials.org", "0.141344038570"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.3382344"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.5090222"),
+    ("docs/orgmode/reference/sw_si.org", "10.1103/PhysRevB.31.5262"),
+    ("docs/orgmode/reference/tersoff_sic.org", "10.1103/PhysRevB.39.5566"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1103/PhysRevLett.55.2471"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1021/acs.jctc.8b01176"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1063/5.0304911"),
+    ("docs/orgmode/reference/cpp_backends.org", "98374.87753058573"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2004.12.014"),
+    ("docs/orgmode/reference/cpp_backends.org", "50.613487749571874"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1021/ja00299a024"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1007/s00894-007-0233-4"),
+    ("docs/orgmode/reference/cpp_backends.org", "6.802846561497"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2010.04.018"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1063/5.0004997"),
+    ("docs/orgmode/reference/cpp_backends.org", "-2070.0"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.48550/arXiv.2506.14665"),
+    ("docs/orgmode/reference/cpp_backends.org", "2.8 kcal/mol"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1002/wcms.1493"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1021/acs.jctc.7b00118"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1039/c7sc00601b"),
+    ("docs/orgmode/reference/cpp_backends.org", "-137.9"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.26434/chemrxiv.8326202.v1"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1002/anie.202004239"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.52202/085713-4310"),
+    ("docs/orgmode/reference/cpp_backends.org", "-2542.4200323230975"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2013.10.027"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2018.09.020"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2021.108171"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.softx.2015.06.001"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1371/journal.pcbi.1005659"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-2.7114096242662238"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-5.217864006173226"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.56.8542"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-18.838135"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1088/0953-8984/16/27/003"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1080/00268978700101941"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-43.959774"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1088/0965-0393/8/6/305"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-17.284558"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.31.5262"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-16.204955"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.39.5566"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-17.440266"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.2162901"),
+    ("docs/xckernel.md", "2608.26440"),
+    ("docs/xckernel.md", "10.1063/5.0358101"),
+    ("docs/orgmode/explanation/global-optimization.org", "10.3389/fchem.2026.1807063"),
+    ("docs/orgmode/explanation/global-optimization.org", "10.1063/5.0283639"),
+)
+
+DESIGN_NOTES = (
+    "eam_cell.md",
+    "neighbour_layer.md",
+    "xckernel.md",
+    "xtb_backends.md",
+    "neighbour_api_design.md",
+    "eon_nlist.md",
+    "eon_pkgconfig.md",
+)
+
+
+def _toctree_targets(text: str) -> list[str]:
+    """Sphinx toctree entries in an org page, in source order."""
+    targets = []
+    active = False
+    for line in text.splitlines():
+        if ".. toctree::" in line:
+            active = True
+            continue
+        if not active:
+            continue
+        if not line.strip():
+            continue
+        if line[:1].strip():
+            active = False
+            if ".. toctree::" in line:
+                active = True
+            continue
+        token = line.strip()
+        if token.startswith(":"):
+            continue
+        targets.append(token.split("#", 1)[0])
+    return targets
+
+
+def org_index_errors(root: Path = ROOT) -> list[str]:
+    """Org pages not reachable by toctree from the manual index."""
+    orgmode = root / "docs/orgmode"
+    pages = {path.resolve() for path in orgmode.rglob("*.org")}
+    start = (orgmode / "index.org").resolve()
+    seen: set[Path] = set()
+    stack = [start]
+    while stack:
+        page = stack.pop()
+        if page in seen or not page.is_file():
+            continue
+        seen.add(page)
+        for token in _toctree_targets(page.read_text(encoding="utf-8")):
+            target = (page.parent / token).resolve()
+            org = target if target.suffix == ".org" else Path(str(target) + ".org")
+            if org.is_file():
+                stack.append(org)
+    return [
+        f"{path.relative_to(root).as_posix()}: not reachable from docs/orgmode/index.org"
+        for path in sorted(pages - seen)
+    ]
+
+
+def coverage_errors(root: Path = ROOT) -> list[str]:
+    """Index reachability and the pinned citations and reference values."""
+    errors = org_index_errors(root)
+    index = (root / "docs/orgmode/index.org").read_text(encoding="utf-8")
+    for name in DESIGN_NOTES:
+        stem = name[: -len(".md")]
+        if f"notes/{stem}" not in index:
+            errors.append(f"docs/orgmode/index.org: design note {name} is not in the index")
+        if not (root / "docs" / name).is_file():
+            errors.append(f"docs/{name}: design note listed in the index is missing")
+    for page, marker in COVERAGE_MARKERS:
+        path = root / page
+        if not path.is_file() or marker not in path.read_text(encoding="utf-8"):
+            errors.append(f"{page}: missing pinned text {marker}")
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("check", choices=("blocks", "reference", "facts", "all"))
+    parser.add_argument("check", choices=("blocks", "reference", "facts", "coverage", "all"))
     parser.add_argument("--build-dir", type=Path, default=None)
     parser.add_argument("--root", type=lambda p: Path(p).resolve(), default=ROOT)
     parser.add_argument(
@@ -2129,6 +2406,8 @@ def main(argv: list[str] | None = None) -> int:
         errors.extend(reference_errors(args.root))
     if args.check in ("facts", "all"):
         errors.extend(facts_errors(args.root))
+    if args.check in ("coverage", "all"):
+        errors.extend(coverage_errors(args.root))
     if pages:
         errors = [e for e in errors if wanted(e)]
     for error in errors:

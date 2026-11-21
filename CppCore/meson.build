@@ -35,6 +35,7 @@ _args += _build_identity_args
 # the features only known later (see the end of meson.build).
 _rt_atoms = {
     'tests': get_option('with_tests'),
+    'examples': get_option('with_examples'),
     'core': not get_option('with_rpc_client_only'),
     'client': get_option('with_rpc_client_only'),
     'rpc': rpc_enabled,
@@ -42,6 +43,7 @@ _rt_atoms = {
     'cache': get_option('with_cache'),
     'ipi': has_ipi and not get_option('with_rpc_client_only'),
     'eam_table': has_eam_table,
+    'eigen': has_eigen,
     'xtensor': has_xtensor,
     'python': find_program('python3', required: false).found(),
     'water': has_water,
@@ -54,6 +56,24 @@ _rt_atoms = {
 }
 _rt_tests = []
 _rt_kw = {}
+_tsan_supp = meson.project_source_root() / 'CppCore' / 'tests' / 'tsan.supp'
+_sanitize = get_option('b_sanitize')
+_timeout_scale = 1
+if 'thread' in _sanitize
+    _timeout_scale = 8
+elif _sanitize != 'none'
+    _timeout_scale = 3
+endif
+_tsan_options = run_command(
+    'sh',
+    '-c',
+    'printf %s "$TSAN_OPTIONS"',
+    check: false,
+).stdout()
+if _tsan_options != ''
+    _tsan_options += ':'
+endif
+_tsan_options += 'suppressions=' + _tsan_supp
 foreach _line : _fs.read('tests/registry.txt').split('\n')
     _line = _line.strip()
     if _line == '' or _line.startswith('#') or _line.startswith('@')
@@ -68,12 +88,16 @@ foreach _line : _fs.read('tests/registry.txt').split('\n')
     _workdir = _kind == 'unit' ? '.' : ''
     _env = {}
     _kw = {}
+    _has_timeout = false
     _first = true
     foreach _word : _words
         if _first
             _first = false
         elif _word.startswith('timeout=')
-            _kw += {'timeout': _word.substring(8).to_int()}
+            _has_timeout = true
+            _kw += {
+                'timeout': _word.substring(8).to_int() * _timeout_scale,
+            }
         elif _word.startswith('suite=')
             _kw += {'suite': _word.substring(6)}
         elif _word.startswith('workdir=')
@@ -95,6 +119,12 @@ foreach _line : _fs.read('tests/registry.txt').split('\n')
         _kw += {'workdir': meson.project_source_root()}
     elif _workdir != ''
         _kw += {'workdir': meson.project_source_root() / _workdir}
+    endif
+    if _has_timeout and _timeout_scale != 1
+        _env += {'RGPOT_TEST_TIMEOUT_SCALE': _timeout_scale.to_string()}
+    endif
+    if 'thread' in _sanitize and _kind != 'custom'
+        _env += {'TSAN_OPTIONS': _tsan_options}
     endif
     if _env.keys().length() > 0
         _kw += {'env': _env}
@@ -170,6 +200,8 @@ if _mpi_dep.found()
 endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
+_rgpot_srcs += files('rgpot/SumPot/SumPot.cc')
+_rgpot_srcs += files('rgpot/D2Pot/D2CpmdPot.cc', 'rgpot/D2Pot/D2Pot.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
 _rgpot_srcs += files(
     'rgpot/simd/dispatch.cc',
@@ -188,6 +220,7 @@ endif
 _fp_contract_off = cppc.get_supported_arguments(
     ['-ffp-contract=off', '/fp:precise'],
 )
+_c99_args = cc.get_supported_arguments(['-std=gnu99'])
 # Lets GCC if-convert the exp clamps and use sqrtpd: neither flag changes a
 # computed value (no errno from sqrt, no FP traps assumed), and the vector
 # loops then run the scalar body's operations lane by lane. GCC's -O2 cost
@@ -227,14 +260,23 @@ rgpot_minimage = static_library(
     pic: true,
     install: false,
 )
-# threadsRequested lives in Slices.cc. The regions are templates in
-# Slices.hpp, but the thread count is read here, so this archive has to be
-# built with OpenMP or every potential stays on one thread.
+# threadsRequested, teamsOpened, teamSize, teamFor and countTeam live in
+# Slices.cc. Keeping the object inside rgpot_halfshell satisfies
+# --no-undefined links that take halfshell without rgpot_core, while
+# rgpot_core links rgpot_halfshell instead of compiling a second copy.
 _halfshell_omp = dependency('openmp', language: 'cpp', required: false)
+rgpot_slices = static_library(
+    'rgpot_slices',
+    files('rgpot/Slices.cc'),
+    include_directories: _incdirs,
+    cpp_args: _args + _fp_contract_off,
+    dependencies: _halfshell_omp.found() ? [_halfshell_omp] : [],
+    pic: true,
+    install: false,
+)
 rgpot_halfshell = static_library(
     'rgpot_halfshell',
     files(
-        'rgpot/Slices.cc',
         'rgpot/nlist/HalfShell.cc',
         'rgpot/nlist/HalfShellWalk.cc',
         'rgpot/nlist/NeighbourList.cc',
@@ -243,6 +285,8 @@ rgpot_halfshell = static_library(
     include_directories: _incdirs,
     cpp_args: _args,
     dependencies: _halfshell_omp.found() ? [_halfshell_omp] : [],
+    link_whole: [rgpot_slices],
+    link_with: [rgpot_minimage, rgpot_exact_fma],
     pic: true,
     install: false,
 )
@@ -304,6 +348,7 @@ if not get_option('with_rpc_client_only')
         cpp_args: _core_args,
         include_directories: _incdirs,
         link_whole: [rgpot_minimage, rgpot_exact_fma],
+        link_with: [rgpot_halfshell],
         pic: true,
         install: false,
     )
@@ -319,6 +364,14 @@ if not get_option('with_rpc_client_only')
 
     subdir('rgpot/Morse')  # 'morse'
     rgpotentials += [morse]
+
+    subdir('rgpot/Models')
+    rgpotentials += [model_pots]
+
+    if has_cbe
+        subdir('rgpot/CBEPot')
+        rgpotentials += [cbe_pot]
+    endif
 
     subdir('rgpot/Gupta')  # 'gupta'
     rgpotentials += [gupta]
@@ -477,6 +530,19 @@ if not get_option('with_rpc_client_only')
     if has_fortran
         _rgpot_link_args += _fortran_hide_args
     endif
+    if has_fast_nlist and not _fast_as_object and host_system != 'windows'
+        if host_system == 'darwin'
+            _rgpot_link_args += [
+                '-Wl,-force_load,' + _fastnlist_tgt[0].full_path(),
+            ]
+        else
+            _rgpot_link_args += [
+                '-Wl,--whole-archive',
+                _fastnlist_tgt[0].full_path(),
+                '-Wl,--no-whole-archive',
+            ]
+        endif
+    endif
     _rgpot_srcs = []
     _rgpot_cpp_args = _args
     if host_system == 'windows'
@@ -505,7 +571,10 @@ if not get_option('with_rpc_client_only')
     # (rgpot/engine/EngineTable.cc) and a small backend file each. The UMA,
     # Metatomic and XTB engines add the same table to their own libraries.
     if _rpc_stack and host_system != 'windows'
-        _engine_common = files('rgpot/engine/EngineTable.cc')
+        _engine_common = [
+            engine_abi_stamp_source,
+            files('rgpot/engine/EngineTable.cc'),
+        ]
         _engine_args = _args + [
             '-DRGPOT_ENGINE_BUILD',
             '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
@@ -520,7 +589,16 @@ if not get_option('with_rpc_client_only')
             capnp_rpc_dep,
             ptlrpc_dep,
         ] + fortran_rt_deps
-        _classical_whole = [lennard_jones, morse, zbl]
+        _classical_whole = [
+            lennard_jones,
+            morse,
+            zbl,
+            model_pots,
+            rgpot_halfshell,
+        ]
+        if has_cbe
+            _classical_whole += [cbe_pot]
+        endif
         if has_water
             _classical_whole += [water_pots]
         endif
@@ -533,6 +611,26 @@ if not get_option('with_rpc_client_only')
             dependencies: _engine_deps,
             link_with: [rgpot_core],
             link_whole: _classical_whole,
+            cpp_args: _engine_args,
+            include_directories: _incdirs,
+            gnu_symbol_visibility: 'default',
+            install: not meson.is_subproject(),
+        )
+        _composite_whole = [lennard_jones, morse, zbl, cpmdpot]
+        if has_dftd4
+            _composite_whole += [d4pot]
+        endif
+        composite_engine = shared_library(
+            'composite_engine',
+            [_engine_common, files('rgpot/engine/CompositeEngine.cc')],
+            dependencies: _engine_deps + [cpmd_dl_dep],
+            link_with: [
+                rgpot_core,
+                rgpot_halfshell,
+                rgpot_minimage,
+                rgpot_exact_fma,
+            ],
+            link_whole: _composite_whole,
             cpp_args: _engine_args,
             include_directories: _incdirs,
             gnu_symbol_visibility: 'default',
@@ -730,7 +828,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
     executable(
         'time_pair_scaling',
         sources: ['examples/time_pair_scaling.cc'],
-        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
         link_with: _linkto,
         cpp_args: _args,
     )
@@ -786,7 +884,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
                 cpp_args: _args,
                 build_rpath: _metatomic_build_rpath,
             ),
-            workdir: meson.source_root() + example.get(3),
+            kwargs: _rt_kw[example.get(0)],
         )
     endforeach
 endif
@@ -1446,6 +1544,22 @@ if get_option('with_tests')
             kwargs: _rt_kw['CPMDPotGradientStressTest'],
         )
         test(
+            'CompositeCpmdDispersionTest',
+            executable(
+                'composite_cpmd_dispersion_test',
+                sources: ['tests/CompositeCpmdDispersionTest.cc'],
+                dependencies: test_deps + [ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: cpmdc_gradient_env,
+            depends: cpmdc_gradient_engine,
+            kwargs: _rt_kw['CompositeCpmdDispersionTest'],
+        )
+        test(
             'CPMDPotMessageAbiTest',
             executable(
                 'cpmd_pot_message_abi_test',
@@ -1950,6 +2064,29 @@ if get_option('with_tests')
                 ['-ffp-contract=off', '/fp:precise'],
             )
         endif
+        # The calculator-group symbol check opens librgpot.so when meson
+        # builds one, and otherwise looks the symbols up in the test
+        # binary, which then has to export them.
+        if _rt[0] == 'CalculatorGroupTest'
+            if get_option('default_library') == 'static'
+                _export_dynamic = true
+            else
+                _export_dynamic = false
+                case_args += [
+                    '-DRGPOT_TEST_SHARED_LIBRARY',
+                    '-DRGPOT_TEST_SHARED_LIBRARY_PATH="@0@"'.format(
+                        rgpot.full_path(),
+                    ),
+                ]
+            endif
+        else
+            _export_dynamic = false
+        endif
+        if _rt[0] == 'ModelPotsTest'
+            # This test links the model C API archive directly. On Windows its
+            # declarations must not name DLL import thunks.
+            case_args += ['-DRGPOT_MODEL_BUILD']
+        endif
         _test_exe = executable(
             _rt[2][0],
             sources: ['tests/' + _rt[2][1]],
@@ -1959,8 +2096,18 @@ if get_option('with_tests')
             link_with: _linkto,
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
+            export_dynamic: _export_dynamic,
         )
-        test(_rt[0], _test_exe, kwargs: _rt_kw[_rt[0]])
+        if _rt[0] == 'CalculatorGroupTest'
+            test(
+                _rt[0],
+                _test_exe,
+                depends: [rgpot],
+                kwargs: _rt_kw[_rt[0]],
+            )
+        else
+            test(_rt[0], _test_exe, kwargs: _rt_kw[_rt[0]])
+        endif
         _rt_exes += {_rt[0]: _test_exe}
         if _rt[0] == 'CalculatorGroupTest'
             calculator_group_test_exe = _test_exe
@@ -1971,7 +2118,14 @@ if get_option('with_tests')
             test(_rt[0], _rt_exes[_rt[2][0]], kwargs: _rt_kw[_rt[0]])
         endif
     endforeach
-    _nlist_link = [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma]
+    _nlist_link = [
+        rgpot_halfshell,
+        rgpot_minimage,
+        rgpot_exact_fma,
+    ]
+    if not get_option('with_rpc_client_only')
+        _nlist_link += [rgpot_core]
+    endif
     foreach _rt : _rt_tests
         if _rt[1] == 'nlist'
             test(
@@ -2046,14 +2200,32 @@ if get_option('with_tests')
     endif
     _rustc = find_program('rustc', required: false)
     if _rustc.found()
+        _nlist_rust_args = [
+            meson.current_source_dir() / 'examples' / 'nlist_rust_test.sh',
+            meson.project_source_root(),
+            meson.current_build_dir(),
+        ]
+        if _cxx_rt_flag != ''
+            _nlist_rust_args += [_cxx_rt_flag]
+        endif
+        if _sanitize != 'none'
+            _nlist_rust_args += ['-fsanitize=' + _sanitize]
+        endif
+        _nlist_rust_cc = cc.cmd_array()
+        _nlist_rust_cxx = cppc.cmd_array()
+        _nlist_rust_env = {
+            'CC': _nlist_rust_cc[_nlist_rust_cc.length() - 1],
+            'CXX': _nlist_rust_cxx[_nlist_rust_cxx.length() - 1],
+            'RUSTC': _rustc.full_path(),
+        }
+        if 'thread' in _sanitize
+            _nlist_rust_env += {'TSAN_OPTIONS': _tsan_options}
+        endif
         test(
             'nlist_rust',
             find_program('sh'),
-            args: [
-                meson.current_source_dir() / 'examples' / 'nlist_rust_test.sh',
-                meson.project_source_root(),
-                meson.current_build_dir(),
-            ],
+            args: _nlist_rust_args,
+            env: _nlist_rust_env,
             depends: _nlist_link,
         )
     endif
@@ -2225,7 +2397,11 @@ if get_option('with_tests')
             # no torch.
             engine_stub = shared_library(
                 'engine_stub',
-                ['tests/engine_stub.cc', 'rgpot/engine/EngineTable.cc'],
+                [
+                    'tests/engine_stub.cc',
+                    'rgpot/engine/EngineTable.cc',
+                    engine_abi_stamp_source,
+                ],
                 include_directories: _incdirs + ['.'],
                 cpp_args: test_args + [
                     '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
@@ -2258,15 +2434,20 @@ if get_option('with_tests')
         endif
         if _rpc_stack and host_system != 'windows'
             engine_table_env = environment()
-            engine_table_expect = ['CLASSICAL', 'MOPAC', 'NWCHEM']
+            engine_table_expect = ['CLASSICAL', 'COMPOSITE', 'MOPAC', 'NWCHEM']
             engine_table_depends = [
                 classical_engine,
+                composite_engine,
                 mopac_engine,
                 nwchem_engine,
             ]
             engine_table_env.set(
                 'RGPOT_ENGINE_CLASSICAL',
                 classical_engine.full_path(),
+            )
+            engine_table_env.set(
+                'RGPOT_ENGINE_COMPOSITE',
+                composite_engine.full_path(),
             )
             engine_table_env.set('RGPOT_ENGINE_MOPAC', mopac_engine.full_path())
             engine_table_env.set(
@@ -2499,6 +2680,26 @@ if get_option('with_tests')
             # Hot Si13 frames whose SCC runs out its iterations, twice.
             timeout: 120,
         )
+        if get_option('with_rust_core')
+            test(
+                'FusedXtbTest',
+                executable(
+                    'fused_xtb_test',
+                    sources: ['tests/FusedXtbTest.cc'],
+                    dependencies: test_deps,
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto,
+                    link_language: 'cpp',
+                    build_rpath: _xtb_test_rpath,
+                ),
+                env: xtb_test_env,
+                depends: [xtb_engine],
+                workdir: meson.source_root(),
+                suite: 'xtb',
+                timeout: 120,
+            )
+        endif
         test(
             'XTBDlopenTest',
             executable(
@@ -2674,6 +2875,40 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 0,
         )
+        thread_count_bench = executable(
+            'thread_count_bench',
+            sources: ['tests/thread_count_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'thread_count_bench',
+            thread_count_bench,
+            workdir: meson.source_root(),
+            timeout: 0,
+        )
+        morse_omp_bench = executable(
+            'morse_omp_bench',
+            sources: ['tests/morse_omp_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'morse_omp_bench',
+            morse_omp_bench,
+            workdir: meson.project_source_root(),
+            timeout: 0,
+        )
         # tools/lr_physics drives these. The bench pins workers with
         # sched_setaffinity, which only Linux has.
         if has_long_range and host_machine.system() == 'linux'
@@ -2754,23 +2989,39 @@ endif
 if not meson.is_subproject()
     install_headers('../include/rgpot/plugin.h', subdir: 'rgpot')
     # Headers: #include "rgpot/NWChemPot/..." with -I${prefix}/include
+    # install_subdir matches exclude_files against each file's path
+    # relative to rgpot/. A glob is not such a path, so '*.cc' drops
+    # nothing and PotHelpers.cc, EMT/EMTPot.cc and the other
+    # implementation files are installed. Pass every implementation path
+    # literally. rpc/Potentials.capnp stays out because rpc/meson.build
+    # installs the effective schema in its place.
+    _install_py = find_program('python3', required: false)
+    if not _install_py.found()
+        error('installing headers needs python3 to list implementation sources')
+    endif
+    _install_impl = run_command(
+        _install_py,
+        meson.current_source_dir() / 'tests' / 'check_installed_sources.py',
+        '--list',
+        meson.current_source_dir() / 'rgpot',
+        check: true,
+    ).stdout().strip().split('\n')
+    _install_exclude = ['rpc/Potentials.capnp']
+    foreach _rel : _install_impl
+        if _rel != ''
+            _install_exclude += [_rel]
+        endif
+    endforeach
     install_subdir(
         'rgpot',
         install_dir: get_option('includedir'),
-        exclude_directories: ['__pycache__', 'rpc/local'],
-        exclude_files: [
-            '*.o',
-            '*.a',
-            '*.so',
-            '*.cc',
-            '*.c',
-            '*.cpp',
-            '*.f90',
-            '*.F',
-            '*.py',
-            # rpc/meson.build installs the effective schema in its place.
-            'rpc/Potentials.capnp',
+        exclude_directories: [
+            '__pycache__',
+            'rpc/local',
+            'Morse/detail',
+            'SuttonChen/detail',
         ],
+        exclude_files: _install_exclude,
     )
 
     # The .pc always ships: consumers discover whatever this build enabled

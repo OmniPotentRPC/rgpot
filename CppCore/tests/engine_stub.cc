@@ -4,13 +4,15 @@
 // A stand-in backend for the generic engine table: E = 0.5 * sum(p^2) and
 // F = -p. The first byte of the configuration picks the reentrancy the
 // backend reports (0 shared, 1 per instance, 2 process serial), the second
-// byte clears the optional charge/spin and thread hooks, and the third byte
-// names the model file in RGPOT_ENGINE_STUB_MODEL. The library exports how
-// many calls were inside the backend at once.
+// byte clears the optional charge/spin, thread, orbital-selection and
+// orbital-copy hooks, and the third byte names the model file in
+// RGPOT_ENGINE_STUB_MODEL. The library exports how many calls were inside the
+// backend at once.
 
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine_c_abi.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -25,11 +27,14 @@ std::atomic<int> g_spin{0};
 
 class StubPot : public rgpot::PotentialBase {
 public:
-  explicit StubPot(rgpot::Reentrancy r)
-      : PotentialBase(rgpot::PotType::UNKNOWN), reentrancy_(r) {}
+  StubPot(rgpot::Reentrancy r, bool analytic_hvp)
+      : PotentialBase(rgpot::PotType::UNKNOWN), reentrancy_(r),
+        analytic_hvp_(analytic_hvp) {}
 
   [[nodiscard]] rgpot::PotCaps caps() const noexcept override {
-    return {.reentrancy = reentrancy_, .perImageInstances = true};
+    return {.reentrancy = reentrancy_,
+            .perImageInstances = true,
+            .analyticHvp = analytic_hvp_};
   }
 
   std::tuple<double, rgpot::types::AtomMatrix, double>
@@ -58,8 +63,14 @@ public:
     --g_inside;
   }
 
+  void hessianVectorImpl(const rgpot::ForceInput &in, const double *direction,
+                         double *product) const override {
+    std::copy_n(direction, 3 * in.nAtoms, product);
+  }
+
 private:
   rgpot::Reentrancy reentrancy_;
+  bool analytic_hvp_;
 };
 } // namespace
 
@@ -71,7 +82,8 @@ Created create(const void *config, std::size_t) {
   const auto *bytes = static_cast<const unsigned char *>(config);
   Created out;
   auto backend = std::make_unique<Backend>();
-  backend->pot = std::make_unique<StubPot>(static_cast<Reentrancy>(bytes[0]));
+  backend->pot = std::make_unique<StubPot>(static_cast<Reentrancy>(bytes[0]),
+                                           bytes[3] != 0);
   if (bytes[1] == 0) {
     backend->set_charge_spin = [](int charge, int spin) {
       if (charge == 99) {
@@ -85,6 +97,18 @@ Created create(const void *config, std::size_t) {
         throw std::runtime_error("inter-op threads refused");
       }
       (void)intra_op;
+    };
+    backend->select_orbitals = [](long long key) {
+      if (key == -1)
+        throw rgpot::engine::Unsupported("orbital key refused");
+      if (key == -2)
+        throw std::runtime_error("orbital selection failed");
+    };
+    backend->copy_orbitals = [](long long from_key, long long to_key) {
+      if (from_key == -1)
+        throw rgpot::engine::Unsupported("orbital copy refused");
+      if (to_key == -2)
+        throw std::runtime_error("orbital copy failed");
     };
   }
   if (bytes[2] != 0) {

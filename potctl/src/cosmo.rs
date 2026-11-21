@@ -49,6 +49,7 @@ fn find_exec_named(root: &Path, name: &str) -> Option<PathBuf> {
     None
 }
 
+#[allow(dead_code, reason = "only the potctl bin calls this")]
 fn find_first_file_named(root: &Path, name: &str) -> Option<PathBuf> {
     if !root.is_dir() {
         return None;
@@ -107,16 +108,19 @@ fn is_exec(p: &Path) -> bool {
     p.is_file()
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn cosmo_env() -> PathBuf {
     env::var_os("COSMO")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/opt/cosmo"))
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn trace_enabled() -> bool {
     env::var("POTCTL_COSMO_LINKER_TRACE").ok().as_deref() == Some("1")
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn trace(msg: &str) {
     if trace_enabled() {
         eprintln!("cosmo-linker: {msg}");
@@ -125,6 +129,7 @@ fn trace(msg: &str) {
 
 // --- linker (potctl-cosmo-ld) ------------------------------------------------
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn cosmo_toolchain_root(cc: &Path) -> PathBuf {
     let d = cc
         .parent()
@@ -137,6 +142,7 @@ fn cosmo_toolchain_root(cc: &Path) -> PathBuf {
     }
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn basename_str(p: &Path) -> String {
     p.file_name()
         .and_then(|s| s.to_str())
@@ -144,6 +150,7 @@ fn basename_str(p: &Path) -> String {
         .to_string()
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn resolve_cosmocc(cosmo: &Path) -> Option<PathBuf> {
     if let Ok(cc) = env::var("COSMO_CC") {
         let p = PathBuf::from(&cc);
@@ -168,6 +175,7 @@ fn resolve_cosmocc(cosmo: &Path) -> Option<PathBuf> {
     None
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn resolve_x86_cosmo_gcc(cosmo: &Path) -> Option<PathBuf> {
     if let Ok(cc) = env::var("COSMO_CC") {
         let p = PathBuf::from(&cc);
@@ -192,6 +200,7 @@ fn resolve_x86_cosmo_gcc(cosmo: &Path) -> Option<PathBuf> {
     None
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn resolve_cosmo_cc(cosmo: &Path) -> Result<PathBuf, String> {
     if let Some(p) = resolve_cosmocc(cosmo) {
         return Ok(p);
@@ -205,11 +214,13 @@ fn resolve_cosmo_cc(cosmo: &Path) -> Result<PathBuf, String> {
     )))
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn cc_is_cosmocc(cc: &Path) -> bool {
     let b = basename_str(cc);
     b == "cosmocc" || b == "cosmoc++"
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn resolve_aarch64_cc(cosmo: &Path, cc: &Path) -> Option<PathBuf> {
     if let Some(p) = which("aarch64-linux-cosmo-gcc") {
         return Some(p);
@@ -230,6 +241,7 @@ fn resolve_aarch64_cc(cosmo: &Path, cc: &Path) -> Option<PathBuf> {
     None
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn find_prebuilt_aarch64_obj(cosmo: &Path, cc: &Path) -> Option<PathBuf> {
     let root = cosmo_toolchain_root(cc);
     for f in [
@@ -253,14 +265,18 @@ fn find_prebuilt_aarch64_obj(cosmo: &Path, cc: &Path) -> Option<PathBuf> {
     None
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 struct Aarch64Stubs {
     main_o: PathBuf,
     pad_o: PathBuf,
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 static A64_MAIN_PLACED: AtomicBool = AtomicBool::new(false);
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 static A64_STUBS: OnceLock<Aarch64Stubs> = OnceLock::new();
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn compile_aarch64_c_to_o(
     a64_cc: &Path,
     csrc: &Path,
@@ -348,6 +364,7 @@ fn compile_aarch64_c_to_o(
 
 /// Minimal aarch64 ELF64 ET_REL with global `main` = `mov w0,#0; ret` (no libc).
 /// Cosmocc's aarch64 fat pass only needs a real aarch64 ELF companion with `main` once.
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn write_minimal_aarch64_main_o(path: &Path) -> Result<(), String> {
     // Layout (offsets in bytes):
     // 0x00: ELF header (64)
@@ -363,7 +380,7 @@ fn write_minimal_aarch64_main_o(path: &Path) -> Result<(), String> {
     b[4] = 2; // ELFCLASS64
     b[5] = 1; // ELFDATA2LSB
     b[6] = 1; // EV_CURRENT
-    // e_type ET_REL
+              // e_type ET_REL
     b[16] = 1;
     b[17] = 0;
     // e_machine EM_AARCH64 = 183
@@ -409,7 +426,18 @@ fn write_minimal_aarch64_main_o(path: &Path) -> Result<(), String> {
 
     // Section headers at 0xB8 (5 entries)
     let sh_off = 0xB8usize;
-    let write_sh = |b: &mut [u8], idx: usize, name: u32, sh_type: u32, flags: u64, addr: u64, off: u64, size: u64, link: u32, info: u32, addralign: u64, entsize: u64| {
+    let write_sh = |b: &mut [u8],
+                    idx: usize,
+                    name: u32,
+                    sh_type: u32,
+                    flags: u64,
+                    addr: u64,
+                    off: u64,
+                    size: u64,
+                    link: u32,
+                    info: u32,
+                    addralign: u64,
+                    entsize: u64| {
         let o = sh_off + idx * 64;
         b[o..o + 4].copy_from_slice(&name.to_le_bytes());
         b[o + 4..o + 8].copy_from_slice(&sh_type.to_le_bytes());
@@ -427,20 +455,7 @@ fn write_minimal_aarch64_main_o(path: &Path) -> Result<(), String> {
     // 1 .text PROGBITS AX off=0x40 size=8
     write_sh(&mut b, 1, 1, 1, 6, 0, 0x40, 8, 0, 0, 4, 0);
     // 2 .shstrtab STRTAB off=0x48 size=shstr.len
-    write_sh(
-        &mut b,
-        2,
-        7,
-        3,
-        0,
-        0,
-        0x48,
-        shstr.len() as u64,
-        0,
-        0,
-        1,
-        0,
-    );
+    write_sh(&mut b, 2, 7, 3, 0, 0, 0x48, shstr.len() as u64, 0, 0, 1, 0);
     // 3 .strtab STRTAB off=0x68
     write_sh(
         &mut b,
@@ -464,6 +479,7 @@ fn write_minimal_aarch64_main_o(path: &Path) -> Result<(), String> {
 }
 
 /// Minimal aarch64 pad object: empty .text, no global symbols (avoids multidef when copied many times).
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn write_minimal_aarch64_pad_o(path: &Path) -> Result<(), String> {
     let mut b = vec![0u8; 0x180];
     b[0..4].copy_from_slice(&[0x7f, b'E', b'L', b'F']);
@@ -478,26 +494,27 @@ fn write_minimal_aarch64_pad_o(path: &Path) -> Result<(), String> {
     b[60] = 4; // shnum
     b[62] = 2; // shstrndx
     b[40] = 0x80; // shoff
-    // .text: one nop
+                  // .text: one nop
     b[0x40..0x44].copy_from_slice(&0xd503201fu32.to_le_bytes());
     let shstr: &[u8] = b"\0.text\0.shstrtab\0.strtab\0";
     b[0x48..0x48 + shstr.len()].copy_from_slice(shstr);
-    let strtab: &[u8] = b"\0";
+    // .strtab at 0x60 is one NUL. The buffer is already zero there.
     b[0x60] = 0;
     let sh_off = 0x80usize;
-    let write_sh = |b: &mut [u8], idx: usize, name: u32, sh_type: u32, flags: u64, off: u64, size: u64| {
-        let o = sh_off + idx * 64;
-        b[o..o + 4].copy_from_slice(&name.to_le_bytes());
-        b[o + 4..o + 8].copy_from_slice(&sh_type.to_le_bytes());
-        b[o + 8..o + 16].copy_from_slice(&flags.to_le_bytes());
-        b[o + 24..o + 32].copy_from_slice(&off.to_le_bytes());
-        b[o + 32..o + 40].copy_from_slice(&size.to_le_bytes());
-        if sh_type == 1 {
-            b[o + 48..o + 56].copy_from_slice(&4u64.to_le_bytes());
-        } else {
-            b[o + 48..o + 56].copy_from_slice(&1u64.to_le_bytes());
-        }
-    };
+    let write_sh =
+        |b: &mut [u8], idx: usize, name: u32, sh_type: u32, flags: u64, off: u64, size: u64| {
+            let o = sh_off + idx * 64;
+            b[o..o + 4].copy_from_slice(&name.to_le_bytes());
+            b[o + 4..o + 8].copy_from_slice(&sh_type.to_le_bytes());
+            b[o + 8..o + 16].copy_from_slice(&flags.to_le_bytes());
+            b[o + 24..o + 32].copy_from_slice(&off.to_le_bytes());
+            b[o + 32..o + 40].copy_from_slice(&size.to_le_bytes());
+            if sh_type == 1 {
+                b[o + 48..o + 56].copy_from_slice(&4u64.to_le_bytes());
+            } else {
+                b[o + 48..o + 56].copy_from_slice(&1u64.to_le_bytes());
+            }
+        };
     write_sh(&mut b, 0, 0, 0, 0, 0, 0);
     write_sh(&mut b, 1, 1, 1, 6, 0x40, 4);
     write_sh(&mut b, 2, 7, 3, 0, 0x48, shstr.len() as u64);
@@ -506,13 +523,20 @@ fn write_minimal_aarch64_pad_o(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn compile_aarch64_main_via_stdin(a64_cc: &Path, outo: &Path, work: &Path) -> bool {
     let err_path = work.join("a64-stdin.err");
     let src = "int main(int argc, char **argv) { (void)argc; (void)argv; return 0; }\n";
     let root = cosmo_toolchain_root(a64_cc);
     let a64lib = root.join("aarch64-linux-cosmo/lib");
     let mut tries: Vec<Vec<String>> = vec![
-        vec!["-x".into(), "c".into(), "-c".into(), "-".into(), "-o".into()],
+        vec![
+            "-x".into(),
+            "c".into(),
+            "-c".into(),
+            "-".into(),
+            "-o".into(),
+        ],
         vec![
             "-nostdinc".into(),
             "-ffreestanding".into(),
@@ -578,6 +602,7 @@ fn compile_aarch64_main_via_stdin(a64_cc: &Path, outo: &Path, work: &Path) -> bo
     false
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn build_aarch64_stubs_once(
     cosmo: &Path,
     cc: &Path,
@@ -636,6 +661,7 @@ fn build_aarch64_stubs_once(
     Ok(())
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn ensure_aarch64_companion(o: &Path) -> Result<(), String> {
     if !o.is_file() {
         return Ok(());
@@ -655,6 +681,7 @@ fn ensure_aarch64_companion(o: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn resolve_ar(cosmo: &Path, cc: &Path) -> PathBuf {
     if let Some(p) = which("ar") {
         return p;
@@ -670,6 +697,7 @@ fn resolve_ar(cosmo: &Path, cc: &Path) -> PathBuf {
     PathBuf::from("ar")
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn extract_rlib_objs(rlib: &Path, dest: &Path, ar_bin: &Path) -> Vec<PathBuf> {
     let _ = fs::create_dir_all(dest);
     let _ = Command::new(ar_bin)
@@ -691,6 +719,7 @@ fn extract_rlib_objs(rlib: &Path, dest: &Path, ar_bin: &Path) -> Vec<PathBuf> {
     out
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn inject_cosmo_lib_paths(cosmo: &Path, cc: &Path, out: &mut Vec<String>) {
     let cc_root = cosmo_toolchain_root(cc);
     let mut add_lib_dir = |dir: &Path| {
@@ -722,10 +751,7 @@ fn inject_cosmo_lib_paths(cosmo: &Path, cc: &Path, out: &mut Vec<String>) {
                 if p.is_dir() {
                     stack.push(p);
                 } else if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
-                    if matches!(
-                        name,
-                        "libc.a" | "crt1.o" | "crt.o" | "crtbeginT.o"
-                    ) {
+                    if matches!(name, "libc.a" | "crt1.o" | "crt.o" | "crtbeginT.o") {
                         if let Some(parent) = p.parent() {
                             add_lib_dir(parent);
                             n += 1;
@@ -737,10 +763,13 @@ fn inject_cosmo_lib_paths(cosmo: &Path, cc: &Path, out: &mut Vec<String>) {
     }
 }
 
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn cosmocc_wants_aarch64_companions() -> bool {
     // cosmocc multi-arch fat pass needs aarch64 companions unless restricted to x86_64 only.
     let arches = env::var("COSMOCC_ARCHES").unwrap_or_else(|_| "x86_64".into());
-    arches.split_whitespace().any(|a| a == "aarch64" || a == "arm64")
+    arches
+        .split_whitespace()
+        .any(|a| a == "aarch64" || a == "arm64")
         || arches.trim().is_empty()
         || arches == "all"
 }
@@ -748,6 +777,7 @@ fn cosmocc_wants_aarch64_companions() -> bool {
 /// rustc nightly `std` process/unix/pidfd calls `waitid`, which Cosmopolitan libc does not
 /// export. Provide a weak-style C stub (strong symbol here) that returns `ENOSYS` so the APE
 /// links; potctl does not rely on pidfd wait in the cosmo CLI path.
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 const WAITID_STUB_C: &str = r#"
 /* potctl-cosmo-ld: waitid shim for rustc std PidFd (Cosmopolitan has no waitid). */
 #include <errno.h>
@@ -765,6 +795,7 @@ int waitid(idtype_t idtype, id_t id, siginfo_t *infop, int options) {
 "#;
 
 /// Compile libc compat stubs (waitid, …) with the same cosmo driver rustc uses.
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 fn compile_libc_compat_stub(cc: &Path, work: &Path) -> Result<PathBuf, String> {
     let src = work.join("cosmo-libc-compat.c");
     let obj = work.join("cosmo-libc-compat.o");
@@ -785,6 +816,7 @@ fn compile_libc_compat_stub(cc: &Path, work: &Path) -> Result<PathBuf, String> {
 }
 
 /// Entry for `potctl-cosmo-ld` (rustc linker).
+#[allow(dead_code, reason = "only potctl-cosmo-ld calls this")]
 pub fn link_main(args: &[String]) -> Result<(), String> {
     let cosmo = cosmo_env();
     let cc = resolve_cosmo_cc(&cosmo)?;
@@ -906,6 +938,7 @@ pub fn link_main(args: &[String]) -> Result<(), String> {
 
 // --- build (potctl cosmo build) ----------------------------------------------
 
+#[allow(dead_code, reason = "only the potctl bin calls this")]
 fn prepend_path(dir: &Path) {
     let mut paths = vec![dir.to_path_buf()];
     if let Some(bin) = dir.join("bin").is_dir().then(|| dir.join("bin")) {
@@ -924,6 +957,7 @@ fn prepend_path(dir: &Path) {
 
 /// Minimal target-spec fixup without pulling serde_json (keep potctl deps lean).
 /// Always writes an absolute path to `potctl-cosmo-ld` so rustc does not depend on PATH.
+#[allow(dead_code, reason = "only the potctl bin calls this")]
 fn prepare_target_json(src_json: &Path, linker: &Path, dst_json: &Path) -> Result<(), String> {
     let linker_abs = fs::canonicalize(linker).unwrap_or_else(|_| linker.to_path_buf());
     let linker_s = linker_abs
@@ -959,6 +993,7 @@ fn prepare_target_json(src_json: &Path, linker: &Path, dst_json: &Path) -> Resul
     Ok(())
 }
 
+#[allow(dead_code, reason = "only the potctl bin calls this")]
 fn find_dbg_artifact(search_roots: &[&Path], arch: &str) -> Option<PathBuf> {
     for root in search_roots {
         if !root.exists() {
@@ -1006,6 +1041,7 @@ fn find_dbg_artifact(search_roots: &[&Path], arch: &str) -> Option<PathBuf> {
     None
 }
 
+#[allow(dead_code, reason = "only the potctl bin calls this")]
 fn find_apelink(cosmo: &Path) -> Option<PathBuf> {
     if let Some(p) = which("apelink") {
         return Some(p);
@@ -1021,11 +1057,13 @@ fn find_apelink(cosmo: &Path) -> Option<PathBuf> {
     find_exec_named(cosmo, "apelink")
 }
 
+#[allow(dead_code, reason = "only the potctl bin calls this")]
 fn find_ape_elf(cosmo: &Path) -> Option<PathBuf> {
     find_path_suffix(cosmo, &["ape", "ape.elf"]).or_else(|| find_first_file_named(cosmo, "ape.elf"))
 }
 
 /// `potctl cosmo build` — host potctl orchestrates nightly cargo + cosmo target.
+#[allow(dead_code, reason = "only the potctl bin calls this")]
 pub fn build_ape(repo_root: &Path) -> Result<(), String> {
     let cosmo = env::var_os("COSMO")
         .map(PathBuf::from)
@@ -1150,21 +1188,15 @@ pub fn build_ape(repo_root: &Path) -> Result<(), String> {
             )
             .env("CARGO_TARGET_DIR", &target_dir)
             // Ensure linker is on PATH when target JSON uses bare name "potctl-cosmo-ld".
-            .env(
-                "PATH",
-                {
-                    let mut paths = vec![linker
-                        .parent()
-                        .unwrap_or(Path::new("."))
-                        .to_path_buf()];
-                    if let Ok(cur) = env::var("PATH") {
-                        for p in env::split_paths(&cur) {
-                            paths.push(p);
-                        }
+            .env("PATH", {
+                let mut paths = vec![linker.parent().unwrap_or(Path::new(".")).to_path_buf()];
+                if let Ok(cur) = env::var("PATH") {
+                    for p in env::split_paths(&cur) {
+                        paths.push(p);
                     }
-                    env::join_paths(paths).unwrap_or_default()
-                },
-            )
+                }
+                env::join_paths(paths).unwrap_or_default()
+            })
             .status()
             .map_err(|e| err(format!("cargo: {e}")))?;
         if !status.success() {
@@ -1200,7 +1232,11 @@ pub fn build_ape(repo_root: &Path) -> Result<(), String> {
     } else {
         let mut linked = false;
         if let (Some(apelink), Some(ape_elf)) = (find_apelink(&cosmo), find_ape_elf(&cosmo)) {
-            eprintln!("==> apelink ({}) -> {}", apelink.display(), ape_out.display());
+            eprintln!(
+                "==> apelink ({}) -> {}",
+                apelink.display(),
+                ape_out.display()
+            );
             let mut cmd = Command::new(&apelink);
             cmd.arg("-l").arg(&ape_elf).arg("-o").arg(&ape_out);
             for d in &dbg_bins {
@@ -1257,6 +1293,7 @@ pub fn build_ape(repo_root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code, reason = "only the potctl bin calls this")]
 fn prune_aarch64_dirs(root: &Path) {
     if !root.is_dir() {
         return;
@@ -1283,6 +1320,7 @@ fn prune_aarch64_dirs(root: &Path) {
     }
 }
 
+#[allow(dead_code, reason = "only the potctl bin calls this")]
 fn ensure_host_cosmo_ld(repo_root: &Path, potctl_exe: &Path) -> Result<PathBuf, String> {
     let sib = potctl_exe
         .parent()
@@ -1293,7 +1331,14 @@ fn ensure_host_cosmo_ld(repo_root: &Path, potctl_exe: &Path) -> Result<PathBuf, 
     }
     eprintln!("==> building host potctl-cosmo-ld (rustc cosmo linker)");
     let status = Command::new("cargo")
-        .args(["build", "--release", "-p", "potctl", "--bin", "potctl-cosmo-ld"])
+        .args([
+            "build",
+            "--release",
+            "-p",
+            "potctl",
+            "--bin",
+            "potctl-cosmo-ld",
+        ])
         .current_dir(repo_root)
         .status()
         .map_err(|e| err(format!("cargo build potctl-cosmo-ld: {e}")))?;

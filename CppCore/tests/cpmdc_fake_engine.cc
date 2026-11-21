@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 struct CPMDCSession {
@@ -26,6 +27,8 @@ struct CPMDCSession {
   std::vector<unsigned char> params;
   long long orbital_key = -1;
   bool has_orbital_key = false;
+  double orbital_state = 0.0;
+  std::unordered_map<long long, double> orbital_store;
 };
 
 namespace {
@@ -104,6 +107,16 @@ int g_session_create_count = 0;
 // Key named for the last session evaluation; kNoOrbitalKey when none was.
 constexpr long long kNoOrbitalKey = -1000000;
 long long g_last_orbital_key = kNoOrbitalKey;
+double g_last_initial_orbital_state = -1.0;
+double g_last_final_orbital_state = -1.0;
+// Text returned by cpmdc_last_error. A failing select stores its reason
+// and a successful select clears it, so a test can tell this fake from
+// one that ignores the call and always reports an empty string.
+std::string g_last_error;
+bool g_force_session_create_fail = false;
+std::string g_force_session_create_message = "fake refused params";
+
+bool refused_orbital_key(long long key) { return key == -99; }
 
 } // namespace
 
@@ -154,12 +167,20 @@ CPMDCResult cpmdc_energy_forces(int n_atoms, const double *positions_ang,
 
 CPMDCSession *cpmdc_session_create(const void *params_capnp,
                                    size_t params_capnp_size_bytes) {
-  if (!has_flat_message(params_capnp, params_capnp_size_bytes))
+  if (g_force_session_create_fail) {
+    g_last_error = g_force_session_create_message;
     return nullptr;
+  }
+  if (!has_flat_message(params_capnp, params_capnp_size_bytes)) {
+    g_last_error = "invalid fake params";
+    return nullptr;
+  }
   ++g_session_create_count;
   auto *session = new CPMDCSession;
   session->params.resize(params_capnp_size_bytes);
   std::memcpy(session->params.data(), params_capnp, params_capnp_size_bytes);
+  session->orbital_state = static_cast<double>(g_session_create_count);
+  g_last_error.clear();
   return session;
 }
 
@@ -176,10 +197,37 @@ int cpmdc_session_set_params(CPMDCSession *session, const void *params_capnp,
 void cpmdc_session_destroy(CPMDCSession *session) { delete session; }
 
 int cpmdc_session_select_orbitals(CPMDCSession *session, long long key) {
-  if (session == nullptr)
+  if (session == nullptr) {
+    g_last_error = "null session";
     return -1;
+  }
+  if (refused_orbital_key(key)) {
+    g_last_error = "orbital key refused";
+    return -1;
+  }
+  auto it = session->orbital_store.find(key);
+  if (it != session->orbital_store.end())
+    session->orbital_state = it->second;
+  // A key with no converged evaluation is not stored yet. The next
+  // evaluation starts from the orbitals already stored, and the result
+  // call records them only after it converges.
   session->orbital_key = key;
   session->has_orbital_key = true;
+  g_last_error.clear();
+  return 0;
+}
+
+int cpmdc_session_copy_orbitals(CPMDCSession *session, long long from_key,
+                                long long to_key) {
+  if (session == nullptr || refused_orbital_key(from_key) ||
+      refused_orbital_key(to_key))
+    return -1;
+  auto it = session->orbital_store.find(from_key);
+  if (it == session->orbital_store.end())
+    return -1;
+  session->orbital_store[to_key] = it->second;
+  if (session->has_orbital_key && session->orbital_key == to_key)
+    session->orbital_state = it->second;
   return 0;
 }
 
@@ -291,8 +339,14 @@ CPMDCResult cpmdc_session_calculate_result(
                         &force_count, &cell_zz))
       return fail_result("invalid fake ForceInput");
     const auto result_bytes = make_result(force_count, cell_zz);
+    g_last_initial_orbital_state = session->orbital_state;
     g_last_orbital_key =
         session->has_orbital_key ? session->orbital_key : kNoOrbitalKey;
+    session->orbital_state = cell_zz + static_cast<double>(force_count) * 1e-3;
+    if (session->has_orbital_key) {
+      session->orbital_store[session->orbital_key] = session->orbital_state;
+    }
+    g_last_final_orbital_state = session->orbital_state;
     const size_t required = result_bytes.size();
     *potential_result_capnp_size_bytes = required;
     if (potential_result_capnp == nullptr ||
@@ -371,7 +425,26 @@ RGPOT_FAKE_ONLY long long cpmdc_fake_last_orbital_key(void) {
   return g_last_orbital_key;
 }
 
-RGPOT_FAKE_ONLY const char *cpmdc_last_error(void) { return ""; }
+RGPOT_FAKE_ONLY double cpmdc_fake_last_initial_orbital_state(void) {
+  return g_last_initial_orbital_state;
+}
+
+RGPOT_FAKE_ONLY double cpmdc_fake_last_final_orbital_state(void) {
+  return g_last_final_orbital_state;
+}
+
+RGPOT_FAKE_ONLY const char *cpmdc_last_error(void) {
+  return g_last_error.c_str();
+}
+
+RGPOT_FAKE_ONLY void cpmdc_fake_set_session_create_failure(
+    int enabled, const char *message) {
+  g_force_session_create_fail = enabled != 0;
+  if (message && *message)
+    g_force_session_create_message = message;
+  if (!g_force_session_create_fail)
+    g_last_error.clear();
+}
 
 RGPOT_FAKE_ONLY int cpmdc_configure(const void *config_capnp,
                                     size_t config_capnp_size_bytes) {

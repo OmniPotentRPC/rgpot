@@ -2,7 +2,14 @@
 # holds their options, and meson reads the same file. CMakeLists.txt
 # includes this file in its own directory, so the test executables sit
 # beside librgpot_mpi, where CalculatorGroup.cc looks for it.
+# A test name may hold spaces ("CuH2 Utils Test"). The functions below keep
+# the policies set here, and the loops that read RGPOT_REGISTRY_ENTRIES in
+# the caller's scope need CMP0110 so foreach(IN LISTS) does not split an
+# entry on whitespace.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/RgpotTestRegistry.cmake")
+if(POLICY CMP0110)
+  cmake_policy(SET CMP0110 NEW)
+endif()
 
 enable_testing()
 find_package(Threads REQUIRED)
@@ -80,6 +87,7 @@ macro(rgpot_test_set_feature feature)
   endif()
 endmacro()
 rgpot_test_set_feature(tests RGPOT_BUILD_TESTS)
+rgpot_test_set_feature(examples RGPOT_BUILD_EXAMPLES)
 rgpot_test_set_feature(core NOT RGPOT_RPC_CLIENT_ONLY)
 rgpot_test_set_feature(client RGPOT_RPC_CLIENT_ONLY)
 rgpot_test_set_feature(rpc RGPOT_WITH_RPC)
@@ -87,6 +95,7 @@ rgpot_test_set_feature(fortran NOT RGPOT_RPC_CLIENT_ONLY)
 rgpot_test_set_feature(cache RGPOT_WITH_CACHE)
 rgpot_test_set_feature(ipi RGPOT_WITH_IPI)
 rgpot_test_set_feature(eam_table RGPOT_WITH_EAM_TABLE)
+rgpot_test_set_feature(eigen RGPOT_WITH_EIGEN)
 rgpot_test_set_feature(xtensor RGPOT_WITH_XTENSOR)
 rgpot_test_set_feature(cp2k RGPOT_WITH_CP2K)
 rgpot_test_set_feature(mpi RGPOT_HAVE_MPI)
@@ -174,6 +183,8 @@ add_library(rgpot_halfshell STATIC
   CppCore/rgpot/nlist/HalfShellWalk.cc
   CppCore/rgpot/nlist/NeighbourList.cc
   CppCore/rgpot/nlist/Neighbours.cc)
+set_source_files_properties(CppCore/rgpot/Slices.cc
+  PROPERTIES COMPILE_OPTIONS ${_rgpot_fp_contract_off})
 target_link_libraries(rgpot_halfshell PUBLIC Threads::Threads)
 if(OpenMP_CXX_FOUND)
   target_link_libraries(rgpot_halfshell PUBLIC OpenMP::OpenMP_CXX)
@@ -221,8 +232,25 @@ foreach(test IN LISTS _rgpot_units)
   if(_unfused)
     target_compile_options(${_exe} PRIVATE ${_rgpot_fp_contract_off})
   endif()
+  if(test STREQUAL "CalculatorGroupTest" AND TARGET rgpot)
+    get_target_property(_rgpot_lib_type rgpot TYPE)
+    if(_rgpot_lib_type STREQUAL "SHARED_LIBRARY")
+      target_compile_definitions(
+        ${_exe} PRIVATE RGPOT_TEST_SHARED_LIBRARY
+                        "RGPOT_TEST_SHARED_LIBRARY_PATH=\"$<TARGET_FILE:rgpot>\"")
+    else()
+      # No shared object to open: export the linked archive's symbols so
+      # the test can find them with dlsym.
+      set_target_properties(${_exe} PROPERTIES ENABLE_EXPORTS ON)
+    endif()
+  endif()
   rgpot_add_test("${test}" COMMAND ${_exe})
 endforeach()
+# FastNlistTest calls rgpot_water_h_force and rgpot_water_h_image directly, and
+# a shared librgpot hides the Fortran kernel archive behind --exclude-libs.
+if(TARGET fast_nlist_test AND TARGET rgpot_fortran_kernels)
+  target_link_libraries(fast_nlist_test PRIVATE rgpot_fortran_kernels)
+endif()
 
 rgpot_registry_tests(rerun _rgpot_reruns)
 foreach(test IN LISTS _rgpot_reruns)
@@ -300,7 +328,8 @@ if(_on)
   rgpot_add_test(nlist_rust
     COMMAND sh "${RGPOT_TEST_ROOT}/CppCore/examples/nlist_rust_test.sh"
             "${RGPOT_TEST_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}"
-            ${_rgpot_nlist_rust_omp})
+            ${_rgpot_nlist_rust_omp}
+    ENVIRONMENT "CXX=${CMAKE_CXX_COMPILER}")
 endif()
 
 if(RGPOT_RPC_CLIENT_ONLY)
@@ -492,9 +521,11 @@ rgpot_add_test(simd-env-avx2 COMMAND simd_env known avx2)
 rgpot_test_enabled(EngineAdapterTest _on)
 if(_on)
   add_library(engine_stub SHARED CppCore/tests/engine_stub.cc
-                                 CppCore/rgpot/engine/EngineTable.cc)
+                                 CppCore/rgpot/engine/EngineTable.cc
+                                 CppCore/rgpot/engine/EngineAbiStamp.cc)
   target_include_directories(engine_stub PRIVATE CppCore include)
   target_compile_definitions(engine_stub PRIVATE ${_rgpot_test_definitions}
+    RGPOT_ENGINE_BUILD
     RGPOT_ENGINE_PROJECT_VERSION="${PROJECT_VERSION}")
   target_link_libraries(engine_stub PRIVATE rgpot::rgpot)
   rgpot_test_executable(engine_adapter_test CppCore/tests/EngineAdapterTest.cc)
@@ -577,6 +608,10 @@ set(_rgpot_cpmdc_env "RGPOT_CPMD_ENGINE=$<TARGET_FILE:cpmdc_fake_engine>")
 rgpot_test_executable(cpmd_pot_gradient_stress_test
                       CppCore/tests/CPMDPotGradientStressTest.cc)
 rgpot_add_test(CPMDPotGradientStressTest COMMAND cpmd_pot_gradient_stress_test
+  ENVIRONMENT "RGPOT_CPMD_ENGINE=$<TARGET_FILE:cpmdc_gradient_engine>")
+rgpot_test_executable(composite_cpmd_dispersion_test
+                      CppCore/tests/CompositeCpmdDispersionTest.cc)
+rgpot_add_test(CompositeCpmdDispersionTest COMMAND composite_cpmd_dispersion_test
   ENVIRONMENT "RGPOT_CPMD_ENGINE=$<TARGET_FILE:cpmdc_gradient_engine>")
 rgpot_test_executable(cpmd_pot_message_abi_test
                       CppCore/tests/CPMDPotMessageAbiTest.cc)

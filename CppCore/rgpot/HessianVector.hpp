@@ -13,9 +13,13 @@
  * step, centre cache and counters.
  *
  * A @c HessianVectorCache keeps the forces of the last centre it
- * evaluated, keyed on the bits of the positions, atomic numbers and cell.
+ * evaluated in a @c FusedCache: keyed on the bits of the positions, the
+ * atomic numbers, the cell and the @c fusedSettings() of the potential, and
+ * holding the outcome of the force call, which is a failure as often as a
+ * result. A failed centre is not evaluated again at the same bits; a changed
+ * setting of the potential, or @c invalidate(), is the way to retry it.
  * @c k forward products at one centre cost @c k+1 force calls instead of
- * @c 2k. A potential with a member
+ * @c 2k. A potential that sets @c caps().analyticHvp and provides
  * @code
  * void hessianVectorImpl(const ForceInput &in, const double *v,
  *                        double *hv) const;
@@ -43,6 +47,7 @@
 #include <atomic>
 #include <bit>
 #include <cmath>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -54,6 +59,8 @@
 #include <vector>
 
 #include "rgpot/ForceStructs.hpp"
+#include "rgpot/FusedCache.hpp"
+#include "rgpot/FusedSettings.hpp"
 
 namespace rgpot {
 
@@ -89,12 +96,18 @@ concept ForceKernel = requires(Pot &pot, const ForceInput &in, ForceOut *out) {
   pot.forceImpl(in, out);
 };
 
-/// A kernel that also knows its Hessian-vector product.
+/// A kernel that reports an analytic Hessian-vector capability bit.
 template <typename Pot>
 concept AnalyticHessianVector =
-    requires(const Pot &pot, const ForceInput &in, const double *v, double *hv) {
-      pot.hessianVectorImpl(in, v, hv);
+    requires(const Pot &pot) {
+      { pot.caps().analyticHvp } -> std::convertible_to<bool>;
     };
+
+/// A kernel that implements the analytic Hessian-vector product hook.
+template <typename Pot>
+concept AnalyticHessianVectorKernel =
+    requires(const Pot &pot, const ForceInput &in, const double *v,
+             double *hv) { pot.hessianVectorImpl(in, v, hv); };
 
 /**
  * @class HessianVectorCache
@@ -162,18 +175,23 @@ public:
       throw std::invalid_argument("step must be positive and finite, got " +
                                   std::to_string(step));
     }
+    const bool analyticAvailable = [&]() {
+      if constexpr (AnalyticHessianVector<Pot>) {
+        return static_cast<bool>(pot.caps().analyticHvp);
+      }
+      return false;
+    }();
     if (scheme == HvpScheme::Auto) {
-      scheme = AnalyticHessianVector<Pot> ? HvpScheme::Analytic
-                                          : HvpScheme::Forward;
+      scheme = analyticAvailable ? HvpScheme::Analytic : HvpScheme::Forward;
     }
     if (scheme != HvpScheme::Forward && scheme != HvpScheme::Central &&
         scheme != HvpScheme::Analytic) {
       throw std::invalid_argument("unknown scheme " +
                                   std::to_string(static_cast<int>(scheme)));
     }
-    if (scheme == HvpScheme::Analytic && !AnalyticHessianVector<Pot>) {
+    if (scheme == HvpScheme::Analytic && !analyticAvailable) {
       throw std::invalid_argument(
-          "HvpScheme::Analytic: the potential has no hessianVectorImpl");
+          "HvpScheme::Analytic: the potential has no analytic Hessian-vector product");
     }
     const double length = norm(v, dim);
     if (length == 0.0) {
@@ -189,10 +207,14 @@ public:
       return x;
     };
     if (scheme == HvpScheme::Analytic) {
-      if constexpr (AnalyticHessianVector<Pot>) {
+      if constexpr (AnalyticHessianVectorKernel<Pot>) {
         std::as_const(pot).hessianVectorImpl(in, v, hv);
         requireFinite(hv, dim, "hessianVectorImpl");
         analytic_.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        throw std::invalid_argument(
+            "HvpScheme::Analytic: potential advertises analyticHvp but "
+            "provides no hessianVectorImpl");
       }
     } else if (scheme == HvpScheme::Central) {
       const HvpCentre plus = forcesAt(pot, in, displaced(1.0));
@@ -214,15 +236,12 @@ public:
 
   /// Drop the cached centre. Call it when the potential changes while the
   /// geometry does not.
-  void invalidate() {
-    std::lock_guard<std::mutex> lock(mu_);
-    centre_.reset();
-  }
+  void invalidate() { centre_.invalidate(); }
 
   [[nodiscard]] HvpCounts counts() const noexcept {
     return {products_.load(std::memory_order_relaxed),
             forceCalls_.load(std::memory_order_relaxed),
-            centreReused_.load(std::memory_order_relaxed),
+            centre_.served(),
             analytic_.load(std::memory_order_relaxed)};
   }
 
@@ -230,28 +249,13 @@ public:
   void resetCounts() noexcept {
     products_.store(0, std::memory_order_relaxed);
     forceCalls_.store(0, std::memory_order_relaxed);
-    centreReused_.store(0, std::memory_order_relaxed);
+    centre_.resetCounts();
     analytic_.store(0, std::memory_order_relaxed);
   }
 
 private:
-  /// @c std::bit_cast of every coordinate and cell entry: float equality
-  /// would serve the forces of +0.0 at -0.0.
-  struct Key {
-    std::vector<std::uint64_t> positions;
-    std::optional<std::vector<int>> atomicNumbers;
-    std::optional<std::array<std::uint64_t, 9>> box;
-    bool operator==(const Key &) const = default;
-  };
-
   struct Geometry {
     std::vector<double> positions;
-    Key key;
-  };
-
-  struct Cached {
-    Key key;
-    std::shared_ptr<const HvpCentre> centre;
   };
 
   static Geometry readGeometry(const ForceInput &in) {
@@ -261,23 +265,11 @@ private:
     }
     Geometry g;
     g.positions.assign(in.pos, in.pos + dim);
-    g.key.positions.reserve(dim);
     for (std::size_t i = 0; i < dim; ++i) {
       if (!std::isfinite(in.pos[i])) {
         throw std::invalid_argument("positions: non-finite value at element " +
                                     std::to_string(i));
       }
-      g.key.positions.push_back(std::bit_cast<std::uint64_t>(in.pos[i]));
-    }
-    if (in.atmnrs != nullptr) {
-      g.key.atomicNumbers.emplace(in.atmnrs, in.atmnrs + in.nAtoms);
-    }
-    if (in.box != nullptr) {
-      std::array<std::uint64_t, 9> bits{};
-      for (std::size_t i = 0; i < 9; ++i) {
-        bits[i] = std::bit_cast<std::uint64_t>(in.box[i]);
-      }
-      g.key.box = bits;
     }
     return g;
   }
@@ -311,19 +303,25 @@ private:
   }
 
   template <ForceKernel Pot>
+  static FusedSettingsSpec settingsOf(const Pot &pot) {
+    if constexpr (ProvidesFusedSettings<Pot>) {
+      return pot.fusedSettings();
+    } else {
+      return {};
+    }
+  }
+
+  template <ForceKernel Pot>
   std::shared_ptr<const HvpCentre> centreOf(Pot &pot, const ForceInput &in,
                                             const Geometry &g) {
-    {
-      std::lock_guard<std::mutex> lock(mu_);
-      if (centre_ && centre_->key == g.key) {
-        centreReused_.fetch_add(1, std::memory_order_relaxed);
-        return centre_->centre;
-      }
-    }
-    auto c = std::make_shared<const HvpCentre>(forcesAt(pot, in, g.positions));
-    std::lock_guard<std::mutex> lock(mu_);
-    centre_ = Cached{g.key, c};
-    return c;
+    const FusedKey key = centre_.key(in, settingsOf(pot));
+    return centre_
+        .evaluate(key,
+                  [&] {
+                    return std::make_shared<const HvpCentre>(
+                        forcesAt(pot, in, g.positions));
+                  })
+        .first;
   }
 
   /// Forces at @a positions, with the species and cell of @a in.
@@ -352,11 +350,9 @@ private:
     return r;
   }
 
-  mutable std::mutex mu_;
-  std::optional<Cached> centre_;
+  FusedCache<std::shared_ptr<const HvpCentre>> centre_;
   std::atomic<std::uint64_t> products_{0};
   std::atomic<std::uint64_t> forceCalls_{0};
-  std::atomic<std::uint64_t> centreReused_{0};
   std::atomic<std::uint64_t> analytic_{0};
 };
 

@@ -6,9 +6,13 @@
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine/Sha256.hpp"
 
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -83,6 +87,8 @@ struct RgpotEnginePot {
 
   /// Serializes calls on this handle when the backend is not shared.
   std::mutex call_mutex;
+  /// Atom count of the last successful force call, for the component record.
+  std::atomic<long> last_atoms{0};
 
   mutable std::mutex digest_mutex;
   mutable bool digest_done = false;
@@ -210,12 +216,60 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
       *variance = out.variance;
     }
     std::memcpy(forces, Fbuf.data(), Fbuf.size() * sizeof(double));
+    pot->last_atoms = nAtoms;
     pot->clear_error();
     return 0;
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {
     return fail(pot, 2, "unknown exception");
+  }
+}
+
+int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
+                     const double *positions, const int *atomicNrs,
+                     const double *direction, double *hv_out,
+                     const double *box) {
+  if (!pot || !pot->backend) {
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  if (!pot->caps.analyticHvp) {
+    return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
+                "potential has no analytic Hessian-vector product");
+  }
+  if (!positions || !atomicNrs || !direction || !hv_out || !box ||
+      nAtoms <= 0 ||
+      static_cast<unsigned long>(nAtoms) >
+          std::numeric_limits<size_t>::max() / (3 * sizeof(double))) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID, "invalid HVP argument");
+  }
+  const auto db = reinterpret_cast<std::uintptr_t>(direction);
+  const auto hb = reinterpret_cast<std::uintptr_t>(hv_out);
+  const std::uintptr_t bytes =
+      static_cast<std::uintptr_t>(nAtoms) * 3 * sizeof(double);
+  const auto overlaps = [hb, bytes](const void *input,
+                                    std::uintptr_t inputBytes) {
+    const auto begin = reinterpret_cast<std::uintptr_t>(input);
+    return hb < begin + inputBytes && begin < hb + bytes;
+  };
+  if (overlaps(direction, bytes) || overlaps(positions, bytes) ||
+      overlaps(atomicNrs, static_cast<std::uintptr_t>(nAtoms) * sizeof(int)) ||
+      overlaps(box, 9 * sizeof(double))) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID,
+                "HVP output overlaps an input buffer");
+  }
+  try {
+    RgpotEnginePot::CallGuard guard(*pot);
+    SoftGilRelease no_gil;
+    const rgpot::ForceInput in{static_cast<size_t>(nAtoms),
+                               positions, atomicNrs, box};
+    pot->backend->pot->hessianVectorImpl(in, direction, hv_out);
+    pot->clear_error();
+    return RGPOT_ENGINE_OK;
+  } catch (const std::exception &e) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, e.what());
+  } catch (...) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, "unknown exception");
   }
 }
 
@@ -264,6 +318,7 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
         variances[i] = out[i].variance;
       }
     }
+    pot->last_atoms = nAtoms;
     pot->clear_error();
     return 0;
   } catch (const std::exception &e) {
@@ -273,21 +328,14 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
   }
 }
 
-RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
-  RgpotEngineAbiStamp stamp;
-  stamp.abi_major = RGPOT_ENGINE_ABI_VERSION;
-  stamp.abi_minor = RGPOT_ENGINE_ABI_MINOR;
-  stamp.layout_revision = RGPOT_ENGINE_ABI_LAYOUT_REVISION;
-  return stamp;
-}
-
-int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *stamp) {
-  if (!stamp) {
+int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *host_stamp) {
+  if (!host_stamp) {
     return 0;
   }
-  return stamp->abi_major == RGPOT_ENGINE_ABI_VERSION &&
-                 stamp->layout_revision == RGPOT_ENGINE_ABI_LAYOUT_REVISION &&
-                 stamp->abi_minor <= RGPOT_ENGINE_ABI_MINOR
+  return host_stamp->abi_major == RGPOT_ENGINE_ABI_VERSION &&
+                 host_stamp->layout_revision ==
+                     RGPOT_ENGINE_ABI_LAYOUT_REVISION &&
+                 RGPOT_ENGINE_ABI_MINOR <= host_stamp->abi_minor
              ? 1
              : 0;
 }
@@ -305,6 +353,9 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   filled.periodic = pot->caps.periodic ? 1 : 0;
   filled.stress = pot->caps.stress ? 1 : 0;
   filled.group_collective = pot->caps.groupCollective ? 1 : 0;
+  filled.orbital_selection = pot->backend->select_orbitals ? 1 : 0;
+  filled.orbital_copy = pot->backend->copy_orbitals ? 1 : 0;
+  filled.analytic_hvp = pot->caps.analyticHvp ? 1 : 0;
   // The host's struct may be older (smaller) than this engine's: write only
   // the bytes it announced room for.
   const unsigned room = out->size < sizeof(filled) ? out->size : sizeof(filled);
@@ -380,6 +431,102 @@ int rgpot_engine_set_charge_spin(RgpotEnginePot *pot, int charge, int spin) {
   } catch (...) {
     return fail(pot, 2, "unknown exception");
   }
+}
+
+int rgpot_engine_select_orbitals(RgpotEnginePot *pot, long long key) {
+  if (!pot || !pot->backend) {
+    return 1;
+  }
+  if (!pot->backend->select_orbitals) {
+    return fail(pot, 3, "backend has no orbital selection");
+  }
+  try {
+    pot->backend->select_orbitals(key);
+    pot->clear_error();
+    return 0;
+  } catch (const rgpot::engine::Unsupported &e) {
+    return fail(pot, 3, e.what());
+  } catch (const std::exception &e) {
+    return fail(pot, 2, e.what());
+  } catch (...) {
+    return fail(pot, 2, "unknown exception");
+  }
+}
+
+int rgpot_engine_copy_orbitals(RgpotEnginePot *pot, long long from_key,
+                               long long to_key) {
+  if (!pot || !pot->backend) {
+    return 1;
+  }
+  if (!pot->backend->copy_orbitals) {
+    return fail(pot, 3, "backend has no orbital copy");
+  }
+  try {
+    pot->backend->copy_orbitals(from_key, to_key);
+    pot->clear_error();
+    return 0;
+  } catch (const rgpot::engine::Unsupported &e) {
+    return fail(pot, 3, e.what());
+  } catch (const std::exception &e) {
+    return fail(pot, 2, e.what());
+  } catch (...) {
+    return fail(pot, 2, "unknown exception");
+  }
+}
+
+long rgpot_engine_last_components(const RgpotEnginePot *pot,
+                                  RgpotEngineComponent *out, double *forces,
+                                  long capacity) {
+  if (!pot || !pot->backend) {
+    return -1;
+  }
+  if (!pot->backend->components) {
+    return 0;
+  }
+  std::lock_guard<std::mutex> lock(const_cast<RgpotEnginePot *>(pot)->call_mutex);
+  const auto &components = pot->backend->components();
+  const long total = static_cast<long>(components.size());
+  if (!out || capacity <= 0) {
+    return total;
+  }
+  const long n = capacity < total ? capacity : total;
+  const std::size_t width = 3 * static_cast<std::size_t>(pot->last_atoms.load());
+  for (long i = 0; i < n; ++i) {
+    const rgpot::SumComponent &c = components[static_cast<std::size_t>(i)];
+    RgpotEngineComponent &o = out[i];
+    std::memset(&o, 0, sizeof(o));
+    o.weight = c.weight;
+    o.energy = c.energy;
+    o.enabled = c.enabled ? 1 : 0;
+    o.evaluated = c.evaluated ? 1 : 0;
+    o.has_stress = c.has_stress ? 1 : 0;
+    std::memcpy(o.stress, c.stress.data(), sizeof(o.stress));
+    if (forces) {
+      double *dst = forces + static_cast<std::size_t>(i) * width;
+      std::fill(dst, dst + width, 0.0);
+      if (c.forces.size() == width) {
+        std::copy(c.forces.begin(), c.forces.end(), dst);
+      }
+    }
+  }
+  return total;
+}
+
+size_t rgpot_engine_component_name(const RgpotEnginePot *pot, long index,
+                                   char *buf, size_t len) {
+  if (!pot || !pot->backend || !pot->backend->components || index < 0) {
+    copy_message("", buf, len);
+    return 0;
+  }
+  std::lock_guard<std::mutex> lock(const_cast<RgpotEnginePot *>(pot)->call_mutex);
+  const auto &components = pot->backend->components();
+  if (static_cast<std::size_t>(index) >= components.size()) {
+    copy_message("", buf, len);
+    return 0;
+  }
+  const std::string &name = components[static_cast<std::size_t>(index)].name;
+  copy_message(name, buf, len);
+  return name.size();
 }
 
 } // extern "C"

@@ -88,13 +88,14 @@ test(
 
 lj_engine = shared_library(
     'lj_engine',
-    files('lj_engine.cpp'),
+    [files('lj_engine.cpp'), engine_abi_stamp_source],
     dependencies: lj_dep,
     link_with: rgpot,
     include_directories: rgpot_inc,
     cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
     install: not meson.is_subproject(),
 )
+standalone_engine_plugins = [lj_engine]
 test(
     'lj_engine',
     executable(
@@ -433,6 +434,46 @@ if (
     and python3_engines.found()
     and meson_prog.found()
 )
+    nested_meson_env = environment()
+    _nested_cc = cc.cmd_array()
+    _nested_cxx = cppc.cmd_array()
+    nested_meson_env.set('CC', _nested_cc[_nested_cc.length() - 1])
+    nested_meson_env.set('CXX', _nested_cxx[_nested_cxx.length() - 1])
+    _nested_bins = [
+        _nested_cc[0],
+        _nested_cc[_nested_cc.length() - 1],
+        _nested_cxx[0],
+        _nested_cxx[_nested_cxx.length() - 1],
+        python3_engines.full_path(),
+    ]
+    if has_fortran
+        _nested_fc = fc.cmd_array()
+        nested_meson_env.set('FC', _nested_fc[_nested_fc.length() - 1])
+        _nested_bins += [_nested_fc[0], _nested_fc[_nested_fc.length() - 1]]
+    endif
+    _nested_ninja = find_program('ninja', 'ninja-build', required: false)
+    if _nested_ninja.found()
+        nested_meson_env.set('NINJA', _nested_ninja.full_path())
+        _nested_bins += [_nested_ninja.full_path()]
+    endif
+    foreach _tool_name : ['pkg-config', 'pkgconf', 'cmake', 'cargo', 'rustc']
+        _tool_prog = find_program(_tool_name, required: false)
+        if _tool_prog.found()
+            _nested_bins += [_tool_prog.full_path()]
+        endif
+    endforeach
+    _nested_dirs = []
+    foreach _bin : _nested_bins
+        if fs.is_absolute(_bin)
+            _dir = fs.parent(_bin)
+            if not (_dir in _nested_dirs)
+                _nested_dirs += [_dir]
+            endif
+        endif
+    endforeach
+    if _nested_dirs.length() > 0
+        nested_meson_env.prepend('PATH', _nested_dirs)
+    endif
     test(
         'optional_engine_install',
         python3_engines,
@@ -441,6 +482,7 @@ if (
             meson.project_source_root(),
             meson_prog.full_path(),
         ],
+        env: nested_meson_env,
         timeout: 300,
     )
     test(
@@ -451,6 +493,7 @@ if (
             meson.project_source_root(),
             meson_prog.full_path(),
         ],
+        env: nested_meson_env,
         timeout: 300,
     )
     test(
@@ -461,18 +504,22 @@ if (
             meson.project_source_root(),
             meson_prog.full_path(),
         ],
+        env: nested_meson_env,
         timeout: 300,
     )
-    test(
-        'fortran_sw_module_order',
-        python3_engines,
-        args: [
-            files('test_fortran_sw_module_order.py'),
-            meson.project_source_root(),
-            meson_prog.full_path(),
-        ],
-        timeout: 600,
-    )
+    if has_fortran
+        test(
+            'fortran_sw_module_order',
+            python3_engines,
+            args: [
+                files('test_fortran_sw_module_order.py'),
+                meson.project_source_root(),
+                meson_prog.full_path(),
+            ],
+            env: nested_meson_env,
+            timeout: 600,
+        )
+    endif
 endif
 
 abi_script = find_program('../scripts/abi_symbols.sh')
@@ -560,13 +607,14 @@ endif
 
 native_lj_engine = shared_library(
     'native_lj_engine',
-    files('native_lj_engine.cpp'),
+    [files('native_lj_engine.cpp'), engine_abi_stamp_source],
     dependencies: lj_dep,
     link_with: rgpot,
     include_directories: rgpot_inc,
     cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
     install: not meson.is_subproject(),
 )
+standalone_engine_plugins += native_lj_engine
 external_pot_test = executable(
     'test_external_potentials',
     files('test_external_potentials.cpp'),
@@ -603,7 +651,10 @@ if openmm_opt.allowed() and python3_engines.found()
         )
             openmm_engine = shared_library(
                 'openmm_engine',
-                files('openmm/openmm_engine.cpp'),
+                [
+                    files('openmm/openmm_engine.cpp'),
+                    engine_abi_stamp_source,
+                ],
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
@@ -611,6 +662,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 install_rpath: openmm_libdir,
                 install: not meson.is_subproject(),
             )
+            standalone_engine_plugins += openmm_engine
             external_env.set('RGPOT_OPENMM_ENGINE', openmm_engine.full_path())
             external_env.set('OPENMM_PLUGIN_DIR', openmm_libdir / 'plugins')
         endif
@@ -623,6 +675,61 @@ test(
     env: external_env,
     timeout: 120,
 )
+standalone_engine_paths = []
+foreach engine : standalone_engine_plugins
+    standalone_engine_paths += engine.full_path()
+endforeach
+test(
+    'engine_abi_stamps',
+    executable(
+        'test_engine_abi_stamps',
+        files('test_engine_abi_stamps.cpp'),
+        include_directories: rgpot_inc,
+        dependencies: dl_dep,
+        cpp_args: _args,
+    ),
+    args: standalone_engine_paths,
+    depends: standalone_engine_plugins,
+    timeout: 30,
+)
+# The Rust loader opens the Lennard-Jones plugin built above. native_lj_engine
+# is not a candidate: it serves the native-unit GROMACS and OpenMM constructors
+# through rgpot_md_native_force and exports no rgpot_engine_force. cargo gets
+# its own target directory, apart from the one with_rust_core builds in. A
+# build with the address, thread or memory sanitizer leaves the plugin needing
+# a runtime the cargo test binary does not carry, so that build skips this test.
+engine_test_cargo = find_program('cargo', required: false)
+engine_test_sanitized = false
+foreach sanitizer : ['address', 'thread', 'memory']
+    if sanitizer in get_option('b_sanitize')
+        engine_test_sanitized = true
+    endif
+endforeach
+if engine_test_cargo.found() and not engine_test_sanitized
+    test(
+        'engine_abi_stamp_rust_loader',
+        engine_test_cargo,
+        args: [
+            'test',
+            '--locked',
+            '--manifest-path',
+            project_root / 'rgpot-core' / 'Cargo.toml',
+            '--target-dir',
+            meson.project_build_root() / 'cargo-engine-test-target',
+            '--features',
+            'engine',
+            '--test',
+            'engine',
+            'configured_external_engine_passes_the_abi_check',
+            '--',
+            '--ignored',
+            '--exact',
+        ],
+        env: {'RGPOT_TEST_ENGINE': lj_engine.full_path()},
+        depends: lj_engine,
+        timeout: 900,
+    )
+endif
 
 gromacs_inc = ''
 if python3_engines.found()

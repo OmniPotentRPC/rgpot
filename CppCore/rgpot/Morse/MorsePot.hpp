@@ -15,6 +15,7 @@
 
 // clang-format off
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 // clang-format on
 #include "rgpot/Locality.hpp"
@@ -88,7 +89,9 @@ public:
   }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .stress = true,
+            .analyticHvp = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -118,7 +121,7 @@ public:
    * (HessianVector.hpp) uses it in place of finite differences.
    */
   void hessianVectorImpl(const ForceInput &in, const double *v,
-                         double *hv) const;
+                         double *hv) const override;
 
   /// forceImpl plus each pair energy and virial split half to each atom.
   void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const;

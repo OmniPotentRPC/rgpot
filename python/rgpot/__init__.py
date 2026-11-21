@@ -31,13 +31,19 @@ GromacsPot = _core.GromacsPot
 OpenMMPot = _core.OpenMMPot
 LJClusterPot = _core.LJClusterPot
 MorsePot = _core.MorsePot
+D2Pot = _core.D2Pot
+D2CpmdPot = _core.D2CpmdPot
+SumPot = _core.SumPot
 NumericalError = _core.NumericalError
+atomic_number = _core.atomic_number
+unit_conversion_factor = _core.unit_conversion_factor
 evaluate_lj = _core.evaluate_lj
 neighbor_list = _core.neighbor_list
 has_cache = _core.has_cache
 has_dftd3 = _core.has_dftd3
 has_dftd4 = _core.has_dftd4
 has_expr = _core.has_expr
+has_eam_table = _core.has_eam_table
 has_fortran_pots = _core.has_fortran_pots
 has_metatomic_dlopen = _core.has_metatomic_dlopen
 has_xckernel = _core.has_xckernel
@@ -58,6 +64,7 @@ EDIPPot: Any = getattr(_core, "EDIPPot", None)
 LenoskyPot: Any = getattr(_core, "LenoskyPot", None)
 TersoffPot: Any = getattr(_core, "TersoffPot", None)
 EAMAlPot: Any = getattr(_core, "EAMAlPot", None)
+EAMTablePot: Any = getattr(_core, "EAMTablePot", None)
 FeHePot: Any = getattr(_core, "FeHePot", None)
 CuH2Pot: Any = getattr(_core, "CuH2Pot", None)
 WaterHPot: Any = getattr(_core, "WaterHPot", None)
@@ -142,14 +149,18 @@ def available_metatomic_engine_abis() -> list[str]:
 
 
 def __getattr__(name: str) -> Any:
-    """Lazy exports. ``ase`` is not imported by ``import rgpot``."""
-    if name == "ase":
+    """Lazy frontend exports."""
+    if name in {"ase", "lammps"}:
         import importlib
 
-        module = importlib.import_module("rgpot.ase")
-        globals()["ase"] = module
+        module = importlib.import_module(f"rgpot.{name}")
+        globals()[name] = module
         return module
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | {"ase", "lammps"})
 
 
 def evaluate_metatomic(
@@ -163,7 +174,8 @@ def evaluate_metatomic(
 ) -> Any:
     """Evaluate a Metatomic model through the dlopen engine.
 
-    Raises RuntimeError when the build has no Metatomic dlopen frontend.
+    The frontend is part of every build. The engine library is opened
+    at runtime.
     """
     # Load torch via the Python extension first so the engine's DT_NEEDED
     # libtorch resolves to the same process image (avoids dual-load races).
@@ -183,6 +195,9 @@ __all__ = [
     "LJPot",
     "LJClusterPot",
     "MorsePot",
+    "D2Pot",
+    "D2CpmdPot",
+    "SumPot",
     "LammpsPot",
     "GromacsPot",
     "OpenMMPot",
@@ -190,6 +205,8 @@ __all__ = [
     "rgpot_gromacs_potential",
     "rgpot_openmm_potential",
     "NumericalError",
+    "atomic_number",
+    "unit_conversion_factor",
     "StillingerWeberSi",
     "TersoffSiC",
     "D3Pot",
@@ -203,6 +220,7 @@ __all__ = [
     "LenoskyPot",
     "TersoffPot",
     "EAMAlPot",
+    "EAMTablePot",
     "FeHePot",
     "CuH2Pot",
     "WaterHPot",
@@ -215,11 +233,13 @@ __all__ = [
     "has_metatomic_dlopen",
     "has_cache",
     "has_expr",
+    "has_eam_table",
     "has_ipi",
     "has_dftd3",
     "has_dftd4",
     "has_xckernel",
     "has_fortran_pots",
     "ase",
+    "lammps",
     "__version__",
 ]

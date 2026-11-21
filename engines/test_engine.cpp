@@ -6,6 +6,7 @@
 // the potential.
 
 #include "lj_eval.hpp"
+#include "rgpot/engine_c_abi.h"
 
 #include <cstdio>
 #include <cstring>
@@ -13,11 +14,11 @@
 
 namespace {
 
-using CreateFn = void *(*)(const void *, size_t, char *, size_t);
-using ForceFn = int (*)(void *, long, const double *, const int *, double *, double *,
-                        double *, const double *, void *, void *);
-using LastErrorFn = size_t (*)(const void *, char *, size_t);
-using DestroyFn = void (*)(void *);
+using CreateFn = RgpotEnginePot *(*)(const void *, size_t, char *, size_t);
+using ForceFn = int (*)(RgpotEnginePot *, long, const double *, const int *, double *, double *,
+                        double *, const double *, rgpot_engine_coord_transform, void *);
+using LastErrorFn = size_t (*)(const RgpotEnginePot *, char *, size_t);
+using DestroyFn = void (*)(RgpotEnginePot *);
 
 // A failed force call leaves a message. rgpot_engine_last_error
 // NUL-terminates every buffer it is given, including one of a single byte.
@@ -37,12 +38,13 @@ int check_last_error(const char *library) {
   }
   const double bad[3] = {1.0, -1.0, 1.0};
   char err[256] = {};
-  void *pot = create(bad, sizeof(bad), err, sizeof(err));
+  RgpotEnginePot *pot = create(bad, sizeof(bad), err, sizeof(err));
   if (pot == nullptr) {
     std::fprintf(stderr, "create: %s\n", err);
     return 1;
   }
   const double xyz[6] = {0, 0, 0, 1.5, 0, 0};
+  const double coincident[6] = {0, 0, 0, 0, 0, 0};
   const int z[2] = {1, 1};
   const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
   double f[6];
@@ -66,7 +68,31 @@ int check_last_error(const char *library) {
     }
   }
   destroy(pot);
-  return status;
+  if (status != 0) {
+    return status;
+  }
+
+  const double valid[3] = {1.0, 8.0, 1.0};
+  RgpotEnginePot *good = create(valid, sizeof(valid), err, sizeof(err));
+  if (good == nullptr) {
+    std::fprintf(stderr, "create valid: %s\n", err);
+    return 1;
+  }
+  const int rc = force(good, 2, coincident, z, f, &e, &var, box, nullptr, nullptr);
+  char msg[256] = {};
+  last_error(good, msg, sizeof(msg));
+  if (rc != RGPOT_ENGINE_ERR_EVAL || msg[0] == '\0') {
+    std::fprintf(stderr, "coincident force returned %d (%s)\n", rc, msg);
+    destroy(good);
+    return 1;
+  }
+  if (force(good, 2, xyz, z, f, &e, &var, box, nullptr, nullptr) != RGPOT_ENGINE_OK) {
+    std::fprintf(stderr, "engine did not recover after coincident pair\n");
+    destroy(good);
+    return 1;
+  }
+  destroy(good);
+  return 0;
 }
 
 } // namespace

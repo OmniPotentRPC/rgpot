@@ -95,8 +95,13 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
  * minor 0, layout 1.
  */
 #define RGPOT_ENGINE_ABI_VERSION 1
-#define RGPOT_ENGINE_ABI_MINOR 2
+#define RGPOT_ENGINE_ABI_MINOR 5
 #define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
+
+#define RGPOT_ENGINE_OK 0
+#define RGPOT_ENGINE_ERR_INVALID 1
+#define RGPOT_ENGINE_ERR_EVAL 2
+#define RGPOT_ENGINE_ERR_UNSUPPORTED 3
 
 RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
 
@@ -161,6 +166,19 @@ RGPOT_ENGINE_API int rgpot_engine_force(
 /* ------------------------------------------------------------------ */
 /* Optional symbols: probe with dlsym; absence means unsupported.     */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Analytic Hessian-vector product H(positions) * direction, in eV/Angstrom
+ * for a direction in Angstrom. direction and hv_out hold 3*nAtoms doubles
+ * and must not overlap. Returns RGPOT_ENGINE_OK (0) on success,
+ * RGPOT_ENGINE_ERR_INVALID (1) for invalid or overlapping arguments, and
+ * RGPOT_ENGINE_ERR_UNSUPPORTED (3) when the backend does not support
+ * analytic HVP.
+ */
+RGPOT_ENGINE_API int rgpot_engine_hvp(
+    RgpotEnginePot *pot, long nAtoms, const double *positions,
+    const int *atomicNrs, const double *direction, double *hv_out,
+    const double *box);
 
 /**
  * Strided-uniform batched evaluation: nSystems systems sharing one
@@ -248,12 +266,12 @@ typedef struct {
 RGPOT_ENGINE_API RgpotEngineAbiStamp rgpot_engine_abi_stamp(void);
 
 /**
- * Nonzero when the loaded engine serves a host built against `stamp`: equal
- * major, equal layout revision, engine minor at least the host's. NULL
- * returns 0.
+ * Nonzero when this plugin serves the host described by `host_stamp`: equal
+ * major, equal layout revision, and a plugin minor no newer than the host's.
+ * NULL returns 0.
  */
 RGPOT_ENGINE_API int rgpot_engine_abi_compatible(
-    const RgpotEngineAbiStamp *stamp);
+    const RgpotEngineAbiStamp *host_stamp);
 
 /**
  * Concurrency and evaluation capabilities, the engine-side image of rgpot's
@@ -270,6 +288,9 @@ typedef struct {
   int periodic;            /**< periodic boundary conditions supported */
   int stress;              /**< cell stress is available */
   int group_collective;    /**< every rank of a group enters each call */
+  int orbital_selection;   /**< select_orbitals is supported */
+  int orbital_copy;        /**< copy_orbitals is supported */
+  int analytic_hvp;        /**< rgpot_engine_hvp is exact for this potential */
 } RgpotEngineCaps;
 
 RGPOT_ENGINE_API int rgpot_engine_caps(const RgpotEnginePot *pot,
@@ -328,6 +349,31 @@ RGPOT_ENGINE_API int rgpot_engine_set_charge_spin(RgpotEnginePot *pot,
                                                   int charge, int spin);
 
 /**
+ * Select the active orbital key for subsequent evaluations.
+ * On CPMD backends, accepting a key seeds the next SCF from the session's
+ * current converged orbitals or from the orbitals stored for that key.
+ * Returns 0 on success (clearing last_error), 1 when pot is NULL (invalid
+ * argument, leaving last_error unchanged), 2 when the backend's
+ * orbital-selection hook fails with an exception, and 3 when the backend has
+ * no orbital selection or refuses key through Unsupported; codes 2 and 3
+ * record the reason in last_error.
+ */
+RGPOT_ENGINE_API int rgpot_engine_select_orbitals(RgpotEnginePot *pot,
+                                                  long long key);
+
+/**
+ * Copy stored orbitals from one key to another.
+ * Returns 0 on success (clearing last_error), 1 when pot is NULL (invalid
+ * argument, leaving last_error unchanged), 2 when the backend's orbital-copy
+ * hook fails with an exception, and 3 when the backend has no orbital-copy
+ * primitive or refuses the copy through Unsupported; codes 2 and 3 record
+ * the reason in last_error.
+ */
+RGPOT_ENGINE_API int rgpot_engine_copy_orbitals(RgpotEnginePot *pot,
+                                                long long from_key,
+                                                long long to_key);
+
+/**
  * Neighbor-list declaration. An engine exporting this symbol expects
  * the host to provision every declared list before evaluation; an
  * engine omitting it self-provisions (the UMA molecular-box engine
@@ -347,6 +393,42 @@ typedef struct {
 RGPOT_ENGINE_API long rgpot_engine_neighbor_options(
     const RgpotEnginePot *pot, RgpotEngineNeighborOptions *opts,
     long capacity);
+
+/**
+ * One term of a composite engine (a weighted sum of child potentials) as the
+ * last successful force call on the handle left it. energy and stress are the
+ * term's own values before its weight: eV and eV/Angstrom^3.
+ */
+typedef struct {
+  double weight;
+  double energy;
+  double stress[9];
+  int enabled;    /**< 0: switched off, never evaluated */
+  int evaluated;  /**< 0 for a disabled term and before the first call */
+  int has_stress; /**< stress holds the term's stress */
+} RgpotEngineComponent;
+
+/**
+ * Per-term record of the last successful force call. Writes up to capacity
+ * entries into out and returns the total count (call with capacity 0 to
+ * size); returns 0 for a backend that is not a sum and -1 for a NULL pot.
+ * forces, when not NULL, receives capacity blocks of 3*nAtoms doubles
+ * (nAtoms of the last call, eV/Angstrom), term-major, zero for a term that
+ * was not evaluated. With rgpot_engine_force_batch the record is the last
+ * system of the batch.
+ */
+RGPOT_ENGINE_API long rgpot_engine_last_components(
+    const RgpotEnginePot *pot, RgpotEngineComponent *out, double *forces,
+    long capacity);
+
+/**
+ * Name of term index of a composite engine. Copies at most `len - 1` bytes
+ * and NUL-terminates; returns the full name length, 0 for an index out of
+ * range or a backend that is not a sum.
+ */
+RGPOT_ENGINE_API size_t rgpot_engine_component_name(const RgpotEnginePot *pot,
+                                                    long index, char *buf,
+                                                    size_t len);
 
 #ifdef __cplusplus
 }

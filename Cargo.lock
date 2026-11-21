@@ -503,6 +503,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
+name = "maryada"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c771bcdd0648e4bf72e914f1717159aae96ec98cf05458675e96e8f16a12061a"
+dependencies = [
+ "libm",
+]
+
+[[package]]
 name = "matrixmultiply"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -724,10 +733,12 @@ dependencies = [
  "capnp-rpc",
  "capnpc",
  "cbindgen 0.27.0",
+ "cc",
  "dlpk",
  "eindir-core",
  "futures",
  "libloading",
+ "maryada",
  "ndarray",
  "tokio",
  "tokio-util",

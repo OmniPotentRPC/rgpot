@@ -318,7 +318,7 @@ jobs:
           fi
       - if: matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
         name: mpirun calculator_group_test
-        run: pixi run -e mpibld mpirun --oversubscribe -n 4 ./bbdir/CppCore/calculator_group_test
+        run: pixi run -e mpibld mpirun --oversubscribe -n 4 ./bbdir/CppCore/calculator_group_test --order decl
       - if: matrix.sys == 'cmake'
         name: Build & Test (CMake)
         shell: pixi run bash -e {0}
@@ -442,7 +442,11 @@ jobs:
   # --- Stage 2a''': classical pair scan, no cargo ---
   # manylinux wheels, conda and the eOn subproject configure without cargo.
   # This leg forces that fallback on a runner that does have cargo, so the
-  # C++ scan is what the tests exercise.
+  # C++ scan is what the tests exercise. with_rust_core is on here, so the
+  # plain rgpot-core archive (no pair list to share a runtime with) is built
+  # and linked, and the rust core tests run. Pixi's rust is newer than the
+  # workspace rust-version, so this leg puts rustup's toolchain for that
+  # version first on PATH: rgpot-core alone must build on it.
   build_fast_nlist_off:
     name: meson / ubuntu [fast nlist off]
     needs: [prepare]
@@ -460,8 +464,15 @@ jobs:
       - name: Build and test without the fast pair list
         shell: pixi run bash -e {0}
         run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
+          export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:${PATH}"
+          rustup toolchain install "${msrv}" --profile minimal
+          export RUSTUP_TOOLCHAIN="${msrv}"
+          rustc -V | grep -F "rustc ${msrv}."
           meson setup bbdir \
             -Dwith_tests=true \
+            -Dwith_eam_table=true \
+            -Dwith_rust_core=true \
             -Dwith_examples=false \
             -Dwith_xtensor=false \
             -Dwith_eigen=false \
@@ -491,10 +502,55 @@ jobs:
         shell: pixi run bash -e {0}
         run: bash tools/check_cxx_layout_ubsan.sh
 
+  lsan_libomp_18:
+    name: meson / ubuntu [LSan + libomp 18]
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CC: /usr/bin/clang-18
+      CXX: /usr/bin/clang++-18
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          activate-environment: true
+      - name: Install LLVM OpenMP 18
+        run: |
+          bash ci/gha/apt-install.sh --no-install-recommends \
+            clang-18 libclang-rt-18-dev libomp-18-dev
+          dpkg-query -W clang-18 libclang-rt-18-dev libomp-18-dev
+      - name: Build and test OpenMP under LeakSanitizer
+        shell: pixi run bash -e {0}
+        run: |
+          export CC=/usr/bin/clang-18
+          export CXX=/usr/bin/clang++-18
+          # Clang leaves __asan_* unresolved in librgpot.so. Meson's
+          # default -Wl,--no-undefined then fails the link. The layout
+          # sanitizer script sets the same option for Clang.
+          meson setup bbdir-lsan \
+            -Db_sanitize=address \
+            -Db_lundef=false \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_fortran_pots=disabled \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_fast_nlist=disabled
+          meson compile -C bbdir-lsan
+          meson test -C bbdir-lsan --print-errorlogs \
+            MorsePotTest ThreadTeamTest
+          bash tools/check_lsan_libomp.sh
+
   # The suite on short OpenMP teams. Under OMP_THREAD_LIMIT every region gets
   # fewer threads than it asks for, and results must keep the bits of their
   # slice count. One build, two test runs. Linux only: the macOS legs build
   # without OpenMP, and MSVC's OpenMP 2.0 runtime has no thread limit.
+  # with_rust_core is on next to the fast pair list, so rgpot-bundle, the one
+  # archive that carries both, is what links.
   thread_limit:
     name: meson / ubuntu [OMP_THREAD_LIMIT 1, 2]
     needs: [prepare]
@@ -515,6 +571,7 @@ jobs:
         run: |
           meson setup bbdir \
             -Dwith_tests=true \
+            -Dwith_rust_core=true \
             -Dwith_examples=false \
             -Dwith_xtensor=false \
             -Dwith_eigen=false \
@@ -583,6 +640,8 @@ jobs:
           cache: true
           environments: devbld
           activate-environment: devbld
+      - name: Check shared Rust dependency versions
+        run: python3 scripts/check_rust_dependency_versions.py
       - name: Install cargo-nextest
         uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2
         with:
@@ -597,6 +656,9 @@ jobs:
       - name: Run Rust doc-tests
         shell: pixi run bash -e {0}
         run: cargo test --doc -p rgpot-core
+      - name: Check rgpot.h is what cbindgen generates
+        shell: pixi run bash -e {0}
+        run: bash tools/check_header_drift.sh
 
   # --- Stage 2c: client bridge ---
   client_bridge_stress:
@@ -959,6 +1021,7 @@ jobs:
       - nodownload_rehearsal
       - build_fast_nlist_off
       - cxx_layout_ubsan
+      - lsan_libomp_18
       - thread_limit
       - test_parity
       - rust_tests
@@ -998,6 +1061,7 @@ jobs:
             "nodownload_rehearsal:${{ needs.nodownload_rehearsal.result }}" \
             "build_fast_nlist_off:${{ needs.build_fast_nlist_off.result }}" \
             "cxx_layout_ubsan:${{ needs.cxx_layout_ubsan.result }}" \
+            "lsan_libomp_18:${{ needs.lsan_libomp_18.result }}" \
             "thread_limit:${{ needs.thread_limit.result }}" \
             "test_parity:${{ needs.test_parity.result }}" \
             "rust_tests:${{ needs.rust_tests.result }}" \

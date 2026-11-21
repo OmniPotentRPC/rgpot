@@ -55,7 +55,13 @@ the cell, the atom count and the settings are unchanged.
 Epsilon is 3.4723e-12 erg, 2.16723920 eV, the value of equation (2.9).
 =energyAndGradient= evaluates one configuration, and =energyAndGradientBatch=
 several configurations that share a cell and a species list.
+A batch whose configurations are all below =rgpot::kTeamMinAtoms= atoms is
+spread across the threads =OMP_NUM_THREADS= requests.
+Each configuration is evaluated whole, on a neighbour list of its own.
 See [[file:sw_si.org][Stillinger-Weber silicon (1985)]].
+=locality= declares a full neighbour list and a ghost reach of twice the cutoff,
+so a domain-decomposed host can evaluate owned atoms and reverse sum the forces
+on the copies.
 The Fortran =SWPot= kernel (=PotType::SWSi=) uses eOn's rescaled epsilon,
 2.16826 × 1.06767385 = 2.3149945 eV.
 The ratio of that epsilon to the published value is 1.068176741337.
@@ -69,6 +75,11 @@ The Fortran =TersoffPot=, which also reports =PotType::TersoffSi= and is the
 engine name =tersoff=, sends all-silicon calls and a null species pointer to its
 Fortran gather and every other call to =TersoffSiC=.
 =setHeldSkin= keeps one Verlet list for =forceImpl=.
+=locality= declares a full neighbour list and a ghost reach of twice the silicon
+outer cutoff, so a domain-decomposed host can evaluate owned atoms and reverse
+sum the forces on the copies.
+=energyAndGradientBatch= spreads configurations below =rgpot::kTeamMinAtoms= the
+same way as =StillingerWeberSi=.
 See [[file:tersoff_sic.org][Tersoff silicon-carbon (1989)]].
 - =ZBLPot= (=PotType::ZBL=) :: Screened nuclear repulsion
   (Ziegler-Biersack-Littmark) with the LAMMPS switching function, on free
@@ -90,9 +101,10 @@ copper set.
   =CppCore/rgpot/ExternalPot/=, as =PotType::Lammps=, =PotType::Gromacs= and =PotType::OpenMM=; =GromacsPot= and =OpenMMPot= store nm and kJ/mol
   parameters.
 - Gupta and reduced cluster pairs :: C kernels
-  (=rgpot_gupta=, =rgpot_lj_gradient=, =rgpot_morse_gradient=) in
-  =CppCore/rgpot/Gupta/= and =CppCore/rgpot/ReducedPair/=, not =Potential=
-  classes.
+  (=rgpot_gupta=, =rgpot_cluster_lj=, =rgpot_cambridge_morse=, =rgpot_lj_gradient=, =rgpot_morse_gradient=) in =CppCore/rgpot/Gupta/=, =CppCore/rgpot/Morse/cambridge_morse.h=
+  and =CppCore/rgpot/ReducedPair/=, not =Potential= classes.
+  [[file:gupta.org][Gupta and reduced cluster kernels]] records the parameters
+  and the checked energies.
 
 *** Fortran Potentials
 

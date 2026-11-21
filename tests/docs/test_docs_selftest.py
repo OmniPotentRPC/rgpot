@@ -216,6 +216,14 @@ class PlantedFactMistakes(unittest.TestCase):
         self.assertIn("&RGPOT key EMBEDDING is not in the table", errors)
         self.assertIn("THREADS is not a key", errors)
 
+    def test_engine_table_exports_against_the_adapter(self):
+        page = (ROOT / doccheck.ENGINE_ABI_PAGE).read_text(encoding="utf-8")
+        self.assertEqual(doccheck.engine_table_export_errors(ROOT), [])
+        planted = page.replace("=rgpot_engine_hvp=, ", "", 1)
+        self.assertNotEqual(page, planted)
+        errors = "\n".join(doccheck.engine_table_export_errors(ROOT, _page(planted)))
+        self.assertIn("export rgpot_engine_hvp is not in the library export list", errors)
+
     def test_wrong_default_in_build_options_page(self):
         options = doccheck.meson_options(ROOT)
         cmake = doccheck.cmake_options(ROOT)
@@ -388,6 +396,19 @@ class PlantedBrokenExamples(unittest.TestCase):
         text = "#+attr_rgpot: run\n#+begin_src python\nimport rgpot\nassert rgpot.LJPot is None\n#+end_src\n"
         results = list(doccheck.execute_blocks(build, ROOT, self._blocks(text)))
         self.assertEqual([status for _, status, _ in results], ["fail"])
+
+
+class Coverage(unittest.TestCase):
+    def test_tree_is_covered(self):
+        self.assertEqual(doccheck.coverage_errors(ROOT), [])
+
+    def test_missing_marker_is_reported(self):
+        planted = list(doccheck.COVERAGE_MARKERS) + [
+            ("docs/orgmode/reference/gupta.org", "not-a-real-marker")
+        ]
+        with mock.patch.object(doccheck, "COVERAGE_MARKERS", planted):
+            errors = "\n".join(doccheck.coverage_errors(ROOT))
+        self.assertIn("not-a-real-marker", errors)
 
 
 if __name__ == "__main__":

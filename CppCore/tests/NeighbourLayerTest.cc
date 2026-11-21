@@ -14,6 +14,7 @@
 
 #include <catch2/catch_all.hpp>
 
+#include "lsan_libomp.hpp"
 #include "rgpot/EAM/EAMPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -731,6 +732,116 @@ TEST_CASE("a stored list survives atoms wrapped through the faces", "[nlist][ski
   check(pos, big, false, 4);
 }
 
+TEST_CASE("forCellTeam on a stored list walks the stored index across threads and Verlet reuse",
+          "[nlist][stored][threads]") {
+  const double a = 3.6;
+  const double side = 8 * a;
+  const double cutoff = 5.0;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  auto pos = fcc(8, a);
+  for (std::size_t k = 0; k < pos.size(); ++k) {
+    pos[k] += 0.04 * std::sin(1.9 * static_cast<double>(k));
+  }
+  wrapInto(pos, side);
+  const std::size_t n = pos.size() / 3;
+
+  rgpot::nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = 1.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+  rgpot::nlist::Neighbours stored;
+  stored.update(pos.data(), n, box, spec);
+  REQUIRE_FALSE(stored.streaming());
+
+  for (int step = 0; step < 2; ++step) {
+    if (step == 1) {
+      for (std::size_t k = 0; k < pos.size(); ++k) {
+        pos[k] += 0.12 * std::cos(1.1 * static_cast<double>(k));
+      }
+      stored.update(pos.data(), n, box, spec);
+      REQUIRE(stored.reused());
+    }
+    PairBits want_half;
+    stored.forHalf(0, static_cast<std::int64_t>(n),
+                   [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+                     if (r2 <= cutoff * cutoff) {
+                       want_half.push_back({static_cast<std::uint64_t>(i),
+                                            static_cast<std::uint64_t>(j), bits(dx), bits(dy),
+                                            bits(dz)});
+                     }
+                   });
+    // forHalf walks rows in atom-index order. A stored forCellTeam gives
+    // slice s only the central atoms in partition(n, s, nt) and walks those
+    // rows the same way, so the slices joined in order are the half walk.
+    // Sorting that join compared the pairs as a set and let a tile walk,
+    // which owns cells rather than those atom runs, pass.
+    REQUIRE_FALSE(want_half.empty());
+
+    struct TeamWalk {
+      int nt = 0;
+      std::vector<char> owns;
+      PairBits got;
+    };
+    std::vector<TeamWalk> walks;
+    for (const int nt : {1, 2, 4}) {
+      TeamWalk walk;
+      walk.nt = nt;
+      std::vector<PairBits> per_slice(static_cast<std::size_t>(nt));
+      // One byte per slice. forEachSlice may run the slices on different
+      // threads, and each slice is written by only one of them.
+      walk.owns.assign(static_cast<std::size_t>(nt), 1);
+      stored.forCellTeam(
+          true, nt,
+          [&](int slice, std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+              double r2) {
+            const auto run =
+                rgpot::nlist::partition(static_cast<std::int64_t>(n), slice, nt);
+            const auto s = static_cast<std::size_t>(slice);
+            if (static_cast<std::int64_t>(i) < run.begin ||
+                static_cast<std::int64_t>(i) >= run.end) {
+              walk.owns[s] = 0;
+            }
+            if (r2 <= cutoff * cutoff) {
+              per_slice[s].push_back({static_cast<std::uint64_t>(i), static_cast<std::uint64_t>(j),
+                                      bits(dx), bits(dy), bits(dz)});
+            }
+          });
+      for (const auto &part : per_slice) {
+        walk.got.insert(walk.got.end(), part.begin(), part.end());
+      }
+      walks.push_back(std::move(walk));
+    }
+    // Ownership first. One slice owns every atom, so a cell walk and a row
+    // walk agree there, and the split is what a tile stencil changes.
+    for (const TeamWalk &walk : walks) {
+      for (int slice = 0; slice < walk.nt; ++slice) {
+        INFO("step=" << step << " nt=" << walk.nt << " slice=" << slice);
+        REQUIRE(walk.owns[static_cast<std::size_t>(slice)] != 0);
+      }
+    }
+    for (const TeamWalk &walk : walks) {
+      // Report the first row that disagrees. Catch would otherwise print
+      // both walks.
+      std::size_t mismatch = walk.got.size();
+      const bool same_length = walk.got.size() == want_half.size();
+      if (same_length) {
+        for (std::size_t k = 0; k < walk.got.size(); ++k) {
+          if (walk.got[k] != want_half[k]) {
+            mismatch = k;
+            break;
+          }
+        }
+      }
+      INFO("step=" << step << " nt=" << walk.nt << " got=" << walk.got.size()
+                   << " want=" << want_half.size() << " first_mismatch=" << mismatch);
+      REQUIRE(same_length);
+      REQUIRE(mismatch == walk.got.size());
+    }
+  }
+  setThreads("");
+}
+
 namespace {
 
 /// Every visit of a walk in order, with the bits of its image vector.
@@ -928,4 +1039,62 @@ TEST_CASE("an unbounded periodic search takes the nearest image of every pair",
   loadCells(all, pos, 3 * a, 2 * a, 2 * a, kInf, true, rgpot::nlist::Mode::Auto);
   REQUIRE(all.allPairs());
   requireSamePairs(walkedPairs(all, n, kInf), direct);
+}
+
+TEST_CASE("a directed walk gives a lower partner the negated vector of the half walk",
+          "[nlist][triclinic][allpairs]") {
+  // A team adds the force of a pair at both of its rows, one thread at
+  // both ends from the half walk, and the bits agree only if the second
+  // row sees the negated vector. Sites without a jitter put pairs on the
+  // half cell, where a sheared cell ties two images.
+  setThreads("1");
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double cubic[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const double sheared[9] = {side, 0, 0, 0.08 * side, side, 0, 0.04 * side, -0.06 * side, side};
+  const auto cube = fcc(3, a);
+  const std::size_t n = cube.size() / 3;
+  const auto rows = static_cast<std::int64_t>(n);
+  for (const double *cell : {cubic, sheared}) {
+    std::vector<double> pos(cube.size());
+    for (std::size_t i = 0; i < n; ++i) {
+      for (std::size_t c = 0; c < 3; ++c) {
+        pos[3 * i + c] = (cube[3 * i] * cell[c] + cube[3 * i + 1] * cell[3 + c] +
+                          cube[3 * i + 2] * cell[6 + c]) /
+                         side;
+      }
+    }
+    for (const auto image : {rgpot::nlist::Image::Round, rgpot::nlist::Image::General}) {
+      for (const double cutoff : {5.0, kInf}) {
+        INFO("sheared " << (cell == sheared) << " image " << static_cast<int>(image)
+                        << " cutoff " << cutoff);
+        rgpot::nlist::Spec spec;
+        spec.cutoff = cutoff;
+        spec.skin = 1.0;
+        spec.image = image;
+        spec.mode = rgpot::nlist::Mode::Stored;
+        rgpot::nlist::Neighbours cells;
+        cells.update(pos.data(), n, cell, spec);
+        std::map<std::pair<std::int32_t, std::int32_t>, std::array<double, 4>> half;
+        cells.forHalf(0, rows,
+                      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                          double r2) { half[{i, j}] = {dx, dy, dz, r2}; });
+        std::size_t lower = 0;
+        std::size_t apart = 0;
+        cells.forDirected(0, rows, [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                                       double dz, double r2) {
+          if (j > i) {
+            return;
+          }
+          ++lower;
+          const auto &h = half.at({j, i});
+          if (dx != -h[0] || dy != -h[1] || dz != -h[2] || bits(r2) != bits(h[3])) {
+            ++apart;
+          }
+        });
+        REQUIRE(lower == half.size());
+        REQUIRE(apart == 0);
+      }
+    }
+  }
 }

@@ -18,7 +18,7 @@ pub const PROTOCOL_FAMILY: &str = "rgpot.potentials";
 /// Wire-incompatible protocol revision.
 pub const PROTOCOL_MAJOR: u16 = 1;
 /// Additive protocol revision.
-pub const PROTOCOL_MINOR: u16 = 0;
+pub const PROTOCOL_MINOR: u16 = 1;
 /// Cap'n Proto identity of `Potentials.capnp`.
 pub const SCHEMA_ID: &str = "0xbd1f89fa17369103";
 
@@ -61,6 +61,21 @@ impl Default for Expectation {
     }
 }
 
+/// One leading `0x`, in either case, is not part of the hex digits.
+fn without_hex_prefix(id: &str) -> &str {
+    let bytes = id.as_bytes();
+    if bytes.len() >= 2 && bytes[0] == b'0' && (bytes[1] == b'x' || bytes[1] == b'X') {
+        &id[2..]
+    } else {
+        id
+    }
+}
+
+/// Cap'n Proto file ids match after an optional `0x` prefix and ASCII case.
+fn schema_ids_match(reported: &str, expected: &str) -> bool {
+    without_hex_prefix(reported).eq_ignore_ascii_case(without_hex_prefix(expected))
+}
+
 fn text(result: capnp::Result<capnp::text::Reader<'_>>, field: &str) -> Result<String, String> {
     result
         .map_err(|e| format!("capabilities.{field} unreadable: {e}"))?
@@ -94,7 +109,7 @@ pub fn check_capabilities(caps: Reader<'_>, want: &Expectation) -> Result<(), St
         }
     }
     let schema_id = text(caps.get_schema_id(), "schemaId")?;
-    if !schema_id.is_empty() && schema_id != want.schema_id {
+    if !schema_id.is_empty() && !schema_ids_match(&schema_id, want.schema_id) {
         return Err(format!("schema id {schema_id} is not {}", want.schema_id));
     }
     if caps.get_bridge_abi_major() != 0 {
@@ -157,8 +172,7 @@ pub fn check_capabilities(caps: Reader<'_>, want: &Expectation) -> Result<(), St
 
 /// Decode a flat `Capabilities` message held as aligned words and check it.
 pub fn check_capabilities_words(words: &[u64], want: &Expectation) -> Result<(), String> {
-    let bytes =
-        unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), words.len() * 8) };
+    let bytes = unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), words.len() * 8) };
     let mut cursor = bytes;
     let message = capnp::serialize::read_message_from_flat_slice(
         &mut cursor,
@@ -192,13 +206,17 @@ pub fn fill_compatibility(mut caps: Builder<'_>) {
 }
 
 /// Fill `caps` as the self-description of an rgpot RPC server.
-pub fn describe_server(mut caps: Builder<'_>) {
+pub fn describe_server(mut caps: Builder<'_>, analytic_hvp: bool) {
     caps.set_backend_name("rgpot");
     caps.set_backend_version(env!("CARGO_PKG_VERSION"));
     caps.set_available(true);
-    let mut ops = caps.reborrow().init_operations(2);
+    let count = if analytic_hvp { 3 } else { 2 };
+    let mut ops = caps.reborrow().init_operations(count);
     ops.set(0, Operation::Energy);
     ops.set(1, Operation::Forces);
+    if analytic_hvp {
+        ops.set(2, Operation::HessianVector);
+    }
     fill_compatibility(caps);
 }
 
@@ -273,15 +291,51 @@ mod tests {
         let want = Expectation::default();
         type Edit = Box<dyn FnOnce(&mut Builder<'_>)>;
         let cases: Vec<(&str, Edit, &str)> = vec![
-            ("family", Box::new(|c| c.set_protocol_family("other.family")), "protocol family"),
-            ("major", Box::new(|c| c.set_protocol_major(2)), "protocol major"),
-            ("schema", Box::new(|c| c.set_schema_id("0xdeadbeef")), "schema id"),
-            ("bridge major", Box::new(|c| c.set_bridge_abi_major(2)), "bridge ABI major"),
-            ("bridge minor", Box::new(|c| c.set_bridge_abi_minor(9)), "bridge ABI minor"),
-            ("layout", Box::new(|c| c.set_bridge_layout(7)), "objective layout"),
-            ("features", Box::new(|c| c.set_bridge_features(1 << 40)), "bridge features"),
-            ("dlpack major", Box::new(|c| c.set_dlpack_major(2)), "DLPack major"),
-            ("dlpack minor", Box::new(|c| c.set_dlpack_minor(9)), "DLPack minor"),
+            (
+                "family",
+                Box::new(|c| c.set_protocol_family("other.family")),
+                "protocol family",
+            ),
+            (
+                "major",
+                Box::new(|c| c.set_protocol_major(2)),
+                "protocol major",
+            ),
+            (
+                "schema",
+                Box::new(|c| c.set_schema_id("0xdeadbeef")),
+                "schema id",
+            ),
+            (
+                "bridge major",
+                Box::new(|c| c.set_bridge_abi_major(2)),
+                "bridge ABI major",
+            ),
+            (
+                "bridge minor",
+                Box::new(|c| c.set_bridge_abi_minor(9)),
+                "bridge ABI minor",
+            ),
+            (
+                "layout",
+                Box::new(|c| c.set_bridge_layout(7)),
+                "objective layout",
+            ),
+            (
+                "features",
+                Box::new(|c| c.set_bridge_features(1 << 40)),
+                "bridge features",
+            ),
+            (
+                "dlpack major",
+                Box::new(|c| c.set_dlpack_major(2)),
+                "DLPack major",
+            ),
+            (
+                "dlpack minor",
+                Box::new(|c| c.set_dlpack_minor(9)),
+                "DLPack minor",
+            ),
             (
                 "operation",
                 Box::new(|c| {
@@ -330,6 +384,28 @@ mod tests {
     }
 
     #[test]
+    fn schema_id_ignores_an_optional_0x_prefix_and_case() {
+        let want = Expectation::default();
+        let bare = SCHEMA_ID
+            .strip_prefix("0x")
+            .expect("the stored file id has an 0x prefix");
+        assert_ne!(bare, want.schema_id);
+        assert_eq!(verdict(|caps| caps.set_schema_id(bare), &want), Ok(()));
+        let upper = bare.to_ascii_uppercase();
+        assert_eq!(
+            verdict(|caps| caps.set_schema_id(upper.as_str()), &want),
+            Ok(())
+        );
+        let prefixed = format!("0X{upper}");
+        assert_eq!(
+            verdict(|caps| caps.set_schema_id(prefixed.as_str()), &want),
+            Ok(())
+        );
+        let err = verdict(|caps| caps.set_schema_id("deadbeef"), &want).unwrap_err();
+        assert!(err.contains("schema id"), "{err}");
+    }
+
+    #[test]
     fn protocol_minor_below_requirement_is_rejected() {
         let want = Expectation {
             protocol_minor_min: 2,
@@ -358,7 +434,7 @@ mod server_tests {
             _p: potential::GetCapabilitiesParams,
             mut r: potential::GetCapabilitiesResults,
         ) -> Promise<(), capnp::Error> {
-            describe_server(r.get().init_capabilities());
+            describe_server(r.get().init_capabilities(), false);
             Promise::ok(())
         }
     }
@@ -371,14 +447,16 @@ mod server_tests {
             mut r: potential::GetCapabilitiesResults,
         ) -> Promise<(), capnp::Error> {
             let mut caps = r.get().init_capabilities();
-            describe_server(caps.reborrow());
+            describe_server(caps.reborrow(), false);
             caps.set_protocol_family("other.family");
             Promise::ok(())
         }
     }
 
     fn verdict<S: potential::Server + 'static>(server: S) -> Result<(), String> {
-        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
         let local = tokio::task::LocalSet::new();
         local.block_on(&rt, async {
             let client: potential::Client = capnp_rpc::new_client(server);

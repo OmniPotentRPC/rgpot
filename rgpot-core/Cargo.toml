@@ -2,6 +2,7 @@
 name = "rgpot-core"
 version.workspace = true
 edition = "2021"
+rust-version.workspace = true
 description = "Core Rust library for rgpot: RPC-based potential energy surface calculations"
 license = "MIT"
 repository = "https://github.com/OmniPotentRPC/rgpot"
@@ -19,6 +20,7 @@ crate-type = ["staticlib", "cdylib", "lib"]
 default = []
 schema = ["dep:capnp", "dep:capnpc"]
 profile = ["schema", "dep:libloading"]
+engine = ["dep:libloading"]
 rpc = ["schema", "dep:capnp-rpc", "dep:tokio", "dep:tokio-util", "dep:futures"]
 cache = []
 gen-header = ["dep:cbindgen"]
@@ -30,6 +32,8 @@ dlpk = { version = "0.1.5" }
 # this one shared crate. Sharing the crate (rlib) with downstream consumers such as
 # anneal-core avoids the two-Rust-runtime conflict a separate libeindir_core.a causes.
 eindir-core = { version = "0.6.0", features = ["capi"] }
+# Outward-rounded IEEE 1788 intervals for the Taylor jet coefficients.
+maryada = "=0.1.2"
 capnp = { version = "0.20", features = ["unaligned"], optional = true }
 libloading = { version = "0.8", optional = true }
 capnp-rpc = { version = "0.20", optional = true }
@@ -38,7 +42,13 @@ tokio-util = { version = "0.7", features = ["compat"], optional = true }
 futures = { version = "0.3", optional = true }
 
 [dev-dependencies]
+cc = "1.4.2"
 ndarray = "0.17.2"
+
+[[test]]
+name = "engine"
+path = "tests/engine.rs"
+required-features = ["engine"]
 
 [[test]]
 name = "profile"

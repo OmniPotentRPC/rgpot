@@ -32,20 +32,38 @@ eV/Angstrom (=CppCore/rgpot/units.hpp=).
 
 #+attr_rgpot: signature
 #+begin_src cpp
-explicit Error(const std::string &msg);
+explicit Error(const std::string &msg,
+               rgpot_status_t status = RGPOT_INTERNAL_ERROR);
 #+end_src
 
-- Inputs :: =msg=, the text that =what()= returns.
+- Inputs :: =msg=, the text that =what()= returns, and =status=, the code the C
+  API returned (default =RGPOT_INTERNAL_ERROR=).
 - Units :: none.
 - Outputs :: an exception derived from =std::runtime_error=.
 - Errors :: none; the constructor has no failure path.
+
+*** =rgpot::Error::status=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] rgpot_status_t status() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the status the C API returned, so a caller tells
+  =RGPOT_SCC_NOT_CONVERGED= from other failures.
+  An =Error= built without a status holds =RGPOT_INTERNAL_ERROR=.
+- Errors :: none.
 
 The wrappers build =msg= from a category prefix and the =rgpot_last_error()=
 text, or "unknown error" when that pointer is NULL.
 The prefixes are "invalid parameter: " for =RGPOT_INVALID_PARAMETER=, "RPC
 error: " for =RGPOT_RPC_ERROR=, "buffer size error: " for
-=RGPOT_BUFFER_SIZE_ERROR=, and "internal error: " for =RGPOT_INTERNAL_ERROR= and
-any other code.
+=RGPOT_BUFFER_SIZE_ERROR=, "SCC not converged: " for =RGPOT_SCC_NOT_CONVERGED=,
+"no Taylor jet: " for =RGPOT_NO_JET=, "Taylor jet branch: " for
+=RGPOT_JET_BRANCH=, "Taylor jet domain: " for =RGPOT_JET_DOMAIN=, and "internal
+error: " for =RGPOT_INTERNAL_ERROR= and any other code.
 Every category throws the same type, =rgpot::Error=.
 
 ** include/rgpot/types.hpp
@@ -236,9 +254,10 @@ static PotentialHandle from_impl(Impl &impl, size_t n_atoms,
   When =n_atoms * 3= overflows, the second overload returns a handle holding
   NULL, and later calls on it throw =rgpot::Error= ("invalid parameter").
   At calculation time an exception from =impl.forceImpl= becomes
-  =RGPOT_INTERNAL_ERROR=, and missing positions become
-  =RGPOT_INVALID_PARAMETER=; the calling method throws =rgpot::Error=.
-  The exception's own message is dropped.
+  =RGPOT_INTERNAL_ERROR=, or
+  =RGPOT_SCC_NOT_CONVERGED= for =rgpot::SccNotConverged=, and missing positions become =RGPOT_INVALID_PARAMETER=;
+  the calling method throws =rgpot::Error=.
+  The exception's =what()= text is stored with =rgpot_set_last_error=.
 
 The trampoline copies energy, variance and forces from =ForceOut=; it does not
 pass stress through.
@@ -259,6 +278,32 @@ static PotentialHandle from_callback(rgpot_status_t (*callback)(void *, const rg
 - Errors :: none; the result of =rgpot_potential_new= is not checked for NULL.
   A non-success status from =callback= is thrown as =rgpot::Error= by the method
   that called it.
+
+*** =rgpot::PotentialHandle::eam_table=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+static PotentialHandle eam_table(const std::string &path, int format = RGPOT_EAM_TABLE_AUTO,
+                                 bool periodic = true);
+#+end_src
+
+- Inputs :: =path=, a funcfl, setfl or Finnis-Sinclair table; =format=, one of
+  =RGPOT_EAM_TABLE_AUTO=, =RGPOT_EAM_TABLE_FUNCFL=,
+  =RGPOT_EAM_TABLE_SETFL= and =RGPOT_EAM_TABLE_FINNIS_SINCLAIR=; =periodic=,
+  nearest image on the cell or a free cluster.
+- Units :: positions and cell in Angstrom, energy in eV, forces in eV per
+  Angstrom.
+- Outputs :: a handle from =rgpot_potential_new_eam_table=: the tabulated EAM
+  potential of the Rust core, evaluated in process with no C++ kernel and no
+  engine plugin.
+  The handle needs a build with =with_rust_core=.
+  See [[file:c_abi.org][C ABI of rgpot-core]] for what it evaluates.
+- Errors :: throws =rgpot::Error= with status =RGPOT_INVALID_PARAMETER= and a
+  message starting =invalid parameter: EAM table:= when the core returns NULL:
+  an empty =path=, an unknown =format=, a file that cannot be opened or is not a
+  table of that format.
+  A calculation on a cell whose face spacing is not above twice the cutoff
+  throws the same status from =calculate=.
 
 *** =rgpot::PotentialHandle::calculate=
 
@@ -374,6 +419,66 @@ void reset_hvp_counts() const;
 - Outputs :: none; zeroes the counters and keeps the cached centre.
 - Errors :: none; a NULL handle is a no-op.
 
+*** =rgpot::PotentialHandle::set_fused_settings=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void set_fused_settings(const FusedSettingsSpec &spec) const;
+#+end_src
+
+- Inputs :: =spec=, the settings of the engine that change its answer at a fixed
+  geometry.
+- Units :: =charge= in elementary charges, =electronicTemperature= in kelvin.
+- Outputs :: none; the settings key the fused cache of the handle (see the C ABI
+  reference).
+  A request under other settings runs the engine even at positions whose
+  outcome, a failure included, is stored.
+  A failed energy is not retried at the same bits, so a warm-start retry after a
+  failure needs a changed setting.
+- Errors :: throws =rgpot::Error= when the core refuses the settings.
+
+*** =rgpot::PotentialHandle::sync_fused_settings=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+template <ProvidesFusedSettings Impl>
+void sync_fused_settings(const Impl &impl) const;
+#+end_src
+
+- Inputs :: =impl=, an object whose =fusedSettings()= returns a
+  =FusedSettingsSpec=.
+- Units :: as =set_fused_settings=.
+- Outputs :: none; installs =impl.fusedSettings()=.
+  =from_impl= does this once for an =Impl= that has =fusedSettings()= (=XTBPot=
+  and =XTBDlopen= do).
+  After a setter of the potential, such as =XTBPot::setMaxIterations=, call it:
+  the changed setting is a new key.
+  Without the call the handle keeps returning the stored failure.
+- Errors :: throws =rgpot::Error= when the core refuses the settings.
+
+*** =rgpot::PotentialHandle::fused_error_kind=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] rgpot_fused_error_kind_t fused_error_kind() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the kind of the failure the fused cache stores,
+  =RGPOT_FUSED_SCC_NOT_CONVERGED=,
+  =RGPOT_FUSED_ENGINE_FAILED= or =RGPOT_FUSED_INVALID_RESULT=, or
+  =RGPOT_FUSED_OK= when it stores none.
+- Errors :: none.
+
+An =Impl= whose =forceImpl= throws =rgpot::SccNotConverged= has the failure
+typed: the trampoline stores the message with
+=rgpot_set_last_error= and returns =RGPOT_SCC_NOT_CONVERGED=.
+Another =std::exception= returns =RGPOT_INTERNAL_ERROR= with its =what()=.
+=rgpot::HessianVectorCache= is the same cache for potentials used without the
+Rust core: it stores the exception a force call threw and throws it again, the
+same type and message, for the same bits and settings.
+
 *** =rgpot::PotentialHandle::raw=
 
 #+attr_rgpot: signature
@@ -447,9 +552,24 @@ explicit PotentialBase(PotType inp_type);
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a =PotCaps= with the reentrancy, per-image, batched, periodic,
-  group-collective and stress flags; the default is a value-initialised
-  =PotCaps= (=SharedInstance=, periodic, nothing else set).
+  group-collective, stress and analytic-HVP flags; the default is a
+  value-initialised =PotCaps= (=SharedInstance=, periodic, nothing else set).
 - Errors :: none; the method is =noexcept=.
+
+*** =rgpot::PotentialBase::hessianVectorImpl=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+virtual void hessianVectorImpl(const ForceInput &, const double *,
+                               double *) const;
+#+end_src
+
+- Inputs :: =in= and =direction=, with =3 * in.nAtoms= Cartesian entries.
+- Units :: the energy Hessian times a direction, so eV/Angstrom when the
+  coordinates and direction are in Angstrom.
+- Outputs :: =product= receives =H direction=.
+- Errors :: the base throws =std::runtime_error=.
+  Potentials whose =caps().analyticHvp= is true override this method.
 
 *** =rgpot::PotentialBase::forceBatch=
 
@@ -547,9 +667,21 @@ virtual void forceBatchImpl(const ForceBatch &batch) const;
 - Inputs :: =batch=, =batch.nSystems= systems with parallel arrays =batch.in=
   and =batch.out=.
 - Units :: as =forceImpl=.
-- Outputs :: fills =batch.out[i]= from =batch.in[i]= for every i; the default
-  calls =forceImpl= once per system.
-- Errors :: the default propagates any exception from =forceImpl=.
+- Outputs :: fills =batch.out[i]= from =batch.in[i]= for every i.
+  The default calls =forceImpl= once per system.
+  A potential whose =caps().reentrancy= is =Reentrancy::SharedInstance=, and
+  whose caps do not set =perImageInstances= or =groupCollective=, spreads those
+  systems across the threads =OMP_NUM_THREADS= requests when every system has
+  fewer than =rgpot::kTeamMinAtoms= atoms and the call is not already inside a
+  team.
+  One requested thread, one system, or any system at that atom count or above
+  keeps the serial loop, so a large system can take the team itself.
+  Each system is evaluated whole, and the bits match that loop.
+  Any other potential keeps the serial loop, so per-instance scratch is not
+  shared.
+- Errors :: the default propagates an exception from =forceImpl=.
+  When several slices run, the exception from the lowest numbered slice is the
+  one rethrown, after the team joins.
 
 An override must treat the systems as independent and set =caps().batched=.
 
@@ -567,6 +699,7 @@ void forceBatch(const ForceBatch &batch) override;
   Every slot is zeroed first.
   With =RGPOT_HAS_CACHE= and a cache set, hits are served from the cache and
   only the misses reach =forceBatchImpl=.
+  The lookup and the miss batch are built on the calling thread.
 - Errors :: propagates any exception from =forceBatchImpl=; the slots stay
   zeroed or partly written.
 
@@ -665,7 +798,9 @@ The systems are independent: each has its own atom count, cell and species.
   =TersoffSi=, =EAMAl=, =FeHe=, =WaterH=, =D3=, =D4=, =Expr=, =Uma=, =Skala=,
   =MOPAC=, =EMT=, =EAMCell=, =TIP4P=, =SPCE=, =TIP4PPt=, =IPI=, =SuttonChen=,
   =SWSi1985=, =EAMTable=, =Lammps=, =Gromacs=, =OpenMM=, =CP2K=, =LrCoulomb=,
-  =LrDispersion=, =LrNlh=, =LrSum=, numbered in that order.
+  =LrDispersion=, =LrNlh=, =LrSum=, =Eckart=, =MullerBrown=,
+  =ModifiedMullerBrown=, =LepsHH2=, =LepsHCl2=, =LepsFH2=, =DoubleWell=,
+  =CoupledProtonWell=, =CBE=, =D2=, =D2Cpmd=, numbered in that order.
 - Errors :: none.
 
 Every enumerator is declared in every build; whether the potential behind it is
