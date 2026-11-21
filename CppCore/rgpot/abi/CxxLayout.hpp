@@ -44,6 +44,7 @@
 #include "rgpot/D2Pot/D2Pot.hpp"
 #include "rgpot/D2Pot/D2CpmdPot.hpp"
 #include "rgpot/D4Pot/D4Config.hpp"
+#include "rgpot/Models/ModelPots.hpp"
 #include "rgpot/LongRange/SumPot.hpp"
 #include "rgpot/SumPot/SumPot.hpp"
 #include "rgpot/pot_caps.hpp"
@@ -196,6 +197,8 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// `D4Config` is stamped too, from a header of its own. Its new `periodic`
 /// field fits the padding after `atm`, so only the field offsets show it.
 /// `D2CpmdConfig` gains `symmetry`.
+/// It also stamps `MullerBrownConfig` and `MullerBrownPot`. The
+/// zero-argument `MullerBrownPot` constructor remains its own symbol.
 inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
@@ -209,7 +212,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0xf7ebab6b64626bf2ull},
+    {"linux-x86_64-libstdc++-lp64", 0xe575c7b9c1a2aa4aull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -369,6 +372,13 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(D4Config, charge));
   f.add(offsetof(D4Config, atm));
   f.add(offsetof(D4Config, periodic));
+  f.type<MullerBrownConfig>();
+  f.add(offsetof(MullerBrownConfig, amplitude));
+  f.add(offsetof(MullerBrownConfig, a));
+  f.add(offsetof(MullerBrownConfig, b));
+  f.add(offsetof(MullerBrownConfig, c));
+  f.add(offsetof(MullerBrownConfig, x0));
+  f.add(offsetof(MullerBrownConfig, y0));
 
   // Enumerations: underlying width and the values consumers switch on.
   f.type<Reentrancy>();
@@ -412,6 +422,7 @@ constexpr std::uint64_t compute_hash() {
   f.type<lr::SumPot>();
   f.type<D2Pot>();
   f.type<D2CpmdPot>();
+  f.type<MullerBrownPot>();
 #ifdef RGPOT_HAS_CACHE
   f.type<cache::EvalCounts>();
   f.add(offsetof(cache::EvalCounts, computed));
