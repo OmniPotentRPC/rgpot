@@ -19,7 +19,7 @@
 
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Element count of a dense Hessian.
 ///
@@ -71,7 +71,9 @@ use crate::types::rgpot_force_input_t;
 /// The callback receives the handle's `user_data`, the geometry, and room
 /// for `(3 * n_atoms)²` doubles. It writes the row-major energy Hessian and
 /// returns `RGPOT_SUCCESS`, or an error status. It must not call back into
-/// this handle's Hessian or Hessian-vector entry points.
+/// this handle's Hessian or Hessian-vector entry points, and must not
+/// replace or clear the callback: the call holds the registration, and
+/// replacement waits for it to finish.
 pub type HessianCallback = unsafe extern "C" fn(
     user_data: *mut c_void,
     input: *const rgpot_force_input_t,
@@ -158,7 +160,11 @@ struct StoredHessian {
 /// Per-handle dense-Hessian state, kept in the handle's opaque cache.
 #[derive(Default)]
 pub(crate) struct HessianState {
-    callback: Mutex<Option<HessianCallback>>,
+    /// An evaluation holds a read guard for the whole callback call.
+    /// Replacing or clearing the callback takes the write guard, so it
+    /// returns only after every in-flight call of the old callback has
+    /// finished, and no call of it can start afterwards.
+    callback: RwLock<Option<HessianCallback>>,
     stored: Mutex<Option<StoredHessian>>,
     /// Bumped on callback replacement and cache invalidation. An in-flight
     /// matrix is published only when this is still the value sampled before
@@ -188,8 +194,17 @@ pub(crate) fn apply_hessian(matrix: &[f64], direction: &[f64], out: &mut [f64]) 
 
 impl rgpot_potential_t {
     /// Register `callback` as the analytic dense Hessian, or clear it.
+    ///
+    /// Returns only after every call of the previous callback that was
+    /// already running has returned; no call of it starts after this
+    /// returns. The caller may therefore release the old callback and its
+    /// `user_data` as soon as this returns.
+    ///
+    /// This waits on in-flight evaluations, so it must not be called from a
+    /// Hessian callback, or from any thread that is inside one of this
+    /// handle's Hessian or Hessian-vector entry points. Doing so deadlocks.
     pub fn set_hessian_callback(&self, callback: Option<HessianCallback>) {
-        *lock(&self.hessian_state().callback) = callback;
+        *write_callback(&self.hessian_state().callback) = callback;
         self.invalidate_hessian_cache();
     }
 
@@ -208,7 +223,7 @@ impl rgpot_potential_t {
 
     /// Whether an analytic dense-Hessian callback is registered.
     pub fn has_hessian_callback(&self) -> bool {
-        lock(&self.hessian_state().callback).is_some()
+        read_callback(&self.hessian_state().callback).is_some()
     }
 
     /// Drop the cached matrix. The geometry key already changes when the
@@ -274,7 +289,8 @@ impl rgpot_potential_t {
         let dim = geometry.positions.len();
         if dim == 0 {
             let state = self.hessian_state();
-            if lock(&state.callback).is_none() && self.hessian_vector_callback().is_none() {
+            if read_callback(&state.callback).is_none() && self.hessian_vector_callback().is_none()
+            {
                 return Err(HessianError::NoHessian(
                     "potential has no analytic Hessian".into(),
                 ));
@@ -332,10 +348,11 @@ impl rgpot_potential_t {
         let state = self.hessian_state();
         let budget = *lock(&state.byte_budget);
         hessian_len(dim, budget)?;
-        let callback = *lock(&state.callback);
-        if let Some(callback) = callback {
+        let registered = read_callback(&state.callback);
+        if let Some(callback) = *registered {
             let mut matrix = allocate_hessian(dim, budget)?;
             let status = unsafe { callback(self.pot_user_data, input, matrix.as_mut_ptr()) };
+            drop(registered);
             if status != rgpot_status_t::RGPOT_SUCCESS {
                 return Err(callback_error(status, "Hessian callback"));
             }
@@ -343,6 +360,7 @@ impl rgpot_potential_t {
             state.evaluations.fetch_add(1, Ordering::Relaxed);
             return Ok(matrix);
         }
+        drop(registered);
         let Some(callback) = self.hessian_vector_callback() else {
             return Err(HessianError::NoHessian(
                 "potential has no analytic Hessian".into(),
@@ -374,6 +392,19 @@ impl rgpot_potential_t {
         state.from_hvp.fetch_add(1, Ordering::Relaxed);
         Ok(matrix)
     }
+}
+
+fn read_callback(
+    lock: &RwLock<Option<HessianCallback>>,
+) -> RwLockReadGuard<'_, Option<HessianCallback>> {
+    lock.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn write_callback(
+    lock: &RwLock<Option<HessianCallback>>,
+) -> RwLockWriteGuard<'_, Option<HessianCallback>> {
+    lock.write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn finite_matrix(matrix: &[f64]) -> Result<(), HessianError> {

@@ -37,12 +37,20 @@ fn refuse(msg: &str) -> rgpot_status_t {
 /// `RGPOT_HVP_AUTO` products multiply the matrix when no Hessian-vector
 /// callback is registered. Neither path differences forces.
 ///
+/// Replacing or clearing the callback returns only after every call of the
+/// previous callback that was already running has returned, and the previous
+/// callback is never called after this function returns. The caller may
+/// release the old callback and its state as soon as this function returns.
+/// Because it waits for those calls, this function must not be called from
+/// inside a Hessian callback, nor from a thread that is inside this handle's
+/// Hessian or Hessian-vector entry points: it would wait for itself.
+///
 /// # Safety
 ///
 /// `pot` must be NULL or a live handle. A NULL `pot` returns
 /// `RGPOT_INVALID_PARAMETER`. `callback` must be safe to call with the
 /// handle's `user_data` for as long as it stays registered, and must not
-/// re-enter this handle's Hessian entry points.
+/// re-enter this handle's Hessian entry points or replace the callback.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_set_hessian_callback(
     pot: *const rgpot_potential_t,
@@ -134,7 +142,9 @@ pub unsafe extern "C" fn rgpot_potential_hessian(
         };
         if let Some(limit) = unsafe { &*pot }.hessian_byte_budget() {
             let Ok(bytes) = u64::try_from(bytes) else {
-                return refuse("rgpot_potential_hessian: Hessian byte count does not fit in 64 bits");
+                return refuse(
+                    "rgpot_potential_hessian: Hessian byte count does not fit in 64 bits",
+                );
             };
             if bytes > limit {
                 return refuse(&format!(
