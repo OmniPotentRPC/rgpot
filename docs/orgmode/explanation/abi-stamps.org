@@ -150,7 +150,7 @@ is not the hash.
 | 3.5.1   | 1, 0, 1         | 4                    |
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
-| next    | 1, 6, 1         | 9                    |
+| next    | 1, 7, 1         | 9                    |
 
 3.6.0 raised the minor for =rgpot_eindir_abi_compatible=; a caller built against
 minor 0 still matches it.
@@ -172,6 +172,13 @@ It also raises the minor to 5 for the engine and RPC Hessian-vector interfaces.
 It raises the minor to 6 for =rgpot_potential_new_eam_table= and the four
 =RGPOT_EAM_TABLE_*= format codes.
 They are additions that take no new struct, so the layout revision stays at 1.
+It raises the minor to 7 for the stress entry points:
+=rgpot_potential_calculate_stress=, =rgpot_potential_set_stress_callback=, =rgpot_potential_supports_stress=,
+=rgpot_stress_out_create= and =rgpot_rpc_calculate_stress=, with the versioned
+result struct =rgpot_stress_out_t=.
+=rgpot_force_input_t= and =rgpot_force_out_t= keep their sizes and field order,
+the stress callback lives behind =fused_cache=, and a caller built against minor
+6 or lower still evaluates unchanged, so the layout revision stays at 1.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.
@@ -189,4 +196,8 @@ It also stamps =D2CpmdConfig=, =D2CpmdPot= and =PotType::D2Cpmd=.
 =D4Config= gains =periodic= in the padding after =atm=, so it keeps its size and
 only the field offsets show it.
 =D2CpmdConfig= gains =symmetry=.
+It also adds =compute_stress= to the C++ =ForceInput=.
+That field is the opt-in stress request.
+The C ABI is not involved: that struct is a C++ layout, so the soversion moves
+and the C stamp keeps layout revision 1.
 A program linked against soversion 8 does not load =librgpot.so.9=.

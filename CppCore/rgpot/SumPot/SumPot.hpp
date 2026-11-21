@@ -51,8 +51,10 @@ struct SumComponent {
  * @ingroup rgpot_potentials
  *
  * Forces and variances follow the same weights (variance with
- * @f$w_i^2@f$). The stress is summed when every evaluated child reports
- * one; otherwise @c has_stress is 0. With no enabled child the sum
+ * @f$w_i^2@f$). The request in @c ForceInput::compute_stress reaches every
+ * child, and the stress is summed when it was requested and every
+ * evaluated child reports one; otherwise @c has_stress is 0. With no
+ * enabled child the sum
  * reports no stress, and @c caps() says so. @c caps() is otherwise the
  * intersection of the enabled children's capabilities, and its reentrancy
  * is the weakest of theirs and @c PerInstance, because the component

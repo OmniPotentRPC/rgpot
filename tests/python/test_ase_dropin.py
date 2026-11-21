@@ -121,9 +121,11 @@ class CountingPotential:
     def config(self):
         return self.inner.config()
 
-    def evaluate(self, positions, numbers, box):
+    def evaluate(self, positions, numbers, box, *, compute_stress=False):
         self.calls += 1
-        return self.inner.evaluate(positions, numbers, box)
+        return self.inner.evaluate(
+            positions, numbers, box, compute_stress=compute_stress
+        )
 
 
 # --- properties and units ----------------------------------------------------
@@ -204,11 +206,13 @@ def test_unchanged_atoms_do_not_call_the_potential() -> None:
     atoms.get_forces()
     atoms.get_stress()
     atoms.get_potential_energy()
-    assert pot.calls == 1
+    # The force-only result intentionally does not precompute stress. ASE
+    # performs one additional evaluation when stress is first requested.
+    assert pot.calls == 2
     same = atoms.copy()
     same.calc = atoms.calc
     same.get_forces()
-    assert pot.calls == 1
+    assert pot.calls == 2
 
 
 @pytest.mark.parametrize("change", ["positions", "cell", "pbc", "numbers"])
@@ -488,6 +492,22 @@ def test_deepcopy_and_copy_are_independent() -> None:
         assert atoms.get_potential_energy() == reference.get_potential_energy()
 
 
+class NoStressKeyword(CountingPotential):
+    """Advertises a stress through caps() but cannot be asked for one."""
+
+    def evaluate(self, positions, numbers, box):
+        self.calls += 1
+        return self.inner.evaluate(positions, numbers, box)
+
+
+def test_a_stress_request_reaches_the_potential_or_fails() -> None:
+    atoms = argon()
+    atoms.calc = RgpotCalculator(NoStressKeyword(rgpot.LJPot(**AR)))
+    assert atoms.get_potential_energy() < 0.0
+    with pytest.raises(TypeError, match="compute_stress"):
+        atoms.get_stress()
+
+
 def test_unpicklable_wrapper_says_why() -> None:
     calc = RgpotCalculator(CountingPotential(rgpot.LJPot()))
     with pytest.raises(TypeError, match="cannot pickle"):
@@ -609,8 +629,8 @@ def test_bundled_kinds_are_tiling_invariant(kind: str, symbol: str, lattice: str
 
 
 @needs_fortran
-def test_call_only_binding_works() -> None:
-    """TersoffSiC has __call__ but no evaluate or caps."""
+def test_tersoff_sic_binding_matches_fortran_energy() -> None:
+    """The stress-capable C++ Tersoff binding keeps the Fortran energy."""
     atoms = si_small()
     atoms.calc = RgpotCalculator("tersoffsic")
     reference = atoms.copy()
@@ -618,7 +638,7 @@ def test_call_only_binding_works() -> None:
     assert atoms.get_potential_energy() == pytest.approx(
         reference.get_potential_energy(), rel=1e-12
     )
-    assert "stress" not in atoms.calc.implemented_properties
+    assert "stress" in atoms.calc.implemented_properties
 
 
 def test_cluster_only_kernel_refuses_periodic_cells() -> None:

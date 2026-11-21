@@ -88,17 +88,19 @@ std::vector<double> fcc(int nx, int ny, int nz, double a, double *box) {
 }
 
 double medianWarm(EAM &pot, int n, const double *pos, const int *z,
-                  const double *box, int repeats) {
+                  const double *box, int repeats, bool stress = false) {
   std::vector<double> force(static_cast<std::size_t>(n) * 3);
   double energy = 0.0;
   double variance = 0.0;
-  pot.force(n, pos, z, force.data(), &energy, &variance, box);
-  pot.force(n, pos, z, force.data(), &energy, &variance, box);
+  double strain[6]{};
+  double *requested = stress ? strain : nullptr;
+  pot.force(n, pos, z, force.data(), &energy, &variance, box, requested);
+  pot.force(n, pos, z, force.data(), &energy, &variance, box, requested);
   std::vector<double> samples;
   samples.reserve(static_cast<std::size_t>(repeats));
   for (int r = 0; r < repeats; ++r) {
     const auto t0 = std::chrono::steady_clock::now();
-    pot.force(n, pos, z, force.data(), &energy, &variance, box);
+    pot.force(n, pos, z, force.data(), &energy, &variance, box, requested);
     const auto t1 = std::chrono::steady_clock::now();
     samples.push_back(std::chrono::duration<double>(t1 - t0).count());
   }
@@ -176,6 +178,25 @@ int main() {
     const double warm =
         medianWarm(pot, n, pos.data(), z.data(), wbox, kRepeats);
     std::printf("%4s %8d %12.6f\n", threads[i], n, warm);
+  }
+
+  setThreads("1");
+  std::printf("\nsmoke force-only versus force-plus-stress\n");
+  std::printf("%8s %14s %14s %10s\n", "atoms", "force_s", "stress_s",
+              "ratio");
+  for (const int nrep : {5, 10}) {
+    double sbox[9] = {};
+    const std::vector<double> pos = fcc(nrep, nrep, nrep, kA, sbox);
+    const int n = static_cast<int>(pos.size() / 3);
+    std::vector<int> z(static_cast<std::size_t>(n), 13);
+    EAM force_pot;
+    EAM stress_pot;
+    const double force = medianWarm(
+        force_pot, n, pos.data(), z.data(), sbox, kRepeats, false);
+    const double stress = medianWarm(
+        stress_pot, n, pos.data(), z.data(), sbox, kRepeats, true);
+    std::printf("%8d %14.9f %14.9f %10.3f\n", n, force, stress,
+                stress / force);
   }
   return 0;
 }

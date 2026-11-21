@@ -181,6 +181,18 @@ public:
         m_cp2k(static_cast<rgpot::CP2KPot *>(m_potential.get())), m_pef(pef) {}
 #endif
 
+  /// A potential whose caps() advertise stress computes it on request, and
+  /// the i-PI driver returns the virial with every force reply. Any other
+  /// backend answers force-only and refuses a stress request.
+  bool servesStress() const {
+#ifdef RGPOT_HAS_IPI
+    if (m_ipi != nullptr) {
+      return true;
+    }
+#endif
+    return m_potential->caps().stress;
+  }
+
   /**
    * @brief Reports what this server speaks, so a client can refuse an
    * incompatible peer before the first calculate call.
@@ -190,11 +202,17 @@ public:
     caps.setBackendName("rgpot");
     caps.setBackendVersion(RGPOT_BUILD_VERSION);
     caps.setAvailable(true);
-    auto ops = caps.initOperations(m_potential->caps().analyticHvp ? 3 : 2);
-    ops.set(0, ::Capabilities::Operation::ENERGY);
-    ops.set(1, ::Capabilities::Operation::FORCES);
-    if (m_potential->caps().analyticHvp)
-      ops.set(2, ::Capabilities::Operation::HESSIAN_VECTOR);
+    const bool serves_hvp = m_potential->caps().analyticHvp;
+    const bool serves_stress = servesStress();
+    auto ops = caps.initOperations(2 + (serves_hvp ? 1 : 0) +
+                                   (serves_stress ? 1 : 0));
+    unsigned int next = 0;
+    ops.set(next++, ::Capabilities::Operation::ENERGY);
+    ops.set(next++, ::Capabilities::Operation::FORCES);
+    if (serves_hvp)
+      ops.set(next++, ::Capabilities::Operation::HESSIAN_VECTOR);
+    if (serves_stress)
+      ops.set(next++, ::Capabilities::Operation::STRESS);
     rgpot::abi::fill_compatibility(caps);
     return kj::READY_NOW;
   }
@@ -217,6 +235,9 @@ public:
     const size_t numAtoms = fip.getPos().size() / 3;
 
     KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
+    const bool wantStress = fip.getComputeStress();
+    KJ_REQUIRE(!wantStress || servesStress(),
+               "this potential does not compute stress");
 
     // Unit conversion factors (caller units -> internal angstrom/eV)
     std::string lengthUnit = fip.getLengthUnit();
@@ -254,6 +275,7 @@ public:
     std::vector<double> nativeForces(numAtoms * 3, 0.0);
     rgpot::ForceInput in_native{numAtoms, nativePositions.data(),
                                 nativeAtomTypes.data(), nativeBoxMatrix[0].data()};
+    in_native.compute_stress = wantStress;
     rgpot::ForceOut out_native{};
     out_native.F = nativeForces.data();
     auto evaluate = [&]() -> rgpot::ForceOut {
@@ -293,16 +315,18 @@ public:
       forcesList.set(i, nativeForces[i]);
     }
 
-    bool has_stress = out_native.has_stress != 0;
+    bool has_stress = wantStress && out_native.has_stress != 0;
     double stress[9] = {};
     if (has_stress) {
       std::copy(out_native.stress, out_native.stress + 9, stress);
     }
 #ifdef RGPOT_HAS_IPI
-    if (!has_stress && m_ipi != nullptr) {
+    if (wantStress && !has_stress && m_ipi != nullptr) {
       has_stress = m_ipi->copyStress(stress);
     }
 #endif
+    KJ_REQUIRE(!wantStress || has_stress,
+               "the potential returned no stress for a stress request");
     if (has_stress) {
       // sigma_caller = sigma_eV/A^3 * (eV -> caller) * (A -> caller length)^3
       const double stress_to_caller = ev_to_caller * len_to_angstrom *

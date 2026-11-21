@@ -170,12 +170,13 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// did not increase.
 ///
 /// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
-/// is major 1, minor 6, layout revision 1. Minor 1 added
+/// is major 1, minor 7, layout revision 1. Minor 1 added
 /// `rgpot_eindir_abi_compatible`, minor 2 the Hessian-vector functions,
 /// minor 3 the fused-cache settings and error kind, minor 4 the Taylor
-/// jet functions, minor 5 the engine and RPC Hessian-vector exports and
-/// minor 6 `rgpot_potential_new_eam_table`. No exported C struct
-/// of that header changed layout. The neighbour query is `RGPOT_NLIST_ABI` 4.
+/// jet functions, minor 5 the engine and RPC Hessian-vector exports,
+/// minor 6 `rgpot_potential_new_eam_table`, and minor 7 the opt-in stress
+/// entry points. No exported C struct of that header changed layout.
+/// The neighbour query is `RGPOT_NLIST_ABI` 4.
 /// The C API is exported from librgpot, so it has no shared library of
 /// its own and rides this SONAME. `librgpot_mpi` stays at soversion 3
 /// (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
@@ -196,6 +197,7 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// `D4Config` is stamped too, from a header of its own. Its new `periodic`
 /// field fits the padding after `atm`, so only the field offsets show it.
 /// `D2CpmdConfig` gains `symmetry`.
+/// `ForceInput` gains `compute_stress`, the opt-in stress request.
 inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
@@ -209,7 +211,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0xf7ebab6b64626bf2ull},
+    {"linux-x86_64-libstdc++-lp64", 0x31f14fb7645b59eaull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -303,6 +305,7 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(ForceInput, pos));
   f.add(offsetof(ForceInput, atmnrs));
   f.add(offsetof(ForceInput, box));
+  f.add(offsetof(ForceInput, compute_stress));
   f.type<ForceOut>();
   f.add(offsetof(ForceOut, F));
   f.add(offsetof(ForceOut, energy));

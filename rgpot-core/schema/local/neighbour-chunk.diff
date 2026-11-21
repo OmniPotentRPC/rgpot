@@ -2,12 +2,13 @@ diff --git a/Potentials.capnp b/Potentials.capnp
 index 97746b4..aa4a3a6 100644
 --- a/Potentials.capnp
 +++ b/Potentials.capnp
-@@ -25,6 +25,8 @@ struct ForceInput {
+@@ -25,6 +25,9 @@ struct ForceInput {
    charge @6 :Int32 = 0;             # @brief Per-step charge when hasCharge is true.
    hasMultiplicity @7 :Bool = false; # @brief Override NWChemParams.multiplicity for this step.
    multiplicity @8 :Int32 = 1;       # @brief Per-step spin multiplicity when hasMultiplicity is true.
 +  # Optional. Old clients leave it unset and no neighbour list is returned.
 +  neighbors @9 :NeighborRequest;
++  computeStress @10 :Bool = false; # @brief Request the Cauchy stress tensor.
  }
  
  # @struct PotentialResult

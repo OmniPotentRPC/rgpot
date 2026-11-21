@@ -74,6 +74,9 @@ D2CpmdConfig d2_cpmd_config_for(std::string_view functional);
  * @class D2CpmdPot
  * @brief CPMD's minimum-image D2 energy, forces and stress.
  * @ingroup rgpot_potentials
+ *
+ * The stress of a periodic cell is computed only when
+ * @c ForceInput::compute_stress asks for it; a molecule reports none.
  */
 class D2CpmdPot final : public Potential<D2CpmdPot> {
 public:

@@ -436,6 +436,12 @@ async def run_rpc_stress_parity(d2_port, composite_port, schema):
     for i, b in enumerate([9.0, 0.0, 0.0, 1.0, 9.5, 0.0, 0.0, 0.5, 10.0]):
         fip.box[i] = b
 
+    plain_direct = (await d2.calculate(fip)).result
+    plain_summed = (await comp.calculate(fip)).result
+    assert len(plain_direct.stress) == 0, "a default request must not return stress"
+    assert len(plain_summed.stress) == 0, "a default request must not return stress"
+
+    fip.computeStress = True
     direct = (await d2.calculate(fip)).result
     summed = (await comp.calculate(fip)).result
     assert len(direct.stress) == 9
