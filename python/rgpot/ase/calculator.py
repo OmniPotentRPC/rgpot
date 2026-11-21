@@ -66,6 +66,18 @@ _ALIASES = {
     "lennardjones": "LJPot",
 }
 
+
+def _has_tail_correction(config: object) -> bool:
+    if not isinstance(config, dict):
+        return False
+    if bool(config.get("tail_correction")):
+        return True
+    children = config.get("children")
+    if not isinstance(children, (list, tuple)):
+        return False
+    return any(_has_tail_correction(child) for child in children)
+
+
 # Neighbour cutoffs of the bound kernels, in Angstrom, for kernels whose
 # binding has no config()["cutoff"]. WaterH has no cutoff, so an open
 # cell for it uses the 100 Angstrom floor and a periodic cell is not
@@ -521,9 +533,7 @@ class RgpotCalculator(Calculator):
         self._caps = _caps(pot)
         self._kernel_periodic = bool(self._caps.get("periodic", True))
         cfg = pot.config() if callable(getattr(pot, "config", None)) else {}
-        self._tail_correction = bool(
-            isinstance(cfg, dict) and cfg.get("tail_correction")
-        )
+        self._tail_correction = _has_tail_correction(cfg)
         self._name = type(pot).__name__
         self._analytic_stress = bool(self._caps.get("stress"))
         self._per_atom = callable(getattr(pot, "evaluate_per_atom", None))

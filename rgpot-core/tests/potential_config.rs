@@ -66,7 +66,6 @@ fn lj_arm_round_trips_tail_correction_and_validates_config() {
         .with_u0(0.85)
         .with_psi(2.5)
         .with_cutoff(9.0)
-        .with_switch_width(1.5)
         .with_tail_correction(true);
     assert_eq!(cfg.validate(), Ok(()));
 
@@ -85,8 +84,19 @@ fn lj_arm_round_trips_tail_correction_and_validates_config() {
     assert_eq!(decoded.u0, 0.85);
     assert_eq!(decoded.psi, 2.5);
     assert_eq!(decoded.cutoff, 9.0);
-    assert_eq!(decoded.switch_width, 1.5);
+    assert_eq!(decoded.switch_width, 0.0);
     assert!(decoded.tail_correction);
+
+    let switched = cfg.with_switch_width(1.5);
+    assert_eq!(switched.validate(), Ok(()));
+    let mut switched_message = Builder::new_default();
+    let switched_params = switched_message
+        .init_root::<potential_config::Builder>()
+        .init_lj();
+    assert_eq!(
+        switched.write_params(switched_params),
+        Err(LjConfigError::WireSwitchWidthUnsupported)
+    );
 
     // Rejects unsupported switch_width == cutoff when tail_correction is enabled.
     let bad_window = LjConfig::default()

@@ -45,6 +45,8 @@ pub enum LjConfigError {
     InvalidSwitchWidth,
     /// Tail correction with a switch requires a positive switch-on radius.
     SwitchCoversWholeCutoff,
+    /// The current wire schema has no field for a nonzero switching width.
+    WireSwitchWidthUnsupported,
     /// A `PotentialConfig` message carried an arm other than `lj`.
     WrongArm,
 }
@@ -62,6 +64,9 @@ impl fmt::Display for LjConfigError {
                 f,
                 "LJ tail_correction requires switch_width < cutoff so r_on > 0"
             ),
+            Self::WireSwitchWidthUnsupported => {
+                write!(f, "LJ switch_width is not representable on the wire")
+            }
             Self::WrongArm => write!(f, "PotentialConfig does not select the lj arm"),
         }
     }
@@ -130,11 +135,13 @@ impl LjConfig {
         mut builder: crate::Potentials_capnp::lennard_jones_params::Builder<'_>,
     ) -> Result<(), LjConfigError> {
         self.validate()?;
+        if self.switch_width != 0.0 {
+            return Err(LjConfigError::WireSwitchWidthUnsupported);
+        }
         builder.set_u0(self.u0);
         builder.set_psi(self.psi);
         builder.set_cutoff(self.cutoff);
         builder.set_tail_correction(self.tail_correction);
-        builder.set_switch_width(self.switch_width);
         Ok(())
     }
 
@@ -158,7 +165,6 @@ impl LjConfig {
             .with_u0(reader.get_u0())
             .with_psi(reader.get_psi())
             .with_cutoff(reader.get_cutoff())
-            .with_switch_width(reader.get_switch_width())
             .with_tail_correction(reader.get_tail_correction());
         cfg.validate()?;
         Ok(cfg)

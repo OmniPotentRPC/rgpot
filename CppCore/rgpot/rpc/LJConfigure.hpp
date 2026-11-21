@@ -28,7 +28,6 @@ ljConfigFrom(const ::LennardJonesParams::Reader &params, LJConfig base = {}) {
   base.u0 = params.getU0();
   base.psi = params.getPsi();
   base.cutoff = params.getCutoff();
-  base.switch_width = params.getSwitchWidth();
   base.tail_correction = params.getTailCorrection();
   return base;
 }
@@ -43,7 +42,6 @@ ljClusterConfigFrom(const ::LennardJonesParams::Reader &params,
   base.u0 = params.getU0();
   base.psi = params.getPsi();
   base.cutoff = params.getCutoff();
-  base.switch_width = params.getSwitchWidth();
   return base;
 }
 
@@ -76,7 +74,6 @@ configureLJ(const ::PotentialConfig::Reader &cfg, const LJPot &current) {
     std::ostringstream summary;
     summary << "u0=" << next.u0 << " psi=" << next.psi
             << " cutoff=" << next.cutoff
-            << " switch_width=" << next.switch_width
             << " tail_correction=" << (next.tail_correction ? "true" : "false");
     try {
       result.replacement = std::make_unique<LJPot>(next);
@@ -126,8 +123,7 @@ configureLJCluster(const ::PotentialConfig::Reader &cfg,
     }
     std::ostringstream summary;
     summary << "u0=" << params.getU0() << " psi=" << params.getPsi()
-            << " cutoff=" << params.getCutoff()
-            << " switch_width=" << params.getSwitchWidth() << " tail_correction="
+            << " cutoff=" << params.getCutoff() << " tail_correction="
             << (params.getTailCorrection() ? "true" : "false");
     try {
       const LJClusterConfig next =

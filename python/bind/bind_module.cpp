@@ -392,22 +392,25 @@ std::unique_ptr<rgpot::SumPot> sum_from_specs(const std::vector<SumSpec> &specs)
   return sum;
 }
 
-bool has_lj_tail_correction(const rgpot::PotentialBase &pot) {
+nb::dict tail_correction_config(const rgpot::PotentialBase &pot) {
+  nb::dict out;
   if (const auto *lj = dynamic_cast<const rgpot::LJPot *>(&pot)) {
-    return lj->config().tail_correction;
+    out["tail_correction"] = lj->config().tail_correction;
+    return out;
   }
   const auto *sum = dynamic_cast<const rgpot::SumPot *>(&pot);
   if (sum == nullptr) {
-    return false;
+    return out;
   }
+  nb::list children;
   for (std::size_t i = 0; i < sum->size(); ++i) {
     const rgpot::PotentialBase *child = sum->child(i);
-    if (sum->term(i).enabled && child != nullptr &&
-        has_lj_tail_correction(*child)) {
-      return true;
+    if (sum->term(i).enabled && child != nullptr) {
+      children.append(tail_correction_config(*child));
     }
   }
-  return false;
+  out["children"] = children;
+  return out;
 }
 
 nb::list sum_components(const rgpot::SumPot &pot) {
@@ -1153,9 +1156,7 @@ NB_MODULE(_core, m) {
       "evaluated, energy (eV, before the weight), forces (N, 3), variance and "
       "stress (3, 3, or None).");
   sum.def("config", [](const PotHolder<rgpot::SumPot> &self) {
-    nb::dict out;
-    out["tail_correction"] = has_lj_tail_correction(self.primary());
-    return out;
+    return tail_correction_config(self.primary());
   });
   rgpot::pybind::bind_calls(sum);
 

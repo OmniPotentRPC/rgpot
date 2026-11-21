@@ -210,7 +210,7 @@ TEST_CASE("an arm from a newer schema is refused by its discriminant",
   REQUIRE_THAT(applied.message, ContainsSubstring(arm));
 }
 
-TEST_CASE("PotentialConfig.lj round-trips LJ controls and rebuilds LJPot",
+TEST_CASE("PotentialConfig.lj round-trips tailCorrection and rebuilds LJPot",
           "[lj][rpc]") {
   const auto field =
       capnp::Schema::from<::PotentialConfig>().getFieldByName("lj");
@@ -227,13 +227,12 @@ TEST_CASE("PotentialConfig.lj round-trips LJ controls and rebuilds LJPot",
   REQUIRE(default_wire.switch_width == native.switch_width);
   REQUIRE(default_wire.tail_correction == native.tail_correction);
 
-  const rgpot::LJPot current{rgpot::LJConfig{.switch_width = 0.25}};
+  const rgpot::LJPot current{rgpot::LJConfig{.switch_width = 1.0}};
   capnp::MallocMessageBuilder builder;
   auto lj = builder.initRoot<::PotentialConfig>().initLj();
   lj.setU0(0.5);
   lj.setPsi(2.0);
   lj.setCutoff(6.0);
-  lj.setSwitchWidth(1.25);
   lj.setTailCorrection(true);
   const auto words = capnp::messageToFlatArray(builder);
 
@@ -248,7 +247,7 @@ TEST_CASE("PotentialConfig.lj round-trips LJ controls and rebuilds LJPot",
   CHECK(next.u0 == 0.5);
   CHECK(next.psi == 2.0);
   CHECK(next.cutoff == 6.0);
-  CHECK(next.switch_width == 1.25);
+  CHECK(next.switch_width == 1.0);
   CHECK(next.tail_correction);
   CHECK(applied.replacement->paramsKey() != current.paramsKey());
 
@@ -258,7 +257,6 @@ TEST_CASE("PotentialConfig.lj round-trips LJ controls and rebuilds LJPot",
   bad_lj.setU0(0.5);
   bad_lj.setPsi(2.0);
   bad_lj.setCutoff(1.0);
-  bad_lj.setSwitchWidth(1.0);
   bad_lj.setTailCorrection(true);
   auto refused_window = rgpot::rpc::configureLJ(
       bad_window.getRoot<::PotentialConfig>().asReader(), current);
@@ -275,14 +273,12 @@ TEST_CASE("PotentialConfig.lj round-trips LJ controls and rebuilds LJPot",
   cluster_lj.setU0(0.75);
   cluster_lj.setPsi(1.5);
   cluster_lj.setCutoff(7.0);
-  cluster_lj.setSwitchWidth(0.5);
   cluster_lj.setTailCorrection(false);
   auto cluster_ok = rgpot::rpc::configureLJCluster(
       cluster_ok_msg.getRoot<::PotentialConfig>().asReader(), cluster_current);
   CHECK(cluster_ok.ok);
   REQUIRE(cluster_ok.replacement != nullptr);
   CHECK(cluster_ok.replacement->config().u0 == 0.75);
-  CHECK(cluster_ok.replacement->config().switch_width == 0.5);
 
   auto cluster_refused = rgpot::rpc::configureLJCluster(cfg, cluster_current);
   CHECK_FALSE(cluster_refused.ok);

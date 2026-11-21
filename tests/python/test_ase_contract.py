@@ -444,6 +444,9 @@ def test_lj_tail_correction_binding() -> None:
             }
         ]
     )
+    composite_config = composite.config()
+    assert "tail_correction" not in composite_config
+    assert composite_config["children"][0]["tail_correction"] is True
     cluster.calc = RgpotCalculator(composite)
     with pytest.raises(
         ValueError, match="tail_correction=True requires 3D periodic"
