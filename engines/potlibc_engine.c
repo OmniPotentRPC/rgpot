@@ -165,11 +165,11 @@ RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
   return stamp;
 }
 
-int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *stamp) {
-  return stamp != NULL &&
-         stamp->abi_major == RGPOT_ENGINE_ABI_VERSION &&
-         stamp->layout_revision == RGPOT_ENGINE_ABI_LAYOUT_REVISION &&
-         stamp->abi_minor <= RGPOT_ENGINE_ABI_MINOR;
+int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *host_stamp) {
+  return host_stamp != NULL &&
+         host_stamp->abi_major == RGPOT_ENGINE_ABI_VERSION &&
+         host_stamp->layout_revision == RGPOT_ENGINE_ABI_LAYOUT_REVISION &&
+         RGPOT_ENGINE_ABI_MINOR <= host_stamp->abi_minor;
 }
 
 RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,

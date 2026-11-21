@@ -373,6 +373,59 @@ static int destroy_frees_handle_when_lock_fails(const char *path) {
   return 0;
 }
 
+static int abi_compatibility_checks_host_minor(Engine *engine) {
+  const RgpotEngineAbiStamp equal = {
+      RGPOT_ENGINE_ABI_VERSION,
+      RGPOT_ENGINE_ABI_MINOR,
+      RGPOT_ENGINE_ABI_LAYOUT_REVISION,
+  };
+  const RgpotEngineAbiStamp older = {
+      RGPOT_ENGINE_ABI_VERSION,
+      RGPOT_ENGINE_ABI_MINOR - 1,
+      RGPOT_ENGINE_ABI_LAYOUT_REVISION,
+  };
+  const RgpotEngineAbiStamp newer = {
+      RGPOT_ENGINE_ABI_VERSION,
+      RGPOT_ENGINE_ABI_MINOR + 1,
+      RGPOT_ENGINE_ABI_LAYOUT_REVISION,
+  };
+  const RgpotEngineAbiStamp wrong_major = {
+      RGPOT_ENGINE_ABI_VERSION + 1,
+      RGPOT_ENGINE_ABI_MINOR,
+      RGPOT_ENGINE_ABI_LAYOUT_REVISION,
+  };
+  const RgpotEngineAbiStamp wrong_layout = {
+      RGPOT_ENGINE_ABI_VERSION,
+      RGPOT_ENGINE_ABI_MINOR,
+      RGPOT_ENGINE_ABI_LAYOUT_REVISION + 1,
+  };
+  if (engine->abi_compatible(NULL) != 0) {
+    fprintf(stderr, "abi_compatible(NULL) returned nonzero\n");
+    return 1;
+  }
+  if (!engine->abi_compatible(&equal)) {
+    fprintf(stderr, "abi_compatible rejected equal host minor %u\n",
+            (unsigned)equal.abi_minor);
+    return 1;
+  }
+  if (engine->abi_compatible(&older)) {
+    fprintf(stderr, "abi_compatible accepted older host minor %u\n",
+            (unsigned)older.abi_minor);
+    return 1;
+  }
+  if (!engine->abi_compatible(&newer)) {
+    fprintf(stderr, "abi_compatible rejected newer host minor %u\n",
+            (unsigned)newer.abi_minor);
+    return 1;
+  }
+  if (engine->abi_compatible(&wrong_major) ||
+      engine->abi_compatible(&wrong_layout)) {
+    fprintf(stderr, "abi_compatible accepted mismatched major or layout\n");
+    return 1;
+  }
+  return 0;
+}
+
 int main(int argc, char **argv) {
   static const double fh2[9] = {
       0.0, 0.0, 0.0, 2.6844, 0.0, 0.0, 4.4434, 0.0, 0.0,
@@ -444,7 +497,8 @@ int main(int argc, char **argv) {
    * EV_PER_HARTREE: 0.005108137718625699 (FH2),
    * 0.017902457453951443 (BrH2), and
    * -0.18671325575959852 (variable-size VBO). */
-  if (reference_energy(&engine, "fh25sec", 0, 3, fh2, fh2_species,
+  if (abi_compatibility_checks_host_minor(&engine) != 0 ||
+      reference_energy(&engine, "fh25sec", 0, 3, fh2, fh2_species,
                        UINT64_C(0x3fc1cabc637f0856)) != 0 ||
       reference_energy(&engine, "brh2leps", 0, 3, brh2, brh2_species,
                        UINT64_C(0x3fdf2d7a109272ec)) != 0 ||
