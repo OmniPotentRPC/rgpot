@@ -1194,6 +1194,7 @@ if not meson.is_subproject() and get_option('with_tests')
             'gmx_dropin',
             'native_lj_engine',
             'openmm_engine',
+            'potlibc_engine',
             '_py_core',
             '_py_ase_schema',
         ]

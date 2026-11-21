@@ -11,6 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#include <time.h>
+#endif
 
 #ifndef FIXTURE_ABI
 #define FIXTURE_ABI 1
@@ -27,25 +30,93 @@
 #ifndef FIXTURE_ABI_LAYOUT
 #define FIXTURE_ABI_LAYOUT RGPOT_ENGINE_ABI_LAYOUT_REVISION
 #endif
+#ifndef FIXTURE_AVAILABLE
+#define FIXTURE_AVAILABLE 1
+#endif
+#ifndef FIXTURE_REENTRANCY
+#define FIXTURE_REENTRANCY 0
+#endif
 
 struct RgpotEnginePot {
   double k;
   double last_energy;
   int evaluated;
+  int active;
   char error[128];
 };
 
+static int created = 0;
 static int destroyed = 0;
 static int native_calls = 0;
+static int active_calls = 0;
+static int max_concurrent_calls = 0;
+static int max_handle_concurrent_calls = 0;
 #ifdef FATAL_ONCE
 static int fatal_once_fired = 0;
 #endif
 
-int fixture_destroy_count(void) { return destroyed; }
-int fixture_native_call_count(void) { return native_calls; }
+static void count_native_call(void) {
+  __atomic_add_fetch(&native_calls, 1, __ATOMIC_SEQ_CST);
+}
+
+static void record_peak(int *peak, int candidate) {
+  int prev = __atomic_load_n(peak, __ATOMIC_SEQ_CST);
+  while (candidate > prev) {
+    if (__atomic_compare_exchange_n(peak, &prev, candidate, 0,
+                                    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+      break;
+    }
+  }
+}
+
+static void enter_call(RgpotEnginePot *pot) {
+  int global_now = __atomic_add_fetch(&active_calls, 1, __ATOMIC_SEQ_CST);
+  int handle_now = __atomic_add_fetch(&pot->active, 1, __ATOMIC_SEQ_CST);
+  record_peak(&max_concurrent_calls, global_now);
+  record_peak(&max_handle_concurrent_calls, handle_now);
+#if defined(CONCURRENCY_PROBE) && !defined(_WIN32)
+  {
+    struct timespec pause;
+    pause.tv_sec = 0;
+    pause.tv_nsec = 3000000L;
+    nanosleep(&pause, NULL);
+  }
+#endif
+}
+
+static void leave_call(RgpotEnginePot *pot) {
+  __atomic_sub_fetch(&pot->active, 1, __ATOMIC_SEQ_CST);
+  __atomic_sub_fetch(&active_calls, 1, __ATOMIC_SEQ_CST);
+}
+
+int fixture_create_count(void) {
+  return __atomic_load_n(&created, __ATOMIC_SEQ_CST);
+}
+int fixture_destroy_count(void) {
+  return __atomic_load_n(&destroyed, __ATOMIC_SEQ_CST);
+}
+int fixture_native_call_count(void) {
+  return __atomic_load_n(&native_calls, __ATOMIC_SEQ_CST);
+}
+int fixture_max_concurrent(void) {
+  return __atomic_load_n(&max_concurrent_calls, __ATOMIC_SEQ_CST);
+}
+int fixture_max_handle_concurrent(void) {
+  return __atomic_load_n(&max_handle_concurrent_calls, __ATOMIC_SEQ_CST);
+}
+void fixture_reset_concurrent(void) {
+  __atomic_store_n(&active_calls, 0, __ATOMIC_SEQ_CST);
+  __atomic_store_n(&max_concurrent_calls, 0, __ATOMIC_SEQ_CST);
+  __atomic_store_n(&max_handle_concurrent_calls, 0, __ATOMIC_SEQ_CST);
+}
 int fixture_unsupported_code(void) { return RGPOT_ENGINE_ERR_UNSUPPORTED; }
+int fixture_lock_error_code(void) { return RGPOT_ENGINE_ERR_LOCK; }
 
 int rgpot_engine_abi_version(void) { return FIXTURE_ABI; }
+
+#ifndef NO_AVAILABLE
+int rgpot_engine_available(void) { return FIXTURE_AVAILABLE; }
+#endif
 
 #ifndef NO_STAMP
 RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
@@ -60,6 +131,7 @@ RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
 RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                                     char *errbuf, size_t errlen) {
   RgpotEnginePot *pot;
+  __atomic_add_fetch(&created, 1, __ATOMIC_SEQ_CST);
   if (config == NULL || config_len != sizeof(double)) {
     snprintf(errbuf, errlen, "harmonic engine: config is %zu bytes, need %zu",
              config_len, sizeof(double));
@@ -76,7 +148,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
 }
 
 void rgpot_engine_destroy(RgpotEnginePot *pot) {
-  destroyed += 1;
+  __atomic_add_fetch(&destroyed, 1, __ATOMIC_SEQ_CST);
   free(pot);
 }
 
@@ -87,7 +159,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
                        rgpot_engine_coord_transform transform, void *user) {
   long i;
   double e = 0.0;
-  native_calls += 1;
+  count_native_call();
   (void)variance;
   (void)box;
   (void)transform;
@@ -99,13 +171,20 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
     return -7;
   }
 #endif
+#ifdef FORCE_LOCK_ERROR
+  snprintf(pot->error, sizeof pot->error, "fixture handle lock failed");
+  return RGPOT_ENGINE_ERR_LOCK;
+#endif
+  enter_call(pot);
   for (i = 0; i < n; i++) {
     if (atomic_nrs[i] == 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has atomic number 0", i);
+      leave_call(pot);
       return 1;
     }
     if (atomic_nrs[i] < 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has a negative atomic number", i);
+      leave_call(pot);
       return -1;
     }
   }
@@ -133,6 +212,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
   pot->last_energy = e;
   pot->evaluated = 1;
   pot->error[0] = '\0';
+  leave_call(pot);
   return 0;
 }
 #endif
@@ -145,7 +225,7 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long n_systems, long n,
                              rgpot_engine_coord_transform transform,
                              void *user) {
   long s;
-  native_calls += 1;
+  count_native_call();
   (void)variances;
   for (s = 0; s < n_systems; s++) {
     int rc = rgpot_engine_force(pot, n, positions + 3 * n * s, atomic_nrs,
@@ -160,7 +240,7 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long n_systems, long n,
 #ifndef NO_LAST_ERROR
 size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buf, size_t len) {
   size_t full = strlen(pot->error);
-  native_calls += 1;
+  count_native_call();
   if (len > 0) {
     snprintf(buf, len, "%s", pot->error);
   }
@@ -172,11 +252,22 @@ size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buf, size_t len)
 int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   RgpotEngineCaps filled;
   unsigned room;
-  native_calls += 1;
+  count_native_call();
+#ifdef CAPS_LOCK_ERROR
+  snprintf(((RgpotEnginePot *)pot)->error, sizeof ((RgpotEnginePot *)pot)->error,
+           "fixture caps lock failed");
+  return RGPOT_ENGINE_ERR_LOCK;
+#endif
+#ifdef CAPS_ERROR_CODE
+  snprintf(((RgpotEnginePot *)pot)->error, sizeof ((RgpotEnginePot *)pot)->error,
+           "fixture caps failed");
+  return CAPS_ERROR_CODE;
+#endif
   (void)pot;
   if (!out || out->size < sizeof(unsigned)) return 1;
   memset(&filled, 0, sizeof filled);
   filled.size = sizeof filled;
+  filled.reentrancy = FIXTURE_REENTRANCY;
   filled.periodic = 1;
 #if !defined(NO_HVP) && !defined(NO_HVP_CAP)
   filled.analytic_hvp = 1;
@@ -192,7 +283,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
                      const int *atomic_nrs, const double *direction,
                      double *hv_out, const double *box) {
-  native_calls += 1;
+  count_native_call();
   (void)positions;
   (void)box;
 #if defined(NO_HVP_CAP) || defined(HVP_UNSUPPORTED)
@@ -202,6 +293,13 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
   (void)hv_out;
   snprintf(pot->error, sizeof pot->error, "harmonic engine built without analytic HVP");
   return RGPOT_ENGINE_ERR_UNSUPPORTED;
+#elif defined(HVP_LOCK_ERROR)
+  (void)n;
+  (void)atomic_nrs;
+  (void)direction;
+  (void)hv_out;
+  snprintf(pot->error, sizeof pot->error, "fixture hvp lock failed");
+  return RGPOT_ENGINE_ERR_LOCK;
 #else
   long i;
   uintptr_t db;
@@ -227,13 +325,16 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
     snprintf(pot->error, sizeof pot->error, "direction and hv_out overlap");
     return RGPOT_ENGINE_ERR_INVALID;
   }
+  enter_call(pot);
   for (i = 0; i < n; i++) {
     if (atomic_nrs[i] == 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has atomic number 0", i);
+      leave_call(pot);
       return 1;
     }
     if (atomic_nrs[i] < 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has a negative atomic number", i);
+      leave_call(pot);
       return -1;
     }
   }
@@ -261,6 +362,7 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
 #endif
   }
   pot->error[0] = '\0';
+  leave_call(pot);
   return 0;
 #endif
 }

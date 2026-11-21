@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -219,8 +220,12 @@ class PlantedFactMistakes(unittest.TestCase):
     def test_engine_table_exports_against_the_adapter(self):
         page = (ROOT / doccheck.ENGINE_ABI_PAGE).read_text(encoding="utf-8")
         self.assertEqual(doccheck.engine_table_export_errors(ROOT), [])
-        planted = page.replace("=rgpot_engine_hvp=, ", "", 1)
+        start = page.index("Every library above")
+        end = page.index("None of them exports", start)
+        export_list = re.sub(r"=rgpot_engine_hvp=,\s*", "", page[start:end], count=1)
+        planted = page[:start] + export_list + page[end:]
         self.assertNotEqual(page, planted)
+        self.assertNotIn("=rgpot_engine_hvp=", planted[start:planted.index("None of them exports", start)])
         errors = "\n".join(doccheck.engine_table_export_errors(ROOT, _page(planted)))
         self.assertIn("export rgpot_engine_hvp is not in the library export list", errors)
 
