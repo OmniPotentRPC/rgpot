@@ -497,41 +497,6 @@ std::vector<int> random_offsets(std::size_t n, const std::array<bool, 3> &period
   return out;
 }
 
-std::vector<double> wrap(const std::vector<double> &pos, const double *box,
-                         const std::array<bool, 3> &periodic) {
-  const double c00 = box[4] * box[8] - box[5] * box[7];
-  const double c01 = box[5] * box[6] - box[3] * box[8];
-  const double c02 = box[3] * box[7] - box[4] * box[6];
-  const double det = box[0] * c00 + box[1] * c01 + box[2] * c02;
-  const double scale = 1.0 / det;
-  const double inverse[9] = {
-      c00 * scale,
-      (box[2] * box[7] - box[1] * box[8]) * scale,
-      (box[1] * box[5] - box[2] * box[4]) * scale,
-      c01 * scale,
-      (box[0] * box[8] - box[2] * box[6]) * scale,
-      (box[2] * box[3] - box[0] * box[5]) * scale,
-      c02 * scale,
-      (box[1] * box[6] - box[0] * box[7]) * scale,
-      (box[0] * box[4] - box[1] * box[3]) * scale,
-  };
-  std::vector<double> out = pos;
-  for (std::size_t i = 0; i < pos.size() / 3; ++i) {
-    for (int k = 0; k < 3; ++k) {
-      if (!periodic[static_cast<std::size_t>(k)]) {
-        continue;
-      }
-      const double f = pos[3 * i] * inverse[k] + pos[3 * i + 1] * inverse[3 + k] +
-                       pos[3 * i + 2] * inverse[6 + k];
-      const double cells = std::floor(f);
-      for (int c = 0; c < 3; ++c) {
-        out[3 * i + static_cast<std::size_t>(c)] -= cells * box[3 * k + c];
-      }
-    }
-  }
-  return out;
-}
-
 void require_vectors(const rgpot::nlist::Table &table, const std::vector<double> &pos,
                      const double *box) {
   for (std::size_t p = 0; p < table.size(); ++p) {
@@ -547,11 +512,26 @@ void require_vectors(const rgpot::nlist::Table &table, const std::vector<double>
   }
 }
 
+// The keys of `keys` after atom a moved by offsets[3a + k] lattice vectors
+// k: a pair keeps its image when its shift gains W_i - W_j.
+std::set<Key> shifted(const std::set<Key> &keys, const std::vector<int> &offsets) {
+  std::set<Key> out;
+  for (const Key &key : keys) {
+    const auto i = static_cast<std::size_t>(3 * key.i);
+    const auto j = static_cast<std::size_t>(3 * key.j);
+    out.insert(Key{key.i, key.j, key.sa + offsets[i] - offsets[j],
+                   key.sb + offsets[i + 1] - offsets[j + 1],
+                   key.sc + offsets[i + 2] - offsets[j + 2]});
+  }
+  return out;
+}
+
 } // namespace
 
 TEST_CASE("an atom several cells out keeps its pair", "[nlist][api]") {
   // 18.5 is 1.5 from the image of the origin two cells back. A stencil of
-  // one image around zero sees 8.5 and drops the pair.
+  // one image around zero sees 8.5 and drops the pair. The shift is the one
+  // for the coordinates as given: 18.5 - 2 * 10 - 0 = -1.5.
   const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
   const std::vector<double> pos = {0, 0, 0, 18.5, 0, 0};
   rgpot::nlist::Query query;
@@ -561,7 +541,7 @@ TEST_CASE("an atom several cells out keeps its pair", "[nlist][api]") {
   rgpot::nlist::Table table;
   rgpot::nlist::build(table, pos.data(), 2, box, query);
   REQUIRE(table.size() == 1);
-  REQUIRE(from_table(table) == std::set<Key>{Key{0, 1, -1, 0, 0}});
+  REQUIRE(from_table(table) == std::set<Key>{Key{0, 1, -2, 0, 0}});
   REQUIRE(std::abs(table.vector[0] + 1.5) < 1e-12);
   REQUIRE(std::abs(table.distance[0] - 1.5) < 1e-12);
 
@@ -572,13 +552,13 @@ TEST_CASE("an atom several cells out keeps its pair", "[nlist][api]") {
   bool done = false;
   rgpot::nlist::Buffers dest{first, second, shift, vector, distance, mask};
   REQUIRE(walk.pull(dest, done) == 1);
-  REQUIRE(shift[0] == -1);
+  REQUIRE(shift[0] == -2);
 
   query.skin = 0.5;
   query.cut = rgpot::nlist::Cut::Loose;
   rgpot::nlist::Builder builder;
   builder.update(pos.data(), 2, box, query);
-  REQUIRE(from_table(builder.table()) == std::set<Key>{Key{0, 1, -1, 0, 0}});
+  REQUIRE(from_table(builder.table()) == std::set<Key>{Key{0, 1, -2, 0, 0}});
 }
 
 TEST_CASE("unwrapped coordinates match the brute force", "[nlist][api]") {
@@ -600,7 +580,6 @@ TEST_CASE("unwrapped coordinates match the brute force", "[nlist][api]") {
     const auto wrapped = fractional_positions(c.box.data(), n);
     const auto offsets = random_offsets(n, c.periodic, 17);
     const auto pos = unwrap(wrapped, c.box.data(), offsets);
-    const auto folded = wrap(pos, c.box.data(), c.periodic);
     for (bool full : {false, true}) {
       rgpot::nlist::Query query;
       query.cutoff = c.cutoff;
@@ -610,10 +589,10 @@ TEST_CASE("unwrapped coordinates match the brute force", "[nlist][api]") {
       query.periodic = c.periodic;
       rgpot::nlist::Table table;
       rgpot::nlist::build(table, pos.data(), n, c.box.data(), query);
-      const auto ref = brute(folded, c.box.data(), c.cutoff, full, true, c.periodic, 9);
+      const auto ref = brute(pos, c.box.data(), c.cutoff, full, true, c.periodic, 10);
       REQUIRE_FALSE(ref.empty());
       REQUIRE(from_table(table) == ref);
-      require_vectors(table, folded, c.box.data());
+      require_vectors(table, pos, c.box.data());
     }
   }
 }
@@ -645,13 +624,13 @@ TEST_CASE("large unwrapped systems match the wrapped list", "[nlist][api]") {
       query.periodic = periodic;
       rgpot::nlist::Table in_cell;
       rgpot::nlist::build(in_cell, wrapped.data(), n, c.box.data(), query);
-      const auto expect = from_table(in_cell);
+      const auto expect = shifted(from_table(in_cell), offsets);
       REQUIRE(expect.size() > n);
 
       rgpot::nlist::Table table;
       rgpot::nlist::build(table, pos.data(), n, c.box.data(), query);
       REQUIRE(from_table(table) == expect);
-      require_vectors(table, wrapped, c.box.data());
+      require_vectors(table, pos, c.box.data());
 
       rgpot::nlist::Table by_atom;
       rgpot::nlist::buildByAtom(by_atom, pos.data(), n, c.box.data(), query);
@@ -667,11 +646,11 @@ TEST_CASE("large unwrapped systems match the wrapped list", "[nlist][api]") {
     query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Full};
     rgpot::nlist::Table in_cell;
     rgpot::nlist::build(in_cell, wrapped.data(), n, c.box.data(), query);
-    REQUIRE(from_table(clustered) == from_table(in_cell));
+    REQUIRE(from_table(clustered) == shifted(from_table(in_cell), offsets));
   }
 }
 
-TEST_CASE("whole-cell drift keeps the canonical periodic pair set", "[nlist][api]") {
+TEST_CASE("whole-cell drift keeps the pairs and moves their shifts", "[nlist][api]") {
   const std::vector<double> wrapped = {
       0.4, 0.5, 0.6, 1.2, 2.0, 1.1, 2.5, 5.7, 6.8,
   };
@@ -702,7 +681,7 @@ TEST_CASE("whole-cell drift keeps the canonical periodic pair set", "[nlist][api
       rgpot::nlist::Table table;
       rgpot::nlist::build(table, pos.data(), pos.size() / 3, box.data(), query);
       INFO("cell " << cell << " drift " << drift);
-      REQUIRE(from_table(table) == expected);
+      REQUIRE(from_table(table) == shifted(expected, offsets));
     }
 
     query.skin = 0.5;
@@ -716,7 +695,8 @@ TEST_CASE("whole-cell drift keeps the canonical periodic pair set", "[nlist][api
     const auto drifted = unwrap(wrapped, box.data(), offsets);
     builder.update(drifted.data(), drifted.size() / 3, box.data(), query);
     REQUIRE(builder.reused());
-    REQUIRE(from_table(builder.table()) == buffered);
+    REQUIRE(builder.builds() == 1);
+    REQUIRE(from_table(builder.table()) == shifted(buffered, offsets));
     query.skin = 0.0;
   }
 }
@@ -978,7 +958,6 @@ TEST_CASE("opposite-sign cell changes match a brute force pair set", "[nlist][ap
 
   auto filter_strict = [&](const rgpot::nlist::Table &table, const double *b) {
     std::set<Key> out;
-    const auto folded = wrap(pos, b, periodic);
     const double cut2 = cutoff * cutoff;
     for (std::size_t k = 0; k < table.size(); ++k) {
       const int i = table.first[k];
@@ -986,14 +965,14 @@ TEST_CASE("opposite-sign cell changes match a brute force pair set", "[nlist][ap
       const int sa = table.shift[3 * k];
       const int sb = table.shift[3 * k + 1];
       const int sc = table.shift[3 * k + 2];
-      const double vx = folded[3 * static_cast<std::size_t>(j)] -
-                        folded[3 * static_cast<std::size_t>(i)] + sa * b[0] + sb * b[3] +
+      const double vx = pos[3 * static_cast<std::size_t>(j)] -
+                        pos[3 * static_cast<std::size_t>(i)] + sa * b[0] + sb * b[3] +
                         sc * b[6];
-      const double vy = folded[3 * static_cast<std::size_t>(j) + 1] -
-                        folded[3 * static_cast<std::size_t>(i) + 1] + sa * b[1] + sb * b[4] +
+      const double vy = pos[3 * static_cast<std::size_t>(j) + 1] -
+                        pos[3 * static_cast<std::size_t>(i) + 1] + sa * b[1] + sb * b[4] +
                         sc * b[7];
-      const double vz = folded[3 * static_cast<std::size_t>(j) + 2] -
-                        folded[3 * static_cast<std::size_t>(i) + 2] + sa * b[2] + sb * b[5] +
+      const double vz = pos[3 * static_cast<std::size_t>(j) + 2] -
+                        pos[3 * static_cast<std::size_t>(i) + 2] + sa * b[2] + sb * b[5] +
                         sc * b[8];
       const double r2 = vx * vx + vy * vy + vz * vz;
       if (r2 > 0.0 && r2 < cut2) {
@@ -1007,18 +986,18 @@ TEST_CASE("opposite-sign cell changes match a brute force pair set", "[nlist][ap
   builder.update(pos.data(), n, box, query);
   REQUIRE_FALSE(builder.reused());
   REQUIRE(filter_strict(builder.table(), box) ==
-          brute(wrap(pos, box, periodic), box, cutoff, false, true, periodic));
+          brute(pos, box, cutoff, false, true, periodic));
 
   builder.update(pos.data(), n, mild, query);
   REQUIRE(builder.reused());
   REQUIRE_FALSE(builder.unchanged());
   REQUIRE(filter_strict(builder.table(), mild) ==
-          brute(wrap(pos, mild, periodic), mild, cutoff, false, true, periodic));
+          brute(pos, mild, cutoff, false, true, periodic));
 
   builder.update(pos.data(), n, sheared, query);
   const auto got = filter_strict(builder.table(), sheared);
   const auto ref =
-      brute(wrap(pos, sheared, periodic), sheared, cutoff, false, true, periodic);
+      brute(pos, sheared, cutoff, false, true, periodic);
   INFO("reused " << builder.reused() << " builder " << got.size() << " brute " << ref.size());
   REQUIRE(got == ref);
   REQUIRE(ref.size() == 23);
@@ -1044,7 +1023,6 @@ TEST_CASE("random cell perturbations match a brute force pair set", "[nlist][api
 
   auto filter_strict = [&](const rgpot::nlist::Table &table, const double *b) {
     std::set<Key> out;
-    const auto folded = wrap(pos, b, periodic);
     const double cut2 = cutoff * cutoff;
     for (std::size_t k = 0; k < table.size(); ++k) {
       const int i = table.first[k];
@@ -1052,14 +1030,14 @@ TEST_CASE("random cell perturbations match a brute force pair set", "[nlist][api
       const int sa = table.shift[3 * k];
       const int sb = table.shift[3 * k + 1];
       const int sc = table.shift[3 * k + 2];
-      const double vx = folded[3 * static_cast<std::size_t>(j)] -
-                        folded[3 * static_cast<std::size_t>(i)] + sa * b[0] + sb * b[3] +
+      const double vx = pos[3 * static_cast<std::size_t>(j)] -
+                        pos[3 * static_cast<std::size_t>(i)] + sa * b[0] + sb * b[3] +
                         sc * b[6];
-      const double vy = folded[3 * static_cast<std::size_t>(j) + 1] -
-                        folded[3 * static_cast<std::size_t>(i) + 1] + sa * b[1] + sb * b[4] +
+      const double vy = pos[3 * static_cast<std::size_t>(j) + 1] -
+                        pos[3 * static_cast<std::size_t>(i) + 1] + sa * b[1] + sb * b[4] +
                         sc * b[7];
-      const double vz = folded[3 * static_cast<std::size_t>(j) + 2] -
-                        folded[3 * static_cast<std::size_t>(i) + 2] + sa * b[2] + sb * b[5] +
+      const double vz = pos[3 * static_cast<std::size_t>(j) + 2] -
+                        pos[3 * static_cast<std::size_t>(i) + 2] + sa * b[2] + sb * b[5] +
                         sc * b[8];
       const double r2 = vx * vx + vy * vy + vz * vz;
       if (r2 > 0.0 && r2 < cut2) {
@@ -1101,7 +1079,7 @@ TEST_CASE("random cell perturbations match a brute force pair set", "[nlist][api
     builder.update(pos.data(), n, box, query);
     const auto got = filter_strict(builder.table(), box);
     const auto ref =
-        brute(wrap(pos, box, periodic), box, cutoff, false, true, periodic, 4);
+        brute(pos, box, cutoff, false, true, periodic, 4);
     INFO("trial " << trial << " builder " << got.size() << " brute " << ref.size()
                   << " reused " << builder.reused());
     REQUIRE(got == ref);
@@ -1130,15 +1108,14 @@ TEST_CASE("a builder on unwrapped coordinates matches a brute force pair set",
 
   auto strict_keys = [&](const rgpot::nlist::Table &table, const double *b) {
     std::set<Key> out;
-    const auto folded = wrap(pos, b, periodic);
     for (std::size_t k = 0; k < table.size(); ++k) {
       const auto i = static_cast<std::size_t>(table.first[k]);
       const auto j = static_cast<std::size_t>(table.second[k]);
       const int s[3] = {table.shift[3 * k], table.shift[3 * k + 1], table.shift[3 * k + 2]};
       double r2 = 0.0;
       for (int c = 0; c < 3; ++c) {
-        const double v = folded[3 * j + static_cast<std::size_t>(c)] -
-                         folded[3 * i + static_cast<std::size_t>(c)] + s[0] * b[c] +
+        const double v = pos[3 * j + static_cast<std::size_t>(c)] -
+                         pos[3 * i + static_cast<std::size_t>(c)] + s[0] * b[c] +
                          s[1] * b[3 + c] + s[2] * b[6 + c];
         r2 += v * v;
       }
@@ -1161,7 +1138,7 @@ TEST_CASE("a builder on unwrapped coordinates matches a brute force pair set",
     reused += builder.reused() ? 1 : 0;
     INFO("step " << t << " reused " << builder.reused());
     REQUIRE(strict_keys(builder.table(), box) ==
-            brute(wrap(pos, box, periodic), box, cutoff, false, true, periodic, 9));
+            brute(pos, box, cutoff, false, true, periodic, 12));
     for (double &x : pos) {
       x += step(rng);
     }
@@ -1583,6 +1560,146 @@ TEST_CASE("the fortran bridge reuses the builder and refreshes vectors", "[nlist
   const auto view_n = needed;
   REQUIRE(view_n == 2);
   rgpot_nlist_fortran_close(list);
+}
+
+TEST_CASE("the fortran bridge keeps pairs of unwrapped coordinates", "[nlist][api]") {
+  // Atom 0 lies one cell out. Its pair with atom 1 is 1.5 apart.
+  const double pos[] = {10.5, 0.5, 0.5, 2.0, 0.5, 0.5};
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  const int32_t periodic[3] = {1, 1, 1};
+  auto *list = rgpot_nlist_fortran_open();
+  REQUIRE(list != nullptr);
+  std::vector<int32_t> first(4), second(4);
+  std::vector<double> vector(12), distance(4);
+  size_t count = 0;
+  int32_t reused = 1;
+  REQUIRE(rgpot_nlist_fortran_build(list, pos, 2, box, 3.0, 0.5, periodic, first.data(),
+                                    second.data(), vector.data(), distance.data(), 4, &count,
+                                    &reused) == RGPOT_NLIST_OK);
+  REQUIRE(count == 2);
+  for (std::size_t p = 0; p < count; ++p) {
+    REQUIRE(distance[p] == Catch::Approx(1.5));
+    const double sign = first[p] == 0 ? 1.0 : -1.0;
+    REQUIRE(vector[3 * p] == Catch::Approx(sign * 1.5));
+  }
+  rgpot_nlist_fortran_close(list);
+}
+
+TEST_CASE("C shifts are relative to the positions as given", "[nlist][api]") {
+  // r_j - r_i + S H is the vector for the caller's coordinates, also when
+  // they lie whole cells outside the box and when a builder keeps its list.
+  const double box[9] = {6.0, 0.4, 0.2, 0.8, 6.5, -0.3, 0.5, 0.6, 5.5};
+  const std::array<bool, 3> periodic{{true, true, true}};
+  constexpr std::size_t n = 24;
+  constexpr double cutoff = 3.4;
+  const auto wrapped = fractional_positions(box, n);
+  auto offsets = random_offsets(n, periodic, 41);
+  auto pos = unwrap(wrapped, box, offsets);
+
+  rgpot_nlist_request request;
+  rgpot_nlist_request_init(&request);
+  request.cutoff = cutoff;
+  request.shell = 1;
+  constexpr std::size_t cap = 4096;
+  std::vector<int32_t> first(cap), second(cap), shift(3 * cap);
+  std::vector<double> vector(3 * cap), distance(cap);
+  std::vector<uint8_t> mask(cap);
+  rgpot_nlist_soa out{};
+  out.bytes = sizeof(out);
+  out.first = first.data();
+  out.second = second.data();
+  out.shift = shift.data();
+  out.vector = vector.data();
+  out.distance = distance.data();
+  out.mask = mask.data();
+  out.cap = cap;
+
+  auto keys = [&](std::size_t count, const std::vector<double> &at, bool check_vectors) {
+    std::set<Key> got;
+    for (std::size_t p = 0; p < count; ++p) {
+      for (int lane = 0; lane < 4; ++lane) {
+        if (mask[p] != 0xff && (mask[p] & (1 << lane)) == 0) {
+          continue;
+        }
+        const int i = first[p] + (mask[p] == 0xff ? 0 : lane);
+        const int j = second[p];
+        const int *s = &shift[3 * p];
+        double r2 = 0.0;
+        for (int c = 0; c < 3; ++c) {
+          const double v = at[3 * static_cast<std::size_t>(j) + static_cast<std::size_t>(c)] -
+                           at[3 * static_cast<std::size_t>(i) + static_cast<std::size_t>(c)] +
+                           s[0] * box[c] + s[1] * box[3 + c] + s[2] * box[6 + c];
+          if (check_vectors && (mask[p] == 0xff || lane == 0)) {
+            REQUIRE(std::abs(v - vector[3 * p + static_cast<std::size_t>(c)]) < 1e-12);
+          }
+          r2 += v * v;
+        }
+        REQUIRE(r2 < cutoff * cutoff);
+        got.insert(Key{i, j, s[0], s[1], s[2]});
+        if (mask[p] == 0xff) {
+          break;
+        }
+      }
+    }
+    return got;
+  };
+
+  const auto ref = brute(pos, box, cutoff, true, true, periodic, 10);
+  REQUIRE(ref.size() > n);
+  size_t count = 0;
+  size_t needed = 0;
+  REQUIRE(rgpot_nlist_build(pos.data(), n, box, &request, &out, &count, &needed) ==
+          RGPOT_NLIST_OK);
+  REQUIRE(keys(count, pos, true) == ref);
+
+  rgpot_nlist_walk *walk = nullptr;
+  REQUIRE(rgpot_nlist_walk_open(pos.data(), n, box, &request, &walk) == RGPOT_NLIST_OK);
+  int32_t done = 0;
+  REQUIRE(rgpot_nlist_walk_pull(walk, &out, &count, &done) == RGPOT_NLIST_OK);
+  REQUIRE(done == 1);
+  rgpot_nlist_walk_close(walk);
+  REQUIRE(keys(count, pos, true) == ref);
+
+  request.shape = 1;
+  REQUIRE(rgpot_nlist_build(pos.data(), n, box, &request, &out, &count, &needed) ==
+          RGPOT_NLIST_OK);
+  REQUIRE(keys(count, pos, false) == ref);
+  request.shape = 0;
+
+  request.skin = 0.4;
+  request.cut = 1;
+  rgpot_nlist_builder *builder = nullptr;
+  REQUIRE(rgpot_nlist_builder_open(&builder) == RGPOT_NLIST_OK);
+  int32_t reused = 1;
+  REQUIRE(rgpot_nlist_builder_update(builder, pos.data(), n, box, &request, &out, &count,
+                                     &needed, &reused) == RGPOT_NLIST_OK);
+  REQUIRE(reused == 0);
+  // Move three atoms by whole cells. The list is kept and the shifts follow.
+  for (std::size_t a : {std::size_t{0}, std::size_t{5}, std::size_t{11}}) {
+    offsets[3 * a] += 2;
+    offsets[3 * a + 2] -= 1;
+  }
+  pos = unwrap(wrapped, box, offsets);
+  REQUIRE(rgpot_nlist_builder_update(builder, pos.data(), n, box, &request, &out, &count,
+                                     &needed, &reused) == RGPOT_NLIST_OK);
+  REQUIRE(reused == 1);
+  std::set<Key> strict;
+  for (std::size_t p = 0; p < count; ++p) {
+    double r2 = 0.0;
+    for (int c = 0; c < 3; ++c) {
+      const double v =
+          pos[3 * static_cast<std::size_t>(second[p]) + static_cast<std::size_t>(c)] -
+          pos[3 * static_cast<std::size_t>(first[p]) + static_cast<std::size_t>(c)] +
+          shift[3 * p] * box[c] + shift[3 * p + 1] * box[3 + c] + shift[3 * p + 2] * box[6 + c];
+      REQUIRE(std::abs(v - vector[3 * p + static_cast<std::size_t>(c)]) < 1e-12);
+      r2 += v * v;
+    }
+    if (r2 < cutoff * cutoff) {
+      strict.insert(Key{first[p], second[p], shift[3 * p], shift[3 * p + 1], shift[3 * p + 2]});
+    }
+  }
+  REQUIRE(strict == brute(pos, box, cutoff, true, true, periodic, 10));
+  rgpot_nlist_builder_close(builder);
 }
 
 TEST_CASE("eight threads match the serial list", "[nlist][api]") {

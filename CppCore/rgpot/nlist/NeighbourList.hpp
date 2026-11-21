@@ -128,8 +128,11 @@ struct Buffers {
 };
 
 /// Owning table. The arrays are the storage a caller can wrap without
-/// copying. `device` is 0 for host memory. A GPU fill would use the same
-/// layout and a non-zero device id; this build fills host memory.
+/// copying. Pair `p` has `vector = r_j - r_i + S H`, with `S` the three
+/// entries of `shift` and `r` the positions passed to the build, also when
+/// they lie whole cells outside the box. `device` is 0 for host memory. A
+/// GPU fill would use the same layout and a non-zero device id; this build
+/// fills host memory.
 struct Table {
   std::vector<std::int32_t> first;
   std::vector<std::int32_t> second;
@@ -164,12 +167,14 @@ struct WalkState;
 /// stencil, stay within the skin and the query is unchanged. Skin 0
 /// rebuilds unless the folded coordinates and the cell match. Positions may
 /// lie any whole number of cells outside the box. Periodic coordinates are
-/// folded before image shifts and the skin test, so changing only their
-/// whole-cell representation keeps the table. Crossing a primary-cell face
-/// can change a stored canonical shift and rebuilds the table. A negative or
-/// non-finite skin is rejected before that test. Throws Error and keeps the
-/// previous table when the geometry is rejected. The same builder is used by
-/// one thread. Two builders may update at the same time.
+/// folded before the search and the skin test, so changing only their
+/// whole-cell representation keeps the search. The stored shifts follow the
+/// positions of the latest update: a pair list rewrites them in place, and a
+/// cluster list whose wrap changed is searched again. Crossing a
+/// primary-cell face moves a folded coordinate by a cell and rebuilds. A
+/// negative or non-finite skin is rejected before that test. Throws Error
+/// and keeps the previous table when the geometry is rejected. The same
+/// builder is used by one thread. Two builders may update at the same time.
 /// The state is behind a pointer, so the size of a Builder does not depend
 /// on it. A moved-from builder reports an empty table until its next update.
 class Builder {
@@ -187,9 +192,9 @@ public:
   [[nodiscard]] const Table &table() const noexcept;
   [[nodiscard]] std::uint64_t builds() const noexcept;
   [[nodiscard]] bool reused() const noexcept;
+  /// True when the latest update kept the table and the folded coordinates
+  /// and the cell were bit-identical to the previous update.
   [[nodiscard]] bool unchanged() const noexcept;
-  /// Positions from the latest update, folded along periodic axes.
-  [[nodiscard]] std::span<const double> positions() const noexcept;
 
 private:
   std::unique_ptr<BuilderState> state_;
