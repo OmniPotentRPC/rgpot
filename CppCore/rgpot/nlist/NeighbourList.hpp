@@ -167,12 +167,13 @@ struct WalkState;
 /// stencil, stay within the skin and the query is unchanged. Skin 0
 /// rebuilds unless the folded coordinates and the cell match. Positions may
 /// lie any whole number of cells outside the box. Periodic coordinates are
-/// folded before the search and the skin test, so changing only their
-/// whole-cell representation keeps the search. The stored shifts follow the
-/// positions of the latest update: a pair list rewrites them in place, and a
-/// cluster list whose wrap changed is searched again. Crossing a
-/// primary-cell face moves a folded coordinate by a cell and rebuilds. A
-/// negative or non-finite skin is rejected before that test. Throws Error
+/// folded before the search, and the skin test measures each atom from the
+/// image of its reference nearest it, so whole-cell drift and a step across
+/// a face of the cell count as the step alone. The stored shifts follow the
+/// positions of the latest update: a pair list rewrites them in place. A
+/// cluster list, whose four lanes share one shift, is searched again when
+/// an atom's coordinates as given move by whole cells, as when the caller
+/// wraps it. A negative or non-finite skin is rejected before that test. Throws Error
 /// and keeps the previous table when the geometry is rejected. The same
 /// builder is used by one thread. Two builders may update at the same time.
 /// The state is behind a pointer, so the size of a Builder does not depend

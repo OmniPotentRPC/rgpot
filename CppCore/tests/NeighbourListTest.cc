@@ -1151,6 +1151,91 @@ TEST_CASE("a builder on unwrapped coordinates matches a brute force pair set",
   REQUIRE(reused > 0);
 }
 
+TEST_CASE("a step across a cell face keeps the list", "[nlist][api]") {
+  // Atom 0 steps from just inside the +x face to just outside it. A caller
+  // that wraps puts it back near x = 0, one that does not leaves it past
+  // the face. Either way the atom has moved by 0.1, well inside the skin.
+  const double box[9] = {10, 0, 0, 1.5, 10, 0, 0, 0, 10};
+  const std::array<bool, 3> periodic{{true, true, true}};
+  constexpr double cutoff = 3.0;
+  auto pos = fractional_positions(box, 64);
+  pos[0] = 9.95;
+  pos[1] = 0.0;
+  pos[2] = 5.0;
+  auto stepped = pos;
+  stepped[0] = 10.05;
+  auto wrapped = stepped;
+  wrapped[0] -= 10.0;
+
+  auto strict_keys = [&](const rgpot::nlist::Table &table, const std::vector<double> &at) {
+    std::set<Key> out;
+    for (std::size_t k = 0; k < table.size(); ++k) {
+      const auto i = static_cast<std::size_t>(table.first[k]);
+      const auto j = static_cast<std::size_t>(table.second[k]);
+      const int sh[3] = {table.shift[3 * k], table.shift[3 * k + 1], table.shift[3 * k + 2]};
+      double r2 = 0.0;
+      for (int c = 0; c < 3; ++c) {
+        const double v = at[3 * j + static_cast<std::size_t>(c)] -
+                         at[3 * i + static_cast<std::size_t>(c)] + sh[0] * box[c] +
+                         sh[1] * box[3 + c] + sh[2] * box[6 + c];
+        r2 += v * v;
+      }
+      if (r2 < cutoff * cutoff) {
+        out.insert(Key{table.first[k], table.second[k], sh[0], sh[1], sh[2]});
+      }
+    }
+    return out;
+  };
+
+  for (bool cluster : {false, true}) {
+    for (const auto *next : {&stepped, &wrapped}) {
+      INFO("cluster " << cluster << " wrapped " << (next == &wrapped));
+      rgpot::nlist::Query query;
+      query.cutoff = cutoff;
+      query.skin = 1.0;
+      query.cut = rgpot::nlist::Cut::Loose;
+      query.periodic = periodic;
+      if (cluster) {
+        query.shape = rgpot::nlist::Cluster4{};
+      }
+      rgpot::nlist::Builder builder;
+      builder.update(pos.data(), 64, box, query);
+      builder.update(next->data(), 64, box, query);
+      // A cluster row shares one shift among four atoms, so a wrapped atom
+      // changes the shift of its lane alone and the cluster list rebuilds.
+      const bool kept = !cluster || next == &stepped;
+      CHECK(builder.reused() == kept);
+      CHECK(builder.builds() == (kept ? 1u : 2u));
+      if (!cluster) {
+        CHECK(strict_keys(builder.table(), *next) ==
+              brute(*next, box, cutoff, false, true, periodic, 2));
+      } else {
+        auto inside = [&](const std::set<Key> &keys) {
+          std::set<Key> out;
+          for (const Key &key : keys) {
+            const auto i = static_cast<std::size_t>(key.i);
+            const auto j = static_cast<std::size_t>(key.j);
+            double r2 = 0.0;
+            for (int c = 0; c < 3; ++c) {
+              const double v = (*next)[3 * j + static_cast<std::size_t>(c)] -
+                               (*next)[3 * i + static_cast<std::size_t>(c)] +
+                               key.sa * box[c] + key.sb * box[3 + c] + key.sc * box[6 + c];
+              r2 += v * v;
+            }
+            if (r2 < cutoff * cutoff) {
+              out.insert(key);
+            }
+          }
+          return out;
+        };
+        rgpot::nlist::Table fresh;
+        rgpot::nlist::build(fresh, next->data(), 64, box, query);
+        CHECK(inside(from_table(builder.table())) == inside(from_table(fresh)));
+      }
+    }
+  }
+}
+
 TEST_CASE("a negative skin is not inside the skin", "[nlist][api]") {
   const double pos[3] = {1.0, 2.0, 3.0};
   const double box[9] = {5, 0, 0, 0, 6, 0, 0, 0, 7};

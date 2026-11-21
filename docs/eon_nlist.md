@@ -90,8 +90,9 @@ int main(void) {
 
 `reused == 1` means the atom moves, together with the image moves of
 any cell change, still fit in the skin, so the stored list was kept. A
-cell change does not by itself rebuild the list. Moves are measured on the
-folded coordinates, so wrapping an atom by whole cells keeps the list. The
+cell change does not by itself rebuild the list. Each atom is measured
+from the image of its reference nearest it, so wrapping an atom back into
+the cell keeps the list. The
 pairs then reach out to cutoff + skin, `shift` is relative to the
 positions of this call, and `vector` and `distance` belong to the
 positions of the last rebuild.

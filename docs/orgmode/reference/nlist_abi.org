@@ -313,8 +313,9 @@ int32_t rgpot_nlist_builder_update(rgpot_nlist_builder *builder,
   The image move is the largest displacement of a stored shift between the old
   and the new =box9=, at every sign of the shift; the atoms may then move by
   half of what that leaves.
-  Moves are measured on the folded periodic coordinates, so moving an atom by
-  whole cells keeps the list.
+  Each atom is measured from the image of its reference nearest it, so moving an
+  atom by whole cells, or wrapping it back across a face, keeps a pair list.
+  A cluster list is searched again when an atom moves by whole cells.
   With =skin= 0 the list is kept only when the folded coordinates and =box9= did
   not change.
   =out=, =*count=, =*needed= and the size probe behave as in

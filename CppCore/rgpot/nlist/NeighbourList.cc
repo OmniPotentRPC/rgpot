@@ -745,6 +745,7 @@ void move_columns(Table &table, Columns &cols) {
 struct BuilderState {
   Table table;
   std::vector<double> ref;
+  std::vector<double> ref_frac;
   std::vector<std::int32_t> wrap;
   double box[9]{};
   Query query{};
@@ -760,7 +761,12 @@ struct BuilderState {
   // among four atoms, so a cluster list whose wrap changed is searched
   // again and this returns false.
   bool rewrap(const std::vector<std::int32_t> &now) {
-    if (now == wrap) {
+    // An empty wrap is all zeros.
+    const auto zero = [](const std::vector<std::int32_t> &w) {
+      return std::all_of(w.begin(), w.end(), [](std::int32_t x) { return x == 0; });
+    };
+    if (now == wrap || (zero(now) && zero(wrap))) {
+      wrap = now;
       return true;
     }
     if (clustered(query)) {
@@ -776,6 +782,39 @@ struct BuilderState {
     }
     wrap = now;
     return true;
+  }
+
+  // Puts each folded atom on the image nearest its folded reference. The
+  // whole cells J between the two fractions are taken off a copy in
+  // `moved`, and the shifts of that copy have the basis W + J in `basis`.
+  // An atom that crosses a face of the cell then moves by its step and not
+  // by a lattice vector. Returns the coordinates for the skin test.
+  const double *nearest(const Frame &frame, const double *box9,
+                        std::vector<std::int32_t> &basis, std::vector<double> &moved) const {
+    basis = frame.wrap;
+    for (std::size_t i = 0; i < n; ++i) {
+      for (int k = 0; k < 3; ++k) {
+        if (!frame.periodic[k]) {
+          continue;
+        }
+        const std::size_t at = 3 * i + static_cast<std::size_t>(k);
+        const double jump = std::round(frame.frac[at] - ref_frac[at]);
+        if (jump == 0.0) {
+          continue;
+        }
+        if (moved.empty()) {
+          moved.assign(frame.cell_pos, frame.cell_pos + 3 * n);
+        }
+        if (basis.empty()) {
+          basis.assign(3 * n, 0);
+        }
+        basis[at] += static_cast<std::int32_t>(jump);
+        for (int c = 0; c < 3; ++c) {
+          moved[3 * i + static_cast<std::size_t>(c)] -= jump * box9[3 * k + c];
+        }
+      }
+    }
+    return moved.empty() ? frame.cell_pos : moved.data();
   }
 
   void update(const double *positions, std::size_t natoms, const double *box9,
@@ -809,8 +848,11 @@ struct BuilderState {
             static_cast<double>(span[1]),
             static_cast<double>(span[2]),
         };
-        if (fits && withinSkin(ref.data(), current, natoms, box, box9, reach, q.skin) &&
-            rewrap(frame.wrap)) {
+        std::vector<std::int32_t> basis;
+        std::vector<double> moved;
+        const double *near = fits ? nearest(frame, box9, basis, moved) : current;
+        if (fits && withinSkin(ref.data(), near, natoms, box, box9, reach, q.skin) &&
+            rewrap(basis)) {
           reused = true;
           return;
         }
@@ -822,6 +864,7 @@ struct BuilderState {
     if (natoms != 0) {
       ref.assign(current, current + 3 * natoms);
     }
+    ref_frac = frame.frac;
     wrap = frame.wrap;
     std::memcpy(box, box9, sizeof(box));
     query = q;
