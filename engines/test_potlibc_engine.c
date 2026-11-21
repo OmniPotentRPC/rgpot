@@ -222,11 +222,19 @@ static int oversized_atom_counts_are_refused(Engine *engine) {
   return 0;
 }
 
+typedef enum {
+  REENTER_FORCE = 0,
+  REENTER_HVP = 1,
+  REENTER_CAPS = 2,
+} ReenterKind;
+
 typedef struct {
   Engine *engine;
   RgpotEnginePot *pot;
   const int *species;
   const double *box;
+  ReenterKind kind;
+  int inner_failed;
 } ReenterContext;
 
 static int reenter_on_locked_handle(void *user, long n_atoms, double *positions,
@@ -237,38 +245,33 @@ static int reenter_on_locked_handle(void *user, long n_atoms, double *positions,
   double hv[9];
   double energy = 0.0;
   char error[512] = {0};
-  int force_code;
-  int hvp_code;
-  int caps_code;
+  int code = RGPOT_ENGINE_OK;
   (void)box;
 
-  force_code = ctx->engine->force(ctx->pot, n_atoms, positions, ctx->species,
-                                  forces, &energy, NULL, ctx->box, NULL, NULL);
-  if (force_code != RGPOT_ENGINE_ERR_LOCK ||
+  if (ctx->kind == REENTER_FORCE) {
+    code = ctx->engine->force(ctx->pot, n_atoms, positions, ctx->species,
+                              forces, &energy, NULL, ctx->box, NULL, NULL);
+  } else if (ctx->kind == REENTER_HVP) {
+    code = ctx->engine->hvp(ctx->pot, n_atoms, positions, ctx->species,
+                            positions, hv, ctx->box);
+  } else {
+    memset(&caps, 0, sizeof caps);
+    caps.size = sizeof caps;
+    code = ctx->engine->caps(ctx->pot, &caps);
+  }
+  if (code != RGPOT_ENGINE_ERR_LOCK ||
       ctx->engine->last_error(ctx->pot, error, sizeof error) == 0) {
-    fprintf(stderr, "reentrant force returned %d (error=%s)\n", force_code,
-            error);
+    fprintf(stderr, "reentrant kind=%d returned %d (error=%s)\n",
+            (int)ctx->kind, code, error);
+    ctx->inner_failed = 1;
     return RGPOT_ENGINE_ERR_EVAL;
   }
-  memset(error, 0, sizeof error);
-  hvp_code = ctx->engine->hvp(ctx->pot, n_atoms, positions, ctx->species,
-                              positions, hv, ctx->box);
-  if (hvp_code != RGPOT_ENGINE_ERR_LOCK ||
-      ctx->engine->last_error(ctx->pot, error, sizeof error) == 0) {
-    fprintf(stderr, "reentrant hvp returned %d (error=%s)\n", hvp_code, error);
-    return RGPOT_ENGINE_ERR_EVAL;
-  }
-  memset(&caps, 0, sizeof caps);
-  caps.size = sizeof caps;
-  caps_code = ctx->engine->caps(ctx->pot, &caps);
-  if (caps_code != RGPOT_ENGINE_ERR_LOCK) {
-    fprintf(stderr, "reentrant caps returned %d\n", caps_code);
-    return RGPOT_ENGINE_ERR_EVAL;
-  }
-  return 0;
+  /* Return 0 from the callback so the outer force call must observe the
+   * latched fatal state rather than a nonzero transform status. */
+  return RGPOT_ENGINE_OK;
 }
 
-static int reentrant_lock_returns_named_code(Engine *engine) {
+static int reentrant_lock_poisons_handle(Engine *engine) {
   static const double box[9] = {
       20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 20.0,
   };
@@ -278,25 +281,71 @@ static int reentrant_lock_returns_named_code(Engine *engine) {
       3.0802 * BOHR_TO_ANGSTROM, 0.0, 0.0,
       4.8202 * BOHR_TO_ANGSTROM, 0.0, 0.0,
   };
-  RgpotEnginePot *pot = create(engine, "brh2leps", 0);
-  double forces[9];
-  double energy = 0.0;
-  ReenterContext ctx;
-  int code;
-  if (pot == NULL) {
-    return 1;
-  }
-  ctx.engine = engine;
-  ctx.pot = pot;
-  ctx.species = species;
-  ctx.box = box;
-  code = engine->force(pot, 3, positions, species, forces, &energy, NULL, box,
-                       reenter_on_locked_handle, &ctx);
-  engine->destroy(pot);
-  if (code != RGPOT_ENGINE_OK) {
-    fprintf(stderr, "outer force around reentrant lock probe returned %d\n",
-            code);
-    return 1;
+  static const double direction[9] = {
+      0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8, 0.9,
+  };
+  static const ReenterKind kinds[3] = {
+      REENTER_FORCE,
+      REENTER_HVP,
+      REENTER_CAPS,
+  };
+  size_t idx;
+  for (idx = 0; idx < 3; ++idx) {
+    RgpotEnginePot *pot = create(engine, "brh2leps", 0);
+    RgpotEngineCaps caps;
+    double forces[9];
+    double hv[9];
+    double energy = 0.0;
+    char error[512] = {0};
+    ReenterContext ctx;
+    int outer_code;
+    int later_force;
+    int later_hvp;
+    int later_caps;
+    if (pot == NULL) {
+      return 1;
+    }
+    ctx.engine = engine;
+    ctx.pot = pot;
+    ctx.species = species;
+    ctx.box = box;
+    ctx.kind = kinds[idx];
+    ctx.inner_failed = 0;
+    outer_code = engine->force(pot, 3, positions, species, forces, &energy,
+                               NULL, box, reenter_on_locked_handle, &ctx);
+    if (ctx.inner_failed || outer_code != RGPOT_ENGINE_ERR_LOCK) {
+      fprintf(stderr,
+              "outer force after reentrant kind=%d returned %d, expected %d\n",
+              (int)kinds[idx], outer_code, RGPOT_ENGINE_ERR_LOCK);
+      engine->destroy(pot);
+      return 1;
+    }
+    if (engine->last_error(pot, error, sizeof error) == 0) {
+      fprintf(stderr,
+              "outer force after reentrant kind=%d cleared last_error\n",
+              (int)kinds[idx]);
+      engine->destroy(pot);
+      return 1;
+    }
+    later_force = engine->force(pot, 3, positions, species, forces, &energy,
+                                NULL, box, NULL, NULL);
+    later_hvp = engine->hvp(pot, 3, positions, species, direction, hv, box);
+    memset(&caps, 0, sizeof caps);
+    caps.size = sizeof caps;
+    later_caps = engine->caps(pot, &caps);
+    memset(error, 0, sizeof error);
+    if (later_force != RGPOT_ENGINE_ERR_LOCK ||
+        later_hvp != RGPOT_ENGINE_ERR_LOCK ||
+        later_caps != RGPOT_ENGINE_ERR_LOCK ||
+        engine->last_error(pot, error, sizeof error) == 0) {
+      fprintf(stderr,
+              "poisoned handle kind=%d returned force=%d hvp=%d caps=%d "
+              "error=%s\n",
+              (int)kinds[idx], later_force, later_hvp, later_caps, error);
+      engine->destroy(pot);
+      return 1;
+    }
+    engine->destroy(pot);
   }
   return 0;
 }
@@ -354,12 +403,15 @@ static int destroy_frees_handle_when_lock_fails(const char *path) {
   set_lock_fail(1);
   force_code = force_sym(pot, 3, positions, species, forces, &energy, NULL, box,
                          NULL, NULL);
+  /* Even once locking succeeds again, the handle must stay fatally unusable. */
+  set_lock_fail(0);
   memset(&caps, 0, sizeof caps);
   caps.size = sizeof caps;
   caps_code = caps_sym(pot, &caps);
   memset(error, 0, sizeof error);
   last_error_sym(pot, error, sizeof error);
   /* Destroy while potlibc_mutex_lock fails: must still release surface and pot. */
+  set_lock_fail(1);
   destroy_sym(pot);
   set_lock_fail(0);
   dlclose(library);
@@ -507,7 +559,7 @@ int main(int argc, char **argv) {
       hvp_arguments_are_checked(&engine) != 0 ||
       variable_size_requires_count(&engine) != 0 ||
       oversized_atom_counts_are_refused(&engine) != 0 ||
-      reentrant_lock_returns_named_code(&engine) != 0 ||
+      reentrant_lock_poisons_handle(&engine) != 0 ||
       (argc == 3 && destroy_frees_handle_when_lock_fails(argv[2]) != 0)) {
     dlclose(library);
     return 1;

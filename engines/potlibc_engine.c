@@ -60,6 +60,7 @@ struct RgpotEnginePot {
   potlibc_metadata metadata;
   pthread_mutex_t call_lock;
   pthread_mutex_t error_lock;
+  int fatal_code;
   char error[512];
 };
 
@@ -141,13 +142,50 @@ static int ranges_overlap(const void *first, size_t first_bytes,
   return first_begin - second_begin < second_bytes;
 }
 
+static int get_fatal(RgpotEnginePot *pot) {
+  int fatal = 0;
+  if (pthread_mutex_lock(&pot->error_lock) != 0) {
+    return RGPOT_ENGINE_ERR_LOCK;
+  }
+  fatal = pot->fatal_code;
+  pthread_mutex_unlock(&pot->error_lock);
+  return fatal;
+}
+
+static int latch_fatal(RgpotEnginePot *pot, int code, const char *format, ...) {
+  va_list arguments;
+  int latched = code;
+  if (pthread_mutex_lock(&pot->error_lock) != 0) {
+    return code;
+  }
+  if (pot->fatal_code == 0) {
+    pot->fatal_code = code;
+    va_start(arguments, format);
+    vsnprintf(pot->error, sizeof pot->error, format, arguments);
+    va_end(arguments);
+  }
+  latched = pot->fatal_code;
+  pthread_mutex_unlock(&pot->error_lock);
+  return latched;
+}
+
 static int lock_handle(RgpotEnginePot *pot) {
+  int fatal;
   if (pot == NULL) {
     return RGPOT_ENGINE_ERR_INVALID;
   }
+  fatal = get_fatal(pot);
+  if (fatal != 0) {
+    return fatal;
+  }
   if (potlibc_mutex_lock(&pot->call_lock) != 0) {
-    set_error(pot, "potlibc engine handle lock failed");
-    return RGPOT_ENGINE_ERR_LOCK;
+    return latch_fatal(pot, RGPOT_ENGINE_ERR_LOCK,
+                       "potlibc engine handle lock failed");
+  }
+  fatal = get_fatal(pot);
+  if (fatal != 0) {
+    pthread_mutex_unlock(&pot->call_lock);
+    return fatal;
   }
   return RGPOT_ENGINE_OK;
 }
@@ -344,9 +382,21 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n_atoms,
   memcpy(coordinates, positions, dimension * sizeof *coordinates);
   memcpy(local_box, box, sizeof local_box);
   if (transform != NULL) {
+    int fatal;
     code = transform(transform_user, n_atoms, coordinates, local_box);
+    fatal = get_fatal(pot);
+    if (fatal != 0) {
+      free(coordinates);
+      free(surface_forces);
+      pthread_mutex_unlock(&pot->call_lock);
+      return fatal;
+    }
     if (code != RGPOT_ENGINE_OK) {
-      set_error(pot, "coordinate transform returned %d", code);
+      if (code < 0) {
+        code = latch_fatal(pot, code, "coordinate transform returned %d", code);
+      } else {
+        set_error(pot, "coordinate transform returned %d", code);
+      }
       free(coordinates);
       free(surface_forces);
       pthread_mutex_unlock(&pot->call_lock);
