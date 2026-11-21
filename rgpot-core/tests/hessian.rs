@@ -660,20 +660,23 @@ fn coupled_forces(pot: *const rgpot_potential_t, x: &[f64; COUPLED_DIM]) -> Vec<
     forces
 }
 
-#[test]
-fn the_dense_hessian_matches_a_finite_difference_of_forces_in_every_direction() {
-    let pot = unsafe {
-        rgpot_potential_new(
-            coupled_force as PotentialCallback,
-            std::ptr::null_mut(),
-            None,
-        )
-    };
-    assert!(!pot.is_null());
-    let status =
-        unsafe { rgpot_potential_set_hessian_callback(pot, Some(coupled_hessian_callback)) };
-    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+unsafe extern "C" fn coupled_hvp_callback(
+    _user_data: *mut c_void,
+    input: *const rgpot_force_input_t,
+    direction: *const f64,
+    hv_out: *mut f64,
+) -> rgpot_status_t {
+    let x = read_positions(unsafe { &*input });
+    let direction = unsafe { std::slice::from_raw_parts(direction, COUPLED_DIM) };
+    let product = matvec(&coupled_hessian(&x), direction);
+    unsafe { std::ptr::copy_nonoverlapping(product.as_ptr(), hv_out, product.len()) };
+    rgpot_status_t::RGPOT_SUCCESS
+}
 
+/// Every `H[i,j]` of the dense matrix against
+/// `-(F_i(x + h e_j) - F_i(x - h e_j)) / (2 h)`, with forces from
+/// `rgpot_potential_calculate`.
+fn assert_dense_matches_force_differences(pot: *mut rgpot_potential_t) {
     let centre = [0.4, -0.7, 0.9, 1.1, 0.6, -0.5];
     let mut positions = centre;
     let mut z = [1, 1];
@@ -710,5 +713,38 @@ fn the_dense_hessian_matches_a_finite_difference_of_forces_in_every_direction() 
     }
     assert!(off_diagonal > 0.5, "the test potential must be coupled");
     assert!(largest < 1.0e-7, "max |H - FD(-F)| = {largest:e}");
+}
+
+fn coupled_potential() -> *mut rgpot_potential_t {
+    let pot = unsafe {
+        rgpot_potential_new(
+            coupled_force as PotentialCallback,
+            std::ptr::null_mut(),
+            None,
+        )
+    };
+    assert!(!pot.is_null());
+    pot
+}
+
+#[test]
+fn the_dense_hessian_matches_a_finite_difference_of_forces_in_every_direction() {
+    let pot = coupled_potential();
+    let status =
+        unsafe { rgpot_potential_set_hessian_callback(pot, Some(coupled_hessian_callback)) };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_dense_matches_force_differences(pot);
+    unsafe { rgpot_potential_free(pot) };
+}
+
+#[test]
+fn the_hessian_assembled_from_products_matches_a_finite_difference_of_forces() {
+    let pot = coupled_potential();
+    let status = unsafe { rgpot_potential_set_hvp_callback(pot, Some(coupled_hvp_callback)) };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_dense_matches_force_differences(pot);
+    let mut counted = rgpot_hessian_counts_t::default();
+    unsafe { rgpot_potential_hessian_counts(pot, &mut counted) };
+    assert_eq!(counted.from_hvp, 1);
     unsafe { rgpot_potential_free(pot) };
 }
