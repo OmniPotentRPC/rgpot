@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
+#include <stdexcept>
 #include <string>
 
 #if defined(_WIN32)
@@ -21,6 +23,12 @@
 #endif
 
 namespace rgpot::nlist {
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((visibility("hidden")))
+#endif
+void invertCell(const double *cell, double inv[9], double dual_norm[3]);
+
 namespace {
 
 int axisCount(double length, double edge) {
@@ -35,6 +43,33 @@ int axisCount(double length, double edge) {
     --n;
   }
   return static_cast<int>(n);
+}
+
+// Off diagonal entries at most this many ulps of the cell infinity norm
+// are orthorhombic. A larger shear is binned in fractional coordinates.
+constexpr int kOrthorhombicUlps = 4096;
+
+bool orthorhombicCell(const double box[9]) {
+  double scale = 0.0;
+  for (int row = 0; row < 3; ++row) {
+    const double sum = std::abs(box[3 * row]) + std::abs(box[3 * row + 1]) +
+                       std::abs(box[3 * row + 2]);
+    if (sum > scale) {
+      scale = sum;
+    }
+  }
+  if (!(scale > 0.0) || !std::isfinite(scale)) {
+    return false;
+  }
+  const double limit = static_cast<double>(kOrthorhombicUlps) *
+                       std::numeric_limits<double>::epsilon() * scale;
+  const int off[6] = {1, 2, 3, 5, 6, 7};
+  for (const int k : off) {
+    if (!(std::abs(box[k]) <= limit)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace
@@ -133,31 +168,84 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
            static_cast<double>(nz_) * static_cast<double>(sizeof(std::int32_t));
   };
   set_axes();
+  double frac_inv[9]{};
+  double frac_origin[3] = {0.0, 0.0, 0.0};
+  double frac_span[3] = {1.0, 1.0, 1.0};
+  bool use_frac = false;
+  // Cartesian bins only when the cell is orthorhombic within
+  // kOrthorhombicUlps. A periodic or partially periodic skewed cell
+  // uses the minimum image inverse; open axes are not wrapped and get
+  // bins spanning the actual fractional coordinate range. Failure in
+  // the inverse raises and does not fall through to the Cartesian bins.
+  if ((periodic_[0] || periodic_[1] || periodic_[2]) &&
+      !orthorhombicCell(box_)) {
+    double dual_norm[3]{};
+    invertCell(box_, frac_inv, dual_norm);
+    int naxis[3] = {1, 1, 1};
+    for (int k = 0; k < 3; ++k) {
+      const double frac_edge = edge * dual_norm[k];
+      if (periodic_[k]) {
+        frac_origin[k] = 0.0;
+        frac_span[k] = 1.0;
+        naxis[k] = axisCount(1.0, frac_edge);
+      } else if (n > 0) {
+        double lo = 0.0;
+        double hi = 0.0;
+        for (std::size_t a = 0; a < n; ++a) {
+          const double s = xyz[3 * a] * frac_inv[k] +
+                           xyz[3 * a + 1] * frac_inv[3 + k] +
+                           xyz[3 * a + 2] * frac_inv[6 + k];
+          if (!std::isfinite(s)) {
+            throw std::invalid_argument("fractional coordinate must be finite");
+          }
+          if (a == 0 || s < lo) {
+            lo = s;
+          }
+          if (a == 0 || s > hi) {
+            hi = s;
+          }
+        }
+        const double extent = hi - lo;
+        if (!std::isfinite(extent)) {
+          throw std::invalid_argument("fractional coordinate must be finite");
+        }
+        frac_origin[k] = lo;
+        frac_span[k] = extent > frac_edge ? extent : frac_edge;
+        naxis[k] = axisCount(frac_span[k], frac_edge);
+      }
+    }
+    nx_ = naxis[0];
+    ny_ = naxis[1];
+    nz_ = naxis[2];
+    use_frac = true;
+  }
   const auto avail = availableBytes();
   if (avail > 0 && bytes_of() > static_cast<double>(avail)) {
-    bool any_open = false;
-    for (int k = 0; k < 3; ++k) {
-      if (periodic_[k] || n == 0) {
-        continue;
-      }
-      any_open = true;
-      double lo = xyz[static_cast<std::size_t>(k)];
-      double hi = lo;
-      for (std::size_t a = 1; a < n; ++a) {
-        const double v = xyz[3 * a + static_cast<std::size_t>(k)];
-        if (v < lo) {
-          lo = v;
+    if (!use_frac) {
+      bool any_open = false;
+      for (int k = 0; k < 3; ++k) {
+        if (periodic_[k] || n == 0) {
+          continue;
         }
-        if (v > hi) {
-          hi = v;
+        any_open = true;
+        double lo = xyz[static_cast<std::size_t>(k)];
+        double hi = lo;
+        for (std::size_t a = 1; a < n; ++a) {
+          const double v = xyz[3 * a + static_cast<std::size_t>(k)];
+          if (v < lo) {
+            lo = v;
+          }
+          if (v > hi) {
+            hi = v;
+          }
         }
+        const double extent = hi - lo;
+        span[k] = extent > edge ? extent : edge;
+        origin[k] = lo;
       }
-      const double extent = hi - lo;
-      span[k] = extent > edge ? extent : edge;
-      origin[k] = lo;
-    }
-    if (any_open) {
-      set_axes();
+      if (any_open) {
+        set_axes();
+      }
     }
     if (bytes_of() > static_cast<double>(avail)) {
       nx_ = ny_ = nz_ = 1;
@@ -186,9 +274,47 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     return i;
   };
   for (std::size_t a = 0; a < n; ++a) {
-    const int ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
-    const int iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
-    const int iz = bin(xyz[3 * a + 2] - origin[2], span[2], nz_);
+    int ix = 0;
+    int iy = 0;
+    int iz = 0;
+    if (use_frac) {
+      auto bin_frac = [&](double s, int k, int naxis) {
+        if (!std::isfinite(s)) {
+          throw std::invalid_argument("fractional coordinate must be finite");
+        }
+        if (naxis <= 1) {
+          return 0;
+        }
+        if (!periodic_[k]) {
+          return bin(s - frac_origin[k], frac_span[k], naxis);
+        }
+        double wrapped = s - std::floor(s);
+        if (!(wrapped >= 0.0) || wrapped >= 1.0) {
+          wrapped = 0.0;
+        }
+        auto i = static_cast<int>(wrapped * static_cast<double>(naxis));
+        if (i >= naxis) {
+          i = naxis - 1;
+        }
+        if (i < 0) {
+          i = 0;
+        }
+        return i;
+      };
+      const double x = xyz[3 * a];
+      const double y = xyz[3 * a + 1];
+      const double z = xyz[3 * a + 2];
+      ix = bin_frac(x * frac_inv[0] + y * frac_inv[3] + z * frac_inv[6], 0,
+                    nx_);
+      iy = bin_frac(x * frac_inv[1] + y * frac_inv[4] + z * frac_inv[7], 1,
+                    ny_);
+      iz = bin_frac(x * frac_inv[2] + y * frac_inv[5] + z * frac_inv[8], 2,
+                    nz_);
+    } else {
+      ix = bin(xyz[3 * a] - origin[0], span[0], nx_);
+      iy = bin(xyz[3 * a + 1] - origin[1], span[1], ny_);
+      iz = bin(xyz[3 * a + 2] - origin[2], span[2], nz_);
+    }
     const int id = (ix * ny_ + iy) * nz_ + iz;
     cell_of_[a] = id;
     ++cell_start_[static_cast<std::size_t>(id) + 1];
