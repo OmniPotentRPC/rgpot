@@ -2,7 +2,7 @@
 rgpot Python bindings (nanobind). Classes that need a build option, such as ExprPot, D3Pot, D4Pot, XcKernel and the Fortran kernels, are absent when the build left them out. Evaluations release the interpreter while the kernel runs.
 """
 
-from typing import Annotated
+from typing import Annotated, overload
 
 import numpy
 from numpy.typing import NDArray
@@ -961,9 +961,16 @@ class OpenMMPot:
     def native_psi(self) -> float:
         """Zero crossing stored for OpenMM, nanometres."""
 
+@overload
 def rgpot_lammps_potential(u0: float = 1.0, cutoff: float = 8.0, psi: float = 1.0, engine_path: str = '') -> LammpsPot:
     """
     Shifted 12-6 Lennard-Jones. The constructor dlopens an engine plugin, which stays the backend. engine_path empty searches RGPOT_LAMMPS_ENGINE, LAMMPS_ENGINE, liblammps_engine.so, then liblj_engine.so. u0 is eV; cutoff and psi are Angstrom.
+    """
+
+@overload
+def rgpot_lammps_potential(config_bytes: bytes, engine_path: str = '') -> LammpsPot:
+    """
+    Lammpc-backed LAMMPS backend. config_bytes is a flat PotentialConfig message with the lammps arm. engine_path empty searches LAMMPC_LIBRARY, RGPOT_LAMMPC_ENGINE and liblammpc.so.
     """
 
 def rgpot_gromacs_potential(u0: float = 1.0, cutoff: float = 8.0, psi: float = 1.0, engine_path: str = '') -> GromacsPot:

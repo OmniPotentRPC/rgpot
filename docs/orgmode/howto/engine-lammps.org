@@ -602,3 +602,26 @@ cfg.psi = 1.0;
 cfg.engine_path = "liblj_engine.so";
 auto pot = rgpot::rgpot_lammps_potential(cfg);
 #+end_src
+
+*** Lammpc-backed LAMMPS (`pair_style` and `pair_coeff` from `LammpsParams`)
+
+The same =LammpsPot= type also has a lammpc-backed path for full LAMMPS
+=pair_style= support (for example =eam/alloy=, =tersoff=, =snap=, =meam=,
+=reaxff=).
+The constructor takes a flat =PotentialConfig= message with the =lammps= arm,
+keeps one lammpc session, and evaluates through
+=lammpc_session_calculate_result=.
+
+#+attr_rgpot: syntax for a flat PotentialConfig payload (from your schema toolchain)
+#+begin_src python
+import rgpot
+
+# config_bytes must encode PotentialConfig{ lammps = LammpsParams{...} }.
+pot = rgpot.rgpot_lammps_potential(config_bytes, engine_path="liblammpc.so")
+#+end_src
+
+#+attr_rgpot: fragment statements of a caller with an existing flat config buffer
+#+begin_src c
+rgpot_external_potential *pot = rgpot_lammpc_potential(
+    "liblammpc.so", config_bytes, config_size, err, sizeof err);
+#+end_src
