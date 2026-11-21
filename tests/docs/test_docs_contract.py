@@ -34,6 +34,19 @@ class DocsContract(unittest.TestCase):
         errors = doccheck.check_blocks_static(ROOT)
         self.assertEqual(errors, [], _report(errors))
 
+    def test_potlibc_howto_links_libm_for_pinned_revision(self):
+        page = (ROOT / "docs/orgmode/howto/potlibc-engine.org").read_text(
+            encoding="utf-8"
+        )
+        setup_lines = [
+            line.strip()
+            for line in page.splitlines()
+            if line.strip().startswith("meson setup potlibc/build potlibc")
+        ]
+        self.assertEqual(len(setup_lines), 1, setup_lines)
+        if "85e9896be0da2b7f95d9a281a6f30c2c8ca76d8c" in page:
+            self.assertIn("-Dc_link_args=-lm", setup_lines[0])
+
     @unittest.skipUnless(
         os.environ.get("RGPOT_DOC_BUILD_DIR"), "RGPOT_DOC_BUILD_DIR is not set"
     )

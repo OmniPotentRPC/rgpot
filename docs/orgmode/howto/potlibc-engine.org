@@ -23,7 +23,7 @@ a Fortran compiler and a =lapack= pkg-config module.
 #+begin_src bash
 git clone https://github.com/OmniPotentRPC/potlibc.git
 git -C potlibc checkout 85e9896be0da2b7f95d9a281a6f30c2c8ca76d8c
-meson setup potlibc/build potlibc --prefix="$HOME/.local" --libdir=lib
+meson setup potlibc/build potlibc --prefix="$HOME/.local" --libdir=lib -Dc_link_args=-lm
 meson compile -C potlibc/build
 meson install -C potlibc/build
 #+end_src
@@ -31,6 +31,8 @@ meson install -C potlibc/build
 =--libdir=lib= puts =potlibc.pc= in =$HOME/.local/lib/pkgconfig= on every host.
 Without it, Debian and Ubuntu install into a multiarch directory such as
 =lib/x86_64-linux-gnu=, and the search path below would miss the file.
+=-Dc_link_args=-lm= links =libm= for the pinned revision's
+=test-symmetric-dual2-hessian= test binary.
 Make the prefix visible to =pkg-config= when it is not on the system search
 path.
 
