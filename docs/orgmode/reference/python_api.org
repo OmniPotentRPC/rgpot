@@ -1074,17 +1074,25 @@ config()
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.D2Pot,
-  rgpot.D2CpmdPot, rgpot.D4Pot
+  rgpot.D2CpmdPot, rgpot.D4Pot, rgpot.SumPot
 - Inputs :: none.
 - Units :: as the constructor: eV for =u0= and =De=, 1/Angstrom for =a=,
   Angstrom for the lengths.
-- Outputs :: a dict of the constructor parameters.
+  =SumPot= reports no quantity with a unit.
+- Outputs :: a dict.
+  =LJPot=, =LJClusterPot=, =MorsePot=, =D2Pot=, =D2CpmdPot= and =D4Pot= give
+  the constructor parameters.
   =LJPot= gives =u0=, =cutoff=, =psi=, =switch_width=, =tail_correction=;
   =LJClusterPot= gives =u0=, =cutoff=, =psi=,
   =switch_width=; =MorsePot= gives =De=, =a=, =re=, =cutoff=, =switch_width=;
   =D2Pot= gives =s6=, =d=, =sr=, =cutoff= and =D2CpmdPot= gives =s6=, =alpha=,
   =vdweps=, =symmetry=, after any functional was applied; =D4Pot= gives
   =functional=, =charge=, =atm=, =periodic=.
+  =SumPot= gives =children=, a list with one dict per enabled term, in term
+  order.
+  An =lj= term gives =tail_correction=, the boolean stored on that child.
+  A term of another kind gives an empty dict.
+  A disabled term is omitted.
 - Errors :: none.
 
 *** =.evaluate=
