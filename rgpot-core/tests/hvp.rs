@@ -697,7 +697,7 @@ fn malformed_requests_are_refused_before_any_call() {
     );
     assert_eq!(handle.try_hvp(&input, &v, 0.0, ANALYTIC), invalid);
     assert!(
-        last_error().contains("no Hessian-vector callback"),
+        last_error().contains("no analytic Hessian or Hessian-vector callback"),
         "{}",
         last_error()
     );

@@ -58,6 +58,9 @@ pub enum rgpot_status_t {
     RGPOT_JET_BRANCH = 7,
     /// A Taylor jet left the analytic domain of a function or a division.
     RGPOT_JET_DOMAIN = 8,
+    /// The potential has no analytic energy Hessian and no analytic
+    /// Hessian-vector product. Finite differences are not substituted.
+    RGPOT_NO_HESSIAN = 9,
 }
 
 thread_local! {

@@ -109,7 +109,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 5,
+            abi_minor: 6,
             layout_revision: 1,
         }
     );
@@ -553,8 +553,8 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 }
 
 #[test]
-fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newer_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 5);
+fn minor_4_and_5_plugins_are_served_and_a_newer_minor_is_rejected() {
+    assert_eq!(ENGINE_ABI_MINOR, 6);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -602,7 +602,14 @@ fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newe
     // and calls them.
     let minor5_path = build("harmonic_stamp_minor5", &["FIXTURE_ABI_MINOR=5"]);
     let mut minor5 = load(&minor5_path);
-    assert_eq!(minor5.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert_eq!(
+        minor5.abi_stamp(),
+        RgpotEngineAbiStamp {
+            abi_major: ENGINE_ABI_VERSION as u16,
+            abi_minor: 5,
+            layout_revision: ENGINE_ABI_LAYOUT_REVISION,
+        }
+    );
     assert!(minor5.symbols().last_components.is_some());
     assert!(minor5.symbols().component_name.is_some());
     assert_eq!(minor5.component_name(0).expect("component 0"), "harmonic");
@@ -651,6 +658,27 @@ fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newe
             },
         }
     );
+}
+
+#[test]
+fn a_prefix_caps_layout_leaves_the_trailing_bit_clear() {
+    let path = build(
+        "harmonic_short_caps",
+        &["SHORT_CAPS", "FIXTURE_ABI_MINOR=4"],
+    );
+    let mut engine = load(&path);
+    let caps = engine.caps().expect("prefix caps");
+    assert!(caps.periodic);
+    assert!(caps.analytic_hvp);
+    assert!(!caps.analytic_hessian);
+    let req = EngineRequest {
+        positions: &[1.0, -2.0, 0.5],
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+    let answer = engine.force(&req).expect("force on a prefix-caps plugin");
+    let sum: f64 = req.positions.iter().map(|x| x * x).sum();
+    assert!(within_roundoff(answer.energy, 0.5 * SPRING * sum, 9));
 }
 
 #[test]
@@ -752,6 +780,7 @@ fn the_potential_handle_evaluates_and_destroys_the_engine() {
     let before = observer.destroyed();
     let potential = load(&path).into_potential();
     assert!(potential.as_handle().has_hessian_vector_callback());
+    assert!(potential.as_handle().has_hessian_callback());
     let mut positions = vec![0.5, -1.0, 2.0, 0.0, 3.0, -0.25];
     let mut numbers = vec![1, 8];
     let mut cell = CELL;
@@ -873,6 +902,19 @@ fn hvp_returns_the_harmonic_hessian_product() {
         .expect("hvp");
     let expected: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
     assert!(all_within_roundoff(&hv, &expected));
+    assert!(engine.caps().expect("caps").analytic_hessian);
+    let matrix = engine
+        .hessian(&EngineRequest {
+            positions: &positions,
+            atomic_numbers: &[1, 8],
+            box_matrix: &CELL,
+        })
+        .expect("hessian");
+    let mut expected_matrix = vec![0.0; direction.len() * direction.len()];
+    for i in 0..direction.len() {
+        expected_matrix[i * direction.len() + i] = SPRING;
+    }
+    assert!(all_within_roundoff(&matrix, &expected_matrix));
 }
 
 #[test]
@@ -1126,6 +1168,10 @@ fn engine_caps_layout_is_the_c_header_layout() {
         ),
         ("orbital_copy", offset_of!(RgpotEngineCaps, orbital_copy)),
         ("analytic_hvp", offset_of!(RgpotEngineCaps, analytic_hvp)),
+        (
+            "analytic_hessian",
+            offset_of!(RgpotEngineCaps, analytic_hessian),
+        ),
     ];
     let names: Vec<&str> = loader.iter().map(|(name, _)| *name).collect();
     assert_eq!(names, declared, "field order differs from engine_c_abi.h");

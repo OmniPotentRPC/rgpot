@@ -18,9 +18,13 @@ The generic `libxtb_engine` reads the `BuiltinParams.config.xtb` arm when it
 is present; method, accuracy, electronic temperature, iteration limit, charge
 and UHF are passed to `XTBPot`. An absent arm keeps the defaults above.
 
-libxtb does not expose a Hessian through its public C API. Consequently this
-engine advertises `analytic_hvp = 0`; hosts that need exact curvature must use
-an engine whose underlying implementation supplies it.
+libxtb's public `xtb_hessian` is `hessian_numdiff`: a finite-difference
+second derivative (the C API default step is 0.005 bohr), not an analytic
+Hessian. This engine therefore advertises `analytic_hvp = 0` and
+`analytic_hessian = 0`. `rgpot_engine_hessian` returns unsupported rather
+than calling that numerical routine. Hosts that need exact curvature must
+use an engine whose implementation supplies an analytic Hessian-vector
+product.
 
 ## ISO_C_BINDING C API (libxtb)
 

@@ -56,7 +56,7 @@ The plugin interface in =include/rgpot/plugin.h= is a separate family. tblite,
 dftd3, dftd4, ExprPot, XcKernel, CPMD and CP2K have no engine library.
 
 Every library above exports
-=rgpot_engine_force_batch=, =rgpot_engine_hvp=, =rgpot_engine_abi_stamp=,
+=rgpot_engine_force_batch=, =rgpot_engine_hvp=, =rgpot_engine_hessian=, =rgpot_engine_abi_stamp=,
 =rgpot_engine_abi_compatible=, =rgpot_engine_name=, =rgpot_engine_version=, =rgpot_engine_model_digest=,
 =rgpot_engine_caps=,
 =rgpot_engine_last_error=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=,
@@ -104,7 +104,7 @@ Required symbol.
 - Units :: none.
 - Outputs :: three =unsigned short= fields:
   =abi_major= (=RGPOT_ENGINE_ABI_VERSION=, 1),
-  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 5) and
+  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 6) and
   =layout_revision= (=RGPOT_ENGINE_ABI_LAYOUT_REVISION=, 1).
 - Errors :: none.
 
@@ -113,9 +113,13 @@ The minor increments for an addition that leaves every existing call valid: a
 new optional symbol, or a new field at the end of a size-prefixed structure.
 The layout revision increments when an existing structure changes size or field
 order.
-A host built against minor N runs against an engine of the same major and layout
-revision whose minor is at least N. An engine without =rgpot_engine_abi_stamp=
-is minor 0, layout 1.
+A host built against minor N loads an engine of the same major and layout
+revision whose minor is at most N. An engine from a newer minor than the host is
+refused, and an engine from an earlier minor loads with its newer optional
+symbols absent.
+This is the rule of the Rust loader (=RgpotEngineAbiStamp::serves=) and of
+=rgpot_engine_abi_compatible=.
+An engine without =rgpot_engine_abi_stamp= is minor 0, layout 1.
 Minor 1 added the stamp, =rgpot_engine_caps=,
 =rgpot_engine_last_error=, =rgpot_engine_set_num_threads= and =rgpot_engine_set_charge_spin=.
 Minor 2 added =rgpot_engine_name=, =rgpot_engine_version=,
@@ -127,6 +131,10 @@ Minor 4 added =rgpot_engine_hvp= and the trailing =RgpotEngineCaps.analytic_hvp=
 field.
 Minor 5 added =RgpotEngineComponent=,
 =rgpot_engine_last_components= and =rgpot_engine_component_name=.
+Minor 6 added =rgpot_engine_hessian= and the trailing
+=RgpotEngineCaps.analytic_hessian= field.
+The matrix is the analytic Hessian-vector product on each unit direction.
+A potential without =analyticHvp= keeps both curvature flags false.
 The version does not cover the Cap'n Proto params schema, the tensor runtime the
 engine links, or the model.
 
@@ -264,8 +272,8 @@ Must not run concurrently with another call on the same handle.
 - Units :: none.
 - Outputs :: =size= (bytes the engine wrote), =reentrancy=,
   =per_image_instances=, =batched=, =periodic=, =stress=,
-  =group_collective=, =orbital_selection=, =orbital_copy= and =analytic_hvp=;
-  the flags are 0 or 1.
+  =group_collective=, =orbital_selection=, =orbital_copy=, =analytic_hvp= and
+  =analytic_hessian=; the flags are 0 or 1.
 - Errors :: none.
 
 The fields mirror rgpot's =PotCaps=.
@@ -279,6 +287,9 @@ returns it.
 =orbital_selection= means the backend supports =rgpot_engine_select_orbitals=.
 =orbital_copy= means the backend supports =rgpot_engine_copy_orbitals=.
 =analytic_hvp= means =rgpot_engine_hvp= returns an exact directional product.
+=analytic_hessian= means =rgpot_engine_hessian= returns that product on each
+unit direction, as one exact energy Hessian.
+It is not a finite difference.
 
 =reentrancy= decides how the table admits concurrent =rgpot_engine_force= and
 =rgpot_engine_force_batch= calls:
@@ -325,7 +336,7 @@ size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buf, size_t len)
 Optional symbol.
 Reading does not clear the message.
 A successful =rgpot_engine_force=,
-=rgpot_engine_force_batch=, =rgpot_engine_hvp=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=
+=rgpot_engine_force_batch=, =rgpot_engine_hvp=, =rgpot_engine_hessian=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=
 or =rgpot_engine_copy_orbitals= clears it.
 Errors of =rgpot_engine_create= go to its =errbuf=.
 May run at any time, also during an evaluation on the same handle.
@@ -619,6 +630,32 @@ Absence of the symbol or a false =analytic_hvp= is a hard unsupported result;
 the adapter and Rust loader never approximate it with finite differences.
 For learning engines the call is also an incorporation boundary.
 A variant for groups of different compositions would be a separate symbol.
+
+*** =rgpot_engine_hessian=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
+                         const double *positions, const int *atomicNrs,
+                         double *hessian_out, const double *box);
+#+end_src
+
+- Inputs :: the potential and geometry as for =rgpot_engine_force=.
+  =hessian_out= must not overlap =positions=, =atomicNrs= or =box=.
+- Units :: positions and box in Angstrom; =hessian_out= is the energy Hessian in
+  eV/Angstrom squared, row-major, with =3 * nAtoms= rows.
+- Outputs :: =RGPOT_ENGINE_OK= and the exact energy Hessian in =hessian_out=.
+  Each column is =rgpot_engine_hvp= on one unit direction.
+- Errors :: returns
+  =RGPOT_ENGINE_ERR_INVALID= for a NULL pointer, an invalid atom count, an overflowing dimension, or an overlapping output; =RGPOT_ENGINE_ERR_UNSUPPORTED=
+  when the potential does not advertise
+  =analytic_hvp=; and =RGPOT_ENGINE_ERR_EVAL= when the implementation throws.
+  The reason is available from =rgpot_engine_last_error=.
+
+Optional symbol.
+Absence of the symbol or a false =analytic_hessian= is a hard unsupported
+result.
+The table does not call a numerical Hessian.
 
 ** Learning engines
 
@@ -1255,12 +1292,14 @@ the handle as a =PotentialImpl=.
   =EngineError::Fatal= without calling into native code, while dropping the
   handle still calls =rgpot_engine_destroy= once to release the =RgpotEnginePot=
   allocation.
-- =EnginePotential::caps()= / =EnginePotential::hvp(&request, direction)= ::
-  Reads the size-prefixed engine capability structure and dispatches the exact
-  product.
-  A missing symbol, a false
-  =analytic_hvp= bit, or =RGPOT_ENGINE_ERR_UNSUPPORTED= returns
-  =EngineError::Unsupported= (retaining the engine's last-error message) without
-  a finite-difference fallback.
-- =EnginePotential::into_potential(self)= :: Converts the instance into a =PotentialImpl= callback handle, serializes calls to its engine instance, and registers an analytic callback on the underlying =rgpot_potential_t= only when both =rgpot_engine_caps= and =rgpot_engine_hvp= are exported and =analytic_hvp=
+- =EnginePotential::caps()= / =EnginePotential::hvp(&request, direction)= /
+  =EnginePotential::hessian(&request)= :: Reads the size-prefixed engine
+  capability structure and dispatches the exact product or the exact dense
+  Hessian.
+  A missing symbol, a false capability bit, or =RGPOT_ENGINE_ERR_UNSUPPORTED=
+  returns =EngineError::Unsupported= (retaining the engine's last-error message)
+  without a finite-difference fallback.
+- =EnginePotential::into_potential(self)= :: Converts the instance into a =PotentialImpl= callback handle, serializes calls to its engine instance, and registers an analytic Hessian-vector callback when both =rgpot_engine_caps= and =rgpot_engine_hvp= are exported and =analytic_hvp=
   is true.
+  It registers an analytic dense-Hessian callback when =rgpot_engine_hessian= is
+  exported and =analytic_hessian= is true.
