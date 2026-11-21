@@ -480,14 +480,28 @@ void Neighbours::update(const double *xyz, std::size_t n, const double *box9,
   len_[0] = box9[0];
   len_[1] = box9[4];
   len_[2] = box9[8];
-  for (int k = 0; k < 3; ++k) {
-    periodic_[k] = spec.periodic[static_cast<std::size_t>(k)] && len_[k] > 0.0;
-    inv_[k] = periodic_[k] ? 1.0 / len_[k] : 0.0;
-  }
+  const double det = box9[0] * (box9[4] * box9[8] - box9[5] * box9[7]) -
+                     box9[1] * (box9[3] * box9[8] - box9[5] * box9[6]) +
+                     box9[2] * (box9[3] * box9[7] - box9[4] * box9[6]);
+  const bool solid = std::isfinite(det) && det != 0.0;
   const bool sheared = box9[1] != 0.0 || box9[2] != 0.0 || box9[3] != 0.0 ||
                        box9[5] != 0.0 || box9[6] != 0.0 || box9[7] != 0.0;
+  // A rotated cell can put a non-positive length on the diagonal of a
+  // periodic axis. The diagonal is not a period there, so such a cell is
+  // binned and folded as a general cell.
+  bool flipped = false;
+  for (int k = 0; k < 3; ++k) {
+    flipped = flipped || (spec.periodic[static_cast<std::size_t>(k)] && !(len_[k] > 0.0));
+  }
   image_ = spec.image;
-  use_general_ = image_ == Image::General || sheared;
+  use_general_ = image_ == Image::General || sheared || (solid && flipped);
+  for (int k = 0; k < 3; ++k) {
+    // A general cell is periodic along every requested axis of a cell with
+    // volume. The diagonal decides only an orthorhombic cell.
+    periodic_[k] = spec.periodic[static_cast<std::size_t>(k)] &&
+                   (use_general_ ? solid : len_[k] > 0.0);
+    inv_[k] = periodic_[k] && len_[k] > 0.0 ? 1.0 / len_[k] : 0.0;
+  }
   if (use_general_) {
     general_ = MinimumImage(box9, spec.periodic);
   }

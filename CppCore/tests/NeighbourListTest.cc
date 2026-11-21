@@ -385,6 +385,62 @@ TEST_CASE("large general cells match the brute force", "[nlist][api]") {
   }
 }
 
+TEST_CASE("rotated and sheared cells with a non-positive diagonal match the brute force",
+          "[nlist][api]") {
+  // n = 512 bins the atoms. Each cell has a periodic axis whose diagonal
+  // entry is zero or negative, which is not a period of that axis.
+  struct Case {
+    const char *name;
+    std::array<double, 9> box;
+    std::array<bool, 3> periodic;
+  };
+  const double c120 = -0.5;
+  const double s120 = 0.86602540378443865;
+  const std::array<Case, 5> cases{{
+      {"cube rotated by 90 degrees", {{0, 15, 0, -15, 0, 0, 0, 0, 15}}, {{true, true, true}}},
+      {"cube rotated by 120 degrees",
+       {{15 * c120, 15 * s120, 0, -15 * s120, 15 * c120, 0, 0, 0, 15}},
+       {{true, true, true}}},
+      {"cube rotated by 180 degrees", {{-15, 0, 0, 0, -15, 0, 0, 0, 15}}, {{true, true, true}}},
+      {"slab rotated by 90 degrees", {{0, 20, 0, -20, 0, 0, 0, 0, 18}}, {{true, true, false}}},
+      {"sheared cell", {{-2, 15, 0, -15, -1, 0, 1, 2, 15}}, {{true, true, true}}},
+  }};
+  constexpr std::size_t n = 512;
+  constexpr double cutoff = 3.0;
+  for (const Case &c : cases) {
+    INFO(c.name);
+    const auto pos = fractional_positions(c.box.data(), n);
+    const auto ref = brute(pos, c.box.data(), cutoff, false, true, c.periodic, 1);
+    REQUIRE(ref.size() > 1000);
+    rgpot::nlist::Query query;
+    query.cutoff = cutoff;
+    query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
+    query.cut = rgpot::nlist::Cut::Strict;
+    query.periodic = c.periodic;
+    rgpot::nlist::Table table;
+    rgpot::nlist::build(table, pos.data(), n, c.box.data(), query);
+    INFO("builder " << table.size() << " brute " << ref.size());
+    CHECK(from_table(table) == ref);
+    rgpot::nlist::Table by_atom;
+    rgpot::nlist::buildByAtom(by_atom, pos.data(), n, c.box.data(), query);
+    CHECK(from_table(by_atom) == ref);
+
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.periodic = c.periodic;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = rgpot::nlist::Mode::Stored;
+    rgpot::nlist::Neighbours cells;
+    cells.update(pos.data(), n, c.box.data(), spec);
+    std::size_t within = 0;
+    cells.forHalf(0, static_cast<std::int64_t>(n),
+                  [&](std::int32_t, std::int32_t, double, double, double, double r2) {
+                    within += r2 < cutoff * cutoff ? 1 : 0;
+                  });
+    CHECK(within == ref.size());
+  }
+}
+
 TEST_CASE("a sheared mixed-periodic slab uses a real cell grid", "[nlist][api]") {
   constexpr std::size_t n = 600;
   constexpr double cutoff = 2.5;
