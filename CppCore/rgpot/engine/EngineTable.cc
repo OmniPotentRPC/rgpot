@@ -292,11 +292,22 @@ int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
     return fail(pot, RGPOT_ENGINE_ERR_INVALID, "Hessian dimension overflows");
   }
   const size_t n2 = dim * dim;
+  if (n2 > std::numeric_limits<size_t>::max() / sizeof(double) ||
+      n2 > std::numeric_limits<std::uintptr_t>::max() / sizeof(double)) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID,
+                "Hessian byte count overflows");
+  }
   const auto hb = reinterpret_cast<std::uintptr_t>(hessian_out);
   const std::uintptr_t bytes = n2 * sizeof(double);
-  const auto overlaps = [hb, bytes](const void *input, std::uintptr_t inputBytes) {
+  const auto end_of = [](std::uintptr_t begin, std::uintptr_t length) {
+    return begin > std::numeric_limits<std::uintptr_t>::max() - length
+               ? std::numeric_limits<std::uintptr_t>::max()
+               : begin + length;
+  };
+  const auto overlaps = [hb, bytes, &end_of](const void *input,
+                                             std::uintptr_t inputBytes) {
     const auto begin = reinterpret_cast<std::uintptr_t>(input);
-    return hb < begin + inputBytes && begin < hb + bytes;
+    return hb < end_of(begin, inputBytes) && begin < end_of(hb, bytes);
   };
   if (overlaps(positions, dim * sizeof(double)) ||
       overlaps(atomicNrs, static_cast<std::uintptr_t>(nAtoms) * sizeof(int)) ||
