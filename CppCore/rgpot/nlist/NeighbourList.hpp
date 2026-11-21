@@ -64,7 +64,9 @@ enum class Shell : std::uint8_t { Half, Full };
 /// One pair per interaction. `shell` chooses the direction.
 struct Pairs {
   Shell shell = Shell::Half;
-  friend bool operator==(Pairs a, Pairs b) noexcept { return a.shell == b.shell; }
+  friend bool operator==(Pairs a, Pairs b) noexcept {
+    return a.shell == b.shell;
+  }
 };
 
 /// Four consecutive central atoms, one partner, and a 4-bit mask.
@@ -147,11 +149,16 @@ struct Table {
     return vector;
   }
   [[nodiscard]] View view() const noexcept {
-    return View{first, second,
-                shift.empty() ? std::span<const std::int32_t>{} : std::span<const std::int32_t>{shift},
-                vector.empty() ? std::span<const double>{} : std::span<const double>{vector},
-                distance.empty() ? std::span<const double>{} : std::span<const double>{distance},
-                mask.empty() ? std::span<const std::uint8_t>{} : std::span<const std::uint8_t>{mask}};
+    return View{first,
+                second,
+                shift.empty() ? std::span<const std::int32_t>{}
+                              : std::span<const std::int32_t>{shift},
+                vector.empty() ? std::span<const double>{}
+                               : std::span<const double>{vector},
+                distance.empty() ? std::span<const double>{}
+                                 : std::span<const double>{distance},
+                mask.empty() ? std::span<const std::uint8_t>{}
+                             : std::span<const std::uint8_t>{mask}};
   }
 };
 
@@ -200,8 +207,6 @@ private:
   std::size_t n_ = 0;
   double box_[9]{};
   Query query_{};
-  int nmax_[3]{};
-  bool one_image_ = false;
   Neighbours cells_;
   std::size_t atom_ = 0;
   std::vector<std::int32_t> hold_first_;
@@ -253,10 +258,13 @@ void build(Batch &batch, const Systems &systems, const Query &query);
 /// Bind `cells` to this geometry. `cutoff` is the pair cutoff and `skin`
 /// is the Verlet buffer the kernels drop inside the cutoff. `image` is
 /// Round for an orthorhombic cell, Half after coordinates have been
-/// wrapped, and General for a sheared cell. `mode` stores the index when
-/// it fits and streams otherwise, unless the caller asks.
-inline void updateCells(Neighbours &cells, const double *positions, std::size_t n,
-                        const double *box9, double cutoff, double skin, Image image, Mode mode,
+/// wrapped, and General for an orthogonal cell with a short periodic side.
+/// A sheared cell takes its pairs from vesin and ignores `image`. `mode`
+/// stores the index when it fits and streams otherwise, unless the caller
+/// asks; a sheared cell is always stored.
+inline void updateCells(Neighbours &cells, const double *positions,
+                        std::size_t n, const double *box9, double cutoff,
+                        double skin, Image image, Mode mode,
                         const std::array<bool, 3> &periodic) {
   Spec spec;
   spec.cutoff = cutoff;
@@ -270,14 +278,15 @@ inline void updateCells(Neighbours &cells, const double *positions, std::size_t 
 /// Pairs for atoms in `[begin, end)`. `dx` is `r_i - r_j` after the image,
 /// the negation of the vector a stored table holds for the minimum image.
 template <typename Fn>
-inline void visitDirected(const Neighbours &cells, std::int64_t begin, std::int64_t end,
-                          Fn &&fn) {
+inline void visitDirected(const Neighbours &cells, std::int64_t begin,
+                          std::int64_t end, Fn &&fn) {
   cells.forDirected(begin, end, std::forward<Fn>(fn));
 }
 
 /// The pairs of `visitDirected` with `j > i` only.
 template <typename Fn>
-inline void visitHalf(const Neighbours &cells, std::int64_t begin, std::int64_t end, Fn &&fn) {
+inline void visitHalf(const Neighbours &cells, std::int64_t begin,
+                      std::int64_t end, Fn &&fn) {
   cells.forHalf(begin, end, std::forward<Fn>(fn));
 }
 

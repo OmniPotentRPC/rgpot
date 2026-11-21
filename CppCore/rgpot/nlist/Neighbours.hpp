@@ -11,10 +11,10 @@
 
 #include <algorithm>
 #include <array>
-#include <cstring>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -37,8 +37,9 @@ using rgpot::threadsRequested;
 /// How the minimum image is formed. Round is the orthorhombic truncation
 /// used by the pair kernels. Half is one correction about the half-box,
 /// used after coordinates have been wrapped into the cell. General is
-/// MinimumImage, for a non-orthogonal cell or a periodic side shorter
-/// than the search.
+/// MinimumImage, for an orthogonal cell or a periodic side shorter than
+/// the search. A sheared cell takes its pairs from vesin instead and
+/// ignores this value.
 enum class Image : std::uint8_t { Round, Half, General };
 
 /// Stored keeps a Verlet list of candidate pairs. Stream walks the cells
@@ -53,7 +54,18 @@ struct Spec {
   std::array<bool, 3> periodic{{true, true, true}};
   Image image = Image::Round;
   Mode mode = Mode::Auto;
+  /// Keep every periodic image of every pair inside the search, and the
+  /// images of an atom with itself, for `forImages`. The directed and half
+  /// walks then visit each image of a pair and skip the self images.
+  /// Without it the list holds the one nearest image of each pair.
+  bool images = false;
 };
+
+/// True when an atom lies outside [0, L) along a periodic axis of an
+/// orthogonal cell. The cell shifts of the tile walk assume it does not.
+[[nodiscard]] bool outsideCell(const double *xyz, std::size_t n,
+                               const double *box9,
+                               const std::array<bool, 3> &periodic) noexcept;
 
 /// Bytes the process may still allocate, from MemAvailable. Zero when
 /// that figure is not reported.
@@ -62,8 +74,9 @@ struct Spec {
 /// True when every atom has moved by at most half of `skin` from
 /// `reference`. Skin 0 is true only when the coordinates match. The same
 /// test decides `Builder::update`'s reused flag.
-[[nodiscard]] inline bool withinSkin(const double *reference, const double *current,
-                                     std::size_t n, double skin) noexcept {
+[[nodiscard]] inline bool withinSkin(const double *reference,
+                                     const double *current, std::size_t n,
+                                     double skin) noexcept {
   const double limit2 = 0.25 * skin * skin;
   for (std::size_t a = 0; a < n; ++a) {
     const double dx = current[3 * a] - reference[3 * a];
@@ -88,6 +101,14 @@ struct Spec {
 /// that read them. Skin 0 reuses the list only when the coordinates and
 /// the cell match.
 ///
+/// A sheared cell and a `Spec::images` request do not bin atoms. Their
+/// pairs, with the integer shift of each image, come from vesin, and the
+/// list is stored in every mode. A stored image is fixed by its shift, so
+/// such a list is reused only while no atom has moved by more than half
+/// the skin from its reference position, and a wrapped atom rebuilds it.
+/// An orthogonal cell bins the coordinates folded into the cell, so an
+/// atom outside it is found through its image inside.
+///
 /// An infinite cutoff or skin makes every pair a candidate. Such an
 /// update bins nothing and stores nothing, in any mode: each walk takes
 /// the pairs straight from the coordinates, i ascending and then j
@@ -109,10 +130,14 @@ public:
   /// True when the search has no bound and the walks visit every pair.
   /// Such an update also reports streaming(). One atom has no pairs and
   /// keeps the empty stored list.
-  [[nodiscard]] bool allPairs() const noexcept { return streaming_ && std::isinf(search_); }
+  [[nodiscard]] bool allPairs() const noexcept {
+    return streaming_ && std::isinf(search_);
+  }
   /// True when the last update kept the previous list. The displacement
   /// test is `withinSkin` on the nearest image of each reference position.
   [[nodiscard]] bool reused() const noexcept { return reused_; }
+  /// True when the pairs come from vesin with a shift per image.
+  [[nodiscard]] bool imaged() const noexcept { return imaged_; }
   /// Stored lists built so far. A reuse does not count.
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
   /// Stored pair index. A stream leaves this empty.
@@ -131,7 +156,7 @@ public:
   /// index order. In stored mode and in an unbounded search a partner
   /// `j < i` takes the negated vector of `forHalf` from j, so the two
   /// visits of a pair see opposite vectors and the same `r2`, even where
-  /// two images tie under MinimumImage, which every sheared cell uses. A
+  /// two images tie under MinimumImage, which General uses. A
   /// walk may copy `fn`, so state the caller reads back is captured by
   /// reference.
   template <typename Fn>
@@ -174,26 +199,35 @@ public:
     }
     if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
                        const std::int32_t *head, std::size_t ncells,
-                       bool cell_shift, double search2, double L0, double L1, double L2, double i0,
-                       double i1, double i2, bool p0, bool p1, bool p2) {
+                       bool cell_shift, double search2, double L0, double L1,
+                       double L2, double i0, double i1, double i2, bool p0,
+                       bool p1, bool p2) {
           forEachSlice(nthreads, [&](int slice) {
-            const auto range = partition(static_cast<std::int64_t>(ncells), slice, nthreads);
-            auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+            const auto range =
+                partition(static_cast<std::int64_t>(ncells), slice, nthreads);
+            auto accept = [&](std::int32_t i, std::int32_t j, double dx,
+                              double dy, double dz,
                               double r2) { fn(slice, i, j, dx, dy, dz, r2); };
             if (head != nullptr) {
-              visitTiles<true>(tile, neigh, nneigh, head, static_cast<std::size_t>(range.begin),
-                               static_cast<std::size_t>(range.end), 0, n_, half, cell_shift,
-                               search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+              visitTiles<true>(tile, neigh, nneigh, head,
+                               static_cast<std::size_t>(range.begin),
+                               static_cast<std::size_t>(range.end), 0, n_, half,
+                               cell_shift, search2, L0, L1, L2, i0, i1, i2, p0,
+                               p1, p2, accept);
             } else {
-              visitTiles<false>(tile, neigh, nneigh, head, static_cast<std::size_t>(range.begin),
-                                static_cast<std::size_t>(range.end), 0, n_, half, cell_shift,
-                                search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+              visitTiles<false>(tile, neigh, nneigh, head,
+                                static_cast<std::size_t>(range.begin),
+                                static_cast<std::size_t>(range.end), 0, n_,
+                                half, cell_shift, search2, L0, L1, L2, i0, i1,
+                                i2, p0, p1, p2, accept);
             }
           });
         })) {
       forEachSlice(nthreads, [&](int slice) {
-        const auto range = partition(static_cast<std::int64_t>(n_), slice, nthreads);
-        auto adapt = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+        const auto range =
+            partition(static_cast<std::int64_t>(n_), slice, nthreads);
+        auto adapt = [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                         double dz,
                          double r2) { fn(slice, i, j, dx, dy, dz, r2); };
         if (half) {
           forHalf(range.begin, range.end, adapt);
@@ -211,53 +245,82 @@ public:
   /// builds its stencil once, and every slice walks the cells for its own
   /// run. Split by cell instead, the occupied cells of a cluster, or the
   /// one bin of an open box, can all fall to one slice.
-  template <typename Fn>
-  void forRowTeam(int nthreads, Fn &&fn) const {
+  template <typename Fn> void forRowTeam(int nthreads, Fn &&fn) const {
     if (nthreads < 1) {
       nthreads = 1;
     }
     if (streaming_ && !allPairs() &&
         fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
-                      const std::int32_t *head, std::size_t ncells, bool cell_shift,
-                      double search2, double L0, double L1, double L2, double i0, double i1,
-                      double i2, bool p0, bool p1, bool p2) {
+                      const std::int32_t *head, std::size_t ncells,
+                      bool cell_shift, double search2, double L0, double L1,
+                      double L2, double i0, double i1, double i2, bool p0,
+                      bool p1, bool p2) {
           forEachSlice(nthreads, [&](int slice) {
-            const auto range = partition(static_cast<std::int64_t>(n_), slice, nthreads);
-            auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+            const auto range =
+                partition(static_cast<std::int64_t>(n_), slice, nthreads);
+            auto accept = [&](std::int32_t i, std::int32_t j, double dx,
+                              double dy, double dz,
                               double r2) { fn(slice, i, j, dx, dy, dz, r2); };
             if (head != nullptr) {
-              visitTiles<true>(tile, neigh, nneigh, head, 0, ncells, range.begin,
-                               static_cast<std::size_t>(range.end), false, cell_shift, search2,
-                               L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+              visitTiles<true>(tile, neigh, nneigh, head, 0, ncells,
+                               range.begin, static_cast<std::size_t>(range.end),
+                               false, cell_shift, search2, L0, L1, L2, i0, i1,
+                               i2, p0, p1, p2, accept);
             } else {
-              visitTiles<false>(tile, neigh, nneigh, head, 0, ncells, range.begin,
-                                static_cast<std::size_t>(range.end), false, cell_shift, search2,
-                                L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+              visitTiles<false>(
+                  tile, neigh, nneigh, head, 0, ncells, range.begin,
+                  static_cast<std::size_t>(range.end), false, cell_shift,
+                  search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
             }
           });
         })) {
       return;
     }
     forEachSlice(nthreads, [&](int slice) {
-      const auto range = partition(static_cast<std::int64_t>(n_), slice, nthreads);
-      auto adapt = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+      const auto range =
+          partition(static_cast<std::int64_t>(n_), slice, nthreads);
+      auto adapt = [&](std::int32_t i, std::int32_t j, double dx, double dy,
+                       double dz,
                        double r2) { fn(slice, i, j, dx, dy, dz, r2); };
       forDirected(range.begin, range.end, adapt);
     });
   }
 
+  /// Every image of every pair inside the search, for atoms in
+  /// `[begin, end)`: `fn(i, j, sa, sb, sc)`. The image vector is
+  /// `r_j - r_i + sa a + sb b + sc c`. With `Spec::images` the images of
+  /// an atom with itself, `j == i`, are included. Only an update that
+  /// reports `imaged()` has shifts.
+  template <typename Fn>
+  void forImages(std::int64_t begin, std::int64_t end, Fn &&fn) const {
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto a = static_cast<std::size_t>(i);
+      for (std::int32_t p = off_[a]; p < off_[a + 1]; ++p) {
+        const auto q = static_cast<std::size_t>(p);
+        fn(static_cast<std::int32_t>(i), nbr_[q], shift_[3 * q],
+           shift_[3 * q + 1], shift_[3 * q + 2]);
+      }
+    }
+  }
+
   /// Neighbours of one atom from the bins already built. Does not allocate
   /// the tile stencil. A three-body stream uses this so the scratch is one
   /// atom, not every bond.
-  template <typename Fn>
-  void forAtom(std::int32_t i, Fn fn) const {
+  template <typename Fn> void forAtom(std::int32_t i, Fn fn) const {
     if (allPairs()) {
-      walkAll(static_cast<std::int64_t>(i), static_cast<std::int64_t>(i) + 1, fn, false);
+      walkAll(static_cast<std::int64_t>(i), static_cast<std::int64_t>(i) + 1,
+              fn, false);
+      return;
+    }
+    if (imaged_) {
+      walkImaged(static_cast<std::int64_t>(i), static_cast<std::int64_t>(i) + 1,
+                 fn, false);
       return;
     }
     // One atom, often from several threads. The cached stencil is built
     // once for a whole walk; this call does not touch it.
-    walkCellsScattered(static_cast<std::int64_t>(i), static_cast<std::int64_t>(i) + 1, fn, false,
+    walkCellsScattered(static_cast<std::int64_t>(i),
+                       static_cast<std::int64_t>(i) + 1, fn, false,
                        search_ * search_);
   }
 
@@ -267,15 +330,17 @@ private:
     double skin = 0;
     Image image = Image::Round;
     Mode mode = Mode::Auto;
+    bool images = false;
     std::array<bool, 3> periodic{{true, true, true}};
     bool operator==(const SpecKey &o) const {
       return cutoff == o.cutoff && skin == o.skin && image == o.image &&
-             mode == o.mode && periodic == o.periodic;
+             mode == o.mode && images == o.images && periodic == o.periodic;
     }
   };
 
   void buildCells(const double *xyz, std::size_t n);
   void buildStored(const double *xyz, std::size_t n, std::uint64_t bound);
+  void buildImaged(const double *xyz, std::size_t n, const Spec &spec);
   [[nodiscard]] std::uint64_t candidateBound() const;
   /// `wrapped` is set when some atom is within the skin only through
   /// another periodic image of its reference position.
@@ -284,15 +349,53 @@ private:
                               bool &wrapped) const;
   void fold(double &dx, double &dy, double &dz) const;
 
+  /// The nearest image of each pair, from the shifts vesin returned. The
+  /// reverse of a row is its negation bit for bit, so a directed walk and
+  /// a half walk agree on every pair. An atom is not its own partner.
+  template <typename Fn>
+  void walkImaged(std::int64_t begin, std::int64_t end, Fn &fn,
+                  bool half) const {
+    const double *x = xyz_;
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto a = static_cast<std::size_t>(i);
+      const auto self = static_cast<std::int32_t>(i);
+      const double xi = x[3 * a];
+      const double yi = x[3 * a + 1];
+      const double zi = x[3 * a + 2];
+      for (std::int32_t p = off_[a]; p < off_[a + 1]; ++p) {
+        const auto q = static_cast<std::size_t>(p);
+        const auto j = nbr_[q];
+        if (j == self || (half && j < self)) {
+          continue;
+        }
+        const double sa = static_cast<double>(shift_[3 * q]);
+        const double sb = static_cast<double>(shift_[3 * q + 1]);
+        const double sc = static_cast<double>(shift_[3 * q + 2]);
+        const auto b = static_cast<std::size_t>(j);
+        const double dx =
+            (xi - x[3 * b]) - (sa * box_[0] + sb * box_[3] + sc * box_[6]);
+        const double dy =
+            (yi - x[3 * b + 1]) - (sa * box_[1] + sb * box_[4] + sc * box_[7]);
+        const double dz =
+            (zi - x[3 * b + 2]) - (sa * box_[2] + sb * box_[5] + sc * box_[8]);
+        fn(self, j, dx, dy, dz, dx * dx + dy * dy + dz * dz);
+      }
+    }
+  }
+
   template <typename Fn>
   void walkStored(std::int64_t begin, std::int64_t end, Fn &fn,
                   bool half) const {
+    if (imaged_) {
+      walkImaged(begin, end, fn, half);
+      return;
+    }
     const auto row = nbr_.begin();
     // Round and Half fold the reverse of a pair to the negated vector; only
     // the sign of a zero component can differ, and a sum that starts at
-    // zero adds either sign alike. MinimumImage, which General and every
-    // sheared cell use, can tie two images, so there a directed walk takes
-    // the vector of a lower partner from that partner.
+    // zero adds either sign alike. MinimumImage, which General uses, can
+    // tie two images, so there a directed walk takes the vector of a lower
+    // partner from that partner.
     const bool reverse = !half && use_general_;
     for (std::int64_t i = begin; i < end; ++i) {
       const auto a = static_cast<std::size_t>(i);
@@ -302,7 +405,8 @@ private:
       // The partners are sorted, so those after i are a tail of the row.
       const auto mid =
           half || reverse
-              ? static_cast<std::int32_t>(std::upper_bound(row + lo, row + hi, self) - row)
+              ? static_cast<std::int32_t>(
+                    std::upper_bound(row + lo, row + hi, self) - row)
               : lo;
       if (reverse) {
         for (std::int32_t p = lo; p < mid; ++p) {
@@ -347,8 +451,8 @@ private:
   /// those above it, so `fn` has one call site and no pair tests j == i.
   /// Inlined into a large potential call, this loop spilled its registers.
   template <bool Fold, typename Fn>
-  RGPOT_NLIST_NOINLINE void walkAllRows(std::int64_t begin, std::int64_t end, Fn fn,
-                                        bool half) const {
+  RGPOT_NLIST_NOINLINE void walkAllRows(std::int64_t begin, std::int64_t end,
+                                        Fn fn, bool half) const {
     const auto n = static_cast<std::int64_t>(n_);
     const double search2 = search_ * search_;
     const double *x = xyz_;
@@ -401,21 +505,21 @@ private:
   /// and that stencil no longer fits; the same cache then keeps only the
   /// cells that hold a pair inside the search.
   [[nodiscard]] bool tileStencilFits() const {
-    const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+    const auto ncells = static_cast<std::size_t>(nx_) *
+                        static_cast<std::size_t>(ny_) *
                         static_cast<std::size_t>(nz_);
     const double per_cell =
         static_cast<double>(n_) / static_cast<double>(ncells > 0 ? ncells : 1);
     const double list_bytes = per_cell * 27.0 * static_cast<double>(n_) * 4.0;
-    const double tile_bytes =
-        static_cast<double>(ncells) * 27.0 * 32.0 + static_cast<double>(n_) * 32.0;
+    const double tile_bytes = static_cast<double>(ncells) * 27.0 * 32.0 +
+                              static_cast<double>(n_) * 32.0;
     return !(tile_bytes > list_bytes);
   }
 
-  template <typename Loop>
-  bool fastTiles(Loop &&loop) const {
+  template <typename Loop> bool fastTiles(Loop &&loop) const {
     // Half is the same orthorhombic minimum image once coordinates sit in
-    // the cell. A sheared box stays on the scattered walk. An unbounded
-    // search has no bins to tile, and a stored list walks its index.
+    // the cell. A sheared box has no bins and takes the stored walk. An
+    // unbounded search has no bins to tile, and a stored list walks its index.
     if (!streaming_ || allPairs() || use_general_ ||
         (image_ != Image::Round && image_ != Image::Half) || n_ < 2) {
       return false;
@@ -424,9 +528,13 @@ private:
     // are unchanged. When that array is larger than the pair index, the same
     // cache keeps only the cells that hold a pair inside the search.
     const bool dense = tileStencilFits();
-    const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
+    const auto ncells = static_cast<std::size_t>(nx_) *
+                        static_cast<std::size_t>(ny_) *
                         static_cast<std::size_t>(nz_);
-    const bool cell_shift = (!periodic_[0] || nx_ >= 5) && (!periodic_[1] || ny_ >= 5) &&
+    // A cell shift is the image of a pair only when both atoms sit inside
+    // the cell. Otherwise each pair is rounded.
+    const bool cell_shift = inside_ && (!periodic_[0] || nx_ >= 5) &&
+                            (!periodic_[1] || ny_ >= 5) &&
                             (!periodic_[2] || nz_ >= 5);
     struct Nbor {
       int id;
@@ -460,259 +568,269 @@ private:
     thread_local Cache cache;
     // Only a streaming walk can reuse this stencil cache across calls. A
     // stored walk has its own pair index and rebuilds tile data per walk.
-    const bool same_grid = cache.owner == this && cache.nx == nx_ && cache.ny == ny_ &&
-                           cache.nz == nz_ && cache.search == search_ && cache.compact == !dense;
+    const bool same_grid = cache.owner == this && cache.nx == nx_ &&
+                           cache.ny == ny_ && cache.nz == nz_ &&
+                           cache.search == search_ && cache.compact == !dense;
     // update() already compared the coordinates when it reused the bins.
-    const bool reuse =
-        streaming_ && same_grid &&
-        (reused_ || (cache.xyz.size() == n_ * 3 &&
-                     std::memcmp(cache.xyz.data(), xyz_, n_ * 3 * sizeof(double)) == 0));
+    const bool reuse = streaming_ && same_grid &&
+                       (reused_ || (cache.xyz.size() == n_ * 3 &&
+                                    std::memcmp(cache.xyz.data(), xyz_,
+                                                n_ * 3 * sizeof(double)) == 0));
     if (!reuse) {
-    if (!dense) {
-      cache.compact = true;
-      cache.neigh.clear();
-      cache.nneigh.assign(ncells, 0);
-      cache.head.assign(ncells + 1, 0);
-      cache.tile.clear();
-      const double search2 = search_ * search_;
-      const auto cap = ncells * 2;
-      bool overflow = ncells < 1 || ncells > static_cast<std::size_t>(0x7fffffff) / 2;
-      for (std::size_t c = 0; c < ncells && !overflow; ++c) {
-        cache.head[c] = static_cast<std::int32_t>(cache.neigh.size());
-        if (cell_start_[c] == cell_start_[c + 1]) {
-          continue;
-        }
-        const int cell = static_cast<int>(c);
-        const int iz = cell % nz_;
-        const int iy = (cell / nz_) % ny_;
-        const int ix = cell / (nz_ * ny_);
-        int seen[27];
-        int nseen = 0;
-        for (int ox = -1; ox <= 1 && !overflow; ++ox) {
-          for (int oy = -1; oy <= 1 && !overflow; ++oy) {
-            for (int oz = -1; oz <= 1; ++oz) {
-              int jx = ix + ox;
-              int jy = iy + oy;
-              int jz = iz + oz;
-              int sa = 0;
-              int sb = 0;
-              int sc = 0;
-              if (periodic_[0]) {
-                if (jx < 0) {
-                  jx += nx_;
-                  sa = -1;
-                } else if (jx >= nx_) {
-                  jx -= nx_;
-                  sa = 1;
-                }
-              } else if (jx < 0 || jx >= nx_) {
-                continue;
-              }
-              if (periodic_[1]) {
-                if (jy < 0) {
-                  jy += ny_;
-                  sb = -1;
-                } else if (jy >= ny_) {
-                  jy -= ny_;
-                  sb = 1;
-                }
-              } else if (jy < 0 || jy >= ny_) {
-                continue;
-              }
-              if (periodic_[2]) {
-                if (jz < 0) {
-                  jz += nz_;
-                  sc = -1;
-                } else if (jz >= nz_) {
-                  jz -= nz_;
-                  sc = 1;
-                }
-              } else if (jz < 0 || jz >= nz_) {
-                continue;
-              }
-              const int id = (jx * ny_ + jy) * nz_ + jz;
-              bool dup = false;
-              for (int s = 0; s < nseen; ++s) {
-                if (seen[s] == id) {
-                  dup = true;
-                  break;
-                }
-              }
-              if (dup) {
-                continue;
-              }
-              seen[nseen++] = id;
-              const auto nb = static_cast<std::size_t>(id);
-              if (cell_start_[nb] == cell_start_[nb + 1]) {
-                continue;
-              }
-              bool hit = false;
-              for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1] && !hit; ++q) {
-                const auto i = cell_atoms_[static_cast<std::size_t>(q)];
-                for (std::int32_t r = cell_start_[nb]; r < cell_start_[nb + 1]; ++r) {
-                  const auto j = cell_atoms_[static_cast<std::size_t>(r)];
-                  if (j == i) {
-                    continue;
+      if (!dense) {
+        cache.compact = true;
+        cache.neigh.clear();
+        cache.nneigh.assign(ncells, 0);
+        cache.head.assign(ncells + 1, 0);
+        cache.tile.clear();
+        const double search2 = search_ * search_;
+        const auto cap = ncells * 2;
+        bool overflow =
+            ncells < 1 || ncells > static_cast<std::size_t>(0x7fffffff) / 2;
+        for (std::size_t c = 0; c < ncells && !overflow; ++c) {
+          cache.head[c] = static_cast<std::int32_t>(cache.neigh.size());
+          if (cell_start_[c] == cell_start_[c + 1]) {
+            continue;
+          }
+          const int cell = static_cast<int>(c);
+          const int iz = cell % nz_;
+          const int iy = (cell / nz_) % ny_;
+          const int ix = cell / (nz_ * ny_);
+          int seen[27];
+          int nseen = 0;
+          for (int ox = -1; ox <= 1 && !overflow; ++ox) {
+            for (int oy = -1; oy <= 1 && !overflow; ++oy) {
+              for (int oz = -1; oz <= 1; ++oz) {
+                int jx = ix + ox;
+                int jy = iy + oy;
+                int jz = iz + oz;
+                int sa = 0;
+                int sb = 0;
+                int sc = 0;
+                if (periodic_[0]) {
+                  if (jx < 0) {
+                    jx += nx_;
+                    sa = -1;
+                  } else if (jx >= nx_) {
+                    jx -= nx_;
+                    sa = 1;
                   }
-                  double dx = 0;
-                  double dy = 0;
-                  double dz = 0;
-                  foldPair(i, j, dx, dy, dz);
-                  if (dx * dx + dy * dy + dz * dz <= search2) {
-                    hit = true;
+                } else if (jx < 0 || jx >= nx_) {
+                  continue;
+                }
+                if (periodic_[1]) {
+                  if (jy < 0) {
+                    jy += ny_;
+                    sb = -1;
+                  } else if (jy >= ny_) {
+                    jy -= ny_;
+                    sb = 1;
+                  }
+                } else if (jy < 0 || jy >= ny_) {
+                  continue;
+                }
+                if (periodic_[2]) {
+                  if (jz < 0) {
+                    jz += nz_;
+                    sc = -1;
+                  } else if (jz >= nz_) {
+                    jz -= nz_;
+                    sc = 1;
+                  }
+                } else if (jz < 0 || jz >= nz_) {
+                  continue;
+                }
+                const int id = (jx * ny_ + jy) * nz_ + jz;
+                bool dup = false;
+                for (int s = 0; s < nseen; ++s) {
+                  if (seen[s] == id) {
+                    dup = true;
                     break;
                   }
                 }
+                if (dup) {
+                  continue;
+                }
+                seen[nseen++] = id;
+                const auto nb = static_cast<std::size_t>(id);
+                if (cell_start_[nb] == cell_start_[nb + 1]) {
+                  continue;
+                }
+                bool hit = false;
+                for (std::int32_t q = cell_start_[c];
+                     q < cell_start_[c + 1] && !hit; ++q) {
+                  const auto i = cell_atoms_[static_cast<std::size_t>(q)];
+                  for (std::int32_t r = cell_start_[nb];
+                       r < cell_start_[nb + 1]; ++r) {
+                    const auto j = cell_atoms_[static_cast<std::size_t>(r)];
+                    if (j == i) {
+                      continue;
+                    }
+                    double dx = 0;
+                    double dy = 0;
+                    double dz = 0;
+                    foldPair(i, j, dx, dy, dz);
+                    if (dx * dx + dy * dy + dz * dz <= search2) {
+                      hit = true;
+                      break;
+                    }
+                  }
+                }
+                if (!hit) {
+                  continue;
+                }
+                if (cache.neigh.size() >= cap) {
+                  overflow = true;
+                  break;
+                }
+                cache.neigh.push_back(
+                    Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]});
+                ++cache.nneigh[c];
               }
-              if (!hit) {
-                continue;
-              }
-              if (cache.neigh.size() >= cap) {
-                overflow = true;
-                break;
-              }
-              cache.neigh.push_back(Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]});
-              ++cache.nneigh[c];
             }
           }
         }
-      }
-      if (!overflow) {
-        cache.head[ncells] = static_cast<std::int32_t>(cache.neigh.size());
-        const double per_cell = static_cast<double>(n_) / static_cast<double>(ncells);
-        const double list_bytes = per_cell * 27.0 * static_cast<double>(n_) * 4.0;
-        const double csr_bytes =
-            static_cast<double>(cache.neigh.size()) * 32.0 +
-            static_cast<double>(ncells + 1) * static_cast<double>(sizeof(std::int32_t));
-        if (csr_bytes > list_bytes) {
-          overflow = true;
+        if (!overflow) {
+          cache.head[ncells] = static_cast<std::int32_t>(cache.neigh.size());
+          const double per_cell =
+              static_cast<double>(n_) / static_cast<double>(ncells);
+          const double list_bytes =
+              per_cell * 27.0 * static_cast<double>(n_) * 4.0;
+          const double csr_bytes =
+              static_cast<double>(cache.neigh.size()) * 32.0 +
+              static_cast<double>(ncells + 1) *
+                  static_cast<double>(sizeof(std::int32_t));
+          if (csr_bytes > list_bytes) {
+            overflow = true;
+          }
         }
-      }
-      if (overflow) {
-        cache.owner = nullptr;
-        cache.neigh.clear();
+        if (overflow) {
+          cache.owner = nullptr;
+          cache.neigh.clear();
+          cache.head.clear();
+          cache.nneigh.clear();
+          return false;
+        }
+        if (!cache.neigh.empty()) {
+          cache.tile.resize(n_);
+          for (std::size_t q = 0; q < n_; ++q) {
+            const auto j = cell_atoms_[q];
+            const auto u = static_cast<std::size_t>(j) * 3;
+            cache.tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
+          }
+        }
+      } else {
+        cache.compact = false;
         cache.head.clear();
-        cache.nneigh.clear();
-        return false;
-      }
-      if (!cache.neigh.empty()) {
-        cache.tile.resize(n_);
+        auto &neigh = cache.neigh;
+        auto &nneigh = cache.nneigh;
+        neigh.assign(ncells * 27, Nbor{});
+        nneigh.assign(ncells, 0);
+        for (std::size_t c = 0; c < ncells; ++c) {
+          const int cell = static_cast<int>(c);
+          int iz = cell % nz_;
+          int iy = (cell / nz_) % ny_;
+          int ix = cell / (nz_ * ny_);
+          int seen[27];
+          int nseen = 0;
+          for (int ox = -1; ox <= 1; ++ox) {
+            for (int oy = -1; oy <= 1; ++oy) {
+              for (int oz = -1; oz <= 1; ++oz) {
+                int jx = ix + ox;
+                int jy = iy + oy;
+                int jz = iz + oz;
+                int sa = 0;
+                int sb = 0;
+                int sc = 0;
+                if (periodic_[0]) {
+                  if (jx < 0) {
+                    jx += nx_;
+                    sa = -1;
+                  } else if (jx >= nx_) {
+                    jx -= nx_;
+                    sa = 1;
+                  }
+                } else if (jx < 0 || jx >= nx_) {
+                  continue;
+                }
+                if (periodic_[1]) {
+                  if (jy < 0) {
+                    jy += ny_;
+                    sb = -1;
+                  } else if (jy >= ny_) {
+                    jy -= ny_;
+                    sb = 1;
+                  }
+                } else if (jy < 0 || jy >= ny_) {
+                  continue;
+                }
+                if (periodic_[2]) {
+                  if (jz < 0) {
+                    jz += nz_;
+                    sc = -1;
+                  } else if (jz >= nz_) {
+                    jz -= nz_;
+                    sc = 1;
+                  }
+                } else if (jz < 0 || jz >= nz_) {
+                  continue;
+                }
+                const int id = (jx * ny_ + jy) * nz_ + jz;
+                bool dup = false;
+                for (int s = 0; s < nseen; ++s) {
+                  if (seen[s] == id) {
+                    dup = true;
+                    break;
+                  }
+                }
+                if (dup) {
+                  continue;
+                }
+                seen[nseen] = id;
+                neigh[c * 27 + static_cast<std::size_t>(nseen)] =
+                    Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]};
+                ++nseen;
+              }
+            }
+          }
+          nneigh[c] = nseen;
+        }
+        auto &tile = cache.tile;
+        tile.resize(n_);
         for (std::size_t q = 0; q < n_; ++q) {
           const auto j = cell_atoms_[q];
           const auto u = static_cast<std::size_t>(j) * 3;
-          cache.tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
+          tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
         }
       }
-    } else {
-    cache.compact = false;
-    cache.head.clear();
-    auto &neigh = cache.neigh;
-    auto &nneigh = cache.nneigh;
-    neigh.assign(ncells * 27, Nbor{});
-    nneigh.assign(ncells, 0);
-    for (std::size_t c = 0; c < ncells; ++c) {
-      const int cell = static_cast<int>(c);
-      int iz = cell % nz_;
-      int iy = (cell / nz_) % ny_;
-      int ix = cell / (nz_ * ny_);
-      int seen[27];
-      int nseen = 0;
-      for (int ox = -1; ox <= 1; ++ox) {
-        for (int oy = -1; oy <= 1; ++oy) {
-          for (int oz = -1; oz <= 1; ++oz) {
-            int jx = ix + ox;
-            int jy = iy + oy;
-            int jz = iz + oz;
-            int sa = 0;
-            int sb = 0;
-            int sc = 0;
-            if (periodic_[0]) {
-              if (jx < 0) {
-                jx += nx_;
-                sa = -1;
-              } else if (jx >= nx_) {
-                jx -= nx_;
-                sa = 1;
-              }
-            } else if (jx < 0 || jx >= nx_) {
-              continue;
-            }
-            if (periodic_[1]) {
-              if (jy < 0) {
-                jy += ny_;
-                sb = -1;
-              } else if (jy >= ny_) {
-                jy -= ny_;
-                sb = 1;
-              }
-            } else if (jy < 0 || jy >= ny_) {
-              continue;
-            }
-            if (periodic_[2]) {
-              if (jz < 0) {
-                jz += nz_;
-                sc = -1;
-              } else if (jz >= nz_) {
-                jz -= nz_;
-                sc = 1;
-              }
-            } else if (jz < 0 || jz >= nz_) {
-              continue;
-            }
-            const int id = (jx * ny_ + jy) * nz_ + jz;
-            bool dup = false;
-            for (int s = 0; s < nseen; ++s) {
-              if (seen[s] == id) {
-                dup = true;
-                break;
-              }
-            }
-            if (dup) {
-              continue;
-            }
-            seen[nseen] = id;
-            neigh[c * 27 + static_cast<std::size_t>(nseen)] =
-                Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]};
-            ++nseen;
-          }
-        }
+      if (streaming_) {
+        cache.owner = this;
+        cache.nx = nx_;
+        cache.ny = ny_;
+        cache.nz = nz_;
+        cache.search = search_;
+        cache.xyz.assign(xyz_, xyz_ + n_ * 3);
       }
-      nneigh[c] = nseen;
-    }
-    auto &tile = cache.tile;
-    tile.resize(n_);
-    for (std::size_t q = 0; q < n_; ++q) {
-      const auto j = cell_atoms_[q];
-      const auto u = static_cast<std::size_t>(j) * 3;
-      tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
-    }
-    }
-    if (streaming_) {
-      cache.owner = this;
-      cache.nx = nx_;
-      cache.ny = ny_;
-      cache.nz = nz_;
-      cache.search = search_;
-      cache.xyz.assign(xyz_, xyz_ + n_ * 3);
-    }
     }
     if (cache.compact && cache.neigh.empty()) {
       return true;
     }
-    loop(cache.tile, cache.neigh, cache.nneigh, cache.compact ? cache.head.data() : nullptr, ncells,
-         cell_shift, search_ * search_, len_[0], len_[1], len_[2], inv_[0], inv_[1], inv_[2],
-         periodic_[0], periodic_[1], periodic_[2]);
+    loop(cache.tile, cache.neigh, cache.nneigh,
+         cache.compact ? cache.head.data() : nullptr, ncells, cell_shift,
+         search_ * search_, len_[0], len_[1], len_[2], inv_[0], inv_[1],
+         inv_[2], periodic_[0], periodic_[1], periodic_[2]);
     return true;
   }
 
   template <bool Compact, typename Tile, typename Nbor, typename Fn>
   void visitTiles(const std::vector<Tile> &tile, const std::vector<Nbor> &neigh,
-                  const std::vector<int> &nneigh, const std::int32_t *head, std::size_t c0,
-                  std::size_t c1,
-                  std::int64_t atom0, std::size_t atom1, bool half, bool cell_shift,
-                  double search2, double L0, double L1, double L2, double i0, double i1,
+                  const std::vector<int> &nneigh, const std::int32_t *head,
+                  std::size_t c0, std::size_t c1, std::int64_t atom0,
+                  std::size_t atom1, bool half, bool cell_shift, double search2,
+                  double L0, double L1, double L2, double i0, double i1,
                   double i2, bool p0, bool p1, bool p2, Fn &&fn) const {
-    auto round_axis = [](double delta, double inv, double length, bool periodic, int &shift) {
+    auto round_axis = [](double delta, double inv, double length, bool periodic,
+                         int &shift) {
       if (!periodic) {
         shift = 0;
         return delta;
@@ -752,9 +870,10 @@ private:
         }
         for (int k = 0; k < nn; ++k) {
           const Nbor &src = nb[k];
-          const auto b0 = static_cast<std::size_t>(cell_start_[static_cast<std::size_t>(src.id)]);
-          const auto b1 =
-              static_cast<std::size_t>(cell_start_[static_cast<std::size_t>(src.id) + 1]);
+          const auto b0 = static_cast<std::size_t>(
+              cell_start_[static_cast<std::size_t>(src.id)]);
+          const auto b1 = static_cast<std::size_t>(
+              cell_start_[static_cast<std::size_t>(src.id) + 1]);
           // Atom ids increase inside a cell, so a half pair starts at the
           // first neighbour with a larger id and does not test the rest.
           const std::size_t rstart = [&]() {
@@ -764,7 +883,8 @@ private:
             const auto begin = tile.begin() + static_cast<std::ptrdiff_t>(b0);
             const auto end = tile.begin() + static_cast<std::ptrdiff_t>(b1);
             const auto found = std::lower_bound(
-                begin, end, a.id, [](const Tile &atom, std::int32_t id) { return atom.id < id; });
+                begin, end, a.id,
+                [](const Tile &atom, std::int32_t id) { return atom.id < id; });
             auto next = found;
             if (next != end && next->id == a.id) {
               ++next;
@@ -802,20 +922,24 @@ private:
   }
 
   template <typename Fn>
-  void walkCells(std::int64_t begin, std::int64_t end, Fn &fn, bool half) const {
+  void walkCells(std::int64_t begin, std::int64_t end, Fn &fn,
+                 bool half) const {
     const double search2 = search_ * search_;
     if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
-                       const std::int32_t *head, std::size_t ncells, bool cell_shift,
-                       double search2_fast, double L0, double L1, double L2, double i0, double i1,
-                       double i2, bool p0, bool p1, bool p2) {
+                       const std::int32_t *head, std::size_t ncells,
+                       bool cell_shift, double search2_fast, double L0,
+                       double L1, double L2, double i0, double i1, double i2,
+                       bool p0, bool p1, bool p2) {
           if (head != nullptr) {
             visitTiles<true>(tile, neigh, nneigh, head, 0, ncells, begin,
-                             static_cast<std::size_t>(end), half, cell_shift, search2_fast, L0, L1,
-                             L2, i0, i1, i2, p0, p1, p2, fn);
+                             static_cast<std::size_t>(end), half, cell_shift,
+                             search2_fast, L0, L1, L2, i0, i1, i2, p0, p1, p2,
+                             fn);
           } else {
             visitTiles<false>(tile, neigh, nneigh, head, 0, ncells, begin,
-                              static_cast<std::size_t>(end), half, cell_shift, search2_fast, L0, L1,
-                              L2, i0, i1, i2, p0, p1, p2, fn);
+                              static_cast<std::size_t>(end), half, cell_shift,
+                              search2_fast, L0, L1, L2, i0, i1, i2, p0, p1, p2,
+                              fn);
           }
         })) {
       walkCellsScattered(begin, end, fn, half, search2);
@@ -823,8 +947,8 @@ private:
   }
 
   template <typename Fn>
-  void walkCellsScattered(std::int64_t begin, std::int64_t end, Fn &fn, bool half,
-                          double search2) const {
+  void walkCellsScattered(std::int64_t begin, std::int64_t end, Fn &fn,
+                          bool half, double search2) const {
     for (std::int64_t i = begin; i < end; ++i) {
       const auto a = static_cast<std::size_t>(i);
       const int cell = cell_of_[a];
@@ -894,6 +1018,8 @@ private:
   std::vector<std::int32_t> cell_of_;
   std::vector<std::int32_t> cell_start_;
   std::vector<std::int32_t> cell_atoms_;
+  /// Three entries per stored pair of an imaged list, empty otherwise.
+  std::vector<std::int32_t> shift_;
   std::vector<double> ref_;
   double box_[9]{};
   double len_[3]{};
@@ -908,6 +1034,8 @@ private:
   SpecKey key_{};
   MinimumImage general_;
   bool use_general_ = false;
+  bool imaged_ = false;
+  bool inside_ = true;
   bool streaming_ = true;
   bool built_ = false;
   bool reused_ = false;
@@ -970,8 +1098,8 @@ inline void Neighbours::fold(double &dx, double &dy, double &dz) const {
   }
 }
 
-inline void Neighbours::foldPair(std::int32_t i, std::int32_t j, double &dx, double &dy,
-                                 double &dz) const {
+inline void Neighbours::foldPair(std::int32_t i, std::int32_t j, double &dx,
+                                 double &dy, double &dz) const {
   const auto ui = static_cast<std::size_t>(i) * 3;
   const auto uj = static_cast<std::size_t>(j) * 3;
   dx = xyz_[ui] - xyz_[uj];

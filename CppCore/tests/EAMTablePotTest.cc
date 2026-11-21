@@ -409,14 +409,16 @@ TEST_CASE("EAM table pair list reuse gives the bits of a rebuilt list",
     step(true);
   }
 
-  // The same atoms seen through other images, and wrapped back.
+  // The same atoms seen through other images, and wrapped back. The cell
+  // is sheared, so its pairs carry the shift of an image from vesin and the
+  // list is rebuilt when an atom changes image.
   for (std::size_t i = 0; i < z.size(); i += 3) {
     pos[3 * i] += box[0] - box[3];
     pos[3 * i + 1] -= box[4];
   }
-  step(true);
+  step(false);
   wrap_cell(pos, box.data());
-  step(true);
+  step(false);
 
   // Another element on some sites leaves the list alone.
   for (std::size_t i = 0; i < z.size(); i += 5) {

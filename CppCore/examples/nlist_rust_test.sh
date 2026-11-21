@@ -31,6 +31,21 @@ if [ -z "$half" ] || { [ -z "$core" ] && { [ -z "$mini" ] || [ -z "$fma" ]; }; }
   echo "neighbour archives were not built" >&2
   exit 1
 fi
+# The sheared-cell search calls vesin. The vendored archive is linked
+# with the others; an installed vesin is found by the linker instead.
+# Meson puts it in the top build directory, above the one given here.
+vesin=
+for dir_up in "$build" "$build/.."; do
+  vesin=$(find "$dir_up" \( -name libvesin_internal.a -o -name vesin_internal.lib \
+    -o -name librgpot_vesin.a -o -name rgpot_vesin.lib \) -print -quit 2>/dev/null || true)
+  if [ -n "$vesin" ]; then
+    break
+  fi
+done
+vesin_lib=
+if [ -z "$vesin" ]; then
+  vesin_lib=-lvesin
+fi
 cxx=${CXX:-c++}
 for tool_bin in "$cxx" "${CC:-}"; do
   case "$tool_bin" in
@@ -170,10 +185,12 @@ case "$os" in
     if [ -n "$core" ]; then
       "$cxx" -shared -o "$dir/libnlist.dylib" \
         -Wl,-force_load,"$half" "$core" \
+        ${vesin:+-Wl,-force_load,"$vesin"} ${vesin_lib:+"$vesin_lib"} \
         "$@" ${omp_flag:+"$omp_flag"} ${extra_rt:+"$extra_rt"} ${extra_san:+"$extra_san"} ${gcov_flag:+"$gcov_flag"}
     else
       "$cxx" -shared -o "$dir/libnlist.dylib" \
         -Wl,-force_load,"$half" -Wl,-force_load,"$mini" -Wl,-force_load,"$fma" \
+        ${vesin:+-Wl,-force_load,"$vesin"} ${vesin_lib:+"$vesin_lib"} \
         "$@" ${omp_flag:+"$omp_flag"} ${extra_rt:+"$extra_rt"} ${extra_san:+"$extra_san"} ${gcov_flag:+"$gcov_flag"}
     fi
     ;;
@@ -184,12 +201,16 @@ case "$os" in
     # or Git bash rewrites /WHOLEARCHIVE. rustc is a Windows binary and
     # creates its metadata dir from TMP; an MSYS /tmp does not exist there.
     whalf=$(cygpath -w "$half")
+    wvesin=
+    if [ -n "$vesin" ]; then
+      wvesin="/WHOLEARCHIVE:$(cygpath -w "$vesin")"
+    fi
     wdir=$(cygpath -w "$dir")
     if [ -n "$core" ]; then
       wcore=$(cygpath -w "$core")
       MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
         link.exe /nologo /DLL "/OUT:${wdir}\\nlist.dll" \
-        "/WHOLEARCHIVE:${whalf}" "$wcore" \
+        "/WHOLEARCHIVE:${whalf}" "$wcore" ${wvesin:+"$wvesin"} \
         /EXPORT:rgpot_nlist_build \
         /EXPORT:rgpot_nlist_request_init \
         /EXPORT:rgpot_nlist_strerror
@@ -199,6 +220,7 @@ case "$os" in
       MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
         link.exe /nologo /DLL "/OUT:${wdir}\\nlist.dll" \
         "/WHOLEARCHIVE:${whalf}" "/WHOLEARCHIVE:${wmini}" "/WHOLEARCHIVE:${wfma}" \
+        ${wvesin:+"$wvesin"} \
         /EXPORT:rgpot_nlist_build \
         /EXPORT:rgpot_nlist_request_init \
         /EXPORT:rgpot_nlist_strerror
@@ -215,11 +237,11 @@ case "$os" in
     ;;
   *)
     if [ -n "$core" ]; then
-      "$cxx" -shared -o "$dir/libnlist.so" -Wl,--whole-archive "$half" \
-        -Wl,--no-whole-archive "$core" "$@" ${omp_flag:+"$omp_flag"} ${extra_rt:+"$extra_rt"} ${extra_san:+"$extra_san"} ${gcov_flag:+"$gcov_flag"}
+      "$cxx" -shared -o "$dir/libnlist.so" -Wl,--whole-archive "$half" ${vesin:+"$vesin"} \
+        -Wl,--no-whole-archive "$core" ${vesin_lib:+"$vesin_lib"} "$@" ${omp_flag:+"$omp_flag"} ${extra_rt:+"$extra_rt"} ${extra_san:+"$extra_san"} ${gcov_flag:+"$gcov_flag"}
     else
-      "$cxx" -shared -o "$dir/libnlist.so" -Wl,--whole-archive "$half" "$mini" "$fma" \
-        -Wl,--no-whole-archive "$@" ${omp_flag:+"$omp_flag"} ${extra_rt:+"$extra_rt"} ${extra_san:+"$extra_san"} ${gcov_flag:+"$gcov_flag"}
+      "$cxx" -shared -o "$dir/libnlist.so" -Wl,--whole-archive "$half" "$mini" "$fma" ${vesin:+"$vesin"} \
+        -Wl,--no-whole-archive ${vesin_lib:+"$vesin_lib"} "$@" ${omp_flag:+"$omp_flag"} ${extra_rt:+"$extra_rt"} ${extra_san:+"$extra_san"} ${gcov_flag:+"$gcov_flag"}
     fi
     ;;
 esac

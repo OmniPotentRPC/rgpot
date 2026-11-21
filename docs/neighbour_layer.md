@@ -87,7 +87,7 @@ least 8192 atoms, the rule every potential call follows (`teamSize` in
 contiguous ranges when the cell is unsheared and at least two search
 radii across every periodic axis. A sheared or narrower cell may need
 several images of a pair, so the pair list then splits the atoms and
-each slice runs the one-thread walk; a cluster list always splits the
+each slice walks the images that vesin found; a cluster list always splits the
 atoms. Every thread count stores the same pairs and shifts. The results
 are concatenated in slice order, so a cluster list keeps the one-thread
 order; a pair list may store its rows in a different order. Vesin merges
@@ -161,8 +161,22 @@ The layer bins atoms into cells whose edge is at least the cutoff plus
 the skin.
 `Round` is the orthorhombic truncation used by the pair kernels. `Half`
 is one correction about the half-box, which is what EAM uses after
-wrapping coordinates into the cell. `General`, and any sheared cell,
-calls `MinimumImage`.
+wrapping coordinates into the cell. `General` calls `MinimumImage`. A
+sheared cell does not use `Image` at all: vesin lists its pairs, with the
+integer shift of each image, and the list is stored in every mode.
+Each pair of an `Image` walk keeps its nearest image, which is the
+minimum image only while the cutoff is at most half the smallest
+perpendicular face height. `Spec::images` keeps every image instead, and
+`nlist::build` always does.
+An orthogonal cell bins coordinates folded into the cell, so an atom
+outside it is found through its image inside. A stored list on a sheared
+cell is rebuilt when an atom changes image, because its shifts are fixed.
+
+To reproduce the old misses, configure the CMake test build and run
+`ctest --test-dir build-cmake -R TriclinicNlistTest --output-on-failure`.
+The old Cartesian-bin walk missed pairs in the `skew above half`, `hex skew`
+and open-axis sheared slab cases. The corrected walk reports no misses in all
+three.
 
 `Mode::Stored` keeps a Verlet list and reuses it while every atom has moved by at most half the skin.
 The list holds partner indices and each walk takes the image from the current coordinates, so the move is measured to the nearest periodic image of the reference position: an atom that the caller wraps back through a face of the cell has moved by its step, not by a cell vector, and keeps the list.

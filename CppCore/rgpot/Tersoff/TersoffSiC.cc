@@ -165,7 +165,8 @@ void tersoffCentre(int i, const int *kind, const TersoffSiC::Species species[2],
     double db = 0.0;
     bondOrder(sp, zeta, bij, db);
     sink.energy(0.5 * bj.fc * (bj.f_r + bij * bj.f_a));
-    const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) + bj.fc * (bj.df_r + bij * bj.df_a));
+    const double dedr = 0.5 * (bj.dfc * (bj.f_r + bij * bj.f_a) +
+                               bj.fc * (bj.df_r + bij * bj.df_a));
     const double inv_r = 1.0 / bj.r;
     const double sx = scale * dedr * bj.x * inv_r;
     const double sy = scale * dedr * bj.y * inv_r;
@@ -196,11 +197,15 @@ void tersoffCentre(int i, const int *kind, const TersoffSiC::Species species[2],
       const double g1x = d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
       const double g1y = d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
       const double g1z = d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
-      const double g2x = d_edr2 * bk.x * inv_r2 + d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
-      const double g2y = d_edr2 * bk.y * inv_r2 + d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
-      const double g2z = d_edr2 * bk.z * inv_r2 + d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
-      sink.triplet(static_cast<std::size_t>(a), bj.j, static_cast<std::size_t>(k), bk.j, scale, g1x,
-                   g1y, g1z, g2x, g2y, g2z);
+      const double g2x = d_edr2 * bk.x * inv_r2 +
+                         d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
+      const double g2y = d_edr2 * bk.y * inv_r2 +
+                         d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
+      const double g2z = d_edr2 * bk.z * inv_r2 +
+                         d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
+      sink.triplet(static_cast<std::size_t>(a), bj.j,
+                   static_cast<std::size_t>(k), bk.j, scale, g1x, g1y, g1z, g2x,
+                   g2y, g2z);
       if (sink.strained()) {
         sink.bondStrain(bj.x, bj.y, bj.z, g1x, g1y, g1z);
         sink.bondStrain(bk.x, bk.y, bk.z, g2x, g2y, g2z);
@@ -251,8 +256,16 @@ void TersoffSiC::forceImpl(const ForceInput &in, ForceOut *out) const {
   for (double &s : out->stress) {
     s = 0.0;
   }
-  if (in.nAtoms > 0 && (in.pos == nullptr || in.box == nullptr ||
-                        in.atmnrs == nullptr || out->F == nullptr)) {
+  if (in.nAtoms > 0 && in.pos == nullptr) {
+    throw std::invalid_argument("TersoffSiC: null positions");
+  }
+  if (in.nAtoms > 0 && in.box == nullptr) {
+    throw std::invalid_argument("TersoffSiC: null cell");
+  }
+  if (in.nAtoms > 0 && in.atmnrs == nullptr) {
+    throw std::invalid_argument("TersoffSiC: atomic numbers are required");
+  }
+  if (in.nAtoms > 0 && out->F == nullptr) {
     throw std::invalid_argument("TersoffSiC: null force buffer");
   }
   double strain[6] = {};
@@ -404,19 +417,22 @@ Locality TersoffSiC::locality() const noexcept {
   return {.cutoff = kMaxCut, .full = true, .reach = 2};
 }
 
-void TersoffSiC::forceStage(const HalfList &list, const double *, double *forces,
-                            StageTally *tally) const {
+void TersoffSiC::forceStage(const HalfList &list, const double *,
+                            double *forces, StageTally *tally) const {
   if (!list.full) {
-    throw std::invalid_argument("TersoffSiC: staged evaluation needs a full neighbour list");
+    throw std::invalid_argument(
+        "TersoffSiC: staged evaluation needs a full neighbour list");
   }
   if (!list.newton) {
-    throw std::invalid_argument("TersoffSiC: staged evaluation needs newton on");
+    throw std::invalid_argument(
+        "TersoffSiC: staged evaluation needs newton on");
   }
   if (list.nAtoms == 0) {
     return;
   }
-  if (list.pos == nullptr || list.atmnrs == nullptr || forces == nullptr || list.count == nullptr ||
-      list.neighbours == nullptr || (list.nRows > 0 && list.rows == nullptr)) {
+  if (list.pos == nullptr || list.atmnrs == nullptr || forces == nullptr ||
+      list.count == nullptr || list.neighbours == nullptr ||
+      (list.nRows > 0 && list.rows == nullptr)) {
     throw std::invalid_argument("TersoffSiC: null staged buffer");
   }
   std::vector<int> kind(list.nAtoms);
@@ -436,7 +452,8 @@ void TersoffSiC::forceStage(const HalfList &list, const double *, double *forces
     nb.clear();
     const int ki = kind[static_cast<std::size_t>(i)];
     const int n = list.count[static_cast<std::size_t>(i)];
-    const int *row = n > 0 ? list.neighbours[static_cast<std::size_t>(i)] : nullptr;
+    const int *row =
+        n > 0 ? list.neighbours[static_cast<std::size_t>(i)] : nullptr;
     if (n > 0 && row == nullptr) {
       throw std::invalid_argument("TersoffSiC: null neighbour row");
     }
@@ -460,7 +477,8 @@ void TersoffSiC::forceStage(const HalfList &list, const double *, double *forces
       radial(pij, r, forth);
       nb.push_back(forth);
     }
-    std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) { return a.j < b.j; });
+    std::sort(nb.begin(), nb.end(),
+              [](const Bond &a, const Bond &b) { return a.j < b.j; });
     CentreDirect sink(i, forces, &energy, strain);
     tersoffCentre(i, kind.data(), m_species, nb, 1.0, sink);
   }

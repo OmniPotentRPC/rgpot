@@ -179,6 +179,8 @@ Soversion 5 recorded =LJPot= and =MorsePot= gaining a neighbour list and a
 cached pair table.
 Soversion 6 drops the copied half-list from LJ and Morse and gives ZBL and the
 open Lennard-Jones cluster a neighbour list.
+Soversion 8 records =SuttonChenPot= and its configuration.
+Soversion 10 records the image shifts and image-list flag added to =Neighbours=.
 A program linked against soversion 4 does not load =librgpot.so.6=.
 
 Soversion 9 stamps =SumPot=, =lr::SumPot= and =PotType::LrSum=.

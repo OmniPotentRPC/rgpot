@@ -164,7 +164,7 @@ fortran_kernels_dep = declare_dependency(
         rgpot_minimage,
         rgpot_exact_fma,
     ],
-    dependencies: [fastnlist_dep] + _fortran_nlist_omp_link,
+    dependencies: [vesin_dep, fastnlist_dep] + _fortran_nlist_omp_link,
 )
 
 # Plugin anneal dlopens as RGPOT_CUH2_LIBRARY. The umbrella librgpot hides
@@ -198,7 +198,7 @@ rgpot_cuh2 = library(
     # then does not add the Fortran runtime. fortran_rt_deps is the same
     # search the umbrella uses for _gfortran_* (and the flang equivalents).
     link_language: 'cpp',
-    dependencies: _fortran_nlist_omp_link + fortran_rt_deps,
+    dependencies: [vesin_dep] + _fortran_nlist_omp_link + fortran_rt_deps,
     fortran_args: _cuh2_plugin_args,
     install: not meson.is_subproject(),
     gnu_symbol_visibility: 'default',

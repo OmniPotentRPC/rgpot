@@ -33,11 +33,11 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "rgpot/CalculatorGroup.hpp"
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
-#include "rgpot/CalculatorGroup.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
@@ -121,8 +121,8 @@
 #endif
 
 #define RGPOT_CXX_PLATFORM_TAG                                                 \
-  RGPOT_CXX_OS_NAME "-" RGPOT_CXX_ARCH_NAME "-" RGPOT_CXX_STDLIB_NAME "-"      \
-      RGPOT_CXX_MODEL_NAME
+  RGPOT_CXX_OS_NAME "-" RGPOT_CXX_ARCH_NAME "-" RGPOT_CXX_STDLIB_NAME          \
+                    "-" RGPOT_CXX_MODEL_NAME
 
 // Listed platforms. Each branch matches one kCxxSoversionTable row.
 // The string is the row's tag. check_cxx_soversion.py requires the two
@@ -130,7 +130,7 @@
 // aarch64, macOS and Windows stay unlisted until a no-cache CI stamp
 // line for soversion 5 is copied in. Their soversion-4 hashes are the
 // layouts from before LJPot and MorsePot grew their neighbour members.
-#if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                    \
+#if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                   \
     defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
 #define RGPOT_CXX_PLATFORM_LISTED 1
 #define RGPOT_CXX_PLATFORM_LISTED_TAG "linux-x86_64-libstdc++-lp64"
@@ -196,7 +196,9 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// `D4Config` is stamped too, from a header of its own. Its new `periodic`
 /// field fits the padding after `atm`, so only the field offsets show it.
 /// `D2CpmdConfig` gains `symmetry`.
-inline constexpr std::uint32_t kCxxSoversion = 9;
+/// 10 gives Neighbours the shifts and the flag of a list that vesin built,
+/// so LJPot, LJClusterPot, MorsePot, ZBLPot and SuttonChenPot grow with it.
+inline constexpr std::uint32_t kCxxSoversion = 10;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -209,7 +211,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0xf7ebab6b64626bf2ull},
+    {"linux-x86_64-libstdc++-lp64", 0xf4acd6df7b34840aull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -246,7 +248,8 @@ constexpr bool soversion_tags_unique() noexcept {
   return true;
 }
 
-static_assert(soversion_tags_unique(), "kCxxSoversionTable tags must be unique");
+static_assert(soversion_tags_unique(),
+              "kCxxSoversionTable tags must be unique");
 
 /// Virtual functions declared by @c PotentialBase, destructor included.
 /// The cache hook @c setCache adds one when @c RGPOT_HAS_CACHE is defined.
