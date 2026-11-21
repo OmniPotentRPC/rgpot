@@ -217,6 +217,7 @@ It is not a =Potential=.
   as TorchScript (=.pt=) in C++ with no Python at evaluation time.
 Neighbour lists come from [[https://github.com/Luthaf/vesin][vesin]]; the source
 builds against vesin 0.3 and 0.5 or newer (=vesin_compat.hpp=).
+The vendored copy in =third_party/vesin= is v0.6.0 plus local eOn patches.
 PyTorch autograd gives the forces.
 With vesin 0.5 or newer, pass CPU as =VesinDevice{VesinCPU, 0}=
 (=struct { VesinDeviceKind type; int device_id; }=); =VesinCPU= alone is only

@@ -105,6 +105,7 @@ The metatensor and metatomic headers and libraries come from the =purelib=
 directory of that Python.
 =vesin= comes from the top-level =vesin= dependency, with the copy in
 =third_party/vesin= as the fallback.
+That copy is v0.6.0 plus local eOn patches.
 Torch links only into the =metatomic_engine= plugin, not into =librgpot=.
 
 For the *pip* wheel (nanobind abi3 + multi-ABI =dlopen= engines, torch *2.7+*),

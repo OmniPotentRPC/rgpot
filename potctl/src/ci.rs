@@ -15,8 +15,8 @@ pub const TORCH_CPU_SPEC: &str = "torch>=2.10,<2.11";
 pub const TORCH_CPU_INDEX: &str = "https://download.pytorch.org/whl/cpu";
 pub const METATENSOR_TORCH_SPEC: &str = "metatensor-torch>=0.8.4,<0.9";
 pub const METATOMIC_TORCH_SPEC: &str = "metatomic-torch>=0.1.9,<0.2";
-pub const VESIN_SPEC: &str = "vesin>=0.5.2,<0.6";
-pub const VESIN_TORCH_SPEC: &str = "vesin-torch>=0.5.2,<0.6";
+pub const VESIN_SPEC: &str = "vesin>=0.6.0,<0.7";
+pub const VESIN_TORCH_SPEC: &str = "vesin-torch>=0.6.0,<0.7";
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -1700,6 +1700,56 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    fn vendored_vesin_pin() -> &'static str {
+        let line = include_str!("../../third_party/vesin/VERSION")
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty() && !line.starts_with('#'))
+            .expect("third_party/vesin/VERSION must contain one release line");
+        let pin = line
+            .strip_prefix("v")
+            .and_then(|rest| rest.strip_suffix(" plus local eOn patches"))
+            .expect("third_party/vesin/VERSION must be vX.Y.Z plus local eOn patches");
+        let mut parts = pin.split('.');
+        let (Some(maj), Some(min), Some(pat)) = (parts.next(), parts.next(), parts.next()) else {
+            panic!("vendored vesin pin {pin} is not major.minor.patch");
+        };
+        if parts.next().is_some()
+            || maj.is_empty()
+            || min.is_empty()
+            || pat.is_empty()
+            || !maj.bytes().all(|b| b.is_ascii_digit())
+            || !min.bytes().all(|b| b.is_ascii_digit())
+            || !pat.bytes().all(|b| b.is_ascii_digit())
+        {
+            panic!("vendored vesin pin {pin} is not major.minor.patch");
+        }
+        pin
+    }
+
+    fn specs_match_vendored_minor(
+        vendored: &str,
+        vesin_spec: &str,
+        vesin_torch_spec: &str,
+    ) -> bool {
+        let mut parts = vendored.split('.');
+        let (Some(maj), Some(min), Some(pat)) = (parts.next(), parts.next(), parts.next()) else {
+            panic!("vendored vesin pin {vendored} is not major.minor.patch");
+        };
+        if parts.next().is_some() || maj.is_empty() || min.is_empty() || pat.is_empty() {
+            panic!("vendored vesin pin {vendored} is not major.minor.patch");
+        }
+        let min_num: u64 = min
+            .parse()
+            .unwrap_or_else(|_| panic!("vendored vesin minor {min} is not a number"));
+        let lower = format!(">={maj}.{min}");
+        let upper = format!("<{maj}.{}", min_num + 1);
+        vesin_spec.contains(&lower)
+            && vesin_spec.contains(&upper)
+            && vesin_torch_spec.contains(&lower)
+            && vesin_torch_spec.contains(&upper)
+    }
+
     #[test]
     fn required_paths_are_under_root() {
         let root = Path::new("/tmp/rgpot-fake");
@@ -1927,6 +1977,64 @@ Options:
         assert!(paths
             .iter()
             .any(|p| p.ends_with("metatomic/torch/torch-2.10/include")));
+    }
+
+    fn quoted_constraint<'a>(text: &'a str, key: &str) -> &'a str {
+        let start = text
+            .find(key)
+            .unwrap_or_else(|| panic!("ci/gha/potentials.ncl must contain {key}"));
+        let rest = &text[start..];
+        let end = rest.find('"').unwrap_or_else(|| {
+            panic!("ci/gha/potentials.ncl constraint {key} has no closing quote")
+        });
+        &rest[..end]
+    }
+
+    #[test]
+    fn vesin_specs_match_vendored_minor() {
+        let pin = vendored_vesin_pin();
+        assert!(
+            specs_match_vendored_minor(pin, VESIN_SPEC, VESIN_TORCH_SPEC),
+            "{pin} does not match {VESIN_SPEC} and {VESIN_TORCH_SPEC}"
+        );
+    }
+
+    #[test]
+    fn potentials_ncl_vesin_specs_match_vendored_minor() {
+        let pin = vendored_vesin_pin();
+        let ncl = include_str!("../../ci/gha/potentials.ncl");
+        let vesin = quoted_constraint(ncl, "vesin>=");
+        let torch = quoted_constraint(ncl, "vesin-torch>=");
+        assert!(
+            specs_match_vendored_minor(pin, vesin, torch),
+            "{pin} does not match {vesin} and {torch}"
+        );
+    }
+
+    #[test]
+    fn potentials_ncl_stale_spec_is_detected() {
+        let pin = vendored_vesin_pin();
+        let stale = r#"need+=("vesin>=0.5.2,<0.6" "vesin-torch>=0.5.2,<0.6")"#;
+        assert!(!specs_match_vendored_minor(
+            pin,
+            quoted_constraint(stale, "vesin>="),
+            quoted_constraint(stale, "vesin-torch>="),
+        ));
+    }
+
+    #[test]
+    fn vesin_spec_mismatch_is_detected() {
+        let pin = vendored_vesin_pin();
+        assert!(!specs_match_vendored_minor(
+            pin,
+            "vesin>=0.5.2,<0.6",
+            VESIN_TORCH_SPEC
+        ));
+        assert!(!specs_match_vendored_minor(
+            pin,
+            VESIN_SPEC,
+            "vesin-torch>=0.5.2,<0.6"
+        ));
     }
 
     #[test]
