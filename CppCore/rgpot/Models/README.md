@@ -21,6 +21,12 @@ The non-LEPS models use eV for energy and angstrom for coordinates.
 LEPS evaluates its published equations in hartree and bohr, then converts
 energy, force, and Hessian-vector products to rgpot units.
 
+| preset | parameter reference |
+|---|---|
+| H + H2 | P. A. Whitlock, J. T. Muckerman and R. E. Roberts, *J. Chem. Phys.* **60**, 3658-3673 (1974), [doi:10.1063/1.1681586](https://doi.org/10.1063/1.1681586) |
+| H + Cl2 | J. N. L. Connor, W. Jakubetz, J. Manz and J. C. Whitehead, *J. Chem. Phys.* **72**, 6209-6226 (1980), [doi:10.1063/1.439080](https://doi.org/10.1063/1.439080) |
+| F + H2 | P. A. Whitlock and J. T. Muckerman, *J. Chem. Phys.* **61**, 4618-4629 (1974), [doi:10.1063/1.1681780](https://doi.org/10.1063/1.1681780) |
+
 The H + Cl2 LEPS constants are:
 
 | curve | De (hartree) | re (bohr) | exponent (bohr^-1) | Sato |
