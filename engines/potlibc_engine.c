@@ -1,6 +1,10 @@
 /* MIT License
  * Copyright 2023--present rgpot developers
  */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "rgpot/engine_c_abi.h"
 #include "rgpot/potlibc_engine.h"
 

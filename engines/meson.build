@@ -27,6 +27,7 @@ if potlibc_dep.found()
                 meson.project_version(),
             ),
         ],
+        override_options: ['c_std=c11'],
         install: not meson.is_subproject(),
     )
     install_headers(
@@ -45,6 +46,7 @@ if potlibc_dep.found()
                 meson.project_version(),
             ),
         ],
+        override_options: ['c_std=c11'],
         install: false,
     )
     test(
