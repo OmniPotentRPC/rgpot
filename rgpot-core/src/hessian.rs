@@ -90,7 +90,8 @@ pub struct rgpot_hessian_counts_t {
     pub cache_hits: u64,
     /// Evaluations assembled from an analytic Hessian-vector callback.
     pub from_hvp: u64,
-    /// `RGPOT_HVP_AUTO` products served by multiplying the cached matrix.
+    /// `RGPOT_HVP_AUTO` and `RGPOT_HVP_ANALYTIC` products served by
+    /// multiplying the cached matrix.
     pub products: u64,
 }
 

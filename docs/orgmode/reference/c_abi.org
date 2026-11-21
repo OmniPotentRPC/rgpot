@@ -784,8 +784,8 @@ Registering or clearing the dense callback drops the stored matrix.
   assembled from the product callback;
   =cache_hits=, the requests answered from the stored matrix; =from_hvp=, the
   evaluations assembled column by column from the analytic Hessian-vector
-  callback; =products=, the =RGPOT_HVP_AUTO= products answered by multiplying
-  the stored matrix.
+  callback; =products=, the =RGPOT_HVP_AUTO= and =RGPOT_HVP_ANALYTIC= products
+  answered by multiplying the stored matrix.
 - Errors :: none.
 
 *** =rgpot_potential_set_hessian_callback=

@@ -352,7 +352,8 @@ typedef struct rgpot_hessian_counts_t {
    */
   uint64_t from_hvp;
   /**
-   * `RGPOT_HVP_AUTO` products served by multiplying the cached matrix.
+   * `RGPOT_HVP_AUTO` and `RGPOT_HVP_ANALYTIC` products served by
+   * multiplying the cached matrix.
    */
   uint64_t products;
 } rgpot_hessian_counts_t;
