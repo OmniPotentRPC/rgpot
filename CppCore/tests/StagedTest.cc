@@ -26,6 +26,7 @@
 #include "rgpot/Staged.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
+#include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_EAM_TABLE
 #include "rgpot/EAMTable/EAMTablePot.hpp"
 #endif
@@ -382,6 +383,7 @@ rgpot::EAMTablePot cu_ni() {
 TEST_CASE("Potentials with stages declare what they exchange", "[Staged]") {
   STATIC_REQUIRE(rgpot::StagedPotential<rgpot::LJPot>);
   STATIC_REQUIRE(rgpot::StagedPotential<rgpot::MorsePot>);
+  STATIC_REQUIRE(rgpot::StagedPotential<rgpot::ZBLPot>);
   STATIC_REQUIRE(rgpot::StagedPotential<rgpot::SuttonChenPot>);
   struct Local {
     [[nodiscard]] rgpot::Locality locality() const noexcept { return {.cutoff = 1.0}; }
@@ -393,6 +395,7 @@ TEST_CASE("Potentials with stages declare what they exchange", "[Staged]") {
   CHECK_FALSE(lj.full);
   CHECK(lj.reach == 1);
   CHECK(rgpot::MorsePot({.cutoff = 7.0}).locality().densities == 0);
+  CHECK(rgpot::ZBLPot({.cut_inner = 1.5, .cut_global = 2.4}).locality().densities == 0);
   const rgpot::Locality sc = sutton_chen().locality();
   CHECK(sc.densities == 1);
   CHECK_FALSE(sc.full);
@@ -417,6 +420,10 @@ TEST_CASE("Owners of staged hosts match the periodic box", "[Staged]") {
   SECTION("Morse") {
     check_staged(rgpot::MorsePot({.cutoff = 7.0}), fcc(3.92, 4, triclinic, 78, 78), slabs,
                  newton);
+  }
+  SECTION("ZBL") {
+    check_staged(rgpot::ZBLPot({.cut_inner = 1.5, .cut_global = 2.4}),
+                 fcc(2.6, 4, triclinic, 14, 79), slabs, newton);
   }
   SECTION("SuttonChen") {
     check_staged(sutton_chen(), fcc(3.92, 4, triclinic, 78, 78), slabs, newton);
