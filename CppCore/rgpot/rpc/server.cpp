@@ -75,6 +75,7 @@ class MpiPefSession;
 #include "rgpot/IPIPot/IPIPot.hpp"
 #endif
 #include "rgpot/rpc/CompositeConfigure.hpp"
+#include "rgpot/rpc/LJConfigure.hpp"
 #include "rgpot/rpc/MorseConfigure.hpp"
 #include "rgpot/rpc/PotentialConfigArm.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
@@ -87,9 +88,9 @@ class MpiPefSession;
 #define RGPOT_OWN_ARM_TAIL "D2 and D2Cpmd"
 #endif
 #ifdef RGPOT_HAS_CP2K
-constexpr const char *kOwnArmBackends = "NWChem, CPMD, CP2K, Morse, Composite, " RGPOT_OWN_ARM_TAIL;
+constexpr const char *kOwnArmBackends = "NWChem, CPMD, CP2K, LJ, Morse, Composite, " RGPOT_OWN_ARM_TAIL;
 #else
-constexpr const char *kOwnArmBackends = "NWChem, CPMD, Morse, Composite, " RGPOT_OWN_ARM_TAIL;
+constexpr const char *kOwnArmBackends = "NWChem, CPMD, LJ, Morse, Composite, " RGPOT_OWN_ARM_TAIL;
 #endif
 #undef RGPOT_OWN_ARM_TAIL
 #ifdef RGPOT_POTSERV_MPI
@@ -115,6 +116,11 @@ private:
   rgpot::NWChemPot *m_nwchem = nullptr;
   /// Optional typed handle when backend is CPMD (for configure()).
   rgpot::CPMDPot *m_cpmd = nullptr;
+  /// Set when the backend is LJPot; configure() replaces the pot it names.
+  rgpot::LJPot *m_lj = nullptr;
+  /// Set when the backend is LJClusterPot; configure() replaces the pot it
+  /// names.
+  rgpot::LJClusterPot *m_ljcluster = nullptr;
   /// Set when the backend is Morse; configure() replaces the pot it names.
   rgpot::MorsePot *m_morse = nullptr;
   /// Set when the backend is Composite; configure() replaces the sum.
@@ -145,6 +151,8 @@ public:
    */
   GenericPotImpl(std::unique_ptr<rgpot::PotentialBase> pot)
       : m_potential(std::move(pot)),
+        m_lj(dynamic_cast<rgpot::LJPot *>(m_potential.get())),
+        m_ljcluster(dynamic_cast<rgpot::LJClusterPot *>(m_potential.get())),
         m_morse(dynamic_cast<rgpot::MorsePot *>(m_potential.get())),
         m_sum(dynamic_cast<rgpot::SumPot *>(m_potential.get())),
         m_d2(dynamic_cast<rgpot::D2Pot *>(m_potential.get())),
@@ -374,6 +382,26 @@ public:
   kj::Promise<void> configure(ConfigureContext context) override {
     auto cfg = context.getParams().getConfig();
     auto results = context.getResults();
+    if (m_lj) {
+      auto applied = rgpot::rpc::configureLJ(cfg, *m_lj);
+      if (applied.replacement) {
+        m_lj = applied.replacement.get();
+        m_potential = std::move(applied.replacement);
+      }
+      results.setOk(applied.ok);
+      results.setMessage(applied.message);
+      return kj::READY_NOW;
+    }
+    if (m_ljcluster) {
+      auto applied = rgpot::rpc::configureLJCluster(cfg, *m_ljcluster);
+      if (applied.replacement) {
+        m_ljcluster = applied.replacement.get();
+        m_potential = std::move(applied.replacement);
+      }
+      results.setOk(applied.ok);
+      results.setMessage(applied.message);
+      return kj::READY_NOW;
+    }
     if (m_morse) {
       auto applied = rgpot::rpc::configureMorse(cfg, *m_morse);
       if (applied.replacement) {

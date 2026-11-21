@@ -21,7 +21,8 @@ These are compiled in every build of the main library (every build except
 =-Dwith_rpc_client_only=true=).
 
 - =LJPot= (=PotType::LJ=) :: Standard 12-6 Lennard-Jones.
-Configurable via =LJConfig= (=u0=, =cutoff=, =psi=, =switch_width=).
+Configurable via =LJConfig= (=u0=, =cutoff=, =psi=,
+=switch_width=, =tail_correction=).
 - =LJClusterPot= (=PotType::LJCluster=) :: 12-6 Lennard-Jones on free
   boundaries, for isolated clusters; the cell is ignored.
 Configurable via =LJClusterConfig= (=u0=, =cutoff=, =psi=, =switch_width=).
