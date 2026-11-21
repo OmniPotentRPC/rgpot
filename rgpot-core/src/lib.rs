@@ -62,6 +62,7 @@ pub mod eindir;
 pub mod fused;
 pub mod hvp;
 pub mod jet;
+pub mod lj;
 pub mod potential;
 pub mod status;
 pub mod taylor;

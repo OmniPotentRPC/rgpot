@@ -28,6 +28,7 @@
 #ifdef RGPOT_HAS_DFTD4
 #include "rgpot/rpc/D4Configure.hpp"
 #endif
+#include "rgpot/rpc/LJConfigure.hpp"
 #include "rgpot/rpc/MorseConfigure.hpp"
 #include "rgpot/rpc/PotentialConfigArm.hpp"
 #include "rgpot/rpc/Potentials.capnp.h"
@@ -60,12 +61,10 @@ inline std::unique_ptr<PotentialBase> builtinPotential(const ::BuiltinParams::Re
   const auto cfg = b.getConfig();
   if (name == "lj") {
     expectArm(name, cfg, ::PotentialConfig::LJ);
-    LJConfig c;
-    if (cfg.isLj()) {
-      const auto p = cfg.getLj();
-      c.u0 = p.getU0();
-      c.psi = p.getPsi();
-      c.cutoff = p.getCutoff();
+    const LJConfig c = cfg.isLj() ? ljConfigFrom(cfg.getLj()) : LJConfig{};
+    if (!std::isfinite(c.u0) || !std::isfinite(c.psi) || !std::isfinite(c.cutoff) ||
+        !(c.u0 > 0.0) || !(c.psi > 0.0) || !(c.cutoff > 0.0)) {
+      throw std::invalid_argument("LJ u0, psi and cutoff must be finite and positive");
     }
     return std::make_unique<LJPot>(c);
   }

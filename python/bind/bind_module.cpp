@@ -135,6 +135,8 @@ struct ChildSpec {
   double psi = 0.0;
   bool has_switch_width = false;
   double switch_width = 0.0;
+  bool has_tail_correction = false;
+  bool tail_correction = false;
   bool has_De = false;
   double De = 0.0;
   bool has_a = false;
@@ -181,79 +183,78 @@ ChildSpec child_spec_from(const std::string &name, nb::handle spec) {
   out.kind = child_kind(spec);
   if (nb::isinstance<nb::dict>(spec)) {
     auto d = nb::cast<nb::dict>(spec);
-    if (d.contains("functional")) {
-      out.has_functional = true;
-      out.functional = nb::cast<std::string>(d["functional"]);
-    }
-    if (d.contains("s6")) {
-      out.has_s6 = true;
-      out.s6 = nb::cast<double>(d["s6"]);
-    }
-    if (d.contains("d")) {
-      out.has_d = true;
-      out.d = nb::cast<double>(d["d"]);
-    }
-    if (d.contains("sr")) {
-      out.has_sr = true;
-      out.sr = nb::cast<double>(d["sr"]);
-    }
-    if (d.contains("alpha")) {
-      out.has_alpha = true;
-      out.alpha = nb::cast<double>(d["alpha"]);
-    }
-    if (d.contains("vdweps")) {
-      out.has_vdweps = true;
-      out.vdweps = nb::cast<double>(d["vdweps"]);
-    }
-    if (d.contains("symmetry")) {
-      out.has_symmetry = true;
-      out.symmetry = nb::cast<int>(d["symmetry"]);
-    }
-    if (d.contains("atm")) {
-      out.atm = nb::cast<bool>(d["atm"]);
-    }
-    if (d.contains("damping")) {
-      out.damping = nb::cast<std::string>(d["damping"]);
-    }
-    if (d.contains("charge")) {
-      out.charge = nb::cast<double>(d["charge"]);
-    }
-    if (d.contains("periodic")) {
-      out.periodic = nb::cast<bool>(d["periodic"]);
-    }
-    if (d.contains("u0")) {
-      out.has_u0 = true;
-      out.u0 = nb::cast<double>(d["u0"]);
-    }
-    if (d.contains("cutoff")) {
-      out.has_cutoff = true;
-      out.cutoff = nb::cast<double>(d["cutoff"]);
-    }
-    if (d.contains("psi")) {
-      out.has_psi = true;
-      out.psi = nb::cast<double>(d["psi"]);
-    }
-    if (d.contains("switch_width")) {
-      out.has_switch_width = true;
-      out.switch_width = nb::cast<double>(d["switch_width"]);
-    }
-    if (d.contains("De")) {
-      out.has_De = true;
-      out.De = nb::cast<double>(d["De"]);
-    }
-    if (d.contains("a")) {
-      out.has_a = true;
-      out.a = nb::cast<double>(d["a"]);
-    }
-    if (d.contains("re")) {
-      out.has_re = true;
-      out.re = nb::cast<double>(d["re"]);
+    for (auto item : d) {
+      const std::string key = nb::cast<std::string>(item.first);
+      if (key == "kind" || key == "type" || key == "name" ||
+          key == "weight" || key == "enabled") {
+        continue;
+      } else if (key == "functional") {
+        out.has_functional = true;
+        out.functional = nb::cast<std::string>(item.second);
+      } else if (key == "s6") {
+        out.has_s6 = true;
+        out.s6 = nb::cast<double>(item.second);
+      } else if (key == "d") {
+        out.has_d = true;
+        out.d = nb::cast<double>(item.second);
+      } else if (key == "sr") {
+        out.has_sr = true;
+        out.sr = nb::cast<double>(item.second);
+      } else if (key == "alpha") {
+        out.has_alpha = true;
+        out.alpha = nb::cast<double>(item.second);
+      } else if (key == "vdweps") {
+        out.has_vdweps = true;
+        out.vdweps = nb::cast<double>(item.second);
+      } else if (key == "symmetry") {
+        out.has_symmetry = true;
+        out.symmetry = nb::cast<int>(item.second);
+      } else if (key == "atm") {
+        out.atm = nb::cast<bool>(item.second);
+      } else if (key == "damping") {
+        out.damping = nb::cast<std::string>(item.second);
+      } else if (key == "charge") {
+        out.charge = nb::cast<double>(item.second);
+      } else if (key == "periodic") {
+        out.periodic = nb::cast<bool>(item.second);
+      } else if (key == "u0") {
+        out.has_u0 = true;
+        out.u0 = nb::cast<double>(item.second);
+      } else if (key == "cutoff") {
+        out.has_cutoff = true;
+        out.cutoff = nb::cast<double>(item.second);
+      } else if (key == "psi") {
+        out.has_psi = true;
+        out.psi = nb::cast<double>(item.second);
+      } else if (key == "switch_width") {
+        out.has_switch_width = true;
+        out.switch_width = nb::cast<double>(item.second);
+      } else if (key == "tail_correction") {
+        out.has_tail_correction = true;
+        out.tail_correction = nb::cast<bool>(item.second);
+      } else if (key == "De") {
+        out.has_De = true;
+        out.De = nb::cast<double>(item.second);
+      } else if (key == "a") {
+        out.has_a = true;
+        out.a = nb::cast<double>(item.second);
+      } else if (key == "re") {
+        out.has_re = true;
+        out.re = nb::cast<double>(item.second);
+      } else {
+        throw std::invalid_argument("ExprPot: unknown child parameter '" + key +
+                                    "' for kind '" + out.kind + "'");
+      }
     }
   }
   return out;
 }
 
 std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
+  if (spec.kind != "lj" && spec.has_tail_correction) {
+    throw std::invalid_argument("ExprPot: child kind '" + spec.kind +
+                                "' does not support 'tail_correction'");
+  }
   if (spec.kind == "lj") {
     rgpot::LJConfig cfg;
     if (spec.has_u0) {
@@ -267,6 +268,9 @@ std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
     }
     if (spec.has_switch_width) {
       cfg.switch_width = spec.switch_width;
+    }
+    if (spec.has_tail_correction) {
+      cfg.tail_correction = spec.tail_correction;
     }
     return std::make_unique<rgpot::LJPot>(cfg);
   }
@@ -758,22 +762,25 @@ NB_MODULE(_core, m) {
   lj.def(
       "__init__",
       [](PotHolder<rgpot::LJPot> *self, double u0, double cutoff, double psi,
-         double switch_width) {
+         double switch_width, bool tail_correction) {
         new (self) PotHolder<rgpot::LJPot>([=] {
           rgpot::LJConfig cfg;
           cfg.u0 = u0;
           cfg.cutoff = cutoff;
           cfg.psi = psi;
           cfg.switch_width = switch_width;
+          cfg.tail_correction = tail_correction;
           return std::make_unique<rgpot::LJPot>(cfg);
         });
       },
       nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
-      nb::arg("switch_width") = 0.0,
+      nb::arg("switch_width") = 0.0, nb::arg("tail_correction") = false,
       "Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff "
       "and psi are Angstrom. A positive switch_width (Angstrom) "
       "replaces the shift with the C^2 quintic switch over "
-      "[cutoff - switch_width, cutoff]; it must not exceed cutoff.");
+      "[cutoff - switch_width, cutoff]; it must not exceed cutoff. "
+      "tail_correction adds the continuum long-range correction on a "
+      "periodic cell and leaves the pair term unshifted.");
   lj.def("config", [](const PotHolder<rgpot::LJPot> &self) {
     const rgpot::LJConfig &cfg = self.primary().config();
     nb::dict out;
@@ -781,6 +788,7 @@ NB_MODULE(_core, m) {
     out["cutoff"] = cfg.cutoff;
     out["psi"] = cfg.psi;
     out["switch_width"] = cfg.switch_width;
+    out["tail_correction"] = cfg.tail_correction;
     return out;
   });
 #ifdef RGPOT_HAS_CACHE
@@ -1131,8 +1139,8 @@ NB_MODULE(_core, m) {
       nb::arg("expression"), nb::arg("terms"),
       "expression is a Lepton string; terms maps names to 'lj'/'morse'/"
       "'d3'/'d4' or a dict with kind plus that kind's fields: u0, "
-      "cutoff, psi, switch_width (lj); De, a, re, cutoff, switch_width "
-      "(morse); the D3/D4 fields.");
+      "cutoff, psi, switch_width, tail_correction (lj); De, a, re, "
+      "cutoff, switch_width (morse); the D3/D4 fields.");
   expr.def_prop_ro("expression", [](const PotHolder<rgpot::ExprPot> &self) {
     return self.primary().expression();
   });

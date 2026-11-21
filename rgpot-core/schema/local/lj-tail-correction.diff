@@ -1,0 +1,11 @@
+diff --git a/Potentials.capnp b/Potentials.capnp
+--- a/Potentials.capnp
++++ b/Potentials.capnp
+@@ -2548,6 +2548,7 @@ struct LennardJonesParams {
+   u0 @0 :Float64 = 1.0;
+   psi @1 :Float64 = 1.0;
+   cutoff @2 :Float64 = 15.0;
++  tailCorrection @3 :Bool = false;
+ }
+ 
+ struct MorseParams {
