@@ -16,6 +16,40 @@ project_root = meson.project_source_root()
 engines_here = meson.current_source_dir()
 dl_dep = cppc.find_library('dl', required: false)
 thread_dep = dependency('threads')
+
+potlibc_opt = get_option('with_potlibc')
+potlibc_dep = dependency('potlibc', required: potlibc_opt)
+if potlibc_dep.found()
+    potlibc_engine = shared_library(
+        'potlibc_engine',
+        files('potlibc_engine.c'),
+        dependencies: [potlibc_dep, thread_dep],
+        include_directories: [engines_inc, rgpot_inc],
+        c_args: [
+            '-DRGPOT_ENGINE_BUILD',
+            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
+                meson.project_version(),
+            ),
+        ],
+        install: not meson.is_subproject(),
+    )
+    install_headers(
+        '../include/rgpot/potlibc_engine.h',
+        subdir: 'rgpot',
+    )
+    test(
+        'potlibc_engine',
+        executable(
+            'test_potlibc_engine',
+            files('test_potlibc_engine.c'),
+            dependencies: dl_dep,
+            include_directories: [engines_inc, rgpot_inc],
+        ),
+        args: [potlibc_engine.full_path()],
+        timeout: 120,
+    )
+endif
+
 lj_lib = static_library(
     'rgpot_lj_eval',
     files('lj_eval.cpp'),
