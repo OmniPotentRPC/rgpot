@@ -133,7 +133,10 @@ typedef struct {
 
 /* Version 1 is the 144-byte layout: magic, version, atom_count, surface_id.
  * Version 2 carries size at offset 4 and version at offset 8. A u32 of 1 at
- * offset 4 is version 1, never a version-2 size (those are at least 152). */
+ * offset 4 is version 1, never a version-2 size (those are at least 152).
+ * Any other 144-byte message has an unknown or mismatched version at offset 4
+ * and is refused before offset 8 (the low word of atom_count in version 1,
+ * which may be 2) is read as a version-2 version. */
 static int decode_potlibc_config(PotlibcCreateRequest *out, const void *config,
                                  size_t config_len, char *errbuf,
                                  size_t errlen) {
@@ -166,6 +169,10 @@ static int decode_potlibc_config(PotlibcCreateRequest *out, const void *config,
     out->atom_count = legacy.atom_count;
     memcpy(out->surface_id, legacy.surface_id, sizeof out->surface_id);
     return 0;
+  }
+  if (config_len == sizeof(RgpotPotlibcConfigV1)) {
+    copy_message(errbuf, errlen, "potlibc config version is unknown");
+    return -1;
   }
   if (config_len < offsetof(RgpotPotlibcConfigV2, version) + sizeof(uint32_t)) {
     copy_message(errbuf, errlen,
