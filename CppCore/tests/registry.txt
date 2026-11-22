@@ -343,6 +343,7 @@ EngineTableTest | tests core rpc posix | custom workdir=. | @engine_plugins
 lj_eval | core posix | custom timeout=60 | @engines
 lj_engine | core posix | custom timeout=60 | @engines
 mdi_concrete_potentials | tests core posix python mdi pymdi | custom timeout=120 |
+potlibc_engine | core posix probe | custom timeout=120 | @engines
 external_potentials | core posix | custom timeout=120 | @engines
 external_engine_refcount | tests core linux | custom timeout=120 |
 external_constructor_reentry | tests core linux | custom timeout=10 |
