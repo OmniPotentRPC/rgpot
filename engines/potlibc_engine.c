@@ -116,6 +116,36 @@ static int fail_potlibc(RgpotEnginePot *pot, const char *operation,
   return RGPOT_ENGINE_ERR_EVAL;
 }
 
+static int trailing_bytes_zero(const unsigned char *data, size_t count) {
+  size_t index;
+  for (index = 0; index < count; ++index) {
+    if (data[index] != 0) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int checked_values(RgpotEnginePot *pot, size_t systems, size_t dimension,
+                          size_t *values) {
+  if (dimension != 0 && systems > SIZE_MAX / dimension) {
+    set_error(pot, "invalid argument (batch): too many systems");
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  *values = systems * dimension;
+  return RGPOT_ENGINE_OK;
+}
+
+static int checked_alloc_bytes(RgpotEnginePot *pot, size_t count,
+                               size_t *bytes) {
+  if (count > SIZE_MAX / sizeof(double)) {
+    set_error(pot, "invalid argument");
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  *bytes = count * sizeof(double);
+  return RGPOT_ENGINE_OK;
+}
+
 static int check_input(RgpotEnginePot *pot, long n_atoms,
                        const int *atomic_numbers, size_t *dimension) {
   size_t atom;
@@ -192,33 +222,53 @@ int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *host_stamp) {
 
 RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                                     char *errbuf, size_t errlen) {
-  RgpotPotlibcConfigV1 decoded;
-  const RgpotPotlibcConfigV1 *message;
+  RgpotPotlibcConfigV1 message;
   RgpotEnginePot *pot;
   potlibc_status status;
 
-  if (config == NULL || config_len != sizeof(RgpotPotlibcConfigV1)) {
+  if (config == NULL ||
+      config_len < offsetof(RgpotPotlibcConfigV1, version) + sizeof(uint32_t)) {
     copy_message(errbuf, errlen,
                  "potlibc engine requires RgpotPotlibcConfigV1");
     return NULL;
   }
-  memcpy(&decoded, config, sizeof decoded);
-  message = &decoded;
-  if (message->magic != RGPOT_POTLIBC_CONFIG_MAGIC ||
-      message->version != RGPOT_POTLIBC_CONFIG_VERSION) {
-    copy_message(errbuf, errlen, "potlibc engine config magic or version");
+  memset(&message, 0, sizeof message);
+  memcpy(&message, config, sizeof(uint32_t) * 3);
+  if (message.size < RGPOT_POTLIBC_CONFIG_MIN_SIZE) {
+    copy_message(errbuf, errlen,
+                 "potlibc config size is smaller than RgpotPotlibcConfigV1");
     return NULL;
   }
-  if (message->surface_id[0] == '\0' ||
-      bounded_length(message->surface_id,
+  if (config_len < message.size) {
+    copy_message(errbuf, errlen,
+                 "potlibc config buffer is shorter than config.size");
+    return NULL;
+  }
+  memcpy(&message, config, sizeof message);
+  if (message.size > sizeof message &&
+      !trailing_bytes_zero((const unsigned char *)config + sizeof message,
+                           message.size - sizeof message)) {
+    copy_message(errbuf, errlen,
+                 "potlibc config trailing bytes must be zero");
+    return NULL;
+  }
+  if (message.magic != RGPOT_POTLIBC_CONFIG_MAGIC ||
+      message.version != RGPOT_POTLIBC_CONFIG_VERSION ||
+      message.reserved != 0) {
+    copy_message(errbuf, errlen,
+                 "potlibc engine config magic, version, or reserved field");
+    return NULL;
+  }
+  if (message.surface_id[0] == '\0' ||
+      bounded_length(message.surface_id,
                      RGPOT_POTLIBC_SURFACE_ID_CAPACITY) ==
           RGPOT_POTLIBC_SURFACE_ID_CAPACITY) {
     copy_message(errbuf, errlen,
                  "potlibc engine config needs a NUL-terminated surface id");
     return NULL;
   }
-  if (message->atom_count != (uint64_t)(size_t)message->atom_count ||
-      (size_t)message->atom_count > MAX_ATOMS) {
+  if (message.atom_count != (uint64_t)(size_t)message.atom_count ||
+      (size_t)message.atom_count > MAX_ATOMS) {
     copy_message(errbuf, errlen,
                  "potlibc engine atom count is too large for the coordinate "
                  "buffers");
@@ -242,11 +292,11 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
     free(pot);
     return NULL;
   }
-  if (message->atom_count == 0) {
-    status = potlibc_create(message->surface_id, &pot->surface);
+  if (message.atom_count == 0) {
+    status = potlibc_create(message.surface_id, &pot->surface);
   } else {
-    status = potlibc_create_sized(message->surface_id,
-                                  (size_t)message->atom_count, &pot->surface);
+    status = potlibc_create_sized(message.surface_id,
+                                  (size_t)message.atom_count, &pot->surface);
   }
   if (status != POTLIBC_SUCCESS) {
     snprintf(pot->error, sizeof pot->error, "potlibc create: %s",
@@ -405,8 +455,10 @@ int rgpot_engine_force_batch(
   size_t component;
   size_t system;
   size_t systems;
-  size_t dimension;
+  size_t dimension = 0;
   size_t values;
+  size_t values_bytes;
+  size_t systems_bytes;
   double *coordinates;
   double *surface_forces;
   double *surface_energies;
@@ -415,7 +467,7 @@ int rgpot_engine_force_batch(
   if (code != RGPOT_ENGINE_OK) {
     return code;
   }
-  code = check_input(pot, n_atoms, atomic_numbers);
+  code = check_input(pot, n_atoms, atomic_numbers, &dimension);
   if (code != RGPOT_ENGINE_OK || n_systems < 1 || positions == NULL ||
       forces == NULL || energies == NULL || boxes == NULL) {
     if (code == RGPOT_ENGINE_OK) {
@@ -426,16 +478,16 @@ int rgpot_engine_force_batch(
     return code;
   }
   systems = (size_t)n_systems;
-  dimension = 3 * (size_t)n_atoms;
-  if (systems > SIZE_MAX / (dimension * sizeof(double))) {
-    set_error(pot, "invalid argument (batch): too many systems");
+  code = checked_values(pot, systems, dimension, &values);
+  if (code != RGPOT_ENGINE_OK ||
+      checked_alloc_bytes(pot, values, &values_bytes) != RGPOT_ENGINE_OK ||
+      checked_alloc_bytes(pot, systems, &systems_bytes) != RGPOT_ENGINE_OK) {
     pthread_mutex_unlock(&pot->call_lock);
     return RGPOT_ENGINE_ERR_INVALID;
   }
-  values = systems * dimension;
-  coordinates = malloc(values * sizeof *coordinates);
-  surface_forces = malloc(values * sizeof *surface_forces);
-  surface_energies = malloc(systems * sizeof *surface_energies);
+  coordinates = malloc(values_bytes);
+  surface_forces = malloc(values_bytes);
+  surface_energies = malloc(systems_bytes);
   if (coordinates == NULL || surface_forces == NULL ||
       surface_energies == NULL) {
     free(coordinates);
@@ -445,7 +497,7 @@ int rgpot_engine_force_batch(
     pthread_mutex_unlock(&pot->call_lock);
     return RGPOT_ENGINE_ERR_EVAL;
   }
-  memcpy(coordinates, positions, values * sizeof *coordinates);
+  memcpy(coordinates, positions, values_bytes);
   for (system = 0; system < systems; ++system) {
     double local_box[9];
     memcpy(local_box, boxes + 9 * system, sizeof local_box);

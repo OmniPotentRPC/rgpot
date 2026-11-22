@@ -124,7 +124,7 @@ static void create_validation(void) {
   message.version += 1u;
   CHECK(refused(&message, sizeof message));
   message = config();
-  message.reserved = 1u;
+  message.reserved0 = 1u;
   CHECK(refused(&message, sizeof message));
   message = config();
   message.atomic_number = 0;
