@@ -12,10 +12,11 @@ use rgpot_core::engine::{
     EngineError, EngineEvaluation, EngineFailure, EnginePotential, EngineRequest, EngineSession,
     EngineStatus, EngineSymbols, PotlibcConfig, RgpotEngineAbiStamp, RgpotEngineCaps,
     RgpotEngineComponent, RgpotEnginePot, COUPLED_WELL_CONFIG_MAGIC, COUPLED_WELL_CONFIG_MIN_SIZE,
-    COUPLED_WELL_CONFIG_V1_SIZE, COUPLED_WELL_CONFIG_VERSION, ENGINE_ABI_LAYOUT_REVISION,
-    ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_INVALID, ENGINE_ERR_UNSUPPORTED,
-    ENGINE_UNLOAD_POLICY_MINOR, POTLIBC_CONFIG_MAGIC, POTLIBC_CONFIG_MIN_SIZE,
-    POTLIBC_CONFIG_VERSION, POTLIBC_SURFACE_ID_CAPACITY,
+    COUPLED_WELL_CONFIG_V1_SIZE, COUPLED_WELL_CONFIG_VERSION, COUPLED_WELL_CONFIG_VERSION_V1,
+    ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_INVALID,
+    ENGINE_ERR_UNSUPPORTED, ENGINE_UNLOAD_POLICY_MINOR, POTLIBC_CONFIG_MAGIC,
+    POTLIBC_CONFIG_MIN_SIZE, POTLIBC_CONFIG_V1_SIZE, POTLIBC_CONFIG_VERSION,
+    POTLIBC_CONFIG_VERSION_V1, POTLIBC_SURFACE_ID_CAPACITY,
 };
 use rgpot_core::hvp::rgpot_hvp_scheme_t;
 use rgpot_core::status::rgpot_status_t;
@@ -161,6 +162,211 @@ fn build_coupled_well() -> &'static Path {
             .status()
             .unwrap_or_else(|why| panic!("run the C++ compiler {:?}: {why}", compiler.path()));
         assert!(status.success(), "the coupled-well engine did not compile: {status}");
+        out
+    })
+}
+
+/// Compile `engines/potlibc_engine.c` against a minimal C `potlibc` stub so
+/// the Rust test suite exercises the real potlibc engine plugin directly.
+fn build_potlibc() -> &'static Path {
+    static LIBRARY: OnceLock<PathBuf> = OnceLock::new();
+    LIBRARY.get_or_init(|| {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let source = root.join("engines/potlibc_engine.c");
+        let tmpdir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("potlibc_stub.{}", std::process::id()));
+        std::fs::create_dir_all(&tmpdir).expect("create potlibc stub dir");
+        let header = tmpdir.join("potlibc.h");
+        let stub = tmpdir.join("potlibc_stub.c");
+        std::fs::write(
+            &header,
+            r#"#ifndef POTLIBC_H
+#define POTLIBC_H
+#include <stddef.h>
+#include <stdint.h>
+typedef struct potlibc_handle potlibc_handle;
+typedef enum potlibc_status {
+  POTLIBC_SUCCESS = 0,
+  POTLIBC_ERROR_INVALID_SURFACE_ID = 2,
+  POTLIBC_ERROR_ATOM_COUNT_REQUIRED = 11,
+  POTLIBC_ERROR_ATOM_COUNT_UNEXPECTED = 12
+} potlibc_status;
+typedef enum potlibc_capability {
+  POTLIBC_CAP_ENERGY = 1u << 0,
+  POTLIBC_CAP_FORCES = 1u << 1,
+  POTLIBC_CAP_HVP = 1u << 2
+} potlibc_capability;
+typedef struct potlibc_metadata {
+  const char *surface_id;
+  size_t atom_count;
+  const int *atomic_numbers;
+  const double *reference_geometry;
+  const char *atom_ordering;
+  const char *length_unit;
+  const char *energy_unit;
+  const char *force_unit;
+  uint32_t capabilities;
+} potlibc_metadata;
+potlibc_status potlibc_create(const char *surface_id, potlibc_handle **handle);
+potlibc_status potlibc_create_sized(const char *surface_id, size_t atom_count,
+                                    potlibc_handle **handle);
+void potlibc_destroy(potlibc_handle *handle);
+potlibc_status potlibc_get_metadata(const potlibc_handle *handle,
+                                    potlibc_metadata *metadata);
+potlibc_status potlibc_evaluate(potlibc_handle *handle, size_t count,
+                                const double *x, double *energy, double *force);
+potlibc_status potlibc_hessian_vector_product(potlibc_handle *handle,
+                                              size_t count, const double *x,
+                                              const double *direction,
+                                              double *product);
+const char *potlibc_status_string(potlibc_status status);
+#endif
+"#,
+        )
+        .expect("write potlibc.h stub");
+        std::fs::write(
+            &stub,
+            r#"#include "potlibc.h"
+#include <stdlib.h>
+#include <string.h>
+struct potlibc_handle {
+  potlibc_metadata meta;
+  int species[8];
+};
+static const int BRH2_SPECIES[3] = {35, 1, 1};
+potlibc_status potlibc_create(const char *surface_id, potlibc_handle **out) {
+  potlibc_handle *h;
+  if (strcmp(surface_id, "vbo-beta1") == 0) {
+    return POTLIBC_ERROR_ATOM_COUNT_REQUIRED;
+  }
+  if (strcmp(surface_id, "brh2leps") != 0) {
+    return POTLIBC_ERROR_INVALID_SURFACE_ID;
+  }
+  h = (potlibc_handle *)calloc(1, sizeof *h);
+  h->meta.surface_id = "brh2leps";
+  h->meta.atom_count = 3;
+  h->meta.atomic_numbers = BRH2_SPECIES;
+  h->meta.length_unit = "bohr";
+  h->meta.energy_unit = "hartree";
+  h->meta.force_unit = "hartree/bohr";
+  h->meta.capabilities =
+      POTLIBC_CAP_ENERGY | POTLIBC_CAP_FORCES | POTLIBC_CAP_HVP;
+  *out = h;
+  return POTLIBC_SUCCESS;
+}
+potlibc_status potlibc_create_sized(const char *surface_id, size_t atom_count,
+                                    potlibc_handle **out) {
+  potlibc_handle *h;
+  size_t i;
+  if (strcmp(surface_id, "brh2leps") == 0) {
+    return POTLIBC_ERROR_ATOM_COUNT_UNEXPECTED;
+  }
+  if (strcmp(surface_id, "vbo-beta1") != 0 || atom_count < 2 || atom_count > 8) {
+    return POTLIBC_ERROR_INVALID_SURFACE_ID;
+  }
+  h = (potlibc_handle *)calloc(1, sizeof *h);
+  for (i = 0; i < atom_count; ++i) {
+    h->species[i] = 13;
+  }
+  h->meta.surface_id = "vbo-beta1";
+  h->meta.atom_count = atom_count;
+  h->meta.atomic_numbers = h->species;
+  h->meta.length_unit = "bohr";
+  h->meta.energy_unit = "hartree";
+  h->meta.force_unit = "hartree/bohr";
+  h->meta.capabilities =
+      POTLIBC_CAP_ENERGY | POTLIBC_CAP_FORCES | POTLIBC_CAP_HVP;
+  *out = h;
+  return POTLIBC_SUCCESS;
+}
+void potlibc_destroy(potlibc_handle *handle) { free(handle); }
+potlibc_status potlibc_get_metadata(const potlibc_handle *handle,
+                                    potlibc_metadata *metadata) {
+  *metadata = handle->meta;
+  return POTLIBC_SUCCESS;
+}
+potlibc_status potlibc_evaluate(potlibc_handle *handle, size_t count,
+                                const double *x, double *energy,
+                                double *force) {
+  const size_t dim = 3 * handle->meta.atom_count;
+  size_t s, i;
+  for (s = 0; s < count; ++s) {
+    double e = 0.0;
+    for (i = 0; i < dim; ++i) {
+      const double xi = x[s * dim + i];
+      e += 0.5 * xi * xi;
+      force[s * dim + i] = -xi;
+    }
+    energy[s] = e;
+  }
+  return POTLIBC_SUCCESS;
+}
+potlibc_status potlibc_hessian_vector_product(potlibc_handle *handle,
+                                              size_t count, const double *x,
+                                              const double *direction,
+                                              double *product) {
+  const size_t total = count * 3 * handle->meta.atom_count;
+  size_t i;
+  (void)x;
+  for (i = 0; i < total; ++i) {
+    product[i] = direction[i];
+  }
+  return POTLIBC_SUCCESS;
+}
+const char *potlibc_status_string(potlibc_status status) {
+  switch (status) {
+  case POTLIBC_SUCCESS:
+    return "success";
+  case POTLIBC_ERROR_ATOM_COUNT_REQUIRED:
+    return "atom count required";
+  case POTLIBC_ERROR_ATOM_COUNT_UNEXPECTED:
+    return "atom count unexpected";
+  default:
+    return "invalid surface id";
+  }
+}
+"#,
+        )
+        .expect("write potlibc_stub.c");
+        let suffix = if cfg!(target_os = "macos") {
+            "dylib"
+        } else {
+            "so"
+        };
+        let out = tmpdir.join(format!("libpotlibc.{suffix}"));
+        let target = env!("RGPOT_BUILD_TARGET");
+        let compiler = match cc::Build::new()
+            .target(target)
+            .host(target)
+            .opt_level(0)
+            .try_get_compiler()
+        {
+            Ok(compiler) => compiler,
+            Err(why) => panic!(
+                "cannot compile the potlibc engine: no C compiler available for target {target} ({why})"
+            ),
+        };
+        let mut command = compiler.to_command();
+        if cfg!(target_os = "macos") {
+            command.arg("-dynamiclib");
+        } else {
+            command.args(["-shared", "-fPIC"]);
+        }
+        let status = command
+            .arg("-I")
+            .arg(&tmpdir)
+            .arg("-I")
+            .arg(root.join("CppCore"))
+            .arg("-I")
+            .arg(root.join("include"))
+            .arg("-o")
+            .arg(&out)
+            .arg(&source)
+            .arg(&stub)
+            .arg("-lpthread")
+            .status()
+            .unwrap_or_else(|why| panic!("run the C compiler {:?}: {why}", compiler.path()));
+        assert!(status.success(), "the potlibc engine did not compile: {status}");
         out
     })
 }
@@ -4283,6 +4489,23 @@ fn coupled_well_accepts_a_version_one_message_with_the_same_answer() {
         }
     }
 
+    for len in [
+        COUPLED_WELL_CONFIG_V1_SIZE as usize - 1,
+        COUPLED_WELL_CONFIG_V1_SIZE as usize + 1,
+        COUPLED_WELL_CONFIG_MIN_SIZE as usize,
+    ] {
+        let mut sized = vec![0_u8; len];
+        let copy_len = len.min(legacy.len());
+        sized[..copy_len].copy_from_slice(&legacy[..copy_len]);
+        let wrong_len = unsafe { EnginePotential::load(build_coupled_well(), &sized) }
+            .err()
+            .unwrap_or_else(|| panic!("{len}-byte version-1 coupled-well message must be refused"));
+        assert!(
+            matches!(wrong_len, EngineError::Create(ref why) if why.contains("RgpotCoupledWellConfigV1")),
+            "{len}-byte v1: {wrong_len}"
+        );
+    }
+
     legacy[4..8].copy_from_slice(&99_u32.to_ne_bytes());
     let unknown_v1 = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
         .err()
@@ -4300,6 +4523,55 @@ fn coupled_well_accepts_a_version_one_message_with_the_same_answer() {
         matches!(unknown_v2, EngineError::Create(ref why) if why.contains("version is unknown")),
         "{unknown_v2}"
     );
+}
+
+#[test]
+fn potlibc_accepts_a_version_one_message_and_pins_its_exact_length() {
+    assert_eq!(POTLIBC_CONFIG_V1_SIZE, 144);
+    let mut legacy = [0_u8; 144];
+    legacy[0..4].copy_from_slice(&POTLIBC_CONFIG_MAGIC.to_ne_bytes());
+    legacy[4..8].copy_from_slice(&POTLIBC_CONFIG_VERSION_V1.to_ne_bytes());
+    legacy[8..16].copy_from_slice(&0_u64.to_ne_bytes());
+    legacy[16..24].copy_from_slice(b"brh2leps");
+
+    let mut from_v1 = unsafe { EnginePotential::load(build_potlibc(), &legacy) }
+        .expect("144-byte version-1 potlibc message");
+    let v2 = PotlibcConfig::new("brh2leps", 0).expect("v2 config");
+    let mut from_v2 =
+        unsafe { EnginePotential::load(build_potlibc(), v2.as_bytes()) }.expect("v2 potlibc");
+    let positions = [0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 2.5, 0.0, 0.0];
+    let species = [35, 1, 1];
+    let direction = [0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8, 0.9];
+    let request = EngineRequest {
+        positions: &positions,
+        atomic_numbers: &species,
+        box_matrix: &CELL,
+    };
+    assert_eq!(
+        from_v1.force(&request).expect("v1 force"),
+        from_v2.force(&request).expect("v2 force")
+    );
+    assert_eq!(
+        from_v1.hvp(&request, &direction).expect("v1 hvp"),
+        from_v2.hvp(&request, &direction).expect("v2 hvp")
+    );
+
+    for len in [
+        POTLIBC_CONFIG_V1_SIZE as usize - 1,
+        POTLIBC_CONFIG_V1_SIZE as usize + 1,
+        POTLIBC_CONFIG_MIN_SIZE as usize,
+    ] {
+        let mut sized = vec![0_u8; len];
+        let copy_len = len.min(legacy.len());
+        sized[..copy_len].copy_from_slice(&legacy[..copy_len]);
+        let wrong_len = unsafe { EnginePotential::load(build_potlibc(), &sized) }
+            .err()
+            .unwrap_or_else(|| panic!("{len}-byte version-1 potlibc message must be refused"));
+        assert!(
+            matches!(wrong_len, EngineError::Create(ref why) if why.contains("RgpotPotlibcConfigV1")),
+            "{len}-byte v1: {wrong_len}"
+        );
+    }
 }
 
 #[test]

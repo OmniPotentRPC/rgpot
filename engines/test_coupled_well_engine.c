@@ -764,6 +764,7 @@ static int same_geometry(RgpotEnginePot *legacy, RgpotEnginePot *current,
  * as the version-2 message for the same parameters. */
 static void v1_client_matches_version_two(void) {
   unsigned char legacy_bytes[48];
+  unsigned char oversized_v1[sizeof(RgpotCoupledWellConfigV2)];
   RgpotCoupledWellConfigV2 current_message;
   RgpotEnginePot *legacy;
   RgpotEnginePot *current;
@@ -797,6 +798,21 @@ static void v1_client_matches_version_two(void) {
   }
   rgpot_engine_destroy(legacy);
   rgpot_engine_destroy(current);
+
+  memset(error, 0, sizeof error);
+  CHECK(rgpot_engine_create(legacy_bytes, sizeof legacy_bytes - 1, error,
+                            sizeof error) == NULL);
+  CHECK(strstr(error, "RgpotCoupledWellConfigV1") != NULL);
+  memset(oversized_v1, 0, sizeof oversized_v1);
+  memcpy(oversized_v1, legacy_bytes, sizeof legacy_bytes);
+  memset(error, 0, sizeof error);
+  CHECK(rgpot_engine_create(oversized_v1, sizeof legacy_bytes + 1, error,
+                            sizeof error) == NULL);
+  CHECK(strstr(error, "RgpotCoupledWellConfigV1") != NULL);
+  memset(error, 0, sizeof error);
+  CHECK(rgpot_engine_create(oversized_v1, sizeof oversized_v1, error,
+                            sizeof error) == NULL);
+  CHECK(strstr(error, "RgpotCoupledWellConfigV1") != NULL);
 
   put_u32(legacy_bytes, 4, 99u);
   memset(error, 0, sizeof error);
