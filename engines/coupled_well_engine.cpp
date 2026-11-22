@@ -79,10 +79,13 @@ bool trailingBytesAreZero(const unsigned char *bytes, size_t count) {
 // Version 1 is the 48-byte layout: magic, version, atomic_number, reserved,
 // then the four doubles. Version 2 carries size at offset 4 and version at
 // offset 8. A u32 of 1 at offset 4 is version 1, never a version-2 size
-// (those are at least 56). Any other 48-byte message has an unknown or
-// mismatched version at offset 4 and is refused before offset 8
-// (atomic_number in version 1, which may be 2) is read as a version-2 version.
-// The stored parameters are the version-1 fields.
+// (those are at least RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE). A 48-byte message
+// whose word at offset 4 is below that minimum, and is not 1, has an unknown
+// version and is refused before offset 8 (atomic_number in version 1, which
+// may be 2) is read as a version-2 version. A word at offset 4 that is at
+// least the version-2 size is a truncated version-2 or later message, so
+// decoding follows the version-2 path and reports that the buffer is shorter
+// than config.size. The stored parameters are the version-1 fields.
 bool readConfig(RgpotCoupledWellConfigV1 *out, const void *config, size_t configLen,
                 char *errbuf, size_t errlen) {
   if (config == nullptr || configLen < sizeof(uint32_t) * 2) {
@@ -116,7 +119,8 @@ bool readConfig(RgpotCoupledWellConfigV1 *out, const void *config, size_t config
     *out = params;
     return true;
   }
-  if (configLen == sizeof(RgpotCoupledWellConfigV1)) {
+  if (configLen == sizeof(RgpotCoupledWellConfigV1) &&
+      word4 < RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE) {
     copyMessage(errbuf, errlen, "coupled-well config version is unknown");
     return false;
   }
