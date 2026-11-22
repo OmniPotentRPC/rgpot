@@ -41,7 +41,8 @@ extern "C" {
  * eV/Angstrom^2 and coupling in 1/Angstrom.
  *
  * The engine accepts this message and RgpotCoupledWellConfigV2. Any other
- * version is refused with a typed version error. create also refuses a
+ * version is refused with the plain error string
+ * "coupled-well config version is unknown". create also refuses a
  * nonzero reserved field, a non-positive atomic_number, a barrier_energy,
  * well_position or transverse_spring that is not finite and positive, and a
  * coupling that is not finite.
