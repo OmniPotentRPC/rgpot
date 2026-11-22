@@ -585,8 +585,9 @@ void LJPot::hessianAdImpl(const ForceInput &in, double *h) const {
   if (in.nAtoms < 2 || cuttOffR <= 0.0) {
     return;
   }
+  const double pair_shift = m_config.tail_correction ? 0.0 : cuttOffU;
   const simd::LjParams params =
-      lj_params(u0, psi, cuttOffU, m_config, m_switch);
+      lj_params(u0, psi, pair_shift, m_config, m_switch);
   const double cutoff2 = cuttOffR * cuttOffR;
   visitLjPairs(this, cuttOffR, mode_, in,
                [&](std::int32_t i, std::int32_t j, double dx, double dy,
@@ -610,8 +611,9 @@ void LJPot::hessianVectorAdImpl(const ForceInput &in, const double *v,
   if (in.nAtoms < 2 || cuttOffR <= 0.0) {
     return;
   }
+  const double pair_shift = m_config.tail_correction ? 0.0 : cuttOffU;
   const simd::LjParams params =
-      lj_params(u0, psi, cuttOffU, m_config, m_switch);
+      lj_params(u0, psi, pair_shift, m_config, m_switch);
   const double cutoff2 = cuttOffR * cuttOffR;
   visitLjPairs(this, cuttOffR, mode_, in,
                [&](std::int32_t i, std::int32_t j, double dx, double dy,
