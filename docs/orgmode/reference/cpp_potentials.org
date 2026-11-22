@@ -1705,7 +1705,7 @@ This class is built with =-Dwith_expr=true=.
 
 #+attr_rgpot: signature
 #+begin_src cpp
-[[nodiscard]] const PotentialBase *child(std::size_t index) const noexcept;
+[[nodiscard]] const PotentialBase *child(std::size_t i) const noexcept;
 #+end_src
 
 - Inputs :: =index=, a child index.
