@@ -226,6 +226,61 @@ pub trait CoordinateTransform: Send {
 pub const COUPLED_WELL_CONFIG_MAGIC: u32 = 0x4357_5054;
 /// Version of [`CoupledWellConfig`].
 pub const COUPLED_WELL_CONFIG_VERSION: u32 = 1;
+/// Magic number of `RgpotPotlibcConfigV1`.
+pub const POTLIBC_CONFIG_MAGIC: u32 = 0x504f_544c;
+/// Version of [`PotlibcConfig`].
+pub const POTLIBC_CONFIG_VERSION: u32 = 1;
+/// Capacity of the potlibc surface identifier, including its terminator.
+pub const POTLIBC_SURFACE_ID_CAPACITY: usize = 128;
+
+/// Parameters for `libpotlibc_engine`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PotlibcConfig {
+    /// Configuration identity.
+    pub magic: u32,
+    /// Configuration layout version.
+    pub version: u32,
+    /// Zero for a fixed-size surface.
+    pub atom_count: u64,
+    /// NUL-terminated canonical catalog identifier.
+    pub surface_id: [u8; POTLIBC_SURFACE_ID_CAPACITY],
+}
+
+impl PotlibcConfig {
+    /// Construct a version-one parameter message.
+    pub fn new(surface_id: &str, atom_count: u64) -> Result<Self, EngineError> {
+        let bytes = surface_id.as_bytes();
+        if bytes.is_empty() || bytes.len() >= POTLIBC_SURFACE_ID_CAPACITY {
+            return Err(EngineError::Invalid(
+                "potlibc surface id is empty or too long".into(),
+            ));
+        }
+        if bytes.contains(&0) {
+            return Err(EngineError::Invalid(
+                "potlibc surface id contains NUL".into(),
+            ));
+        }
+        let mut encoded = [0; POTLIBC_SURFACE_ID_CAPACITY];
+        encoded[..bytes.len()].copy_from_slice(bytes);
+        Ok(Self {
+            magic: POTLIBC_CONFIG_MAGIC,
+            version: POTLIBC_CONFIG_VERSION,
+            atom_count,
+            surface_id: encoded,
+        })
+    }
+
+    /// Native bytes consumed by `rgpot_engine_create`.
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                std::ptr::from_ref(self).cast::<u8>(),
+                std::mem::size_of::<Self>(),
+            )
+        }
+    }
+}
 
 /// Parameters for `libcoupled_well_engine`.
 ///

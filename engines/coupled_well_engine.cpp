@@ -160,6 +160,31 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
   return RGPOT_ENGINE_OK;
 }
 
+int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems,
+                             long nAtoms, const double *positions,
+                             const int *atomicNumbers, double *forces,
+                             double *energies, double *variances,
+                             const double *boxes,
+                             rgpot_engine_coord_transform transform,
+                             void *transformUser) {
+  if (nSystems < 1 || positions == nullptr || forces == nullptr ||
+      energies == nullptr || boxes == nullptr) {
+    return invalid(pot, "coupled-well batch input is invalid");
+  }
+  for (long system = 0; system < nSystems; ++system) {
+    double *variance =
+        variances == nullptr ? nullptr : variances + system;
+    const int code = rgpot_engine_force(
+        pot, nAtoms, positions + 3 * system, atomicNumbers,
+        forces + 3 * system, energies + system, variance, boxes + 9 * system,
+        transform, transformUser);
+    if (code != RGPOT_ENGINE_OK) {
+      return code;
+    }
+  }
+  return RGPOT_ENGINE_OK;
+}
+
 int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms, const double *positions,
                      const int *atomicNumbers, const double *direction,
                      double *product, const double *box) {
@@ -190,6 +215,7 @@ int rgpot_engine_caps(const RgpotEnginePot *, RgpotEngineCaps *out) {
   caps.size = sizeof caps;
   caps.reentrancy = 1;
   caps.per_image_instances = 1;
+  caps.batched = 1;
   caps.analytic_hvp = 1;
   const size_t room =
       static_cast<size_t>(out->size) < sizeof caps
