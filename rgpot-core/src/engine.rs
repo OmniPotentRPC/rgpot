@@ -601,7 +601,7 @@ impl EngineSymbols {
 pub enum EngineError {
     /// The shared library did not open.
     Load(String),
-    /// A symbol the header requires is not exported.
+    /// A symbol the header requires is not exported or has a null address.
     Missing(String),
     /// The library speaks another ABI major.
     Abi {
@@ -2374,9 +2374,25 @@ unsafe fn optional<T: Copy>(library: &Library, name: &str) -> Option<T> {
 
 unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
     unsafe fn required<T: Copy>(library: &Library, name: &str) -> Result<T, EngineError> {
-        let symbol = unsafe { library.get::<T>(format!("{name}\0").as_bytes()) }
+        const { assert!(std::mem::size_of::<T>() == std::mem::size_of::<*const c_void>()) };
+        let symbol = unsafe { library.get::<*const c_void>(format!("{name}\0").as_bytes()) }
             .map_err(|_| EngineError::Missing(name.to_owned()))?;
-        Ok(*symbol)
+        let raw = *symbol;
+        if raw.is_null() {
+            return Err(EngineError::Missing(name.to_owned()));
+        }
+        Ok(unsafe { std::mem::transmute_copy::<*const c_void, T>(&raw) })
+    }
+    unsafe fn optional<T: Copy>(library: &Library, name: &str) -> Option<T> {
+        const { assert!(std::mem::size_of::<T>() == std::mem::size_of::<*const c_void>()) };
+        let symbol =
+            unsafe { library.get::<*const c_void>(format!("{name}\0").as_bytes()) }.ok()?;
+        let raw = *symbol;
+        if raw.is_null() {
+            None
+        } else {
+            Some(unsafe { std::mem::transmute_copy::<*const c_void, T>(&raw) })
+        }
     }
     Ok(EngineSymbols {
         abi_version: unsafe { required(library, "rgpot_engine_abi_version")? },
