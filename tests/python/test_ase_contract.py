@@ -480,6 +480,18 @@ def test_lj_tail_correction_binding() -> None:
                 }
             },
         )
+        assert expr_on.config()["children"][0]["tail_correction"] is True
+        cluster.calc = RgpotCalculator(expr_on)
+        with pytest.raises(
+            ValueError, match="tail_correction=True requires 3D periodic"
+        ):
+            cluster.get_potential_energy()
+        slab.calc = RgpotCalculator(expr_on)
+        with pytest.raises(
+            ValueError, match="tail_correction=True requires 3D periodic"
+        ):
+            slab.get_potential_energy()
+
         direct_sw_on = rgpot.LJPot(
             u0=1.0, cutoff=5.0, psi=1.0, switch_width=1.0, tail_correction=True
         )

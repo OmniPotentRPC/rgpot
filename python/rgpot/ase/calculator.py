@@ -198,7 +198,12 @@ def _spec_of(potential: Any) -> tuple[str, dict[str, Any]] | None:
     config = getattr(potential, "config", None)
     if callable(config):
         cfg = config()
-        if isinstance(cfg, dict):
+        accepted = _init_parameters(cls)
+        if (
+            isinstance(cfg, dict)
+            and accepted is not None
+            and set(cfg).issubset(accepted)
+        ):
             return cls.__name__, dict(cfg)
     if _init_parameters(cls) == []:
         return cls.__name__, {}

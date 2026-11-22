@@ -187,8 +187,8 @@ ChildSpec child_spec_from(const std::string &name, nb::handle spec) {
     auto d = nb::cast<nb::dict>(spec);
     for (auto item : d) {
       const std::string key = nb::cast<std::string>(item.first);
-      if (key == "kind" || key == "type" || key == "name" ||
-          key == "weight" || key == "enabled") {
+      if (key == "kind" || key == "type" || key == "name" || key == "weight" ||
+          key == "enabled") {
         continue;
       } else if (key == "functional") {
         out.has_functional = true;
@@ -296,8 +296,9 @@ std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
     return std::make_unique<rgpot::MorsePot>(cfg);
   }
   if (spec.kind == "d2") {
-    rgpot::D2Config cfg =
-        spec.has_functional ? rgpot::d2_config_for(spec.functional) : rgpot::D2Config{};
+    rgpot::D2Config cfg = spec.has_functional
+                              ? rgpot::d2_config_for(spec.functional)
+                              : rgpot::D2Config{};
     if (spec.has_s6) {
       cfg.s6 = spec.s6;
     }
@@ -313,8 +314,9 @@ std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
     return std::make_unique<rgpot::D2Pot>(cfg);
   }
   if (spec.kind == "d2cpmd") {
-    rgpot::D2CpmdConfig cfg = spec.has_functional ? rgpot::d2_cpmd_config_for(spec.functional)
-                                                  : rgpot::D2CpmdConfig{};
+    rgpot::D2CpmdConfig cfg = spec.has_functional
+                                  ? rgpot::d2_cpmd_config_for(spec.functional)
+                                  : rgpot::D2CpmdConfig{};
     if (spec.has_s6) {
       cfg.s6 = spec.s6;
     }
@@ -383,7 +385,8 @@ std::vector<SumSpec> sum_specs_from(const nb::list &terms) {
   return out;
 }
 
-std::unique_ptr<rgpot::SumPot> sum_from_specs(const std::vector<SumSpec> &specs) {
+std::unique_ptr<rgpot::SumPot>
+sum_from_specs(const std::vector<SumSpec> &specs) {
   auto sum = std::make_unique<rgpot::SumPot>();
   for (const SumSpec &spec : specs) {
     sum->add(spec.term,
@@ -398,6 +401,19 @@ nb::dict tail_correction_config(const rgpot::PotentialBase &pot) {
     out["tail_correction"] = lj->config().tail_correction;
     return out;
   }
+#ifdef RGPOT_HAS_EXPR
+  if (const auto *expr = dynamic_cast<const rgpot::ExprPot *>(&pot)) {
+    nb::list children;
+    for (std::size_t i = 0; i < expr->size(); ++i) {
+      const rgpot::PotentialBase *child = expr->child(i);
+      if (child != nullptr) {
+        children.append(tail_correction_config(*child));
+      }
+    }
+    out["children"] = children;
+    return out;
+  }
+#endif
   const auto *sum = dynamic_cast<const rgpot::SumPot *>(&pot);
   if (sum == nullptr) {
     return out;
@@ -423,7 +439,8 @@ nb::list sum_components(const rgpot::SumPot &pot) {
     d["evaluated"] = c.evaluated;
     d["energy"] = c.energy;
     d["variance"] = c.variance;
-    d["forces"] = rgpot::pybind::vector_to_numpy(c.forces, {c.forces.size() / 3, 3});
+    d["forces"] =
+        rgpot::pybind::vector_to_numpy(c.forces, {c.forces.size() / 3, 3});
     if (c.has_stress) {
       d["stress"] = rgpot::pybind::stress_to_numpy(c.stress.data());
     } else {
@@ -711,9 +728,10 @@ NB_MODULE(_core, m) {
         return number;
       },
       nb::arg("symbol"), "Atomic number of an element symbol.");
-  m.def("unit_conversion_factor", &rgpot::units::unit_conversion_factor,
-        nb::arg("from_unit"), nb::arg("to_unit"),
-        "Multiplicative conversion factor between compatible unit expressions.");
+  m.def(
+      "unit_conversion_factor", &rgpot::units::unit_conversion_factor,
+      nb::arg("from_unit"), nb::arg("to_unit"),
+      "Multiplicative conversion factor between compatible unit expressions.");
 
   // F6 round trip. -0.0, NaN, and subnormals are copied unchanged.
   m.def(
@@ -908,8 +926,8 @@ NB_MODULE(_core, m) {
   auto d2_cls = nb::class_<PotHolder<rgpot::D2Pot>>(m, "D2Pot");
   d2_cls.def(
       "__init__",
-      [](PotHolder<rgpot::D2Pot> *self, double s6, double d, double sr, double cutoff,
-         std::optional<std::string> functional) {
+      [](PotHolder<rgpot::D2Pot> *self, double s6, double d, double sr,
+         double cutoff, std::optional<std::string> functional) {
         rgpot::D2Config cfg =
             functional ? rgpot::d2_config_for(*functional) : rgpot::D2Config{};
         if (!functional) {
@@ -922,7 +940,8 @@ NB_MODULE(_core, m) {
             [cfg] { return std::make_unique<rgpot::D2Pot>(cfg); });
       },
       nb::arg("s6") = 1.2, nb::arg("d") = 20.0, nb::arg("sr") = 1.1,
-      nb::arg("cutoff") = rgpot::D2Config{}.cutoff, nb::arg("functional") = nb::none(),
+      nb::arg("cutoff") = rgpot::D2Config{}.cutoff,
+      nb::arg("functional") = nb::none(),
       "Grimme's DFT-D2 (J. Comput. Chem. 27, 1787 (2006)) as a lattice sum "
       "over every periodic image within cutoff (Angstrom), in eV. The "
       "defaults are BLYP. A functional takes s6 and d from dftd3's D2 table "
@@ -941,10 +960,11 @@ NB_MODULE(_core, m) {
   auto d2cpmd_cls = nb::class_<PotHolder<rgpot::D2CpmdPot>>(m, "D2CpmdPot");
   d2cpmd_cls.def(
       "__init__",
-      [](PotHolder<rgpot::D2CpmdPot> *self, double s6, double alpha, double vdweps,
-         std::optional<std::string> functional, int symmetry) {
-        rgpot::D2CpmdConfig cfg =
-            functional ? rgpot::d2_cpmd_config_for(*functional) : rgpot::D2CpmdConfig{};
+      [](PotHolder<rgpot::D2CpmdPot> *self, double s6, double alpha,
+         double vdweps, std::optional<std::string> functional, int symmetry) {
+        rgpot::D2CpmdConfig cfg = functional
+                                      ? rgpot::d2_cpmd_config_for(*functional)
+                                      : rgpot::D2CpmdConfig{};
         if (!functional) {
           cfg.s6 = s6;
         }
@@ -954,8 +974,10 @@ NB_MODULE(_core, m) {
         new (self) PotHolder<rgpot::D2CpmdPot>(
             [cfg] { return std::make_unique<rgpot::D2CpmdPot>(cfg); });
       },
-      nb::arg("s6") = rgpot::D2CpmdConfig{}.s6, nb::arg("alpha") = rgpot::D2CpmdConfig{}.alpha,
-      nb::arg("vdweps") = rgpot::D2CpmdConfig{}.vdweps, nb::arg("functional") = nb::none(),
+      nb::arg("s6") = rgpot::D2CpmdConfig{}.s6,
+      nb::arg("alpha") = rgpot::D2CpmdConfig{}.alpha,
+      nb::arg("vdweps") = rgpot::D2CpmdConfig{}.vdweps,
+      nb::arg("functional") = nb::none(),
       nb::arg("symmetry") = rgpot::D2CpmdConfig{}.symmetry,
       "OpenCPMD's built-in empirical D2 (EMPIRICAL CORRECTION, ALL DFT-D2) "
       "with its tables, damping, truncation and minimum image, in eV, to "
@@ -975,8 +997,7 @@ NB_MODULE(_core, m) {
   rgpot::pybind::bind_calls(d2cpmd_cls);
 
 #ifdef RGPOT_HAS_EAM_TABLE
-  auto eam_table =
-      nb::class_<PotHolder<rgpot::EAMTablePot>>(m, "EAMTablePot");
+  auto eam_table = nb::class_<PotHolder<rgpot::EAMTablePot>>(m, "EAMTablePot");
   eam_table.def(
       "__init__",
       [](PotHolder<rgpot::EAMTablePot> *self, const std::string &file,
@@ -1142,7 +1163,8 @@ NB_MODULE(_core, m) {
       "__init__",
       [](PotHolder<rgpot::SumPot> *self, const nb::list &terms) {
         const std::vector<SumSpec> specs = sum_specs_from(terms);
-        new (self) PotHolder<rgpot::SumPot>([=] { return sum_from_specs(specs); });
+        new (self)
+            PotHolder<rgpot::SumPot>([=] { return sum_from_specs(specs); });
       },
       nb::arg("terms"),
       "Weighted sum of child potentials. terms is a list of kind strings or "
@@ -1151,7 +1173,9 @@ NB_MODULE(_core, m) {
       "never built or evaluated.");
   sum.def(
       "components",
-      [](PotHolder<rgpot::SumPot> &self) { return sum_components(self.slot()); },
+      [](PotHolder<rgpot::SumPot> &self) {
+        return sum_components(self.slot());
+      },
       "Per-term record of this thread's last call: name, weight, enabled, "
       "evaluated, energy (eV, before the weight), forces (N, 3), variance and "
       "stress (3, 3, or None).");
@@ -1182,6 +1206,9 @@ NB_MODULE(_core, m) {
       "cutoff, switch_width (morse); the D3/D4 fields.");
   expr.def_prop_ro("expression", [](const PotHolder<rgpot::ExprPot> &self) {
     return self.primary().expression();
+  });
+  expr.def("config", [](const PotHolder<rgpot::ExprPot> &self) {
+    return tail_correction_config(self.primary());
   });
   expr.def(
       "d_energy_d_term",
@@ -1513,8 +1540,8 @@ NB_MODULE(_core, m) {
                    make_cfg(u0, cutoff, psi, engine_path))
             .release();
       },
-      nb::rv_policy::take_ownership,
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::rv_policy::take_ownership, nb::arg("u0") = 1.0,
+      nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
       nb::arg("engine_path") = "",
       "Shifted 12-6 Lennard-Jones. The constructor dlopens an engine "
       "plugin, which stays the backend. engine_path empty searches "
@@ -1528,8 +1555,8 @@ NB_MODULE(_core, m) {
                    make_cfg(u0, cutoff, psi, engine_path))
             .release();
       },
-      nb::rv_policy::take_ownership,
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::rv_policy::take_ownership, nb::arg("u0") = 1.0,
+      nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
       nb::arg("engine_path") = "",
       "Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once. "
       "An empty engine_path evaluates in process. A path is a library "
@@ -1542,8 +1569,8 @@ NB_MODULE(_core, m) {
                    make_cfg(u0, cutoff, psi, engine_path))
             .release();
       },
-      nb::rv_policy::take_ownership,
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::rv_policy::take_ownership, nb::arg("u0") = 1.0,
+      nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
       nb::arg("engine_path") = "",
       "Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once. "
       "An empty engine_path evaluates in process. A path is a library "
