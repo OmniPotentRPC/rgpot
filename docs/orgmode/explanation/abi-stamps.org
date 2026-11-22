@@ -150,7 +150,7 @@ is not the hash.
 | 3.5.1   | 1, 0, 1         | 4                    |
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
-| next    | 1, 7, 1         | 9                    |
+| next    | 1, 8, 1         | 11                   |
 
 3.6.0 raised the minor for =rgpot_eindir_abi_compatible=; a caller built against
 minor 0 still matches it.
@@ -204,3 +204,5 @@ gains the virtuals =hessianImpl=, =hessianAdImpl= and =hessianVectorAdImpl=
 after =hessianVectorImpl=.
 The vtable changed, so =kCxxLayoutRevision= is 2.
 A program linked against soversion 8 does not load =librgpot.so.9=.
+=LJConfig= gains =tail_correction=.
+A program linked against soversion 9 does not load =librgpot.so.11=.
