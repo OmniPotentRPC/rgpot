@@ -8,6 +8,7 @@
 #include <climits>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -65,6 +66,16 @@ bool allFinite(const double *values, int count) {
     }
   }
   return true;
+}
+
+bool rangesOverlap(const void *first, size_t firstBytes, const void *second,
+                   size_t secondBytes) {
+  const auto firstBegin = reinterpret_cast<uintptr_t>(first);
+  const auto secondBegin = reinterpret_cast<uintptr_t>(second);
+  if (firstBegin < secondBegin) {
+    return secondBegin - firstBegin < firstBytes;
+  }
+  return firstBegin - secondBegin < secondBytes;
 }
 
 bool trailingBytesAreZero(const unsigned char *bytes, size_t count) {
@@ -425,6 +436,17 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms, const double *positions,
   int code = checkComposition(pot, nAtoms, atomicNumbers);
   if (code != RGPOT_ENGINE_OK) {
     return code;
+  }
+  if (rangesOverlap(product, kCoordinates * sizeof *product, direction,
+                    kCoordinates * sizeof *direction) ||
+      rangesOverlap(product, kCoordinates * sizeof *product, positions,
+                    kCoordinates * sizeof *positions) ||
+      rangesOverlap(product, kCoordinates * sizeof *product, atomicNumbers,
+                    static_cast<size_t>(kAtoms) * sizeof *atomicNumbers) ||
+      rangesOverlap(product, kCoordinates * sizeof *product, box,
+                    kBoxEntries * sizeof *box)) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID,
+                "HVP output overlaps an input buffer");
   }
   if (!allFinite(direction, kCoordinates)) {
     return fail(pot, RGPOT_ENGINE_ERR_INVALID,

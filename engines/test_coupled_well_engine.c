@@ -900,6 +900,99 @@ static void truncated_v2_reports_short_buffer(void) {
   }
 }
 
+static void hvp_rejects_overlapping_buffers(void) {
+  RgpotEnginePot *pot = make();
+  const double positions[3] = {1.0, 0.5, 0.0};
+  const double direction[3] = {1.0, 2.0, 0.0};
+  const double expected[3] = {-4.25, 6.0, 0.0};
+  double aliased[3] = {1.0, 2.0, 0.0};
+  double window[4] = {1.0, 2.0, 0.0, 7.5};
+  double pos_alias[3] = {1.0, 0.5, 0.0};
+  double box_alias[9];
+  double adjacent[6] = {1.0, 2.0, 0.0, -9.0, -9.0, -9.0};
+  union {
+    int species[1];
+    double product[3];
+    unsigned char raw[3 * sizeof(double)];
+  } shared;
+  unsigned char saved_shared[3 * sizeof(double)];
+  char error[256];
+  size_t index;
+  if (pot == NULL) {
+    ++failures;
+    return;
+  }
+
+  /* Exact alias: product == direction. */
+  CHECK(rgpot_engine_hvp(pot, 1, positions, SPECIES, aliased, aliased, BOX) ==
+        RGPOT_ENGINE_ERR_INVALID);
+  rgpot_engine_last_error(pot, error, sizeof error);
+  CHECK(strstr(error, "overlap") != NULL);
+  CHECK(memcmp(aliased, direction, sizeof aliased) == 0);
+
+  /* Partial overlap: direction[0..2] vs product[1..3] and reverse. */
+  CHECK(rgpot_engine_hvp(pot, 1, positions, SPECIES, window, window + 1, BOX) ==
+        RGPOT_ENGINE_ERR_INVALID);
+  rgpot_engine_last_error(pot, error, sizeof error);
+  CHECK(strstr(error, "overlap") != NULL);
+  CHECK(window[0] == 1.0 && window[1] == 2.0 && window[2] == 0.0 &&
+        window[3] == 7.5);
+
+  CHECK(rgpot_engine_hvp(pot, 1, positions, SPECIES, window + 1, window, BOX) ==
+        RGPOT_ENGINE_ERR_INVALID);
+  rgpot_engine_last_error(pot, error, sizeof error);
+  CHECK(strstr(error, "overlap") != NULL);
+  CHECK(window[0] == 1.0 && window[1] == 2.0 && window[2] == 0.0 &&
+        window[3] == 7.5);
+
+  /* Overlap with positions. */
+  CHECK(rgpot_engine_hvp(pot, 1, pos_alias, SPECIES, direction, pos_alias,
+                         BOX) == RGPOT_ENGINE_ERR_INVALID);
+  rgpot_engine_last_error(pot, error, sizeof error);
+  CHECK(strstr(error, "overlap") != NULL);
+  CHECK(memcmp(pos_alias, positions, sizeof pos_alias) == 0);
+
+  /* Overlap with box. */
+  memcpy(box_alias, BOX, sizeof box_alias);
+  CHECK(rgpot_engine_hvp(pot, 1, positions, SPECIES, direction, box_alias + 2,
+                         box_alias) == RGPOT_ENGINE_ERR_INVALID);
+  rgpot_engine_last_error(pot, error, sizeof error);
+  CHECK(strstr(error, "overlap") != NULL);
+  CHECK(memcmp(box_alias, BOX, sizeof box_alias) == 0);
+
+  /* Overlap with atomicNumbers. */
+  memset(&shared, 0x5a, sizeof shared);
+  shared.species[0] = NUMBER;
+  memcpy(saved_shared, shared.raw, sizeof saved_shared);
+  CHECK(rgpot_engine_hvp(pot, 1, positions, shared.species, direction,
+                         shared.product, BOX) == RGPOT_ENGINE_ERR_INVALID);
+  rgpot_engine_last_error(pot, error, sizeof error);
+  CHECK(strstr(error, "overlap") != NULL);
+  CHECK(memcmp(shared.raw, saved_shared, sizeof saved_shared) == 0);
+
+  /* Adjacent, non-overlapping buffers succeed in both orders. */
+  CHECK(rgpot_engine_hvp(pot, 1, positions, SPECIES, adjacent, adjacent + 3,
+                         BOX) == RGPOT_ENGINE_OK);
+  for (index = 0; index < 3; ++index) {
+    CHECK(adjacent[index] == direction[index]);
+    CHECK(adjacent[3 + index] == expected[index]);
+  }
+  adjacent[0] = -9.0;
+  adjacent[1] = -9.0;
+  adjacent[2] = -9.0;
+  adjacent[3] = direction[0];
+  adjacent[4] = direction[1];
+  adjacent[5] = direction[2];
+  CHECK(rgpot_engine_hvp(pot, 1, positions, SPECIES, adjacent + 3, adjacent,
+                         BOX) == RGPOT_ENGINE_OK);
+  for (index = 0; index < 3; ++index) {
+    CHECK(adjacent[index] == expected[index]);
+    CHECK(adjacent[3 + index] == direction[index]);
+  }
+
+  rgpot_engine_destroy(pot);
+}
+
 int main(void) {
   identity_and_contract();
   create_validation();
@@ -908,6 +1001,7 @@ int main(void) {
   analytic_force_and_hessian();
   transform_is_scratch_only();
   rejects_bad_requests();
+  hvp_rejects_overlapping_buffers();
   batch_matches_the_analytic_values();
   batch_failure_writes_nothing();
   caps_and_last_error();
