@@ -304,9 +304,11 @@ Optional symbol.
 - Units :: =atom_count= is a count; the other fields have no unit.
 - Outputs :: passed as the exact 144-byte create message for
   =libpotlibc_engine=.
-- Errors :: a length other than 144 bytes, an unknown magic, an empty or
-  unterminated catalog id, zero atoms for a variable-size surface, or a nonzero
-  count for a fixed-size surface makes =rgpot_engine_create= return NULL.
+- Errors :: a length other than 144 bytes, an unknown magic, a =version= other
+  than =RGPOT_POTLIBC_CONFIG_VERSION_V1= (a typed version error, including when
+  a recompiled version-1 source passes
+  =RGPOT_POTLIBC_CONFIG_VERSION=), an empty or unterminated catalog id, zero atoms for a variable-size surface, or a nonzero count for a fixed-size surface makes =rgpot_engine_create=
+  return NULL.
 
 =magic= is at offset 0, =version= at offset 4,
 =atom_count= at offset 8 and =surface_id= at offset 16.
@@ -315,6 +317,7 @@ NUL-terminated.
 =atom_count= is zero for a fixed-size catalog entry and the requested count for
 a variable-size entry.
 There is no =size= field and no reserved field.
+=RGPOT_POTLIBC_CONFIG_VERSION= is 2, so version-1 sources recompiled against this header must use =RGPOT_POTLIBC_CONFIG_VERSION_V1= and =RGPOT_POTLIBC_CONFIG_V1_SIZE=.
 
 *** =RgpotPotlibcConfigV2=
 
@@ -344,15 +347,19 @@ There is no =size= field and no reserved field.
 - Outputs :: passed as the exact 48-byte create message for
   =libcoupled_well_engine=.
 - Errors :: a length other than the 48 bytes of the structure, an unknown magic,
-  a nonzero =reserved=, a non-positive =atomic_number=, a =barrier_energy=,
-  =well_position= or =transverse_spring= that is not finite and positive, or a
-  =coupling= that is not finite makes =rgpot_engine_create= return NULL with the
-  reason in =errbuf=.
+  a =version= other than
+  =RGPOT_COUPLED_WELL_CONFIG_VERSION_V1= (a typed version error, including when a recompiled version-1 source passes =RGPOT_COUPLED_WELL_CONFIG_VERSION=), a nonzero =reserved=, a non-positive =atomic_number=,
+  a =barrier_energy=, =well_position= or
+  =transverse_spring= that is not finite and positive, or a =coupling= that is not finite makes =rgpot_engine_create=
+  return NULL with the reason in =errbuf=.
 
 =magic= is at offset 0, =version= at offset 4,
 =atomic_number= at offset 8, =reserved= at offset 12, =barrier_energy= at offset
 16, =well_position= at offset 24, =transverse_spring= at offset 32 and
 =coupling= at offset 40.
+=RGPOT_COUPLED_WELL_CONFIG_VERSION= is 2, so version-1 sources recompiled
+against this header must use
+=RGPOT_COUPLED_WELL_CONFIG_VERSION_V1= and =RGPOT_COUPLED_WELL_CONFIG_V1_SIZE=.
 
 *** =RgpotCoupledWellConfigV2=
 
@@ -1543,15 +1550,16 @@ a host that does call =dlclose= on them leaves them mapped.
 - =CoupledWellConfig=, =PotlibcConfig= :: Typed version-2 create messages for
   =libcoupled_well_engine= and
   =libpotlibc_engine=, laid out as =RgpotCoupledWellConfigV2= (=COUPLED_WELL_CONFIG_MAGIC=,
-  =COUPLED_WELL_CONFIG_VERSION= 2, =COUPLED_WELL_CONFIG_V1_SIZE= 48, =COUPLED_WELL_CONFIG_MIN_SIZE= 56, with =size= at byte offset 4) and =RgpotPotlibcConfigV2= (=POTLIBC_CONFIG_MAGIC=, =POTLIBC_CONFIG_VERSION= 2, =POTLIBC_CONFIG_V1_SIZE=
-  144, =POTLIBC_CONFIG_MIN_SIZE= 152, =POTLIBC_SURFACE_ID_CAPACITY= 128, with
-  =size= at byte offset 4).
+  =COUPLED_WELL_CONFIG_VERSION= 2, =COUPLED_WELL_CONFIG_VERSION_V1= 1, =COUPLED_WELL_CONFIG_V1_SIZE= 48, =COUPLED_WELL_CONFIG_MIN_SIZE= 56, with =size= at byte offset 4) and =RgpotPotlibcConfigV2= (=POTLIBC_CONFIG_MAGIC=, =POTLIBC_CONFIG_VERSION= 2, =POTLIBC_CONFIG_VERSION_V1=
+  1, =POTLIBC_CONFIG_V1_SIZE= 144, =POTLIBC_CONFIG_MIN_SIZE= 152,
+  =POTLIBC_SURFACE_ID_CAPACITY= 128, with =size= at byte offset 4).
   Both are =#[non_exhaustive]=, implement =Default= and have =with_*= builders,
   =validate= (the create-time checks of the message itself) and =as_bytes= (the
   bytes for =EnginePotential::load=).
   =PotlibcConfig::with_surface_id= refuses an empty, over-long or NUL-containing
   identifier.
-  The engines also accept the version-1 layouts of 48 and 144 bytes.
+  The engines also accept the version-1 layouts of 48 and 144 bytes when their
+  =version= field is set to the =_V1= constant.
 - =CoordTransformFn=, =AbiVersionFn=, =AvailableFn=, =AbiStampFn=, =CreateFn=,
   =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =CapsFn=, =LastErrorFn=,
   =LastComponentsFn=, =ComponentNameFn=, =ModelStateFn=, =SetCallbacksFn=,
