@@ -22,8 +22,8 @@ back off.
 A negative value means the instance is unusable.
 The engines in this repository return 1 for an invalid argument, 2 when the
 evaluation or the setting failed (the reason is in
-=rgpot_engine_last_error=), 3 when the backend does not support the operation, and -2 (=RGPOT_ENGINE_ERR_LOCK=)
-when acquiring an engine or handle lock fails.
+=rgpot_engine_last_error=), 3 when the backend does not support the operation, and -2 (=RGPOT_ENGINE_ERR_LOCK=,
+minor 8) when acquiring an engine or handle lock fails.
 =rgpot_engine_force= and =rgpot_engine_force_batch= also return the nonzero code
 of the host's coordinate transform.
 
@@ -203,7 +203,7 @@ A host calls it before =rgpot_engine_create=, and the Rust loader returns
 - Units :: none.
 - Outputs :: three =unsigned short= fields:
   =abi_major= (=RGPOT_ENGINE_ABI_VERSION=, 1),
-  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 7) and
+  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 8) and
   =layout_revision= (=RGPOT_ENGINE_ABI_LAYOUT_REVISION=, 1).
 - Errors :: none.
 
@@ -1538,7 +1538,7 @@ a host that does call =dlclose= on them leaves them mapped.
 
 - =ENGINE_ERR_LOCK= :: Rust constant for =RGPOT_ENGINE_ERR_LOCK= (-2).
 - =ENGINE_ABI_VERSION=, =ENGINE_ABI_MINOR=,
-  =ENGINE_ABI_LAYOUT_REVISION= :: Host ABI identity (=1=, =7=, =1=) matching =RGPOT_ENGINE_ABI_VERSION=,
+  =ENGINE_ABI_LAYOUT_REVISION= :: Host ABI identity (=1=, =8=, =1=) matching =RGPOT_ENGINE_ABI_VERSION=,
   =RGPOT_ENGINE_ABI_MINOR= and =RGPOT_ENGINE_ABI_LAYOUT_REVISION=.
 - =ENGINE_UNLOAD_RESIDENT=, =ENGINE_UNLOAD_SAFE=,
   =ENGINE_UNLOAD_POLICY_MINOR= :: =RGPOT_ENGINE_UNLOAD_RESIDENT= (=0=),
