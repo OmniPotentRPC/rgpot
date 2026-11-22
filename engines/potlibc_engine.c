@@ -126,6 +126,88 @@ static int trailing_bytes_zero(const unsigned char *data, size_t count) {
   return 1;
 }
 
+typedef struct {
+  uint64_t atom_count;
+  char surface_id[RGPOT_POTLIBC_SURFACE_ID_CAPACITY];
+} PotlibcCreateRequest;
+
+/* Version 1 is the 144-byte layout: magic, version, atom_count, surface_id.
+ * Version 2 carries size at offset 4 and version at offset 8. A u32 of 1 at
+ * offset 4 is version 1, never a version-2 size (those are at least 152). */
+static int decode_potlibc_config(PotlibcCreateRequest *out, const void *config,
+                                 size_t config_len, char *errbuf,
+                                 size_t errlen) {
+  const unsigned char *bytes;
+  uint32_t magic;
+  uint32_t word4;
+  RgpotPotlibcConfigV2 message;
+
+  if (config == NULL || config_len < sizeof(uint32_t) * 2) {
+    copy_message(errbuf, errlen,
+                 "potlibc engine requires RgpotPotlibcConfigV1");
+    return -1;
+  }
+  bytes = config;
+  memcpy(&magic, bytes, sizeof magic);
+  memcpy(&word4, bytes + sizeof magic, sizeof word4);
+  if (magic != RGPOT_POTLIBC_CONFIG_MAGIC) {
+    copy_message(errbuf, errlen,
+                 "potlibc engine config magic, version, or reserved field");
+    return -1;
+  }
+  if (word4 == RGPOT_POTLIBC_CONFIG_VERSION_V1) {
+    RgpotPotlibcConfigV1 legacy;
+    if (config_len != sizeof legacy) {
+      copy_message(errbuf, errlen,
+                   "potlibc engine requires RgpotPotlibcConfigV1");
+      return -1;
+    }
+    memcpy(&legacy, config, sizeof legacy);
+    out->atom_count = legacy.atom_count;
+    memcpy(out->surface_id, legacy.surface_id, sizeof out->surface_id);
+    return 0;
+  }
+  if (config_len < offsetof(RgpotPotlibcConfigV2, version) + sizeof(uint32_t)) {
+    copy_message(errbuf, errlen,
+                 "potlibc engine requires RgpotPotlibcConfigV2");
+    return -1;
+  }
+  memcpy(&message.version,
+         bytes + offsetof(RgpotPotlibcConfigV2, version),
+         sizeof message.version);
+  if (message.version != RGPOT_POTLIBC_CONFIG_VERSION) {
+    copy_message(errbuf, errlen, "potlibc config version is unknown");
+    return -1;
+  }
+  memset(&message, 0, sizeof message);
+  memcpy(&message, config, sizeof(uint32_t) * 3);
+  if (message.size < RGPOT_POTLIBC_CONFIG_MIN_SIZE) {
+    copy_message(errbuf, errlen,
+                 "potlibc config size is smaller than RgpotPotlibcConfigV2");
+    return -1;
+  }
+  if (config_len < message.size) {
+    copy_message(errbuf, errlen,
+                 "potlibc config buffer is shorter than config.size");
+    return -1;
+  }
+  memcpy(&message, config, sizeof message);
+  if (message.size > sizeof message &&
+      !trailing_bytes_zero(bytes + sizeof message,
+                           message.size - sizeof message)) {
+    copy_message(errbuf, errlen, "potlibc config trailing bytes must be zero");
+    return -1;
+  }
+  if (message.reserved != 0) {
+    copy_message(errbuf, errlen,
+                 "potlibc engine config magic, version, or reserved field");
+    return -1;
+  }
+  out->atom_count = message.atom_count;
+  memcpy(out->surface_id, message.surface_id, sizeof out->surface_id);
+  return 0;
+}
+
 static int checked_values(RgpotEnginePot *pot, size_t systems, size_t dimension,
                           size_t *values) {
   if (dimension != 0 && systems > SIZE_MAX / dimension) {
@@ -222,41 +304,12 @@ int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *host_stamp) {
 
 RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                                     char *errbuf, size_t errlen) {
-  RgpotPotlibcConfigV1 message;
+  PotlibcCreateRequest message;
   RgpotEnginePot *pot;
   potlibc_status status;
 
-  if (config == NULL ||
-      config_len < offsetof(RgpotPotlibcConfigV1, version) + sizeof(uint32_t)) {
-    copy_message(errbuf, errlen,
-                 "potlibc engine requires RgpotPotlibcConfigV1");
-    return NULL;
-  }
-  memset(&message, 0, sizeof message);
-  memcpy(&message, config, sizeof(uint32_t) * 3);
-  if (message.size < RGPOT_POTLIBC_CONFIG_MIN_SIZE) {
-    copy_message(errbuf, errlen,
-                 "potlibc config size is smaller than RgpotPotlibcConfigV1");
-    return NULL;
-  }
-  if (config_len < message.size) {
-    copy_message(errbuf, errlen,
-                 "potlibc config buffer is shorter than config.size");
-    return NULL;
-  }
-  memcpy(&message, config, sizeof message);
-  if (message.size > sizeof message &&
-      !trailing_bytes_zero((const unsigned char *)config + sizeof message,
-                           message.size - sizeof message)) {
-    copy_message(errbuf, errlen,
-                 "potlibc config trailing bytes must be zero");
-    return NULL;
-  }
-  if (message.magic != RGPOT_POTLIBC_CONFIG_MAGIC ||
-      message.version != RGPOT_POTLIBC_CONFIG_VERSION ||
-      message.reserved != 0) {
-    copy_message(errbuf, errlen,
-                 "potlibc engine config magic, version, or reserved field");
+  if (decode_potlibc_config(&message, config, config_len, errbuf, errlen) !=
+      0) {
     return NULL;
   }
   if (message.surface_id[0] == '\0' ||

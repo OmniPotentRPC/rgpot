@@ -56,9 +56,9 @@ static uint64_t bits(double value) {
   return result;
 }
 
-static RgpotPotlibcConfigV1 config(const char *surface_id,
+static RgpotPotlibcConfigV2 config(const char *surface_id,
                                    uint64_t atom_count) {
-  RgpotPotlibcConfigV1 result;
+  RgpotPotlibcConfigV2 result;
   memset(&result, 0, sizeof result);
   result.magic = RGPOT_POTLIBC_CONFIG_MAGIC;
   result.size = sizeof result;
@@ -71,7 +71,7 @@ static RgpotPotlibcConfigV1 config(const char *surface_id,
 
 static RgpotEnginePot *create(Engine *engine, const char *surface_id,
                               uint64_t atom_count) {
-  RgpotPotlibcConfigV1 message = config(surface_id, atom_count);
+  RgpotPotlibcConfigV2 message = config(surface_id, atom_count);
   char error[512] = {0};
   RgpotEnginePot *pot =
       engine->create(&message, sizeof message, error, sizeof error);
@@ -161,8 +161,104 @@ static int hvp_arguments_are_checked(Engine *engine) {
   return 0;
 }
 
+static int evaluate_message(Engine *engine, const void *message, size_t length,
+                            double *energy, double *forces, double *product) {
+  static const double box[9] = {
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0,
+  };
+  static const double positions_bohr[9] = {
+      0.0, 0.0, 0.0, 3.0802, 0.0, 0.0, 4.8202, 0.0, 0.0,
+  };
+  static const int species[3] = {35, 1, 1};
+  static const double direction[9] = {
+      0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8, 0.9,
+  };
+  double positions[9];
+  char error[512] = {0};
+  long component;
+  int code;
+  RgpotEnginePot *pot =
+      engine->create(message, length, error, sizeof error);
+  if (pot == NULL) {
+    fprintf(stderr, "create failed: %s\n", error);
+    return 1;
+  }
+  for (component = 0; component < 9; ++component) {
+    positions[component] = positions_bohr[component] * BOHR_TO_ANGSTROM;
+  }
+  code = engine->force(pot, 3, positions, species, forces, energy, NULL, box,
+                       NULL, NULL);
+  if (code == RGPOT_ENGINE_OK) {
+    code = engine->hvp(pot, 3, positions, species, direction, product, box);
+  }
+  engine->destroy(pot);
+  if (code != RGPOT_ENGINE_OK) {
+    fprintf(stderr, "evaluation returned %d\n", code);
+    return 1;
+  }
+  return 0;
+}
+
+/* A version-1 client writes 144 bytes: magic, version 1,
+ * atom_count, then the surface id. The tip must accept that message and
+ * return the same energy, forces and Hessian-vector product as version 2. */
+static int v1_client_matches_version_two(Engine *engine) {
+  unsigned char legacy_bytes[144];
+  RgpotPotlibcConfigV2 current;
+  double legacy_energy = 0.0;
+  double current_energy = 0.0;
+  double legacy_forces[9];
+  double current_forces[9];
+  double legacy_product[9];
+  double current_product[9];
+  uint32_t magic = RGPOT_POTLIBC_CONFIG_MAGIC;
+  uint32_t version = 1u;
+  uint64_t atoms = 0;
+  char error[512] = {0};
+  memset(legacy_bytes, 0, sizeof legacy_bytes);
+  memcpy(legacy_bytes + 0, &magic, sizeof magic);
+  memcpy(legacy_bytes + 4, &version, sizeof version);
+  memcpy(legacy_bytes + 8, &atoms, sizeof atoms);
+  memcpy(legacy_bytes + 16, "brh2leps", 8);
+  if (evaluate_message(engine, legacy_bytes, sizeof legacy_bytes,
+                       &legacy_energy, legacy_forces, legacy_product) != 0) {
+    fprintf(stderr, "version-1 potlibc message was refused\n");
+    return 1;
+  }
+  current = config("brh2leps", 0);
+  if (evaluate_message(engine, &current, sizeof current, &current_energy,
+                       current_forces, current_product) != 0) {
+    return 1;
+  }
+  if (bits(legacy_energy) != bits(current_energy) ||
+      memcmp(legacy_forces, current_forces, sizeof legacy_forces) != 0 ||
+      memcmp(legacy_product, current_product, sizeof legacy_product) != 0) {
+    fprintf(stderr, "version-1 potlibc results differ from version 2\n");
+    return 1;
+  }
+
+  version = 99u;
+  memcpy(legacy_bytes + 4, &version, sizeof version);
+  memset(error, 0, sizeof error);
+  if (engine->create(legacy_bytes, sizeof legacy_bytes, error, sizeof error) !=
+          NULL ||
+      strstr(error, "version is unknown") == NULL) {
+    fprintf(stderr, "version-1 unknown version: %s\n", error);
+    return 1;
+  }
+  current = config("brh2leps", 0);
+  current.version = 3u;
+  memset(error, 0, sizeof error);
+  if (engine->create(&current, sizeof current, error, sizeof error) != NULL ||
+      strstr(error, "version is unknown") == NULL) {
+    fprintf(stderr, "version-2 unknown version: %s\n", error);
+    return 1;
+  }
+  return 0;
+}
+
 static int variable_size_requires_count(Engine *engine) {
-  RgpotPotlibcConfigV1 message = config("vbo-beta1", 0);
+  RgpotPotlibcConfigV2 message = config("vbo-beta1", 0);
   char error[512] = {0};
   RgpotEnginePot *pot =
       engine->create(&message, sizeof message, error, sizeof error);
@@ -189,7 +285,7 @@ static int oversized_atom_counts_are_refused(Engine *engine) {
       4.8202 * BOHR_TO_ANGSTROM, 0.0, 0.0,
   };
   const uint64_t too_many = (uint64_t)(SIZE_MAX / (3 * sizeof(double))) + 1;
-  RgpotPotlibcConfigV1 message = config("vbo-beta1", too_many);
+  RgpotPotlibcConfigV2 message = config("vbo-beta1", too_many);
   char error[512] = {0};
   double product[9];
   double forces[9];
@@ -232,13 +328,13 @@ static int oversized_atom_counts_are_refused(Engine *engine) {
 }
 
 static int config_size_is_extensible(Engine *engine) {
-  RgpotPotlibcConfigV1 message = config("brh2leps", 0);
-  unsigned char future[sizeof(RgpotPotlibcConfigV1) + 16];
+  RgpotPotlibcConfigV2 message = config("brh2leps", 0);
+  unsigned char future[sizeof(RgpotPotlibcConfigV2) + 16];
   char error[512] = {0};
   RgpotEnginePot *pot;
   memset(future, 0, sizeof future);
   memcpy(future, &message, sizeof message);
-  ((RgpotPotlibcConfigV1 *)future)->size = sizeof future;
+  ((RgpotPotlibcConfigV2 *)future)->size = sizeof future;
   pot = engine->create(future, sizeof future, error, sizeof error);
   if (pot == NULL) {
     fprintf(stderr, "future-size config was refused: %s\n", error);
@@ -362,7 +458,7 @@ static int destroy_frees_handle_when_lock_fails(const char *path) {
   last_error_fn last_error_sym;
   set_lock_fail_fn set_lock_fail;
   live_call_locks_fn live_call_locks;
-  RgpotPotlibcConfigV1 message = config("brh2leps", 0);
+  RgpotPotlibcConfigV2 message = config("brh2leps", 0);
   RgpotEngineCaps caps;
   RgpotEnginePot *pot;
   double forces[9];
@@ -808,6 +904,7 @@ int main(int argc, char **argv) {
       hvp_arguments_are_checked(&engine) != 0 ||
       batch_is_one_call_per_system(&engine) != 0 ||
       config_size_is_extensible(&engine) != 0 ||
+      v1_client_matches_version_two(&engine) != 0 ||
       caps_refuses_null_handle(&engine) != 0 ||
       evaluate_failure_preserves_outputs(&engine) != 0 ||
       concurrent_batch_hvp_caps_calls(&engine) != 0 ||

@@ -11,7 +11,8 @@ use rgpot_core::engine::{
     AcquireReason, CoordTransformFn, CoordinateTransform, CoupledWellConfig, EngineCallbacks,
     EngineError, EngineEvaluation, EngineFailure, EnginePotential, EngineRequest, EngineSession,
     EngineStatus, EngineSymbols, PotlibcConfig, RgpotEngineAbiStamp, RgpotEngineCaps,
-    RgpotEngineComponent, RgpotEnginePot, COUPLED_WELL_CONFIG_MIN_SIZE, ENGINE_ABI_LAYOUT_REVISION,
+    RgpotEngineComponent, RgpotEnginePot, COUPLED_WELL_CONFIG_MAGIC, COUPLED_WELL_CONFIG_MIN_SIZE,
+    COUPLED_WELL_CONFIG_V1_SIZE, COUPLED_WELL_CONFIG_VERSION, ENGINE_ABI_LAYOUT_REVISION,
     ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_INVALID, ENGINE_ERR_UNSUPPORTED,
     ENGINE_UNLOAD_POLICY_MINOR, POTLIBC_CONFIG_MAGIC, POTLIBC_CONFIG_MIN_SIZE,
     POTLIBC_CONFIG_VERSION, POTLIBC_SURFACE_ID_CAPACITY,
@@ -4234,7 +4235,7 @@ fn coupled_well_config_bytes_follow_the_header_layout() {
     let real = |offset: usize| f64::from_ne_bytes(bytes[offset..offset + 8].try_into().unwrap());
     assert_eq!(word(0), 0x4357_5054, "magic");
     assert_eq!(word(4), COUPLED_WELL_CONFIG_MIN_SIZE, "size");
-    assert_eq!(word(8), 1, "version");
+    assert_eq!(word(8), COUPLED_WELL_CONFIG_VERSION, "version");
     assert_eq!(word(12), 0, "reserved0");
     assert_eq!(word(16), WELL_NUMBER as u32, "atomic_number");
     assert_eq!(word(20), 0, "reserved1");
@@ -4247,6 +4248,58 @@ fn coupled_well_config_bytes_follow_the_header_layout() {
         config
     );
     assert_eq!(CoupledWellConfig::default().validate().ok(), Some(()));
+}
+
+/// A version-1 client writes 48 bytes: magic, version 1,
+/// atomic number, a zero reserved word, then the four parameters.
+#[test]
+fn coupled_well_accepts_a_version_one_message_with_the_same_answer() {
+    assert_eq!(COUPLED_WELL_CONFIG_V1_SIZE, 48);
+    let mut legacy = [0_u8; 48];
+    legacy[0..4].copy_from_slice(&COUPLED_WELL_CONFIG_MAGIC.to_ne_bytes());
+    legacy[4..8].copy_from_slice(&1_u32.to_ne_bytes());
+    legacy[8..12].copy_from_slice(&WELL_NUMBER.to_ne_bytes());
+    legacy[16..24].copy_from_slice(&WELL_BARRIER.to_ne_bytes());
+    legacy[24..32].copy_from_slice(&WELL_POSITION.to_ne_bytes());
+    legacy[32..40].copy_from_slice(&WELL_SPRING.to_ne_bytes());
+    legacy[40..48].copy_from_slice(&WELL_COUPLING.to_ne_bytes());
+
+    let mut from_v1 = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
+        .expect("v1 coupled-well message");
+    let mut from_v2 = load_well();
+    let direction = [0.5, -1.5, 4.0];
+    for x in WELL_XS {
+        for y in WELL_YS {
+            let positions = [x, y, 7.0];
+            let request = well_request(&positions);
+            assert_eq!(
+                from_v1.force(&request).expect("v1 force"),
+                from_v2.force(&request).expect("v2 force")
+            );
+            assert_eq!(
+                from_v1.hvp(&request, &direction).expect("v1 hvp"),
+                from_v2.hvp(&request, &direction).expect("v2 hvp")
+            );
+        }
+    }
+
+    legacy[4..8].copy_from_slice(&99_u32.to_ne_bytes());
+    let unknown_v1 = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
+        .err()
+        .expect("a version-1 buffer with version 99 must be refused");
+    assert!(
+        matches!(unknown_v1, EngineError::Create(ref why) if why.contains("version is unknown")),
+        "{unknown_v1}"
+    );
+    let mut unknown_v2 = well_config();
+    unknown_v2.version = 3;
+    let unknown_v2 = unsafe { EnginePotential::load(build_coupled_well(), unknown_v2.as_bytes()) }
+        .err()
+        .expect("version 3 must be refused");
+    assert!(
+        matches!(unknown_v2, EngineError::Create(ref why) if why.contains("version is unknown")),
+        "{unknown_v2}"
+    );
 }
 
 #[test]

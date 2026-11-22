@@ -58,11 +58,15 @@ No potlibc symbols or headers enter the core library.
 
 ** Create a surface
 
-=include/rgpot/potlibc_engine.h= declares =RgpotPotlibcConfigV1=.
-Set its magic, size and version, copy one canonical catalog id into
+=include/rgpot/potlibc_engine.h= declares =RgpotPotlibcConfigV2=, the message
+new callers write, and =RgpotPotlibcConfigV1=, the 144-byte message a client
+built against the original layout still sends.
+Set the version-2 magic, size and version, copy one canonical catalog id into
 =surface_id=, and set =atom_count= to zero for a fixed-size surface or to the
 exact count for a variable-size surface.
 =reserved= must be zero.
+Version 1 has no size field: =magic= is at offset 0, =version= at offset 4,
+=atom_count= at offset 8 and =surface_id= at offset 16.
 The plugin calls =potlibc_create= in the first case and =potlibc_create_sized=
 in the second; it does not retry with another constructor.
 
@@ -74,9 +78,9 @@ in the second; it does not retry with another constructor.
 #include "rgpot/potlibc_engine.h"
 
 int main(void) {
-RgpotPotlibcConfigV1 cfg = {
+RgpotPotlibcConfigV2 cfg = {
     .magic = RGPOT_POTLIBC_CONFIG_MAGIC,
-    .size = sizeof(RgpotPotlibcConfigV1),
+    .size = sizeof(RgpotPotlibcConfigV2),
     .version = RGPOT_POTLIBC_CONFIG_VERSION,
     .reserved = 0,
     .atom_count = 0,
@@ -92,10 +96,13 @@ return pot == NULL;
 }
 #+end_src
 
-A message with =size < RGPOT_POTLIBC_CONFIG_MIN_SIZE= is refused as a typed size
-error.
-A larger message is accepted only when every unknown trailing byte up to =size=
-is zero.
+A version-2 message with =size < RGPOT_POTLIBC_CONFIG_MIN_SIZE= is refused as a
+typed size error.
+A larger version-2 message is accepted only when every unknown trailing byte up
+to =size= is zero.
+A version other than =RGPOT_POTLIBC_CONFIG_VERSION_V1= or
+=RGPOT_POTLIBC_CONFIG_VERSION= is refused as a typed version error.
+The 144-byte version-1 message is accepted unchanged.
 
 The engine ABI takes Angstrom and returns eV and eV/Angstrom.
 The plugin performs the conversion to potlibc's Bohr and Hartree units.
