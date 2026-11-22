@@ -1689,6 +1689,31 @@ This class is built with =-Dwith_expr=true=.
 - Outputs :: the expression string given to the constructor.
 - Errors :: none.
 
+*** =rgpot::ExprPot::size=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::size_t size() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the number of named child potentials.
+- Errors :: none.
+
+*** =rgpot::ExprPot::child=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const PotentialBase *child(std::size_t index) const noexcept;
+#+end_src
+
+- Inputs :: =index=, a child index.
+- Units :: none.
+- Outputs :: the child potential owned by the expression, or null when =index=
+  is out of range.
+- Errors :: none.
+
 *** =rgpot::ExprPot::dEnergyDTerm=
 
 #+attr_rgpot: signature
