@@ -10,7 +10,8 @@ The host selects the backend by the library it opens.
 The configuration is a versioned binary message defined by each engine.
 The core engines use a Cap'n Proto flat-array message whose root is the engine's
 params struct in =Potentials.capnp=.
-The potlibc engine uses =RgpotPotlibcConfigV1= from =rgpot/potlibc_engine.h=.
+The potlibc engine uses =RgpotPotlibcConfigV1= from
+=rgpot/potlibc_engine.h=, and the coupled-well engine uses =RgpotCoupledWellConfigV1= from =rgpot/coupled_well_engine.h=.
 Positions and cells are in Angstrom, energies in eV and forces in eV/Angstrom.
 A cell is nine doubles in row-major order.
 
@@ -51,6 +52,7 @@ potential from the params message) and =rgpot::engine::backend_name=.
 | =libcpmd_engine= | =CPMDParams= | =cpmd= | CPMD through =libcpmdc= |
 | =libskala_engine= | =NWChemParams= | =skala= | Skala XC on NWChem; reads =basis=, =charge=, =multiplicity=, =enginePath= and =nwchemRoot= |
 | =libpotlibc_engine= | =RgpotPotlibcConfigV1= | =potlibc= | one fixed-size or variable-size surface from the potlibc catalog |
+| =libcoupled_well_engine= | =RgpotCoupledWellConfigV1= | =coupled-well= | one atom on the analytic two-coordinate coupled well; the message carries the atomic number and the four parameters |
 
 =BuiltinParams.name= is compared in lower case.
 The Metatomic and XTB libraries also export their own tables
@@ -61,18 +63,21 @@ The plugin interface in =include/rgpot/plugin.h= is a separate family. tblite,
 dftd3, dftd4, ExprPot, XcKernel and CP2K have no engine library.
 
 Every library above except
-=libpotlibc_engine= exports =rgpot_engine_force_batch=, =rgpot_engine_hvp=,
-=rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible=, =rgpot_engine_name=,
-=rgpot_engine_version=, =rgpot_engine_model_digest=, =rgpot_engine_caps=,
-=rgpot_engine_last_error=, =rgpot_engine_set_num_threads=,
-=rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=,
-=rgpot_engine_copy_orbitals=, =rgpot_engine_last_components=,
-=rgpot_engine_component_name=, =rgpot_engine_set_cache= and
-=rgpot_engine_cache_counts=.
+=libpotlibc_engine= and =libcoupled_well_engine= exports =rgpot_engine_force_batch=,
+=rgpot_engine_hvp=, =rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible=,
+=rgpot_engine_name=, =rgpot_engine_version=,
+=rgpot_engine_model_digest=, =rgpot_engine_caps=, =rgpot_engine_last_error=,
+=rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
+=rgpot_engine_select_orbitals=, =rgpot_engine_copy_orbitals=,
+=rgpot_engine_last_components=, =rgpot_engine_component_name=,
+=rgpot_engine_set_cache= and =rgpot_engine_cache_counts=.
 Only =libcomposite_engine= has components; the others report none.
-=libpotlibc_engine= exports the stamp, compatibility, name, version, caps,
-last-error and analytic-HVP symbols; it omits the batch, setting and component
-symbols.
+=libpotlibc_engine= and =libcoupled_well_engine= export the stamp,
+compatibility, name, version, caps, last-error, analytic-HVP and batch symbols;
+they omit the model digest, setting and component symbols.
+=libpotlibc_engine= serves a batch natively with one =potlibc_evaluate= call,
+and =libcoupled_well_engine= reports =reentrancy= 0.
+Both write nothing to the output buffers of a batch that fails.
 None of them exports =rgpot_engine_model_state=, =rgpot_engine_set_callbacks=,
 =rgpot_engine_hint=,
 =rgpot_engine_neighbor_options= or =rgpot_engine_unload_policy=.
@@ -306,6 +311,28 @@ NUL-terminated.
 =atom_count= is zero for a fixed-size catalog entry and the requested count for
 a variable-size entry.
 
+*** =RgpotCoupledWellConfigV1=
+
+- Inputs :: =magic= (=RGPOT_COUPLED_WELL_CONFIG_MAGIC=), =version=
+  (=RGPOT_COUPLED_WELL_CONFIG_VERSION=),
+  =atomic_number=, =reserved= (zero), =barrier_energy=,
+  =well_position=, =transverse_spring= and =coupling=.
+- Units :: =barrier_energy= in eV, =well_position= in Angstrom,
+  =transverse_spring= in eV/Angstrom^2 and =coupling= in 1/Angstrom.
+- Outputs :: passed as the exact create message for =libcoupled_well_engine=.
+- Errors :: a length other than the 48 bytes of the structure, an unknown magic
+  or version, a nonzero =reserved=, a non-positive
+  =atomic_number=, a =barrier_energy=, =well_position= or =transverse_spring=
+  that is not finite and positive, or a =coupling= that is not finite makes
+  =rgpot_engine_create= return NULL with the reason in =errbuf=.
+
+The engine evaluates one atom of species =atomic_number= with the energy
+=V0 ((x / x0)^2 - 1)^2 + k / 2 (y - alpha x^2)^2=, where =V0=, =x0=, =k= and
+=alpha= are the four parameters in order.
+The z force and the z row and column of the Hessian are zero, and the cell is
+ignored.
+See [[file:../howto/coupled-well-engine.org][the coupled-well how-to]].
+
 *** =RgpotEnginePot=
 
 - Inputs :: none; an opaque handle.
@@ -328,9 +355,9 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
 - Inputs :: =config=, the library's versioned binary message; core engines use a
   Cap'n Proto flat-array message (as produced by =capnp::messageToFlatArray=)
   whose root is their params struct, while
-  =libpotlibc_engine= uses =RgpotPotlibcConfigV1=; =config_len=, its length in
-  bytes; =errbuf= and =errlen=, a buffer for the failure reason (may be null or
-  0).
+  =libpotlibc_engine= uses =RgpotPotlibcConfigV1= and =libcoupled_well_engine= uses =RgpotCoupledWellConfigV1=; =config_len=,
+  its length in bytes; =errbuf= and =errlen=, a buffer for the failure reason
+  (may be null or 0).
 - Units :: none.
 - Outputs :: a new handle, or NULL on failure.
 - Errors :: returns NULL and writes the reason to =errbuf= (at most =errlen - 1=
@@ -403,7 +430,8 @@ returns it.
 =reentrancy= decides how the table admits concurrent =rgpot_engine_force= and
 =rgpot_engine_force_batch= calls:
 
-- 0, shared instance: calls run concurrently on one handle (UMA, Metatomic).
+- 0, shared instance: calls run concurrently on one handle (UMA, Metatomic, and
+  the coupled-well engine).
 - 1, per instance: one call at a time per handle; calls on different handles run
   concurrently (XTB and every potential of the classical engine).
 - 2, process serial: one call at a time across all handles of the library in the
@@ -1454,6 +1482,14 @@ a host that does call =dlclose= on them leaves them mapped.
 - =RgpotEnginePot= :: Opaque handle type matching =struct RgpotEnginePot=.
 - =RgpotEngineComponent= :: Per-term composite record matching
   =RgpotEngineComponent= of the header.
+- =CoupledWellConfig=, =PotlibcConfig= :: Typed create messages for
+  =libcoupled_well_engine= and =libpotlibc_engine=, laid out as
+  =RgpotCoupledWellConfigV1= and =RgpotPotlibcConfigV1=.
+  Both are =#[non_exhaustive]=, implement =Default= and have =with_*= builders,
+  =validate= (the create-time checks of the message itself) and =as_bytes= (the
+  bytes for =EnginePotential::load=).
+  =PotlibcConfig::with_surface_id= refuses an empty, over-long or NUL-containing
+  identifier.
 - =CoordTransformFn=, =AbiVersionFn=, =AvailableFn=, =AbiStampFn=, =CreateFn=,
   =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =CapsFn=, =LastErrorFn=,
   =LastComponentsFn=, =ComponentNameFn=, =ModelStateFn=, =SetCallbacksFn=,
