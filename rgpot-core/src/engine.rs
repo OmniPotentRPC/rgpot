@@ -15,9 +15,10 @@
 //!
 //! Return codes follow the header: zero is success, a positive code is an
 //! evaluation that failed at this input ([`EngineError::Recoverable`]), and a
-//! negative code leaves the instance unusable ([`EngineError::Fatal`]) and
-//! poisons the handle so every later call returns the same [`EngineError::Fatal`]
-//! without re-entering native evaluation or query functions. A host callback
+//! negative code leaves the instance unusable ([`EngineError::Fatal`], or
+//! [`EngineError::Lock`] for [`ENGINE_ERR_LOCK`]) and poisons the handle so
+//! every later call returns the same error without re-entering native
+//! evaluation or query functions. A host callback
 //! or transform that fails during a call is considered before the code the
 //! engine returns. A fatal failure from either side wins over a recoverable
 //! one, and the first fatal failure, with its message, is the one latched.
@@ -74,6 +75,10 @@ use crate::potential::PotentialImpl;
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
 use crate::tensor::{copy_f64_tensor, copy_i32_tensor, rgpot_tensor_owned_cpu_f64_2d};
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+
+/// cbindgen:ignore
+/// Engine code meaning acquiring an engine or handle lock failed (`RGPOT_ENGINE_ERR_LOCK`).
+pub const ENGINE_ERR_LOCK: c_int = -2;
 
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
@@ -646,6 +651,14 @@ pub enum EngineError {
         /// Message of that failure: the host's, or the engine's error text.
         message: String,
     },
+    /// Acquiring an engine or handle lock failed (`RGPOT_ENGINE_ERR_LOCK`); the
+    /// instance is unusable and the handle is poisoned like [`EngineError::Fatal`].
+    Lock {
+        /// Engine symbol whose lock acquisition failed.
+        operation: &'static str,
+        /// Error message from `rgpot_engine_last_error`.
+        message: String,
+    },
 }
 
 impl fmt::Display for EngineError {
@@ -679,6 +692,9 @@ impl fmt::Display for EngineError {
             Self::Fatal { code, message } => {
                 write!(f, "engine instance is unusable, code {code}: {message}")
             }
+            Self::Lock { operation, message } => {
+                write!(f, "engine lock failed in {operation}: {message}")
+            }
         }
     }
 }
@@ -691,6 +707,7 @@ impl EngineError {
         match self {
             Self::Recoverable { code, .. } => EngineStatus::recoverable(*code),
             Self::Fatal { code, .. } => EngineStatus::fatal(*code),
+            Self::Lock { .. } => EngineStatus::fatal(ENGINE_ERR_LOCK),
             _ => None,
         }
     }
@@ -725,23 +742,8 @@ pub struct EngineEvaluation {
     pub forces: Vec<f64>,
 }
 
-#[derive(Clone)]
-struct Poisoned {
-    code: i32,
-    message: String,
-}
-
-impl Poisoned {
-    fn error(&self) -> EngineError {
-        EngineError::Fatal {
-            code: self.code,
-            message: self.message.clone(),
-        }
-    }
-}
-
-/// The error a nonzero engine return code stands for.
-fn native_error(code: c_int, message: String) -> EngineError {
+/// The error a nonzero engine return code stands for, raised by `operation`.
+fn native_error(code: c_int, operation: &'static str, message: String) -> EngineError {
     let message = if message.is_empty() {
         format!("the engine left no message; code {code}")
     } else {
@@ -749,6 +751,8 @@ fn native_error(code: c_int, message: String) -> EngineError {
     };
     if code > 0 {
         EngineError::Recoverable { code, message }
+    } else if code == ENGINE_ERR_LOCK {
+        EngineError::Lock { operation, message }
     } else {
         EngineError::Fatal { code, message }
     }
@@ -901,7 +905,7 @@ pub struct EnginePotential {
     symbols: EngineSymbols,
     stamp: RgpotEngineAbiStamp,
     handle: NonNull<RgpotEnginePot>,
-    fatal: OnceLock<Poisoned>,
+    fatal: OnceLock<EngineError>,
     library: Option<Arc<Resident>>,
 }
 
@@ -1429,7 +1433,7 @@ impl EnginePotential {
             )
         };
         let failure = host_failure(transform.as_ref(), callbacks);
-        self.settle(code, failure)?;
+        self.settle(code, "rgpot_engine_force", failure)?;
         finite(energy, &forces)?;
         Ok(EngineEvaluation { energy, forces })
     }
@@ -1518,7 +1522,7 @@ impl EnginePotential {
             )
         };
         let failure = host_failure(transform.as_ref(), callbacks);
-        self.settle(code, failure)?;
+        self.settle(code, "rgpot_engine_force_batch", failure)?;
         let mut out = Vec::with_capacity(n_systems);
         for (energy, block) in energies.iter().zip(forces.chunks_exact(3 * n_atoms)) {
             finite(*energy, block)?;
@@ -1542,7 +1546,7 @@ impl EnginePotential {
             ..Default::default()
         };
         let code = unsafe { caps_fn(self.handle.as_ptr(), &mut raw) };
-        self.settle(code, None)?;
+        self.settle(code, "rgpot_engine_caps", None)?;
         Ok(EngineCaps {
             reentrancy: raw.reentrancy,
             per_image_instances: raw.per_image_instances != 0,
@@ -1620,7 +1624,7 @@ impl EnginePotential {
                 message: self.last_error_text(code),
             });
         }
-        self.settle(code, None)?;
+        self.settle(code, "rgpot_engine_hvp", None)?;
         finite_product(&hv_out)?;
         Ok(hv_out)
     }
@@ -1676,7 +1680,7 @@ impl EnginePotential {
                 message: self.last_error_text(code),
             });
         }
-        self.settle(code, None)
+        self.settle(code, operation, None)
     }
 
     /// Per-term record of the last successful force call on a composite engine
@@ -1764,14 +1768,19 @@ impl EnginePotential {
 
     fn check_alive(&self) -> Result<(), EngineError> {
         match self.fatal.get() {
-            Some(poisoned) => Err(poisoned.error()),
+            Some(error) => Err(error.clone()),
             None => Ok(()),
         }
     }
 
     /// [`Self::settle_with`] with the message from `rgpot_engine_last_error`.
-    fn settle(&self, code: c_int, host: Option<EngineFailure>) -> Result<(), EngineError> {
-        self.settle_with(code, host, || self.last_error_text(code))
+    fn settle(
+        &self,
+        code: c_int,
+        operation: &'static str,
+        host: Option<EngineFailure>,
+    ) -> Result<(), EngineError> {
+        self.settle_with(code, operation, host, || self.last_error_text(code))
     }
 
     /// Classify one native call that returned `code`.
@@ -1785,26 +1794,25 @@ impl EnginePotential {
     fn settle_with(
         &self,
         code: c_int,
+        operation: &'static str,
         host: Option<EngineFailure>,
         native_message: impl FnOnce() -> String,
     ) -> Result<(), EngineError> {
-        let native = (code != 0).then(|| native_error(code, native_message()));
+        let native = (code != 0).then(|| native_error(code, operation, native_message()));
         let mut decisive = None;
         for error in host.map(host_error).into_iter().chain(native) {
-            if let EngineError::Fatal { code, message } = error {
-                return Err(self.poison(code, message));
+            if matches!(error, EngineError::Fatal { .. } | EngineError::Lock { .. }) {
+                return Err(self.poison(error));
             }
             decisive.get_or_insert(error);
         }
         decisive.map_or(Ok(()), Err)
     }
 
-    /// Latch `code` and `message` unless a fatal failure is already latched,
-    /// and return the latched error.
-    fn poison(&self, code: i32, message: String) -> EngineError {
-        self.fatal
-            .get_or_init(|| Poisoned { code, message })
-            .error()
+    /// Latch `error` unless a fatal failure is already latched, and return the
+    /// latched error.
+    fn poison(&self, error: EngineError) -> EngineError {
+        self.fatal.get_or_init(|| error).clone()
     }
 
     fn last_error_text(&self, code: c_int) -> String {
@@ -2171,7 +2179,8 @@ impl EngineSession {
         } else if let Some(refused) = next {
             self.refused.0.push(refused);
         }
-        self.engine.settle(code, failure)
+        self.engine
+            .settle(code, "rgpot_engine_set_callbacks", failure)
     }
 
     /// Attach a persistent result cache stored in the directory `path`.
@@ -2253,14 +2262,15 @@ impl EngineSession {
             )
         };
         let failure = host_failure(None, HostCallbacks::new(&self.callbacks, &self.refused));
-        self.engine.settle_with(code, failure, || {
-            let text = text_of(&error);
-            if text.is_empty() {
-                format!("rgpot_engine_hint failed with code {code} and wrote no message")
-            } else {
-                text
-            }
-        })
+        self.engine
+            .settle_with(code, "rgpot_engine_hint", failure, || {
+                let text = text_of(&error);
+                if text.is_empty() {
+                    format!("rgpot_engine_hint failed with code {code} and wrote no message")
+                } else {
+                    text
+                }
+            })
     }
 
     /// Report a fatal callback failure that no native call has settled, which
@@ -2268,13 +2278,19 @@ impl EngineSession {
     /// failure wins over the refusal; an error the handle has already latched
     /// is returned unchanged.
     fn finish<T>(&self, answer: Result<T, EngineError>) -> Result<T, EngineError> {
-        if matches!(answer, Err(EngineError::Fatal { .. })) {
+        if matches!(
+            answer,
+            Err(EngineError::Fatal { .. } | EngineError::Lock { .. })
+        ) {
             return answer;
         }
         match HostCallbacks::new(&self.callbacks, &self.refused).take_fatal() {
             Some(failure) => {
                 let code = failure.status.code();
-                Err(self.engine.poison(code, described(failure)))
+                Err(self.engine.poison(EngineError::Fatal {
+                    code,
+                    message: described(failure),
+                }))
             }
             None => answer,
         }

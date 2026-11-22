@@ -22,6 +22,54 @@
 #define RGPOT_ENGINE_PROJECT_VERSION "unknown"
 #endif
 
+#ifdef RGPOT_POTLIBC_TEST_LOCK_FAIL
+#include <errno.h>
+static int potlibc_test_fail_lock = 0;
+static int potlibc_test_live_call_locks = 0;
+RGPOT_ENGINE_API void rgpot_potlibc_test_set_lock_fail(int fail) {
+  potlibc_test_fail_lock = fail;
+}
+RGPOT_ENGINE_API int rgpot_potlibc_test_live_call_locks(void) {
+  return __atomic_load_n(&potlibc_test_live_call_locks, __ATOMIC_SEQ_CST);
+}
+static int potlibc_mutex_lock(pthread_mutex_t *mutex) {
+  if (potlibc_test_fail_lock) {
+    return EINVAL;
+  }
+  return pthread_mutex_lock(mutex);
+}
+#else
+#define potlibc_mutex_lock pthread_mutex_lock
+#endif
+
+static int init_call_mutex(pthread_mutex_t *mutex) {
+  pthread_mutexattr_t attr;
+  int rc;
+  if (pthread_mutexattr_init(&attr) != 0) {
+    return -1;
+  }
+  rc = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
+  if (rc == 0) {
+    rc = pthread_mutex_init(mutex, &attr);
+  }
+  pthread_mutexattr_destroy(&attr);
+#ifdef RGPOT_POTLIBC_TEST_LOCK_FAIL
+  if (rc == 0) {
+    __atomic_add_fetch(&potlibc_test_live_call_locks, 1, __ATOMIC_SEQ_CST);
+  }
+#endif
+  return rc;
+}
+
+/* The mutex is released whether or not the handle lock could be taken, so a
+ * failed acquisition in rgpot_engine_destroy cannot leak it. */
+static void release_call_mutex(pthread_mutex_t *mutex) {
+  pthread_mutex_destroy(mutex);
+#ifdef RGPOT_POTLIBC_TEST_LOCK_FAIL
+  __atomic_sub_fetch(&potlibc_test_live_call_locks, 1, __ATOMIC_SEQ_CST);
+#endif
+}
+
 struct RgpotEnginePot {
   potlibc_handle *surface;
   potlibc_metadata metadata;
@@ -104,8 +152,9 @@ static int lock_handle(RgpotEnginePot *pot) {
   if (pot == NULL) {
     return RGPOT_ENGINE_ERR_INVALID;
   }
-  if (pthread_mutex_lock(&pot->call_lock) != 0) {
-    return -1;
+  if (potlibc_mutex_lock(&pot->call_lock) != 0) {
+    set_error(pot, "potlibc engine handle lock failed");
+    return RGPOT_ENGINE_ERR_LOCK;
   }
   return RGPOT_ENGINE_OK;
 }
@@ -168,7 +217,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
     copy_message(errbuf, errlen, "potlibc engine allocation failed");
     return NULL;
   }
-  if (pthread_mutex_init(&pot->call_lock, NULL) != 0) {
+  if (init_call_mutex(&pot->call_lock) != 0) {
     copy_message(errbuf, errlen, "potlibc engine mutex initialization failed");
     free(pot);
     return NULL;
@@ -176,7 +225,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
   if (pthread_mutex_init(&pot->error_lock, NULL) != 0) {
     copy_message(errbuf, errlen,
                  "potlibc engine error mutex initialization failed");
-    pthread_mutex_destroy(&pot->call_lock);
+    release_call_mutex(&pot->call_lock);
     free(pot);
     return NULL;
   }
@@ -191,7 +240,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
              potlibc_status_string(status));
     copy_message(errbuf, errlen, pot->error);
     pthread_mutex_destroy(&pot->error_lock);
-    pthread_mutex_destroy(&pot->call_lock);
+    release_call_mutex(&pot->call_lock);
     free(pot);
     return NULL;
   }
@@ -202,7 +251,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
     copy_message(errbuf, errlen, pot->error);
     potlibc_destroy(pot->surface);
     pthread_mutex_destroy(&pot->error_lock);
-    pthread_mutex_destroy(&pot->call_lock);
+    release_call_mutex(&pot->call_lock);
     free(pot);
     return NULL;
   }
@@ -214,7 +263,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
     copy_message(errbuf, errlen, "potlibc surface metadata is incomplete");
     potlibc_destroy(pot->surface);
     pthread_mutex_destroy(&pot->error_lock);
-    pthread_mutex_destroy(&pot->call_lock);
+    release_call_mutex(&pot->call_lock);
     free(pot);
     return NULL;
   }
@@ -224,7 +273,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
     copy_message(errbuf, errlen, "potlibc surface has unsupported units");
     potlibc_destroy(pot->surface);
     pthread_mutex_destroy(&pot->error_lock);
-    pthread_mutex_destroy(&pot->call_lock);
+    release_call_mutex(&pot->call_lock);
     free(pot);
     return NULL;
   }
@@ -232,7 +281,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
     copy_message(errbuf, errlen, "potlibc surface has no analytic forces");
     potlibc_destroy(pot->surface);
     pthread_mutex_destroy(&pot->error_lock);
-    pthread_mutex_destroy(&pot->call_lock);
+    release_call_mutex(&pot->call_lock);
     free(pot);
     return NULL;
   }
@@ -240,17 +289,24 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
 }
 
 void rgpot_engine_destroy(RgpotEnginePot *pot) {
+  int locked;
   if (pot == NULL) {
     return;
   }
-  if (pthread_mutex_lock(&pot->call_lock) != 0) {
-    return;
+  /* engine_c_abi.h forbids calling destroy concurrently with another call on
+   * the same handle. If call_lock cannot be acquired, still release the
+   * surface and free the handle so cleanup after RGPOT_ENGINE_ERR_LOCK does
+   * not leak. */
+  locked = (potlibc_mutex_lock(&pot->call_lock) == 0);
+  if (pot->surface != NULL) {
+    potlibc_destroy(pot->surface);
+    pot->surface = NULL;
   }
-  potlibc_destroy(pot->surface);
-  pot->surface = NULL;
-  pthread_mutex_unlock(&pot->call_lock);
+  if (locked) {
+    pthread_mutex_unlock(&pot->call_lock);
+  }
+  release_call_mutex(&pot->call_lock);
   pthread_mutex_destroy(&pot->error_lock);
-  pthread_mutex_destroy(&pot->call_lock);
   free(pot);
 }
 
@@ -414,9 +470,13 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   RgpotEngineCaps result;
   RgpotEnginePot *mutable_pot = (RgpotEnginePot *)pot;
   size_t room;
-  if (out == NULL || out->size < sizeof(unsigned) ||
-      lock_handle(mutable_pot) != RGPOT_ENGINE_OK) {
+  int code;
+  if (out == NULL || out->size < sizeof(unsigned)) {
     return RGPOT_ENGINE_ERR_INVALID;
+  }
+  code = lock_handle(mutable_pot);
+  if (code != RGPOT_ENGINE_OK) {
+    return code;
   }
   memset(&result, 0, sizeof result);
   result.size = sizeof result;

@@ -23,7 +23,10 @@ typedef int (*available_fn)(void);
 typedef RgpotEngineAbiStamp (*abi_stamp_fn)(void);
 typedef int (*abi_compatible_fn)(const RgpotEngineAbiStamp *);
 typedef const char *(*text_fn)(void);
+typedef int (*caps_fn)(const RgpotEnginePot *, RgpotEngineCaps *);
 typedef size_t (*last_error_fn)(const RgpotEnginePot *, char *, size_t);
+typedef void (*set_lock_fail_fn)(int);
+typedef int (*live_call_locks_fn)(void);
 
 typedef struct {
   abi_version_fn abi_version;
@@ -36,6 +39,7 @@ typedef struct {
   destroy_fn destroy;
   force_fn force;
   hvp_fn hvp;
+  caps_fn caps;
   last_error_fn last_error;
 } Engine;
 
@@ -165,6 +169,171 @@ static int variable_size_requires_count(Engine *engine) {
   return 0;
 }
 
+typedef struct {
+  Engine *engine;
+  RgpotEnginePot *pot;
+  const int *species;
+  const double *box;
+} ReenterContext;
+
+static int reenter_on_locked_handle(void *user, long n_atoms, double *positions,
+                                    double *box) {
+  ReenterContext *ctx = (ReenterContext *)user;
+  RgpotEngineCaps caps;
+  double forces[9];
+  double hv[9];
+  double energy = 0.0;
+  char error[512] = {0};
+  int force_code;
+  int hvp_code;
+  int caps_code;
+  (void)box;
+
+  force_code = ctx->engine->force(ctx->pot, n_atoms, positions, ctx->species,
+                                  forces, &energy, NULL, ctx->box, NULL, NULL);
+  if (force_code != RGPOT_ENGINE_ERR_LOCK ||
+      ctx->engine->last_error(ctx->pot, error, sizeof error) == 0) {
+    fprintf(stderr, "reentrant force returned %d (error=%s)\n", force_code,
+            error);
+    return RGPOT_ENGINE_ERR_EVAL;
+  }
+  memset(error, 0, sizeof error);
+  hvp_code = ctx->engine->hvp(ctx->pot, n_atoms, positions, ctx->species,
+                              positions, hv, ctx->box);
+  if (hvp_code != RGPOT_ENGINE_ERR_LOCK ||
+      ctx->engine->last_error(ctx->pot, error, sizeof error) == 0) {
+    fprintf(stderr, "reentrant hvp returned %d (error=%s)\n", hvp_code, error);
+    return RGPOT_ENGINE_ERR_EVAL;
+  }
+  memset(&caps, 0, sizeof caps);
+  caps.size = sizeof caps;
+  caps_code = ctx->engine->caps(ctx->pot, &caps);
+  if (caps_code != RGPOT_ENGINE_ERR_LOCK) {
+    fprintf(stderr, "reentrant caps returned %d\n", caps_code);
+    return RGPOT_ENGINE_ERR_EVAL;
+  }
+  return 0;
+}
+
+static int reentrant_lock_returns_named_code(Engine *engine) {
+  static const double box[9] = {
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 20.0,
+  };
+  static const int species[3] = {35, 1, 1};
+  static const double positions[9] = {
+      0.0, 0.0, 0.0,
+      3.0802 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+      4.8202 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+  };
+  RgpotEnginePot *pot = create(engine, "brh2leps", 0);
+  double forces[9];
+  double energy = 0.0;
+  ReenterContext ctx;
+  int code;
+  if (pot == NULL) {
+    return 1;
+  }
+  ctx.engine = engine;
+  ctx.pot = pot;
+  ctx.species = species;
+  ctx.box = box;
+  code = engine->force(pot, 3, positions, species, forces, &energy, NULL, box,
+                       reenter_on_locked_handle, &ctx);
+  engine->destroy(pot);
+  if (code != RGPOT_ENGINE_OK) {
+    fprintf(stderr, "outer force around reentrant lock probe returned %d\n",
+            code);
+    return 1;
+  }
+  return 0;
+}
+
+static int destroy_frees_handle_when_lock_fails(const char *path) {
+  static const double box[9] = {
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 20.0,
+  };
+  static const int species[3] = {35, 1, 1};
+  static const double positions[9] = {
+      0.0, 0.0, 0.0,
+      3.0802 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+      4.8202 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+  };
+  void *library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+  create_fn create_sym;
+  destroy_fn destroy_sym;
+  force_fn force_sym;
+  caps_fn caps_sym;
+  last_error_fn last_error_sym;
+  set_lock_fail_fn set_lock_fail;
+  live_call_locks_fn live_call_locks;
+  RgpotPotlibcConfigV1 message = config("brh2leps", 0);
+  RgpotEngineCaps caps;
+  RgpotEnginePot *pot;
+  double forces[9];
+  double energy = 0.0;
+  char error[512] = {0};
+  int force_code;
+  int caps_code;
+  int live_before;
+  int live_after;
+
+  if (library == NULL) {
+    fprintf(stderr, "%s\n", dlerror());
+    return 1;
+  }
+  create_sym = (create_fn)dlsym(library, "rgpot_engine_create");
+  destroy_sym = (destroy_fn)dlsym(library, "rgpot_engine_destroy");
+  force_sym = (force_fn)dlsym(library, "rgpot_engine_force");
+  caps_sym = (caps_fn)dlsym(library, "rgpot_engine_caps");
+  last_error_sym = (last_error_fn)dlsym(library, "rgpot_engine_last_error");
+  set_lock_fail =
+      (set_lock_fail_fn)dlsym(library, "rgpot_potlibc_test_set_lock_fail");
+  live_call_locks =
+      (live_call_locks_fn)dlsym(library, "rgpot_potlibc_test_live_call_locks");
+  if (create_sym == NULL || destroy_sym == NULL || force_sym == NULL ||
+      caps_sym == NULL || last_error_sym == NULL || set_lock_fail == NULL ||
+      live_call_locks == NULL) {
+    fprintf(stderr, "lock-failure test library is missing symbols\n");
+    dlclose(library);
+    return 1;
+  }
+  set_lock_fail(0);
+  pot = create_sym(&message, sizeof message, error, sizeof error);
+  if (pot == NULL) {
+    fprintf(stderr, "lock-failure create failed: %s\n", error);
+    dlclose(library);
+    return 1;
+  }
+  set_lock_fail(1);
+  force_code = force_sym(pot, 3, positions, species, forces, &energy, NULL, box,
+                         NULL, NULL);
+  memset(&caps, 0, sizeof caps);
+  caps.size = sizeof caps;
+  caps_code = caps_sym(pot, &caps);
+  memset(error, 0, sizeof error);
+  last_error_sym(pot, error, sizeof error);
+  /* Destroy while potlibc_mutex_lock fails: must still release surface, pot
+   * and the call_lock mutex. */
+  live_before = live_call_locks();
+  destroy_sym(pot);
+  live_after = live_call_locks();
+  set_lock_fail(0);
+  dlclose(library);
+  if (live_before != 1 || live_after != 0) {
+    fprintf(stderr, "call_lock live before destroy=%d after=%d\n",
+            live_before, live_after);
+    return 1;
+  }
+  if (force_code != RGPOT_ENGINE_ERR_LOCK ||
+      caps_code != RGPOT_ENGINE_ERR_LOCK || error[0] == '\0') {
+    fprintf(stderr,
+            "lock failure returned force=%d caps=%d error=%s\n",
+            force_code, caps_code, error);
+    return 1;
+  }
+  return 0;
+}
+
 int main(int argc, char **argv) {
   static const double fh2[9] = {
       0.0, 0.0, 0.0, 2.6844, 0.0, 0.0, 4.4434, 0.0, 0.0,
@@ -181,7 +350,7 @@ int main(int argc, char **argv) {
   static const int variable_species[4] = {13, 13, 13, 13};
   Engine engine;
   void *library;
-  if (argc != 2) {
+  if (argc != 2 && argc != 3) {
     return 2;
   }
   library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
@@ -201,13 +370,14 @@ int main(int argc, char **argv) {
   engine.destroy = (destroy_fn)dlsym(library, "rgpot_engine_destroy");
   engine.force = (force_fn)dlsym(library, "rgpot_engine_force");
   engine.hvp = (hvp_fn)dlsym(library, "rgpot_engine_hvp");
+  engine.caps = (caps_fn)dlsym(library, "rgpot_engine_caps");
   engine.last_error =
       (last_error_fn)dlsym(library, "rgpot_engine_last_error");
   if (engine.abi_version == NULL || engine.available == NULL ||
       engine.abi_stamp == NULL || engine.abi_compatible == NULL ||
       engine.name == NULL || engine.version == NULL || engine.create == NULL ||
       engine.destroy == NULL || engine.force == NULL || engine.hvp == NULL ||
-      engine.last_error == NULL) {
+      engine.caps == NULL || engine.last_error == NULL) {
     fprintf(stderr, "potlibc engine symbols are incomplete\n");
     return 2;
   }
@@ -242,7 +412,9 @@ int main(int argc, char **argv) {
       reference_energy(&engine, "vbo-beta1", 4, 4, variable,
                        variable_species, UINT64_C(0xc01452a9f90879c8)) != 0 ||
       hvp_arguments_are_checked(&engine) != 0 ||
-      variable_size_requires_count(&engine) != 0) {
+      variable_size_requires_count(&engine) != 0 ||
+      reentrant_lock_returns_named_code(&engine) != 0 ||
+      (argc == 3 && destroy_frees_handle_when_lock_fails(argv[2]) != 0)) {
     dlclose(library);
     return 1;
   }
