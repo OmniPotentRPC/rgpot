@@ -1488,6 +1488,14 @@ a host that does call =dlclose= on them leaves them mapped.
   =capnp::word= never receive an unaligned pointer), and call
   =rgpot_engine_create=.
   =EnginePotential::abi_stamp()= returns the resolved stamp.
+  When the engine exports =rgpot_engine_caps=, one call at creation reads
+  =reentrancy=.
+  A negative code (=EngineError::Lock= for =RGPOT_ENGINE_ERR_LOCK=,
+  =EngineError::Fatal= otherwise) rejects the engine: the loader destroys the
+  new handle once and returns the error.
+  A positive code or a truncated answer is not trusted, so the engine is
+  serialized process wide like =reentrancy= 2.
+  Only a successful answer of 0 or 1 skips that lock.
 - =EnginePotential::force(&request)= and
   =EnginePotential::force_batch(&atomic_numbers, &positions, &boxes)= ::
   Validates input lengths and output finiteness, dispatches to
