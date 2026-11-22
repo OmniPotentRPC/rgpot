@@ -8,9 +8,10 @@
 //! the backend's configuration is the opaque message the library's create
 //! call reads. [`EnginePotential::load`] resolves that symbol set, checks both
 //! [`ENGINE_ABI_VERSION`] and [`RgpotEngineAbiStamp::HOST`] against the
-//! library's ABI identity, and keeps one engine instance. [`EnginePotential::force`] is one
-//! geometry in Angstrom and one answer in eV and eV/Angstrom, the units the
-//! header fixes.
+//! library's ABI identity, asks `rgpot_engine_available` whether the backend
+//! can create instances, and keeps one engine instance.
+//! [`EnginePotential::force`] is one geometry in Angstrom and one answer in eV
+//! and eV/Angstrom, the units the header fixes.
 //!
 //! Return codes follow the header: zero is success, a positive code is an
 //! evaluation that failed at this input ([`EngineError::Recoverable`]), and a
@@ -267,6 +268,8 @@ impl fmt::Display for RgpotEngineAbiStamp {
 
 /// `rgpot_engine_abi_version`.
 pub type AbiVersionFn = unsafe extern "C" fn() -> c_int;
+/// `rgpot_engine_available`.
+pub type AvailableFn = unsafe extern "C" fn() -> c_int;
 /// `rgpot_engine_abi_stamp`.
 pub type AbiStampFn = unsafe extern "C" fn() -> RgpotEngineAbiStamp;
 /// `rgpot_engine_create`.
@@ -450,9 +453,9 @@ pub struct EngineCaps {
     pub analytic_hvp: bool,
 }
 
-/// The symbols of one engine library. `abi_version`, `create`, `destroy` and
-/// `force` are required by the header; the optional entries are probed and may
-/// be absent.
+/// The symbols of one engine library. `abi_version`, `available`, `create`,
+/// `destroy` and `force` are required by the header; the optional entries are
+/// probed and may be absent.
 ///
 /// The struct is `#[non_exhaustive]`, so a symbol added to the ABI later does
 /// not break callers. Build one with [`EngineSymbols::new`] and the `with_*`
@@ -462,6 +465,8 @@ pub struct EngineCaps {
 pub struct EngineSymbols {
     /// Required symbol `rgpot_engine_abi_version`.
     pub abi_version: AbiVersionFn,
+    /// Required symbol `rgpot_engine_available`.
+    pub available: AvailableFn,
     /// Optional symbol `rgpot_engine_abi_stamp`.
     pub abi_stamp: Option<AbiStampFn>,
     /// Required symbol `rgpot_engine_create`.
@@ -491,17 +496,19 @@ pub struct EngineSymbols {
 }
 
 impl EngineSymbols {
-    /// A symbol table with the four required symbols and every optional one
+    /// A symbol table with the five required symbols and every optional one
     /// absent.
     #[must_use]
     pub fn new(
         abi_version: AbiVersionFn,
+        available: AvailableFn,
         create: CreateFn,
         destroy: DestroyFn,
         force: ForceFn,
     ) -> Self {
         Self {
             abi_version,
+            available,
             abi_stamp: None,
             create,
             destroy,
@@ -610,6 +617,8 @@ pub enum EngineError {
         /// The ABI stamp reported (or implied) by the loaded engine.
         found: RgpotEngineAbiStamp,
     },
+    /// `rgpot_engine_available` reported that the engine cannot create instances.
+    Unavailable,
     /// `rgpot_engine_create` returned no instance; the text is its error buffer.
     Create(String),
     /// The request does not fit the ABI: a length or a non-finite answer.
@@ -651,6 +660,12 @@ impl fmt::Display for EngineError {
                 write!(
                     f,
                     "engine ABI stamp {found} cannot serve host stamp {expected}"
+                )
+            }
+            Self::Unavailable => {
+                write!(
+                    f,
+                    "rgpot_engine_available reported that the engine is unavailable"
                 )
             }
             Self::Create(why) => write!(f, "rgpot_engine_create failed: {why}"),
@@ -1322,6 +1337,9 @@ impl EnginePotential {
                 expected: RgpotEngineAbiStamp::HOST,
                 found: stamp,
             });
+        }
+        if unsafe { (symbols.available)() } == 0 {
+            return Err(EngineError::Unavailable);
         }
         // In-tree engines cast `config` to `capnp::word`, which requires
         // 8-byte alignment even when the caller passes an unaligned `&[u8]`.
@@ -2362,6 +2380,7 @@ unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
     }
     Ok(EngineSymbols {
         abi_version: unsafe { required(library, "rgpot_engine_abi_version")? },
+        available: unsafe { required(library, "rgpot_engine_available")? },
         abi_stamp: unsafe { optional(library, "rgpot_engine_abi_stamp") },
         create: unsafe { required(library, "rgpot_engine_create")? },
         destroy: unsafe { required(library, "rgpot_engine_destroy")? },
