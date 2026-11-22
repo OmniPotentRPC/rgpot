@@ -5,6 +5,7 @@
 #include "rgpot/potlibc_engine.h"
 
 #include <dlfcn.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -164,6 +165,59 @@ static int variable_size_requires_count(Engine *engine) {
   }
   if (error[0] == '\0') {
     fprintf(stderr, "variable-size surface failure had no diagnostic\n");
+    return 1;
+  }
+  return 0;
+}
+
+static int oversized_atom_counts_are_refused(Engine *engine) {
+  static const double box[9] = {
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0,
+  };
+  static const int species[3] = {35, 1, 1};
+  static const double positions[9] = {
+      0.0, 0.0, 0.0,
+      3.0802 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+      4.8202 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+  };
+  const uint64_t too_many = (uint64_t)(SIZE_MAX / (3 * sizeof(double))) + 1;
+  RgpotPotlibcConfigV1 message = config("vbo-beta1", too_many);
+  char error[512] = {0};
+  double product[9];
+  double forces[9];
+  double energy = 0.0;
+  RgpotEnginePot *pot =
+      engine->create(&message, sizeof message, error, sizeof error);
+  int code;
+  if (pot != NULL) {
+    fprintf(stderr, "an atom count past SIZE_MAX / (3 * 8) was accepted\n");
+    engine->destroy(pot);
+    return 1;
+  }
+  if (strstr(error, "too large") == NULL) {
+    fprintf(stderr, "oversized atom count create diagnostic: %s\n", error);
+    return 1;
+  }
+  pot = create(engine, "brh2leps", 0);
+  if (pot == NULL) {
+    return 1;
+  }
+  code = engine->force(pot, LONG_MAX, positions, species, forces, &energy,
+                       NULL, box, NULL, NULL);
+  memset(error, 0, sizeof error);
+  engine->last_error(pot, error, sizeof error);
+  if (code != RGPOT_ENGINE_ERR_INVALID || strstr(error, "too large") == NULL) {
+    fprintf(stderr, "oversized force returned %d (%s)\n", code, error);
+    engine->destroy(pot);
+    return 1;
+  }
+  code = engine->hvp(pot, LONG_MAX, positions, species, positions, product,
+                     box);
+  memset(error, 0, sizeof error);
+  engine->last_error(pot, error, sizeof error);
+  engine->destroy(pot);
+  if (code != RGPOT_ENGINE_ERR_INVALID || strstr(error, "too large") == NULL) {
+    fprintf(stderr, "oversized hvp returned %d (%s)\n", code, error);
     return 1;
   }
   return 0;
@@ -413,6 +467,7 @@ int main(int argc, char **argv) {
                        variable_species, UINT64_C(0xc01452a9f90879c8)) != 0 ||
       hvp_arguments_are_checked(&engine) != 0 ||
       variable_size_requires_count(&engine) != 0 ||
+      oversized_atom_counts_are_refused(&engine) != 0 ||
       reentrant_lock_returns_named_code(&engine) != 0 ||
       (argc == 3 && destroy_frees_handle_when_lock_fails(argv[2]) != 0)) {
     dlclose(library);
