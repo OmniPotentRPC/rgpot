@@ -222,6 +222,69 @@ pub trait CoordinateTransform: Send {
     ) -> Result<(), EngineFailure>;
 }
 
+/// Magic number of `RgpotCoupledWellConfigV1`.
+pub const COUPLED_WELL_CONFIG_MAGIC: u32 = 0x4357_5054;
+/// Version of [`CoupledWellConfig`].
+pub const COUPLED_WELL_CONFIG_VERSION: u32 = 1;
+
+/// Parameters for `libcoupled_well_engine`.
+///
+/// The engine evaluates one atom and uses its x and y coordinates:
+/// `V0 ((x / x0)^2 - 1)^2 + k/2 (y - alpha x^2)^2`.
+/// Values use the engine ABI units, eV and Angstrom.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CoupledWellConfig {
+    /// Configuration identity.
+    pub magic: u32,
+    /// Configuration layout version.
+    pub version: u32,
+    /// Atomic number accepted by the engine.
+    pub atomic_number: i32,
+    /// Must be zero.
+    pub reserved: u32,
+    /// Quartic barrier energy in eV.
+    pub barrier_energy: f64,
+    /// Position of either minimum along x in Angstrom.
+    pub well_position: f64,
+    /// Transverse spring constant in eV/Angstrom squared.
+    pub transverse_spring: f64,
+    /// Coupling coefficient in inverse Angstrom.
+    pub coupling: f64,
+}
+
+impl CoupledWellConfig {
+    /// Construct the version-one parameter message.
+    pub fn new(
+        atomic_number: i32,
+        barrier_energy: f64,
+        well_position: f64,
+        transverse_spring: f64,
+        coupling: f64,
+    ) -> Self {
+        Self {
+            magic: COUPLED_WELL_CONFIG_MAGIC,
+            version: COUPLED_WELL_CONFIG_VERSION,
+            atomic_number,
+            reserved: 0,
+            barrier_energy,
+            well_position,
+            transverse_spring,
+            coupling,
+        }
+    }
+
+    /// Native bytes consumed by `rgpot_engine_create`.
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                std::ptr::from_ref(self).cast::<u8>(),
+                std::mem::size_of::<Self>(),
+            )
+        }
+    }
+}
+
 /// Opaque engine instance, `RgpotEnginePot` of the header.
 #[repr(C)]
 pub struct RgpotEnginePot {

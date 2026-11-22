@@ -17,6 +17,18 @@ engines_here = meson.current_source_dir()
 dl_dep = cppc.find_library('dl', required: false)
 thread_dep = dependency('threads')
 
+coupled_well_engine = shared_library(
+    'coupled_well_engine',
+    files('coupled_well_engine.cpp'),
+    include_directories: [engines_inc, rgpot_inc],
+    cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+    install: not meson.is_subproject(),
+)
+install_headers(
+    '../include/rgpot/coupled_well_engine.h',
+    subdir: 'rgpot',
+)
+
 potlibc_opt = get_option('with_potlibc')
 potlibc_dep = dependency('potlibc', required: potlibc_opt)
 if potlibc_dep.found()
