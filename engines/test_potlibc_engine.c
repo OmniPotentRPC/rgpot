@@ -19,6 +19,9 @@ typedef int (*force_fn)(RgpotEnginePot *, long, const double *, const int *,
                         rgpot_engine_coord_transform, void *);
 typedef int (*hvp_fn)(RgpotEnginePot *, long, const double *, const int *,
                       const double *, double *, const double *);
+typedef int (*batch_fn)(RgpotEnginePot *, long, long, const double *,
+                        const int *, double *, double *, double *,
+                        const double *, rgpot_engine_coord_transform, void *);
 typedef int (*abi_version_fn)(void);
 typedef int (*available_fn)(void);
 typedef RgpotEngineAbiStamp (*abi_stamp_fn)(void);
@@ -40,6 +43,7 @@ typedef struct {
   destroy_fn destroy;
   force_fn force;
   hvp_fn hvp;
+  batch_fn batch;
   caps_fn caps;
   last_error_fn last_error;
 } Engine;
@@ -388,6 +392,128 @@ static int destroy_frees_handle_when_lock_fails(const char *path) {
   return 0;
 }
 
+#define BATCH_SYSTEMS 3
+#define BATCH_ATOMS 3
+
+static int refuse_second(void *user, long n_atoms, double *positions,
+                         double *box) {
+  int *calls = (int *)user;
+  (void)n_atoms;
+  (void)positions;
+  (void)box;
+  *calls += 1;
+  return *calls == 2 ? 7 : 0;
+}
+
+static int batch_is_one_call_per_system(Engine *engine) {
+  static const double box[9] = {
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0,
+  };
+  static const int atomic_numbers[BATCH_ATOMS] = {35, 1, 1};
+  static const double stretch[BATCH_SYSTEMS] = {3.0802, 3.3, 2.9};
+  RgpotEnginePot *pot = create(engine, "brh2leps", 0);
+  double positions[BATCH_SYSTEMS * 9];
+  double boxes[BATCH_SYSTEMS * 9];
+  double forces[BATCH_SYSTEMS * 9];
+  double energies[BATCH_SYSTEMS];
+  double variances[BATCH_SYSTEMS];
+  double sentinel_forces[BATCH_SYSTEMS * 9];
+  double sentinel_energies[BATCH_SYSTEMS];
+  double sentinel_variances[BATCH_SYSTEMS];
+  RgpotEngineCaps caps;
+  long system;
+  long index;
+  int calls = 0;
+  int code;
+  if (pot == NULL) {
+    return 1;
+  }
+  memset(&caps, 0, sizeof caps);
+  caps.size = sizeof caps;
+  if (engine->caps(pot, &caps) != RGPOT_ENGINE_OK || caps.batched != 1 ||
+      caps.analytic_hvp != 1) {
+    fprintf(stderr, "caps do not report native batching and analytic HVP\n");
+    engine->destroy(pot);
+    return 1;
+  }
+  memset(positions, 0, sizeof positions);
+  for (system = 0; system < BATCH_SYSTEMS; ++system) {
+    positions[9 * system + 3] = stretch[system] * BOHR_TO_ANGSTROM;
+    positions[9 * system + 6] = (stretch[system] + 1.74) * BOHR_TO_ANGSTROM;
+    memcpy(boxes + 9 * system, box, sizeof box);
+  }
+  for (index = 0; index < BATCH_SYSTEMS * 9; ++index) {
+    sentinel_forces[index] = -1.0;
+  }
+  for (index = 0; index < BATCH_SYSTEMS; ++index) {
+    sentinel_energies[index] = -1.0;
+    sentinel_variances[index] = -1.0;
+  }
+  memcpy(forces, sentinel_forces, sizeof forces);
+  memcpy(energies, sentinel_energies, sizeof energies);
+  memcpy(variances, sentinel_variances, sizeof variances);
+
+  code = engine->batch(pot, BATCH_SYSTEMS, BATCH_ATOMS, positions,
+                       atomic_numbers, forces, energies, variances, boxes,
+                       NULL, NULL);
+  if (code != RGPOT_ENGINE_OK) {
+    fprintf(stderr, "batch returned %d\n", code);
+    engine->destroy(pot);
+    return 1;
+  }
+  for (system = 0; system < BATCH_SYSTEMS; ++system) {
+    double single_forces[9];
+    double single_energy;
+    code = engine->force(pot, BATCH_ATOMS, positions + 9 * system,
+                         atomic_numbers, single_forces, &single_energy, NULL,
+                         box, NULL, NULL);
+    if (code != RGPOT_ENGINE_OK ||
+        bits(single_energy) != bits(energies[system]) ||
+        memcmp(single_forces, forces + 9 * system, sizeof single_forces) != 0 ||
+        variances[system] != 0.0) {
+      fprintf(stderr, "batch system %ld differs from a single call\n", system);
+      engine->destroy(pot);
+      return 1;
+    }
+  }
+
+  /* A failed batch writes nothing: the second transform refuses. */
+  memcpy(forces, sentinel_forces, sizeof forces);
+  memcpy(energies, sentinel_energies, sizeof energies);
+  memcpy(variances, sentinel_variances, sizeof variances);
+  code = engine->batch(pot, BATCH_SYSTEMS, BATCH_ATOMS, positions,
+                       atomic_numbers, forces, energies, variances, boxes,
+                       refuse_second, &calls);
+  if (code != 7 || calls != 2 ||
+      memcmp(forces, sentinel_forces, sizeof forces) != 0 ||
+      memcmp(energies, sentinel_energies, sizeof energies) != 0 ||
+      memcmp(variances, sentinel_variances, sizeof variances) != 0) {
+    fprintf(stderr, "a refused batch transform wrote outputs (code %d)\n",
+            code);
+    engine->destroy(pot);
+    return 1;
+  }
+  if (engine->batch(pot, 0, BATCH_ATOMS, positions, atomic_numbers, forces,
+                    energies, variances, boxes, NULL,
+                    NULL) != RGPOT_ENGINE_ERR_INVALID ||
+      engine->batch(pot, BATCH_SYSTEMS, 2, positions, atomic_numbers, forces,
+                    energies, variances, boxes, NULL,
+                    NULL) != RGPOT_ENGINE_ERR_INVALID ||
+      engine->batch(pot, BATCH_SYSTEMS, BATCH_ATOMS, positions, atomic_numbers,
+                    forces, NULL, variances, boxes, NULL,
+                    NULL) != RGPOT_ENGINE_ERR_INVALID ||
+      engine->batch(pot, 0x7fffffffffffffffL, BATCH_ATOMS, positions,
+                    atomic_numbers, forces, energies, variances, boxes, NULL,
+                    NULL) != RGPOT_ENGINE_ERR_INVALID ||
+      memcmp(energies, sentinel_energies, sizeof energies) != 0) {
+    fprintf(stderr, "invalid batch arguments were not refused cleanly\n");
+    engine->destroy(pot);
+    return 1;
+  }
+  engine->destroy(pot);
+  return 0;
+}
+
 int main(int argc, char **argv) {
   static const double fh2[9] = {
       0.0, 0.0, 0.0, 2.6844, 0.0, 0.0, 4.4434, 0.0, 0.0,
@@ -424,6 +550,7 @@ int main(int argc, char **argv) {
   engine.destroy = (destroy_fn)dlsym(library, "rgpot_engine_destroy");
   engine.force = (force_fn)dlsym(library, "rgpot_engine_force");
   engine.hvp = (hvp_fn)dlsym(library, "rgpot_engine_hvp");
+  engine.batch = (batch_fn)dlsym(library, "rgpot_engine_force_batch");
   engine.caps = (caps_fn)dlsym(library, "rgpot_engine_caps");
   engine.last_error =
       (last_error_fn)dlsym(library, "rgpot_engine_last_error");
@@ -431,7 +558,8 @@ int main(int argc, char **argv) {
       engine.abi_stamp == NULL || engine.abi_compatible == NULL ||
       engine.name == NULL || engine.version == NULL || engine.create == NULL ||
       engine.destroy == NULL || engine.force == NULL || engine.hvp == NULL ||
-      engine.caps == NULL || engine.last_error == NULL) {
+      engine.batch == NULL || engine.caps == NULL ||
+      engine.last_error == NULL) {
     fprintf(stderr, "potlibc engine symbols are incomplete\n");
     return 2;
   }
@@ -466,6 +594,7 @@ int main(int argc, char **argv) {
       reference_energy(&engine, "vbo-beta1", 4, 4, variable,
                        variable_species, UINT64_C(0xc01452a9f90879c8)) != 0 ||
       hvp_arguments_are_checked(&engine) != 0 ||
+      batch_is_one_call_per_system(&engine) != 0 ||
       variable_size_requires_count(&engine) != 0 ||
       oversized_atom_counts_are_refused(&engine) != 0 ||
       reentrant_lock_returns_named_code(&engine) != 0 ||
