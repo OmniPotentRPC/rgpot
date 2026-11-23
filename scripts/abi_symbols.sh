@@ -1,7 +1,8 @@
 #!/bin/sh
 # Print the stable C symbols of a library, one per line.
 # Usage: abi_symbols.sh [-p PATTERN] LIB [BASELINE...]
-# The default names are the neighbour and fast-list exports of librgpot.
+# The default names are the MD-session, neighbour and fast-list exports of
+# librgpot.
 # -p replaces the name pattern; the rgpot-core library is checked with
 # '^rgpot_' against abi_core_baseline.txt.
 # Each baseline lists names the library must export. The build passes the
@@ -27,7 +28,7 @@
 set -eu
 LC_ALL=C
 export LC_ALL
-pattern='^rgpot_(nlist_|fast_)'
+pattern='^rgpot_(md_session_|nlist_|fast_)'
 if [ "${1:-}" = -p ]; then
   pattern=${2:?pattern}
   shift 2

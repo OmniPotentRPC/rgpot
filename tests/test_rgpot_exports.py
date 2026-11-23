@@ -87,3 +87,48 @@ def test_nm_listing_keeps_defined_rgpot_names():
         ]
     )
     assert exports.rgpot_names(text) == {"rgpot_version", "rgpot_abi_stamp"}
+
+
+def test_session_and_combined_counts_are_pinned():
+    assert exports.SESSION_EXPORTS == 21
+    assert exports.CORE_ONLY_COMBINED_EXPORTS == 72
+    assert exports.BUNDLE_COMBINED_EXPORTS == 126
+
+
+def test_rpc_baseline_is_an_optional_archive_set():
+    base = _baseline("abi_core_baseline.txt") | _baseline("abi_baseline_fast.txt")
+    rpc = _baseline("abi_baseline_rpc.txt")
+    assert len(rpc) == 7
+    assert base.isdisjoint(rpc)
+
+
+def test_whole_archive_count_tracks_optional_public_exports():
+    wanted = {f"rgpot_abi_{index}" for index in range(61)}
+    umbrella = {f"rgpot_cxx_{index}" for index in range(exports.CORE_ONLY_EXPORTS)}
+    exports.evaluate(umbrella | wanted, wanted, wanted, whole=True)
+
+
+def test_session_baseline_is_its_own_pin():
+    session = exports.read_baseline(exports.SESSION_BASELINE)
+    assert len(session) == 21
+    assert all(name.startswith("rgpot_md_session_") for name in session)
+    assert session.isdisjoint(_baseline("abi_core_baseline.txt"))
+    assert session.isdisjoint(_baseline("abi_baseline_fast.txt"))
+
+
+def test_session_names_are_not_part_of_the_counts():
+    session = {f"rgpot_md_session_{index}" for index in range(21)}
+    wanted = {f"rgpot_abi_{index}" for index in range(5)}
+    umbrella = {f"rgpot_cxx_{index}" for index in range(exports.CORE_ONLY_EXPORTS)}
+    exports.evaluate(umbrella | session, wanted, wanted, whole=False, session=session)
+    with pytest.raises(SystemExit, match="expected 51"):
+        exports.evaluate(umbrella | session, wanted, wanted, whole=False)
+
+
+def test_a_lost_session_export_is_named():
+    session = {f"rgpot_md_session_{index}" for index in range(21)}
+    wanted = {f"rgpot_abi_{index}" for index in range(5)}
+    umbrella = {f"rgpot_cxx_{index}" for index in range(exports.CORE_ONLY_EXPORTS)}
+    exported = (umbrella | session) - {"rgpot_md_session_3"}
+    with pytest.raises(SystemExit, match="rgpot_md_session_3"):
+        exports.evaluate(exported, wanted, wanted, whole=False, session=session)

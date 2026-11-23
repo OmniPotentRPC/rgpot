@@ -62,12 +62,39 @@ def defined_names(lib: Path) -> set[str]:
     return rgpot_names(proc.stdout)
 
 
+# The MD-session C ABI lives in librgpot itself rather than the Rust archive.
+# Keep its baseline and the combined shared-library counts separate from the
+# archive count above. RPC contributes another optional seven archive names.
+SESSION_EXPORTS = 21
+CORE_ONLY_COMBINED_EXPORTS = CORE_ONLY_EXPORTS + SESSION_EXPORTS
+BUNDLE_COMBINED_EXPORTS = BUNDLE_EXPORTS + SESSION_EXPORTS
+SESSION_BASELINE = Path(__file__).resolve().with_name("abi_baseline_md_session.txt")
+RPC_BASELINE = Path(__file__).resolve().with_name("abi_baseline_rpc.txt")
+
+
 def evaluate(
     exported: set[str],
     archived: set[str],
     wanted: set[str],
     whole: bool,
+    session: set[str] | frozenset[str] | None = None,
 ) -> None:
+    """Check archive and shared exports, including optional public groups."""
+    if session is None:
+        baseline = read_baseline(SESSION_BASELINE)
+        session = baseline if baseline & exported else frozenset()
+    lost = sorted(session - exported)
+    if lost:
+        raise SystemExit("librgpot lost MD-session exports: " + ", ".join(lost))
+    if session and len(session) != SESSION_EXPORTS:
+        raise SystemExit(
+            f"MD-session baseline has {len(session)} exports, expected {SESSION_EXPORTS}"
+        )
+    exported = exported - session
+
+    rpc = read_baseline(RPC_BASELINE)
+    if archived - wanted == rpc:
+        wanted = wanted | rpc
     if archived != wanted:
         missing = ", ".join(sorted(wanted - archived)) or "-"
         extra = ", ".join(sorted(archived - wanted)) or "-"
@@ -89,7 +116,7 @@ def evaluate(
                 "core-only link exported rust archive symbols: "
                 + ", ".join(leaked)
             )
-    expected = BUNDLE_EXPORTS if whole else CORE_ONLY_EXPORTS
+    expected = CORE_ONLY_EXPORTS + len(wanted) if whole else CORE_ONLY_EXPORTS
     if len(exported) != expected:
         raise SystemExit(
             f"librgpot exports {len(exported)} rgpot_* symbols, "

@@ -1,0 +1,8 @@
+# Copyright 2023--present rgpot developers
+rgpot_potential_set_peer_capabilities
+rgpot_rpc_calculate
+rgpot_rpc_calculate_hvp
+rgpot_rpc_client_free
+rgpot_rpc_client_new
+rgpot_rpc_client_select_orbitals
+rgpot_rpc_server_start

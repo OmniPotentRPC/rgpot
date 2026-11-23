@@ -227,3 +227,14 @@ The zero-argument =MullerBrownPot= constructor remains its own symbol.
 It also stamps =nlist::Builder= and =nlist::Walk=, which move their state behind
 a pointer so each is one pointer wide.
 A program linked against soversion 8 does not load =librgpot.so.9=.
+
+** Session and optional export groups
+
+The 21 =rgpot_md_session_*= entry points are pinned against
+=scripts/abi_baseline_md_session.txt= separately from the 51 and 105
+shared-library counts above.
+The combined counts are therefore 72 for the core-only link and 126 for the
+default whole-archive bundle.
+An RPC archive adds seven optional public names from
+=scripts/abi_baseline_rpc.txt=; the export check includes that complete group
+when it is present.
