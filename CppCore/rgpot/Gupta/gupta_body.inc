@@ -4,8 +4,11 @@
  * the same i < j order, so the density and the force match that walk.
  */
 {
+#ifndef RGPOT_GUPTA_SIZE_MAX
+#define RGPOT_GUPTA_SIZE_MAX SIZE_MAX
+#endif
   size_t pairs = 0;
-  if (n > SIZE_MAX / 3) {
+  if (n > RGPOT_GUPTA_SIZE_MAX / 3) {
     *energy = INFINITY;
     return;
   }
@@ -17,8 +20,13 @@
     } else {
       rhs /= 2;
     }
-    if (lhs > SIZE_MAX / rhs) {
+    if (lhs > RGPOT_GUPTA_SIZE_MAX / rhs) {
       *energy = INFINITY;
+      if (gradient != 0) {
+        for (size_t k = 0; k < 3 * n; k++) {
+          gradient[k] = 0.0;
+        }
+      }
       return;
     }
     pairs = lhs * rhs;
@@ -38,8 +46,10 @@
    * still works. */
   if (rgpot_gupta_ensure(n, pairs) != 0) {
     *energy = INFINITY;
-    for (size_t k = 0; k < 3 * n; k++) {
-      gradient[k] = 0.0;
+    if (gradient != 0) {
+      for (size_t k = 0; k < 3 * n; k++) {
+        gradient[k] = 0.0;
+      }
     }
     return;
   }
