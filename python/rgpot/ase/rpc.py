@@ -11,6 +11,7 @@ which are ASE's units.
 from __future__ import annotations
 
 import asyncio
+import gc
 import os
 import socket
 import subprocess
@@ -93,7 +94,11 @@ class RgpotRpcCalculator(Calculator):
         self._kj = _capnp().kj_loop()
         self._closed = False
         self._pot: Any = None
+        self._client: Any = None
+        self._connection: Any = None
+        self._kj_active = False
         self._loop.run_until_complete(self._kj.__aenter__())
+        self._kj_active = True
         try:
             self._loop.run_until_complete(self._connect())
         except BaseException:
@@ -134,18 +139,84 @@ class RgpotRpcCalculator(Calculator):
 
     def close(self) -> None:
         """Disconnect and stop a managed server, if any."""
+        teardown_error: BaseException | None = None
         with self._claim:
-            if not self._closed:
-                self._closed = True
+            if self._closed:
+                return
+            self._closed = True
+            self._release_capnp_refs()
+            loop = getattr(self, "_loop", None)
+            if loop is None:
+                teardown_error = RuntimeError(
+                    "RgpotRpcCalculator.close() found no event loop; released RPC "
+                    "handles without KJ teardown"
+                )
+            elif loop.is_closed():
+                teardown_error = RuntimeError(
+                    "RgpotRpcCalculator.close() called after event loop was already "
+                    "closed; released RPC handles without KJ teardown"
+                )
+            else:
                 try:
-                    self._loop.run_until_complete(self._kj.__aexit__(None, None, None))
-                except Exception:
-                    pass
-                self._loop.close()
+                    if self._kj_active:
+                        loop.run_until_complete(
+                            self._kj.__aexit__(None, None, None)
+                        )
+                        self._kj_active = False
+                except BaseException as exc:
+                    teardown_error = exc
+                try:
+                    loop.close()
+                except BaseException as exc:
+                    if teardown_error is None:
+                        teardown_error = exc
             if self._server_proc is not None:
                 self._server_proc.kill()
                 self._server_proc.wait()
                 self._server_proc = None
+        if teardown_error is not None:
+            raise teardown_error
+
+    def __del__(self) -> None:
+        if getattr(self, "_closed", True):
+            return
+        try:
+            self._closed = True
+            try:
+                import warnings
+
+                warnings.warn(
+                    "RgpotRpcCalculator was not closed before finalization",
+                    ResourceWarning,
+                    stacklevel=2,
+                )
+            except Exception:
+                pass
+            client = getattr(self, "_client", None)
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    pass
+            connection = getattr(self, "_connection", None)
+            if connection is not None:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            self._pot = None
+            self._client = None
+            self._connection = None
+            proc = getattr(self, "_server_proc", None)
+            if proc is not None:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=1.0)
+                except Exception:
+                    pass
+                self._server_proc = None
+        except Exception:
+            pass
 
     def __enter__(self) -> RgpotRpcCalculator:
         return self
@@ -162,6 +233,8 @@ class RgpotRpcCalculator(Calculator):
                 )
                 client = _capnp().TwoPartyClient(connection)
                 self._pot = client.bootstrap().cast_as(self._schema.Potential)
+                self._client = client
+                self._connection = connection
                 return
             except OSError as exc:
                 last_err = exc
@@ -169,6 +242,13 @@ class RgpotRpcCalculator(Calculator):
         raise RuntimeError(
             f"RgpotRpcCalculator: could not connect to {self._host}:{self._port}: {last_err}"
         )
+
+    def _release_capnp_refs(self) -> None:
+        # Always clear pycapnp references, even if event-loop teardown fails.
+        self._pot = None
+        self._client = None
+        self._connection = None
+        gc.collect()
 
     async def _calculate_async(
         self,
