@@ -152,7 +152,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 6,
+            abi_minor: 7,
             layout_revision: 1,
         }
     );
@@ -181,6 +181,12 @@ struct FixtureObserver(libloading::Library);
 impl FixtureObserver {
     fn open(path: &Path) -> Self {
         Self(unsafe { libloading::Library::new(path) }.expect("open the fixture observer"))
+    }
+
+    fn created(&self) -> c_int {
+        let count: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+            unsafe { self.0.get(b"fixture_create_count\0") }.expect("create count symbol");
+        unsafe { count() }
     }
 
     fn destroyed(&self) -> c_int {
@@ -853,6 +859,10 @@ unsafe extern "C" fn stub_abi_version() -> c_int {
     ENGINE_ABI_VERSION
 }
 
+unsafe extern "C" fn stub_available() -> c_int {
+    1
+}
+
 unsafe extern "C" fn stub_create(
     _config: *const std::ffi::c_void,
     _config_len: usize,
@@ -886,7 +896,13 @@ unsafe extern "C" fn stub_model_state(_pot: *const RgpotEnginePot) -> u64 {
 
 #[test]
 fn symbols_are_built_with_a_constructor_and_optional_setters() {
-    let required = EngineSymbols::new(stub_abi_version, stub_create, stub_destroy, stub_force);
+    let required = EngineSymbols::new(
+        stub_abi_version,
+        stub_available,
+        stub_create,
+        stub_destroy,
+        stub_force,
+    );
     assert!(required.abi_stamp.is_none());
     assert!(required.force_batch.is_none());
     assert!(required.hvp.is_none());
@@ -1326,7 +1342,7 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 
 #[test]
 fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newer_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 6);
+    assert_eq!(ENGINE_ABI_MINOR, 7);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -1438,6 +1454,24 @@ fn a_missing_required_symbol_is_named() {
         .err()
         .expect("force is required");
     assert_eq!(error, EngineError::Missing("rgpot_engine_force".into()));
+
+    let no_available = build("harmonic_noavailable", &["NO_AVAILABLE"]);
+    let error = unsafe { EnginePotential::load(&no_available, &config()) }
+        .err()
+        .expect("available is required");
+    assert_eq!(error, EngineError::Missing("rgpot_engine_available".into()));
+}
+
+#[test]
+fn an_unavailable_engine_is_refused_before_create() {
+    let path = build("harmonic_unavailable", &["FIXTURE_AVAILABLE=0"]);
+    let observer = FixtureObserver::open(&path);
+    let before = observer.created();
+    let error = unsafe { EnginePotential::load(&path, &config()) }
+        .err()
+        .expect("unavailable engine must be refused");
+    assert_eq!(error, EngineError::Unavailable);
+    assert_eq!(observer.created(), before);
 }
 
 #[test]
@@ -2641,4 +2675,610 @@ fn a_session_on_an_engine_without_cache_exports_reports_unsupported() {
     session
         .force(&one_atom_request(), None)
         .expect("an engine without a cache still evaluates");
+}
+
+fn build_with_abs_zero(name: &str, defines: &[&str], zero_symbols: &[&str]) -> PathBuf {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/harmonic_engine.c");
+    let include = Path::new(env!("CARGO_MANIFEST_DIR")).join("../CppCore");
+    let suffix = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let tmpdir = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let asm = tmpdir.join(format!("{name}_abs_zero.s"));
+    let prefix = if cfg!(target_os = "macos") { "_" } else { "" };
+    let mut asm_src = String::new();
+    for sym in zero_symbols {
+        asm_src.push_str(&format!(".globl {prefix}{sym}\n.set {prefix}{sym}, 0\n"));
+    }
+    if !cfg!(target_os = "macos") {
+        asm_src.push_str(".section .note.GNU-stack,\"\",%progbits\n");
+    }
+    std::fs::write(&asm, asm_src).expect("write ABS-zero assembly fixture");
+
+    let out = tmpdir.join(format!("lib{name}.{suffix}"));
+    let target = env!("RGPOT_BUILD_TARGET");
+    let compiler = match cc::Build::new()
+        .target(target)
+        .host(target)
+        .opt_level(0)
+        .try_get_compiler()
+    {
+        Ok(compiler) => compiler,
+        Err(why) => panic!(
+            "cannot compile C fixture '{name}': no C compiler available for target {target} ({why})"
+        ),
+    };
+    let mut command = compiler.to_command();
+    if cfg!(target_os = "macos") {
+        command.arg("-dynamiclib");
+    } else {
+        command.args(["-shared", "-fPIC"]);
+    }
+    command
+        .arg("-I")
+        .arg(include)
+        .arg("-o")
+        .arg(&out)
+        .arg(&source)
+        .arg(&asm);
+    for define in defines {
+        command.arg(format!("-D{define}"));
+    }
+    let status = match command.status() {
+        Ok(status) => status,
+        Err(why) => panic!("spawn C compiler {:?}: {why}", compiler.path()),
+    };
+    assert!(
+        status.success(),
+        "the ABS-zero fixture did not compile: {status}"
+    );
+    out
+}
+
+#[test]
+fn abs_zero_symbols_are_none_when_optional_and_missing_when_required() {
+    let null_hvp_with_caps = build_with_abs_zero(
+        "harmonic_abs0_hvp_caps",
+        &["NO_HVP", "FORCE_HVP_CAP"],
+        &["rgpot_engine_hvp"],
+    );
+    let mut engine = load(&null_hvp_with_caps);
+    assert!(!engine.caps().expect("caps").analytic_hvp);
+    assert_eq!(
+        engine.hvp(
+            &EngineRequest {
+                positions: &[1.0, 0.0, 0.0],
+                atomic_numbers: &[1],
+                box_matrix: &CELL,
+            },
+            &[1.0, 0.0, 0.0],
+        ),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_hvp",
+            message: "symbol is not exported".into(),
+        })
+    );
+    let handle = load(&null_hvp_with_caps).into_potential();
+    assert!(!handle.as_handle().has_hessian_vector_callback());
+
+    let null_all_optional = build_with_abs_zero(
+        "harmonic_abs0_all_opt",
+        &["NO_BATCH", "NO_CAPS", "NO_LAST_ERROR", "NO_HVP"],
+        &[
+            "rgpot_engine_force_batch",
+            "rgpot_engine_hvp",
+            "rgpot_engine_caps",
+            "rgpot_engine_last_error",
+        ],
+    );
+    let mut engine = load(&null_all_optional);
+    let eval = engine
+        .force(&EngineRequest {
+            positions: &[1.0, 0.0, 0.0],
+            atomic_numbers: &[1],
+            box_matrix: &CELL,
+        })
+        .expect("force with ABS-zero optional symbols");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING, 3));
+    let handle = load(&null_all_optional).into_potential();
+    assert!(!handle.as_handle().has_hessian_vector_callback());
+
+    // An ABS-zero stamp symbol is absent, and a loader that finds no stamp
+    // treats the engine as minor 0, layout 1, which this loader still serves.
+    let null_stamp = build_with_abs_zero(
+        "harmonic_abs0_stamp",
+        &["NO_STAMP"],
+        &["rgpot_engine_abi_stamp", "rgpot_engine_abi_compatible"],
+    );
+    let unstamped = unsafe { EnginePotential::load(&null_stamp, &config()) }
+        .expect("an ABS-zero stamp symbol loads as an unstamped engine");
+    assert_eq!(unstamped.abi_stamp().abi_minor, 0);
+    assert_eq!(unstamped.abi_stamp().layout_revision, 1);
+    drop(unstamped);
+
+    let null_force = build_with_abs_zero(
+        "harmonic_abs0_force",
+        &["NO_FORCE", "NO_BATCH"],
+        &["rgpot_engine_force"],
+    );
+    let observer = FixtureObserver::open(&null_force);
+    let before = observer.created();
+    let err = unsafe { EnginePotential::load(&null_force, &config()) }
+        .err()
+        .expect("ABS-zero required rgpot_engine_force must fail load");
+    assert_eq!(err, EngineError::Missing("rgpot_engine_force".into()));
+    assert_eq!(observer.created(), before);
+
+    // Build a standalone shared object where all required symbols are exported,
+    // with one required symbol set to ABS 0 at a time, so every required lookup
+    // is verified without invoking a null function pointer.
+    let required_names = [
+        "rgpot_engine_abi_version",
+        "rgpot_engine_available",
+        "rgpot_engine_create",
+        "rgpot_engine_destroy",
+        "rgpot_engine_force",
+    ];
+    let suffix = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let prefix = if cfg!(target_os = "macos") { "_" } else { "" };
+    let target = env!("RGPOT_BUILD_TARGET");
+    let compiler = cc::Build::new()
+        .target(target)
+        .host(target)
+        .opt_level(0)
+        .try_get_compiler()
+        .expect("C compiler");
+    for (idx, missing_sym) in required_names.iter().enumerate() {
+        let asm = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("req_abs0_{idx}.s"));
+        let out =
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("libreq_abs0_{idx}.{suffix}"));
+        let mut text = String::from(".text\n");
+        for sym in required_names {
+            if sym == *missing_sym {
+                text.push_str(&format!(".globl {prefix}{sym}\n.set {prefix}{sym}, 0\n"));
+            } else {
+                text.push_str(&format!(
+                    ".globl {prefix}{sym}\n{prefix}{sym}:\n  .byte 0\n"
+                ));
+            }
+        }
+        if !cfg!(target_os = "macos") {
+            text.push_str(".section .note.GNU-stack,\"\",%progbits\n");
+        }
+        std::fs::write(&asm, text).expect("write required ABS-zero asm");
+        let mut cmd = compiler.to_command();
+        if cfg!(target_os = "macos") {
+            cmd.arg("-dynamiclib");
+        } else {
+            cmd.args(["-shared", "-fPIC"]);
+        }
+        let status = cmd
+            .arg("-o")
+            .arg(&out)
+            .arg(&asm)
+            .status()
+            .expect("link asm");
+        assert!(status.success(), "link {missing_sym} fixture: {status}");
+        let err = unsafe { EnginePotential::load(&out, &config()) }
+            .err()
+            .expect("ABS-zero required symbol must be rejected during resolve");
+        assert_eq!(err, EngineError::Missing((*missing_sym).into()));
+    }
+}
+
+#[test]
+fn lock_error_code_matches_header_maps_on_rust_side_and_marks_handle_unusable() {
+    use rgpot_core::engine::ENGINE_ERR_LOCK;
+
+    let force_lock = build("harmonic_forcelock", &["FORCE_LOCK_ERROR"]);
+    let library = unsafe { libloading::Library::new(&force_lock) }.expect("reopen fixture");
+    let header_code: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_lock_error_code\0") }.expect("lock error code symbol");
+    assert_eq!(unsafe { header_code() }, ENGINE_ERR_LOCK);
+
+    let mut engine = load(&force_lock);
+    let request = EngineRequest {
+        positions: &[1.0, 0.0, 0.0],
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+    let expected = EngineError::Lock {
+        operation: "rgpot_engine_force",
+        message: "fixture handle lock failed".into(),
+    };
+    assert_eq!(engine.force(&request).unwrap_err(), expected);
+    assert_eq!(engine.force(&request).unwrap_err(), expected);
+    assert_eq!(expected.status(), rgpot_status_t::RGPOT_INTERNAL_ERROR);
+
+    let hvp_lock = build("harmonic_hvplock", &["HVP_LOCK_ERROR"]);
+    let mut hvp_engine = load(&hvp_lock);
+    let expected_hvp = EngineError::Lock {
+        operation: "rgpot_engine_hvp",
+        message: "fixture hvp lock failed".into(),
+    };
+    assert_eq!(
+        hvp_engine.hvp(&request, &[1.0, 0.0, 0.0]).unwrap_err(),
+        expected_hvp
+    );
+    assert_eq!(hvp_engine.force(&request).unwrap_err(), expected_hvp);
+
+    let caps_lock = build("harmonic_capslock", &["CAPS_LOCK_ERROR"]);
+    let rejected = unsafe { EnginePotential::load(&caps_lock, &config()) }
+        .err()
+        .expect("a caps lock failure at load rejects the engine");
+    assert_eq!(
+        rejected,
+        EngineError::Lock {
+            operation: "rgpot_engine_caps",
+            message: "fixture caps lock failed".into(),
+        }
+    );
+}
+
+#[test]
+fn a_negative_caps_code_at_load_rejects_the_engine_and_frees_the_handle() {
+    for (name, define, expected) in [
+        (
+            "harmonic_capsfatal",
+            "CAPS_ERROR_CODE=-1",
+            EngineError::Fatal {
+                code: -1,
+                message: "fixture caps failed".into(),
+            },
+        ),
+        (
+            "harmonic_capsfatal_other",
+            "CAPS_ERROR_CODE=-7",
+            EngineError::Fatal {
+                code: -7,
+                message: "fixture caps failed".into(),
+            },
+        ),
+    ] {
+        let path = build(name, &[define]);
+        let observer = FixtureObserver::open(&path);
+        let before_created = observer.created();
+        let before_destroyed = observer.destroyed();
+        let rejected = unsafe { EnginePotential::load(&path, &config()) }
+            .err()
+            .expect("a negative caps code at load rejects the engine");
+        assert_eq!(rejected, expected);
+        assert_eq!(rejected.status(), rgpot_status_t::RGPOT_INTERNAL_ERROR);
+        assert_eq!(observer.created(), before_created + 1);
+        assert_eq!(
+            observer.destroyed(),
+            before_destroyed + 1,
+            "the rejected handle must be destroyed exactly once"
+        );
+    }
+}
+
+#[test]
+fn a_positive_caps_code_at_load_keeps_process_wide_serialization() {
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_capspositive",
+        &[
+            "CAPS_ERROR_CODE=1",
+            "FIXTURE_REENTRANCY=1",
+            "CONCURRENCY_PROBE",
+        ],
+    );
+    let _observer = FixtureObserver::open(&path);
+    fixture_reset_concurrent(&path);
+    let gate = Arc::new(Barrier::new(3));
+    std::thread::scope(|scope| {
+        for idx in 0..3usize {
+            let path_ref = &path;
+            let gate = Arc::clone(&gate);
+            scope.spawn(move || {
+                let mut engine = load(path_ref);
+                let factor = (idx + 1) as f64;
+                let positions = [factor, -factor, 0.5 * factor];
+                let request = EngineRequest {
+                    positions: &positions,
+                    atomic_numbers: &[1],
+                    box_matrix: &CELL,
+                };
+                gate.wait();
+                for _ in 0..4 {
+                    engine
+                        .force(&request)
+                        .expect("force after a failed caps probe");
+                }
+            });
+        }
+    });
+    assert_eq!(
+        fixture_max_concurrent(&path),
+        1,
+        "a failed caps probe must not skip the process-wide lock"
+    );
+}
+
+fn fixture_max_concurrent(path: &Path) -> c_int {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen fixture");
+    let f: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_max_concurrent\0") }.expect("max concurrent symbol");
+    unsafe { f() }
+}
+
+fn fixture_max_handle_concurrent(path: &Path) -> c_int {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen fixture");
+    let f: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_max_handle_concurrent\0") }
+            .expect("max handle concurrent symbol");
+    unsafe { f() }
+}
+
+fn fixture_reset_concurrent(path: &Path) {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen fixture");
+    let f: libloading::Symbol<unsafe extern "C" fn()> =
+        unsafe { library.get(b"fixture_reset_concurrent\0") }.expect("reset concurrent symbol");
+    unsafe { f() };
+}
+
+#[test]
+fn concurrent_handles_serialize_each_handle_and_parallelize_distinct_handles() {
+    use rgpot_core::c_api::hvp::rgpot_potential_hvp;
+    use rgpot_core::c_api::potential::rgpot_potential_calculate;
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_concurrent_handles",
+        &["FIXTURE_REENTRANCY=1", "CONCURRENCY_PROBE"],
+    );
+    let observer = FixtureObserver::open(&path);
+    let probe = load(&path);
+    assert_eq!(probe.caps().expect("caps").reentrancy, 1);
+    drop(probe);
+
+    // 1. Overlapping force and analytic HVP calls on a single PotentialImpl handle
+    //    must serialize through the handle mutex.
+    fixture_reset_concurrent(&path);
+    let shared_potential = load(&path).into_potential();
+    let raw_addr = shared_potential.as_handle() as *const _ as usize;
+    let start = Arc::new(Barrier::new(4));
+    std::thread::scope(|scope| {
+        for worker in 0..4usize {
+            let start = Arc::clone(&start);
+            scope.spawn(move || {
+                let pot = raw_addr as *const rgpot_core::potential::rgpot_potential_t;
+                let scale = (worker + 1) as f64;
+                let mut positions = [0.5 * scale, -scale, 2.0 * scale];
+                let mut numbers = [1_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                start.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let mut output = rgpot_force_out_t {
+                            forces: std::ptr::null_mut(),
+                            energy: 0.0,
+                            variance: 0.0,
+                        };
+                        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                        unsafe { rgpot_tensor_free(output.forces) };
+                    } else {
+                        let direction = [scale, -0.5 * scale, 0.25 * scale];
+                        let mut hv = [0.0; 3];
+                        let status = unsafe {
+                            rgpot_potential_hvp(
+                                pot,
+                                &input,
+                                direction.as_ptr(),
+                                0.0,
+                                rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC as i32,
+                                hv.as_mut_ptr(),
+                            )
+                        };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let want: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
+                        assert!(all_within_roundoff(&hv, &want));
+                    }
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(fixture_max_concurrent(&path), 1);
+    assert_eq!(fixture_max_handle_concurrent(&path), 1);
+    drop(shared_potential);
+
+    // 2. Distinct PotentialImpl handles of a reentrancy==1 engine evaluate
+    //    concurrently on separate worker threads without blocking each other.
+    fixture_reset_concurrent(&path);
+    let before_destroy = observer.destroyed();
+    let handles: Vec<rgpot_core::potential::PotentialImpl> =
+        (0..4).map(|_| load(&path).into_potential()).collect();
+    let gate = Arc::new(Barrier::new(handles.len()));
+    std::thread::scope(|scope| {
+        for (idx, handle) in handles.into_iter().enumerate() {
+            let gate = Arc::clone(&gate);
+            scope.spawn(move || {
+                let factor = (idx + 1) as f64;
+                let mut positions = [factor, -2.0 * factor, 0.5 * factor];
+                let mut numbers = [8_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                gate.wait();
+                for _ in 0..4 {
+                    let mut output = rgpot_force_out_t {
+                        forces: std::ptr::null_mut(),
+                        energy: 0.0,
+                        variance: 0.0,
+                    };
+                    let status = unsafe { handle.calculate(&input, &mut output) };
+                    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                    let sum: f64 = positions.iter().map(|v| v * v).sum();
+                    assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                    unsafe { rgpot_tensor_free(output.forces) };
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(fixture_max_handle_concurrent(&path), 1);
+    let cpus = match std::thread::available_parallelism() {
+        Ok(count) => count.get(),
+        Err(_) => 1,
+    };
+    if cpus >= 2 {
+        assert!(
+            fixture_max_concurrent(&path) >= 2,
+            "expected parallel execution across distinct reentrancy==1 handles, got max_concurrent={}",
+            fixture_max_concurrent(&path)
+        );
+    }
+    assert_eq!(observer.destroyed(), before_destroy + 4);
+}
+
+#[test]
+fn reentrancy_two_engines_serialize_across_handles() {
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_reentrancy2",
+        &["FIXTURE_REENTRANCY=2", "CONCURRENCY_PROBE"],
+    );
+    let observer = FixtureObserver::open(&path);
+    let probe = load(&path);
+    let caps = probe.caps().expect("reentrancy==2 caps");
+    assert_eq!(caps.reentrancy, 2);
+    assert!(caps.analytic_hvp);
+    drop(probe);
+
+    // Direct EnginePotential instances on separate threads must serialize across handles.
+    fixture_reset_concurrent(&path);
+    let direct_gate = Arc::new(Barrier::new(3));
+    std::thread::scope(|scope| {
+        for idx in 0..3usize {
+            let path_ref = &path;
+            let direct_gate = Arc::clone(&direct_gate);
+            scope.spawn(move || {
+                let mut engine = load(path_ref);
+                let factor = (idx + 1) as f64;
+                let positions = [factor, -factor, 0.5 * factor];
+                let request = EngineRequest {
+                    positions: &positions,
+                    atomic_numbers: &[1],
+                    box_matrix: &CELL,
+                };
+                direct_gate.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let eval = engine.force(&request).expect("reentrancy==2 direct force");
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(eval.energy, 0.5 * SPRING * sum, 9));
+                    } else {
+                        let dir = [1.0, -2.0, 0.5];
+                        let hv = engine
+                            .hvp(&request, &dir)
+                            .expect("reentrancy==2 direct hvp");
+                        assert!(all_within_roundoff(
+                            &hv,
+                            &[SPRING, -2.0 * SPRING, 0.5 * SPRING]
+                        ));
+                    }
+                }
+            });
+        }
+    });
+    assert_eq!(
+        fixture_max_concurrent(&path),
+        1,
+        "reentrancy==2 EnginePotential instances overlapped"
+    );
+
+    // PotentialImpl handles created via into_potential() must also serialize across handles.
+    fixture_reset_concurrent(&path);
+    let before_destroy = observer.destroyed();
+    let handles: Vec<rgpot_core::potential::PotentialImpl> =
+        (0..4).map(|_| load(&path).into_potential()).collect();
+    let handle_gate = Arc::new(Barrier::new(handles.len()));
+    std::thread::scope(|scope| {
+        for (idx, handle) in handles.into_iter().enumerate() {
+            let handle_gate = Arc::clone(&handle_gate);
+            scope.spawn(move || {
+                let factor = (idx + 1) as f64;
+                let mut positions = [0.5 * factor, 1.5 * factor, -factor];
+                let mut numbers = [1_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                handle_gate.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let mut output = rgpot_force_out_t {
+                            forces: std::ptr::null_mut(),
+                            energy: 0.0,
+                            variance: 0.0,
+                        };
+                        let status = unsafe { handle.calculate(&input, &mut output) };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                        unsafe { rgpot_tensor_free(output.forces) };
+                    } else {
+                        let direction = [factor, -0.5 * factor, 2.0 * factor];
+                        let mut hv = [0.0; 3];
+                        unsafe {
+                            handle
+                                .as_handle()
+                                .hessian_vector(
+                                    &input,
+                                    &direction,
+                                    0.0,
+                                    rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC,
+                                    &mut hv,
+                                )
+                                .expect("reentrancy==2 handle HVP");
+                        }
+                        let want: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
+                        assert!(all_within_roundoff(&hv, &want));
+                    }
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(
+        fixture_max_concurrent(&path),
+        1,
+        "reentrancy==2 PotentialImpl handles overlapped"
+    );
+    assert_eq!(observer.destroyed(), before_destroy + 4);
 }

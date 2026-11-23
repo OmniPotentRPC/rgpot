@@ -83,6 +83,10 @@ the same major and layout revision whose minor is at most the host's
 (=ENGINE_ABI_MINOR=), resolving optional exports only when present and reporting
 them as absent otherwise, while rejecting plugins whose minor is newer than the
 host's.
+Minor 6 added =rgpot_engine_set_cache= and =rgpot_engine_cache_counts=.
+Minor 7 adds the negative code =RGPOT_ENGINE_ERR_LOCK= (-2) for a failed engine
+or handle lock.
+It exports no new symbol and changes no struct, so the layout revision stays at 1.
 
 ** The C++ layout stamp
 
