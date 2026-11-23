@@ -1590,11 +1590,10 @@ a host that does call =dlclose= on them leaves them mapped.
   Both verify
   =rgpot_engine_abi_version() == ENGINE_ABI_VERSION=, resolve the optional =rgpot_engine_abi_stamp=
   (treating an engine without it as minor 0, layout 1), require
-  =stamp.serves(RgpotEngineAbiStamp::HOST)=, check =rgpot_engine_available() != 0=
-  before creating an instance, copy =config= into an
-  8-byte-aligned =Vec<u64>= buffer (so engines that cast =config= to
-  =capnp::word= never receive an unaligned pointer), and call
-  =rgpot_engine_create=.
+  =stamp.serves(RgpotEngineAbiStamp::HOST)=, check =rgpot_engine_available() !=
+  0= before creating an instance, copy =config= into an 8-byte-aligned
+  =Vec<u64>= buffer (so engines that cast =config= to =capnp::word= never
+  receive an unaligned pointer), and call =rgpot_engine_create=.
   =EnginePotential::abi_stamp()= returns the resolved stamp.
   When the engine exports =rgpot_engine_caps=, one call at creation reads
   =reentrancy=.
