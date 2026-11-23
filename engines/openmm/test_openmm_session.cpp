@@ -1,11 +1,13 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#include "../common/test_seed.hpp"
 #include "rgpot/ExternalPot/OpenMM.hpp"
 #include "rgpot/ExternalPot/external_potentials.h"
-#include "../common/test_seed.hpp"
 
+#if !defined(_WIN32)
 #include <dlfcn.h>
+#endif
 
 #include <openmm/HarmonicBondForce.h>
 #include <openmm/System.h>
@@ -16,8 +18,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
-#include <map>
 #include <limits>
+#include <map>
 #include <memory>
 #include <numeric>
 #include <sstream>
@@ -249,7 +251,8 @@ void test_seed_validation() {
       throw std::runtime_error("test_seed did not return fallback");
     }
     setenv("RGPOT_TEST_SEED", "18446744073709551615", 1);
-    if (rgpot::test::test_seed(0) != std::numeric_limits<std::uint64_t>::max()) {
+    if (rgpot::test::test_seed(0) !=
+        std::numeric_limits<std::uint64_t>::max()) {
       throw std::runtime_error("test_seed did not parse UINT64_MAX");
     }
     for (const char *bad :
@@ -452,15 +455,15 @@ void test_c_abi_session_neighbors() {
                   }
                 }
               }
-              const double vx =
-                  pos_ang[3 * j] - pos_ang[3 * i] + sa * box_ang[0] +
-                  sb * box_ang[3] + sc * box_ang[6];
-              const double vy =
-                  pos_ang[3 * j + 1] - pos_ang[3 * i + 1] + sa * box_ang[1] +
-                  sb * box_ang[4] + sc * box_ang[7];
-              const double vz =
-                  pos_ang[3 * j + 2] - pos_ang[3 * i + 2] + sa * box_ang[2] +
-                  sb * box_ang[5] + sc * box_ang[8];
+              const double vx = pos_ang[3 * j] - pos_ang[3 * i] +
+                                sa * box_ang[0] + sb * box_ang[3] +
+                                sc * box_ang[6];
+              const double vy = pos_ang[3 * j + 1] - pos_ang[3 * i + 1] +
+                                sa * box_ang[1] + sb * box_ang[4] +
+                                sc * box_ang[7];
+              const double vz = pos_ang[3 * j + 2] - pos_ang[3 * i + 2] +
+                                sa * box_ang[2] + sb * box_ang[5] +
+                                sc * box_ang[8];
               const double r2 = vx * vx + vy * vy + vz * vz;
               if (r2 > 0.0 && r2 < cut2) {
                 ref[{i, j, sa, sb, sc}] = {vx, vy, vz, std::sqrt(r2)};
@@ -496,12 +499,12 @@ void test_c_abi_session_neighbors() {
     soa.mask = mask.data();
     soa.cap = need;
     size_t got = 0;
-    nrc = rgpot_md_session_get_neighbors(session, &nreq, &soa, &got, &need,
-                                         err, sizeof(err));
+    nrc = rgpot_md_session_get_neighbors(session, &nreq, &soa, &got, &need, err,
+                                         sizeof(err));
     if (nrc != RGPOT_MD_NLIST_OK || got != ref.size()) {
-      throw std::runtime_error(
-          "get_neighbors fill count mismatch: got " + std::to_string(got) +
-          ", expected " + std::to_string(ref.size()));
+      throw std::runtime_error("get_neighbors fill count mismatch: got " +
+                               std::to_string(got) + ", expected " +
+                               std::to_string(ref.size()));
     }
     std::map<PairKey, RefGeom> got_map;
     for (size_t p = 0; p < got; ++p) {
@@ -532,8 +535,8 @@ void test_c_abi_session_neighbors() {
             "session neighbor vector or distance differs from brute force");
       }
     }
-    const int set_rc = rgpot_md_session_set_neighbors(session, &nreq, &soa,
-                                                      got, err, sizeof(err));
+    const int set_rc = rgpot_md_session_set_neighbors(session, &nreq, &soa, got,
+                                                      err, sizeof(err));
     if (set_rc != RGPOT_MD_NLIST_UNSUPPORTED) {
       throw std::runtime_error(
           "expected OpenMM neighbor setter to be unsupported");
@@ -561,9 +564,9 @@ void test_plugins_load_once() {
   const std::string xml = xml_stream.str();
   for (int round = 0; round < 2; ++round) {
     char err[512] = {};
-    rgpot_md_session *session = rgpot_md_session_create(
-        "openmm", nullptr, xml.data(), xml.size(), "Reference", err,
-        sizeof(err));
+    rgpot_md_session *session =
+        rgpot_md_session_create("openmm", nullptr, xml.data(), xml.size(),
+                                "Reference", err, sizeof(err));
     if (session == nullptr) {
       throw std::runtime_error(std::string("rgpot_md_session_create failed: ") +
                                err);
@@ -571,6 +574,7 @@ void test_plugins_load_once() {
     rgpot_md_session_destroy(session);
   }
 
+#if !defined(_WIN32)
   void *resident = dlopen(engine, RTLD_NOW | RTLD_NOLOAD);
   if (resident == nullptr) {
     throw std::runtime_error("the engine library was unloaded");
@@ -589,6 +593,12 @@ void test_plugins_load_once() {
         std::to_string(from_engine) + ", test " +
         std::to_string(rgpot::openmm_plugin_load_count()));
   }
+#else
+  (void)engine;
+  if (rgpot::openmm_plugin_load_count() != 1) {
+    throw std::runtime_error("the OpenMM plugins did not load exactly once");
+  }
+#endif
 
   rgpot::OpenMMSessionConfig config;
   config.platform = "Reference";

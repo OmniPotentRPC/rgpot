@@ -18,6 +18,7 @@
 #include <tuple>
 #include <vector>
 
+#include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/MDSession/ProjectedLangevin.hpp"
 
 namespace {
@@ -94,6 +95,56 @@ double kinetic(const std::vector<double> &masses, const double *v) {
   return sum;
 }
 
+struct NeighborContext {
+  int getCalls = 0;
+  int setCalls = 0;
+};
+
+int mdSetArray(void *, const double *, std::size_t, char *, std::size_t) {
+  return 0;
+}
+
+int mdStepLangevin(void *, double, double, double, const double *,
+                   const double *, const double *, const double *, std::size_t,
+                   std::size_t, std::size_t, std::uint64_t, std::uint64_t *,
+                   char *, std::size_t) {
+  return 0;
+}
+
+int mdStepNve(void *, double, std::size_t, char *, std::size_t) { return 0; }
+
+int mdGetState(void *, double *, double *, double *, std::size_t, double *,
+               double *, char *, std::size_t) {
+  return 0;
+}
+
+int mdGetMasses(void *, double *masses, std::size_t count, char *,
+                std::size_t) {
+  std::fill(masses, masses + count, 1.0);
+  return 0;
+}
+
+void mdDestroy(void *ctx) { delete static_cast<NeighborContext *>(ctx); }
+
+int mdGetNeighbors(void *ctx, const rgpot_nlist_request *, rgpot_nlist_soa *out,
+                   std::size_t *count, std::size_t *needed, char *,
+                   std::size_t) {
+  ++static_cast<NeighborContext *>(ctx)->getCalls;
+  *needed = 1;
+  *count = out == nullptr ? 0 : 1;
+  if (out != nullptr) {
+    out->first[0] = 0;
+    out->second[0] = 0;
+  }
+  return RGPOT_MD_NLIST_OK;
+}
+
+int mdSetNeighbors(void *ctx, const rgpot_nlist_request *,
+                   const rgpot_nlist_soa *, std::size_t, char *, std::size_t) {
+  ++static_cast<NeighborContext *>(ctx)->setCalls;
+  return RGPOT_MD_NLIST_OK;
+}
+
 } // namespace
 
 TEST_CASE("SplitMix64 is a pure function of the seed", "[md][session]") {
@@ -117,6 +168,83 @@ TEST_CASE("SplitMix64 is a pure function of the seed", "[md][session]") {
     square += value * value;
   }
   CHECK(std::abs(square / static_cast<double>(draws.size()) - 1.0) < 0.02);
+}
+
+TEST_CASE("MD neighbor exports reject malformed buffers before callbacks",
+          "[md][session]") {
+  auto *ctx = new NeighborContext;
+  rgpot_md_session_ops ops{};
+  ops.struct_size = sizeof(ops);
+  ops.set_positions = mdSetArray;
+  ops.set_velocities = mdSetArray;
+  ops.step_langevin = mdStepLangevin;
+  ops.step_nve = mdStepNve;
+  ops.get_state = mdGetState;
+  ops.get_masses = mdGetMasses;
+  ops.destroy = mdDestroy;
+  ops.get_neighbors = mdGetNeighbors;
+  ops.set_neighbors = mdSetNeighbors;
+  char error[256] = {};
+  rgpot_md_session *session =
+      rgpot_md_session_from_ops(ctx, &ops, 1, error, sizeof(error));
+  REQUIRE(session != nullptr);
+
+  rgpot_nlist_request request{};
+  rgpot_nlist_request_init(&request);
+  request.cutoff = 2.0;
+  std::size_t count = 99;
+  std::size_t needed = 99;
+  CHECK(rgpot_md_session_get_neighbors(session, &request, nullptr, nullptr,
+                                       &needed, error,
+                                       sizeof(error)) == RGPOT_MD_NLIST_OK);
+  CHECK(needed == 1);
+  CHECK(ctx->getCalls == 1);
+
+  rgpot_nlist_request shortRequest = request;
+  shortRequest.bytes = sizeof(shortRequest) - 1;
+  CHECK(rgpot_md_session_get_neighbors(session, &shortRequest, nullptr, &count,
+                                       &needed, error,
+                                       sizeof(error)) == RGPOT_MD_NLIST_ERROR);
+  CHECK(ctx->getCalls == 1);
+
+  rgpot_nlist_soa malformed{};
+  malformed.bytes = sizeof(malformed);
+  malformed.cap = 1;
+  CHECK(rgpot_md_session_get_neighbors(session, &request, &malformed, &count,
+                                       &needed, error,
+                                       sizeof(error)) == RGPOT_MD_NLIST_ERROR);
+  CHECK(ctx->getCalls == 1);
+  CHECK(rgpot_md_session_set_neighbors(session, &request, nullptr, 0, error,
+                                       sizeof(error)) == RGPOT_MD_NLIST_ERROR);
+  CHECK(ctx->setCalls == 0);
+
+  std::int32_t first = 0;
+  std::int32_t second = 0;
+  std::int32_t shift[3] = {};
+  double vector[3] = {};
+  double distance = 0.0;
+  rgpot_nlist_soa valid{};
+  valid.bytes = sizeof(valid);
+  valid.first = &first;
+  valid.second = &second;
+  valid.shift = shift;
+  valid.vector = vector;
+  valid.distance = &distance;
+  valid.cap = 1;
+  CHECK(rgpot_md_session_get_neighbors(session, &request, &valid, &count,
+                                       &needed, error,
+                                       sizeof(error)) == RGPOT_MD_NLIST_OK);
+  CHECK(count == 1);
+  CHECK(needed == 1);
+  CHECK(ctx->getCalls == 2);
+
+  CHECK(rgpot_md_session_set_neighbors(session, &request, &valid, 2, error,
+                                       sizeof(error)) == RGPOT_MD_NLIST_ERROR);
+  CHECK(ctx->setCalls == 0);
+  CHECK(rgpot_md_session_set_neighbors(session, &request, &valid, 1, error,
+                                       sizeof(error)) == RGPOT_MD_NLIST_OK);
+  CHECK(ctx->setCalls == 1);
+  rgpot_md_session_destroy(session);
 }
 
 TEST_CASE("unconstrained Langevin dynamics obeys equipartition",
@@ -159,8 +287,8 @@ TEST_CASE("the constraint force is dF/dc of the harmonic free energy",
 
   // A normal with no net translation part, oblique to the axes, so the
   // constraint force fluctuates and depends on the masses.
-  const std::array<double, 9> normal{0.3, -0.4, 0.2, 0.1, 0.5, -0.3,
-                                     -0.4, -0.1, 0.1};
+  const std::array<double, 9> normal{0.3,  -0.4, 0.2,  0.1, 0.5,
+                                     -0.3, -0.4, -0.1, 0.1};
   double norm2 = 0.0;
   for (const double value : normal) {
     norm2 += value * value;
@@ -280,7 +408,8 @@ TEST_CASE("a hard wall reflects or rejects and keeps the sampling",
 
   // The truncated normal: mean and second moment of x for x <= a.
   const double a = wallAt / sigma;
-  const double pdf = std::exp(-0.5 * a * a) / std::sqrt(2.0 * 3.14159265358979323846);
+  const double pdf =
+      std::exp(-0.5 * a * a) / std::sqrt(2.0 * 3.14159265358979323846);
   const double cdf = 0.5 * std::erfc(-a / std::sqrt(2.0));
   const double expectedMean = -sigma * pdf / cdf;
   const double expectedSecond = sigma * sigma * (1.0 - a * pdf / cdf);
@@ -367,12 +496,36 @@ TEST_CASE("walls act on the plane in the mass metric", "[md][session]") {
   CHECK(std::abs(v[0] + v[3]) < 1.0e-12);
 }
 
+TEST_CASE("a wall that excludes the constraint plane is rejected",
+          "[md][session]") {
+  const ProjectedLangevin driver({1.0, 1.0, 1.0});
+  PlaneSpec plane;
+  plane.point = {0.0, 0.0, 0.0};
+  plane.normal = {1.0, 0.0, 0.0};
+  WallSpec wall;
+  wall.point = {-1.0, 0.0, 0.0};
+  wall.normal = {1.0, 0.0, 0.0};
+  const ForceFunction free = [](const double *, double *force) {
+    std::fill(force, force + 3, 0.0);
+    return 0.0;
+  };
+  LangevinSettings settings;
+  settings.kT = kT;
+  settings.timeStep = 0.001;
+  settings.steps = 1;
+  std::vector<double> x(3, 0.0);
+  std::vector<double> v(3, 0.0);
+  CHECK_THROWS_AS(
+      driver.run(settings, &plane, {wall}, x.data(), v.data(), free),
+      std::invalid_argument);
+}
+
 TEST_CASE("Maxwell-Boltzmann velocities have the thermal spread",
           "[md][session]") {
   const Chain chain;
   const std::vector<double> masses = chain.masses();
-  const std::array<double, 9> normal{0.3, -0.4, 0.2, 0.1, 0.5, -0.3,
-                                     -0.4, -0.1, 0.1};
+  const std::array<double, 9> normal{0.3,  -0.4, 0.2,  0.1, 0.5,
+                                     -0.3, -0.4, -0.1, 0.1};
   std::vector<double> kinetics;
   std::vector<double> first;
   std::vector<double> projected;
@@ -429,8 +582,8 @@ TEST_CASE("the driver rejects invalid input", "[md][session]") {
   CHECK_THROWS_AS(ProjectedLangevin({1.0, -1.0}), std::invalid_argument);
   settings.kT = kT;
   settings.steps = 0;
-  CHECK(driver.run(settings, nullptr, {}, x.data(), v.data(), chain)
-            .wallHits == 0);
+  CHECK(driver.run(settings, nullptr, {}, x.data(), v.data(), chain).wallHits ==
+        0);
 }
 
 TEST_CASE("a seeded stream continues across calls", "[md][session]") {
@@ -521,9 +674,8 @@ TEST_CASE("a state outside many bounces is returned inside", "[md][session]") {
   PlaneSpec plane;
   plane.point = {0.0, 0.0, 0.0};
   plane.normal = {1.0, 0.0, 0.0};
-  const std::vector<WallSpec> walls{
-      {{0.0, 1.0, 0.0}, {0.0, 1.0, 0.0}},
-      {{0.0, -1.0, 0.0}, {0.0, -1.0, 0.0}}};
+  const std::vector<WallSpec> walls{{{0.0, 1.0, 0.0}, {0.0, 1.0, 0.0}},
+                                    {{0.0, -1.0, 0.0}, {0.0, -1.0, 0.0}}};
   const ForceFunction free = [](const double *, double *f) {
     std::fill(f, f + 3, 0.0);
     return 0.0;
@@ -580,9 +732,9 @@ TEST_CASE("distance constraints hold and remove their degrees of freedom",
     }
     REQUIRE(std::sqrt(length2) == Catch::Approx(0.2).margin(1.0e-10));
     REQUIRE(std::abs(x[2] + x[5]) < 1.0e-10);
-    const double relative =
-        (x[0] - x[3]) * (v[0] - v[3]) + (x[1] - x[4]) * (v[1] - v[4]) +
-        (x[2] - x[5]) * (v[2] - v[5]);
+    const double relative = (x[0] - x[3]) * (v[0] - v[3]) +
+                            (x[1] - x[4]) * (v[1] - v[4]) +
+                            (x[2] - x[5]) * (v[2] - v[5]);
     REQUIRE(std::abs(relative) < 1.0e-9);
     kinetics.push_back(kinetic(masses, v.data()));
   }

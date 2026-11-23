@@ -13,7 +13,9 @@
 #include <openmm/System.h>
 #include <openmm/serialization/XmlSerializer.h>
 
+#if !defined(_WIN32)
 #include <dlfcn.h>
+#endif
 
 #include <cmath>
 #include <cstddef>
@@ -52,9 +54,9 @@ struct Owned {
 
 Owned open(const char *library, const std::string &xml) {
   char error[512] = {};
-  rgpot_md_session *session = rgpot_md_session_create(
-      "openmm", library, xml.data(), xml.size(), "Reference", error,
-      sizeof(error));
+  rgpot_md_session *session =
+      rgpot_md_session_create("openmm", library, xml.data(), xml.size(),
+                              "Reference", error, sizeof(error));
   require(session != nullptr, std::string("create: ") + error);
   return {session};
 }
@@ -193,7 +195,9 @@ void check_constraint_force(const char *library) {
 
 // A vtable that stops at destroy has no optional callback: the session says
 // so and does not read past the end.
-int unsupported_set(void *, const double *, size_t, char *, size_t) { return 0; }
+int unsupported_set(void *, const double *, size_t, char *, size_t) {
+  return 0;
+}
 int unsupported_step(void *, double, double, double, const double *,
                      const double *, const double *, const double *, size_t,
                      size_t, size_t, uint64_t, uint64_t *, char *, size_t) {
@@ -224,7 +228,8 @@ void unsupported_destroy(void *) {}
 void check_short_vtable() {
   rgpot_md_session_ops ops;
   std::memset(&ops, 0xff, sizeof(ops));
-  ops.struct_size = offsetof(rgpot_md_session_ops, destroy) + sizeof(ops.destroy);
+  ops.struct_size =
+      offsetof(rgpot_md_session_ops, destroy) + sizeof(ops.destroy);
   ops.set_positions = unsupported_set;
   ops.set_velocities = unsupported_set;
   ops.step_langevin = unsupported_step;
@@ -234,8 +239,8 @@ void check_short_vtable() {
   ops.destroy = unsupported_destroy;
   int token = 0;
   char error[512] = {};
-  rgpot_md_session *session = rgpot_md_session_from_ops(&token, &ops, 1, error,
-                                                       sizeof(error));
+  rgpot_md_session *session =
+      rgpot_md_session_from_ops(&token, &ops, 1, error, sizeof(error));
   require(session != nullptr, std::string("from_ops: ") + error);
   const double box[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
   require(rgpot_md_session_set_periodic_box(session, box, error,
@@ -295,18 +300,17 @@ void check_short_vtable() {
       // get_neighbors, so keep get_neighbors null there and test set_neighbors.
       mid.get_neighbors = nullptr;
     }
-    rgpot_md_session *short_nlist = rgpot_md_session_from_ops(
-        &token, &mid, 1, error, sizeof(error));
-    require(short_nlist != nullptr,
-            std::string("mid-slot from_ops: ") + error);
+    rgpot_md_session *short_nlist =
+        rgpot_md_session_from_ops(&token, &mid, 1, error, sizeof(error));
+    require(short_nlist != nullptr, std::string("mid-slot from_ops: ") + error);
     size_t count = 0;
     size_t needed = 0;
     const int get_rc = rgpot_md_session_get_neighbors(
         short_nlist, &nreq, nullptr, &count, &needed, error, sizeof(error));
     require(get_rc == RGPOT_MD_NLIST_UNSUPPORTED,
             "mid-slot get_neighbors should return RGPOT_MD_NLIST_UNSUPPORTED");
-    const int set_rc = rgpot_md_session_set_neighbors(
-        short_nlist, &nreq, &nsoa, 0, error, sizeof(error));
+    const int set_rc = rgpot_md_session_set_neighbors(short_nlist, &nreq, &nsoa,
+                                                      0, error, sizeof(error));
     require(set_rc == RGPOT_MD_NLIST_UNSUPPORTED,
             "mid-slot set_neighbors should return RGPOT_MD_NLIST_UNSUPPORTED");
     rgpot_md_session_destroy(short_nlist);
@@ -325,9 +329,14 @@ void check_plugins_load_once(const char *library) {
   OpenMM::System system;
   system.addParticle(12.0);
   const std::string xml = xml_of(system);
-  { Owned first = open(library, xml); }
-  { Owned second = open(library, xml); }
+  {
+    Owned first = open(library, xml);
+  }
+  {
+    Owned second = open(library, xml);
+  }
 
+#if !defined(_WIN32)
   void *resident = dlopen(library, RTLD_NOW | RTLD_NOLOAD);
   require(resident != nullptr,
           "the engine library was unloaded after its sessions closed");
@@ -339,6 +348,7 @@ void check_plugins_load_once(const char *library) {
   dlclose(resident);
   require(loads == 1, "the OpenMM plugins loaded " + std::to_string(loads) +
                           " times in one process");
+#endif
 }
 
 } // namespace

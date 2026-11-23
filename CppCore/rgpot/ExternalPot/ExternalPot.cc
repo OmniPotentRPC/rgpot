@@ -275,7 +275,7 @@ FileIdentity identify_loaded(const void *anchor, const std::string &path) {
                              "it loaded, so the engine cannot be identified");
   }
   char canonical[PATH_MAX];
-  struct stat st {};
+  struct stat st{};
   if (realpath(info.dli_fname, canonical) == nullptr ||
       stat(canonical, &st) != 0) {
     throw std::runtime_error(path + ": cannot identify the loaded file " +
@@ -294,7 +294,7 @@ void ensure_current(const ResidentEntry &entry, const std::string &path) {
   (void)entry;
   (void)path;
 #else
-  struct stat st {};
+  struct stat st{};
   if (stat(entry.canonical.c_str(), &st) != 0) {
     throw std::runtime_error(path + ": cannot identify the loaded file " +
                              entry.canonical + ": " + std::strerror(errno));
@@ -306,7 +306,7 @@ void ensure_current(const ResidentEntry &entry, const std::string &path) {
         "resident; load the new file from another path or restart the process");
   }
   if (!canonical_file(path).empty()) {
-    struct stat requested {};
+    struct stat requested{};
     if (stat(path.c_str(), &requested) != 0) {
       throw std::runtime_error(path + ": cannot identify the requested file: " +
                                std::strerror(errno));
@@ -351,18 +351,17 @@ LibraryHandle pin_resident(const std::string &path) {
   if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, path.c_str(),
                          &pinned) == 0 ||
       pinned == nullptr) {
-    throw std::runtime_error(path +
-                             ": the engine library could not be pinned: " +
-                             dyn::error());
+    throw std::runtime_error(
+        path + ": the engine library could not be pinned: " + dyn::error());
   }
   return LibraryHandle(reinterpret_cast<void *>(pinned));
 #else
   dlerror();
-  void *pin = dlopen(path.c_str(),
-                     RTLD_NOW | RTLD_LOCAL | RTLD_NOLOAD | RTLD_NODELETE);
+  void *pin =
+      dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NOLOAD | RTLD_NODELETE);
   if (pin == nullptr) {
-    throw std::runtime_error(path + ": RTLD_NODELETE could not be set: " +
-                             last_dl());
+    throw std::runtime_error(path +
+                             ": RTLD_NODELETE could not be set: " + last_dl());
   }
   return LibraryHandle(pin);
 #endif
@@ -421,7 +420,8 @@ void bind_symbols(Loaded &loaded, bool native) {
     loaded.native =
         dyn::loadSym<NativeForce>(as_dyn(handle), "rgpot_md_native_force");
   } else {
-    loaded.force = dyn::loadSym<EngineForce>(as_dyn(handle), "rgpot_engine_force");
+    loaded.force =
+        dyn::loadSym<EngineForce>(as_dyn(handle), "rgpot_engine_force");
   }
 }
 
@@ -475,9 +475,9 @@ Loaded open_library(const std::vector<std::string> &paths, bool native) {
     LibraryHandle resident;
     {
       std::lock_guard<std::mutex> lock(table.mutex);
-      resident = publish_resident(
-          table, path, loaded.library,
-          reinterpret_cast<const void *>(loaded.create));
+      resident =
+          publish_resident(table, path, loaded.library,
+                           reinterpret_cast<const void *>(loaded.create));
     }
     loaded.library = std::move(resident);
     return loaded;
@@ -781,6 +781,67 @@ bool valid_md_ops(const rgpot_md_session_ops *ops) {
          ops->destroy != nullptr;
 }
 
+void validate_nlist_request(const rgpot_nlist_request *request) {
+  if (request == nullptr) {
+    throw std::invalid_argument("MD neighbor request is null");
+  }
+  if (request->bytes < sizeof(*request) || request->abi != RGPOT_NLIST_ABI) {
+    throw std::invalid_argument(
+        "MD neighbor request has an incompatible size or ABI");
+  }
+  if (!std::isfinite(request->cutoff) || request->cutoff <= 0.0 ||
+      !std::isfinite(request->skin) || request->skin < 0.0) {
+    throw std::invalid_argument(
+        "MD neighbor cutoff must be positive and skin must not be negative");
+  }
+  if ((request->shape != 0 && request->shape != 1) ||
+      (request->shell != 0 && request->shell != 1) ||
+      (request->cut != 0 && request->cut != 1) ||
+      (request->shape == 1 && request->shell != 1)) {
+    throw std::invalid_argument("MD neighbor request modes are invalid");
+  }
+  for (const int32_t periodic : request->periodic) {
+    if (periodic != 0 && periodic != 1) {
+      throw std::invalid_argument(
+          "MD neighbor periodic flags must be zero or one");
+    }
+  }
+  for (const int32_t wanted :
+       {request->want_shifts, request->want_vectors, request->want_distances}) {
+    if (wanted != 0 && wanted != 1) {
+      throw std::invalid_argument(
+          "MD neighbor column flags must be zero or one");
+    }
+  }
+}
+
+void validate_nlist_soa(const rgpot_nlist_request &request,
+                        const rgpot_nlist_soa *pairs, size_t count,
+                        bool allow_null) {
+  if (pairs == nullptr) {
+    if (allow_null) {
+      return;
+    }
+    throw std::invalid_argument("MD neighbor pair buffer is null");
+  }
+  if (pairs->bytes < sizeof(*pairs) || count > pairs->cap ||
+      pairs->cap > std::numeric_limits<size_t>::max() / 3) {
+    throw std::invalid_argument(
+        "MD neighbor pair buffer has an invalid size, count, or capacity");
+  }
+  if (pairs->cap == 0) {
+    return;
+  }
+  if (pairs->first == nullptr || pairs->second == nullptr ||
+      (request.want_shifts != 0 && pairs->shift == nullptr) ||
+      (request.want_vectors != 0 && pairs->vector == nullptr) ||
+      (request.want_distances != 0 && pairs->distance == nullptr) ||
+      (request.shape == 1 && pairs->mask == nullptr)) {
+    throw std::invalid_argument(
+        "MD neighbor pair buffer is missing a required column");
+  }
+}
+
 // A vtable from an older engine is shorter than ours: take the members it
 // declares and leave the rest null, so RGPOT_MD_OPS_HAS sees them as absent.
 rgpot_md_session_ops copy_md_ops(const rgpot_md_session_ops *ops) {
@@ -881,8 +942,8 @@ int rgpot_external_potential_energy_forces(rgpot_external_potential *pot,
                                            size_t err_len) {
   if (pot == nullptr || pot->pot == nullptr || energy == nullptr ||
       box9 == nullptr ||
-      (n > 0 && (xyz == nullptr || atomic_numbers == nullptr ||
-                 forces == nullptr))) {
+      (n > 0 &&
+       (xyz == nullptr || atomic_numbers == nullptr || forces == nullptr))) {
     write_err(err, err_len, "energy_forces needs a potential and a geometry");
     return 1;
   }
@@ -1004,7 +1065,8 @@ int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
                                 size_t n_atoms, char *err, size_t err_len) {
   clear_err(err, err_len);
   try {
-    if (session == nullptr || masses == nullptr || n_atoms != session->n_atoms) {
+    if (session == nullptr || masses == nullptr ||
+        n_atoms != session->n_atoms) {
       throw std::invalid_argument("MD mass output buffer has wrong length");
     }
     return session->ops.get_masses(session->ctx, masses, n_atoms, err, err_len);
@@ -1078,17 +1140,16 @@ int rgpot_md_session_step_langevin(
       throw std::invalid_argument(
           "MD Langevin plane_point and plane_normal must be finite");
     }
-    if (n_walls > 0 &&
-        (n_walls > std::numeric_limits<size_t>::max() / n3 ||
-         !finite_array(wall_points, n_walls * n3) ||
-         !finite_array(wall_normals, n_walls * n3))) {
+    if (n_walls > 0 && (n_walls > std::numeric_limits<size_t>::max() / n3 ||
+                        !finite_array(wall_points, n_walls * n3) ||
+                        !finite_array(wall_normals, n_walls * n3))) {
       throw std::invalid_argument(
           "MD Langevin wall arrays must be finite n_walls*n3 buffers");
     }
-    return session->ops.step_langevin(
-        session->ctx, kT, friction, time_step, plane_point, plane_normal,
-        wall_points, wall_normals, n_walls, n3, steps, seed, wall_hits, err,
-        err_len);
+    return session->ops.step_langevin(session->ctx, kT, friction, time_step,
+                                      plane_point, plane_normal, wall_points,
+                                      wall_normals, n_walls, n3, steps, seed,
+                                      wall_hits, err, err_len);
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
     return 1;
@@ -1275,7 +1336,8 @@ int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
       throw std::invalid_argument("MD reseed session or dimension mismatch");
     }
     if (!std::isfinite(kT) || kT < 0.0) {
-      throw std::invalid_argument("MD reseed kT must be finite and not negative");
+      throw std::invalid_argument(
+          "MD reseed kT must be finite and not negative");
     }
     if (plane_normal != nullptr && !finite_array(plane_normal, n3)) {
       throw std::invalid_argument("MD reseed plane_normal must be finite");
@@ -1293,8 +1355,9 @@ int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
         per_coordinate[3 * i + d] = masses[i];
       }
     }
-    const std::vector<double> velocities = rgpot::md::maxwellBoltzmannVelocities(
-        per_coordinate, kT * rgpot::md::kAmuA2Ps2PerEv, seed, plane_normal);
+    const std::vector<double> velocities =
+        rgpot::md::maxwellBoltzmannVelocities(
+            per_coordinate, kT * rgpot::md::kAmuA2Ps2PerEv, seed, plane_normal);
     return session->ops.set_velocities(session->ctx, velocities.data(), n3, err,
                                        err_len);
   } catch (const std::exception &ex) {
@@ -1306,9 +1369,8 @@ int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
   }
 }
 
-int rgpot_md_session_get_positions(rgpot_md_session *session,
-                                   double *positions, size_t n3, char *err,
-                                   size_t err_len) {
+int rgpot_md_session_get_positions(rgpot_md_session *session, double *positions,
+                                   size_t n3, char *err, size_t err_len) {
   if (positions == nullptr) {
     write_err(err, err_len, "MD positions output buffer is null");
     return 1;
@@ -1329,8 +1391,8 @@ int rgpot_md_session_get_velocities(rgpot_md_session *session,
 }
 
 int rgpot_md_session_get_forces(rgpot_md_session *session, double *forces,
-                                size_t n3, double *potential_energy,
-                                char *err, size_t err_len) {
+                                size_t n3, double *potential_energy, char *err,
+                                size_t err_len) {
   if (forces == nullptr) {
     write_err(err, err_len, "MD forces output buffer is null");
     return 1;
@@ -1361,19 +1423,43 @@ int rgpot_md_session_get_neighbors(rgpot_md_session *session,
     *needed = 0;
   }
   try {
-    if (session == nullptr || request == nullptr) {
-      throw std::invalid_argument("MD neighbor query needs a session and request");
+    if (session == nullptr) {
+      throw std::invalid_argument("MD neighbor query needs a session");
     }
+    validate_nlist_request(request);
+    validate_nlist_soa(*request, out, 0, true);
     if (!RGPOT_MD_OPS_HAS(&session->ops, get_neighbors)) {
       write_err(err, err_len, "MD engine does not expose neighbor queries");
       return RGPOT_MD_NLIST_UNSUPPORTED;
     }
+    // Keep the public outputs optional without forwarding null pointers to a
+    // backend that may assume the callback contract always provides storage.
+    size_t callback_count = 0;
+    size_t callback_needed = 0;
     const int status =
-        session->ops.get_neighbors(session->ctx, request, out, count, needed, err, err_len);
-    if (status == RGPOT_MD_NLIST_OK || status == RGPOT_MD_NLIST_UNSUPPORTED ||
+        session->ops.get_neighbors(session->ctx, request, out, &callback_count,
+                                   &callback_needed, err, err_len);
+    if (status == RGPOT_MD_NLIST_OK) {
+      if ((out == nullptr && callback_count != 0) ||
+          (out != nullptr && callback_count > out->cap) ||
+          callback_needed < callback_count) {
+        write_err(err, err_len,
+                  "MD engine returned inconsistent neighbor counts");
+        return RGPOT_MD_NLIST_ERROR;
+      }
+      if (count != nullptr) {
+        *count = callback_count;
+      }
+      if (needed != nullptr) {
+        *needed = callback_needed;
+      }
+      return status;
+    }
+    if (status == RGPOT_MD_NLIST_UNSUPPORTED ||
         status == RGPOT_MD_NLIST_ERROR) {
       return status;
     }
+    write_err(err, err_len, "MD engine returned an invalid neighbor status");
     return RGPOT_MD_NLIST_ERROR;
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
@@ -1390,18 +1476,22 @@ int rgpot_md_session_set_neighbors(rgpot_md_session *session,
                                    char *err, size_t err_len) {
   clear_err(err, err_len);
   try {
-    if (session == nullptr || request == nullptr) {
-      throw std::invalid_argument("MD neighbor setter needs a session and request");
+    if (session == nullptr) {
+      throw std::invalid_argument("MD neighbor setter needs a session");
     }
+    validate_nlist_request(request);
+    validate_nlist_soa(*request, pairs, count, false);
     if (!RGPOT_MD_OPS_HAS(&session->ops, set_neighbors)) {
       write_err(err, err_len, "MD engine does not accept supplied neighbors");
       return RGPOT_MD_NLIST_UNSUPPORTED;
     }
-    const int status = session->ops.set_neighbors(session->ctx, request, pairs, count, err, err_len);
+    const int status = session->ops.set_neighbors(session->ctx, request, pairs,
+                                                  count, err, err_len);
     if (status == RGPOT_MD_NLIST_OK || status == RGPOT_MD_NLIST_UNSUPPORTED ||
         status == RGPOT_MD_NLIST_ERROR) {
       return status;
     }
+    write_err(err, err_len, "MD engine returned an invalid neighbor status");
     return RGPOT_MD_NLIST_ERROR;
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());

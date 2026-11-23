@@ -11,3 +11,5 @@ forces and energies. The new callbacks follow =destroy= in the vtable, so an
 engine built against the previous header still loads. =rgpot_core::md_session=
 mirrors them with =MdSession::run_langevin= and the matching
 Maxwell-Boltzmann draw.
+Plane-parallel walls that exclude the constrained plane are reported as
+incompatible instead of being ignored.

@@ -223,9 +223,9 @@ inline void requireFiniteArray(const std::vector<double> &values,
  * @param kT in mass times velocity squared
  * @param normal null, or one entry per coordinate; need not be unit length
  */
-inline std::vector<double> maxwellBoltzmannVelocities(
-    const std::vector<double> &masses, double kT, std::uint64_t seed,
-    const double *normal) {
+inline std::vector<double>
+maxwellBoltzmannVelocities(const std::vector<double> &masses, double kT,
+                           std::uint64_t seed, const double *normal) {
   if (!(kT >= 0.0) || !std::isfinite(kT)) {
     throw std::invalid_argument("kT must be finite and not negative");
   }
@@ -334,6 +334,10 @@ public:
     }
     for (const PreparedWall &wall : prepWalls) {
       const Frame frame = frameOf(ctx, wall, x);
+      if (wall.value(x) > kInsideTolerance && !(frame.scale2 > 0.0)) {
+        throw std::invalid_argument(
+            "the plane and wall constraints are incompatible");
+      }
       if (frame.scale2 > 0.0 && wall.value(x) > kInsideTolerance) {
         throw std::invalid_argument("the positions start outside a wall");
       }
@@ -341,8 +345,8 @@ public:
 
     const double half = 0.5 * settings.timeStep;
     const double decay = std::exp(-settings.friction * settings.timeStep);
-    const double spread = -std::expm1(-2.0 * settings.friction *
-                                      settings.timeStep);
+    const double spread =
+        -std::expm1(-2.0 * settings.friction * settings.timeStep);
     std::vector<double> force(dim_, 0.0);
     std::vector<double> previous(dim_, 0.0);
     result.potential = forces(x, force.data());
@@ -365,8 +369,8 @@ public:
         if (constrained) {
           projectPosition(ctx, previous.data(), x);
         }
-        result.wallHits += applyWalls(ctx, prepWalls, settings.wallMode,
-                                      previous, x, v);
+        result.wallHits +=
+            applyWalls(ctx, prepWalls, settings.wallMode, previous, x, v);
         if (pass == 0) {
           thermalize(settings, decay, spread, rng, v);
           if (constrained) {
@@ -462,8 +466,7 @@ private:
       throw std::invalid_argument("kT must be finite and positive");
     }
     if (!(settings.friction >= 0.0) || !std::isfinite(settings.friction)) {
-      throw std::invalid_argument(
-          "friction must be finite and not negative");
+      throw std::invalid_argument("friction must be finite and not negative");
     }
     if (!(settings.timeStep > 0.0) || !std::isfinite(settings.timeStep)) {
       throw std::invalid_argument("time_step must be finite and positive");
@@ -533,8 +536,7 @@ private:
         if (constrained) {
           alongPlane += plane.normal[k] * invMass_[k] * prepared.normal[k];
         }
-        prepared.full2 +=
-            prepared.normal[k] * prepared.normal[k] * invMass_[k];
+        prepared.full2 += prepared.normal[k] * prepared.normal[k] * invMass_[k];
       }
       prepared.tangent = prepared.normal;
       if (constrained) {
@@ -564,16 +566,16 @@ private:
     }
   }
 
-  void thermalize(const LangevinSettings &settings, double decay,
-                  double spread, SplitMix64 &rng, double *v) const {
+  void thermalize(const LangevinSettings &settings, double decay, double spread,
+                  SplitMix64 &rng, double *v) const {
     if (settings.friction == 0.0) {
       return;
     }
     const double amplitude = std::sqrt(settings.kT * spread);
     for (std::size_t k = 0; k < dim_; ++k) {
       if (invMass_[k] > 0.0) {
-        v[k] = decay * v[k] + amplitude * std::sqrt(invMass_[k]) *
-                                  rng.nextNormal();
+        v[k] = decay * v[k] +
+               amplitude * std::sqrt(invMass_[k]) * rng.nextNormal();
       }
     }
   }
@@ -670,9 +672,8 @@ private:
   }
 
   /// Solve (J M^-1 J^T) y = b by conjugate gradients.
-  [[nodiscard]] std::vector<double> solveGram(const Gradients &g,
-                                              const std::vector<double> &b)
-      const {
+  [[nodiscard]] std::vector<double>
+  solveGram(const Gradients &g, const std::vector<double> &b) const {
     const std::size_t n = b.size();
     std::vector<double> y(n, 0.0);
     std::vector<double> r = b;
@@ -689,8 +690,8 @@ private:
       return y;
     }
     const std::size_t limit = 4 * n + 40;
-    for (std::size_t iteration = 0;
-         iteration < limit && rr > 1.0e-30 * bb; ++iteration) {
+    for (std::size_t iteration = 0; iteration < limit && rr > 1.0e-30 * bb;
+         ++iteration) {
       applyGram(g, p, ap, work);
       double curvature = 0.0;
       for (std::size_t i = 0; i < n; ++i) {
@@ -768,8 +769,7 @@ private:
         done = std::abs(values[row++]) <= 1.0e-13 * scale;
       }
       for (const DistanceConstraint &c : distances_) {
-        done = done &&
-               std::abs(values[row++]) <= 1.0e-13 * c.length * c.length;
+        done = done && std::abs(values[row++]) <= 1.0e-13 * c.length * c.length;
       }
       if (done) {
         return;
@@ -784,8 +784,7 @@ private:
   }
 
   /// Remove from v the part along the constraint gradients at x.
-  void projectVelocity(const Context &ctx, const double *x,
-                       double *v) const {
+  void projectVelocity(const Context &ctx, const double *x, double *v) const {
     if (!ctx.general) {
       projectPlaneVelocity(ctx.plane, v);
       return;
@@ -803,8 +802,7 @@ private:
 
   /// lambda of the plane for the force at x.
   [[nodiscard]] double constraintForce(const Context &ctx, const double *x,
-                                       const std::vector<double> &force)
-      const {
+                                       const std::vector<double> &force) const {
     if (!ctx.general) {
       double along = 0.0;
       for (std::size_t k = 0; k < dim_; ++k) {
@@ -885,11 +883,13 @@ private:
       for (const PreparedWall &wall : walls) {
         if (wall.value(x) > 0.0) {
           const Frame frame = frameOf(ctx, wall, previous.data());
-          if (frame.scale2 > 0.0) {
-            reflectVelocity(frame, v);
-            ++hits;
-            outside = true;
+          if (!(frame.scale2 > 0.0)) {
+            throw std::runtime_error(
+                "the active constraints are incompatible with a wall");
           }
+          reflectVelocity(frame, v);
+          ++hits;
+          outside = true;
         }
       }
       if (outside) {
@@ -907,7 +907,8 @@ private:
         }
         const Frame frame = frameOf(ctx, wall, x);
         if (!(frame.scale2 > 0.0)) {
-          continue;
+          throw std::runtime_error(
+              "the active constraints are incompatible with a wall");
         }
         std::copy(x, x + dim_, before.begin());
         const double scale = 2.0 * excess / frame.scale2;

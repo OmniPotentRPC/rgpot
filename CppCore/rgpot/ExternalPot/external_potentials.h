@@ -206,6 +206,11 @@ typedef int (*rgpot_md_session_engine_create_fn)(
     rgpot_md_session_ops *ops, void **ctx, size_t *n_atoms, char *err,
     size_t err_len);
 
+/*
+ * On success ownership of ctx transfers to the returned session, which calls
+ * ops->destroy(ctx) exactly once. On failure ownership remains with the caller
+ * and destroy is not called.
+ */
 rgpot_md_session *rgpot_md_session_from_ops(void *ctx,
                                             const rgpot_md_session_ops *ops,
                                             size_t n_atoms, char *err,

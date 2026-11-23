@@ -389,18 +389,21 @@ impl Default for MdNlistRequest {
     }
 }
 
-/// Structure-of-arrays pair buffers shared with `rgpot_nlist_soa`.
+/// Raw structure-of-arrays pair buffers shared with `rgpot_nlist_soa`.
+///
+/// The pointer fields stay private because their validity cannot be expressed
+/// by this C ABI structure. Safe callers use [`MdNeighborList`].
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct MdNlistSoa {
-    pub bytes: u32,
-    pub first: *mut i32,
-    pub second: *mut i32,
-    pub shift: *mut i32,
-    pub vector: *mut f64,
-    pub distance: *mut f64,
-    pub mask: *mut u8,
-    pub cap: usize,
+    bytes: u32,
+    first: *mut i32,
+    second: *mut i32,
+    shift: *mut i32,
+    vector: *mut f64,
+    distance: *mut f64,
+    mask: *mut u8,
+    cap: usize,
 }
 
 impl Default for MdNlistSoa {
@@ -414,6 +417,196 @@ impl Default for MdNlistSoa {
             distance: std::ptr::null_mut(),
             mask: std::ptr::null_mut(),
             cap: 0,
+        }
+    }
+}
+
+impl MdNlistSoa {
+    /// Build the raw C representation of caller-owned pair buffers.
+    ///
+    /// # Safety
+    ///
+    /// `first`, `second`, `distance`, and `mask`, when non-null, must each be
+    /// valid for reads and writes of `cap` elements. `shift` and `vector`,
+    /// when non-null, must each be valid for reads and writes of `3 * cap`
+    /// elements. The multiplication must not overflow, and every buffer must
+    /// remain valid and exclusively borrowed for the lifetime of any callback
+    /// receiving this value.
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn from_raw_parts(
+        first: *mut i32,
+        second: *mut i32,
+        shift: *mut i32,
+        vector: *mut f64,
+        distance: *mut f64,
+        mask: *mut u8,
+        cap: usize,
+    ) -> Self {
+        Self {
+            bytes: std::mem::size_of::<Self>() as u32,
+            first,
+            second,
+            shift,
+            vector,
+            distance,
+            mask,
+            cap,
+        }
+    }
+
+    /// Number of pairs for which every supplied raw column has storage.
+    pub fn capacity(&self) -> usize {
+        self.cap
+    }
+}
+
+/// Owned, length-checked neighbour pairs used by the safe Rust API.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MdNeighborList {
+    first: Vec<i32>,
+    second: Vec<i32>,
+    shifts: Option<Vec<[i32; 3]>>,
+    vectors: Option<Vec<[f64; 3]>>,
+    distances: Option<Vec<f64>>,
+    masks: Option<Vec<u8>>,
+}
+
+impl MdNeighborList {
+    /// Construct neighbour pairs and reject columns of inconsistent length.
+    pub fn new(
+        first: Vec<i32>,
+        second: Vec<i32>,
+        shifts: Option<Vec<[i32; 3]>>,
+        vectors: Option<Vec<[f64; 3]>>,
+        distances: Option<Vec<f64>>,
+        masks: Option<Vec<u8>>,
+    ) -> Result<Self, MdSessionError> {
+        let len = first.len();
+        if second.len() != len
+            || shifts.as_ref().is_some_and(|column| column.len() != len)
+            || vectors.as_ref().is_some_and(|column| column.len() != len)
+            || distances.as_ref().is_some_and(|column| column.len() != len)
+            || masks.as_ref().is_some_and(|column| column.len() != len)
+        {
+            return Err(MdSessionError::new(
+                "neighbor columns must all have the same length",
+            ));
+        }
+        Ok(Self {
+            first,
+            second,
+            shifts,
+            vectors,
+            distances,
+            masks,
+        })
+    }
+
+    /// Number of neighbour pairs.
+    pub fn len(&self) -> usize {
+        self.first.len()
+    }
+
+    /// True when there are no neighbour pairs.
+    pub fn is_empty(&self) -> bool {
+        self.first.is_empty()
+    }
+
+    /// First atom index of each pair.
+    pub fn first(&self) -> &[i32] {
+        &self.first
+    }
+
+    /// Second atom index of each pair.
+    pub fn second(&self) -> &[i32] {
+        &self.second
+    }
+
+    /// Periodic image shift of each pair, when requested.
+    pub fn shifts(&self) -> Option<&[[i32; 3]]> {
+        self.shifts.as_deref()
+    }
+
+    /// Cartesian pair vector of each pair, when requested.
+    pub fn vectors(&self) -> Option<&[[f64; 3]]> {
+        self.vectors.as_deref()
+    }
+
+    /// Pair distance of each pair, when requested.
+    pub fn distances(&self) -> Option<&[f64]> {
+        self.distances.as_deref()
+    }
+
+    /// Cluster mask of each pair, when supplied.
+    pub fn masks(&self) -> Option<&[u8]> {
+        self.masks.as_deref()
+    }
+
+    fn with_capacity(request: &MdNlistRequest, capacity: usize) -> Self {
+        Self {
+            first: vec![0; capacity],
+            second: vec![0; capacity],
+            shifts: (request.want_shifts != 0).then(|| vec![[0; 3]; capacity]),
+            vectors: (request.want_vectors != 0).then(|| vec![[0.0; 3]; capacity]),
+            distances: (request.want_distances != 0).then(|| vec![0.0; capacity]),
+            masks: (request.shape == 1).then(|| vec![0; capacity]),
+        }
+    }
+
+    fn validate_for_request(&self, request: &MdNlistRequest) -> Result<(), MdSessionError> {
+        if (request.want_shifts != 0 && self.shifts.is_none())
+            || (request.want_vectors != 0 && self.vectors.is_none())
+            || (request.want_distances != 0 && self.distances.is_none())
+            || (request.shape == 1 && self.masks.is_none())
+        {
+            return Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Error,
+                "neighbor list is missing a requested column",
+            ));
+        }
+        Ok(())
+    }
+
+    fn as_raw_mut(&mut self) -> MdNlistSoa {
+        let capacity = self.len();
+        MdNlistSoa {
+            bytes: std::mem::size_of::<MdNlistSoa>() as u32,
+            first: self.first.as_mut_ptr(),
+            second: self.second.as_mut_ptr(),
+            shift: self
+                .shifts
+                .as_mut()
+                .map_or(std::ptr::null_mut(), |column| column.as_mut_ptr().cast()),
+            vector: self
+                .vectors
+                .as_mut()
+                .map_or(std::ptr::null_mut(), |column| column.as_mut_ptr().cast()),
+            distance: self
+                .distances
+                .as_mut()
+                .map_or(std::ptr::null_mut(), Vec::as_mut_ptr),
+            mask: self
+                .masks
+                .as_mut()
+                .map_or(std::ptr::null_mut(), Vec::as_mut_ptr),
+            cap: capacity,
+        }
+    }
+
+    fn truncate(&mut self, len: usize) {
+        self.first.truncate(len);
+        self.second.truncate(len);
+        if let Some(column) = &mut self.shifts {
+            column.truncate(len);
+        }
+        if let Some(column) = &mut self.vectors {
+            column.truncate(len);
+        }
+        if let Some(column) = &mut self.distances {
+            column.truncate(len);
+        }
+        if let Some(column) = &mut self.masks {
+            column.truncate(len);
         }
     }
 }
@@ -521,12 +714,11 @@ pub trait MdSession {
         self.set_velocities(&velocities)
     }
 
-    /// Query the engine neighbour list for the supplied request.
+    /// Query the engine neighbour list into owned, validated buffers.
     fn get_neighbors(
         &mut self,
         _request: &MdNlistRequest,
-        _out: Option<&mut MdNlistSoa>,
-    ) -> Result<(usize, usize), MdSessionError> {
+    ) -> Result<MdNeighborList, MdSessionError> {
         Err(MdSessionError::with_nlist_status(
             MdNlistStatus::Unsupported,
             "MD engine does not expose neighbor queries",
@@ -537,8 +729,7 @@ pub trait MdSession {
     fn set_neighbors(
         &mut self,
         _request: &MdNlistRequest,
-        _pairs: &MdNlistSoa,
-        _count: usize,
+        _pairs: &MdNeighborList,
     ) -> Result<(), MdSessionError> {
         Err(MdSessionError::with_nlist_status(
             MdNlistStatus::Unsupported,
@@ -806,9 +997,16 @@ impl CAbiMdSession {
     ///
     /// # Safety
     ///
-    /// `ctx` must remain valid until `ops.destroy` is called on drop, and all
-    /// function pointers in `ops` must uphold the C ABI contract in
-    /// `external_potentials.h`.
+    /// On success, ownership of `ctx` transfers to the returned session and
+    /// `ops.destroy` is called exactly once when it is dropped. On error,
+    /// ownership remains with the caller and this function does not call
+    /// `ops.destroy`.
+    ///
+    /// `ctx` must remain valid and exclusively usable by these callbacks until
+    /// it is destroyed. Every function pointer in `ops` must uphold the C ABI
+    /// contract in `external_potentials.h`, including the stated lengths of
+    /// all pointed-to buffers, and must not retain borrowed buffer pointers
+    /// after returning.
     pub unsafe fn from_ops(
         ctx: NonNull<c_void>,
         ops: MdSessionOps,
@@ -985,6 +1183,47 @@ fn check_finite_slice(values: &[f64], label: &str) -> Result<(), MdSessionError>
         return Err(MdSessionError::new(format!(
             "{label} contains non-finite values"
         )));
+    }
+    Ok(())
+}
+
+fn validate_nlist_request(request: &MdNlistRequest) -> Result<(), MdSessionError> {
+    if request.bytes < std::mem::size_of::<MdNlistRequest>() as u32 || request.abi != MD_NLIST_ABI {
+        return Err(MdSessionError::with_nlist_status(
+            MdNlistStatus::Error,
+            "neighbor request has an incompatible size or ABI",
+        ));
+    }
+    if !request.cutoff.is_finite()
+        || request.cutoff <= 0.0
+        || !request.skin.is_finite()
+        || request.skin < 0.0
+    {
+        return Err(MdSessionError::with_nlist_status(
+            MdNlistStatus::Error,
+            "neighbor cutoff must be positive and skin must be finite and not negative",
+        ));
+    }
+    if !matches!(request.shape, 0 | 1)
+        || !matches!(request.shell, 0 | 1)
+        || !matches!(request.cut, 0 | 1)
+        || (request.shape == 1 && request.shell != 1)
+        || request
+            .periodic
+            .iter()
+            .any(|&periodic| !matches!(periodic, 0 | 1))
+        || [
+            request.want_shifts,
+            request.want_vectors,
+            request.want_distances,
+        ]
+        .iter()
+        .any(|&wanted| !matches!(wanted, 0 | 1))
+    {
+        return Err(MdSessionError::with_nlist_status(
+            MdNlistStatus::Error,
+            "neighbor request contains an invalid mode or flag",
+        ));
     }
     Ok(())
 }
@@ -1377,60 +1616,76 @@ impl MdSession for CAbiMdSession {
     fn get_neighbors(
         &mut self,
         request: &MdNlistRequest,
-        out: Option<&mut MdNlistSoa>,
-    ) -> Result<(usize, usize), MdSessionError> {
+    ) -> Result<MdNeighborList, MdSessionError> {
         let Some(callback) = self.ops.get_neighbors else {
             return Err(MdSessionError::with_nlist_status(
                 MdNlistStatus::Unsupported,
                 "MD engine does not expose neighbor queries",
             ));
         };
-        let mut count: usize = 0;
-        let mut needed: usize = 0;
-        let mut error = [0 as c_char; 1024];
-        let out_ptr = match out {
-            Some(value) => value as *mut MdNlistSoa,
-            None => std::ptr::null_mut(),
+        validate_nlist_request(request)?;
+        let call = |out: *mut MdNlistSoa| {
+            let mut count: usize = 0;
+            let mut needed: usize = 0;
+            let mut error = [0 as c_char; 1024];
+            let status = unsafe {
+                callback(
+                    self.ctx.as_ptr(),
+                    request as *const MdNlistRequest,
+                    out,
+                    &mut count,
+                    &mut needed,
+                    error.as_mut_ptr(),
+                    error.len(),
+                )
+            };
+            match MdNlistStatus::from_raw(status) {
+                Some(MdNlistStatus::Ok) => Ok((count, needed)),
+                Some(MdNlistStatus::Unsupported) => Err(MdSessionError::with_nlist_status(
+                    MdNlistStatus::Unsupported,
+                    match raw_error_message(&error) {
+                        Some(message) => message,
+                        None => "MD engine does not expose neighbor queries".to_string(),
+                    },
+                )),
+                Some(MdNlistStatus::Error) => Err(MdSessionError::with_nlist_status(
+                    MdNlistStatus::Error,
+                    error_message(&error),
+                )),
+                None => Err(MdSessionError::with_nlist_status(
+                    MdNlistStatus::Error,
+                    match raw_error_message(&error) {
+                        Some(message) => message,
+                        None => format!("unexpected MD neighbor status {status}"),
+                    },
+                )),
+            }
         };
-        let status = unsafe {
-            callback(
-                self.ctx.as_ptr(),
-                request as *const MdNlistRequest,
-                out_ptr,
-                &mut count,
-                &mut needed,
-                error.as_mut_ptr(),
-                error.len(),
-            )
-        };
-        match MdNlistStatus::from_raw(status) {
-            Some(MdNlistStatus::Ok) => Ok((count, needed)),
-            Some(MdNlistStatus::Unsupported) => Err(MdSessionError::with_nlist_status(
-                MdNlistStatus::Unsupported,
-                match raw_error_message(&error) {
-                    Some(message) => message,
-                    None => "MD engine does not expose neighbor queries".to_string(),
-                },
-            )),
-            Some(MdNlistStatus::Error) => Err(MdSessionError::with_nlist_status(
+
+        let (probe_count, needed) = call(std::ptr::null_mut())?;
+        if probe_count > needed {
+            return Err(MdSessionError::with_nlist_status(
                 MdNlistStatus::Error,
-                error_message(&error),
-            )),
-            None => Err(MdSessionError::with_nlist_status(
-                MdNlistStatus::Error,
-                match raw_error_message(&error) {
-                    Some(message) => message,
-                    None => format!("unexpected MD neighbor status {status}"),
-                },
-            )),
+                "MD engine returned a neighbor probe count larger than needed",
+            ));
         }
+        let mut pairs = MdNeighborList::with_capacity(request, needed);
+        let mut raw = pairs.as_raw_mut();
+        let (count, returned_needed) = call(&mut raw)?;
+        if count > raw.capacity() || returned_needed < count || returned_needed > raw.capacity() {
+            return Err(MdSessionError::with_nlist_status(
+                MdNlistStatus::Error,
+                "MD engine returned inconsistent neighbor counts",
+            ));
+        }
+        pairs.truncate(count);
+        Ok(pairs)
     }
 
     fn set_neighbors(
         &mut self,
         request: &MdNlistRequest,
-        pairs: &MdNlistSoa,
-        count: usize,
+        pairs: &MdNeighborList,
     ) -> Result<(), MdSessionError> {
         let Some(callback) = self.ops.set_neighbors else {
             return Err(MdSessionError::with_nlist_status(
@@ -1438,13 +1693,20 @@ impl MdSession for CAbiMdSession {
                 "MD engine does not accept supplied neighbors",
             ));
         };
+        validate_nlist_request(request)?;
+        pairs.validate_for_request(request)?;
+        // The C layout uses mutable column pointers even for the setter's
+        // const structure pointer. Give an incorrect backend private copies
+        // rather than exposing storage borrowed through `&MdNeighborList`.
+        let mut owned = pairs.clone();
+        let raw = owned.as_raw_mut();
         let mut error = [0 as c_char; 1024];
         let status = unsafe {
             callback(
                 self.ctx.as_ptr(),
                 request as *const MdNlistRequest,
-                pairs as *const MdNlistSoa,
-                count,
+                &raw,
+                pairs.len(),
                 error.as_mut_ptr(),
                 error.len(),
             )
@@ -1490,6 +1752,7 @@ mod tests {
         last_wall_mode: i32,
         cell: [f64; 9],
         fail_next: bool,
+        bad_nlist_counts: bool,
         nlist_calls: usize,
         destroyed: Arc<AtomicBool>,
     }
@@ -1629,7 +1892,7 @@ mod tests {
     unsafe extern "C" fn mock_get_neighbors(
         ctx: *mut c_void,
         _request: *const MdNlistRequest,
-        _out: *mut MdNlistSoa,
+        out: *mut MdNlistSoa,
         count: *mut usize,
         needed: *mut usize,
         err: *mut c_char,
@@ -1642,11 +1905,37 @@ mod tests {
             write_c_err(err, err_len, "mock nlist error");
             return MdNlistStatus::Error as i32;
         }
-        if !count.is_null() {
-            unsafe { *count = 4 };
-        }
         if !needed.is_null() {
             unsafe { *needed = 4 };
+        }
+        if !count.is_null() {
+            unsafe { *count = 0 };
+        }
+        if !out.is_null() {
+            let out = unsafe { &mut *out };
+            if out.bytes as usize != std::mem::size_of::<MdNlistSoa>()
+                || out.cap < 4
+                || out.first.is_null()
+                || out.second.is_null()
+            {
+                write_c_err(err, err_len, "bad mock nlist output");
+                return MdNlistStatus::Error as i32;
+            }
+            for i in 0..4 {
+                unsafe {
+                    *out.first.add(i) = i as i32;
+                    *out.second.add(i) = (i + 1) as i32;
+                }
+            }
+            if !count.is_null() {
+                unsafe {
+                    *count = if state.bad_nlist_counts {
+                        out.cap + 1
+                    } else {
+                        4
+                    }
+                };
+            }
         }
         MdNlistStatus::Ok as i32
     }
@@ -1759,6 +2048,7 @@ mod tests {
             last_wall_mode: -1,
             cell: [0.0; 9],
             fail_next: false,
+            bad_nlist_counts: false,
             nlist_calls: 0,
             destroyed: Arc::clone(&destroyed),
         }));
@@ -1836,6 +2126,7 @@ mod tests {
             last_wall_mode: -1,
             cell: [0.0; 9],
             fail_next: false,
+            bad_nlist_counts: false,
             nlist_calls: 0,
             destroyed: Arc::clone(destroyed),
         }));
@@ -1849,7 +2140,8 @@ mod tests {
     fn neighbour_callbacks_forward_and_report_the_typed_status() {
         let destroyed = Arc::new(AtomicBool::new(false));
         let (mut session, ctx) = mock_session(mock_ops(), &destroyed);
-        let request = MdNlistRequest::default();
+        let mut request = MdNlistRequest::default();
+        request.cutoff = 3.0;
         assert_eq!(
             request.bytes as usize,
             std::mem::size_of::<MdNlistRequest>()
@@ -1864,14 +2156,13 @@ mod tests {
             ),
             (1, 1, 1)
         );
-        let mut out = MdNlistSoa::default();
-        assert_eq!(out.bytes as usize, std::mem::size_of::<MdNlistSoa>());
-        let (count, needed) = session.get_neighbors(&request, Some(&mut out)).unwrap();
-        assert_eq!((count, needed), (4, 4));
-        assert_eq!(unsafe { (*ctx).nlist_calls }, 1);
-        let refused = session
-            .set_neighbors(&request, &MdNlistSoa::default(), 0)
-            .unwrap_err();
+        let pairs = session.get_neighbors(&request).unwrap();
+        assert_eq!(pairs.len(), 4);
+        assert_eq!(pairs.first(), &[0, 1, 2, 3]);
+        assert_eq!(pairs.second(), &[1, 2, 3, 4]);
+        assert_eq!(pairs.shifts().map(|column| column.len()), Some(4));
+        assert_eq!(unsafe { (*ctx).nlist_calls }, 2);
+        let refused = session.set_neighbors(&request, &pairs).unwrap_err();
         assert_eq!(refused.nlist_status(), Some(MdNlistStatus::Unsupported));
         assert!(refused.is_unsupported());
         assert!(refused
@@ -1879,15 +2170,31 @@ mod tests {
             .contains("does not accept supplied neighbors"));
 
         unsafe { (*ctx).fail_next = true };
-        let failed = session.get_neighbors(&request, None).unwrap_err();
+        let failed = session.get_neighbors(&request).unwrap_err();
         assert_eq!(failed.nlist_status(), Some(MdNlistStatus::Error));
         assert!(!failed.is_unsupported());
         assert_eq!(failed.to_string(), "mock nlist error");
 
+        unsafe { (*ctx).bad_nlist_counts = true };
+        let malformed = session.get_neighbors(&request).unwrap_err();
+        assert_eq!(malformed.nlist_status(), Some(MdNlistStatus::Error));
+        assert!(malformed
+            .to_string()
+            .contains("inconsistent neighbor counts"));
+
+        assert!(MdNeighborList::new(vec![0], vec![1, 2], None, None, None, None).is_err());
+        let missing_columns =
+            MdNeighborList::new(vec![0], vec![1], None, None, None, None).unwrap();
+        let malformed = session
+            .set_neighbors(&request, &missing_columns)
+            .unwrap_err();
+        assert_eq!(malformed.nlist_status(), Some(MdNlistStatus::Error));
+        assert!(malformed.to_string().contains("missing a requested column"));
+
         let mut short = mock_ops();
         short.struct_size = std::mem::offset_of!(MdSessionOps, destroy) + 8;
         let (mut bare, _ctx) = mock_session(short, &destroyed);
-        let missing = bare.get_neighbors(&request, None).unwrap_err();
+        let missing = bare.get_neighbors(&request).unwrap_err();
         assert_eq!(missing.nlist_status(), Some(MdNlistStatus::Unsupported));
         assert!(missing.is_unsupported());
         assert!(missing
@@ -1946,6 +2253,7 @@ mod tests {
             last_wall_mode: -1,
             cell: [0.0; 9],
             fail_next: false,
+            bad_nlist_counts: false,
             nlist_calls: 0,
             destroyed: Arc::clone(&destroyed),
         }));
@@ -2002,6 +2310,7 @@ mod tests {
             last_wall_mode: -1,
             cell: [0.0; 9],
             fail_next: false,
+            bad_nlist_counts: false,
             nlist_calls: 0,
             destroyed: Arc::clone(destroyed),
         }))

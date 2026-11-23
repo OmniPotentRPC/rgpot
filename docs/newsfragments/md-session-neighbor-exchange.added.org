@@ -5,3 +5,6 @@ unsupported status reporting.
 The OpenMM session now serves neighbour queries from the current Context
 geometry through the shared rgpot neighbour builder fallback and reports
 external neighbour injection as unsupported.
+The Rust wrapper owns and length-checks every returned column, while the C
+entry points reject null, undersized, and inconsistent buffers before an
+engine callback can observe them.

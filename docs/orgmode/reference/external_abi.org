@@ -347,8 +347,12 @@ rgpot_md_session *rgpot_md_session_from_ops(void *ctx,
 - Units :: none.
 - Outputs :: a new =rgpot_md_session *= handle freed by
   =rgpot_md_session_destroy=.
+  A successful call transfers ownership of =ctx= to that handle and calls
+  =ops->destroy(ctx)= exactly once when the handle is destroyed.
 - Errors :: returns null and writes =err= when =ctx= is null, =ops= is invalid,
   or =n_atoms= is 0.
+  On failure ownership of =ctx= remains with the caller and =destroy= is not
+  called.
 
 *** =rgpot_md_session_create=
 
@@ -556,7 +560,8 @@ int rgpot_md_session_run_langevin(rgpot_md_session *session,
   of every step.
 - Errors :: returns 1 and writes =err= on a null argument, a short struct,
   invalid controls, a buffer mismatch, non-finite inputs, a start outside a
-  wall, a backend without the callback, or backend failure.
+  wall, a plane-parallel wall that excludes the constrained plane, a backend
+  without the callback, or backend failure.
 
 *** =rgpot_md_session_reseed_velocities=
 
@@ -655,13 +660,14 @@ int rgpot_md_session_get_neighbors(rgpot_md_session *session,
 
 - Inputs :: =session=, neighbour =request= in the shared =rgpot_nlist_request=
   shape, optional output =out= (=rgpot_nlist_soa=), optional =count= and
-  =needed=, and =err=/=err_len=.
+  =needed= outputs, and =err=/=err_len=.
 - Units :: position and cell units follow the session ABI (Angstrom).
 - Outputs :: returns =RGPOT_MD_NLIST_OK= and forwards the engine's pair list
   using the shared neighbour columns and semantics.
 - Errors :: returns
   =RGPOT_MD_NLIST_UNSUPPORTED= when the engine has no neighbour query slot, or =RGPOT_MD_NLIST_ERROR=
-  with =err= on invalid input or backend failure.
+  with =err= on an incompatible request or output structure, missing requested
+  columns, inconsistent returned counts, or backend failure.
 
 *** =rgpot_md_session_set_neighbors=
 
@@ -680,7 +686,9 @@ int rgpot_md_session_set_neighbors(rgpot_md_session *session,
   pair list.
 - Errors :: returns
   =RGPOT_MD_NLIST_UNSUPPORTED= when the engine has no setter slot, or =RGPOT_MD_NLIST_ERROR=
-  with =err= on invalid input or backend failure.
+  with =err= when =pairs= is null, =count= exceeds its capacity, a requested
+  column is null, the request or pair structure is incompatible, or the backend
+  fails.
 
 *** =rgpot_md_session_destroy=
 
