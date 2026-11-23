@@ -91,6 +91,18 @@ _FACTORY_DEFAULTS = {
     },
 }
 
+
+def _has_tail_correction(config: object) -> bool:
+    if not isinstance(config, dict):
+        return False
+    if bool(config.get("tail_correction")):
+        return True
+    children = config.get("children")
+    if not isinstance(children, (list, tuple)):
+        return False
+    return any(_has_tail_correction(child) for child in children)
+
+
 # Cutoffs, in Angstrom, of the bound kernels whose binding publishes none
 # through ``cutoff``, ``native_cutoff`` or ``config()["cutoff"]``. A cell
 # narrower than twice the value is tiled for a minimum-image kernel. A 0.0
@@ -239,7 +251,12 @@ def _spec_of(potential: Any) -> tuple[str, dict[str, Any]] | None:
     config = getattr(potential, "config", None)
     if callable(config):
         cfg = config()
-        if isinstance(cfg, dict):
+        accepted = _init_parameters(cls)
+        if (
+            isinstance(cfg, dict)
+            and accepted is not None
+            and set(cfg).issubset(accepted)
+        ):
             return cls.__name__, dict(cfg)
     if _init_parameters(cls) == []:
         return cls.__name__, {}
@@ -489,6 +506,7 @@ class _Geometry:
         pbc: Any,
         cutoff: float,
         kernel_periodic: bool,
+        tail_correction: bool,
         name: str,
     ) -> None:
         pos = _as_f64(positions, "positions").reshape(-1, 3)
@@ -497,6 +515,11 @@ class _Geometry:
         flags = _pbc_flags(pbc)
         if not kernel_periodic and bool(flags.any()):
             raise ValueError(f"{name} has no periodic boundaries; set pbc=False")
+        if tail_correction and not bool(flags.all()):
+            raise ValueError(
+                f"{name} with tail_correction=True requires 3D periodic "
+                "boundary conditions (pbc=True)"
+            )
         box = _kernel_box(pos, user_cell, flags, cutoff)
         user_volume = _cell_volume(user_cell)
         self.volume = user_volume if user_volume > 0.0 else _cell_volume(box)
@@ -570,8 +593,9 @@ class RgpotCalculator(Calculator):
         class of this build (``"lj"``, ``"morse"``, ``"eam_al"``, ``"sw"``,
         ...; :func:`available_kinds` lists them). Keyword arguments that
         are not ASE calculator arguments are the constructor arguments of
-        that class (``u0``, ``cutoff``, ``psi``, ``switch_width`` for LJ;
-        ``De``, ``a``, ``re``, ``cutoff``, ``switch_width`` for Morse).
+        that class (``u0``, ``cutoff``, ``psi``, ``switch_width``,
+        ``tail_correction`` for LJ; ``De``, ``a``, ``re``, ``cutoff``,
+        ``switch_width`` for Morse).
     numerical_stress:
         For a potential whose kernel writes no stress, add ``stress``
         from a central difference of the energy under six cell strains
@@ -609,6 +633,8 @@ class RgpotCalculator(Calculator):
         self._cutoff = _kernel_cutoff(pot)
         self._caps = _caps(pot)
         self._kernel_periodic = bool(self._caps.get("periodic", True))
+        cfg = pot.config() if callable(getattr(pot, "config", None)) else {}
+        self._tail_correction = _has_tail_correction(cfg)
         self._name = type(pot).__name__
         self._analytic_stress = bool(self._caps.get("stress"))
         self._per_atom = callable(getattr(pot, "evaluate_per_atom", None))
@@ -730,6 +756,7 @@ class RgpotCalculator(Calculator):
             pbc,
             self._cutoff,
             self._kernel_periodic,
+            self._tail_correction,
             self._name,
         )
 

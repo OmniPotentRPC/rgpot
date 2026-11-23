@@ -503,6 +503,15 @@ def test_unpicklable_wrapper_says_why() -> None:
         pickle.dumps(calc)
 
 
+def test_sum_potential_config_is_not_treated_as_constructor_parameters() -> None:
+    calc = RgpotCalculator(rgpot.SumPot([{"kind": "lj"}]))
+    assert "children" not in calc.parameters
+    with pytest.raises(TypeError, match="cannot pickle"):
+        pickle.dumps(calc)
+    with pytest.raises(TypeError, match="cannot pickle"):
+        copy.deepcopy(calc)
+
+
 def test_set_rebuilds_the_potential() -> None:
     atoms = argon()
     calc = rgpot_lj()

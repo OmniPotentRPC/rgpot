@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -18,6 +19,8 @@
 #include <capnp/serialize.h>
 #include <kj/io.h>
 
+#include "rgpot/LennardJones/LJClusterPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Models/MullerBrownConfig.hpp"
 #include "rgpot/XTBPot/XTBConfig.hpp"
 #include "rgpot/rpc/PotentialConfigArm.hpp"
@@ -29,6 +32,9 @@ struct Builtin {
   std::string name;    ///< Lowercased.
   std::string library; ///< Optional explicit engine library path.
   std::optional<rgpot::XTBConfig> xtb; ///< Present for the XTB config arm.
+  std::optional<rgpot::LJConfig> lj; ///< Present for the LJ config arm on "lj".
+  std::optional<rgpot::LJClusterConfig>
+      ljcluster; ///< Present for the LJ config arm on "ljcluster".
   /// Present for the Muller-Brown config arm. Empty lists keep the published
   /// defaults carried by MullerBrownConfig.
   std::optional<rgpot::MullerBrownConfig> mullerBrown;
@@ -70,14 +76,46 @@ inline Builtin read_builtin(const void *config, std::size_t config_len) {
     target.charge = source.getCharge();
     target.uhf = source.getUhf();
     out.xtb = target;
-  }
-  if (native.which() == ::PotentialConfig::MULLER_BROWN) {
+  } else if (native.which() == ::PotentialConfig::LJ) {
+    const auto source = native.getLj();
+    const double u0 = source.getU0();
+    const double psi = source.getPsi();
+    const double cutoff = source.getCutoff();
+    const bool tail_correction = source.getTailCorrection();
+    if (!std::isfinite(u0) || !std::isfinite(psi) || !std::isfinite(cutoff) ||
+        !(u0 > 0.0) || !(psi > 0.0) || !(cutoff > 0.0)) {
+      throw std::invalid_argument("BuiltinParams.config.lj: u0, psi and cutoff "
+                                  "must be finite and positive");
+    }
+    if (out.name == "ljcluster") {
+      if (tail_correction) {
+        throw std::invalid_argument(
+            "BuiltinParams.config.lj: ljcluster has free boundaries and does "
+            "not support tail_correction");
+      }
+      rgpot::LJClusterConfig target;
+      target.u0 = u0;
+      target.psi = psi;
+      target.cutoff = cutoff;
+      out.ljcluster = target;
+    } else if (out.name == "lj" || out.name.empty()) {
+      rgpot::LJConfig target;
+      target.u0 = u0;
+      target.psi = psi;
+      target.cutoff = cutoff;
+      target.tail_correction = tail_correction;
+      out.lj = target;
+    } else {
+      throw std::invalid_argument("BuiltinParams.config.lj: arm lj is only "
+                                  "valid for 'lj' or 'ljcluster', not '" +
+                                  out.name + "'");
+    }
+  } else if (native.which() == ::PotentialConfig::MULLER_BROWN) {
     const auto wire = native.getMullerBrown();
     out.mullerBrown = rgpot::mullerBrownConfigFromLists(
         wire.getAmplitude(), wire.getA(), wire.getB(), wire.getC(),
         wire.getX0(), wire.getY0());
-  } else if (native.which() != ::PotentialConfig::NONE &&
-             native.which() != ::PotentialConfig::XTB) {
+  } else if (native.which() != ::PotentialConfig::NONE) {
     throw std::invalid_argument("BuiltinParams.config arm " +
                                 rgpot::rpc::potentialConfigArm(native) +
                                 " does not match a builtin potential");

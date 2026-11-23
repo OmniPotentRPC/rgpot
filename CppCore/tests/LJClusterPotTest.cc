@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
+#include <numbers>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -16,6 +18,7 @@
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -243,4 +246,148 @@ TEST_CASE("Pair stress is cleared when the configuration has no pair",
   check(rgpot::LJPot{});
   check(rgpot::MorsePot{});
   check(rgpot::ZBLPot{});
+}
+
+namespace {
+
+constexpr double kFccBasis[4][3] = {
+    {0, 0, 0}, {0.5, 0.5, 0}, {0.5, 0, 0.5}, {0, 0.5, 0.5}};
+
+std::pair<double, double> closedFormLjTail(const std::vector<std::size_t> &counts,
+                                           double u0, double psi, double rc,
+                                           double volume) {
+  const double sig6 = std::pow(psi, 6.0);
+  const double rc3 = rc * rc * rc, rc6 = rc3 * rc3, rc9 = rc3 * rc6;
+  double etail = 0.0, ptail = 0.0;
+  for (std::size_t i = 0; i < counts.size(); ++i) {
+    for (std::size_t j = i; j < counts.size(); ++j) {
+      const double nij = static_cast<double>(counts[i] * counts[j]);
+      const double pre = (8.0 * std::numbers::pi * nij * u0 * sig6) / (9.0 * rc9);
+      const double w = (i == j) ? 1.0 : 2.0;
+      etail += w * pre * (sig6 - 3.0 * rc6);
+      ptail += w * 2.0 * pre * (2.0 * sig6 - 3.0 * rc6);
+    }
+  }
+  return {etail / volume, ptail / (volume * volume)};
+}
+
+std::pair<double, double> directFccLj(double u0, double psi, double a, double r_max) {
+  const int lim = static_cast<int>(std::ceil(r_max / a)) + 2;
+  const double r_max2 = r_max * r_max, psi2 = psi * psi;
+  double e_atom = 0.0, w_atom = 0.0;
+  for (int ix = -lim; ix <= lim; ++ix) {
+    for (int iy = -lim; iy <= lim; ++iy) {
+      for (int iz = -lim; iz <= lim; ++iz) {
+        for (const auto &s : kFccBasis) {
+          const double dx = (ix + s[0]) * a, dy = (iy + s[1]) * a, dz = (iz + s[2]) * a;
+          const double r2 = dx * dx + dy * dy + dz * dz;
+          if (r2 > 0.0 && r2 <= r_max2) {
+            const double sr6 = std::pow(psi2 / r2, 3.0);
+            e_atom += 2.0 * u0 * (sr6 * sr6 - sr6);
+            w_atom += 4.0 * u0 * (2.0 * sr6 * sr6 - sr6);
+          }
+        }
+      }
+    }
+  }
+  return {e_atom, (4.0 / (a * a * a)) * w_atom};
+}
+
+} // namespace
+
+TEST_CASE("LJPot analytic tail correction and default-off parity", "[LJPot][tail]") {
+  const rgpot::LJPot implicit_off;
+  const rgpot::LJPot explicit_off(rgpot::LJConfig{.tail_correction = false});
+  const rgpot::LJPot tail_on(rgpot::LJConfig{.tail_correction = true});
+
+  REQUIRE_FALSE(implicit_off.config().tail_correction);
+  REQUIRE(tail_on.config().tail_correction);
+  REQUIRE(implicit_off.paramsKey() == explicit_off.paramsKey());
+  REQUIRE(implicit_off.paramsKey() == rgpot::LJClusterPot{}.paramsKey());
+  REQUIRE(tail_on.paramsKey() != implicit_off.paramsKey());
+
+  const AtomMatrix cluster = nebMorseCluster();
+  const std::vector<int> cz{18, 36, 18, 54, 36, 18, 54, 18, 36, 18, 54, 36, 18};
+  const double cbox[9] = {20.0, 0.0, 0.0, 0.5, 21.0, 0.0, -0.3, 0.4, 22.0};
+  const std::size_t cn = cz.size();
+  std::vector<double> f1(3 * cn, 0.0), f2(3 * cn, 0.0), e1(cn, 0.0), e2(cn, 0.0),
+      v1(6 * cn, 0.0), v2(6 * cn, 0.0);
+  rgpot::ForceOut o1{f1.data(), 0.0, 0.0, {}, 0}, o2{f2.data(), 0.0, 0.0, {}, 0};
+  implicit_off.forcePerAtom({cn, cluster.data(), cz.data(), cbox}, &o1, {e1.data(), v1.data()});
+  explicit_off.forcePerAtom({cn, cluster.data(), cz.data(), cbox}, &o2, {e2.data(), v2.data()});
+  REQUIRE(std::memcmp(&o1.energy, &o2.energy, sizeof(double)) == 0);
+  REQUIRE(std::memcmp(o1.stress, o2.stress, sizeof(o1.stress)) == 0);
+  REQUIRE(std::memcmp(f1.data(), f2.data(), 3 * cn * sizeof(double)) == 0);
+  REQUIRE(std::memcmp(e1.data(), e2.data(), cn * sizeof(double)) == 0);
+  REQUIRE(std::memcmp(v1.data(), v2.data(), 6 * cn * sizeof(double)) == 0);
+
+  const double u0 = 0.0104, psi = 3.40, rc = 8.5;
+  const rgpot::LJPot pot_tail(
+      rgpot::LJConfig{.u0 = u0, .cutoff = rc, .psi = psi, .tail_correction = true});
+
+  SECTION("closed form (rho, rc) and multi-species composition") {
+    const AtomMatrix pos{{0.0, 0.0, 0.0},   {10.5, 0.0, 0.0},  {0.0, 11.0, 0.0},
+                         {0.0, 0.0, 11.5},  {10.5, 11.0, 0.0}, {10.5, 11.0, 11.5}};
+    const std::vector<int> z{18, 36, 36, 54, 54, 54};
+    const double box[9] = {30.0, 0.0, 0.0, 1.2, 32.0, 0.0, -0.8, 0.9, 34.0};
+    const double volume = rgpot::cellVolume(box);
+    const double rho = static_cast<double>(z.size()) / volume;
+    std::vector<double> forces(3 * z.size(), 0.0);
+    rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
+    pot_tail.forceImpl({z.size(), pos.data(), z.data(), box}, &out);
+
+    const auto [want_e, want_p] = closedFormLjTail({1, 2, 3}, u0, psi, rc, volume);
+    const double sr3 = std::pow(psi / rc, 3.0), sr9 = sr3 * sr3 * sr3;
+    const double closed_e =
+        (8.0 * std::numbers::pi * static_cast<double>(z.size()) * rho * u0 *
+         std::pow(psi, 3.0) / 9.0) * (sr9 - 3.0 * sr3);
+    const double closed_p =
+        (16.0 * std::numbers::pi * rho * rho * u0 * std::pow(psi, 3.0) / 9.0) *
+        (2.0 * sr9 - 3.0 * sr3);
+
+    REQUIRE_THAT(want_e, WithinRel(closed_e, 1e-14));
+    REQUIRE_THAT(want_p, WithinRel(closed_p, 1e-14));
+    REQUIRE_THAT(out.energy, WithinRel(want_e, 1e-14));
+    for (int k : {0, 4, 8}) {
+      REQUIRE_THAT(-out.stress[k], WithinRel(want_p, 1e-14));
+    }
+    for (int k : {1, 2, 3, 5, 6, 7}) {
+      REQUIRE(out.stress[k] == 0.0);
+    }
+
+    const double slab[9] = {30.0, 0.0, 0.0, 0.0, 32.0, 0.0, 0.0, 0.0, 0.0};
+    rgpot::ForceOut out_slab{forces.data(), 0.0, 0.0, {}, 0};
+    pot_tail.forceImpl({z.size(), pos.data(), z.data(), slab}, &out_slab);
+    REQUIRE(out_slab.energy == 0.0);
+    REQUIRE(out_slab.has_stress == 0);
+  }
+
+  SECTION("direct fcc sum to a large cutoff") {
+    const double a = std::cbrt(4.0), rc_fcc = 3.5, side = 8.0 * a;
+    const double box[9] = {side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side};
+    std::vector<double> pos;
+    std::vector<int> z;
+    for (int ix = 0; ix < 8; ++ix) {
+      for (int iy = 0; iy < 8; ++iy) {
+        for (int iz = 0; iz < 8; ++iz) {
+          for (const auto &s : kFccBasis) {
+            pos.push_back((ix + s[0]) * a);
+            pos.push_back((iy + s[1]) * a);
+            pos.push_back((iz + s[2]) * a);
+            z.push_back(18);
+          }
+        }
+      }
+    }
+    const std::size_t n = z.size();
+    const auto [e_direct, p_direct] = directFccLj(1.0, 1.0, a, 25.0);
+    const rgpot::LJPot fcc_tail(
+        rgpot::LJConfig{.u0 = 1.0, .cutoff = rc_fcc, .psi = 1.0, .tail_correction = true});
+    std::vector<double> forces(3 * n, 0.0);
+    rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
+    fcc_tail.forceImpl({n, pos.data(), z.data(), box}, &out);
+    REQUIRE_THAT(out.energy / static_cast<double>(n), WithinRel(e_direct, 1e-3));
+    REQUIRE_THAT(-(out.stress[0] + out.stress[4] + out.stress[8]) / 3.0,
+                 WithinRel(p_direct, 1e-3));
+  }
 }

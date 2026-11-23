@@ -133,6 +133,19 @@ def test_lj_periodic_non_orthogonal(rgpot_calc):
     assert_close(got, want, scale_f, scale_s, rtol=1e-7)
 
 
+def test_lj_tail_correction_spec(rgpot_calc):
+    atoms = lj_bulk()
+    want = direct(atoms, rgpot_calc("lj", **AR, tail_correction=True), stress=True)
+    got = via_socket(
+        atoms,
+        ["--pot", f"{LJ_SPEC} tail_correction true", "--species", f"Ar*{len(atoms)}"],
+        stress=True,
+    )
+    scale_f = float(np.abs(want[1]).max())
+    scale_s = float(np.abs(want[2]).max())
+    assert_close(got, want, scale_f, scale_s, rtol=1e-7)
+
+
 def free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind(("127.0.0.1", 0))
