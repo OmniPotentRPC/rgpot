@@ -163,7 +163,7 @@ is not the hash.
 | 3.5.1   | 1, 0, 1         | 4                    |
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
-| next    | 1, 10, 1        | 9                    |
+| next    | 1, 11, 1        | 9                    |
 
 3.6.0 raised the minor for =rgpot_eindir_abi_compatible=; a caller built against
 minor 0 still matches it.
@@ -201,6 +201,9 @@ A build without the Cargo feature =mdi= answers the call with =RGPOT_RPC_ERROR=
 and a message that names the feature.
 It raises the minor to 10 for =rgpot_rpc_client_select_orbitals=, which is an
 additive export behind =RGPOT_HAS_RPC=, so the layout revision stays at 1.
+It raises the minor to 11 for the 21 =rgpot_md_session_*= exports.
+They are additive and present in every build of =librgpot=, so the layout
+revision stays at 1 and a library that reports minor 11 has them.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.
@@ -230,9 +233,9 @@ A program linked against soversion 8 does not load =librgpot.so.9=.
 
 ** Session and optional export groups
 
-The 21 =rgpot_md_session_*= entry points are pinned against
-=scripts/abi_baseline_md_session.txt= separately from the 51 and 105
-shared-library counts above.
+The 21
+=rgpot_md_session_*= entry points are pinned against =scripts/abi_baseline_md_session.txt=
+separately from the 51 and 105 shared-library counts above.
 The combined counts are therefore 72 for the core-only link and 126 for the
 default whole-archive bundle.
 An RPC archive adds seven optional public names from
