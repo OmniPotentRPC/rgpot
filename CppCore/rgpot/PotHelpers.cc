@@ -119,4 +119,22 @@ void guardForceCall(const ForceInput &in, const ForceOut *out,
   }
 }
 
+int rejectInputCall(const ForceInput &in, bool needsCell) {
+  return rejectInputCall(in, needsCell, true);
+}
+
+int rejectForceCall(const ForceInput &in, const ForceOut *out,
+                    bool needsCell) {
+  return rejectForceCall(in, out, needsCell, true);
+}
+
+void guardInputCall(const ForceInput &in, bool needsCell) {
+  guardInputCall(in, needsCell, true);
+}
+
+void guardForceCall(const ForceInput &in, const ForceOut *out,
+                    bool needsCell) {
+  guardForceCall(in, out, needsCell, true);
+}
+
 } // namespace rgpot
