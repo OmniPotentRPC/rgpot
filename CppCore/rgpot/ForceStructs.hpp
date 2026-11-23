@@ -22,6 +22,9 @@ typedef struct {
   const double *pos;   //!< Pointer to the flat array of atomic positions.
   const int *atmnrs;   //!< Pointer to the array of atomic numbers.
   const double *box;   //!< Pointer to the 3x3 simulation cell matrix.
+  /// Opt in to Cauchy stress. False keeps the force-only path and requires
+  /// ForceOut::has_stress to remain zero.
+  bool compute_stress = false;
 } ForceInput;
 
 /**

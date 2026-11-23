@@ -420,6 +420,7 @@ public:
     const size_t total = n * copies;
     std::vector<double> forces(3 * total, 0.0);
     ForceInput in{total, xyz.data(), z.data(), box};
+    in.compute_stress = true;
     ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
     m_evaluate(in, &out);
     Evaluated res;

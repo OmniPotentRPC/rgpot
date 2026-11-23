@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <iostream>
 #include <random>
 #include <vector>
 
@@ -447,7 +448,9 @@ std::array<double, 9> checkStressByStrain(const std::vector<double> &pos,
   REQUIRE(pot.caps().stress);
   std::vector<double> forces(pos.size());
   rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
-  pot.forceImpl({n, pos.data(), types.data(), box.data()}, &out);
+  rgpot::ForceInput in{n, pos.data(), types.data(), box.data()};
+  in.compute_stress = true;
+  pot.forceImpl(in, &out);
   REQUIRE(out.has_stress == 1);
   double energy = 0.0;
   std::vector<double> grad(pos.size());
@@ -458,14 +461,23 @@ std::array<double, 9> checkStressByStrain(const std::vector<double> &pos,
     REQUIRE(forces[i] == -grad[i]);
   }
   std::array<double, 9> fd{};
+  double max_error = 0.0;
+  double max_stress = 0.0;
   for (int row = 0; row < 3; ++row) {
     for (int col = 0; col < 3; ++col) {
       fd[3 * row + col] = strainDifference(pos, types, box, row, col);
       CAPTURE(row, col, fd[3 * row + col]);
+      max_error =
+          std::max(max_error,
+                   std::abs(out.stress[3 * row + col] - fd[3 * row + col]));
+      max_stress =
+          std::max(max_stress, std::abs(out.stress[3 * row + col]));
       REQUIRE_THAT(out.stress[3 * row + col],
                    WithinAbs(fd[3 * row + col], kStressTol));
     }
   }
+  std::cout << "STRESS_ERROR Tersoff "
+            << max_error / std::max(max_stress, 1e-8) << '\n';
   return fd;
 }
 
@@ -540,9 +552,11 @@ TEST_CASE("Tersoff 1989 stress with a held list and without a pair",
   std::vector<double> f1(pos.size());
   rgpot::ForceOut o0{f0.data(), 0.0, 0.0, {}, 0};
   rgpot::ForceOut o1{f1.data(), 0.0, 0.0, {}, 0};
-  fresh.forceImpl({types.size(), pos.data(), types.data(), box}, &o0);
-  held.forceImpl({types.size(), pos.data(), types.data(), box}, &o1);
-  held.forceImpl({types.size(), pos.data(), types.data(), box}, &o1);
+  rgpot::ForceInput in{types.size(), pos.data(), types.data(), box};
+  in.compute_stress = true;
+  fresh.forceImpl(in, &o0);
+  held.forceImpl(in, &o1);
+  held.forceImpl(in, &o1);
   REQUIRE(o1.has_stress == 1);
   REQUIRE(std::memcmp(o0.stress, o1.stress, sizeof(o0.stress)) == 0);
 
@@ -551,7 +565,9 @@ TEST_CASE("Tersoff 1989 stress with a held list and without a pair",
   const double cell[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
   double force[3] = {};
   rgpot::ForceOut out{force, 1.0, 0.0, {1, 2, 3, 4, 5, 6, 7, 8, 9}, 0};
-  fresh.forceImpl({1, position, &type, cell}, &out);
+  rgpot::ForceInput one{1, position, &type, cell};
+  one.compute_stress = true;
+  fresh.forceImpl(one, &out);
   REQUIRE(out.has_stress == 1);
   REQUIRE(out.energy == 0.0);
   for (double component : out.stress) {

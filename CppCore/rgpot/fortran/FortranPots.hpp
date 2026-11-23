@@ -98,8 +98,7 @@ public:
   /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
   /// eV/Angstrom^3, the convention of stress.hpp.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
-  /// Forces and energy only. eOn's engine calls arrive here and discard
-  /// the stress, so the kernel skips the virial and has_stress stays 0.
+  /// Batched forces, energy and optional stress, with the same opt-in flag.
   void forceBatchImpl(const ForceBatch &batch) const override;
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::PerInstance,
@@ -114,14 +113,19 @@ private:
 /// Tersoff silicon (PotType::TersoffSi). All-silicon calls, and a null
 /// species pointer, use the Fortran gather. Any other atomic number
 /// uses the 1989 silicon-carbon kernel. There is no second PotType.
-/// No call writes a stress: has_stress is 0 and the tensor is zero on
-/// both paths until the gather computes one.
+/// A stress request uses the C++ Si-C kernel because the Fortran gather has
+/// no virial output. Force-only all-silicon calls retain the gather path.
+/// A stress request with a null species pointer throws
+/// std::invalid_argument, which the C ABI stress path reports as
+/// RGPOT_INVALID_PARAMETER.
 class TersoffPot : public Potential<TersoffPot> {
 public:
   TersoffPot() : Potential(PotType::TersoffSi) {}
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .perImageInstances = true};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .perImageInstances = true,
+            .stress = true};
   }
 
   /// Held list for the calls that reach the 1989 kernel, as

@@ -183,7 +183,7 @@ void SumPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     }
   }
   components_ = std::move(staged);
-  if (evaluated > 0 && all_stress) {
+  if (in.compute_stress && evaluated > 0 && all_stress) {
     out->has_stress = 1;
   } else {
     std::fill(out->stress, out->stress + 9, 0.0);

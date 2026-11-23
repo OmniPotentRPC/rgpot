@@ -11,6 +11,7 @@
 */
 #include "EAM.h"
 #include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/stress.hpp"
 #include "Parameters.h"
 #include "StreamSpline.hpp"
 
@@ -702,8 +703,69 @@ void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
   }
   evaluateStoredParallel(N, atomicNrs, F, U);
 }
+void EAM::virial(long N, const int *atomicNrs, double strain[6]) {
+  if (!neighbours_.streaming() && threads_used_ == 1) {
+    dF_.resize(static_cast<std::size_t>(N));
+    const auto &off = neighbours_.offsets();
+    const auto &nbr = neighbours_.neighbours();
+    for (long i = 0; i < N; ++i) {
+      const element_parameters epar = get_element_parameters(atomicNrs[i]);
+      const double cutoff2 = epar.r_cut * epar.r_cut;
+      double density = 0.0;
+      for (std::int32_t p = off[static_cast<std::size_t>(i)];
+           p < off[static_cast<std::size_t>(i) + 1]; ++p) {
+        double dx = 0.0;
+        double dy = 0.0;
+        double dz = 0.0;
+        double r2 = 0.0;
+        geometry(i, nbr[static_cast<std::size_t>(p)], dx, dy, dz, r2);
+        if (!(r2 > 0.0) || r2 > cutoff2) {
+          continue;
+        }
+        const double r = std::sqrt(r2);
+        const double r6 = r2 * r2 * r2;
+        density +=
+            r6 * (std::exp(-epar.beta1 * r) +
+                  512.0 * std::exp(-2.0 * epar.beta2 * r));
+      }
+      dF_[static_cast<std::size_t>(i)] =
+          embedding_force(epar.func_coeff, density);
+    }
+  }
+  std::vector<const rgpot::eam::ElementSpline *> kind(
+      static_cast<std::size_t>(N));
+  for (long i = 0; i < N; ++i) {
+    kind[static_cast<std::size_t>(i)] = &splineFor(atomicNrs[i]);
+  }
+  neighbours_.forHalf(
+      0, N,
+      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+          double r2) {
+        if (!(r2 > 0.0)) {
+          return;
+        }
+        const auto ui = static_cast<std::size_t>(i);
+        const auto uj = static_cast<std::size_t>(j);
+        const auto *si = kind[ui];
+        const auto *sj = kind[uj];
+        const double r = std::sqrt(r2);
+        double scale = 0.0;
+        if (r2 <= si->cutoff2) {
+          scale += si->pairForce(r);
+          scale -= dF_[ui] * si->densityForce(r);
+        }
+        if (r2 <= sj->cutoff2) {
+          scale -= dF_[uj] * sj->densityForce(r);
+        }
+        if (scale != 0.0) {
+          rgpot::accumulatePairStrain(strain, scale, dx, dy, dz);
+        }
+      });
+}
+
 void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
-                double *U, double *variance, const double *fullbox) {
+                double *U, double *variance, const double *fullbox,
+                double *strain) {
   (void)variance;
   const double box[3] = {fullbox[0], fullbox[4], fullbox[8]};
   for (int axis = 0; axis < 3; ++axis) {
@@ -725,6 +787,9 @@ void EAM::force(long N, const double *R, const int *atomicNrs, double *F,
   prepare(N, R, box);
   buildList(N);
   evaluate(N, atomicNrs, F, U);
+  if (strain != nullptr) {
+    virial(N, atomicNrs, strain);
+  }
 }
 
 double EAM::embedding_function(const double *func_coeff, double rho) {

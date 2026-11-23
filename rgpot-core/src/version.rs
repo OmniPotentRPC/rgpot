@@ -182,22 +182,10 @@ mod tests {
         );
     }
 
-    /// `rgpot_potential_new_eam_table` is additive, so the minor moves to 6
-    /// after the engine and RPC Hessian-vector exports, and a caller built
-    /// against any earlier minor still matches.
-    #[test]
-    fn the_minor_counts_the_eam_table_constructor() {
-        assert_eq!(RGPOT_ABI_VERSION_MAJOR, 1);
-        assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, 6, 1)) }, 1);
-        for earlier in 0..RGPOT_ABI_VERSION_MINOR {
-            assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, earlier, 1)) }, 1);
-        }
-    }
-
     /// The dense Hessian, the dual-number callbacks, the resolved product,
     /// and the derivative capabilities and counts are additive, and the two
     /// new HVP scheme values extend an enum the product takes as an `int`,
-    /// so the minor moves to 8 and every earlier caller still matches.
+    /// so minor 8 still serves every earlier caller.
     #[test]
     fn the_minor_counts_the_hessian_exports() {
         assert_eq!(RGPOT_ABI_VERSION_MAJOR, 1);

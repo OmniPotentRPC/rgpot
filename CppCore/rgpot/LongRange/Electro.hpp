@@ -29,8 +29,9 @@ struct CoulombConfig {
   double short_cutoff = 4.0;
   double skin = 1.0;
   bool periodic = true;
-  // The benchmark asks for energy and force. Stress is optional.
-  bool stress = true;
+  // Compatibility switch for direct evaluate_electrostatics callers.
+  // CoulombPot also honors the shared ForceInput::compute_stress request.
+  bool stress = false;
 };
 
 class ChargeSource {
@@ -120,7 +121,7 @@ public:
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::PerInstance,
             .periodic = cfg_.periodic && cfg_.method != CoulombMethod::DSF,
-            .stress = true};
+            .stress = response_ == nullptr};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override { return params_; }

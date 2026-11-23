@@ -57,12 +57,12 @@ class LJPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
-    def evaluate_per_atom(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate_per_atom(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
         evaluate() plus energies, shape (N,), eV, summing to energy, and virials, shape (N, 6), eV, Voigt xx yy zz yz xz xy, summing to -volume * stress. A pair term goes half to each atom. The kernel runs with the interpreter released.
         """
@@ -128,12 +128,12 @@ class LJClusterPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
-    def evaluate_per_atom(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate_per_atom(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
         evaluate() plus energies, shape (N,), eV, summing to energy, and virials, shape (N, 6), eV, Voigt xx yy zz yz xz xy, summing to -volume * stress. A pair term goes half to each atom. The kernel runs with the interpreter released.
         """
@@ -199,12 +199,12 @@ class MorsePot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
-    def evaluate_per_atom(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate_per_atom(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
         evaluate() plus energies, shape (N,), eV, summing to energy, and virials, shape (N, 6), eV, Voigt xx yy zz yz xz xy, summing to -volume * stress. A pair term goes half to each atom. The kernel runs with the interpreter released.
         """
@@ -270,9 +270,9 @@ class D2Pot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -336,9 +336,9 @@ class D2CpmdPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -404,12 +404,12 @@ class EAMTablePot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
-    def evaluate_per_atom(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate_per_atom(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
         evaluate() plus energies, shape (N,), eV, summing to energy, and virials, shape (N, 6), eV, Voigt xx yy zz yz xz xy, summing to -volume * stress. A pair term goes half to each atom. The kernel runs with the interpreter released.
         """
@@ -536,9 +536,9 @@ class SWPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -597,9 +597,9 @@ class EDIPPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -658,9 +658,9 @@ class LenoskyPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -719,9 +719,9 @@ class TersoffPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -780,9 +780,9 @@ class EAMAlPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -841,9 +841,9 @@ class FeHePot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -902,9 +902,9 @@ class CuH2Pot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -963,9 +963,9 @@ class WaterHPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -1030,9 +1030,9 @@ class StillingerWeberSi:
 
     def caps(self) -> dict: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and the Cauchy stress, shape (3, 3), in eV/Angstrom^3. The kernel runs detached.
+        Energy, forces, variance, and, when compute_stress is true, the Cauchy stress, shape (3, 3), in eV/Angstrom^3. The kernel runs detached.
         """
 
     def energy_gradient(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -1053,9 +1053,9 @@ class TersoffSiC:
 
     def caps(self) -> dict: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and the Cauchy stress, shape (3, 3), in eV/Angstrom^3. The kernel runs detached.
+        Energy, forces, variance, and, when compute_stress is true, the Cauchy stress, shape (3, 3), in eV/Angstrom^3. The kernel runs detached.
         """
 
     def energy_gradient(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
@@ -1070,9 +1070,9 @@ class D3Pot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -1136,9 +1136,9 @@ class D4Pot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -1211,9 +1211,9 @@ class SumPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
@@ -1286,9 +1286,9 @@ class ExprPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:

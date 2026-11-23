@@ -62,7 +62,7 @@ public:
   [[nodiscard]] PotCaps caps() const noexcept override {
     // forceImpl keeps nothing between calls, so one instance may serve
     // concurrent callers.
-    return {.periodic = m_periodic, .stress = m_stress};
+    return {.periodic = m_periodic, .stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

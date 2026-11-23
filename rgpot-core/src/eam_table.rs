@@ -50,6 +50,7 @@ use std::path::Path;
 
 use crate::potential::PotentialImpl;
 use crate::status::rgpot_status_t;
+use crate::stress::StressAccumulator;
 use crate::tensor::create_owned_f64_tensor;
 
 /// Format code of the C ABI: choose from the suffix of the file name.
@@ -704,6 +705,17 @@ impl EamTablePotential {
         atomic_numbers: &[i32],
         cell: &[f64; 9],
     ) -> Result<EamEvaluation, EamTableError> {
+        self.evaluate(positions, atomic_numbers, cell, false)
+            .map(|(answer, _)| answer)
+    }
+
+    fn evaluate(
+        &self,
+        positions: &[f64],
+        atomic_numbers: &[i32],
+        cell: &[f64; 9],
+        compute_stress: bool,
+    ) -> Result<(EamEvaluation, Option<[f64; 9]>), EamTableError> {
         let n = atomic_numbers.len();
         if positions.len() != 3 * n {
             return geometry(format!(
@@ -744,6 +756,7 @@ impl EamTablePotential {
         }
 
         let mut forces = vec![0.0; 3 * n];
+        let mut stress = StressAccumulator::new(compute_stress && self.periodic);
         for pair in &pairs {
             let (at_i, at_j, z2) = self.couple(element[pair.i], element[pair.j]);
             let at = place(pair.r, 1.0 / self.table.dr, self.table.nr);
@@ -759,22 +772,25 @@ impl EamTablePotential {
                 forces[3 * pair.i + k] += fscale * pair.d[k];
                 forces[3 * pair.j + k] -= fscale * pair.d[k];
             }
+            stress.pair_force(fscale, pair.d);
         }
 
         if !energy.is_finite() || forces.iter().any(|f| !f.is_finite()) {
             return Err(EamTableError::NonFinite);
         }
-        Ok(EamEvaluation { energy, forces })
+        Ok((EamEvaluation { energy, forces }, stress.publish(cell)))
     }
 
     /// The potential as a [`PotentialImpl`], the handle the rest of the crate
     /// evaluates through. The handle owns the potential.
     pub fn into_potential(self) -> PotentialImpl {
-        PotentialImpl::new(
+        let potential = PotentialImpl::new(
             eam_table_callback,
             Box::into_raw(Box::new(self)).cast::<c_void>(),
             Some(drop_eam_table),
-        )
+        );
+        potential.set_stress_callback(Some(eam_table_stress_callback));
+        potential
     }
 }
 
@@ -826,6 +842,28 @@ pub(crate) unsafe extern "C" fn eam_table_callback(
     input: *const crate::types::rgpot_force_input_t,
     output: *mut crate::types::rgpot_force_out_t,
 ) -> rgpot_status_t {
+    unsafe { eam_table_run(user_data, input, output, std::ptr::null_mut()) }
+}
+
+/// The `PotentialStressCallback` of a handle made from an
+/// [`EamTablePotential`]. A cluster has no cell volume, so its block keeps
+/// `has_stress` at zero.
+pub(crate) unsafe extern "C" fn eam_table_stress_callback(
+    user_data: *mut c_void,
+    input: *const crate::types::rgpot_force_input_t,
+    output: *mut crate::types::rgpot_force_out_t,
+    stress: *mut crate::types::rgpot_stress_out_t,
+) -> rgpot_status_t {
+    unsafe { eam_table_run(user_data, input, output, stress) }
+}
+
+/// Evaluate once. A null `stress_out` is the force-only path.
+unsafe fn eam_table_run(
+    user_data: *mut c_void,
+    input: *const crate::types::rgpot_force_input_t,
+    output: *mut crate::types::rgpot_force_out_t,
+    stress_out: *mut crate::types::rgpot_stress_out_t,
+) -> rgpot_status_t {
     use crate::status::{catch_unwind, set_last_error};
     use crate::tensor::{copy_f64_tensor, copy_i32_tensor};
 
@@ -856,13 +894,17 @@ pub(crate) unsafe extern "C" fn eam_table_callback(
         };
         let mut matrix = [0.0; 9];
         matrix.copy_from_slice(&cell);
-        match potential.force(&positions, &numbers, &matrix) {
-            Ok(answer) => {
+        match potential.evaluate(&positions, &numbers, &matrix, !stress_out.is_null()) {
+            Ok((answer, stress)) => {
                 let forces = create_owned_f64_tensor(answer.forces, vec![n_atoms as i64, 3]);
                 unsafe {
                     (*output).forces = forces;
                     (*output).energy = answer.energy;
                     (*output).variance = 0.0;
+                    if let (Some(stress), false) = (stress, stress_out.is_null()) {
+                        (*stress_out).stress = stress;
+                        (*stress_out).has_stress = 1;
+                    }
                 }
                 rgpot_status_t::RGPOT_SUCCESS
             }

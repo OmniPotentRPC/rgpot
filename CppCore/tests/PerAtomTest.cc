@@ -79,7 +79,8 @@ template <typename P> Result run(const P &pot, const Box &b, bool per_atom) {
   Result r;
   r.forces.assign(3 * n, 0.0);
   r.out.F = r.forces.data();
-  const rgpot::ForceInput in{n, b.pos.data(), b.z.data(), b.cell};
+  rgpot::ForceInput in{n, b.pos.data(), b.z.data(), b.cell};
+  in.compute_stress = true;
   if (per_atom) {
     r.energy.assign(n, 1.0);
     r.virial.assign(6 * n, 1.0);

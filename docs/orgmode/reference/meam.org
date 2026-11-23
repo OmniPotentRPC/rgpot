@@ -96,8 +96,9 @@ not positive throw =std::invalid_argument= with the file and line number.
 
 ** Calls
 
-=MEAMPot::forceImpl= writes the energy, the forces and, when =stress= is set and
-the cell volume is positive, the Cauchy stress of =stress.hpp=.
+=MEAMPot::forceImpl= writes the energy, the forces and, when
+=ForceInput::compute_stress= is true or the legacy =stress= flag is set and the
+cell volume is positive, the Cauchy stress of =stress.hpp=.
 The convention is that of =LJPot=: the stress is dE/d(epsilon) / V for the
 strain that sends every position and every cell row r to r (I + epsilon), in
 eV/Angstrom^3.
@@ -118,7 +119,7 @@ looser below 2, and diverges at =Cmax= = 1.
 With =periodic= false the box is ignored and the atoms are a cluster.
 
 The potential keeps nothing between calls.
-=caps()= reports the periodic and stress flags and one instance serves
+=caps()= reports the periodic flag and =stress= as true, and one instance serves
 concurrent callers.
 The cutoff is =MEAMPot::cutoff()=, which is rc.
 =paramsKey()= hashes every number that decides the model, so two instances with

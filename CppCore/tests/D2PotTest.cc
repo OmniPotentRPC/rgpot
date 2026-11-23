@@ -105,10 +105,12 @@ struct Result {
 
 template <typename Pot>
 Result run(Pot &&pot, const std::vector<int> &z,
-           const std::vector<double> &pos, const std::array<double, 9> &box) {
+           const std::vector<double> &pos, const std::array<double, 9> &box,
+           bool compute_stress = true) {
   Result r;
   r.forces.assign(pos.size(), 0.0);
-  const rgpot::ForceInput in{z.size(), pos.data(), z.data(), box.data()};
+  rgpot::ForceInput in{z.size(), pos.data(), z.data(), box.data()};
+  in.compute_stress = compute_stress;
   rgpot::ForceOut out{};
   out.F = r.forces.data();
   pot.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
@@ -403,7 +405,8 @@ TEST_CASE("D2 of a molecule needs no cell", "[d2]") {
   auto run_ptr = [&](rgpot::D2Pot &p, const double *box) {
     Result r;
     r.forces.assign(ref.pos.size(), 0.0);
-    const rgpot::ForceInput in{ref.z.size(), ref.pos.data(), ref.z.data(), box};
+    rgpot::ForceInput in{ref.z.size(), ref.pos.data(), ref.z.data(), box};
+    in.compute_stress = true;
     rgpot::ForceOut out{};
     out.F = r.forces.data();
     p.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
@@ -445,6 +448,20 @@ TEST_CASE("D2 of a molecule needs no cell", "[d2]") {
   }
   REQUIRE(rocksdb::DestroyDB(db_path, rocksdb::Options()).ok());
 #endif
+}
+
+TEST_CASE("a force-only D2 call reports no stress and the same forces", "[d2][stress]") {
+  const Reference ref = load("water_box_sheared");
+  rgpot::D2Pot d2;
+  const Result d2_stressed = run(d2, ref.z, ref.pos, ref.box);
+  const Result d2_plain = run(d2, ref.z, ref.pos, ref.box, false);
+  REQUIRE(d2_stressed.has_stress);
+  REQUIRE_FALSE(d2_plain.has_stress);
+  REQUIRE(d2_plain.energy == d2_stressed.energy);
+  REQUIRE(d2_plain.forces == d2_stressed.forces);
+  for (int k = 0; k < 9; ++k) {
+    REQUIRE(d2_plain.stress[k] == 0.0);
+  }
 }
 
 TEST_CASE("a composite with D2 at weight -1 cancels a D2-only run", "[d2][composite]") {

@@ -62,7 +62,9 @@ Eval fresh(const std::vector<double> &xyz, const std::vector<int> &z, const doub
   Eval e;
   e.forces.assign(xyz.size(), 0.0);
   rgpot::ForceOut out{e.forces.data(), 0.0, 0.0, {}, 0};
-  pot.forceImpl({z.size(), xyz.data(), z.data(), box}, &out);
+  rgpot::ForceInput in{z.size(), xyz.data(), z.data(), box};
+  in.compute_stress = true;
+  pot.forceImpl(in, &out);
   e.status = 0;
   e.energy = out.energy;
   e.has_stress = out.has_stress;

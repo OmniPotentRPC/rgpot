@@ -84,7 +84,8 @@ public:
 
   // Move-only
   InputSpec(InputSpec &&other) noexcept
-      : n_atoms_(other.n_atoms_), input_(other.input_) {
+      : n_atoms_(other.n_atoms_), input_(other.input_),
+        compute_stress_(other.compute_stress_) {
     other.input_.positions = nullptr;
     other.input_.atomic_numbers = nullptr;
     other.input_.box_matrix = nullptr;
@@ -94,6 +95,7 @@ public:
       rgpot_force_input_free(&input_);
       n_atoms_ = other.n_atoms_;
       input_ = other.input_;
+      compute_stress_ = other.compute_stress_;
       other.input_.positions = nullptr;
       other.input_.atomic_numbers = nullptr;
       other.input_.box_matrix = nullptr;
@@ -115,9 +117,25 @@ public:
    */
   size_t n_atoms() const { return n_atoms_; }
 
+  /**
+   * @brief Set whether the calculation should compute Cauchy stress.
+   *
+   * The request is not part of the C input struct, which keeps its ABI
+   * minor 6 layout. @c PotentialHandle::calculate() reads it and picks the
+   * stress entry point.
+   */
+  InputSpec &with_stress(bool compute = true) noexcept {
+    compute_stress_ = compute;
+    return *this;
+  }
+
+  /// Whether this input requests Cauchy stress.
+  bool computes_stress() const noexcept { return compute_stress_; }
+
 private:
   size_t n_atoms_;
   rgpot_force_input_t input_;
+  bool compute_stress_ = false;
 };
 
 /**
@@ -138,7 +156,8 @@ public:
   /**
    * @brief Create a zeroed result buffer for a calculation.
    */
-  CalcResult() : output_(rgpot_force_out_create()) {}
+  CalcResult()
+      : output_(rgpot_force_out_create()), stress_(rgpot_stress_out_create()) {}
 
   ~CalcResult() {
     if (output_.forces) {
@@ -147,7 +166,8 @@ public:
   }
 
   // Move-only
-  CalcResult(CalcResult &&other) noexcept : output_(other.output_) {
+  CalcResult(CalcResult &&other) noexcept
+      : output_(other.output_), stress_(other.stress_) {
     other.output_.forces = nullptr;
   }
   CalcResult &operator=(CalcResult &&other) noexcept {
@@ -156,6 +176,7 @@ public:
         rgpot_tensor_free(output_.forces);
       }
       output_ = other.output_;
+      stress_ = other.stress_;
       other.output_.forces = nullptr;
     }
     return *this;
@@ -181,6 +202,15 @@ public:
    * @return Variance (0.0 when not applicable).
    */
   double variance() const { return output_.variance; }
+
+  /// The stress block, written only by the stress entry point.
+  rgpot_stress_out_t &stress_struct() { return stress_; }
+
+  /// True only when every stress component was computed.
+  bool has_stress() const noexcept { return stress_.has_stress != 0; }
+
+  /// Row-major Cauchy stress in eV/Angstrom^3.
+  const double *stress_data() const noexcept { return stress_.stress; }
 
   /**
    * @brief Returns a raw pointer to the forces data (CPU only).
@@ -224,6 +254,7 @@ public:
 
 private:
   rgpot_force_out_t output_;
+  rgpot_stress_out_t stress_;
 };
 
 } // namespace rgpot

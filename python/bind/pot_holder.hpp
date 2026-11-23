@@ -236,7 +236,7 @@ inline std::array<double, 9> flat_box(const Geom &g) {
 
 /// forceImpl while the caller is already detached (F4).
 template <typename Pot>
-FullResult run_force(Pot &pot, const Geom &g) {
+FullResult run_force(Pot &pot, const Geom &g, bool compute_stress = false) {
   AtomMatrix forces = AtomMatrix::Zero(g.pos.rows(), 3);
   const std::array<double, 9> flat = flat_box(g);
   ForceOut fo{.F = forces.data(),
@@ -247,7 +247,8 @@ FullResult run_force(Pot &pot, const Geom &g) {
   ForceInput in{.nAtoms = g.pos.rows(),
                 .pos = g.pos.data(),
                 .atmnrs = g.types.data(),
-                .box = flat.data()};
+                .box = flat.data(),
+                .compute_stress = compute_stress};
   guardForceCall(in, &fo, kernelNeedsCell(pot));
   pot.forceImpl(in, &fo);
   if (!std::isfinite(fo.energy)) {
@@ -270,7 +271,8 @@ struct PerAtomResult {
 
 /// forcePerAtom while the caller is already detached (F4).
 template <PerAtomPotential Pot>
-PerAtomResult run_force_per_atom(Pot &pot, const Geom &g) {
+PerAtomResult run_force_per_atom(Pot &pot, const Geom &g,
+                                 bool compute_stress = false) {
   const auto n = static_cast<size_t>(g.pos.rows());
   PerAtomResult result;
   result.energies.assign(n, 0.0);
@@ -285,7 +287,8 @@ PerAtomResult run_force_per_atom(Pot &pot, const Geom &g) {
   ForceInput in{.nAtoms = g.pos.rows(),
                 .pos = g.pos.data(),
                 .atmnrs = g.types.data(),
-                .box = flat.data()};
+                .box = flat.data(),
+                .compute_stress = compute_stress};
   invokeForcePerAtom(pot, in, &fo,
                      PerAtomOut{result.energies.data(), result.virials.data()});
   if (!std::isfinite(fo.energy)) {
@@ -558,24 +561,27 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
   cls.def(
       "evaluate",
       [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
-         const F64 &box) {
+         const F64 &box, bool compute_stress) {
         Geom geom = read_geom(positions, atom_types, box);
-        FullResult result =
-            run_detached([&] { return run_force(self.slot(), geom); });
+        FullResult result = run_detached(
+            [&] { return run_force(self.slot(), geom, compute_stress); });
         return result_dict(result);
       },
       nb::arg("positions").noconvert(), nb::arg("atom_types"),
-      nb::arg("box").noconvert(),
-      "Energy, forces, variance, and stress when the kernel writes it. "
-      "The kernel runs with the interpreter released.");
+      nb::arg("box").noconvert(), nb::arg("compute_stress") = false,
+      "Energy, forces, variance, and the Cauchy stress when compute_stress "
+      "is true and the kernel computes one. The kernel runs with the "
+      "interpreter released.");
   if constexpr (PerAtomPotential<Pot>) {
     cls.def(
         "evaluate_per_atom",
         [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
-           const F64 &box) {
+           const F64 &box, bool compute_stress) {
           Geom geom = read_geom(positions, atom_types, box);
           PerAtomResult result = run_detached(
-              [&] { return run_force_per_atom(self.slot(), geom); });
+              [&] {
+                return run_force_per_atom(self.slot(), geom, compute_stress);
+              });
           const auto n = static_cast<size_t>(geom.pos.rows());
           nb::dict out = result_dict(result.total);
           out["energies"] = vector_to_numpy(result.energies, {n});
@@ -583,7 +589,7 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
           return out;
         },
         nb::arg("positions").noconvert(), nb::arg("atom_types"),
-        nb::arg("box").noconvert(),
+        nb::arg("box").noconvert(), nb::arg("compute_stress") = false,
         "evaluate() plus energies, shape (N,), eV, summing to energy, and "
         "virials, shape (N, 6), eV, Voigt xx yy zz yz xz xy, summing to "
         "-volume * stress. A pair term goes half to each atom. The kernel "
