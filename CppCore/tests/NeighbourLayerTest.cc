@@ -571,6 +571,99 @@ TEST_CASE("periodic and long-cutoff streams match the direct pair sum",
   requireSamePairs(walkedPairs(tiles, wide.size() / 3, long_cut), many);
 }
 
+TEST_CASE("out-of-cell atoms keep neighbours when a side has at least five bins",
+          "[nlist][stream][periodic]") {
+  setThreads("1");
+  // floor(16/3) is 5 and 16/5 is still at least the cutoff, so the stream
+  // takes the cell-shift tile path rather than the minimum-image fold.
+  const double a = 4.0;
+  const double cutoff = 3.0;
+  const double side = 4.0 * a;
+  auto bins_of = [](double length, double edge) {
+    auto n = static_cast<long>(std::floor(length / edge));
+    if (n < 1) {
+      n = 1;
+    }
+    while (n > 1 && length / static_cast<double>(n) < edge) {
+      --n;
+    }
+    return n;
+  };
+  REQUIRE(bins_of(side, cutoff) >= 5);
+  auto pos = fccBlock(4, 4, 4, a);
+  REQUIRE(pos.size() / 3 > 8);
+  const std::size_t n = pos.size() / 3;
+  for (std::size_t i = 0; i < n; ++i) {
+    pos[3 * i] -= 0.35;
+    if (i % 17 == 0) {
+      pos[3 * i] += 2.0 * side;
+    }
+    if (i % 19 == 0) {
+      pos[3 * i + 1] -= side;
+    }
+  }
+  const auto ref = directPairs(pos, side, side, side, cutoff, true);
+  REQUIRE(ref.size() > 100);
+  rgpot::nlist::Neighbours cells;
+  loadCells(cells, pos, side, side, side, cutoff, true, rgpot::nlist::Mode::Stream);
+  REQUIRE(cells.streaming());
+  requireSamePairs(walkedPairs(cells, n, cutoff), ref);
+}
+
+TEST_CASE("streamed tile vectors image the caller coordinates",
+          "[nlist][stream][periodic][precision]") {
+  setThreads("1");
+  const double a = 4.0;
+  const double cutoff = 3.0;
+  const double side = 4.0 * a;
+  auto pos = fccBlock(4, 4, 4, a);
+  const std::size_t n = pos.size() / 3;
+  for (std::size_t i = 0; i < n; ++i) {
+    pos[3 * i] -= 0.35;
+    if (i % 17 == 0) {
+      pos[3 * i] += 2.0 * side;
+    }
+    if (i % 19 == 0) {
+      pos[3 * i + 1] -= side;
+    }
+  }
+
+  using Vector = std::array<double, 3>;
+  std::map<std::pair<int, int>, Vector> expected;
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      double dx = pos[3 * i] - pos[3 * j];
+      double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      foldDelta(dx, dy, dz, side, side, side, true);
+      if (dx * dx + dy * dy + dz * dz <= cutoff * cutoff) {
+        expected[{static_cast<int>(i), static_cast<int>(j)}] = {dx, dy, dz};
+      }
+    }
+  }
+  REQUIRE(expected.size() > 100);
+
+  rgpot::nlist::Neighbours cells;
+  loadCells(cells, pos, side, side, side, cutoff, true, rgpot::nlist::Mode::Stream);
+  std::map<std::pair<int, int>, Vector> got;
+  cells.forHalf(0, static_cast<std::int64_t>(n),
+                [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double) {
+                  got[{i, j}] = {dx, dy, dz};
+                });
+  REQUIRE(got.size() == expected.size());
+  for (const auto &[pair, vector] : expected) {
+    const auto found = got.find(pair);
+    REQUIRE(found != got.end());
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      const double value = vector[axis];
+      const double toward = value < 0.0 ? -std::numeric_limits<double>::infinity()
+                                        : std::numeric_limits<double>::infinity();
+      const double ulp = std::abs(std::nextafter(value, toward) - value);
+      CHECK(std::abs(found->second[axis] - value) <= 64.0 * ulp);
+    }
+  }
+}
+
 TEST_CASE("a sheared cell wider than twice the search needs no image search",
           "[nlist][triclinic]") {
   // The kernel cell of the ASE morse-bulk check: a jittered copper cell,

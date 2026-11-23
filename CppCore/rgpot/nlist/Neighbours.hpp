@@ -246,21 +246,21 @@ public:
       nthreads = 1;
     }
     if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
-                       const std::int32_t *head, std::size_t ncells,
-                       bool cell_shift, double search2, double L0, double L1, double L2, double i0,
-                       double i1, double i2, bool p0, bool p1, bool p2) {
+                       const std::int32_t *head, std::size_t ncells, double search2, double L0,
+                       double L1, double L2, double i0, double i1, double i2, bool p0, bool p1,
+                       bool p2) {
           forEachSlice(nthreads, [&](int slice) {
             const auto range = partition(static_cast<std::int64_t>(ncells), slice, nthreads);
             auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                               double r2) { fn(slice, i, j, dx, dy, dz, r2); };
             if (head != nullptr) {
               visitTiles<true>(tile, neigh, nneigh, head, static_cast<std::size_t>(range.begin),
-                               static_cast<std::size_t>(range.end), 0, n_, half, cell_shift,
-                               search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+                               static_cast<std::size_t>(range.end), 0, n_, half, search2, L0, L1,
+                               L2, i0, i1, i2, p0, p1, p2, accept);
             } else {
               visitTiles<false>(tile, neigh, nneigh, head, static_cast<std::size_t>(range.begin),
-                                static_cast<std::size_t>(range.end), 0, n_, half, cell_shift,
-                                search2, L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+                                static_cast<std::size_t>(range.end), 0, n_, half, search2, L0, L1,
+                                L2, i0, i1, i2, p0, p1, p2, accept);
             }
           });
         })) {
@@ -291,21 +291,21 @@ public:
     }
     if (streaming_ && !allPairs() &&
         fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
-                      const std::int32_t *head, std::size_t ncells, bool cell_shift,
-                      double search2, double L0, double L1, double L2, double i0, double i1,
-                      double i2, bool p0, bool p1, bool p2) {
+                      const std::int32_t *head, std::size_t ncells, double search2, double L0,
+                      double L1, double L2, double i0, double i1, double i2, bool p0, bool p1,
+                      bool p2) {
           forEachSlice(nthreads, [&](int slice) {
             const auto range = partition(static_cast<std::int64_t>(n_), slice, nthreads);
             auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                               double r2) { fn(slice, i, j, dx, dy, dz, r2); };
             if (head != nullptr) {
               visitTiles<true>(tile, neigh, nneigh, head, 0, ncells, range.begin,
-                               static_cast<std::size_t>(range.end), false, cell_shift, search2,
-                               L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+                               static_cast<std::size_t>(range.end), false, search2, L0, L1, L2, i0,
+                               i1, i2, p0, p1, p2, accept);
             } else {
               visitTiles<false>(tile, neigh, nneigh, head, 0, ncells, range.begin,
-                                static_cast<std::size_t>(range.end), false, cell_shift, search2,
-                                L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+                                static_cast<std::size_t>(range.end), false, search2, L0, L1, L2,
+                                i0, i1, i2, p0, p1, p2, accept);
             }
           });
         })) {
@@ -359,6 +359,9 @@ private:
                               const Spec &spec, bool same_cell,
                               bool &wrapped) const;
   void fold(double &dx, double &dy, double &dz) const;
+  /// Periodic coordinate folded into `[0, len)`. A value already inside
+  /// that interval is returned unchanged, so an in-cell atom keeps its bits.
+  [[nodiscard]] double foldedAxis(double x, int axis) const;
 
   template <typename Fn>
   void walkStored(std::int64_t begin, std::int64_t end, Fn &fn,
@@ -489,9 +492,9 @@ private:
 
   template <typename Loop>
   bool fastTiles(Loop &&loop) const {
-    // Half is the same orthorhombic minimum image once coordinates sit in
-    // the cell. A sheared box stays on the scattered walk. An unbounded
-    // search has no bins to tile, and a stored list walks its index.
+    // Half uses the same orthorhombic minimum image. A sheared box stays on
+    // the scattered walk. An unbounded search has no bins to tile, and a
+    // stored list walks its index.
     if (!streaming_ || allPairs() || use_general_ ||
         (image_ != Image::Round && image_ != Image::Half) || n_ < 2) {
       return false;
@@ -502,19 +505,22 @@ private:
     const bool dense = tileStencilFits();
     const auto ncells = static_cast<std::size_t>(nx_) * static_cast<std::size_t>(ny_) *
                         static_cast<std::size_t>(nz_);
-    const bool cell_shift = (!periodic_[0] || nx_ >= 5) && (!periodic_[1] || ny_ >= 5) &&
-                            (!periodic_[2] || nz_ >= 5);
     struct Nbor {
       int id;
-      double sx;
-      double sy;
-      double sz;
     };
     struct Tile {
       double x;
       double y;
       double z;
       std::int32_t id;
+    };
+    // Binning uses a folded coordinate, but pair vectors must start from the
+    // caller's coordinates. Folding each endpoint first loses low bits that
+    // the force and energy kernels preserve when they image the difference.
+    auto placedTile = [&](std::size_t q) {
+      const auto j = cell_atoms_[q];
+      const auto u = static_cast<std::size_t>(j) * 3;
+      return Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
     };
     // The stencil depends only on the coordinates. A warm call with
     // the same positions reuses it.
@@ -570,16 +576,11 @@ private:
               int jx = ix + ox;
               int jy = iy + oy;
               int jz = iz + oz;
-              int sa = 0;
-              int sb = 0;
-              int sc = 0;
               if (periodic_[0]) {
                 if (jx < 0) {
                   jx += nx_;
-                  sa = -1;
                 } else if (jx >= nx_) {
                   jx -= nx_;
-                  sa = 1;
                 }
               } else if (jx < 0 || jx >= nx_) {
                 continue;
@@ -587,10 +588,8 @@ private:
               if (periodic_[1]) {
                 if (jy < 0) {
                   jy += ny_;
-                  sb = -1;
                 } else if (jy >= ny_) {
                   jy -= ny_;
-                  sb = 1;
                 }
               } else if (jy < 0 || jy >= ny_) {
                 continue;
@@ -598,10 +597,8 @@ private:
               if (periodic_[2]) {
                 if (jz < 0) {
                   jz += nz_;
-                  sc = -1;
                 } else if (jz >= nz_) {
                   jz -= nz_;
-                  sc = 1;
                 }
               } else if (jz < 0 || jz >= nz_) {
                 continue;
@@ -647,7 +644,7 @@ private:
                 overflow = true;
                 break;
               }
-              cache.neigh.push_back(Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]});
+              cache.neigh.push_back(Nbor{id});
               ++cache.nneigh[c];
             }
           }
@@ -674,9 +671,7 @@ private:
       if (!cache.neigh.empty()) {
         cache.tile.resize(n_);
         for (std::size_t q = 0; q < n_; ++q) {
-          const auto j = cell_atoms_[q];
-          const auto u = static_cast<std::size_t>(j) * 3;
-          cache.tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
+          cache.tile[q] = placedTile(q);
         }
       }
     } else {
@@ -699,16 +694,11 @@ private:
             int jx = ix + ox;
             int jy = iy + oy;
             int jz = iz + oz;
-            int sa = 0;
-            int sb = 0;
-            int sc = 0;
             if (periodic_[0]) {
               if (jx < 0) {
                 jx += nx_;
-                sa = -1;
               } else if (jx >= nx_) {
                 jx -= nx_;
-                sa = 1;
               }
             } else if (jx < 0 || jx >= nx_) {
               continue;
@@ -716,10 +706,8 @@ private:
             if (periodic_[1]) {
               if (jy < 0) {
                 jy += ny_;
-                sb = -1;
               } else if (jy >= ny_) {
                 jy -= ny_;
-                sb = 1;
               }
             } else if (jy < 0 || jy >= ny_) {
               continue;
@@ -727,10 +715,8 @@ private:
             if (periodic_[2]) {
               if (jz < 0) {
                 jz += nz_;
-                sc = -1;
               } else if (jz >= nz_) {
                 jz -= nz_;
-                sc = 1;
               }
             } else if (jz < 0 || jz >= nz_) {
               continue;
@@ -747,8 +733,7 @@ private:
               continue;
             }
             seen[nseen] = id;
-            neigh[c * 27 + static_cast<std::size_t>(nseen)] =
-                Nbor{id, sa * len_[0], sb * len_[1], sc * len_[2]};
+            neigh[c * 27 + static_cast<std::size_t>(nseen)] = Nbor{id};
             ++nseen;
           }
         }
@@ -758,9 +743,7 @@ private:
     auto &tile = cache.tile;
     tile.resize(n_);
     for (std::size_t q = 0; q < n_; ++q) {
-      const auto j = cell_atoms_[q];
-      const auto u = static_cast<std::size_t>(j) * 3;
-      tile[q] = Tile{xyz_[u], xyz_[u + 1], xyz_[u + 2], j};
+      tile[q] = placedTile(q);
     }
     }
     if (streaming_) {
@@ -776,8 +759,8 @@ private:
       return true;
     }
     loop(cache.tile, cache.neigh, cache.nneigh, cache.compact ? cache.head.data() : nullptr, ncells,
-         cell_shift, search_ * search_, len_[0], len_[1], len_[2], inv_[0], inv_[1], inv_[2],
-         periodic_[0], periodic_[1], periodic_[2]);
+         search_ * search_, len_[0], len_[1], len_[2], inv_[0], inv_[1], inv_[2], periodic_[0],
+         periodic_[1], periodic_[2]);
     return true;
   }
 
@@ -785,9 +768,9 @@ private:
   void visitTiles(const std::vector<Tile> &tile, const std::vector<Nbor> &neigh,
                   const std::vector<int> &nneigh, const std::int32_t *head, std::size_t c0,
                   std::size_t c1,
-                  std::int64_t atom0, std::size_t atom1, bool half, bool cell_shift,
-                  double search2, double L0, double L1, double L2, double i0, double i1,
-                  double i2, bool p0, bool p1, bool p2, Fn &&fn) const {
+                  std::int64_t atom0, std::size_t atom1, bool half, double search2, double L0,
+                  double L1, double L2, double i0, double i1, double i2, bool p0, bool p1,
+                  bool p2, Fn &&fn) const {
     auto round_axis = [](double delta, double inv, double length, bool periodic, int &shift) {
       if (!periodic) {
         shift = 0;
@@ -852,21 +835,12 @@ private:
             if (!half && b.id == a.id) {
               continue;
             }
-            double dx;
-            double dy;
-            double dz;
-            if (cell_shift) {
-              dx = (a.x - b.x) - src.sx;
-              dy = (a.y - b.y) - src.sy;
-              dz = (a.z - b.z) - src.sz;
-            } else {
-              int sa = 0;
-              int sb = 0;
-              int sc = 0;
-              dx = round_axis(a.x - b.x, i0, L0, p0, sa);
-              dy = round_axis(a.y - b.y, i1, L1, p1, sb);
-              dz = round_axis(a.z - b.z, i2, L2, p2, sc);
-            }
+            int sa = 0;
+            int sb = 0;
+            int sc = 0;
+            const double dx = round_axis(a.x - b.x, i0, L0, p0, sa);
+            const double dy = round_axis(a.y - b.y, i1, L1, p1, sb);
+            const double dz = round_axis(a.z - b.z, i2, L2, p2, sc);
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 <= search2) {
               fn(a.id, b.id, dx, dy, dz, r2);
@@ -881,17 +855,17 @@ private:
   void walkCells(std::int64_t begin, std::int64_t end, Fn &fn, bool half) const {
     const double search2 = search_ * search_;
     if (!fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
-                       const std::int32_t *head, std::size_t ncells, bool cell_shift,
-                       double search2_fast, double L0, double L1, double L2, double i0, double i1,
-                       double i2, bool p0, bool p1, bool p2) {
+                       const std::int32_t *head, std::size_t ncells, double search2_fast, double L0,
+                       double L1, double L2, double i0, double i1, double i2, bool p0, bool p1,
+                       bool p2) {
           if (head != nullptr) {
             visitTiles<true>(tile, neigh, nneigh, head, 0, ncells, begin,
-                             static_cast<std::size_t>(end), half, cell_shift, search2_fast, L0, L1,
-                             L2, i0, i1, i2, p0, p1, p2, fn);
+                             static_cast<std::size_t>(end), half, search2_fast, L0, L1, L2, i0, i1,
+                             i2, p0, p1, p2, fn);
           } else {
             visitTiles<false>(tile, neigh, nneigh, head, 0, ncells, begin,
-                              static_cast<std::size_t>(end), half, cell_shift, search2_fast, L0, L1,
-                              L2, i0, i1, i2, p0, p1, p2, fn);
+                              static_cast<std::size_t>(end), half, search2_fast, L0, L1, L2, i0,
+                              i1, i2, p0, p1, p2, fn);
           }
         })) {
       walkCellsScattered(begin, end, fn, half, search2);
@@ -991,6 +965,22 @@ private:
   std::uint64_t builds_ = 0;
   const double *xyz_ = nullptr;
 };
+
+inline double Neighbours::foldedAxis(double x, int axis) const {
+  if (axis < 0 || axis > 2 || !(periodic_[axis] && len_[axis] > 0.0) ||
+      !std::isfinite(x)) {
+    return x;
+  }
+  const double length = len_[axis];
+  if (x >= 0.0 && x < length) {
+    return x;
+  }
+  const double periods = std::floor(x / length);
+  if (!std::isfinite(periods)) {
+    return x;
+  }
+  return x - periods * length;
+}
 
 inline void Neighbours::fold(double &dx, double &dy, double &dz) const {
   if (use_general_) {
