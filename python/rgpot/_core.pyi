@@ -475,9 +475,9 @@ class MullerBrownPot:
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
 
-    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], compute_stress: bool = False) -> dict:
         """
-        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        Energy, forces, variance, and the Cauchy stress when compute_stress is true and the kernel computes one. The kernel runs with the interpreter released.
         """
 
     def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:

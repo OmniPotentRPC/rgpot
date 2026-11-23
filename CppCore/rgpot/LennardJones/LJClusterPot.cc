@@ -23,7 +23,6 @@
 #include "rgpot/PairEval.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/nlist/PairSum.hpp"
-#include "rgpot/stress.hpp"
 
 namespace rgpot {
 
@@ -56,8 +55,9 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
   const double *R = in.pos;
   double *F = out->F;
   double *U = &out->energy;
-  StressAccumulator stress(in, out);
   *U = 0.0;
+  out->has_stress = 0;
+  std::fill(out->stress, out->stress + 9, 0.0);
   for (long i = 0; i < N; i++) {
     F[3 * i] = 0.0;
     F[3 * i + 1] = 0.0;
@@ -65,7 +65,6 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
   }
   if (N < 2) {
     retained_ = 0;
-    stress.publish(in.box);
     return;
   }
 
@@ -106,8 +105,6 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
                       &energyAcc);
     *U = energyAcc;
     retained_ = 0;
-    stress.cartesian(R, F, static_cast<std::size_t>(N));
-    stress.publish(in.box);
     return;
   }
 
@@ -123,8 +120,7 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
     evalLjPair(r2, params, pair_e, fscale);
   };
   nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), cutoff2, nlist::Overlap::Skip, term,
-                  F, *U, stress.data(), atoms);
-  stress.publish(in.box);
+                  F, *U, nullptr, atoms);
 }
 
 } // namespace rgpot
