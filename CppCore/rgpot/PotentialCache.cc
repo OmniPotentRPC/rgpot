@@ -54,8 +54,9 @@ size_t energy_force_bytes(size_t n_atoms) {
 } // namespace
 
 KeyHash result_key(const ForceInput &input, PotType type, uint64_t parameters) {
-  const std::array<uint64_t, 4> identity{
-      input.nAtoms, static_cast<uint64_t>(type), parameters, input.box != nullptr};
+  const std::array<uint64_t, 5> identity{
+      input.nAtoms, static_cast<uint64_t>(type), parameters,
+      input.box != nullptr, static_cast<uint64_t>(input.compute_stress ? 1 : 0)};
   XXH3_state_t state;
   XXH3_INITSTATE(&state);
   XXH3_64bits_reset(&state);

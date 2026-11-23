@@ -192,15 +192,16 @@ def cmd_forces(plugin: str, eam_table: str) -> None:
         dat = plumed_input(plugin, pot, opts, types, len(pos), cell is None)
         out = driver(work, tag, dat, symbols, pos, cell, debug=True)
         check_fd(f"{tag} forces", out["debug"][:-9])
-    # A potential without a stress stops on a periodic cell. EMT rejects
-    # the 3x3x3 cell, so this one is 5x5x5.
-    frac, h = fcc(3.6, 5, (0.0, 0.0, 0.0))
+    # A periodic cell without a stress stops. EAMCell computes the stress of
+    # an orthorhombic cell only, so a tilted cell gets none.
+    frac, h = fcc(4.05, 5, (0.5, -0.4, 0.6))
     pos = jiggle(frac, h, 0.05, 9)
-    dat = plumed_input(plugin, "EMT", "", "Cu", len(pos), False)
-    out = driver(work, "emt_periodic", dat, ["Cu"] * len(pos), pos, h, check=False)
+    dat = plumed_input(plugin, "EAMCell", "", "Al", len(pos), False)
+    out = driver(work, "eamcell_tilted", dat, ["Al"] * len(pos), pos, h, check=False)
     if out["returncode"] == 0 or "returns no stress" not in out["log"]:
-        raise SystemExit(f"EMT on a periodic cell did not stop with the stress error\n{out['log']}")
-    print("emt_periodic: stops with the missing stress error")
+        raise SystemExit(
+            f"EAMCell on a tilted cell did not stop with the stress error\n{out['log']}")
+    print("eamcell_tilted: stops with the missing stress error")
 
 
 def cmd_box(plugin: str, eam_table: str) -> None:
@@ -324,7 +325,8 @@ def cmd_api(plugin: str, lib: str, pydir: str) -> None:
     out, pos, cell = run("lj_triclinic")
     words = dict(zip(*[iter(LJ[1].split())] * 2))
     pot = core.LJPot(u0=float(words["u0"]), cutoff=float(words["cutoff"]), psi=float(words["psi"]))
-    res = pot.evaluate(np.ascontiguousarray(pos), [18] * len(pos), np.ascontiguousarray(cell))
+    res = pot.evaluate(np.ascontiguousarray(pos), [18] * len(pos), np.ascontiguousarray(cell),
+                       compute_stress=True)
     compare("lj_triclinic, Python API", out, res["energy"], np.asarray(res["forces"]),
             (res["stress"], cell))
     out, pos, _ = run("lj_cluster")
@@ -332,7 +334,7 @@ def cmd_api(plugin: str, lib: str, pydir: str) -> None:
     compare("lj_cluster, Python API", out, res["energy"], np.asarray(res["forces"]), None)
     out, pos, cell = run("swsi1985_triclinic")
     res = core.StillingerWeberSi().evaluate(np.ascontiguousarray(pos), [14] * len(pos),
-                                           np.ascontiguousarray(cell))
+                                           np.ascontiguousarray(cell), compute_stress=True)
     compare("swsi1985_triclinic, Python API", out, res["energy"], np.asarray(res["forces"]),
             (res["stress"], cell))
 

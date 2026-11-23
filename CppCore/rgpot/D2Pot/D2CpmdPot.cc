@@ -5,6 +5,7 @@
 
 #include "rgpot/D2Pot/D2Cell.hpp"
 #include "rgpot/ParamHash.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
 #include <algorithm>
@@ -418,9 +419,8 @@ D2CpmdPot::D2CpmdPot(D2CpmdConfig cfg) : Potential(PotType::D2Cpmd), cfg_(cfg) {
 
 void D2CpmdPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   using units::HARTREE_TO_EV;
+  StressAccumulator stress(in, out);
   const double force_scale = HARTREE_TO_EV / kCpmdBohr;
-  const double stress_scale =
-      HARTREE_TO_EV / (kCpmdBohr * kCpmdBohr * kCpmdBohr);
   const std::size_t n = in.nAtoms;
   if (n > 0 && in.atmnrs == nullptr) {
     throw std::invalid_argument("CPMD's D2 needs atomic numbers");
@@ -441,7 +441,10 @@ void D2CpmdPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   std::vector<double> f(3 * n, 0.0);
   double evdw = 0.0;
-  std::array<double, 9> w{};
+  // dE/dstrain in Hartree, Voigt order, filled only for a requested stress
+  // of a periodic cell.
+  const bool want_stress = stress.enabled() && cell.periodic;
+  std::array<double, 6> w{};
   for (std::size_t l = 0; l < n; ++l) {
     for (std::size_t m = 0; m < l; ++m) {
       const int zl = in.atmnrs[l];
@@ -473,9 +476,9 @@ void D2CpmdPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       for (int a = 0; a < 3; ++a) {
         f[3 * l + a] -= ffac * rlp[a];
         f[3 * m + a] += ffac * rlp[a];
-        for (int b = 0; b < 3; ++b) {
-          w[3 * a + b] += ffac * rlp[a] * rlp[b];
-        }
+      }
+      if (want_stress) {
+        accumulatePairStrain(w.data(), -ffac, rlp[0], rlp[1], rlp[2]);
       }
     }
   }
@@ -484,11 +487,11 @@ void D2CpmdPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   for (std::size_t k = 0; k < 3 * n; ++k) {
     out->F[k] = f[k] * force_scale;
   }
-  if (cell.periodic) {
-    for (int k = 0; k < 9; ++k) {
-      out->stress[k] = w[k] / cell.volume * stress_scale;
+  if (double *strain = want_stress ? stress.data() : nullptr) {
+    for (int k = 0; k < 6; ++k) {
+      strain[k] = w[k] * HARTREE_TO_EV;
     }
-    out->has_stress = 1;
+    stress.publish(in.box);
   }
 }
 

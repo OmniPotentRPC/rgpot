@@ -7,8 +7,36 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <vector>
+
+namespace {
+
+using std::exp;
+using std::size_t;
+using std::sqrt;
+
+int g_gupta_test_ensure_calls = 0;
+int rgpot_gupta_ensure(std::size_t /*n*/, std::size_t /*pairs*/) {
+  ++g_gupta_test_ensure_calls;
+  return 1;
+}
+double *rgpot_gupta_rho() { return nullptr; }
+double *rgpot_gupta_pack() { return nullptr; }
+
+void gupta_body_bounded(const double *x, std::size_t n,
+                        const unsigned char *slot, std::size_t n_species,
+                        const double *a, const double *xi, const double *p,
+                        const double *q, const double *r0, double *energy,
+                        double *gradient) {
+#define RGPOT_GUPTA_SIZE_MAX 24
+#include "rgpot/Gupta/gupta_body.inc"
+#undef RGPOT_GUPTA_SIZE_MAX
+}
+
+}  // namespace
 
 TEST_CASE("Gupta dimer at r0 is 2A - 2 xi", "[gupta]") {
   const double a = 0.1477;
@@ -138,6 +166,44 @@ TEST_CASE("Gupta evaluates a reached NaN pair", "[gupta]") {
   REQUIRE(std::isnan(energy));
   for (double component : gradient) {
     REQUIRE(std::isnan(component));
+  }
+}
+
+TEST_CASE("Gupta rejects overflowing workspace sizes", "[gupta]") {
+  double energy = 0.0;
+  const std::size_t too_many = std::numeric_limits<std::size_t>::max() / 3 + 1;
+  rgpot_gupta(nullptr, too_many, nullptr, 0, nullptr, nullptr, nullptr,
+              nullptr, nullptr, &energy, nullptr);
+  REQUIRE(std::isinf(energy));
+  REQUIRE(energy > 0.0);
+
+  // Smallest n that passes n <= SIZE_MAX / 3 while n * (n - 1) / 2 overflows
+  // size_t (3 * n doubles exceeds physical memory on 64-bit, so pass null
+  // gradient to probe the entry point without allocating).
+  const std::size_t pair_overflow =
+      sizeof(std::size_t) >= 8 ? static_cast<std::size_t>(6074001001ULL)
+                               : static_cast<std::size_t>(92683ULL);
+  REQUIRE(pair_overflow <= std::numeric_limits<std::size_t>::max() / 3);
+  energy = -1.0;
+  rgpot_gupta(nullptr, pair_overflow, nullptr, 0, nullptr, nullptr, nullptr,
+              nullptr, nullptr, &energy, nullptr);
+  REQUIRE(std::isinf(energy));
+  REQUIRE(energy > 0.0);
+
+  // Exercise the same pair-count overflow branch with a non-null stack buffer:
+  // n = 8 passes 8 <= 24 / 3, while 8 * 7 / 2 = 28 overflows 24 without
+  // reaching rgpot_gupta_ensure.
+  g_gupta_test_ensure_calls = 0;
+  energy = -1.0;
+  double gradient[24];
+  std::fill(gradient, gradient + 24, 7.0);
+  gupta_body_bounded(nullptr, 8, nullptr, 0, nullptr, nullptr, nullptr, nullptr,
+                     nullptr, &energy, gradient);
+  REQUIRE(g_gupta_test_ensure_calls == 0);
+  REQUIRE(std::isinf(energy));
+  REQUIRE(energy > 0.0);
+  for (double component : gradient) {
+    REQUIRE(component == 0.0);
   }
 }
 

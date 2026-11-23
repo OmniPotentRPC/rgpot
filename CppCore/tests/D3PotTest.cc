@@ -8,10 +8,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <regex>
@@ -20,6 +22,7 @@
 #include <vector>
 
 #include "rgpot/D3Pot/D3Pot.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/units.hpp"
 
@@ -82,6 +85,82 @@ Octamer load_octamer() {
   }
   g.box = {{{100.0, 0.0, 0.0}, {0.0, 100.0, 0.0}, {0.0, 0.0, 100.0}}};
   return g;
+}
+
+TEST_CASE("D3 stress is opt-in and matches triclinic strain", "[d3][stress]") {
+  const Octamer geometry = load_octamer();
+  std::vector<double> positions(
+      geometry.positions.data(),
+      geometry.positions.data() + 3 * geometry.numbers.size());
+  std::array<double, 9> box = {
+      18.0, 0.7, -0.2, -0.4, 17.0, 0.5, 0.3, -0.6, 19.0};
+  rgpot::D3Pot pot;
+  auto evaluate = [&](const std::vector<double> &pos,
+                      const std::array<double, 9> &cell, bool stress) {
+    std::vector<double> forces(pos.size());
+    rgpot::ForceOut out{};
+    out.F = forces.data();
+    rgpot::ForceInput in{
+        geometry.numbers.size(), pos.data(), geometry.numbers.data(), cell.data()};
+    in.compute_stress = stress;
+    pot.forceImpl(in, &out);
+    return std::pair{out, forces};
+  };
+  const auto [plain, plain_forces] = evaluate(positions, box, false);
+  const auto [analytic, analytic_forces] = evaluate(positions, box, true);
+  REQUIRE(plain.has_stress == 0);
+  REQUIRE(analytic.has_stress == 1);
+  REQUIRE_THAT(plain.energy, WithinAbs(analytic.energy, 1e-15));
+  for (std::size_t i = 0; i < plain_forces.size(); ++i) {
+    REQUIRE_THAT(plain_forces[i], WithinAbs(analytic_forces[i], 1e-15));
+  }
+
+  constexpr int rows[6] = {0, 1, 2, 1, 0, 0};
+  constexpr int cols[6] = {0, 1, 2, 2, 2, 1};
+  constexpr int slots[6] = {0, 4, 8, 5, 2, 1};
+  constexpr double step = 1e-5;
+  const double volume = rgpot::cellVolume(box.data());
+  double largest = 0.0;
+  double error = 0.0;
+  for (int component = 0; component < 6; ++component) {
+    double energies[2]{};
+    for (int side = 0; side < 2; ++side) {
+      const double delta = side == 0 ? -step : step;
+      double transform[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+      const int a = rows[component];
+      const int b = cols[component];
+      if (a == b) {
+        transform[3 * a + b] += delta;
+      } else {
+        transform[3 * a + b] += 0.5 * delta;
+        transform[3 * b + a] += 0.5 * delta;
+      }
+      auto apply = [&](const double *source, double *target,
+                       std::size_t count) {
+        for (std::size_t i = 0; i < count; ++i) {
+          for (int c = 0; c < 3; ++c) {
+            target[3 * i + c] =
+                source[3 * i] * transform[c] +
+                source[3 * i + 1] * transform[3 + c] +
+                source[3 * i + 2] * transform[6 + c];
+          }
+        }
+      };
+      std::vector<double> moved(positions.size());
+      std::array<double, 9> strained{};
+      apply(positions.data(), moved.data(), geometry.numbers.size());
+      apply(box.data(), strained.data(), 3);
+      energies[side] = evaluate(moved, strained, false).first.energy;
+    }
+    const double numerical =
+        (energies[1] - energies[0]) / (2.0 * step * volume);
+    const double value = analytic.stress[slots[component]];
+    largest = std::max(largest, std::abs(value));
+    error = std::max(error, std::abs(value - numerical));
+  }
+  const double relative = error / std::max(largest, 1e-20);
+  std::cout << "STRESS_ERROR D3 " << relative << '\n';
+  REQUIRE(relative <= 1e-5);
 }
 
 struct CapiDisp {

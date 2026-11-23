@@ -51,7 +51,7 @@ pot = rgpot.SumPot([
     {"kind": "lj", "name": "host"},
     {"kind": "d2", "name": "dispersion", "functional": "b-lyp"},
 ])
-out = pot.evaluate(positions, numbers, box)
+out = pot.evaluate(positions, numbers, box, compute_stress=True)
 host, dispersion = pot.components()
 assert dispersion["name"] == "dispersion" and dispersion["energy"] < 0.0
 assert abs(out["energy"] - host["energy"] - dispersion["energy"]) < 1e-12
@@ -74,7 +74,7 @@ pot = rgpot.SumPot([
     {"kind": "lj", "name": "host"},
     {"kind": "d4", "name": "d4", "functional": "blyp", "periodic": True},
 ])
-out = pot.evaluate(positions, numbers, box)
+out = pot.evaluate(positions, numbers, box, compute_stress=True)
 assert pot.components()[1]["stress"] is not None
 #+end_src
 

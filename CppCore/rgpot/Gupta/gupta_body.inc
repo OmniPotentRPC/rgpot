@@ -4,9 +4,32 @@
  * the same i < j order, so the density and the force match that walk.
  */
 {
+#ifndef RGPOT_GUPTA_SIZE_MAX
+#define RGPOT_GUPTA_SIZE_MAX SIZE_MAX
+#endif
   size_t pairs = 0;
+  if (n > RGPOT_GUPTA_SIZE_MAX / 3) {
+    *energy = INFINITY;
+    return;
+  }
   if (n >= 2) {
-    pairs = n * (n - 1) / 2;
+    size_t lhs = n;
+    size_t rhs = n - 1;
+    if ((lhs & 1u) == 0u) {
+      lhs /= 2;
+    } else {
+      rhs /= 2;
+    }
+    if (lhs > RGPOT_GUPTA_SIZE_MAX / rhs) {
+      *energy = INFINITY;
+      if (gradient != 0) {
+        for (size_t k = 0; k < 3 * n; k++) {
+          gradient[k] = 0.0;
+        }
+      }
+      return;
+    }
+    pairs = lhs * rhs;
   }
   /* rgpot_gupta_ensure grows the thread local scratch with realloc and
    * returns 1 when realloc returns null. The density buffer is grown first,
@@ -23,8 +46,10 @@
    * still works. */
   if (rgpot_gupta_ensure(n, pairs) != 0) {
     *energy = INFINITY;
-    for (size_t k = 0; k < 3 * n; k++) {
-      gradient[k] = 0.0;
+    if (gradient != 0) {
+      for (size_t k = 0; k < 3 * n; k++) {
+        gradient[k] = 0.0;
+      }
     }
     return;
   }

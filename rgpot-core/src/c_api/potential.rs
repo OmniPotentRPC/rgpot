@@ -26,9 +26,9 @@
 use std::os::raw::c_void;
 
 use crate::eindir::rgpot_potential_t;
-use crate::potential::PotentialCallback;
+use crate::potential::{PotentialCallback, PotentialStressCallback};
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
-use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+use crate::types::{rgpot_force_input_t, rgpot_force_out_t, rgpot_stress_out_t};
 
 /// Create a new potential handle from a callback function pointer.
 ///
@@ -115,6 +115,157 @@ pub unsafe extern "C" fn rgpot_potential_calculate(
         }
         unsafe { (p.callback)(p.pot_user_data, input, output) }
     }))
+}
+
+/// Install the callback that also computes stress for `pot`, or clear it
+/// with NULL.
+///
+/// The callback receives the `user_data` the handle was created with, so one
+/// potential object answers both the force-only and the stress request. A
+/// potential that computes no stress registers none, and
+/// `rgpot_potential_calculate_stress` then reports that instead of returning
+/// zeros.
+///
+/// # Safety
+///
+/// A NULL `pot` returns `RGPOT_INVALID_PARAMETER`. `callback` must be safe
+/// to call with the handle's `user_data` for as long as it stays registered.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_set_stress_callback(
+    pot: *const rgpot_potential_t,
+    callback: Option<
+        unsafe extern "C" fn(
+            user_data: *mut c_void,
+            input: *const rgpot_force_input_t,
+            output: *mut rgpot_force_out_t,
+            stress: *mut rgpot_stress_out_t,
+        ) -> rgpot_status_t,
+    >,
+) -> rgpot_status_t {
+    let callback: Option<PotentialStressCallback> = callback;
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if pot.is_null() {
+            set_last_error("rgpot_potential_set_stress_callback: pot is NULL");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        unsafe { &*pot }.set_stress_callback(callback);
+        rgpot_status_t::RGPOT_SUCCESS
+    }))
+}
+
+/// Nonzero when `pot` computes Cauchy stress, that is when a stress
+/// callback is registered. A NULL `pot` returns zero.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a live handle.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_supports_stress(pot: *const rgpot_potential_t) -> i32 {
+    if pot.is_null() {
+        return 0;
+    }
+    i32::from(unsafe { &*pot }.stress_callback().is_some())
+}
+
+/// Build a zeroed stress block with `struct_size` set for this build.
+#[no_mangle]
+pub extern "C" fn rgpot_stress_out_create() -> rgpot_stress_out_t {
+    rgpot_stress_out_t::default()
+}
+
+/// Perform a force/energy calculation that also returns the Cauchy stress.
+///
+/// This is `rgpot_potential_calculate` plus the stress block. It is a
+/// separate entry point so `rgpot_force_input_t` and `rgpot_force_out_t`
+/// keep the layout callers built against ABI minor 6 already use.
+///
+/// `stress->struct_size` must be at least `sizeof(rgpot_stress_out_t)` of
+/// the header the library was built with, or the call returns
+/// `RGPOT_INVALID_PARAMETER` without touching the block. A potential with no
+/// stress callback also returns `RGPOT_INVALID_PARAMETER` and a message that
+/// names the missing capability; the block stays zero. On success
+/// `stress->has_stress` is nonzero only when every component was computed,
+/// for example it stays zero for a singular cell.
+///
+/// # Safety
+///
+/// A NULL `pot`, `input`, `output` or `stress` returns
+/// `RGPOT_INVALID_PARAMETER`. Otherwise the pointers must satisfy the
+/// requirements of `rgpot_potential_calculate`, and `stress` must point to
+/// writable storage of `stress->struct_size` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_calculate_stress(
+    pot: *const rgpot_potential_t,
+    input: *const rgpot_force_input_t,
+    output: *mut rgpot_force_out_t,
+    stress: *mut rgpot_stress_out_t,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if pot.is_null() || input.is_null() || output.is_null() || stress.is_null() {
+            set_last_error("rgpot_potential_calculate_stress: NULL argument");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let size = unsafe { std::ptr::addr_of!((*stress).struct_size).read() };
+        if size < rgpot_stress_out_t::SIZE {
+            set_last_error(&format!(
+                "rgpot_potential_calculate_stress: stress block of {size} bytes is smaller than \
+                 the {} bytes this library writes; set struct_size = sizeof(rgpot_stress_out_t)",
+                rgpot_stress_out_t::SIZE
+            ));
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let block = unsafe { &mut *stress };
+        block.has_stress = 0;
+        block.stress = [0.0; 9];
+        let p = unsafe { &*pot };
+        if let Some(why) = p.fused_cache_peer_refusal() {
+            set_last_error(&why);
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let Some(callback) = p.stress_callback() else {
+            set_last_error("rgpot_potential_calculate_stress: potential has no stress capability");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        };
+        if let Some(why) = unsafe { stress_input_defect(input) } {
+            set_last_error(why);
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let status = unsafe { callback(p.pot_user_data, input, output, stress) };
+        if status != rgpot_status_t::RGPOT_SUCCESS {
+            block.has_stress = 0;
+            block.stress = [0.0; 9];
+        }
+        status
+    }))
+}
+
+/// Missing positions buffer in a stress request, or `None` when the
+/// callback may run.
+///
+/// Species and cell buffers are left to the callback because potentials such
+/// as Lennard-Jones ignore atomic numbers and potentials such as Tersoff
+/// report their own `RGPOT_INVALID_PARAMETER` naming them.
+///
+/// # Safety
+///
+/// `input` must be a non-null `rgpot_force_input_t`.
+unsafe fn stress_input_defect(input: *const rgpot_force_input_t) -> Option<&'static str> {
+    let input = unsafe { &*input };
+    if input.positions.is_null() {
+        return Some("invalid parameter: positions is null");
+    }
+    let positions = unsafe { &(*input.positions).dl_tensor };
+    if positions.ndim < 1 || positions.shape.is_null() {
+        return Some("invalid parameter: positions is null");
+    }
+    let rows = unsafe { *positions.shape };
+    if rows <= 0 {
+        return Some("invalid parameter: nAtoms must be positive");
+    }
+    if positions.data.is_null() {
+        return Some("invalid parameter: positions is null");
+    }
+    None
 }
 
 /// Missing buffer in a force input, or `None` when the callback may run.

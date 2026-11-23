@@ -2,9 +2,9 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/XTBPot/XTBPot.hpp"
-#include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -288,6 +288,11 @@ FusedSettingsSpec XTBPot::fusedSettings() const {
 }
 
 void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  if (in.compute_stress) {
+    throw std::invalid_argument(
+        "XTBPot does not compute stress: the molecule is non-periodic and "
+        "xtb returns a zero virial for it");
+  }
   if (!m_env || !m_calc || !m_res)
     throw std::runtime_error("xTB Error: calculator is not initialized");
 
@@ -386,23 +391,9 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->F[i] *= NEG_GRAD_TO_FORCE;
   }
 
-  // xtb stores dE/dε in Hartree. sigma = virial / V in eV/Angstrom^3.
-  double virial[9] = {};
-  xtb_getVirial(m_env, m_res, virial);
-  const double volume = cellVolume(in.box);
-  if (volume > 0.0) {
-    const double scale = units::HARTREE_TO_EV / volume;
-    for (int col = 0; col < 3; ++col) {
-      for (int row = 0; row < 3; ++row) {
-        out->stress[row * 3 + col] = virial[row + 3 * col] * scale;
-      }
-    }
-    out->has_stress = 1;
-  } else {
-    out->has_stress = 0;
-  }
-
   out->variance = 0.0;
+  out->has_stress = 0;
+  std::fill(out->stress, out->stress + 9, 0.0);
 
   m_previous.assign(in.pos, in.pos + n3);
   if (in.nAtoms == 0 || !in.atmnrs)

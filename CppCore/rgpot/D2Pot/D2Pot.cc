@@ -6,6 +6,7 @@
 #include "rgpot/D2Pot/D2Cell.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
 #include <algorithm>
@@ -128,6 +129,7 @@ D2Pot::D2Pot(D2Config cfg) : Potential(PotType::D2), cfg_(cfg) {
 void D2Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
   using units::BOHR_TO_ANGSTROM;
   using units::HARTREE_TO_EV;
+  StressAccumulator stress(in, out);
   const std::size_t n = in.nAtoms;
   if (n > 0 && in.atmnrs == nullptr) {
     throw std::invalid_argument("D2 needs atomic numbers");
@@ -146,7 +148,10 @@ void D2Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // would depend on the order the neighbour walk yields them.
   double disp = 0.0;
   double disp_lost = 0.0;
-  std::array<double, 9> w{};
+  // dE/dstrain in Hartree, Voigt order, filled only for a requested stress
+  // of a periodic cell.
+  const bool want_stress = stress.enabled() && cell.periodic;
+  std::array<double, 6> w{};
 
   auto pair = [&](int za, int zb, const double *dv, double weight, double *gi, double *gj) {
     const double r2 = dv[0] * dv[0] + dv[1] * dv[1] + dv[2] * dv[2];
@@ -173,10 +178,8 @@ void D2Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
         gj[a] += term * dv[a];
       }
     }
-    for (int a = 0; a < 3; ++a) {
-      for (int b = 0; b < 3; ++b) {
-        w[3 * a + b] -= weight * term * dv[a] * dv[b];
-      }
+    if (want_stress) {
+      accumulatePairStrain(w.data(), weight * term, dv[0], dv[1], dv[2]);
     }
   };
 
@@ -221,11 +224,11 @@ void D2Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
   for (std::size_t k = 0; k < 3 * n; ++k) {
     out->F[k] = -g[k] * fconv;
   }
-  if (cell.periodic && cell.volume > 0.0) {
-    for (int k = 0; k < 9; ++k) {
-      out->stress[k] = w[k] / cell.volume * units::HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3;
+  if (double *strain = want_stress ? stress.data() : nullptr) {
+    for (int k = 0; k < 6; ++k) {
+      strain[k] = w[k] * HARTREE_TO_EV;
     }
-    out->has_stress = 1;
+    stress.publish(in.box);
   }
 }
 

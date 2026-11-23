@@ -158,8 +158,7 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
   const double *box = in.box;
   double *F = out->F;
   double *U = &out->energy;
-  double strain[6] = {};
-  const double volume = cellVolume(box);
+  StressAccumulator stress(in, out);
   *U = 0;
   for (long i = 0; i < N; i++) {
     F[3 * i] = 0;
@@ -168,7 +167,7 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
   }
   if (N < 2 || cuttOffR <= 0.0) {
     KeptLjNeighbours::release(ljNeighbourKey(this, cuttOffR, mode_));
-    publishCauchyStress(out, strain, volume);
+    stress.publish(box);
     return;
   }
 
@@ -187,12 +186,12 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
             scratch.cells, n_atoms, cutoff2, nlist::Overlap::Poison,
             [&params](std::int32_t, std::int32_t, double r2, double &pair_e,
                       double &fscale) { evalLjPair(r2, params, pair_e, fscale); },
-            F, *U, strain, atoms);
+            F, *U, stress.data(), atoms);
       });
   if (std::isnan(*U)) {
     throw std::domain_error("LJPot force is undefined for coincident atoms");
   }
-  publishCauchyStress(out, strain, volume);
+  stress.publish(box);
 }
 
 /**

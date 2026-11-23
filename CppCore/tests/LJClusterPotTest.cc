@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iostream>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -108,7 +109,9 @@ TEST_CASE("LJPot stress matches a coordinate difference", "[LJPot]") {
   const double box[9] = {12.0, 0.0, 0.0, 0.4, 11.0, 0.0, -0.2, 0.3, 10.0};
   double forces[6] = {};
   rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
-  pot.forceImpl(rgpot::ForceInput{2, pos.data(), types.data(), box}, &out);
+  rgpot::ForceInput requested{2, pos.data(), types.data(), box};
+  requested.compute_stress = true;
+  pot.forceImpl(requested, &out);
   REQUIRE(out.has_stress == 1);
 
   const double volume = std::abs(box[0] * (box[4] * box[8] - box[5] * box[7]) -
@@ -147,7 +150,8 @@ TEST_CASE("LJPot stress matches a coordinate difference", "[LJPot]") {
 namespace {
 template <class Potential>
 void checkPairStressByStrain(const Potential &pot, const AtomMatrix &positions,
-                             const std::vector<int> &types) {
+                             const std::vector<int> &types,
+                             const char *name) {
   REQUIRE(pot.caps().stress);
   const std::array<double, 9> box{20.0, 0.0, 0.0, 0.0, 21.0,
                                   0.0,  0.0, 0.0, 22.0};
@@ -155,10 +159,22 @@ void checkPairStressByStrain(const Potential &pot, const AtomMatrix &positions,
   constexpr double step = 1e-6;
   AtomMatrix forces(positions.rows(), 3);
   rgpot::ForceOut result{forces.data(), 0.0, 0.0, {}, 0};
-  const rgpot::ForceInput input{static_cast<size_t>(positions.rows()),
-                                positions.data(), types.data(), box.data()};
+  rgpot::ForceInput input{static_cast<size_t>(positions.rows()),
+                          positions.data(), types.data(), box.data()};
+  input.compute_stress = true;
   pot.forceImpl(input, &result);
   REQUIRE(result.has_stress == 1);
+  AtomMatrix plain_forces(positions.rows(), 3);
+  rgpot::ForceOut plain{plain_forces.data(), 0.0, 0.0, {}, 1};
+  rgpot::ForceInput plain_input = input;
+  plain_input.compute_stress = false;
+  pot.forceImpl(plain_input, &plain);
+  REQUIRE(plain.has_stress == 0);
+  REQUIRE(plain.energy == result.energy);
+  REQUIRE(std::memcmp(plain_forces.data(), forces.data(),
+                      positions.rows() * 3 * sizeof(double)) == 0);
+  double max_error = 0.0;
+  double max_stress = 0.0;
   for (int row = 0; row < 3; ++row) {
     for (int col = 0; col < 3; ++col) {
       const auto energyAt = [&](double strain) {
@@ -180,9 +196,15 @@ void checkPairStressByStrain(const Potential &pot, const AtomMatrix &positions,
       const double expected =
           (energyAt(step) - energyAt(-step)) / (2.0 * step * volume);
       CAPTURE(row, col, expected);
+      max_error =
+          std::max(max_error, std::abs(result.stress[3 * row + col] - expected));
+      max_stress =
+          std::max(max_stress, std::abs(result.stress[3 * row + col]));
       REQUIRE_THAT(result.stress[3 * row + col], WithinAbs(expected, 1e-8));
     }
   }
+  std::cout << "STRESS_ERROR " << name << ' '
+            << max_error / std::max(max_stress, 1e-8) << '\n';
   rgpot::ForceOut repeated{forces.data(), 0.0, 0.0, {}, 0};
   pot.forceImpl(input, &repeated);
   REQUIRE(repeated.energy == result.energy);
@@ -200,27 +222,27 @@ TEST_CASE(
   SECTION("periodic Lennard-Jones pair crosses the cell boundary") {
     rgpot::LJPot pot;
     AtomMatrix positions{{19.1, 0.1, -0.2}, {0.5, 0.4, 0.3}};
-    checkPairStressByStrain(pot, positions, types);
+    checkPairStressByStrain(pot, positions, types, "LJ");
   }
   SECTION("Lennard-Jones switch contributes to stress") {
     rgpot::LJPot pot(rgpot::LJConfig{.cutoff = 3.0, .switch_width = 0.8});
     AtomMatrix positions{{0.0, 0.0, 0.0}, {2.6, 0.2, -0.1}};
-    checkPairStressByStrain(pot, positions, types);
+    checkPairStressByStrain(pot, positions, types, "LJ-switched");
   }
   SECTION("Morse shifted energy") {
     rgpot::MorsePot pot;
     AtomMatrix positions{{0.0, 0.0, 0.0}, {3.1, 0.3, -0.2}};
-    checkPairStressByStrain(pot, positions, types);
+    checkPairStressByStrain(pot, positions, types, "Morse");
   }
   SECTION("Morse switch contributes to stress") {
     rgpot::MorsePot pot(rgpot::MorseConfig{.cutoff = 5.0, .switch_width = 1.0});
     AtomMatrix positions{{0.0, 0.0, 0.0}, {4.3, 0.3, -0.2}};
-    checkPairStressByStrain(pot, positions, types);
+    checkPairStressByStrain(pot, positions, types, "Morse-switched");
   }
   SECTION("ZBL screened pair") {
     rgpot::ZBLPot pot;
     AtomMatrix positions{{0.0, 0.0, 0.0}, {1.3, 0.3, -0.2}};
-    checkPairStressByStrain(pot, positions, types);
+    checkPairStressByStrain(pot, positions, types, "ZBL");
   }
 }
 
@@ -233,7 +255,9 @@ TEST_CASE("Pair stress is cleared when the configuration has no pair",
   const auto check = [&](const auto &pot) {
     rgpot::ForceOut out{
         forces, 1.0, 0.0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}, 0};
-    pot.forceImpl({1, position, &type, box}, &out);
+    rgpot::ForceInput in{1, position, &type, box};
+    in.compute_stress = true;
+    pot.forceImpl(in, &out);
     REQUIRE(out.has_stress == 1);
     REQUIRE(out.energy == 0.0);
     for (double component : out.stress) {
@@ -243,4 +267,25 @@ TEST_CASE("Pair stress is cleared when the configuration has no pair",
   check(rgpot::LJPot{});
   check(rgpot::MorsePot{});
   check(rgpot::ZBLPot{});
+}
+
+TEST_CASE("LJClusterPot does not advertise or compute stress",
+          "[stress][LJClusterPot]") {
+  rgpot::LJClusterPot pot;
+  REQUIRE_FALSE(pot.caps().stress);
+  const std::vector<int> types{6, 8};
+  const AtomMatrix positions{{0.0, 0.0, 0.0}, {1.4, 0.2, -0.1}};
+  const std::array<double, 9> box{20.0, 0.0, 0.0, 0.0, 21.0,
+                                  0.0,  0.0, 0.0, 22.0};
+  AtomMatrix forces(positions.rows(), 3);
+  rgpot::ForceOut out{
+      forces.data(), 0.0, 0.0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}, 1};
+  rgpot::ForceInput in{static_cast<size_t>(positions.rows()), positions.data(),
+                       types.data(), box.data()};
+  in.compute_stress = true;
+  pot.forceImpl(in, &out);
+  REQUIRE(out.has_stress == 0);
+  for (double component : out.stress) {
+    REQUIRE(component == 0.0);
+  }
 }

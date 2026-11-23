@@ -172,16 +172,16 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// did not increase.
 ///
 /// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
-/// is major 1, minor 10, layout revision 1. Minor 1 added
+/// is major 1, minor 11, layout revision 1. Minor 1 added
 /// `rgpot_eindir_abi_compatible`, minor 2 the Hessian-vector functions,
 /// minor 3 the fused-cache settings and error kind, minor 4 the Taylor
 /// jet functions, minor 5 the engine and RPC Hessian-vector exports,
 /// minor 6 `rgpot_potential_new_eam_table` and minor 8 the dense Hessian,
 /// the dual-number callbacks and the derivative capabilities and counts.
-/// Minor 9 added `rgpot_mdi_server_start` and minor 10
-/// `rgpot_rpc_client_select_orbitals`.
-/// No exported C struct of that header changed layout. The neighbour query
-/// is `RGPOT_NLIST_ABI` 4.
+/// Minor 9 added `rgpot_mdi_server_start`, minor 10
+/// `rgpot_rpc_client_select_orbitals`, and minor 11 the opt-in stress
+/// entry points. No exported C struct of that header changed layout.
+/// The neighbour query is `RGPOT_NLIST_ABI` 4.
 /// The C API is exported from librgpot, so it has no shared library of
 /// its own and rides this SONAME. `librgpot_mpi` stays at soversion 3
 /// (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
@@ -210,6 +210,7 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// zero-argument `MullerBrownPot` constructor remains its own symbol.
 /// It also stamps `nlist::Builder` and `nlist::Walk`. Each holds only a
 /// pointer to its state, so a change to that state is not a layout change.
+/// `ForceInput` gains `compute_stress`, the opt-in stress request.
 inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
@@ -223,7 +224,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0xe4cefea4dec84869ull},
+    {"linux-x86_64-libstdc++-lp64", 0x6c1eba384c212d11ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -317,6 +318,7 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(ForceInput, pos));
   f.add(offsetof(ForceInput, atmnrs));
   f.add(offsetof(ForceInput, box));
+  f.add(offsetof(ForceInput, compute_stress));
   f.type<ForceOut>();
   f.add(offsetof(ForceOut, F));
   f.add(offsetof(ForceOut, energy));
