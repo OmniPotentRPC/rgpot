@@ -29,6 +29,7 @@
 #include "lsan_libomp.hpp"
 #include "rgpot/EAM/EAMPot.hpp"
 #include "rgpot/ForceStructs.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
@@ -604,6 +605,24 @@ TEST_CASE("many-body potentials give the one-thread bits on any team",
   checkPotential("Sutton-Chen on every pair", every_pair, cluster(55, std::sqrt(2.0), 78));
   checkPotential("Sutton-Chen on every pair", every_pair,
                  cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts);
+
+  rgpot::GuptaConfig gupta;
+  gupta.periodic = true;
+  gupta.stress = true;
+  for (const int side : {4, 13}) {
+    gupta.cutoff = side == 4 ? 3.0 : 1.5;
+    const auto pt = fcc(side, std::sqrt(2.0), 78);
+    checkPotential("stored Gupta", mode<rgpot::GuptaPot>(gupta, kStored), pt);
+    checkPotential("streamed Gupta", mode<rgpot::GuptaPot>(gupta, kStream), pt);
+  }
+  rgpot::GuptaConfig gupta_open;
+  gupta_open.cutoff = 0.0;
+  gupta_open.stress = true;
+  const auto gupta_every_pair = [gupta_open] {
+    return std::make_unique<rgpot::GuptaPot>(gupta_open);
+  };
+  checkPotential("Gupta on every pair", gupta_every_pair,
+                 cluster(55, std::sqrt(2.0), 78));
 
   for (const int side : {3, 11}) {
     const auto si = diamond(side, 5.431, 14);
