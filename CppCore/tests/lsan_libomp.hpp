@@ -8,6 +8,8 @@
 // initializes. Match ___kmp_allocate so both unstripped libomp.so
 // (___kmp_allocate_align) and stripped system libomp.so.5 (which exports
 // ___kmp_allocate in .dynsym) are covered when llvm-symbolizer is installed.
+// The match is by function name, so the run needs a working symbolizer. Under
+// pixi, point ASAN_SYMBOLIZER_PATH at tools/lsan/llvm-symbolizer.
 // Scope the LeakSanitizer suppression to the OpenMP test binaries so real
 // leaks in library and test code still fail.
 

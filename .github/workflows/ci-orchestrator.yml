@@ -559,8 +559,11 @@ jobs:
         run: |
           export CC=/usr/bin/clang-18
           export CXX=/usr/bin/clang++-18
+          # The libomp suppression matches function names. Ubuntu's
+          # llvm-symbolizer fails to start against the pixi library path,
+          # so run it through the wrapper that clears LD_LIBRARY_PATH.
+          export ASAN_SYMBOLIZER_PATH="$PWD/tools/lsan/llvm-symbolizer"
           test -x "$ASAN_SYMBOLIZER_PATH"
-          command -v llvm-symbolizer
           # Clang leaves __asan_* unresolved in librgpot.so. Meson's
           # default -Wl,--no-undefined then fails the link. The layout
           # sanitizer script sets the same option for Clang.

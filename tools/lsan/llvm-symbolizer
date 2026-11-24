@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# MIT License
+# Copyright 2023--present rgpot developers
+# llvm-symbolizer for AddressSanitizer and LeakSanitizer runs from a pixi
+# shell. Ubuntu's llvm-symbolizer-18 loads libLLVM and libcurl, and under
+# pixi LD_LIBRARY_PATH resolves those to conda-forge copies it was not built
+# against. When it cannot start, LeakSanitizer prints libomp frames as bare
+# libomp.so offsets, and the function-name suppression in
+# CppCore/tests/lsan_libomp.hpp no longer matches. Run the system binary with
+# the library path cleared.
+#
+# ASan accepts a symbolizer only when the file is named llvm-symbolizer, so
+# this wrapper keeps that name.
+set -euo pipefail
+
+self=$(realpath "${BASH_SOURCE[0]}")
+candidates=()
+for dir in /usr/lib/llvm-*/bin; do
+  [[ -x $dir/llvm-symbolizer ]] && candidates+=("$dir/llvm-symbolizer")
+done
+if ((${#candidates[@]})); then
+  mapfile -t candidates < <(printf '%s\n' "${candidates[@]}" | sort -rV)
+fi
+for name in llvm-symbolizer-18 llvm-symbolizer; do
+  found=$(type -P "$name" || true)
+  [[ -n $found ]] && candidates+=("$found")
+done
+
+for real in "${candidates[@]}"; do
+  [[ $(realpath "$real") == "$self" ]] && continue
+  exec env -u LD_LIBRARY_PATH "$real" "$@"
+done
+echo "llvm-symbolizer not found; install llvm-18" >&2
+exit 127
