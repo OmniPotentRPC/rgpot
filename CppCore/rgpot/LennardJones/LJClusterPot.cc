@@ -57,6 +57,8 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
   double *F = out->F;
   double *U = &out->energy;
   *U = 0.0;
+  out->has_stress = 0;
+  std::fill(out->stress, out->stress + 9, 0.0);
   for (long i = 0; i < N; i++) {
     F[3 * i] = 0.0;
     F[3 * i + 1] = 0.0;

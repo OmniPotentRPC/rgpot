@@ -34,7 +34,9 @@ public:
   [[nodiscard]] const EMTConfig &config() const noexcept { return m_config; }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .perImageInstances = true};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .perImageInstances = true,
+            .stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

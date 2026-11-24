@@ -22,7 +22,7 @@ use tokio::runtime::Runtime;
 use crate::rpc::schema::capabilities::Operation;
 use crate::rpc::schema::potential;
 use crate::tensor::{copy_f64_tensor, copy_i32_tensor, create_owned_f64_tensor};
-use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+use crate::types::{rgpot_force_input_t, rgpot_force_out_t, rgpot_stress_out_t};
 
 /// RPC client that connects to a remote rgpot server.
 pub struct RpcClient {
@@ -53,13 +53,42 @@ impl RpcClient {
     ///
     /// Internally this blocks on the tokio runtime with a `LocalSet`
     /// (required because `capnp_rpc::RpcSystem` is `!Send`).
+    ///
+    /// The request is force-only. A server that answers with a stress
+    /// anyway, as an older server may, is ignored: a stress nobody asked for
+    /// never reaches the caller.
     pub fn calculate(
         &mut self,
         input: &rgpot_force_input_t,
         output: &mut rgpot_force_out_t,
     ) -> Result<(), String> {
         let local = tokio::task::LocalSet::new();
-        local.block_on(&self.runtime, self.calculate_async(input, output))
+        local
+            .block_on(&self.runtime, self.calculate_async(input, output, false))
+            .map(|_| ())
+    }
+
+    /// Like [`calculate`](Self::calculate), but ask the server for the Cauchy
+    /// stress and write it to `stress`.
+    ///
+    /// `stress.has_stress` is set only when the server returned all nine
+    /// components. A server that cannot compute stress fails the call.
+    pub fn calculate_stress(
+        &mut self,
+        input: &rgpot_force_input_t,
+        output: &mut rgpot_force_out_t,
+        stress: &mut rgpot_stress_out_t,
+    ) -> Result<(), String> {
+        let local = tokio::task::LocalSet::new();
+        let answer = local.block_on(&self.runtime, self.calculate_async(input, output, true))?;
+        let Some(values) = answer else {
+            stress.stress = [0.0; 9];
+            stress.has_stress = 0;
+            return Ok(());
+        };
+        stress.stress = values;
+        stress.has_stress = 1;
+        Ok(())
     }
 
     /// Compute the server's analytic Cartesian energy-Hessian product.
@@ -76,7 +105,8 @@ impl RpcClient {
         &self,
         input: &rgpot_force_input_t,
         output: &mut rgpot_force_out_t,
-    ) -> Result<(), String> {
+        want_stress: bool,
+    ) -> Result<Option<[f64; 9]>, String> {
         // --- Extract data from DLPack tensors (CPU only) ---
         let n = unsafe { input.n_atoms() }
             .ok_or_else(|| "cannot determine n_atoms from input tensors".to_string())?;
@@ -107,7 +137,13 @@ impl RpcClient {
         tokio::task::spawn_local(rpc_system);
 
         // --- Refuse an incompatible or outdated server before any work ---
-        let expectation = crate::compat::force_input_expectation(self.orbital_key.is_some());
+        let mut expectation = crate::compat::force_input_expectation(self.orbital_key.is_some());
+        if want_stress {
+            expectation.required_operations.push(Operation::Stress);
+            if expectation.protocol_minor_min < crate::compat::STRESS_PROTOCOL_MINOR {
+                expectation.protocol_minor_min = crate::compat::STRESS_PROTOCOL_MINOR;
+            }
+        }
         crate::compat::check_server(&potential_client, &expectation)
             .await
             .map_err(|why| {
@@ -136,6 +172,7 @@ impl RpcClient {
                 atm_builder.set(i as u32, val);
             }
 
+            fip.set_compute_stress(want_stress);
             let mut box_builder = fip.reborrow().init_box(9);
             for (i, &val) in box_data.iter().enumerate() {
                 box_builder.set(i as u32, val);
@@ -173,11 +210,31 @@ impl RpcClient {
             ));
         }
 
+        let stress = result
+            .get_stress()
+            .map_err(|e| format!("failed to read stress: {e}"))?;
+        let stress = match (want_stress, stress.len()) {
+            (_, 0) => None,
+            (false, _) => None,
+            (true, 9) => {
+                let mut values = [0.0; 9];
+                for (i, value) in values.iter_mut().enumerate() {
+                    *value = stress.get(i as u32);
+                }
+                Some(values)
+            }
+            (true, other) => {
+                return Err(format!(
+                    "stress array size mismatch: expected 9, got {other}"
+                ));
+            }
+        };
+
         // Create an owning DLPack tensor for the forces
         let forces_vec: Vec<f64> = (0..forces.len()).map(|i| forces.get(i)).collect();
         output.forces = create_owned_f64_tensor(forces_vec, vec![n as i64, 3]);
 
-        Ok(())
+        Ok(stress)
     }
 
     async fn calculate_hvp_async(

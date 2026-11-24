@@ -83,11 +83,7 @@ pub unsafe extern "C" fn rgpot_force_input_free(input: *mut rgpot_force_input_t)
 /// sets it.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_force_out_create() -> rgpot_force_out_t {
-    rgpot_force_out_t {
-        forces: std::ptr::null_mut(),
-        energy: 0.0,
-        variance: 0.0,
-    }
+    rgpot_force_out_t::default()
 }
 
 #[cfg(test)]

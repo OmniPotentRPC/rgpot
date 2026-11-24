@@ -63,7 +63,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * ABI minor of this build.
  */
-#define RGPOT_ABI_VERSION_MINOR 10
+#define RGPOT_ABI_VERSION_MINOR 12
 
 /**
  * Layout revision of this build.
@@ -80,6 +80,8 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #if defined(RGPOT_HAS_SCHEMA)
 /**
  * Additive protocol revision.
+ * Minor 2 adds `ForceInput.computeStress`. A minor-1 peer never sets it
+ * and never reads it, so the stress is treated as not requested.
  */
 #define PROTOCOL_MINOR 2
 #endif
@@ -90,6 +92,14 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
  * It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
  */
 #define ORBITAL_KEY_INTRODUCED_MINOR 2
+#endif
+
+#if defined(RGPOT_HAS_SCHEMA)
+/**
+ * First protocol minor whose servers honour `ForceInput.computeStress`.
+ * A client that asks for stress requires at least this minor.
+ */
+#define STRESS_PROTOCOL_MINOR 2
 #endif
 
 /**
@@ -576,6 +586,34 @@ typedef struct rgpot_hvp_counts_t {
    */
   uint64_t analytic;
 } rgpot_hvp_counts_t;
+
+/**
+ * Stress block of the opt-in stress entry points, such as
+ * `rgpot_potential_calculate_stress`.
+ *
+ * The block is separate from [`rgpot_force_out_t`] so that struct keeps the
+ * layout of ABI minor 6. `struct_size` is the version field: the caller sets
+ * it to `sizeof(rgpot_stress_out_t)` of the header it was built with, and
+ * the library refuses a smaller value instead of writing past the caller's
+ * storage. A later minor may append fields and will only touch them when
+ * `struct_size` covers them. `rgpot_stress_out_create` returns a block with
+ * the size set.
+ */
+typedef struct rgpot_stress_out_t {
+  /**
+   * `sizeof(rgpot_stress_out_t)` as the caller was compiled.
+   */
+  uint32_t struct_size;
+  /**
+   * Nonzero only when the callback computed every stress component.
+   */
+  int32_t has_stress;
+  /**
+   * Row-major Cauchy stress in eV/Angstrom^3. All zeros when
+   * `has_stress` is zero.
+   */
+  double stress[9];
+} rgpot_stress_out_t;
 
 #if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
 /**
@@ -1122,6 +1160,71 @@ rgpot_potential_calculate(const struct rgpot_potential_t *pot,
                           struct rgpot_force_out_t *output);
 
 /**
+ * Install the callback that also computes stress for `pot`, or clear it
+ * with NULL.
+ *
+ * The callback receives the `user_data` the handle was created with, so one
+ * potential object answers both the force-only and the stress request. A
+ * potential that computes no stress registers none, and
+ * `rgpot_potential_calculate_stress` then reports that instead of returning
+ * zeros.
+ *
+ * # Safety
+ *
+ * A NULL `pot` returns `RGPOT_INVALID_PARAMETER`. `callback` must be safe
+ * to call with the handle's `user_data` for as long as it stays registered.
+ */
+enum rgpot_status_t rgpot_potential_set_stress_callback(
+    const struct rgpot_potential_t *pot,
+    enum rgpot_status_t (*callback)(void *user_data,
+                                    const struct rgpot_force_input_t *input,
+                                    struct rgpot_force_out_t *output,
+                                    struct rgpot_stress_out_t *stress));
+
+/**
+ * Nonzero when `pot` computes Cauchy stress, that is when a stress
+ * callback is registered. A NULL `pot` returns zero.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live handle.
+ */
+int32_t rgpot_potential_supports_stress(const struct rgpot_potential_t *pot);
+
+/**
+ * Build a zeroed stress block with `struct_size` set for this build.
+ */
+struct rgpot_stress_out_t rgpot_stress_out_create(void);
+
+/**
+ * Perform a force/energy calculation that also returns the Cauchy stress.
+ *
+ * This is `rgpot_potential_calculate` plus the stress block. It is a
+ * separate entry point so `rgpot_force_input_t` and `rgpot_force_out_t`
+ * keep the layout callers built against ABI minor 6 already use.
+ *
+ * `stress->struct_size` must be at least `sizeof(rgpot_stress_out_t)` of
+ * the header the library was built with, or the call returns
+ * `RGPOT_INVALID_PARAMETER` without touching the block. A potential with no
+ * stress callback also returns `RGPOT_INVALID_PARAMETER` and a message that
+ * names the missing capability; the block stays zero. On success
+ * `stress->has_stress` is nonzero only when every component was computed,
+ * for example it stays zero for a singular cell.
+ *
+ * # Safety
+ *
+ * A NULL `pot`, `input`, `output` or `stress` returns
+ * `RGPOT_INVALID_PARAMETER`. Otherwise the pointers must satisfy the
+ * requirements of `rgpot_potential_calculate`, and `stress` must point to
+ * writable storage of `stress->struct_size` bytes.
+ */
+enum rgpot_status_t
+rgpot_potential_calculate_stress(const struct rgpot_potential_t *pot,
+                                 const struct rgpot_force_input_t *input,
+                                 struct rgpot_force_out_t *output,
+                                 struct rgpot_stress_out_t *stress);
+
+/**
  * Free a potential handle previously obtained from `rgpot_potential_new` or
  * `rgpot_potential_new_eindir`.
  *
@@ -1213,6 +1316,29 @@ rgpot_rpc_client_t *rgpot_rpc_client_new(const char *host, uint16_t port);
 enum rgpot_status_t rgpot_rpc_calculate(rgpot_rpc_client_t *client,
                                         const struct rgpot_force_input_t *input,
                                         struct rgpot_force_out_t *output);
+#endif
+
+#if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
+/**
+ * Perform a remote force/energy calculation that also returns the Cauchy
+ * stress.
+ *
+ * This is `rgpot_rpc_calculate` plus the stress block of
+ * `rgpot_potential_calculate_stress`; `stress->struct_size` is checked the
+ * same way. The request asks the server for stress. A server that does not
+ * advertise the stress operation, or whose potential cannot compute it,
+ * fails the call with `RGPOT_RPC_ERROR` and a message; the block stays
+ * zero. `stress->has_stress` is nonzero only when the reply carried all nine
+ * components.
+ *
+ * # Safety
+ *
+ * As for `rgpot_rpc_calculate`, and `stress` must point to writable storage
+ * of `stress->struct_size` bytes.
+ */
+enum rgpot_status_t rgpot_rpc_calculate_stress(
+    rgpot_rpc_client_t *client, const struct rgpot_force_input_t *input,
+    struct rgpot_force_out_t *output, struct rgpot_stress_out_t *stress);
 #endif
 
 #if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))

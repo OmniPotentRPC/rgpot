@@ -804,7 +804,7 @@ void DispersionPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   std::fill(out->F, out->F + 3 * in.nAtoms, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;
-  out->has_stress = 0;
+  StressAccumulator stress(in, out);
   if (in.nAtoms > 0 && in.atmnrs == nullptr) {
     throw std::invalid_argument("dispersion needs atomic numbers");
   }
@@ -813,13 +813,17 @@ void DispersionPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   ratios_->load(in, &h, &c6);
   const std::vector<double> *c6ptr = c6.empty() ? nullptr : &c6;
   lists_->update(in.pos, in.nAtoms, in.box, cfg_.periodic);
-  double strain[6] = {};
+  double discarded_strain[6] = {};
+  double *strain = stress.enabled() ? stress.data() : discarded_strain;
   int has = 0;
   model_->evaluate(in, lists_->long_pairs(), h, c6ptr, cfg_, &out->energy, out->F, strain, &has);
+  bool incomplete_response_stress = false;
   if (response_ && in.nAtoms > 0) {
     const double *dh = nullptr;
     const double *dc = nullptr;
     response_->jacobians(in, &dh, &dc);
+    incomplete_response_stress =
+        dh != nullptr || (dc != nullptr && c6ptr != nullptr);
     constexpr double eps = 1e-6;
     for (std::size_t i = 0; i < in.nAtoms; ++i) {
       auto energy_of = [&](std::vector<double> hh, std::vector<double> cc) {
@@ -852,11 +856,8 @@ void DispersionPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       }
     }
   }
-  if (has) {
-    const double volume = cellVolume(in.box);
-    if (volume > 0.0) {
-      publishCauchyStress(out, strain, volume);
-    }
+  if (has && !incomplete_response_stress) {
+    stress.publish(in.box);
   }
 }
 

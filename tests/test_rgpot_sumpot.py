@@ -69,13 +69,24 @@ def test_caps_and_stress_follow_the_terms():
     caps = pot.caps()
     assert caps["stress"] is True
     assert caps["reentrancy"] == "per_instance"
-    out = pot.evaluate(pos, z, box)
-    lj = rgpot.LJPot().evaluate(pos, z, box)
-    morse = rgpot.MorsePot().evaluate(pos, z, box)
+    out = pot.evaluate(pos, z, box, compute_stress=True)
+    lj = rgpot.LJPot().evaluate(pos, z, box, compute_stress=True)
+    morse = rgpot.MorsePot().evaluate(pos, z, box, compute_stress=True)
     np.testing.assert_allclose(
         out["stress"], lj["stress"] + 3.0 * morse["stress"], rtol=1e-13, atol=1e-16
     )
     np.testing.assert_allclose(pot.components()[1]["stress"], morse["stress"], rtol=1e-14)
+
+
+def test_a_force_only_sum_reports_no_stress():
+    pos, z, box = cluster()
+    pot = rgpot.SumPot(["lj", {"kind": "morse", "weight": 3.0}])
+    stressed = pot.evaluate(pos, z, box, compute_stress=True)
+    plain = pot.evaluate(pos, z, box)
+    assert plain["stress"] is None
+    assert all(part["stress"] is None for part in pot.components())
+    assert plain["energy"] == stressed["energy"]
+    np.testing.assert_array_equal(plain["forces"], stressed["forces"])
 
 
 def test_empty_sum_is_zero():

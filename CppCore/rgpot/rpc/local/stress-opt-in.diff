@@ -1,0 +1,13 @@
+# Copyright 2023--present rgpot developers
+diff --git a/Potentials.capnp b/Potentials.capnp
+index 34dc2ba..c1f0a12 100644
+--- a/Potentials.capnp
++++ b/Potentials.capnp
+@@ -32,6 +32,7 @@ struct ForceInput {
+   neighbors @9 :NeighborRequest;
+   hasOrbitalKey @10 :Bool = false;  # @brief Protocol minor 2: select keyed orbitals.
+   orbitalKey @11 :Int64 = 0;        # @brief Protocol minor 2: image or bead key.
++  computeStress @12 :Bool = false;  # @brief Request the Cauchy stress tensor.
+ }
+ 
+ # @struct PotentialResult

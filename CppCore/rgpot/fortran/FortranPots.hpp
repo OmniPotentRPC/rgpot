@@ -98,8 +98,7 @@ public:
   /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
   /// eV/Angstrom^3, the convention of stress.hpp.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
-  /// Forces and energy only. eOn's engine calls arrive here and discard
-  /// the stress, so the kernel skips the virial and has_stress stays 0.
+  /// Batched forces, energy and optional stress, with the same opt-in flag.
   void forceBatchImpl(const ForceBatch &batch) const override;
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::PerInstance,
@@ -114,8 +113,13 @@ private:
 /// Tersoff silicon (PotType::TersoffSi). All-silicon calls, and a null
 /// species pointer, use the Fortran gather. Any other atomic number
 /// uses the 1989 silicon-carbon kernel. There is no second PotType.
-/// Periodic calls write the Cauchy stress sigma = (1/V) dE/dε in
-/// eV/Angstrom^3, the convention of stress.hpp.
+/// When ForceInput::compute_stress is set, periodic all-silicon calls
+/// compute the Cauchy stress sigma = (1/V) dE/dε in eV/Angstrom^3 on the
+/// gather path, and mixed-species calls compute it in TersoffSiC.
+/// Force-only calls skip the virial and leave has_stress at 0.
+/// A stress request with a null species pointer throws
+/// std::invalid_argument, which the C ABI stress path reports as
+/// RGPOT_INVALID_PARAMETER.
 class TersoffPot : public Potential<TersoffPot> {
 public:
   TersoffPot() : Potential(PotType::TersoffSi) {}

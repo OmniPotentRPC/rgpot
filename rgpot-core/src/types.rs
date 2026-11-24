@@ -15,6 +15,10 @@
 //!   `output.forces` to a DLPack tensor it creates.  After the call, the
 //!   caller takes ownership and must free it via `rgpot_tensor_free`.
 //! - **Energy and variance** are plain `f64` scalars, always on the host.
+//! - **Stress** never travels in these two structs. Their layout is the one
+//!   every ABI 1.x caller was built against, so it must not grow. The
+//!   opt-in stress entry points take a separate, size-checked
+//!   [`rgpot_stress_out_t`].
 //!
 //! ## DLPack Tensor Shapes
 //!
@@ -94,6 +98,63 @@ impl rgpot_force_input_t {
     }
 }
 
+impl Default for rgpot_force_input_t {
+    fn default() -> Self {
+        Self {
+            positions: std::ptr::null_mut(),
+            atomic_numbers: std::ptr::null_mut(),
+            box_matrix: std::ptr::null_mut(),
+        }
+    }
+}
+
+impl Default for rgpot_force_out_t {
+    fn default() -> Self {
+        Self {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        }
+    }
+}
+
+/// Stress block of the opt-in stress entry points, such as
+/// `rgpot_potential_calculate_stress`.
+///
+/// The block is separate from [`rgpot_force_out_t`] so that struct keeps the
+/// layout of ABI minor 6. `struct_size` is the version field: the caller sets
+/// it to `sizeof(rgpot_stress_out_t)` of the header it was built with, and
+/// the library refuses a smaller value instead of writing past the caller's
+/// storage. A later minor may append fields and will only touch them when
+/// `struct_size` covers them. `rgpot_stress_out_create` returns a block with
+/// the size set.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct rgpot_stress_out_t {
+    /// `sizeof(rgpot_stress_out_t)` as the caller was compiled.
+    pub struct_size: u32,
+    /// Nonzero only when the callback computed every stress component.
+    pub has_stress: i32,
+    /// Row-major Cauchy stress in eV/Angstrom^3. All zeros when
+    /// `has_stress` is zero.
+    pub stress: [f64; 9],
+}
+
+impl rgpot_stress_out_t {
+    /// Size of this block in the layout of this build.
+    pub const SIZE: u32 = std::mem::size_of::<Self>() as u32;
+}
+
+impl Default for rgpot_stress_out_t {
+    fn default() -> Self {
+        Self {
+            struct_size: Self::SIZE,
+            has_stress: 0,
+            stress: [0.0; 9],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,11 +185,7 @@ mod tests {
 
     #[test]
     fn force_out_starts_with_null_forces() {
-        let out = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let out = rgpot_force_out_t::default();
         assert!(out.forces.is_null());
         assert_eq!(out.energy, 0.0);
         assert_eq!(out.variance, 0.0);

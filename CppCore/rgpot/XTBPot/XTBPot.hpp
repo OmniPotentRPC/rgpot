@@ -88,6 +88,10 @@ public:
   /**
    * @throws SccNotConverged when the SCC does not converge, the rescue
    *         included.
+   * @throws std::invalid_argument when @c in.compute_stress is set. The
+   *         molecule is built non-periodic, so xtb returns a zero virial;
+   *         the potential reports the missing capability instead of
+   *         publishing that zero as a stress.
    * @throws std::runtime_error for every other failure.
    */
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
@@ -95,7 +99,7 @@ public:
   /// Native handles are per-instance; concurrent use needs one instance
   /// per thread.
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    return {.reentrancy = Reentrancy::PerInstance};
   }
 
 private:
