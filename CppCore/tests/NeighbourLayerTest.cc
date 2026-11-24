@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cfenv>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -2732,6 +2733,38 @@ TEST_CASE("a fully periodic general cell without a reciprocal basis is not "
   REQUIRE_NOTHROW(
       ortho_cells.update(pos.data(), pos.size() / 3, ortho, spec));
   REQUIRE(ortho_cells.streaming());
+}
+
+TEST_CASE("skewed cells with zero diagonal entries do not form diagonal "
+          "reciprocals",
+          "[nlist][fractional][singular]") {
+  const double pos[6] = {0.2, 0.2, 0.2, 3.9, 0.2, 0.2};
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 0.5;
+  spec.mode = rgpot::nlist::Mode::Stream;
+  spec.periodic = {true, true, true};
+
+  // This is a nonsingular permutation of an orthorhombic basis. Its first two
+  // diagonal entries are zero, so diagonal reciprocals are not cell inverses.
+  const double skewed[9] = {0, 4, 0, 4, 0, 0, 0, 0, 4};
+  std::feclearexcept(FE_DIVBYZERO);
+  rgpot::nlist::Neighbours cells;
+  REQUIRE_NOTHROW(cells.update(pos, 2, skewed, spec));
+  CHECK((std::fetestexcept(FE_DIVBYZERO) & FE_DIVBYZERO) == 0);
+  std::size_t pairs = 0;
+  cells.forHalf(0, 2,
+                [&](std::int32_t, std::int32_t, double, double, double,
+                    double r2) { pairs += r2 <= spec.cutoff * spec.cutoff; });
+  CHECK(pairs == 1);
+
+  // Repeating one row removes the reciprocal basis and takes the established
+  // singular-cell error path before any diagonal reciprocal can be formed.
+  const double degenerate[9] = {0, 4, 0, 0, 4, 0, 0, 0, 4};
+  std::feclearexcept(FE_DIVBYZERO);
+  rgpot::nlist::Neighbours rejected;
+  REQUIRE_THROWS_WITH(rejected.update(pos, 2, degenerate, spec),
+                      "periodic cell must be nonsingular");
+  CHECK((std::fetestexcept(FE_DIVBYZERO) & FE_DIVBYZERO) == 0);
 }
 
 namespace {

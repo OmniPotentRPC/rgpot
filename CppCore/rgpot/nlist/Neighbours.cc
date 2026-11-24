@@ -1096,12 +1096,13 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
     len_[2] = box9[8];
     for (int k = 0; k < 3; ++k) {
       periodic_[k] = next_periodic[k];
-      inv_[k] = periodic_[k] ? 1.0 / len_[k] : 0.0;
+      inv_[k] = 0.0;
     }
     // General minimum image owns every skewed fold, leaving the Cartesian
-    // inverse unused. Its sign bit caches the cell classification without
-    // changing the public class layout; negative zero covers an open x axis.
-    inv_[0] = std::copysign(inv_[0], -1.0);
+    // inverse unused. Avoid forming diagonal reciprocals: a valid skewed basis
+    // may have a zero diagonal entry. The sign bit caches the cell
+    // classification without changing the public class layout.
+    inv_[0] = -0.0;
     image_ = spec.image;
     use_general_ = true;
     general_ = std::move(next_general);
