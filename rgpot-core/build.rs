@@ -152,6 +152,44 @@ fn main() {
 
     #[cfg(feature = "schema")]
     compile_capnp_schema(&crate_dir);
+
+    #[cfg(feature = "rpc")]
+    compile_nlist(&crate_dir);
+}
+
+#[cfg(feature = "rpc")]
+fn compile_nlist(crate_dir: &str) {
+    println!("cargo::rerun-if-env-changed=RGPOT_EXTERNAL_NLIST");
+    if env::var_os("RGPOT_EXTERNAL_NLIST").as_deref() == Some(std::ffi::OsStr::new("1")) {
+        return;
+    }
+    let cpp_core = PathBuf::from(crate_dir).join("..").join("CppCore");
+    if !cpp_core.join("rgpot/nlist/NeighbourList.cc").is_file() {
+        return;
+    }
+    for file in [
+        "rgpot/Slices.cc",
+        "rgpot/nlist/NeighbourList.cc",
+        "rgpot/nlist/Neighbours.cc",
+        "rgpot/nlist/MinimumImage.cpp",
+        "rgpot/simd/exact_fma_hw.cc",
+        "rgpot/simd/exp.cc",
+    ] {
+        println!("cargo::rerun-if-changed={}", cpp_core.join(file).display());
+    }
+    let mut build = cc::Build::new();
+    build
+        .cpp(true)
+        .std("c++20")
+        .include(&cpp_core)
+        .file(cpp_core.join("rgpot/Slices.cc"))
+        .file(cpp_core.join("rgpot/nlist/NeighbourList.cc"))
+        .file(cpp_core.join("rgpot/nlist/Neighbours.cc"))
+        .file(cpp_core.join("rgpot/nlist/MinimumImage.cpp"))
+        .file(cpp_core.join("rgpot/simd/exact_fma_hw.cc"))
+        .file(cpp_core.join("rgpot/simd/exp.cc"))
+        .warnings(false);
+    build.compile("rgpot_core_nlist");
 }
 
 #[cfg(feature = "schema")]

@@ -713,6 +713,7 @@ dependencies = [
  "capnp",
  "capnp-rpc",
  "capnpc",
+ "cc",
  "dlpk",
  "eindir-core",
  "futures",

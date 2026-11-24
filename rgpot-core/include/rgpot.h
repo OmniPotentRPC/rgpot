@@ -584,6 +584,82 @@ typedef struct rgpot_hvp_counts_t {
 typedef struct RpcClient rgpot_rpc_client_t;
 #endif
 
+#if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
+/**
+ * Neighbour query parameters for `rgpot_rpc_neighbours`.
+ */
+typedef struct rgpot_rpc_neighbors_request_t {
+  /**
+   * Pair cutoff in the length unit of `positions`.
+   */
+  double cutoff;
+  /**
+   * Verlet buffer in the length unit of `positions`.
+   */
+  double skin;
+  /**
+   * 0 half pairs, 1 full pairs, 2 cluster of four.
+   */
+  uint8_t format;
+  /**
+   * 0 strict, 1 loose.
+   */
+  uint8_t cut;
+  /**
+   * Per-axis periodicity flags (nonzero for periodic).
+   */
+  int32_t periodic[3];
+  /**
+   * Nonzero to fill `shift`.
+   */
+  int32_t shifts;
+  /**
+   * Nonzero to fill `vector`.
+   */
+  int32_t vectors;
+  /**
+   * Nonzero to fill `distance`.
+   */
+  int32_t distances;
+} rgpot_rpc_neighbors_request_t;
+#endif
+
+#if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
+/**
+ * Caller-owned buffers for `rgpot_rpc_neighbours`.
+ */
+typedef struct rgpot_rpc_neighbors_out_t {
+  /**
+   * Central atom indices (`cap` entries).
+   */
+  int32_t *first;
+  /**
+   * Partner atom indices (`cap` entries).
+   */
+  int32_t *second;
+  /**
+   * Integer cell shifts (`3 * cap` entries when requested).
+   */
+  int32_t *shift;
+  /**
+   * Pair displacement vectors (`3 * cap` entries when requested).
+   */
+  double *vector;
+  /**
+   * Pair distances (`cap` entries when requested).
+   */
+  double *distance;
+  /**
+   * Interaction mask (`cap` bytes, or NULL).
+   */
+  uint8_t *mask;
+  /**
+   * Capacity in pairs of each non-null buffer.
+   */
+  uintptr_t cap;
+} rgpot_rpc_neighbors_out_t;
+#endif
+
 /**
  * Evaluations a potential handle has answered, split by origin.
  *
@@ -1244,6 +1320,28 @@ rgpot_rpc_calculate_hvp(rgpot_rpc_client_t *client,
  */
 enum rgpot_status_t rgpot_rpc_client_select_orbitals(rgpot_rpc_client_t *client,
                                                      int64_t key);
+#endif
+
+#if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))
+/**
+ * Request the remote potential's neighbour list for `input` and `request`.
+ *
+ * `*count` receives the number of pairs written (at most `out->cap`), and
+ * `*needed` receives the full pair count. A NULL `out`, or `out->cap == 0`,
+ * probes the size and returns `RGPOT_SUCCESS` with `*count = 0`. When
+ * `out->cap` is positive and smaller than `*needed`, `out->cap` pairs are
+ * written and `RGPOT_BUFFER_SIZE_ERROR` is returned.
+ *
+ * # Safety
+ *
+ * `client` must be NULL or a live pointer from `rgpot_rpc_client_new`.
+ * `input` and `request` must be NULL or point to valid structs. `out`,
+ * `count` and `needed` must each be NULL or writable.
+ */
+enum rgpot_status_t rgpot_rpc_neighbours(
+    rgpot_rpc_client_t *client, const struct rgpot_force_input_t *input,
+    const struct rgpot_rpc_neighbors_request_t *request,
+    struct rgpot_rpc_neighbors_out_t *out, uintptr_t *count, uintptr_t *needed);
 #endif
 
 #if (defined(RGPOT_HAS_RPC) && defined(RGPOT_HAS_RPC))

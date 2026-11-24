@@ -91,6 +91,9 @@ def main() -> None:
     if args.features:
         cmd += ["--features", args.features]
     env = fast.cargo_env()
+    if env is None:
+        env = os.environ.copy()
+    env.setdefault("RGPOT_EXTERNAL_NLIST", "1")
     proc = subprocess.run(cmd, check=False, env=env)
     if proc.returncode != 0:
         sys.exit(proc.returncode)
