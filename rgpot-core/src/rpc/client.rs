@@ -258,6 +258,10 @@ type CpuInput = (Vec<f64>, Vec<i32>, Vec<f64>);
 /// # Safety
 /// All tensor pointers in `input` must be valid DLPack tensors on kDLCPU.
 unsafe fn extract_cpu_input(input: &rgpot_force_input_t, n: usize) -> Result<CpuInput, String> {
+    let pos_len = n
+        .checked_mul(3)
+        .ok_or_else(|| "n_atoms * 3 overflows".to_string())?;
+
     // Positions
     if input.positions.is_null() {
         return Err("positions tensor is NULL".into());
@@ -269,7 +273,7 @@ unsafe fn extract_cpu_input(input: &rgpot_force_input_t, n: usize) -> Result<Cpu
     if pos_t.data.is_null() {
         return Err("positions data is NULL".into());
     }
-    let positions = copy_f64_tensor(input.positions, "positions", n * 3, false)?;
+    let positions = copy_f64_tensor(input.positions, "positions", pos_len, false)?;
 
     // Atomic numbers
     if input.atomic_numbers.is_null() {
@@ -363,6 +367,14 @@ mod tests {
         };
         let err = unsafe { extract_cpu_input(&input, 1) }.unwrap_err();
         assert_eq!(err, "positions tensor is NULL");
+    }
+
+    #[test]
+    fn extract_cpu_input_rejects_an_overflowing_positions_length() {
+        let guard = make_input(1);
+        let n = usize::MAX / 3 + 1;
+        let err = unsafe { extract_cpu_input(&guard.input, n) }.unwrap_err();
+        assert_eq!(err, "n_atoms * 3 overflows");
     }
 
     #[test]
