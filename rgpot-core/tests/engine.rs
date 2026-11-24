@@ -1765,6 +1765,48 @@ fn an_unavailable_engine_is_refused_before_create() {
     assert_eq!(observer.created(), before);
 }
 
+/// Every refusal of a load leaves no engine instance behind: an instance the
+/// failed load created is destroyed once, and a refusal before creation never
+/// creates one. The library handle of each refused first load is closed, which
+/// `failed_first_loads_are_closed_and_can_be_retried` checks by mapping.
+#[test]
+fn every_rejected_load_balances_created_and_destroyed_instances() {
+    let too_new = format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1);
+    let cases: [(&str, Vec<&str>, c_int); 6] = [
+        (
+            "harmonic_balance_unavailable",
+            vec!["FIXTURE_AVAILABLE=0"],
+            0,
+        ),
+        ("harmonic_balance_abi", vec!["FIXTURE_ABI=2"], 0),
+        ("harmonic_balance_too_new", vec![too_new.as_str()], 0),
+        ("harmonic_balance_layout", vec!["FIXTURE_ABI_LAYOUT=2"], 0),
+        ("harmonic_balance_caps_lock", vec!["CAPS_LOCK_ERROR"], 1),
+        ("harmonic_balance_caps_fatal", vec!["CAPS_ERROR_CODE=-1"], 1),
+    ];
+    for (name, defines, creates) in cases {
+        let path = build(name, &defines);
+        let observer = FixtureObserver::open(&path);
+        let created = observer.created();
+        let destroyed = observer.destroyed();
+        for attempt in 0..3 {
+            unsafe { EnginePotential::load(&path, &config()) }
+                .err()
+                .unwrap_or_else(|| panic!("{name} must be refused"));
+            assert_eq!(
+                observer.created() - created,
+                creates * (attempt + 1),
+                "{name}: instances created by attempt {attempt}"
+            );
+            assert_eq!(
+                observer.destroyed() - destroyed,
+                creates * (attempt + 1),
+                "{name}: instances destroyed by attempt {attempt}"
+            );
+        }
+    }
+}
+
 #[test]
 fn a_request_that_does_not_fit_is_refused_before_the_engine() {
     let path = build("harmonic_shape", &[]);
@@ -2039,6 +2081,25 @@ fn failed_first_loads_are_closed_and_can_be_retried() {
             config().to_vec(),
         ),
         (build("harmonic_failed_create", &[]), vec![1, 2, 3]),
+        (
+            build("harmonic_failed_unavailable", &["FIXTURE_AVAILABLE=0"]),
+            config().to_vec(),
+        ),
+        (
+            build(
+                "harmonic_failed_minor_too_new",
+                &[&format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1)],
+            ),
+            config().to_vec(),
+        ),
+        (
+            build("harmonic_failed_caps_lock", &["CAPS_LOCK_ERROR"]),
+            config().to_vec(),
+        ),
+        (
+            build("harmonic_failed_caps_fatal", &["CAPS_ERROR_CODE=-1"]),
+            config().to_vec(),
+        ),
     ];
 
     for (path, config) in failures {
