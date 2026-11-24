@@ -38,6 +38,7 @@ Then:
 2. Append each new exported function to =scripts/abi_core_baseline.txt=.
    The list only grows; it holds the functions of a build with the crate's
    default features.
+   RPC-only functions belong in =scripts/abi_baseline_rpc.txt= instead.
 3. Run the crate tests with =pixi run rust-test=.
    =committed_header_matches_the_crate= fails when the version and ABI macros,
    or the Hessian-vector declarations, of the committed header differ from the
@@ -50,6 +51,12 @@ fails when the Rust archive no longer exports a baseline name.
 =scripts/abi_baseline.txt= and =scripts/abi_baseline_fast.txt= are the same
 check for the neighbour-list and fast-list exports of =librgpot= (Meson test
 =abi_symbols=).
+=scripts/abi_baseline_md_session.txt= lists the =rgpot_md_session_*= exports.
+They are in =librgpot= itself, also in a static build.
+The test =abi_symbols_md_session= reads that library against the list.
+The export-count test =rgpot_so_exports= reads the same list, requires every
+name in it, and leaves those names out of its two counts, so the counts stay the
+measured counts of the rest of the library.
 The neighbour-list C ABI has its own number, =RGPOT_NLIST_ABI= in
 =CppCore/rgpot/nlist/rgpot_nlist.h=.
 

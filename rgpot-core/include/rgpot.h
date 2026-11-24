@@ -63,7 +63,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * ABI minor of this build.
  */
-#define RGPOT_ABI_VERSION_MINOR 10
+#define RGPOT_ABI_VERSION_MINOR 11
 
 /**
  * Layout revision of this build.
@@ -505,7 +505,13 @@ typedef struct RpcClient rgpot_rpc_client_t;
  * charges evaluations chooses which field to bill.
  */
 typedef struct rgpot_eval_counts_t {
+  /**
+   * Number of callback evaluations.
+   */
   uint64_t computed;
+  /**
+   * Number of results served from the fused cache.
+   */
   uint64_t served;
 } rgpot_eval_counts_t;
 

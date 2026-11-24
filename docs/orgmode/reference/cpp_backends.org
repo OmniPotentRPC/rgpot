@@ -1673,6 +1673,22 @@ int main() {
 }
 #+end_src
 
+*** =rgpot::OpenMMSessionConfig=
+
+- Inputs :: =platform= (default ="Reference"=),
+  =time_step= (default =0.001=), =friction= (default =1.0=), =temperature= (default =0.02585 * md::kKjPerEv=), =random_seed=
+  (default =1=).
+- Units :: =time_step= in ps, =friction= in ps^-1, =temperature= (kT) in kJ/mol.
+- Outputs :: configuration struct read by =rgpot::OpenMMSession=, which manages
+  an owned =OpenMM::System= and exposes =numParticles=, =masses=,
+  =setPositions=, =setVelocities=, =stepLangevin= (3N projected BAOAB with
+  specular planar walls and deterministic 64-bit PRNG), =stepNVE=, =state=
+  (returning =OpenMMState= in nm, nm/ps, kJ/(mol nm), and kJ/mol), and
+  =openmm_md_session_init= for the rgpot-unit C ABI.
+- Errors :: =OpenMMSession= throws
+  =std::invalid_argument= if =platform= is empty, =time_step= or =temperature=
+  is not positive and finite, or =friction= is negative or non-finite.
+
 ** Members common to several classes
 
 These members have the same declaration in each class that has them.

@@ -69,6 +69,11 @@ if not is_variable('rgpot')
         'with_python requires the full rgpot library (disable with_rpc_client_only)',
     )
 endif
+if get_option('default_library') == 'static'
+    error(
+        'with_python requires a shared librgpot (disable default_library=static)',
+    )
+endif
 if not is_variable('metatomic_dlopen')
     error('with_python requires MetatomicDlopen (rgpot/MetatomicPot)')
 endif

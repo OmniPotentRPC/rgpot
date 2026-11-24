@@ -23,4 +23,11 @@ inline constexpr double kEvPerKj = 1.0 / kKjPerEv;
 // (kJ/mol)/nm to eV/Angstrom.
 inline constexpr double kEvAPerKjNm = kEvPerKj / kAngstromPerNm;
 
+// amu Angstrom^2 / ps^2 in one eV. One amu nm^2 / ps^2 is one kJ/mol, and
+// one Angstrom^2 is 0.01 nm^2. With positions in Angstrom, time in ps and
+// masses in amu, an energy or kT in eV times this factor is in the units
+// the dynamics works in, and a force in eV/Angstrom times it is in
+// amu Angstrom / ps^2.
+inline constexpr double kAmuA2Ps2PerEv = kKjPerEv * 100.0;
+
 } // namespace rgpot::md
