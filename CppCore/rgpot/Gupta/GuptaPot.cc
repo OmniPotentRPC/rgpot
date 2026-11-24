@@ -24,6 +24,7 @@
 #include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/Gupta/gupta.h"
 #include "rgpot/KeptPotential.hpp"
+#include "rgpot/PotHelpers.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
@@ -100,19 +101,15 @@ void GuptaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
 void GuptaPot::forcePerAtom(const ForceInput &in, ForceOut *out,
                             const PerAtomOut &atoms) const {
+  guardForceCall(in, out, kernelNeedsCell(*this), false);
   clearPerAtom(atoms, in.nAtoms);
   compute(in, out, &atoms);
 }
 
 void GuptaPot::compute(const ForceInput &in, ForceOut *out,
                        const PerAtomOut *atoms) const {
-  if (out == nullptr) {
-    throw std::invalid_argument("GuptaPot: ForceOut is null");
-  }
+  guardForceCall(in, out, kernelNeedsCell(*this), false);
   const auto n_atoms = static_cast<long>(in.nAtoms);
-  if (n_atoms > 0 && (in.pos == nullptr || out->F == nullptr)) {
-    throw std::invalid_argument("GuptaPot: null positions or forces buffer");
-  }
   const double *R = in.pos;
   double *F = out->F;
   out->energy = 0.0;
