@@ -42,49 +42,61 @@ struct PotentialServer {
 unsafe impl Send for PotentialServer {}
 unsafe impl Sync for PotentialServer {}
 
-impl potential::Server for PotentialServer {
-    fn get_capabilities(
-        &mut self,
-        _params: potential::GetCapabilitiesParams,
-        mut results: potential::GetCapabilitiesResults,
-    ) -> capnp::capability::Promise<(), CapnpError> {
-        let analytic_hvp =
-            !self.potential.is_null() && unsafe { &*self.potential }.has_hessian_vector_callback();
-        crate::compat::describe_server_with(
-            results.get().init_capabilities(),
-            analytic_hvp,
-            self.stress_callback.is_some(),
-        );
-        capnp::capability::Promise::ok(())
-    }
+/// What one evaluation produced, in the units of the callback.
+struct Answer {
+    energy: f64,
+    forces: Vec<f64>,
+    stress: Option<[f64; 9]>,
+}
 
-    fn calculate(
-        &mut self,
-        params: potential::CalculateParams,
-        mut results: potential::CalculateResults,
-    ) -> capnp::capability::Promise<(), CapnpError> {
-        let fip = pry!(pry!(params.get()).get_fip());
-        let want_stress = fip.get_compute_stress();
+impl Answer {
+    fn write(self, mut result: crate::rpc::schema::potential_result::Builder<'_>) {
+        result.set_energy(self.energy);
+        let mut forces_builder = result.reborrow().init_forces(self.forces.len() as u32);
+        for (i, &f) in self.forces.iter().enumerate() {
+            forces_builder.set(i as u32, f);
+        }
+        if let Some(stress) = self.stress {
+            let mut stress_builder = result.init_stress(9);
+            for (i, &value) in stress.iter().enumerate() {
+                stress_builder.set(i as u32, value);
+            }
+        }
+    }
+}
+
+impl PotentialServer {
+    /// Run the callback on one request.
+    ///
+    /// A request for stress is served only by a potential that computes it,
+    /// and fails when the callback leaves `has_stress` clear: a stress
+    /// request never succeeds without a stress.
+    fn evaluate(
+        &self,
+        fip: crate::rpc::schema::force_input::Reader<'_>,
+        require_stress: bool,
+    ) -> Result<Answer, CapnpError> {
+        let want_stress = require_stress || fip.get_compute_stress();
         if want_stress && self.stress_callback.is_none() {
-            return capnp::capability::Promise::err(CapnpError::failed(
-                "this potential does not compute stress".to_string(),
+            return Err(CapnpError::failed(
+                "the selected potential does not provide stress".to_string(),
             ));
         }
 
-        let positions = pry!(fip.get_pos());
-        let atmnrs = pry!(fip.get_atmnrs());
-        let box_data = pry!(fip.get_box());
+        let positions = fip.get_pos()?;
+        let atmnrs = fip.get_atmnrs()?;
+        let box_data = fip.get_box()?;
 
         let n_atoms = atmnrs.len() as usize;
         if positions.len() as usize != 3 * n_atoms {
-            return capnp::capability::Promise::err(CapnpError::failed(format!(
+            return Err(CapnpError::failed(format!(
                 "positions: expected {} values for {n_atoms} atoms, got {}",
                 3 * n_atoms,
                 positions.len()
             )));
         }
         if box_data.len() != 9 {
-            return capnp::capability::Promise::err(CapnpError::failed(format!(
+            return Err(CapnpError::failed(format!(
                 "box: expected 9 values, got {}",
                 box_data.len()
             )));
@@ -128,31 +140,60 @@ impl potential::Server for PotentialServer {
         }
 
         if status != rgpot_status_t::RGPOT_SUCCESS {
-            return capnp::capability::Promise::err(CapnpError::failed(
+            return Err(CapnpError::failed(
                 "potential callback returned an error".to_string(),
             ));
         }
-        let forces_copy = match forces_copy {
-            Ok(f) => f,
-            Err(why) => return capnp::capability::Promise::err(CapnpError::failed(why)),
-        };
-
-        let mut result_builder = results.get().init_result();
-        result_builder.set_energy(output.energy);
-
-        let mut forces_builder = result_builder
-            .reborrow()
-            .init_forces(forces_copy.len() as u32);
-        for (i, &f) in forces_copy.iter().enumerate() {
-            forces_builder.set(i as u32, f);
-        }
-        if want_stress && stress.has_stress != 0 {
-            let mut stress_builder = result_builder.init_stress(9);
-            for (i, &value) in stress.stress.iter().enumerate() {
-                stress_builder.set(i as u32, value);
-            }
+        let forces = forces_copy.map_err(CapnpError::failed)?;
+        if want_stress && stress.has_stress == 0 {
+            return Err(CapnpError::failed(
+                "the selected potential returned no stress".to_string(),
+            ));
         }
 
+        Ok(Answer {
+            energy: output.energy,
+            forces,
+            stress: (want_stress && stress.has_stress != 0).then_some(stress.stress),
+        })
+    }
+}
+
+impl potential::Server for PotentialServer {
+    fn get_capabilities(
+        &mut self,
+        _params: potential::GetCapabilitiesParams,
+        mut results: potential::GetCapabilitiesResults,
+    ) -> capnp::capability::Promise<(), CapnpError> {
+        let analytic_hvp =
+            !self.potential.is_null() && unsafe { &*self.potential }.has_hessian_vector_callback();
+        crate::compat::describe_server_with(
+            results.get().init_capabilities(),
+            analytic_hvp,
+            self.stress_callback.is_some(),
+        );
+        capnp::capability::Promise::ok(())
+    }
+
+    fn calculate(
+        &mut self,
+        params: potential::CalculateParams,
+        mut results: potential::CalculateResults,
+    ) -> capnp::capability::Promise<(), CapnpError> {
+        let fip = pry!(pry!(params.get()).get_fip());
+        let answer = pry!(self.evaluate(fip, false));
+        answer.write(results.get().init_result());
+        capnp::capability::Promise::ok(())
+    }
+
+    fn calculate_stress(
+        &mut self,
+        params: potential::CalculateStressParams,
+        mut results: potential::CalculateStressResults,
+    ) -> capnp::capability::Promise<(), CapnpError> {
+        let fip = pry!(pry!(params.get()).get_fip());
+        let answer = pry!(self.evaluate(fip, true));
+        answer.write(results.get().init_result());
         capnp::capability::Promise::ok(())
     }
 
@@ -332,6 +373,9 @@ mod tests {
         calls: AtomicUsize,
         stress_calls: AtomicUsize,
         short_forces: bool,
+        /// The stress callback runs but leaves `has_stress` clear, as a
+        /// kernel does for a cell it cannot measure.
+        withhold_stress: bool,
     }
 
     fn probe_forces(probe: &Probe, input: *const rgpot_force_input_t, out: &mut rgpot_force_out_t) {
@@ -372,8 +416,10 @@ mod tests {
         probe.stress_calls.fetch_add(1, Ordering::SeqCst);
         probe_forces(probe, input, unsafe { &mut *output });
         let block = unsafe { &mut *stress };
-        block.stress = [0.125; 9];
-        block.has_stress = 1;
+        if !probe.withhold_stress {
+            block.stress = [0.125; 9];
+            block.has_stress = 1;
+        }
         rgpot_status_t::RGPOT_SUCCESS
     }
 
@@ -443,6 +489,7 @@ mod tests {
             calls: AtomicUsize::new(0),
             stress_calls: AtomicUsize::new(0),
             short_forces,
+            withhold_stress: false,
         }
     }
 
@@ -520,9 +567,23 @@ mod tests {
     fn stress_request_to_a_potential_without_stress_is_refused() {
         let p = probe(false);
         let err = call(&p, &[0.0; 6], &[1, 1], &CELL, true, false).unwrap_err();
-        assert!(err.contains("does not compute stress"), "{err}");
+        assert!(err.contains("does not provide stress"), "{err}");
         assert_eq!(p.calls.load(Ordering::SeqCst), 0);
         assert_eq!(p.stress_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn stress_request_the_callback_cannot_answer_fails_like_the_cpp_server() {
+        let p = Probe {
+            withhold_stress: true,
+            ..probe(false)
+        };
+        let err = call(&p, &[0.0; 6], &[1, 1], &CELL, true, true).unwrap_err();
+        assert!(err.contains("returned no stress"), "{err}");
+        assert_eq!(p.stress_calls.load(Ordering::SeqCst), 1);
+        let (forces, stress) = call(&p, &[0.0; 6], &[1, 1], &CELL, false, true).unwrap();
+        assert_eq!(forces.len(), 6);
+        assert!(stress.is_empty(), "a force-only request carries no stress");
     }
 
     #[test]

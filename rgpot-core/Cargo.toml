@@ -61,6 +61,11 @@ path = "tests/rpc_stress.rs"
 required-features = ["rpc"]
 
 [[test]]
+name = "rpc_stress_eam"
+path = "tests/rpc_stress_eam.rs"
+required-features = ["rpc"]
+
+[[test]]
 name = "profile"
 path = "tests/profile.rs"
 required-features = ["profile"]
