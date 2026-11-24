@@ -10,6 +10,7 @@
 // models in MTA_<NAME>_PT, which scripts/export_tiny_metatomic_model.py
 // writes.
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -38,6 +39,9 @@
 #endif
 #include "rgpot/engine_c_abi.h"
 #include "TestTempDir.hpp"
+#ifdef RGPOT_HAS_CBE
+#include "fixtures/cbe_engine_goldens.hpp"
+#endif
 #include "rgpot/rpc/Potentials.capnp.h"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -463,6 +467,159 @@ TEST_CASE("an engine without a gradient jet reports a typed absence",
                 product.data(), kBox.data()) == RGPOT_ENGINE_OK);
   e.destroy(pot);
 }
+
+#ifdef RGPOT_HAS_CBE
+namespace {
+
+bool same_bits(const double *a, const double *b, std::size_t n) {
+  return std::memcmp(a, b, n * sizeof(double)) == 0;
+}
+
+struct CbeCase {
+  const char *name;
+  const std::array<double, 18> &positions;
+  const std::array<double, 18> &direction;
+  double energy;
+  const std::array<double, 18> &force;
+  const std::array<double, 18> &hvp;
+  const std::array<double, 54> &jet;
+  long long operations;
+  double scale;
+  double order_one_scale;
+};
+
+} // namespace
+
+TEST_CASE("CBE engine energy, force, Hessian product and jet keep their bits",
+          "[engine][classical][cbe][jet]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("cbe"));
+  REQUIRE(pot != nullptr);
+
+  RgpotEngineCaps caps;
+  std::memset(&caps, 0, sizeof(caps));
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.analytic_hvp == 1);
+  REQUIRE(caps.jet_order == 3);
+  REQUIRE(caps.reentrancy == 2);
+
+  using namespace cbe_goldens;
+  const std::array<int, 6> z{1, 6, 1, 1, 1, 1};
+  const CbeCase cases[] = {
+      {"saddle", kSaddlePositions, kSaddleDirection, kSaddleEnergy,
+       kSaddleForce, kSaddleHvp, kSaddleJet, kSaddleOperations, kSaddleScale,
+       kSaddleOrderOneScale},
+      {"displaced", kDisplacedPositions, kDisplacedDirection,
+       kDisplacedEnergy, kDisplacedForce, kDisplacedHvp, kDisplacedJet,
+       kDisplacedOperations, kDisplacedScale, kDisplacedOrderOneScale},
+  };
+  for (const CbeCase &c : cases) {
+    INFO(c.name);
+    std::array<double, 18> force{};
+    double energy = 0.0;
+    REQUIRE(e.force(pot, 6, c.positions.data(), z.data(), force.data(),
+                    &energy, nullptr, kBox.data(), nullptr,
+                    nullptr) == RGPOT_ENGINE_OK);
+    REQUIRE(same_bits(&energy, &c.energy, 1));
+    REQUIRE(same_bits(force.data(), c.force.data(), 18));
+
+    std::array<double, 18> product{};
+    REQUIRE(e.hvp(pot, 6, c.positions.data(), z.data(), c.direction.data(),
+                  product.data(), kBox.data()) == RGPOT_ENGINE_OK);
+    REQUIRE(same_bits(product.data(), c.hvp.data(), 18));
+
+    std::array<double, 54> jet{};
+    RgpotEngineDerivativeReport report{};
+    REQUIRE(e.taylor_jet(pot, 1, 6, c.positions.data(), z.data(),
+                         c.direction.data(), 3, jet.data(), &report,
+                         kBox.data()) == RGPOT_ENGINE_OK);
+    REQUIRE(same_bits(jet.data(), c.jet.data(), 54));
+    REQUIRE(same_bits(jet.data(), product.data(), 18));
+    REQUIRE(report.tracked == 1);
+    REQUIRE(report.operations == c.operations);
+    REQUIRE(same_bits(&report.scale, &c.scale, 1));
+
+    std::array<double, 54> order_one{};
+    RgpotEngineDerivativeReport one{};
+    REQUIRE(e.taylor_jet(pot, 1, 6, c.positions.data(), z.data(),
+                         c.direction.data(), 1, order_one.data(), &one,
+                         kBox.data()) == RGPOT_ENGINE_OK);
+    REQUIRE(same_bits(order_one.data(), c.hvp.data(), 18));
+    REQUIRE(one.operations == c.operations);
+    REQUIRE(same_bits(&one.scale, &c.order_one_scale, 1));
+
+    REQUIRE(e.taylor_jet(pot, 1, 6, c.positions.data(), z.data(),
+                         c.direction.data(), 2, order_one.data(), nullptr,
+                         kBox.data()) == RGPOT_ENGINE_OK);
+    REQUIRE(same_bits(order_one.data(), c.jet.data(), 36));
+  }
+
+  {
+    std::array<double, 36> positions{}, directions{};
+    std::copy(kSaddlePositions.begin(), kSaddlePositions.end(),
+              positions.begin());
+    std::copy(kDisplacedPositions.begin(), kDisplacedPositions.end(),
+              positions.begin() + 18);
+    std::copy(kSaddleDirection.begin(), kSaddleDirection.end(),
+              directions.begin());
+    std::copy(kDisplacedDirection.begin(), kDisplacedDirection.end(),
+              directions.begin() + 18);
+    std::array<double, 18> boxes{};
+    std::copy(kBox.begin(), kBox.end(), boxes.begin());
+    std::copy(kBox.begin(), kBox.end(), boxes.begin() + 9);
+    std::array<double, 108> batch{};
+    RgpotEngineDerivativeReport total{};
+    REQUIRE(e.taylor_jet(pot, 2, 6, positions.data(), z.data(),
+                         directions.data(), 3, batch.data(), &total,
+                         boxes.data()) == RGPOT_ENGINE_OK);
+    // [order][system][18]
+    for (std::size_t k = 0; k < 3; ++k) {
+      REQUIRE(same_bits(batch.data() + k * 36, kSaddleJet.data() + k * 18,
+                        18));
+      REQUIRE(same_bits(batch.data() + k * 36 + 18,
+                        kDisplacedJet.data() + k * 18, 18));
+    }
+    REQUIRE(total.tracked == 1);
+    REQUIRE(total.operations == kSaddleOperations + kDisplacedOperations);
+    const double larger = std::max(kSaddleScale, kDisplacedScale);
+    REQUIRE(same_bits(&total.scale, &larger, 1));
+
+    std::array<double, 36> forces{};
+    std::array<double, 2> energies{};
+    REQUIRE(e.force_batch(pot, 2, 6, positions.data(), z.data(),
+                          forces.data(), energies.data(), nullptr,
+                          boxes.data(), nullptr, nullptr) == RGPOT_ENGINE_OK);
+    REQUIRE(same_bits(forces.data(), kSaddleForce.data(), 18));
+    REQUIRE(same_bits(forces.data() + 18, kDisplacedForce.data(), 18));
+    REQUIRE(same_bits(&energies[0], &kSaddleEnergy, 1));
+    REQUIRE(same_bits(&energies[1], &kDisplacedEnergy, 1));
+    RgpotEngineCaps batched{};
+    batched.size = sizeof(batched);
+    REQUIRE(e.caps(pot, &batched) == 0);
+    REQUIRE(batched.batched == 1);
+  }
+
+  std::array<double, 54> jet{};
+  const auto &p = kSaddlePositions;
+  const auto &d = kSaddleDirection;
+  REQUIRE(e.taylor_jet(pot, 1, 6, p.data(), z.data(), d.data(), 4, jet.data(),
+                       nullptr, kBox.data()) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(error_of(e, pot).find("exceeds") != std::string::npos);
+  REQUIRE(e.taylor_jet(pot, 1, 6, p.data(), z.data(), d.data(), 0, jet.data(),
+                       nullptr, kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(e.taylor_jet(pot, 1, 5, p.data(), z.data(), d.data(), 1, jet.data(),
+                       nullptr, kBox.data()) == RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(error_of(e, pot).find("six atoms") != std::string::npos);
+  REQUIRE(e.taylor_jet(pot, 1, 6, p.data(), z.data(), jet.data(), 1, jet.data(),
+                       nullptr, kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(error_of(e, pot).find("overlap") != std::string::npos);
+  e.destroy(pot);
+}
+#endif
 
 TEST_CASE("classical engine LJPot reports coincident atoms as evaluation errors",
           "[engine][classical][lj]") {

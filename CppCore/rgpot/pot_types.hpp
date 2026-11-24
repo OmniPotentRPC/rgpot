@@ -73,7 +73,7 @@ enum class PotType {
   LepsFH2,
   DoubleWell,
   CoupledProtonWell,
-  CBE,          //!< External cbe-pes frontend.
+  CBE,          //!< CH5 2008 surface of the linked potlibc.
   D2,           //!<  Grimme DFT-D2 lattice sum (rgpot::D2Pot).
   D2Cpmd,       //!<  CPMD's minimum-image empirical D2 (rgpot::D2CpmdPot).
   MEAM          //!< Modified embedded-atom method (LAMMPS meam files).

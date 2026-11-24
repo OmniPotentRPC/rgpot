@@ -93,8 +93,8 @@ if has_eam_table
     _args += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
 endif
 
-cbe_dep = dependency('cbe', required: get_option('with_cbe'))
-has_cbe = cbe_dep.found()
+potlibc_dep = dependency('potlibc', required: get_option('with_cbe'))
+has_cbe = potlibc_dep.found()
 if has_cbe
     _args += ['-DRGPOT_HAS_CBE=TRUE']
 endif

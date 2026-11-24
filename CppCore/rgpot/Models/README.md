@@ -61,8 +61,8 @@ Every function reports failure through its status code and
 
 ## External CBE frontend
 
-H + CH4 is supplied by the external `cbe-pes` library through the optional
-`CBEPot` linked frontend.
+H + CH4 is the `ch52008` surface of the external `potlibc` library, reached
+through the optional `CBEPot` linked frontend.
 
 ## CuH2 and embedded-atom models
 

@@ -115,7 +115,7 @@ option(
     'with_cbe',
     type: 'feature',
     value: 'disabled',
-    description: 'linked external cbe-pes H + CH4 frontend',
+    description: 'CH5 2008 (H + CH4) surface of the linked potlibc library',
 )
 option(
     'with_highway',
