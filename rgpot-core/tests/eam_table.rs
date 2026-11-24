@@ -363,14 +363,16 @@ fn strained(reference: &Reference, a: usize, b: usize, amount: f64) -> Reference
         positions: reference.positions.clone(),
         forces: reference.forces.clone(),
     };
-    for r in changed.positions.chunks_exact_mut(3) {
+    let (rows, _) = changed.positions.as_chunks_mut::<3>();
+    for r in rows {
         let old = [r[0], r[1], r[2]];
         r[a] += amount * old[b];
         if a != b {
             r[b] += amount * old[a];
         }
     }
-    for row in changed.cell.chunks_exact_mut(3) {
+    let (rows, _) = changed.cell.as_chunks_mut::<3>();
+    for row in rows {
         let old = [row[0], row[1], row[2]];
         row[a] += amount * old[b];
         if a != b {
