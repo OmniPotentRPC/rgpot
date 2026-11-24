@@ -513,7 +513,7 @@ Only the 21 classes =LJPot=, =LJClusterPot=, =MorsePot=, =GuptaPot=,
 =StillingerWeberSi=, =TersoffSiC=, =IPIPot=, =LammpsPot=, =GromacsPot= and
 =OpenMMPot= do not have =evaluate_batch= or =hvp=.
 
-The twenty classes build their kernel in the constructor.
+The 21 classes build their kernel in the constructor.
 A constructor argument the kernel rejects raises there, not at the first call.
 They keep one kernel instance per calling thread, except for kernels that share
 one instance.
