@@ -29,6 +29,40 @@ from rgpot.ase._registry import register_calculator as _register_calculator
 from rgpot.ase.calculator import _voigt
 from rgpot.ase.claim import ConnectionClaim
 
+PROTOCOL_FAMILY = "rgpot.potentials"
+PROTOCOL_MAJOR = 1
+PROTOCOL_MINOR = 2
+# The minor that introduced the orbital-key fields. It is a fixed number so a
+# later PROTOCOL_MINOR bump does not raise the floor for keyed requests.
+ORBITAL_KEY_INTRODUCED_MINOR = 2
+
+
+class ProtocolMinorMismatchError(RuntimeError):
+    """The server advertises a protocol minor below what a request needs.
+
+    ``required_minor`` is the minor the request needs, ``server_minor`` the
+    one the server advertised and ``client_minor`` the one this client
+    implements. ``feature`` names the request field that set the floor.
+    """
+
+    def __init__(
+        self,
+        feature: str,
+        required_minor: int,
+        server_minor: int,
+        client_minor: int,
+    ) -> None:
+        self.feature = feature
+        self.required_minor = int(required_minor)
+        self.server_minor = int(server_minor)
+        self.client_minor = int(client_minor)
+        super().__init__(
+            f"ForceInput {feature} requires RPC protocol minor "
+            f"{self.required_minor}, but the server advertises "
+            f"{self.server_minor} (the client implements "
+            f"{self.client_minor})"
+        )
+
 
 def _capnp() -> Any:
     """Import capnp on first use so the module imports without the package."""
@@ -96,6 +130,7 @@ class RgpotRpcCalculator(Calculator):
         self._port = int(port)
         self._server_proc = server_proc
         self._orbital_key = None if orbital_key is None else int(orbital_key)
+        self._server_protocol_minor: int | None = None
         self._claim = ConnectionClaim("RgpotRpcCalculator")
 
         self._schema = _capnp().load(str(_schema_path()))
@@ -211,6 +246,10 @@ class RgpotRpcCalculator(Calculator):
         request_stress: bool = False,
         accept_stress: bool = False,
     ) -> dict[str, Any]:
+        if orbital_key is not None:
+            await self._check_server_protocol(
+                ORBITAL_KEY_INTRODUCED_MINOR, "orbital key"
+            )
         fip = self._schema.ForceInput.new_message()
         fip.pos = np.asarray(positions, dtype=float).ravel().tolist()
         fip.atmnrs = [int(z) for z in numbers]
@@ -264,6 +303,27 @@ class RgpotRpcCalculator(Calculator):
                     )
         return super().get_property(name, atoms, allow_calculation)
 
+    async def _check_server_protocol(
+        self, required_minor: int, feature: str
+    ) -> None:
+        minor = getattr(self, "_server_protocol_minor", None)
+        if minor is None:
+            response = await self._pot.getCapabilities()
+            capabilities = response.capabilities
+            family = str(capabilities.protocolFamily)
+            major = int(capabilities.protocolMajor)
+            if family != PROTOCOL_FAMILY or major != PROTOCOL_MAJOR:
+                raise RuntimeError(
+                    f"RPC protocol {family!r} major {major} is not "
+                    f"{PROTOCOL_FAMILY!r} major {PROTOCOL_MAJOR}"
+                )
+            minor = int(capabilities.protocolMinor)
+            self._server_protocol_minor = minor
+        if minor < required_minor:
+            raise ProtocolMinorMismatchError(
+                feature, required_minor, minor, PROTOCOL_MINOR
+            )
+
     def select_orbitals(self, key: int) -> None:
         """Select the image or bead whose orbitals following calls use."""
         self._orbital_key = int(key)
@@ -312,7 +372,11 @@ class RgpotRpcCalculator(Calculator):
                         accept_stress=self._server_has_stress and fully_periodic,
                     )
                 )
-            except (PropertyNotImplementedError, CalculatorError):
+            except (
+                PropertyNotImplementedError,
+                CalculatorError,
+                ProtocolMinorMismatchError,
+            ):
                 raise
             except Exception as exc:  # noqa: BLE001
                 raise RuntimeError("RgpotRpcCalculator: RPC calculate failed") from exc

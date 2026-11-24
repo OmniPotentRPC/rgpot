@@ -84,6 +84,14 @@ The key is session state, so call =rgpot_engine_select_orbitals= on the same
 engine handle before each image or bead evaluation.
 
 RPC carries the key on each =ForceInput= as =hasOrbitalKey= and =orbitalKey=.
+Those fields require RPC protocol minor 2.
+The C, Rust and Python clients check the server's advertised minor before
+sending a keyed request and report a version error for a minor-1 server.
+The Python client raises =ProtocolMinorMismatchError= in that case.
+Its =required_minor=, =server_minor= and =client_minor= attributes and its
+message carry the minor the request needs, the one the server advertised and the
+one the client implements.
+An unkeyed request keeps the minor-1 wire contract.
 The Python RPC calculator sets those fields from either
 =orbital_key= or =atoms.info["rgpot_orbital_key"]=:
 

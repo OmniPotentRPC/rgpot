@@ -5,10 +5,14 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 from pathlib import Path
+import re
 import sys
 import types
 
+from ase import Atoms
+from ase.calculators.calculator import Calculator, all_changes
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).parents[1]
 
@@ -31,7 +35,7 @@ class Schema:
 SCHEMA = Schema()
 
 
-def _rpc_calculator_class():
+def _rpc_calculator_class(current_minor: int | None = None):
     rgpot_package = types.ModuleType("rgpot")
     rgpot_package.__path__ = [str(ROOT / "python/rgpot")]
     ase_package = types.ModuleType("rgpot.ase")
@@ -46,15 +50,41 @@ def _rpc_calculator_class():
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
         sys.modules[qualified] = module
-        spec.loader.exec_module(module)
+        if name == "rpc" and current_minor is not None:
+            source, count = re.subn(
+                r"^PROTOCOL_MINOR = \d+$",
+                f"PROTOCOL_MINOR = {current_minor}",
+                Path(spec.origin).read_text(encoding="utf-8"),
+                flags=re.MULTILINE,
+            )
+            assert count == 1
+            exec(compile(source, spec.origin, "exec"), module.__dict__)
+        else:
+            spec.loader.exec_module(module)
     return sys.modules["rgpot.ase.rpc"].RgpotRpcCalculator
 
 
 class KeyedPotential:
-    def __init__(self) -> None:
+    def __init__(self, protocol_minor: int = 2) -> None:
         self.generations: dict[int, int] = {}
         self.keys: list[int] = []
         self.stress_keys: list[int] = []
+        self.protocol_minor = protocol_minor
+        self.capabilities_calls = 0
+
+    async def getCapabilities(self):
+        self.capabilities_calls += 1
+
+        class Capabilities:
+            protocolFamily = "rgpot.potentials"
+            protocolMajor = 1
+            protocolMinor = self.protocol_minor
+            operations: list = []
+
+        class Reply:
+            capabilities = Capabilities()
+
+        return Reply()
 
     async def calculate(self, fip):
         assert fip.hasOrbitalKey
@@ -80,11 +110,31 @@ class KeyedPotential:
         return reply
 
 
-def test_python_rpc_orbital_keys_restore_per_image_state() -> None:
-    RgpotRpcCalculator = _rpc_calculator_class()
+class BaselinePotential(KeyedPotential):
+    async def calculate(self, fip):
+        assert not fip.hasOrbitalKey
+
+        class PotentialResult:
+            energy = 1.0
+            forces = [0.0, 0.0, 0.0]
+
+        class Reply:
+            result = PotentialResult()
+
+        return Reply()
+
+
+def _calculator(potential, current_minor: int | None = None):
+    RgpotRpcCalculator = _rpc_calculator_class(current_minor)
     calculator = object.__new__(RgpotRpcCalculator)
     calculator._schema = SCHEMA
-    calculator._pot = KeyedPotential()
+    calculator._pot = potential
+    calculator._server_protocol_minor = None
+    return calculator
+
+
+def test_minor_two_client_uses_orbital_key_on_minor_two_server() -> None:
+    calculator = _calculator(KeyedPotential(protocol_minor=2))
 
     async def run() -> list[float]:
         energies = []
@@ -97,6 +147,7 @@ def test_python_rpc_orbital_keys_restore_per_image_state() -> None:
 
     assert asyncio.run(run()) == [1.0, 1.0, 2.0]
     assert calculator._pot.keys == [7, 19, 7]
+    assert calculator._pot.capabilities_calls == 1
 
 
 def test_python_rpc_stress_request_keeps_the_orbital_key() -> None:
@@ -120,3 +171,120 @@ def test_python_rpc_stress_request_keeps_the_orbital_key() -> None:
     assert calculator._pot.stress_keys == [7]
     assert calculator._pot.keys == [7]
     assert list(evaluated["stress"]) == [1.0, 2.0, 3.0, 0.0, 0.0, 0.0]
+
+
+def test_minor_two_client_rejects_orbital_key_on_minor_one_server() -> None:
+    calculator = _calculator(KeyedPotential(protocol_minor=1))
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"ForceInput orbital key requires RPC protocol minor 2.*advertises 1",
+    ):
+        asyncio.run(
+            calculator._calculate_async(np.zeros((1, 3)), [8], np.eye(3), 7)
+        )
+    assert calculator._pot.keys == []
+    assert calculator._pot.capabilities_calls == 1
+
+
+def test_minor_two_client_uses_baseline_force_input_on_minor_one_server() -> None:
+    calculator = _calculator(BaselinePotential(protocol_minor=1))
+
+    evaluated = asyncio.run(
+        calculator._calculate_async(np.zeros((1, 3)), [8], np.eye(3))
+    )
+
+    assert evaluated["energy"] == 1.0
+    assert evaluated["forces"].shape == (1, 3)
+    assert calculator._pot.capabilities_calls == 0
+
+
+@pytest.mark.parametrize("current_minor", [2, 3, 7])
+def test_orbital_key_gate_does_not_follow_the_current_minor(
+    current_minor: int,
+) -> None:
+    accepted = _calculator(
+        KeyedPotential(protocol_minor=2), current_minor=current_minor
+    )
+    rpc = sys.modules["rgpot.ase.rpc"]
+    assert rpc.PROTOCOL_MINOR == current_minor
+    assert rpc.ORBITAL_KEY_INTRODUCED_MINOR == 2
+
+    evaluated = asyncio.run(
+        accepted._calculate_async(np.zeros((1, 3)), [8], np.eye(3), 7)
+    )
+    assert evaluated["energy"] == 1.0
+    assert accepted._pot.keys == [7]
+
+    refused = _calculator(
+        KeyedPotential(protocol_minor=1), current_minor=current_minor
+    )
+    with pytest.raises(
+        RuntimeError,
+        match=r"ForceInput orbital key requires RPC protocol minor 2.*advertises 1",
+    ):
+        asyncio.run(
+            refused._calculate_async(np.zeros((1, 3)), [8], np.eye(3), 7)
+        )
+    assert refused._pot.keys == []
+
+
+def _ase_calculator(potential, current_minor: int | None = None):
+    calculator = _calculator(potential, current_minor)
+    Calculator.__init__(calculator)
+    calculator._orbital_key = 7
+    calculator._server_has_stress = False
+    calculator._claim = sys.modules["rgpot.ase.claim"].ConnectionClaim(
+        "RgpotRpcCalculator"
+    )
+    calculator._loop = asyncio.new_event_loop()
+    return calculator
+
+
+@pytest.mark.parametrize(
+    ("current_minor", "server_minor"), [(2, 1), (3, 1), (3, 0), (7, 1)]
+)
+def test_mismatch_reports_server_and_client_minors(
+    current_minor: int, server_minor: int
+) -> None:
+    calculator = _calculator(
+        KeyedPotential(protocol_minor=server_minor), current_minor=current_minor
+    )
+    rpc = sys.modules["rgpot.ase.rpc"]
+
+    with pytest.raises(rpc.ProtocolMinorMismatchError) as caught:
+        asyncio.run(
+            calculator._calculate_async(np.zeros((1, 3)), [8], np.eye(3), 7)
+        )
+
+    error = caught.value
+    assert isinstance(error, RuntimeError)
+    assert error.feature == "orbital key"
+    assert error.required_minor == 2
+    assert error.server_minor == server_minor
+    assert error.client_minor == current_minor
+    message = str(error)
+    assert f"requires RPC protocol minor {error.required_minor}" in message
+    assert f"server advertises {server_minor}" in message
+    assert f"client implements {current_minor}" in message
+
+
+def test_calculate_does_not_mask_the_protocol_minors() -> None:
+    calculator = _ase_calculator(KeyedPotential(protocol_minor=1), current_minor=3)
+    rpc = sys.modules["rgpot.ase.rpc"]
+    atoms = Atoms("O", positions=[[0.0, 0.0, 0.0]])
+
+    try:
+        with pytest.raises(rpc.ProtocolMinorMismatchError) as caught:
+            calculator.calculate(atoms, ["energy"], all_changes)
+    finally:
+        calculator._loop.close()
+
+    error = caught.value
+    assert error.server_minor == 1
+    assert error.client_minor == 3
+    assert error.required_minor == 2
+    assert "RPC calculate failed" not in str(error)
+    assert "server advertises 1" in str(error)
+    assert "client implements 3" in str(error)
+    assert calculator._pot.keys == []

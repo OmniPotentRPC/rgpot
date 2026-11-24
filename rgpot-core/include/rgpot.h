@@ -81,7 +81,15 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * Additive protocol revision.
  */
-#define PROTOCOL_MINOR 1
+#define PROTOCOL_MINOR 2
+#endif
+
+#if defined(RGPOT_HAS_SCHEMA)
+/**
+ * Protocol minor that introduced the orbital-key ForceInput fields.
+ * It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
+ */
+#define ORBITAL_KEY_INTRODUCED_MINOR 2
 #endif
 
 /**

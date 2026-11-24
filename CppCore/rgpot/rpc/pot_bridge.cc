@@ -112,6 +112,7 @@ int32_t pot_client_select_orbitals(PotClient *client, int64_t key) {
   client->last_error.clear();
   client->has_orbital_key = true;
   client->orbital_key = key;
+  client->server_checked = false;
   return 0;
 }
 
@@ -155,10 +156,19 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
   try {
     auto &waitScope = *client->wait_scope;
     if (!client->server_checked) {
+      const auto expectation =
+          rgpot::abi::force_input_expectation(client->has_orbital_key);
       const std::string why =
-          rgpot::abi::check_server(client->capability, waitScope);
+          rgpot::abi::check_server(client->capability, waitScope, expectation);
       if (!why.empty()) {
-        client->last_error = "server refused: " + why;
+        if (client->has_orbital_key &&
+            why.find("protocol minor") != std::string::npos)
+          client->last_error =
+              "ForceInput orbital key requires RPC protocol minor " +
+              std::to_string(rgpot::abi::kOrbitalKeyIntroducedMinor) +
+              ": server refused: " + why;
+        else
+          client->last_error = "server refused: " + why;
         return -3;
       }
       client->server_checked = true;

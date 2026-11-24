@@ -2,12 +2,22 @@ diff --git a/Potentials.capnp b/Potentials.capnp
 index aa4a3a6..34dc2ba 100644
 --- a/Potentials.capnp
 +++ b/Potentials.capnp
-@@ -27,6 +27,8 @@ struct ForceInput {
+@@ -8,6 +8,9 @@
+ 
+ @0xbd1f89fa17369103;
+ 
++# Additive protocol revision implemented by this effective schema.
++const protocolMinor :UInt16 = 2;
++
+ # @struct ForceInput
+ # @brief Input configuration for a potential energy evaluation.
+ # @field lengthUnit Unit expression for positions/box (default "angstrom").
+@@ -27,6 +30,8 @@ struct ForceInput {
    multiplicity @8 :Int32 = 1;       # @brief Per-step spin multiplicity when hasMultiplicity is true.
-   # Optional. Old clients leave it unset and no neighbour list is returned.
+   # Present from protocol minor 0. Clients that leave it unset receive no neighbour list.
    neighbors @9 :NeighborRequest;
-+  hasOrbitalKey @10 :Bool = false;  # @brief Select keyed orbitals for this image or bead.
-+  orbitalKey @11 :Int64 = 0;        # @brief Per-step orbital key when hasOrbitalKey is true.
++  hasOrbitalKey @10 :Bool = false;  # @brief Protocol minor 2: select keyed orbitals.
++  orbitalKey @11 :Int64 = 0;        # @brief Protocol minor 2: image or bead key.
  }
  
  # @struct PotentialResult

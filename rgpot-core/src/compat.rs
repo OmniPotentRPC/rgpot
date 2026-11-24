@@ -18,7 +18,10 @@ pub const PROTOCOL_FAMILY: &str = "rgpot.potentials";
 /// Wire-incompatible protocol revision.
 pub const PROTOCOL_MAJOR: u16 = 1;
 /// Additive protocol revision.
-pub const PROTOCOL_MINOR: u16 = 1;
+pub const PROTOCOL_MINOR: u16 = 2;
+/// Protocol minor that introduced the orbital-key ForceInput fields.
+/// It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
+pub const ORBITAL_KEY_INTRODUCED_MINOR: u16 = 2;
 /// Cap'n Proto identity of `Potentials.capnp`.
 pub const SCHEMA_ID: &str = "0xbd1f89fa17369103";
 
@@ -40,6 +43,18 @@ pub struct Expectation {
     /// Bridge feature bits the host understands.
     pub bridge_features: u64,
     pub required_operations: Vec<Operation>,
+}
+
+/// Expectation for a request that sets the orbital-key `ForceInput` fields.
+pub fn force_input_expectation(uses_orbital_key: bool) -> Expectation {
+    Expectation {
+        protocol_minor_min: if uses_orbital_key {
+            ORBITAL_KEY_INTRODUCED_MINOR
+        } else {
+            0
+        },
+        ..Expectation::default()
+    }
 }
 
 impl Default for Expectation {
@@ -411,9 +426,18 @@ mod tests {
             protocol_minor_min: 2,
             ..Expectation::default()
         };
-        let err = verdict(|_| {}, &want).unwrap_err();
+        let err = verdict(|c| c.set_protocol_minor(1), &want).unwrap_err();
         assert!(err.contains("protocol minor"), "{err}");
         assert_eq!(verdict(|c| c.set_protocol_minor(2), &want), Ok(()));
+    }
+
+    #[test]
+    fn orbital_key_requires_its_introduction_minor() {
+        assert_eq!(force_input_expectation(false).protocol_minor_min, 0);
+        assert_eq!(
+            force_input_expectation(true).protocol_minor_min,
+            ORBITAL_KEY_INTRODUCED_MINOR
+        );
     }
 }
 
