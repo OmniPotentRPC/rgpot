@@ -263,6 +263,15 @@ endforeach()
 if(TARGET fast_nlist_test AND TARGET rgpot_fortran_kernels)
   target_link_libraries(fast_nlist_test PRIVATE rgpot_fortran_kernels)
 endif()
+# MorsePotTest and SuttonChenPotTest call private workspace snapshot hooks that
+# carry hidden visibility so shared librgpot does not export detail symbols.
+if(TARGET morse_pot_test AND BUILD_SHARED_LIBS)
+  target_sources(morse_pot_test PRIVATE CppCore/rgpot/Morse/MorsePot.cc)
+endif()
+if(TARGET sutton_chen_pot_test AND BUILD_SHARED_LIBS)
+  target_sources(sutton_chen_pot_test PRIVATE
+                 CppCore/rgpot/SuttonChen/SuttonChenPot.cc)
+endif()
 
 rgpot_registry_tests(rerun _rgpot_reruns)
 foreach(test IN LISTS _rgpot_reruns)
@@ -398,9 +407,16 @@ target_include_directories(rgpot_layout_fixture PRIVATE CppCore)
 target_compile_definitions(rgpot_layout_fixture PRIVATE ${_rgpot_test_definitions})
 target_link_libraries(rgpot_layout_fixture PRIVATE rgpot::rgpot)
 set_target_properties(rgpot_layout_fixture PROPERTIES PREFIX "lib")
+set_target_properties(rgpot_layout_fixture PROPERTIES
+                      CXX_VISIBILITY_PRESET hidden)
 rgpot_test_executable(cxx_layout_test CppCore/tests/CxxLayoutTest.cc)
-rgpot_add_test(CxxLayoutTest COMMAND cxx_layout_test
-  ENVIRONMENT "RGPOT_LAYOUT_FIXTURE=$<TARGET_FILE:rgpot_layout_fixture>")
+set(_rgpot_layout_env
+    "RGPOT_LAYOUT_FIXTURE=$<TARGET_FILE:rgpot_layout_fixture>")
+if(BUILD_SHARED_LIBS)
+  list(APPEND _rgpot_layout_env "RGPOT_SHARED_LIBRARY=1")
+endif()
+rgpot_add_test(CxxLayoutTest COMMAND cxx_layout_test ENVIRONMENT
+               ${_rgpot_layout_env})
 
 # The stamp program does not link librgpot, but takes its feature macros.
 add_executable(print_cxx_layout_stamp CppCore/tests/print_cxx_layout_stamp.cc)

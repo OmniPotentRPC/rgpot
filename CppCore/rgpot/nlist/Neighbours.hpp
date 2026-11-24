@@ -11,11 +11,25 @@
 
 #include <algorithm>
 #include <array>
-#include <cstring>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <iterator>
+#include <type_traits>
+#include <utility>
 #include <vector>
+
+// No dllimport: a static librgpot has no import library to resolve it,
+// and a shared one still links the call through its import library.
+#if defined(_WIN32) && defined(RGPOT_NLIST_BUILDING)
+#define RGPOT_NLIST_API __declspec(dllexport)
+#elif !defined(_WIN32)
+#define RGPOT_NLIST_API __attribute__((visibility("default")))
+#else
+#define RGPOT_NLIST_API
+#endif
 
 #if defined(__GNUC__) || defined(__clang__)
 #define RGPOT_NLIST_NOINLINE __attribute__((noinline))
@@ -167,8 +181,132 @@ struct Spec {
 /// joined in atom order. Each row is sorted by partner index, so the
 /// list matches the one thread build. An open axis whose nominal grid
 /// does not fit in the memory the OS reports is binned on the atom span.
+/// Periodic and partially periodic skewed cells are binned in fractional
+/// coordinates from the internal minimum image inverse, wrapped on
+/// periodic axes and spanned on open axes. A singular or ill-conditioned
+/// cell, or a non-finite fractional coordinate, is an error instead of
+/// falling back to Cartesian binning. Orthorhombic cells and fully open
+/// skewed cells use Cartesian binning.
 class Neighbours {
+  struct SpecKey {
+    double cutoff = 0;
+    double skin = 0;
+    Image image = Image::Round;
+    Mode mode = Mode::Auto;
+    std::array<bool, 3> periodic{{true, true, true}};
+    constexpr SpecKey() noexcept {}
+    bool operator==(const SpecKey &o) const noexcept {
+      return cutoff == o.cutoff && skin == o.skin && image == o.image &&
+             mode == o.mode && periodic == o.periodic;
+    }
+  };
+
 public:
+  Neighbours() noexcept = default;
+
+  Neighbours(const Neighbours &other)
+      : off_(other.off_), nbr_(other.nbr_), cell_of_(other.cell_of_),
+        cell_start_(other.cell_start_), cell_atoms_(other.cell_atoms_),
+        ref_(other.ref_), nx_(other.nx_), ny_(other.ny_), nz_(other.nz_),
+        search_(other.search_), image_(other.image_), mode_(other.mode_),
+        key_(other.key_), general_(other.general_),
+        use_general_(other.use_general_), streaming_(other.streaming_),
+        built_(other.built_), reused_(other.reused_), n_(other.n_),
+        builds_(other.builds_), generation_{nextGeneration()},
+        xyz_(other.xyz_) {
+    std::memcpy(box_, other.box_, sizeof(box_));
+    std::memcpy(len_, other.len_, sizeof(len_));
+    std::memcpy(inv_, other.inv_, sizeof(inv_));
+    std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
+  }
+
+  Neighbours &operator=(const Neighbours &other) {
+    const std::uint64_t next_gen = nextGeneration();
+    if (this != &other) {
+      off_ = other.off_;
+      nbr_ = other.nbr_;
+      cell_of_ = other.cell_of_;
+      cell_start_ = other.cell_start_;
+      cell_atoms_ = other.cell_atoms_;
+      ref_ = other.ref_;
+      std::memcpy(box_, other.box_, sizeof(box_));
+      std::memcpy(len_, other.len_, sizeof(len_));
+      std::memcpy(inv_, other.inv_, sizeof(inv_));
+      std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
+      nx_ = other.nx_;
+      ny_ = other.ny_;
+      nz_ = other.nz_;
+      search_ = other.search_;
+      image_ = other.image_;
+      mode_ = other.mode_;
+      key_ = other.key_;
+      general_ = other.general_;
+      use_general_ = other.use_general_;
+      streaming_ = other.streaming_;
+      built_ = other.built_;
+      reused_ = other.reused_;
+      n_ = other.n_;
+      builds_ = other.builds_;
+      xyz_ = other.xyz_;
+    }
+    generation_.store(next_gen, std::memory_order_release);
+    return *this;
+  }
+
+  /// The moved-from object is left as a default-constructed one.
+  Neighbours(Neighbours &&other) noexcept
+      : off_(std::move(other.off_)), nbr_(std::move(other.nbr_)),
+        cell_of_(std::move(other.cell_of_)),
+        cell_start_(std::move(other.cell_start_)),
+        cell_atoms_(std::move(other.cell_atoms_)), ref_(std::move(other.ref_)),
+        nx_(other.nx_), ny_(other.ny_), nz_(other.nz_), search_(other.search_),
+        image_(other.image_), mode_(other.mode_), key_(other.key_),
+        general_(other.general_), use_general_(other.use_general_),
+        streaming_(other.streaming_), built_(other.built_),
+        reused_(other.reused_), n_(other.n_), builds_(other.builds_),
+        generation_{0}, xyz_(other.xyz_) {
+    std::memcpy(box_, other.box_, sizeof(box_));
+    std::memcpy(len_, other.len_, sizeof(len_));
+    std::memcpy(inv_, other.inv_, sizeof(inv_));
+    std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
+    other.reset();
+  }
+
+  Neighbours &operator=(Neighbours &&other) noexcept {
+    if (this != &other) {
+      off_ = std::move(other.off_);
+      nbr_ = std::move(other.nbr_);
+      cell_of_ = std::move(other.cell_of_);
+      cell_start_ = std::move(other.cell_start_);
+      cell_atoms_ = std::move(other.cell_atoms_);
+      ref_ = std::move(other.ref_);
+      std::memcpy(box_, other.box_, sizeof(box_));
+      std::memcpy(len_, other.len_, sizeof(len_));
+      std::memcpy(inv_, other.inv_, sizeof(inv_));
+      std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
+      nx_ = other.nx_;
+      ny_ = other.ny_;
+      nz_ = other.nz_;
+      search_ = other.search_;
+      image_ = other.image_;
+      mode_ = other.mode_;
+      key_ = other.key_;
+      general_ = other.general_;
+      use_general_ = other.use_general_;
+      streaming_ = other.streaming_;
+      built_ = other.built_;
+      reused_ = other.reused_;
+      n_ = other.n_;
+      builds_ = other.builds_;
+      xyz_ = other.xyz_;
+      other.reset();
+    }
+    generation_.store(0, std::memory_order_release);
+    return *this;
+  }
+
+  /// A throw leaves any prior valid state intact (and a default-constructed
+  /// object empty without assigning a generation).
   void update(const double *xyz, std::size_t n, const double *box9,
               const Spec &spec);
 
@@ -183,6 +321,17 @@ public:
   [[nodiscard]] bool reused() const noexcept { return reused_; }
   /// Stored lists built so far. A reuse does not count.
   [[nodiscard]] std::uint64_t builds() const noexcept { return builds_; }
+  /// Process-unique non-zero generation id, updated at construction and on
+  /// every rebuild, copy and move. Throws `std::overflow_error` when the
+  /// 64-bit generation counter has reached `UINT64_MAX`.
+  [[nodiscard]] std::uint64_t generation() const {
+    const std::uint64_t g = generation_.load(std::memory_order_acquire);
+    return g != 0 ? g : assignGeneration();
+  }
+  /// True when this instance holds an assigned non-zero generation id.
+  [[nodiscard]] bool hasGeneration() const noexcept {
+    return generation_.load(std::memory_order_acquire) != 0;
+  }
   /// Stored pair index. A stream leaves this empty.
   [[nodiscard]] std::size_t slots() const noexcept { return nbr_.size(); }
   /// Number of spatial bins in the current cell grid.
@@ -335,18 +484,35 @@ public:
   }
 
 private:
-  struct SpecKey {
-    double cutoff = 0;
-    double skin = 0;
-    Image image = Image::Round;
-    Mode mode = Mode::Auto;
-    std::array<bool, 3> periodic{{true, true, true}};
-    bool operator==(const SpecKey &o) const {
-      return cutoff == o.cutoff && skin == o.skin && image == o.image &&
-             mode == o.mode && periodic == o.periodic;
-    }
-  };
-
+  /// The state of a default-constructed object, with a cleared generation so
+  /// the next access or rebuild obtains a fresh generation id. A moved-from
+  /// object is left this way.
+  void reset() noexcept {
+    std::vector<std::int32_t>().swap(off_);
+    std::vector<std::int32_t>().swap(nbr_);
+    std::vector<std::int32_t>().swap(cell_of_);
+    std::vector<std::int32_t>().swap(cell_start_);
+    std::vector<std::int32_t>().swap(cell_atoms_);
+    std::vector<double>().swap(ref_);
+    std::fill(std::begin(box_), std::end(box_), 0.0);
+    std::fill(std::begin(len_), std::end(len_), 0.0);
+    std::fill(std::begin(inv_), std::end(inv_), 0.0);
+    std::fill(std::begin(periodic_), std::end(periodic_), false);
+    nx_ = ny_ = nz_ = 1;
+    search_ = 0;
+    image_ = Image::Round;
+    mode_ = Mode::Auto;
+    key_ = SpecKey{};
+    general_ = MinimumImage{};
+    use_general_ = false;
+    streaming_ = true;
+    built_ = false;
+    reused_ = false;
+    n_ = 0;
+    builds_ = 0;
+    generation_.store(0, std::memory_order_release);
+    xyz_ = nullptr;
+  }
   void buildCells(const double *xyz, std::size_t n);
   void buildStored(const double *xyz, std::size_t n, std::uint64_t bound);
   void updateOrthorhombic(const double *xyz, std::size_t n,
@@ -541,7 +707,7 @@ private:
     // The stencil depends only on the coordinates. A warm call with
     // the same positions reuses it.
     struct Cache {
-      const Neighbours *owner = nullptr;
+      std::uint64_t generation = 0;
       int nx = 0;
       int ny = 0;
       int nz = 0;
@@ -556,10 +722,12 @@ private:
     // One stencil per thread. The cache is process-wide otherwise, and two
     // evaluations then rewrite the same vectors.
     thread_local Cache cache;
+    const std::uint64_t gen = generation();
     // Only a streaming walk can reuse this stencil cache across calls. A
     // stored walk has its own pair index and rebuilds tile data per walk.
-    const bool same_grid = cache.owner == this && cache.nx == nx_ && cache.ny == ny_ &&
-                           cache.nz == nz_ && cache.search == search_ && cache.compact == !dense;
+    const bool same_grid = cache.generation == gen && cache.nx == nx_ &&
+                           cache.ny == ny_ && cache.nz == nz_ &&
+                           cache.search == search_ && cache.compact == !dense;
     // update() already compared the coordinates when it reused the bins.
     const bool reuse =
         streaming_ && same_grid &&
@@ -687,7 +855,7 @@ private:
         }
       }
       if (overflow) {
-        cache.owner = nullptr;
+        cache.generation = 0;
         cache.neigh.clear();
         cache.head.clear();
         cache.nneigh.clear();
@@ -788,7 +956,7 @@ private:
     }
     }
     if (streaming_) {
-      cache.owner = this;
+      cache.generation = gen;
       cache.nx = nx_;
       cache.ny = ny_;
       cache.nz = nz_;
@@ -989,6 +1157,13 @@ private:
                                     double &dz) const;
   [[nodiscard]] int cellId(int ix, int iy, int iz) const;
 
+  friend struct NeighboursTestAccess;
+
+  [[nodiscard]] RGPOT_NLIST_API static std::uint64_t nextGeneration();
+  [[nodiscard]] RGPOT_NLIST_API std::uint64_t assignGeneration() const;
+  RGPOT_NLIST_API static std::uint64_t
+  exchangeGenerationCounter(std::uint64_t value) noexcept;
+
   std::vector<std::int32_t> off_;
   std::vector<std::int32_t> nbr_;
   std::vector<std::int32_t> cell_of_;
@@ -1013,6 +1188,7 @@ private:
   bool reused_ = false;
   std::size_t n_ = 0;
   std::uint64_t builds_ = 0;
+  mutable std::atomic<std::uint64_t> generation_{0};
   const double *xyz_ = nullptr;
 };
 
@@ -1036,6 +1212,8 @@ inline double Neighbours::foldedAxis(double x, int axis) const {
   }
   return wrapped * len;
 }
+
+static_assert(std::is_nothrow_default_constructible_v<Neighbours>);
 
 inline void Neighbours::fold(double &dx, double &dy, double &dz) const {
   if (use_general_) {
@@ -1150,3 +1328,4 @@ inline int Neighbours::cellId(int ix, int iy, int iz) const {
 } // namespace rgpot::nlist
 
 #undef RGPOT_NLIST_NOINLINE
+#undef RGPOT_NLIST_API

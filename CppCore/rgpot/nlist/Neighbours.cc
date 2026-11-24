@@ -1,13 +1,16 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#define RGPOT_NLIST_BUILDING
 #include "rgpot/nlist/Neighbours.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -38,18 +41,47 @@ void invertCell(const double *cell, double inv[9], double dual_norm[3]);
 
 namespace {
 
-int axisCount(double length, double edge) {
-  if (!(length > 0.0) || !(edge > 0.0) || !(length > edge)) {
+/// Largest grid whose cell ids, and the offsets past them, fit an int.
+constexpr std::uint64_t kMaxCells = 0x7ffffffe;
+
+/// Cells of edge at least `edge` along `length`. A count past kMaxCells
+/// is returned as kMaxCells + 1, which no grid accepts.
+std::uint64_t axisCount(double length, double edge) {
+  if (!(length > 0.0) || !(edge > 0.0)) {
     return 1;
   }
-  auto n = static_cast<long>(std::floor(length / edge));
-  if (n < 1) {
-    n = 1;
+  const double cells = std::floor(length / edge);
+  if (!(cells >= 1.0)) {
+    return 1;
   }
+  if (!(cells <= static_cast<double>(kMaxCells))) {
+    return kMaxCells + 1;
+  }
+  auto n = static_cast<std::uint64_t>(cells);
   while (n > 1 && length / static_cast<double>(n) < edge) {
     --n;
   }
-  return static_cast<int>(n);
+  return n;
+}
+
+/// Cells of the grid, or zero when there are more than kMaxCells.
+std::uint64_t gridCells(const std::uint64_t (&axes)[3]) {
+  std::uint64_t cells = 1;
+  for (const std::uint64_t axis : axes) {
+    if (axis > kMaxCells / cells) {
+      return 0;
+    }
+    cells *= axis;
+  }
+  return cells;
+}
+
+// A grid fits when an int names every cell and, when the OS reports
+// it, the offsets fit in the memory available.
+bool gridFits(const std::uint64_t (&grid)[3], std::uint64_t avail) {
+  const std::uint64_t cells = gridCells(grid);
+  return cells != 0 &&
+         (avail == 0 || cells <= avail / sizeof(std::int32_t));
 }
 
 bool orthorhombicCell(const double box[9]) {
@@ -89,7 +121,40 @@ RGPOT_SKEW_SECTION FractionalWorkspace &fractionalWorkspace() {
   return workspace;
 }
 
+std::atomic<std::uint64_t> &generationCounter() noexcept {
+  static std::atomic<std::uint64_t> counter{0};
+  return counter;
+}
+
 } // namespace
+
+std::uint64_t Neighbours::nextGeneration() {
+  auto &counter = generationCounter();
+  std::uint64_t cur = counter.load(std::memory_order_relaxed);
+  while (cur != std::numeric_limits<std::uint64_t>::max()) {
+    if (counter.compare_exchange_weak(cur, cur + 1, std::memory_order_relaxed,
+                                      std::memory_order_relaxed)) {
+      return cur + 1;
+    }
+  }
+  throw std::overflow_error("Neighbours: generation counter exhausted");
+}
+
+std::uint64_t Neighbours::assignGeneration() const {
+  static std::mutex init_mutex;
+  std::lock_guard<std::mutex> lock(init_mutex);
+  std::uint64_t g = generation_.load(std::memory_order_relaxed);
+  if (g == 0) {
+    g = nextGeneration();
+    generation_.store(g, std::memory_order_release);
+  }
+  return g;
+}
+
+std::uint64_t
+Neighbours::exchangeGenerationCounter(std::uint64_t value) noexcept {
+  return generationCounter().exchange(value, std::memory_order_acq_rel);
+}
 
 std::uint64_t availableBytes() {
 #if defined(_WIN32)
@@ -169,25 +234,24 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const Spec &spec,
 
 void Neighbours::buildCells(const double *xyz, std::size_t n) {
   const double edge = search_ > 0.0 ? search_ : 1.0;
-  // A grid that does not fit is one cell. An open axis can instead be
-  // binned on the atom span, which is what a cluster in a huge box needs.
-  // A periodic axis keeps the cell length. One cell remains when the
-  // tight grid does not fit either. A grid that fits is unchanged, so
-  // subtracting a zero origin leaves those bins as they were.
+  // A grid that does not fit, because an int cannot name its cells or
+  // the OS reports too little memory for its offsets, is one cell. An
+  // open axis can instead be binned on the atom span, which is what a
+  // cluster in a huge box needs. A periodic axis keeps the cell length.
+  // One cell remains when the tight grid does not fit either. A grid
+  // that fits is unchanged, so subtracting a zero origin leaves those
+  // bins as they were.
   double origin[3] = {0.0, 0.0, 0.0};
   double span[3] = {len_[0], len_[1], len_[2]};
+  std::uint64_t axes[3] = {1, 1, 1};
   auto set_axes = [&]() {
-    nx_ = axisCount(span[0], edge);
-    ny_ = axisCount(span[1], edge);
-    nz_ = axisCount(span[2], edge);
-  };
-  auto bytes_of = [&]() {
-    return static_cast<double>(nx_) * static_cast<double>(ny_) *
-           static_cast<double>(nz_) * static_cast<double>(sizeof(std::int32_t));
+    for (int k = 0; k < 3; ++k) {
+      axes[k] = axisCount(span[k], edge);
+    }
   };
   set_axes();
   const auto avail = availableBytes();
-  if (avail > 0 && bytes_of() > static_cast<double>(avail)) {
+  if (!gridFits(axes, avail)) {
     bool any_open = false;
     for (int k = 0; k < 3; ++k) {
       if (periodic_[k] || n == 0) {
@@ -212,10 +276,13 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     if (any_open) {
       set_axes();
     }
-    if (bytes_of() > static_cast<double>(avail)) {
-      nx_ = ny_ = nz_ = 1;
+    if (!gridFits(axes, avail)) {
+      axes[0] = axes[1] = axes[2] = 1;
     }
   }
+  nx_ = static_cast<int>(axes[0]);
+  ny_ = static_cast<int>(axes[1]);
+  nz_ = static_cast<int>(axes[2]);
   const auto ncells = static_cast<std::size_t>(nx_) *
                       static_cast<std::size_t>(ny_) *
                       static_cast<std::size_t>(nz_);
@@ -225,18 +292,14 @@ void Neighbours::buildCells(const double *xyz, std::size_t n) {
     if (!(length > 0.0) || naxis <= 1) {
       return 0;
     }
-    double t = x / length * static_cast<double>(naxis);
+    const double t = x / length * static_cast<double>(naxis);
     if (!(t >= 0.0)) {
-      t = 0.0;
+      return 0;
     }
-    auto i = static_cast<int>(t);
-    if (i >= naxis) {
-      i = naxis - 1;
+    if (t >= static_cast<double>(naxis)) {
+      return naxis - 1;
     }
-    if (i < 0) {
-      i = 0;
-    }
-    return i;
+    return static_cast<int>(t);
   };
   // A periodic axis is folded into the cell before the Cartesian bin. An
   // atom several cells outside then shares a bin with its image inside,
@@ -344,6 +407,7 @@ prepareFractionalCells(const double *xyz, std::size_t n, const double *box9,
         2.0 * (std::abs(box9[1]) + std::abs(box9[4]) + std::abs(box9[7])),
         2.0 * (std::abs(box9[2]) + std::abs(box9[5]) + std::abs(box9[8])),
     };
+    std::uint64_t axes64[3] = {1, 1, 1};
     for (int k = 0; k < 3; ++k) {
       const double error = 2.0 * eps *
                            (coordinate_bound[0] * std::abs(inv[k]) +
@@ -351,17 +415,14 @@ prepareFractionalCells(const double *xyz, std::size_t n, const double *box9,
                             coordinate_bound[2] * std::abs(inv[6 + k]));
       const double frac_edge =
           (edge * dual_norm[k]) * kFracEdgeSlack + 2.0 * error + 2.0 * eps;
-      plan.axes[k] = axisCount(1.0, frac_edge);
+      axes64[k] = axisCount(1.0, frac_edge);
     }
-    auto grid_bytes = [&]() {
-      return static_cast<double>(plan.axes[0]) *
-             static_cast<double>(plan.axes[1]) *
-             static_cast<double>(plan.axes[2]) *
-             static_cast<double>(sizeof(std::int32_t));
-    };
     const auto avail = availableBytes();
-    if (avail > 0 && grid_bytes() > static_cast<double>(avail)) {
-      plan.axes[0] = plan.axes[1] = plan.axes[2] = 1;
+    if (!gridFits(axes64, avail)) {
+      axes64[0] = axes64[1] = axes64[2] = 1;
+    }
+    for (int k = 0; k < 3; ++k) {
+      plan.axes[k] = static_cast<int>(axes64[k]);
     }
     auto prepare_grid = [&]() {
       const auto ncells = static_cast<std::size_t>(plan.axes[0]) *
@@ -419,10 +480,13 @@ prepareFractionalCells(const double *xyz, std::size_t n, const double *box9,
                               max_delta[2] * std::abs(inv[6 + k]));
         const double frac_edge =
             (edge * dual_norm[k]) * kFracEdgeSlack + 2.0 * error + 2.0 * eps;
-        plan.axes[k] = axisCount(1.0, frac_edge);
+        axes64[k] = axisCount(1.0, frac_edge);
       }
-      if (avail > 0 && grid_bytes() > static_cast<double>(avail)) {
-        plan.axes[0] = plan.axes[1] = plan.axes[2] = 1;
+      if (!gridFits(axes64, avail)) {
+        axes64[0] = axes64[1] = axes64[2] = 1;
+      }
+      for (int k = 0; k < 3; ++k) {
+        plan.axes[k] = static_cast<int>(axes64[k]);
       }
       const bool changed = plan.axes[0] != provisional[0] ||
                            plan.axes[1] != provisional[1] ||
@@ -583,11 +647,12 @@ prepareFractionalCells(const double *xyz, std::size_t n, const double *box9,
     max_err[k] = std::max(max_err[k], unwrapped_error);
   }
 
+  std::uint64_t axes64[3] = {1, 1, 1};
   for (int k = 0; k < 3; ++k) {
     const double base_edge =
         (edge * dual_norm[k]) * kFracEdgeSlack + 2.0 * max_err[k] + 2.0 * eps;
     if (periodic[k]) {
-      plan.axes[k] = axisCount(1.0, base_edge);
+      axes64[k] = axisCount(1.0, base_edge);
       continue;
     }
     if (n > 0) {
@@ -598,16 +663,15 @@ prepareFractionalCells(const double *xyz, std::size_t n, const double *box9,
       const double frac_edge = base_edge + 2.0 * eps * extent;
       plan.origin[k] = lo[k];
       plan.span[k] = extent > frac_edge ? extent : frac_edge;
-      plan.axes[k] = axisCount(plan.span[k], frac_edge);
+      axes64[k] = axisCount(plan.span[k], frac_edge);
     }
   }
-  const double bytes = static_cast<double>(plan.axes[0]) *
-                       static_cast<double>(plan.axes[1]) *
-                       static_cast<double>(plan.axes[2]) *
-                       static_cast<double>(sizeof(std::int32_t));
   const auto avail = availableBytes();
-  if (avail > 0 && bytes > static_cast<double>(avail)) {
-    plan.axes[0] = plan.axes[1] = plan.axes[2] = 1;
+  if (!gridFits(axes64, avail)) {
+    axes64[0] = axes64[1] = axes64[2] = 1;
+  }
+  for (int k = 0; k < 3; ++k) {
+    plan.axes[k] = static_cast<int>(axes64[k]);
   }
   const auto ncells = static_cast<std::size_t>(plan.axes[0]) *
                       static_cast<std::size_t>(plan.axes[1]) *
@@ -809,16 +873,24 @@ void Neighbours::buildStored(const double *xyz, std::size_t n,
 void Neighbours::updateOrthorhombic(const double *xyz, std::size_t n,
                                     const double *box9, const Spec &spec,
                                     bool same_cell) {
-  xyz_ = xyz;
   bool wrapped = false;
   if (reusable(xyz, n, spec, same_cell, wrapped)) {
+    (void)generation();
+    xyz_ = xyz;
     reused_ = true;
     if (wrapped) {
       buildCells(xyz, n);
     }
     return;
   }
+  const bool next_use_general = spec.image == Image::General;
+  MinimumImage next_general =
+      next_use_general ? MinimumImage(box9, spec.periodic) : MinimumImage{};
+  const std::uint64_t next_gen = nextGeneration();
+
+  xyz_ = xyz;
   reused_ = false;
+  generation_.store(next_gen, std::memory_order_release);
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
   len_[0] = box9[0];
@@ -830,9 +902,9 @@ void Neighbours::updateOrthorhombic(const double *xyz, std::size_t n,
     inv_[k] = periodic_[k] ? 1.0 / len_[k] : 0.0;
   }
   image_ = spec.image;
-  use_general_ = image_ == Image::General;
+  use_general_ = next_use_general;
   if (use_general_) {
-    general_ = MinimumImage(box9, spec.periodic);
+    general_ = std::move(next_general);
   }
   search_ = spec.cutoff + spec.skin;
   if (!(search_ > 0.0)) {
@@ -945,6 +1017,7 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
 
   bool wrapped = false;
   if (reusable(xyz, n, spec, same_cell, wrapped)) {
+    (void)generation();
     if (wrapped) {
       FractionalPlan plan;
       prepareFractionalCells(xyz, n, box_, periodic_, search_, plan);
@@ -976,9 +1049,11 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
       !std::isinf(next_search)) {
     prepareFractionalCells(xyz, n, box9, next_periodic, next_search, plan);
   }
+  const std::uint64_t next_gen = nextGeneration();
 
   xyz_ = xyz;
   reused_ = false;
+  generation_.store(next_gen, std::memory_order_release);
   n_ = n;
   std::memcpy(box_, box9, sizeof(box_));
   len_[0] = box9[0];

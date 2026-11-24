@@ -226,4 +226,5 @@ It also stamps =MullerBrownConfig= and =MullerBrownPot=.
 The zero-argument =MullerBrownPot= constructor remains its own symbol.
 It also stamps =nlist::Builder= and =nlist::Walk=, which move their state behind
 a pointer so each is one pointer wide.
+It also adds a process-unique generation id on =Neighbours=.
 A program linked against soversion 8 does not load =librgpot.so.9=.

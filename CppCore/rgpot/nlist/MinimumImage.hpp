@@ -27,7 +27,7 @@ namespace rgpot::nlist {
 /// search would return the same bits.
 class MinimumImage {
 public:
-  MinimumImage() = default;
+  MinimumImage() noexcept = default;
   MinimumImage(const double *cell, const std::array<bool, 3> &periodic);
   void fold(double &dx, double &dy, double &dz) const;
   /// fold for a caller that keeps only images of squared length at most

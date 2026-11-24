@@ -34,6 +34,7 @@ LAYOUT = ROOT / "CppCore" / "rgpot" / "abi" / "CxxLayout.hpp"
 LEDGER = ROOT / "CppCore" / "rgpot" / "abi" / "cxx_soversion_ledger.txt"
 MESON = ROOT / "CppCore" / "meson.build"
 CMAKE = ROOT / "CMakeLists.txt"
+NEIGHBOURS = ROOT / "CppCore" / "rgpot" / "nlist" / "Neighbours.hpp"
 
 # POD types whose sizeof or offsetof the stamp folds in. Method bodies of
 # the potential classes are not included: a comment there is not a layout
@@ -404,6 +405,57 @@ def check_soname(lib: Path, soversion: int) -> None:
     print(f"SONAME {match.group(1)}")
 
 
+def defined_generation_symbols(lib: Path) -> list[str]:
+    try:
+        symbols = subprocess.run(
+            ["nm", "-D", "--defined-only", "--demangle", str(lib)],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    except FileNotFoundError:
+        fail("nm is required to check the Neighbours generation symbol")
+        return []
+    names = (
+        "rgpot::nlist::Neighbours::nextGeneration()",
+        "rgpot::nlist::Neighbours::assignGeneration() const",
+        "rgpot::nlist::Neighbours::exchangeGenerationCounter(unsigned long)",
+    )
+    return [
+        line
+        for line in symbols.splitlines()
+        if any(line.endswith(" " + name) for name in names)
+    ]
+
+
+def check_generation_symbol(lib: Path, engines: list[Path]) -> None:
+    header = NEIGHBOURS.read_text()
+    if re.search(r"nextGeneration\(\)\s*(?:noexcept\s*)?\{", header):
+        fail("Neighbours.hpp must not define nextGeneration")
+    if not sys.platform.startswith("linux") or lib.suffix in {".a", ".lib"}:
+        return
+    definitions = defined_generation_symbols(lib)
+    if len(definitions) != 3:
+        fail(
+            "librgpot must export exactly three Neighbours generation symbols, "
+            f"found {len(definitions)}"
+        )
+    print("three exported Neighbours generation symbols")
+    for engine in engines:
+        if not engine.is_file():
+            fail(f"engine library not found: {engine}")
+        engine_defs = defined_generation_symbols(engine)
+        if engine_defs:
+            fail(
+                f"{engine.name} must not define Neighbours generation symbols, "
+                f"found {len(engine_defs)}"
+            )
+    if engines:
+        print(
+            f"zero defined Neighbours generation symbols in {len(engines)} engines"
+        )
+
+
 def check_install_name(lib: Path, soversion: int) -> None:
     try:
         otool = subprocess.run(
@@ -527,7 +579,10 @@ def main() -> None:
     check_against_base(rows, layout_text)
     check_build_files(soversion)
     if len(sys.argv) > 2 and sys.argv[2] != "-":
-        check_soname(Path(sys.argv[2]), soversion)
+        library = Path(sys.argv[2])
+        check_soname(library, soversion)
+        engines = [Path(arg) for arg in sys.argv[4:] if arg != "-"]
+        check_generation_symbol(library, engines)
     if len(sys.argv) > 3:
         check_stamp(Path(sys.argv[3]), table)
     tags = ", ".join(tag for tag, _ in table) or "none yet"
