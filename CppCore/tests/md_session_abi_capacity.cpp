@@ -220,11 +220,47 @@ void check_direct_capacities(const char *engine_path) {
   }
 }
 
+void check_unload_policy(const char *resident_path,
+                         const char *unload_safe_path) {
+  auto is_mapped = [](const char *path) {
+    void *h = dlopen(path, RTLD_NOW | RTLD_NOLOAD);
+    if (h != nullptr) {
+      dlclose(h);
+      return true;
+    }
+    return false;
+  };
+
+  char error[512] = {};
+  {
+    OwnedSession s{rgpot_md_session_create(
+        nullptr, resident_path, nullptr, 0, "current", error, sizeof(error))};
+    require(s.handle != nullptr, std::string("resident create: ") + error);
+    require(is_mapped(resident_path), "resident engine not mapped");
+  }
+  require(is_mapped(resident_path),
+          "resident MD engine was unmapped on rgpot_md_session_destroy");
+
+  {
+    OwnedSession s{rgpot_md_session_create(nullptr, unload_safe_path, nullptr,
+                                           0, "current", error, sizeof(error))};
+    require(s.handle != nullptr, std::string("unload-safe create: ") + error);
+    require(is_mapped(unload_safe_path), "unload-safe engine not mapped");
+  }
+  require(!is_mapped(unload_safe_path),
+          "unload-safe MD engine stayed mapped after rgpot_md_session_destroy");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   try {
-    require(argc == 2, "usage: md_session_abi_capacity <fake-engine>");
+    require(argc == 2 || argc == 4,
+            "usage: md_session_abi_capacity <fake-engine> [<resident-engine> "
+            "<unload-safe-engine>]");
+    if (argc == 4) {
+      check_unload_policy(argv[2], argv[3]);
+    }
     check_host_modes(argv[1]);
     check_direct_capacities(argv[1]);
     std::cout << "MD session ABI capacity checks passed\n";

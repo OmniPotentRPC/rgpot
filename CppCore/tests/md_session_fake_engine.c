@@ -6,6 +6,7 @@
  */
 
 #include "rgpot/ExternalPot/external_potentials.h"
+#include "rgpot/engine_c_abi.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -243,3 +244,17 @@ int rgpot_md_session_engine_create(const void *spec, size_t spec_len,
   *n_atoms = 2;
   return 0;
 }
+
+int rgpot_engine_abi_version(void) { return RGPOT_ENGINE_ABI_VERSION; }
+
+RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
+  RgpotEngineAbiStamp stamp;
+  stamp.abi_major = RGPOT_ENGINE_ABI_VERSION;
+  stamp.abi_minor = RGPOT_ENGINE_ABI_MINOR;
+  stamp.layout_revision = RGPOT_ENGINE_ABI_LAYOUT_REVISION;
+  return stamp;
+}
+
+#ifdef FIXTURE_UNLOAD_POLICY
+int rgpot_engine_unload_policy(void) { return FIXTURE_UNLOAD_POLICY; }
+#endif
