@@ -415,6 +415,8 @@ C_HEADERS = (
     "CppCore/rgpot/SuttonChen/SuttonChenPot.hpp",
     "CppCore/rgpot/SuttonChen/SuttonChenScales.hpp",
     "include/rgpot/plugin.h",
+    "include/rgpot/potlibc_engine.h",
+    "include/rgpot/coupled_well_engine.h",
     "CppCore/rgpot/engine_c_abi.h",
     "CppCore/rgpot/ExternalPot/external_potentials.h",
     "CppCore/rgpot/calculator_mpi_abi.h",
@@ -1537,7 +1539,7 @@ def engine_table_export_errors(root: Path = ROOT, page: Path | None = None) -> l
     omitted = optional - exported
     doc_text = page.read_text(encoding="utf-8")
     m = re.search(
-        r"Every library above exports\s+(.*?)\s+None of them exports\s+(.*?)(?:\n\s*\n|\Z)",
+        r"Every library above(?:\s+except\s+=\w+=(?:\s+and\s+=\w+=)?)?\s+exports\s+(.*?)\s+None of them exports\s+(.*?)(?:\n\s*\n|\Z)",
         doc_text,
         re.S,
     )

@@ -40,6 +40,12 @@ option(
     description: 'CP2KPot, the potserv CP2K backend and libcp2kc_rgpot.so against libcp2k (pkg-config libcp2k); needs with_rpc',
 )
 option(
+    'with_potlibc',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Build libpotlibc_engine.so against the potlibc C API',
+)
+option(
     'with_mpi',
     type: 'feature',
     value: 'disabled',

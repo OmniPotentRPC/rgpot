@@ -4,15 +4,19 @@ use std::ffi::{c_int, c_long};
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use rgpot_core::engine::{
-    AcquireReason, CoordTransformFn, CoordinateTransform, EngineCallbacks, EngineError,
-    EngineEvaluation, EngineFailure, EnginePotential, EngineRequest, EngineSession, EngineStatus,
-    EngineSymbols, RgpotEngineAbiStamp, RgpotEngineCaps, RgpotEngineComponent, RgpotEnginePot,
+    AcquireReason, CoordTransformFn, CoordinateTransform, CoupledWellConfig, EngineCallbacks,
+    EngineError, EngineEvaluation, EngineFailure, EnginePotential, EngineRequest, EngineSession,
+    EngineStatus, EngineSymbols, PotlibcConfig, RgpotEngineAbiStamp, RgpotEngineCaps,
+    RgpotEngineComponent, RgpotEnginePot, COUPLED_WELL_CONFIG_MAGIC, COUPLED_WELL_CONFIG_MIN_SIZE,
+    COUPLED_WELL_CONFIG_V1_SIZE, COUPLED_WELL_CONFIG_VERSION, COUPLED_WELL_CONFIG_VERSION_V1,
     ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_INVALID,
-    ENGINE_ERR_UNSUPPORTED, ENGINE_UNLOAD_POLICY_MINOR,
+    ENGINE_ERR_UNSUPPORTED, ENGINE_UNLOAD_POLICY_MINOR, POTLIBC_CONFIG_MAGIC,
+    POTLIBC_CONFIG_MIN_SIZE, POTLIBC_CONFIG_V1_SIZE, POTLIBC_CONFIG_VERSION,
+    POTLIBC_CONFIG_VERSION_V1, POTLIBC_SURFACE_ID_CAPACITY,
 };
 use rgpot_core::hvp::rgpot_hvp_scheme_t;
 use rgpot_core::status::rgpot_status_t;
@@ -111,6 +115,262 @@ fn build(name: &str, defines: &[&str]) -> PathBuf {
     out
 }
 
+/// The engine is C++ and uses the C++ runtime, so it is built with the C++ driver.
+/// Built once: every test below loads the same file.
+fn build_coupled_well() -> &'static Path {
+    static LIBRARY: OnceLock<PathBuf> = OnceLock::new();
+    LIBRARY.get_or_init(|| {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let source = root.join("engines/coupled_well_engine.cpp");
+        let suffix = if cfg!(target_os = "macos") {
+            "dylib"
+        } else {
+            "so"
+        };
+        // nextest runs each test in its own process, so a shared path would
+        // let one process load the library while another rewrites it.
+        let out = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("libcoupled_well.{}.{suffix}", std::process::id()));
+        let target = env!("RGPOT_BUILD_TARGET");
+        let compiler = match cc::Build::new()
+            .cpp(true)
+            .target(target)
+            .host(target)
+            .opt_level(0)
+            .std("c++17")
+            .try_get_compiler()
+        {
+            Ok(compiler) => compiler,
+            Err(why) => panic!(
+                "cannot compile the coupled-well engine: no C++ compiler available for target {target} ({why})"
+            ),
+        };
+        let mut command = compiler.to_command();
+        if cfg!(target_os = "macos") {
+            command.arg("-dynamiclib");
+        } else {
+            command.args(["-shared", "-fPIC"]);
+        }
+        let status = command
+            .arg("-I")
+            .arg(root.join("CppCore"))
+            .arg("-I")
+            .arg(root.join("include"))
+            .arg("-o")
+            .arg(&out)
+            .arg(&source)
+            .status()
+            .unwrap_or_else(|why| panic!("run the C++ compiler {:?}: {why}", compiler.path()));
+        assert!(status.success(), "the coupled-well engine did not compile: {status}");
+        out
+    })
+}
+
+/// Compile `engines/potlibc_engine.c` against a minimal C `potlibc` stub so
+/// the Rust test suite exercises the real potlibc engine plugin directly.
+fn build_potlibc() -> &'static Path {
+    static LIBRARY: OnceLock<PathBuf> = OnceLock::new();
+    LIBRARY.get_or_init(|| {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let source = root.join("engines/potlibc_engine.c");
+        let tmpdir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("potlibc_stub.{}", std::process::id()));
+        std::fs::create_dir_all(&tmpdir).expect("create potlibc stub dir");
+        let header = tmpdir.join("potlibc.h");
+        let stub = tmpdir.join("potlibc_stub.c");
+        std::fs::write(
+            &header,
+            r#"#ifndef POTLIBC_H
+#define POTLIBC_H
+#include <stddef.h>
+#include <stdint.h>
+typedef struct potlibc_handle potlibc_handle;
+typedef enum potlibc_status {
+  POTLIBC_SUCCESS = 0,
+  POTLIBC_ERROR_INVALID_SURFACE_ID = 2,
+  POTLIBC_ERROR_ATOM_COUNT_REQUIRED = 11,
+  POTLIBC_ERROR_ATOM_COUNT_UNEXPECTED = 12
+} potlibc_status;
+typedef enum potlibc_capability {
+  POTLIBC_CAP_ENERGY = 1u << 0,
+  POTLIBC_CAP_FORCES = 1u << 1,
+  POTLIBC_CAP_HVP = 1u << 2
+} potlibc_capability;
+typedef struct potlibc_metadata {
+  const char *surface_id;
+  size_t atom_count;
+  const int *atomic_numbers;
+  const double *reference_geometry;
+  const char *atom_ordering;
+  const char *length_unit;
+  const char *energy_unit;
+  const char *force_unit;
+  uint32_t capabilities;
+} potlibc_metadata;
+potlibc_status potlibc_create(const char *surface_id, potlibc_handle **handle);
+potlibc_status potlibc_create_sized(const char *surface_id, size_t atom_count,
+                                    potlibc_handle **handle);
+void potlibc_destroy(potlibc_handle *handle);
+potlibc_status potlibc_get_metadata(const potlibc_handle *handle,
+                                    potlibc_metadata *metadata);
+potlibc_status potlibc_evaluate(potlibc_handle *handle, size_t count,
+                                const double *x, double *energy, double *force);
+potlibc_status potlibc_hessian_vector_product(potlibc_handle *handle,
+                                              size_t count, const double *x,
+                                              const double *direction,
+                                              double *product);
+const char *potlibc_status_string(potlibc_status status);
+#endif
+"#,
+        )
+        .expect("write potlibc.h stub");
+        std::fs::write(
+            &stub,
+            r#"#include "potlibc.h"
+#include <stdlib.h>
+#include <string.h>
+struct potlibc_handle {
+  potlibc_metadata meta;
+  int species[8];
+};
+static const int BRH2_SPECIES[3] = {35, 1, 1};
+potlibc_status potlibc_create(const char *surface_id, potlibc_handle **out) {
+  potlibc_handle *h;
+  if (strcmp(surface_id, "vbo-beta1") == 0) {
+    return POTLIBC_ERROR_ATOM_COUNT_REQUIRED;
+  }
+  if (strcmp(surface_id, "brh2leps") != 0) {
+    return POTLIBC_ERROR_INVALID_SURFACE_ID;
+  }
+  h = (potlibc_handle *)calloc(1, sizeof *h);
+  h->meta.surface_id = "brh2leps";
+  h->meta.atom_count = 3;
+  h->meta.atomic_numbers = BRH2_SPECIES;
+  h->meta.length_unit = "bohr";
+  h->meta.energy_unit = "hartree";
+  h->meta.force_unit = "hartree/bohr";
+  h->meta.capabilities =
+      POTLIBC_CAP_ENERGY | POTLIBC_CAP_FORCES | POTLIBC_CAP_HVP;
+  *out = h;
+  return POTLIBC_SUCCESS;
+}
+potlibc_status potlibc_create_sized(const char *surface_id, size_t atom_count,
+                                    potlibc_handle **out) {
+  potlibc_handle *h;
+  size_t i;
+  if (strcmp(surface_id, "brh2leps") == 0) {
+    return POTLIBC_ERROR_ATOM_COUNT_UNEXPECTED;
+  }
+  if (strcmp(surface_id, "vbo-beta1") != 0 || atom_count < 2 || atom_count > 8) {
+    return POTLIBC_ERROR_INVALID_SURFACE_ID;
+  }
+  h = (potlibc_handle *)calloc(1, sizeof *h);
+  for (i = 0; i < atom_count; ++i) {
+    h->species[i] = 13;
+  }
+  h->meta.surface_id = "vbo-beta1";
+  h->meta.atom_count = atom_count;
+  h->meta.atomic_numbers = h->species;
+  h->meta.length_unit = "bohr";
+  h->meta.energy_unit = "hartree";
+  h->meta.force_unit = "hartree/bohr";
+  h->meta.capabilities =
+      POTLIBC_CAP_ENERGY | POTLIBC_CAP_FORCES | POTLIBC_CAP_HVP;
+  *out = h;
+  return POTLIBC_SUCCESS;
+}
+void potlibc_destroy(potlibc_handle *handle) { free(handle); }
+potlibc_status potlibc_get_metadata(const potlibc_handle *handle,
+                                    potlibc_metadata *metadata) {
+  *metadata = handle->meta;
+  return POTLIBC_SUCCESS;
+}
+potlibc_status potlibc_evaluate(potlibc_handle *handle, size_t count,
+                                const double *x, double *energy,
+                                double *force) {
+  const size_t dim = 3 * handle->meta.atom_count;
+  size_t s, i;
+  for (s = 0; s < count; ++s) {
+    double e = 0.0;
+    for (i = 0; i < dim; ++i) {
+      const double xi = x[s * dim + i];
+      e += 0.5 * xi * xi;
+      force[s * dim + i] = -xi;
+    }
+    energy[s] = e;
+  }
+  return POTLIBC_SUCCESS;
+}
+potlibc_status potlibc_hessian_vector_product(potlibc_handle *handle,
+                                              size_t count, const double *x,
+                                              const double *direction,
+                                              double *product) {
+  const size_t total = count * 3 * handle->meta.atom_count;
+  size_t i;
+  (void)x;
+  for (i = 0; i < total; ++i) {
+    product[i] = direction[i];
+  }
+  return POTLIBC_SUCCESS;
+}
+const char *potlibc_status_string(potlibc_status status) {
+  switch (status) {
+  case POTLIBC_SUCCESS:
+    return "success";
+  case POTLIBC_ERROR_ATOM_COUNT_REQUIRED:
+    return "atom count required";
+  case POTLIBC_ERROR_ATOM_COUNT_UNEXPECTED:
+    return "atom count unexpected";
+  default:
+    return "invalid surface id";
+  }
+}
+"#,
+        )
+        .expect("write potlibc_stub.c");
+        let suffix = if cfg!(target_os = "macos") {
+            "dylib"
+        } else {
+            "so"
+        };
+        let out = tmpdir.join(format!("libpotlibc.{suffix}"));
+        let target = env!("RGPOT_BUILD_TARGET");
+        let compiler = match cc::Build::new()
+            .target(target)
+            .host(target)
+            .opt_level(0)
+            .try_get_compiler()
+        {
+            Ok(compiler) => compiler,
+            Err(why) => panic!(
+                "cannot compile the potlibc engine: no C compiler available for target {target} ({why})"
+            ),
+        };
+        let mut command = compiler.to_command();
+        if cfg!(target_os = "macos") {
+            command.arg("-dynamiclib");
+        } else {
+            command.args(["-shared", "-fPIC"]);
+        }
+        let status = command
+            .arg("-I")
+            .arg(&tmpdir)
+            .arg("-I")
+            .arg(root.join("CppCore"))
+            .arg("-I")
+            .arg(root.join("include"))
+            .arg("-o")
+            .arg(&out)
+            .arg(&source)
+            .arg(&stub)
+            .arg("-lpthread")
+            .status()
+            .unwrap_or_else(|why| panic!("run the C compiler {:?}: {why}", compiler.path()));
+        assert!(status.success(), "the potlibc engine did not compile: {status}");
+        out
+    })
+}
+
 /// Rounding bar of a sum of `terms` products: each costs one rounding of its own size.
 fn within_roundoff(got: f64, want: f64, terms: usize) -> bool {
     (got - want).abs() <= terms as f64 * f64::EPSILON * got.abs().max(want.abs())
@@ -153,7 +413,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 7,
+            abi_minor: 8,
             layout_revision: 1,
         }
     );
@@ -182,6 +442,12 @@ struct FixtureObserver(libloading::Library);
 impl FixtureObserver {
     fn open(path: &Path) -> Self {
         Self(unsafe { libloading::Library::new(path) }.expect("open the fixture observer"))
+    }
+
+    fn created(&self) -> c_int {
+        let count: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+            unsafe { self.0.get(b"fixture_create_count\0") }.expect("create count symbol");
+        unsafe { count() }
     }
 
     fn destroyed(&self) -> c_int {
@@ -854,6 +1120,10 @@ unsafe extern "C" fn stub_abi_version() -> c_int {
     ENGINE_ABI_VERSION
 }
 
+unsafe extern "C" fn stub_available() -> c_int {
+    1
+}
+
 unsafe extern "C" fn stub_create(
     _config: *const std::ffi::c_void,
     _config_len: usize,
@@ -887,7 +1157,13 @@ unsafe extern "C" fn stub_model_state(_pot: *const RgpotEnginePot) -> u64 {
 
 #[test]
 fn symbols_are_built_with_a_constructor_and_optional_setters() {
-    let required = EngineSymbols::new(stub_abi_version, stub_create, stub_destroy, stub_force);
+    let required = EngineSymbols::new(
+        stub_abi_version,
+        stub_available,
+        stub_create,
+        stub_destroy,
+        stub_force,
+    );
     assert!(required.abi_stamp.is_none());
     assert!(required.force_batch.is_none());
     assert!(required.hvp.is_none());
@@ -1327,7 +1603,7 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 
 #[test]
 fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newer_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 7);
+    assert_eq!(ENGINE_ABI_MINOR, 8);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -1439,6 +1715,24 @@ fn a_missing_required_symbol_is_named() {
         .err()
         .expect("force is required");
     assert_eq!(error, EngineError::Missing("rgpot_engine_force".into()));
+
+    let no_available = build("harmonic_noavailable", &["NO_AVAILABLE"]);
+    let error = unsafe { EnginePotential::load(&no_available, &config()) }
+        .err()
+        .expect("available is required");
+    assert_eq!(error, EngineError::Missing("rgpot_engine_available".into()));
+}
+
+#[test]
+fn an_unavailable_engine_is_refused_before_create() {
+    let path = build("harmonic_unavailable", &["FIXTURE_AVAILABLE=0"]);
+    let observer = FixtureObserver::open(&path);
+    let before = observer.created();
+    let error = unsafe { EnginePotential::load(&path, &config()) }
+        .err()
+        .expect("unavailable engine must be refused");
+    assert_eq!(error, EngineError::Unavailable);
+    assert_eq!(observer.created(), before);
 }
 
 #[test]
@@ -3117,4 +3411,1413 @@ fn a_session_on_an_engine_without_cache_exports_reports_unsupported() {
     session
         .force(&one_atom_request(), None)
         .expect("an engine without a cache still evaluates");
+}
+
+fn build_with_abs_zero(name: &str, defines: &[&str], zero_symbols: &[&str]) -> PathBuf {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/harmonic_engine.c");
+    let include = Path::new(env!("CARGO_MANIFEST_DIR")).join("../CppCore");
+    let suffix = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let tmpdir = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let asm = tmpdir.join(format!("{name}_abs_zero.s"));
+    let prefix = if cfg!(target_os = "macos") { "_" } else { "" };
+    let mut asm_src = String::new();
+    for sym in zero_symbols {
+        asm_src.push_str(&format!(".globl {prefix}{sym}\n.set {prefix}{sym}, 0\n"));
+    }
+    if !cfg!(target_os = "macos") {
+        asm_src.push_str(".section .note.GNU-stack,\"\",%progbits\n");
+    }
+    std::fs::write(&asm, asm_src).expect("write ABS-zero assembly fixture");
+
+    let out = tmpdir.join(format!("lib{name}.{suffix}"));
+    let target = env!("RGPOT_BUILD_TARGET");
+    let compiler = match cc::Build::new()
+        .target(target)
+        .host(target)
+        .opt_level(0)
+        .try_get_compiler()
+    {
+        Ok(compiler) => compiler,
+        Err(why) => panic!(
+            "cannot compile C fixture '{name}': no C compiler available for target {target} ({why})"
+        ),
+    };
+    let mut command = compiler.to_command();
+    if cfg!(target_os = "macos") {
+        command.arg("-dynamiclib");
+    } else {
+        command.args(["-shared", "-fPIC"]);
+    }
+    command
+        .arg("-I")
+        .arg(include)
+        .arg("-o")
+        .arg(&out)
+        .arg(&source)
+        .arg(&asm);
+    for define in defines {
+        command.arg(format!("-D{define}"));
+    }
+    let status = match command.status() {
+        Ok(status) => status,
+        Err(why) => panic!("spawn C compiler {:?}: {why}", compiler.path()),
+    };
+    assert!(
+        status.success(),
+        "the ABS-zero fixture did not compile: {status}"
+    );
+    out
+}
+
+#[test]
+fn abs_zero_symbols_are_none_when_optional_and_missing_when_required() {
+    let null_hvp_with_caps = build_with_abs_zero(
+        "harmonic_abs0_hvp_caps",
+        &["NO_HVP", "FORCE_HVP_CAP"],
+        &["rgpot_engine_hvp"],
+    );
+    let mut engine = load(&null_hvp_with_caps);
+    assert!(!engine.caps().expect("caps").analytic_hvp);
+    assert_eq!(
+        engine.hvp(
+            &EngineRequest {
+                positions: &[1.0, 0.0, 0.0],
+                atomic_numbers: &[1],
+                box_matrix: &CELL,
+            },
+            &[1.0, 0.0, 0.0],
+        ),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_hvp",
+            message: "symbol is not exported".into(),
+        })
+    );
+    let handle = load(&null_hvp_with_caps).into_potential();
+    assert!(!handle.as_handle().has_hessian_vector_callback());
+
+    let null_all_optional = build_with_abs_zero(
+        "harmonic_abs0_all_opt",
+        &["NO_BATCH", "NO_CAPS", "NO_LAST_ERROR", "NO_HVP"],
+        &[
+            "rgpot_engine_force_batch",
+            "rgpot_engine_hvp",
+            "rgpot_engine_caps",
+            "rgpot_engine_last_error",
+        ],
+    );
+    let mut engine = load(&null_all_optional);
+    let eval = engine
+        .force(&EngineRequest {
+            positions: &[1.0, 0.0, 0.0],
+            atomic_numbers: &[1],
+            box_matrix: &CELL,
+        })
+        .expect("force with ABS-zero optional symbols");
+    assert!(within_roundoff(eval.energy, 0.5 * SPRING, 3));
+    let handle = load(&null_all_optional).into_potential();
+    assert!(!handle.as_handle().has_hessian_vector_callback());
+
+    // An ABS-zero stamp symbol is absent, and a loader that finds no stamp
+    // treats the engine as minor 0, layout 1, which this loader still serves.
+    let null_stamp = build_with_abs_zero(
+        "harmonic_abs0_stamp",
+        &["NO_STAMP"],
+        &["rgpot_engine_abi_stamp", "rgpot_engine_abi_compatible"],
+    );
+    let unstamped = unsafe { EnginePotential::load(&null_stamp, &config()) }
+        .expect("an ABS-zero stamp symbol loads as an unstamped engine");
+    assert_eq!(unstamped.abi_stamp().abi_minor, 0);
+    assert_eq!(unstamped.abi_stamp().layout_revision, 1);
+    drop(unstamped);
+
+    let null_force = build_with_abs_zero(
+        "harmonic_abs0_force",
+        &["NO_FORCE", "NO_BATCH"],
+        &["rgpot_engine_force"],
+    );
+    let observer = FixtureObserver::open(&null_force);
+    let before = observer.created();
+    let err = unsafe { EnginePotential::load(&null_force, &config()) }
+        .err()
+        .expect("ABS-zero required rgpot_engine_force must fail load");
+    assert_eq!(err, EngineError::Missing("rgpot_engine_force".into()));
+    assert_eq!(observer.created(), before);
+
+    // Build a standalone shared object where all required symbols are exported,
+    // with one required symbol set to ABS 0 at a time, so every required lookup
+    // is verified without invoking a null function pointer.
+    let required_names = [
+        "rgpot_engine_abi_version",
+        "rgpot_engine_available",
+        "rgpot_engine_create",
+        "rgpot_engine_destroy",
+        "rgpot_engine_force",
+    ];
+    let suffix = if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
+    let prefix = if cfg!(target_os = "macos") { "_" } else { "" };
+    let target = env!("RGPOT_BUILD_TARGET");
+    let compiler = cc::Build::new()
+        .target(target)
+        .host(target)
+        .opt_level(0)
+        .try_get_compiler()
+        .expect("C compiler");
+    for (idx, missing_sym) in required_names.iter().enumerate() {
+        let asm = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("req_abs0_{idx}.s"));
+        let out =
+            Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("libreq_abs0_{idx}.{suffix}"));
+        let mut text = String::from(".text\n");
+        for sym in required_names {
+            if sym == *missing_sym {
+                text.push_str(&format!(".globl {prefix}{sym}\n.set {prefix}{sym}, 0\n"));
+            } else {
+                text.push_str(&format!(
+                    ".globl {prefix}{sym}\n{prefix}{sym}:\n  .byte 0\n"
+                ));
+            }
+        }
+        if !cfg!(target_os = "macos") {
+            text.push_str(".section .note.GNU-stack,\"\",%progbits\n");
+        }
+        std::fs::write(&asm, text).expect("write required ABS-zero asm");
+        let mut cmd = compiler.to_command();
+        if cfg!(target_os = "macos") {
+            cmd.arg("-dynamiclib");
+        } else {
+            cmd.args(["-shared", "-fPIC"]);
+        }
+        let status = cmd
+            .arg("-o")
+            .arg(&out)
+            .arg(&asm)
+            .status()
+            .expect("link asm");
+        assert!(status.success(), "link {missing_sym} fixture: {status}");
+        let err = unsafe { EnginePotential::load(&out, &config()) }
+            .err()
+            .expect("ABS-zero required symbol must be rejected during resolve");
+        assert_eq!(err, EngineError::Missing((*missing_sym).into()));
+    }
+}
+
+#[test]
+fn lock_error_code_matches_header_maps_on_rust_side_and_marks_handle_unusable() {
+    use rgpot_core::engine::ENGINE_ERR_LOCK;
+
+    let force_lock = build("harmonic_forcelock", &["FORCE_LOCK_ERROR"]);
+    let library = unsafe { libloading::Library::new(&force_lock) }.expect("reopen fixture");
+    let header_code: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_lock_error_code\0") }.expect("lock error code symbol");
+    assert_eq!(unsafe { header_code() }, ENGINE_ERR_LOCK);
+
+    let mut engine = load(&force_lock);
+    let request = EngineRequest {
+        positions: &[1.0, 0.0, 0.0],
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+    let expected = EngineError::Lock {
+        operation: "rgpot_engine_force",
+        message: "fixture handle lock failed".into(),
+    };
+    assert_eq!(engine.force(&request).unwrap_err(), expected);
+    assert_eq!(engine.force(&request).unwrap_err(), expected);
+    assert_eq!(expected.status(), rgpot_status_t::RGPOT_INTERNAL_ERROR);
+
+    let hvp_lock = build("harmonic_hvplock", &["HVP_LOCK_ERROR"]);
+    let mut hvp_engine = load(&hvp_lock);
+    let expected_hvp = EngineError::Lock {
+        operation: "rgpot_engine_hvp",
+        message: "fixture hvp lock failed".into(),
+    };
+    assert_eq!(
+        hvp_engine.hvp(&request, &[1.0, 0.0, 0.0]).unwrap_err(),
+        expected_hvp
+    );
+    assert_eq!(hvp_engine.force(&request).unwrap_err(), expected_hvp);
+
+    let caps_lock = build("harmonic_capslock", &["CAPS_LOCK_ERROR"]);
+    let rejected = unsafe { EnginePotential::load(&caps_lock, &config()) }
+        .err()
+        .expect("a caps lock failure at load rejects the engine");
+    assert_eq!(
+        rejected,
+        EngineError::Lock {
+            operation: "rgpot_engine_caps",
+            message: "fixture caps lock failed".into(),
+        }
+    );
+}
+
+#[test]
+fn a_negative_caps_code_at_load_rejects_the_engine_and_frees_the_handle() {
+    for (name, define, expected) in [
+        (
+            "harmonic_capsfatal",
+            "CAPS_ERROR_CODE=-1",
+            EngineError::Fatal {
+                code: -1,
+                message: "fixture caps failed".into(),
+            },
+        ),
+        (
+            "harmonic_capsfatal_other",
+            "CAPS_ERROR_CODE=-7",
+            EngineError::Fatal {
+                code: -7,
+                message: "fixture caps failed".into(),
+            },
+        ),
+    ] {
+        let path = build(name, &[define]);
+        let observer = FixtureObserver::open(&path);
+        let before_created = observer.created();
+        let before_destroyed = observer.destroyed();
+        let rejected = unsafe { EnginePotential::load(&path, &config()) }
+            .err()
+            .expect("a negative caps code at load rejects the engine");
+        assert_eq!(rejected, expected);
+        assert_eq!(rejected.status(), rgpot_status_t::RGPOT_INTERNAL_ERROR);
+        assert_eq!(observer.created(), before_created + 1);
+        assert_eq!(
+            observer.destroyed(),
+            before_destroyed + 1,
+            "the rejected handle must be destroyed exactly once"
+        );
+    }
+}
+
+#[test]
+fn a_positive_caps_code_at_load_keeps_process_wide_serialization() {
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_capspositive",
+        &[
+            "CAPS_ERROR_CODE=1",
+            "FIXTURE_REENTRANCY=1",
+            "CONCURRENCY_PROBE",
+        ],
+    );
+    let _observer = FixtureObserver::open(&path);
+    fixture_reset_concurrent(&path);
+    let gate = Arc::new(Barrier::new(3));
+    std::thread::scope(|scope| {
+        for idx in 0..3usize {
+            let path_ref = &path;
+            let gate = Arc::clone(&gate);
+            scope.spawn(move || {
+                let mut engine = load(path_ref);
+                let factor = (idx + 1) as f64;
+                let positions = [factor, -factor, 0.5 * factor];
+                let request = EngineRequest {
+                    positions: &positions,
+                    atomic_numbers: &[1],
+                    box_matrix: &CELL,
+                };
+                gate.wait();
+                for _ in 0..4 {
+                    engine
+                        .force(&request)
+                        .expect("force after a failed caps probe");
+                }
+            });
+        }
+    });
+    assert_eq!(
+        fixture_max_concurrent(&path),
+        1,
+        "a failed caps probe must not skip the process-wide lock"
+    );
+}
+
+fn fixture_max_concurrent(path: &Path) -> c_int {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen fixture");
+    let f: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_max_concurrent\0") }.expect("max concurrent symbol");
+    unsafe { f() }
+}
+
+fn fixture_max_handle_concurrent(path: &Path) -> c_int {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen fixture");
+    let f: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_max_handle_concurrent\0") }
+            .expect("max handle concurrent symbol");
+    unsafe { f() }
+}
+
+fn fixture_reset_concurrent(path: &Path) {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen fixture");
+    let f: libloading::Symbol<unsafe extern "C" fn()> =
+        unsafe { library.get(b"fixture_reset_concurrent\0") }.expect("reset concurrent symbol");
+    unsafe { f() };
+}
+
+#[test]
+fn concurrent_handles_serialize_each_handle_and_parallelize_distinct_handles() {
+    use rgpot_core::c_api::hvp::rgpot_potential_hvp;
+    use rgpot_core::c_api::potential::rgpot_potential_calculate;
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_concurrent_handles",
+        &["FIXTURE_REENTRANCY=1", "CONCURRENCY_PROBE"],
+    );
+    let observer = FixtureObserver::open(&path);
+    let probe = load(&path);
+    assert_eq!(probe.caps().expect("caps").reentrancy, 1);
+    drop(probe);
+
+    // 1. Overlapping force and analytic HVP calls on a single PotentialImpl handle
+    //    must serialize through the handle mutex.
+    fixture_reset_concurrent(&path);
+    let shared_potential = load(&path).into_potential();
+    let raw_addr = shared_potential.as_handle() as *const _ as usize;
+    let start = Arc::new(Barrier::new(4));
+    std::thread::scope(|scope| {
+        for worker in 0..4usize {
+            let start = Arc::clone(&start);
+            scope.spawn(move || {
+                let pot = raw_addr as *const rgpot_core::potential::rgpot_potential_t;
+                let scale = (worker + 1) as f64;
+                let mut positions = [0.5 * scale, -scale, 2.0 * scale];
+                let mut numbers = [1_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                start.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let mut output = rgpot_force_out_t {
+                            forces: std::ptr::null_mut(),
+                            energy: 0.0,
+                            variance: 0.0,
+                        };
+                        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                        unsafe { rgpot_tensor_free(output.forces) };
+                    } else {
+                        let direction = [scale, -0.5 * scale, 0.25 * scale];
+                        let mut hv = [0.0; 3];
+                        let status = unsafe {
+                            rgpot_potential_hvp(
+                                pot,
+                                &input,
+                                direction.as_ptr(),
+                                0.0,
+                                rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC as i32,
+                                hv.as_mut_ptr(),
+                            )
+                        };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let want: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
+                        assert!(all_within_roundoff(&hv, &want));
+                    }
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(fixture_max_concurrent(&path), 1);
+    assert_eq!(fixture_max_handle_concurrent(&path), 1);
+    drop(shared_potential);
+
+    // 2. Distinct PotentialImpl handles of a reentrancy==1 engine evaluate
+    //    concurrently on separate worker threads without blocking each other.
+    fixture_reset_concurrent(&path);
+    let before_destroy = observer.destroyed();
+    let handles: Vec<rgpot_core::potential::PotentialImpl> =
+        (0..4).map(|_| load(&path).into_potential()).collect();
+    let gate = Arc::new(Barrier::new(handles.len()));
+    std::thread::scope(|scope| {
+        for (idx, handle) in handles.into_iter().enumerate() {
+            let gate = Arc::clone(&gate);
+            scope.spawn(move || {
+                let factor = (idx + 1) as f64;
+                let mut positions = [factor, -2.0 * factor, 0.5 * factor];
+                let mut numbers = [8_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                gate.wait();
+                for _ in 0..4 {
+                    let mut output = rgpot_force_out_t {
+                        forces: std::ptr::null_mut(),
+                        energy: 0.0,
+                        variance: 0.0,
+                    };
+                    let status = unsafe { handle.calculate(&input, &mut output) };
+                    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                    let sum: f64 = positions.iter().map(|v| v * v).sum();
+                    assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                    unsafe { rgpot_tensor_free(output.forces) };
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(fixture_max_handle_concurrent(&path), 1);
+    let cpus = match std::thread::available_parallelism() {
+        Ok(count) => count.get(),
+        Err(_) => 1,
+    };
+    if cpus >= 2 {
+        assert!(
+            fixture_max_concurrent(&path) >= 2,
+            "expected parallel execution across distinct reentrancy==1 handles, got max_concurrent={}",
+            fixture_max_concurrent(&path)
+        );
+    }
+    assert_eq!(observer.destroyed(), before_destroy + 4);
+}
+
+#[test]
+fn reentrancy_two_engines_serialize_across_handles() {
+    use std::sync::{Arc, Barrier};
+
+    let path = build(
+        "harmonic_reentrancy2",
+        &["FIXTURE_REENTRANCY=2", "CONCURRENCY_PROBE"],
+    );
+    let observer = FixtureObserver::open(&path);
+    let probe = load(&path);
+    let caps = probe.caps().expect("reentrancy==2 caps");
+    assert_eq!(caps.reentrancy, 2);
+    assert!(caps.analytic_hvp);
+    drop(probe);
+
+    // Direct EnginePotential instances on separate threads must serialize across handles.
+    fixture_reset_concurrent(&path);
+    let direct_gate = Arc::new(Barrier::new(3));
+    std::thread::scope(|scope| {
+        for idx in 0..3usize {
+            let path_ref = &path;
+            let direct_gate = Arc::clone(&direct_gate);
+            scope.spawn(move || {
+                let mut engine = load(path_ref);
+                let factor = (idx + 1) as f64;
+                let positions = [factor, -factor, 0.5 * factor];
+                let request = EngineRequest {
+                    positions: &positions,
+                    atomic_numbers: &[1],
+                    box_matrix: &CELL,
+                };
+                direct_gate.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let eval = engine.force(&request).expect("reentrancy==2 direct force");
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(eval.energy, 0.5 * SPRING * sum, 9));
+                    } else {
+                        let dir = [1.0, -2.0, 0.5];
+                        let hv = engine
+                            .hvp(&request, &dir)
+                            .expect("reentrancy==2 direct hvp");
+                        assert!(all_within_roundoff(
+                            &hv,
+                            &[SPRING, -2.0 * SPRING, 0.5 * SPRING]
+                        ));
+                    }
+                }
+            });
+        }
+    });
+    assert_eq!(
+        fixture_max_concurrent(&path),
+        1,
+        "reentrancy==2 EnginePotential instances overlapped"
+    );
+
+    // PotentialImpl handles created via into_potential() must also serialize across handles.
+    fixture_reset_concurrent(&path);
+    let before_destroy = observer.destroyed();
+    let handles: Vec<rgpot_core::potential::PotentialImpl> =
+        (0..4).map(|_| load(&path).into_potential()).collect();
+    let handle_gate = Arc::new(Barrier::new(handles.len()));
+    std::thread::scope(|scope| {
+        for (idx, handle) in handles.into_iter().enumerate() {
+            let handle_gate = Arc::clone(&handle_gate);
+            scope.spawn(move || {
+                let factor = (idx + 1) as f64;
+                let mut positions = [0.5 * factor, 1.5 * factor, -factor];
+                let mut numbers = [1_i32];
+                let mut cell = CELL;
+                let input = rgpot_force_input_t {
+                    positions: unsafe { rgpot_tensor_cpu_f64_2d(positions.as_mut_ptr(), 1, 3) },
+                    atomic_numbers: unsafe { rgpot_tensor_cpu_i32_1d(numbers.as_mut_ptr(), 1) },
+                    box_matrix: unsafe { rgpot_tensor_cpu_f64_matrix3(cell.as_mut_ptr()) },
+                };
+                handle_gate.wait();
+                for step_idx in 0..4usize {
+                    if step_idx % 2 == 0 {
+                        let mut output = rgpot_force_out_t {
+                            forces: std::ptr::null_mut(),
+                            energy: 0.0,
+                            variance: 0.0,
+                        };
+                        let status = unsafe { handle.calculate(&input, &mut output) };
+                        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+                        let sum: f64 = positions.iter().map(|v| v * v).sum();
+                        assert!(within_roundoff(output.energy, 0.5 * SPRING * sum, 9));
+                        unsafe { rgpot_tensor_free(output.forces) };
+                    } else {
+                        let direction = [factor, -0.5 * factor, 2.0 * factor];
+                        let mut hv = [0.0; 3];
+                        unsafe {
+                            handle
+                                .as_handle()
+                                .hessian_vector(
+                                    &input,
+                                    &direction,
+                                    0.0,
+                                    rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC,
+                                    &mut hv,
+                                )
+                                .expect("reentrancy==2 handle HVP");
+                        }
+                        let want: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
+                        assert!(all_within_roundoff(&hv, &want));
+                    }
+                }
+                unsafe {
+                    rgpot_tensor_free(input.positions);
+                    rgpot_tensor_free(input.atomic_numbers);
+                    rgpot_tensor_free(input.box_matrix);
+                }
+            });
+        }
+    });
+    assert_eq!(
+        fixture_max_concurrent(&path),
+        1,
+        "reentrancy==2 PotentialImpl handles overlapped"
+    );
+    assert_eq!(observer.destroyed(), before_destroy + 4);
+}
+
+/// Parameters of the coupled-well tests. Every value is a dyadic rational, so the
+/// closed forms below are exact in binary floating point.
+const WELL_NUMBER: i32 = 1;
+const WELL_BARRIER: f64 = 3.0;
+const WELL_POSITION: f64 = 2.0;
+const WELL_SPRING: f64 = 4.0;
+const WELL_COUPLING: f64 = 0.25;
+/// Terms in the longest expression the oracle and the engine each evaluate.
+const WELL_TERMS: usize = 16;
+
+fn well_config() -> CoupledWellConfig {
+    CoupledWellConfig::default()
+        .with_atomic_number(WELL_NUMBER)
+        .with_barrier_energy(WELL_BARRIER)
+        .with_well_position(WELL_POSITION)
+        .with_transverse_spring(WELL_SPRING)
+        .with_coupling(WELL_COUPLING)
+}
+
+fn load_well() -> EnginePotential {
+    unsafe { EnginePotential::load(build_coupled_well(), well_config().as_bytes()) }
+        .expect("coupled-well engine")
+}
+
+fn well_request(positions: &[f64; 3]) -> EngineRequest<'_> {
+    EngineRequest {
+        positions,
+        atomic_numbers: &[WELL_NUMBER],
+        box_matrix: &CELL,
+    }
+}
+
+/// Energy, gradient and Hessian of the model from the expanded polynomial
+///   E = V0 (x^4/x0^4 - 2 x^2/x0^2 + 1) + k/2 (y^2 - 2 a x^2 y + a^2 x^4),
+/// differentiated by hand, not from the engine's factored form.
+struct Expansion {
+    energy: f64,
+    gradient: [f64; 2],
+    hessian: [f64; 3],
+}
+
+fn expansion(x: f64, y: f64) -> Expansion {
+    let (v0, x0, k, a) = (WELL_BARRIER, WELL_POSITION, WELL_SPRING, WELL_COUPLING);
+    let (x2, x02) = (x * x, x0 * x0);
+    let (x4, x04) = (x2 * x2, x02 * x02);
+    Expansion {
+        energy: v0 * (x4 / x04 - 2.0 * x2 / x02 + 1.0)
+            + 0.5 * k * (y * y - 2.0 * a * x2 * y + a * a * x4),
+        gradient: [
+            v0 * (4.0 * x * x2 / x04 - 4.0 * x / x02)
+                + k * (2.0 * a * a * x * x2 - 2.0 * a * x * y),
+            k * (y - a * x2),
+        ],
+        hessian: [
+            v0 * (12.0 * x2 / x04 - 4.0 / x02) + k * (6.0 * a * a * x2 - 2.0 * a * y),
+            -2.0 * k * a * x,
+            k,
+        ],
+    }
+}
+
+const WELL_XS: [f64; 7] = [-3.0, -2.0, -0.5, 0.0, 1.0, 2.0, 2.5];
+const WELL_YS: [f64; 5] = [-1.5, 0.0, 0.5, 1.0, 3.0];
+
+#[test]
+fn coupled_well_force_and_hvp_are_the_analytic_derivatives_on_a_grid() {
+    let mut engine = load_well();
+    let directions = [[1.0, 0.0, 9.0], [0.0, 1.0, 9.0], [0.5, -1.5, 4.0]];
+    for x in WELL_XS {
+        for y in WELL_YS {
+            let positions = [x, y, 7.0];
+            let want = expansion(x, y);
+            let answer = engine.force(&well_request(&positions)).expect("force");
+            assert!(
+                within_roundoff(answer.energy, want.energy, WELL_TERMS),
+                "energy at ({x}, {y}): {} vs {}",
+                answer.energy,
+                want.energy
+            );
+            for (component, gradient) in want.gradient.iter().enumerate() {
+                assert!(
+                    within_roundoff(answer.forces[component], -gradient, WELL_TERMS),
+                    "force {component} at ({x}, {y}): {} vs {}",
+                    answer.forces[component],
+                    -gradient
+                );
+            }
+            assert_eq!(answer.forces[2], 0.0, "the energy does not depend on z");
+            for direction in directions {
+                let product = engine
+                    .hvp(&well_request(&positions), &direction)
+                    .expect("hvp");
+                let [hxx, hxy, hyy] = want.hessian;
+                let expected = [
+                    hxx * direction[0] + hxy * direction[1],
+                    hxy * direction[0] + hyy * direction[1],
+                    0.0,
+                ];
+                for component in 0..3 {
+                    assert!(
+                        within_roundoff(product[component], expected[component], WELL_TERMS),
+                        "hvp {component} at ({x}, {y}) along {direction:?}: {} vs {}",
+                        product[component],
+                        expected[component]
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn coupled_well_stationary_points_have_the_hand_computed_curvature() {
+    let mut engine = load_well();
+    let unit_x = [1.0, 0.0, 0.0];
+    let unit_y = [0.0, 1.0, 0.0];
+
+    // x = x0, y = alpha x0^2: both terms vanish. With u = 1 and a zero
+    // displacement, H = [[8 V0 / x0^2 + 4 k a^2 x0^2, -2 k a x0], [., k]].
+    let minimum = [2.0, 1.0, 0.0];
+    let answer = engine.force(&well_request(&minimum)).expect("minimum");
+    assert_eq!(answer.energy, 0.0);
+    assert_eq!(answer.forces, [0.0, 0.0, 0.0]);
+    let column_x = engine.hvp(&well_request(&minimum), &unit_x).expect("Hx");
+    let column_y = engine.hvp(&well_request(&minimum), &unit_y).expect("Hy");
+    assert_eq!(column_x, [10.0, -4.0, 0.0]);
+    assert_eq!(column_y, [-4.0, 4.0, 0.0]);
+
+    // The barrier top x = 0, y = 0 has energy V0 and H = diag(-4 V0 / x0^2, k).
+    let top = [0.0, 0.0, 0.0];
+    let answer = engine.force(&well_request(&top)).expect("barrier top");
+    assert_eq!(answer.energy, WELL_BARRIER);
+    assert_eq!(answer.forces, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        engine.hvp(&well_request(&top), &unit_x).expect("Hx"),
+        [-3.0, 0.0, 0.0]
+    );
+    assert_eq!(
+        engine.hvp(&well_request(&top), &unit_y).expect("Hy"),
+        [0.0, 4.0, 0.0]
+    );
+
+    // (1, 1/2): E = 29/16, F = (11/4, -1), H = [[-1/4, -2], [-2, 4]].
+    let generic = [1.0, 0.5, 0.0];
+    let answer = engine
+        .force(&well_request(&generic))
+        .expect("generic point");
+    assert_eq!(answer.energy, 1.8125);
+    assert_eq!(answer.forces, [2.75, -1.0, 0.0]);
+    let product = engine
+        .hvp(&well_request(&generic), &[1.0, 2.0, 5.0])
+        .expect("Hd");
+    assert_eq!(product, [-4.25, 6.0, 0.0]);
+}
+
+#[test]
+fn coupled_well_extreme_finite_inputs_and_hvp_edge_cases_stay_servable() {
+    // Regression: finite answers at this point used to overflow intermediates.
+    let tiny = CoupledWellConfig::default()
+        .with_atomic_number(WELL_NUMBER)
+        .with_barrier_energy(1.0e-320)
+        .with_well_position(1.0e-155)
+        .with_transverse_spring(1.0)
+        .with_coupling(0.0);
+    let mut tiny_engine =
+        unsafe { EnginePotential::load(build_coupled_well(), tiny.as_bytes()) }.expect("tiny cfg");
+    let tiny_eval = tiny_engine
+        .force(&well_request(&[1.0, 0.0, 0.0]))
+        .expect("finite tiny-scale answer");
+    assert!(tiny_eval.energy.is_finite());
+    assert!(tiny_eval.forces.iter().all(|v| v.is_finite()));
+    let scaled_min = [1.0e-155, 0.0, 0.0];
+    let min_eval = tiny_engine
+        .force(&well_request(&scaled_min))
+        .expect("scaled minimum answer");
+    assert_eq!(min_eval.energy, 0.0);
+    assert_eq!(min_eval.forces, vec![0.0, 0.0, 0.0]);
+    let min_hv = tiny_engine
+        .hvp(&well_request(&scaled_min), &[1.0, 0.0, 0.0])
+        .expect("scaled minimum HVP");
+    assert!(min_hv[0].is_finite());
+    assert_eq!(&min_hv[1..], &[0.0, 0.0]);
+
+    // Regression: force used to require a finite Hessian, and HVP used inf*0.
+    let huge_alpha = CoupledWellConfig::default()
+        .with_atomic_number(WELL_NUMBER)
+        .with_barrier_energy(1.0)
+        .with_well_position(1.0)
+        .with_transverse_spring(1.0)
+        .with_coupling(1.0e200);
+    let mut edge_engine =
+        unsafe { EnginePotential::load(build_coupled_well(), huge_alpha.as_bytes()) }
+            .expect("huge-alpha cfg");
+    let edge_point = [1.0, 1.0e200, 0.0];
+    let edge_eval = edge_engine
+        .force(&well_request(&edge_point))
+        .expect("force must not require finite Hessian");
+    assert_eq!(edge_eval.energy, 0.0);
+    assert_eq!(edge_eval.forces, vec![0.0, 0.0, 0.0]);
+    let hv = edge_engine
+        .hvp(&well_request(&edge_point), &[0.0, 1.0, 0.0])
+        .expect("direct HVP must avoid inf*0");
+    assert_eq!(hv, vec![-2.0e200, 1.0, 0.0]);
+}
+
+#[test]
+fn coupled_well_batch_is_the_analytic_answer_for_each_system() {
+    let mut engine = load_well();
+    let systems = [[2.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.5, -1.0]];
+    let positions: Vec<f64> = systems.iter().flatten().copied().collect();
+    let boxes: Vec<f64> = CELL.repeat(systems.len());
+    let batch = engine
+        .force_batch(&[WELL_NUMBER], &positions, &boxes)
+        .expect("batch");
+    assert_eq!(batch.len(), systems.len());
+    for (system, answer) in systems.iter().zip(&batch) {
+        let want = expansion(system[0], system[1]);
+        assert!(within_roundoff(answer.energy, want.energy, WELL_TERMS));
+        assert!(within_roundoff(
+            answer.forces[0],
+            -want.gradient[0],
+            WELL_TERMS
+        ));
+        assert!(within_roundoff(
+            answer.forces[1],
+            -want.gradient[1],
+            WELL_TERMS
+        ));
+        assert_eq!(answer.forces[2], 0.0);
+        let single = engine.force(&well_request(system)).expect("single");
+        assert_eq!(*answer, single);
+    }
+    assert_eq!(batch[0].energy, 0.0);
+    assert_eq!(batch[1].energy, WELL_BARRIER);
+}
+
+#[test]
+fn coupled_well_batch_refuses_a_ragged_or_mismatched_request() {
+    let mut engine = load_well();
+    let positions = [1.0, 0.5, 0.0, 2.0, 1.0, 0.0];
+    let ragged = engine
+        .force_batch(&[WELL_NUMBER], &positions[..5], &CELL)
+        .unwrap_err();
+    assert!(matches!(ragged, EngineError::Invalid(_)), "{ragged}");
+    let wrong_boxes = engine
+        .force_batch(&[WELL_NUMBER], &positions, &CELL)
+        .unwrap_err();
+    assert!(
+        matches!(wrong_boxes, EngineError::Invalid(_)),
+        "{wrong_boxes}"
+    );
+    let empty = engine.force_batch(&[WELL_NUMBER], &[], &[]).unwrap_err();
+    assert!(matches!(empty, EngineError::Invalid(_)), "{empty}");
+    let two_atoms = engine
+        .force_batch(&[WELL_NUMBER, WELL_NUMBER], &positions, &CELL)
+        .unwrap_err();
+    assert!(
+        matches!(two_atoms, EngineError::Recoverable { code: 1, .. }),
+        "{two_atoms}"
+    );
+    let species = engine
+        .force_batch(&[WELL_NUMBER + 1], &positions, &CELL.repeat(2))
+        .unwrap_err();
+    assert!(
+        matches!(&species, EngineError::Recoverable { code: 1, message } if message.contains("atomic number")),
+        "{species}"
+    );
+}
+
+#[test]
+fn coupled_well_refuses_requests_it_cannot_serve_and_keeps_serving() {
+    let mut engine = load_well();
+    let two_atoms = engine
+        .force(&EngineRequest {
+            positions: &[0.0; 6],
+            atomic_numbers: &[WELL_NUMBER, WELL_NUMBER],
+            box_matrix: &CELL,
+        })
+        .unwrap_err();
+    assert!(
+        matches!(&two_atoms, EngineError::Recoverable { code: 1, message } if message.contains("one atom")),
+        "{two_atoms}"
+    );
+    let species = engine
+        .force(&EngineRequest {
+            positions: &[0.0; 3],
+            atomic_numbers: &[WELL_NUMBER + 1],
+            box_matrix: &CELL,
+        })
+        .unwrap_err();
+    assert!(
+        matches!(&species, EngineError::Recoverable { code: 1, message } if message.contains("atomic number")),
+        "{species}"
+    );
+    let not_finite = engine
+        .force(&well_request(&[f64::NAN, 0.0, 0.0]))
+        .unwrap_err();
+    assert!(
+        matches!(&not_finite, EngineError::Recoverable { code: 1, message } if message.contains("finite")),
+        "{not_finite}"
+    );
+    let overflow = engine
+        .force(&well_request(&[1.0e200, 0.0, 0.0]))
+        .unwrap_err();
+    assert!(
+        matches!(overflow, EngineError::Recoverable { code: 2, .. }),
+        "{overflow}"
+    );
+    let direction = engine
+        .hvp(&well_request(&[0.0; 3]), &[f64::INFINITY, 0.0, 0.0])
+        .unwrap_err();
+    assert!(matches!(direction, EngineError::Invalid(_)), "{direction}");
+    // None of these is fatal: the instance still answers.
+    let answer = engine
+        .force(&well_request(&[0.0; 3]))
+        .expect("still usable");
+    assert_eq!(answer.energy, WELL_BARRIER);
+}
+
+#[test]
+fn coupled_well_parameters_are_validated_in_rust_and_by_the_engine_alike() {
+    let valid = [
+        well_config(),
+        CoupledWellConfig::default(),
+        well_config().with_coupling(-WELL_COUPLING),
+        well_config().with_coupling(0.0),
+        CoupledWellConfig::new(8, 0.5, 1.5, 2.0, 1.0),
+    ];
+    for config in valid {
+        config.validate().expect("valid in Rust");
+        unsafe { EnginePotential::load(build_coupled_well(), config.as_bytes()) }
+            .unwrap_or_else(|why| panic!("{config:?} refused by the engine: {why}"));
+    }
+
+    let mut wrong_magic = well_config();
+    wrong_magic.magic ^= 1;
+    let mut wrong_version = well_config();
+    wrong_version.version += 1;
+    let mut reserved0 = well_config();
+    reserved0.reserved0 = 1;
+    let mut reserved1 = well_config();
+    reserved1.reserved1 = 1;
+    let mut too_small = well_config();
+    too_small.size = COUPLED_WELL_CONFIG_MIN_SIZE - 8;
+    let invalid = [
+        ("magic", wrong_magic),
+        ("version", wrong_version),
+        ("reserved0", reserved0),
+        ("reserved1", reserved1),
+        ("too-small size", too_small),
+        ("zero atomic number", well_config().with_atomic_number(0)),
+        (
+            "negative atomic number",
+            well_config().with_atomic_number(-1),
+        ),
+        ("zero barrier", well_config().with_barrier_energy(0.0)),
+        ("negative barrier", well_config().with_barrier_energy(-1.0)),
+        ("NaN barrier", well_config().with_barrier_energy(f64::NAN)),
+        ("zero well position", well_config().with_well_position(0.0)),
+        (
+            "infinite well position",
+            well_config().with_well_position(f64::INFINITY),
+        ),
+        (
+            "negative spring",
+            well_config().with_transverse_spring(-1.0),
+        ),
+        ("NaN spring", well_config().with_transverse_spring(f64::NAN)),
+        ("NaN coupling", well_config().with_coupling(f64::NAN)),
+        (
+            "infinite coupling",
+            well_config().with_coupling(f64::NEG_INFINITY),
+        ),
+    ];
+    for (name, config) in invalid {
+        let rust = config.validate();
+        assert!(
+            matches!(rust, Err(EngineError::Invalid(_))),
+            "{name}: Rust accepted it"
+        );
+        let engine = unsafe { EnginePotential::load(build_coupled_well(), config.as_bytes()) };
+        assert!(
+            matches!(engine.err(), Some(EngineError::Create(why)) if !why.is_empty()),
+            "{name}: the engine accepted it or gave no reason"
+        );
+    }
+
+    let truncated = unsafe {
+        EnginePotential::load(
+            build_coupled_well(),
+            &well_config().as_bytes()[..std::mem::size_of::<CoupledWellConfig>() - 8],
+        )
+    };
+    assert!(matches!(
+        truncated.err(),
+        Some(EngineError::Create(why))
+            if why.contains("CoupledWellConfigV1")
+                || why.contains("shorter than config.size")
+    ));
+
+    let mut extended = vec![0_u8; std::mem::size_of::<CoupledWellConfig>() + 16];
+    extended[..std::mem::size_of::<CoupledWellConfig>()].copy_from_slice(well_config().as_bytes());
+    let new_size = extended.len() as u32;
+    extended[4..8].copy_from_slice(&new_size.to_ne_bytes());
+    unsafe { EnginePotential::load(build_coupled_well(), &extended) }
+        .expect("future coupled-well config with zero trailing bytes");
+    extended[std::mem::size_of::<CoupledWellConfig>()] = 1;
+    assert!(matches!(
+        unsafe { EnginePotential::load(build_coupled_well(), &extended) }.err(),
+        Some(EngineError::Create(why)) if why.contains("trailing bytes")
+    ));
+}
+
+#[test]
+fn coupled_well_config_bytes_follow_the_header_layout() {
+    let config = well_config();
+    let bytes = config.as_bytes();
+    assert_eq!(bytes.len(), COUPLED_WELL_CONFIG_MIN_SIZE as usize);
+    let word = |offset: usize| u32::from_ne_bytes(bytes[offset..offset + 4].try_into().unwrap());
+    let real = |offset: usize| f64::from_ne_bytes(bytes[offset..offset + 8].try_into().unwrap());
+    assert_eq!(word(0), 0x4357_5054, "magic");
+    assert_eq!(word(4), COUPLED_WELL_CONFIG_MIN_SIZE, "size");
+    assert_eq!(word(8), COUPLED_WELL_CONFIG_VERSION, "version");
+    assert_eq!(word(12), 0, "reserved0");
+    assert_eq!(word(16), WELL_NUMBER as u32, "atomic_number");
+    assert_eq!(word(20), 0, "reserved1");
+    assert_eq!(real(24), WELL_BARRIER);
+    assert_eq!(real(32), WELL_POSITION);
+    assert_eq!(real(40), WELL_SPRING);
+    assert_eq!(real(48), WELL_COUPLING);
+    assert_eq!(
+        CoupledWellConfig::new(WELL_NUMBER, 3.0, 2.0, 4.0, 0.25),
+        config
+    );
+    assert_eq!(CoupledWellConfig::default().validate().ok(), Some(()));
+}
+
+/// A version-1 client writes 48 bytes: magic, version 1,
+/// atomic number, a zero reserved word, then the four parameters.
+#[test]
+fn coupled_well_accepts_a_version_one_message_with_the_same_answer() {
+    assert_eq!(COUPLED_WELL_CONFIG_V1_SIZE, 48);
+    let mut legacy = [0_u8; 48];
+    legacy[0..4].copy_from_slice(&COUPLED_WELL_CONFIG_MAGIC.to_ne_bytes());
+    legacy[4..8].copy_from_slice(&COUPLED_WELL_CONFIG_VERSION_V1.to_ne_bytes());
+    legacy[8..12].copy_from_slice(&WELL_NUMBER.to_ne_bytes());
+    legacy[16..24].copy_from_slice(&WELL_BARRIER.to_ne_bytes());
+    legacy[24..32].copy_from_slice(&WELL_POSITION.to_ne_bytes());
+    legacy[32..40].copy_from_slice(&WELL_SPRING.to_ne_bytes());
+    legacy[40..48].copy_from_slice(&WELL_COUPLING.to_ne_bytes());
+
+    let mut from_v1 = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
+        .expect("v1 coupled-well message");
+    let mut from_v2 = load_well();
+    let direction = [0.5, -1.5, 4.0];
+    for x in WELL_XS {
+        for y in WELL_YS {
+            let positions = [x, y, 7.0];
+            let request = well_request(&positions);
+            assert_eq!(
+                from_v1.force(&request).expect("v1 force"),
+                from_v2.force(&request).expect("v2 force")
+            );
+            assert_eq!(
+                from_v1.hvp(&request, &direction).expect("v1 hvp"),
+                from_v2.hvp(&request, &direction).expect("v2 hvp")
+            );
+        }
+    }
+
+    for len in [
+        COUPLED_WELL_CONFIG_V1_SIZE as usize - 1,
+        COUPLED_WELL_CONFIG_V1_SIZE as usize + 1,
+        COUPLED_WELL_CONFIG_MIN_SIZE as usize,
+    ] {
+        let mut sized = vec![0_u8; len];
+        let copy_len = len.min(legacy.len());
+        sized[..copy_len].copy_from_slice(&legacy[..copy_len]);
+        let wrong_len = unsafe { EnginePotential::load(build_coupled_well(), &sized) }
+            .err()
+            .unwrap_or_else(|| panic!("{len}-byte version-1 coupled-well message must be refused"));
+        assert!(
+            matches!(wrong_len, EngineError::Create(ref why) if why.contains("RgpotCoupledWellConfigV1")),
+            "{len}-byte v1: {wrong_len}"
+        );
+    }
+
+    for atomic_number in [WELL_NUMBER, 2_i32] {
+        legacy[8..12].copy_from_slice(&atomic_number.to_ne_bytes());
+        for bad_version in [
+            COUPLED_WELL_CONFIG_MIN_SIZE - 1,
+            COUPLED_WELL_CONFIG_VERSION,
+        ] {
+            legacy[4..8].copy_from_slice(&bad_version.to_ne_bytes());
+            let unknown_v1 = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
+                .err()
+                .expect("a version-1 buffer with a non-V1 version must be refused");
+            assert_eq!(
+                unknown_v1,
+                EngineError::Create("coupled-well config version is unknown".into()),
+                "atomic_number={atomic_number}, version={bad_version}"
+            );
+        }
+        // 99 is at least the version-2 size. atomic_number 2 makes the version
+        // word 2, so the 48-byte buffer is shorter than config.size. Any other
+        // atomic number leaves a version other than 2.
+        legacy[4..8].copy_from_slice(&99_u32.to_ne_bytes());
+        let sized = unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
+            .err()
+            .expect("a 48-byte buffer with size 99 must be refused");
+        let expected = if atomic_number == 2 {
+            "coupled-well config buffer is shorter than config.size"
+        } else {
+            "coupled-well config version is unknown"
+        };
+        assert_eq!(
+            sized,
+            EngineError::Create(expected.into()),
+            "atomic_number={atomic_number}, size=99"
+        );
+    }
+    for bad_version in [COUPLED_WELL_CONFIG_VERSION_V1, 3_u32] {
+        let mut unknown_v2 = well_config();
+        unknown_v2.version = bad_version;
+        let unknown_v2 =
+            unsafe { EnginePotential::load(build_coupled_well(), unknown_v2.as_bytes()) }
+                .err()
+                .expect("a version-2 buffer with a non-V2 version must be refused");
+        assert_eq!(
+            unknown_v2,
+            EngineError::Create("coupled-well config version is unknown".into()),
+            "v2 version={bad_version}"
+        );
+    }
+}
+
+#[test]
+fn potlibc_accepts_a_version_one_message_and_pins_its_exact_length() {
+    assert_eq!(POTLIBC_CONFIG_V1_SIZE, 144);
+    let mut legacy = [0_u8; 144];
+    legacy[0..4].copy_from_slice(&POTLIBC_CONFIG_MAGIC.to_ne_bytes());
+    legacy[4..8].copy_from_slice(&POTLIBC_CONFIG_VERSION_V1.to_ne_bytes());
+    legacy[8..16].copy_from_slice(&0_u64.to_ne_bytes());
+    legacy[16..24].copy_from_slice(b"brh2leps");
+
+    let mut from_v1 = unsafe { EnginePotential::load(build_potlibc(), &legacy) }
+        .expect("144-byte version-1 potlibc message");
+    let v2 = PotlibcConfig::new("brh2leps", 0).expect("v2 config");
+    let mut from_v2 =
+        unsafe { EnginePotential::load(build_potlibc(), v2.as_bytes()) }.expect("v2 potlibc");
+    let positions = [0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 2.5, 0.0, 0.0];
+    let species = [35, 1, 1];
+    let direction = [0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8, 0.9];
+    let request = EngineRequest {
+        positions: &positions,
+        atomic_numbers: &species,
+        box_matrix: &CELL,
+    };
+    assert_eq!(
+        from_v1.force(&request).expect("v1 force"),
+        from_v2.force(&request).expect("v2 force")
+    );
+    assert_eq!(
+        from_v1.hvp(&request, &direction).expect("v1 hvp"),
+        from_v2.hvp(&request, &direction).expect("v2 hvp")
+    );
+
+    for len in [
+        POTLIBC_CONFIG_V1_SIZE as usize - 1,
+        POTLIBC_CONFIG_V1_SIZE as usize + 1,
+        POTLIBC_CONFIG_MIN_SIZE as usize,
+    ] {
+        let mut sized = vec![0_u8; len];
+        let copy_len = len.min(legacy.len());
+        sized[..copy_len].copy_from_slice(&legacy[..copy_len]);
+        let wrong_len = unsafe { EnginePotential::load(build_potlibc(), &sized) }
+            .err()
+            .unwrap_or_else(|| panic!("{len}-byte version-1 potlibc message must be refused"));
+        assert!(
+            matches!(wrong_len, EngineError::Create(ref why) if why.contains("RgpotPotlibcConfigV1")),
+            "{len}-byte v1: {wrong_len}"
+        );
+    }
+
+    for atom_count in [0_u64, 2_u64] {
+        legacy[8..16].copy_from_slice(&atom_count.to_ne_bytes());
+        for bad_version in [99_u32, POTLIBC_CONFIG_VERSION] {
+            legacy[4..8].copy_from_slice(&bad_version.to_ne_bytes());
+            let unknown_v1 = unsafe { EnginePotential::load(build_potlibc(), &legacy) }
+                .err()
+                .expect("a version-1 potlibc buffer with a non-V1 version must be refused");
+            assert_eq!(
+                unknown_v1,
+                EngineError::Create("potlibc config version is unknown".into()),
+                "atom_count={atom_count}, version={bad_version}"
+            );
+        }
+        // 200 is a plausible version-2 size. atom_count 0 leaves version 0 at
+        // offset 8, so the version is unknown. atom_count 2 leaves version 2
+        // there, so the 144-byte buffer is a truncated version-2 message.
+        legacy[4..8].copy_from_slice(&200_u32.to_ne_bytes());
+        let sized = unsafe { EnginePotential::load(build_potlibc(), &legacy) }
+            .err()
+            .expect("a 144-byte buffer with size 200 must be refused");
+        let expected = if atom_count == 2 {
+            "potlibc config buffer is shorter than config.size"
+        } else {
+            "potlibc config version is unknown"
+        };
+        assert_eq!(
+            sized,
+            EngineError::Create(expected.into()),
+            "atom_count={atom_count}, size=200"
+        );
+    }
+    for bad_version in [POTLIBC_CONFIG_VERSION_V1, 3_u32] {
+        let mut unknown_v2 = PotlibcConfig::new("brh2leps", 0).expect("v2 config");
+        unknown_v2.version = bad_version;
+        let unknown_v2 = unsafe { EnginePotential::load(build_potlibc(), unknown_v2.as_bytes()) }
+            .err()
+            .expect("a version-2 potlibc buffer with a non-V2 version must be refused");
+        assert_eq!(
+            unknown_v2,
+            EngineError::Create("potlibc config version is unknown".into()),
+            "v2 version={bad_version}"
+        );
+    }
+}
+
+/// A version-2 message cut to the version-1 length, with a size word of 56,
+/// 152 or 200, is shorter than `config.size`. A genuine version-1 message
+/// still decodes.
+#[test]
+fn a_v2_message_cut_to_the_v1_length_is_shorter_than_its_size() {
+    let mut legacy = [0_u8; 48];
+    legacy[0..4].copy_from_slice(&COUPLED_WELL_CONFIG_MAGIC.to_ne_bytes());
+    legacy[4..8].copy_from_slice(&COUPLED_WELL_CONFIG_VERSION_V1.to_ne_bytes());
+    legacy[8..12].copy_from_slice(&WELL_NUMBER.to_ne_bytes());
+    legacy[16..24].copy_from_slice(&WELL_BARRIER.to_ne_bytes());
+    legacy[24..32].copy_from_slice(&WELL_POSITION.to_ne_bytes());
+    legacy[32..40].copy_from_slice(&WELL_SPRING.to_ne_bytes());
+    legacy[40..48].copy_from_slice(&WELL_COUPLING.to_ne_bytes());
+    unsafe { EnginePotential::load(build_coupled_well(), &legacy) }
+        .expect("genuine coupled-well version-1 message");
+
+    let well = well_config().as_bytes().to_vec();
+    for size in [COUPLED_WELL_CONFIG_MIN_SIZE, 152_u32, 200_u32] {
+        let mut truncated = well[..COUPLED_WELL_CONFIG_V1_SIZE as usize].to_vec();
+        truncated[4..8].copy_from_slice(&size.to_ne_bytes());
+        let refused = unsafe { EnginePotential::load(build_coupled_well(), &truncated) }
+            .err()
+            .expect("truncated coupled-well version-2 message");
+        assert_eq!(
+            refused,
+            EngineError::Create("coupled-well config buffer is shorter than config.size".into()),
+            "coupled-well size={size}"
+        );
+    }
+
+    let mut legacy = [0_u8; 144];
+    legacy[0..4].copy_from_slice(&POTLIBC_CONFIG_MAGIC.to_ne_bytes());
+    legacy[4..8].copy_from_slice(&POTLIBC_CONFIG_VERSION_V1.to_ne_bytes());
+    legacy[8..16].copy_from_slice(&0_u64.to_ne_bytes());
+    legacy[16..24].copy_from_slice(b"brh2leps");
+    unsafe { EnginePotential::load(build_potlibc(), &legacy) }
+        .expect("genuine potlibc version-1 message");
+
+    let pot = PotlibcConfig::new("brh2leps", 0)
+        .expect("v2 config")
+        .as_bytes()
+        .to_vec();
+    for size in [POTLIBC_CONFIG_MIN_SIZE, 200_u32] {
+        let mut truncated = pot[..POTLIBC_CONFIG_V1_SIZE as usize].to_vec();
+        truncated[4..8].copy_from_slice(&size.to_ne_bytes());
+        let refused = unsafe { EnginePotential::load(build_potlibc(), &truncated) }
+            .err()
+            .expect("truncated potlibc version-2 message");
+        assert_eq!(
+            refused,
+            EngineError::Create("potlibc config buffer is shorter than config.size".into()),
+            "potlibc size={size}"
+        );
+    }
+}
+
+#[test]
+fn potlibc_config_bytes_follow_the_header_layout() {
+    let config = PotlibcConfig::new("vbo-beta1", 4).expect("config");
+    let bytes = config.as_bytes();
+    assert_eq!(bytes.len(), POTLIBC_CONFIG_MIN_SIZE as usize);
+    assert_eq!(
+        u32::from_ne_bytes(bytes[0..4].try_into().unwrap()),
+        POTLIBC_CONFIG_MAGIC
+    );
+    assert_eq!(
+        u32::from_ne_bytes(bytes[4..8].try_into().unwrap()),
+        POTLIBC_CONFIG_MIN_SIZE
+    );
+    assert_eq!(
+        u32::from_ne_bytes(bytes[8..12].try_into().unwrap()),
+        POTLIBC_CONFIG_VERSION
+    );
+    assert_eq!(u32::from_ne_bytes(bytes[12..16].try_into().unwrap()), 0);
+    assert_eq!(u64::from_ne_bytes(bytes[16..24].try_into().unwrap()), 4);
+    assert_eq!(&bytes[24..33], b"vbo-beta1");
+    assert!(bytes[33..].iter().all(|byte| *byte == 0));
+    config.validate().expect("valid");
+
+    let fixed = PotlibcConfig::default()
+        .with_surface_id("brh2leps")
+        .expect("id");
+    assert_eq!(fixed, PotlibcConfig::new("brh2leps", 0).expect("config"));
+    let resized = fixed.with_atom_count(7);
+    assert_eq!(
+        u64::from_ne_bytes(resized.as_bytes()[16..24].try_into().unwrap()),
+        7
+    );
+    let replaced = resized.with_surface_id("fh25sec").expect("id");
+    assert_eq!(&replaced.as_bytes()[24..], &{
+        let mut expected = [0_u8; POTLIBC_SURFACE_ID_CAPACITY];
+        expected[..7].copy_from_slice(b"fh25sec");
+        expected
+    });
+}
+
+#[test]
+fn potlibc_config_refuses_an_unusable_surface_id() {
+    let longest = "a".repeat(POTLIBC_SURFACE_ID_CAPACITY - 1);
+    assert!(PotlibcConfig::new(&longest, 0).is_ok());
+    for (name, id) in [
+        ("empty", String::new()),
+        (
+            "no room for the terminator",
+            "a".repeat(POTLIBC_SURFACE_ID_CAPACITY),
+        ),
+        ("embedded NUL", "br\0h2".to_owned()),
+    ] {
+        assert!(
+            matches!(PotlibcConfig::new(&id, 0), Err(EngineError::Invalid(_))),
+            "{name}"
+        );
+    }
+    assert!(matches!(
+        PotlibcConfig::default().validate(),
+        Err(EngineError::Invalid(_))
+    ));
+    let mut unterminated = PotlibcConfig::new("brh2leps", 0).expect("config");
+    unterminated.surface_id = [b'a'; POTLIBC_SURFACE_ID_CAPACITY];
+    assert!(matches!(
+        unterminated.validate(),
+        Err(EngineError::Invalid(_))
+    ));
+    let mut wrong_magic = PotlibcConfig::new("brh2leps", 0).expect("config");
+    wrong_magic.magic = 0;
+    assert!(matches!(
+        wrong_magic.validate(),
+        Err(EngineError::Invalid(_))
+    ));
+    let mut too_small = PotlibcConfig::new("brh2leps", 0).expect("config");
+    too_small.size = POTLIBC_CONFIG_MIN_SIZE - 8;
+    assert!(matches!(too_small.validate(), Err(EngineError::Invalid(_))));
+}
+
+#[test]
+fn coupled_well_honours_the_engine_identity_contract() {
+    let library = unsafe { libloading::Library::new(build_coupled_well()) }.expect("open engine");
+    let available: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"rgpot_engine_available\0") }.expect("available symbol");
+    let stamp: libloading::Symbol<unsafe extern "C" fn() -> RgpotEngineAbiStamp> =
+        unsafe { library.get(b"rgpot_engine_abi_stamp\0") }.expect("stamp symbol");
+    let compatible: libloading::Symbol<unsafe extern "C" fn(*const RgpotEngineAbiStamp) -> c_int> =
+        unsafe { library.get(b"rgpot_engine_abi_compatible\0") }.expect("compatible symbol");
+    assert_eq!(unsafe { available() }, 1);
+    let engine = unsafe { stamp() };
+    let host = RgpotEngineAbiStamp {
+        abi_major: ENGINE_ABI_VERSION as u16,
+        abi_minor: ENGINE_ABI_MINOR,
+        layout_revision: ENGINE_ABI_LAYOUT_REVISION,
+    };
+    assert_eq!(engine, host, "the engine and the loader share one header");
+
+    // The documented rule: equal major and layout, engine minor at most the host's.
+    let accepts = |host: RgpotEngineAbiStamp| unsafe { compatible(&host) } != 0;
+    assert!(accepts(host));
+    assert!(accepts(RgpotEngineAbiStamp {
+        abi_minor: host.abi_minor + 1,
+        ..host
+    }));
+    assert!(!accepts(RgpotEngineAbiStamp {
+        abi_minor: host.abi_minor - 1,
+        ..host
+    }));
+    assert!(!accepts(RgpotEngineAbiStamp {
+        abi_major: host.abi_major + 1,
+        ..host
+    }));
+    assert!(!accepts(RgpotEngineAbiStamp {
+        layout_revision: host.layout_revision + 1,
+        ..host
+    }));
+    assert_eq!(unsafe { compatible(std::ptr::null()) }, 0);
 }

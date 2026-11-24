@@ -62,6 +62,12 @@ message whose root is the library's params struct (=UmaParams=, =BuiltinParams=,
 ...).
 A message whose length is not a multiple of 8 bytes is refused with a reason in
 =errbuf=.
+Backends without a shared schema may document a versioned magic structure
+instead.
+For example, [[file:potlibc-engine.org][the potlibc plugin]] takes
+=RgpotPotlibcConfigV1= or =RgpotPotlibcConfigV2= and
+[[file:coupled-well-engine.org][the coupled-well plugin]] takes
+=RgpotCoupledWellConfigV1= or =RgpotCoupledWellConfigV2=.
 
 Do not =dlclose= an engine: the tensor runtime keeps process-wide state.
 =libuma_engine.so=, =libmetatomic_engine.so=,
@@ -87,8 +93,11 @@ params messages need the Cap'n Proto schema.
 =libmetatomic_engine= =-Dwith_metatomic=true=.
 =libuma_engine= needs =-Dwith_metatomic=true= and is not built with
 =-Dwith_python=true=.
-The classical, composite, MOPAC, NWChem and Skala libraries are not built on
-Windows.
+=libpotlibc_engine= is independent of RPC and is built only with =-Dwith_potlibc=enabled=
+after potlibc is installed.
+=libcoupled_well_engine= is independent of RPC and of every optional library,
+and is built on Unix-like targets.
+Windows builds skip the engine plugin libraries.
 
 The =umaenginebld= pixi environment has the rpc, metatomic and xtb dependencies.
 CI builds and tests every engine with the =potctl= command line tool (a cargo

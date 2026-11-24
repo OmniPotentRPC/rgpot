@@ -8,15 +8,17 @@
 //! the backend's configuration is the opaque message the library's create
 //! call reads. [`EnginePotential::load`] resolves that symbol set, checks both
 //! [`ENGINE_ABI_VERSION`] and [`RgpotEngineAbiStamp::HOST`] against the
-//! library's ABI identity, and keeps one engine instance. [`EnginePotential::force`] is one
-//! geometry in Angstrom and one answer in eV and eV/Angstrom, the units the
-//! header fixes.
+//! library's ABI identity, asks `rgpot_engine_available` whether the backend
+//! can create instances, and keeps one engine instance.
+//! [`EnginePotential::force`] is one geometry in Angstrom and one answer in eV
+//! and eV/Angstrom, the units the header fixes.
 //!
 //! Return codes follow the header: zero is success, a positive code is an
 //! evaluation that failed at this input ([`EngineError::Recoverable`]), and a
-//! negative code leaves the instance unusable ([`EngineError::Fatal`]) and
-//! poisons the handle so every later call returns the same [`EngineError::Fatal`]
-//! without re-entering native evaluation or query functions. A host callback
+//! negative code leaves the instance unusable ([`EngineError::Fatal`], or
+//! [`EngineError::Lock`] for [`ENGINE_ERR_LOCK`]) and poisons the handle so
+//! every later call returns the same error without re-entering native
+//! evaluation or query functions. A host callback
 //! or transform that fails during a call is considered before the code the
 //! engine returns. A fatal failure from either side wins over a recoverable
 //! one, and the first fatal failure, with its message, is the one latched.
@@ -74,10 +76,14 @@ use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
 use crate::tensor::{copy_f64_tensor, copy_i32_tensor, rgpot_tensor_owned_cpu_f64_2d};
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
+/// cbindgen:ignore
+/// Engine code meaning acquiring an engine or handle lock failed (`RGPOT_ENGINE_ERR_LOCK`).
+pub const ENGINE_ERR_LOCK: c_int = -2;
+
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
 /// The ABI minor this loader advertises, `RGPOT_ENGINE_ABI_MINOR` of the header.
-pub const ENGINE_ABI_MINOR: u16 = 7;
+pub const ENGINE_ABI_MINOR: u16 = 8;
 /// The struct layout revision this loader expects, `RGPOT_ENGINE_ABI_LAYOUT_REVISION` of the header.
 pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 /// Engine code meaning an argument is invalid.
@@ -93,6 +99,12 @@ pub const ENGINE_UNLOAD_SAFE: c_int = 1;
 pub const ENGINE_UNLOAD_POLICY_MINOR: u16 = 7;
 
 const ERROR_CAPACITY: usize = 1024;
+const REENTRANCY_END: usize =
+    std::mem::offset_of!(RgpotEngineCaps, reentrancy) + std::mem::size_of::<c_int>();
+/// `RgpotEngineCaps.reentrancy` values (0 shared instance, 1 per instance)
+/// under which distinct handles may run at the same time. Any other value, 2
+/// (process serial) included, serializes calls across handles.
+const REENTRANCY_PARALLEL: std::ops::RangeInclusive<i32> = 0..=1;
 
 /// Status recorded when a host callback or transform panics.
 const PANIC_STATUS: EngineStatus = EngineStatus::from_code(-1);
@@ -210,6 +222,388 @@ pub trait CoordinateTransform: Send {
     ) -> Result<(), EngineFailure>;
 }
 
+/// Magic number of `RgpotCoupledWellConfigV1` and `RgpotCoupledWellConfigV2`.
+pub const COUPLED_WELL_CONFIG_MAGIC: u32 = 0x4357_5054;
+/// Version of the 48-byte coupled-well create message.
+pub const COUPLED_WELL_CONFIG_VERSION_V1: u32 = 1;
+/// Version of [`CoupledWellConfig`], the version-2 create message.
+pub const COUPLED_WELL_CONFIG_VERSION: u32 = 2;
+/// Byte size of `RgpotCoupledWellConfigV1`.
+pub const COUPLED_WELL_CONFIG_V1_SIZE: u32 = 48;
+/// Minimum message size of the version-2 coupled-well create message.
+pub const COUPLED_WELL_CONFIG_MIN_SIZE: u32 = 56;
+/// Atomic number of [`CoupledWellConfig::default`].
+pub const COUPLED_WELL_DEFAULT_ATOMIC_NUMBER: i32 = 1;
+/// Barrier energy `V0` of [`CoupledWellConfig::default`], in eV.
+pub const COUPLED_WELL_DEFAULT_BARRIER_ENERGY: f64 = 1.0;
+/// Well position `x0` of [`CoupledWellConfig::default`], in Angstrom.
+pub const COUPLED_WELL_DEFAULT_WELL_POSITION: f64 = 1.0;
+/// Transverse spring `k` of [`CoupledWellConfig::default`], in eV/Angstrom^2.
+pub const COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING: f64 = 1.0;
+/// Coupling `alpha` of [`CoupledWellConfig::default`], in 1/Angstrom.
+pub const COUPLED_WELL_DEFAULT_COUPLING: f64 = 0.0;
+/// Magic number of `RgpotPotlibcConfigV1` and `RgpotPotlibcConfigV2`.
+pub const POTLIBC_CONFIG_MAGIC: u32 = 0x504f_544c;
+/// Version of the 144-byte potlibc create message.
+pub const POTLIBC_CONFIG_VERSION_V1: u32 = 1;
+/// Version of [`PotlibcConfig`], the version-2 create message.
+pub const POTLIBC_CONFIG_VERSION: u32 = 2;
+/// Byte size of `RgpotPotlibcConfigV1`.
+pub const POTLIBC_CONFIG_V1_SIZE: u32 = 144;
+/// Minimum message size of the version-2 potlibc create message.
+pub const POTLIBC_CONFIG_MIN_SIZE: u32 = 152;
+/// Capacity of the potlibc surface identifier, including its terminator.
+pub const POTLIBC_SURFACE_ID_CAPACITY: usize = 128;
+
+const COUPLED_WELL_CONFIG_BYTES: usize = 56;
+const POTLIBC_CONFIG_BYTES: usize = 152;
+const _: () = assert!(COUPLED_WELL_CONFIG_V1_SIZE == 48);
+const _: () = assert!(COUPLED_WELL_CONFIG_VERSION_V1 == 1);
+const _: () = assert!(COUPLED_WELL_CONFIG_VERSION == 2);
+const _: () = assert!(POTLIBC_CONFIG_V1_SIZE == 144);
+const _: () = assert!(POTLIBC_CONFIG_VERSION_V1 == 1);
+const _: () = assert!(POTLIBC_CONFIG_VERSION == 2);
+
+/// Parameters for `libpotlibc_engine`.
+///
+/// Build one with [`PotlibcConfig::new`], or start from
+/// [`PotlibcConfig::default`] and chain [`PotlibcConfig::with_surface_id`] and
+/// [`PotlibcConfig::with_atom_count`]. The default has no surface id and is
+/// refused by [`PotlibcConfig::validate`] and by the engine until one is set.
+///
+/// ```
+/// use rgpot_core::engine::PotlibcConfig;
+///
+/// let config = PotlibcConfig::default()
+///     .with_surface_id("vbo-beta1")
+///     .unwrap()
+///     .with_atom_count(4);
+/// assert!(config.validate().is_ok());
+/// assert!(PotlibcConfig::default().validate().is_err());
+/// ```
+///
+/// The struct is `#[non_exhaustive]`: other crates build it with these methods.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct PotlibcConfig {
+    /// Configuration identity.
+    pub magic: u32,
+    /// Message size in bytes (minimum [`POTLIBC_CONFIG_MIN_SIZE`]).
+    pub size: u32,
+    /// Configuration layout version.
+    pub version: u32,
+    /// Must be zero.
+    pub reserved: u32,
+    /// Zero for a fixed-size surface, else the exact atom count of a
+    /// variable-size surface.
+    pub atom_count: u64,
+    /// NUL-terminated canonical catalog identifier.
+    pub surface_id: [u8; POTLIBC_SURFACE_ID_CAPACITY],
+}
+
+const _: () = assert!(std::mem::size_of::<PotlibcConfig>() == POTLIBC_CONFIG_BYTES);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, magic) == 0);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, size) == 4);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, version) == 8);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, reserved) == 12);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, atom_count) == 16);
+const _: () = assert!(std::mem::offset_of!(PotlibcConfig, surface_id) == 24);
+
+impl Default for PotlibcConfig {
+    fn default() -> Self {
+        Self {
+            magic: POTLIBC_CONFIG_MAGIC,
+            size: POTLIBC_CONFIG_MIN_SIZE,
+            version: POTLIBC_CONFIG_VERSION,
+            reserved: 0,
+            atom_count: 0,
+            surface_id: [0; POTLIBC_SURFACE_ID_CAPACITY],
+        }
+    }
+}
+
+impl PotlibcConfig {
+    /// Construct a version-two parameter message.
+    pub fn new(surface_id: &str, atom_count: u64) -> Result<Self, EngineError> {
+        Self::default()
+            .with_atom_count(atom_count)
+            .with_surface_id(surface_id)
+    }
+
+    /// Set the exact atom count of a variable-size surface; zero selects a
+    /// fixed-size surface.
+    #[must_use]
+    pub fn with_atom_count(mut self, atom_count: u64) -> Self {
+        self.atom_count = atom_count;
+        self
+    }
+
+    /// Set the canonical catalog identifier. It must be non-empty, shorter
+    /// than [`POTLIBC_SURFACE_ID_CAPACITY`] bytes and free of NUL.
+    pub fn with_surface_id(mut self, surface_id: &str) -> Result<Self, EngineError> {
+        let bytes = surface_id.as_bytes();
+        if bytes.is_empty() || bytes.len() >= POTLIBC_SURFACE_ID_CAPACITY {
+            return Err(EngineError::Invalid(
+                "potlibc surface id is empty or too long".into(),
+            ));
+        }
+        if bytes.contains(&0) {
+            return Err(EngineError::Invalid(
+                "potlibc surface id contains NUL".into(),
+            ));
+        }
+        self.surface_id = [0; POTLIBC_SURFACE_ID_CAPACITY];
+        self.surface_id[..bytes.len()].copy_from_slice(bytes);
+        Ok(self)
+    }
+
+    /// Check what `rgpot_engine_create` checks of the message itself: magic,
+    /// size, version, reserved field, and a NUL-terminated, non-empty surface
+    /// id. Whether the surface exists and takes this atom count is the
+    /// engine's to decide.
+    pub fn validate(&self) -> Result<(), EngineError> {
+        if self.magic != POTLIBC_CONFIG_MAGIC {
+            return Err(EngineError::Invalid(
+                "potlibc config magic, version, or reserved field".into(),
+            ));
+        }
+        if self.version != POTLIBC_CONFIG_VERSION {
+            return Err(EngineError::Invalid(
+                "potlibc config version is unknown".into(),
+            ));
+        }
+        if self.reserved != 0 {
+            return Err(EngineError::Invalid(
+                "potlibc config magic, version, or reserved field".into(),
+            ));
+        }
+        if self.size < POTLIBC_CONFIG_MIN_SIZE {
+            return Err(EngineError::Invalid(
+                "potlibc config size is smaller than PotlibcConfig".into(),
+            ));
+        }
+        if self.surface_id[0] == 0 || !self.surface_id.contains(&0) {
+            return Err(EngineError::Invalid(
+                "potlibc config needs a non-empty NUL-terminated surface id".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Native bytes consumed by `rgpot_engine_create`.
+    pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: `PotlibcConfig` is `repr(C)` plain data whose size equals the
+        // sum of its fields (asserted above), so it has no padding and every
+        // byte is initialised.
+        unsafe {
+            std::slice::from_raw_parts(
+                std::ptr::from_ref(self).cast::<u8>(),
+                std::mem::size_of::<Self>(),
+            )
+        }
+    }
+}
+
+/// Other crates cannot write a [`CoupledWellConfig`] struct literal.
+///
+/// ```compile_fail,E0639
+/// use rgpot_core::engine::CoupledWellConfig;
+///
+/// let _ = CoupledWellConfig {
+///     magic: 0,
+///     size: 0,
+///     version: 0,
+///     reserved0: 0,
+///     atomic_number: 1,
+///     reserved1: 0,
+///     barrier_energy: 1.0,
+///     well_position: 1.0,
+///     transverse_spring: 1.0,
+///     coupling: 0.0,
+/// };
+/// ```
+#[cfg(doctest)]
+struct CoupledWellConfigIsNonExhaustive;
+
+/// Parameters for `libcoupled_well_engine`.
+///
+/// The engine evaluates one atom and uses its x and y coordinates:
+/// `V0 ((x / x0)^2 - 1)^2 + k/2 (y - alpha x^2)^2`.
+/// Values use the engine ABI units, eV and Angstrom.
+///
+/// [`CoupledWellConfig::default`] is a valid hydrogen atom in a unit double
+/// well with no coupling; change it with the `with_*` builders:
+///
+/// ```
+/// use rgpot_core::engine::CoupledWellConfig;
+///
+/// let config = CoupledWellConfig::default()
+///     .with_barrier_energy(0.5)
+///     .with_well_position(1.5)
+///     .with_coupling(0.2);
+/// assert!(config.validate().is_ok());
+/// ```
+///
+/// The struct is `#[non_exhaustive]`, so other crates cannot write a struct
+/// literal and a new field is not a breaking change.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub struct CoupledWellConfig {
+    /// Configuration identity.
+    pub magic: u32,
+    /// Message size in bytes (minimum [`COUPLED_WELL_CONFIG_MIN_SIZE`]).
+    pub size: u32,
+    /// Configuration layout version.
+    pub version: u32,
+    /// Must be zero.
+    pub reserved0: u32,
+    /// Atomic number accepted by the engine.
+    pub atomic_number: i32,
+    /// Must be zero.
+    pub reserved1: u32,
+    /// Quartic barrier energy `V0` in eV.
+    pub barrier_energy: f64,
+    /// Position `x0` of either minimum along x in Angstrom.
+    pub well_position: f64,
+    /// Transverse spring constant `k` in eV/Angstrom squared.
+    pub transverse_spring: f64,
+    /// Coupling coefficient `alpha` in inverse Angstrom.
+    pub coupling: f64,
+}
+
+const _: () = assert!(std::mem::size_of::<CoupledWellConfig>() == COUPLED_WELL_CONFIG_BYTES);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, magic) == 0);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, size) == 4);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, version) == 8);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, reserved0) == 12);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, atomic_number) == 16);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, reserved1) == 20);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, barrier_energy) == 24);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, well_position) == 32);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, transverse_spring) == 40);
+const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, coupling) == 48);
+
+impl Default for CoupledWellConfig {
+    fn default() -> Self {
+        Self {
+            magic: COUPLED_WELL_CONFIG_MAGIC,
+            size: COUPLED_WELL_CONFIG_MIN_SIZE,
+            version: COUPLED_WELL_CONFIG_VERSION,
+            reserved0: 0,
+            atomic_number: COUPLED_WELL_DEFAULT_ATOMIC_NUMBER,
+            reserved1: 0,
+            barrier_energy: COUPLED_WELL_DEFAULT_BARRIER_ENERGY,
+            well_position: COUPLED_WELL_DEFAULT_WELL_POSITION,
+            transverse_spring: COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING,
+            coupling: COUPLED_WELL_DEFAULT_COUPLING,
+        }
+    }
+}
+
+impl CoupledWellConfig {
+    /// Construct the version-two parameter message.
+    pub fn new(
+        atomic_number: i32,
+        barrier_energy: f64,
+        well_position: f64,
+        transverse_spring: f64,
+        coupling: f64,
+    ) -> Self {
+        Self::default()
+            .with_atomic_number(atomic_number)
+            .with_barrier_energy(barrier_energy)
+            .with_well_position(well_position)
+            .with_transverse_spring(transverse_spring)
+            .with_coupling(coupling)
+    }
+
+    /// Set the one atomic number the engine accepts; it must be positive.
+    #[must_use]
+    pub fn with_atomic_number(mut self, atomic_number: i32) -> Self {
+        self.atomic_number = atomic_number;
+        self
+    }
+
+    /// Set the barrier energy `V0` in eV; it must be finite and positive.
+    #[must_use]
+    pub fn with_barrier_energy(mut self, barrier_energy: f64) -> Self {
+        self.barrier_energy = barrier_energy;
+        self
+    }
+
+    /// Set the well position `x0` in Angstrom; it must be finite and positive.
+    #[must_use]
+    pub fn with_well_position(mut self, well_position: f64) -> Self {
+        self.well_position = well_position;
+        self
+    }
+
+    /// Set the transverse spring `k` in eV/Angstrom squared; it must be finite
+    /// and positive.
+    #[must_use]
+    pub fn with_transverse_spring(mut self, transverse_spring: f64) -> Self {
+        self.transverse_spring = transverse_spring;
+        self
+    }
+
+    /// Set the coupling `alpha` in inverse Angstrom; it must be finite.
+    #[must_use]
+    pub fn with_coupling(mut self, coupling: f64) -> Self {
+        self.coupling = coupling;
+        self
+    }
+
+    /// Check what `rgpot_engine_create` checks, so a bad parameter is reported
+    /// before the library is opened. The engine repeats these checks.
+    pub fn validate(&self) -> Result<(), EngineError> {
+        let invalid = |why: &str| Err(EngineError::Invalid(format!("coupled-well {why}")));
+        if self.magic != COUPLED_WELL_CONFIG_MAGIC {
+            return invalid("config magic, version, or reserved fields");
+        }
+        if self.version != COUPLED_WELL_CONFIG_VERSION {
+            return invalid("config version is unknown");
+        }
+        if self.reserved0 != 0 || self.reserved1 != 0 {
+            return invalid("config magic, version, or reserved fields");
+        }
+        if self.size < COUPLED_WELL_CONFIG_MIN_SIZE {
+            return invalid("config size is smaller than CoupledWellConfig");
+        }
+        if self.atomic_number <= 0 {
+            return invalid("atomic_number must be positive");
+        }
+        let positive = |value: f64| value.is_finite() && value > 0.0;
+        if !positive(self.barrier_energy) {
+            return invalid("barrier_energy must be finite and positive");
+        }
+        if !positive(self.well_position) {
+            return invalid("well_position must be finite and positive");
+        }
+        if !positive(self.transverse_spring) {
+            return invalid("transverse_spring must be finite and positive");
+        }
+        if !self.coupling.is_finite() {
+            return invalid("coupling must be finite");
+        }
+        Ok(())
+    }
+
+    /// Native bytes consumed by `rgpot_engine_create`.
+    pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: `CoupledWellConfig` is `repr(C)` plain data whose size equals
+        // the sum of its fields (asserted above), so it has no padding and
+        // every byte is initialised.
+        unsafe {
+            std::slice::from_raw_parts(
+                std::ptr::from_ref(self).cast::<u8>(),
+                std::mem::size_of::<Self>(),
+            )
+        }
+    }
+}
+
 /// Opaque engine instance, `RgpotEnginePot` of the header.
 #[repr(C)]
 pub struct RgpotEnginePot {
@@ -267,6 +661,8 @@ impl fmt::Display for RgpotEngineAbiStamp {
 
 /// `rgpot_engine_abi_version`.
 pub type AbiVersionFn = unsafe extern "C" fn() -> c_int;
+/// `rgpot_engine_available`.
+pub type AvailableFn = unsafe extern "C" fn() -> c_int;
 /// `rgpot_engine_abi_stamp`.
 pub type AbiStampFn = unsafe extern "C" fn() -> RgpotEngineAbiStamp;
 /// `rgpot_engine_create`.
@@ -450,9 +846,9 @@ pub struct EngineCaps {
     pub analytic_hvp: bool,
 }
 
-/// The symbols of one engine library. `abi_version`, `create`, `destroy` and
-/// `force` are required by the header; the optional entries are probed and may
-/// be absent.
+/// The symbols of one engine library. `abi_version`, `available`, `create`,
+/// `destroy` and `force` are required by the header; the optional entries are
+/// probed and may be absent.
 ///
 /// The struct is `#[non_exhaustive]`, so a symbol added to the ABI later does
 /// not break callers. Build one with [`EngineSymbols::new`] and the `with_*`
@@ -462,6 +858,8 @@ pub struct EngineCaps {
 pub struct EngineSymbols {
     /// Required symbol `rgpot_engine_abi_version`.
     pub abi_version: AbiVersionFn,
+    /// Required symbol `rgpot_engine_available`.
+    pub available: AvailableFn,
     /// Optional symbol `rgpot_engine_abi_stamp`.
     pub abi_stamp: Option<AbiStampFn>,
     /// Required symbol `rgpot_engine_create`.
@@ -491,17 +889,19 @@ pub struct EngineSymbols {
 }
 
 impl EngineSymbols {
-    /// A symbol table with the four required symbols and every optional one
+    /// A symbol table with the five required symbols and every optional one
     /// absent.
     #[must_use]
     pub fn new(
         abi_version: AbiVersionFn,
+        available: AvailableFn,
         create: CreateFn,
         destroy: DestroyFn,
         force: ForceFn,
     ) -> Self {
         Self {
             abi_version,
+            available,
             abi_stamp: None,
             create,
             destroy,
@@ -594,7 +994,7 @@ impl EngineSymbols {
 pub enum EngineError {
     /// The shared library did not open.
     Load(String),
-    /// A symbol the header requires is not exported.
+    /// A symbol the header requires is not exported or has a null address.
     Missing(String),
     /// The library speaks another ABI major.
     Abi {
@@ -610,6 +1010,8 @@ pub enum EngineError {
         /// The ABI stamp reported (or implied) by the loaded engine.
         found: RgpotEngineAbiStamp,
     },
+    /// `rgpot_engine_available` reported that the engine cannot create instances.
+    Unavailable,
     /// `rgpot_engine_create` returned no instance; the text is its error buffer.
     Create(String),
     /// The request does not fit the ABI: a length or a non-finite answer.
@@ -637,6 +1039,14 @@ pub enum EngineError {
         /// Message of that failure: the host's, or the engine's error text.
         message: String,
     },
+    /// Acquiring an engine or handle lock failed (`RGPOT_ENGINE_ERR_LOCK`); the
+    /// instance is unusable and the handle is poisoned like [`EngineError::Fatal`].
+    Lock {
+        /// Engine symbol whose lock acquisition failed.
+        operation: &'static str,
+        /// Error message from `rgpot_engine_last_error`.
+        message: String,
+    },
 }
 
 impl fmt::Display for EngineError {
@@ -653,6 +1063,12 @@ impl fmt::Display for EngineError {
                     "engine ABI stamp {found} cannot serve host stamp {expected}"
                 )
             }
+            Self::Unavailable => {
+                write!(
+                    f,
+                    "rgpot_engine_available reported that the engine is unavailable"
+                )
+            }
             Self::Create(why) => write!(f, "rgpot_engine_create failed: {why}"),
             Self::Invalid(why) => write!(f, "invalid engine request: {why}"),
             Self::Unsupported { operation, message } => {
@@ -663,6 +1079,9 @@ impl fmt::Display for EngineError {
             }
             Self::Fatal { code, message } => {
                 write!(f, "engine instance is unusable, code {code}: {message}")
+            }
+            Self::Lock { operation, message } => {
+                write!(f, "engine lock failed in {operation}: {message}")
             }
         }
     }
@@ -676,6 +1095,7 @@ impl EngineError {
         match self {
             Self::Recoverable { code, .. } => EngineStatus::recoverable(*code),
             Self::Fatal { code, .. } => EngineStatus::fatal(*code),
+            Self::Lock { .. } => EngineStatus::fatal(ENGINE_ERR_LOCK),
             _ => None,
         }
     }
@@ -710,23 +1130,8 @@ pub struct EngineEvaluation {
     pub forces: Vec<f64>,
 }
 
-#[derive(Clone)]
-struct Poisoned {
-    code: i32,
-    message: String,
-}
-
-impl Poisoned {
-    fn error(&self) -> EngineError {
-        EngineError::Fatal {
-            code: self.code,
-            message: self.message.clone(),
-        }
-    }
-}
-
-/// The error a nonzero engine return code stands for.
-fn native_error(code: c_int, message: String) -> EngineError {
+/// The error a nonzero engine return code stands for, raised by `operation`.
+fn native_error(code: c_int, operation: &'static str, message: String) -> EngineError {
     let message = if message.is_empty() {
         format!("the engine left no message; code {code}")
     } else {
@@ -735,7 +1140,7 @@ fn native_error(code: c_int, message: String) -> EngineError {
     if code > 0 {
         EngineError::Recoverable { code, message }
     } else {
-        EngineError::Fatal { code, message }
+        unusable_instance(code, operation, message)
     }
 }
 
@@ -886,7 +1291,8 @@ pub struct EnginePotential {
     symbols: EngineSymbols,
     stamp: RgpotEngineAbiStamp,
     handle: NonNull<RgpotEnginePot>,
-    fatal: OnceLock<Poisoned>,
+    fatal: OnceLock<EngineError>,
+    process_lock: Option<Arc<Mutex<()>>>,
     library: Option<Arc<Resident>>,
 }
 
@@ -1323,6 +1729,9 @@ impl EnginePotential {
                 found: stamp,
             });
         }
+        if unsafe { (symbols.available)() } == 0 {
+            return Err(EngineError::Unavailable);
+        }
         // In-tree engines cast `config` to `capnp::word`, which requires
         // 8-byte alignment even when the caller passes an unaligned `&[u8]`.
         let mut aligned = vec![0_u64; config.len().div_ceil(8)];
@@ -1341,15 +1750,25 @@ impl EnginePotential {
             )
         };
         match NonNull::new(raw) {
-            Some(handle) => Ok(Self {
-                symbols,
-                stamp,
-                handle,
-                fatal: OnceLock::new(),
-                set_cache: None,
-                cache_counts: None,
-                library: None,
-            }),
+            Some(handle) => {
+                let process_lock = match probe_process_serial(&symbols, handle) {
+                    Ok(lock) => lock,
+                    Err(error) => {
+                        unsafe { (symbols.destroy)(handle.as_ptr()) };
+                        return Err(error);
+                    }
+                };
+                Ok(Self {
+                    set_cache: None,
+                    cache_counts: None,
+                    symbols,
+                    stamp,
+                    handle,
+                    fatal: OnceLock::new(),
+                    process_lock,
+                    library: None,
+                })
+            }
             None => Err(EngineError::Create(text_of(&errbuf))),
         }
     }
@@ -1396,22 +1815,25 @@ impl EnginePotential {
             }),
         });
         let (transform_fn, transform_user) = transform_parts(&mut transform);
-        let code = unsafe {
-            (self.symbols.force)(
-                self.handle.as_ptr(),
-                n_atoms as c_long,
-                request.positions.as_ptr(),
-                request.atomic_numbers.as_ptr(),
-                forces.as_mut_ptr(),
-                &mut energy,
-                std::ptr::null_mut(),
-                request.box_matrix.as_ptr(),
-                transform_fn,
-                transform_user,
-            )
+        let code = {
+            let _serial = self.lock_process("rgpot_engine_force")?;
+            unsafe {
+                (self.symbols.force)(
+                    self.handle.as_ptr(),
+                    n_atoms as c_long,
+                    request.positions.as_ptr(),
+                    request.atomic_numbers.as_ptr(),
+                    forces.as_mut_ptr(),
+                    &mut energy,
+                    std::ptr::null_mut(),
+                    request.box_matrix.as_ptr(),
+                    transform_fn,
+                    transform_user,
+                )
+            }
         };
         let failure = host_failure(transform.as_ref(), callbacks);
-        self.settle(code, failure)?;
+        self.settle(code, "rgpot_engine_force", failure)?;
         finite(energy, &forces)?;
         Ok(EngineEvaluation { energy, forces })
     }
@@ -1484,23 +1906,26 @@ impl EnginePotential {
             }),
         });
         let (transform_fn, transform_user) = transform_parts(&mut transform);
-        let code = unsafe {
-            batch(
-                self.handle.as_ptr(),
-                n_systems as c_long,
-                n_atoms as c_long,
-                positions.as_ptr(),
-                atomic_numbers.as_ptr(),
-                forces.as_mut_ptr(),
-                energies.as_mut_ptr(),
-                std::ptr::null_mut(),
-                boxes.as_ptr(),
-                transform_fn,
-                transform_user,
-            )
+        let code = {
+            let _serial = self.lock_process("rgpot_engine_force_batch")?;
+            unsafe {
+                batch(
+                    self.handle.as_ptr(),
+                    n_systems as c_long,
+                    n_atoms as c_long,
+                    positions.as_ptr(),
+                    atomic_numbers.as_ptr(),
+                    forces.as_mut_ptr(),
+                    energies.as_mut_ptr(),
+                    std::ptr::null_mut(),
+                    boxes.as_ptr(),
+                    transform_fn,
+                    transform_user,
+                )
+            }
         };
         let failure = host_failure(transform.as_ref(), callbacks);
-        self.settle(code, failure)?;
+        self.settle(code, "rgpot_engine_force_batch", failure)?;
         let mut out = Vec::with_capacity(n_systems);
         for (energy, block) in energies.iter().zip(forces.chunks_exact(3 * n_atoms)) {
             finite(*energy, block)?;
@@ -1523,8 +1948,11 @@ impl EnginePotential {
             size: std::mem::size_of::<RgpotEngineCaps>() as c_uint,
             ..Default::default()
         };
-        let code = unsafe { caps_fn(self.handle.as_ptr(), &mut raw) };
-        self.settle(code, None)?;
+        let code = {
+            let _serial = self.lock_process("rgpot_engine_caps")?;
+            unsafe { caps_fn(self.handle.as_ptr(), &mut raw) }
+        };
+        self.settle(code, "rgpot_engine_caps", None)?;
         Ok(EngineCaps {
             reentrancy: raw.reentrancy,
             per_image_instances: raw.per_image_instances != 0,
@@ -1585,16 +2013,19 @@ impl EnginePotential {
             )));
         }
         let mut hv_out = vec![0.0; 3 * n_atoms];
-        let code = unsafe {
-            hvp_fn(
-                self.handle.as_ptr(),
-                n_atoms as c_long,
-                request.positions.as_ptr(),
-                request.atomic_numbers.as_ptr(),
-                direction.as_ptr(),
-                hv_out.as_mut_ptr(),
-                request.box_matrix.as_ptr(),
-            )
+        let code = {
+            let _serial = self.lock_process("rgpot_engine_hvp")?;
+            unsafe {
+                hvp_fn(
+                    self.handle.as_ptr(),
+                    n_atoms as c_long,
+                    request.positions.as_ptr(),
+                    request.atomic_numbers.as_ptr(),
+                    direction.as_ptr(),
+                    hv_out.as_mut_ptr(),
+                    request.box_matrix.as_ptr(),
+                )
+            }
         };
         if code == ENGINE_ERR_UNSUPPORTED {
             return Err(EngineError::Unsupported {
@@ -1602,7 +2033,7 @@ impl EnginePotential {
                 message: self.last_error_text(code),
             });
         }
-        self.settle(code, None)?;
+        self.settle(code, "rgpot_engine_hvp", None)?;
         finite_product(&hv_out)?;
         Ok(hv_out)
     }
@@ -1658,7 +2089,7 @@ impl EnginePotential {
                 message: self.last_error_text(code),
             });
         }
-        self.settle(code, None)
+        self.settle(code, operation, None)
     }
 
     /// Per-term record of the last successful force call on a composite engine
@@ -1744,16 +2175,37 @@ impl EnginePotential {
         potential
     }
 
+    fn lock_process(
+        &self,
+        operation: &'static str,
+    ) -> Result<Option<MutexGuard<'_, ()>>, EngineError> {
+        match &self.process_lock {
+            Some(lock) => match lock.lock() {
+                Ok(guard) => Ok(Some(guard)),
+                Err(_) => Err(EngineError::Lock {
+                    operation,
+                    message: "process-serial engine lock is poisoned".into(),
+                }),
+            },
+            None => Ok(None),
+        }
+    }
+
     fn check_alive(&self) -> Result<(), EngineError> {
         match self.fatal.get() {
-            Some(poisoned) => Err(poisoned.error()),
+            Some(error) => Err(error.clone()),
             None => Ok(()),
         }
     }
 
     /// [`Self::settle_with`] with the message from `rgpot_engine_last_error`.
-    fn settle(&self, code: c_int, host: Option<EngineFailure>) -> Result<(), EngineError> {
-        self.settle_with(code, host, || self.last_error_text(code))
+    fn settle(
+        &self,
+        code: c_int,
+        operation: &'static str,
+        host: Option<EngineFailure>,
+    ) -> Result<(), EngineError> {
+        self.settle_with(code, operation, host, || self.last_error_text(code))
     }
 
     /// Classify one native call that returned `code`.
@@ -1767,38 +2219,49 @@ impl EnginePotential {
     fn settle_with(
         &self,
         code: c_int,
+        operation: &'static str,
         host: Option<EngineFailure>,
         native_message: impl FnOnce() -> String,
     ) -> Result<(), EngineError> {
-        let native = (code != 0).then(|| native_error(code, native_message()));
+        let native = (code != 0).then(|| native_error(code, operation, native_message()));
         let mut decisive = None;
         for error in host.map(host_error).into_iter().chain(native) {
-            if let EngineError::Fatal { code, message } = error {
-                return Err(self.poison(code, message));
+            if matches!(error, EngineError::Fatal { .. } | EngineError::Lock { .. }) {
+                return Err(self.poison(error));
             }
             decisive.get_or_insert(error);
         }
         decisive.map_or(Ok(()), Err)
     }
 
-    /// Latch `code` and `message` unless a fatal failure is already latched,
-    /// and return the latched error.
-    fn poison(&self, code: i32, message: String) -> EngineError {
-        self.fatal
-            .get_or_init(|| Poisoned { code, message })
-            .error()
+    /// Latch `error` unless a fatal failure is already latched, and return the
+    /// latched error.
+    fn poison(&self, error: EngineError) -> EngineError {
+        self.fatal.get_or_init(|| error).clone()
     }
 
     fn last_error_text(&self, code: c_int) -> String {
-        let Some(last_error) = self.symbols.last_error else {
-            return format!("no rgpot_engine_last_error; code {code}");
-        };
-        let mut buffer = vec![0 as c_char; ERROR_CAPACITY];
-        let length = unsafe { last_error(self.handle.as_ptr(), buffer.as_mut_ptr(), buffer.len()) };
-        if length == 0 {
-            return format!("the engine left no message; code {code}");
-        }
-        text_of(&buffer)
+        engine_message(&self.symbols, self.handle, code)
+    }
+}
+
+fn engine_message(symbols: &EngineSymbols, handle: NonNull<RgpotEnginePot>, code: c_int) -> String {
+    let Some(last_error) = symbols.last_error else {
+        return format!("no rgpot_engine_last_error; code {code}");
+    };
+    let mut buffer = vec![0 as c_char; ERROR_CAPACITY];
+    let length = unsafe { last_error(handle.as_ptr(), buffer.as_mut_ptr(), buffer.len()) };
+    if length == 0 {
+        return format!("the engine left no message; code {code}");
+    }
+    text_of(&buffer)
+}
+
+fn unusable_instance(code: c_int, operation: &'static str, message: String) -> EngineError {
+    if code == ENGINE_ERR_LOCK {
+        EngineError::Lock { operation, message }
+    } else {
+        EngineError::Fatal { code, message }
     }
 }
 
@@ -2153,7 +2616,8 @@ impl EngineSession {
         } else if let Some(refused) = next {
             self.refused.0.push(refused);
         }
-        self.engine.settle(code, failure)
+        self.engine
+            .settle(code, "rgpot_engine_set_callbacks", failure)
     }
 
     /// Attach a persistent result cache stored in the directory `path`.
@@ -2235,14 +2699,15 @@ impl EngineSession {
             )
         };
         let failure = host_failure(None, HostCallbacks::new(&self.callbacks, &self.refused));
-        self.engine.settle_with(code, failure, || {
-            let text = text_of(&error);
-            if text.is_empty() {
-                format!("rgpot_engine_hint failed with code {code} and wrote no message")
-            } else {
-                text
-            }
-        })
+        self.engine
+            .settle_with(code, "rgpot_engine_hint", failure, || {
+                let text = text_of(&error);
+                if text.is_empty() {
+                    format!("rgpot_engine_hint failed with code {code} and wrote no message")
+                } else {
+                    text
+                }
+            })
     }
 
     /// Report a fatal callback failure that no native call has settled, which
@@ -2250,13 +2715,19 @@ impl EngineSession {
     /// failure wins over the refusal; an error the handle has already latched
     /// is returned unchanged.
     fn finish<T>(&self, answer: Result<T, EngineError>) -> Result<T, EngineError> {
-        if matches!(answer, Err(EngineError::Fatal { .. })) {
+        if matches!(
+            answer,
+            Err(EngineError::Fatal { .. } | EngineError::Lock { .. })
+        ) {
             return answer;
         }
         match HostCallbacks::new(&self.callbacks, &self.refused).take_fatal() {
             Some(failure) => {
                 let code = failure.status.code();
-                Err(self.engine.poison(code, described(failure)))
+                Err(self.engine.poison(EngineError::Fatal {
+                    code,
+                    message: described(failure),
+                }))
             }
             None => answer,
         }
@@ -2273,7 +2744,60 @@ impl EngineSession {
 /// `&mut self`. The library stays resident afterwards.
 impl Drop for EnginePotential {
     fn drop(&mut self) {
+        let _serial = match &self.process_lock {
+            Some(lock) => match lock.lock() {
+                Ok(guard) => Some(guard),
+                Err(poisoned) => Some(poisoned.into_inner()),
+            },
+            None => None,
+        };
         unsafe { (self.symbols.destroy)(self.handle.as_ptr()) };
+    }
+}
+
+fn process_serial_lock(key: usize) -> Arc<Mutex<()>> {
+    static LOCKS: OnceLock<Mutex<HashMap<usize, Arc<Mutex<()>>>>> = OnceLock::new();
+    let table = LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = match table.lock() {
+        Ok(map) => map,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    Arc::clone(map.entry(key).or_insert_with(|| Arc::new(Mutex::new(()))))
+}
+
+/// The library-wide lock of an engine whose `rgpot_engine_caps` reports
+/// `reentrancy == 2`, keyed by the library's force entry point. An engine
+/// that exports no caps is treated as reentrant. An engine that exports caps
+/// is serialized unless the call succeeds and reports `reentrancy` 0 or 1,
+/// so a positive code or a truncated answer never skips the lock. A negative
+/// code means the instance is unusable and is returned as an error; the
+/// caller must destroy the handle and not use it.
+fn probe_process_serial(
+    symbols: &EngineSymbols,
+    handle: NonNull<RgpotEnginePot>,
+) -> Result<Option<Arc<Mutex<()>>>, EngineError> {
+    let Some(caps_fn) = symbols.caps else {
+        return Ok(None);
+    };
+    let mut raw = RgpotEngineCaps {
+        size: std::mem::size_of::<RgpotEngineCaps>() as c_uint,
+        ..Default::default()
+    };
+    let code = unsafe { caps_fn(handle.as_ptr(), &mut raw) };
+    if code < 0 {
+        return Err(unusable_instance(
+            code,
+            "rgpot_engine_caps",
+            engine_message(symbols, handle, code),
+        ));
+    }
+    let reports_reentrant = code == 0
+        && (raw.size as usize) >= REENTRANCY_END
+        && REENTRANCY_PARALLEL.contains(&raw.reentrancy);
+    if reports_reentrant {
+        Ok(None)
+    } else {
+        Ok(Some(process_serial_lock(symbols.force as usize)))
     }
 }
 
@@ -2349,19 +2873,30 @@ fn cache_path(path: &Path) -> Result<CString, EngineError> {
 }
 
 unsafe fn optional<T: Copy>(library: &Library, name: &str) -> Option<T> {
-    unsafe { library.get::<T>(format!("{name}\0").as_bytes()) }
-        .ok()
-        .map(|symbol| *symbol)
+    const { assert!(std::mem::size_of::<T>() == std::mem::size_of::<*const c_void>()) };
+    let symbol = unsafe { library.get::<*const c_void>(format!("{name}\0").as_bytes()) }.ok()?;
+    let raw = *symbol;
+    if raw.is_null() {
+        None
+    } else {
+        Some(unsafe { std::mem::transmute_copy::<*const c_void, T>(&raw) })
+    }
 }
 
 unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
     unsafe fn required<T: Copy>(library: &Library, name: &str) -> Result<T, EngineError> {
-        let symbol = unsafe { library.get::<T>(format!("{name}\0").as_bytes()) }
+        const { assert!(std::mem::size_of::<T>() == std::mem::size_of::<*const c_void>()) };
+        let symbol = unsafe { library.get::<*const c_void>(format!("{name}\0").as_bytes()) }
             .map_err(|_| EngineError::Missing(name.to_owned()))?;
-        Ok(*symbol)
+        let raw = *symbol;
+        if raw.is_null() {
+            return Err(EngineError::Missing(name.to_owned()));
+        }
+        Ok(unsafe { std::mem::transmute_copy::<*const c_void, T>(&raw) })
     }
     Ok(EngineSymbols {
         abi_version: unsafe { required(library, "rgpot_engine_abi_version")? },
+        available: unsafe { required(library, "rgpot_engine_available")? },
         abi_stamp: unsafe { optional(library, "rgpot_engine_abi_stamp") },
         create: unsafe { required(library, "rgpot_engine_create")? },
         destroy: unsafe { required(library, "rgpot_engine_destroy")? },

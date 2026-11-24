@@ -5,10 +5,11 @@
  * One symbol set for every heavy backend: an engine shared library
  * (libuma_engine.so, libmetatomic_engine.so, ...) exports these
  * functions, backend selection is which library the host dlopens, and
- * configuration travels as a Cap'n Proto flat-array message on the
- * shared Potentials.capnp wire (the engine names its root params
- * struct, e.g. UmaParams). Adding a backend therefore needs no new
- * host code and no new ABI header.
+ * configuration travels as a versioned binary message. The in-tree core
+ * engines use a Cap'n Proto flat-array message on the shared
+ * Potentials.capnp wire (the engine names its root params struct, e.g.
+ * UmaParams); a standalone backend may document its own magic structure.
+ * Adding a backend therefore needs no new host code or core ABI header.
  *
  * Units: positions Angstrom, energy eV, forces eV/Angstrom.
  *
@@ -27,7 +28,8 @@
  * - Codes the engines in this repository return: 1 invalid argument, 2 the
  *   evaluation or the setting failed (the reason is in
  *   rgpot_engine_last_error), 3 the backend does not support the operation,
- *   and for force the host transform's own nonzero code.
+ *   -2 acquiring an engine or handle lock failed (leaving the handle
+ *   unusable), and for force the host transform's own nonzero code.
  *
  * Thread safety of a handle. Any thread may call force and force_batch on any
  * handle. What happens inside depends on the backend's capabilities
@@ -44,8 +46,9 @@
  * rgpot_engine_model_digest may run at any time.
  * - Capability discovery is by symbol presence: entry points marked
  *   optional are probed with dlsym. An absent symbol means the engine
- *   does not support the operation; a static (non-learning) engine
- *   simply omits the learning set.
+ *   does not support the operation, and rgpot_engine_hvp is supported only
+ *   when rgpot_engine_caps also reports analytic_hvp; a static
+ *   (non-learning) engine simply omits the learning set.
  * - Engines with internal mutable state (learning surrogates) carry a
  *   monotone model-state counter. Any refit, hyperparameter change,
  *   or observation incorporation increments it; host-visible caches
@@ -100,24 +103,31 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
  * minor 0, layout 1.
  */
 #define RGPOT_ENGINE_ABI_VERSION 1
-#define RGPOT_ENGINE_ABI_MINOR 7
+#define RGPOT_ENGINE_ABI_MINOR 8
 #define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
 
 #define RGPOT_ENGINE_OK 0
 #define RGPOT_ENGINE_ERR_INVALID 1
 #define RGPOT_ENGINE_ERR_EVAL 2
 #define RGPOT_ENGINE_ERR_UNSUPPORTED 3
+/** Negative fatal code returned when acquiring an engine or handle lock fails. */
+#define RGPOT_ENGINE_ERR_LOCK (-2)
 
 RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
 
+/**
+ * Nonzero when the engine runtime is available and can create instances; 0
+ * when unavailable. Required symbol; hosts call it before
+ * `rgpot_engine_create`.
+ */
 RGPOT_ENGINE_API int rgpot_engine_available(void);
 
 /**
- * Create a potential from a Cap'n Proto flat-array message whose root
- * struct is the engine's params arm in Potentials.capnp (UmaParams for
- * the UMA engine). config points at config_len bytes (word-aligned
- * capnp framing as produced by capnp::messageToFlatArray). Returns
- * NULL on failure with a message in errbuf.
+ * Create a potential from the engine's versioned configuration message.
+ * In-tree core engines take a word-aligned Cap'n Proto flat array whose root
+ * is their params arm in Potentials.capnp. Standalone engines document their
+ * own message next to the library. Returns NULL on failure with a message in
+ * errbuf.
  */
 RGPOT_ENGINE_API RgpotEnginePot *rgpot_engine_create(const void *config,
                                                      size_t config_len,
