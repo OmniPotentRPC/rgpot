@@ -674,25 +674,6 @@ if not get_option('with_rpc_client_only')
         install: not meson.is_subproject(),
     )
 
-    if has_fortran
-        # Plugin anneal dlopens this as RGPOT_CUH2_LIBRARY. Link the shared
-        # umbrella instead of embedding the neighbour implementation again,
-        # so every process uses one Neighbours generation counter.
-        rgpot_cuh2 = library(
-            'rgpot_cuh2',
-            rgpot_cuh2_sources,
-            link_with: rgpot,
-            # C++ is the link language so Meson does not add the Fortran
-            # runtime. fortran_rt_deps is the same search the umbrella uses
-            # for _gfortran_* and the flang equivalents.
-            link_language: 'cpp',
-            dependencies: _fortran_nlist_omp_link + fortran_rt_deps,
-            fortran_args: _cuh2_plugin_args,
-            install: not meson.is_subproject(),
-            gnu_symbol_visibility: 'default',
-        )
-    endif
-
     # 51 rgpot_* exports when the rust archive is linked normally, 105 when
     # the bundle is whole-archived. The extra 54 are the public C ABI.
     # Two of the umbrella exports are the Muller-Brown entry points.
@@ -732,6 +713,25 @@ if not get_option('with_rpc_client_only')
                 timeout: 30,
             )
         endif
+    endif
+
+    if has_fortran
+        # Plugin anneal dlopens this as RGPOT_CUH2_LIBRARY. Link the shared
+        # umbrella instead of embedding the neighbour implementation again,
+        # so every process uses one Neighbours generation counter.
+        rgpot_cuh2 = library(
+            'rgpot_cuh2',
+            rgpot_cuh2_sources,
+            link_with: rgpot,
+            # C++ is the link language so Meson does not add the Fortran
+            # runtime. fortran_rt_deps is the same search the umbrella uses
+            # for _gfortran_* and the flang equivalents.
+            link_language: 'cpp',
+            dependencies: _fortran_nlist_omp_link + fortran_rt_deps,
+            fortran_args: _cuh2_plugin_args,
+            install: not meson.is_subproject(),
+            gnu_symbol_visibility: 'default',
+        )
     endif
 
     # Generic rgpot_engine_* plugins (engine_c_abi.h) for the backends that
