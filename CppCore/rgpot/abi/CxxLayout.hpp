@@ -182,6 +182,8 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// the dual-number callbacks and the derivative capabilities and counts.
 /// Minor 9 added `rgpot_mdi_server_start` and minor 10
 /// `rgpot_rpc_client_select_orbitals`.
+/// The molecular-dynamics session interface adds optional neighbour-exchange
+/// callbacks without changing an existing exported C struct.
 /// No exported C struct of that header changed layout. The neighbour query
 /// is `RGPOT_NLIST_ABI` 4.
 /// The C API is exported from librgpot, so it has no shared library of
