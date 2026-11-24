@@ -167,7 +167,7 @@ is not the hash.
 | 3.5.1   | 1, 0, 1         | 4                    |
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
-| next    | 1, 11, 1        | 9                    |
+| next    | 1, 10, 1        | 9                    |
 
 3.6.0 raised the minor for =rgpot_eindir_abi_compatible=; a caller built against
 minor 0 still matches it.
@@ -205,10 +205,6 @@ A build without the Cargo feature =mdi= answers the call with =RGPOT_RPC_ERROR=
 and a message that names the feature.
 It raises the minor to 10 for =rgpot_rpc_client_select_orbitals=, which is an
 additive export behind =RGPOT_HAS_RPC=, so the layout revision stays at 1.
-It raises the minor to 11 for the additive molecular-dynamics session entry
-points and operation tables.
-The session state is opaque and every earlier call remains valid, so the layout
-revision stays at 1.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.
