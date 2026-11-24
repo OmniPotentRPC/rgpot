@@ -88,6 +88,9 @@ host's.
 Minor 8 adds the negative code =RGPOT_ENGINE_ERR_LOCK= (-2) for a failed engine
 or handle lock.
 It exports no new symbol and changes no struct, so the layout revision stays at 1.
+The meson test =engine_abi_stamps= opens every standalone engine plugin of the
+build, =libpotlibc_engine= included when =with_potlibc= is enabled, and compares
+its stamp with the header.
 
 ** The C++ layout stamp
 

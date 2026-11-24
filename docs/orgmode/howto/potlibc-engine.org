@@ -50,8 +50,14 @@ export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig:$PKG_CONFIG_PATH"
 #+begin_src bash
 meson setup bbdir -Dwith_potlibc=enabled
 meson compile -C bbdir libpotlibc_engine.so
-meson test -C bbdir --print-errorlogs potlibc_engine
+meson test -C bbdir --print-errorlogs potlibc_engine engine_abi_stamps potlibc_engine_rust_loader
 #+end_src
+
+=potlibc_engine= drives the C entry points and the lock-failure build.
+=engine_abi_stamps= compares the plugin's ABI stamp with the header.
+=potlibc_engine_rust_loader= loads the plugin with =EnginePotential::load=,
+checks the =brh2leps= energy and forces, and drives the lock-failure build to
+confirm that =EngineError::Lock= latches the handle.
 
 The plugin is separate from =librgpot=.
 No potlibc symbols or headers enter the core library.
