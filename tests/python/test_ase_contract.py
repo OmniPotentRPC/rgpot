@@ -315,6 +315,73 @@ def test_rpc_bfgs_when_potserv_exists(tmp_path: Path, potserv_factory) -> None:
     assert abs(in_process - remote) < 1e-8
 
 
+def test_rpc_neighbours_when_potserv_exists() -> None:
+    binary = os.environ.get("RGPOT_POTSERV_BIN")
+    if not binary or not Path(binary).is_file():
+        pytest.skip("RGPOT_POTSERV_BIN is not set")
+    from ase import Atoms
+    from rgpot.ase import RgpotRpcCalculator
+
+    open_cluster = Atoms(
+        numbers=[1, 1, 1, 1],
+        positions=[[0.0, 0.0, 0.0], [1.3, 0.1, -0.2], [-0.4, 1.5, 0.3], [0.8, 0.9, 1.4]],
+        cell=[20.0, 20.0, 20.0],
+        pbc=False,
+    )
+    cubic = Atoms(
+        numbers=[1, 1, 1, 1],
+        positions=[[0.2, 0.2, 0.2], [1.4, 0.3, 0.4], [3.8, 0.2, 0.1], [0.3, 3.7, 3.9]],
+        cell=[4.0, 4.0, 4.0],
+        pbc=True,
+    )
+    triclinic = Atoms(
+        numbers=[1, 1, 1, 1],
+        positions=[[0.2, 0.3, 0.4], [3.6, 0.5, 0.2], [1.0, 3.8, 0.7], [2.2, 2.1, 3.9]],
+        cell=[[4.0, 0.2, 0.1], [0.3, 4.5, -0.2], [0.05, 0.15, 4.2]],
+        pbc=True,
+    )
+    with RgpotRpcCalculator.spawn(binary, potential="LJ") as calc:
+        for atoms, cutoff in ((open_cluster, 2.4), (cubic, 2.2), (triclinic, 3.2)):
+            for full in (False, True):
+                remote = calc.neighbours(
+                    atoms,
+                    cutoff=cutoff,
+                    skin=0.0,
+                    full=full,
+                    strict=True,
+                    shifts=True,
+                    vectors=True,
+                    distances=True,
+                )
+                if all(atoms.pbc):
+                    li, lj, ls, ld_vec, ldist = rgpot.neighbor_list(
+                        np.ascontiguousarray(atoms.positions, dtype=np.float64),
+                        np.ascontiguousarray(atoms.cell.array, dtype=np.float64),
+                        cutoff,
+                        quantities="ijSDd",
+                        full=full,
+                    )
+                    r_order = np.lexsort(
+                        (
+                            remote["shift"][:, 2],
+                            remote["shift"][:, 1],
+                            remote["shift"][:, 0],
+                            remote["second"],
+                            remote["first"],
+                        )
+                    )
+                    l_order = np.lexsort((ls[:, 2], ls[:, 1], ls[:, 0], lj, li))
+                    np.testing.assert_array_equal(remote["first"][r_order], li[l_order])
+                    np.testing.assert_array_equal(remote["second"][r_order], lj[l_order])
+                    np.testing.assert_array_equal(remote["shift"][r_order], ls[l_order])
+                    nlist_atol = float(np.finfo(np.float64).eps) * 16.0
+                    np.testing.assert_allclose(remote["vector"][r_order], ld_vec[l_order], atol=nlist_atol)
+                    np.testing.assert_allclose(remote["distance"][r_order], ldist[l_order], atol=nlist_atol)
+                else:
+                    assert np.all(remote["shift"] == 0)
+                    assert len(remote["first"]) == (12 if full else 6)
+
+
 def test_anneal_runner_is_not_an_optimizer() -> None:
     from ase.optimize.optimize import Optimizer
 
