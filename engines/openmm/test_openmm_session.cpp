@@ -377,7 +377,12 @@ void test_c_abi_session() {
     throw std::runtime_error(std::string("state before nlist parity failed: ") +
                              err);
   }
-  const double box_ang[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double box_ang[9] = {};
+  if (rgpot_md_session_get_periodic_box(session, box_ang, err, sizeof(err)) !=
+      0) {
+    throw std::runtime_error(std::string("box before nlist parity failed: ") +
+                             err);
+  }
   int32_t ref_status = rgpot_nlist_build(now_pos.data(), 2, box_ang, &ref_req,
                                          nullptr, nullptr, &ref_need);
   if (ref_status != RGPOT_NLIST_OK || ref_need == 0) {
