@@ -3,6 +3,7 @@
 
 #include "rgpot/ExternalPot/OpenMM.hpp"
 #include "rgpot/ExternalPot/external_potentials.h"
+#include "rgpot/nlist/rgpot_nlist.h"
 
 #include <openmm/HarmonicBondForce.h>
 #include <openmm/System.h>
@@ -20,6 +21,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -345,9 +347,193 @@ rgpot_md_session *open_neighbor_session(std::unique_ptr<OpenMM::System> system,
   return session;
 }
 
-// Two free atoms and a hand-computed pair list. The system has no periodic
-// force, so the placeholder box must not wrap a pair, and the expectation
-// is not a second call of rgpot_nlist_build in that box.
+constexpr double kNeighbourNoise = 1.0e-9;
+
+using PairKey = std::tuple<int32_t, int32_t, int32_t, int32_t, int32_t>;
+
+struct PairColumns {
+  bool has_vector = false;
+  double x = 0.0;
+  double y = 0.0;
+  double z = 0.0;
+  bool has_distance = false;
+  double distance = 0.0;
+};
+
+void expect_noise(double got, double expected, const char *what) {
+  if (std::abs(got - expected) > kNeighbourNoise) {
+    throw std::runtime_error(
+        std::string(what) + " differs by more than 1e-9: " +
+        std::to_string(got) + " vs " + std::to_string(expected));
+  }
+}
+
+void collect_pairs(const rgpot_nlist_request &request,
+                   const rgpot_nlist_soa &soa, size_t count,
+                   std::map<PairKey, PairColumns> *out) {
+  const bool shifts = request.want_shifts != 0;
+  const bool vectors = request.want_vectors != 0 && soa.vector != nullptr;
+  const bool distances = request.want_distances != 0 && soa.distance != nullptr;
+  for (size_t pair = 0; pair < count; ++pair) {
+    const PairKey key{soa.first[pair], soa.second[pair],
+                      shifts ? soa.shift[3 * pair] : 0,
+                      shifts ? soa.shift[3 * pair + 1] : 0,
+                      shifts ? soa.shift[3 * pair + 2] : 0};
+    PairColumns columns;
+    if (vectors) {
+      columns.has_vector = true;
+      columns.x = soa.vector[3 * pair];
+      columns.y = soa.vector[3 * pair + 1];
+      columns.z = soa.vector[3 * pair + 2];
+    }
+    if (distances) {
+      columns.has_distance = true;
+      columns.distance = soa.distance[pair];
+    }
+    if (!out->emplace(key, columns).second) {
+      throw std::runtime_error("neighbour list repeated a pair");
+    }
+  }
+}
+
+void expect_same_pairs(const std::map<PairKey, PairColumns> &session,
+                       const std::map<PairKey, PairColumns> &builder,
+                       const char *what) {
+  if (session.size() != builder.size()) {
+    throw std::runtime_error(std::string(what) +
+                             " pair count differs from the shared builder");
+  }
+  for (const auto &item : session) {
+    const auto found = builder.find(item.first);
+    if (found == builder.end()) {
+      throw std::runtime_error(std::string(what) +
+                               " is missing a pair the session returned");
+    }
+    if (item.second.has_vector) {
+      expect_noise(item.second.x, found->second.x, what);
+      expect_noise(item.second.y, found->second.y, what);
+      expect_noise(item.second.z, found->second.z, what);
+    }
+    if (item.second.has_distance) {
+      expect_noise(item.second.distance, found->second.distance, what);
+    }
+  }
+}
+
+rgpot_nlist_soa allocate_soa(const rgpot_nlist_request &request, size_t cap,
+                             std::vector<int32_t> *first,
+                             std::vector<int32_t> *second,
+                             std::vector<int32_t> *shift,
+                             std::vector<double> *vector,
+                             std::vector<double> *distance) {
+  first->assign(cap, 0);
+  second->assign(cap, 0);
+  rgpot_nlist_soa soa{};
+  soa.bytes = sizeof(soa);
+  soa.first = first->data();
+  soa.second = second->data();
+  soa.cap = cap;
+  if (request.want_shifts != 0) {
+    shift->assign(3 * cap, 0);
+    soa.shift = shift->data();
+  }
+  if (request.want_vectors != 0) {
+    vector->assign(3 * cap, 0.0);
+    soa.vector = vector->data();
+  }
+  if (request.want_distances != 0) {
+    distance->assign(cap, 0.0);
+    soa.distance = distance->data();
+  }
+  return soa;
+}
+
+// Session neighbours against rgpot_nlist_build. A non-periodic system
+// clears the request's periodic flags before that call, so the reference
+// does the same. A difference of 1e-9 is noise.
+void expect_builder_parity(rgpot_md_session *session,
+                           const rgpot_nlist_request &request, bool periodic,
+                           const char *what) {
+  char err[512] = {};
+  const size_t n_atoms = rgpot_md_session_n_atoms(session);
+  std::vector<double> positions(3 * n_atoms);
+  if (rgpot_md_session_get_positions(session, positions.data(),
+                                     positions.size(), err, sizeof(err)) != 0) {
+    throw std::runtime_error(std::string(what) + ": " + err);
+  }
+  double box[9] = {};
+  if (rgpot_md_session_get_periodic_box(session, box, err, sizeof(err)) != 0) {
+    throw std::runtime_error(std::string(what) + ": " + err);
+  }
+  rgpot_nlist_request built = request;
+  built.periodic[0] = periodic ? 1 : 0;
+  built.periodic[1] = periodic ? 1 : 0;
+  built.periodic[2] = periodic ? 1 : 0;
+
+  size_t session_need = 0;
+  const int session_rc = rgpot_md_session_get_neighbors(
+      session, &request, nullptr, nullptr, &session_need, err, sizeof(err));
+  if (session_rc != RGPOT_MD_NLIST_OK) {
+    throw std::runtime_error(std::string(what) + " size probe failed: " + err);
+  }
+  size_t builder_need = 0;
+  const int32_t builder_rc = rgpot_nlist_build(
+      positions.data(), n_atoms, box, &built, nullptr, nullptr, &builder_need);
+  if (builder_rc != RGPOT_NLIST_OK || builder_need != session_need) {
+    throw std::runtime_error(std::string(what) +
+                             " size differs from the shared builder");
+  }
+  if (session_need == 0) {
+    return;
+  }
+  std::vector<int32_t> session_first, session_second, session_shift;
+  std::vector<double> session_vector, session_distance;
+  std::vector<int32_t> builder_first, builder_second, builder_shift;
+  std::vector<double> builder_vector, builder_distance;
+  rgpot_nlist_soa session_soa =
+      allocate_soa(request, session_need, &session_first, &session_second,
+                   &session_shift, &session_vector, &session_distance);
+  rgpot_nlist_soa builder_soa =
+      allocate_soa(built, builder_need, &builder_first, &builder_second,
+                   &builder_shift, &builder_vector, &builder_distance);
+  size_t session_got = 0;
+  size_t session_full = 0;
+  const int fill_rc = rgpot_md_session_get_neighbors(
+      session, &request, &session_soa, &session_got, &session_full, err,
+      sizeof(err));
+  if (fill_rc != RGPOT_MD_NLIST_OK || session_got != session_need) {
+    throw std::runtime_error(std::string(what) + " fill failed: " + err);
+  }
+  size_t builder_got = 0;
+  const int32_t build_rc =
+      rgpot_nlist_build(positions.data(), n_atoms, box, &built, &builder_soa,
+                        &builder_got, &builder_need);
+  if (build_rc != RGPOT_NLIST_OK || builder_got != session_got) {
+    throw std::runtime_error(std::string(what) +
+                             " build differs from the shared builder");
+  }
+  std::map<PairKey, PairColumns> session_pairs;
+  std::map<PairKey, PairColumns> builder_pairs;
+  collect_pairs(request, session_soa, session_got, &session_pairs);
+  collect_pairs(built, builder_soa, builder_got, &builder_pairs);
+  expect_same_pairs(session_pairs, builder_pairs, what);
+}
+
+std::unique_ptr<OpenMM::System> make_periodic_system() {
+  auto out = std::make_unique<OpenMM::System>();
+  out->addParticle(1.0);
+  out->addParticle(1.0);
+  auto *bond = new OpenMM::HarmonicBondForce();
+  bond->setUsesPeriodicBoundaryConditions(true);
+  bond->addBond(0, 1, 0.1, 0.0);
+  out->addForce(bond);
+  return out;
+}
+
+// Two free atoms. The system has no periodic force, so the session clears
+// the request's periodic flags before rgpot_nlist_build. The hand-computed
+// pairs check that geometry. The shared builder is called with those flags
+// cleared, which is the geometry the session actually queries.
 void test_nonperiodic_neighbors() {
   char err[512] = {};
   rgpot_md_session *session =
@@ -410,6 +596,7 @@ void test_nonperiodic_neighbors() {
   near(backward->second[1], 0.0, 1.0, "pair 1->0 y");
   near(backward->second[2], 0.0, 1.0, "pair 1->0 z");
   near(backward->second[3], 4.0, 4.0, "pair 1->0 distance");
+  expect_builder_parity(session, nreq, false, "non-periodic 4 A pair");
 
   nreq.want_shifts = 0;
   nreq.want_vectors = 0;
@@ -462,12 +649,77 @@ void test_nonperiodic_neighbors() {
     throw std::runtime_error(
         "non-periodic 15 A / 8 A query returned a phantom image pair");
   }
+  expect_builder_parity(session, nreq, false, "non-periodic 15 A pair");
 
   const int set_rc = rgpot_md_session_set_neighbors(
       session, &nreq, &far_soa, 0, err, sizeof(err));
   if (set_rc != RGPOT_MD_NLIST_UNSUPPORTED) {
     throw std::runtime_error(
         "expected OpenMM neighbor setter to be unsupported");
+  }
+}
+
+// Atoms on opposite sides of a face. The minimum image crosses the
+// boundary and the direct gap is outside the cutoff. The session pair
+// set has to match rgpot_nlist_build in that box.
+void test_periodic_boundary_neighbors() {
+  char err[512] = {};
+  rgpot_md_session *session =
+      open_neighbor_session(make_periodic_system(), err, sizeof(err));
+  std::unique_ptr<rgpot_md_session, decltype(&rgpot_md_session_destroy)> guard(
+      session, rgpot_md_session_destroy);
+
+  const double box[9] = {12.0, 0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 0.0, 12.0};
+  if (rgpot_md_session_set_periodic_box(session, box, err, sizeof(err)) != 0) {
+    throw std::runtime_error(err);
+  }
+  const double pos[6] = {0.4, 3.0, 3.0, 11.6, 3.0, 3.0};
+  if (rgpot_md_session_set_positions(session, pos, 6, err, sizeof(err)) != 0) {
+    throw std::runtime_error(err);
+  }
+  rgpot_nlist_request nreq{};
+  rgpot_nlist_request_init(&nreq);
+  nreq.cutoff = 2.0;
+  nreq.shell = 1;
+  nreq.skin = 0.0;
+  expect_builder_parity(session, nreq, true, "periodic boundary neighbours");
+
+  size_t need = 0;
+  int nrc = rgpot_md_session_get_neighbors(session, &nreq, nullptr, nullptr,
+                                           &need, err, sizeof(err));
+  if (nrc != RGPOT_MD_NLIST_OK || need != 2) {
+    throw std::runtime_error(
+        "periodic boundary pair was not the two directed images");
+  }
+  std::vector<int32_t> first(need), second(need), shift(3 * need, 0);
+  std::vector<double> distance(need, 0.0);
+  rgpot_nlist_soa soa{};
+  soa.bytes = sizeof(soa);
+  soa.first = first.data();
+  soa.second = second.data();
+  soa.shift = shift.data();
+  soa.distance = distance.data();
+  soa.cap = need;
+  size_t got = 0;
+  nrc = rgpot_md_session_get_neighbors(session, &nreq, &soa, &got, &need, err,
+                                       sizeof(err));
+  if (nrc != RGPOT_MD_NLIST_OK || got != 2) {
+    throw std::runtime_error(std::string("periodic boundary fill failed: ") +
+                             err);
+  }
+  bool crossed = false;
+  for (size_t pair = 0; pair < got; ++pair) {
+    if (shift[3 * pair] == 0 && shift[3 * pair + 1] == 0 &&
+        shift[3 * pair + 2] == 0) {
+      throw std::runtime_error("periodic boundary pair did not cross a face");
+    }
+    if (shift[3 * pair] != 0) {
+      crossed = true;
+    }
+    near(distance[pair], 0.8, 0.8, "periodic image distance");
+  }
+  if (!crossed) {
+    throw std::runtime_error("periodic image shift was not along the box");
   }
 }
 
@@ -478,9 +730,10 @@ int main() {
     test_cpp_session();
     test_c_abi_session();
     test_nonperiodic_neighbors();
+    test_periodic_boundary_neighbors();
     std::cout
         << "OpenMM session energy, plane, wall, temperature, determinism, "
-           "C ABI, NVE, and non-periodic neighbour checks passed\n";
+           "C ABI, NVE, non-periodic, and periodic neighbour checks passed\n";
     return 0;
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
