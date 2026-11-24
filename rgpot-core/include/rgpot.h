@@ -127,6 +127,16 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define ENGINE_UNLOAD_POLICY_MINOR 7
 
 /**
+ * Magic number of `RgpotCoupledWellConfigV1`.
+ */
+#define COUPLED_WELL_CONFIG_MAGIC 1129795668
+
+/**
+ * Version of [`CoupledWellConfig`].
+ */
+#define COUPLED_WELL_CONFIG_VERSION 1
+
+/**
  * Which kind of failure a fused evaluation ended in.
  */
 typedef enum rgpot_fused_error_kind_t {
