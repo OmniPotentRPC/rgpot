@@ -24,6 +24,8 @@ extern "C" {
  * RGPOT_POTLIBC_CONFIG_V1_SIZE bytes, with no size field and no reserved
  * field. magic is at offset 0, version (RGPOT_POTLIBC_CONFIG_VERSION_V1) at
  * offset 4, atom_count at offset 8 and surface_id at offset 16.
+ * RGPOT_POTLIBC_CONFIG_VERSION is 2, so sources that recompile this V1 struct
+ * against current headers must use RGPOT_POTLIBC_CONFIG_VERSION_V1.
  *
  * surface_id is a NUL-terminated canonical potlibc catalog id.
  * atom_count is zero for a fixed-size surface and the exact requested count

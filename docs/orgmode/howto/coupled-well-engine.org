@@ -82,6 +82,11 @@ The create message new callers write is =RgpotCoupledWellConfigV2= from
 original layout still sends: =magic= at offset 0, =version= at offset 4,
 =atomic_number= at offset 8, =reserved= at offset 12 and the four parameters
 from offset 16.
+Because =RGPOT_COUPLED_WELL_CONFIG_VERSION= now names version 2, a version-1
+source recompiled against the current header must use
+=RGPOT_COUPLED_WELL_CONFIG_VERSION_V1= (and =RGPOT_COUPLED_WELL_CONFIG_V1_SIZE=);
+setting =RgpotCoupledWellConfigV1.version= to
+=RGPOT_COUPLED_WELL_CONFIG_VERSION= is refused.
 Set the version-2 =magic=, =size= and =version=, the one =atomic_number= the
 engine accepts, and the four parameters.
 =reserved0= and =reserved1= must be zero.

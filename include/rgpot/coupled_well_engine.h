@@ -24,6 +24,8 @@ extern "C" {
  * (RGPOT_COUPLED_WELL_CONFIG_VERSION_V1) at offset 4, atomic_number at offset
  * 8, reserved at offset 12, barrier_energy at offset 16, well_position at
  * offset 24, transverse_spring at offset 32 and coupling at offset 40.
+ * RGPOT_COUPLED_WELL_CONFIG_VERSION is 2, so sources that recompile this V1
+ * struct against current headers must use RGPOT_COUPLED_WELL_CONFIG_VERSION_V1.
  *
  * The engine models one atom and acts on its x and y coordinates:
  *
