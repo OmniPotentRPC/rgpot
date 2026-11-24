@@ -137,6 +137,31 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define COUPLED_WELL_CONFIG_VERSION 1
 
 /**
+ * Atomic number of [`CoupledWellConfig::default`].
+ */
+#define COUPLED_WELL_DEFAULT_ATOMIC_NUMBER 1
+
+/**
+ * Barrier energy `V0` of [`CoupledWellConfig::default`], in eV.
+ */
+#define COUPLED_WELL_DEFAULT_BARRIER_ENERGY 1.0
+
+/**
+ * Well position `x0` of [`CoupledWellConfig::default`], in Angstrom.
+ */
+#define COUPLED_WELL_DEFAULT_WELL_POSITION 1.0
+
+/**
+ * Transverse spring `k` of [`CoupledWellConfig::default`], in eV/Angstrom^2.
+ */
+#define COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING 1.0
+
+/**
+ * Coupling `alpha` of [`CoupledWellConfig::default`], in 1/Angstrom.
+ */
+#define COUPLED_WELL_DEFAULT_COUPLING 0.0
+
+/**
  * Magic number of `RgpotPotlibcConfigV1`.
  */
 #define POTLIBC_CONFIG_MAGIC 1347376204
