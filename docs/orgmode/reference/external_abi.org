@@ -283,7 +283,8 @@ the plane, and the multiplier of the plane accounts for them.
 - Inputs :: =struct_size= (=sizeof(rgpot_md_session_ops)=) and backend callbacks
   =set_positions=, =set_velocities=, =step_langevin=, =step_nve=,
   =get_state=, =get_masses=, and =destroy=, followed by the optional
-  =set_periodic_box=, =get_periodic_box=, =initialize=, and =run_langevin=.
+  =set_periodic_box=, =get_periodic_box=, =initialize=, =run_langevin=,
+  =get_neighbors=, and =set_neighbors=.
   The macro =RGPOT_MD_OPS_HAS(ops, member)= tests that a vtable carries an
   optional member.
 - Units :: rgpot host units (Angstrom, eV, ps, amu).
@@ -640,6 +641,45 @@ int rgpot_md_session_get_energy(rgpot_md_session *session,
 - Units :: eV.
 - Outputs :: returns 0 and writes the non-null energies.
 - Errors :: returns 1 and writes =err= on a null session or backend failure.
+
+*** =rgpot_md_session_get_neighbors=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_neighbors(rgpot_md_session *session,
+                                   const rgpot_nlist_request *request,
+                                   rgpot_nlist_soa *out, size_t *count,
+                                   size_t *needed, char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, neighbour =request= in the shared
+  =rgpot_nlist_request= shape, optional output =out= (=rgpot_nlist_soa=),
+  optional =count= and =needed=, and =err=/=err_len=.
+- Units :: position and cell units follow the session ABI (Angstrom).
+- Outputs :: returns =RGPOT_MD_NLIST_OK= and forwards the engine's pair list
+  using the shared neighbour columns and semantics.
+- Errors :: returns =RGPOT_MD_NLIST_UNSUPPORTED= when the engine has no
+  neighbour query slot, or =RGPOT_MD_NLIST_ERROR= with =err= on invalid input
+  or backend failure.
+
+*** =rgpot_md_session_set_neighbors=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_set_neighbors(rgpot_md_session *session,
+                                   const rgpot_nlist_request *request,
+                                   const rgpot_nlist_soa *pairs, size_t count,
+                                   char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, neighbour =request=, shared neighbour columns =pairs=
+  containing =count= rows, and =err=/=err_len=.
+- Units :: pair geometry is Angstrom in the same shared neighbour convention.
+- Outputs :: returns =RGPOT_MD_NLIST_OK= when the engine accepted the supplied
+  pair list.
+- Errors :: returns =RGPOT_MD_NLIST_UNSUPPORTED= when the engine has no
+  setter slot, or =RGPOT_MD_NLIST_ERROR= with =err= on invalid input or
+  backend failure.
 
 *** =rgpot_md_session_destroy=
 

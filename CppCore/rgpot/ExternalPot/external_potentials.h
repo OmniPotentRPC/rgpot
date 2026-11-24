@@ -16,6 +16,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "rgpot/nlist/rgpot_nlist.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -85,6 +86,10 @@ int rgpot_external_potential_energy_forces(
  * backend that does not offer one leaves it null. The session reports
  * either as unsupported with a message rather than crashing. A backend keeps
  * the order of the members, so a newer member only ever follows an older one.
+ *
+ * Optional neighbour exchange uses rgpot_nlist_request and rgpot_nlist_soa and
+ * returns RGPOT_MD_NLIST_OK, RGPOT_MD_NLIST_ERROR, or
+ * RGPOT_MD_NLIST_UNSUPPORTED.
  */
 typedef struct rgpot_md_session rgpot_md_session;
 
@@ -174,7 +179,20 @@ typedef struct rgpot_md_session_ops {
   int (*run_langevin)(void *ctx, const rgpot_md_langevin_request *request,
                       rgpot_md_langevin_result *result, char *err,
                       size_t err_len);
+  /* Optional neighbour-list exchange. A null callback means unsupported. */
+  int (*get_neighbors)(void *ctx, const rgpot_nlist_request *request,
+                       rgpot_nlist_soa *out, size_t *count, size_t *needed,
+                       char *err, size_t err_len);
+  int (*set_neighbors)(void *ctx, const rgpot_nlist_request *request,
+                       const rgpot_nlist_soa *pairs, size_t count, char *err,
+                       size_t err_len);
 } rgpot_md_session_ops;
+
+enum {
+  RGPOT_MD_NLIST_OK = 0,
+  RGPOT_MD_NLIST_ERROR = 1,
+  RGPOT_MD_NLIST_UNSUPPORTED = 2
+};
 
 /*
  * True when ops carries the optional member and a callback for it:
@@ -255,6 +273,14 @@ int rgpot_md_session_get_energy(rgpot_md_session *session,
                                 double *potential_energy,
                                 double *kinetic_energy, char *err,
                                 size_t err_len);
+int rgpot_md_session_get_neighbors(rgpot_md_session *session,
+                                   const rgpot_nlist_request *request,
+                                   rgpot_nlist_soa *out, size_t *count,
+                                   size_t *needed, char *err, size_t err_len);
+int rgpot_md_session_set_neighbors(rgpot_md_session *session,
+                                   const rgpot_nlist_request *request,
+                                   const rgpot_nlist_soa *pairs, size_t count,
+                                   char *err, size_t err_len);
 void rgpot_md_session_destroy(rgpot_md_session *session);
 
 #ifdef __cplusplus

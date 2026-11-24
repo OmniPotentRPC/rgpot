@@ -69,7 +69,12 @@ engine via =rgpot_md_session_ops= or =rgpot_md_session_create= in rgpot units
 eV/Angstrom, ps, amu); =libopenmm_engine.so= exports =rgpot_md_session_engine_create= and converts between Angstrom/eV
 and OpenMM's nm/kJ/mol, including the periodic box. In Rust,
 =rgpot_core::md_session= exposes =MdSession=, =MdLangevinConfig=,
-=MdSessionState=, and =CAbiMdSession=.
+=MdSessionState=, and =CAbiMdSession=. The optional
+neighbour exchange slots use the shared =rgpot_nlist_request= and
+=rgpot_nlist_soa= columns: =rgpot_md_session_get_neighbors= queries the
+current Context geometry and box through rgpot's shared neighbour builder,
+while =rgpot_md_session_set_neighbors= reports
+=RGPOT_MD_NLIST_UNSUPPORTED= for OpenMM today.
 
 The test =openmm_analytic= drives a chain of three atoms with harmonic bonds of
 rest length zero on a hyperplane through the C ABI and checks the kinetic and
