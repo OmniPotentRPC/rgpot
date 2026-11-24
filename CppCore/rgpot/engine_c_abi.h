@@ -111,6 +111,11 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
 
 RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
 
+/**
+ * Nonzero when the engine runtime is available and can create instances; 0
+ * when unavailable. Required symbol; hosts call it before
+ * `rgpot_engine_create`.
+ */
 RGPOT_ENGINE_API int rgpot_engine_available(void);
 
 /**

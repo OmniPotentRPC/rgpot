@@ -184,6 +184,12 @@ impl FixtureObserver {
         Self(unsafe { libloading::Library::new(path) }.expect("open the fixture observer"))
     }
 
+    fn created(&self) -> c_int {
+        let count: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+            unsafe { self.0.get(b"fixture_create_count\0") }.expect("create count symbol");
+        unsafe { count() }
+    }
+
     fn destroyed(&self) -> c_int {
         let count: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
             unsafe { self.0.get(b"fixture_destroy_count\0") }.expect("count symbol");
@@ -854,6 +860,10 @@ unsafe extern "C" fn stub_abi_version() -> c_int {
     ENGINE_ABI_VERSION
 }
 
+unsafe extern "C" fn stub_available() -> c_int {
+    1
+}
+
 unsafe extern "C" fn stub_create(
     _config: *const std::ffi::c_void,
     _config_len: usize,
@@ -887,7 +897,13 @@ unsafe extern "C" fn stub_model_state(_pot: *const RgpotEnginePot) -> u64 {
 
 #[test]
 fn symbols_are_built_with_a_constructor_and_optional_setters() {
-    let required = EngineSymbols::new(stub_abi_version, stub_create, stub_destroy, stub_force);
+    let required = EngineSymbols::new(
+        stub_abi_version,
+        stub_available,
+        stub_create,
+        stub_destroy,
+        stub_force,
+    );
     assert!(required.abi_stamp.is_none());
     assert!(required.force_batch.is_none());
     assert!(required.hvp.is_none());
@@ -1439,6 +1455,24 @@ fn a_missing_required_symbol_is_named() {
         .err()
         .expect("force is required");
     assert_eq!(error, EngineError::Missing("rgpot_engine_force".into()));
+
+    let no_available = build("harmonic_noavailable", &["NO_AVAILABLE"]);
+    let error = unsafe { EnginePotential::load(&no_available, &config()) }
+        .err()
+        .expect("available is required");
+    assert_eq!(error, EngineError::Missing("rgpot_engine_available".into()));
+}
+
+#[test]
+fn an_unavailable_engine_is_refused_before_create() {
+    let path = build("harmonic_unavailable", &["FIXTURE_AVAILABLE=0"]);
+    let observer = FixtureObserver::open(&path);
+    let before = observer.created();
+    let error = unsafe { EnginePotential::load(&path, &config()) }
+        .err()
+        .expect("unavailable engine must be refused");
+    assert_eq!(error, EngineError::Unavailable);
+    assert_eq!(observer.created(), before);
 }
 
 #[test]
