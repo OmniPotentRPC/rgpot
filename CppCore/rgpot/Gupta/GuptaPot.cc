@@ -231,6 +231,11 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
             if (r2 > cutoff2) {
               return;
             }
+            if (r2 <= 0.0) {
+              e_sum[static_cast<std::size_t>(i) * decltype(stride)::value] =
+                  std::numeric_limits<double>::quiet_NaN();
+              return;
+            }
             double phi = 0.0;
             double psi = 0.0;
             pair_term(r2, phi, psi, lane);
@@ -250,6 +255,13 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
         [=](int t, int32_t i, int32_t j, double, double, double,
             double r2) RGPOT_GUPTA_PAIR_INLINE {
           if (r2 > cutoff2) {
+            return;
+          }
+          if (r2 <= 0.0) {
+            if (j > i) {
+              e_sum[static_cast<std::size_t>(i)] =
+                  std::numeric_limits<double>::quiet_NaN();
+            }
             return;
           }
           double phi = 0.0;
@@ -287,7 +299,7 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
   auto apply = [=](auto stride, int32_t i, int32_t j, double dx, double dy,
                    double dz, double r2, double *force, double *virial,
                    bool both, Terms &terms) RGPOT_GUPTA_PAIR_INLINE {
-    if (r2 > cutoff2) {
+    if (r2 > cutoff2 || r2 <= 0.0) {
       return;
     }
     double r = 0.0;
@@ -304,9 +316,6 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
       const double psi = xi2 * std::exp(-2.0 * q * u);
       dphi = -(p / r0) * phi;
       dpsi = -(2.0 * q / r0) * psi;
-    }
-    if (r == 0.0) {
-      return;
     }
     const double wi = weight[static_cast<std::size_t>(i)];
     const double wj = weight[static_cast<std::size_t>(j)];
@@ -390,7 +399,7 @@ void GuptaPot::densityStage(const HalfList &list, double *densities) const {
   const double xi2 = cfg.xi * cfg.xi;
   staged::forEachPair(
       list, [&](int i, int j, double, double, double, double r2, bool both) {
-        if (r2 > cutoff2) {
+        if (r2 > cutoff2 || r2 <= 0.0) {
           return;
         }
         const double r = std::sqrt(r2);
@@ -431,6 +440,15 @@ void GuptaPot::forceStage(const HalfList &list, const double *densities,
       if (r2 > cutoff2) {
         return;
       }
+      // Same signal as LJPot::forceStage: a coincidence has no direction,
+      // so the tally energy is NaN and the pair contributes no force. NaN
+      // is not <= 0 and falls through.
+      if (r2 <= 0.0) {
+        if constexpr (decltype(tallied)::value) {
+          tally->energy = std::numeric_limits<double>::quiet_NaN();
+        }
+        return;
+      }
       const double r = std::sqrt(r2);
       const double u = r / cfg.r0 - 1.0;
       const double phi = 2.0 * cfg.A * std::exp(-cfg.p * u);
@@ -440,8 +458,7 @@ void GuptaPot::forceStage(const HalfList &list, const double *densities,
       const double wi = weight[static_cast<std::size_t>(i)];
       const double wj = weight[static_cast<std::size_t>(j)];
       const double embed = -0.5 * (wi + wj);
-      const double fscale =
-          r == 0.0 ? 0.0 : -(dphi + embed * dpsi) / r;
+      const double fscale = -(dphi + embed * dpsi) / r;
       staged::addPair(tallied, forces, tally, i, j, both, phi, fscale, dx, dy,
                       dz);
     });
