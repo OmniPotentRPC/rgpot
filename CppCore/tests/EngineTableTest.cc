@@ -60,6 +60,9 @@ struct Engine {
                      rgpot_engine_coord_transform, void *) = nullptr;
   RgpotEngineAbiStamp (*stamp)() = nullptr;
   int (*caps)(const RgpotEnginePot *, RgpotEngineCaps *) = nullptr;
+  int (*taylor_jet)(RgpotEnginePot *, long, long, const double *, const int *,
+                    const double *, long, double *,
+                    RgpotEngineDerivativeReport *, const double *) = nullptr;
   size_t (*last_error)(const RgpotEnginePot *, char *, size_t) = nullptr;
   size_t (*digest)(const RgpotEnginePot *, char *, size_t) = nullptr;
   int (*set_num_threads)(RgpotEnginePot *, int, int) = nullptr;
@@ -106,6 +109,7 @@ bool open_engine(const std::string &key, Engine &out) {
   out.destroy = sym<decltype(out.destroy)>(h, "rgpot_engine_destroy");
   out.force = sym<decltype(out.force)>(h, "rgpot_engine_force");
   out.hvp = sym<decltype(out.hvp)>(h, "rgpot_engine_hvp");
+  out.taylor_jet = sym<decltype(out.taylor_jet)>(h, "rgpot_engine_taylor_jet");
   out.force_batch = sym<decltype(out.force_batch)>(h, "rgpot_engine_force_batch");
   out.stamp = sym<decltype(out.stamp)>(h, "rgpot_engine_abi_stamp");
   out.caps = sym<decltype(out.caps)>(h, "rgpot_engine_caps");
@@ -423,6 +427,40 @@ TEST_CASE("classical engine LJPot analytic HVP rejects in-place aliasing",
                 aliased.data(), kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
   REQUIRE(error_of(e, pot).find("overlap") != std::string::npos);
   REQUIRE(aliased == direction);
+  e.destroy(pot);
+}
+
+TEST_CASE("an engine without a gradient jet reports a typed absence",
+          "[engine][classical][jet]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("lj"));
+  REQUIRE(pot != nullptr);
+
+  RgpotEngineCaps caps;
+  std::memset(&caps, 0xff, sizeof(caps));
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.size == sizeof(caps));
+  REQUIRE(caps.analytic_hvp == 1);
+  REQUIRE(caps.jet_order == 0);
+
+  const std::vector<double> direction(kCluster.size(), 0.25);
+  std::vector<double> jet(kCluster.size(), -1.0);
+  RgpotEngineDerivativeReport report{1, 7, 9.0};
+  REQUIRE(e.taylor_jet(pot, 1, 5, kCluster.data(), kZ.data(), direction.data(), 1,
+                       jet.data(), &report,
+                       kBox.data()) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(error_of(e, pot).find("no gradient jet") != std::string::npos);
+  REQUIRE(jet == std::vector<double>(kCluster.size(), -1.0));
+  REQUIRE(report.tracked == 1);
+  REQUIRE(report.operations == 7);
+
+  std::vector<double> product(kCluster.size(), 0.0);
+  REQUIRE(e.hvp(pot, 5, kCluster.data(), kZ.data(), direction.data(),
+                product.data(), kBox.data()) == RGPOT_ENGINE_OK);
   e.destroy(pot);
 }
 
