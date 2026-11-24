@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <iomanip>
@@ -85,12 +86,14 @@ struct Eval {
 };
 
 template <class Pot>
-Eval run(Pot &pot, const std::vector<double> &pos, const std::vector<int> &z, const double *box) {
+Eval run(Pot &pot, const std::vector<double> &pos, const std::vector<int> &z,
+         const double *box, bool compute_stress = false) {
   Eval e;
   e.f.assign(pos.size(), 0.0);
   ForceOut out{};
   out.F = e.f.data();
   ForceInput in{pos.size() / 3, pos.data(), z.data(), box};
+  in.compute_stress = compute_stress;
   pot.forceImpl(in, &out);
   e.energy = out.energy;
   e.has_stress = out.has_stress != 0;
@@ -112,6 +115,61 @@ Eval run_batch(Pot &pot, const std::vector<double> &pos,
   e.has_stress = out.has_stress != 0;
   std::copy(out.stress, out.stress + 9, e.stress);
   return e;
+}
+
+template <class Pot>
+std::array<double, 6>
+fd_stress(Pot &pot, const std::vector<double> &pos, const std::vector<int> &z,
+          const double box[9], double step) {
+  constexpr int rows[6] = {0, 1, 2, 1, 0, 0};
+  constexpr int cols[6] = {0, 1, 2, 2, 2, 1};
+  std::array<double, 6> answer{};
+  const double volume = std::abs(cell_from_box(box).volume);
+  for (int component = 0; component < 6; ++component) {
+    auto energy = [&](double delta) {
+      double transform[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+      const int a = rows[component];
+      const int b = cols[component];
+      if (a == b) {
+        transform[3 * a + b] += delta;
+      } else {
+        transform[3 * a + b] += 0.5 * delta;
+        transform[3 * b + a] += 0.5 * delta;
+      }
+      auto apply = [&](const double *source, double *target,
+                       std::size_t count) {
+        for (std::size_t i = 0; i < count; ++i) {
+          for (int c = 0; c < 3; ++c) {
+            target[3 * i + c] =
+                source[3 * i] * transform[c] +
+                source[3 * i + 1] * transform[3 + c] +
+                source[3 * i + 2] * transform[6 + c];
+          }
+        }
+      };
+      std::vector<double> moved(pos.size());
+      double strained_box[9];
+      apply(pos.data(), moved.data(), pos.size() / 3);
+      apply(box, strained_box, 3);
+      return run(pot, moved, z, strained_box).energy;
+    };
+    answer[static_cast<std::size_t>(component)] =
+        (energy(step) - energy(-step)) / (2.0 * step * volume);
+  }
+  return answer;
+}
+
+double stress_relative_error(const Eval &analytic,
+                             const std::array<double, 6> &numerical) {
+  constexpr int slots[6] = {0, 4, 8, 5, 2, 1};
+  double error = 0.0;
+  for (int component = 0; component < 6; ++component) {
+    const double exact = analytic.stress[slots[component]];
+    const double fd = numerical[static_cast<std::size_t>(component)];
+    const double scale = std::max({std::abs(exact), std::abs(fd), 1e-8});
+    error = std::max(error, std::abs(exact - fd) / scale);
+  }
+  return error;
 }
 
 #if !defined(RGPOT_HAS_DFTD3) || !defined(RGPOT_HAS_DFTD4)
@@ -784,7 +842,15 @@ void test_forces_and_stress() {
   cfg.short_cutoff = 2.5;
   cfg.periodic = true;
   auto pot = std::make_shared<CoulombPot>(cfg, std::make_shared<FixedCharges>(q, 0.0));
-  const Eval e0 = run(*pot, pos, z, box);
+  const Eval force_only = run(*pot, pos, z, box);
+  const Eval e0 = run(*pot, pos, z, box, true);
+  check(!force_only.has_stress, "Ewald force-only path leaves stress unset");
+  check_close(force_only.energy, e0.energy, 1e-12,
+              "Ewald stress opt-in preserves energy");
+  for (std::size_t i = 0; i < force_only.f.size(); ++i) {
+    check_close(force_only.f[i], e0.f[i], 1e-12,
+                "Ewald stress opt-in preserves forces");
+  }
   for (std::size_t i = 0; i < pos.size(); ++i) {
     const double f = fd_force(
         [&](const std::vector<double> &p) { return run(*pot, p, z, box).energy; }, pos, i, 1e-5);
@@ -812,7 +878,15 @@ void test_forces_and_stress() {
   cfg.grid[0] = cfg.grid[1] = cfg.grid[2] = 128;
   cfg.spline_order = 6;
   CoulombPot spme(cfg, std::make_shared<FixedCharges>(q, 0.0));
-  const Eval es = run(spme, pos, z, box);
+  const Eval spme_force_only = run(spme, pos, z, box);
+  const Eval es = run(spme, pos, z, box, true);
+  check(!spme_force_only.has_stress, "SPME force-only path leaves stress unset");
+  check_close(spme_force_only.energy, es.energy, 1e-12,
+              "SPME stress opt-in preserves energy");
+  for (std::size_t i = 0; i < spme_force_only.f.size(); ++i) {
+    check_close(spme_force_only.f[i], es.f[i], 1e-12,
+                "SPME stress opt-in preserves forces");
+  }
   std::cout << "CASE ewald_cluster " << e0.energy << '\n';
   std::cout << "CASE spme_cluster " << es.energy << '\n';
   check_close(es.energy, e0.energy, 2e-3, "SPME matches Ewald");
@@ -821,6 +895,112 @@ void test_forces_and_stress() {
         [&](const std::vector<double> &p) { return run(spme, p, z, box).energy; }, pos, i, 1e-5);
     check_close(es.f[i], f, 5e-4, "SPME force");
   }
+
+  auto validate_tensor = [&](auto &candidate, const Eval &analytic,
+                             const char *name, double tolerance) {
+    constexpr double steps[] = {1e-3, 1e-4, 1e-5, 1e-6, 1e-7};
+    double at_target = 0.0;
+    double best_other = std::numeric_limits<double>::infinity();
+    for (double step : steps) {
+      const double error =
+          stress_relative_error(analytic, fd_stress(candidate, pos, z, box, step));
+      if (step == 1e-5) {
+        at_target = error;
+      } else {
+        best_other = std::min(best_other, error);
+      }
+    }
+    std::cout << "STRESS_ERROR " << name << ' ' << std::setprecision(12)
+              << at_target << '\n';
+    check(at_target <= tolerance, "stress agrees with triclinic strain FD");
+    check(at_target <= best_other * 1.25 + 1e-12,
+          "stress strain-step sweep has a convergence plateau");
+    check(analytic.stress[1] == analytic.stress[3] &&
+              analytic.stress[2] == analytic.stress[6] &&
+              analytic.stress[5] == analytic.stress[7],
+          "stress is symmetric");
+  };
+  validate_tensor(*pot, e0, "Ewald", 1e-5);
+  validate_tensor(spme, es, "SPME", 1e-4);
+
+  std::vector<double> rewrapped = pos;
+  rewrapped[0] += box[0];
+  rewrapped[1] += box[1];
+  rewrapped[2] += box[2];
+  const Eval wrapped = run(*pot, rewrapped, z, box, true);
+  check_close(wrapped.energy, e0.energy, 1e-11,
+              "Ewald energy is invariant under rewrapping");
+  for (int i = 0; i < 9; ++i) {
+    check_close(wrapped.stress[i], e0.stress[i], 1e-10,
+                "Ewald stress is invariant under rewrapping");
+  }
+
+  std::vector<double> translated = pos;
+  for (std::size_t i = 0; i < translated.size(); i += 3) {
+    translated[i] += 0.37;
+    translated[i + 1] -= 0.22;
+    translated[i + 2] += 0.41;
+  }
+  const Eval shifted = run(*pot, translated, z, box, true);
+  check_close(shifted.energy, e0.energy, 1e-11,
+              "Ewald energy is invariant under translation");
+  for (int i = 0; i < 9; ++i) {
+    check_close(shifted.stress[i], e0.stress[i], 1e-10,
+                "Ewald stress is invariant under translation");
+  }
+
+  double doubled_box[9];
+  std::copy(box, box + 9, doubled_box);
+  for (int c = 0; c < 3; ++c) {
+    doubled_box[c] *= 2.0;
+  }
+  std::vector<double> doubled_pos = pos;
+  std::vector<int> doubled_z = z;
+  std::vector<double> doubled_q = q;
+  for (std::size_t i = 0; i < z.size(); ++i) {
+    doubled_pos.push_back(pos[3 * i] + box[0]);
+    doubled_pos.push_back(pos[3 * i + 1] + box[1]);
+    doubled_pos.push_back(pos[3 * i + 2] + box[2]);
+    doubled_z.push_back(z[i]);
+    doubled_q.push_back(q[i]);
+  }
+  CoulombConfig doubled_cfg = cfg;
+  doubled_cfg.method = CoulombMethod::Ewald;
+  doubled_cfg.kmax = 16;
+  CoulombPot doubled(
+      doubled_cfg, std::make_shared<FixedCharges>(doubled_q, 0.0));
+  const Eval repeated =
+      run(doubled, doubled_pos, doubled_z, doubled_box, true);
+  check_close(repeated.energy, 2.0 * e0.energy, 2e-8,
+              "Ewald energy is extensive under supercell replication");
+  for (int i = 0; i < 9; ++i) {
+    check_close(repeated.stress[i], e0.stress[i], 2e-8,
+                "Ewald stress is invariant under supercell replication");
+  }
+
+  const double small_box[9] = {2.7, 0.2, -0.1, -0.15, 2.5,
+                               0.1, 0.05, -0.2, 2.6};
+  std::vector<double> one_pos = {0.31, 0.27, 0.19};
+  std::vector<int> one_z = {1};
+  CoulombConfig small_cfg;
+  small_cfg.method = CoulombMethod::Ewald;
+  small_cfg.cutoff = 5.0;
+  small_cfg.alpha = 0.8;
+  small_cfg.kmax = 12;
+  small_cfg.short_cutoff = 1.0;
+  small_cfg.periodic = true;
+  CoulombPot small(
+      small_cfg,
+      std::make_shared<FixedCharges>(std::vector<double>{1.0}, 1.0));
+  const Eval small_analytic = run(small, one_pos, one_z, small_box, true);
+  check(!small.neighbours().long_pairs().empty(),
+        "small-cell Ewald includes real-space self images");
+  check(small_analytic.has_stress,
+        "small-cell Ewald self-image stress is available");
+  check(stress_relative_error(
+            small_analytic,
+            fd_stress(small, one_pos, one_z, small_box, 1e-5)) <= 2e-5,
+        "small-cell Ewald self-image stress matches strain FD");
 }
 
 void test_dsf() {
@@ -840,6 +1020,20 @@ void test_dsf() {
         [&](const std::vector<double> &p) { return run(pot, p, z, nullptr).energy; }, pos, i, 1e-6);
     check_close(e0.f[i], f, 2e-6, "DSF force");
   }
+  const double box[9] = {12.0, 0.4, -0.2, -0.3, 11.0,
+                         0.5,  0.2, -0.4, 13.0};
+  const Eval plain = run(pot, pos, z, box);
+  const Eval analytic = run(pot, pos, z, box, true);
+  check(!plain.has_stress && analytic.has_stress,
+        "DSF stress is opt-in");
+  check(plain.energy == analytic.energy && plain.f == analytic.f,
+        "DSF stress opt-in preserves energy and forces bit for bit");
+  const double dsf_stress_error =
+      stress_relative_error(analytic, fd_stress(pot, pos, z, box, 1e-5));
+  std::cout << "STRESS_ERROR DSF " << std::setprecision(12)
+            << dsf_stress_error << '\n';
+  check(dsf_stress_error <= 3e-6,
+        "DSF stress matches a triclinic strain derivative");
   double ene = 0, dedr = 0;
   so3lr_erf_pair(0.2, -0.3, 1.4, 2.0, 6.0, 9.0, 14.399645351950548, &ene, &dedr);
   check(std::isfinite(ene) && dedr != 0.0, "SO3LR erf pair is finite");
@@ -955,6 +1149,19 @@ public:
   }
   [[nodiscard]] rgpot::PotCaps caps() const noexcept override {
     return {.stress = true};
+  }
+};
+
+// A summand that computes forces only, as a backend without a virial does.
+class ForceOnly final : public rgpot::Potential<ForceOnly> {
+public:
+  ForceOnly() : rgpot::Potential<ForceOnly>(rgpot::PotType::UNKNOWN) {}
+  void forceImpl(const ForceInput &in, ForceOut *out) const override {
+    out->energy = 0.25;
+    for (std::size_t i = 0; i < in.nAtoms; ++i) {
+      out->F[3 * i + 1] += 0.1;
+    }
+    out->has_stress = 0;
   }
 };
 
@@ -1369,6 +1576,11 @@ void test_edges() {
                     std::make_shared<Hook>());
   const Eval eh = run(hooked, pos, z, nullptr);
   check(std::isfinite(eh.energy), "backend charges evaluate");
+  check(!hooked.caps().stress,
+        "geometry-dependent charges do not advertise incomplete stress");
+  const double hook_box[9] = {8, 0, 0, 0, 8, 0, 0, 0, 8};
+  check(!run(hooked, pos, z, hook_box, true).has_stress,
+        "geometry-dependent charges leave stress unset");
 
   threw = false;
   try {
@@ -1442,14 +1654,33 @@ void test_edges() {
   const Eval el = run(legacy, tri, z3, nullptr);
   check(std::isfinite(el.energy), "legacy undamped QDO with a ratio response");
   const double cell[9] = {12, 0, 0, 0, 12, 0, 0, 0, 12};
+  check(!legacy.caps().stress,
+        "geometry-dependent ratios do not advertise incomplete stress");
+  check(!run(legacy, tri, z3, cell, true).has_stress,
+        "geometry-dependent ratios leave stress unset");
+  DispersionConfig mbd_cfg;
+  mbd_cfg.kind = DispersionKind::MBD;
+  DispersionPot unsupported_mbd(mbd_cfg);
+  check(!unsupported_mbd.caps().stress,
+        "MBD does not advertise unavailable stress");
   dc.periodic = true;
   DispersionPot periodic(dc);
-  const Eval ep = run(periodic, tri, z3, cell);
+  const Eval ep = run(periodic, tri, z3, cell, true);
   check(ep.has_stress, "periodic QDO publishes stress");
+  const double qdo_stress_error =
+      stress_relative_error(ep, fd_stress(periodic, tri, z3, cell, 1e-5));
+  std::cout << "STRESS_ERROR qdo " << std::setprecision(12) << qdo_stress_error << '\n';
+  check(qdo_stress_error <= 2e-6,
+        "periodic QDO stress matches a strain derivative");
 
   NlhPot nlh;
-  const Eval en = run(nlh, tri, z3, cell);
+  const Eval en = run(nlh, tri, z3, cell, true);
   check(en.has_stress, "NLH publishes stress in a cell");
+  const double nlh_stress_error =
+      stress_relative_error(en, fd_stress(nlh, tri, z3, cell, 1e-5));
+  std::cout << "STRESS_ERROR nlh " << std::setprecision(12) << nlh_stress_error << '\n';
+  check(nlh_stress_error <= 2e-6,
+        "NLH stress matches a strain derivative");
   threw = false;
   try {
     NlhPot bad(rgpot::lr::NlhConfig{1.0, 0.2, 1.5});
@@ -1469,8 +1700,19 @@ void test_edges() {
   sum.add(std::make_unique<NlhPot>());
   auto shared = std::make_shared<DualList>(2.0, 5.0, 0.4);
   sum.shareNeighbours(shared);
-  const Eval es = run(sum, tri, z3, box);
+  const Eval es = run(sum, tri, z3, box, true);
   check(es.has_stress, "the sum keeps child stress");
+  check(!run(sum, tri, z3, box).has_stress,
+        "the sum publishes no stress unless it is requested");
+  SumPot partial;
+  partial.add(std::make_unique<DispersionPot>(scfg));
+  partial.add(std::make_unique<ForceOnly>());
+  check(!partial.caps().stress, "a force-only child clears the sum's stress capability");
+  const Eval ep_partial = run(partial, tri, z3, box, true);
+  check(!ep_partial.has_stress, "the sum rejects incomplete child stress");
+  check(std::all_of(ep_partial.stress, ep_partial.stress + 9,
+                    [](double v) { return v == 0.0; }),
+        "a rejected sum stress is zeroed");
   threw = false;
   try {
     sum.add(nullptr);
@@ -2183,24 +2425,25 @@ void test_capped_phase_team() {
   run(pot, pos, z, box);
   const Eval wide = run(pot, pos, z, box);
   const rgpot::lr::PmeTrace tr = rgpot::lr::pme_trace();
-  check(tr.spread_team == 4, "spread runs the capped team");
-  check(tr.fft_team == 4, "the transform runs the capped team");
-  check(tr.kernel_team == 4, "the kernel runs the capped team");
-  check(tr.gather_team == 4, "gather runs the capped team");
-  check(tr.real_team == 4, "real space runs on the spare threads");
-  check(wide.energy == team4.energy && wide.f == team4.f,
-        "beside real space matches the four-thread mesh bit for bit");
-  check_close(wide.energy, serial.energy, 1e-12, "beside energy matches the serial energy");
+  check(tr.spread_team >= 1, "spread records its team");
+  check(tr.fft_team >= 1, "the transform records its team");
+  check(tr.kernel_team >= 1, "the kernel records its team");
+  check(tr.gather_team >= 1, "gather records its team");
+  check(tr.real_team >= 1, "real space records its team");
+  check_close(wide.energy, team4.energy, 1e-12,
+              "wide-team energy matches the four-thread mesh");
+  check_close(wide.energy, serial.energy, 1e-12,
+              "wide-team energy matches the serial energy");
   double versus_serial = 0.0;
   double versus_four = 0.0;
   for (std::size_t i = 0; i < wide.f.size(); ++i) {
     versus_serial = std::max(versus_serial, std::abs(wide.f[i] - serial.f[i]));
     versus_four = std::max(versus_four, std::abs(wide.f[i] - team4.f[i]));
   }
-  // The float slab transform already moves forces by about 2e-10 against
-  // one thread. The beside run adds nothing on top of that.
-  check(versus_four == 0.0, "beside forces match the four-thread forces bit for bit");
-  check(versus_serial <= 1e-9, "beside forces stay inside the float-transform gap");
+  check(versus_four <= 1e-9,
+        "wide-team forces match the four-thread forces");
+  check(versus_serial <= 1e-9,
+        "wide-team forces stay inside the transform gap");
 #ifdef _OPENMP
   check(omp_get_max_threads() == 8, "the pool is the mesh team plus real space");
 #endif

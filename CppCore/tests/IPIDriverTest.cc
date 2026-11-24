@@ -853,6 +853,7 @@ Direct direct(const Pot &pot, const std::vector<double> &pos,
   Direct d;
   d.forces.assign(pos.size(), 0.0);
   rgpot::ForceInput in{z.size(), pos.data(), z.data(), rows};
+  in.compute_stress = true;
   rgpot::ForceOut out{d.forces.data(), 0.0, 0.0, {}, 0};
   pot.forceImpl(in, &out);
   REQUIRE(out.has_stress == 1);

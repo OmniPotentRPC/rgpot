@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -20,6 +21,7 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/EAMTable/EAMTablePot.hpp"
+#include "rgpot/stress.hpp"
 
 using Catch::Matchers::WithinAbs;
 using rgpot::EAMTableFormat;
@@ -80,13 +82,16 @@ struct Eval {
 };
 
 Eval eval(const rgpot::EAMTablePot &pot, const std::vector<double> &pos,
-          const std::vector<int> &z, const double *box) {
+          const std::vector<int> &z, const double *box,
+          bool request_stress = false) {
   Eval e;
   e.forces.assign(pos.size(), 0.0);
   rgpot::ForceOut out{};
   out.F = e.forces.data();
   std::fill(out.stress, out.stress + 9, 7.0);
-  pot.forceImpl(rgpot::ForceInput{z.size(), pos.data(), z.data(), box}, &out);
+  rgpot::ForceInput in{z.size(), pos.data(), z.data(), box};
+  in.compute_stress = request_stress;
+  pot.forceImpl(in, &out);
   e.energy = out.energy;
   std::copy(out.stress, out.stress + 9, e.stress);
   e.has_stress = out.has_stress;
@@ -297,14 +302,58 @@ TEST_CASE("eam/fs density blocks follow the LAMMPS order", "[EAMTable]") {
 TEST_CASE("EAM table stress flag leaves energy and forces alone",
           "[EAMTable]") {
   const LammpsRef ref = load_ref("eam_table/cu_u3_cubic.ref", true);
-  const Eval off = eval(cu_u3(true, false), ref.pos, ref.z, ref.box);
-  const Eval on = eval(cu_u3(true, true), ref.pos, ref.z, ref.box);
+  const auto shared = cu_u3(true, false);
+  const Eval off = eval(shared, ref.pos, ref.z, ref.box);
+  const Eval on = eval(shared, ref.pos, ref.z, ref.box, true);
+  const Eval legacy = eval(cu_u3(true, true), ref.pos, ref.z, ref.box);
   REQUIRE(off.energy == on.energy);
   REQUIRE(off.forces == on.forces);
   REQUIRE(off.has_stress == 0);
   REQUIRE(std::all_of(off.stress, off.stress + 9,
-                      [](double v) { return v == 7.0; }));
+                      [](double v) { return v == 0.0; }));
+  REQUIRE(legacy.has_stress == 1);
   REQUIRE(cu_u3(true, false).paramsKey() != cu_u3(true, true).paramsKey());
+}
+
+TEST_CASE("EAM table stress matches a triclinic strain difference",
+          "[EAMTable][stress]") {
+  const LammpsRef ref = load_ref("eam_table/cuni_sheared.ref", true);
+  const rgpot::EAMTablePot pot(
+      {.path = kData + "eam_table/CuNi.eam.alloy"});
+  const Eval analytic = eval(pot, ref.pos, ref.z, ref.box, true);
+  REQUIRE(analytic.has_stress == 1);
+  constexpr double step = 1e-5;
+  const double volume = rgpot::cellVolume(ref.box);
+  double max_error = 0.0;
+  double max_stress = 0.0;
+  for (const auto &component : kVoigt) {
+    const int row = component[0];
+    const int col = component[1];
+    double energy[2]{};
+    for (int side = 0; side < 2; ++side) {
+      const double delta = side == 0 ? -step : step;
+      std::vector<double> moved = ref.pos;
+      double cell[9];
+      std::copy(ref.box, ref.box + 9, cell);
+      for (std::size_t atom = 0; atom < ref.z.size(); ++atom) {
+        moved[3 * atom + col] += delta * ref.pos[3 * atom + row];
+      }
+      for (int axis = 0; axis < 3; ++axis) {
+        cell[3 * axis + col] += delta * ref.box[3 * axis + row];
+      }
+      energy[side] = eval(pot, moved, ref.z, cell).energy;
+    }
+    const double numeric = (energy[1] - energy[0]) / (2 * step * volume);
+    max_error =
+        std::max(max_error,
+                 std::abs(analytic.stress[3 * row + col] - numeric));
+    max_stress =
+        std::max(max_stress, std::abs(analytic.stress[3 * row + col]));
+    CAPTURE(row, col, numeric);
+    REQUIRE_THAT(analytic.stress[3 * row + col], WithinAbs(numeric, 2e-7));
+  }
+  std::cout << "STRESS_ERROR EAMTable "
+            << max_error / std::max(max_stress, 1e-8) << '\n';
 }
 
 TEST_CASE("EAM table rejects bad input", "[EAMTable]") {

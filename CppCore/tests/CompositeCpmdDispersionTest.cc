@@ -43,7 +43,8 @@ struct Result {
 Result run(rgpot::PotentialBase &pot) {
   Result r;
   r.forces.assign(kPos.size(), 0.0);
-  const rgpot::ForceInput in{kZ.size(), kPos.data(), kZ.data(), kBox.data()};
+  rgpot::ForceInput in{kZ.size(), kPos.data(), kZ.data(), kBox.data()};
+  in.compute_stress = true;
   rgpot::ForceOut out{};
   out.F = r.forces.data();
   pot.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
@@ -99,8 +100,8 @@ TEST_CASE("a cpmd term and a dispersion term sum through the config path",
   const Result undo = run(cpmd_d2);
   const Result dispersion = run(alone);
   REQUIRE(engine.energy == cpmd_stress_oracle::kGradientHartree * rgpot::units::HARTREE_TO_EV);
-  // CPMDPot writes the stress cpmdc reports without declaring it in its
-  // caps, so the sum carries a stress because every term wrote one.
+  // CPMDPot writes the stress cpmdc reports, when asked, without declaring
+  // it in its caps, so the sum carries a stress because every term wrote one.
   REQUIRE(engine.has_stress);
   REQUIRE(undo.has_stress);
   REQUIRE(dispersion.has_stress);

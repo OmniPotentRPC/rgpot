@@ -3,15 +3,20 @@
 // Copyright 2023--present rgpot developers
 
 /**
- * Cauchy stress from a pair force.
+ * Opt-in Cauchy stress from pair and many-body forces.
  *
  * sigma = (1/V) dE/dε for the right strain that sends a row of Cartesian
  * coordinates r to r (I+ε). A pair whose force on atom i is fscale * d,
- * with d = r_i - r_j, contributes -fscale * d ⊗ d to dE/dε.
+ * with d = r_i - r_j, contributes -fscale * d ⊗ d to dE/dε. Energy is
+ * measured in eV and length in Angstrom, so published stress is eV/Angstrom^3.
+ * The volume is the absolute determinant of the row-major cell. A singular
+ * or missing cell cannot produce stress.
  *
- * A many-body term that depends on folded bond vectors d_k contributes
- * the sum over k of d_k ⊗ dE/dd_k (Thompson, Plimpton and Mattson, J. Chem.
- * Phys. 131, 154107 (2009), doi:10.1063/1.3245303).
+ * A many-body term that depends on neighbour-list image bond vectors d_k
+ * contributes the sum over k of d_k ⊗ dE/dd_k. The image vector supplied by
+ * the neighbour list is authoritative and must not be rewrapped (Thompson,
+ * Plimpton and Mattson, J. Chem. Phys. 131, 154107 (2009),
+ * doi:10.1063/1.3245303).
  */
 
 #include "rgpot/ForceStructs.hpp"
@@ -103,5 +108,89 @@ inline void publishCauchyStress(ForceOut *out, const double acc[6],
   out->stress[8] = zz;
   out->has_stress = 1;
 }
+
+/**
+ * Shared opt-in virial accumulator.
+ *
+ * Construct one at the start of a supporting force kernel. `data()` is null
+ * unless the caller set `ForceInput::compute_stress`, allowing existing pair
+ * and many-body loops to skip every stress allocation and operation on the
+ * force-only path. `publish()` is the only operation that sets has_stress.
+ *
+ * A force-only call clears the ten stress fields of the output, so a caller
+ * that reuses a ForceOut never reads a stale tensor, and does nothing else:
+ * the strain accumulator is left alone and every accumulating member returns
+ * at the `enabled_` test.
+ */
+class StressAccumulator {
+public:
+  StressAccumulator(const ForceInput &in, ForceOut *out,
+                    bool compatible_request = false) noexcept
+      : out_(out), enabled_(in.compute_stress || compatible_request) {
+    if (out_ != nullptr) {
+      out_->has_stress = 0;
+      std::fill(out_->stress, out_->stress + 9, 0.0);
+    }
+    if (enabled_) {
+      std::fill(strain_, strain_ + 6, 0.0);
+    }
+  }
+
+  [[nodiscard]] bool enabled() const noexcept { return enabled_; }
+
+  /// Six Voigt components xx, yy, zz, yz, xz, xy, or null when disabled.
+  [[nodiscard]] double *data() noexcept { return enabled_ ? strain_ : nullptr; }
+  [[nodiscard]] const double *data() const noexcept {
+    return enabled_ ? strain_ : nullptr;
+  }
+
+  void pair(double fscale, double dx, double dy, double dz) noexcept {
+    if (enabled_) {
+      accumulatePairStrain(strain_, fscale, dx, dy, dz);
+    }
+  }
+
+  void bond(double dx, double dy, double dz, double gx, double gy,
+            double gz) noexcept {
+    if (enabled_) {
+      accumulateBondStrain(strain_, dx, dy, dz, gx, gy, gz);
+    }
+  }
+
+  /// Accumulate -sum_i r_i tensor F_i for a non-periodic configuration.
+  /// This is translation invariant when the net force is zero.
+  void cartesian(const double *positions, const double *forces,
+                 std::size_t n) noexcept {
+    if (!enabled_) {
+      return;
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+      const double x = positions[3 * i];
+      const double y = positions[3 * i + 1];
+      const double z = positions[3 * i + 2];
+      const double fx = forces[3 * i];
+      const double fy = forces[3 * i + 1];
+      const double fz = forces[3 * i + 2];
+      strain_[0] -= x * fx;
+      strain_[1] -= y * fy;
+      strain_[2] -= z * fz;
+      strain_[3] -= y * fz;
+      strain_[4] -= x * fz;
+      strain_[5] -= x * fy;
+    }
+  }
+
+  /// Publish only when requested and the cell has positive finite volume.
+  void publish(const double *box) noexcept {
+    if (enabled_ && out_ != nullptr) {
+      publishCauchyStress(out_, strain_, cellVolume(box));
+    }
+  }
+
+private:
+  ForceOut *out_;
+  bool enabled_;
+  double strain_[6];
+};
 
 } // namespace rgpot

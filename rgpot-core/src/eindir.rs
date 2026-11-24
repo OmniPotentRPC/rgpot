@@ -28,8 +28,9 @@ use crate::fused::{
 use crate::hessian::HessianState;
 use crate::hvp::HvpState;
 use crate::jet::JetState;
-use crate::potential::PotentialCallback;
+use crate::potential::{PotentialCallback, PotentialStressCallback};
 use crate::status::{last_error_message, rgpot_status_t, set_last_error};
+use crate::stress::StressState;
 use crate::tensor::{
     checked_f64_data, copy_f64_tensor, rgpot_tensor_cpu_f64_2d, rgpot_tensor_cpu_f64_matrix3,
     rgpot_tensor_cpu_i32_1d, rgpot_tensor_free,
@@ -222,6 +223,16 @@ impl rgpot_potential_t {
     pub(crate) fn jet_state(&self) -> &JetState {
         &self.fused_cache.jet
     }
+
+    /// Register the callback that also computes stress, or clear it.
+    pub fn set_stress_callback(&self, callback: Option<PotentialStressCallback>) {
+        self.fused_cache.stress.set(callback);
+    }
+
+    /// The registered stress callback, if the potential computes stress.
+    pub fn stress_callback(&self) -> Option<PotentialStressCallback> {
+        self.fused_cache.stress.get()
+    }
 }
 
 /// Opaque cache of the last fused energy and gradient evaluation.
@@ -235,6 +246,7 @@ pub struct rgpot_fused_cache_t {
     hvp: HvpState,
     hessian: HessianState,
     jet: JetState,
+    stress: StressState,
 }
 
 impl rgpot_fused_cache_t {
@@ -245,6 +257,7 @@ impl rgpot_fused_cache_t {
             hvp: HvpState::default(),
             hessian: HessianState::default(),
             jet: JetState::default(),
+            stress: StressState::default(),
         }
     }
 

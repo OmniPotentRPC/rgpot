@@ -6,6 +6,7 @@
 #include "Exception.h"
 #include "SuperCell.h"
 #include "Vec.h"
+#include "rgpot/stress.hpp"
 
 #include <algorithm>
 #include <array>
@@ -74,6 +75,7 @@ EMTPot::EMTPot(const EMTConfig &config)
 EMTPot::~EMTPot() = default;
 
 void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  StressAccumulator stress(in, out);
   const long n = static_cast<long>(in.nAtoms);
   out->variance = 0.0;
   out->has_stress = 0;
@@ -130,6 +132,18 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     }
     out->energy = energy;
     std::memcpy(out->F, forces, static_cast<size_t>(n) * sizeof(Vec));
+    if (stress.enabled()) {
+      double native[6]{};
+      emt->GetStress(native);
+      double *strain = stress.data();
+      const double volume = cellVolume(in.box);
+      for (int k = 0; k < 6; ++k) {
+        // ASAP has already divided dE/d epsilon by the cell volume. Convert it
+        // back to the common accumulator before publishing.
+        strain[k] = native[k] * volume;
+      }
+      stress.publish(in.box);
+    }
   } catch (const Exception &error) {
     m_state.reset();
     refuse(error.GetMessage());

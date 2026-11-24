@@ -40,6 +40,8 @@ std::vector<float> g_charge_f;
 
 constexpr double kKe = units::HARTREE_TO_EV * units::BOHR_TO_ANGSTROM;
 constexpr double kPi = std::numbers::pi;
+// The float mesh does not satisfy the force and energy accuracy contract.
+constexpr bool kUseFloatMesh = false;
 
 // Mesh slices while real space shares the call. Zero means one slice per
 // pool thread (or spme_slice_limit() during an SPME evaluation). The mesh
@@ -283,6 +285,7 @@ struct BesideCache {
   std::size_t seen_n = 0;
   double alpha = 0.0;
   double rc = 0.0;
+  std::vector<double> radii;
   std::vector<int> ord;
   std::vector<double> phi;
   std::vector<double> dphi;
@@ -293,17 +296,32 @@ BesideCache &beside_cache() {
   return cache;
 }
 
+bool same_radii(const std::vector<Pair> &pairs,
+                const std::vector<double> &radii) {
+  if (pairs.size() != radii.size()) {
+    return false;
+  }
+  for (std::size_t i = 0; i < pairs.size(); ++i) {
+    if (pairs[i].r != radii[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void ensure_beside_cache(const CoulombConfig &cfg, const std::vector<Pair> &pairs) {
   BesideCache &cache = beside_cache();
   if (cache.seen == pairs.data() && cache.seen_n == pairs.size() && cache.alpha == cfg.alpha &&
-      cache.rc == cfg.cutoff) {
+      cache.rc == cfg.cutoff && same_radii(pairs, cache.radii)) {
     return;
   }
   const ScreenTable &screen = screen_table(cfg.alpha, cfg.cutoff);
+  cache.radii.resize(pairs.size());
   cache.ord.resize(pairs.size());
   cache.phi.resize(pairs.size());
   cache.dphi.resize(pairs.size());
   for (std::size_t t = 0; t < pairs.size(); ++t) {
+    cache.radii[t] = pairs[t].r;
     cache.ord[t] = static_cast<int>(t);
     screened_pair(screen, pairs[t].r, &cache.phi[t], &cache.dphi[t]);
   }
@@ -392,14 +410,18 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
     static std::size_t seen_n = 0;
     static double seen_alpha = 0.0;
     static double seen_rc = 0.0;
+    static std::vector<double> cached_radii;
     static std::vector<int> ord;
     static std::vector<double> cached_phi;
     static std::vector<double> cached_dphi;
-    if (seen != pairs.data() || seen_n != pairs.size() || seen_alpha != alpha || seen_rc != rc) {
+    if (seen != pairs.data() || seen_n != pairs.size() || seen_alpha != alpha ||
+        seen_rc != rc || !same_radii(pairs, cached_radii)) {
+      cached_radii.resize(pairs.size());
       ord.resize(pairs.size());
       cached_phi.resize(pairs.size());
       cached_dphi.resize(pairs.size());
       for (std::size_t t = 0; t < pairs.size(); ++t) {
+        cached_radii[t] = pairs[t].r;
         ord[t] = static_cast<int>(t);
         screened_pair(screen, pairs[t].r, &cached_phi[t], &cached_dphi[t]);
       }
@@ -1158,7 +1180,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   // shared grid serialize the spread and make two threads slower than one.
   const int nthreads = thread_count();
   const bool trace = std::getenv("LR_PME_PROFILE") != nullptr;
-  const bool mesh_float_now = !cfg.stress;
+  const bool mesh_float_now = kUseFloatMesh && !cfg.stress;
   if (!mesh_float_now) {
     if (!g_charge_f.empty()) {
       g_charge_f.clear();
@@ -1542,7 +1564,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
                  std::chrono::duration<double, std::micro>(t_reduce0 - t_spread0).count(),
                  std::chrono::duration<double, std::micro>(t_fft0 - t_reduce0).count());
   }
-  const bool mesh_float = !cfg.stress;
+  const bool mesh_float = kUseFloatMesh && !cfg.stress;
   if (!mesh_float) {
     fft3(grid, nx, ny, nz, false, nthreads);
   }
@@ -1567,7 +1589,8 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   const double pref = kKe / (2.0 * kPi * cell.volume);
   auto apply_stress = [&](int tid) {
     Neumaier &rec = local[static_cast<std::size_t>(tid)].rec;
-    double *st = local[static_cast<std::size_t>(tid)].strain;
+    double *st =
+        cfg.stress ? local[static_cast<std::size_t>(tid)].strain : nullptr;
     for (int iz = tid; iz < nz; iz += nthreads) {
     for (int iy = 0; iy < ny; ++iy) {
       for (int ix = 0; ix < nx; ++ix) {
@@ -1907,7 +1930,8 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   const int asked = std::max(caller_team(), thread_count());
   const int mesh_cap = axis_workers(std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2])), asked);
   const int real_beside =
-      method == CoulombMethod::SPME && !cfg.stress && dE_dq == nullptr
+      method == CoulombMethod::SPME && kUseFloatMesh && !cfg.stress &&
+              dE_dq == nullptr
           ? beside_real_workers(static_cast<int>(n),
                                 std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2])), asked)
           : 0;
@@ -1953,8 +1977,10 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   }
   // Two threads do not speed a short transform, so the second thread runs
   // real space in the same OpenMP region.
-  const bool beside_pair = method == CoulombMethod::SPME && thread_count() == 2 && mesh_cap == 1 &&
-                           !cfg.stress && dE_dq == nullptr;
+  const bool beside_pair =
+      method == CoulombMethod::SPME && kUseFloatMesh &&
+      thread_count() == 2 && mesh_cap == 1 && !cfg.stress &&
+      dE_dq == nullptr;
   if (beside_pair) {
     std::vector<double> extra(3 * n, 0.0);
     ElecOut local{};
@@ -2017,7 +2043,9 @@ void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   std::fill(out->F, out->F + 3 * in.nAtoms, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;
-  out->has_stress = 0;
+  StressAccumulator stress(in, out, cfg_.stress);
+  CoulombConfig cfg = cfg_;
+  cfg.stress = stress.enabled();
   std::vector<double> q;
   double total = 0.0;
   charges_->load(in, &q, &total);
@@ -2027,16 +2055,18 @@ void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto t_eval = std::chrono::steady_clock::now();
   std::vector<double> dedq(in.nAtoms, 0.0);
   ElecOut er;
-  evaluate_electrostatics(cfg_.method, cfg_, in.pos, q.data(), in.nAtoms, total,
+  evaluate_electrostatics(cfg.method, cfg, in.pos, q.data(), in.nAtoms, total,
                           periodic ? in.box : nullptr, lists_->long_pairs(), out->F,
                           response_ ? dedq.data() : nullptr, &er);
   out->energy = er.energy;
   if (response_) {
     response_->accumulate(in, dedq.data(), out->F);
   }
-  const double volume = periodic ? cellVolume(in.box) : 0.0;
-  if (er.has_stress && volume > 0.0) {
-    publishCauchyStress(out, er.strain, volume);
+  // A geometry-dependent charge response contributes an additional chain-rule
+  // strain that this fixed-charge kernel does not compute.
+  if (er.has_stress && stress.enabled() && response_ == nullptr) {
+    std::copy(std::begin(er.strain), std::end(er.strain), stress.data());
+    stress.publish(in.box);
   }
   if (std::getenv("LR_PME_PROFILE") != nullptr && cfg_.method == CoulombMethod::SPME) {
     const auto t_end = std::chrono::steady_clock::now();

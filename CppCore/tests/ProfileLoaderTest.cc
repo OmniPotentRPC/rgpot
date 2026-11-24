@@ -226,10 +226,28 @@ TEST_CASE("Capabilities handshake rejection matrix",
   }
 
   rgpot::abi::Expectation strict;
-  strict.protocol_minor_min = 2;
+  constexpr uint16_t above = rgpot::abi::kProtocolMinor + 1;
+  strict.protocol_minor_min = above;
   REQUIRE(verdict([](B) {}, strict).find("protocol minor") !=
           std::string::npos);
-  REQUIRE(verdict([](B c) { c.setProtocolMinor(2); }, strict).empty());
+  REQUIRE(verdict([](B c) { c.setProtocolMinor(above); }, strict).empty());
+}
+
+TEST_CASE("Protocol minor 2 adds the stress request and minor 1 peers still load",
+          "[abi][profile][compat]") {
+  using B = ::Capabilities::Builder;
+  STATIC_REQUIRE(rgpot::abi::kProtocolMinor == 2);
+  STATIC_REQUIRE(rgpot::abi::kStressProtocolMinor == 2);
+
+  rgpot::abi::Expectation force_only;
+  rgpot::abi::Expectation stress;
+  stress.protocol_minor_min = rgpot::abi::kStressProtocolMinor;
+
+  REQUIRE(verdict([](B) {}, force_only).empty());
+  REQUIRE(verdict([](B c) { c.setProtocolMinor(1); }, force_only).empty());
+  REQUIRE(verdict([](B c) { c.setProtocolMinor(2); }, stress).empty());
+  REQUIRE(verdict([](B c) { c.setProtocolMinor(1); }, stress) ==
+          "protocol minor 1 is below the required 2");
 }
 
 TEST_CASE("Capabilities handshake accepts a schema id with an optional 0x prefix",

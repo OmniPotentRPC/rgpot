@@ -43,7 +43,11 @@ namespace abi {
 
 inline constexpr const char *kProtocolFamily = "rgpot.potentials";
 inline constexpr uint16_t kProtocolMajor = 1;
-inline constexpr uint16_t kProtocolMinor = 1;
+// Minor 2 adds ForceInput.computeStress. A minor-1 peer never sets it and
+// never reads it, so the stress is treated as not requested.
+inline constexpr uint16_t kProtocolMinor = 2;
+// First protocol minor whose servers honour ForceInput.computeStress.
+inline constexpr uint16_t kStressProtocolMinor = 2;
 inline constexpr const char *kSchemaId = "0xbd1f89fa17369103";
 
 /** What the host requires of a backend. */

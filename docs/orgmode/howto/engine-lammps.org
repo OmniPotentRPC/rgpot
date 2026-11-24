@@ -337,13 +337,17 @@ The cost of a step does not depend on the masses.
 
 The style fills the global virial in the LAMMPS order =xx yy zz xy xz yz=, in
 eV, as \(W = -V\sigma\).
+The plugin asks for the stress only on a step where LAMMPS wants the global
+virial, and only from a potential whose =caps().stress= is set; every other
+evaluation is force-only and pays nothing for a stress.
 When the potential returns a stress, that stress is used.
 Otherwise, and always with =pair_style rgpot cutoff virial fd=, each component
 is a central difference of the energy under a strain of \(10^{-5}\) applied to
 the cell and the positions.
 That costs twelve extra evaluations of the box on every step that needs the
 virial, which under NPT or =box/relax= is every step.
-The engine form, EMT and the other potentials without a stress take this path.
+The engine form and the potentials that report no stress, such as XTB, take this
+path.
 =compute pressure=, =thermo_style= pressure columns, =fix npt= and
 =fix box/relax= then work unchanged.
 
@@ -456,8 +460,10 @@ The numbers below are from one run; the tests assert looser bounds.
   It finds \(a = 5.26865164\) Å, as =lj/cut= and the analytic lattice sum do.
 - The engine form with =liblj_engine.so= uses the finite-difference virial.
   Its pressure is within 3e-7 bar of the named LJ and its analytic stress.
-- EMT Cu also uses the finite-difference virial.
-  It is within 7e-6 bar of an independent difference from =rgpot-eval=.
+- EMT Cu advertises stress, so the plugin requests it and the pressure is
+  \(-\sigma\) as =rgpot-eval= prints it, within 2e-10 bar on a compressed cell.
+  With =virial fd= the pressure is within 7e-6 bar of an independent difference
+  from =rgpot-eval=.
 - A =NULL= type under =hybrid/overlay= with =lj/cut= matches =lj/cut= alone, on
   two ranks, on both paths and with =newton on= and =off=.
 - =compute pe/atom= and =compute stress/atom= against =lj/cut= and =eam/alloy=.

@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <random>
 #include <vector>
 
@@ -320,17 +321,28 @@ std::array<double, 9> checkStressByStrain(const std::vector<double> &pos,
   std::vector<double> forces(pos.size());
   const std::vector<int> types(n, 14);
   rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
-  pot.forceImpl({n, pos.data(), types.data(), box.data()}, &out);
+  rgpot::ForceInput in{n, pos.data(), types.data(), box.data()};
+  in.compute_stress = true;
+  pot.forceImpl(in, &out);
   REQUIRE(out.has_stress == 1);
   std::array<double, 9> fd{};
+  double max_error = 0.0;
+  double max_stress = 0.0;
   for (int row = 0; row < 3; ++row) {
     for (int col = 0; col < 3; ++col) {
       fd[3 * row + col] = strainDifference(fdPos, fdBox, row, col);
       CAPTURE(row, col, fd[3 * row + col]);
+      max_error =
+          std::max(max_error,
+                   std::abs(out.stress[3 * row + col] - fd[3 * row + col]));
+      max_stress =
+          std::max(max_stress, std::abs(out.stress[3 * row + col]));
       REQUIRE_THAT(out.stress[3 * row + col],
                    WithinAbs(fd[3 * row + col], kStressTol));
     }
   }
+  std::cout << "STRESS_ERROR Stillinger-Weber "
+            << max_error / std::max(max_stress, 1e-8) << '\n';
   return fd;
 }
 
@@ -406,7 +418,9 @@ TEST_CASE("SW 1985 stress is zero without a pair", "[SWSi][stress]") {
   const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
   double forces[3] = {};
   rgpot::ForceOut out{forces, 1.0, 0.0, {1, 2, 3, 4, 5, 6, 7, 8, 9}, 0};
-  StillingerWeberSi{}.forceImpl({1, position, &type, box}, &out);
+  rgpot::ForceInput in{1, position, &type, box};
+  in.compute_stress = true;
+  StillingerWeberSi{}.forceImpl(in, &out);
   REQUIRE(out.has_stress == 1);
   REQUIRE(out.energy == 0.0);
   for (double component : out.stress) {

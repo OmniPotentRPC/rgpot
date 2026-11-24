@@ -581,3 +581,36 @@ TEST_CASE("MEAMPot rejects bad input and keys its parameters", "[meam]") {
   REQUIRE_THROWS_AS(eval(ni, pos, bad_z, box), std::invalid_argument);
   REQUIRE_THROWS_AS(make_pot("library.meam", "", {"Ni", "Ni", "Xx"}), std::invalid_argument);
 }
+
+TEST_CASE("MEAMPot computes stress on request via ForceInput::compute_stress",
+          "[meam][stress]") {
+  const LammpsRef ref = load_ref("ni_sheared_small");
+  const rgpot::MEAMPot opt_in =
+      make_pot("library.meam", "Ni.meam", {"Ni"}, true, false);
+  REQUIRE(opt_in.caps().stress);
+
+  std::vector<double> plain_forces(ref.pos.size(), 0.0);
+  rgpot::ForceOut plain_out{};
+  plain_out.F = plain_forces.data();
+  std::fill(plain_out.stress, plain_out.stress + 9, 7.0);
+  rgpot::ForceInput plain_in{ref.z.size(), ref.pos.data(), ref.z.data(), ref.box};
+  opt_in.forceImpl(plain_in, &plain_out);
+  REQUIRE(plain_out.has_stress == 0);
+  for (double s : plain_out.stress) {
+    REQUIRE(s == 0.0);
+  }
+
+  std::vector<double> stress_forces(ref.pos.size(), 0.0);
+  rgpot::ForceOut stress_out{};
+  stress_out.F = stress_forces.data();
+  rgpot::ForceInput stress_in{ref.z.size(), ref.pos.data(), ref.z.data(), ref.box};
+  stress_in.compute_stress = true;
+  opt_in.forceImpl(stress_in, &stress_out);
+  REQUIRE(stress_out.has_stress == 1);
+  REQUIRE(stress_out.energy == plain_out.energy);
+  REQUIRE(stress_forces == plain_forces);
+  for (int v = 0; v < 6; ++v) {
+    const double got = stress_out.stress[3 * kVoigt[v][0] + kVoigt[v][1]];
+    REQUIRE_THAT(got, WithinAbs(ref.stress[v], 1e-9));
+  }
+}

@@ -3,6 +3,7 @@
 
 #include "rgpot/D4Pot/D4Pot.hpp"
 #include "rgpot/ParamHash.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
 #include <algorithm>
@@ -14,7 +15,6 @@
 namespace rgpot {
 
 using units::ANGSTROM_TO_BOHR;
-using units::HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3;
 using units::HARTREE_TO_EV;
 using units::NEG_GRAD_TO_FORCE;
 
@@ -89,10 +89,14 @@ uint64_t D4Pot::paramsKey() const noexcept {
 }
 
 void D4Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  StressAccumulator stress(in, out);
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
   const bool p = m_config.periodic;
   const bool periodicity[3] = {p, p, p};
+  // A molecule has no cell to strain, so only a periodic config answers a
+  // stress request.
+  const bool want_stress = p && stress.enabled();
 
   m_pos_bohr.resize(n3);
   for (size_t i = 0; i < n3; ++i) {
@@ -141,7 +145,7 @@ void D4Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
   double energy_hartree = 0.0;
   double sigma[9] = {};
   dftd4_get_dispersion(m_err, m_mol, m_model, m_param, &energy_hartree, out->F,
-                       p ? sigma : nullptr);
+                       want_stress ? sigma : nullptr);
   throwIfError("dftd4 get dispersion");
 
   out->energy = energy_hartree * HARTREE_TO_EV;
@@ -149,13 +153,15 @@ void D4Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->F[i] *= NEG_GRAD_TO_FORCE;
   }
   out->variance = 0.0;
-  if (p) {
+  if (double *strain = want_stress ? stress.data() : nullptr) {
     // dftd4's sigma is dE/dstrain, symmetric, in Hartree.
-    for (int k = 0; k < 9; ++k) {
-      out->stress[k] =
-          sigma[k] / volume * HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3;
-    }
-    out->has_stress = 1;
+    strain[0] = sigma[0] * HARTREE_TO_EV;
+    strain[1] = sigma[4] * HARTREE_TO_EV;
+    strain[2] = sigma[8] * HARTREE_TO_EV;
+    strain[3] = sigma[5] * HARTREE_TO_EV;
+    strain[4] = sigma[2] * HARTREE_TO_EV;
+    strain[5] = sigma[1] * HARTREE_TO_EV;
+    stress.publish(in.box);
   }
 }
 

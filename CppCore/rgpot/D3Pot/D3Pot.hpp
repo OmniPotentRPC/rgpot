@@ -56,7 +56,9 @@ public:
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .periodic = false};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .periodic = false,
+            .stress = true};
   }
 
   [[nodiscard]] const D3Config &config() const noexcept { return m_config; }

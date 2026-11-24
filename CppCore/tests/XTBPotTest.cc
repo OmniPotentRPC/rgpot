@@ -14,10 +14,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
+#include <stdexcept>
 #include <limits>
 #include <memory>
 #include <string>
@@ -107,6 +109,33 @@ TEST_CASE("XTBPot GFN2 water energy and force conservation", "[xtb][linked]") {
   REQUIRE_THAT(energy, WithinAbs(-137.9, 1.0));
   require_finite_forces(forces, 3);
   require_zero_net_force(forces, 1e-6);
+}
+
+TEST_CASE("XTBPot does not advertise stress and refuses a request for it",
+          "[xtb][linked][stress]") {
+  rgpot::XTBPot pot;
+  CHECK_FALSE(pot.caps().stress);
+
+  std::array<double, 9> cell = {100.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 100.0};
+  std::array<double, 9> pos{};
+  std::copy(std::begin(kWaterPos), std::end(kWaterPos), pos.begin());
+  std::array<double, 9> forces{};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  rgpot::ForceInput in{3, pos.data(), kWaterZ, cell.data()};
+
+  rgpot::ForceOut plain{};
+  std::array<double, 9> plain_forces{};
+  plain.F = plain_forces.data();
+  pot.forceImpl(in, &plain);
+  CHECK(plain.has_stress == 0);
+
+  in.compute_stress = true;
+  CHECK_THROWS_AS(pot.forceImpl(in, &out), std::invalid_argument);
+  CHECK(out.has_stress == 0);
+  for (double component : out.stress) {
+    CHECK(component == 0.0);
+  }
 }
 
 TEST_CASE("XTBPot GFNFF water finite energy", "[xtb][linked][gfnff]") {

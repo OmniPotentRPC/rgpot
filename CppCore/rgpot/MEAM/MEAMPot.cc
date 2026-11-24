@@ -368,10 +368,7 @@ void MEAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   out->energy = 0.0;
   out->variance = 0.0;
-  out->has_stress = 0;
-  for (double &s : out->stress) {
-    s = 0.0;
-  }
+  StressAccumulator stress(in, out, m_stress);
   const std::size_t n = in.nAtoms;
   if (n == 0) {
     return;
@@ -687,7 +684,6 @@ void MEAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
 
   // Forces and the strain derivative.
-  double strain[6] = {0, 0, 0, 0, 0, 0};
   double *F = out->F;
   auto side = [&](const Adjoint &ad, int tb, const double *u, double r,
                   const double rr[4], const double drr[4], double s, double grad[3],
@@ -840,8 +836,8 @@ void MEAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
           F[3 * j + 0] += gjk[0];
           F[3 * j + 1] += gjk[1];
           F[3 * j + 2] += gjk[2];
-          accumulateBondStrain(strain, dk[0], dk[1], dk[2], gik[0], gik[1], gik[2]);
-          accumulateBondStrain(strain, djk[0], djk[1], djk[2], gjk[0], gjk[1], gjk[2]);
+          stress.bond(dk[0], dk[1], dk[2], gik[0], gik[1], gik[2]);
+          stress.bond(djk[0], djk[1], djk[2], gjk[0], gjk[1], gjk[2]);
         }
       }
     }
@@ -849,13 +845,11 @@ void MEAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       F[3 * i + p] += gij[p];
       F[3 * j + p] -= gij[p];
     }
-    accumulateBondStrain(strain, b.d[0], b.d[1], b.d[2], gij[0], gij[1], gij[2]);
+    stress.bond(b.d[0], b.d[1], b.d[2], gij[0], gij[1], gij[2]);
   }
 
   out->energy = energy;
-  if (m_stress) {
-    publishCauchyStress(out, strain, in.box != nullptr ? cellVolume(in.box) : 0.0);
-  }
+  stress.publish(in.box);
 }
 
 } // namespace rgpot

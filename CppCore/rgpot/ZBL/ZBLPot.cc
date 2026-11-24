@@ -190,12 +190,11 @@ void ZBLPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atom
   const double *R = in.pos;
   double *F = out->F;
   double *U = &out->energy;
-  double strain[6] = {};
-  const double volume = cellVolume(in.box);
-  publishCauchyStress(out, strain, volume);
+  StressAccumulator stress(in, out);
   *U = 0.0;
   std::fill(F, F + 3 * N, 0.0);
   if (N < 2) {
+    stress.publish(in.box);
     return;
   }
 
@@ -246,9 +245,9 @@ void ZBLPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atom
   };
   double energy = 0.0;
   nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), cutoff2, nlist::Overlap::Skip, term,
-                  F, energy, strain, atoms);
+                  F, energy, stress.data(), atoms);
   *U = energy;
-  publishCauchyStress(out, strain, volume);
+  stress.publish(in.box);
 }
 
 } // namespace rgpot

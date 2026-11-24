@@ -9,12 +9,14 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <regex>
 #include <stdexcept>
@@ -23,6 +25,7 @@
 #include <vector>
 
 #include "rgpot/D4Pot/D4Pot.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #ifdef RGPOT_HAS_CACHE
 #include "rgpot/PotentialCache.hpp"
@@ -48,6 +51,81 @@ static void fill_water(AtomMatrix &positions, std::vector<int> &atmtypes,
           kWaterPos[i * 3 + j];
   atmtypes.assign(kWaterZ, kWaterZ + 3);
   box = {{{100.0, 0.0, 0.0}, {0.0, 100.0, 0.0}, {0.0, 0.0, 100.0}}};
+}
+
+TEST_CASE("D4 stress is opt-in and matches triclinic strain", "[d4][stress]") {
+  std::vector<double> positions(std::begin(kWaterPos), std::end(kWaterPos));
+  std::vector<int> numbers(std::begin(kWaterZ), std::end(kWaterZ));
+  // Every image of the molecule lies past dftd4's real-space cutoffs (60
+  // bohr for the pair term), which it applies without smoothing. A denser
+  // cell moves image pairs across them under strain and the energy steps.
+  std::array<double, 9> box = {
+      40.0, 0.7, -0.2, 5.0, 38.0, 0.5, -3.0, 4.0, 39.0};
+  auto evaluate = [&](const std::vector<double> &pos,
+                      const std::array<double, 9> &cell, bool stress) {
+    rgpot::D4Pot pot(rgpot::D4Config{.periodic = true});
+    std::vector<double> forces(pos.size());
+    rgpot::ForceOut out{};
+    out.F = forces.data();
+    rgpot::ForceInput in{
+        numbers.size(), pos.data(), numbers.data(), cell.data()};
+    in.compute_stress = stress;
+    pot.forceImpl(in, &out);
+    return std::pair{out, forces};
+  };
+  const auto [plain, plain_forces] = evaluate(positions, box, false);
+  const auto [analytic, analytic_forces] = evaluate(positions, box, true);
+  REQUIRE(plain.has_stress == 0);
+  REQUIRE(analytic.has_stress == 1);
+  REQUIRE(plain.energy == analytic.energy);
+  REQUIRE(plain_forces == analytic_forces);
+
+  constexpr int rows[6] = {0, 1, 2, 1, 0, 0};
+  constexpr int cols[6] = {0, 1, 2, 2, 2, 1};
+  constexpr int slots[6] = {0, 4, 8, 5, 2, 1};
+  constexpr double step = 1e-5;
+  const double volume = rgpot::cellVolume(box.data());
+  double largest = 0.0;
+  double error = 0.0;
+  for (int component = 0; component < 6; ++component) {
+    double energies[2]{};
+    for (int side = 0; side < 2; ++side) {
+      const double delta = side == 0 ? -step : step;
+      double transform[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+      const int a = rows[component];
+      const int b = cols[component];
+      if (a == b) {
+        transform[3 * a + b] += delta;
+      } else {
+        transform[3 * a + b] += 0.5 * delta;
+        transform[3 * b + a] += 0.5 * delta;
+      }
+      auto apply = [&](const double *source, double *target,
+                       std::size_t count) {
+        for (std::size_t i = 0; i < count; ++i) {
+          for (int c = 0; c < 3; ++c) {
+            target[3 * i + c] =
+                source[3 * i] * transform[c] +
+                source[3 * i + 1] * transform[3 + c] +
+                source[3 * i + 2] * transform[6 + c];
+          }
+        }
+      };
+      std::vector<double> moved(positions.size());
+      std::array<double, 9> strained{};
+      apply(positions.data(), moved.data(), numbers.size());
+      apply(box.data(), strained.data(), 3);
+      energies[side] = evaluate(moved, strained, false).first.energy;
+    }
+    const double numerical =
+        (energies[1] - energies[0]) / (2.0 * step * volume);
+    const double value = analytic.stress[slots[component]];
+    largest = std::max(largest, std::abs(value));
+    error = std::max(error, std::abs(value - numerical));
+  }
+  const double relative = error / std::max(largest, 1e-20);
+  std::cout << "STRESS_ERROR D4 " << relative << '\n';
+  REQUIRE(relative <= 1e-5);
 }
 
 TEST_CASE("D4Pot is a Potential and PotentialConfig.d4 keeps its defaults",
