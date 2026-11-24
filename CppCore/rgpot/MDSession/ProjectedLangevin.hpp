@@ -750,7 +750,9 @@ private:
       return;
     }
     const Gradients g = gradients(ctx, reference);
-    double scale = 0.0;
+    // The plane tolerance is relative to the coordinates, with a floor of
+    // one length unit so a geometry at the origin can still converge.
+    double scale = 1.0;
     for (std::size_t k = 0; k < dim_; ++k) {
       scale = std::max(scale, std::abs(x[k]));
       if (ctx.hasPlane) {
