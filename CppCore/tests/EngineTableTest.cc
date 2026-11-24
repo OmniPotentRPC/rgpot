@@ -505,7 +505,7 @@ TEST_CASE("CBE engine energy, force, Hessian product and jet keep their bits",
   REQUIRE(e.caps(pot, &caps) == 0);
   REQUIRE(caps.analytic_hvp == 1);
   REQUIRE(caps.jet_order == 3);
-  REQUIRE(caps.reentrancy == 2);
+  REQUIRE(caps.reentrancy == 1);
 
   using namespace cbe_goldens;
   const std::array<int, 6> z{1, 6, 1, 1, 1, 1};
@@ -633,6 +633,95 @@ TEST_CASE("CBE engine energy, force, Hessian product and jet keep their bits",
                        nullptr, kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
   REQUIRE(error_of(e, pot).find("overlap") != std::string::npos);
   e.destroy(pot);
+}
+
+TEST_CASE("two CBE handles match their serial results",
+          "[engine][classical][cbe][threads]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *first = create(e, builtin_params("cbe"));
+  RgpotEnginePot *second = create(e, builtin_params("cbe"));
+  REQUIRE(first != nullptr);
+  REQUIRE(second != nullptr);
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(first, &caps) == 0);
+  REQUIRE(caps.reentrancy == 1);
+  REQUIRE(e.caps(second, &caps) == 0);
+  REQUIRE(caps.reentrancy == 1);
+
+  using namespace cbe_goldens;
+  const std::array<int, 6> z{1, 6, 1, 1, 1, 1};
+  struct Answer {
+    int rc = 1;
+    double energy = 0.0;
+    std::array<double, 18> force{};
+    std::array<double, 18> hvp{};
+    std::array<double, 54> jet{};
+    RgpotEngineDerivativeReport report{};
+  };
+  auto evaluate = [&](RgpotEnginePot *pot, const std::array<double, 18> &pos,
+                      const std::array<double, 18> &dir) {
+    Answer answer;
+    answer.rc = e.force(pot, 6, pos.data(), z.data(), answer.force.data(),
+                        &answer.energy, nullptr, kBox.data(), nullptr, nullptr);
+    if (answer.rc != RGPOT_ENGINE_OK) {
+      return answer;
+    }
+    answer.rc = e.hvp(pot, 6, pos.data(), z.data(), dir.data(),
+                      answer.hvp.data(), kBox.data());
+    if (answer.rc != RGPOT_ENGINE_OK) {
+      return answer;
+    }
+    answer.rc = e.taylor_jet(pot, 1, 6, pos.data(), z.data(), dir.data(), 3,
+                             answer.jet.data(), &answer.report, kBox.data());
+    return answer;
+  };
+  const Answer serial_first =
+      evaluate(first, kSaddlePositions, kSaddleDirection);
+  const Answer serial_second =
+      evaluate(second, kDisplacedPositions, kDisplacedDirection);
+  REQUIRE(serial_first.rc == RGPOT_ENGINE_OK);
+  REQUIRE(serial_second.rc == RGPOT_ENGINE_OK);
+
+  Answer concurrent_first;
+  Answer concurrent_second;
+  std::thread left([&] {
+    concurrent_first = evaluate(first, kSaddlePositions, kSaddleDirection);
+  });
+  std::thread right([&] {
+    concurrent_second =
+        evaluate(second, kDisplacedPositions, kDisplacedDirection);
+  });
+  left.join();
+  right.join();
+  REQUIRE(concurrent_first.rc == RGPOT_ENGINE_OK);
+  REQUIRE(concurrent_second.rc == RGPOT_ENGINE_OK);
+  REQUIRE(same_bits(&concurrent_first.energy, &serial_first.energy, 1));
+  REQUIRE(same_bits(concurrent_first.force.data(), serial_first.force.data(),
+                    18));
+  REQUIRE(same_bits(concurrent_first.hvp.data(), serial_first.hvp.data(), 18));
+  REQUIRE(same_bits(concurrent_first.jet.data(), serial_first.jet.data(), 54));
+  REQUIRE(concurrent_first.report.tracked == serial_first.report.tracked);
+  REQUIRE(concurrent_first.report.operations ==
+          serial_first.report.operations);
+  REQUIRE(same_bits(&concurrent_first.report.scale, &serial_first.report.scale,
+                    1));
+  REQUIRE(same_bits(&concurrent_second.energy, &serial_second.energy, 1));
+  REQUIRE(same_bits(concurrent_second.force.data(),
+                    serial_second.force.data(), 18));
+  REQUIRE(same_bits(concurrent_second.hvp.data(), serial_second.hvp.data(),
+                    18));
+  REQUIRE(same_bits(concurrent_second.jet.data(), serial_second.jet.data(),
+                    54));
+  REQUIRE(concurrent_second.report.operations ==
+          serial_second.report.operations);
+  REQUIRE(same_bits(&concurrent_second.report.scale,
+                    &serial_second.report.scale, 1));
+  e.destroy(first);
+  e.destroy(second);
 }
 #endif
 

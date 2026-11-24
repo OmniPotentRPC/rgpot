@@ -91,7 +91,11 @@ the external =potlibc= library.
   local PES library: the surface is the one potlibc generates from the PotLib
   2023 deposit, loaded as a private plugin image per handle.
   It evaluates a batch of systems in one =potlibc_evaluate= call and reports
-  =PotCaps::batched=; the bits equal the per-system answers.
+  =PotCaps::batched=; the bits equal the per-system answers. potlibc permits
+  concurrent use of distinct handles and forbids overlapping calls on one
+  handle.
+  Each handle serializes its own potlibc calls, and =caps().reentrancy= is
+  =Reentrancy::PerInstance=.
 
 *** =rgpot::CBEPot::maxJetOrder=
 

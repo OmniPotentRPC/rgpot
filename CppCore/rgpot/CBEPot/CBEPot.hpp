@@ -30,7 +30,9 @@ public:
                                const double *boxes, const double *directions,
                                int order, double *jet) const override;
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::ProcessSerial,
+    // potlibc allows distinct handles to run together. Calls on one handle
+    // must not overlap, so the engine admits one call at a time per handle.
+    return {.reentrancy = Reentrancy::PerInstance,
             .batched = true,
             .periodic = false,
             .analyticHvp = true};
@@ -41,6 +43,8 @@ private:
     void operator()(potlibc_handle *handle) const noexcept;
   };
   std::unique_ptr<potlibc_handle, HandleDeleter> handle_;
+  /// Serializes potlibc calls on this handle. Distinct handles are not locked
+  /// together: potlibc permits them to run at the same time.
   mutable std::mutex mutex_;
 };
 
