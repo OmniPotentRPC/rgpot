@@ -475,6 +475,20 @@ bool same_bits(const double *a, const double *b, std::size_t n) {
   return std::memcmp(a, b, n * sizeof(double)) == 0;
 }
 
+/// Tolerance check of a pinned value. Bit identity is additionally required
+/// on x86-64 with glibc, where the committed goldens were recorded.
+void require_pinned(const double *got, const double *want, std::size_t n) {
+  for (std::size_t i = 0; i < n; ++i) {
+    INFO(i);
+    const double scale = 1.0 + std::abs(want[i]);
+    REQUIRE(std::isfinite(got[i]));
+    REQUIRE(std::abs(got[i] - want[i]) <= 1e-6 * scale);
+  }
+#ifdef RGPOT_CBE_BIT_EXACT_HOST
+  REQUIRE(same_bits(got, want, n));
+#endif
+}
+
 struct CbeCase {
   const char *name;
   const std::array<double, 18> &positions;
@@ -524,38 +538,38 @@ TEST_CASE("CBE engine energy, force, Hessian product and jet keep their bits",
     REQUIRE(e.force(pot, 6, c.positions.data(), z.data(), force.data(),
                     &energy, nullptr, kBox.data(), nullptr,
                     nullptr) == RGPOT_ENGINE_OK);
-    REQUIRE(same_bits(&energy, &c.energy, 1));
-    REQUIRE(same_bits(force.data(), c.force.data(), 18));
+    require_pinned(&energy, &c.energy, 1);
+    require_pinned(force.data(), c.force.data(), 18);
 
     std::array<double, 18> product{};
     REQUIRE(e.hvp(pot, 6, c.positions.data(), z.data(), c.direction.data(),
                   product.data(), kBox.data()) == RGPOT_ENGINE_OK);
-    REQUIRE(same_bits(product.data(), c.hvp.data(), 18));
+    require_pinned(product.data(), c.hvp.data(), 18);
 
     std::array<double, 54> jet{};
     RgpotEngineDerivativeReport report{};
     REQUIRE(e.taylor_jet(pot, 1, 6, c.positions.data(), z.data(),
                          c.direction.data(), 3, jet.data(), &report,
                          kBox.data()) == RGPOT_ENGINE_OK);
-    REQUIRE(same_bits(jet.data(), c.jet.data(), 54));
+    require_pinned(jet.data(), c.jet.data(), 54);
     REQUIRE(same_bits(jet.data(), product.data(), 18));
     REQUIRE(report.tracked == 1);
     REQUIRE(report.operations == c.operations);
-    REQUIRE(same_bits(&report.scale, &c.scale, 1));
+    require_pinned(&report.scale, &c.scale, 1);
 
     std::array<double, 54> order_one{};
     RgpotEngineDerivativeReport one{};
     REQUIRE(e.taylor_jet(pot, 1, 6, c.positions.data(), z.data(),
                          c.direction.data(), 1, order_one.data(), &one,
                          kBox.data()) == RGPOT_ENGINE_OK);
-    REQUIRE(same_bits(order_one.data(), c.hvp.data(), 18));
+    require_pinned(order_one.data(), c.hvp.data(), 18);
     REQUIRE(one.operations == c.operations);
-    REQUIRE(same_bits(&one.scale, &c.order_one_scale, 1));
+    require_pinned(&one.scale, &c.order_one_scale, 1);
 
     REQUIRE(e.taylor_jet(pot, 1, 6, c.positions.data(), z.data(),
                          c.direction.data(), 2, order_one.data(), nullptr,
                          kBox.data()) == RGPOT_ENGINE_OK);
-    REQUIRE(same_bits(order_one.data(), c.jet.data(), 36));
+    require_pinned(order_one.data(), c.jet.data(), 36);
   }
 
   {
@@ -578,25 +592,24 @@ TEST_CASE("CBE engine energy, force, Hessian product and jet keep their bits",
                          boxes.data()) == RGPOT_ENGINE_OK);
     // [order][system][18]
     for (std::size_t k = 0; k < 3; ++k) {
-      REQUIRE(same_bits(batch.data() + k * 36, kSaddleJet.data() + k * 18,
-                        18));
-      REQUIRE(same_bits(batch.data() + k * 36 + 18,
-                        kDisplacedJet.data() + k * 18, 18));
+      require_pinned(batch.data() + k * 36, kSaddleJet.data() + k * 18, 18);
+      require_pinned(batch.data() + k * 36 + 18, kDisplacedJet.data() + k * 18,
+                     18);
     }
     REQUIRE(total.tracked == 1);
     REQUIRE(total.operations == kSaddleOperations + kDisplacedOperations);
     const double larger = std::max(kSaddleScale, kDisplacedScale);
-    REQUIRE(same_bits(&total.scale, &larger, 1));
+    require_pinned(&total.scale, &larger, 1);
 
     std::array<double, 36> forces{};
     std::array<double, 2> energies{};
     REQUIRE(e.force_batch(pot, 2, 6, positions.data(), z.data(),
                           forces.data(), energies.data(), nullptr,
                           boxes.data(), nullptr, nullptr) == RGPOT_ENGINE_OK);
-    REQUIRE(same_bits(forces.data(), kSaddleForce.data(), 18));
-    REQUIRE(same_bits(forces.data() + 18, kDisplacedForce.data(), 18));
-    REQUIRE(same_bits(&energies[0], &kSaddleEnergy, 1));
-    REQUIRE(same_bits(&energies[1], &kDisplacedEnergy, 1));
+    require_pinned(forces.data(), kSaddleForce.data(), 18);
+    require_pinned(forces.data() + 18, kDisplacedForce.data(), 18);
+    require_pinned(&energies[0], &kSaddleEnergy, 1);
+    require_pinned(&energies[1], &kDisplacedEnergy, 1);
     RgpotEngineCaps batched{};
     batched.size = sizeof(batched);
     REQUIRE(e.caps(pot, &batched) == 0);
@@ -633,6 +646,15 @@ TEST_CASE("CBE engine energy, force, Hessian product and jet keep their bits",
                        nullptr, kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
   REQUIRE(error_of(e, pot).find("overlap") != std::string::npos);
   e.destroy(pot);
+}
+
+TEST_CASE("CBE bit-exact goldens run only on x86-64 with glibc",
+          "[engine][classical][cbe][jet][golden]") {
+#ifdef RGPOT_CBE_BIT_EXACT_HOST
+  SUCCEED("this host compares the CBE engine to the committed bit goldens");
+#else
+  SKIP("bit-exact CBE goldens run only on x86-64 with glibc");
+#endif
 }
 
 TEST_CASE("two CBE handles match their serial results",

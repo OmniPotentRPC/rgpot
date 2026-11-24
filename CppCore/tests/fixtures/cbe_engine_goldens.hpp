@@ -6,7 +6,9 @@
 // eV/Angstrom per Angstrom^k). The inputs are the Bohr geometry and direction
 // of the potlibc ch52008 jet goldens, scaled to Angstrom; every output is the exact
 // double potlibc's ch52008 returns through CBEPot's unit conversion on x86-64
-// Linux with glibc libm. kSaddle is the saddle point of the H + CH4 surface,
+// Linux with glibc libm. The bit comparison is compiled in only when meson
+// sees that host; other hosts keep a tolerance check. kSaddle is the saddle
+// point of the H + CH4 surface,
 // kDisplaced a geometry 0.05 Bohr away along a fixed pattern. Each Jet array
 // holds the derivative orders 1, 2 and 3 in blocks of 18 values. A kernel
 // evaluation costs the same number of forward-mode operations at every
