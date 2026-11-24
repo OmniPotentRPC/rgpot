@@ -21,7 +21,6 @@ from rgpot.ase import RgpotCalculator
 _STRAIN_STEP = 2e-4
 _FD_TOL = 5e-10
 _VOIGT_PAIRS = ((0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (0, 1))
-_VOIGT_FROM_FULL = ((0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (0, 1))
 
 
 def _silicon_cell(seed: int = 20261124) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -74,9 +73,7 @@ def _fd_stress_voigt(eval_energy, pos: np.ndarray, box: np.ndarray) -> np.ndarra
 
 
 def _full_to_voigt(stress_3x3: np.ndarray) -> np.ndarray:
-    return np.array(
-        [stress_3x3[r, c] for r, c in _VOIGT_FROM_FULL], dtype=np.float64
-    )
+    return np.array([stress_3x3[r, c] for r, c in _VOIGT_PAIRS], dtype=np.float64)
 
 
 def _subprocess_pythonpath() -> str:
@@ -204,7 +201,8 @@ def test_tersoff_stress_one_vs_n_threads(kind: str) -> None:
 
 @pytest.mark.thread_unsafe
 @pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no TersoffPot in this build")
-def test_tersoff_stress_omp_one_vs_n_threads() -> None:
+def test_tersoff_stress_thread_setting_determinism_smoke() -> None:
+    """Smoke-test determinism when thread settings differ across subprocesses."""
     script = (
         "import hashlib, numpy as np, rgpot\n"
         "from ase.build import bulk\n"
