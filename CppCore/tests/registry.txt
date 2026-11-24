@@ -130,12 +130,13 @@ capi_threads_tsan | tests core posix tsan | custom timeout=120 |
 # MorsePotTest, SuttonChenPotTest, ThreadTeamTest with its OMP_THREAD_LIMIT
 # reruns, D2PotTest and omp_crossover_v3_analysis (a bootstrap in pure Python,
 # further down) cost seconds of CPU each, and meson runs as many tests at
-# once as the runner has CPUs. On a
-# 2-CPU runner, with the other tests competing, their wall time was 4 to 7
-# times what each takes alone: ThreadTeamTest 74 s, SuttonChenPotTest 80 s,
-# MorsePotTest 52 s, D2PotTest 112 s and the analysis 24 s. Their timeouts
-# leave at least 3.5 times that, so a slow or busy runner fails only on a
-# hang.
+# once as the runner has CPUs. On a 2-CPU runner, with the other tests
+# competing, their wall time was 4 to 7 times what each takes alone:
+# ThreadTeamTest 74 s, SuttonChenPotTest 80 s, MorsePotTest 52 s, D2PotTest
+# 112 s and the analysis 24 s. Their timeouts leave at least 3.5 times that,
+# so a slow or busy runner fails only on a hang: 300 s for MorsePotTest,
+# SuttonChenPotTest and ThreadTeamTest with its reruns, 600 s for D2PotTest,
+# and the 120 s the analysis already had.
 FortranPotsTest | tests core fortran | unit fortran_pots_test FortranPotsTest.cc |
 MorsePotTest | tests core | unit morse_pot_test MorsePotTest.cc timeout=300 |
 CPMDPotConfigMessageTest | tests core | unit cpmd_pot_config_message_test CPMDPotConfigMessageTest.cc suite=cpmd |
