@@ -936,6 +936,32 @@ if openmm_opt.allowed() and python3_engines.found()
                 env: external_env,
                 timeout: 120,
             )
+            openmm_session_review_test = executable(
+                'test_openmm_session_review',
+                files('openmm/test_openmm_session_review.cpp'),
+                link_with: openmm_session_lib,
+                dependencies: [openmm_lib],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+            )
+            foreach review_case : [
+                'equipartition',
+                'mean-force',
+                'wall-energy',
+                'metric-seed',
+                'seed-chunking',
+                'wall-multi-bounce',
+                'off-plane-force',
+                'openmm-constraints',
+            ]
+                test(
+                    'openmm_review_' + review_case,
+                    openmm_session_review_test,
+                    args: [review_case],
+                    env: external_env,
+                    timeout: 180,
+                )
+            endforeach
         endif
     endif
 endif
