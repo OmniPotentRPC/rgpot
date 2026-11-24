@@ -763,10 +763,16 @@ impl CAbiMdSession {
         ) {
             ops.run_langevin = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, get_neighbors) + 8 {
+        if !holds(
+            std::mem::offset_of!(MdSessionOps, get_neighbors),
+            std::mem::size_of_val(&ops.get_neighbors),
+        ) {
             ops.get_neighbors = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, set_neighbors) + 8 {
+        if !holds(
+            std::mem::offset_of!(MdSessionOps, set_neighbors),
+            std::mem::size_of_val(&ops.set_neighbors),
+        ) {
             ops.set_neighbors = None;
         }
         let Some(n3) = n_atoms.checked_mul(3) else {
@@ -1773,7 +1779,7 @@ mod tests {
             .contains("does not accept supplied neighbors"));
 
         let mut short = mock_ops();
-        short.struct_size = std::mem::offset_of!(MdSessionOps, destroy) + 8;
+        short.struct_size = REQUIRED_OPS_SIZE;
         let (mut bare, _ctx) = mock_session(short, &destroyed);
         assert!(bare
             .get_neighbors(&request, None)
