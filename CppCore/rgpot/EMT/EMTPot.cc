@@ -18,18 +18,18 @@
 
 namespace rgpot {
 
-// Members are released in reverse order: the calculator first, the
-// provider it may borrow last.
-struct EMTPot::State {
-  std::array<double, 9> box;
-  std::vector<int> numbers;
+namespace {
+
+// Released in reverse order of these members: the calculator first, the
+// provider it may borrow last. Addressed by EMTPot::m_cell so the class
+// keeps its installed members.
+struct Kernel {
+  std::array<double, 9> box{};
   std::unique_ptr<EMTRasmussenParameterProvider> provider;
   std::unique_ptr<Atoms> atoms;
   std::unique_ptr<SuperCell> cell;
   std::unique_ptr<EMT> emt;
 };
-
-namespace {
 
 [[noreturn]] void refuse(const std::string &what) {
   throw std::invalid_argument("EMTPot: " + what);
@@ -71,7 +71,17 @@ EMTPot::EMTPot(const EMTConfig &config)
   m_paramsKey = fp.h;
 }
 
-EMTPot::~EMTPot() = default;
+void EMTPot::reset() const {
+  delete static_cast<Kernel *>(m_cell);
+  m_cell = nullptr;
+  m_atoms = nullptr;
+  m_provider = nullptr;
+  m_emt = nullptr;
+  m_nAtoms = 0;
+  m_numbers.clear();
+}
+
+EMTPot::~EMTPot() { reset(); }
 
 void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const long n = static_cast<long>(in.nAtoms);
@@ -91,18 +101,20 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   try {
     // Asap's neighbour list does not notice a new cell, so the cached
     // objects serve one cell and one species list only.
-    if (!m_state || !std::equal(in.box, in.box + 9, m_state->box.begin()) ||
-        !std::equal(in.atmnrs, in.atmnrs + n, m_state->numbers.begin(),
-                    m_state->numbers.end())) {
+    auto *kernel = static_cast<Kernel *>(m_cell);
+    if (kernel == nullptr ||
+        !std::equal(in.box, in.box + 9, kernel->box.begin()) || m_nAtoms != n ||
+        !std::equal(in.atmnrs, in.atmnrs + n, m_numbers.begin(),
+                    m_numbers.end())) {
       bool periodic[3] = {true, true, true};
-      auto next = std::make_unique<State>();
+      auto next = std::make_unique<Kernel>();
+      std::vector<int> numbers(in.atmnrs, in.atmnrs + n);
       std::copy(in.box, in.box + 9, next->box.begin());
-      next->numbers.assign(in.atmnrs, in.atmnrs + n);
       next->cell = std::make_unique<SuperCell>(basis, periodic);
-      next->atoms = std::make_unique<Atoms>(reinterpret_cast<Vec *>(pos.data()),
-                                            static_cast<int>(n),
-                                            next->cell.get());
-      next->atoms->SetAtomicNumbers(next->numbers.data());
+      next->atoms =
+          std::make_unique<Atoms>(reinterpret_cast<Vec *>(pos.data()),
+                                  static_cast<int>(n), next->cell.get());
+      next->atoms->SetAtomicNumbers(numbers.data());
       if (m_config.rasmussen) {
         next->provider = std::make_unique<EMTRasmussenParameterProvider>();
         next->emt = std::make_unique<EMT>(next->provider.get());
@@ -110,10 +122,17 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         next->emt = std::make_unique<EMT>(nullptr);
       }
       next->atoms->SetCalculator(next->emt.get());
-      m_state = std::move(next);
+      Kernel *raw = next.release();
+      reset();
+      m_cell = raw;
+      m_atoms = raw->atoms.get();
+      m_provider = raw->provider.get();
+      m_emt = raw->emt.get();
+      m_nAtoms = n;
+      m_numbers = std::move(numbers);
     }
-    Atoms *atoms = m_state->atoms.get();
-    EMT *emt = m_state->emt.get();
+    auto *atoms = static_cast<Atoms *>(m_atoms);
+    auto *emt = static_cast<EMT *>(m_emt);
     atoms->SetCartesianPositions(reinterpret_cast<Vec *>(pos.data()));
     atoms->SetUnitCell(basis, true);
     const double energy = emt->GetPotentialEnergy();
@@ -131,12 +150,12 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->energy = energy;
     std::memcpy(out->F, forces, static_cast<size_t>(n) * sizeof(Vec));
   } catch (const Exception &error) {
-    m_state.reset();
+    reset();
     refuse(error.GetMessage());
   } catch (const std::domain_error &) {
     throw;
   } catch (...) {
-    m_state.reset();
+    reset();
     throw;
   }
 }

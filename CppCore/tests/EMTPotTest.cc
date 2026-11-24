@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -89,8 +90,8 @@ TEST_CASE("EMT energy matches the copper cluster pin", "[emt]") {
   REQUIRE_THAT(energy, WithinAbs(5.129167, 5e-4));
   double worst = 0.0;
   for (int i = 0; i < 4; ++i) {
-    const double n2 = forces(i, 0) * forces(i, 0) + forces(i, 1) * forces(i, 1) +
-                      forces(i, 2) * forces(i, 2);
+    const double n2 = forces(i, 0) * forces(i, 0) +
+                      forces(i, 1) * forces(i, 1) + forces(i, 2) * forces(i, 2);
     worst = std::max(worst, std::sqrt(n2));
   }
   REQUIRE_THAT(worst, WithinAbs(1.914263, 2e-3));
@@ -98,8 +99,7 @@ TEST_CASE("EMT energy matches the copper cluster pin", "[emt]") {
   REQUIRE(pot.paramsKey() != 0);
 }
 
-TEST_CASE("EMT reads the species again when only the species change",
-          "[emt]") {
+TEST_CASE("EMT reads the species again when only the species change", "[emt]") {
   rgpot::types::AtomMatrix positions(4, 3);
   const std::array<std::array<double, 3>, 4> xyz = {{
       {8.1925, 8.1925, 8.1925},
@@ -226,9 +226,12 @@ FccBox fccCu(int side, double lattice) {
           const double fz =
               (static_cast<double>(iz) + b[2]) / static_cast<double>(side);
           const std::size_t idx = out.z.size();
-          const double jx = 0.01 * lattice * std::sin(0.23 * static_cast<double>(idx) + 0.1);
-          const double jy = 0.01 * lattice * std::cos(0.31 * static_cast<double>(idx) + 0.2);
-          const double jz = 0.01 * lattice * std::sin(0.29 * static_cast<double>(idx) + 0.3);
+          const double jx =
+              0.01 * lattice * std::sin(0.23 * static_cast<double>(idx) + 0.1);
+          const double jy =
+              0.01 * lattice * std::cos(0.31 * static_cast<double>(idx) + 0.2);
+          const double jz =
+              0.01 * lattice * std::sin(0.29 * static_cast<double>(idx) + 0.3);
           out.pos.push_back(fx * L + jx);
           out.pos.push_back(fy * L + jy);
           out.pos.push_back(fz * L + jz);
@@ -503,6 +506,112 @@ TEST_CASE("EMT reports coincident atoms as std::domain_error",
   REQUIRE_THROWS_AS(pot(positions, copper, kCube), std::domain_error);
 }
 
+TEST_CASE("EMT keeps a cached kernel unless the kernel throws",
+          "[emt][errors]") {
+  // g_liveBlocks counts allocations that outlive the call. A validation
+  // failure and a non-finite force leave the cached kernel in place, so the
+  // next call with the same cell does not build another one. An Asap
+  // exception drops it, and the next accepted call builds it again.
+  const auto positions = copperCluster();
+  auto shifted = positions;
+  shifted(0, 0) += 0.02;
+  auto coincident = positions;
+  for (int k = 0; k < 3; ++k) {
+    coincident(1, k) = coincident(0, k);
+  }
+  auto infinite = positions;
+  infinite(2, 1) = std::numeric_limits<double>::infinity();
+  const std::vector<int> copper(4, 29);
+  const std::vector<int> carbon(4, 6);
+  const Box singular = {{{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0}}};
+  rgpot::types::AtomMatrix none(0, 3);
+  const std::vector<int> nothing;
+
+  const long before = g_liveBlocks.load();
+  rgpot::EMTPot pot;
+  double energy = 0.0;
+  rgpot::types::AtomMatrix forces;
+  std::tie(energy, forces, std::ignore) = pot(positions, copper, kCube);
+  const long kernel = g_liveBlocks.load() - before;
+  REQUIRE(kernel >= 8);
+  REQUIRE_THAT(energy, WithinAbs(5.129167, 5e-4));
+
+  rgpot::EMTPot reference;
+  double shifted_energy = 0.0;
+  rgpot::types::AtomMatrix shifted_forces;
+  std::tie(shifted_energy, shifted_forces, std::ignore) =
+      reference(shifted, copper, kCube);
+
+  const auto kept = [](long mark, long kernel_blocks) {
+    const long after = g_liveBlocks.load();
+    REQUIRE(after + kernel_blocks / 2 > mark);
+  };
+  const auto reused = [](long mark, long kernel_blocks) {
+    const long grown = g_liveBlocks.load() - mark;
+    REQUIRE(grown < kernel_blocks / 2);
+  };
+
+  long mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(pot(positions, copper, singular), std::invalid_argument);
+  kept(mark, kernel);
+
+  mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(pot(infinite, copper, kCube), std::invalid_argument);
+  kept(mark, kernel);
+
+  mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(pot(none, nothing, kCube), std::invalid_argument);
+  kept(mark, kernel);
+
+  mark = g_liveBlocks.load();
+  double again = 0.0;
+  rgpot::types::AtomMatrix again_forces;
+  std::tie(again, again_forces, std::ignore) = pot(shifted, copper, kCube);
+  reused(mark, kernel);
+  REQUIRE_THAT(again, WithinAbs(shifted_energy, 1e-12));
+  for (int i = 0; i < 4; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      REQUIRE_THAT(again_forces(i, k), WithinAbs(shifted_forces(i, k), 1e-12));
+    }
+  }
+
+  mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(pot(coincident, copper, kCube), std::domain_error);
+  kept(mark, kernel);
+
+  mark = g_liveBlocks.load();
+  double after_domain = 0.0;
+  rgpot::types::AtomMatrix after_forces;
+  std::tie(after_domain, after_forces, std::ignore) =
+      pot(shifted, copper, kCube);
+  reused(mark, kernel);
+  REQUIRE_THAT(after_domain, WithinAbs(shifted_energy, 1e-12));
+  for (int i = 0; i < 4; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      REQUIRE_THAT(after_forces(i, k), WithinAbs(shifted_forces(i, k), 1e-12));
+    }
+  }
+
+  mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(pot(positions, carbon, kCube), std::invalid_argument);
+  const long dropped = mark - g_liveBlocks.load();
+  REQUIRE(dropped > kernel / 2);
+
+  mark = g_liveBlocks.load();
+  double rebuilt = 0.0;
+  rgpot::types::AtomMatrix rebuilt_forces;
+  std::tie(rebuilt, rebuilt_forces, std::ignore) =
+      pot(positions, copper, kCube);
+  const long grown = g_liveBlocks.load() - mark;
+  REQUIRE(grown > kernel / 2);
+  REQUIRE_THAT(rebuilt, WithinAbs(energy, 1e-12));
+  for (int i = 0; i < 4; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      REQUIRE_THAT(rebuilt_forces(i, k), WithinAbs(forces(i, k), 1e-12));
+    }
+  }
+}
+
 TEST_CASE("EMT follows a change of the cell between calls", "[emt]") {
   constexpr int kRepeat = 4;
   constexpr double kLattice = 3.61;
@@ -535,12 +644,14 @@ TEST_CASE("EMT follows a change of the cell between calls", "[emt]") {
   const std::vector<int> copper(static_cast<size_t>(n), 29);
   const double side = kLattice * kRepeat;
   const Box cube = {{{side, 0.0, 0.0}, {0.0, side, 0.0}, {0.0, 0.0, side}}};
-  const Box stretched = {
-      {{1.05 * side, 0.0, 0.0}, {0.0, 1.05 * side, 0.0}, {0.0, 0.0, 1.05 * side}}};
+  const Box stretched = {{{1.05 * side, 0.0, 0.0},
+                          {0.0, 1.05 * side, 0.0},
+                          {0.0, 0.0, 1.05 * side}}};
 
   rgpot::EMTPot reused;
   (void)reused(relaxed, copper, cube);
-  const auto [e_reused, f_reused, v_reused] = reused(strained, copper, stretched);
+  const auto [e_reused, f_reused, v_reused] =
+      reused(strained, copper, stretched);
   rgpot::EMTPot fresh;
   const auto [e_fresh, f_fresh, v_fresh] = fresh(strained, copper, stretched);
 
@@ -552,7 +663,8 @@ TEST_CASE("EMT follows a change of the cell between calls", "[emt]") {
   }
 }
 
-TEST_CASE("EMT OpenMP force path is bit-identical across threads", "[emt][threads]") {
+TEST_CASE("EMT OpenMP force path is bit-identical across threads",
+          "[emt][threads]") {
   ThreadGuard guard;
   rgpot::EMTPot sanity;
 
@@ -572,9 +684,12 @@ TEST_CASE("EMT OpenMP force path is bit-identical across threads", "[emt][thread
     ThreadGuard::set(th);
     const auto before = rgpot::teamsOpened();
     rgpot::EMTPot pot;
-    CHECK(countBitDiffs(runEval(pot, small.pos, small.z, small.box), ref_small) == 0);
-    CHECK(countBitDiffs(runEval(pot, small_reuse, small.z, small.box), ref_small_reuse) == 0);
-    CHECK(countBitDiffs(runEval(pot, small_rebuild, small.z, small.box), ref_small_rebuild) == 0);
+    CHECK(countBitDiffs(runEval(pot, small.pos, small.z, small.box),
+                        ref_small) == 0);
+    CHECK(countBitDiffs(runEval(pot, small_reuse, small.z, small.box),
+                        ref_small_reuse) == 0);
+    CHECK(countBitDiffs(runEval(pot, small_rebuild, small.z, small.box),
+                        ref_small_rebuild) == 0);
     CHECK(rgpot::teamsOpened() == before);
   }
 
@@ -593,18 +708,20 @@ TEST_CASE("EMT OpenMP force path is bit-identical across threads", "[emt][thread
     INFO("large OMP_NUM_THREADS=" << th);
     ThreadGuard::set(th);
     rgpot::EMTPot pot;
-    CHECK(countBitDiffs(runEval(pot, large.pos, large.z, large.box), ref_large) == 0);
+    CHECK(countBitDiffs(runEval(pot, large.pos, large.z, large.box),
+                        ref_large) == 0);
     const auto before = rgpot::teamsOpened();
-    CHECK(countBitDiffs(runEval(pot, large_reuse, large.z, large.box), ref_large_reuse) == 0);
+    CHECK(countBitDiffs(runEval(pot, large_reuse, large.z, large.box),
+                        ref_large_reuse) == 0);
 #if defined(_OPENMP)
     CHECK(rgpot::teamsOpened() == before + 1);
 #endif
-    CHECK(countBitDiffs(runEval(pot, large_rebuild, large.z, large.box), ref_large_rebuild) == 0);
+    CHECK(countBitDiffs(runEval(pot, large_rebuild, large.z, large.box),
+                        ref_large_rebuild) == 0);
   }
 }
 
-TEST_CASE("EMT Exception keeps its message per object and per copy",
-          "[emt]") {
+TEST_CASE("EMT Exception keeps its message per object and per copy", "[emt]") {
   static_assert(sizeof(Exception) == sizeof(void *),
                 "Exception is a single pointer in the installed header");
   static_assert(noexcept(std::declval<const Exception &>().GetMessage()),

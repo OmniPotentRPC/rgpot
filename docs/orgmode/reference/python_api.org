@@ -699,13 +699,17 @@ rgpot.EMTPot(rasmussen=False)
   force norm of 1.914263 eV/Angstrom with the default provider.
   ASE's =EMT= has the same parameters for the elements both cover, and agrees to
   1e-6 when it is built with =asap_cutoff=True=.
-- Errors :: an element the provider does not cover, a cell too thin for the
-  kernel, a cell that is singular or not finite, and positions that are not
-  finite raise =ValueError= with a message that starts =EMTPot:=.
-  No atoms raises =ValueError= (=invalid parameter: nAtoms must be positive=).
+- Errors :: an element the provider does not cover, and a cell too thin for the
+  kernel, raise =ValueError= with a message that starts =EMTPot:= and drop the
+  cached kernel.
+  A singular or non-finite cell, and positions that are not finite, raise
+  =ValueError= with a message that starts =EMTPot:= before the kernel runs, and
+  keep a kernel cached by an earlier successful call.
+  No atoms raises =ValueError= (=invalid parameter: nAtoms must be positive=)
+  and keeps that kernel too.
   Two atoms at the same position raise =rgpot.NumericalError=, as does a
-  non-finite energy.
-  A call that raised leaves no state behind.
+  non-finite energy, and both keep the cached kernel.
+  Any other failure from the kernel drops the cached kernel.
 
 *** =rgpot.SWPot=
 

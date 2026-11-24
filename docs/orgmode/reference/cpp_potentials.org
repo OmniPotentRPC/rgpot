@@ -1217,15 +1217,19 @@ explicit EMTPot(const EMTConfig &config);
   a second incoming-partner reduction pass, so energies and forces match the
   one-thread bits at 1, 2, 4 and 8 threads.
   The force call does not write a stress.
-- Errors :: an element the provider does not cover, a cell too thin for the
-  kernel, a cell that is singular or not finite, and positions that are not
-  finite throw =std::invalid_argument= with a message that starts =EMTPot:=.
+- Errors :: an element the provider does not cover, and a cell too thin for the
+  kernel, throw =std::invalid_argument= with a message that starts =EMTPot:= and
+  drop the cached kernel.
+  The Asap =Exception= class does not derive from =std::exception= and never
+  escapes; that =std::invalid_argument= is how it is reported.
+  A singular or non-finite cell, and positions that are not finite, throw
+  =std::invalid_argument= with a message that starts =EMTPot:= before the kernel
+  runs, and keep a kernel cached by an earlier successful call.
   Zero atoms throw =std::invalid_argument=
-  (=invalid parameter: nAtoms must be positive=).
+  (=invalid parameter: nAtoms must be positive=) and keep that kernel too.
   An energy or a force that is not finite, which two atoms at one point cause,
-  throws =std::domain_error=.
-  A call that threw leaves no state behind, and the Asap =Exception= class,
-  which does not derive from =std::exception=, never escapes.
+  throws =std::domain_error= and keeps the cached kernel.
+  Any other exception from the kernel drops the cached kernel and propagates.
 
 Parameter source: Jacobsen, Norskov and Puska, Phys.
 Rev. B 35, 7423 (1987), doi:10.1103/PhysRevB.35.7423.
