@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # MIT License
 # Copyright 2023--present rgpot developers
-"""Show where eOn 3b2586f departs from the QSC equations on mixtures.
+"""Show where the pinned eOn QSC departs from the equations on mixtures.
 
 Not part of any test and not a source of reference data. For the
 orthorhombic cases of ``oracle_mixtures.dat`` it runs three evaluations and
@@ -21,7 +21,7 @@ Each is compared with the oracle twice: with the paper's density term
         --eon-src "$EON_SRC" --eon-build "$EON_SRC/builddir" \\
         --data "$RGPOT/CppCore/tests/data/qsc/oracle_mixtures.dat")
 
-with ``EON_SRC`` the eOn checkout at 3b2586f and ``RGPOT`` this repository.
+with ``EON_SRC`` the pinned eOn checkout and ``RGPOT`` this repository.
 """
 
 from __future__ import annotations

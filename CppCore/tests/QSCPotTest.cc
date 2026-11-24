@@ -10,11 +10,11 @@
 //   Philos. Mag. Lett. 63, 217 (1991), doi:10.1080/09500839108205994),
 //   including half-integer exponents on Cu-Ag; the density uses the mixed
 //   a_ij and m_ij of Eq. (1c).
-// - Pure-element energies and forces from a real eOn build (commit 3b2586f) in
-//   CppCore/tests/data/qsc/eon_3b2586f_pure.dat, to 1e-12 relative.
+// - Pure-element energies and forces from a pinned eOn QSC build in
+//   CppCore/tests/data/qsc/eon_pure.dat, to 1e-12 relative.
 // - Mixture energies, forces and stress from an independent 50-digit
 //   evaluation of the published equations in
-//   CppCore/tests/data/qsc/oracle_mixtures.dat. eOn 3b2586f is not a reference
+//   CppCore/tests/data/qsc/oracle_mixtures.dat. eOn is not a reference
 //   for mixtures; see docs/orgmode/reference/qsc.org.
 // - Doye and Wales 10-8 cluster minima (Pt38 Oh and Pt75 D5h) via
 //   setElementParameter, and bit-parity with SuttonChenPot.
@@ -124,6 +124,38 @@ void hetero_dimer_oracle(int za, int zb, double r, double *energy,
   const double emb_b = pb.c * pb.epsilon * root_phi;
   *energy = v_ab - emb_a - emb_b;
   *dEdr = (-n_ab * v_ab + 0.5 * m_ab * (emb_a + emb_b)) / r;
+}
+
+double direct_periodic_energy(const QscRow &row, const AtomMatrix &pos,
+                              double side, double cutoff) {
+  const int reach = static_cast<int>(std::ceil(cutoff / side)) + 1;
+  const double cutoff2 = cutoff * cutoff;
+  std::vector<double> density(pos.rows(), 0.0);
+  double pair_energy = 0.0;
+  for (std::size_t atom_i = 0; atom_i < pos.rows(); ++atom_i) {
+    for (std::size_t atom_j = 0; atom_j < pos.rows(); ++atom_j) {
+      for (int i = -reach; i <= reach; ++i) {
+        for (int j = -reach; j <= reach; ++j) {
+          for (int k = -reach; k <= reach; ++k) {
+            const double dx = pos(atom_i, 0) - pos(atom_j, 0) - i * side;
+            const double dy = pos(atom_i, 1) - pos(atom_j, 1) - j * side;
+            const double dz = pos(atom_i, 2) - pos(atom_j, 2) - k * side;
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 > 0.0 && r2 <= cutoff2) {
+              const double ar = row.a / std::sqrt(r2);
+              density[atom_i] += std::pow(ar, row.m);
+              pair_energy += 0.5 * row.epsilon * std::pow(ar, row.n);
+            }
+          }
+        }
+      }
+    }
+  }
+  double energy = pair_energy;
+  for (double rho : density) {
+    energy -= row.epsilon * row.c * std::sqrt(rho);
+  }
+  return energy;
 }
 
 std::vector<double> fcc_cell(int cells, double lattice, double *box) {
@@ -310,6 +342,71 @@ TEST_CASE("QSC pure dimers at r = a0 match the closed-form identity", "[QSC]") {
   }
 }
 
+TEST_CASE("QSC sums every periodic image beyond the minimum image", "[QSC]") {
+  constexpr double side = 4.5;
+  constexpr double cutoff = 8.0;
+  const QscRow &cu = find_row(29);
+  const AtomMatrix pos{{0.35, 1.1, 2.7}, {2.2, 3.7, 0.4}};
+  const std::vector<int> types(pos.rows(), cu.z);
+  const double expected = direct_periodic_energy(cu, pos, side, cutoff);
+
+  for (const auto mode :
+       {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+    rgpot::QSCPot pot({.cutoff = cutoff, .periodic = true});
+    pot.setNeighbourMode(mode);
+    auto [energy, forces, variance] = pot(pos, types, cube(side));
+    (void)variance;
+    REQUIRE_THAT(energy, WithinRel(expected, 2.0e-14));
+    REQUIRE(forces.rows() == pos.rows());
+    REQUIRE_FALSE(pot.listReused());
+  }
+}
+
+TEST_CASE("QSC image sums handle scaled cells and bound their work", "[QSC]") {
+  constexpr double short_side = 4.5;
+  constexpr double cutoff = 8.0;
+  const QscRow &cu = find_row(29);
+  const AtomMatrix pos{{0.0, 0.0, 0.0}};
+  const std::vector<int> types{cu.z};
+  auto box = cube(1.0e200);
+  box[2][2] = short_side;
+
+  rgpot::QSCPot pot({.cutoff = cutoff, .periodic = true});
+  auto [energy, forces, variance] = pot(pos, types, box);
+  (void)variance;
+  const double ar = cu.a / short_side;
+  const double expected =
+      cu.epsilon * std::pow(ar, cu.n) -
+      cu.epsilon * cu.c * std::sqrt(2.0 * std::pow(ar, cu.m));
+  REQUIRE_THAT(energy, WithinRel(expected, 2.0e-14));
+  REQUIRE_THAT(forces(0, 0), WithinAbs(0.0, 0.0));
+  REQUIRE_THAT(forces(0, 1), WithinAbs(0.0, 0.0));
+  REQUIRE_THAT(forces(0, 2), WithinAbs(0.0, 0.0));
+
+  auto anisotropic = cube(9.0);
+  anisotropic[0][0] = 1.0e200;
+  auto [anisotropic_energy, anisotropic_forces, anisotropic_variance] =
+      pot(pos, types, anisotropic);
+  (void)anisotropic_forces;
+  (void)anisotropic_variance;
+  REQUIRE_THAT(anisotropic_energy, WithinAbs(0.0, 0.0));
+
+  auto left_handed = cube(9.0);
+  left_handed[0][0] = -9.0;
+  auto [left_energy, left_forces, left_variance] =
+      pot(pos, types, left_handed);
+  (void)left_forces;
+  (void)left_variance;
+  REQUIRE_THAT(left_energy, WithinAbs(0.0, 0.0));
+
+  REQUIRE_THROWS_WITH(
+      pot(pos, types, cube(1.0e-6)),
+      Catch::Matchers::ContainsSubstring("periodic image extent exceeds cap"));
+  REQUIRE_THROWS_WITH(
+      pot(pos, types, cube(0.21)),
+      Catch::Matchers::ContainsSubstring("periodic image count exceeds cap"));
+}
+
 TEST_CASE("QSC fcc crystals at 2*a0 reproduce the published cohesive energies",
           "[QSC]") {
   // Qi, Cagin, Kimura and Goddard, Phys. Rev. B 59, 3527 (1999), Table I and
@@ -370,14 +467,14 @@ TEST_CASE("QSC heteronuclear Cu-Ag and Cu-Ni dimers match alloy mixing rules",
   }
 }
 
-TEST_CASE("QSC pure elements match real eOn 3b2586f to 1e-12 relative",
+TEST_CASE("QSC pure elements match real eOn to 1e-12 relative",
           "[QSC][eon]") {
-  // eon_3b2586f_pure.dat: the unmodified eOn QSC class, built from commit
-  // 3b2586f; generator, compile line and provenance are in its header and in
+  // eon_pure.dat: the unmodified eOn QSC class from the pinned source snapshot;
+  // generator, compile line and provenance are in its header and in
   // scripts/qsc_reference/gen_eon_pure.py. Pure species only: eOn reuses pair
   // parameters across species there, so mixtures use oracle_mixtures.dat.
   const RefFile ref =
-      load_reference("CppCore/tests/data/qsc/eon_3b2586f_pure.dat");
+      load_reference("CppCore/tests/data/qsc/eon_pure.dat");
 
   // The table the reference was evaluated with is the default table.
   REQUIRE(ref.params.size() == kQscTable.size());

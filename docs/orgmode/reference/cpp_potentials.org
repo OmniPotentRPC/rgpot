@@ -189,8 +189,8 @@ class.
 
 - Inputs :: =cutoff= (truncation distance, default 8.0; 0 or less keeps every
   pair), =verlet_skin= (Verlet neighbour-list skin, default 0.5), =periodic=
-  (minimum image, default true), =stress= (write the Cauchy stress, default
-  false).
+  (sum periodic images inside the cutoff, default true), =stress= (write the
+  Cauchy stress, default false).
 - Units :: =cutoff= and =verlet_skin= in Angstrom; =periodic= and =stress= are
   boolean flags.
 - Outputs :: the parameters of =rgpot::QSCPot=.
@@ -1232,10 +1232,12 @@ explicit QSCPot(const QSCConfig &c);
   energy shift at the cutoff.
   The default element table covers Ni (28), Cu (29), Rh (45), Pd (46), Ag (47),
   Ir (77), Pt (78) and Au (79).
+  A periodic call sums every image inside the cutoff, including self-images; it
+  is not limited to one minimum image when the cutoff exceeds half the cell.
   With =periodic= false the cell is not used to fold pairs.
   With =stress= set the force call writes the stress when the cell volume is
   positive.
-  Mixtures follow the published equations and do not reproduce eOn 3b2586f; pure
+  Mixtures follow the published equations and do not reproduce eOn; pure
   elements do.
   See [[file:qsc.org][Quantum Sutton-Chen potential]].
 - Errors :: the errors of =rgpot::QSCConfig=.

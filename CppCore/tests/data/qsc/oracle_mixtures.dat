@@ -9,7 +9,7 @@
 # explicitly. The analytic gradient was checked against 50-digit central
 # differences of the energy and of the strained energy before writing.
 # qsc_oracle.py sha256 63db736b0eb68f2809ddb11e453e44c89cad93b34aaca4922de0635480cdcc3b
-# This is not eOn output: eOn 3b2586f disagrees on mixtures (see
+# This is not eOn output: the pinned eOn QSC disagrees on mixtures (see
 # docs/orgmode/reference/qsc.org).
 param 28 10.0 5.0 0.0073767 84.745 3.5157
 param 29 10.0 5.0 0.0057921 84.843 3.603

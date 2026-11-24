@@ -1060,7 +1060,8 @@ NB_MODULE(_core, m) {
               new rgpot::QSCPot(seed.sharedReplica()));
         });
       },
-      nb::arg("cutoff") = 8.0, nb::arg("verlet_skin") = 0.5,
+      nb::arg("cutoff") = rgpot::QSCConfig{}.cutoff,
+      nb::arg("verlet_skin") = rgpot::QSCConfig{}.verlet_skin,
       nb::arg("periodic") = true, nb::arg("stress") = false,
       "Quantum Sutton-Chen multi-element alloy potential (Qi, Cagin, Kimura "
       "and Goddard, Phys. Rev. B 59, 3527, 1999; Rafii-Tabar and Sutton, "

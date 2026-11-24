@@ -3,9 +3,9 @@
 
 """QSCPot against generated references and the independent oracle.
 
-* ``eon_3b2586f_pure.dat``: energies and forces of the real eOn QSC class at
-  commit 3b2586f, pure elements only (eOn reuses pair parameters across
-  species there, so it is not a reference for mixtures).
+* ``eon_pure.dat``: energies and forces of the real eOn QSC class from the
+  pinned source snapshot, pure elements only (eOn reuses pair parameters
+  across species there, so it is not a reference for mixtures).
 * ``oracle_mixtures.dat``: scripts/qsc_reference/qsc_oracle.py, 50-digit
   arithmetic on Eqs. (1a)-(1c) and (2) of Qi, Cagin, Kimura and Goddard,
   Phys. Rev. B 59, 3527 (1999).
@@ -43,7 +43,7 @@ REL_TOL = 1.0e-12
 # Reference rows are 50-digit decimals. Parse them in that precision so the
 # stored values do not follow the importing thread's context.
 with localcontext(Context(prec=50)):
-    _, EON_CASES = common.read_cases(DATA / "eon_3b2586f_pure.dat")
+    _, EON_CASES = common.read_cases(DATA / "eon_pure.dat")
     _, MIX_CASES = common.read_cases(DATA / "oracle_mixtures.dat")
 
 # Live oracle runs are 50-digit arithmetic; keep to the cheap cases.

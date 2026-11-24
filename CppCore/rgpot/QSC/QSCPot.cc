@@ -137,6 +137,161 @@ double searchCutoff(const rgpot::QSCConfig &cfg) noexcept {
                           : std::numeric_limits<double>::infinity();
 }
 
+struct PeriodicPair {
+  int32_t i = 0;
+  int32_t j = 0;
+  double dx = 0.0;
+  double dy = 0.0;
+  double dz = 0.0;
+  double r2 = 0.0;
+};
+
+struct CellGeometry {
+  double reciprocal[9]{};
+  double height[3]{};
+};
+
+CellGeometry cellGeometry(const double *box) {
+  double scaled[9];
+  double axis_scale[3]{};
+  for (int axis = 0; axis < 3; ++axis) {
+    for (int k = 0; k < 3; ++k) {
+      axis_scale[axis] =
+          std::max(axis_scale[axis], std::abs(box[3 * axis + k]));
+    }
+    if (!(axis_scale[axis] > 0.0) || !std::isfinite(axis_scale[axis])) {
+      throw std::invalid_argument("QSCPot: periodic cell axis is invalid");
+    }
+    for (int k = 0; k < 3; ++k) {
+      scaled[3 * axis + k] = box[3 * axis + k] / axis_scale[axis];
+    }
+  }
+  const double ax = scaled[0], ay = scaled[1], az = scaled[2];
+  const double bx = scaled[3], by = scaled[4], bz = scaled[5];
+  const double cx = scaled[6], cy = scaled[7], cz = scaled[8];
+  const double bxc[3] = {by * cz - bz * cy, bz * cx - bx * cz,
+                         bx * cy - by * cx};
+  const double cxa[3] = {cy * az - cz * ay, cz * ax - cx * az,
+                         cx * ay - cy * ax};
+  const double axb[3] = {ay * bz - az * by, az * bx - ax * bz,
+                         ax * by - ay * bx};
+  const double det = ax * bxc[0] + ay * bxc[1] + az * bxc[2];
+  if (!(std::abs(det) > 0.0) || !std::isfinite(det)) {
+    throw std::invalid_argument("QSCPot: periodic cell is singular");
+  }
+  CellGeometry cell;
+  for (int k = 0; k < 3; ++k) {
+    cell.reciprocal[k] = (bxc[k] / det) / axis_scale[0];
+    cell.reciprocal[3 + k] = (cxa[k] / det) / axis_scale[1];
+    cell.reciprocal[6 + k] = (axb[k] / det) / axis_scale[2];
+  }
+  const auto norm = [](const double *v) {
+    return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+  };
+  cell.height[0] = axis_scale[0] * (std::abs(det) / norm(bxc));
+  cell.height[1] = axis_scale[1] * (std::abs(det) / norm(cxa));
+  cell.height[2] = axis_scale[2] * (std::abs(det) / norm(axb));
+  for (double value : cell.reciprocal) {
+    if (!std::isfinite(value)) {
+      throw std::invalid_argument(
+          "QSCPot: periodic reciprocal cell is not representable");
+    }
+  }
+  for (double height : cell.height) {
+    if (!(height > 0.0) || std::isnan(height)) {
+      throw std::invalid_argument("QSCPot: periodic cell height is invalid");
+    }
+  }
+  return cell;
+}
+
+bool needsPeriodicImages(const rgpot::QSCConfig &cfg, const double *box,
+                         double cutoff) {
+  if (!cfg.periodic) {
+    return false;
+  }
+  const CellGeometry cell = cellGeometry(box);
+  return 2.0 * cutoff >=
+         std::min({cell.height[0], cell.height[1], cell.height[2]});
+}
+
+std::vector<PeriodicPair> periodicPairs(const double *pos, std::size_t n,
+                                        const double *box, double cutoff) {
+  constexpr long long kMaxImageExtent = 1024;
+  constexpr long long kMaxImageCount = 64LL * 64LL * 64LL;
+  const CellGeometry cell = cellGeometry(box);
+  std::array<long long, 3> reach{};
+  for (int axis = 0; axis < 3; ++axis) {
+    const double span = std::ceil(cutoff / cell.height[axis]);
+    if (!(span >= 0.0) || !std::isfinite(span) ||
+        span > static_cast<double>(kMaxImageExtent)) {
+      throw std::invalid_argument("QSCPot: periodic image extent exceeds cap");
+    }
+    reach[axis] = static_cast<long long>(span);
+  }
+  long long image_count = 1;
+  for (long long extent : reach) {
+    const long long span = 2 * extent + 1;
+    if (image_count > kMaxImageCount / span) {
+      throw std::invalid_argument("QSCPot: periodic image count exceeds cap");
+    }
+    image_count *= span;
+  }
+
+  const double cutoff2 = cutoff * cutoff;
+  std::vector<PeriodicPair> pairs;
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i; j < n; ++j) {
+      const double d0[3] = {pos[3 * i] - pos[3 * j],
+                            pos[3 * i + 1] - pos[3 * j + 1],
+                            pos[3 * i + 2] - pos[3 * j + 2]};
+      std::array<long long, 3> centre{};
+      for (int axis = 0; axis < 3; ++axis) {
+        const double f = d0[0] * cell.reciprocal[3 * axis] +
+                         d0[1] * cell.reciprocal[3 * axis + 1] +
+                         d0[2] * cell.reciprocal[3 * axis + 2];
+        const double lower = static_cast<double>(
+            std::numeric_limits<long long>::min() + reach[axis]);
+        const double upper = static_cast<double>(
+            std::numeric_limits<long long>::max() - reach[axis]);
+        if (!(f > lower && f < upper)) {
+          throw std::invalid_argument(
+              "QSCPot: periodic fractional displacement is too large");
+        }
+        centre[axis] = std::llround(f);
+      }
+      for (long long n0 = -reach[0]; n0 <= reach[0]; ++n0) {
+        for (long long n1 = -reach[1]; n1 <= reach[1]; ++n1) {
+          for (long long n2 = -reach[2]; n2 <= reach[2]; ++n2) {
+            const long long s0 = centre[0] + n0;
+            const long long s1 = centre[1] + n1;
+            const long long s2 = centre[2] + n2;
+            if (i == j && !(s0 > 0 || (s0 == 0 && s1 > 0) ||
+                            (s0 == 0 && s1 == 0 && s2 > 0))) {
+              continue;
+            }
+            const double dx = d0[0] - static_cast<double>(s0) * box[0] -
+                              static_cast<double>(s1) * box[3] -
+                              static_cast<double>(s2) * box[6];
+            const double dy = d0[1] - static_cast<double>(s0) * box[1] -
+                              static_cast<double>(s1) * box[4] -
+                              static_cast<double>(s2) * box[7];
+            const double dz = d0[2] - static_cast<double>(s0) * box[2] -
+                              static_cast<double>(s1) * box[5] -
+                              static_cast<double>(s2) * box[8];
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 > 0.0 && r2 <= cutoff2) {
+              pairs.push_back({static_cast<int32_t>(i), static_cast<int32_t>(j),
+                               dx, dy, dz, r2});
+            }
+          }
+        }
+      }
+    }
+  }
+  return pairs;
+}
+
 bool allFinite(const double *arr, std::size_t count) noexcept {
   for (std::size_t i = 0; i < count; ++i) {
     if (!std::isfinite(arr[i])) {
@@ -222,12 +377,16 @@ const double *validateBox(const rgpot::QSCConfig &cfg, const double *box) {
   static constexpr double free_box[9] = {kFreeBoxLength, 0.0, 0.0, 0.0,
                                          kFreeBoxLength, 0.0, 0.0, 0.0,
                                          kFreeBoxLength};
-  const bool box_ok =
-      box != nullptr && allFinite(box, 9) && rgpot::cellVolume(box) > 0.0;
-  if (cfg.periodic && !box_ok) {
-    throw std::invalid_argument(
-        "QSCPot: periodic evaluation needs a real cell");
+  const bool finite_box = box != nullptr && allFinite(box, 9);
+  if (cfg.periodic) {
+    if (!finite_box) {
+      throw std::invalid_argument(
+          "QSCPot: periodic evaluation needs a real cell");
+    }
+    (void)cellGeometry(box);
+    return box;
   }
+  const bool box_ok = finite_box && rgpot::cellVolume(box) > 0.0;
   return box_ok ? box : free_box;
 }
 
@@ -291,11 +450,13 @@ QSCPot::QSCPot(const QSCConfig &c) : Potential(PotType::QSC), m_config{c} {
 QSCPot::QSCPot(const QSCPot &other)
     : Potential(other), m_config{other.m_config},
       m_state{other.m_state ? other.m_state->clone() : nullptr},
-      mode_{other.mode_}, neighbours_{other.neighbours_} {}
+      mode_{other.mode_}, neighbours_{other.neighbours_},
+      direct_images_{other.direct_images_} {}
 
 QSCPot::QSCPot(const QSCPot &other, SharedTable)
     : Potential(other), m_config{other.m_config}, m_state{other.m_state},
-      mode_{other.mode_}, neighbours_{other.neighbours_} {}
+      mode_{other.mode_}, neighbours_{other.neighbours_},
+      direct_images_{other.direct_images_} {}
 
 QSCPot &QSCPot::operator=(const QSCPot &other) {
   if (this != &other) {
@@ -307,6 +468,7 @@ QSCPot &QSCPot::operator=(const QSCPot &other) {
     m_state = other.m_state ? other.m_state->clone() : nullptr;
     mode_ = other.mode_;
     neighbours_ = other.neighbours_;
+    direct_images_ = other.direct_images_;
   }
   return *this;
 }
@@ -366,14 +528,16 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
   for (std::size_t k = 0; k < 3 * n_size; ++k) {
     F[k] = 0.0;
   }
-  if (n_size < 2) {
+  const double cutoff = searchCutoff(cfg);
+  const bool all_images = needsPeriodicImages(cfg, box_use, cutoff);
+  direct_images_ = all_images;
+  if (n_size < 2 && !all_images) {
     if (cfg.stress) {
       publishCauchyStress(out, strain, cellVolume(in.box));
     }
     return;
   }
 
-  const double cutoff = searchCutoff(cfg);
   const double cutoff2 = cutoff * cutoff;
   const std::array<bool, 3> periodic =
       cfg.periodic ? std::array<bool, 3>{true, true, true}
@@ -381,11 +545,25 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
   const double skin = (mode_ == nlist::Mode::Stream || !(cfg.cutoff > 0.0))
                           ? 0.0
                           : cfg.verlet_skin;
-  nlist::updateCells(neighbours_, in.pos, n_size, box_use, cutoff, skin,
-                     nlist::Image::Round, mode_, periodic);
+  std::vector<PeriodicPair> image_pairs;
+  if (all_images) {
+    image_pairs = periodicPairs(in.pos, n_size, box_use, cutoff);
+  } else {
+    nlist::updateCells(neighbours_, in.pos, n_size, box_use, cutoff, skin,
+                       nlist::Image::Round, mode_, periodic);
+  }
+  auto visit_pairs = [&](auto &&fn) {
+    if (all_images) {
+      for (const PeriodicPair &pair : image_pairs) {
+        fn(pair.i, pair.j, pair.dx, pair.dy, pair.dz, pair.r2);
+      }
+    } else {
+      nlist::visitHalf(neighbours_, 0, static_cast<long>(n_size), fn);
+    }
+  };
 
-  const bool stream = neighbours_.streaming();
-  const bool rows = n_size >= kTeamMinAtoms;
+  const bool stream = !all_images && neighbours_.streaming();
+  const bool rows = !all_images && n_size >= kTeamMinAtoms;
   const int nt = nlist::teamSize(n_size);
   const bool by_row = rows && (nt > 1 || (stream && !neighbours_.allPairs()));
 
@@ -404,36 +582,33 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
   double *s_sum = !cfg.stress ? nullptr : (rows ? row_s.data() : strain);
 
   bool coincident = false;
-  const auto n_atoms = static_cast<long>(n_size);
 
   if (!by_row) {
     auto walk_density = [&](auto stride) {
-      nlist::visitHalf(
-          neighbours_, 0, n_atoms,
-          [=, &coincident](int32_t i, int32_t j, double, double, double,
-                           double r2) RGPOT_QSC_LAMBDA_INLINE {
-            if (r2 > cutoff2) {
-              return;
-            }
-            if (!(r2 > 0.0)) {
-              coincident = true;
-              return;
-            }
-            const auto ui = static_cast<std::size_t>(i);
-            const auto uj = static_cast<std::size_t>(j);
-            const PairSpec &pij = pairs[slots[ui] * n_species + slots[uj]];
-            const double inv_r2 = 1.0 / r2;
-            const double phi = pow_qsc(pij.a, r2, inv_r2, pij.m, false);
-            const double rep =
-                pij.epsilon * pow_qsc(pij.a, r2, inv_r2, pij.n, false);
-            rho_ptr[ui] += phi;
-            rho_ptr[uj] += phi;
-            e_sum[ui * decltype(stride)::value] += rep;
-            if (atom_e != nullptr) {
-              atom_e[ui] += 0.5 * rep;
-              atom_e[uj] += 0.5 * rep;
-            }
-          });
+      visit_pairs([=, &coincident](int32_t i, int32_t j, double, double, double,
+                                   double r2) RGPOT_QSC_LAMBDA_INLINE {
+        if (r2 > cutoff2) {
+          return;
+        }
+        if (!(r2 > 0.0)) {
+          coincident = true;
+          return;
+        }
+        const auto ui = static_cast<std::size_t>(i);
+        const auto uj = static_cast<std::size_t>(j);
+        const PairSpec &pij = pairs[slots[ui] * n_species + slots[uj]];
+        const double inv_r2 = 1.0 / r2;
+        const double phi = pow_qsc(pij.a, r2, inv_r2, pij.m, false);
+        const double rep =
+            pij.epsilon * pow_qsc(pij.a, r2, inv_r2, pij.n, false);
+        rho_ptr[ui] += phi;
+        rho_ptr[uj] += phi;
+        e_sum[ui * decltype(stride)::value] += rep;
+        if (atom_e != nullptr) {
+          atom_e[ui] += 0.5 * rep;
+          atom_e[uj] += 0.5 * rep;
+        }
+      });
     };
     if (rows) {
       walk_density(std::integral_constant<std::size_t, 1>{});
@@ -498,7 +673,7 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
 
   auto apply_pair = [=](auto stride, int32_t i, int32_t j, double dx, double dy,
                         double dz, double r2, double *force, double *virial,
-                        bool both) RGPOT_QSC_LAMBDA_INLINE {
+                        bool both, bool tally) RGPOT_QSC_LAMBDA_INLINE {
     if (!(r2 > 0.0) || r2 > cutoff2) {
       return;
     }
@@ -522,7 +697,7 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
       force[3 * j + 1] -= fy;
       force[3 * j + 2] -= fz;
     }
-    if (virial != nullptr && j > i) {
+    if (virial != nullptr && tally) {
       accumulatePairStrain(virial + 6 * static_cast<std::size_t>(i) *
                                         decltype(stride)::value,
                            fscale, dx, dy, dz);
@@ -539,12 +714,10 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
 
   if (!by_row) {
     auto walk_force = [&](auto stride) {
-      nlist::visitHalf(
-          neighbours_, 0, n_atoms,
-          [=](int32_t i, int32_t j, double dx, double dy, double dz, double r2)
-              RGPOT_QSC_LAMBDA_INLINE {
-                apply_pair(stride, i, j, dx, dy, dz, r2, F, s_sum, true);
-              });
+      visit_pairs([=](int32_t i, int32_t j, double dx, double dy, double dz,
+                      double r2) RGPOT_QSC_LAMBDA_INLINE {
+        apply_pair(stride, i, j, dx, dy, dz, r2, F, s_sum, true, true);
+      });
     };
     if (rows) {
       walk_force(std::integral_constant<std::size_t, 1>{});
@@ -556,7 +729,7 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
                                    double dy, double dz,
                                    double r2) RGPOT_QSC_LAMBDA_INLINE {
       apply_pair(std::integral_constant<std::size_t, 1>{}, i, j, dx, dy, dz, r2,
-                 F, s_sum, false);
+                 F, s_sum, false, j > i);
     });
   }
 
@@ -602,11 +775,13 @@ void QSCPot::hessianVectorImpl(const ForceInput &in, const double *v,
   for (std::size_t k = 0; k < 3 * n_size; ++k) {
     hv[k] = 0.0;
   }
-  if (n_size < 2) {
+  const double cutoff = searchCutoff(cfg);
+  const bool all_images = needsPeriodicImages(cfg, box_use, cutoff);
+  direct_images_ = all_images;
+  if (n_size < 2 && !all_images) {
     return;
   }
 
-  const double cutoff = searchCutoff(cfg);
   const double cutoff2 = cutoff * cutoff;
   const std::array<bool, 3> periodic =
       cfg.periodic ? std::array<bool, 3>{true, true, true}
@@ -614,8 +789,22 @@ void QSCPot::hessianVectorImpl(const ForceInput &in, const double *v,
   const double skin = (mode_ == nlist::Mode::Stream || !(cfg.cutoff > 0.0))
                           ? 0.0
                           : cfg.verlet_skin;
-  nlist::updateCells(neighbours_, in.pos, n_size, box_use, cutoff, skin,
-                     nlist::Image::Round, mode_, periodic);
+  std::vector<PeriodicPair> image_pairs;
+  if (all_images) {
+    image_pairs = periodicPairs(in.pos, n_size, box_use, cutoff);
+  } else {
+    nlist::updateCells(neighbours_, in.pos, n_size, box_use, cutoff, skin,
+                       nlist::Image::Round, mode_, periodic);
+  }
+  auto visit_pairs = [&](auto &&fn) {
+    if (all_images) {
+      for (const PeriodicPair &pair : image_pairs) {
+        fn(pair.i, pair.j, pair.dx, pair.dy, pair.dz, pair.r2);
+      }
+    } else {
+      nlist::visitHalf(neighbours_, 0, static_cast<long>(n_size), fn);
+    }
+  };
 
   const std::size_t n_species = table->elements.size();
   const ElementSpec *elems = table->elements.data();
@@ -625,10 +814,8 @@ void QSCPot::hessianVectorImpl(const ForceInput &in, const double *v,
   std::vector<double> rho(n_size, 0.0);
   std::vector<double> drho(n_size, 0.0);
   bool coincident = false;
-  const auto n_atoms = static_cast<long>(n_size);
 
-  nlist::visitHalf(
-      neighbours_, 0, n_atoms,
+  visit_pairs(
       [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
         if (r2 > cutoff2) {
           return;
@@ -668,42 +855,39 @@ void QSCPot::hessianVectorImpl(const ForceInput &in, const double *v,
     }
   }
 
-  nlist::visitHalf(
-      neighbours_, 0, n_atoms,
-      [&](int32_t i, int32_t j, double dx, double dy, double dz, double r2) {
-        if (!(r2 > 0.0) || r2 > cutoff2) {
-          return;
-        }
-        const auto ui = static_cast<std::size_t>(i);
-        const auto uj = static_cast<std::size_t>(j);
-        const PairSpec &pij = pairs[slots[ui] * n_species + slots[uj]];
-        const double inv_r2 = 1.0 / r2;
-        const double vij =
-            pij.epsilon * pow_qsc(pij.a, r2, inv_r2, pij.n, true);
-        const double phi = pow_qsc(pij.a, r2, inv_r2, pij.m, true);
-        const double w_sum = w[ui] + w[uj];
-        const double psi_p_over_r =
-            (-pij.n * vij + w_sum * pij.m * phi) * inv_r2;
-        const double psi_pp = (pij.n * (pij.n + 1.0) * vij -
-                               w_sum * pij.m * (pij.m + 1.0) * phi) *
-                              inv_r2;
-        const double dvx = v[3 * ui] - v[3 * uj];
-        const double dvy = v[3 * ui + 1] - v[3 * uj + 1];
-        const double dvz = v[3 * ui + 2] - v[3 * uj + 2];
-        const double ddv = dx * dvx + dy * dvy + dz * dvz;
-        const double dw_term = ((dw[ui] + dw[uj]) * pij.m * phi) * inv_r2;
-        const double radial_coeff =
-            (psi_pp - psi_p_over_r) * (ddv * inv_r2) + dw_term;
-        const double hvx = psi_p_over_r * dvx + radial_coeff * dx;
-        const double hvy = psi_p_over_r * dvy + radial_coeff * dy;
-        const double hvz = psi_p_over_r * dvz + radial_coeff * dz;
-        hv[3 * ui] += hvx;
-        hv[3 * ui + 1] += hvy;
-        hv[3 * ui + 2] += hvz;
-        hv[3 * uj] -= hvx;
-        hv[3 * uj + 1] -= hvy;
-        hv[3 * uj + 2] -= hvz;
-      });
+  visit_pairs([&](int32_t i, int32_t j, double dx, double dy, double dz,
+                  double r2) {
+    if (!(r2 > 0.0) || r2 > cutoff2) {
+      return;
+    }
+    const auto ui = static_cast<std::size_t>(i);
+    const auto uj = static_cast<std::size_t>(j);
+    const PairSpec &pij = pairs[slots[ui] * n_species + slots[uj]];
+    const double inv_r2 = 1.0 / r2;
+    const double vij = pij.epsilon * pow_qsc(pij.a, r2, inv_r2, pij.n, true);
+    const double phi = pow_qsc(pij.a, r2, inv_r2, pij.m, true);
+    const double w_sum = w[ui] + w[uj];
+    const double psi_p_over_r = (-pij.n * vij + w_sum * pij.m * phi) * inv_r2;
+    const double psi_pp =
+        (pij.n * (pij.n + 1.0) * vij - w_sum * pij.m * (pij.m + 1.0) * phi) *
+        inv_r2;
+    const double dvx = v[3 * ui] - v[3 * uj];
+    const double dvy = v[3 * ui + 1] - v[3 * uj + 1];
+    const double dvz = v[3 * ui + 2] - v[3 * uj + 2];
+    const double ddv = dx * dvx + dy * dvy + dz * dvz;
+    const double dw_term = ((dw[ui] + dw[uj]) * pij.m * phi) * inv_r2;
+    const double radial_coeff =
+        (psi_pp - psi_p_over_r) * (ddv * inv_r2) + dw_term;
+    const double hvx = psi_p_over_r * dvx + radial_coeff * dx;
+    const double hvy = psi_p_over_r * dvy + radial_coeff * dy;
+    const double hvz = psi_p_over_r * dvz + radial_coeff * dz;
+    hv[3 * ui] += hvx;
+    hv[3 * ui + 1] += hvy;
+    hv[3 * ui + 2] += hvz;
+    hv[3 * uj] -= hvx;
+    hv[3 * uj + 1] -= hvy;
+    hv[3 * uj + 2] -= hvz;
+  });
 }
 
 void QSCPot::densityStage(const HalfList &list, double *densities) const {

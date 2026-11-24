@@ -161,7 +161,7 @@ def evaluate(
 
     ``density`` selects the density term. ``"mixed"`` is Eq. (1c) of the
     paper, ``(a_ij / r)^m_ij`` with the mixing rules of Eq. (2). ``"source"``
-    uses the neighbour's own ``(a_j / r)^m_j``, the form eOn 3b2586f
+    uses the neighbour's own ``(a_j / r)^m_j``, the form the pinned eOn QSC
     implements; it exists only so scripts can attribute eOn's deviations.
 
     ``pos`` and ``cell`` hold Decimals (or exact floats via ``D(float)``);

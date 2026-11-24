@@ -21,6 +21,15 @@ HVP_FLOOR = 1.0e-3
 HVP_ABS_TOL = 1.0e-7
 
 
+def test_qsc_defaults():
+    assert rgpot.QSCPot().config() == {
+        "cutoff": 8.0,
+        "verlet_skin": 0.5,
+        "periodic": True,
+        "stress": False,
+    }
+
+
 def test_qsc_cu_and_cu_ag_dimer_reference():
     pot = rgpot.QSCPot(cutoff=10.0, verlet_skin=0.5, periodic=False, stress=True)
     assert pot.config() == {

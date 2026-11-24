@@ -39,14 +39,14 @@ namespace rgpot {
 /**
  * @brief Parameters for the Quantum Sutton-Chen potential.
  *
- * Plain aggregate with inline defaults; cutoff and skin equal the defaults of
- * eOn's @c QSC class.
+ * Plain aggregate with the project defaults: an 8.0 Angstrom cutoff and a
+ * 0.5 Angstrom Verlet skin.
  */
 struct QSCConfig {
   double cutoff =
       8.0; //!< Truncation distance (Angstrom); 0 or less keeps every pair.
   double verlet_skin = 0.5; //!< Verlet neighbour-list skin (Angstrom).
-  bool periodic = true;     //!< Apply periodic minimum-image convention.
+  bool periodic = true;     //!< Sum every periodic image inside the cutoff.
   bool stress =
       false; //!< Write the Cauchy stress when the cell volume is positive.
 };
@@ -214,11 +214,11 @@ public:
    * @return True when the stored list was reused.
    */
   [[nodiscard]] bool listReused() const noexcept {
-    return neighbours_.reused();
+    return !direct_images_ && neighbours_.reused();
   }
 
 private:
-  static constexpr uint64_t kKernelVersion = 1;
+  static constexpr uint64_t kKernelVersion = 2;
 
   struct TableState;
   struct SharedTable {};
@@ -232,6 +232,7 @@ private:
   std::shared_ptr<TableState> m_state;
   nlist::Mode mode_ = nlist::Mode::Auto;
   mutable nlist::Neighbours neighbours_;
+  mutable bool direct_images_ = false;
 };
 
 } // namespace rgpot

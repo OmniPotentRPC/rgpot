@@ -1,8 +1,8 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// Minimal driver around eOn's QSC class (client/potentials/QSC/QSC.cpp at
-// eOn commit 3b2586f). It links the unmodified eOn source and prints the
+// Minimal driver around eOn's QSC class from the pinned source snapshot. It
+// links the unmodified client/potentials/QSC/QSC.cpp and prints the
 // energy and forces of every case it reads from stdin, with 17 significant
 // digits. gen_eon_pure.py builds and runs it; see that script for the exact
 // compile line and the input grammar.

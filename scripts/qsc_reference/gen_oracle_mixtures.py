@@ -124,7 +124,7 @@ def main(argv=None):
         "explicitly. The analytic gradient was checked against 50-digit central",
         "differences of the energy and of the strained energy before writing.",
         f"qsc_oracle.py sha256 {digest}",
-        "This is not eOn output: eOn 3b2586f disagrees on mixtures (see",
+        "This is not eOn output: the pinned eOn QSC disagrees on mixtures (see",
         "docs/orgmode/reference/qsc.org).",
     ]
     common.write_cases(args.out, header, oracle.QSC_TABLE, cases)
