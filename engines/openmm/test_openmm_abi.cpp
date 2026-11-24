@@ -1,5 +1,5 @@
 // MIT License
-// Copyright 2026 Rohit Goswami
+// Copyright 2023--present rgpot developers
 
 // The generic MD session ABI around the OpenMM engine: the periodic box in
 // Angstrom, the constraint force of run_langevin in eV/Angstrom, optional

@@ -1,5 +1,5 @@
 // MIT License
-// Copyright 2026 Rohit Goswami
+// Copyright 2023--present rgpot developers
 
 // The analytic checks of the MD session ABI on the OpenMM engine: equipartition
 // on a hyperplane, the mean constraint force against dF/dc of the harmonic

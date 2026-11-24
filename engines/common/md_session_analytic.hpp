@@ -1,6 +1,6 @@
 #pragma once
 // MIT License
-// Copyright 2026 Rohit Goswami
+// Copyright 2023--present rgpot developers
 
 // Analytic checks of the generic MD session ABI, written once for every
 // engine. The model is a chain of three atoms joined by harmonic bonds of
