@@ -90,7 +90,9 @@ jobs:
       # named by RGPOT_PROJECT, which is the project directory beside the
       # temp directory the test command runs in. The copied fixtures cover
       # the same files when that variable is unset and the copy is complete.
-      extra-test-sources: scripts/cpu_scaling.py CppCore/tests/data/eam_table third_party/vesin/VERSION third_party/vesin/vesin-single-build.cpp potctl/src/ci.rs
+      # tests/python/test_qsc_reference.py reads scripts/qsc_reference and
+      # CppCore/tests/data/qsc from that copied tree.
+      extra-test-sources: scripts/cpu_scaling.py CppCore/tests/data/eam_table third_party/vesin/VERSION third_party/vesin/vesin-single-build.cpp potctl/src/ci.rs scripts/qsc_reference CppCore/tests/data/qsc
       project-root-env: RGPOT_PROJECT
       extras: ase
       test-requires: pytest-timeout hypothesis
