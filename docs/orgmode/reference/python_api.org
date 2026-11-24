@@ -4,8 +4,8 @@
 
 * Python API
 
-The extension module is =rgpot._core=, and =import rgpot= re-exports its public
-names.
+The extension module is =rgpot._core=.
+=import rgpot= re-exports its public names.
 Stubs live in =rgpot/_core.pyi= and the package ships =py.typed=.
 A class or function whose build flag is off is =None= in =rgpot=, for example
 =rgpot.D3Pot= when =rgpot.has_dftd3= is false.
@@ -663,9 +663,7 @@ rgpot.QSCPot(cutoff=8.0, verlet_skin=0.5, periodic=True, stress=False)
   =periodic= is false), =verlet_skin= is the Verlet neighbour-list skin,
   =periodic= enables minimum-image wrapping, and =stress= enables Cauchy stress
   output.
-  =atom_types= selects each atom's element from the Quantum Sutton-Chen table
-  (Ni 28, Cu 29, Rh 45, Pd 46, Ag 47, Ir 77, Pt 78, Au 79, plus any element
-  added with =set_element_parameter=).
+  =atom_types= selects each atom's element from the Quantum Sutton-Chen table (Ni 28, Cu 29, Rh 45, Pd 46, Ag 47, Ir 77, Pt 78, Au 79, plus any element added with =set_element_parameter=).
 - Units :: =cutoff= and =verlet_skin= Angstrom; energy eV, forces
   eV/Angstrom, stress eV/Angstrom^3.
 - Outputs :: a multi-element Quantum Sutton-Chen potential (Qi, Cagin, Kimura
@@ -1175,10 +1173,10 @@ config()
 - Outputs :: a dict of the constructor parameters.
   =LJPot= and =LJClusterPot= give =u0=, =cutoff=, =psi=,
   =switch_width=; =MorsePot= gives =De=, =a=, =re=, =cutoff=, =switch_width=;
-  =QSCPot= gives =cutoff=, =verlet_skin=, =periodic=, =stress=;
-  =D2Pot= gives =s6=, =d=, =sr=, =cutoff= and =D2CpmdPot= gives =s6=, =alpha=,
-  =vdweps=, =symmetry=, after any functional was applied; =D4Pot= gives
-  =functional=, =charge=, =atm=, =periodic=.
+  =QSCPot= gives =cutoff=, =verlet_skin=, =periodic=, =stress=; =D2Pot= gives
+  =s6=, =d=, =sr=, =cutoff= and =D2CpmdPot= gives =s6=, =alpha=, =vdweps=,
+  =symmetry=, after any functional was applied; =D4Pot= gives =functional=,
+  =charge=, =atm=, =periodic=.
   =MullerBrownPot= gives =amplitude=, =a=, =b=, =c=, =x0= and =y0=.
   =EMTPot= gives =rasmussen=.
 - Errors :: none.
@@ -1548,8 +1546,8 @@ has_analytic_hvp()
 - Units :: none.
 - Outputs :: =True= when the kernel has its own Hessian-vector product, so
   =scheme='auto'= uses it.
-  Of these classes =MorsePot=, =MullerBrownPot=, =LJPot=, =QSCPot= and
-  =CuH2Pot= return =True=.
+  Of these classes =MorsePot=, =MullerBrownPot=, =LJPot=, =QSCPot= and =CuH2Pot=
+  return =True=.
   The query is read-only and reads =primary().caps()=, as for =caps()=.
 - Errors :: none.
 

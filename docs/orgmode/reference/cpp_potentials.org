@@ -6,8 +6,8 @@
 
 Every potential derives from =rgpot::Potential<Derived>=, which derives from
 =rgpot::PotentialBase=.
-Energies are eV, lengths are Angstrom and forces are eV/Angstrom unless an entry
-says otherwise.
+Energies are eV.
+Lengths are Angstrom and forces are eV/Angstrom unless an entry says otherwise.
 This page lists the constructors, their configuration structs and the members
 each class adds.
 The members every potential inherits (=forceImpl=, =forceBatch=, =caps=,
@@ -458,9 +458,9 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
   rgpot::TersoffSiC
 - Inputs :: none.
 - Units :: =cutoff= in the length unit of the potential: Angstrom for
-  =rgpot::LJPot=, =rgpot::MorsePot=, =rgpot::QSCPot=,
-  =rgpot::StillingerWeberSi= and =rgpot::TersoffSiC=, the unit of =a= for
-  =rgpot::SuttonChenPot= and the unit of the table for =rgpot::EAMTablePot=.
+  =rgpot::LJPot=, =rgpot::MorsePot=, =rgpot::QSCPot=, =rgpot::StillingerWeberSi=
+  and =rgpot::TersoffSiC=, the unit of =a= for =rgpot::SuttonChenPot= and the
+  unit of the table for =rgpot::EAMTablePot=.
 - Outputs :: a =rgpot::Locality= from =CppCore/rgpot/Locality.hpp=.
   =cutoff= is the range of each site energy, =pairwise= is true when every
   energy term is a function of one pair distance, and =densities= is the number
@@ -1280,8 +1280,8 @@ void setElementParameter(int z, double n, double m, double epsilon, double c,
 - Errors :: throws =std::invalid_argument= when =z < 1=, when =n < 1= or
   =m < 1=, when =epsilon=, =c= or =a= is not positive, or when any parameter is
   not finite.
-  The change reaches this instance and the replicas made by =sharedReplica=,
-  and no copy made by the copy constructor or copy assignment.
+  The change reaches this instance and the replicas made by =sharedReplica=, and
+  no copy made by the copy constructor or copy assignment.
 
 *** =rgpot::QSCPot= copy and move
 

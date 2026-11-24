@@ -1,3 +1,4 @@
+#+COMMENT: Copyright 2023--present rgpot developers
 #+TITLE: Quantum Sutton-Chen potential
 #+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
 #+STARTUP: content
@@ -6,9 +7,15 @@
 
 =QSCPot= (=PotType::QSC=) evaluates the multi-element Quantum Sutton-Chen (Q-SC)
 many-body potential of Qi, Cagin, Kimura and Goddard, Physical Review B 59, 3527
-(1999),
-doi:10.1103/PhysRevB.59.3527, Eqs. (1a) to (1c) with the combination rules of its Eq. (2),
-which the paper takes from Rafii-Tabar and Sutton, Philosophical Magazine Letters 63, 217 (1991), doi:10.1080/09500839108205994:
+(1999).
+
+doi:10.1103/PhysRevB.59.3527
+
+Eqs. (1a) to (1c) use the combination rules of Eq. (2).
+Rafii-Tabar and Sutton give those rules in Philosophical Magazine Letters 63,
+217 (1991).
+
+doi:10.1080/09500839108205994
 
 #+attr_rgpot: skip the energy formula, not code
 #+begin_example
@@ -35,9 +42,9 @@ evaluated.
 The quantum correction of the Q-SC force field sits in the fitted parameters
 (they include the zero-point energy), so the functional form is that of
 Sutton-Chen and the energy has no extra term.
-The repulsive and density exponents
-=n_ab= and =m_ab= can be half-integers on an alloy pair such as copper and silver, where =n_Cu = 10=
-and =n_Ag = 11= give =n_CuAg = 10.5=.
+The repulsive and density exponents =n_ab= and =m_ab= can be half-integers on an
+alloy pair such as copper and silver, where =n_Cu = 10= and =n_Ag = 11= give
+=n_CuAg = 10.5=.
 The paper truncates each pair at =2 a_ab=; =QSCConfig::cutoff= is one global
 distance instead.
 
@@ -45,17 +52,15 @@ distance instead.
 
 The default table carries the eight fcc transition-metal rows fitted with
 zero-point quantum corrections.
-The Ni and Cu rows are Table I of Qi, Cagin, Kimura and Goddard, Physical Review B
-59, 3527 (1999), doi:10.1103/PhysRevB.59.3527.
-The other rows follow the eight-metal table of Ozdemir Kart, Tomak, Uludogan and
-Cagin, Journal of Non-Crystalline Solids 337, 101 (2004),
-doi:10.1016/j.jnoncrysol.2004.03.121, Table 1, as tabulated in eOn
-=client/potentials/QSC/Parameters.h=.
+The Ni and Cu rows are Table I of Qi, Cagin, Kimura and Goddard, Physical Review
+B 59, 3527 (1999),
+doi:10.1103/PhysRevB.59.3527. The other rows follow the eight-metal table of Ozdemir Kart, Tomak, Uludogan and Cagin, Journal of Non-Crystalline Solids 337, 101 (2004), doi:10.1016/j.jnoncrysol.2004.03.121,
+Table 1, as tabulated in eOn =client/potentials/QSC/Parameters.h=.
 Two rows differ from eOn's table or from Table I and are recorded here so that
-nobody has to rediscover them.
-eOn lists =a= = 3.5200 Angstrom for Cu; Table I gives 3.6030, which is used.
-Table I prints a different Ag row (epsilon 0.0040072 eV, c 94.948); the table below
-keeps the eight-metal values for Ag.
+nobody has to rediscover them. eOn lists =a= = 3.5200 Angstrom for Cu; Table I
+gives 3.6030, which is used.
+Table I prints a different Ag row (epsilon 0.0040072 eV, c 94.948); the table
+below keeps the eight-metal values for Ag.
 
 | Metal |  Z |  n | m | epsilon (eV) |       c | a (Angstrom) | Published E_coh (eV) | fcc energy at 2a (eV/atom) |
 |-------+----+----+---+--------------+---------+--------------+----------------------+----------------------------|
@@ -68,16 +73,16 @@ keeps the eight-metal values for Ag.
 | Pt    | 78 | 11 | 7 |    0.0097894 |  71.336 |       3.9163 |                 5.86 |            -5.862273780458 |
 | Au    | 79 | 11 | 8 |    0.0078052 |  53.581 |       4.0651 |                 3.83 |            -3.826503292017 |
 
-A homonuclear dimer at separation =r = a= has energy =epsilon * (1 - 2 c)= and
-a force =epsilon * (m * c - n) / a= on the atom at the origin toward its partner.
+A homonuclear dimer at separation =r = a= has energy =epsilon * (1 - 2 c)= and a
+force =epsilon * (m * c - n) / a= on the atom at the origin toward its partner.
 The energies are -1.2429001830 eV for nickel and -0.9770461806 eV for copper;
-the forces are 0.8680846510 and 0.6658825150 eV/Angstrom.
-=QSCPotTest= checks all eight homonuclear dimers to 1e-14 eV and all eight fcc
-crystals at the paper's =2 a= cutoff (8 neighbour shells, 140 neighbours) to
-1e-11
-eV/atom. =setElementParameter= overrides an existing element or adds a new atomic number. With the reduced 10-8 parameters of Sutton and Chen, Philosophical Magazine Letters 61, 139 (1990), doi:10.1080/09500839008206493,
-=QSCPot= reproduces the deposited Doye and Wales =Pt38= (-10117.2454) and =Pt75=
-(-20431.3452) minima and matches =SuttonChenPot= bit for bit.
+the forces are 0.8680846510 and 0.6658825150
+eV/Angstrom. =QSCPotTest= checks all eight homonuclear dimers to 1e-14 eV and all eight fcc crystals at the paper's =2 a= cutoff (8 neighbour shells, 140 neighbours) to 1e-11 eV/atom.
+=setElementParameter= overrides an existing element or adds a new atomic number.
+With the reduced 10-8 parameters of Sutton and Chen, Philosophical Magazine
+Letters 61, 139 (1990), doi:10.1080/09500839008206493, =QSCPot= reproduces the
+deposited Doye and Wales =Pt38= (-10117.2454) and =Pt75= (-20431.3452) minima
+and matches =SuttonChenPot= bit for bit.
 
 ** Reference data and cross-checks
 
@@ -85,64 +90,66 @@ Three kinds of data back the tests, all generated by scripts under
 =scripts/qsc_reference/= and stored in =CppCore/tests/data/qsc/=.
 Each data file starts with a header that records how it was made.
 
-- =eon_3b2586f_pure.dat= holds energies and forces (and no stress) of the real eOn
-  =QSC= class at eOn commit 3b2586f543b82cbf8dcdcbd07f2e1126705a3826 for pure
-  elements only: dimers and 15-atom clusters of all eight metals, and 108-atom
-  periodic cells of Ni, Cu, Ag and Au.
-  =gen_eon_pure.py= builds eOn's own =client/potentials/QSC/QSC.cpp= with a small driver
-  (=eon_qsc_driver.cpp=), checks that =-O0= and =-O2= builds agree bit for bit, and
-  records the compiler and the full compile line.
+- =eon_3b2586f_pure.dat= holds energies and forces (and no stress) of the real
+  eOn =QSC= class at eOn commit 3b2586f543b82cbf8dcdcbd07f2e1126705a3826 for
+  pure elements only: dimers and 15-atom clusters of all eight metals, and
+  108-atom periodic cells of Ni, Cu, Ag and Au.
+  =gen_eon_pure.py= builds eOn's own =client/potentials/QSC/QSC.cpp= with a
+  small driver (=eon_qsc_driver.cpp=), checks that =-O0= and =-O2= builds agree
+  bit for bit, and records the compiler and the full compile line.
   The Cu =a= value is overridden with =set_qsc_parameter= to the Table I value.
-  =QSCPotTest= and =tests/python/test_qsc_reference.py= compare =QSCPot= with it to 1e-12
-  relative, and the file agrees with the published equations to about 1e-15.
-- =oracle_mixtures.dat= holds energies, forces and the six stress components of mixtures
-  from =qsc_oracle.py=.
+  =QSCPotTest= and =tests/python/test_qsc_reference.py= compare =QSCPot= with it
+  to 1e-12 relative, and the file agrees with the published equations to about
+  1e-15.
+- =oracle_mixtures.dat= holds energies, forces and the six stress components of mixtures from =qsc_oracle.py=.
   The oracle evaluates Eqs. (1a) to (1c) and (2) of the paper in 50-digit
-  =decimal= arithmetic, sums every periodic image inside the cutoff, and checks its
-  analytic forces and stress against central differences in the same arithmetic
-  (energy for forces, strain for stress).
-  It has six unlike dimers, a 19-atom eight-metal cluster, and an orthorhombic and a
-  triclinic periodic cell of 108 atoms.
-- =lammps_crosscheck.py= compares the same mixture data with LAMMPS =pair_style eam/fs=
-  tables, which can hold this potential because the density may depend on the
-  element pair (=eam/alloy= cannot).
-  Table interpolation limits the agreement: energies match to 3e-13 relative, forces
-  to 2e-8 and stresses to 1.3e-9.
+  =decimal= arithmetic, sums every periodic image inside the cutoff, and checks
+  its analytic forces and stress against central differences in the same
+  arithmetic (energy for forces, strain for stress).
+  It has six unlike dimers, a 19-atom eight-metal cluster, and an orthorhombic
+  and a triclinic periodic cell of 108 atoms.
+- =lammps_crosscheck.py= compares the same mixture data with LAMMPS =pair_style eam/fs= tables, which can hold this potential because the density may depend on the element pair (=eam/alloy=
+  cannot).
+  Table interpolation limits the agreement: energies match to 3e-13 relative,
+  forces to 2e-8 and stresses to 1.3e-9.
   It needs LAMMPS and is not part of the test suite.
 
-The derivative checks in =QSCPotTest= (central differences of the energy against the
-forces, of the energy against strain for the stress, and the per-atom virial sum)
-run on the mixtures as well.
+The derivative checks in =QSCPotTest= (central differences of the energy against
+the forces, of the energy against strain for the stress, and the per-atom virial
+sum) run on the mixtures as well.
 
 ** Mixtures differ from eOn
 
 eOn 3b2586f does not evaluate the equations above for mixed-species systems, and
 the mixture tests make no comparison with it.
-Pure elements agree with eOn to rounding; mixtures do not, for two separate reasons.
+Pure elements agree with eOn to rounding; mixtures do not, for two separate
+reasons.
 
 1. Parameter caching.
-   In =QSC::energy= (=QSC.cpp= lines 137 to 157) and =QSC::force= (lines 203 to 223),
-   =p_ii= is refreshed only when the species of atom =i= differs from the previous
-   atom, and =p_ij= and =p_jj= are refreshed only when the species of neighbour =j=
-   differs from the previous neighbour, whatever the atom =i= is.
+   In =QSC::energy= (=QSC.cpp= lines 137 to 157) and =QSC::force= (lines 203 to
+   223),
+   =p_ii= is refreshed only when the species of atom =i= differs from the previous atom, and =p_ij=
+   and =p_jj= are refreshed only when the species of neighbour =j= differs from
+   the previous neighbour, whatever the atom =i= is.
    A pair parameter depends on both species, so =p_ij= goes stale whenever =i=
-   changes species while the last neighbour keeps its own; the three variables are
-   also uninitialised locals, so their value on a skipped refresh is whatever the
-   stack held.
+   changes species while the last neighbour keeps its own; the three variables
+   are also uninitialised locals, so their value on a skipped refresh is
+   whatever the stack held.
    A pure element never changes species and is not affected.
-2. Density term.
-   eOn adds =(a_j / r)^m_j= (the neighbour's own parameters, =p_jj= and =p_ii= at
-   lines 160 to 163) to the density, where Eq. (1c) uses =(a_ij / r)^m_ij=.
+2. Density term. eOn adds =(a_j / r)^m_j= (the neighbour's own parameters,
+   =p_jj= and =p_ii= at lines 160 to 163) to the density, where Eq. (1c) uses
+   =(a_ij / r)^m_ij=.
    This changes every unlike pair, with or without the caching problem.
 
-Both effects were measured with =scripts/qsc_reference/eon_mixture_probe.py=, which
-runs eOn 3b2586f, a copy of it without the caching, and the oracle with either
-density rule on the orthorhombic mixtures.
-Against the equations above the largest energy deviation of eOn is 0.19 eV on a Cu-Ag
-dimer, 5.0 eV on the 19-atom cluster and 90 eV on the 108-atom cell.
-Removing the caching changes the cluster by 0.007 eV and the cell by 4.4 eV; with the
-caching removed and the neighbour density rule, the copy of eOn matches the oracle's
-neighbour-rule evaluation to 2e-13 eV in energy and 1e-14 eV/Angstrom in force.
+Both effects were measured with =scripts/qsc_reference/eon_mixture_probe.py=,
+which runs eOn 3b2586f, a copy of it without the caching, and the oracle with
+either density rule on the orthorhombic mixtures.
+Against the equations above the largest energy deviation of eOn is 0.19 eV on a
+Cu-Ag dimer, 5.0 eV on the 19-atom cluster and 90 eV on the 108-atom cell.
+Removing the caching changes the cluster by 0.007 eV and the cell by 4.4 eV;
+with the caching removed and the neighbour density rule, the copy of eOn matches
+the oracle's neighbour-rule evaluation to 2e-13 eV in energy and 1e-14
+eV/Angstrom in force.
 =QSCPot= therefore follows the published equations, and its mixtures are not
 expected to equal eOn's.
 
