@@ -554,8 +554,6 @@ jobs:
           echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
       - name: Build and test OpenMP under LeakSanitizer
         shell: pixi run bash -e {0}
-        env:
-          ASAN_SYMBOLIZER_PATH: /usr/lib/llvm-18/bin/llvm-symbolizer
         run: |
           export CC=/usr/bin/clang-18
           export CXX=/usr/bin/clang++-18
