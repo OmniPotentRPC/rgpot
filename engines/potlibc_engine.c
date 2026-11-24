@@ -18,6 +18,9 @@
 #define EV_PER_HARTREE 27.211386245988
 #define FORCE_TO_EV_PER_ANGSTROM (EV_PER_HARTREE / ANGSTROM_PER_BOHR)
 
+/* The most atoms for which 3 * n_atoms * sizeof(double) still fits size_t. */
+#define MAX_ATOMS (SIZE_MAX / (3 * sizeof(double)))
+
 #ifndef RGPOT_ENGINE_PROJECT_VERSION
 #define RGPOT_ENGINE_PROJECT_VERSION "unknown"
 #endif
@@ -114,12 +117,18 @@ static int fail_potlibc(RgpotEnginePot *pot, const char *operation,
 }
 
 static int check_input(RgpotEnginePot *pot, long n_atoms,
-                       const int *atomic_numbers) {
+                       const int *atomic_numbers, size_t *dimension) {
   size_t atom;
   if (n_atoms < 1 || atomic_numbers == NULL) {
     set_error(pot, "invalid argument");
     return RGPOT_ENGINE_ERR_INVALID;
   }
+  if ((size_t)n_atoms > MAX_ATOMS) {
+    set_error(pot, "atom count %ld is too large for the coordinate buffers",
+              n_atoms);
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  *dimension = 3 * (size_t)n_atoms;
   if ((size_t)n_atoms != pot->metadata.atom_count) {
     set_error(pot, "potlibc surface %s requires %zu atoms, got %ld",
               pot->metadata.surface_id, pot->metadata.atom_count, n_atoms);
@@ -144,8 +153,10 @@ static int ranges_overlap(const void *first, size_t first_bytes,
                           const void *second, size_t second_bytes) {
   const uintptr_t first_begin = (uintptr_t)first;
   const uintptr_t second_begin = (uintptr_t)second;
-  return first_begin < second_begin + second_bytes &&
-         second_begin < first_begin + first_bytes;
+  if (first_begin < second_begin) {
+    return second_begin - first_begin < first_bytes;
+  }
+  return first_begin - second_begin < second_bytes;
 }
 
 static int lock_handle(RgpotEnginePot *pot) {
@@ -206,9 +217,11 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                  "potlibc engine config needs a NUL-terminated surface id");
     return NULL;
   }
-  if (message->atom_count != (uint64_t)(size_t)message->atom_count) {
+  if (message->atom_count != (uint64_t)(size_t)message->atom_count ||
+      (size_t)message->atom_count > MAX_ATOMS) {
     copy_message(errbuf, errlen,
-                 "potlibc engine atom count does not fit size_t");
+                 "potlibc engine atom count is too large for the coordinate "
+                 "buffers");
     return NULL;
   }
 
@@ -317,7 +330,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n_atoms,
                        rgpot_engine_coord_transform transform,
                        void *transform_user) {
   size_t component;
-  size_t dimension;
+  size_t dimension = 0;
   double local_box[9];
   double *coordinates;
   double *surface_forces;
@@ -327,7 +340,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n_atoms,
   if (code != RGPOT_ENGINE_OK) {
     return code;
   }
-  code = check_input(pot, n_atoms, atomic_numbers);
+  code = check_input(pot, n_atoms, atomic_numbers, &dimension);
   if (code != RGPOT_ENGINE_OK || positions == NULL || forces == NULL ||
       energy == NULL || box == NULL) {
     if (code == RGPOT_ENGINE_OK) {
@@ -337,7 +350,6 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n_atoms,
     pthread_mutex_unlock(&pot->call_lock);
     return code;
   }
-  dimension = 3 * (size_t)n_atoms;
   coordinates = malloc(dimension * sizeof *coordinates);
   surface_forces = malloc(dimension * sizeof *surface_forces);
   if (coordinates == NULL || surface_forces == NULL) {
@@ -390,7 +402,7 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n_atoms,
                      const double *direction, double *hv_out,
                      const double *box) {
   size_t component;
-  size_t dimension;
+  size_t dimension = 0;
   double *coordinates;
   double *surface_direction;
   double *surface_product;
@@ -399,7 +411,7 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n_atoms,
   if (code != RGPOT_ENGINE_OK) {
     return code;
   }
-  code = check_input(pot, n_atoms, atomic_numbers);
+  code = check_input(pot, n_atoms, atomic_numbers, &dimension);
   if (code != RGPOT_ENGINE_OK || positions == NULL || direction == NULL ||
       hv_out == NULL || box == NULL) {
     if (code == RGPOT_ENGINE_OK) {
@@ -409,13 +421,13 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n_atoms,
     pthread_mutex_unlock(&pot->call_lock);
     return code;
   }
-  if (ranges_overlap(hv_out, 3 * (size_t)n_atoms * sizeof *hv_out, direction,
-                     3 * (size_t)n_atoms * sizeof *direction) ||
-      ranges_overlap(hv_out, 3 * (size_t)n_atoms * sizeof *hv_out, positions,
-                     3 * (size_t)n_atoms * sizeof *positions) ||
-      ranges_overlap(hv_out, 3 * (size_t)n_atoms * sizeof *hv_out,
-                     atomic_numbers, (size_t)n_atoms * sizeof *atomic_numbers) ||
-      ranges_overlap(hv_out, 3 * (size_t)n_atoms * sizeof *hv_out, box,
+  if (ranges_overlap(hv_out, dimension * sizeof *hv_out, direction,
+                     dimension * sizeof *direction) ||
+      ranges_overlap(hv_out, dimension * sizeof *hv_out, positions,
+                     dimension * sizeof *positions) ||
+      ranges_overlap(hv_out, dimension * sizeof *hv_out, atomic_numbers,
+                     (size_t)n_atoms * sizeof *atomic_numbers) ||
+      ranges_overlap(hv_out, dimension * sizeof *hv_out, box,
                      9 * sizeof *box)) {
     set_error(pot, "HVP output overlaps an input buffer");
     pthread_mutex_unlock(&pot->call_lock);
@@ -427,7 +439,6 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n_atoms,
     pthread_mutex_unlock(&pot->call_lock);
     return RGPOT_ENGINE_ERR_UNSUPPORTED;
   }
-  dimension = 3 * (size_t)n_atoms;
   coordinates = malloc(dimension * sizeof *coordinates);
   surface_direction = malloc(dimension * sizeof *surface_direction);
   surface_product = malloc(dimension * sizeof *surface_product);
