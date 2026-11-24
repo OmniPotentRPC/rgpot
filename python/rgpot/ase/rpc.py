@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 from ase.calculators.calculator import (
     Calculator,
+    CalculatorError,
     PropertyNotImplementedError,
     all_changes,
 )
@@ -311,6 +312,8 @@ class RgpotRpcCalculator(Calculator):
                         accept_stress=self._server_has_stress and fully_periodic,
                     )
                 )
+            except (PropertyNotImplementedError, CalculatorError):
+                raise
             except Exception as exc:  # noqa: BLE001
                 raise RuntimeError("RgpotRpcCalculator: RPC calculate failed") from exc
             self.results.update(evaluated)
