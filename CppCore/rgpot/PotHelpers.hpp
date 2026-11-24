@@ -110,13 +110,19 @@ const char *forceLastError() noexcept;
  * stored message unchanged. A kernel that never reads the species passes
  * @a needsSpecies false and may be called with a null species pointer.
  */
-int rejectInputCall(const ForceInput &in, bool needsCell,
-                    bool needsSpecies = true);
+int rejectInputCall(const ForceInput &in, bool needsCell, bool needsSpecies);
+
+/// Same as the three argument form with @a needsSpecies true. Kept as its own
+/// exported symbol so binaries built against the two argument signature keep
+/// loading under the same soversion.
+int rejectInputCall(const ForceInput &in, bool needsCell);
 
 /// Throw @c std::invalid_argument with the stored message when
 /// @c rejectInputCall rejects @a in.
-void guardInputCall(const ForceInput &in, bool needsCell,
-                    bool needsSpecies = true);
+void guardInputCall(const ForceInput &in, bool needsCell, bool needsSpecies);
+
+/// Same as the three argument form with @a needsSpecies true.
+void guardInputCall(const ForceInput &in, bool needsCell);
 
 /**
  * @brief Reject a force call that would read a null buffer.
@@ -131,12 +137,22 @@ void guardInputCall(const ForceInput &in, bool needsCell,
  * @a needsSpecies false and may be called with a null species pointer.
  */
 int rejectForceCall(const ForceInput &in, const ForceOut *out,
-                    bool needsCell, bool needsSpecies = true);
+                    bool needsCell, bool needsSpecies);
+
+/// Same as the four argument form with @a needsSpecies true. Kept as its own
+/// exported symbol so binaries built against the three argument signature
+/// keep loading under the same soversion.
+int rejectForceCall(const ForceInput &in, const ForceOut *out,
+                    bool needsCell);
 
 /// Throw @c std::invalid_argument with the stored message when
 /// @c rejectForceCall rejects @a in and @a out.
 void guardForceCall(const ForceInput &in, const ForceOut *out,
-                    bool needsCell, bool needsSpecies = true);
+                    bool needsCell, bool needsSpecies);
+
+/// Same as the four argument form with @a needsSpecies true.
+void guardForceCall(const ForceInput &in, const ForceOut *out,
+                    bool needsCell);
 
 /// @c pot.caps().periodic when the kernel reports it, otherwise true,
 /// which is the default of @c PotCaps.
