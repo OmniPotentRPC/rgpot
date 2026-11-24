@@ -1,0 +1,1 @@
+`libpotlibc_engine` and `libcoupled_well_engine` accept the original version-1 create messages (144 and 48 bytes) and the version-2 messages that carry a size and reserved words. Any other version is refused with its own error.

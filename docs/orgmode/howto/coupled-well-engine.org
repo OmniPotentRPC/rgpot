@@ -76,10 +76,14 @@ of one handle.
 
 ** Create an instance
 
-The create message is =RgpotCoupledWellConfigV1= from
+The create message new callers write is =RgpotCoupledWellConfigV2= from
 =include/rgpot/coupled_well_engine.h=.
-Set =magic=, =size= and =version=, the one =atomic_number= the engine accepts,
-and the four parameters.
+=RgpotCoupledWellConfigV1= is the 48-byte message a client built against the
+original layout still sends: =magic= at offset 0, =version= at offset 4,
+=atomic_number= at offset 8, =reserved= at offset 12 and the four parameters
+from offset 16.
+Set the version-2 =magic=, =size= and =version=, the one =atomic_number= the
+engine accepts, and the four parameters.
 =reserved0= and =reserved1= must be zero.
 
 #+attr_rgpot: compile flags=-ICppCore -Iinclude
@@ -90,7 +94,7 @@ and the four parameters.
 #include "rgpot/engine_c_abi.h"
 
 int main(void) {
-RgpotCoupledWellConfigV1 cfg;
+RgpotCoupledWellConfigV2 cfg;
 memset(&cfg, 0, sizeof cfg);
 cfg.magic = RGPOT_COUPLED_WELL_CONFIG_MAGIC;
 cfg.size = sizeof cfg;
@@ -114,13 +118,16 @@ return 0;
 }
 #+end_src
 
-=rgpot_engine_create= refuses, with a reason in =errbuf=, a message with
-=size < RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE=, a wrong magic, version or reserved field, a non-positive =atomic_number=,
-a =barrier_energy=, =well_position= or =transverse_spring= that is not finite
-and positive, and a =coupling= that is not finite.
+=rgpot_engine_create= refuses, with a reason in =errbuf=, a version-2 message
+with
+=size < RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE=, a wrong magic or reserved field, a version other than =RGPOT_COUPLED_WELL_CONFIG_VERSION_V1=
+or =RGPOT_COUPLED_WELL_CONFIG_VERSION= (a typed version error), a non-positive
+=atomic_number=, a =barrier_energy=, =well_position= or =transverse_spring= that
+is not finite and positive, and a =coupling= that is not finite.
 A negative =coupling= is valid.
-A larger message is accepted only when every unknown trailing byte up to =size=
-is zero.
+A larger version-2 message is accepted only when every unknown trailing byte up
+to =size= is zero.
+The 48-byte version-1 message is accepted unchanged.
 
 ** Evaluate it
 

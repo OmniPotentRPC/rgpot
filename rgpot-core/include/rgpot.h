@@ -127,17 +127,27 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define ENGINE_UNLOAD_POLICY_MINOR 7
 
 /**
- * Magic number of `RgpotCoupledWellConfigV1`.
+ * Magic number of `RgpotCoupledWellConfigV1` and `RgpotCoupledWellConfigV2`.
  */
 #define COUPLED_WELL_CONFIG_MAGIC 1129795668
 
 /**
- * Version of [`CoupledWellConfig`].
+ * Version of the 48-byte coupled-well create message.
  */
-#define COUPLED_WELL_CONFIG_VERSION 1
+#define COUPLED_WELL_CONFIG_VERSION_V1 1
 
 /**
- * Minimum message size accepted by `libcoupled_well_engine`.
+ * Version of [`CoupledWellConfig`], the version-2 create message.
+ */
+#define COUPLED_WELL_CONFIG_VERSION 2
+
+/**
+ * Byte size of `RgpotCoupledWellConfigV1`.
+ */
+#define COUPLED_WELL_CONFIG_V1_SIZE 48
+
+/**
+ * Minimum message size of the version-2 coupled-well create message.
  */
 #define COUPLED_WELL_CONFIG_MIN_SIZE 56
 
@@ -167,17 +177,27 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define COUPLED_WELL_DEFAULT_COUPLING 0.0
 
 /**
- * Magic number of `RgpotPotlibcConfigV1`.
+ * Magic number of `RgpotPotlibcConfigV1` and `RgpotPotlibcConfigV2`.
  */
 #define POTLIBC_CONFIG_MAGIC 1347376204
 
 /**
- * Version of [`PotlibcConfig`].
+ * Version of the 144-byte potlibc create message.
  */
-#define POTLIBC_CONFIG_VERSION 1
+#define POTLIBC_CONFIG_VERSION_V1 1
 
 /**
- * Minimum message size accepted by `libpotlibc_engine`.
+ * Version of [`PotlibcConfig`], the version-2 create message.
+ */
+#define POTLIBC_CONFIG_VERSION 2
+
+/**
+ * Byte size of `RgpotPotlibcConfigV1`.
+ */
+#define POTLIBC_CONFIG_V1_SIZE 144
+
+/**
+ * Minimum message size of the version-2 potlibc create message.
  */
 #define POTLIBC_CONFIG_MIN_SIZE 152
 
