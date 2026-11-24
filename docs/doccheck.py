@@ -2069,12 +2069,31 @@ def _option_features(build_dir: Path) -> dict[str, bool]:
 
     Only a ``with_rust_core`` build also defines ``RGPOT_HAS_RPC``.
     """
-    path = build_dir / "meson-info" / "intro-buildoptions.json"
-    try:
-        options = {o["name"]: o["value"] for o in json.loads(path.read_text(encoding="utf-8"))}
-    except (OSError, ValueError, KeyError, TypeError):
+    options = _build_options(build_dir)
+    if not options:
         return {}
     return {"has_rpc": options.get("with_rpc") is True or options.get("with_rpc_client_only") is True}
+
+
+def _build_options(build_dir: Path) -> dict:
+    path = build_dir / "meson-info" / "intro-buildoptions.json"
+    try:
+        return {o["name"]: o["value"] for o in json.loads(path.read_text(encoding="utf-8"))}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def _lacks_client_only_libs(info: BuildInfo, names: list[str]) -> list[str]:
+    """Libraries ``names`` asks for that a client-only meson build does not make.
+
+    ``-Dwith_rpc_client_only=true`` builds the RPC bridge and no librgpot, so
+    a block that links it has nothing to link. Any other build that lacks a
+    library the block names is a real failure and is left to the linker.
+    """
+    if not info.targets or not _build_options(info.build_dir).get("with_rpc_client_only"):
+        return []
+    built = {t["name"] for t in info.targets if t["type"].endswith("library")}
+    return [name for name in names if name.startswith("rgpot") and name not in built]
 
 
 def run_block(block: Block, info: BuildInfo, root: Path = ROOT) -> tuple[str, str]:
@@ -2158,6 +2177,9 @@ def _compile_c(block: Block, info: BuildInfo, root: Path) -> tuple[str, str]:
         if status != "ok":
             return status, detail
         names = [name for name in block.options.get("link", "").split(",") if name]
+        lacking = _lacks_client_only_libs(info, names)
+        if lacking:
+            return "skip", f"client-only build has no lib{', lib'.join(lacking)}"
         linker, args = _meson_link(info, names, block.lang) or (
             [compiler], [f"-L{d}" for d in info.lib_dirs] + [f"-l{name}" for name in names]
         )

@@ -368,6 +368,29 @@ class PlantedBrokenExamples(unittest.TestCase):
             info = doccheck.build_info(build, ROOT)
             self.assertEqual(doccheck.run_block(block, info, ROOT), ("ok", ""))
 
+    @unittest.skipUnless(shutil.which(os.environ.get("CXX", "c++")), "needs c++")
+    def test_client_only_build_skips_blocks_that_link_librgpot(self):
+        text = "#+attr_rgpot: run link=rgpot\n#+begin_src cpp\nint main() { return 0; }\n#+end_src\n"
+        [block] = self._blocks(text)
+        targets = [{"name": "pot_client_bridge", "type": "shared library", "filename": ["/build/libbridge.so"],
+                    "target_sources": []}]
+        with tempfile.TemporaryDirectory(prefix="doccheck-build-") as tmp:
+            build = Path(tmp).resolve()
+            (build / "meson-info").mkdir()
+            options = build / "meson-info" / "intro-buildoptions.json"
+            info = doccheck.BuildInfo(build, [], [], [], False, {}, targets)
+            for client_only in (True, False):
+                with self.subTest(with_rpc_client_only=client_only):
+                    options.write_text(
+                        json.dumps([{"name": "with_rpc_client_only", "value": client_only}]), encoding="utf-8"
+                    )
+                    status, detail = doccheck.run_block(block, info, ROOT)
+                    if client_only:
+                        self.assertEqual((status, detail), ("skip", "client-only build has no librgpot"))
+                    else:
+                        self.assertEqual(status, "fail")
+                        self.assertIn("rgpot", detail)
+
     def test_cpp_block_needs_an_rpc_build(self):
         text = "#+attr_rgpot: compile requires=has_rpc\n#+begin_src cpp\nint main() { return 1; }\n#+end_src\n"
         [block] = self._blocks(text)
