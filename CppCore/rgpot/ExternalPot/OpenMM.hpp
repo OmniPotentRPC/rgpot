@@ -60,7 +60,9 @@ struct OpenMMState {
  * evaluated on the hyperplane, not at the positions the caller left.
  * Optional planar hard walls reflect positions and velocities specularly on
  * both half-drifts, as often as the drift needs, and return the total number
- * of reflections. A System with virtual sites is refused.
+ * of reflections. The distance constraints of the System hold in every
+ * Langevin step together with the hyperplane; a System with virtual sites is
+ * refused.
  */
 class OpenMMSession {
 public:
