@@ -249,7 +249,7 @@ test(
     executable(
         'test_lj_eval',
         files('test_lj_eval.cpp'),
-        dependencies: lj_dep,
+        dependencies: [lj_dep, pot_spec_dep],
         link_with: rgpot,
         cpp_args: _args,
     ),

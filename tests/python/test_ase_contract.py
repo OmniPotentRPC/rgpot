@@ -375,3 +375,157 @@ def test_kind_string_matches_object() -> None:
     assert raw_bytes(left["energy"], left["forces"]) == raw_bytes(
         right["energy"], right["forces"]
     )
+
+
+def test_lj_tail_correction_binding() -> None:
+    import math
+
+    pot_off = rgpot.LJPot(u0=1.0, cutoff=5.0, psi=1.0)
+    pot_on = rgpot.LJPot(u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True)
+    assert pot_off.config()["tail_correction"] is False
+    assert pot_on.config()["tail_correction"] is True
+
+    with pytest.raises(ValueError, match="switch_width"):
+        rgpot.LJPot(cutoff=5.0, switch_width=5.0, tail_correction=True)
+
+    # Single atom in a 20 A periodic cube: energy and stress are purely the
+    # analytic continuum tail correction.
+    side = 20.0
+    vol = side**3
+    pos = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
+    box = np.eye(3, dtype=np.float64) * side
+    res_off = pot_off.evaluate_per_atom(pos, [18], box)
+    res_on = pot_on.evaluate_per_atom(pos, [18], box)
+    assert res_off["energy"] == 0.0
+    rc = 5.0
+    want_e = (8.0 * math.pi / (9.0 * vol)) * (1.0 / rc**9 - 3.0 / rc**3)
+    want_w = (16.0 * math.pi / (9.0 * vol)) * (2.0 / rc**9 - 3.0 / rc**3)
+    assert res_on["energy"] == pytest.approx(want_e, rel=1e-14)
+    assert res_on["energies"][0] == pytest.approx(want_e, rel=1e-14)
+    np.testing.assert_allclose(res_on["forces"], 0.0, atol=0.0)
+    np.testing.assert_allclose(
+        res_on["stress"], np.eye(3) * (-want_w / vol), rtol=1e-14, atol=0.0
+    )
+    np.testing.assert_allclose(res_on["virials"][0, :3], want_w, rtol=1e-14, atol=0.0)
+
+    # RgpotCalculator forwards tail_correction by keyword and preserves it across copy.
+    crystal = lj_crystal()
+    calc_on = RgpotCalculator("lj", u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True)
+    calc_off = RgpotCalculator("lj", u0=1.0, cutoff=5.0, psi=1.0, tail_correction=False)
+    crystal.calc = calc_on
+    e_on = crystal.get_potential_energy()
+    f_on = crystal.get_forces()
+    crystal.calc = calc_off
+    e_off = crystal.get_potential_energy()
+    f_off = crystal.get_forces()
+    assert e_on != pytest.approx(e_off, rel=1e-6)
+    np.testing.assert_array_equal(f_on, f_off)
+
+    # RgpotCalculator refuses tail_correction=True when pbc is not 3D periodic.
+    cluster = lj_dimer()
+    cluster.pbc = False
+    cluster.calc = RgpotCalculator(
+        "lj", u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True
+    )
+    with pytest.raises(
+        ValueError, match="tail_correction=True requires 3D periodic"
+    ) as plain_error:
+        cluster.get_potential_energy()
+
+    composite = rgpot.SumPot(
+        [
+            {
+                "kind": "lj",
+                "u0": 1.0,
+                "cutoff": 5.0,
+                "psi": 1.0,
+                "tail_correction": True,
+            }
+        ]
+    )
+    composite_config = composite.config()
+    assert "tail_correction" not in composite_config
+    assert composite_config["children"][0]["tail_correction"] is True
+    cluster.calc = RgpotCalculator(composite)
+    with pytest.raises(
+        ValueError, match="tail_correction=True requires 3D periodic"
+    ) as composite_error:
+        cluster.get_potential_energy()
+    assert (
+        str(composite_error.value).partition(" with ")[2]
+        == str(plain_error.value).partition(" with ")[2]
+    )
+
+    slab = lj_crystal()
+    slab.pbc = [True, True, False]
+    slab.calc = RgpotCalculator(
+        rgpot.LJPot(u0=1.0, cutoff=5.0, psi=1.0, tail_correction=True)
+    )
+    with pytest.raises(ValueError, match="tail_correction=True requires 3D periodic"):
+        slab.get_potential_energy()
+
+    # ExprPot threads tail_correction for lj children and rejects unsupported combinations.
+    if getattr(rgpot, "has_expr", False):
+        expr_on = rgpot.ExprPot(
+            "a",
+            {
+                "a": {
+                    "kind": "lj",
+                    "u0": 1.0,
+                    "cutoff": 5.0,
+                    "psi": 1.0,
+                    "switch_width": 1.0,
+                    "tail_correction": True,
+                }
+            },
+        )
+        assert expr_on.config()["children"][0]["tail_correction"] is True
+        cluster.calc = RgpotCalculator(expr_on)
+        with pytest.raises(
+            ValueError, match="tail_correction=True requires 3D periodic"
+        ):
+            cluster.get_potential_energy()
+        slab.calc = RgpotCalculator(expr_on)
+        with pytest.raises(
+            ValueError, match="tail_correction=True requires 3D periodic"
+        ):
+            slab.get_potential_energy()
+
+        direct_sw_on = rgpot.LJPot(
+            u0=1.0, cutoff=5.0, psi=1.0, switch_width=1.0, tail_correction=True
+        )
+        e_expr, f_expr, _ = expr_on(
+            crystal.positions,
+            crystal.numbers,
+            np.asarray(crystal.cell.array, dtype=np.float64),
+        )
+        e_dir, f_dir, _ = direct_sw_on(
+            crystal.positions,
+            crystal.numbers,
+            np.asarray(crystal.cell.array, dtype=np.float64),
+        )
+        assert e_expr == pytest.approx(e_dir, rel=1e-14)
+        np.testing.assert_allclose(f_expr, f_dir, rtol=1e-14, atol=1e-14)
+
+        with pytest.raises(ValueError, match="does not support 'tail_correction'"):
+            rgpot.ExprPot(
+                "m",
+                {"m": {"kind": "morse", "De": 1.0, "tail_correction": True}},
+            )
+        with pytest.raises(ValueError, match="unknown child parameter"):
+            rgpot.ExprPot(
+                "a",
+                {"a": {"kind": "lj", "unknown_param": 1.0}},
+            )
+        with pytest.raises(ValueError, match="switch_width < cutoff"):
+            rgpot.ExprPot(
+                "a",
+                {
+                    "a": {
+                        "kind": "lj",
+                        "cutoff": 5.0,
+                        "switch_width": 5.0,
+                        "tail_correction": True,
+                    }
+                },
+            )
