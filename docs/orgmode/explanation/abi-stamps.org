@@ -205,12 +205,13 @@ A build without the Cargo feature =mdi= answers the call with =RGPOT_RPC_ERROR=
 and a message that names the feature.
 It raises the minor to 10 for =rgpot_rpc_client_select_orbitals=, which is an
 additive export behind =RGPOT_HAS_RPC=, so the layout revision stays at 1.
-The additive molecular-dynamics session entry
-points and operation tables, including the optional neighbour-query and
-neighbour-setter tail slots of the session operation table, are also new.
-The session state is opaque and the operation table carries its byte size, so
-every earlier call and every older table remains valid and the layout revision
-stays at 1.
+The molecular-dynamics session entry points and their optional neighbour-query
+and neighbour-setter slots are symbols of the C++ library, not of the core C
+ABI, so this minor stays at 10.
+The session operation table carries its byte size and the new slots follow
+=destroy=, so an older table still loads.
+The C++ layout revision stays 2 and =kCxxSoversion= stays 9, because the session
+vtable is not one of the covered potential types.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.
