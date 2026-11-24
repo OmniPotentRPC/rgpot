@@ -45,6 +45,9 @@ exclude = [
   # with 403 for non-browser clients. The patterns are this paper only.
   'doi\.org/10\.1002/jcc\.20495',
   'onlinelibrary\.wiley\.com/doi/(?:abs/|full/|pdf/)?10\.1002/jcc\.20495',
+  # APS blocks non-browser HEAD checks on this DOI landing route.
+  'doi\.org/10\.1103/PhysRevB\.48\.22',
+  'link\.aps\.org/doi/10\.1103/PhysRevB\.48\.22',
 ]
 
 include_mail = false

@@ -93,8 +93,8 @@ Configurable via =ZBLConfig= (=cut_inner=, =cut_global=); the constructor throws
   potential, in reduced units by default.
 See [[file:sutton_chen.org][Sutton-Chen potential]].
 - =GuptaPot= (=PotType::Gupta=) :: Cleri-Rosato Gupta many-body potential
-  (=CppCore/rgpot/Gupta/=), configurable via =GuptaConfig= (=A=, =xi=, =p=,
-  =q=, =r0=, =cutoff=, =periodic=, =stress=).
+  (=CppCore/rgpot/Gupta/=), configurable via =GuptaConfig= (=A=, =xi=, =p=, =q=,
+  =r0=, =cutoff=, =periodic=, =stress=).
   Unbounded non-periodic calls without stress delegate to the =rgpot_gupta= C
   kernel; periodic and truncated calls use the shared neighbour layer.
 - =EMTPot= (=PotType::EMT=, =CppCore/rgpot/EMT/=) :: Effective medium theory
