@@ -201,6 +201,7 @@ mod tests {
     #[test]
     fn the_minor_counts_the_hessian_exports() {
         assert_eq!(RGPOT_ABI_VERSION_MAJOR, 1);
+        const { assert!(RGPOT_ABI_VERSION_MINOR >= 8) };
         assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, 8, 1)) }, 1);
         assert_eq!(RGPOT_ABI_LAYOUT_REVISION, 1);
         for earlier in 0..RGPOT_ABI_VERSION_MINOR {
