@@ -70,6 +70,45 @@ TEST_CASE("PotentialConfig.morse round-trips at ordinal 10", "[morse][rpc]") {
   REQUIRE(back.cutoff == 8.0);
 }
 
+TEST_CASE("Potential method ordinals and Capabilities.Operation.neighbors",
+          "[rpc][schema]") {
+  const auto iface = capnp::Schema::from<::Potential>();
+  struct Method {
+    const char *name;
+    std::uint16_t ordinal;
+  };
+  constexpr Method kMethods[] = {
+      {"calculate", 0},
+      {"configure", 1},
+      {"calculateEnergy", 2},
+      {"calculateForces", 3},
+      {"calculateHessian", 4},
+      {"calculateDipole", 5},
+      {"calculateQuadrupole", 6},
+      {"calculateStress", 7},
+      {"calculateOptimize", 8},
+      {"calculateFrequencies", 9},
+      {"calculatePolarizability", 10},
+      {"calculateGradient", 11},
+      {"getCapabilities", 12},
+      {"neighbours", 13},
+      {"calculateHvp", 14},
+  };
+  const auto methods = iface.getMethods();
+  REQUIRE(methods.size() == std::size(kMethods));
+  for (const auto &want : kMethods) {
+    INFO(want.name);
+    const auto method = iface.getMethodByName(want.name);
+    REQUIRE(method.getIndex() == want.ordinal);
+  }
+  const auto op_enum = capnp::Schema::from<::Capabilities::Operation>();
+  KJ_IF_MAYBE(enumerant, op_enum.findEnumerantByName("neighbors")) {
+    REQUIRE(enumerant->getOrdinal() == 11);
+  } else {
+    FAIL("Capabilities.Operation has no neighbors enumerant");
+  }
+}
+
 TEST_CASE("MorseParams defaults are the MorseConfig defaults", "[morse][rpc]") {
   capnp::MallocMessageBuilder builder;
   auto cfg = builder.initRoot<::PotentialConfig>();
