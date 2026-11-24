@@ -48,13 +48,13 @@
 #
 # kind:
 #
-#   unit EXE SOURCE     Catch2 test in CppCore/tests, linked to the library
+#   unit EXE SOURCE [ARG...] Catch2 test in CppCore/tests, linked to the library
 #   fortran EXE SOURCE  program in CppCore/rgpot/fortran, linked to the kernels
 #   nlist EXE SOURCE    example in CppCore/examples, linked to the neighbour
 #                       archives
 #   py SCRIPT [ARG...]  SCRIPT relative to the source root, where @root@ is
 #                       the source root and @capnp@ the capnp compiler
-#   rerun TEST          TEST's executable again, under these options
+#   rerun TEST [ARG...] TEST's executable again, under these options
 #   custom              built and registered by hand in each build system
 #
 # options:
@@ -160,8 +160,14 @@ EMTPotTest | tests core | unit emt_pot_test EMTPotTest.cc |
 EAMCellPotTest | tests core | unit eam_cell_pot_test EAMCellPotTest.cc |
 NeighbourLayerTest | tests core | unit neighbour_layer_test NeighbourLayerTest.cc fp_contract=off timeout=360 |
 # Eight potentials on 1, 2, 3 and 8 threads, on up to 10648 atoms. Meson
-# scales explicit timeouts by 3 under ASan/UBSan and 8 under TSan.
-ThreadTeamTest | tests core | unit thread_team_test ThreadTeamTest.cc timeout=300 |
+# scales explicit timeouts by 3 under ASan/UBSan and 8 under TSan. Coverage
+# instrumentation makes the matrix CPU-heavy, so shard its Catch2 tags and keep
+# the registrations apart instead of making three monolithic copies contend.
+ThreadTeamTest | tests core | unit thread_team_test ThreadTeamTest.cc [slices] timeout=300 serial |
+ThreadTeamTest_eam | tests core | rerun ThreadTeamTest [eam] timeout=300 serial |
+ThreadTeamTest_pair | tests core | rerun ThreadTeamTest [pair] timeout=300 serial |
+ThreadTeamTest_manybody | tests core | rerun ThreadTeamTest [manybody] timeout=300 serial |
+ThreadTeamTest_nlist | tests core | rerun ThreadTeamTest [nlist] timeout=300 serial |
 TersoffZblBuildTest | tests core | unit tersoff_zbl_build_test TersoffZblBuildTest.cc fp_contract=off timeout=180 |
 StreamParityTest | tests core | unit stream_parity_test StreamParityTest.cc fp_contract=off timeout=900 |
 ExternalPotFactoryFailureTest | tests core | unit external_pot_factory_failure_test ExternalPotFactoryFailureTest.cc |
@@ -209,8 +215,16 @@ CacheTest | tests cache | unit cache_test CacheTest.cc |
 InvarianceTest | tests cache | unit invariance_test InvarianceTest.cc |
 XTBDlopenTest | tests core,xtb | custom suite=xtb workdir=. |
 # Under a thread limit every region gets fewer threads than it asks for.
-ThreadTeamTest_limit1 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=1 timeout=300 |
-ThreadTeamTest_limit2 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=2 timeout=300 |
+ThreadTeamTest_limit1 | tests core | rerun ThreadTeamTest [slices] env=OMP_THREAD_LIMIT=1 timeout=300 serial |
+ThreadTeamTest_limit1_eam | tests core | rerun ThreadTeamTest [eam] env=OMP_THREAD_LIMIT=1 timeout=300 serial |
+ThreadTeamTest_limit1_pair | tests core | rerun ThreadTeamTest [pair] env=OMP_THREAD_LIMIT=1 timeout=300 serial |
+ThreadTeamTest_limit1_manybody | tests core | rerun ThreadTeamTest [manybody] env=OMP_THREAD_LIMIT=1 timeout=300 serial |
+ThreadTeamTest_limit1_nlist | tests core | rerun ThreadTeamTest [nlist] env=OMP_THREAD_LIMIT=1 timeout=300 serial |
+ThreadTeamTest_limit2 | tests core | rerun ThreadTeamTest [slices] env=OMP_THREAD_LIMIT=2 timeout=300 serial |
+ThreadTeamTest_limit2_eam | tests core | rerun ThreadTeamTest [eam] env=OMP_THREAD_LIMIT=2 timeout=300 serial |
+ThreadTeamTest_limit2_pair | tests core | rerun ThreadTeamTest [pair] env=OMP_THREAD_LIMIT=2 timeout=300 serial |
+ThreadTeamTest_limit2_manybody | tests core | rerun ThreadTeamTest [manybody] env=OMP_THREAD_LIMIT=2 timeout=300 serial |
+ThreadTeamTest_limit2_nlist | tests core | rerun ThreadTeamTest [nlist] env=OMP_THREAD_LIMIT=2 timeout=300 serial |
 openmp_confined | tests python | py CppCore/tests/test_openmp_confined.py @root@ |
 nlist_export_macro | tests python | py CppCore/tests/test_nlist_export_macro.py @root@ |
 omp_crossover_v3_provenance | tests python | py bench/test_omp_crossover_v3_provenance.py --repo @root@ --json @root@ --json-relative bench/results/rgpot_omp_crossover_v3_results.json --report bench/results/rgpot_omp_crossover_v3d_report.md |
