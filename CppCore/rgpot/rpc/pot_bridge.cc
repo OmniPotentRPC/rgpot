@@ -297,24 +297,42 @@ int32_t pot_neighbours(PotClient *client, int32_t natoms, const double *pos,
     const auto vector = list.getVector();
     const auto distance = list.getDistance();
     const auto mask = list.getMask();
+    if (request->shifts &&
+        shift.size() < static_cast<unsigned>(total * 3)) {
+      client->last_error = "Server returned undersized neighbour shift column";
+      return -2;
+    }
+    if (request->vectors &&
+        vector.size() < static_cast<unsigned>(total * 3)) {
+      client->last_error = "Server returned undersized neighbour vector column";
+      return -2;
+    }
+    if (request->distances && distance.size() < static_cast<unsigned>(total)) {
+      client->last_error = "Server returned undersized neighbour distance column";
+      return -2;
+    }
+    if (out->mask && mask.size() < static_cast<unsigned>(total)) {
+      client->last_error = "Server returned undersized neighbour mask column";
+      return -2;
+    }
     for (size_t i = 0; i < nwrite; ++i) {
       const auto idx = static_cast<unsigned>(i);
       out->first[i] = first[idx];
       out->second[i] = second[idx];
-      if (out->shift && shift.size() >= (i + 1) * 3) {
+      if (out->shift) {
         out->shift[3 * i] = shift[3 * idx];
         out->shift[3 * i + 1] = shift[3 * idx + 1];
         out->shift[3 * i + 2] = shift[3 * idx + 2];
       }
-      if (out->vector && vector.size() >= (i + 1) * 3) {
+      if (out->vector) {
         out->vector[3 * i] = vector[3 * idx];
         out->vector[3 * i + 1] = vector[3 * idx + 1];
         out->vector[3 * i + 2] = vector[3 * idx + 2];
       }
-      if (out->distance && distance.size() > i) {
+      if (out->distance) {
         out->distance[i] = distance[idx];
       }
-      if (out->mask && mask.size() > i) {
+      if (out->mask) {
         out->mask[i] = mask[idx];
       }
     }

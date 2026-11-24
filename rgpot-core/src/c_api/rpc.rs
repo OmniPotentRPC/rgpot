@@ -65,6 +65,41 @@ pub struct rgpot_rpc_neighbors_out_t {
     pub cap: usize,
 }
 
+#[cfg(feature = "rpc")]
+fn validate_neighbor_reply_for_c_api(
+    query: &NeighborQuery,
+    mask_requested: bool,
+    pair_count: usize,
+    shift_len: usize,
+    vector_len: usize,
+    distance_len: usize,
+    mask_len: usize,
+) -> Result<(), String> {
+    if query.shifts && shift_len < pair_count.saturating_mul(3) {
+        return Err(format!(
+            "server returned undersized shift column: got {shift_len}, expected at least {}",
+            pair_count * 3
+        ));
+    }
+    if query.vectors && vector_len < pair_count.saturating_mul(3) {
+        return Err(format!(
+            "server returned undersized vector column: got {vector_len}, expected at least {}",
+            pair_count * 3
+        ));
+    }
+    if query.distances && distance_len < pair_count {
+        return Err(format!(
+            "server returned undersized distance column: got {distance_len}, expected at least {pair_count}",
+        ));
+    }
+    if mask_requested && mask_len < pair_count {
+        return Err(format!(
+            "server returned undersized mask column: got {mask_len}, expected at least {pair_count}",
+        ));
+    }
+    Ok(())
+}
+
 /// Create a new RPC client connected to `host:port`.
 ///
 /// Returns a heap-allocated handle, or `NULL` on failure.
@@ -289,6 +324,24 @@ pub unsafe extern "C" fn rgpot_rpc_neighbours(
             }
         };
         let total = reply.first.len();
+        let mask_requested = if out.is_null() {
+            false
+        } else {
+            let buffers = unsafe { &*out };
+            !buffers.mask.is_null()
+        };
+        if let Err(error) = validate_neighbor_reply_for_c_api(
+            &query,
+            mask_requested,
+            total,
+            reply.shift.len(),
+            reply.vector.len(),
+            reply.distance.len(),
+            reply.mask.len(),
+        ) {
+            set_last_error(&format!("rgpot_rpc_neighbours: {error}"));
+            return rgpot_status_t::RGPOT_RPC_ERROR;
+        }
         if !needed.is_null() {
             unsafe { *needed = total };
         }
@@ -841,5 +894,69 @@ mod tests {
             distances: true,
         };
         assert_eq!(query.cutoff, 2.5);
+    }
+
+    #[test]
+    fn neighbour_reply_validation_rejects_short_shift() {
+        let query = NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 0,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        let err = validate_neighbor_reply_for_c_api(&query, true, 2, 5, 6, 2, 2).unwrap_err();
+        assert!(err.contains("shift column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_reply_validation_rejects_short_vector() {
+        let query = NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 0,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        let err = validate_neighbor_reply_for_c_api(&query, true, 2, 6, 5, 2, 2).unwrap_err();
+        assert!(err.contains("vector column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_reply_validation_rejects_short_distance() {
+        let query = NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 0,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        let err = validate_neighbor_reply_for_c_api(&query, true, 2, 6, 6, 1, 2).unwrap_err();
+        assert!(err.contains("distance column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_reply_validation_rejects_short_mask() {
+        let query = NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 2,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        let err = validate_neighbor_reply_for_c_api(&query, true, 2, 6, 6, 2, 1).unwrap_err();
+        assert!(err.contains("mask column"), "{err}");
     }
 }

@@ -191,9 +191,32 @@ impl potential::Server for PotentialServer {
         let mut result_builder = results.get().init_result();
         result_builder.set_energy(output.energy);
 
-        let mut forces_builder = result_builder.init_forces(forces_copy.len() as u32);
+        let mut forces_builder = result_builder
+            .reborrow()
+            .init_forces(forces_copy.len() as u32);
         for (i, &f) in forces_copy.iter().enumerate() {
             forces_builder.set(i as u32, f);
+        }
+
+        if fip.has_neighbors() {
+            let mut list_out = result_builder.reborrow().init_neighbor_list();
+            let neighbor_request = match fip.get_neighbors() {
+                Ok(req) => req,
+                Err(error) => {
+                    list_out.set_status(5);
+                    list_out.set_message(format!("invalid neighbors field: {error}"));
+                    list_out.set_more(false);
+                    list_out.set_next(0);
+                    return capnp::capability::Promise::ok(());
+                }
+            };
+            if let Err((code, msg)) = answer_neighbours(fip, neighbor_request, list_out.reborrow())
+            {
+                list_out.set_status(code);
+                list_out.set_message(&msg);
+                list_out.set_more(false);
+                list_out.set_next(0);
+            }
         }
 
         capnp::capability::Promise::ok(())
@@ -928,5 +951,56 @@ mod tests {
             assert_eq!(vector.len(), first.len() * 3);
             assert_eq!(distance.len(), first.len());
         }
+    }
+
+    #[test]
+    fn calculate_includes_neighbours_when_force_input_requests_them() {
+        let p = probe(false);
+        let client = capnp_rpc::new_client::<potential::Client, _>(PotentialServer {
+            callback: probe_callback,
+            user_data: &p as *const Probe as *mut c_void,
+            potential: std::ptr::null(),
+        });
+        let mut request = client.calculate_request();
+        {
+            let root = request.get();
+            let mut fip = root.init_fip();
+            let pos = [0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7, 2.2, 2.1, 3.9];
+            let box9 = [4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2];
+            let mut b_pos = fip.reborrow().init_pos(pos.len() as u32);
+            for (i, &value) in pos.iter().enumerate() {
+                b_pos.set(i as u32, value);
+            }
+            let mut b_atm = fip.reborrow().init_atmnrs(4);
+            for i in 0..4 {
+                b_atm.set(i, 1);
+            }
+            let mut b_box = fip.reborrow().init_box(9);
+            for (i, &value) in box9.iter().enumerate() {
+                b_box.set(i as u32, value);
+            }
+            let mut nreq = fip.init_neighbors();
+            nreq.set_cutoff(3.2);
+            nreq.set_skin(0.2);
+            nreq.set_format(1);
+            nreq.set_cut(1);
+            let mut pbc = nreq.reborrow().init_periodic(3);
+            pbc.set(0, true);
+            pbc.set(1, true);
+            pbc.set(2, false);
+            nreq.set_shifts(true);
+            nreq.set_vectors(true);
+            nreq.set_distances(true);
+            nreq.set_mode(1);
+        }
+        let response =
+            futures::executor::block_on(request.send().promise).expect("calculate response");
+        let result = response
+            .get()
+            .and_then(|r| r.get_result())
+            .expect("calculate result");
+        let list = result.get_neighbor_list().expect("neighbor list");
+        assert_eq!(list.get_status(), 0);
+        assert!(!list.get_first().expect("first").is_empty());
     }
 }
