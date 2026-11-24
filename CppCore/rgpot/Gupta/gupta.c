@@ -1,6 +1,7 @@
 #include "gupta.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "../cpu_features.h"
@@ -35,6 +36,9 @@ static RGPOT_THREAD_LOCAL size_t pack_cap;
 // a larger count.
 static int rgpot_gupta_ensure(size_t n, size_t pairs) {
   if (rho_cap < n) {
+    if (n > SIZE_MAX / sizeof(double)) {
+      return 1;
+    }
     double *next = (double *)realloc(rho_buf, n * sizeof(double));
     if (next == 0) {
       return 1;
@@ -42,8 +46,14 @@ static int rgpot_gupta_ensure(size_t n, size_t pairs) {
     rho_buf = next;
     rho_cap = n;
   }
+  if (pairs > SIZE_MAX / 6) {
+    return 1;
+  }
   const size_t need = pairs * 6;
   if (pack_cap < need) {
+    if (need > SIZE_MAX / sizeof(double)) {
+      return 1;
+    }
     double *next = (double *)realloc(pack_buf, need * sizeof(double));
     if (next == 0) {
       return 1;
