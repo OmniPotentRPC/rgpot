@@ -137,6 +137,21 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define COUPLED_WELL_CONFIG_VERSION 1
 
 /**
+ * Magic number of `RgpotPotlibcConfigV1`.
+ */
+#define POTLIBC_CONFIG_MAGIC 1347376204
+
+/**
+ * Version of [`PotlibcConfig`].
+ */
+#define POTLIBC_CONFIG_VERSION 1
+
+/**
+ * Capacity of the potlibc surface identifier, including its terminator.
+ */
+#define POTLIBC_SURFACE_ID_CAPACITY 128
+
+/**
  * Which kind of failure a fused evaluation ended in.
  */
 typedef enum rgpot_fused_error_kind_t {
