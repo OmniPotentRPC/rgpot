@@ -112,6 +112,10 @@ foreach _line : _fs.read('tests/registry.txt').split('\n')
             _env += {_pair[0]: _pair[1]}
         elif _word == 'serial'
             _kw += {'is_parallel': false}
+        elif _word == 'coverage_serial'
+            # Ordinary builds stay parallel. Instrumentation is what makes
+            # these registrations saturate one another's cores.
+            _kw += {'is_parallel': not get_option('b_coverage')}
         elif _word == 'should_fail'
             _kw += {'should_fail': true}
         elif _word == 'fp_contract=off'

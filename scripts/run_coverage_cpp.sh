@@ -15,7 +15,6 @@ if ! command -v lcov >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "==> meson setup ${BUILD} (coverage, tests, rpc)"
 SETUP_ARGS=(
   -Dwith_tests=true \
   -Dwith_examples=false \
@@ -27,9 +26,21 @@ SETUP_ARGS=(
   -Db_coverage=true \
   --buildtype=debug
 )
-if [[ -d "$BUILD" ]]; then
+# A path in RGPOT_COV_BUILDDIR is never deleted from here. --wipe is only
+# for a directory meson already owns. Anything else is left untouched.
+if [[ -e "$BUILD" && ! -d "$BUILD" ]]; then
+  echo "ERROR: ${BUILD} exists and is not a directory" >&2
+  exit 1
+fi
+if [[ -d "$BUILD/meson-private" ]]; then
+  echo "==> meson setup --wipe ${BUILD} (coverage, tests, rpc)"
   meson setup --wipe "$BUILD" "${SETUP_ARGS[@]}"
+elif [[ -d "$BUILD" ]]; then
+  echo "ERROR: ${BUILD} exists but is not a meson build (no meson-private)." >&2
+  echo "Refusing to remove it. Set RGPOT_COV_BUILDDIR to a new directory or remove it." >&2
+  exit 1
 else
+  echo "==> meson setup ${BUILD} (coverage, tests, rpc)"
   meson setup "$BUILD" "${SETUP_ARGS[@]}"
 fi
 

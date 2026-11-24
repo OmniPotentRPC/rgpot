@@ -99,9 +99,12 @@ class CheckTestRegistryIntermixedArgsTests(unittest.TestCase):
                     props.append({"name": "RUN_SERIAL", "value": True})
                 if entry.should_fail:
                     props.append({"name": "WILL_FAIL", "value": True})
-                ctest_tests.append(
-                    {"name": entry.name, "backtrace": 0, "properties": props}
-                )
+                test = {"name": entry.name, "backtrace": 0, "properties": props}
+                if entry.kind != "custom":
+                    exe, tail = ctr.expected_arguments(entry, entries)
+                    program = sys.executable if exe is None else str(build_dir / exe)
+                    test["command"] = [program, *tail]
+                ctest_tests.append(test)
 
             payload = {
                 "backtraceGraph": {

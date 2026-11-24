@@ -227,6 +227,22 @@ rgpot_add_test(AotiPublicationStressTest COMMAND AotiPublicationStressTest)
 rgpot_add_test(MolecularFrameTest COMMAND MolecularFrameTest)
 rgpot_add_test(AotiUnpackTest COMMAND aoti_unpack_test)
 
+# Same rule as meson's coverage_serial: RUN_SERIAL only when the compiler
+# flags instrument for gcov. An ordinary build leaves those tests parallel.
+set(RGPOT_COVERAGE FALSE)
+if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
+  set(RGPOT_COVERAGE TRUE)
+endif()
+foreach(_rgpot_cov_flags CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG
+        CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELWITHDEBINFO
+        CMAKE_CXX_FLAGS_MINSIZEREL)
+  if(DEFINED ${_rgpot_cov_flags})
+    if(${_rgpot_cov_flags} MATCHES "(--coverage|-fprofile-arcs|-ftest-coverage)")
+      set(RGPOT_COVERAGE TRUE)
+    endif()
+  endif()
+endforeach()
+
 rgpot_registry_feature_args(_rgpot_features)
 list(POP_FRONT _rgpot_features _rgpot_first_feature)
 rgpot_add_test(test_list_parity
