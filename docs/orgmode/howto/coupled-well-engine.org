@@ -143,8 +143,10 @@ A position that is not finite after the optional transform is refused with code
 1, and a position at which the energy or force overflows returns code 2.
 Nothing is written to =forces=, =energy= or =variance= on an error, and the
 reason is in =rgpot_engine_last_error=.
-=rgpot_engine_hvp= follows the same rules and also refuses a direction that is
-not finite.
+=rgpot_engine_hvp= follows the same rules, also refuses a direction that is not
+finite, and refuses with code 1 when
+=hv_out= overlaps =direction=, =positions=, =atomicNrs= or =box=, leaving =hv_out=
+untouched.
 
 =rgpot_engine_force_batch= evaluates =nSystems= systems of that one atom.
 It applies the transform to every system and evaluates every system before it
