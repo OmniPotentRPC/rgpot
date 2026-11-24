@@ -37,6 +37,8 @@ struct ExternalLjConfig {
 class LammpsPot : public Potential<LammpsPot> {
 public:
   explicit LammpsPot(const ExternalLjConfig &config);
+  LammpsPot(const void *config_capnp, size_t config_capnp_size,
+            const std::string &engine_path = "");
   ~LammpsPot() override;
   LammpsPot(const LammpsPot &) = delete;
   LammpsPot &operator=(const LammpsPot &) = delete;
@@ -45,9 +47,7 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
-  [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .periodic = true};
-  }
+  [[nodiscard]] PotCaps caps() const noexcept override;
 
   [[nodiscard]] const ExternalLjConfig &config() const noexcept {
     return config_;
@@ -120,6 +120,9 @@ private:
 
 std::unique_ptr<LammpsPot>
 rgpot_lammps_potential(const ExternalLjConfig &config);
+std::unique_ptr<LammpsPot> rgpot_lammpc_potential(const void *config_capnp,
+                                                  size_t config_capnp_size,
+                                                  const std::string &engine_path = "");
 std::unique_ptr<GromacsPot>
 rgpot_gromacs_potential(const ExternalLjConfig &config);
 std::unique_ptr<OpenMMPot>

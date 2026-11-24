@@ -1562,6 +1562,19 @@ NB_MODULE(_core, m) {
       "RGPOT_LAMMPS_ENGINE, LAMMPS_ENGINE, liblammps_engine.so, then "
       "liblj_engine.so. u0 is eV; cutoff and psi are Angstrom.");
   m.def(
+      "rgpot_lammps_potential",
+      [&](nb::bytes config_bytes, const std::string &engine_path) {
+        const std::string blob = nb::cast<std::string>(config_bytes);
+        return rgpot::rgpot_lammpc_potential(blob.data(), blob.size(),
+                                             engine_path)
+            .release();
+      },
+      nb::rv_policy::take_ownership, nb::arg("config_bytes"),
+      nb::arg("engine_path") = "",
+      "Lammpc-backed LAMMPS backend. config_bytes is a flat "
+      "PotentialConfig message with the lammps arm. engine_path empty "
+      "searches LAMMPC_LIBRARY, RGPOT_LAMMPC_ENGINE and liblammpc.so.");
+  m.def(
       "rgpot_gromacs_potential",
       [&](double u0, double cutoff, double psi,
           const std::string &engine_path) {

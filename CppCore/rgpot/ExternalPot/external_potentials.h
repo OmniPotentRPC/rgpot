@@ -48,6 +48,16 @@ rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
                                                 size_t err_len);
 
 /*
+ * Lammpc-backed LAMMPS potential configured by a flat PotentialConfig
+ * message containing the lammps arm. engine_path NULL or "" searches
+ * LAMMPC_LIBRARY and RGPOT_LAMMPC_ENGINE before liblammpc.so.
+ */
+rgpot_external_potential *rgpot_lammpc_potential(const char *engine_path,
+                                                const void *config_capnp,
+                                                size_t config_capnp_size,
+                                                char *err, size_t err_len);
+
+/*
  * The same potential. The constructor stores u0 in kJ/mol and the
  * lengths in nanometres. engine_path NULL evaluates that potential
  * in process. A path is a library that exports rgpot_engine_create,
