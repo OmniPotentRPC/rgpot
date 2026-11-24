@@ -617,7 +617,7 @@ pub struct CAbiMdSession {
     ops: MdSessionOps,
     n_atoms: usize,
     n3: usize,
-    #[cfg(feature = "profile")]
+    #[cfg(feature = "engine")]
     _library: Option<libloading::Library>,
 }
 
@@ -682,7 +682,7 @@ impl CAbiMdSession {
             ops,
             n_atoms,
             n3,
-            #[cfg(feature = "profile")]
+            #[cfg(feature = "engine")]
             _library: None,
         })
     }
@@ -755,7 +755,7 @@ impl CAbiMdSession {
     ///
     /// `engine_path` must point to a valid rgpot MD session plugin implementing
     /// `rgpot_md_session_engine_create_fn` and `rgpot_md_session_ops`.
-    #[cfg(feature = "profile")]
+    #[cfg(feature = "engine")]
     pub unsafe fn open_engine(
         engine_path: &std::path::Path,
         spec: &[u8],
