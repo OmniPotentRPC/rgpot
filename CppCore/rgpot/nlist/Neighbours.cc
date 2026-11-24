@@ -1083,14 +1083,6 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
   if (!(next_search > 0.0)) {
     next_search = 0.0;
   }
-  if (n >= 2 && next_search > 0.0) {
-    for (std::size_t k = 0; k < 3 * n; ++k) {
-      if (!std::isfinite(xyz[k])) {
-        next_search = std::numeric_limits<double>::infinity();
-        break;
-      }
-    }
-  }
   const bool fractional_path =
       next_periodic[0] || next_periodic[1] || next_periodic[2];
   FractionalPlan plan;
