@@ -9,6 +9,8 @@ import re
 import sys
 import types
 
+from ase import Atoms
+from ase.calculators.calculator import Calculator, all_changes
 import numpy as np
 import pytest
 
@@ -77,6 +79,7 @@ class KeyedPotential:
             protocolFamily = "rgpot.potentials"
             protocolMajor = 1
             protocolMinor = self.protocol_minor
+            operations: list = []
 
         class Reply:
             capabilities = Capabilities()
@@ -224,3 +227,64 @@ def test_orbital_key_gate_does_not_follow_the_current_minor(
             refused._calculate_async(np.zeros((1, 3)), [8], np.eye(3), 7)
         )
     assert refused._pot.keys == []
+
+
+def _ase_calculator(potential, current_minor: int | None = None):
+    calculator = _calculator(potential, current_minor)
+    Calculator.__init__(calculator)
+    calculator._orbital_key = 7
+    calculator._server_has_stress = False
+    calculator._claim = sys.modules["rgpot.ase.claim"].ConnectionClaim(
+        "RgpotRpcCalculator"
+    )
+    calculator._loop = asyncio.new_event_loop()
+    return calculator
+
+
+@pytest.mark.parametrize(
+    ("current_minor", "server_minor"), [(2, 1), (3, 1), (3, 0), (7, 1)]
+)
+def test_mismatch_reports_server_and_client_minors(
+    current_minor: int, server_minor: int
+) -> None:
+    calculator = _calculator(
+        KeyedPotential(protocol_minor=server_minor), current_minor=current_minor
+    )
+    rpc = sys.modules["rgpot.ase.rpc"]
+
+    with pytest.raises(rpc.ProtocolMinorMismatchError) as caught:
+        asyncio.run(
+            calculator._calculate_async(np.zeros((1, 3)), [8], np.eye(3), 7)
+        )
+
+    error = caught.value
+    assert isinstance(error, RuntimeError)
+    assert error.feature == "orbital key"
+    assert error.required_minor == 2
+    assert error.server_minor == server_minor
+    assert error.client_minor == current_minor
+    message = str(error)
+    assert f"requires RPC protocol minor {error.required_minor}" in message
+    assert f"server advertises {server_minor}" in message
+    assert f"client implements {current_minor}" in message
+
+
+def test_calculate_does_not_mask_the_protocol_minors() -> None:
+    calculator = _ase_calculator(KeyedPotential(protocol_minor=1), current_minor=3)
+    rpc = sys.modules["rgpot.ase.rpc"]
+    atoms = Atoms("O", positions=[[0.0, 0.0, 0.0]])
+
+    try:
+        with pytest.raises(rpc.ProtocolMinorMismatchError) as caught:
+            calculator.calculate(atoms, ["energy"], all_changes)
+    finally:
+        calculator._loop.close()
+
+    error = caught.value
+    assert error.server_minor == 1
+    assert error.client_minor == 3
+    assert error.required_minor == 2
+    assert "RPC calculate failed" not in str(error)
+    assert "server advertises 1" in str(error)
+    assert "client implements 3" in str(error)
+    assert calculator._pot.keys == []

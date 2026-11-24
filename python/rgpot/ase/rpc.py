@@ -37,6 +37,33 @@ PROTOCOL_MINOR = 1
 ORBITAL_KEY_INTRODUCED_MINOR = 2
 
 
+class ProtocolMinorMismatchError(RuntimeError):
+    """The server advertises a protocol minor below what a request needs.
+
+    ``required_minor`` is the minor the request needs, ``server_minor`` the
+    one the server advertised and ``client_minor`` the one this client
+    implements. ``feature`` names the request field that set the floor.
+    """
+
+    def __init__(
+        self,
+        feature: str,
+        required_minor: int,
+        server_minor: int,
+        client_minor: int,
+    ) -> None:
+        self.feature = feature
+        self.required_minor = int(required_minor)
+        self.server_minor = int(server_minor)
+        self.client_minor = int(client_minor)
+        super().__init__(
+            f"ForceInput {feature} requires RPC protocol minor "
+            f"{self.required_minor}, but the server advertises "
+            f"{self.server_minor} (the client implements "
+            f"{self.client_minor})"
+        )
+
+
 def _capnp() -> Any:
     """Import capnp on first use so the module imports without the package."""
     import capnp  # pyright: ignore[reportMissingImports]
@@ -293,9 +320,8 @@ class RgpotRpcCalculator(Calculator):
             minor = int(capabilities.protocolMinor)
             self._server_protocol_minor = minor
         if minor < required_minor:
-            raise RuntimeError(
-                f"ForceInput {feature} requires RPC protocol minor "
-                f"{required_minor}, but the server advertises {minor}"
+            raise ProtocolMinorMismatchError(
+                feature, required_minor, minor, PROTOCOL_MINOR
             )
 
     def select_orbitals(self, key: int) -> None:
@@ -346,7 +372,11 @@ class RgpotRpcCalculator(Calculator):
                         accept_stress=self._server_has_stress and fully_periodic,
                     )
                 )
-            except (PropertyNotImplementedError, CalculatorError):
+            except (
+                PropertyNotImplementedError,
+                CalculatorError,
+                ProtocolMinorMismatchError,
+            ):
                 raise
             except Exception as exc:  # noqa: BLE001
                 raise RuntimeError("RgpotRpcCalculator: RPC calculate failed") from exc
