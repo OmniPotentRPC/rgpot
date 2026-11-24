@@ -8,3 +8,6 @@ when its lock cannot be taken.
 A negative `rgpot_engine_caps` code at load now rejects the engine and
 destroys its handle instead of being read as a reentrant engine, and a
 positive code or a truncated answer keeps process wide serialization.
+A handle that finds the process wide lock poisoned by a panic in native code
+reports `EngineError::Lock` and stays unusable, so every later call returns
+that error instead of retrying the lock.

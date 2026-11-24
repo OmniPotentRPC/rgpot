@@ -1690,6 +1690,10 @@ a host that does call =dlclose= on them leaves them mapped.
   A negative status, including
   =RGPOT_ENGINE_ERR_LOCK= (=EngineError::Lock=), poisons the handle: every later call on that =EnginePotential= (or the =PotentialImpl= built from it) returns the same error without calling into native code, while dropping the handle still calls =rgpot_engine_destroy=
   once to release the =RgpotEnginePot= allocation.
+  The process-wide lock of a =reentrancy= 2 engine is poisoned when a thread
+  panics inside native code that holds it.
+  The first call that finds it poisoned returns =EngineError::Lock= and poisons
+  its handle the same way, without calling into native code.
 - =EngineSession= :: Owns the callbacks of one =EnginePotential=.
   It borrows a =CoordinateTransform= only for the duration of each =force= or
   =force_batch= call and never keeps it.
