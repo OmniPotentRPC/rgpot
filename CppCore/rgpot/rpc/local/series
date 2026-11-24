@@ -47,3 +47,6 @@ muller-brown.diff
 # orbital-key.diff: ForceInput.hasOrbitalKey @10 and orbitalKey @11 select
 # per-image or per-bead orbital state for CPMD and CP2K.
 orbital-key.diff
+
+# neighbors-operation.diff: Capabilities.Operation.neighbors @11.
+neighbors-operation.diff
