@@ -3,6 +3,8 @@
 
 #include "rgpot/ExternalPot/OpenMM.hpp"
 
+#include "rgpot/MDSession/ProjectedLangevin.hpp"
+
 #include <openmm/Context.h>
 #include <openmm/Platform.h>
 #include <openmm/State.h>
@@ -22,8 +24,6 @@
 
 namespace rgpot {
 namespace {
-
-constexpr size_t kMaxReflectionPasses = 8;
 
 void ensure_plugins_loaded() {
   static std::once_flag once;
@@ -58,120 +58,20 @@ void require_finite_vec3(const OpenMM::Vec3 &v, const char *name) {
   }
 }
 
-class SplitMix64 {
-public:
-  explicit SplitMix64(uint64_t seed) noexcept : state_(seed) {}
-
-  uint64_t next_u64() noexcept {
-    state_ += 0x9e3779b97f4a7c15ULL;
-    uint64_t z = state_;
-    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
-    return z ^ (z >> 31);
+std::vector<double> flatten(const std::vector<OpenMM::Vec3> &values) {
+  std::vector<double> out(3 * values.size());
+  for (size_t i = 0; i < values.size(); ++i) {
+    out[3 * i] = values[i][0];
+    out[3 * i + 1] = values[i][1];
+    out[3 * i + 2] = values[i][2];
   }
-
-  double next_uniform() noexcept {
-    const uint64_t bits = next_u64() >> 11;
-    return (static_cast<double>(bits) + 0.5) * 0x1.0p-53;
-  }
-
-  double next_normal() noexcept {
-    if (has_spare_) {
-      has_spare_ = false;
-      return spare_;
-    }
-    const double u1 = next_uniform();
-    const double u2 = next_uniform();
-    const double r = std::sqrt(-2.0 * std::log(u1));
-    const double theta = 2.0 * kPi * u2;
-    spare_ = r * std::sin(theta);
-    has_spare_ = true;
-    return r * std::cos(theta);
-  }
-
-private:
-  static constexpr double kPi = 3.14159265358979323846;
-  uint64_t state_;
-  bool has_spare_ = false;
-  double spare_ = 0.0;
-};
-
-struct PreparedWall {
-  std::vector<OpenMM::Vec3> normal;
-  std::vector<OpenMM::Vec3> point;
-  std::vector<OpenMM::Vec3> tangent_m_inv;
-  double scale = 0.0;
-};
-
-void project_velocity(std::vector<OpenMM::Vec3> &velocities,
-                      const std::vector<OpenMM::Vec3> &plane_normal,
-                      const std::vector<OpenMM::Vec3> &plane_w) {
-  double nv = 0.0;
-  for (size_t i = 0; i < velocities.size(); ++i) {
-    nv += plane_normal[i].dot(velocities[i]);
-  }
-  for (size_t i = 0; i < velocities.size(); ++i) {
-    velocities[i] -= plane_w[i] * nv;
-  }
+  return out;
 }
 
-void restore_position(std::vector<OpenMM::Vec3> &positions,
-                      const std::vector<OpenMM::Vec3> &plane_point,
-                      const std::vector<OpenMM::Vec3> &plane_normal,
-                      const std::vector<OpenMM::Vec3> &plane_w) {
-  double nx = 0.0;
-  for (size_t i = 0; i < positions.size(); ++i) {
-    nx += plane_normal[i].dot(positions[i] - plane_point[i]);
+void unflatten(const double *values, std::vector<OpenMM::Vec3> &out) {
+  for (size_t i = 0; i < out.size(); ++i) {
+    out[i] = OpenMM::Vec3(values[3 * i], values[3 * i + 1], values[3 * i + 2]);
   }
-  for (size_t i = 0; i < positions.size(); ++i) {
-    positions[i] -= plane_w[i] * nx;
-  }
-}
-
-uint64_t reflect_walls(std::vector<OpenMM::Vec3> &positions,
-                       std::vector<OpenMM::Vec3> &velocities,
-                       const std::vector<PreparedWall> &walls,
-                       const std::vector<double> &masses,
-                       const std::vector<OpenMM::Vec3> &plane_point,
-                       const std::vector<OpenMM::Vec3> &plane_normal,
-                       const std::vector<OpenMM::Vec3> &plane_w) {
-  if (walls.empty()) {
-    return 0;
-  }
-  uint64_t hits = 0;
-  for (size_t pass = 0; pass < kMaxReflectionPasses; ++pass) {
-    bool any_hit = false;
-    for (const PreparedWall &wall : walls) {
-      if (wall.scale <= 0.0) {
-        continue;
-      }
-      double raw = 0.0;
-      for (size_t i = 0; i < positions.size(); ++i) {
-        raw += wall.normal[i].dot(positions[i] - wall.point[i]);
-      }
-      const double excess = raw / wall.scale;
-      if (excess > 0.0) {
-        double v_dot = 0.0;
-        for (size_t i = 0; i < velocities.size(); ++i) {
-          if (masses[i] > 0.0) {
-            v_dot += (wall.tangent_m_inv[i] * masses[i]).dot(velocities[i]);
-          }
-        }
-        for (size_t i = 0; i < positions.size(); ++i) {
-          positions[i] -= wall.tangent_m_inv[i] * (2.0 * excess);
-          velocities[i] -= wall.tangent_m_inv[i] * (2.0 * v_dot);
-        }
-        restore_position(positions, plane_point, plane_normal, plane_w);
-        project_velocity(velocities, plane_normal, plane_w);
-        any_hit = true;
-        ++hits;
-      }
-    }
-    if (!any_hit) {
-      break;
-    }
-  }
-  return hits;
 }
 
 } // namespace
@@ -181,6 +81,8 @@ struct OpenMMSession::Impl {
   std::unique_ptr<OpenMM::VerletIntegrator> integrator;
   std::unique_ptr<OpenMM::Context> context;
   std::vector<double> masses;
+  std::unique_ptr<md::ProjectedLangevin> driver;
+  std::vector<OpenMM::Vec3> scratch;
   size_t particles = 0;
   double default_time_step = 0.0;
 };
@@ -216,6 +118,24 @@ OpenMMSession::OpenMMSession(std::unique_ptr<OpenMM::System> system,
   if (!has_massive) {
     throw std::invalid_argument("OpenMM System has no massive particles");
   }
+  for (int i = 0; i < count; ++i) {
+    if (system->isVirtualSite(i)) {
+      throw std::invalid_argument(
+          "OpenMM session does not support virtual sites");
+    }
+  }
+  if (system->getNumConstraints() > 0) {
+    throw std::invalid_argument(
+        "OpenMM session does not support holonomic constraints");
+  }
+  std::vector<double> coordinate_masses;
+  coordinate_masses.reserve(3 * impl_->particles);
+  for (const double mass : impl_->masses) {
+    coordinate_masses.insert(coordinate_masses.end(), {mass, mass, mass});
+  }
+  impl_->driver =
+      std::make_unique<md::ProjectedLangevin>(std::move(coordinate_masses));
+  impl_->scratch.resize(impl_->particles);
   impl_->system = std::move(system);
   ensure_plugins_loaded();
   impl_->integrator = std::make_unique<OpenMM::VerletIntegrator>(config.time_step);
@@ -287,148 +207,71 @@ uint64_t OpenMMSession::stepLangevin(
   require_positive(time_step, "OpenMM Langevin time_step");
   if (plane_point.size() != impl_->particles ||
       plane_normal.size() != impl_->particles) {
-    throw std::invalid_argument("OpenMM hyperplane vector count differs from System");
+    throw std::invalid_argument(
+        "OpenMM hyperplane vector count differs from System");
   }
   if (wall_points.size() != wall_normals.size()) {
     throw std::invalid_argument("OpenMM wall point and normal count mismatch");
   }
-
-  double norm_sq = 0.0;
   for (size_t i = 0; i < impl_->particles; ++i) {
     require_finite_vec3(plane_point[i], "OpenMM plane_point");
     require_finite_vec3(plane_normal[i], "OpenMM plane_normal");
-    norm_sq += plane_normal[i].dot(plane_normal[i]);
   }
-  const double normal_norm = std::sqrt(norm_sq);
-  require_positive(normal_norm, "OpenMM plane_normal");
-  std::vector<OpenMM::Vec3> n(impl_->particles);
-  double alpha = 0.0;
-  for (size_t i = 0; i < impl_->particles; ++i) {
-    n[i] = plane_normal[i] * (1.0 / normal_norm);
-    if (impl_->masses[i] > 0.0) {
-      alpha += n[i].dot(n[i]) / impl_->masses[i];
-    }
-  }
-  require_positive(alpha, "OpenMM hyperplane inverse-mass norm");
-  std::vector<OpenMM::Vec3> plane_w(impl_->particles, OpenMM::Vec3(0.0, 0.0, 0.0));
-  for (size_t i = 0; i < impl_->particles; ++i) {
-    if (impl_->masses[i] > 0.0) {
-      plane_w[i] = n[i] * (1.0 / (alpha * impl_->masses[i]));
-    }
-  }
-
-  std::vector<PreparedWall> walls(wall_points.size());
+  md::PlaneSpec plane;
+  plane.point = flatten(plane_point);
+  plane.normal = flatten(plane_normal);
+  std::vector<md::WallSpec> walls(wall_points.size());
   for (size_t w = 0; w < wall_points.size(); ++w) {
     if (wall_points[w].size() != impl_->particles ||
         wall_normals[w].size() != impl_->particles) {
-      throw std::invalid_argument("OpenMM wall vector count differs from System");
+      throw std::invalid_argument(
+          "OpenMM wall vector count differs from System");
     }
-    double u_sq = 0.0;
     for (size_t i = 0; i < impl_->particles; ++i) {
       require_finite_vec3(wall_points[w][i], "OpenMM wall_point");
       require_finite_vec3(wall_normals[w][i], "OpenMM wall_normal");
-      u_sq += wall_normals[w][i].dot(wall_normals[w][i]);
     }
-    const double u_norm = std::sqrt(u_sq);
-    require_positive(u_norm, "OpenMM wall_normal");
-    walls[w].point = wall_points[w];
-    walls[w].normal.resize(impl_->particles);
-    double n_minv_u = 0.0;
-    for (size_t i = 0; i < impl_->particles; ++i) {
-      walls[w].normal[i] = wall_normals[w][i] * (1.0 / u_norm);
-      if (impl_->masses[i] > 0.0) {
-        n_minv_u += n[i].dot(walls[w].normal[i]) / impl_->masses[i];
-      }
-    }
-    const double coeff = n_minv_u / alpha;
-    std::vector<OpenMM::Vec3> u_tan(impl_->particles);
-    double scale_sq = 0.0;
-    for (size_t i = 0; i < impl_->particles; ++i) {
-      u_tan[i] = walls[w].normal[i] - n[i] * coeff;
-      if (impl_->masses[i] > 0.0) {
-        scale_sq += u_tan[i].dot(u_tan[i]) / impl_->masses[i];
-      }
-    }
-    const double scale = std::sqrt(scale_sq);
-    walls[w].scale = scale;
-    walls[w].tangent_m_inv.assign(impl_->particles, OpenMM::Vec3(0.0, 0.0, 0.0));
-    if (scale > 0.0) {
-      for (size_t i = 0; i < impl_->particles; ++i) {
-        if (impl_->masses[i] > 0.0) {
-          walls[w].tangent_m_inv[i] = u_tan[i] * (1.0 / (scale * impl_->masses[i]));
-        }
-      }
-    }
+    walls[w].point = flatten(wall_points[w]);
+    walls[w].normal = flatten(wall_normals[w]);
   }
-
   if (steps == 0) {
     return 0;
   }
 
   const OpenMM::State initial = impl_->context->getState(
-      OpenMM::State::Positions | OpenMM::State::Velocities |
-      OpenMM::State::Forces);
-  auto positions = initial.getPositions();
-  auto velocities = initial.getVelocities();
-  auto forces = initial.getForces();
+      OpenMM::State::Positions | OpenMM::State::Velocities);
+  std::vector<double> x = flatten(initial.getPositions());
+  std::vector<double> v = flatten(initial.getVelocities());
 
-  restore_position(positions, plane_point, n, plane_w);
-  project_velocity(velocities, n, plane_w);
-
-  const double half_dt = 0.5 * time_step;
-  const double decay = std::exp(-friction * time_step);
-  const double noise_amp =
-      std::sqrt(kT * (1.0 - std::exp(-2.0 * friction * time_step)));
-  SplitMix64 rng(seed);
-  uint64_t reflections = 0;
-
-  for (size_t step = 0; step < steps; ++step) {
-    for (size_t i = 0; i < impl_->particles; ++i) {
-      if (impl_->masses[i] > 0.0) {
-        velocities[i] += forces[i] * (half_dt / impl_->masses[i]);
-      }
+  md::LangevinSettings settings;
+  settings.kT = kT;
+  settings.friction = friction;
+  settings.timeStep = time_step;
+  settings.steps = steps;
+  settings.seed = seed;
+  const md::ForceFunction force_at = [this](const double *positions,
+                                            double *forces) {
+    unflatten(positions, impl_->scratch);
+    impl_->context->setPositions(impl_->scratch);
+    const OpenMM::State at = impl_->context->getState(OpenMM::State::Forces |
+                                                      OpenMM::State::Energy);
+    const std::vector<OpenMM::Vec3> &f = at.getForces();
+    for (size_t i = 0; i < f.size(); ++i) {
+      forces[3 * i] = f[i][0];
+      forces[3 * i + 1] = f[i][1];
+      forces[3 * i + 2] = f[i][2];
     }
-    project_velocity(velocities, n, plane_w);
+    return at.getPotentialEnergy();
+  };
+  const md::LangevinResult result = impl_->driver->run(
+      settings, &plane, walls, x.data(), v.data(), force_at);
 
-    for (size_t i = 0; i < impl_->particles; ++i) {
-      positions[i] += velocities[i] * half_dt;
-    }
-    restore_position(positions, plane_point, n, plane_w);
-    reflections += reflect_walls(positions, velocities, walls, impl_->masses,
-                                 plane_point, n, plane_w);
-
-    for (size_t i = 0; i < impl_->particles; ++i) {
-      if (impl_->masses[i] > 0.0) {
-        const double sigma = noise_amp / std::sqrt(impl_->masses[i]);
-        const OpenMM::Vec3 kick(sigma * rng.next_normal(),
-                                sigma * rng.next_normal(),
-                                sigma * rng.next_normal());
-        velocities[i] = velocities[i] * decay + kick;
-      }
-    }
-    project_velocity(velocities, n, plane_w);
-
-    for (size_t i = 0; i < impl_->particles; ++i) {
-      positions[i] += velocities[i] * half_dt;
-    }
-    restore_position(positions, plane_point, n, plane_w);
-    reflections += reflect_walls(positions, velocities, walls, impl_->masses,
-                                 plane_point, n, plane_w);
-
-    impl_->context->setPositions(positions);
-    const OpenMM::State post = impl_->context->getState(OpenMM::State::Forces);
-    forces = post.getForces();
-    for (size_t i = 0; i < impl_->particles; ++i) {
-      if (impl_->masses[i] > 0.0) {
-        velocities[i] += forces[i] * (half_dt / impl_->masses[i]);
-      }
-    }
-    project_velocity(velocities, n, plane_w);
-  }
-
-  impl_->context->setPositions(positions);
-  impl_->context->setVelocities(velocities);
-  return reflections;
+  std::vector<OpenMM::Vec3> out(impl_->particles);
+  unflatten(x.data(), out);
+  impl_->context->setPositions(out);
+  unflatten(v.data(), out);
+  impl_->context->setVelocities(out);
+  return result.wallHits;
 }
 
 OpenMMState OpenMMSession::state() const {

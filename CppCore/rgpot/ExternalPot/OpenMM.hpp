@@ -53,11 +53,14 @@ struct OpenMMState {
 /**
  * @brief In-process OpenMM projected-BAOAB and Verlet NVE session.
  *
- * Langevin steps use BAOAB splitting on a full 3N-dimensional hyperplane in
- * Cartesian coordinates using the inverse-mass metric (equivalent to Euclidean
- * projection in mass-weighted coordinates). Optional planar hard walls reflect
- * positions and velocities specularly on both half-drifts and return the total
- * number of reflections.
+ * Langevin steps run the shared md::ProjectedLangevin driver on the OpenMM
+ * Context: BAOAB splitting on a full 3N-dimensional hyperplane in Cartesian
+ * coordinates using the inverse-mass metric (equivalent to Euclidean
+ * projection in mass-weighted coordinates). The first force of a call is
+ * evaluated on the hyperplane, not at the positions the caller left.
+ * Optional planar hard walls reflect positions and velocities specularly on
+ * both half-drifts, as often as the drift needs, and return the total number
+ * of reflections. A System with virtual sites is refused.
  */
 class OpenMMSession {
 public:
