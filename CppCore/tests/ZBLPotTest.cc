@@ -4,6 +4,7 @@
 // ZBL checks against LAMMPS pair_style zbl, plus the switching, cutoff and
 // species-table behaviour of the rgpot port.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <stdexcept>
@@ -12,7 +13,9 @@
 #include <catch2/catch_all.hpp>
 
 #include "TestFixtures.hpp"
+#include "rgpot/PerAtom.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
 using Catch::Matchers::WithinAbs;
@@ -109,20 +112,119 @@ TEST_CASE("ZBLPot rebuilds its tables when the species change", "[ZBLPot]") {
   REQUIRE_THAT(e_again, WithinRel(e_siau, 1e-15));
 }
 
-TEST_CASE("ZBLPot ignores the cell", "[ZBLPot]") {
-  // Free boundaries: a cell narrower than the cutoff must not fold the pair
-  // vector, so the energy is unchanged.
-  rgpot::ZBLPot pot;
-  const auto positions = siAuDimer();
-  const std::vector<int> atmtypes{14, 79};
+TEST_CASE("ZBLPot periodic cell matches a replicated open supercell",
+          "[ZBLPot][periodic][stress]") {
+  const rgpot::ZBLPot pot(rgpot::ZBLConfig{.cut_inner = 1.8, .cut_global = 2.4});
+  REQUIRE(pot.caps().periodic);
+  REQUIRE(pot.caps().stress);
 
-  auto [e_wide, f_wide, v_wide] = pot(positions, atmtypes, cubicCell(20.0));
-  auto [e_tight, f_tight, v_tight] = pot(positions, atmtypes, cubicCell(3.0));
-  (void)v_wide;
-  (void)v_tight;
+  const bool triclinic = GENERATE(false, true);
+  const double a = 2.8, side = 2.0 * a;
+  const double h[9] = {side, 0.0, 0.0,
+                       triclinic ? 0.1 * side : 0.0, side, 0.0,
+                       triclinic ? -0.08 * side : 0.0, triclinic ? 0.05 * side : 0.0, side};
+  const double basis[4][3] = {{0, 0, 0}, {0.5, 0.5, 0}, {0.5, 0, 0.5}, {0, 0.5, 0.5}};
+  std::vector<double> pos;
+  std::vector<int> z;
+  for (int c = 0; c < 8; ++c) {
+    for (const auto &s : basis) {
+      const double f[3] = {((c & 1) + s[0]) / 2.0, (((c >> 1) & 1) + s[1]) / 2.0,
+                           (((c >> 2) & 1) + s[2]) / 2.0};
+      const int idx = static_cast<int>(z.size());
+      for (int d = 0; d < 3; ++d) {
+        const double r = f[0] * h[d] + f[1] * h[3 + d] + f[2] * h[6 + d];
+        pos.push_back(r + 0.05 * a * std::sin(1.37 * idx + 0.9 * d));
+      }
+      z.push_back(idx % 2 == 0 ? 14 : 79);
+    }
+  }
+  const std::size_t n = z.size();
 
-  REQUIRE_THAT(e_tight, WithinRel(e_wide, 1e-15));
-  REQUIRE_FALSE(pot.caps().periodic);
+  std::vector<double> f_pbc(3 * n, 0.0), e_pbc(n, 0.0), v_pbc(6 * n, 0.0);
+  rgpot::ForceOut out_pbc{f_pbc.data(), 0.0, 0.0, {}, 0};
+  pot.forcePerAtom({n, pos.data(), z.data(), h}, &out_pbc, {e_pbc.data(), v_pbc.data()});
+  REQUIRE(out_pbc.energy > 0.0);
+  REQUIRE(out_pbc.has_stress == 1);
+
+  std::vector<double> super_pos(pos);
+  std::vector<int> super_z(z);
+  for (int i0 = -1; i0 <= 1; ++i0) {
+    for (int i1 = -1; i1 <= 1; ++i1) {
+      for (int i2 = -1; i2 <= 1; ++i2) {
+        if (i0 == 0 && i1 == 0 && i2 == 0) {
+          continue;
+        }
+        for (std::size_t k = 0; k < n; ++k) {
+          for (int d = 0; d < 3; ++d) {
+            super_pos.push_back(pos[3 * k + static_cast<std::size_t>(d)] +
+                                i0 * h[d] + i1 * h[3 + d] + i2 * h[6 + d]);
+          }
+          super_z.push_back(z[k]);
+        }
+      }
+    }
+  }
+  const std::size_t n_super = super_z.size();
+  std::vector<double> f_open(3 * n_super, 0.0), e_open(n_super, 0.0), v_open(6 * n_super, 0.0);
+  rgpot::ForceOut out_open{f_open.data(), 0.0, 0.0, {}, 0};
+  pot.forcePerAtom({n_super, super_pos.data(), super_z.data(), nullptr}, &out_open,
+                   {e_open.data(), v_open.data()});
+
+  double central_e = 0.0;
+  double central_v[6] = {};
+  for (std::size_t k = 0; k < n; ++k) {
+    central_e += e_open[k];
+    REQUIRE_THAT(e_pbc[k], WithinRel(e_open[k], 1e-12));
+    for (std::size_t d = 0; d < 3; ++d) {
+      REQUIRE_THAT(f_pbc[3 * k + d], WithinAbs(f_open[3 * k + d], 1e-11));
+    }
+    for (std::size_t c = 0; c < 6; ++c) {
+      central_v[c] += v_open[6 * k + c];
+      REQUIRE_THAT(v_pbc[6 * k + c], WithinAbs(v_open[6 * k + c], 1e-11));
+    }
+  }
+  REQUIRE_THAT(out_pbc.energy, WithinRel(central_e, 1e-12));
+  const double volume = rgpot::cellVolume(h);
+  const int rows[6] = {0, 1, 2, 1, 0, 0};
+  const int cols[6] = {0, 1, 2, 2, 2, 1};
+  for (int c = 0; c < 6; ++c) {
+    REQUIRE_THAT(-volume * out_pbc.stress[3 * rows[c] + cols[c]],
+                 WithinAbs(central_v[c], 1e-10));
+  }
+
+  constexpr double h_fd = 1e-6;
+  auto evalE = [&](const std::vector<double> &p, const double *cell) {
+    std::vector<double> f_tmp(3 * n, 0.0);
+    rgpot::ForceOut sample{f_tmp.data(), 0.0, 0.0, {}, 0};
+    pot.forceImpl({n, p.data(), z.data(), cell}, &sample);
+    return sample.energy;
+  };
+  for (int d = 0; d < 3; ++d) {
+    auto plus = pos, minus = pos;
+    plus[static_cast<std::size_t>(d)] += h_fd;
+    minus[static_cast<std::size_t>(d)] -= h_fd;
+    const double fd_f = -(evalE(plus, h) - evalE(minus, h)) / (2.0 * h_fd);
+    REQUIRE_THAT(f_pbc[static_cast<std::size_t>(d)], WithinAbs(fd_f, 1e-6));
+  }
+  for (int row = 0; row < 3; ++row) {
+    for (int col = 0; col < 3; ++col) {
+      auto strained = [&](double eps) {
+        auto moved = pos;
+        double cell[9];
+        std::copy(h, h + 9, cell);
+        for (std::size_t a_i = 0; a_i < n; ++a_i) {
+          moved[3 * a_i + static_cast<std::size_t>(col)] +=
+              eps * pos[3 * a_i + static_cast<std::size_t>(row)];
+        }
+        for (int ax = 0; ax < 3; ++ax) {
+          cell[3 * ax + col] += eps * h[3 * ax + row];
+        }
+        return evalE(moved, cell);
+      };
+      const double fd_s = (strained(h_fd) - strained(-h_fd)) / (2.0 * h_fd * volume);
+      REQUIRE_THAT(out_pbc.stress[3 * row + col], WithinAbs(fd_s, 1e-6));
+    }
+  }
 }
 
 TEST_CASE("ZBLPot rejects an invalid cutoff pair", "[ZBLPot]") {
@@ -149,4 +251,71 @@ TEST_CASE("ZBLPot parameter fingerprint tracks the config", "[ZBLPot]") {
   REQUIRE(defaults.getType() == rgpot::PotType::ZBL);
   REQUIRE(defaults.config().cut_inner == 2.0);
   REQUIRE(defaults.config().cut_global == 2.5);
+}
+
+TEST_CASE("ZBLPot folds pairs on a rotated cell and rejects malformed cells",
+          "[ZBLPot][periodic][stress]") {
+  const rgpot::ZBLPot pot;
+  const double side = 5.0;
+  const double std_box[9] = {side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side};
+  // 90-degree rotation in the xy plane: a = (0, L, 0), b = (-L, 0, 0),
+  // c = (0, 0, L), so the diagonal entries in x and y are zero while
+  // det(H) = L^3 > 0.
+  const double rot_box[9] = {0.0, side, 0.0, -side, 0.0, 0.0, 0.0, 0.0, side};
+
+  // Si-Si dimer separated by 0.2 A across the first periodic boundary:
+  // unwrapped separation is 4.8 A > cut_global (2.5 A), so dropping
+  // periodicity gives 0 eV while the folded image gives ~4053.35 eV.
+  const std::vector<double> pos_std{0.1, 0.0, 0.0, 4.9, 0.0, 0.0};
+  const std::vector<double> pos_rot{0.0, 0.1, 0.0, 0.0, 4.9, 0.0};
+  const std::vector<int> z{14, 14};
+
+  std::vector<double> f_std(6, 0.0), f_rot(6, 0.0), e_std(2, 0.0), e_rot(2, 0.0),
+      v_std(12, 0.0), v_rot(12, 0.0);
+  rgpot::ForceOut out_std{f_std.data(), 0.0, 0.0, {}, 0};
+  rgpot::ForceOut out_rot{f_rot.data(), 0.0, 0.0, {}, 0};
+  pot.forcePerAtom({2, pos_std.data(), z.data(), std_box}, &out_std,
+                   {e_std.data(), v_std.data()});
+  pot.forcePerAtom({2, pos_rot.data(), z.data(), rot_box}, &out_rot,
+                   {e_rot.data(), v_rot.data()});
+
+  CHECK_THAT(out_std.energy, WithinRel(4053.35, 1e-4));
+  CHECK_THAT(out_rot.energy, WithinRel(out_std.energy, 1e-14));
+  CHECK(out_std.has_stress == 1);
+  CHECK(out_rot.has_stress == 1);
+  for (std::size_t i = 0; i < 2; ++i) {
+    CHECK_THAT(e_rot[i], WithinRel(e_std[i], 1e-14));
+  }
+  // Forces and stress rotate by (x, y, z) -> (-y, x, z).
+  CHECK_THAT(f_rot[0], WithinAbs(-f_std[1], 1e-12));
+  CHECK_THAT(f_rot[1], WithinAbs(f_std[0], 1e-12));
+  CHECK_THAT(f_rot[2], WithinAbs(f_std[2], 1e-12));
+  CHECK_THAT(out_rot.stress[4], WithinRel(out_std.stress[0], 1e-14));
+  CHECK_THAT(out_rot.stress[0], WithinRel(out_std.stress[4], 1e-14));
+  CHECK_THAT(out_rot.stress[8], WithinRel(out_std.stress[8], 1e-14));
+
+  // Null and all-zero cells use free boundaries.
+  const double zero_box[9] = {};
+  std::vector<double> f_null(6, 0.0), f_zero(6, 0.0);
+  rgpot::ForceOut out_null{f_null.data(), 0.0, 0.0, {}, 0};
+  rgpot::ForceOut out_zero{f_zero.data(), 0.0, 0.0, {}, 0};
+  pot.forceImpl({2, pos_std.data(), z.data(), nullptr}, &out_null);
+  pot.forceImpl({2, pos_std.data(), z.data(), zero_box}, &out_zero);
+  CHECK(out_null.energy == 0.0);
+  CHECK(out_zero.energy == 0.0);
+  CHECK(out_null.has_stress == 0);
+  CHECK(out_zero.has_stress == 0);
+
+  // Malformed non-zero cells (non-positive diagonal or singular sheared cell)
+  // throw std::invalid_argument instead of silently falling back to free_box.
+  const double neg_diag[9] = {-side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side};
+  const double zero_diag[9] = {side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, 0.0};
+  const double singular_shear[9] = {side, side, 0.0, side, side, 0.0, 0.0, 0.0, side};
+  rgpot::ForceOut out_bad{f_std.data(), 0.0, 0.0, {}, 0};
+  CHECK_THROWS_AS(pot.forceImpl({2, pos_std.data(), z.data(), neg_diag}, &out_bad),
+                  std::invalid_argument);
+  CHECK_THROWS_AS(pot.forceImpl({2, pos_std.data(), z.data(), zero_diag}, &out_bad),
+                  std::invalid_argument);
+  CHECK_THROWS_AS(pot.forceImpl({2, pos_std.data(), z.data(), singular_shear}, &out_bad),
+                  std::invalid_argument);
 }

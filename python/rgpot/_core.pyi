@@ -46,9 +46,9 @@ def evaluate_metatomic_dlopen(positions: Annotated[NDArray[numpy.float64], dict(
     """
 
 class LJPot:
-    def __init__(self, u0: float = 1.0, cutoff: float = 15.0, psi: float = 1.0, switch_width: float = 0.0) -> None:
+    def __init__(self, u0: float = 1.0, cutoff: float = 15.0, psi: float = 1.0, switch_width: float = 0.0, tail_correction: bool = False) -> None:
         """
-        Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff and psi are Angstrom. A positive switch_width (Angstrom) replaces the shift with the C^2 quintic switch over [cutoff - switch_width, cutoff]; it must not exceed cutoff.
+        Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff and psi are Angstrom. A positive switch_width (Angstrom) replaces the shift with the C^2 quintic switch over [cutoff - switch_width, cutoff]; it must not exceed cutoff. tail_correction adds the continuum long-range correction on a periodic cell and leaves the pair term unshifted.
         """
 
     def config(self) -> dict: ...
@@ -1273,6 +1273,8 @@ class SumPot:
         Per-term record of this thread's last call: name, weight, enabled, evaluated, energy (eV, before the weight), forces (N, 3), variance and stress (3, 3, or None).
         """
 
+    def config(self) -> dict: ...
+
     def caps(self) -> dict: ...
 
     def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
@@ -1334,11 +1336,13 @@ class SumPot:
 class ExprPot:
     def __init__(self, expression: str, terms: dict) -> None:
         """
-        expression is a Lepton string; terms maps names to 'lj'/'morse'/'d3'/'d4' or a dict with kind plus that kind's fields: u0, cutoff, psi, switch_width (lj); De, a, re, cutoff, switch_width (morse); the D3/D4 fields.
+        expression is a Lepton string; terms maps names to 'lj'/'morse'/'d3'/'d4' or a dict with kind plus that kind's fields: u0, cutoff, psi, switch_width, tail_correction (lj); De, a, re, cutoff, switch_width (morse); the D3/D4 fields.
         """
 
     @property
     def expression(self) -> str: ...
+
+    def config(self) -> dict: ...
 
     @property
     def cutoff(self) -> float:

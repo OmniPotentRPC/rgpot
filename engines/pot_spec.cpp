@@ -11,6 +11,7 @@
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/elements.hpp"
+#include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_EAM_TABLE
 #include "rgpot/EAMTable/EAMTablePot.hpp"
 #endif
@@ -94,6 +95,22 @@ public:
     return v == nullptr ? fallback : *v;
   }
 
+  bool flag(const std::string &key, bool fallback) {
+    const std::string *v = find(key);
+    if (v == nullptr) {
+      return fallback;
+    }
+    const std::string f = lower(*v);
+    if (f == "true" || f == "1" || f == "yes" || f == "on") {
+      return true;
+    }
+    if (f == "false" || f == "0" || f == "no" || f == "off") {
+      return false;
+    }
+    throw std::invalid_argument(name_ + ": " + key +
+                                " is not a boolean: " + *v);
+  }
+
   void finish() const {
     for (std::size_t k = 0; k < options_.size(); ++k) {
       if (!used_[k]) {
@@ -161,13 +178,15 @@ template <typename P, typename... A> Built own(A &&...args) {
     out.locality = kernel->locality();
   }
   if constexpr (StagedPotential<P>) {
-    out.densityStage = [kernel](const HalfList &list, double *densities) {
-      kernel->densityStage(list, densities);
-    };
-    out.forceStage = [kernel](const HalfList &list, const double *densities,
-                              double *forces, StageTally *tally) {
-      kernel->forceStage(list, densities, forces, tally);
-    };
+    if (out.locality.finite()) {
+      out.densityStage = [kernel](const HalfList &list, double *densities) {
+        kernel->densityStage(list, densities);
+      };
+      out.forceStage = [kernel](const HalfList &list, const double *densities,
+                                double *forces, StageTally *tally) {
+        kernel->forceStage(list, densities, forces, tally);
+      };
+    }
   }
   out.pot = std::move(pot);
   return out;
@@ -231,6 +250,7 @@ Built make(const std::string &key, Reader &r, double fallback) {
     c.psi = r.real("psi", c.psi);
     c.cutoff = r.real("cutoff", fallback > 0.0 ? fallback : c.cutoff);
     c.switch_width = r.real("switch_width", c.switch_width);
+    c.tail_correction = r.flag("tail_correction", c.tail_correction);
     return ownCut<LJPot>(c);
   }
   if (key == "morse") {
@@ -241,6 +261,15 @@ Built make(const std::string &key, Reader &r, double fallback) {
     c.cutoff = r.real("cutoff", fallback > 0.0 ? fallback : c.cutoff);
     c.switch_width = r.real("switch_width", c.switch_width);
     return ownCut<MorsePot>(c);
+  }
+  if (key == "zbl") {
+    ZBLConfig c;
+    c.cut_inner = r.real("cut_inner", c.cut_inner);
+    c.cut_global =
+        r.real("cut_global", fallback > 0.0 ? fallback : c.cut_global);
+    Built out = own<ZBLPot>(c);
+    out.cutoff = c.cut_global;
+    return out;
   }
   if (key == "suttonchen") {
     const std::string preset = lower(r.text("preset", ""));
@@ -321,7 +350,7 @@ Built make(const std::string &key, Reader &r, double fallback) {
 } // namespace
 
 std::string names() {
-  std::string out = "LJ Morse SuttonChen";
+  std::string out = "LJ Morse ZBL SuttonChen";
 #ifdef RGPOT_POT_SPEC_HAS_CPMD
   out += " CPMD";
 #endif
