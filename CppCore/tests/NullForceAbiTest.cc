@@ -13,6 +13,7 @@
 
 #include "rgpot/D2Pot/D2CpmdPot.hpp"
 #include "rgpot/D2Pot/D2Pot.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/HessianVector.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -324,6 +325,57 @@ TEST_CASE("direct forcePerAtom members validate before writing",
   requirePerAtomGuard(rgpot::MorsePot{}, false);
   requirePerAtomGuard(rgpot::ZBLPot{}, true);
   requirePerAtomGuard(rgpot::SuttonChenPot{}, false);
+  requirePerAtomGuard(rgpot::GuptaPot{}, false);
+}
+
+TEST_CASE("GuptaPot names a null buffer, no atoms and a missing cell",
+          "[null-force]") {
+  rgpot::GuptaConfig periodic;
+  periodic.cutoff = 5.0;
+  periodic.periodic = true;
+  const rgpot::GuptaPot cell_pot(periodic);
+  const rgpot::GuptaPot cluster_pot;
+  REQUIRE(rgpot::kernelNeedsCell(cell_pot));
+  REQUIRE_FALSE(rgpot::kernelNeedsCell(cluster_pot));
+
+  double pos[6] = {0.0, 0.0, 0.0, 3.0, 0.0, 0.0};
+  double box[9];
+  fillCell(box);
+  double forces[6] = {};
+  double energy[2] = {};
+  rgpot::ForceOut out{};
+  out.F = forces;
+
+  for (const std::size_t n : {std::size_t{1}, std::size_t{2}}) {
+    const rgpot::ForceInput in{n, pos, nullptr, nullptr};
+    requireRejected([&] { cell_pot.forceImpl(in, &out); },
+                    "invalid parameter: box is null");
+    requireRejected(
+        [&] {
+          cell_pot.forcePerAtom(in, &out, rgpot::PerAtomOut{energy, nullptr});
+        },
+        "invalid parameter: box is null");
+    REQUIRE_NOTHROW(cluster_pot.forceImpl(in, &out));
+  }
+
+  const rgpot::ForceInput none{0, pos, nullptr, box};
+  for (const rgpot::GuptaPot *pot : {&cell_pot, &cluster_pot}) {
+    requireRejected([&] { pot->forceImpl(none, &out); },
+                    "invalid parameter: nAtoms must be positive");
+    requireRejected(
+        [&] { pot->forcePerAtom(none, &out, rgpot::PerAtomOut{}); },
+        "invalid parameter: nAtoms must be positive");
+  }
+
+  const rgpot::ForceInput two{2, pos, nullptr, box};
+  requireRejected([&] { cell_pot.forceImpl(two, nullptr); },
+                  "invalid parameter: forces are null");
+  rgpot::ForceOut bare{};
+  requireRejected([&] { cell_pot.forceImpl(two, &bare); },
+                  "invalid parameter: forces are null");
+  const rgpot::ForceInput no_pos{2, nullptr, nullptr, box};
+  requireRejected([&] { cell_pot.forceImpl(no_pos, &out); },
+                  "invalid parameter: positions is null");
 }
 
 TEST_CASE("cellVolume gives zero for a cell without a volume", "[null-force]") {

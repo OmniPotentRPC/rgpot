@@ -651,7 +651,8 @@ private:
             dz = zi - x[3 * jj + 2];
           }
           const double r2 = dx * dx + dy * dy + dz * dz;
-          if (r2 <= search2) {
+          // A NaN length is not outside the search. The potential decides.
+          if (!(r2 > search2)) {
             fn(a, j, dx, dy, dz, r2);
           }
         }
@@ -1077,7 +1078,8 @@ private:
               dz = round_axis(a.z - b.z, i2, L2, p2, sc);
             }
             const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 <= search2) {
+            // A NaN length is not outside the search. The potential decides.
+            if (!(r2 > search2)) {
               fn(a.id, b.id, dx, dy, dz, r2);
             }
           }
@@ -1155,7 +1157,8 @@ private:
                 continue;
               }
               const double r2 = dx * dx + dy * dy + dz * dz;
-              if (r2 <= search2) {
+              // A NaN length is not outside the search. The potential decides.
+              if (!(r2 > search2)) {
                 fn(static_cast<std::int32_t>(i), j, dx, dy, dz, r2);
               }
             }

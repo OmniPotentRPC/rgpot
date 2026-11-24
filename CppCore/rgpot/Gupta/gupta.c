@@ -57,6 +57,22 @@ static int rgpot_gupta_ensure(size_t n, size_t pairs) {
 static double *rgpot_gupta_rho(void) { return rho_buf; }
 
 static double *rgpot_gupta_pack(void) { return pack_buf; }
+// Pair derivatives are kept in thread-local realloc-backed buffers. The
+// buffers grow to the largest request of that thread and stay there for
+// later calls; growth past the pair cap recomputes uncached pairs.
+
+// One stored pair is RGPOT_GUPTA_PACK_STRIDE doubles: the separation
+// (dx, dy, dz) and its length r, then the derivatives d(phi)/dr of the
+// repulsive term and d(psi)/dr of the density term.
+#define RGPOT_GUPTA_PACK_STRIDE 6
+
+// Byte budget for stored pairs. It is the 32 MiB that PairTerms::kDefaultLimit
+// in rgpot/PairTerms.hpp keeps for the C++ potentials, repeated here because
+// this file is C.
+#define RGPOT_GUPTA_PACK_BUDGET_BYTES (32u << 20)
+#define RGPOT_GUPTA_MAX_PACK_PAIRS \
+  (RGPOT_GUPTA_PACK_BUDGET_BYTES /  \
+   (RGPOT_GUPTA_PACK_STRIDE * sizeof(double)))
 
 static void gupta_scalar(const double *x, size_t n, const unsigned char *slot,
                          size_t n_species, const double *a, const double *xi,

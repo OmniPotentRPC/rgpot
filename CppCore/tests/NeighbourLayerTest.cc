@@ -25,6 +25,7 @@
 #include "TestFixtures.hpp"
 #include "lsan_libomp.hpp"
 #include "rgpot/EAM/EAMPot.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
@@ -3416,5 +3417,67 @@ TEST_CASE("Neighbours is nothrow default-constructible and refuses generation "
     for (std::size_t t = 1; t < kThreads; ++t) {
       CHECK(observed[t] == observed[0]);
     }
+  }
+}
+
+TEST_CASE("a non-finite coordinate disables cell pruning across modes",
+          "[nlist][nan]") {
+  setThreads("1");
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double box[9] = {1000.0, 0.0, 0.0, 0.0, 1000.0, 0.0, 0.0, 0.0, 1000.0};
+  const std::vector<double> far = {nan, 0.0, 0.0, 500.0, 0.0, 0.0};
+  const rgpot::types::AtomMatrix xyz{{nan, 0.0, 0.0}, {500.0, 0.0, 0.0}};
+  const std::array<std::array<double, 3>, 3> cell{{
+      {1000.0, 0.0, 0.0},
+      {0.0, 1000.0, 0.0},
+      {0.0, 0.0, 1000.0},
+  }};
+  const std::vector<int> types{78, 78};
+
+  for (const auto mode : {rgpot::nlist::Mode::Auto, rgpot::nlist::Mode::Stored,
+                          rgpot::nlist::Mode::Stream}) {
+    INFO("mode " << static_cast<int>(mode));
+    rgpot::nlist::Spec spec;
+    spec.cutoff = 6.0;
+    spec.skin = mode == rgpot::nlist::Mode::Stream ? 0.0 : 1.0;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = mode;
+    rgpot::nlist::Neighbours cells;
+    cells.update(far.data(), 2, box, spec);
+    REQUIRE(cells.allPairs());
+    std::size_t half_count = 0;
+    cells.forHalf(
+        0, 2,
+        [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+          REQUIRE(i == 0);
+          REQUIRE(j == 1);
+          REQUIRE(std::isnan(r2));
+          ++half_count;
+        });
+    REQUIRE(half_count == 1);
+
+    // A finite follow-up step on the same bounded spec rebuilds the bins.
+    const std::vector<double> clean = {0.0, 0.0, 0.0, 500.0, 0.0, 0.0};
+    cells.update(clean.data(), 2, box, spec);
+    REQUIRE_FALSE(cells.reused());
+    REQUIRE_FALSE(cells.allPairs());
+
+    rgpot::GuptaConfig gcfg;
+    gcfg.cutoff = 6.0;
+    gcfg.periodic = true;
+    rgpot::GuptaPot gupta(gcfg);
+    gupta.setNeighbourMode(mode);
+    const auto [ge, gf, gv] = gupta(xyz, types, cell);
+    (void)gv;
+    REQUIRE_FALSE(std::isfinite(ge));
+    for (int k = 0; k < 6; ++k) {
+      REQUIRE_FALSE(std::isfinite(gf.data()[k]));
+    }
+
+    rgpot::LJConfig ljcfg;
+    ljcfg.cutoff = 6.0;
+    rgpot::LJPot lj(ljcfg);
+    lj.setNeighbourMode(mode);
+    REQUIRE_THROWS_AS(lj(xyz, types, cell), std::domain_error);
   }
 }

@@ -228,6 +228,27 @@ class.
   below 1, when =a= is not positive, when =epsilon=, =c= or =cutoff= is not
   finite, and when =periodic= is set with a =cutoff= that is not positive.
 
+*** =rgpot::GuptaConfig=
+
+- Inputs :: =A= (repulsive prefactor, default 0.1477), =xi= (cohesive hopping
+  integral, default 0.8900), =p= (repulsive exponent, default 9.689), =q=
+  (cohesive exponent, default 4.602), =r0= (reference nearest-neighbour
+  distance, default 1.0), =cutoff= (truncation distance, default 0.0; 0 or less
+  keeps every pair), =periodic= (minimum image, default false), =stress= (write
+  the Cauchy stress, default false).
+  The defaults are the Cleri-Rosato Zn parameters (F. Cleri and V. Rosato, Phys.
+  Rev. B 48, 22 (1993),
+  [[https://doi.org/10.1103/PhysRevB.48.22][doi:10.1103/PhysRevB.48.22]]; Table
+  1 of J. P. K. Doye, Phys. Rev. B 68, 195418 (2003), arXiv:cond-mat/0306225)
+  with =r0 = 1.0= in reduced length units (=r / r0=).
+- Units :: =A= and =xi= in eV; =r0=, =cutoff= and positions share the caller's
+  length unit (reduced units of =r0= when =r0 = 1.0=, or Angstrom with physical
+  parameters); =p= and =q= are dimensionless.
+- Outputs :: the parameters of =rgpot::GuptaPot=.
+- Errors :: the constructor throws =std::invalid_argument= when =r0= is not
+  positive or not finite, when any parameter is not finite, and when =periodic=
+  is set with a =cutoff= that is not positive.
+
 *** =rgpot::EAMCellConfig=
 
 - Inputs :: none; the struct has no fields.
@@ -412,11 +433,11 @@ A sentence after the fields names a class whose behaviour differs in detail.
 #+end_src
 
 - Applies to :: rgpot::D2CpmdPot, rgpot::D2Pot, rgpot::EAMPot,
-  rgpot::EAMTablePot, rgpot::EMTPot, rgpot::ExprPot, rgpot::LJClusterPot,
-  rgpot::LJPot, rgpot::MEAMPot, rgpot::MorsePot, rgpot::SPCEPot,
-  rgpot::StillingerWeberSi, rgpot::SuttonChenPot, rgpot::TIP4PPot,
-  rgpot::TIP4PPtPot, rgpot::TersoffSiC, rgpot::ZBLPot, rgpot::lr::CoulombPot,
-  rgpot::lr::DispersionPot, rgpot::lr::NlhPot
+  rgpot::EAMTablePot, rgpot::EMTPot, rgpot::ExprPot, rgpot::GuptaPot,
+  rgpot::LJClusterPot, rgpot::LJPot, rgpot::MEAMPot, rgpot::MorsePot,
+  rgpot::SPCEPot, rgpot::StillingerWeberSi, rgpot::SuttonChenPot,
+  rgpot::TIP4PPot, rgpot::TIP4PPtPot, rgpot::TersoffSiC, rgpot::ZBLPot,
+  rgpot::lr::CoulombPot, rgpot::lr::DispersionPot, rgpot::lr::NlhPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a 64-bit FNV-1a hash of the parameters and a kernel version,
@@ -438,9 +459,9 @@ A sentence after the fields names a class whose behaviour differs in detail.
 void setNeighbourMode(nlist::Mode mode) noexcept;
 #+end_src
 
-- Applies to :: rgpot::EAMPot, rgpot::EAMTablePot, rgpot::LJClusterPot,
-  rgpot::LJPot, rgpot::MorsePot, rgpot::StillingerWeberSi, rgpot::SuttonChenPot,
-  rgpot::TersoffSiC, rgpot::ZBLPot
+- Applies to :: rgpot::EAMPot, rgpot::EAMTablePot, rgpot::GuptaPot,
+  rgpot::LJClusterPot, rgpot::LJPot, rgpot::MorsePot, rgpot::StillingerWeberSi,
+  rgpot::SuttonChenPot, rgpot::TersoffSiC, rgpot::ZBLPot
 - Inputs :: =mode=: =nlist::Mode::Stored= keeps a Verlet list of candidate
   pairs, =nlist::Mode::Stream= walks the cells and stores no pairs,
   =nlist::Mode::Auto= (the default) stores when the index fits in the memory the
@@ -459,8 +480,8 @@ stores below two million atoms.
 void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const;
 #+end_src
 
-- Applies to :: rgpot::EAMTablePot, rgpot::LJClusterPot, rgpot::LJPot,
-  rgpot::MorsePot, rgpot::SuttonChenPot, rgpot::ZBLPot
+- Applies to :: rgpot::EAMTablePot, rgpot::GuptaPot, rgpot::LJClusterPot,
+  rgpot::LJPot, rgpot::MorsePot, rgpot::SuttonChenPot, rgpot::ZBLPot
 - Inputs :: =in= and =out= as for =forceImpl=; =atoms.energy= (nAtoms doubles or
   null) and =atoms.virial= (6 * nAtoms doubles or null).
 - Units :: per-atom energy and per-atom virial in eV.
@@ -482,13 +503,14 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
 [[nodiscard]] Locality locality() const noexcept;
 #+end_src
 
-- Applies to :: rgpot::EAMTablePot, rgpot::LJPot, rgpot::MorsePot,
-  rgpot::StillingerWeberSi, rgpot::SuttonChenPot, rgpot::TersoffSiC
+- Applies to :: rgpot::EAMTablePot, rgpot::GuptaPot, rgpot::LJPot,
+  rgpot::MorsePot, rgpot::StillingerWeberSi, rgpot::SuttonChenPot,
+  rgpot::TersoffSiC
 - Inputs :: none.
 - Units :: =cutoff= in the length unit of the potential: Angstrom for
-  =rgpot::LJPot=, =rgpot::MorsePot=, =rgpot::StillingerWeberSi= and
-  =rgpot::TersoffSiC=, the unit of =a= for =rgpot::SuttonChenPot= and the unit
-  of the table for =rgpot::EAMTablePot=.
+  =rgpot::GuptaPot=, =rgpot::LJPot=, =rgpot::MorsePot=,
+  =rgpot::StillingerWeberSi= and =rgpot::TersoffSiC=, the unit of =a= for
+  =rgpot::SuttonChenPot= and the unit of the table for =rgpot::EAMTablePot=.
 - Outputs :: a =rgpot::Locality= from =CppCore/rgpot/Locality.hpp=.
   =cutoff= is the range of each site energy, =pairwise= is true when every
   energy term is a function of one pair distance, and =densities= is the number
@@ -528,7 +550,7 @@ Both have =densities= 0, and =ghostReach()= is twice the cutoff.
 void densityStage(const HalfList &list, double *densities) const;
 #+end_src
 
-- Applies to :: rgpot::EAMTablePot, rgpot::SuttonChenPot
+- Applies to :: rgpot::EAMTablePot, rgpot::GuptaPot, rgpot::SuttonChenPot
 - Inputs :: =list=, a =rgpot::HalfList= from =CppCore/rgpot/Staged.hpp=.
   It holds the positions and atomic numbers of the host's =nOwned= atoms
   followed by their copies, =nAtoms= in all, and a half neighbour list over the
@@ -536,8 +558,9 @@ void densityStage(const HalfList &list, double *densities) const;
   =densities= holds =locality().densities= values per atom for all =nAtoms=
   atoms, zeroed by the caller.
 - Units :: positions in the length unit of the potential.
-  The densities are those of the table for =rgpot::EAMTablePot= and sums of
-  \((a/r)^m\) for =rgpot::SuttonChenPot=.
+  The densities are those of the table for =rgpot::EAMTablePot=.
+  =rgpot::GuptaPot= sums
+  \(\xi^2\exp(-2q(r/r_0-1))\). =rgpot::SuttonChenPot= sums \((a/r)^m\).
 - Outputs :: adds the density of each listed pair to its row atom, and to the
   other atom when that one is owned or =list.newton= is set.
   Pairs beyond the cutoff are skipped, so a list built with a skin works.
@@ -559,8 +582,8 @@ void forceStage(const HalfList &list, const double *densities, double *forces,
                 StageTally *tally) const;
 #+end_src
 
-- Applies to :: rgpot::EAMTablePot, rgpot::LJPot, rgpot::MorsePot,
-  rgpot::SuttonChenPot
+- Applies to :: rgpot::EAMTablePot, rgpot::GuptaPot, rgpot::LJPot,
+  rgpot::MorsePot, rgpot::SuttonChenPot
 - Inputs :: =list= as for =.densityStage=, and =densities= after the host
   completed them; the pair potentials do not read =densities=.
   =forces= holds 3 * nAtoms doubles, and =tally= is a =rgpot::StageTally= or
@@ -1235,6 +1258,71 @@ void setPairTermLimit(std::size_t pairs) noexcept;
   The default is =PairTerms<3>::kDefaultLimit= (1398101 pairs, which is 32 MiB
   of two-pass =PairTerms<3>= storage at 24 bytes per pair), and 0 skips the
   three-phase path and keeps no two-pass terms.
+- Errors :: none.
+
+*** =rgpot::GuptaPot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+GuptaPot();
+explicit GuptaPot(const GuptaConfig &c);
+#+end_src
+
+Cleri-Rosato Gupta many-body potential (F. Cleri and V. Rosato, Phys. Rev. B 48,
+22 (1993),
+[[https://doi.org/10.1103/PhysRevB.48.22][doi:10.1103/PhysRevB.48.22]]):
+
+#+attr_rgpot: skip the energy formula, not code
+#+begin_example
+E = sum_i [ sum_{j != i} A * exp(-p * (r_ij / r_0 - 1))
+            - sqrt( sum_{j != i} xi^2 * exp(-2 * q * (r_ij / r_0 - 1)) ) ]
+#+end_example
+
+- Inputs :: a =rgpot::GuptaConfig=.
+- Units :: energy in eV (=A=, =xi=), lengths (=r0=, =cutoff=, positions) in the
+  coordinate length unit (reduced units of =r0= when =r0 = 1.0=, or Angstrom
+  with physical parameters), forces in energy per length, stress in energy per
+  length^3.
+- Outputs :: the Cleri-Rosato Gupta energy and analytic forces, with no energy
+  shift at the cutoff.
+  Atomic numbers are not read.
+  Non-periodic unbounded calls without stress or per-atom output delegate to
+  =rgpot_gupta=.
+  With =periodic= false the cell is not used to fold pairs.
+  With =stress= set the force call writes the Cauchy stress when the cell volume
+  is positive.
+- Errors :: the errors of =rgpot::GuptaConfig=.
+  The force call throws =std::invalid_argument= when =out= is null, when
+  =nAtoms > 0= with a null position or force buffer, and when =periodic= is set
+  and the cell is null or has a diagonal entry that is not positive.
+
+*** =rgpot::GuptaPot::config=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const GuptaConfig &config() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: as in =rgpot::GuptaConfig=.
+- Outputs :: the =rgpot::GuptaConfig= the instance was built with.
+- Errors :: none.
+
+*** =rgpot::GuptaPot::setPairTermLimit=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setPairTermLimit(std::size_t pairs) noexcept;
+#+end_src
+
+- Inputs :: =pairs=, the most pairs, summed over the threads of a call, whose
+  density-pass terms the force pass reads back.
+- Units :: none.
+- Outputs :: none.
+  A force call keeps =r=, =dphi/dr= and =dpsi/dr= for each pair the density pass
+  accepts, 24 bytes a pair, and computes pairs past the limit again with the
+  same bits.
+  The default keeps 32 MiB of terms, and 0 keeps none.
 - Errors :: none.
 
 *** =rgpot::EMTPot=

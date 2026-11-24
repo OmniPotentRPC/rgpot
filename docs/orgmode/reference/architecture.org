@@ -92,6 +92,11 @@ Configurable via =ZBLConfig= (=cut_inner=, =cut_global=); the constructor throws
 - =SuttonChenPot= (=PotType::SuttonChen=) :: Sutton-Chen 10-8 many-body
   potential, in reduced units by default.
 See [[file:sutton_chen.org][Sutton-Chen potential]].
+- =GuptaPot= (=PotType::Gupta=) :: Cleri-Rosato Gupta many-body potential
+  (=CppCore/rgpot/Gupta/=), configurable via =GuptaConfig= (=A=, =xi=, =p=, =q=,
+  =r0=, =cutoff=, =periodic=, =stress=).
+  Unbounded non-periodic calls without stress delegate to the =rgpot_gupta= C
+  kernel; periodic and truncated calls use the shared neighbour layer.
 - =EMTPot= (=PotType::EMT=, =CppCore/rgpot/EMT/=) :: Effective medium theory
   from Asap.
 =EMTConfig::rasmussen= selects the Rasmussen parameters; the default is the Asap
@@ -103,11 +108,14 @@ copper set.
 - =LammpsPot=, =GromacsPot=, =OpenMMPot= :: Shifted Lennard-Jones in
   =CppCore/rgpot/ExternalPot/=, as =PotType::Lammps=, =PotType::Gromacs= and =PotType::OpenMM=; =GromacsPot= and =OpenMMPot= store nm and kJ/mol
   parameters.
-- Gupta and reduced cluster pairs :: C kernels
-  (=rgpot_gupta=, =rgpot_cluster_lj=, =rgpot_cambridge_morse=, =rgpot_lj_gradient=, =rgpot_morse_gradient=) in =CppCore/rgpot/Gupta/=, =CppCore/rgpot/Morse/cambridge_morse.h=
-  and =CppCore/rgpot/ReducedPair/=, not =Potential= classes.
-  [[file:gupta.org][Gupta and reduced cluster kernels]] records the parameters
-  and the checked energies.
+- Gupta and reduced cluster pairs :: Standalone C kernels live alongside the C++
+  classes.
+  =CppCore/rgpot/Gupta/= defines =rgpot_gupta=.
+  =CppCore/rgpot/Morse/cambridge_morse.h= defines =rgpot_cambridge_morse=.
+  =CppCore/rgpot/ReducedPair/= defines =rgpot_cluster_lj=, =rgpot_lj_gradient=
+  and =rgpot_morse_gradient=.
+  [[file:gupta.org][Gupta and reduced cluster kernels]] documents their
+  parameters and reference energies.
 
 *** Fortran Potentials
 

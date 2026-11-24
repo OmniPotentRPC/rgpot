@@ -142,6 +142,7 @@ MorsePotTest | tests core | unit morse_pot_test MorsePotTest.cc timeout=300 |
 CPMDPotConfigMessageTest | tests core | unit cpmd_pot_config_message_test CPMDPotConfigMessageTest.cc suite=cpmd |
 CambridgeMorseTest | tests core | unit cambridge_morse_test CambridgeMorseTest.cc |
 GuptaTest | tests core | unit gupta_test GuptaTest.cc |
+GuptaPotTest | tests core | unit gupta_pot_test GuptaPotTest.cc fp_contract=off |
 HessianVectorTest | tests core | unit hessian_vector_test HessianVectorTest.cc |
 DualTest | tests core | unit dual_test DualTest.cc |
 HessianTest | tests core | unit hessian_test HessianTest.cc |

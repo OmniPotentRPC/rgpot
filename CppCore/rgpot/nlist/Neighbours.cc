@@ -207,7 +207,7 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const Spec &spec,
     return false;
   }
   if (allPairs()) {
-    return true;
+    return std::isinf(spec.cutoff + spec.skin);
   }
   // A streaming walk trusts the bins. Atoms that have moved may sit in
   // another cell, so the bins are reused only for an identical geometry.
@@ -796,7 +796,8 @@ void Neighbours::buildStored(const double *xyz, std::size_t n,
               continue;
             }
             const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 <= search2) {
+            // A NaN length is not outside the search. The potential decides.
+            if (!(r2 > search2)) {
               out.push_back(j);
             }
           }
@@ -935,6 +936,15 @@ void Neighbours::updateOrthorhombic(const double *xyz, std::size_t n,
       ref_.assign(xyz, xyz + 3 * n);
       return;
     }
+    for (std::size_t k = 0; k < 3 * n; ++k) {
+      if (!std::isfinite(xyz[k])) {
+        search_ = std::numeric_limits<double>::infinity();
+        break;
+      }
+    }
+    // Every pair is a candidate, so the walks need neither bins nor a list,
+    // and the coordinates never invalidate the update. allPairs() reads
+    // this state back.
     if (std::isinf(search_)) {
       mode_ = Mode::Stream;
       built_ = true;
