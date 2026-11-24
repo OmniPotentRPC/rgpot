@@ -90,6 +90,14 @@ int rgpot_external_potential_energy_forces(
  * Optional neighbour exchange uses rgpot_nlist_request and rgpot_nlist_soa and
  * returns RGPOT_MD_NLIST_OK, RGPOT_MD_NLIST_ERROR, or
  * RGPOT_MD_NLIST_UNSUPPORTED.
+ *
+ * get_neighbors: a null out, or a buffer whose cap is 0, sets *needed to the
+ * full pair count, sets *count to 0 when count is not null, and returns
+ * RGPOT_MD_NLIST_OK. A buffer shorter than that list returns
+ * RGPOT_MD_NLIST_ERROR after writing the pairs that fit. *count is the number
+ * written, *needed is the full count the caller must provide, and the error
+ * text names that required count. The OpenMM session and the in-tree mock
+ * follow this rule.
  */
 typedef struct rgpot_md_session rgpot_md_session;
 
@@ -273,6 +281,7 @@ int rgpot_md_session_get_energy(rgpot_md_session *session,
                                 double *potential_energy,
                                 double *kinetic_energy, char *err,
                                 size_t err_len);
+/* See the neighbour-exchange note above for the short-buffer contract. */
 int rgpot_md_session_get_neighbors(rgpot_md_session *session,
                                    const rgpot_nlist_request *request,
                                    rgpot_nlist_soa *out, size_t *count,

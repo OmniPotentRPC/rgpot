@@ -3,14 +3,15 @@
 
 #include "rgpot/ExternalPot/OpenMM.hpp"
 #include "rgpot/ExternalPot/external_potentials.h"
-#include "rgpot/nlist/NeighbourList.hpp"
 
 #include <openmm/HarmonicBondForce.h>
 #include <openmm/System.h>
 #include <openmm/serialization/XmlSerializer.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <map>
 #include <limits>
@@ -327,22 +328,53 @@ void test_c_abi_session() {
     throw std::runtime_error(err);
   }
 
+}
+
+rgpot_md_session *open_neighbor_session(std::unique_ptr<OpenMM::System> system,
+                                        char *err, size_t err_len) {
+  std::ostringstream xml_stream;
+  OpenMM::XmlSerializer::serialize<OpenMM::System>(system.get(), "System",
+                                                   xml_stream);
+  const std::string xml = xml_stream.str();
+  rgpot_md_session *session = rgpot_md_session_create(
+      "openmm", nullptr, xml.data(), xml.size(), "Reference", err, err_len);
+  if (session == nullptr) {
+    throw std::runtime_error(std::string("rgpot_md_session_create failed: ") +
+                             err);
+  }
+  return session;
+}
+
+// Two free atoms and a hand-computed pair list. The system has no periodic
+// force, so the placeholder box must not wrap a pair, and the expectation
+// is not a second call of rgpot_nlist_build in that box.
+void test_nonperiodic_neighbors() {
+  char err[512] = {};
+  rgpot_md_session *session =
+      open_neighbor_session(make_free_system(1.0, 1.0), err, sizeof(err));
+  std::unique_ptr<rgpot_md_session, decltype(&rgpot_md_session_destroy)> guard(
+      session, rgpot_md_session_destroy);
+
+  const double close[6] = {0.0, 0.0, 0.0, 4.0, 0.0, 0.0};
+  if (rgpot_md_session_set_positions(session, close, 6, err, sizeof(err)) !=
+      0) {
+    throw std::runtime_error(err);
+  }
   rgpot_nlist_request nreq{};
   rgpot_nlist_request_init(&nreq);
   nreq.cutoff = 8.0;
-  nreq.shell = 1; // full list
-  nreq.cut = 1;   // loose
-  nreq.skin = 0.5;
+  nreq.shell = 1; // full list: both directed pairs
+  nreq.skin = 0.0;
   size_t need = 0;
   int nrc = rgpot_md_session_get_neighbors(session, &nreq, nullptr, nullptr,
                                            &need, err, sizeof(err));
-  if (nrc != RGPOT_MD_NLIST_OK || need == 0) {
-    throw std::runtime_error(std::string("get_neighbors size probe failed: ") +
-                             err);
+  if (nrc != RGPOT_MD_NLIST_OK || need != 2) {
+    throw std::runtime_error(
+        std::string("4 A pair size probe expected 2, got ") +
+        std::to_string(need) + " " + err);
   }
-  std::vector<int32_t> first(need), second(need), shift(3 * need);
+  std::vector<int32_t> first(need), second(need), shift(3 * need, 9);
   std::vector<double> vector(3 * need), distance(need);
-  std::vector<uint8_t> mask(need);
   rgpot_nlist_soa soa{};
   soa.bytes = sizeof(soa);
   soa.first = first.data();
@@ -350,78 +382,92 @@ void test_c_abi_session() {
   soa.shift = shift.data();
   soa.vector = vector.data();
   soa.distance = distance.data();
-  soa.mask = mask.data();
   soa.cap = need;
   size_t got = 0;
   nrc = rgpot_md_session_get_neighbors(session, &nreq, &soa, &got, &need, err,
                                        sizeof(err));
-  if (nrc != RGPOT_MD_NLIST_OK || got == 0 || got != need) {
-    throw std::runtime_error(std::string("get_neighbors fill failed: ") + err);
+  if (nrc != RGPOT_MD_NLIST_OK || got != 2) {
+    throw std::runtime_error(std::string("4 A pair fill failed: ") + err);
   }
-  // Compare session-exported pairs with the shared neighbour-layer build.
-  rgpot_nlist_request ref_req = nreq;
-  ref_req.shape = 0;
-  ref_req.shell = 1;
-  ref_req.cut = 1;
-  ref_req.periodic[0] = 1;
-  ref_req.periodic[1] = 1;
-  ref_req.periodic[2] = 1;
-  rgpot_nlist_soa ref_soa{};
-  size_t ref_need = 0;
-  std::vector<double> now_pos(6);
-  std::vector<double> now_vel(6);
-  std::vector<double> now_force(6);
-  if (rgpot_md_session_get_state(session, now_pos.data(), now_vel.data(),
-                                 now_force.data(), 6, nullptr, nullptr, err,
-                                 sizeof(err)) != 0) {
-    throw std::runtime_error(std::string("state before nlist parity failed: ") +
-                             err);
-  }
-  double box_ang[9] = {};
-  if (rgpot_md_session_get_periodic_box(session, box_ang, err, sizeof(err)) !=
-      0) {
-    throw std::runtime_error(std::string("box before nlist parity failed: ") +
-                             err);
-  }
-  int32_t ref_status = rgpot_nlist_build(now_pos.data(), 2, box_ang, &ref_req,
-                                         nullptr, nullptr, &ref_need);
-  if (ref_status != RGPOT_NLIST_OK || ref_need == 0) {
-    throw std::runtime_error("shared neighbour size probe failed");
-  }
-  std::vector<int32_t> ref_first(ref_need), ref_second(ref_need),
-      ref_shift(3 * ref_need);
-  std::vector<double> ref_vector(3 * ref_need), ref_distance(ref_need);
-  std::vector<uint8_t> ref_mask(ref_need);
-  ref_soa.bytes = sizeof(ref_soa);
-  ref_soa.first = ref_first.data();
-  ref_soa.second = ref_second.data();
-  ref_soa.shift = ref_shift.data();
-  ref_soa.vector = ref_vector.data();
-  ref_soa.distance = ref_distance.data();
-  ref_soa.mask = ref_mask.data();
-  ref_soa.cap = ref_need;
-  size_t ref_count = 0;
-  ref_status = rgpot_nlist_build(now_pos.data(), 2, box_ang, &ref_req, &ref_soa,
-                                 &ref_count, &ref_need);
-  if (ref_status != RGPOT_NLIST_OK || ref_count != got) {
-    throw std::runtime_error("shared neighbour build failed");
-  }
-  using PairKey = std::tuple<int, int, int, int, int>;
-  std::map<PairKey, double> got_dist;
-  std::map<PairKey, double> ref_dist;
+  std::map<std::pair<int, int>, std::array<double, 4>> found;
   for (size_t p = 0; p < got; ++p) {
-    got_dist[{first[p], second[p], shift[3 * p], shift[3 * p + 1],
-              shift[3 * p + 2]}] = distance[p];
-    ref_dist[{ref_first[p], ref_second[p], ref_shift[3 * p],
-              ref_shift[3 * p + 1], ref_shift[3 * p + 2]}] = ref_distance[p];
+    if (shift[3 * p] != 0 || shift[3 * p + 1] != 0 || shift[3 * p + 2] != 0) {
+      throw std::runtime_error("non-periodic pair carried an image shift");
+    }
+    found[{first[p], second[p]}] = {vector[3 * p], vector[3 * p + 1],
+                                    vector[3 * p + 2], distance[p]};
   }
-  if (got_dist != ref_dist) {
-    throw std::runtime_error("session neighbours differ from shared neighbour layer");
+  const auto forward = found.find({0, 1});
+  const auto backward = found.find({1, 0});
+  if (found.size() != 2 || forward == found.end() || backward == found.end()) {
+    throw std::runtime_error("4 A geometry was not the two directed pairs");
   }
-  const int set_rc = rgpot_md_session_set_neighbors(session, &nreq, &soa, got,
-                                                    err, sizeof(err));
+  near(forward->second[0], 4.0, 4.0, "pair 0->1 x");
+  near(forward->second[1], 0.0, 1.0, "pair 0->1 y");
+  near(forward->second[2], 0.0, 1.0, "pair 0->1 z");
+  near(forward->second[3], 4.0, 4.0, "pair 0->1 distance");
+  near(backward->second[0], -4.0, 4.0, "pair 1->0 x");
+  near(backward->second[1], 0.0, 1.0, "pair 1->0 y");
+  near(backward->second[2], 0.0, 1.0, "pair 1->0 z");
+  near(backward->second[3], 4.0, 4.0, "pair 1->0 distance");
+
+  nreq.want_shifts = 0;
+  nreq.want_vectors = 0;
+  nreq.want_distances = 0;
+  int32_t one_first = -1;
+  int32_t one_second = -1;
+  rgpot_nlist_soa short_soa{};
+  short_soa.bytes = sizeof(short_soa);
+  short_soa.first = &one_first;
+  short_soa.second = &one_second;
+  short_soa.cap = 1;
+  size_t short_got = 0;
+  size_t short_need = 0;
+  nrc = rgpot_md_session_get_neighbors(session, &nreq, &short_soa, &short_got,
+                                       &short_need, err, sizeof(err));
+  if (nrc != RGPOT_MD_NLIST_ERROR || short_need != 2 ||
+      std::strstr(err, "2 are required") == nullptr) {
+    throw std::runtime_error(
+        std::string("short neighbour buffer was not reported: ") + err);
+  }
+
+  // 15 A apart with an 8 A cutoff. The placeholder 20 A box would report a
+  // phantom 5 A pair and shift (-1, 0, 0). A non-periodic system has no pair.
+  const double far[6] = {0.0, 0.0, 0.0, 15.0, 0.0, 0.0};
+  if (rgpot_md_session_set_positions(session, far, 6, err, sizeof(err)) != 0) {
+    throw std::runtime_error(err);
+  }
+  need = 99;
+  nrc = rgpot_md_session_get_neighbors(session, &nreq, nullptr, nullptr, &need,
+                                       err, sizeof(err));
+  if (nrc != RGPOT_MD_NLIST_OK || need != 0) {
+    throw std::runtime_error(
+        "non-periodic 15 A / 8 A query wrapped through the placeholder box");
+  }
+  nreq.want_shifts = 1;
+  int32_t phantom_shift[3] = {7, 7, 7};
+  double phantom_distance = -1.0;
+  rgpot_nlist_soa far_soa{};
+  far_soa.bytes = sizeof(far_soa);
+  far_soa.first = &one_first;
+  far_soa.second = &one_second;
+  far_soa.shift = phantom_shift;
+  far_soa.distance = &phantom_distance;
+  far_soa.cap = 1;
+  got = 99;
+  nrc = rgpot_md_session_get_neighbors(session, &nreq, &far_soa, &got, &need,
+                                       err, sizeof(err));
+  if (nrc != RGPOT_MD_NLIST_OK || got != 0 || need != 0 ||
+      phantom_shift[0] == -1) {
+    throw std::runtime_error(
+        "non-periodic 15 A / 8 A query returned a phantom image pair");
+  }
+
+  const int set_rc = rgpot_md_session_set_neighbors(
+      session, &nreq, &far_soa, 0, err, sizeof(err));
   if (set_rc != RGPOT_MD_NLIST_UNSUPPORTED) {
-    throw std::runtime_error("expected OpenMM neighbor setter to be unsupported");
+    throw std::runtime_error(
+        "expected OpenMM neighbor setter to be unsupported");
   }
 }
 
@@ -431,9 +477,10 @@ int main() {
   try {
     test_cpp_session();
     test_c_abi_session();
+    test_nonperiodic_neighbors();
     std::cout
         << "OpenMM session energy, plane, wall, temperature, determinism, "
-           "C ABI, and NVE checks passed\n";
+           "C ABI, NVE, and non-periodic neighbour checks passed\n";
     return 0;
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

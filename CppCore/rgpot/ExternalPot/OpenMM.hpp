@@ -138,6 +138,12 @@ public:
 
   /** Read the periodic box vectors from the Context. */
   void boxVectors(OpenMM::Vec3 &a, OpenMM::Vec3 &b, OpenMM::Vec3 &c) const;
+  /**
+   * True when a force of the System uses periodic boundary conditions.
+   * A false result still has box vectors; they are a placeholder and are
+   * not a periodic cell.
+   */
+  [[nodiscard]] bool usesPeriodicBoundaryConditions() const;
   /** Read the positions and box vectors from the Context without forces. */
   [[nodiscard]] std::vector<OpenMM::Vec3>
   geometry(OpenMM::Vec3 &a, OpenMM::Vec3 &b, OpenMM::Vec3 &c) const;

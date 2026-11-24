@@ -17,6 +17,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstddef>
+#include <cstring>
 #include <limits>
 #include <mutex>
 #include <sstream>
@@ -317,6 +319,10 @@ void OpenMMSession::boxVectors(OpenMM::Vec3 &a, OpenMM::Vec3 &b,
   const OpenMM::State state =
       impl_->context->getState(OpenMM::State::Positions);
   state.getPeriodicBoxVectors(a, b, c);
+}
+
+bool OpenMMSession::usesPeriodicBoundaryConditions() const {
+  return impl_->system->usesPeriodicBoundaryConditions();
 }
 
 std::vector<OpenMM::Vec3> OpenMMSession::geometry(OpenMM::Vec3 &a,
@@ -640,9 +646,40 @@ int c_get_neighbors(void *ctx, const rgpot_nlist_request *request,
         c[0] * md::kAngstromPerNm, c[1] * md::kAngstromPerNm,
         c[2] * md::kAngstromPerNm,
     };
+    // A System with no periodic force still carries OpenMM's placeholder
+    // box (a 2 nm cube). Wrapping through it invents image pairs. Clear
+    // the periodic flags so the builder neither wraps nor reports a shift.
+    rgpot_nlist_request opened{};
+    const rgpot_nlist_request *query = request;
+    if (request != nullptr && !session->usesPeriodicBoundaryConditions()) {
+      const size_t nbytes = static_cast<size_t>(request->bytes);
+      const size_t copy_n = std::min(nbytes, sizeof(opened));
+      if (copy_n > 0) {
+        std::memcpy(&opened, request, copy_n);
+      }
+      opened.bytes = request->bytes;
+      const size_t periodic_end = offsetof(rgpot_nlist_request, periodic) +
+                                  sizeof(opened.periodic);
+      if (nbytes >= periodic_end) {
+        opened.periodic[0] = 0;
+        opened.periodic[1] = 0;
+        opened.periodic[2] = 0;
+      }
+      query = &opened;
+    }
     const int32_t status = rgpot_nlist_build(pos_ang.data(), positions.size(),
-                                             box_ang.data(), request, out,
+                                             box_ang.data(), query, out,
                                              count, needed);
+    if (status == RGPOT_NLIST_SHORT) {
+      const size_t wrote = count != nullptr ? *count : 0;
+      const size_t full = needed != nullptr ? *needed : 0;
+      char msg[160];
+      std::snprintf(msg, sizeof(msg),
+                    "neighbour buffer holds %zu pairs; %zu are required",
+                    wrote, full);
+      write_c_err(err, err_len, msg);
+      return RGPOT_MD_NLIST_ERROR;
+    }
     if (status != RGPOT_NLIST_OK) {
       write_c_err(err, err_len, rgpot_nlist_strerror(status));
       return RGPOT_MD_NLIST_ERROR;
