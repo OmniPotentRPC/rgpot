@@ -260,8 +260,11 @@ The socket-backed =IPIPot= case uses ASE's =SocketClient= and an ASE
 
 =RgpotRpcCalculator= is the Cap'n Proto calculator.
 One connection belongs to one calculator.
-A second thread that enters =calculate= while the first still holds the
-connection gets =RuntimeError=.
+A second thread that enters =calculate= or =neighbours= while the first still
+holds the connection gets =RuntimeError=.
+=neighbours(atoms, cutoff=0.0, skin=0.0, full=False, strict=True, shifts=True, vectors=True, distances=True)=
+asks the server for the potential's neighbour list through
+=Potential.neighbours=.
 The old import =ase_calculator.RgpotCalculator= warns and re-exports this class.
 
 The calculator reads the server capabilities when it connects.

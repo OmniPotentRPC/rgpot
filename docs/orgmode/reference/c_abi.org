@@ -126,8 +126,8 @@ a caught Rust panic and stores the panic message.
 The guarded functions are =rgpot_potential_calculate=, =rgpot_potential_hvp=,
 =rgpot_potential_hvp_resolved=, =rgpot_potential_hvp_centre=,
 =rgpot_potential_hessian=, =rgpot_potential_set_taylor_jet=,
-=rgpot_potential_taylor_jet=, =rgpot_ch5_2008_taylor_jet=, =rgpot_rpc_calculate=, =rgpot_rpc_server_start=
-and =rgpot_mdi_server_start=.
+=rgpot_potential_taylor_jet=, =rgpot_ch5_2008_taylor_jet=, =rgpot_rpc_calculate=, =rgpot_rpc_calculate_hvp=,
+=rgpot_rpc_neighbours=, =rgpot_rpc_server_start= and =rgpot_mdi_server_start=.
 
 *** =rgpot_set_last_error=
 
@@ -1640,6 +1640,57 @@ An engine-backed server advertises this same operation only when
 A missing engine HVP returns =RGPOT_ENGINE_ERR_UNSUPPORTED= at the engine
 boundary and becomes an RPC error here; neither layer substitutes a
 finite-difference product.
+
+*** =rgpot_rpc_neighbors_request_t=
+
+- Inputs :: =cutoff= and =skin= in the length unit of the positions; =format= (0
+  half pairs, 1 full pairs, 2 cluster of four); =cut= (0 strict, 1 loose);
+  =periodic= (three flags, nonzero for a periodic axis); =shifts=, =vectors= and
+  =distances= (nonzero to fill that column).
+- Units :: =cutoff= and =skin= in the length unit of the positions; the other
+  fields have none.
+- Outputs :: none; a struct passed to =rgpot_rpc_neighbours=.
+- Errors :: none; =rgpot_rpc_neighbours= and the server validate the values.
+
+*** =rgpot_rpc_neighbors_out_t=
+
+- Inputs :: =first= and =second= hold =cap=
+  =int32_t= values; =shift= holds =3 * cap= =int32_t= values and =vector= holds
+  =3 * cap= =double= values when requested; =distance= holds =cap= =double=
+  values when requested; =mask= holds =cap= bytes or is NULL; =cap= is the pair
+  capacity.
+- Units :: =vector= and =distance= in the length unit of the positions; the
+  other columns have none.
+- Outputs :: =rgpot_rpc_neighbours= writes up to =cap= pairs into the non-null
+  arrays.
+- Errors :: with =cap > 0=, a NULL pointer for a required column makes
+  =rgpot_rpc_neighbours= return =RGPOT_INVALID_PARAMETER=.
+
+*** =rgpot_rpc_neighbours=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_rpc_neighbours(
+    rgpot_rpc_client_t *client, const struct rgpot_force_input_t *input,
+    const struct rgpot_rpc_neighbors_request_t *request,
+    struct rgpot_rpc_neighbors_out_t *out, uintptr_t *count, uintptr_t *needed);
+#+end_src
+
+- Inputs :: =client= and =input= as for =rgpot_rpc_calculate=; =request= the
+  neighbour query; =out= caller-owned buffers or NULL for a size probe; =count=
+  and =needed= NULL or writable.
+- Units :: =cutoff=, =skin=, =vector= and =distance= in the length unit of
+  =input=.
+- Outputs :: =*needed= receives the full pair count and =*count= the number of
+  pairs written (0 when =out= is NULL or =out->cap= is 0).
+  This is the C wrapper of RPC =Potential.neighbours=, advertised through
+  =Capabilities.neighbors=.
+- Errors :: =RGPOT_INVALID_PARAMETER= for a NULL =client=, =input= or =request=,
+  or a NULL required output buffer when =out->cap > 0=.
+  =RGPOT_BUFFER_SIZE_ERROR= after writing =out->cap= pairs when =*needed=
+  exceeds =out->cap=.
+  =RGPOT_RPC_ERROR= when capability negotiation, transport or the remote
+  neighbour calculation fails.
 
 *** =rgpot_rpc_client_select_orbitals=
 
