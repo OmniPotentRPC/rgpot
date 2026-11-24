@@ -34,6 +34,7 @@
 #include "rgpot/D2Pot/D2Pot.hpp"
 #include "rgpot/EMT/EMTPot.hpp"
 #include "rgpot/ExternalPot/ExternalPot.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Models/ModelPots.hpp"
@@ -886,6 +887,47 @@ NB_MODULE(_core, m) {
     return out;
   });
   rgpot::pybind::bind_calls(morse_cls);
+
+  auto gupta = nb::class_<PotHolder<rgpot::GuptaPot>>(m, "GuptaPot");
+  gupta.def(
+      "__init__",
+      [](PotHolder<rgpot::GuptaPot> *self, double A, double xi, double p,
+         double q, double r0, double cutoff, bool periodic, bool stress) {
+        new (self) PotHolder<rgpot::GuptaPot>([=] {
+          rgpot::GuptaConfig cfg;
+          cfg.A = A;
+          cfg.xi = xi;
+          cfg.p = p;
+          cfg.q = q;
+          cfg.r0 = r0;
+          cfg.cutoff = cutoff;
+          cfg.periodic = periodic;
+          cfg.stress = stress;
+          return std::make_unique<rgpot::GuptaPot>(cfg);
+        });
+      },
+      nb::arg("A") = 0.1477, nb::arg("xi") = 0.8900, nb::arg("p") = 9.689,
+      nb::arg("q") = 4.602, nb::arg("r0") = 1.0, nb::arg("cutoff") = 0.0,
+      nb::arg("periodic") = false, nb::arg("stress") = false,
+      "Cleri-Rosato Gupta many-body potential. Defaults are the Cleri-Rosato "
+      "Zn parameters (A, xi in eV; p, q dimensionless) with r0 = 1.0 in "
+      "reduced length units. r0 and cutoff share the coordinate length unit; "
+      "a non-positive cutoff keeps every pair; periodic=True requires "
+      "cutoff > 0.");
+  gupta.def("config", [](const PotHolder<rgpot::GuptaPot> &self) {
+    const rgpot::GuptaConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["A"] = cfg.A;
+    out["xi"] = cfg.xi;
+    out["p"] = cfg.p;
+    out["q"] = cfg.q;
+    out["r0"] = cfg.r0;
+    out["cutoff"] = cfg.cutoff;
+    out["periodic"] = cfg.periodic;
+    out["stress"] = cfg.stress;
+    return out;
+  });
+  rgpot::pybind::bind_calls(gupta);
 
   auto d2_cls = nb::class_<PotHolder<rgpot::D2Pot>>(m, "D2Pot");
   d2_cls.def(
