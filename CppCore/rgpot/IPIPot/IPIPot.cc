@@ -5,6 +5,7 @@
 
 #include "rgpot/IPIPot/IPIWire.hpp"
 #include "rgpot/ParamHash.hpp"
+#include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
 #include <arpa/inet.h>
@@ -311,6 +312,7 @@ void IPIPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     throw std::invalid_argument(
         "IPIPot: atom count exceeds the protocol limit");
   }
+  StressAccumulator stress(in, out);
   const size_t n3 = in.nAtoms * 3;
   for (size_t i = 0; i < n3; ++i) {
     if (!std::isfinite(in.pos[i])) {
@@ -350,13 +352,23 @@ void IPIPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     for (size_t i = 0; i < n3; ++i) {
       out->F[i] = forces_ha[i] * units::HARTREE_BOHR_TO_EV_ANGSTROM;
     }
-    const double volume = cellVolume(in.box);
+    const double volume = ipi::detail::cellVolume(in.box);
     if (volume > 0.0) {
       const double scale = -units::HARTREE_TO_EV / volume;
       for (int i = 0; i < 9; ++i) {
         m_stress[i] = virial_ha[i] * scale;
       }
       m_has_stress = 1;
+      if (double *strain = stress.data()) {
+        const double e = -units::HARTREE_TO_EV;
+        strain[0] = virial_ha[0] * e;
+        strain[1] = virial_ha[4] * e;
+        strain[2] = virial_ha[8] * e;
+        strain[3] = virial_ha[5] * e;
+        strain[4] = virial_ha[2] * e;
+        strain[5] = virial_ha[1] * e;
+        stress.publish(in.box);
+      }
     }
   }
 }

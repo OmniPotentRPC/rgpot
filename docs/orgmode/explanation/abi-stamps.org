@@ -241,4 +241,7 @@ The zero-argument =MullerBrownPot= constructor remains its own symbol.
 It also stamps =nlist::Builder= and =nlist::Walk=, which move their state behind
 a pointer so each is one pointer wide.
 It also adds a process-unique generation id on =Neighbours=.
+=ForceInput= gains =compute_stress=, the opt-in stress request.
+That field is a C++ layout, so the unreleased soversion 9 fingerprint is
+re-stamped in place and the C stamp keeps layout revision 1.
 A program linked against soversion 8 does not load =librgpot.so.9=.

@@ -48,7 +48,7 @@ def fixture(name):
 def test_d4_blyp_matches_dftd4(name):
     pos, z, box, energy, grad, virial = fixture(name)
     pot = rgpot.D4Pot(functional="blyp", periodic=virial is not None)
-    out = pot.evaluate(pos, z, box)
+    out = pot.evaluate(pos, z, box, compute_stress=True)
     assert out["energy"] == pytest.approx(energy * HARTREE_TO_EV, rel=0, abs=1e-11)
     np.testing.assert_allclose(
         out["forces"], -grad * HARTREE_TO_EV / BOHR_TO_ANGSTROM, rtol=0, atol=1e-9
@@ -78,15 +78,17 @@ def test_d4_config_and_caps():
 def test_sumpot_swaps_d2_for_d4():
     pos, z, box, *_ = fixture("water_dimer")
     box = np.diag([40.0, 38.0, 39.0])
-    d2 = rgpot.D2Pot().evaluate(pos, z, box)
-    d4 = rgpot.D4Pot(functional="blyp", periodic=True).evaluate(pos, z, box)
+    d2 = rgpot.D2Pot().evaluate(pos, z, box, compute_stress=True)
+    d4 = rgpot.D4Pot(functional="blyp", periodic=True).evaluate(
+        pos, z, box, compute_stress=True
+    )
     pot = rgpot.SumPot(
         [
             {"kind": "d2", "name": "d2", "weight": -1.0},
             {"kind": "d4", "name": "d4", "functional": "blyp", "periodic": True},
         ]
     )
-    out = pot.evaluate(pos, z, box)
+    out = pot.evaluate(pos, z, box, compute_stress=True)
     assert out["energy"] == pytest.approx(d4["energy"] - d2["energy"], abs=1e-12)
     np.testing.assert_allclose(
         np.asarray(out["stress"]), np.asarray(d4["stress"]) - np.asarray(d2["stress"]),

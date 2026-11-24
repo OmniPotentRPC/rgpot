@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <iomanip>
+#include <iostream>
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -177,13 +179,16 @@ struct Eval {
 };
 
 Eval runEval(rgpot::EMTPot &pot, const std::vector<double> &pos,
-             const std::vector<int> &z, const std::array<double, 9> &box) {
+             const std::vector<int> &z, const std::array<double, 9> &box,
+             bool stress = false) {
   Eval outv;
   outv.forces.assign(pos.size(), 0.0);
   rgpot::ForceOut out{};
   out.F = outv.forces.data();
   std::fill(std::begin(out.stress), std::end(out.stress), 0.0);
-  pot.forceImpl({z.size(), pos.data(), z.data(), box.data()}, &out);
+  rgpot::ForceInput in{z.size(), pos.data(), z.data(), box.data()};
+  in.compute_stress = stress;
+  pot.forceImpl(in, &out);
   outv.energy = out.energy;
   outv.has_stress = out.has_stress;
   std::copy(std::begin(out.stress), std::end(out.stress), outv.stress.begin());
@@ -311,6 +316,24 @@ std::size_t countBitDiffs(const std::vector<double> &a,
     diffs += (f64Bits(a[k]) == f64Bits(b[k])) ? 0 : 1;
   }
   return diffs;
+}
+
+void rightTransform(std::vector<double> &pos, std::array<double, 9> &box,
+                    const std::array<double, 9> &map) {
+  auto transform = [&](double *v) {
+    const std::array<double, 3> old{v[0], v[1], v[2]};
+    for (int b = 0; b < 3; ++b) {
+      v[b] = old[0] * map[static_cast<std::size_t>(b)] +
+             old[1] * map[static_cast<std::size_t>(3 + b)] +
+             old[2] * map[static_cast<std::size_t>(6 + b)];
+    }
+  };
+  for (std::size_t i = 0; i < pos.size(); i += 3) {
+    transform(pos.data() + i);
+  }
+  for (int i = 0; i < 3; ++i) {
+    transform(box.data() + 3 * i);
+  }
 }
 
 } // namespace
@@ -612,6 +635,132 @@ TEST_CASE("EMT keeps a cached kernel unless the kernel throws",
   }
 }
 
+TEST_CASE("EMT keeps a cached kernel when a stress request fails",
+          "[emt][errors][stress]") {
+  // A stress request follows the retention rules of a force-only call. A
+  // failure before the kernel runs and a non-finite energy leave the cached
+  // kernel in place, an Asap exception drops it, and a call that threw leaves
+  // has_stress clear and the tensor zero.
+  const auto cluster = copperCluster();
+  std::array<double, 12> pos{};
+  for (int i = 0; i < 4; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      pos[static_cast<std::size_t>(3 * i + k)] = cluster(i, k);
+    }
+  }
+  auto shifted = pos;
+  shifted[0] += 0.02;
+  auto coincident = pos;
+  for (std::size_t k = 0; k < 3; ++k) {
+    coincident[3 + k] = coincident[k];
+  }
+  auto infinite = pos;
+  infinite[7] = std::numeric_limits<double>::infinity();
+  const std::array<int, 4> copper{29, 29, 29, 29};
+  const std::array<int, 4> carbon{6, 6, 6, 6};
+  const std::array<double, 9> cube{20.0, 0.0, 0.0, 0.0, 20.0,
+                                   0.0,  0.0, 0.0, 20.0};
+  const std::array<double, 9> singular{};
+
+  struct Call {
+    std::array<double, 12> forces{};
+    rgpot::ForceOut out{};
+  };
+  const auto stressCall =
+      [](const rgpot::EMTPot &pot, const std::array<double, 12> &positions,
+         const std::array<int, 4> &numbers, const std::array<double, 9> &box,
+         std::size_t n, Call &call) {
+        call.out.F = call.forces.data();
+        call.out.has_stress = 1;
+        std::fill(std::begin(call.out.stress), std::end(call.out.stress), 7.0);
+        rgpot::ForceInput in{n, positions.data(), numbers.data(), box.data()};
+        in.compute_stress = true;
+        pot.forceImpl(in, &call.out);
+      };
+  const auto cleared = [](const Call &call) {
+    CHECK(call.out.has_stress == 0);
+    for (const double component : call.out.stress) {
+      CHECK(component == 0.0);
+    }
+  };
+
+  const long before = g_liveBlocks.load();
+  rgpot::EMTPot pot;
+  Call first;
+  stressCall(pot, pos, copper, cube, 4, first);
+  const long kernel = g_liveBlocks.load() - before;
+  REQUIRE(kernel >= 8);
+  REQUIRE(first.out.has_stress == 1);
+
+  rgpot::EMTPot reference;
+  Call shifted_reference;
+  stressCall(reference, shifted, copper, cube, 4, shifted_reference);
+  REQUIRE(shifted_reference.out.has_stress == 1);
+
+  const auto sameStress = [](const Call &a, const Call &b) {
+    CHECK_THAT(a.out.energy, WithinAbs(b.out.energy, 1e-12));
+    for (std::size_t k = 0; k < 9; ++k) {
+      CHECK_THAT(a.out.stress[k], WithinAbs(b.out.stress[k], 1e-12));
+    }
+  };
+
+  const auto kept = [&](long mark) {
+    REQUIRE(g_liveBlocks.load() + kernel / 2 > mark);
+  };
+
+  Call failed;
+  long mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(stressCall(pot, pos, copper, singular, 4, failed),
+                    std::invalid_argument);
+  cleared(failed);
+  kept(mark);
+
+  mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(stressCall(pot, infinite, copper, cube, 4, failed),
+                    std::invalid_argument);
+  cleared(failed);
+  kept(mark);
+
+  mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(stressCall(pot, pos, copper, cube, 0, failed),
+                    std::invalid_argument);
+  cleared(failed);
+  kept(mark);
+
+  mark = g_liveBlocks.load();
+  Call again;
+  stressCall(pot, shifted, copper, cube, 4, again);
+  REQUIRE(g_liveBlocks.load() - mark < kernel / 2);
+  REQUIRE(again.out.has_stress == 1);
+  sameStress(again, shifted_reference);
+
+  mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(stressCall(pot, coincident, copper, cube, 4, failed),
+                    std::domain_error);
+  cleared(failed);
+  kept(mark);
+
+  mark = g_liveBlocks.load();
+  Call after_domain;
+  stressCall(pot, shifted, copper, cube, 4, after_domain);
+  REQUIRE(g_liveBlocks.load() - mark < kernel / 2);
+  REQUIRE(after_domain.out.has_stress == 1);
+  sameStress(after_domain, shifted_reference);
+
+  mark = g_liveBlocks.load();
+  REQUIRE_THROWS_AS(stressCall(pot, pos, carbon, cube, 4, failed),
+                    std::invalid_argument);
+  cleared(failed);
+  REQUIRE(mark - g_liveBlocks.load() > kernel / 2);
+
+  mark = g_liveBlocks.load();
+  Call rebuilt;
+  stressCall(pot, pos, copper, cube, 4, rebuilt);
+  REQUIRE(g_liveBlocks.load() - mark > kernel / 2);
+  REQUIRE(rebuilt.out.has_stress == 1);
+  sameStress(rebuilt, first);
+}
+
 TEST_CASE("EMT follows a change of the cell between calls", "[emt]") {
   constexpr int kRepeat = 4;
   constexpr double kLattice = 3.61;
@@ -661,6 +810,124 @@ TEST_CASE("EMT follows a change of the cell between calls", "[emt]") {
       REQUIRE_THAT(f_reused(i, d), WithinAbs(f_fresh(i, d), 1e-9));
     }
   }
+}
+
+TEST_CASE("EMT advertises the stress it computes", "[emt][stress]") {
+  rgpot::EMTPot plain;
+  rgpot::EMTConfig rasmussen;
+  rasmussen.rasmussen = true;
+  rgpot::EMTPot other(rasmussen);
+  CHECK(plain.caps().stress);
+  CHECK(other.caps().stress);
+}
+
+TEST_CASE("EMT stress is opt-in and matches triclinic strain",
+          "[emt][stress]") {
+  auto system = fccCu(4, 3.615);
+  const std::array<double, 9> shear = {1.0,  0.12, 0.03,  0.02, 0.96,
+                                       0.08, 0.04, -0.03, 1.05};
+  rightTransform(system.pos, system.box, shear);
+
+  rgpot::EMTPot plain_pot;
+  rgpot::EMTPot stress_pot;
+  const Eval plain = runEval(plain_pot, system.pos, system.z, system.box);
+  const Eval analytic =
+      runEval(stress_pot, system.pos, system.z, system.box, true);
+  REQUIRE(plain.has_stress == 0);
+  REQUIRE(analytic.has_stress == 1);
+  REQUIRE(f64Bits(plain.energy) == f64Bits(analytic.energy));
+  REQUIRE(plain.forces.size() == analytic.forces.size());
+  for (std::size_t i = 0; i < plain.forces.size(); ++i) {
+    REQUIRE(f64Bits(plain.forces[i]) == f64Bits(analytic.forces[i]));
+  }
+  CHECK(analytic.stress[1] == analytic.stress[3]);
+  CHECK(analytic.stress[2] == analytic.stress[6]);
+  CHECK(analytic.stress[5] == analytic.stress[7]);
+
+  static constexpr int slots[6] = {0, 4, 8, 5, 2, 1};
+  double target_error = 0.0;
+  double best_other = std::numeric_limits<double>::infinity();
+  for (double step : {1e-3, 1e-4, 1e-5, 1e-6, 1e-7}) {
+    double max_error = 0.0;
+    double scale = 0.0;
+    for (int component = 0; component < 6; ++component) {
+      const int a = component < 3 ? component : (component == 3 ? 1 : 0);
+      const int b = component < 3 ? component
+                                  : (component == 3   ? 2
+                                     : component == 4 ? 2
+                                                      : 1);
+      std::array<double, 9> plus_map{1, 0, 0, 0, 1, 0, 0, 0, 1};
+      std::array<double, 9> minus_map = plus_map;
+      const double weight = a == b ? step : 0.5 * step;
+      plus_map[static_cast<std::size_t>(3 * a + b)] += weight;
+      minus_map[static_cast<std::size_t>(3 * a + b)] -= weight;
+      if (a != b) {
+        plus_map[static_cast<std::size_t>(3 * b + a)] += weight;
+        minus_map[static_cast<std::size_t>(3 * b + a)] -= weight;
+      }
+      auto plus_pos = system.pos;
+      auto minus_pos = system.pos;
+      auto plus_box = system.box;
+      auto minus_box = system.box;
+      rightTransform(plus_pos, plus_box, plus_map);
+      rightTransform(minus_pos, minus_box, minus_map);
+      rgpot::EMTPot plus_pot;
+      rgpot::EMTPot minus_pot;
+      const double ep = runEval(plus_pot, plus_pos, system.z, plus_box).energy;
+      const double em =
+          runEval(minus_pot, minus_pos, system.z, minus_box).energy;
+      const double volume = std::abs(
+          system.box[0] *
+              (system.box[4] * system.box[8] - system.box[5] * system.box[7]) -
+          system.box[1] *
+              (system.box[3] * system.box[8] - system.box[5] * system.box[6]) +
+          system.box[2] *
+              (system.box[3] * system.box[7] - system.box[4] * system.box[6]));
+      const double fd = (ep - em) / (2.0 * step * volume);
+      const double value = analytic.stress[slots[component]];
+      max_error = std::max(max_error, std::abs(value - fd));
+      scale = std::max(scale, std::abs(value));
+    }
+    const double relative = max_error / std::max(scale, 1e-12);
+    if (step == 1e-5) {
+      target_error = relative;
+    } else {
+      best_other = std::min(best_other, relative);
+    }
+  }
+  std::cout << "STRESS_ERROR emt " << std::setprecision(12) << target_error
+            << '\n';
+  CHECK(target_error <= 2e-7);
+  CHECK(target_error <= best_other * 2.0 + 1e-12);
+}
+
+TEST_CASE("EMT stress follows a change of the cell on a reused instance",
+          "[emt][stress]") {
+  auto first = fccCu(4, 3.615);
+  auto second = first;
+  const std::array<double, 9> strain = {1.03, 0.01, 0.0,  0.0, 0.98,
+                                        0.02, 0.0,  0.01, 1.04};
+  rightTransform(second.pos, second.box, strain);
+
+  rgpot::EMTPot reused;
+  const Eval before = runEval(reused, first.pos, first.z, first.box, true);
+  REQUIRE(before.has_stress == 1);
+  // The second call changes the cell, so the cached calculator is rebuilt and
+  // the stress is read from the rebuilt one.
+  const Eval after = runEval(reused, second.pos, second.z, second.box, true);
+  rgpot::EMTPot fresh;
+  const Eval expected = runEval(fresh, second.pos, second.z, second.box, true);
+  REQUIRE(after.has_stress == 1);
+  REQUIRE(countBitDiffs(after, expected) == 0);
+  CHECK(f64Bits(before.stress[0]) != f64Bits(after.stress[0]));
+
+  // A force-only call on the same instance does not leave a stress behind.
+  const Eval plain = runEval(reused, second.pos, second.z, second.box);
+  CHECK(plain.has_stress == 0);
+  for (const double component : plain.stress) {
+    CHECK(component == 0.0);
+  }
+  CHECK_THAT(plain.energy, WithinAbs(after.energy, 1e-9));
 }
 
 TEST_CASE("EMT OpenMP force path is bit-identical across threads",

@@ -218,6 +218,7 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// It also stamps `nlist::Builder` and `nlist::Walk`. Each holds only a
 /// pointer to its state, so a change to that state is not a layout change.
 /// It also adds a process-unique generation id to `Neighbours`.
+/// `ForceInput` gains `compute_stress`, the opt-in stress request.
 inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
@@ -231,7 +232,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0xae154cf52b093341ull},
+    {"linux-x86_64-libstdc++-lp64", 0xc596f0a8ed2142b9ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -325,6 +326,7 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(ForceInput, pos));
   f.add(offsetof(ForceInput, atmnrs));
   f.add(offsetof(ForceInput, box));
+  f.add(offsetof(ForceInput, compute_stress));
   f.type<ForceOut>();
   f.add(offsetof(ForceOut, F));
   f.add(offsetof(ForceOut, energy));

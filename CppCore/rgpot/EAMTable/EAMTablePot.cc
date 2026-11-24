@@ -386,6 +386,7 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
   std::fill(F, F + 3 * n_size, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;
+  StressAccumulator stress(in, out, m_stress);
   const EAMTable &t = m_table;
   std::vector<std::size_t> el(n_size);
   for (std::size_t i = 0; i < n_size; ++i) {
@@ -460,7 +461,6 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
     }
   }
 
-  double strain[6] = {};
   if (pairs) {
     nlist::visitHalf(
         cells, 0, static_cast<std::int64_t>(n_size),
@@ -480,9 +480,7 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
           F[3 * uj] -= fscale * dx;
           F[3 * uj + 1] -= fscale * dy;
           F[3 * uj + 2] -= fscale * dz;
-          if (m_stress) {
-            accumulatePairStrain(strain, fscale, dx, dy, dz);
-          }
+          stress.pair(fscale, dx, dy, dz);
           if (atoms != nullptr) {
             tallyPair(*atoms, ui, uj, phi, fscale, dx, dy, dz);
           }
@@ -490,9 +488,7 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
   }
 
   out->energy = energy;
-  if (m_stress) {
-    publishCauchyStress(out, strain, cellVolume(in.box));
-  }
+  stress.publish(in.box);
 }
 
 void EAMTablePot::densityStage(const HalfList &list, double *densities) const {

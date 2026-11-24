@@ -328,6 +328,13 @@ public:
     return nbr_;
   }
 
+  /// Current minimum-image vector r_i - r_j and its squared length.
+  void pairGeometry(std::int32_t i, std::int32_t j, double &dx, double &dy,
+                    double &dz, double &r2) const {
+    foldPair(i, j, dx, dy, dz);
+    r2 = dx * dx + dy * dy + dz * dz;
+  }
+
   /// Directed pairs for atoms in `[begin, end)`. `dx` is `r_i - r_j`
   /// after the selected image. `r2` is the squared length of that vector.
   /// Candidates lie inside the cutoff plus the skin; the caller drops the

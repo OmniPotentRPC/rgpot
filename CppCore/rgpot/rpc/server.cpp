@@ -191,13 +191,29 @@ public:
 #endif
 
 private:
+  /// A potential whose caps() advertise stress computes it on request, and
+  /// the i-PI driver returns the virial with every force reply. Any other
+  /// backend answers force-only and refuses a stress request.
+  bool servesStress() const {
+#ifdef RGPOT_HAS_IPI
+    if (m_ipi != nullptr) {
+      return true;
+    }
+#endif
+    return m_potential->caps().stress;
+  }
+
+  /// `requireStress` is set by calculateStress. A plain calculate call asks
+  /// for stress through ForceInput.computeStress instead. Either way the
+  /// stress is computed only on request and a request that cannot be served
+  /// fails.
   template <typename Context>
   kj::Promise<void> calculateImpl(Context context, bool requireStress) {
-    const bool stressCapable = m_potential->caps().stress;
-    KJ_REQUIRE(!requireStress || stressCapable,
+    auto fip = context.getParams().getFip();
+    const bool wantStress = requireStress || fip.getComputeStress();
+    KJ_REQUIRE(!wantStress || servesStress(),
                "the selected potential does not provide stress");
 
-    auto fip = context.getParams().getFip();
     const size_t numAtoms = fip.getPos().size() / 3;
 
     KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
@@ -243,6 +259,7 @@ private:
     std::vector<double> nativeForces(numAtoms * 3, 0.0);
     rgpot::ForceInput in_native{numAtoms, nativePositions.data(),
                                 nativeAtomTypes.data(), nativeBoxMatrix[0].data()};
+    in_native.compute_stress = wantStress;
     rgpot::ForceOut out_native{};
     out_native.F = nativeForces.data();
     auto evaluate = [&]() -> rgpot::ForceOut {
@@ -295,16 +312,18 @@ private:
       forcesList.set(i, nativeForces[i]);
     }
 
-    bool hasStress = out_native.has_stress != 0;
+    bool hasStress = wantStress && out_native.has_stress != 0;
     double stress[9] = {};
     if (hasStress) {
       std::copy(out_native.stress, out_native.stress + 9, stress);
     }
 #ifdef RGPOT_HAS_IPI
-    if (!hasStress && m_ipi != nullptr) {
+    if (wantStress && !hasStress && m_ipi != nullptr) {
       hasStress = m_ipi->copyStress(stress);
     }
 #endif
+    KJ_REQUIRE(!wantStress || hasStress,
+               "the selected potential returned no stress");
     if (hasStress) {
       // sigma_caller = sigma_eV/A^3 * (eV -> caller) *
       //                (A -> caller length)^3
@@ -316,8 +335,6 @@ private:
       }
     }
 
-    KJ_REQUIRE(!requireStress || hasStress,
-               "the selected potential returned no stress");
     return kj::READY_NOW;
   }
 
@@ -332,7 +349,7 @@ public:
     caps.setBackendVersion(RGPOT_BUILD_VERSION);
     caps.setAvailable(true);
     const bool hasHvp = m_potential->caps().analyticHvp;
-    const bool hasStress = m_potential->caps().stress;
+    const bool hasStress = servesStress();
     auto ops = caps.initOperations(2 + (hasHvp ? 1u : 0u) + (hasStress ? 1u : 0u));
     unsigned int opIdx = 0;
     ops.set(opIdx++, ::Capabilities::Operation::ENERGY);

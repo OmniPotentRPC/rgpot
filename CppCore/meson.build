@@ -3132,6 +3132,23 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 120,
         )
+        force_only_bench = executable(
+            'force_only_bench',
+            sources: ['tests/force_only_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'force_only_bench',
+            force_only_bench,
+            workdir: meson.source_root(),
+            timeout: 600,
+        )
         tersoff_sic_bench = executable(
             'tersoff_sic_bench',
             sources: ['tests/tersoff_sic_bench.cc'],

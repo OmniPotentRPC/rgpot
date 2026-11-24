@@ -415,6 +415,13 @@ async def run_rpc_stress_parity(d2_port, composite_port, schema):
     d2 = capnp.TwoPartyClient(await connect(d2_port)).bootstrap().cast_as(schema.Potential)
     comp = capnp.TwoPartyClient(await connect(composite_port)).bootstrap().cast_as(schema.Potential)
 
+    for server in (d2, comp):
+        caps = (await server.getCapabilities()).capabilities
+        assert caps.protocolMajor == 1 and caps.protocolMinor == 2, (
+            "ForceInput.computeStress needs protocol minor 2, "
+            f"got {caps.protocolMajor}.{caps.protocolMinor}"
+        )
+
     cfg = schema.PotentialConfig.new_message()
     terms = cfg.init("composite").init("terms", 1)
     terms[0].name = "d2"
@@ -436,6 +443,12 @@ async def run_rpc_stress_parity(d2_port, composite_port, schema):
     for i, b in enumerate([9.0, 0.0, 0.0, 1.0, 9.5, 0.0, 0.0, 0.5, 10.0]):
         fip.box[i] = b
 
+    plain_direct = (await d2.calculate(fip)).result
+    plain_summed = (await comp.calculate(fip)).result
+    assert len(plain_direct.stress) == 0, "a default request must not return stress"
+    assert len(plain_summed.stress) == 0, "a default request must not return stress"
+
+    fip.computeStress = True
     direct = (await d2.calculate(fip)).result
     summed = (await comp.calculate(fip)).result
     assert len(direct.stress) == 9

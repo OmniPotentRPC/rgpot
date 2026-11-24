@@ -122,7 +122,8 @@ SwStress swStress(const Pot &pot, const std::vector<double> &R,
   rgpot::ForceInput in{.nAtoms = R.size() / 3,
                        .pos = R.data(),
                        .atmnrs = types.data(),
-                       .box = box.data()};
+                       .box = box.data(),
+                       .compute_stress = true};
   rgpot::ForceOut fo{.F = F.data(),
                      .energy = 0.0,
                      .variance = 0.0,
@@ -245,7 +246,9 @@ TEST_CASE("SW batch returns the forceImpl energies and forces without stress",
     got[s].F = gotF[s].data();
     std::fill(got[s].stress, got[s].stress + 9, 1.0);
     got[s].has_stress = 1;
-    pot.forceImpl(in[s], &ref[s]);
+    auto stress_in = in[s];
+    stress_in.compute_stress = true;
+    pot.forceImpl(stress_in, &ref[s]);
     REQUIRE(ref[s].has_stress == 1);
   }
 
@@ -384,7 +387,8 @@ TersoffStress tersoffStress(const rgpot::fortranpots::TersoffPot &pot,
   rgpot::ForceInput in{.nAtoms = R.size() / 3,
                        .pos = R.data(),
                        .atmnrs = types.data(),
-                       .box = box.data()};
+                       .box = box.data(),
+                       .compute_stress = true};
   rgpot::ForceOut fo{.F = out.force.data(),
                      .energy = 0.0,
                      .variance = 0.0,
@@ -469,6 +473,61 @@ TEST_CASE("Tersoff wrapper stress matches a strain difference on gather path",
   }
 }
 
+TEST_CASE("Tersoff writes no stress into a reused output",
+          "[fortran][tersoff][stress]") {
+  const double pos[6] = {0.0, 0.0, 0.0, 2.0, 0.0, 0.0};
+  const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  const int sic[2] = {14, 6};
+  const int si[2] = {14, 14};
+  const rgpot::ForceInput in_sic{
+      .nAtoms = 2, .pos = pos, .atmnrs = sic, .box = box};
+  const rgpot::ForceInput in_si{
+      .nAtoms = 2, .pos = pos, .atmnrs = si, .box = box};
+
+  // Fresh outputs give the reference energies and forces of each call.
+  auto fresh = [](const auto &pot, const rgpot::ForceInput &in, double *f) {
+    rgpot::ForceOut o{
+        .F = f, .energy = 0.0, .variance = 0.0, .stress = {}, .has_stress = 0};
+    pot.forceImpl(in, &o);
+    return o.energy;
+  };
+  double f_sic[6];
+  double f_si[6];
+  rgpot::TersoffSiC kernel;
+  const double e_sic = fresh(kernel, in_sic, f_sic);
+  const double e_si = fresh(rgpot::fortranpots::TersoffPot{}, in_si, f_si);
+  REQUIRE_THAT(e_sic, WithinAbs(-3.565, 1e-3));
+  REQUIRE_THAT(e_si, WithinAbs(-1.902, 1e-3));
+
+  auto check = [](const rgpot::ForceOut &o, const double *f, double e) {
+    REQUIRE(o.has_stress == 0);
+    for (const double s : o.stress) {
+      REQUIRE(s == 0.0);
+    }
+    REQUIRE(o.energy == e);
+    for (int i = 0; i < 6; ++i) {
+      REQUIRE(o.F[i] == f[i]);
+    }
+  };
+
+  rgpot::fortranpots::TersoffPot pot;
+  REQUIRE(pot.caps().stress);
+  const rgpot::ForceInput *order[2][2] = {{&in_sic, &in_si}, {&in_si, &in_sic}};
+  for (const auto &seq : order) {
+    double got[6];
+    rgpot::ForceOut out{.F = got,
+                        .energy = 0.0,
+                        .variance = 0.0,
+                        .stress = {},
+                        .has_stress = 0};
+    for (const rgpot::ForceInput *in : seq) {
+      pot.forceImpl(*in, &out);
+      const bool carbide = in == &in_sic;
+      check(out, carbide ? f_sic : f_si, carbide ? e_sic : e_si);
+    }
+  }
+}
+
 TEST_CASE("Tersoff wrapper stress matches SiC kernel on mixed species path",
           "[fortran][tersoff][stress]") {
   std::vector<double> pos;
@@ -488,8 +547,11 @@ TEST_CASE("Tersoff wrapper stress matches SiC kernel on mixed species path",
   rgpot::TersoffSiC kernel;
   std::vector<double> ff(pos.size(), 0.0);
   std::vector<double> fk(pos.size(), 0.0);
-  rgpot::ForceInput in{
-      .nAtoms = pos.size() / 3, .pos = pos.data(), .atmnrs = types.data(), .box = box.data()};
+  rgpot::ForceInput in{.nAtoms = pos.size() / 3,
+                       .pos = pos.data(),
+                       .atmnrs = types.data(),
+                       .box = box.data(),
+                       .compute_stress = true};
   rgpot::ForceOut of{
       .F = ff.data(), .energy = 0.0, .variance = 0.0, .stress = {}, .has_stress = 0};
   rgpot::ForceOut ok{
@@ -664,7 +726,8 @@ TEST_CASE("Tersoff negative-determinant box matches right-handed mirror",
     rgpot::ForceInput si_in{.nAtoms = si.size(),
                             .pos = diamond.data(),
                             .atmnrs = si.data(),
-                            .box = zero_ortho.data()};
+                            .box = zero_ortho.data(),
+                            .compute_stress = true};
     rgpot::ForceOut si_out{.F = force_buf.data(),
                            .energy = 0.0,
                            .variance = 0.0,
@@ -678,7 +741,8 @@ TEST_CASE("Tersoff negative-determinant box matches right-handed mirror",
     rgpot::ForceInput sic_in{.nAtoms = sic.size(),
                              .pos = diamond.data(),
                              .atmnrs = sic.data(),
-                             .box = zero_ortho.data()};
+                             .box = zero_ortho.data(),
+                             .compute_stress = true};
     rgpot::ForceOut sic_out{.F = force_buf.data(),
                             .energy = 0.0,
                             .variance = 0.0,
@@ -690,6 +754,47 @@ TEST_CASE("Tersoff negative-determinant box matches right-handed mirror",
       REQUIRE(c == 0.0);
     }
   }
+}
+
+TEST_CASE("Tersoff refuses a stress request without atomic numbers",
+          "[fortran][tersoff][stress]") {
+  const double pos[6] = {0.0, 0.0, 0.0, 2.0, 0.0, 0.0};
+  const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  const int si[2] = {14, 14};
+  rgpot::fortranpots::TersoffPot pot;
+  double f[6] = {};
+  rgpot::ForceOut out{
+      .F = f, .energy = 0.0, .variance = 0.0, .stress = {}, .has_stress = 0};
+
+  const rgpot::ForceInput no_species{.nAtoms = 2,
+                                     .pos = pos,
+                                     .atmnrs = nullptr,
+                                     .box = box,
+                                     .compute_stress = true};
+  REQUIRE_THROWS_MATCHES(
+      pot.forceImpl(no_species, &out), std::invalid_argument,
+      Catch::Matchers::MessageMatches(
+          Catch::Matchers::ContainsSubstring("needs atomic numbers")));
+  REQUIRE(out.has_stress == 0);
+
+  // Force-only, a null species pointer is still the silicon gather.
+  const rgpot::ForceInput gather{
+      .nAtoms = 2, .pos = pos, .atmnrs = nullptr, .box = box};
+  pot.forceImpl(gather, &out);
+  const double e_gather = out.energy;
+  const rgpot::ForceInput named{
+      .nAtoms = 2, .pos = pos, .atmnrs = si, .box = box};
+  pot.forceImpl(named, &out);
+  REQUIRE(e_gather == out.energy);
+  REQUIRE(out.has_stress == 0);
+
+  const rgpot::ForceInput stressed{.nAtoms = 2,
+                                   .pos = pos,
+                                   .atmnrs = si,
+                                   .box = box,
+                                   .compute_stress = true};
+  pot.forceImpl(stressed, &out);
+  REQUIRE(out.has_stress == 1);
 }
 
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {

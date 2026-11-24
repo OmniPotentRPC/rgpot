@@ -3,15 +3,15 @@
 
 * Read the stress of a periodic Sutton-Chen cell
 
-=SuttonChenPot= writes the Cauchy stress only when =SuttonChenConfig::stress= is
-set.
-This guide turns it on for a platinum crystal and reads the pressure.
+=SuttonChenPot= writes the Cauchy stress only when the call asks for it through
+=ForceInput::compute_stress=.
+This guide asks for it on a platinum crystal and reads the pressure.
 The convention and the checks are in the
 [[file:../reference/sutton_chen.org][Sutton-Chen reference]].
 
 ** Set up the potential
 
-Start from a parameter row, make it periodic, and set the flag.
+Start from a parameter row and make it periodic.
 Keep the cutoff under half the smallest face spacing of the cell, since periodic
 evaluation keeps one image of each partner.
 A periodic configuration with a cutoff that is not positive makes the
@@ -25,7 +25,6 @@ constructor throw =std::invalid_argument=.
 rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
 cfg.periodic = true;
 cfg.cutoff = 7.5;
-cfg.stress = true;
 const rgpot::SuttonChenPot pot(cfg);
 #+end_src
 
@@ -58,7 +57,7 @@ The cell edge is 15.52 Angstrom, more than twice the cutoff.
 ** Call forceImpl and read the tensor
 
 A potential's call operator returns energy, forces and variance only.
-Call =forceImpl= with a =ForceOut= to get the stress as well.
+Call =forceImpl= with a =ForceOut= and a =ForceInput= that requests the stress.
 A periodic call whose box has a non-positive diagonal entry throws
 =std::invalid_argument=.
 
@@ -67,7 +66,8 @@ A periodic call whose box has a non-positive diagonal entry throws
 std::vector<double> forces(pos.size());
 rgpot::ForceOut out{};
 out.F = forces.data();
-const rgpot::ForceInput in{pos.size() / 3, pos.data(), nullptr, box};
+rgpot::ForceInput in{pos.size() / 3, pos.data(), nullptr, box};
+in.compute_stress = true;
 pot.forceImpl(in, &out);
 
 const double gpa = 160.2176634; // eV/Angstrom^3 to GPa
@@ -78,10 +78,9 @@ std::printf("pressure %.4f GPa\n",
 #+end_src
 
 After the call, =out.has_stress= is 1 when the stress tensor was written.
-With the flag set and a cell of zero volume (or a null box on a non-periodic
+With the request and a cell of zero volume (or a null box on a non-periodic
 call), the call sets it to 0 and zeroes the tensor.
-With the flag clear, the call leaves =has_stress= and =stress= as the caller set
-them, which is 0 here because =out= is value-initialised.
+Without the request, the call also sets =has_stress= to 0 and zeroes the tensor.
 
 ** What to expect
 

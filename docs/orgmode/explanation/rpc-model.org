@@ -21,6 +21,11 @@ one Cap'n Proto schema (~Potentials.capnp~).
   evaluation.
   Optional fields, such as a Hessian, a dipole or a stress tensor, are filled in
   by the backends that compute them.
+  A stress is sent only when the request set ~computeStress~.
+  A force-only request never receives one, and the Rust client drops a stress
+  that arrives unasked.
+  A request to a server whose backend reports no stress fails with a message
+  instead of returning zeros.
 - ~PotentialConfig~ carries backend setup, and only setup.
   A client sends it once through ~configure~, then sends a new ~ForceInput~ for
   every geometry.

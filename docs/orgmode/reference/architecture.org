@@ -361,6 +361,23 @@ They refuse the backend with a message that names the first mismatch.
 
 Metadata that a backend leaves unset is not a declaration and is not checked, so
 backends that predate the fields keep loading.
+The protocol minor counts additive wire changes.
+Minor 1 introduced the capability handshake.
+Minor 2 adds =ForceInput.computeStress=, the opt-in request for the Cauchy
+stress.
+The Rust crate
+(=PROTOCOL_MINOR=), the C++ host (=rgpot::abi::kProtocolMinor=) and the =PROTOCOL_MINOR=
+macro of =rgpot.h= all state 2.
+
+A peer at minor 1 never sets =computeStress= and never reads it, so for such a
+peer the stress is not requested.
+It keeps interoperating for energy and forces, because the default expectation
+accepts any minor.
+A client that asks for stress requires minor 2 (=STRESS_PROTOCOL_MINOR=) and the
+=stress= operation.
+It refuses a minor-1 server with =protocol minor 1 is below the required 2=
+before any =calculate=, instead of receiving a stress it did not request.
+
 An empty family skips the three protocol checks, an empty schema identity skips
 the schema check, and a zero bridge or DLPack major skips that group.
 =buildVersion= and =buildRevision= report the version and source revision of the

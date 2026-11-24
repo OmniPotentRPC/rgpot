@@ -1240,6 +1240,33 @@ if get_option('with_rust_core')
         )
     endif
 
+    # The stress entry points and a minor-6 caller, as a C host calls them.
+    if get_option('with_tests')
+        _stress_capi = executable(
+            'stress_capi_test',
+            'rgpot-core/tests/c/stress_capi.c',
+            include_directories: include_directories(
+                'rgpot-core' / 'include',
+                'include',
+            ),
+            dependencies: [
+                rgpot_rust_lib,
+                fastnlist_dep,
+                thread_dep,
+                dl_dep,
+                meson.get_compiler('c').find_library('m', required: false),
+            ],
+            link_language: 'c',
+            build_by_default: true,
+        )
+        test(
+            'StressCAbiTest',
+            _stress_capi,
+            depends: rgpot_rust_target,
+            timeout: 30,
+        )
+    endif
+
     # Include paths: generated C header + C++ RAII wrappers
     _incdirs += [
         include_directories('rgpot-core' / 'include'),  # rgpot.h (cbindgen)

@@ -14,8 +14,10 @@
 //   z x y z
 //   ...
 //
-// It prints the energy, one force line per atom and, when the kernel
-// reports one, the row-major Cauchy stress in eV/Angstrom^3.
+// It prints the energy, one force line per atom and, for a potential whose
+// caps() advertise stress, the row-major Cauchy stress in eV/Angstrom^3. The
+// stress is requested only from such a potential; any other is evaluated
+// force-only and prints no stress line.
 
 #include "pot_spec.hpp"
 
@@ -60,6 +62,7 @@ int main(int argc, char **argv) {
   }
   std::vector<double> forces(3 * count, 0.0);
   rgpot::ForceInput in{count, xyz.data(), z.data(), box};
+  in.compute_stress = built.pot->caps().stress;
   rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
   try {
     built.eval(in, &out);

@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -157,14 +158,16 @@ struct StressEval {
 
 /// forceImpl with the stress slots preset to 7, so an untouched tensor shows.
 StressEval eval_stress(const rgpot::SuttonChenPot &pot,
-                       const std::vector<double> &pos, const double *box) {
+                       const std::vector<double> &pos, const double *box,
+                       bool request_stress = false) {
   StressEval e;
   e.forces.assign(pos.size(), 0.0);
   rgpot::ForceOut out{};
   out.F = e.forces.data();
   std::fill(out.stress, out.stress + 9, 7.0);
-  pot.forceImpl(rgpot::ForceInput{pos.size() / 3, pos.data(), nullptr, box},
-                &out);
+  rgpot::ForceInput in{pos.size() / 3, pos.data(), nullptr, box};
+  in.compute_stress = request_stress;
+  pot.forceImpl(in, &out);
   e.energy = out.energy;
   std::copy(out.stress, out.stress + 9, e.stress);
   e.has_stress = out.has_stress;
@@ -1086,21 +1089,24 @@ TEST_CASE("Sutton-Chen stress is opt-in and keeps the energy and force bits",
   const auto ref = load_lammps_ref("pt_sheared");
   const auto plain = platinum_periodic(ref.cutoff, false);
   const auto with = platinum_periodic(ref.cutoff, true);
-  REQUIRE_FALSE(plain.caps().stress);
+  REQUIRE(plain.caps().stress);
   REQUIRE(with.caps().stress);
   REQUIRE(plain.paramsKey() != with.paramsKey());
   const StressEval a = eval_stress(plain, ref.pos, ref.box);
-  const StressEval b = eval_stress(with, ref.pos, ref.box);
+  const StressEval b = eval_stress(plain, ref.pos, ref.box, true);
+  const StressEval legacy = eval_stress(with, ref.pos, ref.box);
   REQUIRE(a.has_stress == 0);
   REQUIRE(
-      std::all_of(a.stress, a.stress + 9, [](double v) { return v == 7.0; }));
+      std::all_of(a.stress, a.stress + 9, [](double v) { return v == 0.0; }));
   REQUIRE(b.has_stress == 1);
+  REQUIRE(legacy.has_stress == 1);
   REQUIRE(std::memcmp(&a.energy, &b.energy, sizeof(double)) == 0);
   REQUIRE(std::memcmp(a.forces.data(), b.forces.data(),
                       a.forces.size() * sizeof(double)) == 0);
   // A cluster with no cell has no volume, so no stress is reported.
   const rgpot::SuttonChenPot cluster({.cutoff = 0.0, .stress = true});
-  const StressEval c = eval_stress(cluster, {0, 0, 0, 0.8, 0.1, 0}, nullptr);
+  const StressEval c =
+      eval_stress(cluster, {0, 0, 0, 0.8, 0.1, 0}, nullptr, true);
   REQUIRE(c.has_stress == 0);
   REQUIRE(
       std::all_of(c.stress, c.stress + 9, [](double v) { return v == 0.0; }));
@@ -1112,6 +1118,8 @@ TEST_CASE("Sutton-Chen stress is the strain derivative of the energy",
   const auto pot = platinum_periodic(ref.cutoff, true);
   const StressEval here = eval_stress(pot, ref.pos, ref.box);
   const double h = 1.0e-6;
+  double max_error = 0.0;
+  double max_stress = 0.0;
   for (const auto &ab : kVoigt) {
     const int a = ab[0];
     const int b = ab[1];
@@ -1134,10 +1142,15 @@ TEST_CASE("Sutton-Chen stress is the strain derivative of the energy",
     }
     const double numeric =
         (energy[0] - energy[1]) / (2.0 * h * rgpot::cellVolume(ref.box));
+    max_error =
+        std::max(max_error, std::abs(here.stress[3 * a + b] - numeric));
+    max_stress = std::max(max_stress, std::abs(here.stress[3 * a + b]));
     INFO("component " << a << b);
     REQUIRE_THAT(here.stress[3 * a + b], WithinAbs(numeric, 1.0e-9));
     REQUIRE(here.stress[3 * b + a] == here.stress[3 * a + b]);
   }
+  std::cout << "STRESS_ERROR Sutton-Chen "
+            << max_error / std::max(max_stress, 1e-8) << '\n';
 }
 
 TEST_CASE("Sutton-Chen stress matches LAMMPS eam/fs", "[SuttonChen][stress]") {

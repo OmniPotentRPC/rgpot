@@ -393,16 +393,16 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   out->energy = 0.0;
   out->variance = 0.0;
   const SuttonChenConfig cfg = m_config;
-  double strain[6] = {};
+  StressAccumulator stress(in, out, cfg.stress);
+  double *strain = stress.data();
+  const bool stress_on = stress.enabled();
   if (n_atoms < 2) {
     for (long i = 0; i < n_atoms; ++i) {
       F[3 * i] = 0.0;
       F[3 * i + 1] = 0.0;
       F[3 * i + 2] = 0.0;
     }
-    if (cfg.stress) {
-      publishCauchyStress(out, strain, cellVolume(in.box));
-    }
+    stress.publish(in.box);
     return;
   }
 
@@ -467,7 +467,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
         ws.weight.resize(n_size);
         ws.row_e.resize(n_size);
         ws.row_emb.resize(n_size);
-        if (cfg.stress) {
+        if (stress_on) {
           ws.row_s.resize(6 * n_size);
         }
 
@@ -508,10 +508,8 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
         double *weight = ws.weight.data();
         double *row_e = ws.row_e.data();
         double *row_emb = ws.row_emb.data();
-        double *row_s = cfg.stress ? ws.row_s.data() : nullptr;
+        double *row_s = stress_on ? ws.row_s.data() : nullptr;
         double *atom_v = want_hv ? atoms->virial : nullptr;
-        const bool stress_on = cfg.stress;
-
         forEachSlicePhase(3, nt, [&](int phase, int slice) {
           const auto s_idx = static_cast<std::size_t>(slice);
           if (phase == 0) {
@@ -700,7 +698,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
             eemb -= row_emb[i];
           }
         }
-        if (cfg.stress) {
+        if (stress_on) {
           for (std::size_t i = 0; i < n_size; ++i) {
             for (std::size_t k = 0; k < 6; ++k) {
               strain[k] += row_s[6 * i + k];
@@ -708,9 +706,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
           }
         }
         out->energy = epair + eemb;
-        if (cfg.stress) {
-          publishCauchyStress(out, strain, cellVolume(in.box));
-        }
+        stress.publish(in.box);
         ws.releaseScratch();
         return;
       }
@@ -733,9 +729,9 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   // half walks, whose densities and forces the rows repeat bit for bit.
   const bool by_row = !sparse_stored && rows && (nt > 1 || (stream && !neighbours_.allPairs()));
   std::vector<double> row_e(rows ? n_size : 0, 0.0);
-  std::vector<double> row_s(rows && cfg.stress ? 6 * n_size : 0, 0.0);
+  std::vector<double> row_s(rows && stress_on ? 6 * n_size : 0, 0.0);
   double *e_sum = rows ? row_e.data() : &epair;
-  double *s_sum = !cfg.stress ? nullptr : (rows ? row_s.data() : strain);
+  double *s_sum = !stress_on ? nullptr : (rows ? row_s.data() : strain);
   // The half walks take the stride of the sums as a type, so below
   // kTeamMinAtoms every pair adds to the one total with no index.
   auto by_stride = [rows](auto walk) {
@@ -925,7 +921,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
     for (std::size_t i = 0; i < n_size; ++i) {
       epair += row_e[i];
     }
-    if (cfg.stress) {
+    if (stress_on) {
       for (std::size_t i = 0; i < n_size; ++i) {
         for (std::size_t k = 0; k < 6; ++k) {
           strain[k] += row_s[6 * i + k];
@@ -935,9 +931,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   }
 
   out->energy = epair + eemb;
-  if (cfg.stress) {
-    publishCauchyStress(out, strain, cellVolume(in.box));
-  }
+  stress.publish(in.box);
 }
 
 void SuttonChenPot::densityStage(const HalfList &list, double *densities) const {

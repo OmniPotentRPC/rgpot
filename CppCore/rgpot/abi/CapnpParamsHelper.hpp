@@ -75,6 +75,7 @@ serialize_force_input_ev(const ForceInput &in) {
     box.set(i, in.box[i]);
   force_input.setLengthUnit("angstrom");
   force_input.setEnergyUnit("eV");
+  force_input.setComputeStress(in.compute_stress);
   auto words = ::capnp::messageToFlatArray(msg);
   std::vector<::capnp::word> out(words.size());
   if (!out.empty()) {

@@ -64,6 +64,9 @@ double d2_r0(int z);
  * @class D2Pot
  * @brief DFT-D2 energy, forces and stress, periodic or molecular.
  * @ingroup rgpot_potentials
+ *
+ * The stress of a periodic cell is computed only when
+ * @c ForceInput::compute_stress asks for it; a molecule reports none.
  */
 class D2Pot final : public Potential<D2Pot> {
 public:

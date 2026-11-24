@@ -547,9 +547,18 @@ class _Geometry:
         return out
 
 
-def _call(potential: Any, positions: np.ndarray, numbers: np.ndarray, box: np.ndarray) -> dict[str, Any]:
+def _call(
+    potential: Any,
+    positions: np.ndarray,
+    numbers: np.ndarray,
+    box: np.ndarray,
+    *,
+    compute_stress: bool = False,
+) -> dict[str, Any]:
     evaluate = getattr(potential, "evaluate", None)
     if evaluate is not None:
+        if compute_stress:
+            return evaluate(positions, numbers, box, compute_stress=True)
         return evaluate(positions, numbers, box)
     energy, forces, _variance = potential(positions, numbers, box)
     stress = getattr(potential, "stress", None)
@@ -693,6 +702,7 @@ class RgpotCalculator(Calculator):
             self.atoms.cell.array,
             self.atoms.pbc,
             per_atom=per_atom,
+            compute_stress="stress" in wanted and self._analytic_stress,
         )
         self.results.update(evaluated)
         if "stress" not in evaluated and self._numerical_stress and "stress" in wanted:
@@ -706,6 +716,7 @@ class RgpotCalculator(Calculator):
         pbc: Any,
         *,
         per_atom: bool = False,
+        compute_stress: bool = False,
     ) -> dict[str, Any]:
         """Pure evaluation. Does not read or write ``self`` state (F5).
 
@@ -717,9 +728,25 @@ class RgpotCalculator(Calculator):
         """
         geom = self._geometry(positions, numbers, cell, pbc)
         if per_atom and self._per_atom:
-            raw = self._potential.evaluate_per_atom(geom.positions, geom.numbers, geom.box)
+            if compute_stress:
+                raw = self._potential.evaluate_per_atom(
+                    geom.positions,
+                    geom.numbers,
+                    geom.box,
+                    compute_stress=True,
+                )
+            else:
+                raw = self._potential.evaluate_per_atom(
+                    geom.positions, geom.numbers, geom.box
+                )
         else:
-            raw = _call(self._potential, geom.positions, geom.numbers, geom.box)
+            raw = _call(
+                self._potential,
+                geom.positions,
+                geom.numbers,
+                geom.box,
+                compute_stress=compute_stress,
+            )
         return geom.finish(raw)
 
     def _geometry(self, positions: Any, numbers: Any, cell: Any, pbc: Any) -> _Geometry:
@@ -822,7 +849,13 @@ class RgpotCalculator(Calculator):
             if "stress" in wanted and self._analytic_stress:
                 # BatchEvaluator returns energy and forces. Stress comes
                 # from the same kernel on the copied geometry.
-                stress_eval = _call(self._potential, geom.positions, geom.numbers, geom.box)
+                stress_eval = _call(
+                    self._potential,
+                    geom.positions,
+                    geom.numbers,
+                    geom.box,
+                    compute_stress=True,
+                )
                 stressed = geom.finish(stress_eval)
                 if "stress" in stressed:
                     row["stress"] = stressed["stress"]

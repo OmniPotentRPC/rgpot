@@ -146,8 +146,31 @@ def test_lj_stress_matches_finite_difference() -> None:
     np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)
 
 
+def test_direct_stress_is_opt_in_and_preserves_energy_and_forces() -> None:
+    atoms = lj_crystal()
+    args = (atoms.positions, atoms.numbers, np.ascontiguousarray(atoms.cell.array))
+    pot = rgpot.LJPot()
+    force_only = pot.evaluate(*args)
+    with_stress = pot.evaluate(*args, compute_stress=True)
+    assert force_only["stress"] is None
+    assert with_stress["stress"].shape == (3, 3)
+    assert force_only["energy"] == with_stress["energy"]
+    np.testing.assert_array_equal(force_only["forces"], with_stress["forces"])
+
+
 def test_stillinger_weber_si_stress_matches_finite_difference() -> None:
     pot = rgpot.StillingerWeberSi()
+    assert pot.caps()["stress"] is True
+    atoms = si_crystal()
+    atoms.calc = RgpotCalculator(pot)
+    assert "stress" in atoms.calc.implemented_properties
+    analytic = atoms.get_stress()
+    numeric = calculate_numerical_stress(atoms, eps=1e-6, voigt=True)
+    np.testing.assert_allclose(analytic, numeric, atol=1e-6, rtol=0.0)
+
+
+def test_tersoff_sic_stress_matches_finite_difference() -> None:
+    pot = rgpot.TersoffSiC()
     assert pot.caps()["stress"] is True
     atoms = si_crystal()
     atoms.calc = RgpotCalculator(pot)
@@ -171,8 +194,10 @@ def test_sw_stress_matches_finite_difference() -> None:
 def test_sw_stress_is_the_1985_stress_scaled_by_epsilon() -> None:
     atoms = si_crystal()
     args = (atoms.positions, atoms.numbers, np.ascontiguousarray(atoms.cell.array))
-    eon = rgpot.SWPot().evaluate(*args)
-    published = rgpot.StillingerWeberSi().evaluate(*args)
+    eon = rgpot.SWPot().evaluate(*args, compute_stress=True)
+    published = rgpot.StillingerWeberSi().evaluate(
+        *args, compute_stress=True
+    )
     ratio = 2.16826 * 1.06767385 / (3.4723e-12 * 1.0e-7 / 1.602176634e-19)
     assert eon["energy"] == pytest.approx(ratio * published["energy"], rel=1e-13)
     np.testing.assert_allclose(
@@ -245,7 +270,7 @@ def test_protocol_does_not_mutate_calculator() -> None:
     assert calc.results == before
     assert calc.atoms is None
     assert row["free_energy"] == row["energy"]
-    assert "stress" in row
+    assert "stress" not in row
 
 
 @pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no EAM-Al in this build")

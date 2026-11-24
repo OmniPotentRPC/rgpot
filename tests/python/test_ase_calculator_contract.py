@@ -66,9 +66,11 @@ class _CountingPotential:
     def config(self):
         return self._inner.config()
 
-    def evaluate(self, positions, numbers, box):
+    def evaluate(self, positions, numbers, box, compute_stress: bool = False):
         self.calls += 1
-        return self._inner.evaluate(positions, numbers, box)
+        return self._inner.evaluate(
+            positions, numbers, box, compute_stress=compute_stress
+        )
 
 
 def _argon_bulk(repeat: int = 2, seed: int = 11) -> Atoms:

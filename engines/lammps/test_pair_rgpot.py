@@ -619,12 +619,13 @@ def test_engine_virial_from_strain_difference(tmp_path):
 
 
 @pytest.mark.skipif(not EVAL, reason="needs RGPOT_EVAL")
-def test_potential_without_stress_uses_strain_difference(tmp_path):
-    """EMT reports no stress. Its pressure is the same strain difference
-    taken outside LAMMPS with rgpot-eval, at the plugin's step 1e-5.
-    EMT is not smooth enough for a step-independent comparison."""
+def test_virial_fd_uses_strain_difference(tmp_path):
+    """With virial fd the pressure is the strain difference, even for a
+    potential that reports a stress. It is compared with the same difference
+    taken outside LAMMPS with rgpot-eval, at the plugin's step 1e-5. EMT is
+    not smooth enough for a step-independent comparison."""
     h = 1e-5
-    emt = [f"plugin load {PLUGIN}", "pair_style rgpot 6.0", "pair_coeff * * EMT Cu Cu"]
+    emt = [f"plugin load {PLUGIN}", "pair_style rgpot 6.0 virial fd", "pair_coeff * * EMT Cu Cu"]
     got = ok(run_case(tmp_path, fcc(3.61, True) + emt + THERMO + ["run 0"]))
     fd = []
     for k in range(6):
@@ -634,6 +635,22 @@ def test_potential_without_stress_uses_strain_difference(tmp_path):
     dp = max_abs_diff(got["press"], fd)
     print(f"EMT strain difference: max|dP| {dp:.3e} bar, P {got['press']}")
     assert dp < 1e-6 * max(abs(p) for p in fd)
+
+
+@pytest.mark.skipif(not EVAL, reason="needs RGPOT_EVAL")
+def test_global_virial_comes_from_the_requested_stress(tmp_path):
+    """EMT advertises stress, so the plugin asks for it when LAMMPS wants
+    the virial and the pressure is -sigma, as rgpot-eval prints it. The
+    compressed lattice makes the pressure nonzero."""
+    emt = [f"plugin load {PLUGIN}", "pair_style rgpot 6.0", "pair_coeff * * EMT Cu Cu"]
+    got = ok(run_case(tmp_path, fcc(3.55, True) + emt + THERMO + ["run 0"]))
+    own = rgpot_eval(got, {1: 29}, ["EMT"])
+    s = own["stress"]
+    assert s is not None, "rgpot-eval printed no stress for a potential that advertises it"
+    virial_p = [-got["nktv2p"] * s[k] for k in (0, 4, 8, 1, 2, 5)]
+    dp = max_abs_diff(virial_p, got["press"])
+    print(f"EMT requested stress: max|dP| {dp:.3e} bar, P {got['press']}")
+    assert dp < 1e-9 * max(1.0, max(abs(p) for p in virial_p))
 
 
 def test_refuses_unknown_names_and_symbols(tmp_path):

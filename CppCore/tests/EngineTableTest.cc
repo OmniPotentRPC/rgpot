@@ -1129,7 +1129,7 @@ TEST_CASE("composite engine sums weighted terms and reports each",
   e.destroy(off);
 }
 
-TEST_CASE("composite engine takes D2 terms with their stress", "[engine][composite][d2]") {
+TEST_CASE("composite engine takes D2 terms, force-only", "[engine][composite][d2]") {
   Engine e;
   if (!open_engine("COMPOSITE", e)) {
     SKIP("no composite engine in this build");
@@ -1151,10 +1151,13 @@ TEST_CASE("composite engine takes D2 terms with their stress", "[engine][composi
   REQUIRE(e.last_components(pot, rec.data(), nullptr, 3) == 3);
   REQUIRE(rec[1].energy < 0.0);
   REQUIRE(rec[1].energy == rec[2].energy);
-  REQUIRE(rec[1].has_stress == 1);
+  // rgpot_engine_force requests no stress, so no term computes one.
+  REQUIRE(rec[1].has_stress == 0);
+  REQUIRE(rec[2].has_stress == 0);
   REQUIRE(energy == Catch::Approx(rec[0].energy).margin(1e-12));
   for (int k = 0; k < 9; ++k) {
-    REQUIRE(rec[1].stress[k] == rec[2].stress[k]);
+    REQUIRE(rec[1].stress[k] == 0.0);
+    REQUIRE(rec[2].stress[k] == 0.0);
   }
   e.destroy(pot);
 }
