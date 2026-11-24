@@ -1344,9 +1344,10 @@ int rgpot_md_session_get_energy(rgpot_md_session *session,
                                 double *potential_energy,
                                 double *kinetic_energy, char *err,
                                 size_t err_len) {
-  return rgpot_md_session_get_state(session, nullptr, nullptr, nullptr, 0,
-                                    potential_energy, kinetic_energy, err,
-                                    err_len);
+  return rgpot_md_session_get_state(
+      session, nullptr, nullptr, nullptr,
+      session == nullptr ? 0 : 3 * session->n_atoms, potential_energy,
+      kinetic_energy, err, err_len);
 }
 
 void rgpot_md_session_destroy(rgpot_md_session *session) { delete session; }

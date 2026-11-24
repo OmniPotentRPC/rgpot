@@ -14,6 +14,7 @@
 #include <openmm/serialization/XmlSerializer.h>
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -195,8 +196,17 @@ int unsupported_step(void *, double, double, double, const double *,
   return 0;
 }
 int unsupported_nve(void *, double, size_t, char *, size_t) { return 0; }
-int unsupported_state(void *, double *, double *, double *, size_t, double *,
-                      double *, char *, size_t) {
+size_t g_state_n3 = 0;
+int unsupported_state(void *, double *, double *, double *, size_t n3, double *,
+                      double *kinetic, char *err, size_t err_len) {
+  g_state_n3 = n3;
+  if (kinetic != nullptr) {
+    *kinetic = 1.5;
+  }
+  if (n3 != 3 && err != nullptr && err_len > 0) {
+    std::snprintf(err, err_len, "state buffers need three values per atom");
+    return 1;
+  }
   return 0;
 }
 int unsupported_masses(void *, double *masses, size_t n, char *, size_t) {
@@ -241,6 +251,14 @@ void check_short_vtable() {
           "run_langevin should be reported as unsupported");
   require(rgpot_md_session_initialize(session, error, sizeof(error)) == 0,
           "initialize needs no callback");
+  // An engine that checks the length of its buffers is told 3N even when
+  // only the energies are asked for.
+  double kinetic = 0.0;
+  require(rgpot_md_session_get_energy(session, nullptr, &kinetic, error,
+                                      sizeof(error)) == 0,
+          std::string("get_energy: ") + error);
+  require(g_state_n3 == 3 && kinetic == 1.5,
+          "get_energy did not pass 3N to get_state");
   rgpot_md_session_destroy(session);
 
   ops.struct_size = offsetof(rgpot_md_session_ops, destroy);
