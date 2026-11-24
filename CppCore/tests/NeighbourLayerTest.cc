@@ -39,9 +39,19 @@ namespace {
 
 std::atomic<std::uint64_t> allocationCalls{0};
 
+// Allocations this thread may still make before one throws; -1 never throws.
+thread_local std::int64_t allocationsBeforeFailure = -1;
+
 } // namespace
 
 void *operator new(std::size_t size) {
+  if (allocationsBeforeFailure == 0) {
+    allocationsBeforeFailure = -1;
+    throw std::bad_alloc();
+  }
+  if (allocationsBeforeFailure > 0) {
+    --allocationsBeforeFailure;
+  }
   void *memory = std::malloc(size == 0 ? 1 : size);
   if (memory == nullptr) {
     throw std::bad_alloc();
@@ -2834,6 +2844,127 @@ TEST_CASE("a failed update leaves nothing a later update can reuse",
       cells.update(pos.data(), n, box, spec);
       CHECK(samePairs(halfPairsWithin(cells, n, cutoff), want));
     }
+  }
+}
+
+namespace {
+
+/// Runs `call` with allocation `fail_at` on this thread, counted from 0,
+/// throwing std::bad_alloc. True when the call reached that allocation.
+template <typename Call>
+bool failsAtAllocation(std::int64_t fail_at, Call &&call) {
+  allocationsBeforeFailure = fail_at;
+  try {
+    call();
+  } catch (const std::bad_alloc &) {
+    allocationsBeforeFailure = -1;
+    return true;
+  }
+  allocationsBeforeFailure = -1;
+  return false;
+}
+
+} // namespace
+
+TEST_CASE("an allocation failure in an update leaves no list to reuse",
+          "[nlist][generation][throw][allocation]") {
+  setThreads("1");
+  const double a = 3.6;
+  const double side = 4 * a;
+  const double ortho[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const double skewed[9] = {side,       0,           0,   0.2 * side, side,
+                            0,          0.1 * side, 0.15 * side, side};
+  const auto pos = fcc(4, a);
+  const std::size_t n = pos.size() / 3;
+  // Atom 0 moves by a small step and is wrapped back through the x face,
+  // which a stored list keeps after rebinning.
+  auto wrapped = pos;
+  wrapped[0] += side + 0.05;
+
+  struct Step {
+    const char *name;
+    const double *box;
+    rgpot::nlist::Mode mode;
+    double cutoff_after;
+    const std::vector<double> *after;
+  };
+  const std::vector<Step> steps = {
+      // A spec change on unchanged coordinates: the rebuild of
+      // updateOrthorhombic, through its generation and its cell build.
+      {"orthorhombic stored rebuild", ortho, rgpot::nlist::Mode::Stored, 5.0, &pos},
+      {"orthorhombic stream rebuild", ortho, rgpot::nlist::Mode::Stream, 5.0, &pos},
+      // The same on a sheared cell: the fractional rebuild and its
+      // generation.
+      {"skewed stored rebuild", skewed, rgpot::nlist::Mode::Stored, 5.0, &pos},
+      {"skewed stream rebuild", skewed, rgpot::nlist::Mode::Stream, 5.0, &pos},
+      // A reuse that rebins.
+      {"orthorhombic wrapped reuse", ortho, rgpot::nlist::Mode::Stored, 4.0, &wrapped},
+      {"skewed wrapped reuse", skewed, rgpot::nlist::Mode::Stored, 4.0, &wrapped},
+  };
+
+  std::int64_t total_injected = 0;
+  for (const Step &step : steps) {
+    INFO(step.name);
+    rgpot::nlist::Spec before;
+    before.cutoff = 4.0;
+    before.skin = step.mode == rgpot::nlist::Mode::Stored ? 0.5 : 0.0;
+    before.image = rgpot::nlist::Image::Round;
+    before.mode = step.mode;
+    rgpot::nlist::Spec after = before;
+    after.cutoff = step.cutoff_after;
+    const std::vector<double> &next = *step.after;
+
+    rgpot::nlist::Neighbours fresh_before;
+    fresh_before.update(pos.data(), n, step.box, before);
+    const auto want_before = halfPairsWithin(fresh_before, n, before.cutoff);
+    rgpot::nlist::Neighbours fresh_after;
+    fresh_after.update(next.data(), n, step.box, after);
+    const auto want_after = halfPairsWithin(fresh_after, n, after.cutoff);
+    REQUIRE_FALSE(want_before.empty());
+    REQUIRE_FALSE(want_after.empty());
+
+    std::int64_t injected = 0;
+    for (std::int64_t k = 0;; ++k) {
+      INFO("allocation " << k);
+      rgpot::nlist::Neighbours cells;
+      cells.update(pos.data(), n, step.box, before);
+      const auto built = cells.generation();
+      if (!failsAtAllocation(k, [&] { cells.update(next.data(), n, step.box, after); })) {
+        CHECK(samePairs(halfPairsWithin(cells, n, after.cutoff), want_after));
+        break;
+      }
+      ++injected;
+      // Either the update changed nothing, or it left an empty object
+      // with no generation that nothing keyed on the old one can match.
+      if (cells.hasGeneration()) {
+        CHECK(cells.generation() == built);
+        CHECK_FALSE(cells.reused());
+        CHECK(samePairs(halfPairsWithin(cells, n, before.cutoff), want_before));
+      } else {
+        CHECK(cells.slots() == 0);
+        CHECK(cells.offsets().empty());
+        CHECK_FALSE(cells.reused());
+        CHECK(halfPairsWithin(cells, 0, before.cutoff).empty());
+      }
+      cells.update(next.data(), n, step.box, after);
+      const auto got = halfPairsWithin(cells, n, after.cutoff);
+      CHECK(got.size() == want_after.size());
+      CHECK(samePairs(got, want_after));
+      if (step.cutoff_after != before.cutoff) {
+        CHECK_FALSE(cells.reused());
+        CHECK(cells.generation() != built);
+      }
+    }
+#if defined(__linux__)
+    // A stream that keeps its capacity allocates only to read MemAvailable,
+    // which happens inside the cell build.
+    CHECK(injected > 0);
+#endif
+    total_injected += injected;
+  }
+  setThreads("");
+  if (total_injected == 0) {
+    SKIP("operator new is not replaced inside librgpot on this platform");
   }
 }
 

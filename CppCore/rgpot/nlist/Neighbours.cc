@@ -876,11 +876,16 @@ void Neighbours::updateOrthorhombic(const double *xyz, std::size_t n,
   bool wrapped = false;
   if (reusable(xyz, n, spec, same_cell, wrapped)) {
     (void)generation();
+    if (wrapped) {
+      try {
+        buildCells(xyz, n);
+      } catch (...) {
+        discard();
+        throw;
+      }
+    }
     xyz_ = xyz;
     reused_ = true;
-    if (wrapped) {
-      buildCells(xyz, n);
-    }
     return;
   }
   const bool next_use_general = spec.image == Image::General;
@@ -888,77 +893,88 @@ void Neighbours::updateOrthorhombic(const double *xyz, std::size_t n,
       next_use_general ? MinimumImage(box9, spec.periodic) : MinimumImage{};
   const std::uint64_t next_gen = nextGeneration();
 
-  xyz_ = xyz;
-  reused_ = false;
-  generation_.store(next_gen, std::memory_order_release);
-  n_ = n;
-  std::memcpy(box_, box9, sizeof(box_));
-  len_[0] = box9[0];
-  len_[1] = box9[4];
-  len_[2] = box9[8];
-  for (int k = 0; k < 3; ++k) {
-    periodic_[k] =
-        spec.periodic[static_cast<std::size_t>(k)] && len_[k] > 0.0;
-    inv_[k] = periodic_[k] ? 1.0 / len_[k] : 0.0;
-  }
-  image_ = spec.image;
-  use_general_ = next_use_general;
-  if (use_general_) {
-    general_ = std::move(next_general);
-  }
-  search_ = spec.cutoff + spec.skin;
-  if (!(search_ > 0.0)) {
-    search_ = 0.0;
-  }
-  key_.cutoff = spec.cutoff;
-  key_.skin = spec.skin;
-  key_.image = spec.image;
-  key_.mode = spec.mode;
-  key_.periodic = spec.periodic;
-  off_.clear();
-  nbr_.clear();
-  streaming_ = true;
-  if (n < 2 || !(search_ > 0.0)) {
-    streaming_ = false;
-    mode_ = Mode::Stored;
-    off_.assign(n + 1, 0);
+  // Nothing has changed up to here. From here only an allocation can
+  // throw, and the generation is stored once the rebuild is complete.
+  auto rebuild = [&]() {
+    built_ = false;
+    xyz_ = xyz;
+    reused_ = false;
+    n_ = n;
+    std::memcpy(box_, box9, sizeof(box_));
+    len_[0] = box9[0];
+    len_[1] = box9[4];
+    len_[2] = box9[8];
+    for (int k = 0; k < 3; ++k) {
+      periodic_[k] =
+          spec.periodic[static_cast<std::size_t>(k)] && len_[k] > 0.0;
+      inv_[k] = periodic_[k] && len_[k] > 0.0 ? 1.0 / len_[k] : 0.0;
+    }
+    image_ = spec.image;
+    use_general_ = next_use_general;
+    if (use_general_) {
+      general_ = next_general;
+    }
+    search_ = spec.cutoff + spec.skin;
+    if (!(search_ > 0.0)) {
+      search_ = 0.0;
+    }
+    key_.cutoff = spec.cutoff;
+    key_.skin = spec.skin;
+    key_.image = spec.image;
+    key_.mode = spec.mode;
+    key_.periodic = spec.periodic;
+    off_.clear();
     nbr_.clear();
+    streaming_ = true;
+    if (n < 2 || !(search_ > 0.0)) {
+      streaming_ = false;
+      mode_ = Mode::Stored;
+      off_.assign(n + 1, 0);
+      nbr_.clear();
+      built_ = true;
+      ref_.assign(xyz, xyz + 3 * n);
+      return;
+    }
+    if (std::isinf(search_)) {
+      mode_ = Mode::Stream;
+      built_ = true;
+      return;
+    }
+    buildCells(xyz, n);
+    if (spec.mode == Mode::Stream) {
+      streaming_ = true;
+      mode_ = Mode::Stream;
+      built_ = true;
+      ref_.assign(xyz, xyz + 3 * n);
+      return;
+    }
+    const std::uint64_t bound = candidateBound();
+    const auto avail = availableBytes();
+    const auto index_bytes = static_cast<std::uint64_t>(sizeof(std::int32_t));
+    const bool bounded = bound <= static_cast<std::uint64_t>(0x7fffffff);
+    const bool over_budget = avail > 0 && bound > avail / index_bytes;
+    const bool fits = bounded && !over_budget;
+    const bool want_store =
+        spec.mode == Mode::Stored ? fits : spec.mode == Mode::Auto && fits;
+    if (want_store) {
+      buildStored(xyz, n, bound);
+      streaming_ = false;
+      mode_ = Mode::Stored;
+      ++builds_;
+    } else {
+      streaming_ = true;
+      mode_ = Mode::Stream;
+    }
     built_ = true;
     ref_.assign(xyz, xyz + 3 * n);
-    return;
+  };
+  try {
+    rebuild();
+  } catch (...) {
+    discard();
+    throw;
   }
-  if (std::isinf(search_)) {
-    mode_ = Mode::Stream;
-    built_ = true;
-    return;
-  }
-  buildCells(xyz, n);
-  if (spec.mode == Mode::Stream) {
-    streaming_ = true;
-    mode_ = Mode::Stream;
-    built_ = true;
-    ref_.assign(xyz, xyz + 3 * n);
-    return;
-  }
-  const std::uint64_t bound = candidateBound();
-  const auto avail = availableBytes();
-  const auto index_bytes = static_cast<std::uint64_t>(sizeof(std::int32_t));
-  const bool bounded = bound <= static_cast<std::uint64_t>(0x7fffffff);
-  const bool over_budget = avail > 0 && bound > avail / index_bytes;
-  const bool fits = bounded && !over_budget;
-  const bool want_store =
-      spec.mode == Mode::Stored ? fits : spec.mode == Mode::Auto && fits;
-  if (want_store) {
-    buildStored(xyz, n, bound);
-    streaming_ = false;
-    mode_ = Mode::Stored;
-    ++builds_;
-  } else {
-    streaming_ = true;
-    mode_ = Mode::Stream;
-  }
-  built_ = true;
-  ref_.assign(xyz, xyz + 3 * n);
+  generation_.store(next_gen, std::memory_order_release);
 }
 
 RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
@@ -985,6 +1001,9 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
                         static_cast<std::size_t>(nz_);
     cell_of_.swap(workspace.cell);
     cell_start_.swap(workspace.start);
+    // The workspace now holds the previous bins. It is marked valid only
+    // once they are recorded below, after the last allocation here.
+    workspace.cells_valid = false;
     if (!plan.prefix_ready) {
       for (std::size_t c = 0; c < ncells; ++c) {
         cell_start_[c + 1] += cell_start_[c];
@@ -1021,7 +1040,12 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
     if (wrapped) {
       FractionalPlan plan;
       prepareFractionalCells(xyz, n, box_, periodic_, search_, plan);
-      build_fractional_cells(plan);
+      try {
+        build_fractional_cells(plan);
+      } catch (...) {
+        discard();
+        throw;
+      }
     }
     xyz_ = xyz;
     reused_ = true;
@@ -1051,78 +1075,89 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
   }
   const std::uint64_t next_gen = nextGeneration();
 
-  xyz_ = xyz;
-  reused_ = false;
+  // As in updateOrthorhombic, only an allocation can throw from here, and
+  // the generation is stored once the rebuild is complete.
+  auto rebuild = [&]() {
+    built_ = false;
+    xyz_ = xyz;
+    reused_ = false;
+    n_ = n;
+    std::memcpy(box_, box9, sizeof(box_));
+    len_[0] = box9[0];
+    len_[1] = box9[4];
+    len_[2] = box9[8];
+    for (int k = 0; k < 3; ++k) {
+      periodic_[k] = next_periodic[k];
+      inv_[k] = periodic_[k] ? 1.0 / len_[k] : 0.0;
+    }
+    // General minimum image owns every skewed fold, leaving the Cartesian
+    // inverse unused. Its sign bit caches the cell classification without
+    // changing the public class layout; negative zero covers an open x axis.
+    inv_[0] = std::copysign(inv_[0], -1.0);
+    image_ = spec.image;
+    use_general_ = true;
+    general_ = std::move(next_general);
+    search_ = next_search;
+    key_.cutoff = spec.cutoff;
+    key_.skin = spec.skin;
+    key_.image = spec.image;
+    key_.mode = spec.mode;
+    key_.periodic = spec.periodic;
+    off_.clear();
+    nbr_.clear();
+    streaming_ = true;
+    if (n < 2 || !(search_ > 0.0)) {
+      streaming_ = false;
+      mode_ = Mode::Stored;
+      off_.assign(n + 1, 0);
+      built_ = true;
+      ref_.assign(xyz, xyz + 3 * n);
+      return;
+    }
+    if (std::isinf(search_)) {
+      mode_ = Mode::Stream;
+      built_ = true;
+      return;
+    }
+    if (fractional_path) {
+      build_fractional_cells(plan);
+    } else {
+      buildCells(xyz, n);
+    }
+    if (spec.mode == Mode::Stream) {
+      streaming_ = true;
+      mode_ = Mode::Stream;
+      built_ = true;
+      ref_.assign(xyz, xyz + 3 * n);
+      return;
+    }
+    const std::uint64_t bound = candidateBound();
+    const auto avail = availableBytes();
+    const auto index_bytes = static_cast<std::uint64_t>(sizeof(std::int32_t));
+    const bool bounded = bound <= static_cast<std::uint64_t>(0x7fffffff);
+    const bool over_budget = avail > 0 && bound > avail / index_bytes;
+    const bool fits = bounded && !over_budget;
+    const bool want_store =
+        spec.mode == Mode::Stored ? fits : spec.mode == Mode::Auto && fits;
+    if (want_store) {
+      buildStored(xyz, n, bound);
+      streaming_ = false;
+      mode_ = Mode::Stored;
+      ++builds_;
+    } else {
+      streaming_ = true;
+      mode_ = Mode::Stream;
+    }
+    built_ = true;
+    ref_.assign(xyz, xyz + 3 * n);
+  };
+  try {
+    rebuild();
+  } catch (...) {
+    discard();
+    throw;
+  }
   generation_.store(next_gen, std::memory_order_release);
-  n_ = n;
-  std::memcpy(box_, box9, sizeof(box_));
-  len_[0] = box9[0];
-  len_[1] = box9[4];
-  len_[2] = box9[8];
-  for (int k = 0; k < 3; ++k) {
-    periodic_[k] = next_periodic[k];
-    inv_[k] = periodic_[k] && len_[k] > 0.0 ? 1.0 / len_[k] : 0.0;
-  }
-  // General minimum image owns every skewed fold, leaving the Cartesian
-  // inverse unused. Its sign bit caches the cell classification without
-  // changing the public class layout; negative zero covers an open x axis.
-  inv_[0] = std::copysign(inv_[0], -1.0);
-  image_ = spec.image;
-  use_general_ = true;
-  general_ = std::move(next_general);
-  search_ = next_search;
-  key_.cutoff = spec.cutoff;
-  key_.skin = spec.skin;
-  key_.image = spec.image;
-  key_.mode = spec.mode;
-  key_.periodic = spec.periodic;
-  off_.clear();
-  nbr_.clear();
-  streaming_ = true;
-  if (n < 2 || !(search_ > 0.0)) {
-    streaming_ = false;
-    mode_ = Mode::Stored;
-    off_.assign(n + 1, 0);
-    built_ = true;
-    ref_.assign(xyz, xyz + 3 * n);
-    return;
-  }
-  if (std::isinf(search_)) {
-    mode_ = Mode::Stream;
-    built_ = true;
-    return;
-  }
-  if (fractional_path) {
-    build_fractional_cells(plan);
-  } else {
-    buildCells(xyz, n);
-  }
-  if (spec.mode == Mode::Stream) {
-    streaming_ = true;
-    mode_ = Mode::Stream;
-    built_ = true;
-    ref_.assign(xyz, xyz + 3 * n);
-    return;
-  }
-  const std::uint64_t bound = candidateBound();
-  const auto avail = availableBytes();
-  const auto index_bytes = static_cast<std::uint64_t>(sizeof(std::int32_t));
-  const bool bounded = bound <= static_cast<std::uint64_t>(0x7fffffff);
-  const bool over_budget = avail > 0 && bound > avail / index_bytes;
-  const bool fits = bounded && !over_budget;
-  const bool want_store =
-      spec.mode == Mode::Stored ? fits : spec.mode == Mode::Auto && fits;
-  if (want_store) {
-    buildStored(xyz, n, bound);
-    streaming_ = false;
-    mode_ = Mode::Stored;
-    ++builds_;
-  } else {
-    streaming_ = true;
-    mode_ = Mode::Stream;
-  }
-  built_ = true;
-  ref_.assign(xyz, xyz + 3 * n);
 }
 
 #undef RGPOT_SKEW_SECTION

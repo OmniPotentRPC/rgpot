@@ -305,8 +305,13 @@ public:
     return *this;
   }
 
-  /// A throw leaves any prior valid state intact (and a default-constructed
-  /// object empty without assigning a generation).
+  /// A rejected cell or coordinate, or an exhausted generation counter,
+  /// throws before anything changes: a built object keeps its list and its
+  /// generation, and a default-constructed one stays empty without one. An
+  /// allocation that fails part way through a rebuild, or through the
+  /// rebinning of a reuse, leaves the object as a default-constructed one
+  /// with a cleared generation, keeping `builds()`. Nothing is then left to
+  /// reuse, so the next update builds from its own coordinates.
   void update(const double *xyz, std::size_t n, const double *box9,
               const Spec &spec);
 
@@ -512,6 +517,12 @@ private:
     builds_ = 0;
     generation_.store(0, std::memory_order_release);
     xyz_ = nullptr;
+  }
+  /// The state after an allocation failed part way through an update.
+  void discard() noexcept {
+    const std::uint64_t builds = builds_;
+    reset();
+    builds_ = builds;
   }
   void buildCells(const double *xyz, std::size_t n);
   void buildStored(const double *xyz, std::size_t n, std::uint64_t bound);

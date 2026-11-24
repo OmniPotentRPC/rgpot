@@ -181,8 +181,15 @@ fractional coordinate, is an error instead of falling back to Cartesian
 binning.
 Orthorhombic cells and fully open skewed cells use Cartesian binning.
 
-An update that throws preserves any prior valid state and generation, and
-leaves a default-constructed object empty without assigning a generation.
+An update that rejects its input, a cell or a coordinate, or that finds the
+generation counter exhausted, throws before anything changes: a built object
+keeps its list and its generation, and a default-constructed object stays empty
+without a generation.
+An allocation that fails part way through a rebuild, or through the rebinning
+of a reuse, leaves the object as a default-constructed one with a cleared
+generation, keeping `builds()`.
+Nothing is then left to reuse, so the next update builds from its own
+coordinates, and the new generation is stored only once a rebuild is complete.
 A moved-from object is left as a default-constructed one with a cleared
 generation, so its next update builds from its own coordinates.
 
