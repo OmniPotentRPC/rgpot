@@ -194,9 +194,12 @@ int rgpot_engine_available(void);
   repository return 1.
 - Errors :: none; the call cannot fail.
 
-Required symbol.
-A host calls it before =rgpot_engine_create=, and the Rust loader returns
-=EngineError::Unavailable= without creating an instance when it returns 0.
+Optional symbol.
+Every engine in this repository exports it.
+A host that finds it calls it before =rgpot_engine_create=, and the Rust loader
+returns =EngineError::Unavailable= without creating an instance when it returns 0.
+A plugin that does not export it is treated as available, so the loader does not
+require the symbol for a plugin to load.
 
 *** =RgpotEngineAbiStamp=
 
@@ -1643,12 +1646,12 @@ a host that does call =dlclose= on them leaves them mapped.
   =SetCallbacksFn=, =HintFn=, =UnloadPolicyFn= :: =extern "C"= function-pointer
   types matching the C declarations above.
 - =EngineSymbols= :: Resolved symbol table holding required
-  (=abi_version=, =available=, =create=, =destroy=, =force=) and optional (=abi_stamp=,
+  (=abi_version=, =create=, =destroy=, =force=) and optional (=available=, =abi_stamp=,
   =force_batch=, =hvp=, =taylor_jet=, =caps=, =last_error=, =last_components=,
   =component_name=, =model_state=, =set_callbacks=, =hint=) function pointers.
   The struct is
-  =#[non_exhaustive]=: build it with =EngineSymbols::new= for the five required symbols and one =with_*=
-  method per optional symbol, such as =with_hint=.
+  =#[non_exhaustive]=: build it with =EngineSymbols::new= for the four required symbols and one =with_*=
+  method per optional symbol, such as =with_available= or =with_hint=.
 - =EngineError= :: Typed error enum covering =Load=, =Missing=, =Abi=
   (=expected=, =found=), =AbiStamp= (=expected=, =found=), =Unavailable=,
   =Create=, =Invalid=, =Unsupported=, =Recoverable= (=code=, =message=), =Fatal=
@@ -1663,11 +1666,12 @@ a host that does call =dlclose= on them leaves them mapped.
   registry entry for =path=, opening the file on first use.
   Both verify
   =rgpot_engine_abi_version() == ENGINE_ABI_VERSION=, resolve the optional =rgpot_engine_abi_stamp=
-  (treating an engine without it as minor 0, layout 1), require
-  =stamp.serves(RgpotEngineAbiStamp::HOST)=, check =rgpot_engine_available() !=
-  0= before creating an instance, copy =config= into an 8-byte-aligned
-  =Vec<u64>= buffer (so engines that cast =config= to =capnp::word= never
-  receive an unaligned pointer), and call =rgpot_engine_create=.
+  (treating an engine without it as minor 0, layout 1) and require
+  =stamp.serves(RgpotEngineAbiStamp::HOST)=, copy =config= into an
+  8-byte-aligned =Vec<u64>= buffer (so engines that cast =config= to
+  =capnp::word= never receive an unaligned pointer), check
+  =rgpot_engine_available() != 0= when the engine exports it, and call
+  =rgpot_engine_create=.
   =EnginePotential::abi_stamp()= returns the resolved stamp.
   When the engine exports =rgpot_engine_caps=, one call at creation reads
   =reentrancy=.

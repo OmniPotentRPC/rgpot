@@ -117,8 +117,9 @@ RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
 
 /**
  * Nonzero when the engine runtime is available and can create instances; 0
- * when unavailable. Required symbol; hosts call it before
- * `rgpot_engine_create`.
+ * when unavailable. Every engine in this repository exports it and a host
+ * calls it before `rgpot_engine_create`. A host treats an engine that does not
+ * export it as available.
  */
 RGPOT_ENGINE_API int rgpot_engine_available(void);
 

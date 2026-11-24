@@ -1164,13 +1164,8 @@ unsafe extern "C" fn stub_model_state(_pot: *const RgpotEnginePot) -> u64 {
 
 #[test]
 fn symbols_are_built_with_a_constructor_and_optional_setters() {
-    let required = EngineSymbols::new(
-        stub_abi_version,
-        stub_available,
-        stub_create,
-        stub_destroy,
-        stub_force,
-    );
+    let required = EngineSymbols::new(stub_abi_version, stub_create, stub_destroy, stub_force);
+    assert!(required.available.is_none());
     assert!(required.abi_stamp.is_none());
     assert!(required.force_batch.is_none());
     assert!(required.hvp.is_none());
@@ -1181,6 +1176,10 @@ fn symbols_are_built_with_a_constructor_and_optional_setters() {
     assert!(required.model_state.is_none());
     assert!(required.set_callbacks.is_none());
     assert!(required.hint.is_none());
+
+    let with_available = required.with_available(stub_available);
+    assert!(with_available.available.is_some());
+    assert!(with_available.model_state.is_none());
 
     let with_state = required.with_model_state(stub_model_state);
     assert!(with_state.model_state.is_some());
@@ -1731,12 +1730,27 @@ fn a_missing_required_symbol_is_named() {
         .err()
         .expect("force is required");
     assert_eq!(error, EngineError::Missing("rgpot_engine_force".into()));
+}
 
-    let no_available = build("harmonic_noavailable", &["NO_AVAILABLE"]);
-    let error = unsafe { EnginePotential::load(&no_available, &config()) }
-        .err()
-        .expect("available is required");
-    assert_eq!(error, EngineError::Missing("rgpot_engine_available".into()));
+#[test]
+fn a_plugin_without_available_is_treated_as_available() {
+    let path = build("harmonic_noavailable", &["NO_AVAILABLE"]);
+    let mut engine = load(&path);
+    assert!(engine.symbols().available.is_none());
+    engine
+        .force(&one_atom_request())
+        .expect("a plugin that does not export rgpot_engine_available evaluates");
+
+    let null_available = build_with_abs_zero(
+        "harmonic_abs0_available",
+        &["NO_AVAILABLE"],
+        &["rgpot_engine_available"],
+    );
+    let engine = load(&null_available);
+    assert!(
+        engine.symbols().available.is_none(),
+        "a null rgpot_engine_available address is treated as absent"
+    );
 }
 
 #[test]
@@ -3598,7 +3612,6 @@ fn abs_zero_symbols_are_none_when_optional_and_missing_when_required() {
     // is verified without invoking a null function pointer.
     let required_names = [
         "rgpot_engine_abi_version",
-        "rgpot_engine_available",
         "rgpot_engine_create",
         "rgpot_engine_destroy",
         "rgpot_engine_force",
