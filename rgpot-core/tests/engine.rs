@@ -3347,3 +3347,52 @@ fn abs_zero_symbols_are_none_when_optional_and_missing_when_required() {
         assert_eq!(err, EngineError::Missing((*missing_sym).into()));
     }
 }
+
+#[test]
+fn lock_error_code_matches_header_maps_on_rust_side_and_marks_handle_unusable() {
+    use rgpot_core::engine::ENGINE_ERR_LOCK;
+
+    let force_lock = build("harmonic_forcelock", &["FORCE_LOCK_ERROR"]);
+    let library = unsafe { libloading::Library::new(&force_lock) }.expect("reopen fixture");
+    let header_code: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_lock_error_code\0") }.expect("lock error code symbol");
+    assert_eq!(unsafe { header_code() }, ENGINE_ERR_LOCK);
+
+    let mut engine = load(&force_lock);
+    let request = EngineRequest {
+        positions: &[1.0, 0.0, 0.0],
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+    let expected = EngineError::Lock {
+        operation: "rgpot_engine_force",
+        message: "fixture handle lock failed".into(),
+    };
+    assert_eq!(engine.force(&request).unwrap_err(), expected);
+    assert_eq!(engine.force(&request).unwrap_err(), expected);
+    assert_eq!(expected.status(), rgpot_status_t::RGPOT_INTERNAL_ERROR);
+
+    let hvp_lock = build("harmonic_hvplock", &["HVP_LOCK_ERROR"]);
+    let mut hvp_engine = load(&hvp_lock);
+    let expected_hvp = EngineError::Lock {
+        operation: "rgpot_engine_hvp",
+        message: "fixture hvp lock failed".into(),
+    };
+    assert_eq!(
+        hvp_engine.hvp(&request, &[1.0, 0.0, 0.0]).unwrap_err(),
+        expected_hvp
+    );
+    assert_eq!(hvp_engine.force(&request).unwrap_err(), expected_hvp);
+
+    let caps_lock = build("harmonic_capslock", &["CAPS_LOCK_ERROR"]);
+    let mut caps_engine = load(&caps_lock);
+    let expected_caps = EngineError::Lock {
+        operation: "rgpot_engine_caps",
+        message: "fixture caps lock failed".into(),
+    };
+    assert_eq!(caps_engine.caps().unwrap_err(), expected_caps);
+    assert_eq!(caps_engine.force(&request).unwrap_err(), expected_caps);
+
+    let handle = load(&caps_lock).into_potential();
+    assert!(!handle.as_handle().has_hessian_vector_callback());
+}

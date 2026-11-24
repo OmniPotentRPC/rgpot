@@ -37,6 +37,20 @@ if potlibc_dep.found()
         '../include/rgpot/potlibc_engine.h',
         subdir: 'rgpot',
     )
+    potlibc_engine_fail_lock = shared_library(
+        'potlibc_engine_fail_lock',
+        files('potlibc_engine.c'),
+        dependencies: [potlibc_dep, thread_dep],
+        include_directories: [engines_inc, rgpot_inc],
+        c_args: [
+            '-DRGPOT_ENGINE_BUILD',
+            '-DRGPOT_POTLIBC_TEST_LOCK_FAIL',
+            '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
+                meson.project_version(),
+            ),
+        ],
+        install: false,
+    )
     test(
         'potlibc_engine',
         executable(
@@ -45,7 +59,10 @@ if potlibc_dep.found()
             dependencies: dl_dep,
             include_directories: [engines_inc, rgpot_inc],
         ),
-        args: [potlibc_engine.full_path()],
+        args: [
+            potlibc_engine.full_path(),
+            potlibc_engine_fail_lock.full_path(),
+        ],
         timeout: 120,
     )
 endif
