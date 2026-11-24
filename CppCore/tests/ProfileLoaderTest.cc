@@ -227,9 +227,12 @@ TEST_CASE("Capabilities handshake rejection matrix",
 
   rgpot::abi::Expectation strict;
   strict.protocol_minor_min = 2;
-  REQUIRE(verdict([](B) {}, strict).find("protocol minor") !=
-          std::string::npos);
+  REQUIRE(verdict([](B c) { c.setProtocolMinor(1); }, strict)
+              .find("protocol minor") != std::string::npos);
   REQUIRE(verdict([](B c) { c.setProtocolMinor(2); }, strict).empty());
+  REQUIRE(rgpot::abi::force_input_expectation(false).protocol_minor_min == 0);
+  REQUIRE(rgpot::abi::force_input_expectation(true).protocol_minor_min ==
+          rgpot::abi::kOrbitalKeyIntroducedMinor);
 }
 
 TEST_CASE("Capabilities handshake accepts a schema id with an optional 0x prefix",
@@ -278,6 +281,7 @@ TEST_CASE("checked_load accepts the fake engine, whose capabilities are "
   REQUIRE(std::string(caps.getProtocolFamily().cStr()) ==
           rgpot::abi::kProtocolFamily);
   REQUIRE(caps.getProtocolMajor() == rgpot::abi::kProtocolMajor);
+  REQUIRE(caps.getProtocolMinor() == rgpot::abi::kProtocolMinor);
   REQUIRE(std::string(caps.getSchemaId().cStr()) == rgpot::abi::kSchemaId);
 #ifdef RGPOT_SCHEMA_HAS_BUILD_IDENTITY
   REQUIRE(std::string(caps.getBuildVersion().cStr()) == RGPOT_BUILD_VERSION);

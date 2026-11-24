@@ -107,8 +107,19 @@ impl RpcClient {
         tokio::task::spawn_local(rpc_system);
 
         // --- Refuse an incompatible or outdated server before any work ---
-        crate::compat::check_server(&potential_client, &crate::compat::Expectation::default())
-            .await?;
+        let expectation = crate::compat::force_input_expectation(self.orbital_key.is_some());
+        crate::compat::check_server(&potential_client, &expectation)
+            .await
+            .map_err(|why| {
+                if self.orbital_key.is_some() && why.contains("protocol minor") {
+                    format!(
+                        "ForceInput orbital key requires RPC protocol minor {}: {why}",
+                        crate::compat::ORBITAL_KEY_INTRODUCED_MINOR
+                    )
+                } else {
+                    why
+                }
+            })?;
 
         // --- Build capnp request ---
         let mut request = potential_client.calculate_request();

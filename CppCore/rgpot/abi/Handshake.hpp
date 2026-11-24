@@ -44,6 +44,8 @@ namespace abi {
 inline constexpr const char *kProtocolFamily = "rgpot.potentials";
 inline constexpr uint16_t kProtocolMajor = 1;
 inline constexpr uint16_t kProtocolMinor = 1;
+/** Minor that introduced the orbital-key fields; not tied to kProtocolMinor. */
+inline constexpr uint16_t kOrbitalKeyIntroducedMinor = 2;
 inline constexpr const char *kSchemaId = "0xbd1f89fa17369103";
 
 /** What the host requires of a backend. */
@@ -61,6 +63,14 @@ struct Expectation {
   std::vector<::Capabilities::Operation> required_operations = {
       ::Capabilities::Operation::ENERGY, ::Capabilities::Operation::FORCES};
 };
+
+/** Expectation for a request that sets the orbital-key `ForceInput` fields. */
+inline Expectation force_input_expectation(bool uses_orbital_key) {
+  Expectation want;
+  if (uses_orbital_key)
+    want.protocol_minor_min = kOrbitalKeyIntroducedMinor;
+  return want;
+}
 
 /**
  * Cap'n Proto file ids match after one optional `0x` prefix and ASCII case.

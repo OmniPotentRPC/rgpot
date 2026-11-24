@@ -6,7 +6,7 @@ index 97746b4..aa4a3a6 100644
    charge @6 :Int32 = 0;             # @brief Per-step charge when hasCharge is true.
    hasMultiplicity @7 :Bool = false; # @brief Override NWChemParams.multiplicity for this step.
    multiplicity @8 :Int32 = 1;       # @brief Per-step spin multiplicity when hasMultiplicity is true.
-+  # Optional. Old clients leave it unset and no neighbour list is returned.
++  # Present from protocol minor 0. Clients that leave it unset receive no neighbour list.
 +  neighbors @9 :NeighborRequest;
  }
  

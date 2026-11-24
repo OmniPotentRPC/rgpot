@@ -84,6 +84,14 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define PROTOCOL_MINOR 1
 #endif
 
+#if defined(RGPOT_HAS_SCHEMA)
+/**
+ * Protocol minor that introduced the orbital-key ForceInput fields.
+ * It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
+ */
+#define ORBITAL_KEY_INTRODUCED_MINOR 2
+#endif
+
 /**
  * The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
  */
