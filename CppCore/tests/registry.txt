@@ -171,6 +171,8 @@ ThreadTeamTest_eam | tests core | rerun ThreadTeamTest_slices [eam] timeout=300 
 ThreadTeamTest_pair | tests core | rerun ThreadTeamTest_slices [pair] timeout=300 coverage_serial |
 ThreadTeamTest_sutton | tests core | rerun ThreadTeamTest_slices [sutton] timeout=300 coverage_serial |
 ThreadTeamTest_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] timeout=300 coverage_serial |
+ThreadTeamTest_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] timeout=300 coverage_serial |
+ThreadTeamTest_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] timeout=300 coverage_serial |
 ThreadTeamTest_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] timeout=300 coverage_serial |
 ThreadTeamTest_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] timeout=300 coverage_serial |
 ThreadTeamTest_sw | tests core | rerun ThreadTeamTest_slices [sw] timeout=300 coverage_serial |
@@ -229,6 +231,8 @@ ThreadTeamTest_limit1_eam | tests core | rerun ThreadTeamTest_slices [eam] env=O
 ThreadTeamTest_limit1_pair | tests core | rerun ThreadTeamTest_slices [pair] env=OMP_THREAD_LIMIT=1 timeout=300 coverage_serial |
 ThreadTeamTest_limit1_sutton | tests core | rerun ThreadTeamTest_slices [sutton] env=OMP_THREAD_LIMIT=1 timeout=300 coverage_serial |
 ThreadTeamTest_limit1_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] env=OMP_THREAD_LIMIT=1 timeout=300 coverage_serial |
+ThreadTeamTest_limit1_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] env=OMP_THREAD_LIMIT=1 timeout=300 coverage_serial |
+ThreadTeamTest_limit1_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] env=OMP_THREAD_LIMIT=1 timeout=300 coverage_serial |
 ThreadTeamTest_limit1_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] env=OMP_THREAD_LIMIT=1 timeout=300 coverage_serial |
 ThreadTeamTest_limit1_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] env=OMP_THREAD_LIMIT=1 timeout=300 coverage_serial |
 ThreadTeamTest_limit1_sw | tests core | rerun ThreadTeamTest_slices [sw] env=OMP_THREAD_LIMIT=1 timeout=300 coverage_serial |
@@ -239,6 +243,8 @@ ThreadTeamTest_limit2_eam | tests core | rerun ThreadTeamTest_slices [eam] env=O
 ThreadTeamTest_limit2_pair | tests core | rerun ThreadTeamTest_slices [pair] env=OMP_THREAD_LIMIT=2 timeout=300 coverage_serial |
 ThreadTeamTest_limit2_sutton | tests core | rerun ThreadTeamTest_slices [sutton] env=OMP_THREAD_LIMIT=2 timeout=300 coverage_serial |
 ThreadTeamTest_limit2_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] env=OMP_THREAD_LIMIT=2 timeout=300 coverage_serial |
+ThreadTeamTest_limit2_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] env=OMP_THREAD_LIMIT=2 timeout=300 coverage_serial |
+ThreadTeamTest_limit2_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] env=OMP_THREAD_LIMIT=2 timeout=300 coverage_serial |
 ThreadTeamTest_limit2_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] env=OMP_THREAD_LIMIT=2 timeout=300 coverage_serial |
 ThreadTeamTest_limit2_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] env=OMP_THREAD_LIMIT=2 timeout=300 coverage_serial |
 ThreadTeamTest_limit2_sw | tests core | rerun ThreadTeamTest_slices [sw] env=OMP_THREAD_LIMIT=2 timeout=300 coverage_serial |

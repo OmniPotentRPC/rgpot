@@ -603,21 +603,39 @@ TEST_CASE("Sutton-Chen gives the one-thread bits on any team",
   }
 }
 
-// The open cluster on kTeamMinAtoms atoms is one potential. Every thread
-// count in one registration stays over half the coverage limit on 4 cores,
-// and so does 3 together with 8. 1 and 2 threads share a tag with the
-// 55-atom cluster. 3 threads and 8 threads are their own tags. 8 threads
-// is the call that runs forceImpl a second time. Every thread count is
-// still compared with the one-thread bits.
-TEST_CASE("open Sutton-Chen gives the one-thread bits on a narrow team",
+// The 55-atom open cluster and each thread count of the kTeamMinAtoms
+// cluster are separate tags. One registration of the large cluster's 1-thread
+// and 2-thread calls ran past its coverage limit on 4 cores when
+// OMP_THREAD_LIMIT was 2. 3 threads and 8 threads were already their own
+// tags. 8 threads is the call that runs forceImpl a second time. Every
+// thread count is still compared with the one-thread bits.
+TEST_CASE("open Sutton-Chen gives the one-thread bits on a small cluster",
           "[threads][manybody][suttonopen]") {
   rgpot::SuttonChenConfig open;
   open.cutoff = 0.0;
   open.stress = true;
   const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
   checkPotential("Sutton-Chen on every pair", every_pair, cluster(55, std::sqrt(2.0), 78));
+}
+
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 1 thread",
+          "[threads][manybody][sutton1]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
   checkPotential("Sutton-Chen on every pair", every_pair,
-                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {1, 2});
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {1});
+}
+
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 2 threads",
+          "[threads][manybody][sutton2]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  checkPotential("Sutton-Chen on every pair", every_pair,
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {2});
 }
 
 TEST_CASE("open Sutton-Chen gives the one-thread bits on 3 threads",
