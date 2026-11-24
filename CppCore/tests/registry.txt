@@ -126,8 +126,18 @@ capi_threads | core posix | custom timeout=60 |
 capi_threads_tsan | tests core posix tsan | custom timeout=120 |
 
 # Potentials and the neighbour machinery.
+#
+# MorsePotTest, SuttonChenPotTest, ThreadTeamTest with its OMP_THREAD_LIMIT
+# reruns, D2PotTest and omp_crossover_v3_analysis (a bootstrap in pure Python,
+# further down) cost seconds of CPU each, and meson runs as many tests at
+# once as the runner has CPUs. On a
+# 2-CPU runner, with the other tests competing, their wall time was 4 to 7
+# times what each takes alone: ThreadTeamTest 74 s, SuttonChenPotTest 80 s,
+# MorsePotTest 52 s, D2PotTest 112 s and the analysis 24 s. Their timeouts
+# leave at least 3.5 times that, so a slow or busy runner fails only on a
+# hang.
 FortranPotsTest | tests core fortran | unit fortran_pots_test FortranPotsTest.cc |
-MorsePotTest | tests core | unit morse_pot_test MorsePotTest.cc timeout=120 |
+MorsePotTest | tests core | unit morse_pot_test MorsePotTest.cc timeout=300 |
 CPMDPotConfigMessageTest | tests core | unit cpmd_pot_config_message_test CPMDPotConfigMessageTest.cc suite=cpmd |
 CambridgeMorseTest | tests core | unit cambridge_morse_test CambridgeMorseTest.cc |
 GuptaTest | tests core | unit gupta_test GuptaTest.cc |
@@ -141,7 +151,7 @@ TersoffSiCTest | tests core | unit tersoff_sic_test TersoffSiCTest.cc fp_contrac
 HalfShellScanTest | tests core | unit half_shell_scan_test HalfShellScanTest.cc |
 HalfShellTest | tests core | unit half_shell_test HalfShellTest.cc |
 # Two cluster relaxations, up to 2000 force calls each.
-SuttonChenPotTest | tests core | unit sutton_chen_pot_test SuttonChenPotTest.cc timeout=120 |
+SuttonChenPotTest | tests core | unit sutton_chen_pot_test SuttonChenPotTest.cc timeout=300 |
 KeptPotentialTest | tests core | unit kept_potential_test KeptPotentialTest.cc |
 ReducedPairTest | tests core | unit reduced_pair_test ReducedPairTest.cc fp_contract=off |
 EMTPotTest | tests core | unit emt_pot_test EMTPotTest.cc |
@@ -149,7 +159,7 @@ EAMCellPotTest | tests core | unit eam_cell_pot_test EAMCellPotTest.cc |
 NeighbourLayerTest | tests core | unit neighbour_layer_test NeighbourLayerTest.cc fp_contract=off timeout=360 |
 # Eight potentials on 1, 2, 3 and 8 threads, on up to 10648 atoms. Meson
 # scales explicit timeouts by 3 under ASan/UBSan and 8 under TSan.
-ThreadTeamTest | tests core | unit thread_team_test ThreadTeamTest.cc timeout=120 |
+ThreadTeamTest | tests core | unit thread_team_test ThreadTeamTest.cc timeout=300 |
 TersoffZblBuildTest | tests core | unit tersoff_zbl_build_test TersoffZblBuildTest.cc fp_contract=off timeout=180 |
 StreamParityTest | tests core | unit stream_parity_test StreamParityTest.cc fp_contract=off timeout=900 |
 ExternalPotFactoryFailureTest | tests core | unit external_pot_factory_failure_test ExternalPotFactoryFailureTest.cc |
@@ -169,7 +179,7 @@ LJClusterPotTest | tests core | unit ljcluster_pot_test LJClusterPotTest.cc |
 LJPotThreadsTest | tests core | unit lj_pot_threads_test LJPotThreadsTest.cc timeout=120 |
 ZBLPotTest | tests core | unit zbl_pot_test ZBLPotTest.cc |
 SumPotTest | tests core | unit sum_pot_test SumPotTest.cc |
-D2PotTest | tests core | unit d2_pot_test D2PotTest.cc timeout=300 |
+D2PotTest | tests core | unit d2_pot_test D2PotTest.cc timeout=600 |
 D2CpmdPotTest | tests core | unit d2_cpmd_pot_test D2CpmdPotTest.cc |
 PerAtomTest | tests core | unit per_atom_test PerAtomTest.cc |
 NullForceAbiTest | tests core | unit null_force_abi_test NullForceAbiTest.cc |
@@ -195,8 +205,8 @@ CacheTest | tests cache | unit cache_test CacheTest.cc |
 InvarianceTest | tests cache | unit invariance_test InvarianceTest.cc |
 XTBDlopenTest | tests core,xtb | custom suite=xtb workdir=. |
 # Under a thread limit every region gets fewer threads than it asks for.
-ThreadTeamTest_limit1 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=1 timeout=120 |
-ThreadTeamTest_limit2 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=2 timeout=120 |
+ThreadTeamTest_limit1 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=1 timeout=300 |
+ThreadTeamTest_limit2 | tests core | rerun ThreadTeamTest env=OMP_THREAD_LIMIT=2 timeout=300 |
 openmp_confined | tests python | py CppCore/tests/test_openmp_confined.py @root@ |
 nlist_export_macro | tests python | py CppCore/tests/test_nlist_export_macro.py @root@ |
 omp_crossover_v3_provenance | tests python | py bench/test_omp_crossover_v3_provenance.py --repo @root@ --json @root@ --json-relative bench/results/rgpot_omp_crossover_v3_results.json --report bench/results/rgpot_omp_crossover_v3d_report.md |

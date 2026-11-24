@@ -1,0 +1,1 @@
+`doccheck_examples` in a `-Dwith_rpc_client_only=true` build skips the C and C++ examples that link `librgpot`, with the reason `client-only build has no librgpot`, instead of failing with `ld: cannot find -lrgpot`. The examples are still compiled, and a build that is not client-only still fails when `librgpot` is missing.

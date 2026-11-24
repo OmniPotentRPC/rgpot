@@ -158,6 +158,15 @@ process-lifetime allocation in =___kmp_allocate_align=.
 The OpenMP test binaries compile the suppression from
 =CppCore/tests/lsan_libomp.hpp=, so only that runtime allocation is suppressed
 and leak checks remain active for library and test code.
+The suppression matches function names, so the frames must be symbolized.
+Under pixi, Ubuntu's =llvm-symbolizer= can fail to start against the pixi
+library path, which leaves libomp frames as bare =libomp.so= offsets and the 128
+bytes unsuppressed.
+Set =ASAN_SYMBOLIZER_PATH= to =tools/lsan/llvm-symbolizer=, which runs the
+system symbolizer with =LD_LIBRARY_PATH= cleared.
+=tools/check_lsan_libomp.sh= uses it by default, leaks 137 bytes from =main= and
+53 bytes from inside an OpenMP region on purpose, and fails unless LeakSanitizer
+reports those two and no libomp allocation.
 
 ** Rust Tests
 

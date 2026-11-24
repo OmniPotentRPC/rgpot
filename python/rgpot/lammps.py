@@ -88,7 +88,7 @@ def _mpi_world(comm: Any, size: int) -> Any:
         if size <= 1:
             return None
         try:
-            MPI = importlib.import_module("mpi4py").MPI
+            MPI = importlib.import_module("mpi4py.MPI")
         except ImportError as exc:
             raise RuntimeError(
                 f"LAMMPS runs on {size} MPI ranks; rgpot.lammps needs mpi4py "

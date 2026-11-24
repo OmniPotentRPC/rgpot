@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Compile an OpenMP program with AddressSanitizer, link it to libomp, and
-# require LeakSanitizer to report an injected allocation. The program
-# includes lsan_libomp.hpp. On Ubuntu libomp 18 the same program reports
-# no other leak when that suppression is empty, so a pass does not show
-# that the suppression is required on this runtime.
+# require LeakSanitizer to report the two allocations the program leaks on
+# purpose, one from main and one from inside an OpenMP region, and nothing
+# else. The program includes lsan_libomp.hpp, so libomp's own 128-byte
+# process-lifetime allocation must stay suppressed while rgpot-style leaks,
+# even ones made under libomp frames, are still caught. On Ubuntu libomp 18
+# the same program reports no other leak when that suppression is empty, so a
+# pass does not show that the suppression is required on this runtime.
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -32,6 +35,11 @@ if [[ -n "${ASAN_SYMBOLIZER_PATH:-}" ]]; then
     echo "ASAN_SYMBOLIZER_PATH is not executable: $ASAN_SYMBOLIZER_PATH" >&2
     exit 1
   fi
+elif [[ -x "$root/tools/lsan/llvm-symbolizer" ]]; then
+  # The suppression matches function names, so the frames must be symbolized.
+  # Use the wrapper by default. It runs the system symbolizer with
+  # LD_LIBRARY_PATH cleared.
+  ASAN_SYMBOLIZER_PATH=$root/tools/lsan/llvm-symbolizer
 elif command -v llvm-symbolizer >/dev/null 2>&1; then
   ASAN_SYMBOLIZER_PATH=$(command -v llvm-symbolizer)
 else
@@ -47,20 +55,27 @@ cat >"$work/leak.cc" <<'EOF'
 
 #include "lsan_libomp.hpp"
 
-__attribute__((noinline)) void injectLeak() {
-  auto *leak = static_cast<unsigned char *>(malloc(137));
+__attribute__((noinline)) void injectLeak(size_t bytes) {
+  auto *leak = static_cast<unsigned char *>(malloc(bytes));
   leak[0] = 1;
   asm volatile("" : : "r"(leak) : "memory");
 }
 
+__attribute__((noinline)) void injectRegionLeak() { injectLeak(53); }
+
 int main() {
   int workers = 0;
 #pragma omp parallel reduction(+ : workers)
-  workers += omp_get_thread_num() >= 0 ? 1 : 0;
+  {
+    workers += omp_get_thread_num() >= 0 ? 1 : 0;
+    if (omp_get_thread_num() == 0) {
+      injectRegionLeak();
+    }
+  }
   if (workers < 2) {
     return 2;
   }
-  injectLeak();
+  injectLeak(137);
   return 0;
 }
 EOF
@@ -96,4 +111,12 @@ if [[ $status -eq 0 ]]; then
   exit 1
 fi
 grep -F 'ERROR: LeakSanitizer: detected memory leaks' "$work/output" >/dev/null
-grep -F '137 byte(s) leaked in 1 allocation(s)' "$work/output" >/dev/null
+if ! grep -F 'in injectLeak' "$work/output" >/dev/null; then
+  echo "LeakSanitizer frames are not symbolized; check ASAN_SYMBOLIZER_PATH" >&2
+  exit 1
+fi
+grep -F 'Direct leak of 137 byte(s) in 1 object(s)' "$work/output" >/dev/null
+grep -F 'Direct leak of 53 byte(s) in 1 object(s)' "$work/output" >/dev/null
+grep -F 'injectRegionLeak' "$work/output" >/dev/null
+# 137 + 53, and no 128-byte allocation from libomp.
+grep -F '190 byte(s) leaked in 2 allocation(s)' "$work/output" >/dev/null
