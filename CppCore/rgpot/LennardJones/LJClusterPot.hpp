@@ -92,7 +92,7 @@ public:
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::PerInstance,
             .periodic = false,
-            .stress = true};
+            .stress = false};
   }
 
   /**

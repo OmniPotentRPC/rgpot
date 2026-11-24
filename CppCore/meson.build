@@ -679,8 +679,8 @@ if not get_option('with_rpc_client_only')
         install: not meson.is_subproject(),
     )
 
-    # 72 rgpot_* exports when the rust archive is linked normally, 126 when
-    # the bundle is whole-archived. The extra 54 are the public C ABI.
+    # 72 rgpot_* exports when the rust archive is linked normally, 130 when
+    # the bundle is whole-archived. The extra 58 are the public C ABI.
     # Two of the umbrella exports are the Muller-Brown entry points and 21 are
     # the MD session entry points.
     if get_option('with_rust_core') and host_machine.system() == 'linux'

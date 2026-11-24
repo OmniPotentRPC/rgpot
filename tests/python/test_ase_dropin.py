@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from ase import Atoms, units
 from ase.build import bulk, fcc111
-from ase.calculators.calculator import Calculator
+from ase.calculators.calculator import Calculator, PropertyNotImplementedError
 from ase.calculators.fd import (
     calculate_numerical_forces,
     calculate_numerical_stress,
@@ -513,7 +513,7 @@ def test_a_stress_request_reaches_the_potential_or_fails() -> None:
     atoms = argon()
     atoms.calc = RgpotCalculator(NoStressKeyword(rgpot.LJPot(**AR)))
     assert atoms.get_potential_energy() < 0.0
-    with pytest.raises(TypeError, match="compute_stress"):
+    with pytest.raises(PropertyNotImplementedError):
         atoms.get_stress()
 
 

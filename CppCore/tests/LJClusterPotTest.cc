@@ -229,11 +229,6 @@ TEST_CASE(
     AtomMatrix positions{{0.0, 0.0, 0.0}, {2.6, 0.2, -0.1}};
     checkPairStressByStrain(pot, positions, types, "LJ-switched");
   }
-  SECTION("cluster Lennard-Jones pair") {
-    rgpot::LJClusterPot pot;
-    AtomMatrix positions{{0.0, 0.0, 0.0}, {1.4, 0.2, -0.1}};
-    checkPairStressByStrain(pot, positions, types, "LJCluster");
-  }
   SECTION("Morse shifted energy") {
     rgpot::MorsePot pot;
     AtomMatrix positions{{0.0, 0.0, 0.0}, {3.1, 0.3, -0.2}};
@@ -272,4 +267,25 @@ TEST_CASE("Pair stress is cleared when the configuration has no pair",
   check(rgpot::LJPot{});
   check(rgpot::MorsePot{});
   check(rgpot::ZBLPot{});
+}
+
+TEST_CASE("LJClusterPot does not advertise or compute stress",
+          "[stress][LJClusterPot]") {
+  rgpot::LJClusterPot pot;
+  REQUIRE_FALSE(pot.caps().stress);
+  const std::vector<int> types{6, 8};
+  const AtomMatrix positions{{0.0, 0.0, 0.0}, {1.4, 0.2, -0.1}};
+  const std::array<double, 9> box{20.0, 0.0, 0.0, 0.0, 21.0,
+                                  0.0,  0.0, 0.0, 22.0};
+  AtomMatrix forces(positions.rows(), 3);
+  rgpot::ForceOut out{
+      forces.data(), 0.0, 0.0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}, 1};
+  rgpot::ForceInput in{static_cast<size_t>(positions.rows()), positions.data(),
+                       types.data(), box.data()};
+  in.compute_stress = true;
+  pot.forceImpl(in, &out);
+  REQUIRE(out.has_stress == 0);
+  for (double component : out.stress) {
+    REQUIRE(component == 0.0);
+  }
 }
