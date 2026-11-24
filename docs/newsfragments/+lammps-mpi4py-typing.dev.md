@@ -1,1 +1,0 @@
-`rgpot.lammps` loads `mpi4py.MPI` with `importlib.import_module`, so `mypy --strict` and pyright no longer report `import-not-found` for the optional mpi4py dependency on a runner without mpi4py. The runtime behaviour is unchanged.
