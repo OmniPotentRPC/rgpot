@@ -556,6 +556,25 @@ pub struct MdLangevinResult {
     pub constraint_force_len: usize,
 }
 
+/// The `step_langevin` callback of [`MdSessionOps`].
+pub type MdStepLangevinFn = unsafe extern "C" fn(
+    ctx: *mut c_void,
+    k_t: f64,
+    friction: f64,
+    time_step: f64,
+    plane_point: *const f64,
+    plane_normal: *const f64,
+    wall_points: *const f64,
+    wall_normals: *const f64,
+    n_walls: usize,
+    n3: usize,
+    steps: usize,
+    seed: u64,
+    wall_hits: *mut u64,
+    err: *mut c_char,
+    err_len: usize,
+) -> i32;
+
 /// C ABI vtable matching `rgpot_md_session_ops` in `external_potentials.h`.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -579,23 +598,7 @@ pub struct MdSessionOps {
         err_len: usize,
     ) -> i32,
     /// Step projected BAOAB Langevin dynamics.
-    pub step_langevin: unsafe extern "C" fn(
-        ctx: *mut c_void,
-        k_t: f64,
-        friction: f64,
-        time_step: f64,
-        plane_point: *const f64,
-        plane_normal: *const f64,
-        wall_points: *const f64,
-        wall_normals: *const f64,
-        n_walls: usize,
-        n3: usize,
-        steps: usize,
-        seed: u64,
-        wall_hits: *mut u64,
-        err: *mut c_char,
-        err_len: usize,
-    ) -> i32,
+    pub step_langevin: MdStepLangevinFn,
     /// Step unconstrained NVE dynamics.
     pub step_nve: unsafe extern "C" fn(
         ctx: *mut c_void,
@@ -723,7 +726,8 @@ impl CAbiMdSession {
     ///
     /// `ctx` must remain valid until `ops.destroy` is called on drop, and all
     /// function pointers in `ops` must uphold the C ABI contract in
-    /// `external_potentials.h`.
+    /// `external_potentials.h`. On error `ops.destroy` is not called and the
+    /// caller still owns `ctx`.
     pub unsafe fn from_ops(
         ctx: NonNull<c_void>,
         ops: MdSessionOps,

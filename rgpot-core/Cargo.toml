@@ -61,6 +61,11 @@ path = "tests/profile.rs"
 required-features = ["profile"]
 
 [[test]]
+name = "md_session"
+path = "tests/md_session.rs"
+required-features = ["profile"]
+
+[[test]]
 name = "potential_config"
 path = "tests/potential_config.rs"
 required-features = ["schema"]
