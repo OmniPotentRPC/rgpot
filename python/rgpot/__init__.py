@@ -30,6 +30,7 @@ rgpot_openmm_potential = _core.rgpot_openmm_potential
 LammpsPot = _core.LammpsPot
 GromacsPot = _core.GromacsPot
 OpenMMPot = _core.OpenMMPot
+MdSession = _core.MdSession
 LJClusterPot = _core.LJClusterPot
 MorsePot = _core.MorsePot
 D2Pot = _core.D2Pot
@@ -205,6 +206,7 @@ __all__ = [
     "LammpsPot",
     "GromacsPot",
     "OpenMMPot",
+    "MdSession",
     "rgpot_lammps_potential",
     "rgpot_gromacs_potential",
     "rgpot_openmm_potential",
