@@ -66,14 +66,13 @@ dftd3, dftd4, ExprPot, XcKernel and CP2K have no engine library.
 
 Every library above except
 =libpotlibc_engine= and =libcoupled_well_engine= exports =rgpot_engine_force_batch=,
-=rgpot_engine_hvp=, =rgpot_engine_taylor_jet=,
-=rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible=, =rgpot_engine_name=,
-=rgpot_engine_version=,
-=rgpot_engine_model_digest=, =rgpot_engine_caps=, =rgpot_engine_last_error=,
-=rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
-=rgpot_engine_select_orbitals=, =rgpot_engine_copy_orbitals=,
-=rgpot_engine_last_components=, =rgpot_engine_component_name=,
-=rgpot_engine_set_cache= and =rgpot_engine_cache_counts=.
+=rgpot_engine_hvp=, =rgpot_engine_taylor_jet=, =rgpot_engine_abi_stamp=,
+=rgpot_engine_abi_compatible=, =rgpot_engine_name=, =rgpot_engine_version=, =rgpot_engine_model_digest=,
+=rgpot_engine_caps=,
+=rgpot_engine_last_error=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=,
+=rgpot_engine_copy_orbitals=, =rgpot_engine_last_components=,
+=rgpot_engine_component_name=, =rgpot_engine_set_cache= and
+=rgpot_engine_cache_counts=.
 Only =libcomposite_engine= has components; the others report none.
 =libpotlibc_engine= and =libcoupled_well_engine= export the stamp,
 compatibility, name, version, caps, last-error, analytic-HVP and batch symbols;
@@ -1639,15 +1638,14 @@ a host that does call =dlclose= on them leaves them mapped.
   The engines also accept the version-1 layouts of 48 and 144 bytes when their
   =version= field is set to the =_V1= constant.
 - =CoordTransformFn=, =AbiVersionFn=, =AvailableFn=, =AbiStampFn=, =CreateFn=,
-  =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =TaylorJetFn=, =CapsFn=, =LastErrorFn=,
-  =LastComponentsFn=, =ComponentNameFn=, =ModelStateFn=, =SetCallbacksFn=,
-  =HintFn=, =UnloadPolicyFn= :: =extern "C"= function-pointer types matching the
-  C declarations above.
+  =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =TaylorJetFn=, =CapsFn=,
+  =LastErrorFn=, =LastComponentsFn=, =ComponentNameFn=, =ModelStateFn=,
+  =SetCallbacksFn=, =HintFn=, =UnloadPolicyFn= :: =extern "C"= function-pointer
+  types matching the C declarations above.
 - =EngineSymbols= :: Resolved symbol table holding required
   (=abi_version=, =available=, =create=, =destroy=, =force=) and optional (=abi_stamp=,
-  =force_batch=, =hvp=, =taylor_jet=, =caps=, =last_error=,
-  =last_components=, =component_name=, =model_state=, =set_callbacks=, =hint=)
-  function pointers.
+  =force_batch=, =hvp=, =taylor_jet=, =caps=, =last_error=, =last_components=,
+  =component_name=, =model_state=, =set_callbacks=, =hint=) function pointers.
   The struct is
   =#[non_exhaustive]=: build it with =EngineSymbols::new= for the five required symbols and one =with_*=
   method per optional symbol, such as =with_hint=.
