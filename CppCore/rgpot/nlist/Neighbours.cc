@@ -989,6 +989,13 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
     return;
   }
 
+  // The bins held now were built for this cell and search. A rebuild
+  // replaces both before it hands those bins to the workspace.
+  double previous_box[9];
+  std::memcpy(previous_box, box_, sizeof(previous_box));
+  const bool previous_periodic[3] = {periodic_[0], periodic_[1], periodic_[2]};
+  const double previous_search = search_;
+
   auto build_fractional_cells =
       [&](const FractionalPlan &plan) RGPOT_SKEW_SECTION {
     auto &workspace = fractionalWorkspace();
@@ -1021,10 +1028,11 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
     cell_start_[0] = 0;
     if (plan.cache_previous && ref_.size() == 3 * n) {
       workspace.coordinate.assign(ref_.begin(), ref_.end());
-      std::memcpy(workspace.cached_box, box_, sizeof(workspace.cached_box));
-      std::memcpy(workspace.cached_periodic, periodic_,
+      std::memcpy(workspace.cached_box, previous_box,
+                  sizeof(workspace.cached_box));
+      std::memcpy(workspace.cached_periodic, previous_periodic,
                   sizeof(workspace.cached_periodic));
-      workspace.cached_edge = search_;
+      workspace.cached_edge = previous_search;
       workspace.cached_axes[0] = previous_axes[0];
       workspace.cached_axes[1] = previous_axes[1];
       workspace.cached_axes[2] = previous_axes[2];

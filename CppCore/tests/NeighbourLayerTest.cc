@@ -2968,6 +2968,46 @@ TEST_CASE("an allocation failure in an update leaves no list to reuse",
   }
 }
 
+TEST_CASE("fractional bins kept from a shorter search are not reused for a "
+          "longer one",
+          "[nlist][fractional][cache]") {
+  setThreads("1");
+  const double a = 3.6;
+  const double side = 5 * a;
+  const double box[9] = {side,       0,           0,   0.2 * side, side,
+                         0,          0.1 * side, 0.15 * side, side};
+  const auto first = fcc(5, a);
+  auto second = first;
+  second[0] += 0.3;
+  const std::size_t n = first.size() / 3;
+
+  for (const auto mode : {rgpot::nlist::Mode::Stream, rgpot::nlist::Mode::Stored}) {
+    INFO("mode " << static_cast<int>(mode));
+    rgpot::nlist::Spec short_spec;
+    short_spec.cutoff = 2.6;
+    short_spec.skin = 0.0;
+    short_spec.image = rgpot::nlist::Image::Round;
+    short_spec.mode = mode;
+    rgpot::nlist::Spec long_spec = short_spec;
+    long_spec.cutoff = 5.5;
+
+    rgpot::nlist::Neighbours fresh;
+    fresh.update(first.data(), n, box, long_spec);
+    const auto want = halfPairsWithin(fresh, n, long_spec.cutoff);
+    REQUIRE_FALSE(want.empty());
+
+    rgpot::nlist::Neighbours cells;
+    cells.update(first.data(), n, box, short_spec);
+    cells.update(second.data(), n, box, long_spec);
+    cells.update(first.data(), n, box, long_spec);
+    CHECK_FALSE(cells.reused());
+    const auto got = halfPairsWithin(cells, n, long_spec.cutoff);
+    CHECK(got.size() == want.size());
+    CHECK(samePairs(got, want));
+  }
+  setThreads("");
+}
+
 TEST_CASE("Neighbours copy assignment changes the generation only with the "
           "state",
           "[nlist][generation][copy]") {
