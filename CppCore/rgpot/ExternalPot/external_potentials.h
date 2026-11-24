@@ -71,29 +71,74 @@ int rgpot_external_potential_energy_forces(
     size_t err_len);
 
 /*
- * Generic in-process MD session. Coordinates are OpenMM native units:
- * nanometres, kJ/mol, and ps. Positions and velocities are flat xyz arrays.
- * The engine owns the serialized System and applies projected BAOAB or NVE.
+ * Generic in-process MD session. All quantities cross the C ABI in rgpot
+ * units: positions and plane/wall coordinates in Angstrom, velocities in
+ * Angstrom/ps, forces in eV/Angstrom, energies and kT in eV, time_step in ps,
+ * friction in 1/ps, and masses in amu. Flat arrays hold 3 * n_atoms doubles
+ * in row-major (x, y, z) order.
+ *
+ * Any backend (OpenMM, GROMACS nblib, LAMMPS) implements rgpot_md_session_ops
+ * or exports rgpot_md_session_engine_create from a plugin shared library.
  */
 typedef struct rgpot_md_session rgpot_md_session;
-rgpot_md_session *rgpot_md_session_create(
-    const char *system_xml, const char *platform, double time_step,
-    double friction, double kT, int seed, char *err, size_t err_len);
-int rgpot_md_session_set_positions(rgpot_md_session *, const double *, size_t,
-                                   char *, size_t);
-int rgpot_md_session_set_velocities(rgpot_md_session *, const double *, size_t,
-                                    char *, size_t);
+
+typedef struct rgpot_md_session_ops {
+  size_t struct_size;
+  int (*set_positions)(void *ctx, const double *positions, size_t n3,
+                       char *err, size_t err_len);
+  int (*set_velocities)(void *ctx, const double *velocities, size_t n3,
+                        char *err, size_t err_len);
+  int (*step_langevin)(void *ctx, double kT, double friction, double time_step,
+                       const double *plane_point, const double *plane_normal,
+                       const double *wall_points, const double *wall_normals,
+                       size_t n_walls, size_t n3, size_t steps, uint64_t seed,
+                       uint64_t *wall_hits, char *err, size_t err_len);
+  int (*step_nve)(void *ctx, double time_step, size_t steps, char *err,
+                  size_t err_len);
+  int (*get_state)(void *ctx, double *positions, double *velocities,
+                   double *forces, size_t n3, double *potential_energy,
+                   double *kinetic_energy, char *err, size_t err_len);
+  int (*get_masses)(void *ctx, double *masses, size_t n_atoms, char *err,
+                    size_t err_len);
+  void (*destroy)(void *ctx);
+} rgpot_md_session_ops;
+
+typedef int (*rgpot_md_session_engine_create_fn)(
+    const void *spec, size_t spec_len, const char *options,
+    rgpot_md_session_ops *ops, void **ctx, size_t *n_atoms, char *err,
+    size_t err_len);
+
+rgpot_md_session *rgpot_md_session_from_ops(void *ctx,
+                                            const rgpot_md_session_ops *ops,
+                                            size_t n_atoms, char *err,
+                                            size_t err_len);
+rgpot_md_session *rgpot_md_session_create(const char *engine,
+                                          const char *engine_path,
+                                          const void *spec, size_t spec_len,
+                                          const char *options, char *err,
+                                          size_t err_len);
+size_t rgpot_md_session_n_atoms(const rgpot_md_session *session);
+int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
+                                size_t n_atoms, char *err, size_t err_len);
+int rgpot_md_session_set_positions(rgpot_md_session *session,
+                                   const double *positions, size_t n3,
+                                   char *err, size_t err_len);
+int rgpot_md_session_set_velocities(rgpot_md_session *session,
+                                    const double *velocities, size_t n3,
+                                    char *err, size_t err_len);
 int rgpot_md_session_step_langevin(
-    rgpot_md_session *, const double *plane_point, const double *plane_normal,
+    rgpot_md_session *session, double kT, double friction, double time_step,
+    const double *plane_point, const double *plane_normal,
     const double *wall_points, const double *wall_normals, size_t n_walls,
-    size_t steps, uint64_t *wall_hits, char *, size_t);
-int rgpot_md_session_step_nve(rgpot_md_session *, size_t steps, char *,
-                               size_t);
-int rgpot_md_session_get_state(rgpot_md_session *, double *positions,
+    size_t n3, size_t steps, uint64_t seed, uint64_t *wall_hits, char *err,
+    size_t err_len);
+int rgpot_md_session_step_nve(rgpot_md_session *session, double time_step,
+                              size_t steps, char *err, size_t err_len);
+int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
                                double *velocities, double *forces, size_t n3,
                                double *potential_energy, double *kinetic_energy,
-                               char *, size_t);
-void rgpot_md_session_destroy(rgpot_md_session *);
+                               char *err, size_t err_len);
+void rgpot_md_session_destroy(rgpot_md_session *session);
 
 #ifdef __cplusplus
 }

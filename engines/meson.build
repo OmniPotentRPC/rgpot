@@ -891,12 +891,13 @@ if openmm_opt.allowed() and python3_engines.found()
             'openmm/Platform.h',
             include_directories: openmm_inc,
         )
-            openmm_session = static_library(
+            openmm_session_lib = static_library(
                 'openmm_session',
                 files('../CppCore/rgpot/ExternalPot/OpenMM.cc'),
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args,
+                pic: true,
                 install: false,
             )
             openmm_engine = shared_library(
@@ -905,6 +906,7 @@ if openmm_opt.allowed() and python3_engines.found()
                     files('openmm/openmm_engine.cpp'),
                     engine_abi_stamp_source,
                 ],
+                link_with: openmm_session_lib,
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
@@ -921,9 +923,9 @@ if openmm_opt.allowed() and python3_engines.found()
             external_env.set('RGPOT_OPENMM_ENGINE', openmm_engine.full_path())
             external_env.set('OPENMM_PLUGIN_DIR', openmm_libdir / 'plugins')
             openmm_session_test = executable(
-                'openmm_session',
+                'test_openmm_session',
                 files('openmm/test_openmm_session.cpp'),
-                link_with: openmm_session,
+                link_with: [openmm_session_lib, rgpot],
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args,
