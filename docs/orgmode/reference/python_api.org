@@ -774,10 +774,22 @@ rgpot.TersoffPot()
   =rgpot.TersoffSiC=, which accepts 6 and 14.
 - Units :: energy eV, lengths Angstrom.
 - Outputs :: a Tersoff potential.
-  No path writes a stress; =evaluate= returns =stress= =None=.
+  =caps()["stress"]= is true.
+  A call with a positive cell volume returns stress from the gather path or the
+  silicon-carbon path.
+  A mixed-species call with an orthorhombic cell of non-positive volume returns
+  =stress= =None=.
 - Errors :: an atomic number other than 6 or 14 raises =ValueError=
   =TersoffSiC: atomic number Z is neither carbon (6) nor silicon (14)=.
-  A failure of the silicon kernel raises =RuntimeError=
+  An all-silicon call with a non-positive or non-finite cell raises
+  =RuntimeError=
+  =Tersoff potential failed (status 4): rgpot_neighbors: box must be finite, and a periodic box must have positive volume=.
+  A mixed-species call with a non-finite cell raises =ValueError=
+  =periodic cell must be finite=.
+  A mixed-species call with a singular skewed cell raises =ValueError=
+  =periodic cell must be nonsingular=.
+  No atoms raises =ValueError= =invalid parameter: nAtoms must be positive=.
+  Any other failure of the silicon kernel raises =RuntimeError=
   =Tersoff potential failed (status K): ...=.
 
 *** =rgpot.EAMAlPot=
