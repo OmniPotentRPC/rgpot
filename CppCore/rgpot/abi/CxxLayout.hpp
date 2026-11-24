@@ -41,6 +41,7 @@
 #include "rgpot/Potential.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/D2Pot/D2Pot.hpp"
 #include "rgpot/D2Pot/D2CpmdPot.hpp"
 #include "rgpot/D4Pot/D4Config.hpp"
@@ -208,6 +209,7 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// `PotentialBase` the virtuals `hessianImpl`, `hessianAdImpl` and
 /// `hessianVectorAdImpl` after `hessianVectorImpl`, so `kCxxLayoutRevision`
 /// is 2.
+/// It also stamps `GuptaConfig`, `GuptaPot` and `PotType::Gupta`.
 /// It also stamps `MullerBrownConfig` and `MullerBrownPot`. The
 /// zero-argument `MullerBrownPot` constructor remains its own symbol.
 /// It also stamps `nlist::Builder` and `nlist::Walk`. Each holds only a
@@ -226,7 +228,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0xae154cf52b093341ull},
+    {"linux-x86_64-libstdc++-lp64", 0x97d21899197a3d64ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -374,6 +376,15 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(SuttonChenConfig, cutoff));
   f.add(offsetof(SuttonChenConfig, periodic));
   f.add(offsetof(SuttonChenConfig, stress));
+  f.type<GuptaConfig>();
+  f.add(offsetof(GuptaConfig, A));
+  f.add(offsetof(GuptaConfig, xi));
+  f.add(offsetof(GuptaConfig, p));
+  f.add(offsetof(GuptaConfig, q));
+  f.add(offsetof(GuptaConfig, r0));
+  f.add(offsetof(GuptaConfig, cutoff));
+  f.add(offsetof(GuptaConfig, periodic));
+  f.add(offsetof(GuptaConfig, stress));
   f.type<D2Config>();
   f.add(offsetof(D2Config, s6));
   f.add(offsetof(D2Config, d));
@@ -422,6 +433,7 @@ constexpr std::uint64_t compute_hash() {
   f.add(static_cast<std::uint64_t>(PotType::CBE));
   f.add(static_cast<std::uint64_t>(PotType::D2));
   f.add(static_cast<std::uint64_t>(PotType::D2Cpmd));
+  f.add(static_cast<std::uint64_t>(PotType::Gupta));
 
   // Polymorphic classes: size, alignment and the virtual-function counts.
   // offsetof is not defined for them.
@@ -437,6 +449,7 @@ constexpr std::uint64_t compute_hash() {
   f.type<SuttonChenPot>();
   f.type<SumPot>();
   f.type<lr::SumPot>();
+  f.type<GuptaPot>();
   f.type<D2Pot>();
   f.type<D2CpmdPot>();
   f.type<MullerBrownPot>();
