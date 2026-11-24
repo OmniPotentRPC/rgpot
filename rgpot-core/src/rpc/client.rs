@@ -21,7 +21,7 @@ use tokio::runtime::Runtime;
 
 use crate::rpc::schema::capabilities::Operation;
 use crate::rpc::schema::potential;
-use crate::tensor::create_owned_f64_tensor;
+use crate::tensor::{copy_f64_tensor, copy_i32_tensor, create_owned_f64_tensor};
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
 /// RPC client that connects to a remote rgpot server.
@@ -251,13 +251,17 @@ impl RpcClient {
     }
 }
 
-type CpuInput<'a> = (&'a [f64], &'a [i32], &'a [f64]);
+type CpuInput = (Vec<f64>, Vec<i32>, Vec<f64>);
 
 /// Extract CPU data slices from DLPack input tensors.
 ///
 /// # Safety
 /// All tensor pointers in `input` must be valid DLPack tensors on kDLCPU.
-unsafe fn extract_cpu_input(input: &rgpot_force_input_t, n: usize) -> Result<CpuInput<'_>, String> {
+unsafe fn extract_cpu_input(input: &rgpot_force_input_t, n: usize) -> Result<CpuInput, String> {
+    let pos_len = n
+        .checked_mul(3)
+        .ok_or_else(|| "n_atoms * 3 overflows".to_string())?;
+
     // Positions
     if input.positions.is_null() {
         return Err("positions tensor is NULL".into());
@@ -266,7 +270,10 @@ unsafe fn extract_cpu_input(input: &rgpot_force_input_t, n: usize) -> Result<Cpu
     if pos_t.device.device_type != DLDeviceType::kDLCPU {
         return Err("RPC requires CPU tensors; positions is not on CPU".into());
     }
-    let positions = unsafe { std::slice::from_raw_parts(pos_t.data as *const f64, n * 3) };
+    if pos_t.data.is_null() {
+        return Err("positions data is NULL".into());
+    }
+    let positions = copy_f64_tensor(input.positions, "positions", pos_len, false)?;
 
     // Atomic numbers
     if input.atomic_numbers.is_null() {
@@ -276,7 +283,10 @@ unsafe fn extract_cpu_input(input: &rgpot_force_input_t, n: usize) -> Result<Cpu
     if atm_t.device.device_type != DLDeviceType::kDLCPU {
         return Err("RPC requires CPU tensors; atomic_numbers is not on CPU".into());
     }
-    let atmnrs = unsafe { std::slice::from_raw_parts(atm_t.data as *const i32, n) };
+    if atm_t.data.is_null() {
+        return Err("atomic_numbers data is NULL".into());
+    }
+    let atmnrs = copy_i32_tensor(input.atomic_numbers, "atomic_numbers", n)?;
 
     // Box matrix
     if input.box_matrix.is_null() {
@@ -286,8 +296,10 @@ unsafe fn extract_cpu_input(input: &rgpot_force_input_t, n: usize) -> Result<Cpu
     if box_t.device.device_type != DLDeviceType::kDLCPU {
         return Err("RPC requires CPU tensors; box_matrix is not on CPU".into());
     }
-    let box_data = unsafe { std::slice::from_raw_parts(box_t.data as *const f64, 9) };
-
+    if box_t.data.is_null() {
+        return Err("box_matrix data is NULL".into());
+    }
+    let box_data = copy_f64_tensor(input.box_matrix, "box_matrix", 9, false)?;
     Ok((positions, atmnrs, box_data))
 }
 
@@ -355,6 +367,14 @@ mod tests {
         };
         let err = unsafe { extract_cpu_input(&input, 1) }.unwrap_err();
         assert_eq!(err, "positions tensor is NULL");
+    }
+
+    #[test]
+    fn extract_cpu_input_rejects_an_overflowing_positions_length() {
+        let guard = make_input(1);
+        let n = usize::MAX / 3 + 1;
+        let err = unsafe { extract_cpu_input(&guard.input, n) }.unwrap_err();
+        assert_eq!(err, "n_atoms * 3 overflows");
     }
 
     #[test]

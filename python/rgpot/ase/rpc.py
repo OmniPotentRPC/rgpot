@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 from ase.calculators.calculator import (
     Calculator,
+    CalculatorError,
     PropertyNotImplementedError,
     all_changes,
 )
@@ -184,7 +185,12 @@ class RgpotRpcCalculator(Calculator):
         )
 
     async def _refresh_capabilities_async(self) -> None:
-        reply = await self._pot.getCapabilities()
+        try:
+            reply = await self._pot.getCapabilities()
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                "RgpotRpcCalculator: getCapabilities RPC failed"
+            ) from exc
         operations = {
             str(getattr(operation, "name", operation)).rsplit(".", 1)[-1].lower()
             for operation in reply.capabilities.operations
@@ -212,11 +218,14 @@ class RgpotRpcCalculator(Calculator):
         if orbital_key is not None:
             fip.hasOrbitalKey = True
             fip.orbitalKey = int(orbital_key)
-        reply = (
-            await self._pot.calculateStress(fip)
-            if request_stress
-            else await self._pot.calculate(fip)
-        )
+        try:
+            reply = (
+                await self._pot.calculateStress(fip)
+                if request_stress
+                else await self._pot.calculate(fip)
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError("RgpotRpcCalculator: calculate RPC failed") from exc
         result = reply.result
         energy = float(result.energy)
         evaluated: dict[str, Any] = {
@@ -244,7 +253,10 @@ class RgpotRpcCalculator(Calculator):
     ) -> Any:
         if name == "stress":
             with self._claim:
-                self._loop.run_until_complete(self._refresh_capabilities_async())
+                try:
+                    self._loop.run_until_complete(self._refresh_capabilities_async())
+                except Exception as exc:  # noqa: BLE001
+                    raise RuntimeError("RgpotRpcCalculator: RPC preflight failed") from exc
                 if not self._server_has_stress:
                     raise PropertyNotImplementedError(
                         "RgpotRpcCalculator: the connected server potential "
@@ -263,10 +275,14 @@ class RgpotRpcCalculator(Calculator):
         system_changes: Any = all_changes,
     ) -> None:
         with self._claim:
-            self._loop.run_until_complete(self._refresh_capabilities_async())
+            try:
+                self._loop.run_until_complete(self._refresh_capabilities_async())
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError("RgpotRpcCalculator: RPC preflight failed") from exc
             super().calculate(atoms, properties, system_changes)
             frame = self.atoms
-            assert frame is not None
+            if frame is None:
+                raise RuntimeError("RgpotRpcCalculator: ASE provided no atoms frame")
             cell = frame.cell
             wants_stress = "stress" in set(properties)
             fully_periodic = cell.rank == 3 and bool(np.all(frame.pbc))
@@ -285,16 +301,21 @@ class RgpotRpcCalculator(Calculator):
             else:
                 box = np.eye(3) * 100.0
             orbital_key = frame.info.get("rgpot_orbital_key", self._orbital_key)
-            evaluated = self._loop.run_until_complete(
-                self._calculate_async(
-                    frame.get_positions(),
-                    frame.get_atomic_numbers(),
-                    box,
-                    orbital_key,
-                    request_stress=wants_stress,
-                    accept_stress=self._server_has_stress and fully_periodic,
+            try:
+                evaluated = self._loop.run_until_complete(
+                    self._calculate_async(
+                        frame.get_positions(),
+                        frame.get_atomic_numbers(),
+                        box,
+                        orbital_key,
+                        request_stress=wants_stress,
+                        accept_stress=self._server_has_stress and fully_periodic,
+                    )
                 )
-            )
+            except (PropertyNotImplementedError, CalculatorError):
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError("RgpotRpcCalculator: RPC calculate failed") from exc
             self.results.update(evaluated)
 
 _register_calculator("rgpot_rpc", RgpotRpcCalculator)

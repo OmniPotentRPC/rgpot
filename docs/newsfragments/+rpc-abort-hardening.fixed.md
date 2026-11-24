@@ -1,0 +1,1 @@
+Remote RPC failures now return error statuses instead of aborting: closed peers, truncated replies, callback-side server exceptions, and NULL RPC tensor data are all reported through the C ABI and Python RPC calculator as ordinary call failures.
