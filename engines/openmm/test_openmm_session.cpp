@@ -692,12 +692,13 @@ void test_periodic_boundary_neighbors() {
         "periodic boundary pair was not the two directed images");
   }
   std::vector<int32_t> first(need), second(need), shift(3 * need, 0);
-  std::vector<double> distance(need, 0.0);
+  std::vector<double> vector(3 * need, 0.0), distance(need, 0.0);
   rgpot_nlist_soa soa{};
   soa.bytes = sizeof(soa);
   soa.first = first.data();
   soa.second = second.data();
   soa.shift = shift.data();
+  soa.vector = vector.data();
   soa.distance = distance.data();
   soa.cap = need;
   size_t got = 0;
