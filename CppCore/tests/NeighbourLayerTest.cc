@@ -2968,6 +2968,66 @@ TEST_CASE("an allocation failure in an update leaves no list to reuse",
   }
 }
 
+TEST_CASE("Neighbours copy assignment changes the generation only with the "
+          "state",
+          "[nlist][generation][copy]") {
+  setThreads("1");
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const auto pos = fcc(3, a);
+  const auto other_pos = fcc(2, a);
+  const std::size_t n = pos.size() / 3;
+  const std::size_t other_n = other_pos.size() / 3;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 4.0;
+  spec.skin = 0.5;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+
+  rgpot::nlist::Neighbours source;
+  source.update(pos.data(), n, box, spec);
+  const auto want = halfPairsWithin(source, n, spec.cutoff);
+  rgpot::nlist::Neighbours target;
+  target.update(other_pos.data(), other_n, box, spec);
+  const auto target_pairs = halfPairsWithin(target, other_n, spec.cutoff);
+  REQUIRE_FALSE(target_pairs.empty());
+
+  std::int64_t injected = 0;
+  for (std::int64_t k = 0;; ++k) {
+    INFO("allocation " << k);
+    const auto before = target.generation();
+    if (!failsAtAllocation(k, [&] { target = source; })) {
+      break;
+    }
+    ++injected;
+    CHECK(target.generation() == before);
+    CHECK(samePairs(halfPairsWithin(target, other_n, spec.cutoff), target_pairs));
+  }
+
+  const auto source_gen = source.generation();
+  const auto assigned = target.generation();
+  CHECK(assigned != source_gen);
+  CHECK(samePairs(halfPairsWithin(target, n, spec.cutoff), want));
+  CHECK(target.slots() == source.slots());
+  CHECK(source.generation() == source_gen);
+  // The copied list is reused like the source's.
+  target.update(pos.data(), n, box, spec);
+  CHECK(target.reused());
+  CHECK(target.generation() == assigned);
+
+  // Self-assignment keeps the list under a new generation.
+  auto &self = target;
+  target = self;
+  CHECK(target.generation() != assigned);
+  CHECK(samePairs(halfPairsWithin(target, n, spec.cutoff), want));
+
+  setThreads("");
+  if (injected == 0) {
+    SKIP("operator new is not replaced inside librgpot on this platform");
+  }
+}
+
 TEST_CASE("a moved-from Neighbours is empty and builds again",
           "[nlist][generation][move]") {
   const double a = 3.6;

@@ -190,6 +190,8 @@ of a reuse, leaves the object as a default-constructed one with a cleared
 generation, keeping `builds()`.
 Nothing is then left to reuse, so the next update builds from its own
 coordinates, and the new generation is stored only once a rebuild is complete.
+Copy assignment copies into a new object first, so a throw leaves the target
+and its generation unchanged.
 A moved-from object is left as a default-constructed one with a cleared
 generation, so its next update builds from its own coordinates.
 

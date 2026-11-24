@@ -220,36 +220,13 @@ public:
     std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
   }
 
+  /// Copies into a new object first, so a throw leaves this one and its
+  /// generation as they were. Self-assignment also takes a new generation.
   Neighbours &operator=(const Neighbours &other) {
-    const std::uint64_t next_gen = nextGeneration();
-    if (this != &other) {
-      off_ = other.off_;
-      nbr_ = other.nbr_;
-      cell_of_ = other.cell_of_;
-      cell_start_ = other.cell_start_;
-      cell_atoms_ = other.cell_atoms_;
-      ref_ = other.ref_;
-      std::memcpy(box_, other.box_, sizeof(box_));
-      std::memcpy(len_, other.len_, sizeof(len_));
-      std::memcpy(inv_, other.inv_, sizeof(inv_));
-      std::memcpy(periodic_, other.periodic_, sizeof(periodic_));
-      nx_ = other.nx_;
-      ny_ = other.ny_;
-      nz_ = other.nz_;
-      search_ = other.search_;
-      image_ = other.image_;
-      mode_ = other.mode_;
-      key_ = other.key_;
-      general_ = other.general_;
-      use_general_ = other.use_general_;
-      streaming_ = other.streaming_;
-      built_ = other.built_;
-      reused_ = other.reused_;
-      n_ = other.n_;
-      builds_ = other.builds_;
-      xyz_ = other.xyz_;
-    }
-    generation_.store(next_gen, std::memory_order_release);
+    Neighbours copy(other);
+    swapState(copy);
+    generation_.store(copy.generation_.load(std::memory_order_relaxed),
+                      std::memory_order_release);
     return *this;
   }
 
@@ -523,6 +500,35 @@ private:
     const std::uint64_t builds = builds_;
     reset();
     builds_ = builds;
+  }
+  /// Exchanges everything but the generation.
+  void swapState(Neighbours &other) noexcept {
+    using std::swap;
+    off_.swap(other.off_);
+    nbr_.swap(other.nbr_);
+    cell_of_.swap(other.cell_of_);
+    cell_start_.swap(other.cell_start_);
+    cell_atoms_.swap(other.cell_atoms_);
+    ref_.swap(other.ref_);
+    swap(box_, other.box_);
+    swap(len_, other.len_);
+    swap(inv_, other.inv_);
+    swap(periodic_, other.periodic_);
+    swap(nx_, other.nx_);
+    swap(ny_, other.ny_);
+    swap(nz_, other.nz_);
+    swap(search_, other.search_);
+    swap(image_, other.image_);
+    swap(mode_, other.mode_);
+    swap(key_, other.key_);
+    swap(general_, other.general_);
+    swap(use_general_, other.use_general_);
+    swap(streaming_, other.streaming_);
+    swap(built_, other.built_);
+    swap(reused_, other.reused_);
+    swap(n_, other.n_);
+    swap(builds_, other.builds_);
+    swap(xyz_, other.xyz_);
   }
   void buildCells(const double *xyz, std::size_t n);
   void buildStored(const double *xyz, std::size_t n, std::uint64_t bound);
