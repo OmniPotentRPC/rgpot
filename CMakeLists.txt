@@ -515,6 +515,23 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     add_dependencies(rgpot_cuh2 rgpot)
     target_link_libraries(rgpot_cuh2 PRIVATE "$<TARGET_FILE:rgpot>")
   endif()
+  # A static librgpot does not absorb rgpot_nlist, so the ABI check reads
+  # that archive too. On Linux a shared librgpot names every neighbour
+  # export as undefined, so a link that drops unreferenced sections still
+  # keeps that C ABI. The session calls rgpot_nlist_build, which pulls the
+  # object that defines those exports.
+  get_target_property(_rgpot_library_type rgpot TYPE)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND _rgpot_library_type STREQUAL "SHARED_LIBRARY")
+    foreach(_rgpot_nlist_sym IN ITEMS
+            rgpot_nlist_abi_version rgpot_nlist_build rgpot_nlist_builder_close
+            rgpot_nlist_builder_open rgpot_nlist_builder_update
+            rgpot_nlist_build_systems rgpot_nlist_fortran_build
+            rgpot_nlist_fortran_close rgpot_nlist_fortran_open
+            rgpot_nlist_request_init rgpot_nlist_strerror rgpot_nlist_walk_close
+            rgpot_nlist_walk_open rgpot_nlist_walk_pull)
+      target_link_options(rgpot PRIVATE "LINKER:--undefined=${_rgpot_nlist_sym}")
+    endforeach()
+  endif()
   if(RGPOT_WITH_CBE)
     target_include_directories(rgpot PRIVATE ${CBE_HEADER_DIR})
     target_link_libraries(rgpot PRIVATE ${CBE_LIBRARY})
