@@ -311,8 +311,9 @@ if rgpot_openmp.found()
                 check: false,
             )
             if _omp_probe.returncode() == 0
-                _omp_tokens = (_omp_probe.stdout() + ' ' + _omp_probe.stderr()
-).split()
+                _omp_tokens = (
+                    _omp_probe.stdout() + ' ' + _omp_probe.stderr()
+                ).split()
             endif
         endif
         _omp_entry_points = {
