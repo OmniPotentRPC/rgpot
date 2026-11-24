@@ -74,7 +74,6 @@ pub mod types;
 pub mod units;
 pub mod version;
 pub mod md_session;
-pub mod md_session;
 
 #[cfg(feature = "schema")]
 #[allow(dead_code, non_snake_case, unused_parens, clippy::all)]
