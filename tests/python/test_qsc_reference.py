@@ -16,7 +16,7 @@ The oracle is also run live here, so a stale or edited data file fails.
 from __future__ import annotations
 
 import sys
-from decimal import Decimal
+from decimal import Context, Decimal, localcontext
 from pathlib import Path
 
 import numpy as np
@@ -30,11 +30,21 @@ sys.path.insert(0, str(_ROOT / "scripts" / "qsc_reference"))
 import qsc_common as common  # noqa: E402
 import qsc_oracle as oracle  # noqa: E402
 
+# pytest-run-parallel on a free-threaded build (3.14t) reports a TSan data
+# race inside CPython's _decimal while this module runs. Each oracle call
+# builds its own 50-digit context, so the values do not depend on the
+# thread, but the race is in the interpreter. The marker runs these tests
+# on one thread. It does not skip them.
+pytestmark = pytest.mark.thread_unsafe
+
 DATA = _ROOT / "CppCore" / "tests" / "data" / "qsc"
 REL_TOL = 1.0e-12
 
-_, EON_CASES = common.read_cases(DATA / "eon_3b2586f_pure.dat")
-_, MIX_CASES = common.read_cases(DATA / "oracle_mixtures.dat")
+# Reference rows are 50-digit decimals. Parse them in that precision so the
+# stored values do not follow the importing thread's context.
+with localcontext(Context(prec=50)):
+    _, EON_CASES = common.read_cases(DATA / "eon_3b2586f_pure.dat")
+    _, MIX_CASES = common.read_cases(DATA / "oracle_mixtures.dat")
 
 # Live oracle runs are 50-digit arithmetic; keep to the cheap cases.
 LIVE_MIXTURES = [c for c in MIX_CASES if len(c.species) < 50]
