@@ -12,15 +12,17 @@
 //   - On a plane n . x = c with n_A + n_B + n_C = 0 the six bond coordinates
 //     keep five free ones, so <U> = 5/2 kT + F(c), and the eight momentum
 //     degrees of freedom left by the plane give <K> = 4 kT.
-//   - The plane coordinate sigma = n . x = -n_A r1 + n_C r2 is Gaussian with
-//     variance kT s, s = n_A^2/k1 + n_C^2/k2, so the free energy is
-//     F(c) = c^2 / (2 s) and the mean constraint force on the plane is
-//     dF/dc = c / s.
+//   - For the unit plane normal n_hat = n / |n|, the coordinate sigma =
+//     n_hat . x = -n_hat_A r1 + n_hat_C r2 is Gaussian with variance kT s,
+//     where s = n_hat_A^2/k1 + n_hat_C^2/k2. Thus F(c) = c^2 / (2 s) and
+//     the mean constraint force on the plane is dF/dc = c / s. In terms of
+//     the unnormalised coefficients this is
+//     s = (n_A^2/k1 + n_C^2/k2) / |n|^2.
 //
-// Each engine session, built from its own spec, must reproduce these within
-// the batch-means standard error and must agree with the other engines within
-// the pooled error. Seeded replay and the continuation of a stream across
-// calls are exact.
+// Each engine session, built from its own spec, must reproduce these within a
+// named multiple of the batch-means standard error and must agree with the
+// other engines within the same multiple of the pooled error. Seeded replay
+// and the continuation of a stream across calls are exact.
 
 #include "rgpot/ExternalPot/external_potentials.h"
 
@@ -29,6 +31,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <numeric>
 #include <sstream>
@@ -39,14 +42,17 @@
 namespace rgpot::analytic {
 
 constexpr double kTElectronVolt = 0.025851;
-constexpr double kSigmas = 5.0;
+// Four standard errors give a conservative family-wise margin for the small
+// set of analytic observables without claiming the much tighter "within SE".
+constexpr double kSigmas = 4.0;
+constexpr std::size_t kBatchCount = 40;
 
 struct Chain {
-  double k1 = 0.4;                        // eV / Angstrom^2
-  double k2 = 0.64;                       // eV / Angstrom^2
+  double k1 = 0.4;  // eV / Angstrom^2
+  double k2 = 0.64; // eV / Angstrom^2
   std::array<double, 3> masses{4.0, 39.9, 12.0};
   std::array<double, 3> normal{1.0, -2.0, 1.0}; // x components, sum zero
-  double offset = 0.3;                    // Angstrom
+  double offset = 0.3;                          // Angstrom
 
   [[nodiscard]] double normalNorm() const {
     return std::sqrt(normal[0] * normal[0] + normal[1] * normal[1] +
@@ -79,9 +85,7 @@ struct Chain {
     return 2.5 * kT + offset * offset / (2.0 * spread());
   }
   // dF/dc in eV / Angstrom.
-  [[nodiscard]] double meanConstraintForce() const {
-    return offset / spread();
-  }
+  [[nodiscard]] double meanConstraintForce() const { return offset / spread(); }
 };
 
 inline void require(bool condition, const std::string &message) {
@@ -97,16 +101,16 @@ struct Mean {
 
 // Mean and standard error of a correlated series by batch means.
 inline Mean batchMean(const std::vector<double> &series,
-                      std::size_t batches = 40) {
+                      std::size_t batches = kBatchCount) {
   require(series.size() >= 2 * batches, "series too short for batch means");
   const std::size_t size = series.size() / batches;
   std::vector<double> means;
   for (std::size_t b = 0; b < batches; ++b) {
-    means.push_back(std::accumulate(series.begin() + static_cast<long>(b * size),
-                                    series.begin() +
-                                        static_cast<long>((b + 1) * size),
-                                    0.0) /
-                    static_cast<double>(size));
+    means.push_back(
+        std::accumulate(series.begin() + static_cast<long>(b * size),
+                        series.begin() + static_cast<long>((b + 1) * size),
+                        0.0) /
+        static_cast<double>(size));
   }
   const double mean = std::accumulate(means.begin(), means.end(), 0.0) /
                       static_cast<double>(means.size());
@@ -116,6 +120,17 @@ inline Mean batchMean(const std::vector<double> &series,
   }
   return {mean, std::sqrt(square / static_cast<double>(means.size() - 1) /
                           static_cast<double>(means.size()))};
+}
+
+inline std::uint64_t testSeed(std::uint64_t fallback) {
+  const char *value = std::getenv("RGPOT_TEST_SEED");
+  if (value == nullptr) {
+    return fallback;
+  }
+  char *end = nullptr;
+  const auto parsed = std::strtoull(value, &end, 10);
+  require(end != value && *end == '\0', "RGPOT_TEST_SEED is not an integer");
+  return parsed;
 }
 
 inline std::string number(double value) {
@@ -150,9 +165,9 @@ inline void check(int status, const char *error, const std::string &what) {
 }
 
 struct Sampled {
-  Mean kinetic;     // eV
-  Mean potential;   // eV
-  Mean constraint;  // eV / Angstrom
+  Mean kinetic;    // eV
+  Mean potential;  // eV
+  Mean constraint; // eV / Angstrom
 };
 
 class Harness {
@@ -269,6 +284,9 @@ public:
       require(std::abs(sigma - chain_.offset) < 1.0e-9,
               "the run left the plane");
     }
+    // 40 batches of 150 observations cover 30 ps each. This is longer than
+    // the 0.1 ps friction relaxation time and the observed sub-ps energy
+    // autocorrelation, so the batch means are effectively independent.
     return {batchMean(kinetic), batchMean(potential), batchMean(constraint)};
   }
 
@@ -347,8 +365,7 @@ inline void checkAgainstAnalytic(const Sampled &sampled, const Chain &chain,
                                  const std::string &label) {
   requireWithin(sampled.kinetic.value, 4.0 * kTElectronVolt,
                 sampled.kinetic.error, label + " kinetic energy");
-  requireWithin(sampled.potential.value,
-                chain.meanPotential(kTElectronVolt),
+  requireWithin(sampled.potential.value, chain.meanPotential(kTElectronVolt),
                 sampled.potential.error, label + " potential energy");
   requireWithin(sampled.constraint.value, chain.meanConstraintForce(),
                 sampled.constraint.error, label + " mean constraint force");
@@ -359,8 +376,8 @@ inline void checkAgreement(const Sampled &a, const Sampled &b,
   const auto pooled = [](const Mean &x, const Mean &y) {
     return std::hypot(x.error, y.error);
   };
-  requireWithin(a.kinetic.value, b.kinetic.value,
-                pooled(a.kinetic, b.kinetic), label + " kinetic energy");
+  requireWithin(a.kinetic.value, b.kinetic.value, pooled(a.kinetic, b.kinetic),
+                label + " kinetic energy");
   requireWithin(a.potential.value, b.potential.value,
                 pooled(a.potential, b.potential), label + " potential energy");
   requireWithin(a.constraint.value, b.constraint.value,
