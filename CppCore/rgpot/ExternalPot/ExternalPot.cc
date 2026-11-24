@@ -5,6 +5,7 @@
 
 #include "rgpot/ExternalPot/md_units.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/MDSession/ProjectedLangevin.hpp"
 #include "rgpot/engine_c_abi.h"
 #include "rgpot/plugin/DynLib.hpp"
 
@@ -15,6 +16,7 @@
 #include <cerrno>
 #include <climits>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -767,12 +769,25 @@ std::vector<std::string> md_engine_paths(const char *engine,
   return out;
 }
 
+// Everything up to and including destroy is required; later members are
+// optional, so a vtable built against an older header still loads.
 bool valid_md_ops(const rgpot_md_session_ops *ops) {
-  return ops != nullptr && ops->struct_size >= sizeof(rgpot_md_session_ops) &&
+  return ops != nullptr &&
+         ops->struct_size >=
+             offsetof(rgpot_md_session_ops, destroy) + sizeof(ops->destroy) &&
          ops->set_positions != nullptr && ops->set_velocities != nullptr &&
          ops->step_langevin != nullptr && ops->step_nve != nullptr &&
          ops->get_state != nullptr && ops->get_masses != nullptr &&
          ops->destroy != nullptr;
+}
+
+// A vtable from an older engine is shorter than ours: take the members it
+// declares and leave the rest null, so RGPOT_MD_OPS_HAS sees them as absent.
+rgpot_md_session_ops copy_md_ops(const rgpot_md_session_ops *ops) {
+  rgpot_md_session_ops out{};
+  std::memcpy(&out, ops, std::min(ops->struct_size, sizeof(out)));
+  out.struct_size = std::min(ops->struct_size, sizeof(out));
+  return out;
 }
 
 bool finite_array(const double *values, size_t count) {
@@ -906,7 +921,7 @@ rgpot_md_session *rgpot_md_session_from_ops(void *ctx,
     }
     auto out = std::make_unique<rgpot_md_session>();
     out->ctx = ctx;
-    out->ops = *ops;
+    out->ops = copy_md_ops(ops);
     out->n_atoms = n_atoms;
     return out.release();
   } catch (const std::exception &ex) {
@@ -967,7 +982,7 @@ rgpot_md_session *rgpot_md_session_create(const char *engine,
       auto out = std::make_unique<rgpot_md_session>();
       out->library = handle;
       out->ctx = ctx;
-      out->ops = ops;
+      out->ops = copy_md_ops(&ops);
       out->n_atoms = n_atoms;
       return out.release();
     }
@@ -1124,6 +1139,214 @@ int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
     write_err(err, err_len, "unknown C++ exception");
     return 1;
   }
+}
+
+int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
+                                      const double *box9, char *err,
+                                      size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || !finite_array(box9, 9)) {
+      throw std::invalid_argument("MD periodic box must be nine finite values");
+    }
+    if (!RGPOT_MD_OPS_HAS(&session->ops, set_periodic_box)) {
+      throw std::runtime_error("MD engine does not support set_periodic_box");
+    }
+    return session->ops.set_periodic_box(session->ctx, box9, err, err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_get_periodic_box(rgpot_md_session *session, double *box9,
+                                      char *err, size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || box9 == nullptr) {
+      throw std::invalid_argument("MD periodic box output buffer is null");
+    }
+    if (!RGPOT_MD_OPS_HAS(&session->ops, get_periodic_box)) {
+      throw std::runtime_error("MD engine does not support get_periodic_box");
+    }
+    return session->ops.get_periodic_box(session->ctx, box9, err, err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_initialize(rgpot_md_session *session, char *err,
+                                size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr) {
+      throw std::invalid_argument("null MD session");
+    }
+    // An engine that evaluates forces on demand has nothing to prepare.
+    if (!RGPOT_MD_OPS_HAS(&session->ops, initialize)) {
+      return 0;
+    }
+    return session->ops.initialize(session->ctx, err, err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_run_langevin(rgpot_md_session *session,
+                                  const rgpot_md_langevin_request *request,
+                                  rgpot_md_langevin_result *result, char *err,
+                                  size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || request == nullptr || result == nullptr) {
+      throw std::invalid_argument("MD run_langevin needs a session, request "
+                                  "and result");
+    }
+    if (request->struct_size < sizeof(rgpot_md_langevin_request) ||
+        result->struct_size < sizeof(rgpot_md_langevin_result)) {
+      throw std::invalid_argument(
+          "MD run_langevin request or result struct_size is too small");
+    }
+    const size_t n3 = request->n3;
+    if (n3 != 3 * session->n_atoms) {
+      throw std::invalid_argument("MD Langevin dimension mismatch");
+    }
+    if (!std::isfinite(request->kT) || request->kT <= 0.0 ||
+        !std::isfinite(request->friction) || request->friction < 0.0 ||
+        !std::isfinite(request->time_step) || request->time_step <= 0.0) {
+      throw std::invalid_argument(
+          "MD Langevin kT, friction, and time_step must be valid");
+    }
+    if (request->wall_mode != RGPOT_MD_WALL_REFLECT &&
+        request->wall_mode != RGPOT_MD_WALL_REJECT) {
+      throw std::invalid_argument("MD Langevin wall_mode is not recognised");
+    }
+    const bool has_plane =
+        request->plane_point != nullptr || request->plane_normal != nullptr;
+    if (has_plane && (!finite_array(request->plane_point, n3) ||
+                      !finite_array(request->plane_normal, n3))) {
+      throw std::invalid_argument(
+          "MD Langevin plane_point and plane_normal must both be finite "
+          "3*n_atoms data, or both null");
+    }
+    if (request->n_walls > 0 &&
+        (request->n_walls > std::numeric_limits<size_t>::max() / n3 ||
+         !finite_array(request->wall_points, request->n_walls * n3) ||
+         !finite_array(request->wall_normals, request->n_walls * n3))) {
+      throw std::invalid_argument(
+          "MD Langevin wall arrays must be finite n_walls*n3 buffers");
+    }
+    if (has_plane && result->constraint_force != nullptr &&
+        result->constraint_force_len < request->steps) {
+      throw std::invalid_argument(
+          "MD Langevin constraint_force buffer is shorter than steps");
+    }
+    if (!RGPOT_MD_OPS_HAS(&session->ops, run_langevin)) {
+      throw std::runtime_error("MD engine does not support run_langevin");
+    }
+    return session->ops.run_langevin(session->ctx, request, result, err,
+                                     err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
+                                       uint64_t seed,
+                                       const double *plane_normal, size_t n3,
+                                       char *err, size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || n3 != 3 * session->n_atoms) {
+      throw std::invalid_argument("MD reseed session or dimension mismatch");
+    }
+    if (!std::isfinite(kT) || kT < 0.0) {
+      throw std::invalid_argument("MD reseed kT must be finite and not negative");
+    }
+    if (plane_normal != nullptr && !finite_array(plane_normal, n3)) {
+      throw std::invalid_argument("MD reseed plane_normal must be finite");
+    }
+    // The draw is made here from the masses, so it is the same stream for
+    // every engine and the engine only has to accept the velocities.
+    std::vector<double> masses(session->n_atoms);
+    if (session->ops.get_masses(session->ctx, masses.data(), session->n_atoms,
+                                err, err_len) != 0) {
+      return 1;
+    }
+    std::vector<double> per_coordinate(n3);
+    for (size_t i = 0; i < session->n_atoms; ++i) {
+      for (size_t d = 0; d < 3; ++d) {
+        per_coordinate[3 * i + d] = masses[i];
+      }
+    }
+    const std::vector<double> velocities = rgpot::md::maxwellBoltzmannVelocities(
+        per_coordinate, kT * rgpot::md::kAmuA2Ps2PerEv, seed, plane_normal);
+    return session->ops.set_velocities(session->ctx, velocities.data(), n3, err,
+                                       err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_get_positions(rgpot_md_session *session,
+                                   double *positions, size_t n3, char *err,
+                                   size_t err_len) {
+  if (positions == nullptr) {
+    write_err(err, err_len, "MD positions output buffer is null");
+    return 1;
+  }
+  return rgpot_md_session_get_state(session, positions, nullptr, nullptr, n3,
+                                    nullptr, nullptr, err, err_len);
+}
+
+int rgpot_md_session_get_velocities(rgpot_md_session *session,
+                                    double *velocities, size_t n3, char *err,
+                                    size_t err_len) {
+  if (velocities == nullptr) {
+    write_err(err, err_len, "MD velocities output buffer is null");
+    return 1;
+  }
+  return rgpot_md_session_get_state(session, nullptr, velocities, nullptr, n3,
+                                    nullptr, nullptr, err, err_len);
+}
+
+int rgpot_md_session_get_forces(rgpot_md_session *session, double *forces,
+                                size_t n3, double *potential_energy,
+                                char *err, size_t err_len) {
+  if (forces == nullptr) {
+    write_err(err, err_len, "MD forces output buffer is null");
+    return 1;
+  }
+  return rgpot_md_session_get_state(session, nullptr, nullptr, forces, n3,
+                                    potential_energy, nullptr, err, err_len);
+}
+
+int rgpot_md_session_get_energy(rgpot_md_session *session,
+                                double *potential_energy,
+                                double *kinetic_energy, char *err,
+                                size_t err_len) {
+  return rgpot_md_session_get_state(session, nullptr, nullptr, nullptr, 0,
+                                    potential_energy, kinetic_energy, err,
+                                    err_len);
 }
 
 void rgpot_md_session_destroy(rgpot_md_session *session) { delete session; }

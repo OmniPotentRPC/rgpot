@@ -6,6 +6,7 @@
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/ExternalPot/md_units.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -39,6 +40,20 @@ struct OpenMMSessionConfig {
   double temperature = 0.02585 * md::kKjPerEv;
   //! Deterministic 64-bit PRNG seed for Langevin noise.
   uint64_t random_seed = 1;
+};
+
+/** What happens to a drift that ends outside a wall. */
+enum class OpenMMWallMode { Reflect, Reject };
+
+/** What a Langevin run reports, in OpenMM native units. */
+struct OpenMMLangevinResult {
+  uint64_t wall_hits = 0;
+  /**
+   * One Lagrange multiplier per step when requested and a plane is set:
+   * lambda = -(n . M^-1 F) / (n . M^-1 n) in kJ/mol/nm for the unit normal n
+   * over the 3N coordinates, the mean of the two force kicks of the step.
+   */
+  std::vector<double> constraint_force;
 };
 
 /** A state returned by an OpenMM session in OpenMM native units. */
@@ -102,8 +117,31 @@ public:
       const std::vector<std::vector<OpenMM::Vec3>> &wall_normals,
       size_t steps, uint64_t seed);
 
+  /**
+   * Run projected BAOAB dynamics like stepLangevin, with the wall mode and
+   * the per-step constraint force. An empty plane_point and plane_normal run
+   * without the hyperplane; the distance constraints of the System still
+   * hold. The constraint force is recorded only when record_constraint_force
+   * is set and a plane is given.
+   */
+  OpenMMLangevinResult runLangevin(
+      double kT, double friction, double time_step,
+      const std::vector<OpenMM::Vec3> &plane_point,
+      const std::vector<OpenMM::Vec3> &plane_normal,
+      const std::vector<std::vector<OpenMM::Vec3>> &wall_points,
+      const std::vector<std::vector<OpenMM::Vec3>> &wall_normals,
+      size_t steps, uint64_t seed, OpenMMWallMode wall_mode,
+      bool record_constraint_force);
+
   /** Read positions, velocities, forces, and energies from the Context. */
   [[nodiscard]] OpenMMState state() const;
+
+  /** Read the periodic box vectors from the Context. */
+  void boxVectors(OpenMM::Vec3 &a, OpenMM::Vec3 &b, OpenMM::Vec3 &c) const;
+  /** Set the box vectors (a, b, c as rows, nanometres) on the Context. */
+  void setPeriodicBox(const std::array<double, 9> &box);
+  /** Evaluate forces at the current positions, so a failure shows early. */
+  void initialize();
 
 private:
   struct Impl;
