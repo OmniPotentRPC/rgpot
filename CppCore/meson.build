@@ -102,9 +102,7 @@ foreach _line : _fs.read('tests/registry.txt').split('\n')
             _first = false
         elif _word.startswith('timeout=')
             _has_timeout = true
-            _kw += {
-                'timeout': _word.substring(8).to_int() * _timeout_scale,
-            }
+            _kw += {'timeout': _word.substring(8).to_int() * _timeout_scale}
         elif _word.startswith('suite=')
             _kw += {'suite': _word.substring(6)}
         elif _word.startswith('workdir=')
@@ -167,9 +165,7 @@ endif
 _cxx_layout_hpp = _fs.read('rgpot/abi/CxxLayout.hpp')
 _cxx_so_parts = _cxx_layout_hpp.split('kCxxSoversion = ')
 if _cxx_so_parts.length() != 2
-    error(
-        'CxxLayout.hpp must contain exactly one "kCxxSoversion = " assignment',
-    )
+    error('CxxLayout.hpp must contain exactly one "kCxxSoversion = " assignment')
 endif
 rgpot_cxx_soversion = _cxx_so_parts[1].split(';')[0].strip()
 
@@ -210,10 +206,7 @@ _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/SumPot/SumPot.cc')
 _rgpot_srcs += files('rgpot/D2Pot/D2CpmdPot.cc', 'rgpot/D2Pot/D2Pot.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
-_rgpot_srcs += files(
-    'rgpot/simd/dispatch.cc',
-    'rgpot/simd/scalar_kernels.cc',
-)
+_rgpot_srcs += files('rgpot/simd/dispatch.cc', 'rgpot/simd/scalar_kernels.cc')
 if have_highway
     _rgpot_srcs += files('rgpot/simd/hwy_kernels.cc')
 endif
@@ -318,9 +311,8 @@ if rgpot_openmp.found()
                 check: false,
             )
             if _omp_probe.returncode() == 0
-                _omp_tokens = (
-                    _omp_probe.stdout() + ' ' + _omp_probe.stderr()
-                ).split()
+                _omp_tokens = (_omp_probe.stdout() + ' ' + _omp_probe.stderr()
+).split()
             endif
         endif
         _omp_entry_points = {
@@ -765,12 +757,7 @@ if not get_option('with_rpc_client_only')
             capnp_rpc_dep,
             ptlrpc_dep,
         ] + fortran_rt_deps
-        _classical_whole = [
-            lennard_jones,
-            morse,
-            zbl,
-            model_pots,
-        ]
+        _classical_whole = [lennard_jones, morse, zbl, model_pots]
         if has_cbe
             _classical_whole += [cbe_pot]
         endif
@@ -882,10 +869,7 @@ if not get_option('with_rpc_client_only')
     # The static umbrella already contains the relocatable fast-list
     # object. Repeating that object through rgpot_dep defines it twice.
     # Shared builds keep the archive on the consumer link line.
-    _rgpot_consumer_deps = _deps_sans_core + [
-        vesin_dep,
-        fastnlist_native_dep,
-    ] + fortran_rt_deps
+    _rgpot_consumer_deps = _deps_sans_core + [vesin_dep, fastnlist_native_dep] + fortran_rt_deps
     if _rpc_stack
         _rgpot_consumer_deps += [ptlrpc_hdr_dep]
     endif
@@ -1018,9 +1002,7 @@ endif
 if get_option('with_examples') and not get_option('with_rpc_client_only')
     example_array = []
     if has_fortran
-        example_array += [
-            ['CallCuH2Pot', 'cuh2_call', 'call_cuh2.cc', ''],
-        ]
+        example_array += [['CallCuH2Pot', 'cuh2_call', 'call_cuh2.cc', '']]
     endif
     if has_eigen
         example_array += [
@@ -1736,10 +1718,7 @@ if get_option('with_tests')
             install: false,
         )
         cpmdc_fake_env = environment()
-        cpmdc_fake_env.set(
-            'RGPOT_CPMD_ENGINE',
-            cpmdc_fake_engine.full_path(),
-        )
+        cpmdc_fake_env.set('RGPOT_CPMD_ENGINE', cpmdc_fake_engine.full_path())
         cpmdc_gradient_engine = shared_library(
             'cpmdc_gradient_engine',
             sources: ['tests/cpmdc_gradient_engine.cc'],
@@ -2325,12 +2304,7 @@ if get_option('with_tests')
             export_dynamic: _export_dynamic,
         )
         if _rt[0] == 'CalculatorGroupTest'
-            test(
-                _rt[0],
-                _test_exe,
-                depends: [rgpot],
-                kwargs: _rt_kw[_rt[0]],
-            )
+            test(_rt[0], _test_exe, depends: [rgpot], kwargs: _rt_kw[_rt[0]])
         else
             test(_rt[0], _test_exe, kwargs: _rt_kw[_rt[0]])
         endif
@@ -2344,11 +2318,7 @@ if get_option('with_tests')
             test(_rt[0], _rt_exes[_rt[2][0]], kwargs: _rt_kw[_rt[0]])
         endif
     endforeach
-    _nlist_link = [
-        rgpot_halfshell,
-        rgpot_minimage,
-        rgpot_exact_fma,
-    ]
+    _nlist_link = [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma]
     if not get_option('with_rpc_client_only')
         _nlist_link += [rgpot_core]
     endif
@@ -3341,7 +3311,9 @@ if not meson.is_subproject()
         '--list',
         meson.current_source_dir() / 'rgpot',
         check: true,
-    ).stdout().strip().split('\n')
+    ).stdout().strip().split(
+        '\n',
+    )
     _install_exclude = ['rpc/Potentials.capnp']
     foreach _rel : _install_impl
         if _rel != ''
