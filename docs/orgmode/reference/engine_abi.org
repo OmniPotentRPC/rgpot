@@ -21,9 +21,10 @@ A positive value means the evaluation failed at this input and the caller may
 back off.
 A negative value means the instance is unusable.
 The engines in this repository return 1 for an invalid argument, 2 when the
-evaluation or the setting failed (the reason is in
-=rgpot_engine_last_error=), 3 when the backend does not support the operation, and -2 (=RGPOT_ENGINE_ERR_LOCK=)
-when acquiring an engine or handle lock fails.
+evaluation or the setting failed (the reason is in =rgpot_engine_last_error=),
+and 3 when the backend does not support the operation.
+They return -2 (=RGPOT_ENGINE_ERR_LOCK=) when acquiring an engine or handle lock
+fails.
 =rgpot_engine_force= and =rgpot_engine_force_batch= also return the nonzero code
 of the host's coordinate transform.
 
@@ -130,8 +131,8 @@ Older plugins can omit the symbols.
 Record counters as unavailable in both cases.
 
 On Windows the engine opens the path as UTF-8.
-A caller must pass a path that is valid Unicode, and the Rust loader refuses any
-other path with an invalid-argument error.
+A caller must pass a path that is valid Unicode.
+The Rust loader refuses any other path with an invalid-argument error.
 On other platforms the loader passes the path bytes unchanged.
 
 *** =rgpot_engine_set_cache=
@@ -1590,11 +1591,10 @@ a host that does call =dlclose= on them leaves them mapped.
   Both verify
   =rgpot_engine_abi_version() == ENGINE_ABI_VERSION=, resolve the optional =rgpot_engine_abi_stamp=
   (treating an engine without it as minor 0, layout 1), require
-  =stamp.serves(RgpotEngineAbiStamp::HOST)=, check =rgpot_engine_available() != 0=
-  before creating an instance, copy =config= into an
-  8-byte-aligned =Vec<u64>= buffer (so engines that cast =config= to
-  =capnp::word= never receive an unaligned pointer), and call
-  =rgpot_engine_create=.
+  =stamp.serves(RgpotEngineAbiStamp::HOST)=, check =rgpot_engine_available() !=
+  0= before creating an instance, copy =config= into an 8-byte-aligned
+  =Vec<u64>= buffer (so engines that cast =config= to =capnp::word= never
+  receive an unaligned pointer), and call =rgpot_engine_create=.
   =EnginePotential::abi_stamp()= returns the resolved stamp.
   When the engine exports =rgpot_engine_caps=, one call at creation reads
   =reentrancy=.
