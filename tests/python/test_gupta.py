@@ -92,6 +92,12 @@ def test_gupta_degenerate_inputs_are_numerical_errors() -> None:
     bad = np.array([[np.nan, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=np.float64)
     with pytest.raises(rgpot.NumericalError):
         rgpot.GuptaPot(**kwargs, cutoff=10.0).evaluate(bad, types, box)
+    far_box = np.eye(3, dtype=np.float64) * 1000.0
+    far = np.array([[np.nan, 0.0, 0.0], [500.0, 0.0, 0.0]], dtype=np.float64)
+    with pytest.raises(rgpot.NumericalError):
+        rgpot.GuptaPot(**kwargs, cutoff=6.0, periodic=True).evaluate(
+            far, types, far_box
+        )
 
 
 def test_gupta_dimer_at_r0() -> None:

@@ -207,7 +207,7 @@ bool Neighbours::reusable(const double *xyz, std::size_t n, const Spec &spec,
     return false;
   }
   if (allPairs()) {
-    return true;
+    return std::isinf(spec.cutoff + spec.skin);
   }
   // A streaming walk trusts the bins. Atoms that have moved may sit in
   // another cell, so the bins are reused only for an identical geometry.
@@ -936,6 +936,15 @@ void Neighbours::updateOrthorhombic(const double *xyz, std::size_t n,
       ref_.assign(xyz, xyz + 3 * n);
       return;
     }
+    for (std::size_t k = 0; k < 3 * n; ++k) {
+      if (!std::isfinite(xyz[k])) {
+        search_ = std::numeric_limits<double>::infinity();
+        break;
+      }
+    }
+    // Every pair is a candidate, so the walks need neither bins nor a list,
+    // and the coordinates never invalidate the update. allPairs() reads
+    // this state back.
     if (std::isinf(search_)) {
       mode_ = Mode::Stream;
       built_ = true;
@@ -1073,6 +1082,14 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
   double next_search = spec.cutoff + spec.skin;
   if (!(next_search > 0.0)) {
     next_search = 0.0;
+  }
+  if (n >= 2 && next_search > 0.0) {
+    for (std::size_t k = 0; k < 3 * n; ++k) {
+      if (!std::isfinite(xyz[k])) {
+        next_search = std::numeric_limits<double>::infinity();
+        break;
+      }
+    }
   }
   const bool fractional_path =
       next_periodic[0] || next_periodic[1] || next_periodic[2];
