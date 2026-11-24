@@ -1,4 +1,0 @@
-Add an engine-agnostic rgpot_md_session_* C ABI and rgpot_core::md_session
-contract in Angstrom/eV/ps/amu units, backed by an in-process OpenMM session
-with 3N hyperplane BAOAB, specular planar walls, deterministic 64-bit seeding,
-and unconstrained Verlet NVE.
