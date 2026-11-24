@@ -585,6 +585,58 @@ TEST_CASE("periodic and long-cutoff streams match the direct pair sum",
   requireSamePairs(walkedPairs(tiles, wide.size() / 3, long_cut), many);
 }
 
+TEST_CASE("orthorhombic periodic coordinates outside the box keep near pairs",
+          "[nlist][stream][direct]") {
+  setThreads("1");
+  constexpr double lx = 30.0;
+  constexpr double ly = 30.0;
+  constexpr double lz = 30.0;
+  constexpr double cutoff = 3.0;
+  const std::vector<double> edge = {-1.5, 15.0, 15.0, 26.0, 15.0, 15.0};
+  const auto edge_ref = directPairs(edge, lx, ly, lz, cutoff, true);
+  REQUIRE(edge_ref.size() == 1);
+  REQUIRE(edge_ref.count({0, 1}) == 1);
+  for (const auto mode :
+       {rgpot::nlist::Mode::Stream, rgpot::nlist::Mode::Stored}) {
+    rgpot::nlist::Neighbours cells;
+    loadCells(cells, edge, lx, ly, lz, cutoff, true, mode);
+    requireSamePairs(walkedPairs(cells, edge.size() / 3, cutoff), edge_ref);
+  }
+
+  std::mt19937_64 rng(397);
+  std::uniform_real_distribution<double> unit(0.0, 1.0);
+  std::uniform_int_distribution<int> wraps(-2, 2);
+  constexpr std::size_t n = 64;
+  for (int trial = 0; trial < 24; ++trial) {
+    std::vector<double> pos(3 * n);
+    for (std::size_t a = 0; a < n; ++a) {
+      const int wx = wraps(rng);
+      const int wy = wraps(rng);
+      const int wz = wraps(rng);
+      pos[3 * a] = unit(rng) * lx + static_cast<double>(wx) * lx;
+      pos[3 * a + 1] = unit(rng) * ly + static_cast<double>(wy) * ly;
+      pos[3 * a + 2] = unit(rng) * lz + static_cast<double>(wz) * lz;
+    }
+    // Keep one pair near through periodic wrapping and out of [0, L) on x.
+    pos[0] = -1.5;
+    pos[1] = 15.0;
+    pos[2] = 15.0;
+    pos[3] = 26.0;
+    pos[4] = 15.0;
+    pos[5] = 15.0;
+
+    const auto ref = directPairs(pos, lx, ly, lz, cutoff, true);
+    INFO("trial " << trial << " pairs " << ref.size());
+    REQUIRE(ref.count({0, 1}) == 1);
+    for (const auto mode :
+         {rgpot::nlist::Mode::Stream, rgpot::nlist::Mode::Stored}) {
+      rgpot::nlist::Neighbours cells;
+      loadCells(cells, pos, lx, ly, lz, cutoff, true, mode);
+      requireSamePairs(walkedPairs(cells, n, cutoff), ref);
+    }
+  }
+}
+
 TEST_CASE("a sheared cell wider than twice the search needs no image search",
           "[nlist][triclinic]") {
   // The kernel cell of the ASE morse-bulk check: a jittered copper cell,
