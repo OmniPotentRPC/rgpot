@@ -226,6 +226,8 @@ pub trait CoordinateTransform: Send {
 pub const COUPLED_WELL_CONFIG_MAGIC: u32 = 0x4357_5054;
 /// Version of [`CoupledWellConfig`].
 pub const COUPLED_WELL_CONFIG_VERSION: u32 = 1;
+/// Minimum message size accepted by `libcoupled_well_engine`.
+pub const COUPLED_WELL_CONFIG_MIN_SIZE: u32 = 56;
 /// Atomic number of [`CoupledWellConfig::default`].
 pub const COUPLED_WELL_DEFAULT_ATOMIC_NUMBER: i32 = 1;
 /// Barrier energy `V0` of [`CoupledWellConfig::default`], in eV.
@@ -240,11 +242,13 @@ pub const COUPLED_WELL_DEFAULT_COUPLING: f64 = 0.0;
 pub const POTLIBC_CONFIG_MAGIC: u32 = 0x504f_544c;
 /// Version of [`PotlibcConfig`].
 pub const POTLIBC_CONFIG_VERSION: u32 = 1;
+/// Minimum message size accepted by `libpotlibc_engine`.
+pub const POTLIBC_CONFIG_MIN_SIZE: u32 = 152;
 /// Capacity of the potlibc surface identifier, including its terminator.
 pub const POTLIBC_SURFACE_ID_CAPACITY: usize = 128;
 
-const COUPLED_WELL_CONFIG_BYTES: usize = 48;
-const POTLIBC_CONFIG_BYTES: usize = 144;
+const COUPLED_WELL_CONFIG_BYTES: usize = 56;
+const POTLIBC_CONFIG_BYTES: usize = 152;
 
 /// Parameters for `libpotlibc_engine`.
 ///
@@ -271,8 +275,12 @@ const POTLIBC_CONFIG_BYTES: usize = 144;
 pub struct PotlibcConfig {
     /// Configuration identity.
     pub magic: u32,
+    /// Message size in bytes (minimum [`POTLIBC_CONFIG_MIN_SIZE`]).
+    pub size: u32,
     /// Configuration layout version.
     pub version: u32,
+    /// Must be zero.
+    pub reserved: u32,
     /// Zero for a fixed-size surface, else the exact atom count of a
     /// variable-size surface.
     pub atom_count: u64,
@@ -286,7 +294,9 @@ impl Default for PotlibcConfig {
     fn default() -> Self {
         Self {
             magic: POTLIBC_CONFIG_MAGIC,
+            size: POTLIBC_CONFIG_MIN_SIZE,
             version: POTLIBC_CONFIG_VERSION,
+            reserved: 0,
             atom_count: 0,
             surface_id: [0; POTLIBC_SURFACE_ID_CAPACITY],
         }
@@ -329,12 +339,21 @@ impl PotlibcConfig {
     }
 
     /// Check what `rgpot_engine_create` checks of the message itself: magic,
-    /// version and a NUL-terminated, non-empty surface id. Whether the surface
-    /// exists and takes this atom count is the engine's to decide.
+    /// size, version, reserved field, and a NUL-terminated, non-empty surface
+    /// id. Whether the surface exists and takes this atom count is the
+    /// engine's to decide.
     pub fn validate(&self) -> Result<(), EngineError> {
-        if self.magic != POTLIBC_CONFIG_MAGIC || self.version != POTLIBC_CONFIG_VERSION {
+        if self.magic != POTLIBC_CONFIG_MAGIC
+            || self.version != POTLIBC_CONFIG_VERSION
+            || self.reserved != 0
+        {
             return Err(EngineError::Invalid(
-                "potlibc config magic or version".into(),
+                "potlibc config magic, version, or reserved field".into(),
+            ));
+        }
+        if self.size < POTLIBC_CONFIG_MIN_SIZE {
+            return Err(EngineError::Invalid(
+                "potlibc config size is smaller than PotlibcConfig".into(),
             ));
         }
         if self.surface_id[0] == 0 || !self.surface_id.contains(&0) {
@@ -366,9 +385,11 @@ impl PotlibcConfig {
 ///
 /// let _ = CoupledWellConfig {
 ///     magic: 0,
+///     size: 0,
 ///     version: 0,
+///     reserved0: 0,
 ///     atomic_number: 1,
-///     reserved: 0,
+///     reserved1: 0,
 ///     barrier_energy: 1.0,
 ///     well_position: 1.0,
 ///     transverse_spring: 1.0,
@@ -405,12 +426,16 @@ struct CoupledWellConfigIsNonExhaustive;
 pub struct CoupledWellConfig {
     /// Configuration identity.
     pub magic: u32,
+    /// Message size in bytes (minimum [`COUPLED_WELL_CONFIG_MIN_SIZE`]).
+    pub size: u32,
     /// Configuration layout version.
     pub version: u32,
+    /// Must be zero.
+    pub reserved0: u32,
     /// Atomic number accepted by the engine.
     pub atomic_number: i32,
     /// Must be zero.
-    pub reserved: u32,
+    pub reserved1: u32,
     /// Quartic barrier energy `V0` in eV.
     pub barrier_energy: f64,
     /// Position `x0` of either minimum along x in Angstrom.
@@ -427,9 +452,11 @@ impl Default for CoupledWellConfig {
     fn default() -> Self {
         Self {
             magic: COUPLED_WELL_CONFIG_MAGIC,
+            size: COUPLED_WELL_CONFIG_MIN_SIZE,
             version: COUPLED_WELL_CONFIG_VERSION,
+            reserved0: 0,
             atomic_number: COUPLED_WELL_DEFAULT_ATOMIC_NUMBER,
-            reserved: 0,
+            reserved1: 0,
             barrier_energy: COUPLED_WELL_DEFAULT_BARRIER_ENERGY,
             well_position: COUPLED_WELL_DEFAULT_WELL_POSITION,
             transverse_spring: COUPLED_WELL_DEFAULT_TRANSVERSE_SPRING,
@@ -497,9 +524,13 @@ impl CoupledWellConfig {
         let invalid = |why: &str| Err(EngineError::Invalid(format!("coupled-well {why}")));
         if self.magic != COUPLED_WELL_CONFIG_MAGIC
             || self.version != COUPLED_WELL_CONFIG_VERSION
-            || self.reserved != 0
+            || self.reserved0 != 0
+            || self.reserved1 != 0
         {
-            return invalid("config magic, version, or reserved field");
+            return invalid("config magic, version, or reserved fields");
+        }
+        if self.size < COUPLED_WELL_CONFIG_MIN_SIZE {
+            return invalid("config size is smaller than CoupledWellConfig");
         }
         if self.atomic_number <= 0 {
             return invalid("atomic_number must be positive");
