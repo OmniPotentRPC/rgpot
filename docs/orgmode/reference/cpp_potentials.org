@@ -1280,6 +1280,42 @@ void setElementParameter(int z, double n, double m, double epsilon, double c,
 - Errors :: throws =std::invalid_argument= when =z < 1=, when =n < 1= or
   =m < 1=, when =epsilon=, =c= or =a= is not positive, or when any parameter is
   not finite.
+  The change reaches this instance and the replicas made by =sharedReplica=,
+  and no copy made by the copy constructor or copy assignment.
+
+*** =rgpot::QSCPot= copy and move
+
+#+attr_rgpot: signature
+#+begin_src cpp
+QSCPot(const QSCPot &other);
+QSCPot &operator=(const QSCPot &other);
+QSCPot(QSCPot &&other) = default;
+QSCPot &operator=(QSCPot &&other) = default;
+#+end_src
+
+- Inputs :: the potential to copy or move from.
+- Units :: none.
+- Outputs :: a copy has its own parameter table, holding the elements of the
+  original at the time of the copy, so =setElementParameter= on either one does
+  not change the other.
+  A move takes the table along, and the moved-from object can be destroyed,
+  assigned to, or copied.
+- Errors :: none.
+
+*** =rgpot::QSCPot::sharedReplica=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] QSCPot sharedReplica();
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a potential backed by the same parameter table, for a host that
+  keeps one instance per thread: =setElementParameter= on any of them reaches
+  all of them, and =paramsKey()= agrees.
+  Each replica has its own neighbour list and counters.
+- Errors :: none.
 
 *** =rgpot::EMTPot=
 
