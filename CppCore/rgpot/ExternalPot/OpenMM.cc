@@ -319,6 +319,15 @@ void OpenMMSession::boxVectors(OpenMM::Vec3 &a, OpenMM::Vec3 &b,
   state.getPeriodicBoxVectors(a, b, c);
 }
 
+std::vector<OpenMM::Vec3> OpenMMSession::geometry(OpenMM::Vec3 &a,
+                                                  OpenMM::Vec3 &b,
+                                                  OpenMM::Vec3 &c) const {
+  const OpenMM::State state =
+      impl_->context->getState(OpenMM::State::Positions);
+  state.getPeriodicBoxVectors(a, b, c);
+  return state.getPositions();
+}
+
 void OpenMMSession::setPeriodicBox(const std::array<double, 9> &box) {
   for (const double value : box) {
     if (!std::isfinite(value)) {
@@ -616,15 +625,14 @@ int c_get_neighbors(void *ctx, const rgpot_nlist_request *request,
                     char *err, size_t err_len) {
   try {
     auto *session = static_cast<OpenMMSession *>(ctx);
-    const OpenMMState st = session->state();
-    std::vector<double> pos_ang(st.positions.size() * 3);
-    for (size_t i = 0; i < st.positions.size(); ++i) {
-      pos_ang[3 * i] = st.positions[i][0] * md::kAngstromPerNm;
-      pos_ang[3 * i + 1] = st.positions[i][1] * md::kAngstromPerNm;
-      pos_ang[3 * i + 2] = st.positions[i][2] * md::kAngstromPerNm;
-    }
     OpenMM::Vec3 a, b, c;
-    session->boxVectors(a, b, c);
+    const std::vector<OpenMM::Vec3> positions = session->geometry(a, b, c);
+    std::vector<double> pos_ang(positions.size() * 3);
+    for (size_t i = 0; i < positions.size(); ++i) {
+      pos_ang[3 * i] = positions[i][0] * md::kAngstromPerNm;
+      pos_ang[3 * i + 1] = positions[i][1] * md::kAngstromPerNm;
+      pos_ang[3 * i + 2] = positions[i][2] * md::kAngstromPerNm;
+    }
     const std::array<double, 9> box_ang = {
         a[0] * md::kAngstromPerNm, a[1] * md::kAngstromPerNm,
         a[2] * md::kAngstromPerNm, b[0] * md::kAngstromPerNm,
@@ -632,7 +640,7 @@ int c_get_neighbors(void *ctx, const rgpot_nlist_request *request,
         c[0] * md::kAngstromPerNm, c[1] * md::kAngstromPerNm,
         c[2] * md::kAngstromPerNm,
     };
-    const int32_t status = rgpot_nlist_build(pos_ang.data(), st.positions.size(),
+    const int32_t status = rgpot_nlist_build(pos_ang.data(), positions.size(),
                                              box_ang.data(), request, out,
                                              count, needed);
     if (status != RGPOT_NLIST_OK) {

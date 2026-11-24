@@ -138,6 +138,9 @@ public:
 
   /** Read the periodic box vectors from the Context. */
   void boxVectors(OpenMM::Vec3 &a, OpenMM::Vec3 &b, OpenMM::Vec3 &c) const;
+  /** Read the positions and box vectors from the Context without forces. */
+  [[nodiscard]] std::vector<OpenMM::Vec3>
+  geometry(OpenMM::Vec3 &a, OpenMM::Vec3 &b, OpenMM::Vec3 &c) const;
   /** Set the box vectors (a, b, c as rows, nanometres) on the Context. */
   void setPeriodicBox(const std::array<double, 9> &box);
   /** Evaluate forces at the current positions, so a failure shows early. */
