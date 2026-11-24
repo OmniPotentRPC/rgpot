@@ -944,6 +944,26 @@ if openmm_opt.allowed() and python3_engines.found()
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args,
             )
+            openmm_analytic_test = executable(
+                'test_openmm_analytic',
+                files('openmm/test_openmm_analytic.cpp'),
+                link_with: rgpot,
+                dependencies: [openmm_lib],
+                include_directories: [
+                    rgpot_inc,
+                    openmm_inc,
+                    include_directories('..'),
+                ],
+                cpp_args: _args,
+                build_rpath: openmm_libdir,
+            )
+            test(
+                'openmm_analytic',
+                openmm_analytic_test,
+                args: [openmm_engine.full_path()],
+                env: external_env,
+                timeout: 300,
+            )
             openmm_abi_test = executable(
                 'test_openmm_abi',
                 files('openmm/test_openmm_abi.cpp'),
