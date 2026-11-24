@@ -266,6 +266,9 @@ lj_engine = shared_library(
     install: not meson.is_subproject(),
 )
 standalone_engine_plugins = [lj_engine]
+if potlibc_dep.found()
+    standalone_engine_plugins += potlibc_engine
+endif
 test(
     'lj_engine',
     executable(
@@ -1064,6 +1067,35 @@ if engine_test_cargo.found() and not engine_test_sanitized
         depends: lj_engine,
         timeout: 900,
     )
+    if potlibc_dep.found()
+        test(
+            'potlibc_engine_rust_loader',
+            engine_test_cargo,
+            args: [
+                'test',
+                '--locked',
+                '--manifest-path',
+                project_root / 'rgpot-core' / 'Cargo.toml',
+                '--target-dir',
+                meson.project_build_root() / 'cargo-engine-test-target',
+                '--features',
+                'engine',
+                '--test',
+                'engine',
+                '--',
+                '--ignored',
+                '--exact',
+                'potlibc_engine_evaluates_through_the_rust_loader',
+                'potlibc_lock_failure_is_a_latched_lock_error_through_the_rust_loader',
+            ],
+            env: {
+                'RGPOT_TEST_POTLIBC_ENGINE': potlibc_engine.full_path(),
+                'RGPOT_TEST_POTLIBC_ENGINE_FAIL_LOCK': potlibc_engine_fail_lock.full_path(),
+            },
+            depends: [potlibc_engine, potlibc_engine_fail_lock],
+            timeout: 900,
+        )
+    endif
 endif
 
 # Optional header for gromacs_unit_reference. A conda or pip prefix has an

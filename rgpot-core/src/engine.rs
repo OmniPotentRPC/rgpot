@@ -8,8 +8,9 @@
 //! the backend's configuration is the opaque message the library's create
 //! call reads. [`EnginePotential::load`] resolves that symbol set, checks both
 //! [`ENGINE_ABI_VERSION`] and [`RgpotEngineAbiStamp::HOST`] against the
-//! library's ABI identity, asks `rgpot_engine_available` whether the backend
-//! can create instances, and keeps one engine instance.
+//! library's ABI identity, asks `rgpot_engine_available`, when the library
+//! exports it, whether the backend can create instances, and keeps one engine
+//! instance.
 //! [`EnginePotential::force`] is one geometry in Angstrom and one answer in eV
 //! and eV/Angstrom, the units the header fixes.
 //!
@@ -955,9 +956,10 @@ impl GradientJet {
     }
 }
 
-/// The symbols of one engine library. `abi_version`, `available`, `create`,
-/// `destroy` and `force` are required by the header; the optional entries are
-/// probed and may be absent.
+/// The symbols of one engine library. `abi_version`, `create`, `destroy` and
+/// `force` are required by the loader; the optional entries are probed and may
+/// be absent. `available` is optional so that a plugin that does not export
+/// it still loads; an absent `available` means the engine is available.
 ///
 /// The struct is `#[non_exhaustive]`, so a symbol added to the ABI later does
 /// not break callers. Build one with [`EngineSymbols::new`] and the `with_*`
@@ -967,8 +969,9 @@ impl GradientJet {
 pub struct EngineSymbols {
     /// Required symbol `rgpot_engine_abi_version`.
     pub abi_version: AbiVersionFn,
-    /// Required symbol `rgpot_engine_available`.
-    pub available: AvailableFn,
+    /// Optional symbol `rgpot_engine_available`. When absent the engine is
+    /// treated as available.
+    pub available: Option<AvailableFn>,
     /// Optional symbol `rgpot_engine_abi_stamp`.
     pub abi_stamp: Option<AbiStampFn>,
     /// Required symbol `rgpot_engine_create`.
@@ -1000,19 +1003,18 @@ pub struct EngineSymbols {
 }
 
 impl EngineSymbols {
-    /// A symbol table with the five required symbols and every optional one
+    /// A symbol table with the four required symbols and every optional one
     /// absent.
     #[must_use]
     pub fn new(
         abi_version: AbiVersionFn,
-        available: AvailableFn,
         create: CreateFn,
         destroy: DestroyFn,
         force: ForceFn,
     ) -> Self {
         Self {
             abi_version,
-            available,
+            available: None,
             abi_stamp: None,
             create,
             destroy,
@@ -1028,6 +1030,13 @@ impl EngineSymbols {
             set_callbacks: None,
             hint: None,
         }
+    }
+
+    /// Provide the optional symbol `rgpot_engine_available`.
+    #[must_use]
+    pub fn with_available(mut self, available: AvailableFn) -> Self {
+        self.available = Some(available);
+        self
     }
 
     /// Provide the optional symbol `rgpot_engine_abi_stamp`.
@@ -1129,7 +1138,8 @@ pub enum EngineError {
         /// The ABI stamp reported (or implied) by the loaded engine.
         found: RgpotEngineAbiStamp,
     },
-    /// `rgpot_engine_available` reported that the engine cannot create instances.
+    /// An exported `rgpot_engine_available` reported that the engine cannot
+    /// create instances.
     Unavailable,
     /// `rgpot_engine_create` returned no instance; the text is its error buffer.
     Create(String),
@@ -1849,8 +1859,10 @@ impl EnginePotential {
                 found: stamp,
             });
         }
-        if unsafe { (symbols.available)() } == 0 {
-            return Err(EngineError::Unavailable);
+        if let Some(available) = symbols.available {
+            if unsafe { available() } == 0 {
+                return Err(EngineError::Unavailable);
+            }
         }
         // In-tree engines cast `config` to `capnp::word`, which requires
         // 8-byte alignment even when the caller passes an unaligned `&[u8]`.
@@ -2471,6 +2483,11 @@ impl EnginePotential {
         potential
     }
 
+    /// Take the library-wide lock of a process-serial engine, if it has one.
+    /// A poisoned lock means a thread panicked inside native code that this
+    /// handle shares, so the handle is latched unusable with
+    /// [`EngineError::Lock`] like any other fatal failure and every later call
+    /// returns that same error.
     fn lock_process(
         &self,
         operation: &'static str,
@@ -2478,10 +2495,10 @@ impl EnginePotential {
         match &self.process_lock {
             Some(lock) => match lock.lock() {
                 Ok(guard) => Ok(Some(guard)),
-                Err(_) => Err(EngineError::Lock {
+                Err(_) => Err(self.poison(EngineError::Lock {
                     operation,
                     message: "process-serial engine lock is poisoned".into(),
-                }),
+                })),
             },
             None => Ok(None),
         }
@@ -3213,7 +3230,7 @@ unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
     }
     Ok(EngineSymbols {
         abi_version: unsafe { required(library, "rgpot_engine_abi_version")? },
-        available: unsafe { required(library, "rgpot_engine_available")? },
+        available: unsafe { optional(library, "rgpot_engine_available") },
         abi_stamp: unsafe { optional(library, "rgpot_engine_abi_stamp") },
         create: unsafe { required(library, "rgpot_engine_create")? },
         destroy: unsafe { required(library, "rgpot_engine_destroy")? },
@@ -3510,5 +3527,112 @@ mod tests {
             assert!(!registry.by_path.contains_key(&canonical));
         }
         std::fs::remove_file(&file).expect("remove the stand-in plugin");
+    }
+
+    static SERIAL_STUB_FORCE_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    unsafe extern "C" fn serial_stub_abi_version() -> c_int {
+        ENGINE_ABI_VERSION
+    }
+
+    unsafe extern "C" fn serial_stub_create(
+        _config: *const c_void,
+        _config_len: usize,
+        _errbuf: *mut c_char,
+        _errlen: usize,
+    ) -> *mut RgpotEnginePot {
+        NonNull::<RgpotEnginePot>::dangling().as_ptr()
+    }
+
+    unsafe extern "C" fn serial_stub_destroy(_pot: *mut RgpotEnginePot) {}
+
+    #[allow(clippy::too_many_arguments)]
+    unsafe extern "C" fn serial_stub_force(
+        _pot: *mut RgpotEnginePot,
+        n_atoms: c_long,
+        _positions: *const f64,
+        _atomic_numbers: *const c_int,
+        forces: *mut f64,
+        energy: *mut f64,
+        _variance: *mut f64,
+        _box: *const f64,
+        _transform: Option<CoordTransformFn>,
+        _user: *mut c_void,
+    ) -> c_int {
+        SERIAL_STUB_FORCE_CALLS.fetch_add(1, Ordering::SeqCst);
+        unsafe {
+            *energy = 0.0;
+            std::slice::from_raw_parts_mut(forces, 3 * n_atoms as usize).fill(0.0);
+        }
+        0
+    }
+
+    unsafe extern "C" fn serial_stub_caps(
+        _pot: *const RgpotEnginePot,
+        out: *mut RgpotEngineCaps,
+    ) -> c_int {
+        unsafe {
+            (*out).reentrancy = 2;
+        }
+        0
+    }
+
+    #[test]
+    fn a_poisoned_process_lock_latches_the_handle_unusable() {
+        let symbols = EngineSymbols::new(
+            serial_stub_abi_version,
+            serial_stub_create,
+            serial_stub_destroy,
+            serial_stub_force,
+        )
+        .with_caps(serial_stub_caps);
+        let lock = process_serial_lock(symbols.force as usize);
+        let mut engine =
+            unsafe { EnginePotential::from_symbols(symbols, &[]) }.expect("the stub engine loads");
+        let request = EngineRequest {
+            positions: &[0.0; 3],
+            atomic_numbers: &[1],
+            box_matrix: &[0.0; 9],
+        };
+
+        engine.force(&request).expect("an unpoisoned lock serves");
+        assert_eq!(SERIAL_STUB_FORCE_CALLS.load(Ordering::SeqCst), 1);
+
+        let holder = Arc::clone(&lock);
+        let panicked = std::thread::spawn(move || {
+            let _guard = holder.lock().expect("take the process lock");
+            panic!("a thread died inside the engine library");
+        })
+        .join();
+        assert!(panicked.is_err());
+        assert!(lock.is_poisoned());
+
+        let first = engine.force(&request).unwrap_err();
+        assert!(
+            matches!(
+                &first,
+                EngineError::Lock {
+                    operation: "rgpot_engine_force",
+                    ..
+                }
+            ),
+            "{first}"
+        );
+        assert_eq!(first.engine_status(), EngineStatus::fatal(ENGINE_ERR_LOCK));
+
+        // Once the lock itself is healthy again the handle must stay latched,
+        // and every operation reports the first failure instead of retrying.
+        lock.clear_poison();
+        assert_eq!(engine.force(&request).unwrap_err(), first);
+        assert_eq!(engine.caps().unwrap_err(), first);
+        assert_eq!(
+            engine.force_batch(&[1], &[0.0; 3], &[0.0; 9]).unwrap_err(),
+            first
+        );
+        assert_eq!(
+            SERIAL_STUB_FORCE_CALLS.load(Ordering::SeqCst),
+            1,
+            "a latched handle must not re-enter native evaluation"
+        );
     }
 }

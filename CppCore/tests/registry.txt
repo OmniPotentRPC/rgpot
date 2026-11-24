@@ -418,6 +418,7 @@ external_constructor_reentry | tests core linux | custom timeout=10 |
 external_close_unlocked | tests core linux | custom timeout=30 |
 engine_abi_stamps | core posix | custom | @engines
 engine_abi_stamp_rust_loader | core posix rustc probe | custom timeout=900 | @engines
+potlibc_engine_rust_loader | core posix rustc probe | custom timeout=900 | @engines
 ipi_driver_ase | core posix ipi probe | custom timeout=600 | @engines
 lammps_lj | core posix probe | custom timeout=180 | @engines
 lammps_pair_rgpot | core posix probe | custom timeout=900 | @engines

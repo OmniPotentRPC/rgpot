@@ -435,6 +435,184 @@ fn configured_external_engine_passes_the_abi_check() {
     }
 }
 
+const POTLIBC_ENGINE_ENV: &str = "RGPOT_TEST_POTLIBC_ENGINE";
+const POTLIBC_FAIL_LOCK_ENV: &str = "RGPOT_TEST_POTLIBC_ENGINE_FAIL_LOCK";
+const BOHR_TO_ANGSTROM: f64 = 0.529177210903;
+
+/// `RgpotPotlibcConfigV1` of `rgpot/potlibc_engine.h`.
+#[repr(C)]
+struct PotlibcConfigV1 {
+    magic: u32,
+    version: u32,
+    atom_count: u64,
+    surface_id: [u8; 128],
+}
+
+fn potlibc_config(surface_id: &str) -> Vec<u8> {
+    let mut message = PotlibcConfigV1 {
+        magic: 0x504F_544C,
+        version: 1,
+        atom_count: 0,
+        surface_id: [0; 128],
+    };
+    message.surface_id[..surface_id.len()].copy_from_slice(surface_id.as_bytes());
+    let bytes = unsafe {
+        std::slice::from_raw_parts(
+            (&message as *const PotlibcConfigV1).cast::<u8>(),
+            std::mem::size_of::<PotlibcConfigV1>(),
+        )
+    };
+    bytes.to_vec()
+}
+
+fn potlibc_library(variable: &str) -> PathBuf {
+    PathBuf::from(
+        std::env::var_os(variable)
+            .unwrap_or_else(|| panic!("{variable} names a built libpotlibc_engine")),
+    )
+}
+
+/// The BrH2 LEPS surface in Angstrom, the first atom at the origin.
+fn brh2_positions() -> [f64; 9] {
+    let bohr = [0.0, 0.0, 0.0, 3.0802, 0.0, 0.0, 4.8202, 0.0, 0.0];
+    bohr.map(|value| value * BOHR_TO_ANGSTROM)
+}
+
+/// Loads the potlibc engine through the generic loader and evaluates the
+/// `brh2leps` surface.
+///
+/// The energy is the reference value of the plugin's own regression test, and
+/// the forces are checked against a central difference of the energy. The
+/// meson test `potlibc_engine_rust_loader` runs it with `--ignored` against
+/// the plugin built in the same tree.
+#[test]
+#[ignore = "needs RGPOT_TEST_POTLIBC_ENGINE to name libpotlibc_engine"]
+fn potlibc_engine_evaluates_through_the_rust_loader() {
+    assert_eq!(std::mem::size_of::<PotlibcConfigV1>(), 144);
+    let path = potlibc_library(POTLIBC_ENGINE_ENV);
+    let mut engine = unsafe { EnginePotential::load(&path, &potlibc_config("brh2leps")) }
+        .expect("the host loads the potlibc engine");
+    assert_eq!(engine.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert!(engine.symbols().available.is_some());
+    assert_eq!(engine.caps().expect("caps").reentrancy, 1);
+
+    let positions = brh2_positions();
+    let numbers = [35, 1, 1];
+    let cell = [20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0];
+    let evaluation = engine
+        .force(&EngineRequest {
+            positions: &positions,
+            atomic_numbers: &numbers,
+            box_matrix: &cell,
+        })
+        .expect("potlibc evaluates the brh2leps surface");
+    assert_eq!(evaluation.forces.len(), 9);
+    assert!(
+        (evaluation.energy - f64::from_bits(0x3fdf_2d7a_1092_72ec)).abs() < 1e-9,
+        "energy {} differs from the reference",
+        evaluation.energy
+    );
+
+    let step = 1e-5;
+    for component in [0_usize, 3, 6] {
+        let mut energy_at = |offset: f64| {
+            let mut shifted = positions;
+            shifted[component] += offset;
+            engine
+                .force(&EngineRequest {
+                    positions: &shifted,
+                    atomic_numbers: &numbers,
+                    box_matrix: &cell,
+                })
+                .expect("displaced evaluation")
+                .energy
+        };
+        let gradient = (energy_at(step) - energy_at(-step)) / (2.0 * step);
+        assert!(
+            (evaluation.forces[component] + gradient).abs() < 1e-6,
+            "force component {component} is {} but -dE/dx is {}",
+            evaluation.forces[component],
+            -gradient
+        );
+    }
+
+    let wrong_count = engine
+        .force(&EngineRequest {
+            positions: &positions[..6],
+            atomic_numbers: &numbers[..2],
+            box_matrix: &cell,
+        })
+        .unwrap_err();
+    assert!(
+        matches!(wrong_count, EngineError::Recoverable { code: 1, .. }),
+        "{wrong_count}"
+    );
+    engine
+        .force(&EngineRequest {
+            positions: &positions,
+            atomic_numbers: &numbers,
+            box_matrix: &cell,
+        })
+        .expect("a recoverable refusal leaves the handle usable");
+}
+
+/// Drives the lock-failure build of the potlibc engine, which fails every
+/// handle lock acquisition while `rgpot_potlibc_test_set_lock_fail(1)` is set.
+/// The Rust loader maps the code to `EngineError::Lock`, latches it, keeps the
+/// handle unusable after locking works again, and the plugin still releases its
+/// call mutex when the handle is dropped while locking fails.
+#[test]
+#[ignore = "needs RGPOT_TEST_POTLIBC_ENGINE_FAIL_LOCK to name the lock-failure build"]
+fn potlibc_lock_failure_is_a_latched_lock_error_through_the_rust_loader() {
+    use rgpot_core::engine::ENGINE_ERR_LOCK;
+
+    let path = potlibc_library(POTLIBC_FAIL_LOCK_ENV);
+    let mut engine = unsafe { EnginePotential::load(&path, &potlibc_config("brh2leps")) }
+        .expect("the host loads the lock-failure build");
+    let observer = unsafe { libloading::Library::new(&path) }.expect("reopen the plugin");
+    let set_fail: libloading::Symbol<unsafe extern "C" fn(c_int)> =
+        unsafe { observer.get(b"rgpot_potlibc_test_set_lock_fail\0") }
+            .expect("lock failure switch");
+    let live: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { observer.get(b"rgpot_potlibc_test_live_call_locks\0") }.expect("mutex counter");
+    assert_eq!(unsafe { live() }, 1);
+
+    let positions = brh2_positions();
+    let request = EngineRequest {
+        positions: &positions,
+        atomic_numbers: &[35, 1, 1],
+        box_matrix: &[20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0],
+    };
+    engine
+        .force(&request)
+        .expect("an evaluation before the failure");
+
+    unsafe { set_fail(1) };
+    let first = engine.force(&request).unwrap_err();
+    assert!(
+        matches!(
+            &first,
+            EngineError::Lock { operation: "rgpot_engine_force", message }
+                if message == "potlibc engine handle lock failed"
+        ),
+        "{first}"
+    );
+    assert_eq!(first.engine_status(), EngineStatus::fatal(ENGINE_ERR_LOCK));
+
+    unsafe { set_fail(0) };
+    assert_eq!(engine.force(&request).unwrap_err(), first);
+    assert_eq!(engine.caps().unwrap_err(), first);
+
+    unsafe { set_fail(1) };
+    drop(engine);
+    unsafe { set_fail(0) };
+    assert_eq!(
+        unsafe { live() },
+        0,
+        "the call mutex was not released by a destroy whose lock failed"
+    );
+}
+
 fn load_session(path: &Path) -> EngineSession {
     // SAFETY: `path` names the fixture compiled from the ABI header above.
     unsafe { EngineSession::load(path, &config()) }.expect("load the harmonic engine session")
@@ -1164,13 +1342,8 @@ unsafe extern "C" fn stub_model_state(_pot: *const RgpotEnginePot) -> u64 {
 
 #[test]
 fn symbols_are_built_with_a_constructor_and_optional_setters() {
-    let required = EngineSymbols::new(
-        stub_abi_version,
-        stub_available,
-        stub_create,
-        stub_destroy,
-        stub_force,
-    );
+    let required = EngineSymbols::new(stub_abi_version, stub_create, stub_destroy, stub_force);
+    assert!(required.available.is_none());
     assert!(required.abi_stamp.is_none());
     assert!(required.force_batch.is_none());
     assert!(required.hvp.is_none());
@@ -1181,6 +1354,10 @@ fn symbols_are_built_with_a_constructor_and_optional_setters() {
     assert!(required.model_state.is_none());
     assert!(required.set_callbacks.is_none());
     assert!(required.hint.is_none());
+
+    let with_available = required.with_available(stub_available);
+    assert!(with_available.available.is_some());
+    assert!(with_available.model_state.is_none());
 
     let with_state = required.with_model_state(stub_model_state);
     assert!(with_state.model_state.is_some());
@@ -1731,12 +1908,27 @@ fn a_missing_required_symbol_is_named() {
         .err()
         .expect("force is required");
     assert_eq!(error, EngineError::Missing("rgpot_engine_force".into()));
+}
 
-    let no_available = build("harmonic_noavailable", &["NO_AVAILABLE"]);
-    let error = unsafe { EnginePotential::load(&no_available, &config()) }
-        .err()
-        .expect("available is required");
-    assert_eq!(error, EngineError::Missing("rgpot_engine_available".into()));
+#[test]
+fn a_plugin_without_available_is_treated_as_available() {
+    let path = build("harmonic_noavailable", &["NO_AVAILABLE"]);
+    let mut engine = load(&path);
+    assert!(engine.symbols().available.is_none());
+    engine
+        .force(&one_atom_request())
+        .expect("a plugin that does not export rgpot_engine_available evaluates");
+
+    let null_available = build_with_abs_zero(
+        "harmonic_abs0_available",
+        &["NO_AVAILABLE"],
+        &["rgpot_engine_available"],
+    );
+    let engine = load(&null_available);
+    assert!(
+        engine.symbols().available.is_none(),
+        "a null rgpot_engine_available address is treated as absent"
+    );
 }
 
 #[test]
@@ -1749,6 +1941,48 @@ fn an_unavailable_engine_is_refused_before_create() {
         .expect("unavailable engine must be refused");
     assert_eq!(error, EngineError::Unavailable);
     assert_eq!(observer.created(), before);
+}
+
+/// Every refusal of a load leaves no engine instance behind: an instance the
+/// failed load created is destroyed once, and a refusal before creation never
+/// creates one. The library handle of each refused first load is closed, which
+/// `failed_first_loads_are_closed_and_can_be_retried` checks by mapping.
+#[test]
+fn every_rejected_load_balances_created_and_destroyed_instances() {
+    let too_new = format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1);
+    let cases: [(&str, Vec<&str>, c_int); 6] = [
+        (
+            "harmonic_balance_unavailable",
+            vec!["FIXTURE_AVAILABLE=0"],
+            0,
+        ),
+        ("harmonic_balance_abi", vec!["FIXTURE_ABI=2"], 0),
+        ("harmonic_balance_too_new", vec![too_new.as_str()], 0),
+        ("harmonic_balance_layout", vec!["FIXTURE_ABI_LAYOUT=2"], 0),
+        ("harmonic_balance_caps_lock", vec!["CAPS_LOCK_ERROR"], 1),
+        ("harmonic_balance_caps_fatal", vec!["CAPS_ERROR_CODE=-1"], 1),
+    ];
+    for (name, defines, creates) in cases {
+        let path = build(name, &defines);
+        let observer = FixtureObserver::open(&path);
+        let created = observer.created();
+        let destroyed = observer.destroyed();
+        for attempt in 0..3 {
+            unsafe { EnginePotential::load(&path, &config()) }
+                .err()
+                .unwrap_or_else(|| panic!("{name} must be refused"));
+            assert_eq!(
+                observer.created() - created,
+                creates * (attempt + 1),
+                "{name}: instances created by attempt {attempt}"
+            );
+            assert_eq!(
+                observer.destroyed() - destroyed,
+                creates * (attempt + 1),
+                "{name}: instances destroyed by attempt {attempt}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -2025,6 +2259,25 @@ fn failed_first_loads_are_closed_and_can_be_retried() {
             config().to_vec(),
         ),
         (build("harmonic_failed_create", &[]), vec![1, 2, 3]),
+        (
+            build("harmonic_failed_unavailable", &["FIXTURE_AVAILABLE=0"]),
+            config().to_vec(),
+        ),
+        (
+            build(
+                "harmonic_failed_minor_too_new",
+                &[&format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1)],
+            ),
+            config().to_vec(),
+        ),
+        (
+            build("harmonic_failed_caps_lock", &["CAPS_LOCK_ERROR"]),
+            config().to_vec(),
+        ),
+        (
+            build("harmonic_failed_caps_fatal", &["CAPS_ERROR_CODE=-1"]),
+            config().to_vec(),
+        ),
     ];
 
     for (path, config) in failures {
@@ -3598,7 +3851,6 @@ fn abs_zero_symbols_are_none_when_optional_and_missing_when_required() {
     // is verified without invoking a null function pointer.
     let required_names = [
         "rgpot_engine_abi_version",
-        "rgpot_engine_available",
         "rgpot_engine_create",
         "rgpot_engine_destroy",
         "rgpot_engine_force",
