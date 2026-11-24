@@ -34,8 +34,8 @@ def test_qsc_cu_and_cu_ag_dimer_reference():
     assert caps["stress"] is True
     assert pot.has_analytic_hvp() is True
 
-    # Cu dimer at r = a_Cu = 3.5200 Angstrom: E = eps * (1 - 2*c).
-    a_cu = 3.5200
+    # Cu dimer at r = a_Cu = 3.6030 Angstrom: E = eps * (1 - 2*c).
+    a_cu = 3.6030
     eps_cu = 0.0057921
     c_cu = 84.843
     pos = np.array([[0.0, 0.0, 0.0], [a_cu, 0.0, 0.0]], dtype=np.float64)
