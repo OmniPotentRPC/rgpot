@@ -182,6 +182,11 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// the dual-number callbacks and the derivative capabilities and counts.
 /// Minor 9 added `rgpot_mdi_server_start` and minor 10
 /// `rgpot_rpc_client_select_orbitals`.
+/// The molecular-dynamics session, including its optional
+/// neighbour-exchange callbacks, is a C++ session vtable on librgpot.
+/// Those symbols are not exports of librgpot_core, so this C minor
+/// stays 10. `kCxxSoversion` stays 9: the session vtable is not a
+/// covered potential type, and `kCxxLayoutRevision` stays 2.
 /// No exported C struct of that header changed layout. The neighbour query
 /// is `RGPOT_NLIST_ABI` 4.
 /// The C API is exported from librgpot, so it has no shared library of

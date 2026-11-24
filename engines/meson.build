@@ -891,12 +891,22 @@ if openmm_opt.allowed() and python3_engines.found()
             'openmm/Platform.h',
             include_directories: openmm_inc,
         )
+            openmm_session_lib = static_library(
+                'openmm_session',
+                files('../CppCore/rgpot/ExternalPot/OpenMM.cc'),
+                dependencies: [openmm_lib],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+                pic: true,
+                install: false,
+            )
             openmm_engine = shared_library(
                 'openmm_engine',
                 [
                     files('openmm/openmm_engine.cpp'),
                     engine_abi_stamp_source,
                 ],
+                link_with: [openmm_session_lib, rgpot],
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
@@ -912,6 +922,84 @@ if openmm_opt.allowed() and python3_engines.found()
             standalone_engine_plugins += openmm_engine
             external_env.set('RGPOT_OPENMM_ENGINE', openmm_engine.full_path())
             external_env.set('OPENMM_PLUGIN_DIR', openmm_libdir / 'plugins')
+            openmm_session_test = executable(
+                'test_openmm_session',
+                files('openmm/test_openmm_session.cpp'),
+                link_with: [openmm_session_lib, rgpot],
+                dependencies: [openmm_lib],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+                build_rpath: openmm_libdir,
+            )
+            test(
+                'openmm_session',
+                openmm_session_test,
+                env: external_env,
+                timeout: 120,
+            )
+            openmm_session_review_test = executable(
+                'test_openmm_session_review',
+                files('openmm/test_openmm_session_review.cpp'),
+                link_with: [openmm_session_lib, rgpot],
+                dependencies: [openmm_lib],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+                build_rpath: openmm_libdir,
+            )
+            openmm_analytic_test = executable(
+                'test_openmm_analytic',
+                files('openmm/test_openmm_analytic.cpp'),
+                link_with: rgpot,
+                dependencies: [openmm_lib],
+                include_directories: [
+                    rgpot_inc,
+                    openmm_inc,
+                    include_directories('..'),
+                ],
+                cpp_args: _args,
+                build_rpath: openmm_libdir,
+            )
+            test(
+                'openmm_analytic',
+                openmm_analytic_test,
+                args: [openmm_engine.full_path()],
+                env: external_env,
+                timeout: 300,
+            )
+            openmm_abi_test = executable(
+                'test_openmm_abi',
+                files('openmm/test_openmm_abi.cpp'),
+                link_with: rgpot,
+                dependencies: [openmm_lib],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+                build_rpath: openmm_libdir,
+            )
+            test(
+                'openmm_abi',
+                openmm_abi_test,
+                args: [openmm_engine.full_path()],
+                env: external_env,
+                timeout: 120,
+            )
+            foreach review_case : [
+                'equipartition',
+                'mean-force',
+                'wall-energy',
+                'metric-seed',
+                'seed-chunking',
+                'wall-multi-bounce',
+                'off-plane-force',
+                'openmm-constraints',
+            ]
+                test(
+                    'openmm_review_' + review_case,
+                    openmm_session_review_test,
+                    args: [review_case],
+                    env: external_env,
+                    timeout: 180,
+                )
+            endforeach
         endif
     endif
 endif

@@ -441,10 +441,11 @@ if(_on)
   # The script has no execute bit. Meson runs it from its #! line.
   set(_rgpot_abi_script sh "${RGPOT_TEST_ROOT}/scripts/abi_symbols.sh")
   # The neighbour C ABI is in rgpot_nlist, which a shared librgpot links
-  # and a static one leaves beside it. CMake builds no fast list, so the
-  # fast-list baseline does not apply.
+  # and a static one leaves beside it, so a static build checks the union
+  # of the two archives. CMake builds no fast list, so the fast-list
+  # baseline does not apply.
   if(_rgpot_kind STREQUAL "STATIC_LIBRARY")
-    set(_rgpot_abi_lib $<TARGET_FILE:rgpot_nlist>)
+    set(_rgpot_abi_lib -l $<TARGET_FILE:rgpot_nlist> $<TARGET_FILE:rgpot>)
   else()
     set(_rgpot_abi_lib $<TARGET_FILE:rgpot>)
   endif()

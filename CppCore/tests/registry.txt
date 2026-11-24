@@ -95,6 +95,7 @@ AotiPublicationStressTest | tests | custom timeout=600 |
 MolecularFrameTest | tests | custom |
 AotiUnpackTest | tests | custom |
 UnitsTest | tests | unit units_test UnitsTest.cc |
+MdProjectedLangevinTest | tests | unit md_projected_langevin_test MdProjectedLangevinTest.cc |
 CuH2test | tests fortran | unit cuh2_test CuH2PotTest.cc |
 RPCTest | tests rpc | unit test_rpc CapnpAdapterTest.cc |
 RPCClientTest | tests client | unit test_rpc_client BridgeStressTest.cc |
@@ -385,6 +386,17 @@ gromacs_unit_reference | core posix probe | custom | @engines
 gromacs_dropin_api | core posix probe | custom timeout=300 | @engines
 gromacs_dropin_mdrun | core posix probe | custom timeout=1800 | @engines
 openmm_lj | core posix probe | custom timeout=120 | @engines
+openmm_session | core posix probe | custom timeout=120 | @engines
+openmm_analytic | core posix probe | custom timeout=300 | @engines
+openmm_abi | core posix probe | custom timeout=120 | @engines
+openmm_review_equipartition | core posix probe | custom timeout=180 | @engines
+openmm_review_mean-force | core posix probe | custom timeout=180 | @engines
+openmm_review_wall-energy | core posix probe | custom timeout=180 | @engines
+openmm_review_metric-seed | core posix probe | custom timeout=180 | @engines
+openmm_review_seed-chunking | core posix probe | custom timeout=180 | @engines
+openmm_review_wall-multi-bounce | core posix probe | custom timeout=180 | @engines
+openmm_review_off-plane-force | core posix probe | custom timeout=180 | @engines
+openmm_review_openmm-constraints | core posix probe | custom timeout=180 | @engines
 optional_engine_install | tests core posix python toplevel | custom timeout=300 | @meson
 installed_sources | tests python toplevel | custom timeout=180 | @meson
 installed_sources_selftest | tests python | py CppCore/tests/test_installed_sources.py |

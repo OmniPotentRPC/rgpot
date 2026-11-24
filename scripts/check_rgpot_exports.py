@@ -3,15 +3,16 @@
 
 A normal link of librgpot_core.a keeps only members the umbrella
 references. It references none of the archive's C ABI, so the shared
-library exports 51 rgpot_* symbols, all from the C++ side.
-Two of those are the Muller-Brown entry points.
+library exports 72 rgpot_* symbols, all from the C++ side.
+Two of those are the Muller-Brown entry points and 21 are the MD session
+entry points.
 
 With the fast pair list on, the archive is librgpot_bundle.a and the
 umbrella links it with --whole-archive (or -force_load on Darwin). That
 archive defines 54 rgpot_* symbols: the public C ABI in
 scripts/abi_core_baseline.txt plus the four fast-list entry points in
 scripts/abi_baseline_fast.txt. None of those names are internal, so the
-shared library exports them too, 105 in all.
+shared library exports them too, 126 in all.
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ from pathlib import Path
 
 # Measured with `nm -D --defined-only` on the default umbrella
 # (thread_limit, and the same pots with the fast pair list off).
-CORE_ONLY_EXPORTS = 51
-BUNDLE_EXPORTS = 105
+CORE_ONLY_EXPORTS = 72
+BUNDLE_EXPORTS = 126
 
 
 def rgpot_names(nm_text: str) -> set[str]:

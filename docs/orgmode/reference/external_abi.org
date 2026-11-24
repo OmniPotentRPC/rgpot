@@ -228,3 +228,467 @@ int main(void) {
   return 0;
 }
 #+end_src
+
+** Generic MD sessions
+
+The
+=rgpot_md_session_*= interface lets any dynamics backend (OpenMM, GROMACS nblib, LAMMPS) implement one vtable in rgpot units: positions and plane/wall coordinates in Angstrom, velocities in Angstrom/ps, forces in eV/Angstrom, energies and =kT= in eV, =time_step=
+in ps, =friction= in ps^-1, masses in amu, and the periodic box in Angstrom
+(nine doubles, the lattice vectors as rows).
+
+A sampler such as a hyperplane, PAFI, OH-TST, Bennett-Chandler or forward-flux
+driver needs only these calls, and none of them is special to one engine:
+positions, velocities and the box are set and read;
+=rgpot_md_session_run_langevin= steps Langevin dynamics with a time step, a
+friction and a seed, on a hyperplane with a holonomic constraint force reported
+per step, between planar walls that reflect or reject the drift;
+=rgpot_md_session_reseed_velocities= draws Maxwell-Boltzmann velocities; and the
+energies and forces are read back.
+The random stream is the same on every engine: the draws are made by rgpot, not
+by the backend.
+
+*** Random streams
+
+=seed= names a stream.
+A call with the seed of the previous call continues the stream, with its
+Box-Muller spare, so a run split in chunks equals one long run.
+A different seed starts a new stream.
+Setting positions or velocities ends the stream, so the same seed after a new
+state replays the same noise.
+Two sessions given the same states and seeds draw the same numbers.
+
+*** Constraint force
+
+With a plane =n . (x - p) = 0=, run_langevin reports for each step the Lagrange
+multiplier =lambda = -(n . M^-1 F) / (n . M^-1 n)= for the unit normal =n= over
+the =3N= coordinates and the mass matrix =M=, in eV/Angstrom: the mean of the
+two force kicks of the step.
+The constraint force on the system is =lambda n=.
+For a plane of fixed normal the mean of =lambda= over the constrained ensemble
+is =dF/dc= for the plane offset =c = n . p=, which PAFI integrates and the
+Bennett-Chandler transmission coefficient needs.
+A backend with distance constraints of its own topology holds them along with
+the plane, and the multiplier of the plane accounts for them.
+
+*** =rgpot_md_session=
+
+- Inputs :: none; an opaque handle from =rgpot_md_session_from_ops= or
+  =rgpot_md_session_create=.
+- Units :: none.
+- Outputs :: none.
+- Errors :: none.
+
+*** =rgpot_md_session_ops=
+
+- Inputs :: =struct_size= (=sizeof(rgpot_md_session_ops)=) and backend callbacks
+  =set_positions=, =set_velocities=, =step_langevin=, =step_nve=,
+  =get_state=, =get_masses=, and =destroy=, followed by the optional
+  =set_periodic_box=, =get_periodic_box=, =initialize=,
+  =run_langevin=, =get_neighbors=, and =set_neighbors=.
+  The macro =RGPOT_MD_OPS_HAS(ops, member)= tests that a vtable carries an
+  optional member.
+- Units :: rgpot host units (Angstrom, eV, ps, amu).
+- Outputs :: vtable consumed by =rgpot_md_session_from_ops= and exported by
+  engine plugins implementing =rgpot_md_session_engine_create_fn=.
+- Errors :: =rgpot_md_session_from_ops= rejects null required callbacks or a
+  =struct_size= that ends before =destroy=.
+  A vtable that ends earlier than an optional member, or leaves it null, makes
+  that call fail with a message naming the missing callback.
+
+*** =rgpot_md_langevin_request=
+
+- Inputs :: =struct_size=, =kT=, =friction=, =time_step=, =steps=, =seed=, =n3=,
+  =plane_point= and =plane_normal= (both null for no plane),
+  =n_walls= with =wall_points= and =wall_normals= of =n_walls * n3= doubles, and
+  =wall_mode= (=RGPOT_MD_WALL_REFLECT= or =RGPOT_MD_WALL_REJECT=).
+- Units :: =kT= in eV, =friction= in ps^-1, =time_step= in ps, points in
+  Angstrom.
+- Outputs :: none; the argument of =rgpot_md_session_run_langevin=.
+- Errors :: a =struct_size= below =sizeof(rgpot_md_langevin_request)= is
+  rejected.
+
+*** =rgpot_md_langevin_result=
+
+- Inputs :: =struct_size=, and =constraint_force= with its length
+  =constraint_force_len=, or null.
+- Units :: =constraint_force= in eV/Angstrom.
+- Outputs :: =wall_hits=, and one multiplier per step in =constraint_force= when
+  a plane is set; nothing is written without a plane.
+- Errors :: a =constraint_force_len= below the number of steps is rejected.
+
+*** =rgpot_md_session_engine_create_fn=
+
+#+attr_rgpot: signature
+#+begin_src c
+typedef int (*rgpot_md_session_engine_create_fn)(
+    const void *spec, size_t spec_len, const char *options,
+    rgpot_md_session_ops *ops, void **ctx, size_t *n_atoms, char *err,
+    size_t err_len);
+#+end_src
+
+- Inputs :: opaque backend specification =spec= of length =spec_len= and backend
+  =options= string.
+- Units :: the returned callbacks speak rgpot units.
+- Outputs :: returns 0 and populates =*ops=, =*ctx=, and =*n_atoms=.
+- Errors :: returns 1 and writes =err= on failure.
+
+*** =rgpot_md_session_from_ops=
+
+#+attr_rgpot: signature
+#+begin_src c
+rgpot_md_session *rgpot_md_session_from_ops(void *ctx,
+                                            const rgpot_md_session_ops *ops,
+                                            size_t n_atoms, char *err,
+                                            size_t err_len);
+#+end_src
+
+- Inputs :: backend context =ctx=, vtable =ops=, atom count
+  =n_atoms=, and error buffer =err= of length =err_len=.
+- Units :: none.
+- Outputs :: a new =rgpot_md_session *= handle freed by
+  =rgpot_md_session_destroy=.
+- Errors :: returns null and writes =err= when =ctx= is null, =ops= is invalid,
+  or =n_atoms= is 0.
+
+*** =rgpot_md_session_create=
+
+#+attr_rgpot: signature
+#+begin_src c
+rgpot_md_session *rgpot_md_session_create(const char *engine,
+                                          const char *engine_path,
+                                          const void *spec, size_t spec_len,
+                                          const char *options, char *err,
+                                          size_t err_len);
+#+end_src
+
+- Inputs :: =engine= name (such as ="openmm"=), optional explicit
+  =engine_path=, opaque =spec= buffer of length =spec_len=, optional =options=,
+  and =err=/=err_len=.
+- Units :: the returned session speaks rgpot units (Angstrom, eV, ps, amu).
+- Outputs :: opens the engine plugin
+  (=engine_path=, else =RGPOT_<ENGINE>_ENGINE=, else =<ENGINE>_ENGINE=, else
+  =lib<engine>_engine=), resolves =rgpot_md_session_engine_create=, and returns a new =rgpot_md_session *=.
+- Errors :: returns null and writes =err= if no library opens or engine
+  initialization fails.
+
+*** =rgpot_md_session_n_atoms=
+
+#+attr_rgpot: signature
+#+begin_src c
+size_t rgpot_md_session_n_atoms(const rgpot_md_session *session);
+#+end_src
+
+- Inputs :: =session=, or null.
+- Units :: none.
+- Outputs :: the atom count of =session=, or 0 if null.
+- Errors :: none.
+
+*** =rgpot_md_session_get_masses=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
+                                size_t n_atoms, char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, output buffer =masses= of length
+  =n_atoms=, and =err=/=err_len=.
+- Units :: amu.
+- Outputs :: returns 0 and writes =n_atoms= particle masses.
+- Errors :: returns 1 and writes =err= on null pointers or size mismatch.
+
+*** =rgpot_md_session_set_positions=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_set_positions(rgpot_md_session *session,
+                                   const double *positions, size_t n3,
+                                   char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, flat xyz =positions= of length
+  =n3 = 3 * n_atoms=, and =err=/=err_len=.
+- Units :: Angstrom.
+- Outputs :: returns 0 on success.
+- Errors :: returns 1 and writes =err= on null pointers, wrong length, or
+  non-finite coordinates.
+
+*** =rgpot_md_session_set_velocities=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_set_velocities(rgpot_md_session *session,
+                                    const double *velocities, size_t n3,
+                                    char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, flat xyz =velocities= of length
+  =n3 = 3 * n_atoms=, and =err=/=err_len=.
+- Units :: Angstrom/ps.
+- Outputs :: returns 0 on success.
+- Errors :: returns 1 and writes =err= on null pointers, wrong length, or
+  non-finite velocities.
+
+*** =rgpot_md_session_step_langevin=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_step_langevin(
+    rgpot_md_session *session, double kT, double friction, double time_step,
+    const double *plane_point, const double *plane_normal,
+    const double *wall_points, const double *wall_normals, size_t n_walls,
+    size_t n3, size_t steps, uint64_t seed, uint64_t *wall_hits, char *err,
+    size_t err_len);
+#+end_src
+
+- Inputs :: =session=, =kT=, =friction=,
+  =time_step=, hyperplane vectors =plane_point= and
+  =plane_normal= of length =n3=, =n_walls= flat wall pairs
+  =wall_points= and =wall_normals= each of length
+  =n_walls * n3=, step count =steps=, 64-bit =seed= naming the random stream, optional =wall_hits=
+  output, and =err=/=err_len=.
+  It reflects at walls and reports no constraint force;
+  =rgpot_md_session_run_langevin= does both.
+- Units :: =kT= in eV, =friction= in ps^-1, =time_step= in ps, positions and
+  wall points in Angstrom.
+- Outputs :: returns 0 and writes the total specular wall reflection count to
+  =*wall_hits= when non-null.
+- Errors :: returns 1 and writes =err= on invalid controls, buffer mismatch,
+  non-finite inputs, or backend failure.
+
+*** =rgpot_md_session_step_nve=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_step_nve(rgpot_md_session *session, double time_step,
+                              size_t steps, char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, =time_step=, =steps=, and =err=/=err_len=.
+- Units :: =time_step= in ps.
+- Outputs :: returns 0 after advancing unconstrained velocity-Verlet dynamics.
+- Errors :: returns 1 and writes =err= on null session, invalid =time_step=, or
+  backend failure.
+
+*** =rgpot_md_session_get_state=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
+                               double *velocities, double *forces, size_t n3,
+                               double *potential_energy, double *kinetic_energy,
+                               char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, optional flat xyz output arrays =positions=,
+  =velocities=, and =forces= of length =n3=, optional scalar pointers
+  =potential_energy= and =kinetic_energy=, and =err=/=err_len=.
+- Units :: =positions= in Angstrom, =velocities= in
+  Angstrom/ps, =forces= in eV/Angstrom, energies in eV.
+- Outputs :: returns 0 and fills any non-null output buffers.
+- Errors :: returns 1 and writes =err= on null session, length mismatch, or
+  backend failure.
+
+*** =rgpot_md_session_set_periodic_box=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
+                                      const double *box9, char *err,
+                                      size_t err_len);
+#+end_src
+
+- Inputs :: =session=, nine finite doubles =box9= (the lattice vectors as rows),
+  and =err=/=err_len=.
+- Units :: Angstrom.
+- Outputs :: returns 0 after the backend stores the box.
+- Errors :: returns 1 and writes =err= on a null session or box, non-finite
+  values, a backend without the callback, or backend failure.
+
+*** =rgpot_md_session_get_periodic_box=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_periodic_box(rgpot_md_session *session, double *box9,
+                                      char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, a buffer =box9= of nine doubles, and =err=/=err_len=.
+- Units :: Angstrom.
+- Outputs :: returns 0 and writes the lattice vectors as rows.
+- Errors :: returns 1 and writes =err= on null pointers, a backend without the
+  callback, or backend failure.
+
+*** =rgpot_md_session_initialize=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_initialize(rgpot_md_session *session, char *err,
+                                size_t err_len);
+#+end_src
+
+- Inputs :: =session= and =err=/=err_len=.
+- Units :: none.
+- Outputs :: returns 0 once the backend has evaluated its first forces at the
+  box and positions set.
+  A backend without the callback has nothing to prepare and also returns 0.
+- Errors :: returns 1 and writes =err= on a null session or backend failure,
+  such as an atom outside the neighbour grid.
+
+*** =rgpot_md_session_run_langevin=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_run_langevin(rgpot_md_session *session,
+                                  const rgpot_md_langevin_request *request,
+                                  rgpot_md_langevin_result *result, char *err,
+                                  size_t err_len);
+#+end_src
+
+- Inputs :: =session=, a =request= and a =result= (see above), and
+  =err=/=err_len=.
+- Units :: =kT= in eV, =friction= in ps^-1,
+  =time_step= in ps, positions and wall points in Angstrom, =constraint_force=
+  in eV/Angstrom.
+- Outputs :: returns 0 after advancing BAOAB Langevin dynamics, writes
+  =result->wall_hits=, and with a plane and a buffer writes the constraint force
+  of every step.
+- Errors :: returns 1 and writes =err= on a null argument, a short struct,
+  invalid controls, a buffer mismatch, non-finite inputs, a start outside a
+  wall, a backend without the callback, or backend failure.
+
+*** =rgpot_md_session_reseed_velocities=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
+                                       uint64_t seed,
+                                       const double *plane_normal, size_t n3,
+                                       char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, =kT=, =seed=, an optional
+  =plane_normal= of length =n3=, and =err=/=err_len=.
+- Units :: =kT= in eV; the velocities set are in Angstrom/ps.
+- Outputs :: returns 0 after setting Maxwell-Boltzmann velocities of variance
+  =kT/m= per coordinate, conditioned on =n . v = 0= when a normal is given.
+  The draw is made from the session masses, so it is the same on every engine.
+- Errors :: returns 1 and writes =err= on a null session, a wrong =n3=, a
+  negative or non-finite =kT=, a normal that acts on no massive atom, or backend
+  failure.
+
+*** =rgpot_md_session_get_positions=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_positions(rgpot_md_session *session,
+                                   double *positions, size_t n3, char *err,
+                                   size_t err_len);
+#+end_src
+
+- Inputs :: =session=, an output array =positions= of length =n3=, and
+  =err=/=err_len=.
+- Units :: Angstrom.
+- Outputs :: returns 0 and fills the positions.
+- Errors :: returns 1 and writes =err= on a null buffer, length mismatch, or
+  backend failure.
+
+*** =rgpot_md_session_get_velocities=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_velocities(rgpot_md_session *session,
+                                    double *velocities, size_t n3, char *err,
+                                    size_t err_len);
+#+end_src
+
+- Inputs :: =session=, an output array =velocities= of length =n3=, and
+  =err=/=err_len=.
+- Units :: Angstrom/ps.
+- Outputs :: returns 0 and fills the velocities.
+- Errors :: returns 1 and writes =err= on a null buffer, length mismatch, or
+  backend failure.
+
+*** =rgpot_md_session_get_forces=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_forces(rgpot_md_session *session, double *forces,
+                                size_t n3, double *potential_energy,
+                                char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, an output array =forces= of length =n3=, an optional
+  =potential_energy= pointer, and =err=/=err_len=.
+- Units :: eV/Angstrom and eV.
+- Outputs :: returns 0 and fills the forces at the current positions and, if
+  given, the potential energy.
+- Errors :: returns 1 and writes =err= on a null buffer, length mismatch, or
+  backend failure.
+
+*** =rgpot_md_session_get_energy=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_energy(rgpot_md_session *session,
+                                double *potential_energy,
+                                double *kinetic_energy, char *err,
+                                size_t err_len);
+#+end_src
+
+- Inputs :: =session=, optional =potential_energy= and =kinetic_energy=
+  pointers, and =err=/=err_len=.
+- Units :: eV.
+- Outputs :: returns 0 and writes the non-null energies.
+- Errors :: returns 1 and writes =err= on a null session or backend failure.
+
+*** =rgpot_md_session_get_neighbors=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_neighbors(rgpot_md_session *session,
+                                   const rgpot_nlist_request *request,
+                                   rgpot_nlist_soa *out, size_t *count,
+                                   size_t *needed, char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, neighbour =request= in the shared =rgpot_nlist_request=
+  shape, optional output =out= (=rgpot_nlist_soa=), optional =count= and
+  =needed=, and =err=/=err_len=.
+- Units :: position and cell units follow the session ABI (Angstrom).
+- Outputs :: returns =RGPOT_MD_NLIST_OK= and forwards the engine's pair list
+  using the shared neighbour columns and semantics.
+- Errors :: returns
+  =RGPOT_MD_NLIST_UNSUPPORTED= when the engine has no neighbour query slot, or =RGPOT_MD_NLIST_ERROR=
+  with =err= on invalid input or backend failure.
+
+*** =rgpot_md_session_set_neighbors=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_set_neighbors(rgpot_md_session *session,
+                                   const rgpot_nlist_request *request,
+                                   const rgpot_nlist_soa *pairs, size_t count,
+                                   char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, neighbour =request=, shared neighbour columns =pairs=
+  containing =count= rows, and =err=/=err_len=.
+- Units :: pair geometry is Angstrom in the same shared neighbour convention.
+- Outputs :: returns =RGPOT_MD_NLIST_OK= when the engine accepted the supplied
+  pair list.
+- Errors :: returns
+  =RGPOT_MD_NLIST_UNSUPPORTED= when the engine has no setter slot, or =RGPOT_MD_NLIST_ERROR=
+  with =err= on invalid input or backend failure.
+
+*** =rgpot_md_session_destroy=
+
+#+attr_rgpot: signature
+#+begin_src c
+void rgpot_md_session_destroy(rgpot_md_session *session);
+#+end_src
+
+- Inputs :: =session=, or null.
+- Units :: none.
+- Outputs :: destroys the backend session and closes any loaded plugin library.
+- Errors :: none; null is ignored.
