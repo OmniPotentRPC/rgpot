@@ -1842,7 +1842,7 @@ enum rgpot_status_t rgpot_mdi_server_start(
 
 The macros =RGPOT_ABI_VERSION_MAJOR=, =RGPOT_ABI_VERSION_MINOR= and
 =RGPOT_ABI_LAYOUT_REVISION= hold the stamp of the header the caller compiled
-against: 1, 10 and 1.
+against: 1, 12 and 1.
 Minor 9 added =rgpot_mdi_server_start=.
 Minor 10 added =rgpot_rpc_client_select_orbitals=.
 The molecular-dynamics session entry points, including the neighbour-query and
