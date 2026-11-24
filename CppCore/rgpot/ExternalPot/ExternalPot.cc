@@ -8,14 +8,17 @@
 #include "rgpot/engine_c_abi.h"
 #include "rgpot/plugin/DynLib.hpp"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cerrno>
+#include <cctype>
 #include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <stdexcept>
@@ -696,13 +699,92 @@ struct rgpot_external_potential {
   std::unique_ptr<rgpot::PotentialBase> pot;
 };
 
+struct rgpot_md_session {
+  rgpot::plugin::dynlib::Handle library = nullptr;
+  void *ctx = nullptr;
+  rgpot_md_session_ops ops{};
+  size_t n_atoms = 0;
+
+  ~rgpot_md_session() {
+    if (ctx != nullptr && ops.destroy != nullptr) {
+      ops.destroy(ctx);
+      ctx = nullptr;
+    }
+    if (library != nullptr) {
+      rgpot::plugin::dynlib::close(library);
+      library = nullptr;
+    }
+  }
+};
+
 namespace {
+
+void clear_err(char *err, size_t err_len) {
+  if (err != nullptr && err_len > 0) {
+    err[0] = '\0';
+  }
+}
 
 void write_err(char *err, size_t err_len, const char *text) {
   if (err == nullptr || err_len == 0) {
     return;
   }
-  std::snprintf(err, err_len, "%s", text);
+  std::snprintf(err, err_len, "%s", text != nullptr ? text : "unknown error");
+}
+
+std::vector<std::string> md_engine_paths(const char *engine,
+                                         const char *engine_path) {
+  std::vector<std::string> out;
+  if (engine_path != nullptr && engine_path[0] != '\0') {
+    out.emplace_back(engine_path);
+    return out;
+  }
+  if (engine == nullptr || engine[0] == '\0') {
+    throw std::invalid_argument("MD session needs an engine name or path");
+  }
+  std::string lower;
+  std::string upper;
+  for (const unsigned char ch : std::string(engine)) {
+    if (!std::isalnum(ch) && ch != '_') {
+      throw std::invalid_argument("MD engine name must be alphanumeric");
+    }
+    lower.push_back(static_cast<char>(std::tolower(ch)));
+    upper.push_back(static_cast<char>(std::toupper(ch)));
+  }
+  const std::string env_rgpot = "RGPOT_" + upper + "_ENGINE";
+  if (const char *env = std::getenv(env_rgpot.c_str())) {
+    if (env[0] != '\0') {
+      out.emplace_back(env);
+    }
+  }
+  const std::string env_plain = upper + "_ENGINE";
+  if (const char *env = std::getenv(env_plain.c_str())) {
+    if (env[0] != '\0') {
+      out.emplace_back(env);
+    }
+  }
+  rgpot::add_soname(out, (lower + "_engine").c_str());
+  return out;
+}
+
+bool valid_md_ops(const rgpot_md_session_ops *ops) {
+  return ops != nullptr && ops->struct_size >= sizeof(rgpot_md_session_ops) &&
+         ops->set_positions != nullptr && ops->set_velocities != nullptr &&
+         ops->step_langevin != nullptr && ops->step_nve != nullptr &&
+         ops->get_state != nullptr && ops->get_masses != nullptr &&
+         ops->destroy != nullptr;
+}
+
+bool finite_array(const double *values, size_t count) {
+  if (values == nullptr) {
+    return false;
+  }
+  for (size_t i = 0; i < count; ++i) {
+    if (!std::isfinite(values[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 rgpot::ExternalLjConfig lj_config(const char *engine_path, double u0,
@@ -806,7 +888,244 @@ int rgpot_external_potential_energy_forces(rgpot_external_potential *pot,
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
     return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
   }
 }
+
+rgpot_md_session *rgpot_md_session_from_ops(void *ctx,
+                                            const rgpot_md_session_ops *ops,
+                                            size_t n_atoms, char *err,
+                                            size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (ctx == nullptr || !valid_md_ops(ops) || n_atoms == 0 ||
+        n_atoms > std::numeric_limits<size_t>::max() / 3) {
+      throw std::invalid_argument("invalid MD session vtable or atom count");
+    }
+    auto out = std::make_unique<rgpot_md_session>();
+    out->ctx = ctx;
+    out->ops = *ops;
+    out->n_atoms = n_atoms;
+    return out.release();
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return nullptr;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return nullptr;
+  }
+}
+
+rgpot_md_session *rgpot_md_session_create(const char *engine,
+                                          const char *engine_path,
+                                          const void *spec, size_t spec_len,
+                                          const char *options, char *err,
+                                          size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (spec == nullptr && spec_len > 0) {
+      throw std::invalid_argument("MD session spec buffer is null");
+    }
+    const auto paths = md_engine_paths(engine, engine_path);
+    std::string tried;
+    for (const std::string &path : paths) {
+      rgpot::plugin::dynlib::Handle handle =
+          rgpot::plugin::dynlib::open(path.c_str());
+      if (handle == nullptr) {
+        tried += path + ": " + rgpot::last_dl() + "; ";
+        continue;
+      }
+      auto create_fn =
+          rgpot::plugin::dynlib::loadSym<rgpot_md_session_engine_create_fn>(
+              handle, "rgpot_md_session_engine_create");
+      if (create_fn == nullptr) {
+        tried += path + ": missing rgpot_md_session_engine_create; ";
+        rgpot::plugin::dynlib::close(handle);
+        continue;
+      }
+      rgpot_md_session_ops ops{};
+      void *ctx = nullptr;
+      size_t n_atoms = 0;
+      char inner_err[512] = {};
+      if (create_fn(spec, spec_len, options, &ops, &ctx, &n_atoms, inner_err,
+                    sizeof(inner_err)) != 0) {
+        rgpot::plugin::dynlib::close(handle);
+        throw std::runtime_error(inner_err[0] != '\0'
+                                     ? inner_err
+                                     : "rgpot_md_session_engine_create failed");
+      }
+      if (ctx == nullptr || !valid_md_ops(&ops) || n_atoms == 0 ||
+          n_atoms > std::numeric_limits<size_t>::max() / 3) {
+        if (ctx != nullptr && ops.destroy != nullptr) {
+          ops.destroy(ctx);
+        }
+        rgpot::plugin::dynlib::close(handle);
+        throw std::runtime_error("engine returned an invalid MD session");
+      }
+      auto out = std::make_unique<rgpot_md_session>();
+      out->library = handle;
+      out->ctx = ctx;
+      out->ops = ops;
+      out->n_atoms = n_atoms;
+      return out.release();
+    }
+    throw std::runtime_error("MD engine library was not opened: " + tried);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return nullptr;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return nullptr;
+  }
+}
+
+size_t rgpot_md_session_n_atoms(const rgpot_md_session *session) {
+  return session != nullptr ? session->n_atoms : 0;
+}
+
+int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
+                                size_t n_atoms, char *err, size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || masses == nullptr || n_atoms != session->n_atoms) {
+      throw std::invalid_argument("MD mass output buffer has wrong length");
+    }
+    return session->ops.get_masses(session->ctx, masses, n_atoms, err, err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_set_positions(rgpot_md_session *session,
+                                   const double *positions, size_t n3,
+                                   char *err, size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || n3 != 3 * session->n_atoms ||
+        !finite_array(positions, n3)) {
+      throw std::invalid_argument("MD positions must be finite 3*n_atoms data");
+    }
+    return session->ops.set_positions(session->ctx, positions, n3, err,
+                                      err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_set_velocities(rgpot_md_session *session,
+                                    const double *velocities, size_t n3,
+                                    char *err, size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || n3 != 3 * session->n_atoms ||
+        !finite_array(velocities, n3)) {
+      throw std::invalid_argument(
+          "MD velocities must be finite 3*n_atoms data");
+    }
+    return session->ops.set_velocities(session->ctx, velocities, n3, err,
+                                       err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_step_langevin(
+    rgpot_md_session *session, double kT, double friction, double time_step,
+    const double *plane_point, const double *plane_normal,
+    const double *wall_points, const double *wall_normals, size_t n_walls,
+    size_t n3, size_t steps, uint64_t seed, uint64_t *wall_hits, char *err,
+    size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || n3 != 3 * session->n_atoms) {
+      throw std::invalid_argument("MD Langevin session or dimension mismatch");
+    }
+    if (!std::isfinite(kT) || kT <= 0.0 || !std::isfinite(friction) ||
+        friction < 0.0 || !std::isfinite(time_step) || time_step <= 0.0) {
+      throw std::invalid_argument(
+          "MD Langevin kT, friction, and time_step must be valid");
+    }
+    if (!finite_array(plane_point, n3) || !finite_array(plane_normal, n3)) {
+      throw std::invalid_argument(
+          "MD Langevin plane_point and plane_normal must be finite");
+    }
+    if (n_walls > 0 &&
+        (n_walls > std::numeric_limits<size_t>::max() / n3 ||
+         !finite_array(wall_points, n_walls * n3) ||
+         !finite_array(wall_normals, n_walls * n3))) {
+      throw std::invalid_argument(
+          "MD Langevin wall arrays must be finite n_walls*n3 buffers");
+    }
+    return session->ops.step_langevin(
+        session->ctx, kT, friction, time_step, plane_point, plane_normal,
+        wall_points, wall_normals, n_walls, n3, steps, seed, wall_hits, err,
+        err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_step_nve(rgpot_md_session *session, double time_step,
+                              size_t steps, char *err, size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || !std::isfinite(time_step) || time_step <= 0.0) {
+      throw std::invalid_argument(
+          "MD NVE needs a valid session and positive finite time_step");
+    }
+    return session->ops.step_nve(session->ctx, time_step, steps, err, err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
+                               double *velocities, double *forces, size_t n3,
+                               double *potential_energy, double *kinetic_energy,
+                               char *err, size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr) {
+      throw std::invalid_argument("null MD session");
+    }
+    if ((positions != nullptr || velocities != nullptr || forces != nullptr) &&
+        n3 != 3 * session->n_atoms) {
+      throw std::invalid_argument("MD state buffer length differs from 3*N");
+    }
+    return session->ops.get_state(session->ctx, positions, velocities, forces,
+                                  n3, potential_energy, kinetic_energy, err,
+                                  err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
+void rgpot_md_session_destroy(rgpot_md_session *session) { delete session; }
 
 } // extern "C"
