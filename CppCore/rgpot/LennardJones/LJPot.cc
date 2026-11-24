@@ -51,20 +51,25 @@ void updateScratchCells(LjNeighbours &scratch, const ForceInput &in,
                      in.box, cutoff, skin, nlist::Image::Round, mode, periodic);
 }
 
-KeptKey ljNeighbourKey(const LJPot *self, double cutoff,
+// A destructor releases only its own thread's slots. Keyed on the
+// address, a potential built where another died would find that one's
+// list on every other thread.
+KeptKey ljNeighbourKey(std::uint64_t generation, double cutoff,
                        nlist::Mode mode) noexcept {
   KeptKey key;
-  key.ptr(self).f64(cutoff).i64(static_cast<std::int64_t>(mode));
+  key.i64(static_cast<std::int64_t>(generation))
+      .f64(cutoff)
+      .i64(static_cast<std::int64_t>(mode));
   return key;
 }
 
 /// Each half-list pair of @a in once, from the calling thread's kept list,
 /// as @c visit(i, j, dx, dy, dz, r2) with @c i < j.
 template <typename Visit>
-void visitLjPairs(const LJPot *self, double cutoff, nlist::Mode mode,
+void visitLjPairs(std::uint64_t generation, double cutoff, nlist::Mode mode,
                   const ForceInput &in, Visit &&visit) {
   KeptLjNeighbours::with(
-      ljNeighbourKey(self, cutoff, mode),
+      ljNeighbourKey(generation, cutoff, mode),
       [] { return std::make_unique<LjNeighbours>(); },
       [&](LjNeighbours &scratch) {
         updateScratchCells(scratch, in, cutoff, mode);
@@ -105,21 +110,31 @@ pair_hessian::Block ljDualBlock(double r2, double dx, double dy, double dz,
 } // namespace
 
 LJPot::~LJPot() {
+  if (!neighbours_.hasGeneration()) {
+    return;
+  }
+  const std::uint64_t gen = neighbours_.generation();
   for (const nlist::Mode mode :
        {nlist::Mode::Auto, nlist::Mode::Stored, nlist::Mode::Stream}) {
-    KeptLjNeighbours::release(ljNeighbourKey(this, cuttOffR, mode));
+    KeptLjNeighbours::release(ljNeighbourKey(gen, cuttOffR, mode));
   }
 }
 
 bool LJPot::listReused() const noexcept {
+  if (!neighbours_.hasGeneration()) {
+    return false;
+  }
   const LjNeighbours *kept =
-      KeptLjNeighbours::peek(ljNeighbourKey(this, cuttOffR, mode_));
+      KeptLjNeighbours::peek(ljNeighbourKey(neighbours_.generation(), cuttOffR, mode_));
   return kept != nullptr && kept->cells.reused();
 }
 
 std::size_t LJPot::retainedPairs() const noexcept {
+  if (!neighbours_.hasGeneration()) {
+    return 0;
+  }
   const LjNeighbours *kept =
-      KeptLjNeighbours::peek(ljNeighbourKey(this, cuttOffR, mode_));
+      KeptLjNeighbours::peek(ljNeighbourKey(neighbours_.generation(), cuttOffR, mode_));
   if (kept == nullptr || kept->cells.streaming()) {
     return 0;
   }
@@ -168,7 +183,9 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
     F[3 * i + 2] = 0;
   }
   if (N < 2 || cuttOffR <= 0.0) {
-    KeptLjNeighbours::release(ljNeighbourKey(this, cuttOffR, mode_));
+    if (neighbours_.hasGeneration()) {
+      KeptLjNeighbours::release(ljNeighbourKey(neighbours_.generation(), cuttOffR, mode_));
+    }
     publishCauchyStress(out, strain, volume);
     return;
   }
@@ -180,7 +197,7 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
   // Two different atoms on the same point make the energy NaN. Skipping
   // the pair would report a finite energy of zero and hide the singularity.
   KeptLjNeighbours::with(
-      ljNeighbourKey(this, cuttOffR, mode_),
+      ljNeighbourKey(neighbours_.generation(), cuttOffR, mode_),
       [] { return std::make_unique<LjNeighbours>(); },
       [&](LjNeighbours &scratch) {
         updateScratchCells(scratch, in, cuttOffR, mode_);
@@ -250,7 +267,7 @@ void LJPot::hessianVectorImpl(const ForceInput &in, const double *v, double *hv)
     hj[1] -= ky;
     hj[2] -= kz;
   };
-  visitLjPairs(this, cuttOffR, mode_, in, addPair);
+  visitLjPairs(neighbours_.generation(), cuttOffR, mode_, in, addPair);
 }
 
 /**
@@ -269,7 +286,7 @@ void LJPot::hessianImpl(const ForceInput &in, double *h) const {
   const double psi2 = psi * psi;
   const double fourU0 = 4.0 * u0;
   const QuinticSwitch *sw = m_config.switch_width != 0.0 ? &m_switch : nullptr;
-  visitLjPairs(this, cuttOffR, mode_, in,
+  visitLjPairs(neighbours_.generation(), cuttOffR, mode_, in,
                [&](std::int32_t i, std::int32_t j, double dx, double dy,
                    double dz, double r2) {
                  if (!(i < j) || r2 > cutoff2) {
@@ -298,7 +315,7 @@ void LJPot::hessianAdImpl(const ForceInput &in, double *h) const {
   const simd::LjParams params =
       makeLjParams(u0, psi, cuttOffU, m_config.switch_width, m_switch);
   const double cutoff2 = cuttOffR * cuttOffR;
-  visitLjPairs(this, cuttOffR, mode_, in,
+  visitLjPairs(neighbours_.generation(), cuttOffR, mode_, in,
                [&](std::int32_t i, std::int32_t j, double dx, double dy,
                    double dz, double r2) {
                  if (!(i < j) || r2 > cutoff2) {
@@ -323,7 +340,7 @@ void LJPot::hessianVectorAdImpl(const ForceInput &in, const double *v,
   const simd::LjParams params =
       makeLjParams(u0, psi, cuttOffU, m_config.switch_width, m_switch);
   const double cutoff2 = cuttOffR * cuttOffR;
-  visitLjPairs(this, cuttOffR, mode_, in,
+  visitLjPairs(neighbours_.generation(), cuttOffR, mode_, in,
                [&](std::int32_t i, std::int32_t j, double dx, double dy,
                    double dz, double r2) {
                  if (!(i < j) || r2 > cutoff2) {

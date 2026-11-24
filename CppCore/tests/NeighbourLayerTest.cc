@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cfenv>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -11,8 +12,11 @@
 #include <limits>
 #include <map>
 #include <new>
+#include <optional>
 #include <random>
 #include <stdexcept>
+#include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -36,9 +40,19 @@ namespace {
 
 std::atomic<std::uint64_t> allocationCalls{0};
 
+// Allocations this thread may still make before one throws; -1 never throws.
+thread_local std::int64_t allocationsBeforeFailure = -1;
+
 } // namespace
 
 void *operator new(std::size_t size) {
+  if (allocationsBeforeFailure == 0) {
+    allocationsBeforeFailure = -1;
+    throw std::bad_alloc();
+  }
+  if (allocationsBeforeFailure > 0) {
+    --allocationsBeforeFailure;
+  }
   void *memory = std::malloc(size == 0 ? 1 : size);
   if (memory == nullptr) {
     throw std::bad_alloc();
@@ -2527,4 +2541,880 @@ TEST_CASE("property sweep over random skewed cells and random translations "
     }
   }
   setThreads("");
+}
+
+TEST_CASE(
+    "Neighbours generation id advances on construction, rebuild, copy and move",
+    "[nlist][generation]") {
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  auto pos = fcc(3, a);
+  const std::size_t n = pos.size() / 3;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 5.0;
+  spec.skin = 1.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+
+  rgpot::nlist::Neighbours first;
+  const auto g_ctor = first.generation();
+  REQUIRE(g_ctor > 0);
+
+  first.update(pos.data(), n, box, spec);
+  const auto g_build1 = first.generation();
+  REQUIRE(g_build1 > g_ctor);
+
+  // Within-skin reuse preserves the generation id.
+  for (double &x : pos) {
+    x += 0.05;
+  }
+  first.update(pos.data(), n, box, spec);
+  REQUIRE(first.reused());
+  REQUIRE(first.generation() == g_build1);
+
+  // Past-skin rebuild assigns a new generation id.
+  pos[0] += 1.0;
+  first.update(pos.data(), n, box, spec);
+  REQUIRE_FALSE(first.reused());
+  const auto g_build2 = first.generation();
+  REQUIRE(g_build2 > g_build1);
+
+  // Copy construction and copy assignment assign fresh generation ids.
+  rgpot::nlist::Neighbours copy_ctor(first);
+  const auto g_copy_ctor = copy_ctor.generation();
+  REQUIRE(g_copy_ctor > g_build2);
+
+  rgpot::nlist::Neighbours copy_assign;
+  const auto g_before_copy_assign = copy_assign.generation();
+  copy_assign = first;
+  const auto g_copy_assign = copy_assign.generation();
+  REQUIRE(g_copy_assign > g_before_copy_assign);
+  REQUIRE(g_copy_assign != first.generation());
+
+  // Move construction and move assignment assign fresh generation ids to both
+  // destination and moved-from instances.
+  rgpot::nlist::Neighbours move_ctor(std::move(copy_ctor));
+  const auto g_move_ctor = move_ctor.generation();
+  REQUIRE(g_move_ctor > g_copy_assign);
+  REQUIRE(copy_ctor.generation() != g_copy_ctor);
+  REQUIRE(copy_ctor.generation() != g_move_ctor);
+
+  rgpot::nlist::Neighbours move_assign;
+  move_assign = std::move(copy_assign);
+  REQUIRE(move_assign.generation() > g_move_ctor);
+  REQUIRE(copy_assign.generation() != g_copy_assign);
+  REQUIRE(copy_assign.generation() != move_assign.generation());
+}
+
+TEST_CASE("fastTiles stencil cache invalidates when a streaming Neighbours "
+          "reuses a destroyed address",
+          "[nlist][generation]") {
+  const double a = 3.6;
+  const double side = 6 * a;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const auto pos1 = fcc(6, a);
+  const std::size_t n = pos1.size() / 3;
+  // Displace atom 0 by 0.2 A in x so pos2 has distinct pair distances while
+  // keeping the same grid dimensions (nx_, ny_, nz_) and search radius.
+  auto pos2 = pos1;
+  pos2[0] += 0.2;
+
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 4.5;
+  spec.skin = 0.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stream;
+
+  auto totalR2 = [&](rgpot::nlist::Neighbours &nb) {
+    double sum = 0.0;
+    nb.forHalf(0, static_cast<std::int64_t>(n),
+               [&](std::int32_t, std::int32_t, double, double, double,
+                   double r2) { sum += r2; });
+    return sum;
+  };
+
+  double want1 = 0.0;
+  {
+    rgpot::nlist::Neighbours ref1;
+    ref1.update(pos1.data(), n, box, spec);
+    want1 = totalR2(ref1);
+  }
+  double want2 = 0.0;
+  {
+    rgpot::nlist::Neighbours ref2;
+    ref2.update(pos2.data(), n, box, spec);
+    want2 = totalR2(ref2);
+  }
+  REQUIRE(std::abs(want2 - want1) > 1e-3);
+
+  // Use a single coordinate buffer and in-place std::optional<Neighbours> so
+  // both `this` and `xyz_` are identical across the two instances, and step 2
+  // on the second instance has `reused() == true` so `reused_ || memcmp(...)`
+  // is true without comparing `cache.xyz`.
+  std::vector<double> xyz_buf = pos1;
+  std::optional<rgpot::nlist::Neighbours> opt;
+  opt.emplace();
+  const void *addr1 = &(*opt);
+  opt->update(xyz_buf.data(), n, box, spec);
+  REQUIRE(totalR2(*opt) == want1);
+  opt.reset();
+
+  // Reconstruct in place at the exact same address with pos2 in xyz_buf.
+  xyz_buf = pos2;
+  opt.emplace();
+  REQUIRE(&(*opt) == addr1);
+  // First update builds bins on pos2 (without calling forHalf yet, so fastTiles
+  // cache still holds instance 1's tile). Second update with identical xyz_buf
+  // sets reused_ = true.
+  opt->update(xyz_buf.data(), n, box, spec);
+  REQUIRE_FALSE(opt->reused());
+  opt->update(xyz_buf.data(), n, box, spec);
+  REQUIRE(opt->reused());
+
+  const double got2 = totalR2(*opt);
+  REQUIRE(got2 == want2);
+}
+
+TEST_CASE("fractional binning rejects a non-finite coordinate",
+          "[nlist][fractional]") {
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0.2 * side, side, 0,
+                         0.1 * side, 0.15 * side, side};
+  auto pos = fcc(3, a);
+  pos[0] = std::numeric_limits<double>::quiet_NaN();
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 4.0;
+  spec.skin = 0.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stream;
+  rgpot::nlist::Neighbours cells;
+  REQUIRE_THROWS_WITH(
+      cells.update(pos.data(), pos.size() / 3, box, spec),
+      "fractional coordinate must be finite");
+}
+
+TEST_CASE("a fully periodic general cell without a reciprocal basis is not "
+          "binned in Cartesian coordinates",
+          "[nlist][fractional]") {
+  // c = a + b, so the volume is zero, while every diagonal entry is
+  // positive and the cell is sheared. That is the condition that used
+  // to leave fractional binning and continue in Cartesian coordinates.
+  const double box[9] = {2, 0, 1, 0, 2, 1, 2, 2, 2};
+  const double m0 = box[4] * box[8] - box[5] * box[7];
+  const double m1 = box[3] * box[8] - box[5] * box[6];
+  const double m2 = box[3] * box[7] - box[4] * box[6];
+  const double det = box[0] * m0 - box[1] * m1 + box[2] * m2;
+  REQUIRE(det == 0.0);
+  REQUIRE(box[0] > 0.0);
+  REQUIRE(box[4] > 0.0);
+  REQUIRE(box[8] > 0.0);
+  auto pos = fcc(2, 1.0);
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 1.5;
+  spec.skin = 0.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stream;
+  spec.periodic = {true, true, true};
+  rgpot::nlist::Neighbours cells;
+  REQUIRE_THROWS_WITH(
+      cells.update(pos.data(), pos.size() / 3, box, spec),
+      "periodic cell must be nonsingular");
+
+  // An open axis, and an orthogonal cell, stay on Cartesian binning.
+  spec.periodic = {true, true, false};
+  const double open_box[9] = {4, 0, 0.4, 0.3, 4, 0, 0.2, 0.5, 4};
+  REQUIRE_NOTHROW(cells.update(pos.data(), pos.size() / 3, open_box, spec));
+
+  spec.periodic = {true, true, true};
+  const double ortho[9] = {4, 0, 0, 0, 4, 0, 0, 0, 4};
+  rgpot::nlist::Neighbours ortho_cells;
+  REQUIRE_NOTHROW(
+      ortho_cells.update(pos.data(), pos.size() / 3, ortho, spec));
+  REQUIRE(ortho_cells.streaming());
+}
+
+TEST_CASE("skewed cells with zero diagonal entries do not form diagonal "
+          "reciprocals",
+          "[nlist][fractional][singular]") {
+  const double pos[6] = {0.2, 0.2, 0.2, 3.9, 0.2, 0.2};
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 0.5;
+  spec.mode = rgpot::nlist::Mode::Stream;
+  spec.periodic = {true, true, true};
+
+  // This is a nonsingular permutation of an orthorhombic basis. Its first two
+  // diagonal entries are zero, so diagonal reciprocals are not cell inverses.
+  const double skewed[9] = {0, 4, 0, 4, 0, 0, 0, 0, 4};
+  std::feclearexcept(FE_DIVBYZERO);
+  rgpot::nlist::Neighbours cells;
+  REQUIRE_NOTHROW(cells.update(pos, 2, skewed, spec));
+  CHECK((std::fetestexcept(FE_DIVBYZERO) & FE_DIVBYZERO) == 0);
+  std::size_t pairs = 0;
+  cells.forHalf(0, 2,
+                [&](std::int32_t, std::int32_t, double, double, double,
+                    double r2) { pairs += r2 <= spec.cutoff * spec.cutoff; });
+  CHECK(pairs == 1);
+
+  // Repeating one row removes the reciprocal basis and takes the established
+  // singular-cell error path before any diagonal reciprocal can be formed.
+  const double degenerate[9] = {0, 4, 0, 0, 4, 0, 0, 0, 4};
+  std::feclearexcept(FE_DIVBYZERO);
+  rgpot::nlist::Neighbours rejected;
+  REQUIRE_THROWS_WITH(rejected.update(pos, 2, degenerate, spec),
+                      "periodic cell must be nonsingular");
+  CHECK((std::fetestexcept(FE_DIVBYZERO) & FE_DIVBYZERO) == 0);
+}
+
+namespace {
+
+struct HalfPair {
+  std::int32_t i;
+  std::int32_t j;
+  double r2;
+};
+
+std::vector<HalfPair> halfPairsWithin(const rgpot::nlist::Neighbours &cells, std::size_t n,
+                                      double cutoff) {
+  std::vector<HalfPair> pairs;
+  cells.forHalf(0, static_cast<std::int64_t>(n),
+                [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+                  if (r2 <= cutoff * cutoff) {
+                    pairs.push_back({i, j, r2});
+                  }
+                });
+  std::sort(pairs.begin(), pairs.end(), [](const HalfPair &x, const HalfPair &y) {
+    return x.i != y.i ? x.i < y.i : x.j < y.j;
+  });
+  return pairs;
+}
+
+bool samePairs(const std::vector<HalfPair> &got, const std::vector<HalfPair> &want) {
+  if (got.size() != want.size()) {
+    return false;
+  }
+  for (std::size_t p = 0; p < got.size(); ++p) {
+    if (got[p].i != want[p].i || got[p].j != want[p].j || got[p].r2 != want[p].r2) {
+      return false;
+    }
+  }
+  return true;
+}
+
+} // namespace
+
+TEST_CASE("a failed update leaves nothing a later update can reuse",
+          "[nlist][generation][throw]") {
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0.2 * side, side, 0, 0.1 * side, 0.15 * side, side};
+  // c = a + b, so this sheared cell has no reciprocal basis.
+  const double flat[9] = {side, 0, 0.5 * side, 0, side, 0.5 * side, side, side, side};
+  const auto pos = fcc(3, a);
+  const std::size_t n = pos.size() / 3;
+  auto bad = pos;
+  bad[0] = std::numeric_limits<double>::quiet_NaN();
+  const double cutoff = 4.0;
+
+  for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = mode == rgpot::nlist::Mode::Stored ? 0.5 : 0.0;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = mode;
+    INFO("mode " << static_cast<int>(mode));
+
+    rgpot::nlist::Neighbours fresh;
+    fresh.update(pos.data(), n, box, spec);
+    const auto want = halfPairsWithin(fresh, n, cutoff);
+    REQUIRE_FALSE(want.empty());
+
+    SECTION("a non-finite coordinate") {
+      // A stored list measures the move through MinimumImage first, and
+      // that is where the coordinate is refused. A stream, and an empty
+      // object in either mode, bins it.
+      const char *binned = "fractional coordinate must be finite";
+      const char *refused = mode == rgpot::nlist::Mode::Stored
+                                ? "pair displacement must be finite"
+                                : binned;
+      rgpot::nlist::Neighbours empty;
+      REQUIRE_THROWS_WITH(empty.update(bad.data(), n, box, spec), binned);
+      CHECK(empty.slots() == 0);
+      CHECK_FALSE(empty.hasGeneration());
+      CHECK_FALSE(empty.reused());
+      REQUIRE_THROWS_WITH(empty.update(bad.data(), n, box, spec), binned);
+
+      rgpot::nlist::Neighbours cells;
+      cells.update(pos.data(), n, box, spec);
+      REQUIRE(samePairs(halfPairsWithin(cells, n, cutoff), want));
+      const auto built = cells.generation();
+      REQUIRE_THROWS_WITH(cells.update(bad.data(), n, box, spec), refused);
+      CHECK(cells.generation() == built);
+      CHECK(samePairs(halfPairsWithin(cells, n, cutoff), want));
+      // A repeated bad update still throws instead of reusing failed input.
+      REQUIRE_THROWS_WITH(cells.update(bad.data(), n, box, spec), refused);
+      cells.update(pos.data(), n, box, spec);
+      CHECK(samePairs(halfPairsWithin(cells, n, cutoff), want));
+    }
+
+    SECTION("a cell without a reciprocal basis") {
+      const char *refused = "periodic cell must be nonsingular";
+      rgpot::nlist::Neighbours empty;
+      REQUIRE_THROWS_WITH(empty.update(pos.data(), n, flat, spec), refused);
+      CHECK(empty.slots() == 0);
+      CHECK_FALSE(empty.hasGeneration());
+      REQUIRE_THROWS_WITH(empty.update(pos.data(), n, flat, spec), refused);
+
+      rgpot::nlist::Neighbours cells;
+      cells.update(pos.data(), n, box, spec);
+      const auto built = cells.generation();
+      REQUIRE_THROWS_WITH(cells.update(pos.data(), n, flat, spec), refused);
+      CHECK(cells.generation() == built);
+      // The same call again must report the same error, not reuse the
+      // failed call's cell or coordinates.
+      REQUIRE_THROWS_WITH(cells.update(pos.data(), n, flat, spec), refused);
+      cells.update(pos.data(), n, box, spec);
+      CHECK(samePairs(halfPairsWithin(cells, n, cutoff), want));
+    }
+  }
+}
+
+namespace {
+
+/// Runs `call` with allocation `fail_at` on this thread, counted from 0,
+/// throwing std::bad_alloc. True when the call reached that allocation.
+template <typename Call>
+bool failsAtAllocation(std::int64_t fail_at, Call &&call) {
+  allocationsBeforeFailure = fail_at;
+  try {
+    call();
+  } catch (const std::bad_alloc &) {
+    allocationsBeforeFailure = -1;
+    return true;
+  }
+  allocationsBeforeFailure = -1;
+  return false;
+}
+
+} // namespace
+
+TEST_CASE("an allocation failure in an update leaves no list to reuse",
+          "[nlist][generation][throw][allocation]") {
+  setThreads("1");
+  const double a = 3.6;
+  const double side = 4 * a;
+  const double ortho[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const double skewed[9] = {side,       0,           0,   0.2 * side, side,
+                            0,          0.1 * side, 0.15 * side, side};
+  const auto pos = fcc(4, a);
+  const std::size_t n = pos.size() / 3;
+  // Atom 0 moves by a small step and is wrapped back through the x face,
+  // which a stored list keeps after rebinning.
+  auto wrapped = pos;
+  wrapped[0] += side + 0.05;
+
+  struct Step {
+    const char *name;
+    const double *box;
+    rgpot::nlist::Mode mode;
+    double cutoff_after;
+    const std::vector<double> *after;
+  };
+  const std::vector<Step> steps = {
+      // A spec change on unchanged coordinates: the rebuild of
+      // updateOrthorhombic, through its generation and its cell build.
+      {"orthorhombic stored rebuild", ortho, rgpot::nlist::Mode::Stored, 5.0, &pos},
+      {"orthorhombic stream rebuild", ortho, rgpot::nlist::Mode::Stream, 5.0, &pos},
+      // The same on a sheared cell: the fractional rebuild and its
+      // generation.
+      {"skewed stored rebuild", skewed, rgpot::nlist::Mode::Stored, 5.0, &pos},
+      {"skewed stream rebuild", skewed, rgpot::nlist::Mode::Stream, 5.0, &pos},
+      // A reuse that rebins.
+      {"orthorhombic wrapped reuse", ortho, rgpot::nlist::Mode::Stored, 4.0, &wrapped},
+      {"skewed wrapped reuse", skewed, rgpot::nlist::Mode::Stored, 4.0, &wrapped},
+  };
+
+  std::int64_t total_injected = 0;
+  for (const Step &step : steps) {
+    INFO(step.name);
+    rgpot::nlist::Spec before;
+    before.cutoff = 4.0;
+    before.skin = step.mode == rgpot::nlist::Mode::Stored ? 0.5 : 0.0;
+    before.image = rgpot::nlist::Image::Round;
+    before.mode = step.mode;
+    rgpot::nlist::Spec after = before;
+    after.cutoff = step.cutoff_after;
+    const std::vector<double> &next = *step.after;
+
+    rgpot::nlist::Neighbours fresh_before;
+    fresh_before.update(pos.data(), n, step.box, before);
+    const auto want_before = halfPairsWithin(fresh_before, n, before.cutoff);
+    rgpot::nlist::Neighbours fresh_after;
+    fresh_after.update(next.data(), n, step.box, after);
+    const auto want_after = halfPairsWithin(fresh_after, n, after.cutoff);
+    REQUIRE_FALSE(want_before.empty());
+    REQUIRE_FALSE(want_after.empty());
+
+    std::int64_t injected = 0;
+    for (std::int64_t k = 0;; ++k) {
+      INFO("allocation " << k);
+      rgpot::nlist::Neighbours cells;
+      cells.update(pos.data(), n, step.box, before);
+      const auto built = cells.generation();
+      if (!failsAtAllocation(k, [&] { cells.update(next.data(), n, step.box, after); })) {
+        CHECK(samePairs(halfPairsWithin(cells, n, after.cutoff), want_after));
+        break;
+      }
+      ++injected;
+      // Either the update changed nothing, or it left an empty object
+      // with no generation that nothing keyed on the old one can match.
+      if (cells.hasGeneration()) {
+        CHECK(cells.generation() == built);
+        CHECK_FALSE(cells.reused());
+        CHECK(samePairs(halfPairsWithin(cells, n, before.cutoff), want_before));
+      } else {
+        CHECK(cells.slots() == 0);
+        CHECK(cells.offsets().empty());
+        CHECK_FALSE(cells.reused());
+        CHECK(halfPairsWithin(cells, 0, before.cutoff).empty());
+      }
+      cells.update(next.data(), n, step.box, after);
+      const auto got = halfPairsWithin(cells, n, after.cutoff);
+      CHECK(got.size() == want_after.size());
+      CHECK(samePairs(got, want_after));
+      if (step.cutoff_after != before.cutoff) {
+        CHECK_FALSE(cells.reused());
+        CHECK(cells.generation() != built);
+      }
+    }
+#if defined(__linux__)
+    // A stream that keeps its capacity allocates only to read MemAvailable,
+    // which happens inside the cell build.
+    CHECK(injected > 0);
+#endif
+    total_injected += injected;
+  }
+  setThreads("");
+  if (total_injected == 0) {
+    SKIP("operator new is not replaced inside librgpot on this platform");
+  }
+}
+
+TEST_CASE("fractional bins kept from a shorter search are not reused for a "
+          "longer one",
+          "[nlist][fractional][cache]") {
+  setThreads("1");
+  const double a = 3.6;
+  const double side = 5 * a;
+  const double box[9] = {side,       0,           0,   0.2 * side, side,
+                         0,          0.1 * side, 0.15 * side, side};
+  const auto first = fcc(5, a);
+  auto second = first;
+  second[0] += 0.3;
+  const std::size_t n = first.size() / 3;
+
+  for (const auto mode : {rgpot::nlist::Mode::Stream, rgpot::nlist::Mode::Stored}) {
+    INFO("mode " << static_cast<int>(mode));
+    rgpot::nlist::Spec short_spec;
+    short_spec.cutoff = 2.6;
+    short_spec.skin = 0.0;
+    short_spec.image = rgpot::nlist::Image::Round;
+    short_spec.mode = mode;
+    rgpot::nlist::Spec long_spec = short_spec;
+    long_spec.cutoff = 5.5;
+
+    rgpot::nlist::Neighbours fresh;
+    fresh.update(first.data(), n, box, long_spec);
+    const auto want = halfPairsWithin(fresh, n, long_spec.cutoff);
+    REQUIRE_FALSE(want.empty());
+
+    rgpot::nlist::Neighbours cells;
+    cells.update(first.data(), n, box, short_spec);
+    cells.update(second.data(), n, box, long_spec);
+    cells.update(first.data(), n, box, long_spec);
+    CHECK_FALSE(cells.reused());
+    const auto got = halfPairsWithin(cells, n, long_spec.cutoff);
+    CHECK(got.size() == want.size());
+    CHECK(samePairs(got, want));
+  }
+  setThreads("");
+}
+
+TEST_CASE("Neighbours copy assignment changes the generation only with the "
+          "state",
+          "[nlist][generation][copy]") {
+  setThreads("1");
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const auto pos = fcc(3, a);
+  const auto other_pos = fcc(2, a);
+  const std::size_t n = pos.size() / 3;
+  const std::size_t other_n = other_pos.size() / 3;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 4.0;
+  spec.skin = 0.5;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stored;
+
+  rgpot::nlist::Neighbours source;
+  source.update(pos.data(), n, box, spec);
+  const auto want = halfPairsWithin(source, n, spec.cutoff);
+  rgpot::nlist::Neighbours target;
+  target.update(other_pos.data(), other_n, box, spec);
+  const auto target_pairs = halfPairsWithin(target, other_n, spec.cutoff);
+  REQUIRE_FALSE(target_pairs.empty());
+
+  std::int64_t injected = 0;
+  for (std::int64_t k = 0;; ++k) {
+    INFO("allocation " << k);
+    const auto before = target.generation();
+    if (!failsAtAllocation(k, [&] { target = source; })) {
+      break;
+    }
+    ++injected;
+    CHECK(target.generation() == before);
+    CHECK(samePairs(halfPairsWithin(target, other_n, spec.cutoff), target_pairs));
+  }
+
+  const auto source_gen = source.generation();
+  const auto assigned = target.generation();
+  CHECK(assigned != source_gen);
+  CHECK(samePairs(halfPairsWithin(target, n, spec.cutoff), want));
+  CHECK(target.slots() == source.slots());
+  CHECK(source.generation() == source_gen);
+  // The copied list is reused like the source's.
+  target.update(pos.data(), n, box, spec);
+  CHECK(target.reused());
+  CHECK(target.generation() == assigned);
+
+  // Self-assignment keeps the list under a new generation.
+  auto &self = target;
+  target = self;
+  CHECK(target.generation() != assigned);
+  CHECK(samePairs(halfPairsWithin(target, n, spec.cutoff), want));
+
+  setThreads("");
+  if (injected == 0) {
+    SKIP("operator new is not replaced inside librgpot on this platform");
+  }
+}
+
+TEST_CASE("a moved-from Neighbours is empty and builds again",
+          "[nlist][generation][move]") {
+  const double a = 3.6;
+  const double side = 3 * a;
+  const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+  const auto pos = fcc(3, a);
+  const std::size_t n = pos.size() / 3;
+  const double cutoff = 4.0;
+
+  for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+    rgpot::nlist::Spec spec;
+    spec.cutoff = cutoff;
+    spec.skin = mode == rgpot::nlist::Mode::Stored ? 0.5 : 0.0;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = mode;
+    INFO("mode " << static_cast<int>(mode));
+
+    rgpot::nlist::Neighbours fresh;
+    fresh.update(pos.data(), n, box, spec);
+    const auto want = halfPairsWithin(fresh, n, cutoff);
+    REQUIRE_FALSE(want.empty());
+
+    auto checkEmptyThenRebuild = [&](rgpot::nlist::Neighbours &from) {
+      CHECK(from.slots() == 0);
+      CHECK(from.offsets().empty());
+      CHECK_FALSE(from.reused());
+      CHECK(from.builds() == 0);
+      CHECK(halfPairsWithin(from, 0, cutoff).empty());
+      from.update(pos.data(), n, box, spec);
+      CHECK_FALSE(from.reused());
+      CHECK(samePairs(halfPairsWithin(from, n, cutoff), want));
+    };
+
+    SECTION("move construction") {
+      rgpot::nlist::Neighbours src;
+      src.update(pos.data(), n, box, spec);
+      rgpot::nlist::Neighbours dst(std::move(src));
+      CHECK(samePairs(halfPairsWithin(dst, n, cutoff), want));
+      checkEmptyThenRebuild(src);
+    }
+
+    SECTION("move assignment") {
+      rgpot::nlist::Neighbours src;
+      src.update(pos.data(), n, box, spec);
+      rgpot::nlist::Neighbours dst;
+      dst = std::move(src);
+      CHECK(samePairs(halfPairsWithin(dst, n, cutoff), want));
+      checkEmptyThenRebuild(src);
+    }
+  }
+}
+
+TEST_CASE("a box too long for an int grid is binned as one cell",
+          "[nlist][cells]") {
+  // 3e9 cells of edge 1 per axis is past the largest int.
+  const double L = 3.0e9;
+  const double box[9] = {L, 0, 0, 0, L, 0, 0, 0, L};
+  const std::vector<double> pos = {0.0, 0.0, 0.0, 0.6, 0.0, 0.0,
+                                   0.0, 0.7, 0.0, L - 0.5, 0.0, 0.0};
+  const std::size_t n = pos.size() / 3;
+  const double cutoff = 1.0;
+
+  for (const bool periodic : {true, false}) {
+    std::vector<HalfPair> want;
+    for (std::size_t i = 0; i < n; ++i) {
+      for (std::size_t j = i + 1; j < n; ++j) {
+        double r2 = 0.0;
+        for (std::size_t k = 0; k < 3; ++k) {
+          double d = pos[3 * i + k] - pos[3 * j + k];
+          if (periodic) {
+            d -= L * std::round(d / L);
+          }
+          r2 += d * d;
+        }
+        if (r2 <= cutoff * cutoff) {
+          want.push_back({static_cast<std::int32_t>(i), static_cast<std::int32_t>(j), r2});
+        }
+      }
+    }
+    REQUIRE(want.size() == (periodic ? 5U : 3U));
+
+    for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Stream}) {
+      rgpot::nlist::Spec spec;
+      spec.cutoff = cutoff;
+      spec.skin = 0.0;
+      spec.image = rgpot::nlist::Image::Round;
+      spec.mode = mode;
+      spec.periodic = {periodic, periodic, periodic};
+      INFO("periodic " << periodic << " mode " << static_cast<int>(mode));
+      rgpot::nlist::Neighbours cells;
+      REQUIRE_NOTHROW(cells.update(pos.data(), n, box, spec));
+      const auto got = halfPairsWithin(cells, n, cutoff);
+      REQUIRE(got.size() == want.size());
+      for (std::size_t p = 0; p < got.size(); ++p) {
+        CHECK(got[p].i == want[p].i);
+        CHECK(got[p].j == want[p].j);
+        CHECK(got[p].r2 == Catch::Approx(want[p].r2).epsilon(1e-12));
+      }
+    }
+  }
+}
+
+namespace rgpot::nlist {
+
+struct NeighboursTestAccess {
+  static std::uint64_t setCounter(std::uint64_t value) noexcept {
+    return Neighbours::exchangeGenerationCounter(value);
+  }
+  static std::uint64_t nextGeneration() {
+    return Neighbours::nextGeneration();
+  }
+};
+
+} // namespace rgpot::nlist
+
+namespace {
+
+class GenerationCounterGuard {
+public:
+  explicit GenerationCounterGuard(std::uint64_t seeded) noexcept
+      : saved_(rgpot::nlist::NeighboursTestAccess::setCounter(seeded)) {}
+  GenerationCounterGuard(const GenerationCounterGuard &) = delete;
+  GenerationCounterGuard &operator=(const GenerationCounterGuard &) = delete;
+  ~GenerationCounterGuard() {
+    (void)rgpot::nlist::NeighboursTestAccess::setCounter(saved_);
+  }
+
+private:
+  std::uint64_t saved_;
+};
+
+} // namespace
+
+TEST_CASE("Neighbours is nothrow default-constructible and refuses generation "
+          "counter wraparound",
+          "[nlist][generation]") {
+  STATIC_REQUIRE(std::is_nothrow_default_constructible_v<rgpot::nlist::Neighbours>);
+  STATIC_REQUIRE(std::is_nothrow_move_constructible_v<rgpot::nlist::Neighbours>);
+  STATIC_REQUIRE(std::is_nothrow_move_assignable_v<rgpot::nlist::Neighbours>);
+
+  constexpr std::uint64_t umax = std::numeric_limits<std::uint64_t>::max();
+  const char *exhausted = "Neighbours: generation counter exhausted";
+
+  SECTION("single-threaded exhaustion never produces 0") {
+    GenerationCounterGuard guard(umax - 2);
+
+    const double a = 3.6;
+    const double side = 3 * a;
+    const double box[9] = {side, 0, 0, 0, side, 0, 0, 0, side};
+    auto pos = fcc(3, a);
+    const std::size_t n = pos.size() / 3;
+    rgpot::nlist::Spec spec;
+    spec.cutoff = 4.0;
+    spec.skin = 0.5;
+    spec.image = rgpot::nlist::Image::Round;
+    spec.mode = rgpot::nlist::Mode::Stored;
+
+    rgpot::nlist::Neighbours first;
+    const auto g1 = first.generation();
+    REQUIRE(g1 == umax - 1);
+    REQUIRE(g1 != 0);
+
+    rgpot::nlist::Neighbours built;
+    REQUIRE_NOTHROW(built.update(pos.data(), n, box, spec));
+    const auto g2 = built.generation();
+    REQUIRE(g2 == umax);
+    REQUIRE(g2 != 0);
+
+    // Within-skin reuse keeps the already-assigned umax generation without
+    // advancing the exhausted counter.
+    for (double &x : pos) {
+      x += 0.05;
+    }
+    REQUIRE_NOTHROW(built.update(pos.data(), n, box, spec));
+    REQUIRE(built.reused());
+    REQUIRE(built.generation() == umax);
+
+    // Default construction remains noexcept even when the counter is at umax.
+    rgpot::nlist::Neighbours at_limit;
+    CHECK_FALSE(at_limit.hasGeneration());
+    REQUIRE_THROWS_AS(at_limit.generation(), std::overflow_error);
+    REQUIRE_THROWS_WITH(at_limit.generation(), exhausted);
+    CHECK_FALSE(at_limit.hasGeneration());
+
+    REQUIRE_THROWS_AS(rgpot::nlist::NeighboursTestAccess::nextGeneration(),
+                      std::overflow_error);
+    REQUIRE_THROWS_WITH(rgpot::nlist::NeighboursTestAccess::nextGeneration(),
+                        exhausted);
+
+    // Copy construction and copy assignment report exhaustion cleanly.
+    REQUIRE_THROWS_AS(rgpot::nlist::Neighbours(first), std::overflow_error);
+    REQUIRE_THROWS_AS(at_limit = first, std::overflow_error);
+
+    // A rebuild at exhaustion leaves the prior list intact and refuses to
+    // fall back to 0; a fresh instance fails without acquiring a generation.
+    const auto built_slots = built.slots();
+    pos[0] += 2.0;
+    REQUIRE_THROWS_AS(built.update(pos.data(), n, box, spec),
+                      std::overflow_error);
+    CHECK(built.slots() == built_slots);
+    CHECK(built.hasGeneration());
+    CHECK(built.generation() == umax);
+
+    rgpot::nlist::Neighbours unbuilt;
+    REQUIRE_THROWS_AS(unbuilt.update(pos.data(), n, box, spec),
+                      std::overflow_error);
+    CHECK(unbuilt.slots() == 0);
+    CHECK_FALSE(unbuilt.hasGeneration());
+    REQUIRE_THROWS_AS(unbuilt.generation(), std::overflow_error);
+
+    // Move construction remains noexcept at exhaustion; subsequent generation
+    // queries on both objects report exhaustion rather than returning 0.
+    rgpot::nlist::Neighbours moved(std::move(first));
+    CHECK_FALSE(moved.hasGeneration());
+    CHECK_FALSE(first.hasGeneration());
+    REQUIRE_THROWS_AS(moved.generation(), std::overflow_error);
+    REQUIRE_THROWS_AS(first.generation(), std::overflow_error);
+  }
+
+  SECTION("concurrent allocation across exhaustion is race-free and never "
+          "produces 0") {
+    constexpr std::size_t kThreads = 8;
+    constexpr std::size_t kPerThread = 32;
+    constexpr std::uint64_t kRemaining = 64;
+    static_assert(kThreads * kPerThread > kRemaining);
+
+    GenerationCounterGuard guard(umax - kRemaining);
+
+    std::atomic<std::size_t> ready{0};
+    std::atomic<bool> start{false};
+    std::atomic<std::size_t> overflows{0};
+    std::atomic<std::size_t> unexpected{0};
+    std::atomic<bool> saw_zero{false};
+    std::vector<std::vector<std::uint64_t>> thread_ids(kThreads);
+    std::vector<std::thread> workers;
+    workers.reserve(kThreads);
+
+    for (std::size_t t = 0; t < kThreads; ++t) {
+      workers.emplace_back([&, t] {
+        thread_ids[t].reserve(kPerThread);
+        ready.fetch_add(1, std::memory_order_acq_rel);
+        while (!start.load(std::memory_order_acquire)) {
+          std::this_thread::yield();
+        }
+        for (std::size_t k = 0; k < kPerThread; ++k) {
+          rgpot::nlist::Neighbours cell;
+          try {
+            const std::uint64_t g = cell.generation();
+            if (g == 0) {
+              saw_zero.store(true, std::memory_order_relaxed);
+            }
+            thread_ids[t].push_back(g);
+          } catch (const std::overflow_error &) {
+            overflows.fetch_add(1, std::memory_order_relaxed);
+          } catch (...) {
+            unexpected.fetch_add(1, std::memory_order_relaxed);
+          }
+        }
+      });
+    }
+
+    while (ready.load(std::memory_order_acquire) < kThreads) {
+      std::this_thread::yield();
+    }
+    start.store(true, std::memory_order_release);
+    for (auto &w : workers) {
+      w.join();
+    }
+
+    CHECK_FALSE(saw_zero.load());
+    CHECK(unexpected.load() == 0);
+    CHECK(overflows.load() == kThreads * kPerThread - kRemaining);
+
+    std::vector<std::uint64_t> all;
+    for (const auto &vec : thread_ids) {
+      all.insert(all.end(), vec.begin(), vec.end());
+    }
+    REQUIRE(all.size() == kRemaining);
+    std::sort(all.begin(), all.end());
+    for (std::uint64_t i = 0; i < kRemaining; ++i) {
+      CHECK(all[i] == (umax - kRemaining + 1 + i));
+    }
+  }
+
+  SECTION("concurrent lazy generation() on one const Neighbours assigns once") {
+    constexpr std::size_t kThreads = 8;
+    const rgpot::nlist::Neighbours shared;
+    std::atomic<std::size_t> ready{0};
+    std::atomic<bool> start{false};
+    std::vector<std::uint64_t> observed(kThreads, 0);
+    std::vector<std::thread> workers;
+    workers.reserve(kThreads);
+
+    for (std::size_t t = 0; t < kThreads; ++t) {
+      workers.emplace_back([&, t] {
+        ready.fetch_add(1, std::memory_order_acq_rel);
+        while (!start.load(std::memory_order_acquire)) {
+          std::this_thread::yield();
+        }
+        observed[t] = shared.generation();
+      });
+    }
+
+    while (ready.load(std::memory_order_acquire) < kThreads) {
+      std::this_thread::yield();
+    }
+    start.store(true, std::memory_order_release);
+    for (auto &w : workers) {
+      w.join();
+    }
+
+    REQUIRE(observed[0] > 0);
+    for (std::size_t t = 1; t < kThreads; ++t) {
+      CHECK(observed[t] == observed[0]);
+    }
+  }
 }

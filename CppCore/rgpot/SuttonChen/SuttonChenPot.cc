@@ -102,8 +102,9 @@ struct PairForceData {
 };
 
 struct SuttonChenWorkspace {
-  const rgpot::nlist::Neighbours *owner = nullptr;
-  std::uint64_t build_id = 0;
+  // Neighbours::generation(), not the address of the list. A new
+  // potential constructed at a recycled address has a new generation.
+  std::uint64_t generation = 0;
   std::uint64_t index_builds = 0;
   std::size_t index_atoms = 0;
   std::size_t slots = 0;
@@ -126,16 +127,13 @@ struct SuttonChenWorkspace {
   std::vector<std::size_t> p0_splits;
   std::vector<std::size_t> p1_splits;
 
-  const rgpot::nlist::Neighbours *split_owner = nullptr;
-  std::uint64_t split_build_id = 0;
+  std::uint64_t split_generation = 0;
   std::size_t split_atoms = 0;
   int split_slices = 0;
   std::size_t split_total_up = 0;
   std::size_t split_total_inc = 0;
 
-  const rgpot::nlist::Neighbours *scratch_owner = nullptr;
-  std::uint64_t scratch_build_id = 0;
-  std::size_t scratch_slots = 0;
+  std::uint64_t scratch_generation = 0;
   std::uint64_t scratch_avail = 0;
 
   void releaseScratch() noexcept {
@@ -151,8 +149,7 @@ struct SuttonChenWorkspace {
   }
 
   void releaseAll() noexcept {
-    owner = nullptr;
-    build_id = 0;
+    generation = 0;
     index_builds = 0;
     index_atoms = 0;
     slots = 0;
@@ -164,15 +161,12 @@ struct SuttonChenWorkspace {
     releaseScratch();
     std::vector<std::size_t>().swap(p0_splits);
     std::vector<std::size_t>().swap(p1_splits);
-    split_owner = nullptr;
-    split_build_id = 0;
+    split_generation = 0;
     split_atoms = 0;
     split_slices = 0;
     split_total_up = 0;
     split_total_inc = 0;
-    scratch_owner = nullptr;
-    scratch_build_id = 0;
-    scratch_slots = 0;
+    scratch_generation = 0;
     scratch_avail = 0;
   }
 
@@ -273,14 +267,12 @@ void buildStoredHalfIndex(SuttonChenWorkspace &ws, const rgpot::nlist::Neighbour
     }
   }
 
-  ws.owner = &cells;
-  ws.build_id = cells.builds();
+  ws.generation = cells.generation();
   ++ws.index_builds;
   ws.index_atoms = n;
   ws.slots = cells.slots();
   std::vector<std::int32_t>().swap(ws.lo_count);
-  ws.split_owner = nullptr;
-  ws.split_build_id = 0;
+  ws.split_generation = 0;
   ws.split_atoms = 0;
   ws.split_slices = 0;
   ws.split_total_up = 0;
@@ -321,11 +313,8 @@ void partitionAtomsByWork(std::size_t n, int slices, std::int64_t total_work, Wo
 
 std::uint64_t cachedAvailableBytes(SuttonChenWorkspace &ws,
                                    const rgpot::nlist::Neighbours &cells) {
-  if (ws.scratch_owner != &cells || ws.scratch_build_id != cells.builds() ||
-      ws.scratch_slots != cells.slots()) {
-    ws.scratch_owner = &cells;
-    ws.scratch_build_id = cells.builds();
-    ws.scratch_slots = cells.slots();
+  if (ws.scratch_generation != cells.generation()) {
+    ws.scratch_generation = cells.generation();
     ws.scratch_avail = rgpot::nlist::availableBytes();
   }
   return ws.scratch_avail;
@@ -458,11 +447,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
       sparse_stored = true;
     } else if (est_half_pairs <= term_limit_ &&
                pairScratchFits(est_half_pairs, atoms, scratch_avail)) {
-      const bool index_valid = neighbours_.reused() && ws.owner == &neighbours_ &&
-                               ws.build_id == neighbours_.builds() &&
-                               ws.index_atoms == n_size &&
-                               ws.slots == neighbours_.slots();
-      if (!index_valid) {
+      if (ws.generation != neighbours_.generation()) {
         buildStoredHalfIndex(ws, neighbours_, n_size);
       }
       const auto total_up = static_cast<std::size_t>(ws.up_off[n_size]);
@@ -488,9 +473,8 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
 
         const std::int64_t total_inc =
             static_cast<std::int64_t>(ws.lo_off[n_size]) + static_cast<std::int64_t>(total_up);
-        if (ws.split_owner != &neighbours_ || ws.split_build_id != ws.build_id ||
-            ws.split_atoms != n_size || ws.split_slices != nt ||
-            ws.split_total_up != total_up ||
+        if (ws.split_generation != ws.generation || ws.split_atoms != n_size ||
+            ws.split_slices != nt || ws.split_total_up != total_up ||
             ws.split_total_inc != static_cast<std::size_t>(total_inc)) {
           partitionAtomsByWork(
               n_size, nt, static_cast<std::int64_t>(total_up),
@@ -503,8 +487,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
                        static_cast<std::int64_t>(ws.up_off[idx]);
               },
               ws.p1_splits);
-          ws.split_owner = &neighbours_;
-          ws.split_build_id = ws.build_id;
+          ws.split_generation = ws.generation;
           ws.split_atoms = n_size;
           ws.split_slices = nt;
           ws.split_total_up = total_up;
@@ -1041,8 +1024,7 @@ SuttonChenWorkspaceSnapshot suttonChenWorkspaceSnapshot() {
           ? static_cast<std::size_t>(ws.up_off[ws.index_atoms])
           : 0;
   return SuttonChenWorkspaceSnapshot{
-      .owner = ws.owner,
-      .build_id = ws.build_id,
+      .generation = ws.generation,
       .index_builds = ws.index_builds,
       .atoms = ws.index_atoms,
       .total_up = total_up,

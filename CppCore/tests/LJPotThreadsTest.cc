@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <memory>
 #include <new>
 #include <thread>
@@ -588,6 +589,57 @@ TEST_CASE("LJPot per-thread scratch isolates instances and releases on destroy",
   REQUIRE(second->retainedPairs() == 0);
   second->forceImpl(in_nudged, &out);
   REQUIRE_FALSE(second->listReused());
+  second->~LJPot();
+}
+
+TEST_CASE("an LJPot built where another died finds none of the lists that one "
+          "kept on other threads",
+          "[lj][threads][skin]") {
+  const double a_lj = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
+  const Frame frame = makeFccFrame(2, 2, 2, a_lj, false, 0.25);
+  const rgpot::ForceInput in{
+      .nAtoms = frame.z.size(),
+      .pos = frame.pos.data(),
+      .atmnrs = frame.z.data(),
+      .box = frame.box.data(),
+  };
+  const rgpot::LJConfig cfg{.u0 = 1.0, .cutoff = 3.0, .psi = 1.0};
+
+  // The destructor runs on this thread and releases only this thread's
+  // slots, so the worker still holds the list of the first object when
+  // the second is built at its address.
+  alignas(rgpot::LJPot) unsigned char storage[sizeof(rgpot::LJPot)];
+  auto *first = new (storage) rgpot::LJPot(cfg);
+  first->setNeighbourMode(rgpot::nlist::Mode::Stored);
+
+  std::promise<void> first_done;
+  std::promise<rgpot::LJPot *> second_built;
+  auto second_future = second_built.get_future();
+  std::size_t first_pairs = 0;
+  std::size_t inherited_pairs = 0;
+  bool reused_on_first_call = true;
+  std::thread worker([&] {
+    std::vector<double> f(3 * frame.z.size(), 0.0);
+    rgpot::ForceOut out{.F = f.data(), .energy = 0.0, .variance = 0.0, .stress = {},
+                        .has_stress = 0};
+    first->forceImpl(in, &out);
+    first_pairs = first->retainedPairs();
+    first_done.set_value();
+    rgpot::LJPot *second = second_future.get();
+    inherited_pairs = second->retainedPairs();
+    second->forceImpl(in, &out);
+    reused_on_first_call = second->listReused();
+  });
+  first_done.get_future().wait();
+  first->~LJPot();
+  auto *second = new (storage) rgpot::LJPot(cfg);
+  second->setNeighbourMode(rgpot::nlist::Mode::Stored);
+  second_built.set_value(second);
+  worker.join();
+
+  REQUIRE(first_pairs > 0);
+  CHECK(inherited_pairs == 0);
+  CHECK_FALSE(reused_on_first_call);
   second->~LJPot();
 }
 
