@@ -1,6 +1,6 @@
 #pragma once
 // MIT License
-// Copyright 2026 Rohit Goswami
+// Copyright 2023--present rgpot developers
 
 // The harmonic chain of md_session_analytic.hpp as a serialized OpenMM System.
 
