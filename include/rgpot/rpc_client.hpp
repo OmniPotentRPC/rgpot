@@ -32,8 +32,11 @@
  * @ingroup rgpot_cpp
  */
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "rgpot.h"
 #include "errors.hpp"
@@ -42,6 +45,32 @@
 #ifdef RGPOT_HAS_RPC
 
 namespace rgpot {
+
+/**
+ * @brief Neighbour query sent by @c RpcClient::neighbours().
+ */
+struct RpcNeighborQuery {
+  double cutoff = 0.0;
+  double skin = 0.0;
+  uint8_t format = 0;
+  uint8_t cut = 0;
+  std::array<bool, 3> periodic{{true, true, true}};
+  bool shifts = true;
+  bool vectors = true;
+  bool distances = true;
+};
+
+/**
+ * @brief Neighbour list returned by @c RpcClient::neighbours().
+ */
+struct RpcNeighborList {
+  std::vector<int32_t> first;
+  std::vector<int32_t> second;
+  std::vector<int32_t> shift;
+  std::vector<double> vector;
+  std::vector<double> distance;
+  std::vector<uint8_t> mask;
+};
 
 /**
  * @class RpcClient
@@ -134,6 +163,60 @@ public:
         rgpot_rpc_calculate(handle_, &input.c_struct(), &result.c_struct());
     detail::check_status(status);
     return result;
+  }
+
+  /**
+   * @brief Request the remote potential's neighbour list.
+   *
+   * @param input The atomic configuration to query.
+   * @param query Cutoff, skin, shell/format, cut mode and requested columns.
+   * @return A @c RpcNeighborList holding the returned arrays.
+   * @throws rgpot::Error on RPC transport or server-side failure.
+   */
+  RpcNeighborList neighbours(const InputSpec &input,
+                             const RpcNeighborQuery &query) {
+    rgpot_rpc_neighbors_request_t req{};
+    req.cutoff = query.cutoff;
+    req.skin = query.skin;
+    req.format = query.format;
+    req.cut = query.cut;
+    req.periodic[0] = query.periodic[0] ? 1 : 0;
+    req.periodic[1] = query.periodic[1] ? 1 : 0;
+    req.periodic[2] = query.periodic[2] ? 1 : 0;
+    req.shifts = query.shifts ? 1 : 0;
+    req.vectors = query.vectors ? 1 : 0;
+    req.distances = query.distances ? 1 : 0;
+    size_t count = 0;
+    size_t needed = 0;
+    detail::check_status(rgpot_rpc_neighbours(
+        handle_, &input.c_struct(), &req, nullptr, &count, &needed));
+    RpcNeighborList list;
+    if (needed == 0) {
+      return list;
+    }
+    list.first.resize(needed);
+    list.second.resize(needed);
+    list.mask.resize(needed);
+    if (query.shifts) {
+      list.shift.resize(needed * 3);
+    }
+    if (query.vectors) {
+      list.vector.resize(needed * 3);
+    }
+    if (query.distances) {
+      list.distance.resize(needed);
+    }
+    rgpot_rpc_neighbors_out_t out{};
+    out.first = list.first.data();
+    out.second = list.second.data();
+    out.shift = query.shifts ? list.shift.data() : nullptr;
+    out.vector = query.vectors ? list.vector.data() : nullptr;
+    out.distance = query.distances ? list.distance.data() : nullptr;
+    out.mask = list.mask.data();
+    out.cap = needed;
+    detail::check_status(rgpot_rpc_neighbours(
+        handle_, &input.c_struct(), &req, &out, &count, &needed));
+    return list;
   }
 
 private:
