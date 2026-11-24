@@ -86,6 +86,11 @@ public:
   /**
    * Advance projected BAOAB dynamics with explicit controls and 3N plane/wall
    * geometry in OpenMM native units. Returns the number of wall reflections.
+   *
+   * seed names the random stream. A call with the seed of the previous call
+   * continues that stream, so a run split in chunks equals one long run; a new
+   * seed starts a new stream. Setting positions or velocities ends the stream,
+   * so the same seed after a new state replays.
    */
   uint64_t stepLangevin(
       double kT, double friction, double time_step,
