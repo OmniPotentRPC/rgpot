@@ -968,7 +968,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 'test_openmm_abi',
                 files('openmm/test_openmm_abi.cpp'),
                 link_with: rgpot,
-                dependencies: [openmm_lib],
+                dependencies: [openmm_lib, dl_dep],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args,
                 build_rpath: openmm_libdir,
