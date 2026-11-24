@@ -6,8 +6,10 @@
 
 rgpot carries compatibility numbers that are separate from its package version.
 This page explains what each one covers and why it exists.
-The functions and macros are listed in the [[file:../reference/c_abi.org][C ABI reference]].
-The steps to change each number are in [[file:../contributing/developer/abi-bump.org][Bump the ABI numbers]].
+The functions and macros are listed in the
+[[file:../reference/c_abi.org][C ABI reference]].
+The steps to change each number are in
+[[file:../contributing/developer/abi-bump.org][Bump the ABI numbers]].
 
 ** The C ABI stamp
 
