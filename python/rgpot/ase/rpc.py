@@ -87,18 +87,6 @@ def _schema_path() -> Path:
     raise FileNotFoundError("Potentials.capnp is not installed with rgpot.ase")
 
 
-_LOADED_SCHEMA: Any = None
-
-
-def _load_schema() -> Any:
-    global _LOADED_SCHEMA
-    if _LOADED_SCHEMA is None:
-        capnp = _capnp()
-        parser = capnp.SchemaParser()
-        _LOADED_SCHEMA = parser.load(str(_schema_path()))
-    return _LOADED_SCHEMA
-
-
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("localhost", 0))
@@ -145,7 +133,7 @@ class RgpotRpcCalculator(Calculator):
         self._server_protocol_minor: int | None = None
         self._claim = ConnectionClaim("RgpotRpcCalculator")
 
-        self._schema = _load_schema()
+        self._schema = _capnp().load(str(_schema_path()))
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
         self._kj = _capnp().kj_loop()
