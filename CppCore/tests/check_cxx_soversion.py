@@ -432,27 +432,36 @@ def check_generation_symbol(lib: Path, engines: list[Path]) -> None:
     header = NEIGHBOURS.read_text()
     if re.search(r"nextGeneration\(\)\s*(?:noexcept\s*)?\{", header):
         fail("Neighbours.hpp must not define nextGeneration")
-    if not sys.platform.startswith("linux") or lib.suffix in {".a", ".lib"}:
+    if not sys.platform.startswith("linux"):
         return
-    definitions = defined_generation_symbols(lib)
-    if len(definitions) != 3:
-        fail(
-            "librgpot must export exactly three Neighbours generation symbols, "
-            f"found {len(definitions)}"
-        )
-    print("three exported Neighbours generation symbols")
+    # A static umbrella keeps the generation counter in rgpot_nlist, so
+    # the three-export check applies only to the shared library. Plugins
+    # are still checked: a static link used to copy that counter into
+    # librgpot_cuh2 and the composite engine.
+    if lib.suffix not in {".a", ".lib"}:
+        definitions = defined_generation_symbols(lib)
+        if len(definitions) != 3:
+            fail(
+                "librgpot must export exactly three Neighbours generation symbols, "
+                f"found {len(definitions)}"
+            )
+        print("three exported Neighbours generation symbols")
+    checked = 0
     for engine in engines:
         if not engine.is_file():
             fail(f"engine library not found: {engine}")
+        if engine.suffix in {".a", ".lib"}:
+            continue
         engine_defs = defined_generation_symbols(engine)
         if engine_defs:
             fail(
                 f"{engine.name} must not define Neighbours generation symbols, "
                 f"found {len(engine_defs)}"
             )
-    if engines:
+        checked += 1
+    if checked:
         print(
-            f"zero defined Neighbours generation symbols in {len(engines)} engines"
+            f"zero defined Neighbours generation symbols in {checked} engines"
         )
 
 

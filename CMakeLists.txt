@@ -506,6 +506,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
                                         VERSION ${PROJECT_VERSION}
                                         SOVERSION ${RGPOT_CXX_SOVERSION})
   target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels rgpot_nlist Threads::Threads)
+  if(TARGET rgpot_cuh2)
+    # A static umbrella would otherwise pull rgpot_nlist into this plugin
+    # and define a second Neighbours generation counter. Link the built
+    # file: a shared umbrella records a dependency on librgpot, and a
+    # static umbrella leaves the neighbour symbols undefined so they bind
+    # to the process that dlopens the plugin.
+    add_dependencies(rgpot_cuh2 rgpot)
+    target_link_libraries(rgpot_cuh2 PRIVATE "$<TARGET_FILE:rgpot>")
+  endif()
   if(RGPOT_WITH_CBE)
     target_include_directories(rgpot PRIVATE ${CBE_HEADER_DIR})
     target_link_libraries(rgpot PRIVATE ${CBE_LIBRARY})

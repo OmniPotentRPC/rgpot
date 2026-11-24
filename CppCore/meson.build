@@ -786,12 +786,7 @@ if not get_option('with_rpc_client_only')
             'composite_engine',
             [_engine_common, files('rgpot/engine/CompositeEngine.cc')],
             dependencies: _engine_deps + [cpmd_dl_dep],
-            link_with: [
-                rgpot_core,
-                rgpot_halfshell,
-                rgpot_minimage,
-                rgpot_exact_fma,
-            ],
+            link_with: [rgpot],
             link_whole: _composite_whole,
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -2821,14 +2816,20 @@ if get_option('with_tests')
             if _rpc_stack and host_system != 'windows'
                 _soversion_args += [
                     classical_engine.full_path(),
+                    composite_engine.full_path(),
                     mopac_engine.full_path(),
                     nwchem_engine.full_path(),
                 ]
                 _soversion_depends += [
                     classical_engine,
+                    composite_engine,
                     mopac_engine,
                     nwchem_engine,
                 ]
+                if has_skala
+                    _soversion_args += [skala_engine.full_path()]
+                    _soversion_depends += [skala_engine]
+                endif
             endif
             test(
                 'CxxSoversion',

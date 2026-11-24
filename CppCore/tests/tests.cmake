@@ -424,11 +424,16 @@ target_include_directories(print_cxx_layout_stamp PRIVATE
   $<TARGET_PROPERTY:rgpot,INTERFACE_INCLUDE_DIRECTORIES>)
 target_compile_definitions(print_cxx_layout_stamp PRIVATE
   $<TARGET_PROPERTY:rgpot,INTERFACE_COMPILE_DEFINITIONS>)
+set(_rgpot_soversion_plugins)
+if(TARGET rgpot_cuh2)
+  list(APPEND _rgpot_soversion_plugins $<TARGET_FILE:rgpot_cuh2>)
+endif()
 rgpot_add_test(CxxSoversion
   COMMAND Python3::Interpreter
           "${RGPOT_TEST_ROOT}/CppCore/tests/check_cxx_soversion.py"
           ${RGPOT_CXX_SOVERSION} $<TARGET_FILE:rgpot>
-          $<TARGET_FILE:print_cxx_layout_stamp>)
+          $<TARGET_FILE:print_cxx_layout_stamp>
+          ${_rgpot_soversion_plugins})
 
 rgpot_test_enabled(abi_symbols _on)
 if(_on)
