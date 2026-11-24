@@ -31,6 +31,7 @@ program test_tersoff
    !! taper window, while the second shell stays beyond the cutoff.
    real(wp), parameter :: taper_lattice = 6.40_wp
    real(wp), parameter :: tol_force = 1.0e-6_wp
+   real(wp), parameter :: tol_stress = 5.0e-10_wp
    real(wp), parameter :: tol_sum = 1.0e-9_wp
    real(wp), parameter :: tol_energy = 1.0e-9_wp
    !> Balanced against both cells: the step is large enough that the
@@ -38,12 +39,16 @@ program test_tersoff
    !! order 1e7 to leave one of order 1e3, stays well below the tolerance,
    !! and small enough that the taper's jump in curvature does too.
    real(wp), parameter :: delta = 1.0e-5_wp
+   real(wp), parameter :: strain_step = 2.0e-4_wp
 
    type(tersoff_params_t) :: par
    type(neighbor_table_t) :: table
-   real(wp) :: cell(3, 3), energy, shifted_energy
+   real(wp) :: cell(3, 3), sheared_cell(3, 3), energy, shifted_energy
+   real(wp) :: strain(6), e_with_strain
    real(wp), allocatable :: positions(:, :), forces(:, :), moved(:, :)
+   real(wp), allocatable :: forces_with_strain(:, :)
    real(wp) :: net(3), worst_inner, worst_taper
+   real(wp) :: worst_stress_inner, worst_stress_taper
    integer :: status, in_window
    character(len=:), allocatable :: errmsg
    logical :: failed
@@ -51,7 +56,7 @@ program test_tersoff
    failed = .false.
 
    call diamond_lattice(n_side, lattice, positions, cell)
-   allocate (forces(3, natoms), moved(3, natoms))
+   allocate (forces(3, natoms), moved(3, natoms), forces_with_strain(3, natoms))
 
    call tersoff_energy_forces(positions, cell, par, table, energy, forces, &
                               status, errmsg)
@@ -93,6 +98,28 @@ program test_tersoff
    call require(worst_inner < tol_force, &
                 "forces disagree with finite differences, inner cell", failed)
 
+   sheared_cell = cell
+   sheared_cell(1, 2) = 0.04_wp*cell(2, 2)
+   sheared_cell(2, 3) = -0.03_wp*cell(3, 3)
+   sheared_cell(1, 3) = 0.02_wp*cell(3, 3)
+   call tersoff_energy_forces(positions, sheared_cell, par, table, energy, &
+                              forces, status, errmsg)
+   call require(status == 0, "sheared inner evaluation failed", failed)
+   call tersoff_energy_forces(positions, sheared_cell, par, table, &
+                              e_with_strain, forces_with_strain, status, &
+                              errmsg, strain)
+   call require(status == 0, "sheared inner strain evaluation failed", failed)
+   call require(abs(e_with_strain - energy) < 1.0e-14_wp, &
+                "strain call changed energy", failed)
+   call require(maxval(abs(forces_with_strain - forces)) < 1.0e-14_wp, &
+                "strain call changed forces", failed)
+   call strain_differences(par, table, positions, sheared_cell, &
+                           worst_stress_inner, status)
+   call require(status == 0, "strain differences failed on the inner cell", &
+                failed)
+   call require(worst_stress_inner < tol_stress, &
+                "analytic stress disagrees with strain FD, inner cell", failed)
+
    ! Expanded lattice: bonds sit on the cutoff shoulder.
    call diamond_lattice(n_side, taper_lattice, positions, cell)
    call jitter(positions, 0.10_wp)
@@ -113,15 +140,31 @@ program test_tersoff
    call require(worst_taper < tol_force, &
                 "forces disagree with finite differences, taper cell", failed)
 
+   call diamond_lattice(n_side, 6.60_wp, positions, cell)
+   call jitter(positions, 0.03_wp)
+   sheared_cell = cell
+   sheared_cell(1, 2) = 0.02_wp*cell(2, 2)
+   sheared_cell(2, 3) = -0.015_wp*cell(3, 3)
+   call require(count_in_shell(positions, cell, par%r, par%s) > 0, &
+                "no bond lies inside the taper strain cell", failed)
+   call strain_differences(par, table, positions, sheared_cell, &
+                           worst_stress_taper, status)
+   call require(status == 0, "strain differences failed on the taper cell", &
+                failed)
+   call require(worst_stress_taper < tol_stress, &
+                "analytic stress disagrees with strain FD, taper cell", failed)
+
    call table%release()
-   deallocate (positions, forces, moved)
+   deallocate (positions, forces, moved, forces_with_strain)
    if (allocated(errmsg)) deallocate (errmsg)
 
    if (failed) then
       error stop "test_tersoff: failures above"
    end if
    print *, "test_tersoff: ok, worst force deviation ", &
-      max(worst_inner, worst_taper), " over ", in_window, " tapered bonds"
+      max(worst_inner, worst_taper), " worst stress deviation ", &
+      max(worst_stress_inner, worst_stress_taper), " over ", in_window, &
+      " tapered bonds"
 
 contains
 
@@ -250,6 +293,105 @@ contains
          worst = max(worst, abs(numeric - analytic(comp, atom)))
       end do
    end subroutine finite_differences
+
+   !> Volume of `box`, whose columns are the lattice vectors.
+   function cell_volume(box) result(vol)
+      real(wp), intent(in) :: box(3, 3)
+      real(wp) :: vol
+
+      real(wp) :: det
+
+      det = box(1, 1)*(box(2, 2)*box(3, 3) - box(3, 2)*box(2, 3)) &
+            - box(2, 1)*(box(1, 2)*box(3, 3) - box(3, 2)*box(1, 3)) &
+            + box(3, 1)*(box(1, 2)*box(2, 3) - box(2, 2)*box(1, 3))
+      vol = abs(det)
+   end function cell_volume
+
+   !> Apply a small symmetric strain of amplitude `eps` along Voigt component
+   !! `voigt` (1=xx, 2=yy, 3=zz, 4=yz, 5=xz, 6=xy) to both `pos` and `box`.
+   subroutine apply_symmetric_strain(pos, box, voigt, eps, pos_out, box_out)
+      real(wp), intent(in) :: pos(:, :)
+      real(wp), intent(in) :: box(3, 3)
+      integer, intent(in) :: voigt
+      real(wp), intent(in) :: eps
+      real(wp), intent(out) :: pos_out(:, :)
+      real(wp), intent(out) :: box_out(3, 3)
+
+      integer, parameter :: idx_a(6) = [1, 2, 3, 2, 1, 1]
+      integer, parameter :: idx_b(6) = [1, 2, 3, 3, 3, 2]
+      integer :: a, b
+      real(wp) :: s
+
+      pos_out = pos
+      box_out = box
+      a = idx_a(voigt)
+      b = idx_b(voigt)
+      if (a == b) then
+         pos_out(a, :) = pos(a, :) + eps*pos(a, :)
+         box_out(a, :) = box(a, :) + eps*box(a, :)
+      else
+         s = 0.5_wp*eps
+         pos_out(a, :) = pos(a, :) + s*pos(b, :)
+         pos_out(b, :) = pos(b, :) + s*pos(a, :)
+         box_out(a, :) = box(a, :) + s*box(b, :)
+         box_out(b, :) = box(b, :) + s*box(a, :)
+      end if
+   end subroutine apply_symmetric_strain
+
+   !> Largest gap between the analytic stress (`strain / volume`) and a
+   !! fourth-order central difference with respect to symmetric strains.
+   subroutine strain_differences(par, table, pos, box, worst, status)
+      type(tersoff_params_t), intent(in) :: par
+      type(neighbor_table_t), intent(inout) :: table
+      real(wp), intent(in), contiguous :: pos(:, :)
+      real(wp), intent(in) :: box(3, 3)
+      real(wp), intent(out) :: worst
+      integer, intent(out) :: status
+
+      real(wp), allocatable :: strained(:, :), scratch(:, :)
+      real(wp) :: box_s(3, 3), e_ref, strain(6), vol
+      real(wp) :: ep1, em1, ep2, em2, fd_stress
+      character(len=:), allocatable :: errmsg
+      integer :: v, n
+
+      n = size(pos, 2)
+      allocate (strained(3, n), scratch(3, n))
+      vol = cell_volume(box)
+
+      worst = 0.0_wp
+      call tersoff_energy_forces(pos, box, par, table, e_ref, scratch, &
+                                 status, errmsg, strain)
+      if (status /= 0) return
+
+      do v = 1, 6
+         call apply_symmetric_strain(pos, box, v, strain_step, strained, box_s)
+         call tersoff_energy_forces(strained, box_s, par, table, ep1, &
+                                    scratch, status, errmsg)
+         if (status /= 0) return
+
+         call apply_symmetric_strain(pos, box, v, -strain_step, strained, &
+                                     box_s)
+         call tersoff_energy_forces(strained, box_s, par, table, em1, &
+                                    scratch, status, errmsg)
+         if (status /= 0) return
+
+         call apply_symmetric_strain(pos, box, v, 2.0_wp*strain_step, &
+                                     strained, box_s)
+         call tersoff_energy_forces(strained, box_s, par, table, ep2, &
+                                    scratch, status, errmsg)
+         if (status /= 0) return
+
+         call apply_symmetric_strain(pos, box, v, -2.0_wp*strain_step, &
+                                     strained, box_s)
+         call tersoff_energy_forces(strained, box_s, par, table, em2, &
+                                    scratch, status, errmsg)
+         if (status /= 0) return
+
+         fd_stress = (8.0_wp*(ep1 - em1) - (ep2 - em2)) &
+                     /(12.0_wp*strain_step*vol)
+         worst = max(worst, abs(fd_stress - strain(v)/vol))
+      end do
+   end subroutine strain_differences
 
    subroutine require(condition, what, failed_flag)
       logical, intent(in) :: condition

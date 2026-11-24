@@ -566,6 +566,132 @@ TEST_CASE("Tersoff no-box zero-atom call keeps has_stress clear",
                       ContainsSubstring("required neighbour pointer is null"));
 }
 
+TEST_CASE("Tersoff negative-determinant box matches right-handed mirror",
+          "[fortran][tersoff][stress]") {
+  rgpot::fortranpots::TersoffPot pot;
+  const double a = 5.432;
+  std::vector<double> diamond;
+  rgpot::test_fixtures::appendDiamond(diamond, 2, a);
+  std::mt19937_64 gen(20261124);
+  for (double &x : diamond) {
+    x += 0.08 * (static_cast<double>(gen() >> 11) * 0x1.0p-53 - 0.5);
+  }
+  const std::array<double, 9> box_rh{
+      2 * a, 0, 0, 0.06 * a, 2 * a, 0, -0.03 * a, 0.04 * a, 2 * a};
+
+  auto checkMirror = [&](const std::vector<int> &types) {
+    const TersoffStress rh = tersoffStress(pot, diamond, types, box_rh);
+
+    // Negating one lattice vector flips det(box) < 0 without changing the
+    // Bravais lattice or atomic positions.
+    std::array<double, 9> box_flip_a = box_rh;
+    box_flip_a[0] = -box_flip_a[0];
+    box_flip_a[1] = -box_flip_a[1];
+    box_flip_a[2] = -box_flip_a[2];
+    const TersoffStress lh_vec = tersoffStress(pot, diamond, types, box_flip_a);
+    REQUIRE_THAT(lh_vec.energy, WithinAbs(rh.energy, 1e-12));
+    for (std::size_t i = 0; i < rh.force.size(); ++i) {
+      REQUIRE_THAT(lh_vec.force[i], WithinAbs(rh.force[i], 1e-12));
+    }
+    for (int k = 0; k < 9; ++k) {
+      REQUIRE_THAT(lh_vec.stress[k], WithinAbs(rh.stress[k], 1e-12));
+    }
+
+    // Spatial inversion (pos, box) -> (-pos, -box) has det < 0 and keeps
+    // energy and the entire stress tensor invariant.
+    std::vector<double> pos_inv(diamond.size());
+    for (std::size_t i = 0; i < diamond.size(); ++i) {
+      pos_inv[i] = -diamond[i];
+    }
+    std::array<double, 9> box_inv{};
+    for (int k = 0; k < 9; ++k) {
+      box_inv[k] = -box_rh[k];
+    }
+    const TersoffStress lh_inv = tersoffStress(pot, pos_inv, types, box_inv);
+    REQUIRE_THAT(lh_inv.energy, WithinAbs(rh.energy, 1e-12));
+    for (std::size_t i = 0; i < rh.force.size(); ++i) {
+      REQUIRE_THAT(lh_inv.force[i], WithinAbs(-rh.force[i], 1e-12));
+    }
+    for (int k = 0; k < 9; ++k) {
+      REQUIRE_THAT(lh_inv.stress[k], WithinAbs(rh.stress[k], 1e-12));
+    }
+
+    // Single-axis mirror z -> -z (det < 0) keeps energy invariant and
+    // transforms forces as P*f and stress as P*sigma*P^T.
+    std::vector<double> pos_z(diamond);
+    for (std::size_t i = 2; i < pos_z.size(); i += 3) {
+      pos_z[i] = -pos_z[i];
+    }
+    std::array<double, 9> box_z = box_rh;
+    for (int k = 2; k < 9; k += 3) {
+      box_z[k] = -box_z[k];
+    }
+    const TersoffStress lh_z = tersoffStress(pot, pos_z, types, box_z);
+    REQUIRE_THAT(lh_z.energy, WithinAbs(rh.energy, 1e-12));
+    for (std::size_t i = 0; i < rh.force.size(); ++i) {
+      const double sign = (i % 3 == 2) ? -1.0 : 1.0;
+      REQUIRE_THAT(lh_z.force[i], WithinAbs(sign * rh.force[i], 1e-12));
+    }
+    for (int r = 0; r < 3; ++r) {
+      for (int c = 0; c < 3; ++c) {
+        const double sr = (r == 2) ? -1.0 : 1.0;
+        const double sc = (c == 2) ? -1.0 : 1.0;
+        REQUIRE_THAT(lh_z.stress[3 * r + c],
+                     WithinAbs(sr * sc * rh.stress[3 * r + c], 1e-12));
+      }
+    }
+  };
+
+  SECTION("all-silicon gather path") {
+    const std::vector<int> si(diamond.size() / 3, 14);
+    checkMirror(si);
+  }
+
+  SECTION("mixed-species SiC path") {
+    std::vector<int> sic(diamond.size() / 3, 14);
+    for (std::size_t i = 0; i < sic.size(); ++i) {
+      if (i % 8 < 4) {
+        sic[i] = 6;
+      }
+    }
+    checkMirror(sic);
+  }
+
+  SECTION("zero-volume orthorhombic box") {
+    const std::array<double, 9> zero_ortho{10.0, 0, 0, 0, 0.0, 0, 0, 0, 10.0};
+    const std::vector<int> si(diamond.size() / 3, 14);
+    std::vector<double> force_buf(diamond.size(), 0.0);
+    rgpot::ForceInput si_in{.nAtoms = si.size(),
+                            .pos = diamond.data(),
+                            .atmnrs = si.data(),
+                            .box = zero_ortho.data()};
+    rgpot::ForceOut si_out{.F = force_buf.data(),
+                           .energy = 0.0,
+                           .variance = 0.0,
+                           .stress = {},
+                           .has_stress = 0};
+    REQUIRE_THROWS_WITH(pot.forceImpl(si_in, &si_out),
+                        ContainsSubstring("positive volume"));
+
+    std::vector<int> sic(si);
+    sic[0] = 6;
+    rgpot::ForceInput sic_in{.nAtoms = sic.size(),
+                             .pos = diamond.data(),
+                             .atmnrs = sic.data(),
+                             .box = zero_ortho.data()};
+    rgpot::ForceOut sic_out{.F = force_buf.data(),
+                            .energy = 0.0,
+                            .variance = 0.0,
+                            .stress = {1, 2, 3, 4, 5, 6, 7, 8, 9},
+                            .has_stress = 1};
+    pot.forceImpl(sic_in, &sic_out);
+    REQUIRE(sic_out.has_stress == 0);
+    for (double c : sic_out.stress) {
+      REQUIRE(c == 0.0);
+    }
+  }
+}
+
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {
   rgpot::fortranpots::EDIPPot pot;
   const std::vector<int> types(8, 14);
