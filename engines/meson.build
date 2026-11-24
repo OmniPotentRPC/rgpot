@@ -335,12 +335,13 @@ endif
 python3_engines = find_program('python3', required: false)
 
 # rgpot-ipi-driver under ASE's SocketIOCalculator, and under i-PI when
-# i-pi is on PATH. The cases skip without ASE or the Python package.
+# i-pi is on PATH. The module imports numpy and ASE, so the test is
+# registered only when the python3 that runs it has both.
 if has_ipi and python3_engines.found()
     ipi_pytest = run_command(
         python3_engines,
         '-c',
-        'import pytest',
+        'import pytest, numpy, ase',
         check: false,
     )
     if ipi_pytest.returncode() == 0
@@ -371,7 +372,7 @@ if has_ipi and python3_engines.found()
             timeout: 600,
         )
     else
-        message('i-PI driver tests skipped: needs pytest')
+        message('i-PI driver tests skipped: needs pytest, numpy and ase')
     endif
 endif
 

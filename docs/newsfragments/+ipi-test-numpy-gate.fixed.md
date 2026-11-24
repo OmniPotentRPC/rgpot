@@ -1,0 +1,1 @@
+Meson registers the `ipi_driver_ase` test only when the `python3` that runs it can import pytest, numpy and ASE, so a build whose Python lacks numpy, such as an offline `--wrap-mode=nodownload` build, no longer fails the test with `ModuleNotFoundError`.
