@@ -575,19 +575,21 @@ TEST_CASE("the requested fields do not change the pairs", "[nlist][api]") {
        4.0},
   };
   {
-    const double wide[9] = {9.0, 0, 0, 0.4, 9.5, 0, 0.3, -0.2, 9.2};
-    cases.push_back({"600 atoms in a wide cell",
+    // 512 atoms cross the cell-list threshold in search_frame while keeping
+    // the boxes sparse enough that debug and coverage runs finish quickly.
+    const double wide[9] = {28.0, 0, 0, 1.2, 29.0, 0, 1.0, -0.6, 28.5};
+    cases.push_back({"512 atoms in a wide cell",
                      {wide[0], wide[1], wide[2], wide[3], wide[4], wide[5], wide[6], wide[7],
                       wide[8]},
                      {{true, true, true}},
-                     fractional_positions(wide, 600),
+                     fractional_positions(wide, 512),
                      2.5});
-    const double thin[9] = {14.0, 0, 0, 0, 14.0, 0, 0, 0, 2.2};
-    cases.push_back({"600 atoms in a cell thinner than the cutoff",
+    const double thin[9] = {64.0, 0, 0, 0, 64.0, 0, 0, 0, 2.2};
+    cases.push_back({"512 atoms in a cell thinner than the cutoff",
                      {thin[0], thin[1], thin[2], thin[3], thin[4], thin[5], thin[6], thin[7],
                       thin[8]},
                      {{true, true, true}},
-                     fractional_positions(thin, 600),
+                     fractional_positions(thin, 512),
                      2.6});
   }
   const std::vector<rgpot::nlist::Shape> shapes = {
