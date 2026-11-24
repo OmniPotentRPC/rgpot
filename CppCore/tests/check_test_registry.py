@@ -37,8 +37,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = Path(__file__).resolve().with_name("registry.txt")
 DEFAULT_TIMEOUT = 30
-# Positional arguments each kind takes; py takes the script and its arguments.
+# Minimum positional arguments each kind takes. Unit, rerun and py entries may
+# append command-line arguments for the registered executable or script.
 ARITY = {"unit": 2, "fortran": 2, "nlist": 2, "rerun": 1, "custom": 0}
+VARIABLE_ARITY = {"unit", "rerun", "py"}
 SOURCE_DIRS = {
     "unit": "CppCore/tests",
     "fortran": "CppCore/rgpot/fortran",
@@ -158,7 +160,13 @@ def parse(path: Path) -> tuple[dict[str, Entry], list[str]]:
         entry = Entry(name=name, line=number, gate=clauses, kind=words[0])
         errors += parse_options(entry, words[1:], where)
         want = ARITY.get(entry.kind)
-        if (want is None and not entry.args) or (want is not None and len(entry.args) != want):
+        wrong_arity = (
+            not entry.args
+            if want is None
+            else len(entry.args) < want
+            or (entry.kind not in VARIABLE_ARITY and len(entry.args) != want)
+        )
+        if wrong_arity:
             errors.append(f"{where}: wrong number of arguments for {entry.kind}")
         elif entry.kind in SOURCE_DIRS:
             source = ROOT / SOURCE_DIRS[entry.kind] / entry.args[1]
