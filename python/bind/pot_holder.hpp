@@ -197,7 +197,9 @@ vector_to_numpy(const std::vector<double> &values,
   return nb::ndarray<nb::numpy, double, nb::c_contig>(buf, shape, owner);
 }
 
-inline nb::dict caps_dict(const PotCaps &caps) {
+/// @p cellOptional is the kernel's @c kCellOptional: it supports a periodic
+/// cell and also evaluates an open system when the cell is all zero.
+inline nb::dict caps_dict(const PotCaps &caps, bool cellOptional = false) {
   nb::dict out;
   const char *reentrancy = "shared";
   if (caps.reentrancy == Reentrancy::PerInstance) {
@@ -209,6 +211,7 @@ inline nb::dict caps_dict(const PotCaps &caps) {
   out["per_image"] = caps.perImageInstances;
   out["batched"] = caps.batched;
   out["periodic"] = caps.periodic;
+  out["cell_optional"] = cellOptional;
   out["group_collective"] = caps.groupCollective;
   out["stress"] = caps.stress;
   // PotCaps does not report per-atom energies. Do not invent the flag.
@@ -537,7 +540,7 @@ hvp_detached(PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
 template <typename Pot>
 void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
   cls.def("caps", [](const PotHolder<Pot> &self) {
-    return caps_dict(self.primary().caps());
+    return caps_dict(self.primary().caps(), kernelCellOptional<Pot>());
   });
   cls.def(
       "__call__",

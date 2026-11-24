@@ -103,19 +103,33 @@ def _mpi_world(comm: Any, size: int) -> Any:
     return comm if size > 1 else None
 
 
-def _is_periodic_potential(potential: Any) -> bool:
-    """Whether ``potential.caps()`` declares periodic boundary handling.
+def _boundary_support(potential: Any) -> str:
+    """How ``potential.caps()`` says the potential treats the cell.
 
-    A potential with no ``caps`` method, or one that does not report
-    ``periodic``, is not classified.
+    ``"cell_optional"``
+        ``cell_optional`` is true: the potential takes a periodic cell and also
+        evaluates an open system when the cell is all zero.  This wins over
+        ``periodic``, which only says that periodic boundaries are supported.
+    ``"periodic"``
+        ``periodic`` is true and ``cell_optional`` is not: the potential
+        always applies periodic boundaries to the cell it is given.
+    ``"open"``
+        ``periodic`` is false: the potential has no periodic boundaries.
+    ``"unclassified"``
+        There is no ``caps`` method, it does not return a mapping, or the
+        mapping reports neither key.
     """
     caps_method = getattr(potential, "caps", None)
     if not callable(caps_method):
-        return False
+        return "unclassified"
     caps = caps_method()
     if not isinstance(caps, Mapping):
-        return False
-    return bool(caps.get("periodic", False))
+        return "unclassified"
+    if bool(caps.get("cell_optional", False)):
+        return "cell_optional"
+    if "periodic" not in caps:
+        return "unclassified"
+    return "periodic" if bool(caps["periodic"]) else "open"
 
 
 def _exception_text(error: BaseException) -> str:
@@ -184,18 +198,26 @@ class FixExternal:
                 "non-periodic axes: " + ", ".join(names)
             )
         self.periodic = all(periodicity)
+        support = _boundary_support(potential)
+        self._open_cell = (
+            not self.periodic
+            and support == "cell_optional"
+            and not allow_periodic_on_free_box
+        )
         if (
             not self.periodic
             and not allow_periodic_on_free_box
-            and _is_periodic_potential(potential)
+            and support == "periodic"
         ):
             raise ValueError(
                 f"{type(potential).__name__} is a periodic potential, but the "
                 "LAMMPS box is non-periodic in every direction (e.g. boundary f f f), "
                 "so the box extents would be passed as a periodic cell and the "
-                "energy would be wrong. Use a non-periodic potential such as "
-                "rgpot.LJClusterPot, or pass allow_periodic_on_free_box=True "
-                "to keep this behavior"
+                "energy would be wrong. Its caps() does not report cell_optional, "
+                "so it cannot be evaluated without a cell. Use a non-periodic "
+                "potential such as rgpot.LJClusterPot, or a potential whose "
+                "caps() reports cell_optional such as rgpot.D2Pot, or pass "
+                "allow_periodic_on_free_box=True to keep this behavior"
             )
 
         size = int(lmp.extract_setting("world_size"))
@@ -344,11 +366,12 @@ class FixExternal:
             )
             ordered = np.empty(natoms, dtype=np.int32)
             ordered[index] = numbers
-        native_rows = (
-            np.ascontiguousarray(rows / self.length_per_angstrom)
-            if self._scale_length
-            else rows
-        )
+        if self._open_cell:
+            native_rows = np.zeros((3, 3), dtype=float)
+        elif self._scale_length:
+            native_rows = np.ascontiguousarray(rows / self.length_per_angstrom)
+        else:
+            native_rows = rows
         # LAMMPS' restricted triclinic cell is lower triangular, so its
         # determinant is the product of the diagonal.
         volume = abs(float(native_rows[0, 0] * native_rows[1, 1] * native_rows[2, 2]))

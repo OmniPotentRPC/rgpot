@@ -49,16 +49,22 @@ The default =virial="auto"= uses the potential's analytic stress.
 A periodic box whose potential reports no stress raises an error that names the
 potential and says it lacks analytic stress, so =fix npt=, =fix nph= and
 =fix box/relax= are not driven by a guessed pressure.
-A non-periodic box (=boundary f f f=) passes the box extents as the cell to the
-potential.
-A periodic potential wraps pairs across the faces of that cell and returns a
+A non-periodic box (=boundary f f f=) is not a periodic cell, so what the
+potential receives depends on what its =caps()= dictionary says.
+A potential that reports =cell_optional= true, such as =rgpot.D2Pot=, takes a
+periodic cell and also evaluates an open system when the cell is all zero.
+On =boundary f f f= it gets an all-zero cell and returns the energy and forces
+of the isolated system; on a periodic box it gets the box cell as before.
+A potential that reports =periodic= true without =cell_optional=, such as
+=rgpot.LJPot=, would wrap pairs across the faces of the box extents and return a
 wrong energy without any warning, so =FixExternal= refuses the combination.
 It raises =ValueError= naming the potential, and the fix is a non-periodic
 potential such as =rgpot.LJClusterPot= in place of =rgpot.LJPot=.
-The check reads the =periodic= entry of the potential's =caps()= dictionary; a
-potential without =caps()=, or whose =caps()= omits =periodic=, is not checked.
-Pass =allow_periodic_on_free_box=True= only when you do want the periodic
-potential evaluated on the box extents.
+The check reads the =cell_optional= and =periodic= entries of the potential's
+=caps()= dictionary; a potential without =caps()=, or whose =caps()= omits both,
+is not checked and receives the box extents.
+Pass =allow_periodic_on_free_box=True= only when you do want the potential
+evaluated on the box extents, including one that is cell optional.
 A non-periodic box with no stress returns a zero virial.
 Set =virial="none"= when a zero virial is intentional.
 
