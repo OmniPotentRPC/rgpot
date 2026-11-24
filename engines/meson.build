@@ -888,6 +888,12 @@ if openmm_opt.allowed() and python3_engines.found()
     endif
 endif
 
+have_nblib_engine = false
+nblib_opt = get_option('with_nblib')
+if nblib_opt.allowed()
+    subdir('nblib')
+endif
+
 native_lj_engine = shared_library(
     'native_lj_engine',
     [files('native_lj_engine.cpp'), engine_abi_stamp_source],
