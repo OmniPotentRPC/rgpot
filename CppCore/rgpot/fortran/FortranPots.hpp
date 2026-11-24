@@ -114,14 +114,16 @@ private:
 /// Tersoff silicon (PotType::TersoffSi). All-silicon calls, and a null
 /// species pointer, use the Fortran gather. Any other atomic number
 /// uses the 1989 silicon-carbon kernel. There is no second PotType.
-/// No call writes a stress: has_stress is 0 and the tensor is zero on
-/// both paths until the gather computes one.
+/// Periodic calls write the Cauchy stress sigma = (1/V) dE/dε in
+/// eV/Angstrom^3, the convention of stress.hpp.
 class TersoffPot : public Potential<TersoffPot> {
 public:
   TersoffPot() : Potential(PotType::TersoffSi) {}
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .perImageInstances = true};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .perImageInstances = true,
+            .stress = true};
   }
 
   /// Held list for the calls that reach the 1989 kernel, as

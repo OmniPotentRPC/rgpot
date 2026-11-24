@@ -34,8 +34,8 @@ int rgpot_lenosky_force_ws(void *ws, int32_t natoms, const double *positions,
                            const double *cell, double *forces,
                            double *energy);
 int rgpot_tersoff_force_ws(void *ws, int32_t natoms, const double *positions,
-                           const double *cell, double *forces,
-                           double *energy);
+                           const double *cell, double *forces, double *energy,
+                           double *strain);
 int rgpot_eam_al_force_ws(void *ws, int32_t natoms, const double *positions,
                           const double *cell, double *forces, double *energy);
 
@@ -175,6 +175,13 @@ void SWPot::forceBatchImpl(const ForceBatch &batch) const {
 }
 
 void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  out->has_stress = 0;
+  std::fill(out->stress, out->stress + 9, 0.0);
+  if (in.nAtoms == 0) {
+    out->energy = 0.0;
+    out->variance = 0.0;
+    return;
+  }
   // The C++ kernel searches with its internal skin unless setHeldSkin
   // was given one. On periodic cells of 512 and 4096 atoms a rebuild is
   // slower than the warm Fortran gather, so all-silicon stays
@@ -182,20 +189,18 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // gather does not have.
   if (siliconOnly(in)) {
     ensure_fortran_params();
+    double strain[6] = {};
     const int status = rgpot_tersoff_force_ws(
         m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.box, out->F,
-        &out->energy);
+        &out->energy, strain);
     if (status != 0) {
       raise("Tersoff", status, m_ws.get());
     }
     out->variance = 0.0;
+    publishCauchyStress(out, strain, cellVolume(in.box));
   } else {
     m_sic.forceImpl(in, out);
   }
-  // The gather writes no stress and caps().stress is false, so no call
-  // reports one, and a reused output keeps no earlier tensor.
-  out->has_stress = 0;
-  std::fill(out->stress, out->stress + 9, 0.0);
 }
 
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \
