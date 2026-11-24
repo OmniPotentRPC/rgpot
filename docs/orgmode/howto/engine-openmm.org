@@ -40,50 +40,55 @@ returns =NULL= and writes =err=.
 ** In-process dynamics session
 
 When OpenMM is enabled, =rgpot/ExternalPot/OpenMM.hpp= also exposes
-=rgpot::OpenMMSession= (in OpenMM native units: nm, kJ/mol, ps, amu). It
-takes an owned =OpenMM::System= and creates the selected platform in the same
-process. =setPositions= and =setVelocities= initialize the context; =state=
-reads positions, velocities, forces, and both energies.
+=rgpot::OpenMMSession= (in OpenMM native units: nm, kJ/mol, ps, amu).
+It takes an owned =OpenMM::System= and creates the selected platform in the same
+process.
+=setPositions= and =setVelocities= initialize the context; =state= reads
+positions, velocities, forces, and both energies.
 
 =stepLangevin= and =runLangevin= run projected BAOAB splitting on a full
 =3N=-dimensional hyperplane using the inverse-mass metric (matching Euclidean
 projection in mass-weighted coordinates), through the engine-independent driver
-in =rgpot/MDSession/ProjectedLangevin.hpp=. The first force of a call is
-evaluated on the hyperplane, positions are restored after each half-drift, and
-optional planar walls reflect specularly as often as a drift needs, or reject
-the drift. =runLangevin= also returns the Lagrange multiplier of the plane per
-step. Distance constraints serialized in the =System= hold along with the
-hyperplane; a =System= with virtual sites is refused. The random stream is
-held by the session: a call with the seed of the previous call continues it,
-a new seed starts a new stream, and setting positions or velocities ends it.
+in =rgpot/MDSession/ProjectedLangevin.hpp=.
+The first force of a call is evaluated on the hyperplane, positions are restored
+after each half-drift, and optional planar walls reflect specularly as often as
+a drift needs, or reject the drift.
+=runLangevin= also returns the Lagrange multiplier of the plane per step.
+Distance constraints serialized in the =System= hold along with the hyperplane;
+a =System= with virtual sites is refused.
+The random stream is held by the session: a call with the seed of the previous
+call continues it, a new seed starts a new stream, and setting positions or
+velocities ends it.
 The return value of =stepLangevin= is the number of wall reflections.
 =stepNVE= advances unconstrained deterministic velocity-Verlet updates on the
 same OpenMM Context.
 
 The generic C ABI =rgpot_md_session_*= (=external_potentials.h=) wraps any
 engine via =rgpot_md_session_ops= or =rgpot_md_session_create= in rgpot units
-(Angstrom, eV, eV/Angstrom, ps, amu); =libopenmm_engine.so= exports
-=rgpot_md_session_engine_create= and converts between Angstrom/eV and
-OpenMM's nm/kJ/mol, including the periodic box. In Rust,
+(Angstrom, eV,
+eV/Angstrom, ps, amu); =libopenmm_engine.so= exports =rgpot_md_session_engine_create= and converts between Angstrom/eV
+and OpenMM's nm/kJ/mol, including the periodic box. In Rust,
 =rgpot_core::md_session= exposes =MdSession=, =MdLangevinConfig=,
 =MdSessionState=, and =CAbiMdSession=.
 
 The test =openmm_analytic= drives a chain of three atoms with harmonic bonds of
 rest length zero on a hyperplane through the C ABI and checks the kinetic and
 potential energy and the mean constraint force against their closed forms,
-=dF/dc= among them, within the batch-means standard error; it also checks
-seeded replay and Maxwell-Boltzmann reseeding. The test =openmm_abi= checks the
-box in Angstrom, the constraint force per step, and the errors for a short
-vtable. The cases =openmm_review_*= check the equipartition, the mean force,
-the first force on the plane, seeding across calls, serialized constraints,
-and walls crossed many times.
+=dF/dc= among them, within the batch-means standard error; it also checks seeded
+replay and Maxwell-Boltzmann reseeding.
+The test =openmm_abi= checks the box in Angstrom, the constraint force per step,
+and the errors for a short vtable.
+The cases =openmm_review_*= check the equipartition, the mean force, the first
+force on the plane, seeding across calls, serialized constraints, and walls
+crossed many times.
 
 The OpenMM session test checks harmonic energy and force, samples a free
-two-particle system with unequal masses on a =3N= hyperplane against the
-target kinetic temperature, checks wall reflections, determinism across
-64-bit seeds, unconstrained NVE after Langevin stepping, and the C ABI unit
-conversions and error handling. It uses =Reference= in the test; applications
-can select =CPU= or =CUDA= through =OpenMMSessionConfig::platform=.
+two-particle system with unequal masses on a =3N= hyperplane against the target
+kinetic temperature, checks wall reflections, determinism across 64-bit seeds,
+unconstrained NVE after Langevin stepping, and the C ABI unit conversions and
+error handling.
+It uses =Reference= in the test; applications can select =CPU= or =CUDA= through
+=OpenMMSessionConfig::platform=.
 
 Meson builds =libopenmm_engine.so= when the =openmm= Python module reports its
 library path and =libOpenMM= and =openmm/Platform.h= are found there.
