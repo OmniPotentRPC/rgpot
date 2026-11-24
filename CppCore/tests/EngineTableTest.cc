@@ -1011,7 +1011,9 @@ TEST_CASE("xtb engine matches the generic table contract", "[engine][xtb]") {
   caps.size = sizeof(caps);
   REQUIRE(e.caps(pot, &caps) == 0);
   REQUIRE(caps.reentrancy == 1);
-  REQUIRE(caps.stress == 1);
+  // The molecule is non-periodic, so libxtb's virial is zero and the
+  // backend does not claim a stress.
+  REQUIRE(caps.stress == 0);
 
   // Water, Angstrom.
   const double pos[9] = {0.0, 0.0, 0.1173, 0.0, 0.7572, -0.4692, 0.0, -0.7572,
