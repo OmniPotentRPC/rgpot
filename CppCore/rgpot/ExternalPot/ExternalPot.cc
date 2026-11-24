@@ -1125,8 +1125,7 @@ int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
     if (session == nullptr) {
       throw std::invalid_argument("null MD session");
     }
-    if ((positions != nullptr || velocities != nullptr || forces != nullptr) &&
-        n3 != 3 * session->n_atoms) {
+    if (n3 != 3 * session->n_atoms) {
       throw std::invalid_argument("MD state buffer length differs from 3*N");
     }
     return session->ops.get_state(session->ctx, positions, velocities, forces,

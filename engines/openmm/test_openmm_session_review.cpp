@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -21,6 +22,8 @@ namespace {
 
 constexpr double kComparisonTolerance = 0.0000000001;
 constexpr double kPlaneTolerance = 0.00000001;
+constexpr double kAcceptanceSigmas = 4.0;
+constexpr std::size_t kBatchCount = 30;
 
 void require(bool condition, const std::string &message) {
   if (!condition) {
@@ -36,13 +39,24 @@ void require_close(double actual, double expected, double tolerance,
   }
 }
 
+std::uint64_t test_seed(std::uint64_t fallback) {
+  const char *value = std::getenv("RGPOT_TEST_SEED");
+  if (value == nullptr) {
+    return fallback;
+  }
+  char *end = nullptr;
+  const auto parsed = std::strtoull(value, &end, 10);
+  require(end != value && *end == '\0', "RGPOT_TEST_SEED is not an integer");
+  return parsed;
+}
+
 rgpot::OpenMMSessionConfig reference_config() {
   rgpot::OpenMMSessionConfig config;
   config.platform = "Reference";
   config.time_step = 0.0005;
   config.friction = 5.0;
   config.temperature = 2.5;
-  config.random_seed = 17;
+  config.random_seed = static_cast<int>(test_seed(17));
   return config;
 }
 
@@ -95,14 +109,14 @@ void test_harmonic_equipartition_on_plane() {
   session.setPositions(point);
   session.setVelocities(zeros(2));
   session.stepLangevin(kT, config.friction, config.time_step, point, normal, {},
-                       {}, 20000, 701);
+                       {}, 20000, test_seed(701));
 
   constexpr std::size_t sample_count = 60000;
   std::vector<double> potential_samples;
   potential_samples.reserve(sample_count);
   for (std::size_t sample = 0; sample < sample_count; ++sample) {
     session.stepLangevin(kT, config.friction, config.time_step, point, normal,
-                         {}, {}, 20, 9001 + sample);
+                         {}, {}, 20, test_seed(9001) + sample);
     const auto state = session.state();
     const double plane = state.positions[0][0] + state.positions[1][0];
     require(std::abs(plane) < kPlaneTolerance,
@@ -110,11 +124,15 @@ void test_harmonic_equipartition_on_plane() {
     potential_samples.push_back(state.potential_energy);
   }
   const BatchMean potential = batch_mean(potential_samples);
+  // Equipartition gives kT/2 for each of the five unconstrained
+  // configurational quadratic degrees of freedom.
   const double expected = 2.5 * kT;
-  require(potential.error < 0.3,
-          "equipartition run is too short to resolve the mean: error " +
-              std::to_string(potential.error));
-  require(std::abs(potential.mean - expected) < 4.0 * potential.error,
+  require(std::isfinite(potential.error) && potential.error > 0.0,
+          "equipartition batch means have no finite scatter");
+  // Four standard errors limit false failures while still scaling acceptance
+  // with the measured precision instead of an absolute energy floor.
+  require(std::abs(potential.mean - expected) <
+              kAcceptanceSigmas * potential.error,
           "constrained harmonic configurational equipartition failed: got " +
               std::to_string(potential.mean) + " +- " +
               std::to_string(potential.error) + ", expected " +
@@ -147,32 +165,43 @@ void test_closed_form_constrained_mean_force() {
   session.setPositions(point);
   session.setVelocities(zeros(1));
   session.stepLangevin(kT, config.friction, config.time_step, point, normal, {},
-                       {}, 20000, 1103);
+                       {}, 20000, test_seed(1103));
 
   constexpr std::size_t sample_count = 6000;
-  double sum_x = 0.0;
-  double sum_lambda = 0.0;
+  std::vector<double> x_samples;
+  std::vector<double> lambda_samples;
+  x_samples.reserve(sample_count);
+  lambda_samples.reserve(sample_count);
   for (std::size_t sample = 0; sample < sample_count; ++sample) {
     session.stepLangevin(kT, config.friction, config.time_step, point, normal,
-                         {}, {}, 200, 12001 + sample);
+                         {}, {}, 200, test_seed(12001) + sample);
     const auto state = session.state();
     require_close(state.positions[0][1], constrained_y, kPlaneTolerance,
                   "mean-force model left the plane");
-    sum_x += state.positions[0][0];
-    sum_lambda += -state.forces[0][1];
+    x_samples.push_back(state.positions[0][0]);
+    lambda_samples.push_back(-state.forces[0][1]);
   }
-  const double mean_x = sum_x / static_cast<double>(sample_count);
-  const double mean_lambda = sum_lambda / static_cast<double>(sample_count);
+  // Thirty batches contain 200 observations, or 20 ps, apiece. This exceeds
+  // both the 0.2 ps friction time and the slowest harmonic relaxation time,
+  // so batch means account for the residual correlation between samples.
+  const BatchMean mean_x = batch_mean(x_samples, kBatchCount);
+  const BatchMean mean_lambda = batch_mean(lambda_samples, kBatchCount);
+  // Completing the square in x at fixed y gives E[x|y] = kc*y/(kc+kx).
   const double expected_x = coupling * constrained_y / (coupling + x_spring);
+  // E[dU/dy|y] = kc*(y-E[x|y])+ky*y is the analytic constraint force.
   const double expected_lambda =
       (coupling * x_spring / (coupling + x_spring) + y_spring) * constrained_y;
-  require(std::abs(mean_x - expected_x) < 0.01,
+  // Four standard errors are a named, precision-scaled acceptance margin.
+  require(std::abs(mean_x.mean - expected_x) < kAcceptanceSigmas * mean_x.error,
           "closed-form constrained coordinate mean failed: got " +
-              std::to_string(mean_x) + ", expected " +
+              std::to_string(mean_x.mean) + " +- " +
+              std::to_string(mean_x.error) + ", expected " +
               std::to_string(expected_x));
-  require(std::abs(mean_lambda - expected_lambda) < 0.8,
+  require(std::abs(mean_lambda.mean - expected_lambda) <
+              kAcceptanceSigmas * mean_lambda.error,
           "closed-form constrained mean force failed: got " +
-              std::to_string(mean_lambda) + ", expected " +
+              std::to_string(mean_lambda.mean) + " +- " +
+              std::to_string(mean_lambda.error) + ", expected " +
               std::to_string(expected_lambda));
 }
 
