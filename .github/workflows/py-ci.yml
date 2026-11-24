@@ -111,7 +111,7 @@ jobs:
           python3 -m venv /tmp/rgpot-ci
           /tmp/rgpot-ci/bin/pip install -U pip
           /tmp/rgpot-ci/bin/pip install 'nanobind==3.1.0' 'numpy' 'ase>=3.23' \
-            pycapnp pytest pytest-timeout hypothesis
+            'pycapnp>=2' pytest pytest-timeout hypothesis
           site=$(/tmp/rgpot-ci/bin/python -c 'import site; print(site.getsitepackages()[0])')
           export PYTHONPATH="${site}:${PWD}/tests/python"
           # pixi.toml pins meson >=1.10,<2. Apt's meson is older than the
@@ -119,6 +119,23 @@ jobs:
           /tmp/rgpot-ci/bin/pip install 'meson>=1.10,<2'
           export PATH="/tmp/rgpot-ci/bin:${PATH}"
           meson --version
+          meson setup /tmp/rgpot-ci-serv \
+            -Dwith_python=false \
+            -Dwith_fortran_pots=enabled \
+            -Dwith_metatomic=false \
+            -Dwith_rpc=true \
+            -Dwith_tests=false \
+            -Dwith_examples=false \
+            -Dwith_dftd3=false \
+            -Dwith_dftd4=false \
+            -Dwith_expr=false \
+            -Dwith_xckernel=false \
+            -Dwith_cache=false \
+            -Dwith_eigen=false \
+            -Dwith_xtb=false \
+            -Dwith_tblite=false \
+            --buildtype=release
+          meson compile -C /tmp/rgpot-ci-serv potserv
           meson setup /tmp/rgpot-ci-build \
             --prefix /tmp/rgpot-ci-prefix \
             -Dpython.platlibdir="${site}" \
@@ -141,7 +158,7 @@ jobs:
             --buildtype=release
           meson compile -C /tmp/rgpot-ci-build
           meson install -C /tmp/rgpot-ci-build --skip-subprojects
-          export RGPOT_POTSERV_BIN=/tmp/rgpot-ci-build/CppCore/potserv
+          export RGPOT_POTSERV_BIN=/tmp/rgpot-ci-serv/CppCore/potserv
           export REQUIRE_RPC=1
           /tmp/rgpot-ci/bin/python -m pytest -q \
             tests/python/test_ase_rpc.py \
