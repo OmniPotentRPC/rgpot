@@ -26,6 +26,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#include <time.h>
+#endif
 
 #ifndef FIXTURE_ABI
 #define FIXTURE_ABI 1
@@ -45,6 +48,9 @@
 #ifndef FIXTURE_AVAILABLE
 #define FIXTURE_AVAILABLE 1
 #endif
+#ifndef FIXTURE_REENTRANCY
+#define FIXTURE_REENTRANCY 0
+#endif
 
 struct RgpotEnginePot {
   double k;
@@ -55,6 +61,7 @@ struct RgpotEnginePot {
 #ifdef FIXTURE_CACHE
   int cache_attached;
 #endif
+  int active;
   char error[128];
 };
 
@@ -67,11 +74,12 @@ static int last_oracle_rc = -1000000;
 #ifdef REENTER_IN_INITIALIZER
 static int initializer_reentry_failed = 0;
 #endif
+static int active_calls = 0;
+static int max_concurrent_calls = 0;
+static int max_handle_concurrent_calls = 0;
 #ifdef FATAL_ONCE
 static int fatal_once_fired = 0;
 #endif
-
-int fixture_create_count(void) { return created; }
 
 #ifdef REENTER_IN_FINALIZER
 __attribute__((destructor)) static void reenter_from_finalizer(void) {
@@ -109,11 +117,63 @@ __attribute__((constructor)) static void reenter_from_initializer(void) {
 }
 #endif
 
-int fixture_destroy_count(void) { return destroyed; }
-int fixture_native_call_count(void) { return native_calls; }
+static void count_native_call(void) {
+  __atomic_add_fetch(&native_calls, 1, __ATOMIC_SEQ_CST);
+}
+
+static void record_peak(int *peak, int candidate) {
+  int prev = __atomic_load_n(peak, __ATOMIC_SEQ_CST);
+  while (candidate > prev) {
+    if (__atomic_compare_exchange_n(peak, &prev, candidate, 0,
+                                    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+      break;
+    }
+  }
+}
+
+static void enter_call(RgpotEnginePot *pot) {
+  int global_now = __atomic_add_fetch(&active_calls, 1, __ATOMIC_SEQ_CST);
+  int handle_now = __atomic_add_fetch(&pot->active, 1, __ATOMIC_SEQ_CST);
+  record_peak(&max_concurrent_calls, global_now);
+  record_peak(&max_handle_concurrent_calls, handle_now);
+#if defined(CONCURRENCY_PROBE) && !defined(_WIN32)
+  {
+    struct timespec pause;
+    pause.tv_sec = 0;
+    pause.tv_nsec = 3000000L;
+    nanosleep(&pause, NULL);
+  }
+#endif
+}
+
+static void leave_call(RgpotEnginePot *pot) {
+  __atomic_sub_fetch(&pot->active, 1, __ATOMIC_SEQ_CST);
+  __atomic_sub_fetch(&active_calls, 1, __ATOMIC_SEQ_CST);
+}
+
+int fixture_create_count(void) {
+  return __atomic_load_n(&created, __ATOMIC_SEQ_CST);
+}
+int fixture_destroy_count(void) {
+  return __atomic_load_n(&destroyed, __ATOMIC_SEQ_CST);
+}
+int fixture_native_call_count(void) {
+  return __atomic_load_n(&native_calls, __ATOMIC_SEQ_CST);
+}
+int fixture_max_concurrent(void) {
+  return __atomic_load_n(&max_concurrent_calls, __ATOMIC_SEQ_CST);
+}
+int fixture_max_handle_concurrent(void) {
+  return __atomic_load_n(&max_handle_concurrent_calls, __ATOMIC_SEQ_CST);
+}
 int fixture_batch_call_count(void) { return batch_calls; }
 int fixture_null_callback_clear_count(void) { return null_callback_clears; }
 int fixture_last_oracle_rc(void) { return last_oracle_rc; }
+void fixture_reset_concurrent(void) {
+  __atomic_store_n(&active_calls, 0, __ATOMIC_SEQ_CST);
+  __atomic_store_n(&max_concurrent_calls, 0, __ATOMIC_SEQ_CST);
+  __atomic_store_n(&max_handle_concurrent_calls, 0, __ATOMIC_SEQ_CST);
+}
 int fixture_unsupported_code(void) { return RGPOT_ENGINE_ERR_UNSUPPORTED; }
 int fixture_lock_error_code(void) { return RGPOT_ENGINE_ERR_LOCK; }
 
@@ -136,7 +196,7 @@ RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
 RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                                     char *errbuf, size_t errlen) {
   RgpotEnginePot *pot;
-  created += 1;
+  __atomic_add_fetch(&created, 1, __ATOMIC_SEQ_CST);
 #ifdef REPLACE_SELF_IN_CREATE
   {
     Dl_info info;
@@ -199,7 +259,7 @@ int rgpot_engine_cache_counts(RgpotEnginePot *pot, uint64_t *computed,
 #endif
 
 void rgpot_engine_destroy(RgpotEnginePot *pot) {
-  destroyed += 1;
+  __atomic_add_fetch(&destroyed, 1, __ATOMIC_SEQ_CST);
   free(pot);
 }
 
@@ -212,7 +272,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
   double e = 0.0;
   double *scratch = NULL;
   double scratch_box[9];
-  native_calls += 1;
+  count_native_call();
   (void)variance;
   if (transform != NULL) {
     int rc;
@@ -244,15 +304,18 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
   snprintf(pot->error, sizeof pot->error, "fixture handle lock failed");
   return RGPOT_ENGINE_ERR_LOCK;
 #endif
+  enter_call(pot);
   for (i = 0; i < n; i++) {
     if (atomic_nrs[i] == 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has atomic number 0", i);
       free(scratch);
+      leave_call(pot);
       return 1;
     }
     if (atomic_nrs[i] < 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has a negative atomic number", i);
       free(scratch);
+      leave_call(pot);
       return -1;
     }
   }
@@ -267,6 +330,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
     if (rc != 0) {
       snprintf(pot->error, sizeof pot->error, "host failure left the engine unusable");
       free(scratch);
+      leave_call(pot);
       return -8;
     }
 #endif
@@ -276,6 +340,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
         pot->callbacks.on_model_update(pot->callbacks.ctx, pot->model_state);
     }
     free(scratch);
+    leave_call(pot);
     return rc;
   }
 #ifdef REJECT_COINCIDENT
@@ -289,6 +354,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
         if (!(dx * dx + dy * dy + dz * dz > 0.0)) {
           snprintf(pot->error, sizeof pot->error, "coincident atoms");
           free(scratch);
+          leave_call(pot);
           return RGPOT_ENGINE_ERR_EVAL;
         }
       }
@@ -304,6 +370,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
   pot->evaluated = 1;
   pot->error[0] = '\0';
   free(scratch);
+  leave_call(pot);
   return 0;
 }
 #endif
@@ -317,7 +384,7 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long n_systems, long n,
                              void *user) {
   long s;
   int first = 0;
-  native_calls += 1;
+  count_native_call();
   batch_calls += 1;
   (void)variances;
   for (s = 0; s < n_systems; s++) {
@@ -380,7 +447,7 @@ int rgpot_engine_hint(RgpotEnginePot *pot, const void *msg, size_t msg_len,
 #ifndef NO_LAST_ERROR
 size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buf, size_t len) {
   size_t full = strlen(pot->error);
-  native_calls += 1;
+  count_native_call();
   if (len > 0) {
     snprintf(buf, len, "%s", pot->error);
   }
@@ -392,16 +459,22 @@ size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buf, size_t len)
 int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   RgpotEngineCaps filled;
   unsigned room;
-  native_calls += 1;
+  count_native_call();
 #ifdef CAPS_LOCK_ERROR
   snprintf(((RgpotEnginePot *)pot)->error, sizeof ((RgpotEnginePot *)pot)->error,
            "fixture caps lock failed");
   return RGPOT_ENGINE_ERR_LOCK;
 #endif
+#ifdef CAPS_ERROR_CODE
+  snprintf(((RgpotEnginePot *)pot)->error, sizeof ((RgpotEnginePot *)pot)->error,
+           "fixture caps failed");
+  return CAPS_ERROR_CODE;
+#endif
   (void)pot;
   if (!out || out->size < sizeof(unsigned)) return 1;
   memset(&filled, 0, sizeof filled);
   filled.size = sizeof filled;
+  filled.reentrancy = FIXTURE_REENTRANCY;
   filled.periodic = 1;
 #if !defined(NO_HVP) && !defined(NO_HVP_CAP)
   filled.analytic_hvp = 1;
@@ -417,7 +490,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
                      const int *atomic_nrs, const double *direction,
                      double *hv_out, const double *box) {
-  native_calls += 1;
+  count_native_call();
   (void)positions;
   (void)box;
 #if defined(NO_HVP_CAP) || defined(HVP_UNSUPPORTED)
@@ -459,13 +532,16 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
     snprintf(pot->error, sizeof pot->error, "direction and hv_out overlap");
     return RGPOT_ENGINE_ERR_INVALID;
   }
+  enter_call(pot);
   for (i = 0; i < n; i++) {
     if (atomic_nrs[i] == 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has atomic number 0", i);
+      leave_call(pot);
       return 1;
     }
     if (atomic_nrs[i] < 0) {
       snprintf(pot->error, sizeof pot->error, "atom %ld has a negative atomic number", i);
+      leave_call(pot);
       return -1;
     }
   }
@@ -493,6 +569,7 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
 #endif
   }
   pot->error[0] = '\0';
+  leave_call(pot);
   return 0;
 #endif
 }
