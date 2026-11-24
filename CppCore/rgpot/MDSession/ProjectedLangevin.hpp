@@ -43,7 +43,9 @@
  * the projection on all constraint gradients J, v -= M^-1 J^T (J M^-1 J^T)^-1
  * J v, found with the conjugate gradient method, and lambda is the plane
  * entry of -(J M^-1 J^T)^-1 J M^-1 F. The positions are corrected by the
- * SHAKE iteration with the gradients of the positions before the drift.
+ * SHAKE iteration with the gradients of the positions before the drift, and
+ * the velocity takes the impulse of that correction (RATTLE), so without
+ * friction the energy of a rigid group is conserved to second order.
  *
  * Planar hard walls n_w . (x - p_w) <= 0 bound the motion. A drift that ends
  * outside a wall is either reflected (the position is mirrored and the
@@ -345,6 +347,7 @@ public:
                                       settings.timeStep);
     std::vector<double> force(dim_, 0.0);
     std::vector<double> previous(dim_, 0.0);
+    std::vector<double> drifted(general ? dim_ : 0, 0.0);
     result.potential = forces(x, force.data());
     double lambdaStart = hasPlane ? constraintForce(ctx, x, force) : 0.0;
     if (hasPlane && settings.recordConstraintForce) {
@@ -363,7 +366,19 @@ public:
           x[k] += half * v[k];
         }
         if (constrained) {
+          if (general) {
+            std::copy(x, x + dim_, drifted.begin());
+          }
           projectPosition(ctx, previous.data(), x);
+          if (general) {
+            // The constraint impulse of the drift. A rigid group turns during
+            // the drift, and projecting v onto the new tangent space alone
+            // would shorten it, a loss of kinetic energy on every step.
+            for (std::size_t k = 0; k < dim_; ++k) {
+              v[k] += (x[k] - drifted[k]) / half;
+            }
+            projectVelocity(ctx, x, v);
+          }
         }
         result.wallHits += applyWalls(ctx, prepWalls, settings.wallMode,
                                       previous, x, v);
