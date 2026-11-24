@@ -251,6 +251,22 @@ void check_short_vtable() {
           "run_langevin should be reported as unsupported");
   require(rgpot_md_session_initialize(session, error, sizeof(error)) == 0,
           "initialize needs no callback");
+  rgpot_nlist_request nlist{};
+  size_t count = 7;
+  size_t needed = 7;
+  require(rgpot_md_session_get_neighbors(session, &nlist, nullptr, &count,
+                                         &needed, error, sizeof(error)) ==
+                  RGPOT_MD_NLIST_UNSUPPORTED &&
+              std::strstr(error, "neighbor queries") != nullptr &&
+              count == 0 && needed == 0,
+          "get_neighbors should be reported as unsupported");
+  rgpot_nlist_soa pairs{};
+  pairs.bytes = sizeof(pairs);
+  require(rgpot_md_session_set_neighbors(session, &nlist, &pairs, 0, error,
+                                         sizeof(error)) ==
+                  RGPOT_MD_NLIST_UNSUPPORTED &&
+              std::strstr(error, "supplied neighbors") != nullptr,
+          "set_neighbors should be reported as unsupported");
   // An engine that checks the length of its buffers is told 3N even when
   // only the energies are asked for.
   double kinetic = 0.0;
