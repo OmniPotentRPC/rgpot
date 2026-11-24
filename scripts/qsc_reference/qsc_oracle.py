@@ -32,11 +32,22 @@ import itertools
 import math
 import random
 import sys
-from decimal import Decimal, getcontext
-
-getcontext().prec = 50
+from decimal import Context, Decimal, localcontext
 
 D = Decimal
+
+
+def _digits():
+    """A 50-digit context that belongs to this call.
+
+    ``decimal`` contexts are thread-local. A precision set while the module
+    is imported reaches only that thread, so a worker starts at the default
+    of 28 and the finite-difference self check (step 1e-20, bound 1e-28)
+    fails. Each public entry builds a new context. ``localcontext`` copies
+    it onto the calling thread, and no context object is shared.
+    """
+    return localcontext(Context(prec=50))
+
 
 # Z -> (n, m, epsilon [eV], c, a [Angstrom]). Same values as the rgpot default
 # table; Cu a = 3.6030 is the PRB 59, 3527 Table I entry.
@@ -157,6 +168,11 @@ def evaluate(
     ``cell`` rows are the lattice vectors. ``stress_voigt`` is the Cauchy
     stress (1 / V) dU/d(strain) in xx, yy, zz, yz, xz, xy order, or None.
     """
+    with _digits():
+        return _evaluate(species, pos, cell, periodic, cutoff, params, stress, density)
+
+
+def _evaluate(species, pos, cell, periodic, cutoff, params, stress, density):
     params = _dec_params(QSC_TABLE if params is None else params)
     cutoff = D(cutoff)
     n_atoms = len(species)
@@ -209,7 +225,8 @@ def evaluate(
 
 
 def energy_only(species, pos, cell, periodic, cutoff, params=None, density="mixed"):
-    return evaluate(species, pos, cell, periodic, cutoff, params, False, density)[0]
+    with _digits():
+        return evaluate(species, pos, cell, periodic, cutoff, params, False, density)[0]
 
 
 def _strained(pos, cell, a, b, step):
@@ -227,7 +244,8 @@ def _strained(pos, cell, a, b, step):
 
 def selfcheck(verbose=True):
     """Compare the analytic gradient and stress with 50-digit differences."""
-    return all(_selfcheck(verbose, rule) for rule in ("mixed", "source"))
+    with _digits():
+        return all(_selfcheck(verbose, rule) for rule in ("mixed", "source"))
 
 
 def _selfcheck(verbose, rule):
@@ -283,7 +301,8 @@ def main(argv=None):
     parser.add_argument("--selfcheck", action="store_true", help="finite-difference self test")
     args = parser.parse_args(argv)
     if args.selfcheck:
-        return 0 if selfcheck() else 1
+        with _digits():
+            return 0 if selfcheck() else 1
     parser.print_help()
     return 0
 
