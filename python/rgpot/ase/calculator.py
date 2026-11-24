@@ -43,6 +43,7 @@ differentiates. A caller with no volume keeps the padded box's stress.
 from __future__ import annotations
 
 import itertools
+import inspect
 import math
 import re
 from typing import Any, Iterable, Sequence, SupportsFloat, SupportsIndex
@@ -557,7 +558,7 @@ def _call(
 ) -> dict[str, Any]:
     evaluate = getattr(potential, "evaluate", None)
     if evaluate is not None:
-        if compute_stress:
+        if compute_stress and _supports_compute_stress(evaluate):
             return evaluate(positions, numbers, box, compute_stress=True)
         return evaluate(positions, numbers, box)
     energy, forces, _variance = potential(positions, numbers, box)
@@ -567,6 +568,28 @@ def _call(
         "forces": forces,
         "stress": stress() if callable(stress) else None,
     }
+
+
+def _supports_compute_stress(callable_obj: Any) -> bool:
+    nb_sig = getattr(callable_obj, "__nb_signature__", None)
+    if nb_sig is not None:
+        return any(
+            isinstance(entry, tuple)
+            and entry
+            and re.search(r"\bcompute_stress\b", entry[0]) is not None
+            for entry in nb_sig
+        )
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return False
+    parameter = signature.parameters.get("compute_stress")
+    if parameter is None:
+        return False
+    return parameter.kind in (
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    )
 
 
 class RgpotCalculator(Calculator):
@@ -728,7 +751,8 @@ class RgpotCalculator(Calculator):
         """
         geom = self._geometry(positions, numbers, cell, pbc)
         if per_atom and self._per_atom:
-            if compute_stress:
+            evaluate_per_atom = self._potential.evaluate_per_atom
+            if compute_stress and _supports_compute_stress(evaluate_per_atom):
                 raw = self._potential.evaluate_per_atom(
                     geom.positions,
                     geom.numbers,
