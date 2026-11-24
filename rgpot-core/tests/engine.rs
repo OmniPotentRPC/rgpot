@@ -416,7 +416,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 8,
+            abi_minor: 11,
             layout_revision: 1,
         }
     );
@@ -1610,7 +1610,7 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 
 #[test]
 fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 8);
+    assert_eq!(ENGINE_ABI_MINOR, 11);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -1698,18 +1698,12 @@ fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected(
         }]
     );
 
-    // A minor-8 plugin exports the jet; the host serves it.
-    let minor8_path = build("harmonic_stamp_minor8", &["FIXTURE_ABI_MINOR=8"]);
-    let minor8 = load(&minor8_path);
-    assert_eq!(
-        minor8.abi_stamp(),
-        RgpotEngineAbiStamp {
-            abi_minor: 8,
-            ..RgpotEngineAbiStamp::HOST
-        }
-    );
-    assert!(minor8.symbols().taylor_jet.is_some());
-    assert_eq!(minor8.caps().expect("caps").jet_order, 3);
+    // A minor-11 plugin is the current minor and also exports the jet.
+    let minor11_path = build("harmonic_stamp_minor11", &["FIXTURE_ABI_MINOR=11"]);
+    let minor11 = load(&minor11_path);
+    assert_eq!(minor11.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert!(minor11.symbols().taylor_jet.is_some());
+    assert_eq!(minor11.caps().expect("caps").jet_order, 3);
 
     // A plugin whose minor is newer than the host's is rejected.
     let newer_define = format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1);
@@ -5129,6 +5123,11 @@ fn a_jet_the_engine_cannot_vouch_for_fails_closed() {
             "JET_NEGATIVE_OPERATIONS",
             "the engine reports a negative operation count -1",
         ),
+        (
+            "harmonic_jet_negative_scale",
+            "JET_NEGATIVE_SCALE",
+            "the engine jet scale is negative",
+        ),
     ] {
         let path = build(name, &[define, "FIXTURE_JET_ORDER=1"]);
         let mut engine = load(&path);
@@ -5154,6 +5153,67 @@ fn a_jet_the_engine_cannot_vouch_for_fails_closed() {
     assert_eq!(
         jet_call(&mut engine, &[0.0; 3], &[1], &direction, 1),
         Err(error)
+    );
+}
+
+#[test]
+fn a_non_finite_box_is_refused_before_the_engine() {
+    let path = build("harmonic_jet_nonfinite_box", &[]);
+    let mut engine = load(&path);
+    let _ = engine.caps().expect("caps");
+    let before = native_calls(&path);
+    let positions = [0.0; 3];
+    let directions = [1.0, 0.0, 0.0];
+    for (index, value, what) in [
+        (
+            0_usize,
+            f64::NAN,
+            "the engine box at element 0 is not finite",
+        ),
+        (
+            8_usize,
+            f64::INFINITY,
+            "the engine box at element 8 is not finite",
+        ),
+        (
+            4_usize,
+            f64::NEG_INFINITY,
+            "the engine box at element 4 is not finite",
+        ),
+    ] {
+        let mut boxes = CELL;
+        boxes[index] = value;
+        assert_eq!(
+            engine.taylor_jet(
+                &JetBatchRequest {
+                    atomic_numbers: &[1],
+                    positions: &positions,
+                    directions: &directions,
+                    boxes: &boxes,
+                },
+                1,
+            ),
+            Err(EngineError::Invalid(what.into())),
+            "box element {index}"
+        );
+    }
+    assert_eq!(native_calls(&path), before);
+    let mut session = load_session(&path);
+    let mut boxes = CELL;
+    boxes[2] = f64::NAN;
+    assert_eq!(
+        session.taylor_jet(
+            &JetBatchRequest {
+                atomic_numbers: &[1],
+                positions: &positions,
+                directions: &directions,
+                boxes: &boxes,
+            },
+            1,
+        ),
+        Err(EngineError::Invalid(
+            "the engine box at element 2 is not finite".into()
+        ))
     );
 }
 

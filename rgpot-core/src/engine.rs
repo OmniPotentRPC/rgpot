@@ -83,7 +83,7 @@ pub const ENGINE_ERR_LOCK: c_int = -2;
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
 /// The ABI minor this loader advertises, `RGPOT_ENGINE_ABI_MINOR` of the header.
-pub const ENGINE_ABI_MINOR: u16 = 8;
+pub const ENGINE_ABI_MINOR: u16 = 11;
 /// The struct layout revision this loader expects, `RGPOT_ENGINE_ABI_LAYOUT_REVISION` of the header.
 pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 /// Engine code meaning an argument is invalid.
@@ -2302,7 +2302,10 @@ impl EnginePotential {
     /// `rgpot_engine_taylor_jet` or `rgpot_engine_caps` (an older ABI minor),
     /// when `jet_order` is below `order`, or when the call returns
     /// `ENGINE_ERR_UNSUPPORTED` (3). No finite-difference fallback is
-    /// attempted.
+    /// attempted. A non-finite position, direction or box, and an order of
+    /// zero, are [`EngineError::Invalid`] before the engine is called. A
+    /// non-finite or negative report scale is [`EngineError::Invalid`] as
+    /// well.
     pub fn taylor_jet(
         &mut self,
         request: &JetBatchRequest<'_>,
@@ -2373,6 +2376,11 @@ impl EnginePotential {
                 "the engine direction at element {i} is not finite"
             )));
         }
+        if let Some(i) = request.boxes.iter().position(|v| !v.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine box at element {i} is not finite"
+            )));
+        }
         let jet_len = order.checked_mul(request.positions.len()).ok_or_else(|| {
             EngineError::Invalid(format!(
                 "a jet of order {order} for {} coordinates does not fit in memory",
@@ -2421,6 +2429,11 @@ impl EnginePotential {
             if !raw.scale.is_finite() {
                 return Err(EngineError::Invalid(
                     "the engine jet scale is not finite".into(),
+                ));
+            }
+            if raw.scale < 0.0 {
+                return Err(EngineError::Invalid(
+                    "the engine jet scale is negative".into(),
                 ));
             }
             Some(DerivativeReport {

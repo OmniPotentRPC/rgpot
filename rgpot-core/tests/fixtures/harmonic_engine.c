@@ -499,7 +499,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 #if !defined(NO_HVP) && !defined(NO_HVP_CAP)
   filled.analytic_hvp = 1;
 #endif
-#if !defined(NO_JET) && !defined(NO_JET_CAP) && (FIXTURE_ABI_MINOR >= 8)
+#if !defined(NO_JET) && !defined(NO_JET_CAP) && (FIXTURE_ABI_MINOR >= 11)
   filled.jet_order = FIXTURE_JET_ORDER;
 #ifdef JET_NEGATIVE_CAP
   filled.jet_order = -1;
@@ -648,7 +648,7 @@ size_t rgpot_engine_component_name(const RgpotEnginePot *pot, long index,
 int rgpot_engine_unload_policy(void) { return FIXTURE_UNLOAD_POLICY; }
 #endif
 
-#if !defined(NO_JET) && (FIXTURE_ABI_MINOR >= 8)
+#if !defined(NO_JET) && (FIXTURE_ABI_MINOR >= 11)
 /* The gradient of the harmonic energy is k x, so along x + t v its first
  * derivative is k v and every higher one is zero. The report counts one
  * product per coordinate and system and the larger of |k x| and |k v| over
@@ -736,6 +736,9 @@ int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long systems, long n,
 #endif
 #ifdef JET_NONFINITE_SCALE
     report->scale = NAN;
+#endif
+#ifdef JET_NEGATIVE_SCALE
+    report->scale = -1.0;
 #endif
   }
 #endif
