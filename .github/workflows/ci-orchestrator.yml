@@ -679,6 +679,43 @@ jobs:
           OMP_THREAD_LIMIT: "2"
         run: meson test -C bbdir --print-errorlogs --logbase limit2
 
+  # Keep a serial leg that exercises the long-range electro path and the
+  # static-consumer link case without OpenMP enabled.
+  openmp_off_long_range:
+    name: meson / ubuntu [OpenMP off long-range + consumer]
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          environments: devbld
+          activate-environment: true
+      - name: Configure + build with OpenMP disabled
+        shell: pixi run bash -e {0}
+        run: |
+          meson setup bbdir-openmp-off \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_xtensor=false \
+            -Dwith_eigen=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_long_range=true \
+            -Duse_openmp=false
+          meson compile -C bbdir-openmp-off
+      - name: Run serial long-range and static-consumer tests
+        shell: pixi run bash -e {0}
+        run: |
+          meson test -C bbdir-openmp-off --print-errorlogs \
+            LongRangeTest consumer_no_openmp
+
   # meson and CMake register the tests CppCore/tests/registry.txt lists.
   # Both are configured, not built, for the plain, RPC and cache, and
   # client-only bridge configurations. Each one's test_list_parity compares
@@ -1114,6 +1151,7 @@ jobs:
       - lsan_libomp_18
       - release_gcc13_cache
       - thread_limit
+      - openmp_off_long_range
       - test_parity
       - rust_tests
       - client_bridge_stress
@@ -1155,6 +1193,7 @@ jobs:
             "lsan_libomp_18:${{ needs.lsan_libomp_18.result }}" \
             "release_gcc13_cache:${{ needs.release_gcc13_cache.result }}" \
             "thread_limit:${{ needs.thread_limit.result }}" \
+            "openmp_off_long_range:${{ needs.openmp_off_long_range.result }}" \
             "test_parity:${{ needs.test_parity.result }}" \
             "rust_tests:${{ needs.rust_tests.result }}" \
             "client_bridge_stress:${{ needs.client_bridge_stress.result }}" \
