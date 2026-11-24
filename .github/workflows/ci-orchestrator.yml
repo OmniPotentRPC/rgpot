@@ -575,8 +575,12 @@ jobs:
             -Dwith_cache=false \
             -Dwith_fast_nlist=disabled
           meson compile -C bbdir-lsan
-          meson test -C bbdir-lsan --print-errorlogs \
-            MorsePotTest ThreadTeamTest
+          # MorsePotTest, then every ThreadTeamTest shard. The shards share
+          # suite threadteam. The wildcard is applied after the suite, so a
+          # mistyped or empty suite fails instead of selecting nothing.
+          meson test -C bbdir-lsan --print-errorlogs MorsePotTest
+          meson test -C bbdir-lsan --print-errorlogs --suite threadteam \
+            'ThreadTeamTest*'
           bash tools/check_lsan_libomp.sh
 
   # Release (-O3) with GCC 13 (when available on the Ubuntu runner) covering the

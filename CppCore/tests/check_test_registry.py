@@ -198,6 +198,10 @@ def parse(path: Path) -> tuple[dict[str, Entry], list[str]]:
             target = entries.get(entry.args[0])
             if target is None or target.kind != "unit":
                 errors.append(f"{where}: rerun names no unit entry")
+        if entry.name.startswith("ThreadTeamTest") and entry.suite != "threadteam":
+            errors.append(
+                f"{where}: a ThreadTeamTest shard belongs to suite threadteam"
+            )
     unused = set(reasons) - {e.reason for e in entries.values()}
     errors += [f"{path.name}: @{key} is not used" for key in sorted(unused)]
     return entries, errors

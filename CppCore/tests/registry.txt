@@ -169,18 +169,21 @@ NeighbourLayerTest | tests core | unit neighbour_layer_test NeighbourLayerTest.c
 # Two coverage runs each had one of these take about 330s after the same
 # binary had taken under a minute, so the limit is 480s. That keeps the
 # slow run under half of the coverage timeout (480s times the multiplier).
-ThreadTeamTest_slices | tests core | unit thread_team_test ThreadTeamTest.cc [slices] timeout=480 coverage_serial |
-ThreadTeamTest_eam | tests core | rerun ThreadTeamTest_slices [eam] timeout=480 coverage_serial |
-ThreadTeamTest_pair | tests core | rerun ThreadTeamTest_slices [pair] timeout=480 coverage_serial |
-ThreadTeamTest_sutton | tests core | rerun ThreadTeamTest_slices [sutton] timeout=480 coverage_serial |
-ThreadTeamTest_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] timeout=480 coverage_serial |
-ThreadTeamTest_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] timeout=480 coverage_serial |
-ThreadTeamTest_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] timeout=480 coverage_serial |
-ThreadTeamTest_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] timeout=480 coverage_serial |
-ThreadTeamTest_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] timeout=480 coverage_serial |
-ThreadTeamTest_sw | tests core | rerun ThreadTeamTest_slices [sw] timeout=480 coverage_serial |
-ThreadTeamTest_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] timeout=480 coverage_serial |
-ThreadTeamTest_nlist | tests core | rerun ThreadTeamTest_slices [nlist] timeout=480 coverage_serial |
+# Every ThreadTeamTest registration, including the thread-limit copies
+# below, carries suite=threadteam. The leak sanitizer job runs that suite
+# with MorsePotTest, so a new shard is included without a name list.
+ThreadTeamTest_slices | tests core | unit thread_team_test ThreadTeamTest.cc [slices] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_eam | tests core | rerun ThreadTeamTest_slices [eam] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_pair | tests core | rerun ThreadTeamTest_slices [pair] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_sutton | tests core | rerun ThreadTeamTest_slices [sutton] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_sw | tests core | rerun ThreadTeamTest_slices [sw] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_nlist | tests core | rerun ThreadTeamTest_slices [nlist] suite=threadteam timeout=480 coverage_serial |
 TersoffZblBuildTest | tests core | unit tersoff_zbl_build_test TersoffZblBuildTest.cc fp_contract=off timeout=180 |
 StreamParityTest | tests core | unit stream_parity_test StreamParityTest.cc fp_contract=off timeout=900 |
 ExternalPotFactoryFailureTest | tests core | unit external_pot_factory_failure_test ExternalPotFactoryFailureTest.cc |
@@ -229,30 +232,30 @@ InvarianceTest | tests cache | unit invariance_test InvarianceTest.cc |
 XTBDlopenTest | tests core,xtb | custom suite=xtb workdir=. |
 # Under a thread limit every region gets fewer threads than it asks for.
 # The same tags as above, so each limit still runs the whole file.
-ThreadTeamTest_limit1_slices | tests core | rerun ThreadTeamTest_slices [slices] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_eam | tests core | rerun ThreadTeamTest_slices [eam] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_pair | tests core | rerun ThreadTeamTest_slices [pair] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_sutton | tests core | rerun ThreadTeamTest_slices [sutton] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_sw | tests core | rerun ThreadTeamTest_slices [sw] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit1_nlist | tests core | rerun ThreadTeamTest_slices [nlist] env=OMP_THREAD_LIMIT=1 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_slices | tests core | rerun ThreadTeamTest_slices [slices] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_eam | tests core | rerun ThreadTeamTest_slices [eam] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_pair | tests core | rerun ThreadTeamTest_slices [pair] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_sutton | tests core | rerun ThreadTeamTest_slices [sutton] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_sw | tests core | rerun ThreadTeamTest_slices [sw] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
-ThreadTeamTest_limit2_nlist | tests core | rerun ThreadTeamTest_slices [nlist] env=OMP_THREAD_LIMIT=2 timeout=480 coverage_serial |
+ThreadTeamTest_limit1_slices | tests core | rerun ThreadTeamTest_slices [slices] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_eam | tests core | rerun ThreadTeamTest_slices [eam] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_pair | tests core | rerun ThreadTeamTest_slices [pair] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton | tests core | rerun ThreadTeamTest_slices [sutton] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_sw | tests core | rerun ThreadTeamTest_slices [sw] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit1_nlist | tests core | rerun ThreadTeamTest_slices [nlist] env=OMP_THREAD_LIMIT=1 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_slices | tests core | rerun ThreadTeamTest_slices [slices] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_eam | tests core | rerun ThreadTeamTest_slices [eam] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_pair | tests core | rerun ThreadTeamTest_slices [pair] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton | tests core | rerun ThreadTeamTest_slices [sutton] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_suttonopen | tests core | rerun ThreadTeamTest_slices [suttonopen] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton1 | tests core | rerun ThreadTeamTest_slices [sutton1] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton2 | tests core | rerun ThreadTeamTest_slices [sutton2] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton3 | tests core | rerun ThreadTeamTest_slices [sutton3] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_sw | tests core | rerun ThreadTeamTest_slices [sw] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadTeamTest_limit2_nlist | tests core | rerun ThreadTeamTest_slices [nlist] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
 openmp_confined | tests python | py CppCore/tests/test_openmp_confined.py @root@ |
 nlist_export_macro | tests python | py CppCore/tests/test_nlist_export_macro.py @root@ |
 omp_crossover_v3_provenance | tests python | py bench/test_omp_crossover_v3_provenance.py --repo @root@ --json @root@ --json-relative bench/results/rgpot_omp_crossover_v3_results.json --report bench/results/rgpot_omp_crossover_v3d_report.md |
