@@ -18,13 +18,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-BASE = (
-    'backendName = "cpmdc", backendVersion = "1.2", abiVersion = 3, '
-    'available = true, operations = [energy, forces], '
-    'protocolFamily = "rgpot.potentials", protocolMajor = 1, protocolMinor = 1, '
-    'schemaId = "0xbd1f89fa17369103", bridgeAbiMajor = 1, bridgeLayout = 1, '
-    "dlpackMajor = 1, bridgeFeatures = 3"
-)
+def base_caps(protocol_minor: int) -> str:
+    return (
+        'backendName = "cpmdc", backendVersion = "1.2", abiVersion = 3, '
+        'available = true, operations = [energy, forces], '
+        f'protocolFamily = "rgpot.potentials", protocolMajor = 1, protocolMinor = {protocol_minor}, '
+        'schemaId = "0xbd1f89fa17369103", bridgeAbiMajor = 1, bridgeLayout = 1, '
+        "dlpackMajor = 1, bridgeFeatures = 3"
+    )
+
+
 BUILD = 'buildVersion = "3.5.0", buildRevision = "abc123def456"'
 
 
@@ -45,6 +48,13 @@ def fields(decoded: str) -> dict[str, str]:
     inner = decoded.strip()[1:-1]
     parts = re.split(r",\s*(?=[a-zA-Z]+ = )", inner)
     return dict(p.split(" = ", 1) for p in parts)
+
+
+def parse_u16(path: Path, pattern: str) -> int:
+    m = re.search(pattern, path.read_text(encoding="utf-8"), flags=re.MULTILINE)
+    if m is None:
+        raise AssertionError(f"{path} lacks {pattern!r}")
+    return int(m.group(1))
 
 
 OPENERS = re.compile(r"^\s*(struct|enum|union|interface|group)\b\s*(\w*)")
@@ -79,6 +89,45 @@ def main() -> int:
     capnp = sys.argv[2] if len(sys.argv) > 2 else shutil.which("capnp")
     if capnp is None:
         raise AssertionError("capnp is required")
+    cpp_minor = parse_u16(
+        root / "CppCore" / "rgpot" / "abi" / "Handshake.hpp",
+        r"kProtocolMinor\s*=\s*(\d+)",
+    )
+    rust_minor = parse_u16(
+        root / "rgpot-core" / "src" / "compat.rs",
+        r"PROTOCOL_MINOR:\s*u16\s*=\s*(\d+)",
+    )
+    py_minor = parse_u16(
+        root / "python" / "rgpot" / "ase" / "rpc.py",
+        r"^PROTOCOL_MINOR\s*=\s*(\d+)\s*$",
+    )
+    if len({cpp_minor, rust_minor, py_minor}) != 1:
+        raise AssertionError(
+            "protocol minor constants drifted: "
+            f"C++={cpp_minor}, Rust={rust_minor}, Python={py_minor}"
+        )
+    orbital_cpp = parse_u16(
+        root / "CppCore" / "rgpot" / "abi" / "Handshake.hpp",
+        r"kOrbitalKeyIntroducedMinor\s*=\s*(\d+)",
+    )
+    orbital_rust = parse_u16(
+        root / "rgpot-core" / "src" / "compat.rs",
+        r"ORBITAL_KEY_INTRODUCED_MINOR:\s*u16\s*=\s*(\d+)",
+    )
+    orbital_py = parse_u16(
+        root / "python" / "rgpot" / "ase" / "rpc.py",
+        r"^ORBITAL_KEY_INTRODUCED_MINOR\s*=\s*(\d+)\s*$",
+    )
+    if len({orbital_cpp, orbital_rust, orbital_py}) != 1:
+        raise AssertionError(
+            "orbital-key introduction minor drifted: "
+            f"C++={orbital_cpp}, Rust={orbital_rust}, Python={orbital_py}"
+        )
+    if orbital_cpp > cpp_minor:
+        raise AssertionError(
+            f"orbital-key minor {orbital_cpp} exceeds protocol minor {cpp_minor}"
+        )
+    base = base_caps(cpp_minor)
     new = root / "CppCore" / "rgpot" / "rpc" / "Potentials.capnp"
     old = root / "CppCore" / "tests" / "fixtures" / "Potentials.pre-build-identity.capnp"
 
@@ -98,15 +147,15 @@ def main() -> int:
             raise AssertionError(f"{name} must be Text @{ordinal} (append only)")
 
     # New fields written, read by the older definition.
-    written_new = run(capnp, "encode", new, text=f"({BASE}, {BUILD})")
+    written_new = run(capnp, "encode", new, text=f"({base}, {BUILD})")
     seen_by_old = fields(run(capnp, "decode", old, data=written_new).decode())
-    expected = fields(f"({BASE})")
+    expected = fields(f"({base})")
     for key in ("backendName", "protocolFamily", "protocolMajor", "bridgeFeatures", "schemaId"):
         assert seen_by_old[key] == expected[key], (key, seen_by_old[key])
     assert "buildVersion" not in seen_by_old
 
     # Older message, read by the current definition.
-    written_old = run(capnp, "encode", old, text=f"({BASE})")
+    written_old = run(capnp, "encode", old, text=f"({base})")
     seen_by_new = fields(run(capnp, "decode", new, data=written_old).decode())
     for key in ("backendName", "protocolFamily", "protocolMajor", "bridgeFeatures", "schemaId"):
         assert seen_by_new[key] == expected[key], (key, seen_by_new[key])

@@ -31,7 +31,7 @@ from rgpot.ase.claim import ConnectionClaim
 
 PROTOCOL_FAMILY = "rgpot.potentials"
 PROTOCOL_MAJOR = 1
-PROTOCOL_MINOR = 1
+PROTOCOL_MINOR = 2
 # The minor that introduced the orbital-key fields. It is a fixed number so a
 # later PROTOCOL_MINOR bump does not raise the floor for keyed requests.
 ORBITAL_KEY_INTRODUCED_MINOR = 2

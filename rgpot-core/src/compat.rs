@@ -18,7 +18,7 @@ pub const PROTOCOL_FAMILY: &str = "rgpot.potentials";
 /// Wire-incompatible protocol revision.
 pub const PROTOCOL_MAJOR: u16 = 1;
 /// Additive protocol revision.
-pub const PROTOCOL_MINOR: u16 = 1;
+pub const PROTOCOL_MINOR: u16 = 2;
 /// Protocol minor that introduced the orbital-key ForceInput fields.
 /// It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
 pub const ORBITAL_KEY_INTRODUCED_MINOR: u16 = 2;

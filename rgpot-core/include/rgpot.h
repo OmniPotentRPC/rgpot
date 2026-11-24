@@ -81,7 +81,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * Additive protocol revision.
  */
-#define PROTOCOL_MINOR 1
+#define PROTOCOL_MINOR 2
 #endif
 
 #if defined(RGPOT_HAS_SCHEMA)

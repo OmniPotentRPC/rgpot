@@ -331,6 +331,7 @@ then converts energy and forces into the caller's units on the response.
 Why the handshake exists is in
 [[file:../explanation/architecture.org][Architecture]].
 
+The current RPC identity is family =rgpot.potentials=, major 1, minor 2.
 =ForceInput.neighbors= (@9) is present from minor 0 (v3.6.0).
 Minor 2 adds only =hasOrbitalKey= and =orbitalKey=.
 Clients that set an orbital-key field require a server that advertises minor 2.
