@@ -126,7 +126,8 @@ return 0;
 =rgpot_engine_create= refuses, with a reason in =errbuf=, a version-2 message
 with
 =size < RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE=, a wrong magic or reserved field, a version other than =RGPOT_COUPLED_WELL_CONFIG_VERSION_V1=
-or =RGPOT_COUPLED_WELL_CONFIG_VERSION= (a typed version error), a non-positive
+or =RGPOT_COUPLED_WELL_CONFIG_VERSION= (the plain error string
+=coupled-well config version is unknown=), a non-positive
 =atomic_number=, a =barrier_energy=, =well_position= or =transverse_spring= that
 is not finite and positive, and a =coupling= that is not finite.
 A negative =coupling= is valid.
