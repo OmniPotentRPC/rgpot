@@ -4,7 +4,7 @@ use std::ffi::{c_int, c_long};
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use rgpot_core::engine::{
@@ -111,47 +111,55 @@ fn build(name: &str, defines: &[&str]) -> PathBuf {
     out
 }
 
-fn build_coupled_well() -> PathBuf {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    let source = root.join("engines/coupled_well_engine.cpp");
-    let suffix = if cfg!(target_os = "macos") {
-        "dylib"
-    } else {
-        "so"
-    };
-    // nextest runs each test in its own process, so a shared path would
-    // let one process load the library while another rewrites it.
-    let out = Path::new(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("libcoupled_well.{}.{suffix}", std::process::id()));
-    let target = env!("RGPOT_BUILD_TARGET");
-    let compiler_result = cc::Build::new()
-        .target(target)
-        .host(target)
-        .opt_level(0)
-        .try_get_compiler();
-    let compiler = match compiler_result {
-        Ok(compiler) => compiler,
-        Err(why) => panic!("cannot compile coupled-well engine: {why}"),
-    };
-    let mut command = compiler.to_command();
-    if cfg!(target_os = "macos") {
-        command.arg("-dynamiclib");
-    } else {
-        command.args(["-shared", "-fPIC"]);
-    }
-    let status = command
-        .args(["-x", "c++", "-std=c++20"])
-        .arg("-I")
-        .arg(root.join("CppCore"))
-        .arg("-I")
-        .arg(root.join("include"))
-        .arg("-o")
-        .arg(&out)
-        .arg(&source)
-        .status()
-        .expect("run the C++ compiler");
-    assert!(status.success(), "the coupled-well engine did not compile");
-    out
+/// The engine is C++ and uses the C++ runtime, so it is built with the C++ driver.
+/// Built once: every test below loads the same file.
+fn build_coupled_well() -> &'static Path {
+    static LIBRARY: OnceLock<PathBuf> = OnceLock::new();
+    LIBRARY.get_or_init(|| {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let source = root.join("engines/coupled_well_engine.cpp");
+        let suffix = if cfg!(target_os = "macos") {
+            "dylib"
+        } else {
+            "so"
+        };
+        // nextest runs each test in its own process, so a shared path would
+        // let one process load the library while another rewrites it.
+        let out = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("libcoupled_well.{}.{suffix}", std::process::id()));
+        let target = env!("RGPOT_BUILD_TARGET");
+        let compiler = match cc::Build::new()
+            .cpp(true)
+            .target(target)
+            .host(target)
+            .opt_level(0)
+            .std("c++17")
+            .try_get_compiler()
+        {
+            Ok(compiler) => compiler,
+            Err(why) => panic!(
+                "cannot compile the coupled-well engine: no C++ compiler available for target {target} ({why})"
+            ),
+        };
+        let mut command = compiler.to_command();
+        if cfg!(target_os = "macos") {
+            command.arg("-dynamiclib");
+        } else {
+            command.args(["-shared", "-fPIC"]);
+        }
+        let status = command
+            .arg("-I")
+            .arg(root.join("CppCore"))
+            .arg("-I")
+            .arg(root.join("include"))
+            .arg("-o")
+            .arg(&out)
+            .arg(&source)
+            .status()
+            .unwrap_or_else(|why| panic!("run the C++ compiler {:?}: {why}", compiler.path()));
+        assert!(status.success(), "the coupled-well engine did not compile: {status}");
+        out
+    })
 }
 
 /// Rounding bar of a sum of `terms` products: each costs one rounding of its own size.

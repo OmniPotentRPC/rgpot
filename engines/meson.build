@@ -28,6 +28,18 @@ install_headers(
     '../include/rgpot/coupled_well_engine.h',
     subdir: 'rgpot',
 )
+test(
+    'coupled_well_engine',
+    executable(
+        'test_coupled_well_engine',
+        files('test_coupled_well_engine.c'),
+        link_with: coupled_well_engine,
+        dependencies: thread_dep,
+        include_directories: [engines_inc, rgpot_inc],
+        link_language: 'cpp',
+    ),
+    timeout: 60,
+)
 
 potlibc_opt = get_option('with_potlibc')
 potlibc_dep = dependency('potlibc', required: potlibc_opt)
