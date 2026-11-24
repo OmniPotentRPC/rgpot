@@ -675,7 +675,7 @@ if not get_option('with_rpc_client_only')
         install: not meson.is_subproject(),
     )
 
-    # 51 rgpot_* exports when the rust archive is linked normally, 105 when
+    # 52 rgpot_* exports when the rust archive is linked normally, 106 when
     # the bundle is whole-archived. The extra 54 are the public C ABI.
     # Two of the umbrella exports are the Muller-Brown entry points.
     if get_option('with_rust_core') and host_machine.system() == 'linux'
@@ -758,7 +758,13 @@ if not get_option('with_rpc_client_only')
             capnp_rpc_dep,
             ptlrpc_dep,
         ] + fortran_rt_deps
-        _classical_whole = [lennard_jones, morse, zbl, model_pots]
+        _classical_whole = [
+            lennard_jones,
+            morse,
+            zbl,
+            gupta,
+            model_pots,
+        ]
         if has_cbe
             _classical_whole += [cbe_pot]
         endif

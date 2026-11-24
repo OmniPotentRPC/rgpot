@@ -76,7 +76,8 @@ enum class PotType {
   CBE,          //!< External cbe-pes frontend.
   D2,           //!<  Grimme DFT-D2 lattice sum (rgpot::D2Pot).
   D2Cpmd,       //!<  CPMD's minimum-image empirical D2 (rgpot::D2CpmdPot).
-  MEAM          //!< Modified embedded-atom method (LAMMPS meam files).
+  MEAM,         //!< Modified embedded-atom method (LAMMPS meam files).
+  Gupta         //!< Cleri-Rosato Gupta many-body potential.
 };
 
 } // namespace rgpot
