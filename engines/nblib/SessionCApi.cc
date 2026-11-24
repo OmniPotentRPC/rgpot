@@ -3,6 +3,9 @@
 
 #include "NblibSession.hpp"
 #include "NblibTopology.hpp"
+#ifdef RGPOT_NBLIB_HAS_TPR
+#include "TprSession.hpp"
+#endif
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/ExternalPot/md_units.hpp"
 
@@ -23,7 +26,7 @@ using rgpot::md::kEvPerKj;
 using rgpot::md::kKjPerEv;
 using rgpot::md::kNmPerAngstrom;
 namespace md = rgpot::md;
-using rgpot::nblibpot::Session;
+using Session = rgpot::nblibpot::SessionBase;
 
 void error(char *buffer, size_t length, const char *message) {
   if (buffer != nullptr && length != 0) {
@@ -206,6 +209,30 @@ int initialize(void *context, char *buffer, size_t length) {
                  [&] { static_cast<Session *>(context)->initialize(); });
 }
 
+#ifdef RGPOT_NBLIB_HAS_TPR
+// The option string is empty or "threads=N".
+int threadCount(const char *options) {
+  if (options == nullptr || *options == '\0') {
+    return 1;
+  }
+  const std::string text(options);
+  std::size_t used = 0;
+  if (text.rfind("threads=", 0) == 0) {
+    int count = 0;
+    try {
+      count = std::stoi(text.substr(8), &used);
+    } catch (const std::exception &) {
+      used = 0;
+    }
+    if (used == text.size() - 8 && count > 0) {
+      return count;
+    }
+  }
+  throw std::invalid_argument("the TPR session options are threads=N, got " +
+                              text);
+}
+#endif
+
 void destroy(void *context) { delete static_cast<Session *>(context); }
 
 } // namespace
@@ -219,10 +246,27 @@ extern "C" int rgpot_md_session_engine_create(
         context == nullptr || n_atoms == nullptr) {
       throw std::invalid_argument("nblib MD session needs topology and outputs");
     }
-    (void)options;
     const std::string topology(static_cast<const char *>(spec), spec_len);
-    auto session = std::make_unique<Session>(
-        rgpot::nblibpot::parseTopology(topology));
+    std::unique_ptr<Session> session;
+    // A spec of one line "tpr PATH" opens a GROMACS run input file.
+    if (topology.rfind("tpr ", 0) == 0) {
+#ifdef RGPOT_NBLIB_HAS_TPR
+      std::string path = topology.substr(4);
+      while (!path.empty() && (path.back() == '\n' || path.back() == '\r' ||
+                               path.back() == ' ' || path.back() == '\0')) {
+        path.pop_back();
+      }
+      session = std::make_unique<rgpot::nblibpot::TprSession>(
+          path, threadCount(options));
+#else
+      throw std::invalid_argument(
+          "this nblib engine was built without the TPR session; build it with "
+          "-Dnblib_source and -Dnblib_build naming the GROMACS trees");
+#endif
+    } else {
+      session = std::make_unique<rgpot::nblibpot::Session>(
+          rgpot::nblibpot::parseTopology(topology));
+    }
     *n_atoms = session->atoms();
     *ops = {};
     ops->struct_size = sizeof(*ops);

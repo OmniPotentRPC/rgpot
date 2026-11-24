@@ -202,6 +202,18 @@ option(
     description: 'Prefix of GROMACS built with the installed nblib API.',
 )
 option(
+    'nblib_source',
+    type: 'string',
+    value: '',
+    description: 'GROMACS source tree of nblib_prefix, for the TPR session.',
+)
+option(
+    'nblib_build',
+    type: 'string',
+    value: '',
+    description: 'GROMACS build tree of nblib_prefix, for the TPR session.',
+)
+option(
     'with_plumed',
     type: 'feature',
     value: 'auto',

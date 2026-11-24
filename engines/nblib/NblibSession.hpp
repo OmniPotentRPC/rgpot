@@ -34,36 +34,56 @@ struct SessionInfo {
   std::array<double, 9> box{};    //!< nm
 };
 
-class Session {
+/// What the C ABI needs of a session: nblib units, massive atoms only.
+class SessionBase {
+public:
+  virtual ~SessionBase() = default;
+  [[nodiscard]] virtual std::size_t atoms() const = 0;
+  [[nodiscard]] virtual const std::vector<double> &masses() const = 0;
+  virtual void setBox(const double *box9) = 0;
+  [[nodiscard]] virtual std::array<double, 9> box() const = 0;
+  virtual void setPositions(const double *positions, std::size_t dimension) = 0;
+  virtual void setVelocities(const double *velocities,
+                             std::size_t dimension) = 0;
+  virtual void initialize() = 0;
+  virtual void step(std::uint64_t count, double timeStep) = 0;
+  virtual md::LangevinResult langevin(const md::LangevinSettings &settings,
+                                      const md::PlaneSpec *plane,
+                                      const std::vector<md::WallSpec> &walls) = 0;
+  virtual void state(double *positions, double *velocities, double *forces,
+                     std::size_t dimension, SessionInfo *info) = 0;
+};
+
+class Session final : public SessionBase {
 public:
   explicit Session(TopologyDesc description);
-  ~Session();
+  ~Session() override;
   Session(const Session &) = delete;
   Session &operator=(const Session &) = delete;
 
-  [[nodiscard]] std::size_t atoms() const { return engine_.atoms(); }
-  [[nodiscard]] const std::vector<double> &masses() const {
+  [[nodiscard]] std::size_t atoms() const override { return engine_.atoms(); }
+  [[nodiscard]] const std::vector<double> &masses() const override {
     return engine_.masses();
   }
 
   /// Three edge lengths from a rectangular box, nm. Throws for any other cell.
-  void setBox(const double *box9);
+  void setBox(const double *box9) override;
   /// The box as nine values, rows are the lattice vectors, nm.
-  [[nodiscard]] std::array<double, 9> box() const;
-  void setPositions(const double *positions, std::size_t dimension);
-  void setVelocities(const double *velocities, std::size_t dimension);
+  [[nodiscard]] std::array<double, 9> box() const override;
+  void setPositions(const double *positions, std::size_t dimension) override;
+  void setVelocities(const double *velocities, std::size_t dimension) override;
 
   /// Evaluate the forces at the positions set.
-  void initialize();
+  void initialize() override;
   /// Unconstrained velocity-Verlet steps of length timeStep.
-  void step(std::uint64_t count, double timeStep);
+  void step(std::uint64_t count, double timeStep) override;
   /// Langevin dynamics with an optional hyperplane and walls; the settings
   /// carry the seed that names the random stream.
   md::LangevinResult langevin(const md::LangevinSettings &settings,
                               const md::PlaneSpec *plane,
-                              const std::vector<md::WallSpec> &walls);
+                              const std::vector<md::WallSpec> &walls) override;
   void state(double *positions, double *velocities, double *forces,
-             std::size_t dimension, SessionInfo *info);
+             std::size_t dimension, SessionInfo *info) override;
 
 private:
   void requireReady() const;

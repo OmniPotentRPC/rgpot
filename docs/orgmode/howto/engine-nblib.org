@@ -165,3 +165,24 @@ form, and the OpenMM and nblib means must agree within their pooled error.
 =md_engine_agreement= compares argon energies and forces between the engines,
 including a periodic image and a reseed, and a harmonic dimer's temperature
 and mean constraint force.
+
+* Run a GROMACS run input file
+
+A spec of one line, =tpr PATH=, opens a TPR instead of a topology text.
+The session evaluates the forces of the file in process: nbnxm, PME, listed terms and position restraints, in its triclinic cell.
+Virtual sites are built from the atoms that carry mass and their forces are spread back, so the session exposes the massive atoms in TPR order.
+The SETTLE and LINCS distances of the file hold in every run.
+
+The option string =threads=N= sets the OpenMP threads.
+The thermostat, the time step and the integrator come from each call and not from the file.
+The cell is fixed to the cell of the file.
+Positions must keep the atoms of one constrained group in one periodic image.
+
+A file that uses free-energy perturbation, pulling, AWH, walls, freeze groups, pressure coupling, LJ-PME, an Ewald surface term, shells or NMR restraints is refused with a message naming the feature.
+
+The TPR session calls libgromacs directly and needs the headers of the trees that built =nblib_prefix=:
+
+#+begin_src shell
+meson setup build -Dwith_nblib=enabled -Dnblib_prefix=$PREFIX \
+  -Dnblib_source=$GROMACS_SOURCE -Dnblib_build=$GROMACS_BUILD
+#+end_src
