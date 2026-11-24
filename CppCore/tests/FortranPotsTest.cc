@@ -41,6 +41,7 @@
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
+using Catch::Matchers::ContainsSubstring;
 using rgpot::test_fixtures::maxForceNorm;
 using rgpot::types::AtomMatrix;
 
@@ -547,6 +548,22 @@ TEST_CASE("Tersoff no-box zero-atom call keeps has_stress clear",
   for (double c : out.stress) {
     REQUIRE(c == 0.0);
   }
+
+  const AtomMatrix pos = siDiamond();
+  const std::vector<int> types(pos.rows(), 14);
+  std::vector<double> force_buf(pos.size(), 0.0);
+  rgpot::ForceInput atom_in{
+      .nAtoms = pos.rows(),
+      .pos = pos.data(),
+      .atmnrs = types.data(),
+      .box = nullptr};
+  rgpot::ForceOut atom_out{.F = force_buf.data(),
+                           .energy = 1.0,
+                           .variance = 1.0,
+                           .stress = {1, 2, 3, 4, 5, 6, 7, 8, 9},
+                           .has_stress = 1};
+  REQUIRE_THROWS_WITH(pot.forceImpl(atom_in, &atom_out),
+                      ContainsSubstring("required neighbour pointer is null"));
 }
 
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {

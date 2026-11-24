@@ -120,7 +120,7 @@ Per-atom values are computed only when asked for, so the first
 =get_potential_energies()= after =get_potential_energy()= costs one more kernel
 call.
 
-=numerical_stress=True= adds =stress= for any kernel that writes none, including EAM-Al, EDIP, Lenosky, Tersoff, FeHe, CuH2, WaterH, D3, D4, Expr and the engine factories, from a central difference over six cell strains of =stress_step=
+=numerical_stress=True= adds =stress= for any kernel that writes none, including EAM-Al, EDIP, Lenosky, FeHe, CuH2, WaterH, D3, D4, Expr and the engine factories, from a central difference over six cell strains of =stress_step=
 (default 1e-6).
 That is twelve energy calls a stress.
 =get_hessian= raises =NotImplementedError=: no bound potential has an analytic
