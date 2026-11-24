@@ -28,7 +28,9 @@ documentation_style = "doxy"
 # rgpot_potential_set_hessian_callback and rgpot_potential_set_taylor_jet,
 # not by a signature.
 include = ["rgpot_hvp_scheme_t", "HessianVectorCallback", "rgpot_hessian_scheme_t", "HessianCallback", "rgpot_taylor_jet_fn", "rgpot_interval_t"]
-exclude = ["BOHR_TO_ANGSTROM", "EV_TO_HARTREE"]
+# The MD session unit factors serve the Rust draw; the C++ engines take
+# theirs from rgpot/ExternalPot/md_units.hpp, and no C call uses them.
+exclude = ["BOHR_TO_ANGSTROM", "EV_TO_HARTREE", "KJ_PER_EV", "NM_PER_ANGSTROM", "AMU_A2_PS2_PER_EV"]
 
 [export.rename]
 
