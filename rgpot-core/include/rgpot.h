@@ -56,6 +56,21 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define RGPOT_HVP_DEFAULT_STEP 1.0e-3
 
 /**
+ * Kilojoules per mole in one electronvolt (exact 2019 SI constants).
+ */
+#define KJ_PER_EV ((1.602176634e-19 * 6.02214076e23) / 1000.0)
+
+/**
+ * Nanometres in one Angstrom.
+ */
+#define NM_PER_ANGSTROM 0.1
+
+/**
+ * Conversion factor from `eV` to `amu * (Angstrom / ps)^2`.
+ */
+#define AMU_A2_PS2_PER_EV (KJ_PER_EV * 100.0)
+
+/**
  * ABI major of this build.
  */
 #define RGPOT_ABI_VERSION_MAJOR 1
