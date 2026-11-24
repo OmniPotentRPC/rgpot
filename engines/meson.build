@@ -19,6 +19,18 @@ thread_dep = dependency('threads')
 python3_runner = find_program('python3', required: true)
 engine_exports_script = files('../scripts/check_engine_exports.py')
 engine_exports_expected = files('engine_exports_expected.txt')
+# The dynamic table is the engine C ABI. A coverage build otherwise
+# exports the gcov runtime (__gcov_* and mangle_path).
+engine_export_link_args = []
+if host_machine.system() == 'linux'
+    engine_export_link_args = [
+        '-Wl,--version-script,' + engines_here / 'engine_exports.map',
+    ]
+elif host_machine.system() == 'darwin'
+    engine_export_link_args = [
+        '-Wl,-exported_symbols_list,' + engines_here / 'engine_exports.darwin.txt',
+    ]
+endif
 
 coupled_well_engine = shared_library(
     'coupled_well_engine',
@@ -29,6 +41,7 @@ coupled_well_engine = shared_library(
         '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
         '-fvisibility-inlines-hidden',
     ],
+    link_args: engine_export_link_args,
     gnu_symbol_visibility: 'hidden',
     install: not meson.is_subproject(),
 )
@@ -81,6 +94,7 @@ if potlibc_dep.found()
                 meson.project_version(),
             ),
         ],
+        link_args: engine_export_link_args,
         gnu_symbol_visibility: 'hidden',
         install: not meson.is_subproject(),
     )

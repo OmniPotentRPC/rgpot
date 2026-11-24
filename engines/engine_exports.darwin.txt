@@ -1,0 +1,17 @@
+# Copyright 2023--present rgpot developers
+# Mach-O export list for an engine plugin. Names match
+# engines/engine_exports_expected.txt with the leading underscore
+# the Darwin linker requires.
+_rgpot_engine_abi_compatible
+_rgpot_engine_abi_stamp
+_rgpot_engine_abi_version
+_rgpot_engine_available
+_rgpot_engine_caps
+_rgpot_engine_create
+_rgpot_engine_destroy
+_rgpot_engine_force
+_rgpot_engine_force_batch
+_rgpot_engine_hvp
+_rgpot_engine_last_error
+_rgpot_engine_name
+_rgpot_engine_version
