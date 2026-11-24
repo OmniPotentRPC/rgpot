@@ -124,10 +124,11 @@ private:
  *
  * Asking for the seed of the live stream continues it, with the generator
  * state and the Box-Muller spare as the last call left them. Asking for a
- * different seed starts that stream from its beginning. Two sessions given
- * the same seeds in the same order therefore draw identical numbers, and a
- * sampler that passes one run seed to every call gets one uncorrelated
- * stream.
+ * different seed starts that stream from its beginning, with no spare. Two
+ * sessions given the same seeds in the same order therefore draw identical
+ * numbers, and a sampler that passes one run seed to every call gets one
+ * uncorrelated stream. reset() ends the live stream, so that setting a new
+ * state and running with the same seed replays the same noise.
  */
 class SeededStream {
 public:
@@ -139,6 +140,8 @@ public:
     }
     return rng_;
   }
+
+  void reset() noexcept { active_ = false; }
 
 private:
   bool active_ = false;

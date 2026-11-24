@@ -82,6 +82,7 @@ struct OpenMMSession::Impl {
   std::unique_ptr<OpenMM::Context> context;
   std::vector<double> masses;
   std::unique_ptr<md::ProjectedLangevin> driver;
+  md::SeededStream stream;
   std::vector<OpenMM::Vec3> scratch;
   size_t particles = 0;
   double default_time_step = 0.0;
@@ -163,6 +164,7 @@ void OpenMMSession::setPositions(const std::vector<OpenMM::Vec3> &positions) {
     require_finite_vec3(p, "OpenMM position");
   }
   impl_->context->setPositions(positions);
+  impl_->stream.reset();
 }
 
 void OpenMMSession::setVelocities(const std::vector<OpenMM::Vec3> &velocities) {
@@ -173,6 +175,7 @@ void OpenMMSession::setVelocities(const std::vector<OpenMM::Vec3> &velocities) {
     require_finite_vec3(v, "OpenMM velocity");
   }
   impl_->context->setVelocities(velocities);
+  impl_->stream.reset();
 }
 
 void OpenMMSession::stepNVE(int steps) {
@@ -248,7 +251,6 @@ uint64_t OpenMMSession::stepLangevin(
   settings.friction = friction;
   settings.timeStep = time_step;
   settings.steps = steps;
-  settings.seed = seed;
   const md::ForceFunction force_at = [this](const double *positions,
                                             double *forces) {
     unflatten(positions, impl_->scratch);
@@ -264,7 +266,8 @@ uint64_t OpenMMSession::stepLangevin(
     return at.getPotentialEnergy();
   };
   const md::LangevinResult result = impl_->driver->run(
-      settings, &plane, walls, x.data(), v.data(), force_at);
+      settings, &plane, walls, x.data(), v.data(), force_at,
+      impl_->stream.forSeed(seed));
 
   std::vector<OpenMM::Vec3> out(impl_->particles);
   unflatten(x.data(), out);
