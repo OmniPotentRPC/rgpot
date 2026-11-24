@@ -75,21 +75,13 @@ def _schema_path() -> Path:
     here = Path(__file__).resolve().parent / "Potentials.capnp"
     if here.is_file():
         return here
-    root = Path(__file__).resolve().parents[3]
-    local_series = root / "CppCore" / "rgpot" / "rpc" / "local" / "series"
-    repo = root / "CppCore" / "rgpot" / "rpc" / "Potentials.capnp"
-    if repo.is_file() and local_series.is_file():
-        import sys
-        import tempfile
-
-        rpc_dir = str(repo.parent)
-        if rpc_dir not in sys.path:
-            sys.path.insert(0, rpc_dir)
-        import schema_ledger
-
-        out = Path(tempfile.gettempdir()) / f"rgpot_effective_{os.getpid()}_Potentials.capnp"
-        schema_ledger.main(["apply", "--root", str(root), "--out", str(out)])
-        return out
+    repo = (
+        Path(__file__).resolve().parents[3]
+        / "CppCore"
+        / "rgpot"
+        / "rpc"
+        / "Potentials.capnp"
+    )
     if repo.is_file():
         return repo
     raise FileNotFoundError("Potentials.capnp is not installed with rgpot.ase")
