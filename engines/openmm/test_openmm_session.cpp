@@ -94,6 +94,18 @@ void test_cpp_session() {
   const std::vector<std::vector<OpenMM::Vec3>> wall_normals{
       {OpenMM::Vec3(0.0, 0.0, -1.0), OpenMM::Vec3(0.0, 0.0, 0.0)}};
 
+  auto wall_start = plane_point;
+  wall_start[0][2] = 0.001;
+  sample_session.setPositions(wall_start);
+  sample_session.setVelocities(
+      {OpenMM::Vec3(0.0, 0.0, -10.0), OpenMM::Vec3(0.0, 0.0, 0.0)});
+  const std::uint64_t wall_hits = sample_session.stepLangevin(
+      config.temperature, 0.0, config.time_step, plane_point, plane_normal,
+      wall_points, wall_normals, 1, 1);
+  if (wall_hits != 1) {
+    throw std::runtime_error("OpenMM hard wall did not reflect");
+  }
+
   sample_session.setPositions(plane_point);
   sample_session.setVelocities(
       {OpenMM::Vec3(0.0, 0.0, 0.0), OpenMM::Vec3(0.0, 0.0, 0.0)});
@@ -104,12 +116,11 @@ void test_cpp_session() {
   const double tolerance =
       4096.0 * std::sqrt(std::numeric_limits<double>::epsilon());
   std::vector<double> temperatures;
-  uint64_t reflections = 0;
   for (int sample = 0; sample < 2048; ++sample) {
-    reflections += sample_session.stepLangevin(
-        config.temperature, config.friction, config.time_step, plane_point,
-        plane_normal, wall_points, wall_normals, 20,
-        test_seed(20) + static_cast<uint64_t>(sample));
+    sample_session.stepLangevin(config.temperature, config.friction,
+                                config.time_step, plane_point, plane_normal,
+                                wall_points, wall_normals, 20,
+                                test_seed(20) + static_cast<uint64_t>(sample));
     const auto sampled = sample_session.state();
     // 5 free degrees of freedom: 2*3 - 1 hyperplane constraint.
     temperatures.push_back(2.0 * sampled.kinetic_energy / 5.0);
@@ -128,10 +139,6 @@ void test_cpp_session() {
           "OpenMM 3N hyperplane velocity was not projected");
     }
   }
-  if (reflections == 0) {
-    throw std::runtime_error("OpenMM hard wall did not reflect");
-  }
-
   // Sixteen batches of 128 observations span 1.28 ps each. That is longer
   // than the kinetic-energy autocorrelation time set by the 1/ps thermostat,
   // unlike a standard error that treats all 2048 observations as independent.
