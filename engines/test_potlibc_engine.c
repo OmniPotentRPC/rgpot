@@ -6,6 +6,8 @@
 
 #include <dlfcn.h>
 #include <limits.h>
+#include <math.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -59,7 +61,9 @@ static RgpotPotlibcConfigV1 config(const char *surface_id,
   RgpotPotlibcConfigV1 result;
   memset(&result, 0, sizeof result);
   result.magic = RGPOT_POTLIBC_CONFIG_MAGIC;
+  result.size = sizeof result;
   result.version = RGPOT_POTLIBC_CONFIG_VERSION;
+  result.reserved = 0;
   result.atom_count = atom_count;
   snprintf(result.surface_id, sizeof result.surface_id, "%s", surface_id);
   return result;
@@ -222,6 +226,40 @@ static int oversized_atom_counts_are_refused(Engine *engine) {
   engine->destroy(pot);
   if (code != RGPOT_ENGINE_ERR_INVALID || strstr(error, "too large") == NULL) {
     fprintf(stderr, "oversized hvp returned %d (%s)\n", code, error);
+    return 1;
+  }
+  return 0;
+}
+
+static int config_size_is_extensible(Engine *engine) {
+  RgpotPotlibcConfigV1 message = config("brh2leps", 0);
+  unsigned char future[sizeof(RgpotPotlibcConfigV1) + 16];
+  char error[512] = {0};
+  RgpotEnginePot *pot;
+  memset(future, 0, sizeof future);
+  memcpy(future, &message, sizeof message);
+  ((RgpotPotlibcConfigV1 *)future)->size = sizeof future;
+  pot = engine->create(future, sizeof future, error, sizeof error);
+  if (pot == NULL) {
+    fprintf(stderr, "future-size config was refused: %s\n", error);
+    return 1;
+  }
+  engine->destroy(pot);
+
+  future[sizeof(message)] = 1;
+  memset(error, 0, sizeof error);
+  if (engine->create(future, sizeof future, error, sizeof error) != NULL ||
+      error[0] == '\0') {
+    fprintf(stderr, "nonzero trailing bytes were unexpectedly accepted\n");
+    return 1;
+  }
+
+  message = config("brh2leps", 0);
+  message.size = sizeof(message) - 8;
+  memset(error, 0, sizeof error);
+  if (engine->create(&message, sizeof message, error, sizeof error) != NULL ||
+      error[0] == '\0') {
+    fprintf(stderr, "too-small config size was unexpectedly accepted\n");
     return 1;
   }
   return 0;
@@ -514,6 +552,173 @@ static int batch_is_one_call_per_system(Engine *engine) {
   return 0;
 }
 
+static int caps_refuses_null_handle(Engine *engine) {
+  RgpotEngineCaps caps;
+  memset(&caps, 0, sizeof caps);
+  caps.size = sizeof caps;
+  if (engine->caps(NULL, &caps) != RGPOT_ENGINE_ERR_INVALID) {
+    fprintf(stderr, "caps(NULL, out) was not rejected\n");
+    return 1;
+  }
+  return 0;
+}
+
+static int evaluate_failure_preserves_outputs(Engine *engine) {
+  static const double box[9] = {
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0,
+  };
+  static const int species[3] = {35, 1, 1};
+  double positions[9] = {
+      0.0, 0.0, 0.0,
+      3.0802 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+      4.8202 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+  };
+  double forces[9];
+  double energy = -3.0;
+  int index;
+  RgpotEnginePot *pot = create(engine, "brh2leps", 0);
+  int code;
+  if (pot == NULL) {
+    return 1;
+  }
+  for (index = 0; index < 9; ++index) {
+    forces[index] = -5.0;
+  }
+  positions[0] = NAN; /* backend evaluate fails after argument checks. */
+  code = engine->force(pot, 3, positions, species, forces, &energy, NULL, box,
+                       NULL, NULL);
+  engine->destroy(pot);
+  if (code != RGPOT_ENGINE_ERR_EVAL || energy != -3.0) {
+    fprintf(stderr, "evaluate failure did not preserve energy (code=%d)\n", code);
+    return 1;
+  }
+  for (index = 0; index < 9; ++index) {
+    if (forces[index] != -5.0) {
+      fprintf(stderr, "evaluate failure overwrote force element %d\n", index);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+typedef struct {
+  Engine *engine;
+  RgpotEnginePot *pot;
+  int failures;
+} ConcurrentCtx;
+
+static void *concurrent_batch(void *user) {
+  ConcurrentCtx *ctx = (ConcurrentCtx *)user;
+  const int species[3] = {35, 1, 1};
+  const double box[9] = {
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0,
+  };
+  const double positions[18] = {
+      0.0, 0.0, 0.0, 3.0802 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+      4.8202 * BOHR_TO_ANGSTROM, 0.0, 0.0, 0.0, 0.0, 0.0,
+      3.3 * BOHR_TO_ANGSTROM, 0.0, 0.0, 5.04 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+  };
+  const double boxes[18] = {
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0,
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0,
+  };
+  double forces[18];
+  double energies[2];
+  int count;
+  (void)box;
+  for (count = 0; count < 200; ++count) {
+    if (ctx->engine->batch(ctx->pot, 2, 3, positions, species, forces, energies,
+                           NULL, boxes, NULL, NULL) != RGPOT_ENGINE_OK) {
+      __sync_fetch_and_add(&ctx->failures, 1);
+    }
+  }
+  return NULL;
+}
+
+static void *concurrent_hvp(void *user) {
+  ConcurrentCtx *ctx = (ConcurrentCtx *)user;
+  const int species[3] = {35, 1, 1};
+  const double box[9] = {
+      20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0,
+  };
+  const double positions[9] = {
+      0.0, 0.0, 0.0,
+      3.0802 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+      4.8202 * BOHR_TO_ANGSTROM, 0.0, 0.0,
+  };
+  const double direction[9] = {0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8, 0.9};
+  double product[9];
+  int count;
+  for (count = 0; count < 200; ++count) {
+    if (ctx->engine->hvp(ctx->pot, 3, positions, species, direction, product,
+                         box) != RGPOT_ENGINE_OK) {
+      __sync_fetch_and_add(&ctx->failures, 1);
+    }
+  }
+  return NULL;
+}
+
+static void *concurrent_caps(void *user) {
+  ConcurrentCtx *ctx = (ConcurrentCtx *)user;
+  int count;
+  for (count = 0; count < 200; ++count) {
+    RgpotEngineCaps caps;
+    memset(&caps, 0, sizeof caps);
+    caps.size = sizeof caps;
+    if (ctx->engine->caps(ctx->pot, &caps) != RGPOT_ENGINE_OK ||
+        caps.batched != 1 || caps.reentrancy != 1) {
+      __sync_fetch_and_add(&ctx->failures, 1);
+    }
+  }
+  return NULL;
+}
+
+static int concurrent_batch_hvp_caps_calls(Engine *engine) {
+  pthread_t threads[3];
+  ConcurrentCtx ctx;
+  int index;
+  int created = 0;
+  ctx.engine = engine;
+  ctx.pot = create(engine, "brh2leps", 0);
+  ctx.failures = 0;
+  if (ctx.pot == NULL) {
+    return 1;
+  }
+  if (pthread_create(&threads[0], NULL, concurrent_batch, &ctx) == 0) {
+    created = 1;
+  }
+  if (created == 1 &&
+      pthread_create(&threads[1], NULL, concurrent_hvp, &ctx) == 0) {
+    created = 2;
+  }
+  if (created == 2 &&
+      pthread_create(&threads[2], NULL, concurrent_caps, &ctx) == 0) {
+    created = 3;
+  }
+  if (created != 3) {
+    fprintf(stderr, "failed to create concurrency test threads (%d/3)\n",
+            created);
+    for (index = 0; index < created; ++index) {
+      (void)pthread_join(threads[index], NULL);
+    }
+    engine->destroy(ctx.pot);
+    return 1;
+  }
+  for (index = 0; index < created; ++index) {
+    if (pthread_join(threads[index], NULL) != 0) {
+      fprintf(stderr, "failed to join concurrency test thread %d\n", index);
+      engine->destroy(ctx.pot);
+      return 1;
+    }
+  }
+  engine->destroy(ctx.pot);
+  if (ctx.failures != 0) {
+    fprintf(stderr, "concurrency calls had %d failures\n", ctx.failures);
+    return 1;
+  }
+  return 0;
+}
+
 int main(int argc, char **argv) {
   static const double fh2[9] = {
       0.0, 0.0, 0.0, 2.6844, 0.0, 0.0, 4.4434, 0.0, 0.0,
@@ -563,6 +768,13 @@ int main(int argc, char **argv) {
     fprintf(stderr, "potlibc engine symbols are incomplete\n");
     return 2;
   }
+  if (dlsym(library, "potlibc_mutex_lock") != NULL ||
+      dlsym(library, "potlibc_engine_fail_lock") != NULL ||
+      dlsym(library, "rgpot_potlibc_test_set_lock_fail") != NULL ||
+      dlsym(library, "lock_handle") != NULL) {
+    fprintf(stderr, "potlibc engine exported internal symbols\n");
+    return 2;
+  }
   {
     const RgpotEngineAbiStamp host = {
         RGPOT_ENGINE_ABI_VERSION,
@@ -595,6 +807,10 @@ int main(int argc, char **argv) {
                        variable_species, UINT64_C(0xc01452a9f90879c8)) != 0 ||
       hvp_arguments_are_checked(&engine) != 0 ||
       batch_is_one_call_per_system(&engine) != 0 ||
+      config_size_is_extensible(&engine) != 0 ||
+      caps_refuses_null_handle(&engine) != 0 ||
+      evaluate_failure_preserves_outputs(&engine) != 0 ||
+      concurrent_batch_hvp_caps_calls(&engine) != 0 ||
       variable_size_requires_count(&engine) != 0 ||
       oversized_atom_counts_are_refused(&engine) != 0 ||
       reentrant_lock_returns_named_code(&engine) != 0 ||

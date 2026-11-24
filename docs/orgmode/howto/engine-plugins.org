@@ -96,9 +96,8 @@ params messages need the Cap'n Proto schema.
 =libpotlibc_engine= is independent of RPC and is built only with =-Dwith_potlibc=enabled=
 after potlibc is installed.
 =libcoupled_well_engine= is independent of RPC and of every optional library,
-and is always built.
-The classical, composite, MOPAC, NWChem and Skala libraries are not built on
-Windows.
+and is built on Unix-like targets.
+Windows builds skip the engine plugin libraries.
 
 The =umaenginebld= pixi environment has the rpc, metatomic and xtb dependencies.
 CI builds and tests every engine with the =potctl= command line tool (a cargo

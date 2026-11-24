@@ -59,9 +59,10 @@ No potlibc symbols or headers enter the core library.
 ** Create a surface
 
 =include/rgpot/potlibc_engine.h= declares =RgpotPotlibcConfigV1=.
-Set its magic and version, copy one canonical catalog id into
+Set its magic, size and version, copy one canonical catalog id into
 =surface_id=, and set =atom_count= to zero for a fixed-size surface or to the
 exact count for a variable-size surface.
+=reserved= must be zero.
 The plugin calls =potlibc_create= in the first case and =potlibc_create_sized=
 in the second; it does not retry with another constructor.
 
@@ -75,7 +76,9 @@ in the second; it does not retry with another constructor.
 int main(void) {
 RgpotPotlibcConfigV1 cfg = {
     .magic = RGPOT_POTLIBC_CONFIG_MAGIC,
+    .size = sizeof(RgpotPotlibcConfigV1),
     .version = RGPOT_POTLIBC_CONFIG_VERSION,
+    .reserved = 0,
     .atom_count = 0,
 };
 strcpy(cfg.surface_id, "brh2leps");
@@ -83,10 +86,16 @@ strcpy(cfg.surface_id, "brh2leps");
 char error[512];
 RgpotEnginePot *pot =
     rgpot_engine_create(&cfg, sizeof cfg, error, sizeof error);
+
 rgpot_engine_destroy(pot);
 return pot == NULL;
 }
 #+end_src
+
+A message with =size < RGPOT_POTLIBC_CONFIG_MIN_SIZE= is refused as a typed size
+error.
+A larger message is accepted only when every unknown trailing byte up to =size=
+is zero.
 
 The engine ABI takes Angstrom and returns eV and eV/Angstrom.
 The plugin performs the conversion to potlibc's Bohr and Hartree units.

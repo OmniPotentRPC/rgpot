@@ -56,8 +56,10 @@ energy =V0=, and the Hessian at a minimum is
 
 ** Build the engine
 
-The Meson build always builds =libcoupled_well_engine.so=.
-It has no option and no dependency, and it is installed with
+On Unix-like builds, Meson builds =libcoupled_well_engine.so= without optional
+dependencies.
+Windows builds skip the engine plugin libraries, including this one.
+When built for installation, it is installed with
 =include/rgpot/coupled_well_engine.h=.
 
 #+attr_rgpot: syntax
@@ -76,9 +78,9 @@ of one handle.
 
 The create message is =RgpotCoupledWellConfigV1= from
 =include/rgpot/coupled_well_engine.h=.
-Set =magic= and =version=, the one =atomic_number= the engine accepts, and the
-four parameters.
-=reserved= must be zero.
+Set =magic=, =size= and =version=, the one =atomic_number= the engine accepts,
+and the four parameters.
+=reserved0= and =reserved1= must be zero.
 
 #+attr_rgpot: compile flags=-ICppCore -Iinclude
 #+begin_src c
@@ -91,8 +93,11 @@ int main(void) {
 RgpotCoupledWellConfigV1 cfg;
 memset(&cfg, 0, sizeof cfg);
 cfg.magic = RGPOT_COUPLED_WELL_CONFIG_MAGIC;
+cfg.size = sizeof cfg;
 cfg.version = RGPOT_COUPLED_WELL_CONFIG_VERSION;
+cfg.reserved0 = 0;
 cfg.atomic_number = 1;
+cfg.reserved1 = 0;
 cfg.barrier_energy = 3.0;
 cfg.well_position = 2.0;
 cfg.transverse_spring = 4.0;
@@ -109,11 +114,13 @@ return 0;
 }
 #+end_src
 
-=rgpot_engine_create= refuses, with a reason in =errbuf=, a message of the wrong
-length, a wrong magic, version or reserved field, a non-positive
-=atomic_number=, a =barrier_energy=, =well_position= or =transverse_spring= that
-is not finite and positive, and a =coupling= that is not finite.
+=rgpot_engine_create= refuses, with a reason in =errbuf=, a message with
+=size < RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE=, a wrong magic, version or reserved field, a non-positive =atomic_number=,
+a =barrier_energy=, =well_position= or =transverse_spring= that is not finite
+and positive, and a =coupling= that is not finite.
 A negative =coupling= is valid.
+A larger message is accepted only when every unknown trailing byte up to =size=
+is zero.
 
 ** Evaluate it
 
@@ -138,7 +145,8 @@ The library reports =RgpotEngineCaps= with =batched= and =analytic_hvp= set and
 The model is a pure function of the create message, so any number of threads may
 call one handle at once, and =rgpot_engine_last_error= may run during an
 evaluation.
-When calls overlap, the message is that of the call that failed last.
+When calls overlap, a successful call may clear a failure message from another
+thread before it is read.
 
 The library exports =rgpot_engine_available=, which returns 1, the ABI stamp and
 =rgpot_engine_abi_compatible= with the rule of the [[file:../reference/engine_abi.org][engine
