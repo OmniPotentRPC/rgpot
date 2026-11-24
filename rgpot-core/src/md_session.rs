@@ -371,6 +371,10 @@ pub struct MdNlistRequest {
 }
 
 /// Structure-of-arrays pair buffers shared with `rgpot_nlist_soa`.
+///
+/// This is the raw layout handed to the engine callbacks. Safe callers pass
+/// [`MdNlistBuffers`] or [`MdNlistPairs`] to [`MdSession`] instead, which
+/// build it from slices of checked length.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MdNlistSoa {
@@ -382,6 +386,260 @@ pub struct MdNlistSoa {
     pub distance: *mut f64,
     pub mask: *mut u8,
     pub cap: usize,
+}
+
+/// Caller-owned columns that [`MdSession::get_neighbors`] fills.
+///
+/// `first` and `second` hold one entry per pair and their common length is
+/// the capacity. `shift` and `vector` hold three entries per pair, `distance`
+/// and `mask` one. A column left `None` is not written; a request that asks
+/// for it, or a cluster request without `mask`, is refused before the engine
+/// is called.
+#[derive(Debug)]
+pub struct MdNlistBuffers<'a> {
+    /// First atom of each pair.
+    pub first: &'a mut [i32],
+    /// Second atom of each pair.
+    pub second: &'a mut [i32],
+    /// Integer image shift of each pair, three per pair.
+    pub shift: Option<&'a mut [i32]>,
+    /// Pair vector in Angstrom, three per pair.
+    pub vector: Option<&'a mut [f64]>,
+    /// Pair distance in Angstrom.
+    pub distance: Option<&'a mut [f64]>,
+    /// Cluster mask.
+    pub mask: Option<&'a mut [u8]>,
+}
+
+impl<'a> MdNlistBuffers<'a> {
+    /// Buffers with the atom columns only.
+    #[must_use]
+    pub fn new(first: &'a mut [i32], second: &'a mut [i32]) -> Self {
+        Self {
+            first,
+            second,
+            shift: None,
+            vector: None,
+            distance: None,
+            mask: None,
+        }
+    }
+
+    /// Set [`Self::shift`].
+    #[must_use]
+    pub fn with_shift(mut self, shift: &'a mut [i32]) -> Self {
+        self.shift = Some(shift);
+        self
+    }
+
+    /// Set [`Self::vector`].
+    #[must_use]
+    pub fn with_vector(mut self, vector: &'a mut [f64]) -> Self {
+        self.vector = Some(vector);
+        self
+    }
+
+    /// Set [`Self::distance`].
+    #[must_use]
+    pub fn with_distance(mut self, distance: &'a mut [f64]) -> Self {
+        self.distance = Some(distance);
+        self
+    }
+
+    /// Set [`Self::mask`].
+    #[must_use]
+    pub fn with_mask(mut self, mask: &'a mut [u8]) -> Self {
+        self.mask = Some(mask);
+        self
+    }
+
+    /// Number of pairs the buffers hold.
+    #[must_use]
+    pub fn capacity(&self) -> usize {
+        self.first.len()
+    }
+
+    fn as_raw(&mut self, request: &MdNlistRequest) -> Result<MdNlistSoa, MdSessionError> {
+        let cap = self.capacity();
+        check_nlist_columns(
+            request,
+            cap,
+            self.second.len(),
+            self.shift.as_deref().map(<[i32]>::len),
+            self.vector.as_deref().map(<[f64]>::len),
+            self.distance.as_deref().map(<[f64]>::len),
+            self.mask.as_deref().map(<[u8]>::len),
+        )?;
+        Ok(MdNlistSoa {
+            bytes: NLIST_SOA_BYTES,
+            first: self.first.as_mut_ptr(),
+            second: self.second.as_mut_ptr(),
+            shift: self
+                .shift
+                .as_deref_mut()
+                .map_or(std::ptr::null_mut(), <[i32]>::as_mut_ptr),
+            vector: self
+                .vector
+                .as_deref_mut()
+                .map_or(std::ptr::null_mut(), <[f64]>::as_mut_ptr),
+            distance: self
+                .distance
+                .as_deref_mut()
+                .map_or(std::ptr::null_mut(), <[f64]>::as_mut_ptr),
+            mask: self
+                .mask
+                .as_deref_mut()
+                .map_or(std::ptr::null_mut(), <[u8]>::as_mut_ptr),
+            cap,
+        })
+    }
+}
+
+/// Host-built pairs that [`MdSession::set_neighbors`] hands to the engine.
+///
+/// The columns follow [`MdNlistBuffers`]; the common length of `first` and
+/// `second` is the pair count.
+#[derive(Clone, Copy, Debug)]
+pub struct MdNlistPairs<'a> {
+    /// First atom of each pair.
+    pub first: &'a [i32],
+    /// Second atom of each pair.
+    pub second: &'a [i32],
+    /// Integer image shift of each pair, three per pair.
+    pub shift: Option<&'a [i32]>,
+    /// Pair vector in Angstrom, three per pair.
+    pub vector: Option<&'a [f64]>,
+    /// Pair distance in Angstrom.
+    pub distance: Option<&'a [f64]>,
+    /// Cluster mask.
+    pub mask: Option<&'a [u8]>,
+}
+
+impl<'a> MdNlistPairs<'a> {
+    /// Pairs with the atom columns only.
+    #[must_use]
+    pub fn new(first: &'a [i32], second: &'a [i32]) -> Self {
+        Self {
+            first,
+            second,
+            shift: None,
+            vector: None,
+            distance: None,
+            mask: None,
+        }
+    }
+
+    /// Set [`Self::shift`].
+    #[must_use]
+    pub fn with_shift(mut self, shift: &'a [i32]) -> Self {
+        self.shift = Some(shift);
+        self
+    }
+
+    /// Set [`Self::vector`].
+    #[must_use]
+    pub fn with_vector(mut self, vector: &'a [f64]) -> Self {
+        self.vector = Some(vector);
+        self
+    }
+
+    /// Set [`Self::distance`].
+    #[must_use]
+    pub fn with_distance(mut self, distance: &'a [f64]) -> Self {
+        self.distance = Some(distance);
+        self
+    }
+
+    /// Set [`Self::mask`].
+    #[must_use]
+    pub fn with_mask(mut self, mask: &'a [u8]) -> Self {
+        self.mask = Some(mask);
+        self
+    }
+
+    /// Number of pairs.
+    #[must_use]
+    pub fn count(&self) -> usize {
+        self.first.len()
+    }
+
+    /// The engine reads these columns and does not write them, so the
+    /// mutable pointers of the raw layout never carry a write.
+    fn as_raw(&self, request: &MdNlistRequest) -> Result<MdNlistSoa, MdSessionError> {
+        let count = self.count();
+        check_nlist_columns(
+            request,
+            count,
+            self.second.len(),
+            self.shift.map(<[i32]>::len),
+            self.vector.map(<[f64]>::len),
+            self.distance.map(<[f64]>::len),
+            self.mask.map(<[u8]>::len),
+        )?;
+        Ok(MdNlistSoa {
+            bytes: NLIST_SOA_BYTES,
+            first: self.first.as_ptr().cast_mut(),
+            second: self.second.as_ptr().cast_mut(),
+            shift: self
+                .shift
+                .map_or(std::ptr::null_mut(), |v| v.as_ptr().cast_mut()),
+            vector: self
+                .vector
+                .map_or(std::ptr::null_mut(), |v| v.as_ptr().cast_mut()),
+            distance: self
+                .distance
+                .map_or(std::ptr::null_mut(), |v| v.as_ptr().cast_mut()),
+            mask: self
+                .mask
+                .map_or(std::ptr::null_mut(), |v| v.as_ptr().cast_mut()),
+            cap: count,
+        })
+    }
+}
+
+const NLIST_SOA_BYTES: u32 = std::mem::size_of::<MdNlistSoa>() as u32;
+
+/// Check the column lengths against `pairs` and the columns `request` asks
+/// for.
+fn check_nlist_columns(
+    request: &MdNlistRequest,
+    pairs: usize,
+    second: usize,
+    shift: Option<usize>,
+    vector: Option<usize>,
+    distance: Option<usize>,
+    mask: Option<usize>,
+) -> Result<(), MdSessionError> {
+    if second != pairs {
+        return Err(MdSessionError::new(format!(
+            "neighbour column second holds {second} entries for {pairs} pairs"
+        )));
+    }
+    let triple = pairs
+        .checked_mul(3)
+        .ok_or_else(|| MdSessionError::new("neighbour pair count overflows"))?;
+    let columns = [
+        ("shift", shift, triple, request.want_shifts != 0),
+        ("vector", vector, triple, request.want_vectors != 0),
+        ("distance", distance, pairs, request.want_distances != 0),
+        ("mask", mask, pairs, request.shape == 1),
+    ];
+    for (name, len, expected, wanted) in columns {
+        match len {
+            Some(len) if len != expected => {
+                return Err(MdSessionError::new(format!(
+                    "neighbour column {name} holds {len} entries, expected {expected}"
+                )));
+            }
+            None if wanted && pairs > 0 => {
+                return Err(MdSessionError::new(format!(
+                    "the neighbour request needs the {name} column"
+                )));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Return statuses for neighbour exchange callbacks.
@@ -487,10 +745,14 @@ pub trait MdSession {
     }
 
     /// Query the engine neighbour list for the supplied request.
+    ///
+    /// Returns the number of pairs written into `out` and the number the
+    /// full list holds. With `out` of `None` nothing is written and only the
+    /// full number is reported.
     fn get_neighbors(
         &mut self,
         _request: &MdNlistRequest,
-        _out: Option<&mut MdNlistSoa>,
+        _out: Option<MdNlistBuffers<'_>>,
     ) -> Result<(usize, usize), MdSessionError> {
         Err(MdSessionError::new(
             "MD engine does not expose neighbor queries",
@@ -501,8 +763,7 @@ pub trait MdSession {
     fn set_neighbors(
         &mut self,
         _request: &MdNlistRequest,
-        _pairs: &MdNlistSoa,
-        _count: usize,
+        _pairs: &MdNlistPairs<'_>,
     ) -> Result<(), MdSessionError> {
         Err(MdSessionError::new(
             "MD engine does not accept supplied neighbors",
@@ -1319,20 +1580,24 @@ impl MdSession for CAbiMdSession {
     fn get_neighbors(
         &mut self,
         request: &MdNlistRequest,
-        out: Option<&mut MdNlistSoa>,
+        out: Option<MdNlistBuffers<'_>>,
     ) -> Result<(usize, usize), MdSessionError> {
         let Some(callback) = self.ops.get_neighbors else {
             return Err(MdSessionError::new(
                 "MD engine does not expose neighbor queries",
             ));
         };
+        let mut raw = match out {
+            Some(mut buffers) => Some(buffers.as_raw(request)?),
+            None => None,
+        };
+        let cap = raw.as_ref().map_or(0, |soa| soa.cap);
+        let out_ptr = raw
+            .as_mut()
+            .map_or(std::ptr::null_mut(), |soa| soa as *mut MdNlistSoa);
         let mut count: usize = 0;
         let mut needed: usize = 0;
         let mut error = [0 as c_char; 1024];
-        let out_ptr = match out {
-            Some(value) => value as *mut MdNlistSoa,
-            None => std::ptr::null_mut(),
-        };
         let status = unsafe {
             callback(
                 self.ctx.as_ptr(),
@@ -1345,6 +1610,9 @@ impl MdSession for CAbiMdSession {
             )
         };
         match MdNlistStatus::from_raw(status) {
+            MdNlistStatus::Ok if count > cap => Err(MdSessionError::new(format!(
+                "MD engine reported {count} neighbour pairs for a buffer of {cap}"
+            ))),
             MdNlistStatus::Ok => Ok((count, needed)),
             MdNlistStatus::Unsupported => {
                 let message = error_message(&error);
@@ -1363,21 +1631,21 @@ impl MdSession for CAbiMdSession {
     fn set_neighbors(
         &mut self,
         request: &MdNlistRequest,
-        pairs: &MdNlistSoa,
-        count: usize,
+        pairs: &MdNlistPairs<'_>,
     ) -> Result<(), MdSessionError> {
         let Some(callback) = self.ops.set_neighbors else {
             return Err(MdSessionError::new(
                 "MD engine does not accept supplied neighbors",
             ));
         };
+        let raw = pairs.as_raw(request)?;
         let mut error = [0 as c_char; 1024];
         let status = unsafe {
             callback(
                 self.ctx.as_ptr(),
                 request as *const MdNlistRequest,
-                pairs as *const MdNlistSoa,
-                count,
+                &raw,
+                raw.cap,
                 error.as_mut_ptr(),
                 error.len(),
             )
@@ -1417,7 +1685,30 @@ mod tests {
         cell: [f64; 9],
         fail_next: bool,
         nlist_calls: usize,
+        nlist_pairs: usize,
+        received_pairs: Vec<(i32, i32)>,
         destroyed: Arc<AtomicBool>,
+    }
+
+    impl MockCtx {
+        fn new(destroyed: &Arc<AtomicBool>) -> Self {
+            Self {
+                positions: vec![0.0; 6],
+                velocities: vec![0.0; 6],
+                masses: vec![4.0, 39.9],
+                last_seed: 0,
+                last_k_t: 0.0,
+                last_time_step: 0.0,
+                last_n_walls: 0,
+                last_wall_mode: -1,
+                cell: [0.0; 9],
+                fail_next: false,
+                nlist_calls: 0,
+                nlist_pairs: 3,
+                received_pairs: Vec::new(),
+                destroyed: Arc::clone(destroyed),
+            }
+        }
     }
 
     fn write_c_err(err: *mut c_char, err_len: usize, msg: &str) {
@@ -1552,10 +1843,12 @@ mod tests {
         boxed.destroyed.store(true, Ordering::SeqCst);
     }
 
+    /// Reports `nlist_pairs` pairs `(k, k + 1)` at distance `k + 1`, and
+    /// claims one more pair than fits when `fail_next` is set.
     unsafe extern "C" fn mock_get_neighbors(
         ctx: *mut c_void,
         _request: *const MdNlistRequest,
-        _out: *mut MdNlistSoa,
+        out: *mut MdNlistSoa,
         count: *mut usize,
         needed: *mut usize,
         _err: *mut c_char,
@@ -1563,16 +1856,52 @@ mod tests {
     ) -> i32 {
         let state = unsafe { &mut *(ctx as *mut MockCtx) };
         state.nlist_calls += 1;
-        if !count.is_null() {
-            unsafe { *count = 4 };
+        let total = state.nlist_pairs;
+        let mut written = 0;
+        if let Some(out) = unsafe { out.as_ref() } {
+            written = total.min(out.cap);
+            for k in 0..written {
+                unsafe {
+                    *out.first.add(k) = k as i32;
+                    *out.second.add(k) = k as i32 + 1;
+                    if !out.distance.is_null() {
+                        *out.distance.add(k) = k as f64 + 1.0;
+                    }
+                }
+            }
+            if state.fail_next {
+                state.fail_next = false;
+                written = out.cap + 1;
+            }
         }
-        if !needed.is_null() {
-            unsafe { *needed = 4 };
+        unsafe {
+            *count = written;
+            *needed = total;
         }
         MdNlistStatus::Ok as i32
     }
 
     unsafe extern "C" fn mock_set_neighbors(
+        ctx: *mut c_void,
+        _request: *const MdNlistRequest,
+        pairs: *const MdNlistSoa,
+        count: usize,
+        err: *mut c_char,
+        err_len: usize,
+    ) -> i32 {
+        let state = unsafe { &mut *(ctx as *mut MockCtx) };
+        let pairs = unsafe { &*pairs };
+        if pairs.cap != count {
+            write_c_err(err, err_len, "count and cap differ");
+            return MdNlistStatus::Error as i32;
+        }
+        state.received_pairs = (0..count)
+            .map(|k| unsafe { (*pairs.first.add(k), *pairs.second.add(k)) })
+            .collect();
+        MdNlistStatus::Ok as i32
+    }
+
+    unsafe extern "C" fn mock_refuse_neighbors(
         _ctx: *mut c_void,
         _request: *const MdNlistRequest,
         _pairs: *const MdNlistSoa,
@@ -1669,20 +1998,7 @@ mod tests {
     #[test]
     fn cabi_session_forwards_controls_validates_inputs_and_drops() {
         let destroyed = Arc::new(AtomicBool::new(false));
-        let ctx = Box::into_raw(Box::new(MockCtx {
-            positions: vec![0.0; 6],
-            velocities: vec![0.0; 6],
-            masses: vec![4.0, 39.9],
-            last_seed: 0,
-            last_k_t: 0.0,
-            last_time_step: 0.0,
-            last_n_walls: 0,
-            last_wall_mode: -1,
-            cell: [0.0; 9],
-            fail_next: false,
-            nlist_calls: 0,
-            destroyed: Arc::clone(&destroyed),
-        }));
+        let ctx = Box::into_raw(Box::new(MockCtx::new(&destroyed)));
         let mut session =
             unsafe { CAbiMdSession::from_ops(NonNull::new_unchecked(ctx.cast()), mock_ops(), 2) }
                 .expect("valid vtable");
@@ -1746,20 +2062,7 @@ mod tests {
         ops: MdSessionOps,
         destroyed: &Arc<AtomicBool>,
     ) -> (CAbiMdSession, *mut MockCtx) {
-        let ctx = Box::into_raw(Box::new(MockCtx {
-            positions: vec![0.0; 6],
-            velocities: vec![0.0; 6],
-            masses: vec![4.0, 39.9],
-            last_seed: 0,
-            last_k_t: 0.0,
-            last_time_step: 0.0,
-            last_n_walls: 0,
-            last_wall_mode: -1,
-            cell: [0.0; 9],
-            fail_next: false,
-            nlist_calls: 0,
-            destroyed: Arc::clone(destroyed),
-        }));
+        let ctx = Box::into_raw(Box::new(MockCtx::new(destroyed)));
         let session =
             unsafe { CAbiMdSession::from_ops(NonNull::new_unchecked(ctx.cast()), ops, 2) }
                 .expect("valid vtable");
@@ -1770,13 +2073,106 @@ mod tests {
     fn neighbour_callbacks_forward_and_report_the_typed_status() {
         let destroyed = Arc::new(AtomicBool::new(false));
         let (mut session, ctx) = mock_session(mock_ops(), &destroyed);
-        let request = MdNlistRequest::default();
-        let mut out = MdNlistSoa::default();
-        let (count, needed) = session.get_neighbors(&request, Some(&mut out)).unwrap();
-        assert_eq!((count, needed), (4, 4));
-        assert_eq!(unsafe { (*ctx).nlist_calls }, 1);
-        let refused = session
-            .set_neighbors(&request, &MdNlistSoa::default(), 0)
+        let request = MdNlistRequest {
+            want_distances: 1,
+            ..MdNlistRequest::default()
+        };
+        assert_eq!(session.get_neighbors(&request, None).unwrap(), (0, 3));
+
+        let (mut first, mut second, mut distance) = ([-1; 4], [-1; 4], [0.0; 4]);
+        let buffers = MdNlistBuffers::new(&mut first, &mut second).with_distance(&mut distance);
+        assert_eq!(buffers.capacity(), 4);
+        assert_eq!(
+            session.get_neighbors(&request, Some(buffers)).unwrap(),
+            (3, 3)
+        );
+        assert_eq!(first, [0, 1, 2, -1]);
+        assert_eq!(second, [1, 2, 3, -1]);
+        assert_eq!(distance, [1.0, 2.0, 3.0, 0.0]);
+
+        let (mut first, mut second) = ([0; 2], [0; 2]);
+        assert_eq!(
+            session
+                .get_neighbors(
+                    &MdNlistRequest::default(),
+                    Some(MdNlistBuffers::new(&mut first, &mut second))
+                )
+                .unwrap(),
+            (2, 3)
+        );
+        assert_eq!(unsafe { (*ctx).nlist_calls }, 3);
+
+        // Columns that disagree with the capacity or the request are refused
+        // before the engine is called.
+        let (mut first, mut second) = ([0; 2], [0; 3]);
+        let mismatch = session
+            .get_neighbors(&request, Some(MdNlistBuffers::new(&mut first, &mut second)))
+            .unwrap_err();
+        assert!(mismatch.to_string().contains("column second"), "{mismatch}");
+        let (mut first, mut second) = ([0; 2], [0; 2]);
+        let unasked = session
+            .get_neighbors(&request, Some(MdNlistBuffers::new(&mut first, &mut second)))
+            .unwrap_err();
+        assert!(unasked.to_string().contains("distance column"), "{unasked}");
+        let (mut first, mut second, mut vector) = ([0; 2], [0; 2], [0.0; 5]);
+        let short_vector = session
+            .get_neighbors(
+                &MdNlistRequest::default(),
+                Some(MdNlistBuffers::new(&mut first, &mut second).with_vector(&mut vector)),
+            )
+            .unwrap_err();
+        assert!(
+            short_vector.to_string().contains("vector holds 5"),
+            "{short_vector}"
+        );
+        let cluster = MdNlistRequest {
+            shape: 1,
+            ..MdNlistRequest::default()
+        };
+        let (mut first, mut second) = ([0; 2], [0; 2]);
+        assert!(session
+            .get_neighbors(&cluster, Some(MdNlistBuffers::new(&mut first, &mut second)))
+            .unwrap_err()
+            .to_string()
+            .contains("mask column"));
+        assert_eq!(unsafe { (*ctx).nlist_calls }, 3);
+
+        // A count beyond the capacity is an engine error, not a length.
+        unsafe { (*ctx).fail_next = true };
+        let (mut first, mut second) = ([0; 2], [0; 2]);
+        let overrun = session
+            .get_neighbors(
+                &MdNlistRequest::default(),
+                Some(MdNlistBuffers::new(&mut first, &mut second)),
+            )
+            .unwrap_err();
+        assert!(overrun
+            .to_string()
+            .contains("3 neighbour pairs for a buffer of 2"));
+
+        let pairs = MdNlistPairs::new(&[0, 1], &[1, 0]);
+        assert_eq!(pairs.count(), 2);
+        session
+            .set_neighbors(&MdNlistRequest::default(), &pairs)
+            .unwrap();
+        assert_eq!(unsafe { &(*ctx).received_pairs }, &[(0, 1), (1, 0)]);
+        assert!(session
+            .set_neighbors(&request, &pairs)
+            .unwrap_err()
+            .to_string()
+            .contains("distance column"));
+        session
+            .set_neighbors(&request, &pairs.with_distance(&[1.0, 1.0]))
+            .unwrap();
+        assert!(session
+            .set_neighbors(&MdNlistRequest::default(), &MdNlistPairs::new(&[0], &[]))
+            .is_err());
+
+        let mut refusing = mock_ops();
+        refusing.set_neighbors = Some(mock_refuse_neighbors);
+        let (mut refuser, _ctx) = mock_session(refusing, &destroyed);
+        let refused = refuser
+            .set_neighbors(&MdNlistRequest::default(), &MdNlistPairs::new(&[], &[]))
             .unwrap_err();
         assert!(refused
             .to_string()
@@ -1832,20 +2228,7 @@ mod tests {
 
         let mut tiny = mock_ops();
         tiny.struct_size = std::mem::offset_of!(MdSessionOps, destroy);
-        let ctx = Box::into_raw(Box::new(MockCtx {
-            positions: vec![0.0; 6],
-            velocities: vec![0.0; 6],
-            masses: vec![4.0, 39.9],
-            last_seed: 0,
-            last_k_t: 0.0,
-            last_time_step: 0.0,
-            last_n_walls: 0,
-            last_wall_mode: -1,
-            cell: [0.0; 9],
-            fail_next: false,
-            nlist_calls: 0,
-            destroyed: Arc::clone(&destroyed),
-        }));
+        let ctx = Box::into_raw(Box::new(MockCtx::new(&destroyed)));
         let refused =
             unsafe { CAbiMdSession::from_ops(NonNull::new_unchecked(ctx.cast()), tiny, 2) };
         assert!(refused.is_err());
@@ -1853,20 +2236,7 @@ mod tests {
     }
 
     fn mock_ctx(destroyed: &Arc<AtomicBool>) -> *mut MockCtx {
-        Box::into_raw(Box::new(MockCtx {
-            positions: vec![0.0; 6],
-            velocities: vec![0.0; 6],
-            masses: vec![4.0, 39.9],
-            last_seed: 0,
-            last_k_t: 0.0,
-            last_time_step: 0.0,
-            last_n_walls: 0,
-            last_wall_mode: -1,
-            cell: [0.0; 9],
-            fail_next: false,
-            nlist_calls: 0,
-            destroyed: Arc::clone(destroyed),
-        }))
+        Box::into_raw(Box::new(MockCtx::new(destroyed)))
     }
 
     /// The table an engine writes, with the slot at `offset` left null.

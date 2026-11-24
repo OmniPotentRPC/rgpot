@@ -8,7 +8,9 @@
 
 use std::path::{Path, PathBuf};
 
-use rgpot_core::md_session::{CAbiMdSession, MdSession};
+use rgpot_core::md_session::{
+    CAbiMdSession, MdNlistBuffers, MdNlistPairs, MdNlistRequest, MdSession,
+};
 
 fn build_fixture() -> PathBuf {
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/md_session_engine.c");
@@ -92,6 +94,23 @@ fn open_engine_validates_the_vtable_and_releases_refused_sessions() {
     assert_eq!(state.positions, vec![1.0, 0.0, 0.0, 3.0, 4.0, 0.0]);
     assert_eq!(state.kinetic_energy, 0.5);
 
+    let request = MdNlistRequest {
+        want_distances: 1,
+        ..MdNlistRequest::default()
+    };
+    let (mut first, mut second, mut distance) = ([-1; 2], [-1; 2], [0.0; 2]);
+    let buffers = MdNlistBuffers::new(&mut first, &mut second).with_distance(&mut distance);
+    assert_eq!(
+        session.get_neighbors(&request, Some(buffers)).unwrap(),
+        (1, 1)
+    );
+    assert_eq!((first[0], second[0]), (0, 1));
+    assert_eq!(distance[0], (2.0f64 * 2.0 + 4.0 * 4.0).sqrt());
+    assert!(session
+        .set_neighbors(&MdNlistRequest::default(), &MdNlistPairs::new(&[0], &[1]))
+        .unwrap_err()
+        .to_string()
+        .contains("does not accept supplied neighbors"));
     assert!(session
         .step_langevin(
             &Default::default(),
