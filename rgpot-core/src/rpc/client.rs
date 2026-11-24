@@ -24,6 +24,59 @@ use crate::rpc::schema::potential;
 use crate::tensor::{copy_f64_tensor, copy_i32_tensor, create_owned_f64_tensor};
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
+/// Query parameters for `Potential.neighbours`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NeighborQuery {
+    /// Pair cutoff in the length unit of `positions`.
+    pub cutoff: f64,
+    /// Verlet buffer in the length unit of `positions`.
+    pub skin: f64,
+    /// 0 half pairs, 1 full pairs, 2 cluster of four.
+    pub format: u8,
+    /// 0 strict, 1 loose.
+    pub cut: u8,
+    /// Per-axis periodicity flags.
+    pub periodic: [bool; 3],
+    /// Whether to return integer cell shifts.
+    pub shifts: bool,
+    /// Whether to return displacement vectors.
+    pub vectors: bool,
+    /// Whether to return scalar distances.
+    pub distances: bool,
+}
+
+impl Default for NeighborQuery {
+    fn default() -> Self {
+        Self {
+            cutoff: 0.0,
+            skin: 0.0,
+            format: 0,
+            cut: 0,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        }
+    }
+}
+
+/// Result returned by `Potential.neighbours`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NeighborReply {
+    /// Central atom indices.
+    pub first: Vec<i32>,
+    /// Partner atom indices.
+    pub second: Vec<i32>,
+    /// Integer cell shifts (`3 * len(first)` when requested).
+    pub shift: Vec<i32>,
+    /// Pair displacement vectors (`3 * len(first)` when requested).
+    pub vector: Vec<f64>,
+    /// Pair distances (`len(first)` when requested).
+    pub distance: Vec<f64>,
+    /// Interaction mask (`len(first)` bytes).
+    pub mask: Vec<u8>,
+}
+
 /// RPC client that connects to a remote rgpot server.
 pub struct RpcClient {
     runtime: Runtime,
@@ -70,6 +123,16 @@ impl RpcClient {
     ) -> Result<Vec<f64>, String> {
         let local = tokio::task::LocalSet::new();
         local.block_on(&self.runtime, self.calculate_hvp_async(input, direction))
+    }
+
+    /// Request the server's neighbour list for `input` and `query`.
+    pub fn neighbours(
+        &mut self,
+        input: &rgpot_force_input_t,
+        query: &NeighborQuery,
+    ) -> Result<NeighborReply, String> {
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&self.runtime, self.neighbours_async(input, query))
     }
 
     async fn calculate_async(
@@ -259,6 +322,122 @@ impl RpcClient {
             ));
         }
         Ok((0..product.len()).map(|i| product.get(i)).collect())
+    }
+
+    async fn neighbours_async(
+        &self,
+        input: &rgpot_force_input_t,
+        query: &NeighborQuery,
+    ) -> Result<NeighborReply, String> {
+        let n = unsafe { input.n_atoms() }
+            .ok_or_else(|| "cannot determine n_atoms from input tensors".to_string())?;
+        let (positions, atmnrs, box_data) = unsafe { extract_cpu_input(input, n)? };
+        let stream = tokio::net::TcpStream::connect(&self.addr)
+            .await
+            .map_err(|e| format!("connection failed: {e}"))?;
+        stream
+            .set_nodelay(true)
+            .map_err(|e| format!("set_nodelay failed: {e}"))?;
+        let (reader, writer) = tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+        let network = twoparty::VatNetwork::new(
+            futures::io::BufReader::new(reader),
+            futures::io::BufWriter::new(writer),
+            rpc_twoparty_capnp::Side::Client,
+            Default::default(),
+        );
+        let mut rpc_system = RpcSystem::new(Box::new(network), None);
+        let potential_client: potential::Client =
+            rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
+        tokio::task::spawn_local(rpc_system);
+
+        crate::compat::check_server(&potential_client, &crate::compat::Expectation::default())
+            .await?;
+
+        let mut request = potential_client.neighbours_request();
+        {
+            let mut root = request.get();
+            let mut fip = root.reborrow().init_fip();
+            let mut pos_builder = fip.reborrow().init_pos(positions.len() as u32);
+            for (i, &value) in positions.iter().enumerate() {
+                pos_builder.set(i as u32, value);
+            }
+            let mut atom_builder = fip.reborrow().init_atmnrs(atmnrs.len() as u32);
+            for (i, &value) in atmnrs.iter().enumerate() {
+                atom_builder.set(i as u32, value);
+            }
+            let mut box_builder = fip.init_box(9);
+            for (i, &value) in box_data.iter().enumerate() {
+                box_builder.set(i as u32, value);
+            }
+            let mut nreq = root.init_request();
+            nreq.set_cutoff(query.cutoff);
+            nreq.set_skin(query.skin);
+            nreq.set_format(query.format);
+            nreq.set_cut(query.cut);
+            let mut pbc = nreq.reborrow().init_periodic(3);
+            for (i, &flag) in query.periodic.iter().enumerate() {
+                pbc.set(i as u32, flag);
+            }
+            nreq.set_shifts(query.shifts);
+            nreq.set_vectors(query.vectors);
+            nreq.set_distances(query.distances);
+            nreq.set_mode(1);
+        }
+        let response = request
+            .send()
+            .promise
+            .await
+            .map_err(|e: CapnpError| format!("RPC neighbours call failed: {e}"))?;
+        let list = response
+            .get()
+            .map_err(|e| format!("failed to read neighbours response: {e}"))?
+            .get_neighbors()
+            .map_err(|e| format!("failed to read neighbours list: {e}"))?;
+        let status = list.get_status();
+        if status != 0 {
+            let msg = list
+                .get_message()
+                .ok()
+                .and_then(|t| t.to_str().ok())
+                .filter(|s| !s.is_empty());
+            return Err(match msg {
+                Some(text) => format!("server neighbour error ({status}): {text}"),
+                None => format!("server neighbour error ({status})"),
+            });
+        }
+        let first = list
+            .get_first()
+            .map_err(|e| format!("failed to read first: {e}"))?;
+        let second = list
+            .get_second()
+            .map_err(|e| format!("failed to read second: {e}"))?;
+        if first.len() != second.len() {
+            return Err(format!(
+                "neighbour first/second size mismatch: {} vs {}",
+                first.len(),
+                second.len()
+            ));
+        }
+        let shift = list
+            .get_shift()
+            .map_err(|e| format!("failed to read shift: {e}"))?;
+        let vector = list
+            .get_vector()
+            .map_err(|e| format!("failed to read vector: {e}"))?;
+        let distance = list
+            .get_distance()
+            .map_err(|e| format!("failed to read distance: {e}"))?;
+        let mask = list
+            .get_mask()
+            .map_err(|e| format!("failed to read mask: {e}"))?;
+        Ok(NeighborReply {
+            first: (0..first.len()).map(|i| first.get(i)).collect(),
+            second: (0..second.len()).map(|i| second.get(i)).collect(),
+            shift: (0..shift.len()).map(|i| shift.get(i)).collect(),
+            vector: (0..vector.len()).map(|i| vector.get(i)).collect(),
+            distance: (0..distance.len()).map(|i| distance.get(i)).collect(),
+            mask: (0..mask.len()).map(|i| mask.get(i)).collect(),
+        })
     }
 }
 

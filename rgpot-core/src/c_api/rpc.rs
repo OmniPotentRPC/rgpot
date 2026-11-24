@@ -11,7 +11,7 @@
 use std::os::raw::c_char;
 
 #[cfg(feature = "rpc")]
-use crate::rpc::client::RpcClient;
+use crate::rpc::client::{NeighborQuery, RpcClient};
 #[cfg(feature = "rpc")]
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
 #[cfg(feature = "rpc")]
@@ -20,6 +20,50 @@ use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 /// Opaque RPC client handle.
 #[cfg(feature = "rpc")]
 pub type rgpot_rpc_client_t = RpcClient;
+
+/// Neighbour query parameters for `rgpot_rpc_neighbours`.
+#[cfg(feature = "rpc")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct rgpot_rpc_neighbors_request_t {
+    /// Pair cutoff in the length unit of `positions`.
+    pub cutoff: f64,
+    /// Verlet buffer in the length unit of `positions`.
+    pub skin: f64,
+    /// 0 half pairs, 1 full pairs, 2 cluster of four.
+    pub format: u8,
+    /// 0 strict, 1 loose.
+    pub cut: u8,
+    /// Per-axis periodicity flags (nonzero for periodic).
+    pub periodic: [i32; 3],
+    /// Nonzero to fill `shift`.
+    pub shifts: i32,
+    /// Nonzero to fill `vector`.
+    pub vectors: i32,
+    /// Nonzero to fill `distance`.
+    pub distances: i32,
+}
+
+/// Caller-owned buffers for `rgpot_rpc_neighbours`.
+#[cfg(feature = "rpc")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct rgpot_rpc_neighbors_out_t {
+    /// Central atom indices (`cap` entries).
+    pub first: *mut i32,
+    /// Partner atom indices (`cap` entries).
+    pub second: *mut i32,
+    /// Integer cell shifts (`3 * cap` entries when requested).
+    pub shift: *mut i32,
+    /// Pair displacement vectors (`3 * cap` entries when requested).
+    pub vector: *mut f64,
+    /// Pair distances (`cap` entries when requested).
+    pub distance: *mut f64,
+    /// Interaction mask (`cap` bytes, or NULL).
+    pub mask: *mut u8,
+    /// Capacity in pairs of each non-null buffer.
+    pub cap: usize,
+}
 
 /// Create a new RPC client connected to `host:port`.
 ///
@@ -169,6 +213,128 @@ pub unsafe extern "C" fn rgpot_rpc_client_select_orbitals(
             return rgpot_status_t::RGPOT_INVALID_PARAMETER;
         }
         unsafe { &mut *client }.select_orbitals(key);
+        rgpot_status_t::RGPOT_SUCCESS
+    }))
+}
+
+/// Request the remote potential's neighbour list for `input` and `request`.
+///
+/// `*count` receives the number of pairs written (at most `out->cap`), and
+/// `*needed` receives the full pair count. A NULL `out`, or `out->cap == 0`,
+/// probes the size and returns `RGPOT_SUCCESS` with `*count = 0`. When
+/// `out->cap` is positive and smaller than `*needed`, `out->cap` pairs are
+/// written and `RGPOT_BUFFER_SIZE_ERROR` is returned.
+///
+/// # Safety
+///
+/// `client` must be NULL or a live pointer from `rgpot_rpc_client_new`.
+/// `input` and `request` must be NULL or point to valid structs. `out`,
+/// `count` and `needed` must each be NULL or writable.
+#[cfg(feature = "rpc")]
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_rpc_neighbours(
+    client: *mut rgpot_rpc_client_t,
+    input: *const rgpot_force_input_t,
+    request: *const rgpot_rpc_neighbors_request_t,
+    out: *mut rgpot_rpc_neighbors_out_t,
+    count: *mut usize,
+    needed: *mut usize,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if !count.is_null() {
+            unsafe { *count = 0 };
+        }
+        if !needed.is_null() {
+            unsafe { *needed = 0 };
+        }
+        if client.is_null() || input.is_null() || request.is_null() {
+            set_last_error("rgpot_rpc_neighbours: NULL argument");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let req = unsafe { &*request };
+        let query = NeighborQuery {
+            cutoff: req.cutoff,
+            skin: req.skin,
+            format: req.format,
+            cut: req.cut,
+            periodic: [
+                req.periodic[0] != 0,
+                req.periodic[1] != 0,
+                req.periodic[2] != 0,
+            ],
+            shifts: req.shifts != 0,
+            vectors: req.vectors != 0,
+            distances: req.distances != 0,
+        };
+        if !out.is_null() {
+            let buffers = unsafe { &*out };
+            if buffers.cap > 0
+                && (buffers.first.is_null()
+                    || buffers.second.is_null()
+                    || (query.shifts && buffers.shift.is_null())
+                    || (query.vectors && buffers.vector.is_null())
+                    || (query.distances && buffers.distance.is_null())
+                    || (query.format == 2 && buffers.mask.is_null()))
+            {
+                set_last_error("rgpot_rpc_neighbours: required output buffer is NULL");
+                return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+            }
+        }
+        let inp = unsafe { &*input };
+        let reply = match unsafe { &mut *client }.neighbours(inp, &query) {
+            Ok(reply) => reply,
+            Err(error) => {
+                set_last_error(&format!("rgpot_rpc_neighbours: {error}"));
+                return rgpot_status_t::RGPOT_RPC_ERROR;
+            }
+        };
+        let total = reply.first.len();
+        if !needed.is_null() {
+            unsafe { *needed = total };
+        }
+        if out.is_null() {
+            return rgpot_status_t::RGPOT_SUCCESS;
+        }
+        let buffers = unsafe { &*out };
+        if buffers.cap == 0 {
+            return rgpot_status_t::RGPOT_SUCCESS;
+        }
+        let nwrite = buffers.cap.min(total);
+        if nwrite > 0 {
+            unsafe {
+                std::ptr::copy_nonoverlapping(reply.first.as_ptr(), buffers.first, nwrite);
+                std::ptr::copy_nonoverlapping(reply.second.as_ptr(), buffers.second, nwrite);
+                if !buffers.shift.is_null() && reply.shift.len() >= nwrite * 3 {
+                    std::ptr::copy_nonoverlapping(reply.shift.as_ptr(), buffers.shift, nwrite * 3);
+                }
+                if !buffers.vector.is_null() && reply.vector.len() >= nwrite * 3 {
+                    std::ptr::copy_nonoverlapping(
+                        reply.vector.as_ptr(),
+                        buffers.vector,
+                        nwrite * 3,
+                    );
+                }
+                if !buffers.distance.is_null() && reply.distance.len() >= nwrite {
+                    std::ptr::copy_nonoverlapping(
+                        reply.distance.as_ptr(),
+                        buffers.distance,
+                        nwrite,
+                    );
+                }
+                if !buffers.mask.is_null() && reply.mask.len() >= nwrite {
+                    std::ptr::copy_nonoverlapping(reply.mask.as_ptr(), buffers.mask, nwrite);
+                }
+            }
+        }
+        if !count.is_null() {
+            unsafe { *count = nwrite };
+        }
+        if nwrite < total {
+            set_last_error(
+                "rgpot_rpc_neighbours: neighbour buffer is shorter than the list; needed holds the full count",
+            );
+            return rgpot_status_t::RGPOT_BUFFER_SIZE_ERROR;
+        }
         rgpot_status_t::RGPOT_SUCCESS
     }))
 }
@@ -632,5 +798,48 @@ mod tests {
         assert!(msg.contains("intentional server exception"), "{msg}");
         unsafe { rgpot_rpc_client_free(client) };
         let _ = join.join();
+    }
+
+    #[test]
+    fn neighbours_validates_null_and_round_trips_against_server() {
+        let mut req = rgpot_rpc_neighbors_request_t {
+            cutoff: 2.5,
+            skin: 0.0,
+            format: 0,
+            cut: 0,
+            periodic: [1, 1, 1],
+            shifts: 1,
+            vectors: 1,
+            distances: 1,
+        };
+        let mut count = 0usize;
+        let mut needed = 0usize;
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                &req,
+                std::ptr::null_mut(),
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(
+            status,
+            crate::status::rgpot_status_t::RGPOT_INVALID_PARAMETER
+        );
+        req.skin = 0.2;
+        req.cut = 1;
+        let query = crate::rpc::client::NeighborQuery {
+            cutoff: req.cutoff,
+            skin: req.skin,
+            format: req.format,
+            cut: req.cut,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        assert_eq!(query.cutoff, 2.5);
     }
 }

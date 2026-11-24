@@ -225,12 +225,15 @@ pub fn describe_server(mut caps: Builder<'_>, analytic_hvp: bool) {
     caps.set_backend_name("rgpot");
     caps.set_backend_version(env!("CARGO_PKG_VERSION"));
     caps.set_available(true);
-    let count = if analytic_hvp { 3 } else { 2 };
+    let count = if analytic_hvp { 4 } else { 3 };
     let mut ops = caps.reborrow().init_operations(count);
     ops.set(0, Operation::Energy);
     ops.set(1, Operation::Forces);
     if analytic_hvp {
         ops.set(2, Operation::HessianVector);
+        ops.set(3, Operation::Neighbors);
+    } else {
+        ops.set(2, Operation::Neighbors);
     }
     fill_compatibility(caps);
 }

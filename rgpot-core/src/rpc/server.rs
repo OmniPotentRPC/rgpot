@@ -14,7 +14,7 @@
 use capnp::Error as CapnpError;
 use capnp_rpc::{pry, rpc_twoparty_capnp, twoparty, RpcSystem};
 use futures::AsyncReadExt;
-use std::os::raw::c_void;
+use std::os::raw::{c_char, c_void};
 use tokio::runtime::Runtime;
 
 use crate::hvp::rgpot_hvp_scheme_t;
@@ -26,6 +26,70 @@ use crate::tensor::{
     rgpot_tensor_cpu_i32_1d, rgpot_tensor_free,
 };
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+
+const DEFAULT_STREAM_LIMIT: usize = 4096;
+
+#[repr(C)]
+struct NlistRequest {
+    bytes: u32,
+    abi: u32,
+    cutoff: f64,
+    skin: f64,
+    shape: i32,
+    shell: i32,
+    cut: i32,
+    periodic: [i32; 3],
+    want_shifts: i32,
+    want_vectors: i32,
+    want_distances: i32,
+}
+
+#[repr(C)]
+struct NlistSoa {
+    bytes: u32,
+    first: *mut i32,
+    second: *mut i32,
+    shift: *mut i32,
+    vector: *mut f64,
+    distance: *mut f64,
+    mask: *mut u8,
+    cap: usize,
+}
+
+extern "C" {
+    fn rgpot_nlist_request_init(request: *mut NlistRequest);
+    fn rgpot_nlist_build(
+        positions: *const f64,
+        n: usize,
+        box9: *const f64,
+        request: *const NlistRequest,
+        out: *mut NlistSoa,
+        count: *mut usize,
+        needed: *mut usize,
+    ) -> i32;
+    fn rgpot_nlist_build_systems(
+        positions: *const f64,
+        counts: *const i32,
+        nsystems: usize,
+        box9: *const f64,
+        request: *const NlistRequest,
+        out: *mut NlistSoa,
+        system: *mut i32,
+        count: *mut usize,
+        needed: *mut usize,
+    ) -> i32;
+    fn rgpot_nlist_strerror(code: i32) -> *const c_char;
+}
+
+fn nlist_error_text(code: i32) -> String {
+    let ptr = unsafe { rgpot_nlist_strerror(code) };
+    if ptr.is_null() {
+        return "unknown neighbour error".to_string();
+    }
+    unsafe { std::ffi::CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .into_owned()
+}
 
 /// RPC server state wrapping a potential callback.
 struct PotentialServer {
@@ -200,6 +264,339 @@ impl potential::Server for PotentialServer {
         }
         capnp::capability::Promise::ok(())
     }
+
+    fn neighbours(
+        &mut self,
+        params: potential::NeighboursParams,
+        mut results: potential::NeighboursResults,
+    ) -> capnp::capability::Promise<(), CapnpError> {
+        let params = pry!(params.get());
+        let fip = pry!(params.get_fip());
+        let request = pry!(params.get_request());
+        let mut out = results.get().init_neighbors();
+        if let Err((code, msg)) = answer_neighbours(fip, request, out.reborrow()) {
+            out.set_status(code);
+            out.set_message(&msg);
+            out.set_more(false);
+            out.set_next(0);
+        }
+        capnp::capability::Promise::ok(())
+    }
+}
+
+fn answer_neighbours(
+    fip: crate::rpc::schema::force_input::Reader<'_>,
+    request: crate::rpc::schema::neighbor_request::Reader<'_>,
+    mut out: crate::rpc::schema::neighbor_list::Builder<'_>,
+) -> Result<(), (i32, String)> {
+    let mode = request.get_mode();
+    if mode != 1 && mode != 2 {
+        return Err((5, "mode must be 1 (stored) or 2 (stream)".to_string()));
+    }
+    let format = request.get_format();
+    if format > 2 {
+        return Err((
+            5,
+            "format must be 0 (half pairs), 1 (full pairs) or 2 (cluster of four)".to_string(),
+        ));
+    }
+    let cut = request.get_cut();
+    if cut > 1 {
+        return Err((5, "cut must be 0 (strict) or 1 (loose)".to_string()));
+    }
+    let periodic_reader = request
+        .get_periodic()
+        .map_err(|e| (5, format!("invalid periodic list: {e}")))?;
+    if !periodic_reader.is_empty() && periodic_reader.len() != 3 {
+        return Err((5, "periodic must be empty or hold 3 flags".to_string()));
+    }
+    let pos_reader = fip
+        .get_pos()
+        .map_err(|e| (2, format!("invalid positions: {e}")))?;
+    if pos_reader.len() % 3 != 0 {
+        return Err((5, "positions length must be a multiple of 3".to_string()));
+    }
+    let n_atoms = (pos_reader.len() / 3) as usize;
+    let atm_reader = fip
+        .get_atmnrs()
+        .map_err(|e| (2, format!("invalid atomic numbers: {e}")))?;
+    if !atm_reader.is_empty() && atm_reader.len() as usize != n_atoms {
+        return Err((5, "atomic numbers size mismatch".to_string()));
+    }
+    let positions: Vec<f64> = (0..pos_reader.len()).map(|i| pos_reader.get(i)).collect();
+
+    let mut c_req = unsafe { std::mem::zeroed::<NlistRequest>() };
+    unsafe { rgpot_nlist_request_init(&mut c_req) };
+    c_req.cutoff = request.get_cutoff();
+    c_req.skin = request.get_skin();
+    if format == 2 {
+        c_req.shape = 1;
+        c_req.shell = 1;
+    } else {
+        c_req.shape = 0;
+        c_req.shell = i32::from(format == 1);
+    }
+    c_req.cut = i32::from(cut);
+    if periodic_reader.len() == 3 {
+        for (k, periodic) in c_req.periodic.iter_mut().enumerate() {
+            *periodic = i32::from(periodic_reader.get(k as u32));
+        }
+    }
+    c_req.want_shifts = i32::from(request.get_shifts());
+    c_req.want_vectors = i32::from(request.get_vectors());
+    c_req.want_distances = i32::from(request.get_distances());
+
+    let systems_reader = request
+        .get_systems()
+        .map_err(|e| (5, format!("invalid systems list: {e}")))?;
+    let mut first = Vec::new();
+    let mut second = Vec::new();
+    let mut shift = Vec::new();
+    let mut vector = Vec::new();
+    let mut distance = Vec::new();
+    let mut mask = Vec::new();
+    let mut system_col = Vec::new();
+
+    if !systems_reader.is_empty() {
+        let mut counts = Vec::with_capacity(systems_reader.len() as usize);
+        let mut boxes = Vec::with_capacity(systems_reader.len() as usize * 9);
+        let mut total_atoms = 0usize;
+        for s in 0..systems_reader.len() {
+            let entry = systems_reader.get(s);
+            let cnt = entry.get_count() as usize;
+            counts.push(cnt as i32);
+            total_atoms += cnt;
+            let b = entry
+                .get_box()
+                .map_err(|e| (4, format!("invalid system box: {e}")))?;
+            if b.len() != 9 {
+                return Err((4, "each system box must have 9 elements".to_string()));
+            }
+            for k in 0..9 {
+                boxes.push(b.get(k));
+            }
+        }
+        if total_atoms != n_atoms {
+            return Err((
+                5,
+                "systems counts do not sum to the number of positions".to_string(),
+            ));
+        }
+        let mut count = 0usize;
+        let mut needed = 0usize;
+        let rc = unsafe {
+            rgpot_nlist_build_systems(
+                positions.as_ptr(),
+                counts.as_ptr(),
+                counts.len(),
+                boxes.as_ptr(),
+                &c_req,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut count,
+                &mut needed,
+            )
+        };
+        if rc != 0 {
+            return Err((rc, nlist_error_text(rc)));
+        }
+        first.resize(needed, 0);
+        second.resize(needed, 0);
+        mask.resize(needed, 0);
+        system_col.resize(needed, 0);
+        if c_req.want_shifts != 0 {
+            shift.resize(needed * 3, 0);
+        }
+        if c_req.want_vectors != 0 {
+            vector.resize(needed * 3, 0.0);
+        }
+        if c_req.want_distances != 0 {
+            distance.resize(needed, 0.0);
+        }
+        let mut soa = NlistSoa {
+            bytes: std::mem::size_of::<NlistSoa>() as u32,
+            first: first.as_mut_ptr(),
+            second: second.as_mut_ptr(),
+            shift: if c_req.want_shifts != 0 {
+                shift.as_mut_ptr()
+            } else {
+                std::ptr::null_mut()
+            },
+            vector: if c_req.want_vectors != 0 {
+                vector.as_mut_ptr()
+            } else {
+                std::ptr::null_mut()
+            },
+            distance: if c_req.want_distances != 0 {
+                distance.as_mut_ptr()
+            } else {
+                std::ptr::null_mut()
+            },
+            mask: mask.as_mut_ptr(),
+            cap: needed,
+        };
+        let rc = unsafe {
+            rgpot_nlist_build_systems(
+                positions.as_ptr(),
+                counts.as_ptr(),
+                counts.len(),
+                boxes.as_ptr(),
+                &c_req,
+                &mut soa,
+                system_col.as_mut_ptr(),
+                &mut count,
+                &mut needed,
+            )
+        };
+        if rc != 0 {
+            return Err((rc, nlist_error_text(rc)));
+        }
+    } else {
+        let box_reader = fip
+            .get_box()
+            .map_err(|e| (4, format!("invalid box: {e}")))?;
+        if box_reader.len() != 9 {
+            return Err((4, "box must have 9 elements".to_string()));
+        }
+        let mut box9 = [0.0; 9];
+        for (k, slot) in box9.iter_mut().enumerate() {
+            *slot = box_reader.get(k as u32);
+        }
+        let mut count = 0usize;
+        let mut needed = 0usize;
+        let rc = unsafe {
+            rgpot_nlist_build(
+                positions.as_ptr(),
+                n_atoms,
+                box9.as_ptr(),
+                &c_req,
+                std::ptr::null_mut(),
+                &mut count,
+                &mut needed,
+            )
+        };
+        if rc != 0 {
+            return Err((rc, nlist_error_text(rc)));
+        }
+        first.resize(needed, 0);
+        second.resize(needed, 0);
+        mask.resize(needed, 0);
+        if c_req.want_shifts != 0 {
+            shift.resize(needed * 3, 0);
+        }
+        if c_req.want_vectors != 0 {
+            vector.resize(needed * 3, 0.0);
+        }
+        if c_req.want_distances != 0 {
+            distance.resize(needed, 0.0);
+        }
+        let mut soa = NlistSoa {
+            bytes: std::mem::size_of::<NlistSoa>() as u32,
+            first: first.as_mut_ptr(),
+            second: second.as_mut_ptr(),
+            shift: if c_req.want_shifts != 0 {
+                shift.as_mut_ptr()
+            } else {
+                std::ptr::null_mut()
+            },
+            vector: if c_req.want_vectors != 0 {
+                vector.as_mut_ptr()
+            } else {
+                std::ptr::null_mut()
+            },
+            distance: if c_req.want_distances != 0 {
+                distance.as_mut_ptr()
+            } else {
+                std::ptr::null_mut()
+            },
+            mask: mask.as_mut_ptr(),
+            cap: needed,
+        };
+        let rc = unsafe {
+            rgpot_nlist_build(
+                positions.as_ptr(),
+                n_atoms,
+                box9.as_ptr(),
+                &c_req,
+                &mut soa,
+                &mut count,
+                &mut needed,
+            )
+        };
+        if rc != 0 {
+            return Err((rc, nlist_error_text(rc)));
+        }
+    }
+
+    let total = first.len();
+    let (start, count, more, next) = if mode == 2 {
+        let cursor = request.get_cursor() as usize;
+        if cursor > total {
+            return Err((
+                6,
+                "cursor is past the end of the neighbour list".to_string(),
+            ));
+        }
+        let raw_limit = request.get_limit() as usize;
+        let limit = if raw_limit == 0 {
+            DEFAULT_STREAM_LIMIT
+        } else {
+            raw_limit
+        };
+        let count = limit.min(total - cursor);
+        let next = cursor + count;
+        (cursor, count, next < total, next as u64)
+    } else {
+        (0, total, false, total as u64)
+    };
+
+    let mut first_out = out.reborrow().init_first(count as u32);
+    for i in 0..count {
+        first_out.set(i as u32, first[start + i]);
+    }
+    let mut second_out = out.reborrow().init_second(count as u32);
+    for i in 0..count {
+        second_out.set(i as u32, second[start + i]);
+    }
+    let mut mask_out = out.reborrow().init_mask(count as u32);
+    for i in 0..count {
+        mask_out.set(i as u32, mask[start + i]);
+    }
+    if c_req.want_shifts != 0 {
+        let mut shift_out = out.reborrow().init_shift((count * 3) as u32);
+        for i in 0..count {
+            let src = start + i;
+            shift_out.set((3 * i) as u32, shift[3 * src]);
+            shift_out.set((3 * i + 1) as u32, shift[3 * src + 1]);
+            shift_out.set((3 * i + 2) as u32, shift[3 * src + 2]);
+        }
+    }
+    if c_req.want_vectors != 0 {
+        let mut vec_out = out.reborrow().init_vector((count * 3) as u32);
+        for i in 0..count {
+            let src = start + i;
+            vec_out.set((3 * i) as u32, vector[3 * src]);
+            vec_out.set((3 * i + 1) as u32, vector[3 * src + 1]);
+            vec_out.set((3 * i + 2) as u32, vector[3 * src + 2]);
+        }
+    }
+    if c_req.want_distances != 0 {
+        let mut dist_out = out.reborrow().init_distance(count as u32);
+        for i in 0..count {
+            dist_out.set(i as u32, distance[start + i]);
+        }
+    }
+    if !system_col.is_empty() {
+        let mut sys_out = out.reborrow().init_system(count as u32);
+        for i in 0..count {
+            sys_out.set(i as u32, system_col[start + i]);
+        }
+    }
+    out.set_more(more);
+    out.set_next(next);
+    out.set_status(0);
+    out.set_message("ok");
+    Ok(())
 }
 
 /// Start an RPC server listening on `host:port`, dispatching to `pot`.
@@ -470,5 +867,66 @@ mod tests {
         let err = call(&p, &[0.0; 6], &[1, 1], &CELL).unwrap_err();
         assert!(err.contains("forces"), "{err}");
         assert_eq!(p.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn neighbours_are_served_through_the_rpc_method() {
+        let p = probe(false);
+        let client = capnp_rpc::new_client::<potential::Client, _>(PotentialServer {
+            callback: probe_callback,
+            user_data: &p as *const Probe as *mut c_void,
+            potential: std::ptr::null(),
+        });
+        let pos = [0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7, 2.2, 2.1, 3.9];
+        let box9 = [4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2];
+        for full in [false, true] {
+            let mut request = client.neighbours_request();
+            {
+                let mut root = request.get();
+                let mut fip = root.reborrow().init_fip();
+                let mut b_pos = fip.reborrow().init_pos(pos.len() as u32);
+                for (i, &v) in pos.iter().enumerate() {
+                    b_pos.set(i as u32, v);
+                }
+                let mut b_atm = fip.reborrow().init_atmnrs(4);
+                for i in 0..4 {
+                    b_atm.set(i, 1);
+                }
+                let mut b_box = fip.init_box(9);
+                for (i, &v) in box9.iter().enumerate() {
+                    b_box.set(i as u32, v);
+                }
+                let mut nreq = root.init_request();
+                nreq.set_cutoff(3.2);
+                nreq.set_skin(0.2);
+                nreq.set_format(u8::from(full));
+                nreq.set_cut(1);
+                let mut pbc = nreq.reborrow().init_periodic(3);
+                pbc.set(0, true);
+                pbc.set(1, true);
+                pbc.set(2, false);
+                nreq.set_shifts(true);
+                nreq.set_vectors(true);
+                nreq.set_distances(true);
+                nreq.set_mode(1);
+            }
+            let response =
+                futures::executor::block_on(request.send().promise).expect("neighbours response");
+            let list = response
+                .get()
+                .and_then(|r| r.get_neighbors())
+                .expect("neighbours list");
+            assert_eq!(list.get_status(), 0);
+            let first = list.get_first().expect("first");
+            let second = list.get_second().expect("second");
+            let shift = list.get_shift().expect("shift");
+            let vector = list.get_vector().expect("vector");
+            let distance = list.get_distance().expect("distance");
+            assert!(!first.is_empty());
+            assert_eq!(first.len(), second.len());
+            assert_eq!(shift.len(), first.len() * 3);
+            assert_eq!(vector.len(), first.len() * 3);
+            assert_eq!(distance.len(), first.len());
+        }
     }
 }

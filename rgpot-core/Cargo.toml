@@ -22,7 +22,7 @@ schema = ["dep:capnp", "dep:capnpc"]
 profile = ["schema", "dep:libloading"]
 engine = ["dep:libloading", "dep:libc"]
 cpmd-fixture = ["engine"]
-rpc = ["schema", "dep:capnp-rpc", "dep:tokio", "dep:tokio-util", "dep:futures"]
+rpc = ["schema", "dep:capnp-rpc", "dep:tokio", "dep:tokio-util", "dep:futures", "dep:cc"]
 cache = []
 mdi = ["dep:libloading", "dep:libc"]
 gen-header = ["dep:cbindgen"]
@@ -71,6 +71,7 @@ path = "tests/potential_config.rs"
 required-features = ["schema"]
 
 [build-dependencies]
+cc = { version = "1.4.2", optional = true }
 cbindgen = { version = "0.27", optional = true }
 capnpc = { version = "0.20", optional = true }
 
