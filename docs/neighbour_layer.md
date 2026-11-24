@@ -293,10 +293,14 @@ That counter is process-unique, non-zero, and changes at construction and on
 every rebuild, copy and move; if the 64-bit counter reaches `UINT64_MAX`, it
 throws `std::overflow_error` rather than wrapping to `0`.
 `LJPot` keys the list it keeps on each thread on the same counter.
-Each workspace keeps its per-thread high-water capacity across calls of
-comparable size.
-It is reallocated down when a later call needs less than a quarter of the
-retained capacity above `kShrinkFloor` (4096 elements).
+The potentials keep different parts of these buffers between calls.
+`MorsePot` keeps each buffer's per-thread high-water capacity across calls of
+comparable size, and reallocates a buffer down when a later call needs less
+than a quarter of a retained capacity above `kShrinkFloor` (4096 elements).
+`SuttonChenPot` keeps its half-pair index on each thread, resized in place when
+the generation changes, and frees its pair and row scratch at the end of every
+threaded stored call, so `kShrinkFloor` does not apply to it.
+The list `LJPot` keeps is a `Neighbours`, whose arrays keep their capacity.
 
 Stillinger-Weber and Tersoff use this layer for `Auto` as well as
 `Stored` and `Stream`. Bonds are gathered for one atom at a time, sorted
