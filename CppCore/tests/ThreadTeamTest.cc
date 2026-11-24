@@ -5,8 +5,10 @@
 // team the runtime starts: under OMP_THREAD_LIMIT, inside another region,
 // with dynamic teams, or below a TeamCap. A call on fewer than
 // rgpot::kTeamMinAtoms atoms opens no region. A neighbour table has the
-// order of its slice count on any team. meson runs this file again under
-// OMP_THREAD_LIMIT=1 and 2.
+// order of its slice count on any team. The registry runs one Catch2 tag
+// of this file at a time, again under OMP_THREAD_LIMIT=1 and 2. Every
+// TEST_CASE needs a tag those shards select: test_list_parity fails when
+// the tags and the unfiltered list disagree.
 
 #include <algorithm>
 #include <array>
@@ -16,6 +18,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -288,13 +291,14 @@ enum class Depth { Full, Counts };
 // the region is the potential's own sum. `make` returns a pointer, since a
 // potential need not move.
 template <typename Make>
-void checkPotential(const char *name, Make make, const System &s, Depth depth = Depth::Full) {
+void checkPotential(const char *name, Make make, const System &s, Depth depth = Depth::Full,
+                    std::initializer_list<int> counts = {1, 2, 3, 8}) {
   const bool large = s.z.size() >= rgpot::kTeamMinAtoms && s.z.size() > 1;
   const bool split = depth == Depth::Full;
   INFO(name << " on " << s.z.size() << " atoms");
   setThreads("");
   const Result serial = evaluate(*make(), s, split);
-  for (const int threads : {1, 2, 3, 8}) {
+  for (const int threads : counts) {
     INFO(threads << " threads");
     const std::string count = std::to_string(threads);
     setThreads(count.c_str());
@@ -581,8 +585,11 @@ TEST_CASE("pair potentials give the one-thread bits on any team", "[threads][pai
   }
 }
 
-TEST_CASE("many-body potentials give the one-thread bits on any team",
-          "[threads][manybody]") {
+// Sutton-Chen on a cutoff, and Sutton-Chen that walks every pair, are
+// separate tags. The open cluster is the same potential with a different
+// cost: one call on kTeamMinAtoms atoms adds 33 million pairs twice.
+TEST_CASE("Sutton-Chen gives the one-thread bits on any team",
+          "[threads][manybody][sutton]") {
   rgpot::SuttonChenConfig sc;
   sc.periodic = true;
   sc.stress = true;
@@ -594,21 +601,75 @@ TEST_CASE("many-body potentials give the one-thread bits on any team",
     checkPotential("stored Sutton-Chen", mode<rgpot::SuttonChenPot>(sc, kStored), pt);
     checkPotential("streamed Sutton-Chen", mode<rgpot::SuttonChenPot>(sc, kStream), pt);
   }
-  // A cutoff of zero walks every pair of an open cluster. Each call on
-  // kTeamMinAtoms atoms adds 33 million pairs twice, so that size takes
-  // the thread counts alone.
+}
+
+// The 55-atom open cluster and each thread count of the kTeamMinAtoms
+// cluster are separate tags. One registration of the large cluster's 1-thread
+// and 2-thread calls ran past its coverage limit on 4 cores when
+// OMP_THREAD_LIMIT was 2. 3 threads and 8 threads were already their own
+// tags. 8 threads is the call that runs forceImpl a second time. Every
+// thread count is still compared with the one-thread bits.
+TEST_CASE("open Sutton-Chen gives the one-thread bits on a small cluster",
+          "[threads][manybody][suttonopen]") {
   rgpot::SuttonChenConfig open;
   open.cutoff = 0.0;
   open.stress = true;
   const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
   checkPotential("Sutton-Chen on every pair", every_pair, cluster(55, std::sqrt(2.0), 78));
-  checkPotential("Sutton-Chen on every pair", every_pair,
-                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts);
+}
 
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 1 thread",
+          "[threads][manybody][sutton1]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  checkPotential("Sutton-Chen on every pair", every_pair,
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {1});
+}
+
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 2 threads",
+          "[threads][manybody][sutton2]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  checkPotential("Sutton-Chen on every pair", every_pair,
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {2});
+}
+
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 3 threads",
+          "[threads][manybody][sutton3]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  checkPotential("Sutton-Chen on every pair", every_pair,
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {3});
+}
+
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 8 threads",
+          "[threads][manybody][sutton8]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  checkPotential("Sutton-Chen on every pair", every_pair,
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {8});
+}
+
+TEST_CASE("Stillinger-Weber gives the one-thread bits on any team",
+          "[threads][manybody][sw]") {
   for (const int side : {3, 11}) {
     const auto si = diamond(side, 5.431, 14);
     checkPotential("stored Stillinger-Weber", mode<rgpot::StillingerWeberSi>(kStored), si);
     checkPotential("streamed Stillinger-Weber", mode<rgpot::StillingerWeberSi>(kStream), si);
+  }
+}
+
+TEST_CASE("Tersoff gives the one-thread bits on any team", "[threads][manybody][tersoff]") {
+  for (const int side : {3, 11}) {
+    const auto si = diamond(side, 5.431, 14);
     checkPotential("stored Tersoff", mode<rgpot::TersoffSiC>(kStored), si);
     checkPotential("streamed Tersoff", mode<rgpot::TersoffSiC>(kStream), si);
   }

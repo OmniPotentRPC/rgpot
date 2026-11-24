@@ -4,6 +4,8 @@ project(
     # [[[cog import rgpot_version as v; cog.outl(f"    version: '{v.VERSION}',")]]]
     version: '3.7.0',
     # [[[end]]]
+    # array.slice(), used for registry command arguments.
+    meson_version: '>=1.10',
     default_options: ['warning_level=2', 'cpp_std=c++20'],
 )
 # IMPORTANT!! warning_level=3 passes -fimplicit-none

@@ -13,10 +13,15 @@ test_list_parity test and passes the features it was configured with:
 It fails when a registered test has no entry, when an entry whose gate
 holds was not registered, when a test was registered although its gate
 does not hold, when CMake registered a meson-only entry, and when a
-test's timeout, suite, working directory, environment, serial flag or
-should_fail flag differs from its entry. Meson's introspection does not
-report should_fail, so only CMake's is compared. lint checks the
-registry alone.
+test's timeout, suite, working directory, environment, serial flag,
+should_fail flag or command arguments differ from its entry. Command
+arguments include the Catch2 tags a unit or rerun passes. Meson's
+introspection does not report should_fail, so only CMake's is compared.
+coverage_serial is serial only when the build instruments for coverage.
+When ThreadTeamTest.cc is registered, the union of each thread-limit
+family's tag filters must list the same tests as `--list-tests` with no
+filter, so an untagged case, a new tag, a dropped tag or a deleted shard
+fails. lint checks the registry alone.
 
 --list FILE (or RGPOT_TEST_LIST) writes the features that gate the entries
 both build systems share, then the shared entries the build registered, so
@@ -37,8 +42,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = Path(__file__).resolve().with_name("registry.txt")
 DEFAULT_TIMEOUT = 30
-# Positional arguments each kind takes; py takes the script and its arguments.
+# Minimum positional arguments each kind takes. Unit, rerun and py entries may
+# append command-line arguments for the registered executable or script.
 ARITY = {"unit": 2, "fortran": 2, "nlist": 2, "rerun": 1, "custom": 0}
+VARIABLE_ARITY = {"unit", "rerun", "py"}
 SOURCE_DIRS = {
     "unit": "CppCore/tests",
     "fortran": "CppCore/rgpot/fortran",
@@ -60,6 +67,7 @@ class Entry:
     workdir: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     serial: bool = False
+    coverage_serial: bool = False
     should_fail: bool = False
     reason: str | None = None
 
@@ -84,6 +92,7 @@ class Test:
     env: dict[str, str]
     serial: bool
     should_fail: bool | None
+    command: list[str] = field(default_factory=list)
 
 
 def parse_options(entry: Entry, words: list[str], where: str) -> list[str]:
@@ -91,13 +100,13 @@ def parse_options(entry: Entry, words: list[str], where: str) -> list[str]:
     options = False
     for word in words:
         key, eq, value = word.partition("=")
-        if not eq and word not in ("serial", "should_fail"):
+        if not eq and word not in ("serial", "should_fail", "coverage_serial"):
             if options:
                 errors.append(f"{where}: argument {word!r} after an option")
             entry.args.append(word)
             continue
         options = True
-        if word in ("serial", "should_fail"):
+        if word in ("serial", "should_fail", "coverage_serial"):
             setattr(entry, word, True)
         elif key == "timeout" and value.isdigit() and int(value) > 0:
             entry.timeout = int(value)
@@ -158,7 +167,13 @@ def parse(path: Path) -> tuple[dict[str, Entry], list[str]]:
         entry = Entry(name=name, line=number, gate=clauses, kind=words[0])
         errors += parse_options(entry, words[1:], where)
         want = ARITY.get(entry.kind)
-        if (want is None and not entry.args) or (want is not None and len(entry.args) != want):
+        wrong_arity = (
+            not entry.args
+            if want is None
+            else len(entry.args) < want
+            or (entry.kind not in VARIABLE_ARITY and len(entry.args) != want)
+        )
+        if wrong_arity:
             errors.append(f"{where}: wrong number of arguments for {entry.kind}")
         elif entry.kind in SOURCE_DIRS:
             source = ROOT / SOURCE_DIRS[entry.kind] / entry.args[1]
@@ -183,6 +198,10 @@ def parse(path: Path) -> tuple[dict[str, Entry], list[str]]:
             target = entries.get(entry.args[0])
             if target is None or target.kind != "unit":
                 errors.append(f"{where}: rerun names no unit entry")
+        if entry.name.startswith("ThreadTeamTest") and entry.suite != "threadteam":
+            errors.append(
+                f"{where}: a ThreadTeamTest shard belongs to suite threadteam"
+            )
     unused = set(reasons) - {e.reason for e in entries.values()}
     errors += [f"{path.name}: @{key} is not used" for key in sorted(unused)]
     return entries, errors
@@ -206,6 +225,7 @@ def meson_tests(build: Path) -> list[Test]:
                 env=test["env"],
                 serial=not test["is_parallel"],
                 should_fail=None,
+                command=[str(part) for part in test["cmd"]],
             )
         )
     return tests
@@ -213,6 +233,67 @@ def meson_tests(build: Path) -> list[Test]:
 
 def inside(path: str | Path, directory: Path) -> bool:
     return Path(os.path.realpath(path)).is_relative_to(os.path.realpath(directory))
+
+
+def _cmake_tokens(text: str) -> list[str]:
+    tokens: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        if text[i].isspace():
+            i += 1
+            continue
+        if text[i] == '"':
+            i += 1
+            buf: list[str] = []
+            while i < n and text[i] != '"':
+                if text[i] == "\\" and i + 1 < n:
+                    i += 1
+                buf.append(text[i])
+                i += 1
+            i += 1
+            tokens.append("".join(buf))
+            continue
+        bracket = re.match(r"\[(=*)\[", text[i:])
+        if bracket:
+            close = f"]{bracket.group(1)}]"
+            start = i + bracket.end()
+            end = text.find(close, start)
+            if end == -1:
+                tokens.append(text[start:])
+                break
+            tokens.append(text[start:end])
+            i = end + len(close)
+            continue
+        j = i
+        while j < n and not text[j].isspace():
+            j += 1
+        tokens.append(text[i:j])
+        i = j
+    return tokens
+
+
+def ctest_testfile_commands(build: Path) -> dict[str, list[str]]:
+    commands: dict[str, list[str]] = {}
+    pending = [build]
+    seen: set[Path] = set()
+    while pending:
+        directory = pending.pop(0).resolve()
+        if directory in seen:
+            continue
+        seen.add(directory)
+        testfile = directory / "CTestTestfile.cmake"
+        if not testfile.is_file():
+            continue
+        for raw in testfile.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if line.startswith("add_test(") and line.endswith(")"):
+                tokens = _cmake_tokens(line[len("add_test(") : -1])
+                if len(tokens) >= 2:
+                    commands[tokens[0]] = tokens[1:]
+            elif line.startswith("subdirs(") and line.endswith(")"):
+                for sub in _cmake_tokens(line[len("subdirs(") : -1]):
+                    pending.append(directory / sub)
+    return commands
 
 
 def cmake_tests(build: Path, ctest: str) -> list[Test]:
@@ -225,6 +306,7 @@ def cmake_tests(build: Path, ctest: str) -> list[Test]:
     )
     data = json.loads(shown.stdout)
     graph = data["backtraceGraph"]
+    fallback_commands = ctest_testfile_commands(build)
     tests = []
     for test in data["tests"]:
         # Tests a fetched dependency registers are defined under the build tree.
@@ -233,6 +315,7 @@ def cmake_tests(build: Path, ctest: str) -> list[Test]:
             continue
         props = {p["name"]: p["value"] for p in test.get("properties", [])}
         env = dict(item.partition("=")[::2] for item in props.get("ENVIRONMENT", []))
+        raw_cmd = test.get("command") or fallback_commands.get(test["name"], [])
         tests.append(
             Test(
                 name=test["name"],
@@ -242,12 +325,65 @@ def cmake_tests(build: Path, ctest: str) -> list[Test]:
                 env=env,
                 serial=bool(props.get("RUN_SERIAL", False)),
                 should_fail=bool(props.get("WILL_FAIL", False)),
+                command=[str(part) for part in raw_cmd],
             )
         )
     return tests
 
 
-def compare_options(entry: Entry, test: Test, build: Path) -> list[str]:
+def same_arg(want: str, got: str) -> bool:
+    if want == "@capnp@":
+        return os.path.isfile(got) and os.access(got, os.X_OK)
+    if want == got:
+        return True
+    if want.startswith(os.sep) or got.startswith(os.sep):
+        return os.path.realpath(want) == os.path.realpath(got)
+    return False
+
+
+def expected_arguments(entry: Entry, entries: dict[str, Entry]) -> tuple[str | None, list[str]]:
+    """Executable basename (None when the program is the interpreter) and the
+    arguments after it. Python entries start the argument list with the script."""
+    if entry.kind == "unit":
+        return entry.args[0], entry.args[2:]
+    if entry.kind == "rerun":
+        base = entries[entry.args[0]]
+        return base.args[0], entry.args[1:]
+    if entry.kind in ("fortran", "nlist"):
+        return entry.args[0], entry.args[2:]
+    script = ROOT / entry.args[0]
+    tail = [str(script)]
+    for arg in entry.args[1:]:
+        if arg == "@root@":
+            tail.append(str(ROOT))
+        else:
+            tail.append(arg)
+    return None, tail
+
+
+def argument_problems(entry: Entry, test: Test, entries: dict[str, Entry]) -> list[str]:
+    if entry.kind == "custom":
+        return []
+    if not test.command:
+        return ["has no command to compare with the registry"]
+    exe, want = expected_arguments(entry, entries)
+    if exe is not None:
+        got_exe = Path(test.command[0]).name
+        if got_exe not in (exe, exe + ".exe"):
+            return [f"executable {got_exe}, the registry says {exe}"]
+        got = test.command[1:]
+    else:
+        got = test.command[1:]
+    if len(got) != len(want) or any(not same_arg(w, g) for w, g in zip(want, got)):
+        return [f"arguments {got}, the registry says {want}"]
+    return []
+
+
+def want_serial(entry: Entry, coverage: bool) -> bool:
+    return entry.serial or (entry.coverage_serial and coverage)
+
+
+def compare_options(entry: Entry, test: Test, build: Path, entries: dict[str, Entry], coverage: bool) -> list[str]:
     problems = []
     timeout_scale = int(test.env.get("RGPOT_TEST_TIMEOUT_SCALE", "1"))
     expected_timeout = entry.timeout * timeout_scale
@@ -269,13 +405,163 @@ def compare_options(entry: Entry, test: Test, build: Path) -> list[str]:
     for var, setting in entry.env.items():
         if test.env.get(var) != setting:
             problems.append(f"{var}={test.env.get(var)!r}, the registry says {setting!r}")
-    if test.serial != entry.serial:
-        problems.append(f"serial is {test.serial}, the registry says {entry.serial}")
+    serial = want_serial(entry, coverage)
+    if test.serial != serial:
+        if entry.coverage_serial and not entry.serial:
+            problems.append(
+                f"serial is {test.serial}, coverage_serial is serial only when "
+                f"coverage is on (this build has coverage={coverage})"
+            )
+        else:
+            problems.append(f"serial is {test.serial}, the registry says {entry.serial}")
     if test.should_fail is not None and test.should_fail != entry.should_fail:
         problems.append(
             f"should_fail is {test.should_fail}, the registry says {entry.should_fail}"
         )
+    problems += argument_problems(entry, test, entries)
     return [f"{entry.name}: {problem}" for problem in problems]
+
+
+TAG_FILTER = re.compile(r"\[[A-Za-z0-9_]+\]")
+
+
+def thread_team_unit(entries: dict[str, Entry]) -> Entry | None:
+    found = [
+        entry
+        for entry in entries.values()
+        if entry.kind == "unit" and len(entry.args) > 1 and entry.args[1] == "ThreadTeamTest.cc"
+    ]
+    if len(found) != 1:
+        return None
+    return found[0]
+
+
+def shard_filter(entry: Entry, unit: Entry) -> list[str] | None:
+    """Catch2 tag arguments for one registration of ThreadTeamTest.cc."""
+    if entry.kind == "unit" and entry.name == unit.name:
+        extra = entry.args[2:]
+    elif entry.kind == "rerun" and entry.args and entry.args[0] == unit.name:
+        extra = entry.args[1:]
+    else:
+        return None
+    return [arg for arg in extra if arg.startswith("[")]
+
+
+def parse_catch_list(text: str) -> list[str]:
+    names = []
+    for line in text.splitlines():
+        if line.startswith("  ") and not line.startswith("   "):
+            name = line[2:].strip()
+            if name and not name.startswith("["):
+                names.append(name)
+    return names
+
+
+def catch_list(exe: str, env: dict[str, str], *specs: str) -> tuple[list[str], str]:
+    merged = os.environ.copy()
+    merged.update(env)
+    proc = subprocess.run(
+        [exe, "--list-tests", *specs],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=merged,
+    )
+    # Catch2 exits 2 when a spec matches nothing. That is an empty shard.
+    if proc.returncode not in (0, 2):
+        detail = (proc.stderr or proc.stdout).strip()
+        return [], f"{exe} --list-tests {' '.join(specs)} exited {proc.returncode}: {detail}"
+    return parse_catch_list(proc.stdout), ""
+
+
+def family_label(limit: str) -> str:
+    if limit == "":
+        return "no thread limit"
+    return f"OMP_THREAD_LIMIT={limit}"
+
+
+def check_thread_team_shards(
+    entries: dict[str, Entry],
+    tests: list[Test],
+    features: dict[str, bool],
+) -> list[str]:
+    unit = thread_team_unit(entries)
+    if unit is None:
+        return ["ThreadTeamTest.cc: expected one unit entry"]
+    registered = {test.name: test for test in tests}
+    built = registered.get(unit.name)
+    if built is None:
+        return []
+    problems = []
+    families: dict[str, list[tuple[Entry, str]]] = {}
+    for entry in entries.values():
+        tags = shard_filter(entry, unit)
+        if tags is None or not entry.holds(features, probe=False):
+            continue
+        if len(tags) != 1 or not TAG_FILTER.fullmatch(tags[0]):
+            problems.append(f"{entry.name}: expected one Catch2 tag, got {tags}")
+            continue
+        families.setdefault(entry.env.get("OMP_THREAD_LIMIT", ""), []).append((entry, tags[0]))
+    if problems:
+        return problems
+    family_tags = {
+        limit: {tag for _, tag in members} for limit, members in sorted(families.items())
+    }
+    if len(family_tags) > 1:
+        baseline_limit, baseline_tags = next(iter(family_tags.items()))
+        for limit, tags in family_tags.items():
+            if tags != baseline_tags:
+                problems.append(
+                    f"ThreadTeamTest.cc {family_label(limit)} shard tags differ from "
+                    f"{family_label(baseline_limit)}"
+                )
+    if problems:
+        return problems
+    exe = built.command[0] if built.command else ""
+    if not exe or not os.path.isfile(exe):
+        return []
+    full, error = catch_list(exe, built.env)
+    if error:
+        return [error]
+    full_set = set(full)
+    if len(full) != len(full_set):
+        problems.append("ThreadTeamTest.cc: --list-tests repeats a test name")
+    for limit, members in sorted(families.items()):
+        label = family_label(limit)
+        selected: dict[str, set[str]] = {}
+        for entry, tag in members:
+            names, error = catch_list(exe, built.env, tag)
+            if error:
+                problems.append(error)
+                continue
+            selected[tag] = set(names)
+        if any(tag not in selected for _, tag in members):
+            continue
+        union: set[str] = set()
+        seen: dict[str, str] = {}
+        for tag, names in selected.items():
+            for name in names:
+                if name in seen:
+                    problems.append(
+                        f"ThreadTeamTest.cc {label}: {name} matches {seen[name]} and {tag}"
+                    )
+                else:
+                    seen[name] = tag
+            union |= names
+        missing = sorted(full_set - union)
+        extra = sorted(union - full_set)
+        if missing or extra:
+            detail = []
+            if missing:
+                detail.append("missing " + ", ".join(missing))
+            if extra:
+                detail.append("extra " + ", ".join(extra))
+            filters = "+".join(tag for _, tag in members)
+            problems.append(
+                f"ThreadTeamTest.cc {label}: {filters} --list-tests is not the "
+                f"unfiltered list ({'; '.join(detail)})"
+            )
+    return problems
 
 
 def compare(
@@ -284,6 +570,7 @@ def compare(
     features: dict[str, bool],
     system: str,
     build: Path,
+    coverage: bool,
 ) -> list[str]:
     used = {a for e in entries.values() for c in e.gate for a in c} - {PROBE}
     absent = sorted(used - set(features))
@@ -304,7 +591,7 @@ def compare(
             problems.append(f"{name}: CMake registered a meson-only entry (@{entry.reason})")
         elif not entry.holds(features, probe=True):
             problems.append(f"{name}: registered, but its gate '{entry.gate_text()}' fails")
-        problems += compare_options(entry, test, build)
+        problems += compare_options(entry, test, build, entries, coverage)
     for name, entry in sorted(entries.items()):
         if name in registered or (system == "cmake" and entry.reason is not None):
             continue
@@ -312,7 +599,31 @@ def compare(
             problems.append(
                 f"{name}: gate '{entry.gate_text()}' holds, but {system} did not register it"
             )
+    problems += check_thread_team_shards(entries, tests, features)
     return problems
+
+
+def build_is_coverage(system: str, build: Path) -> bool:
+    if system == "meson":
+        options = json.loads((build / "meson-info" / "intro-buildoptions.json").read_text())
+        for option in options:
+            if option.get("name") == "b_coverage":
+                return bool(option.get("value"))
+        return False
+    cache = build / "CMakeCache.txt"
+    if not cache.is_file():
+        return False
+    flags = []
+    build_type = ""
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("CMAKE_BUILD_TYPE:"):
+            build_type = line.split("=", 1)[1]
+        elif line.startswith("CMAKE_CXX_FLAGS"):
+            flags.append(line.split("=", 1)[1])
+    if build_type == "Coverage":
+        return True
+    blob = " ".join(flags)
+    return any(token in blob for token in ("--coverage", "-fprofile-arcs", "-ftest-coverage"))
 
 
 def parse_features(words: list[str]) -> tuple[dict[str, bool], list[str]]:
@@ -336,6 +647,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def parse_cli(argv: list[str] | None = None) -> argparse.Namespace:
     parser = build_parser()
+    # CMake passes --ctest between the build directory and the FEATURE=0|1
+    # words. A '*' positional stops at the first option and then rejects
+    # everything after it, so the documented order needs intermixed parsing.
     args = parser.parse_intermixed_args(argv)
     if args.system in ("lint", "selftest"):
         if args.rest:
@@ -527,6 +841,43 @@ def selftest() -> int:
                 names = [test["name"] for test in json.loads(shown.stdout)["tests"]]
             self.assertEqual(names, ["CuH2 Utils Test"])
 
+        def test_ctest_testfile_fallback_and_unbuilt_shards(self) -> None:
+            entries, problems = parse(REGISTRY)
+            self.assertEqual(problems, [])
+            with tempfile.TemporaryDirectory() as tmp:
+                build = Path(tmp) / "build"
+                sub = build / "sub"
+                sub.mkdir(parents=True)
+                (build / "CTestTestfile.cmake").write_text(
+                    'add_test([=[ThreadTeamTest_slices]=] "/missing/thread_team_test" "[slices]")\n'
+                    'subdirs("sub")\n',
+                    encoding="utf-8",
+                )
+                (sub / "CTestTestfile.cmake").write_text(
+                    'add_test([=[PluginTest]=] "/missing/PluginTest")\n',
+                    encoding="utf-8",
+                )
+                commands = ctest_testfile_commands(build)
+                self.assertEqual(
+                    commands["ThreadTeamTest_slices"],
+                    ["/missing/thread_team_test", "[slices]"],
+                )
+                self.assertEqual(commands["PluginTest"], ["/missing/PluginTest"])
+                tests = [
+                    Test(
+                        name="ThreadTeamTest_slices",
+                        timeout=480,
+                        suites={"core"},
+                        workdir=str(ROOT),
+                        env={},
+                        serial=False,
+                        should_fail=False,
+                        command=commands["ThreadTeamTest_slices"],
+                    )
+                ]
+                features = {"tests": True, "core": True}
+                self.assertEqual(check_thread_team_shards(entries, tests, features), [])
+
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(CliAndParitySelfTest)
     result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
     return 0 if result.wasSuccessful() else 1
@@ -546,7 +897,8 @@ def main(argv: list[str] | None = None) -> int:
             tests = meson_tests(args.build)
         else:
             tests = cmake_tests(args.build, args.ctest)
-        problems += compare(entries, tests, features, args.system, args.build)
+        coverage = build_is_coverage(args.system, args.build)
+        problems += compare(entries, tests, features, args.system, args.build, coverage)
         if args.list:
             shared = {e.name for e in entries.values() if e.reason is None}
             gating = {a for n in shared for c in entries[n].gate for a in c} - {PROBE}

@@ -114,6 +114,11 @@ jobs:
             pycapnp pytest pytest-timeout hypothesis
           site=$(/tmp/rgpot-ci/bin/python -c 'import site; print(site.getsitepackages()[0])')
           export PYTHONPATH="${site}:${PWD}/tests/python"
+          # pixi.toml pins meson >=1.10,<2. Apt's meson is older than the
+          # floor in meson.build, so the venv copy is the one on PATH.
+          /tmp/rgpot-ci/bin/pip install 'meson>=1.10,<2'
+          export PATH="/tmp/rgpot-ci/bin:${PATH}"
+          meson --version
           meson setup /tmp/rgpot-ci-build \
             --prefix /tmp/rgpot-ci-prefix \
             -Dpython.platlibdir="${site}" \
