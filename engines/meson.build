@@ -944,6 +944,22 @@ if openmm_opt.allowed() and python3_engines.found()
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: _args,
             )
+            openmm_abi_test = executable(
+                'test_openmm_abi',
+                files('openmm/test_openmm_abi.cpp'),
+                link_with: rgpot,
+                dependencies: [openmm_lib],
+                include_directories: [rgpot_inc, openmm_inc],
+                cpp_args: _args,
+                build_rpath: openmm_libdir,
+            )
+            test(
+                'openmm_abi',
+                openmm_abi_test,
+                args: [openmm_engine.full_path()],
+                env: external_env,
+                timeout: 120,
+            )
             foreach review_case : [
                 'equipartition',
                 'mean-force',
