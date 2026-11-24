@@ -1214,6 +1214,23 @@ if get_option('with_rust_core')
 
     # The EAM table constructor as a C host calls it, on the archive itself.
     if get_option('with_tests')
+        _eam_table_nlist = static_library(
+            'eam_table_capi_nlist',
+            [
+                'CppCore/rgpot/Slices.cc',
+                'CppCore/rgpot/nlist/NeighbourList.cc',
+                'CppCore/rgpot/nlist/Neighbours.cc',
+                'CppCore/rgpot/nlist/MinimumImage.cpp',
+                'CppCore/rgpot/simd/exact_fma_hw.cc',
+                'CppCore/rgpot/simd/exp.cc',
+            ],
+            include_directories: include_directories('CppCore'),
+            build_by_default: false,
+        )
+        _eam_table_nlist_dep = declare_dependency(
+            link_with: _eam_table_nlist,
+            dependencies: [thread_dep],
+        )
         _eam_table_capi = executable(
             'eam_table_capi_test',
             'rgpot-core/tests/c/eam_table_capi.c',
@@ -1224,11 +1241,12 @@ if get_option('with_rust_core')
             dependencies: [
                 rgpot_rust_lib,
                 fastnlist_dep,
+                _eam_table_nlist_dep,
                 thread_dep,
                 dl_dep,
                 meson.get_compiler('c').find_library('m', required: false),
             ],
-            link_language: 'c',
+            link_language: 'cpp',
             build_by_default: true,
         )
         test(
