@@ -1714,6 +1714,30 @@ rgpot_lammps_potential(const ExternalLjConfig &config);
   =std::invalid_argument= for a non-positive parameter, =std::runtime_error=
   when no plugin loads or =rgpot_engine_create= fails.
 
+*** =rgpot::rgpot_lammpc_potential=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+std::unique_ptr<LammpsPot>
+rgpot_lammpc_potential(const void *config_capnp, size_t config_capnp_size,
+                       const std::string &engine_path = "");
+#+end_src
+
+- Inputs ::
+  =config_capnp= and =config_capnp_size=, a flat =PotentialConfig= whose =lammps= arm is =LammpsParams=, and =engine_path=.
+  An empty =engine_path= searches =LAMMPC_LIBRARY=, =RGPOT_LAMMPC_ENGINE=,
+  =liblammpc.so=, =./liblammpc.so= and the macOS and Windows names.
+- Units :: those of =LammpsParams.unitsStyle=; =metal= is eV and Angstrom.
+- Outputs :: a new =LammpsPot= that keeps one lammpc session, owned by the
+  returned =std::unique_ptr=.
+  Destroying it destroys the session.
+  The last =LammpsPot= on a lammpc backend to go, or to have its session
+  refused, calls =lammpc_finalize=.
+- Errors :: =std::invalid_argument= when the bytes are missing or not a multiple
+  of a Cap'n Proto word.
+  =std::runtime_error= when the build has no Cap'n Proto headers, no =liblammpc= loads, the backend reports unavailable, or =lammpc_session_create_from_config=
+  returns null.
+
 *** =rgpot::rgpot_gromacs_potential=
 
 #+attr_rgpot: signature
@@ -1753,21 +1777,30 @@ rgpot_openmm_potential(const ExternalLjConfig &config);
 #+attr_rgpot: signature
 #+begin_src cpp
 explicit LammpsPot(const ExternalLjConfig &config);
+LammpsPot(const void *config_capnp, size_t config_capnp_size,
+          const std::string &engine_path = "");
 #+end_src
 
-- Inputs :: =ExternalLjConfig=.
+- Inputs :: =ExternalLjConfig=, or a flat =PotentialConfig=
+  (=config_capnp=, =config_capnp_size=) with the =lammps= arm and =engine_path=.
 - Units :: =u0= in eV, =cutoff= and =psi= in Angstrom; positions in Angstrom,
   energy in eV, forces in eV/Angstrom.
   The plugin receives these values as three doubles and nothing is converted.
+  The lammpc constructor uses the units of =LammpsParams.unitsStyle=.
 - Outputs :: a potential whose forces come from =rgpot_engine_force= of the
-  loaded plugin; the plugin stays the backend.
+  loaded plugin, or from =lammpc_session_calculate_result= when the config bytes
+  are given.
+  The plugin or the lammpc session stays the backend.
 - Errors ::
   =std::invalid_argument= when =u0=, =cutoff= or =psi= is not positive and finite; =std::runtime_error=
   when no library opens with =rgpot_engine_create=, =rgpot_engine_destroy= and
   =rgpot_engine_force=, or =rgpot_engine_create= fails.
+  The lammpc constructor throws
+  =std::invalid_argument= for missing or misaligned config bytes, and =std::runtime_error=
+  when =liblammpc= does not load, reports unavailable, or refuses the session.
   A force throws
   =std::invalid_argument= for missing buffers and =std::runtime_error= when
-  =rgpot_engine_force= returns nonzero.
+  =rgpot_engine_force= returns nonzero or the lammpc result is refused.
 
 *** =rgpot::GromacsPot=
 

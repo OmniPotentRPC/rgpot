@@ -607,8 +607,9 @@ auto pot = rgpot::rgpot_lammps_potential(cfg);
 
 The same =LammpsPot= type also has a lammpc-backed path for full LAMMPS
 =pair_style= support (for example =eam/alloy=, =tersoff=, =snap=, =meam=,
-=reaxff=). The constructor takes a flat =PotentialConfig= message with the
-=lammps= arm, keeps one lammpc session, and evaluates through
+=reaxff=).
+The constructor takes a flat =PotentialConfig= message with the =lammps= arm,
+keeps one lammpc session, and evaluates through
 =lammpc_session_calculate_result=.
 
 #+attr_rgpot: syntax for a flat PotentialConfig payload (from your schema toolchain)

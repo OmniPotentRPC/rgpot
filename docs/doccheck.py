@@ -923,6 +923,8 @@ class PyName:
     name: str  # rgpot.X or rgpot.X.member
     kind: str  # class | function | variable | method | property
     params: list[PyParam] | None
+    # Every @overload, or the single plain definition. params stays the first.
+    overloads: list[list[PyParam]] | None = None
 
 
 _NO_DEFAULT = object()
@@ -952,10 +954,20 @@ def _param(name, default, kind) -> PyParam:
     return PyParam(name, value, True, kind)
 
 
+def _is_overload(node: ast.FunctionDef) -> bool:
+    for deco in node.decorator_list:
+        target = deco.func if isinstance(deco, ast.Call) else deco
+        if isinstance(target, ast.Name) and target.id == "overload":
+            return True
+        if isinstance(target, ast.Attribute) and target.attr == "overload":
+            return True
+    return False
+
+
 def _stub_classes(root: Path):
     tree = ast.parse((root / PY_STUB).read_text(encoding="utf-8"))
     classes = {}
-    functions = {}
+    raw_functions: dict[str, list[tuple[bool, list[PyParam]]]] = {}
     variables = set()
     for node in tree.body:
         if isinstance(node, ast.ClassDef):
@@ -967,11 +979,19 @@ def _stub_classes(root: Path):
                     members[item.name] = (kind, _params(item, "staticmethod" not in decos))
             classes[node.name] = members
         elif isinstance(node, ast.FunctionDef):
-            functions[node.name] = _params(node, False)
+            raw_functions.setdefault(node.name, []).append(
+                (_is_overload(node), _params(node, False))
+            )
         elif isinstance(node, (ast.AnnAssign, ast.Assign)):
             target = node.target if isinstance(node, ast.AnnAssign) else node.targets[0]
             if isinstance(target, ast.Name):
                 variables.add(target.id)
+    functions: dict[str, list[list[PyParam]]] = {}
+    for name, items in raw_functions.items():
+        overloads = [params for is_overload, params in items if is_overload]
+        plain = [params for is_overload, params in items if not is_overload]
+        # A stub that annotates @overload has no runtime body to compare.
+        functions[name] = overloads if overloads else plain
     return classes, functions, variables
 
 
@@ -1026,7 +1046,8 @@ def py_public_names(root: Path = ROOT) -> dict[str, PyName]:
                     f"{full}.{member}", kind, params if kind == "method" else None
                 )
         elif core in functions:
-            out[full] = PyName(full, "function", functions[core])
+            overloads = functions[core]
+            out[full] = PyName(full, "function", overloads[0] if overloads else None, overloads)
         else:
             out[full] = PyName(full, "variable", None)
     return out
@@ -1309,12 +1330,16 @@ def _check_signatures(entry, name, c_names, cpp_names, py_names) -> list[str]:
             errors.append(f"{entry.where()}: {name}: undocumented overload {sig!r}")
     elif name in py_names:
         pn = py_names[name]
-        if pn.params is None:
+        sources = pn.overloads if pn.overloads else (
+            [pn.params] if pn.params is not None else None
+        )
+        if sources is None:
             return errors
         if not sigs:
             errors.append(f"{entry.where()}: {name}: missing signature")
             return errors
         short = name.rsplit(".", 1)[-1]
+        used: set[int] = set()
         for sig in sigs:
             called, params = _py_signature(sig)
             if params is None:
@@ -1322,9 +1347,31 @@ def _check_signatures(entry, name, c_names, cpp_names, py_names) -> list[str]:
                 continue
             if called.rsplit(".", 1)[-1] != short:
                 errors.append(f"{entry.where()}: {name}: signature names {called}")
-            problem = _py_params_differ(params, pn.params)
-            if problem:
-                errors.append(f"{entry.where()}: {name}: {problem}")
+            match = next(
+                (
+                    i
+                    for i, src in enumerate(sources)
+                    if i not in used and _py_params_differ(params, src) is None
+                ),
+                None,
+            )
+            if match is None:
+                if len(sources) == 1:
+                    problem = _py_params_differ(params, sources[0])
+                    errors.append(f"{entry.where()}: {name}: {problem}")
+                else:
+                    have = "; ".join(_fmt_params(src) for src in sources)
+                    errors.append(
+                        f"{entry.where()}: {name}: documented {_fmt_params(params)} "
+                        f"matches none of the source overloads {have}"
+                    )
+            else:
+                used.add(match)
+        for i, src in enumerate(sources):
+            if i not in used:
+                errors.append(
+                    f"{entry.where()}: {name}: undocumented overload {_fmt_params(src)}"
+                )
     return errors
 
 

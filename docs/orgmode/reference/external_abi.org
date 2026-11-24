@@ -107,6 +107,32 @@ rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
   canonical path was loaded before and now names another inode ("was replaced
   after it was loaded").
 
+*** =rgpot_lammpc_potential=
+
+#+attr_rgpot: signature
+#+begin_src c
+rgpot_external_potential *rgpot_lammpc_potential(const char *engine_path,
+                                                const void *config_capnp,
+                                                size_t config_capnp_size,
+                                                char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =engine_path=, the lammpc library, or null or empty to search.
+  =config_capnp= and =config_capnp_size= are a flat =PotentialConfig= with the
+  =lammps= arm.
+  =err= and =err_len= receive a failure message.
+- Units :: those of =LammpsParams.unitsStyle=; =metal= is eV and Angstrom.
+- Outputs :: a new handle, freed with =rgpot_external_potential_free=.
+  Freeing the last handle on a lammpc backend calls =lammpc_finalize=.
+  The constructor loads =liblammpc=, resolves the lammpc profile, and calls
+  =lammpc_session_create_from_config=.
+  A non-empty =engine_path= is the only library tried.
+  Otherwise the constructor tries =LAMMPC_LIBRARY=, then =RGPOT_LAMMPC_ENGINE=
+  when they are set, then =liblammpc.so=.
+- Errors :: returns null and writes =err= when the config bytes are missing or
+  not word-aligned, when no library opens, when the backend reports unavailable,
+  or when =lammpc_session_create_from_config= returns null.
+
 *** =rgpot_gromacs_potential=
 
 #+attr_rgpot: signature

@@ -73,6 +73,30 @@ class PlantedReferenceMistakes(unittest.TestCase):
         errors = _about(doccheck.reference_errors(ROOT, [page]), name)
         self.assertTrue(any("but the source has" in e for e in errors), errors)
 
+    def test_python_overloads_must_all_be_documented(self):
+        name = "rgpot.rgpot_lammps_potential"
+        info = doccheck.py_public_names(ROOT)[name]
+        self.assertEqual(len(info.overloads), 2)
+        only_first = "rgpot_lammps_potential" + doccheck._fmt_params(info.overloads[0])
+        page = _page(_entry(name, only_first, "python"))
+        errors = [
+            e
+            for e in _about(doccheck.reference_errors(ROOT, [page]), name)
+            if "second entry" not in e
+        ]
+        self.assertTrue(any("undocumented overload" in e for e in errors), errors)
+        both = "\n".join(
+            "rgpot_lammps_potential" + doccheck._fmt_params(params)
+            for params in info.overloads
+        )
+        page = _page(_entry(name, both, "python"))
+        errors = [
+            e
+            for e in _about(doccheck.reference_errors(ROOT, [page]), name)
+            if "second entry" not in e
+        ]
+        self.assertEqual(errors, [])
+
     def test_member_claimed_on_a_class_without_it(self):
         names = doccheck.py_public_names(ROOT)
         classes = {n.split(".")[1] for n, v in names.items() if v.kind == "class"}
