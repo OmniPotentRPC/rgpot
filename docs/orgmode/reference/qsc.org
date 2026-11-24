@@ -7,18 +7,18 @@
 =QSCPot= (=PotType::QSC=) evaluates the multi-element Quantum Sutton-Chen (Q-SC)
 many-body potential of Qi, Cagin, Kimura and Goddard, Physical Review B 59, 3527
 (1999),
-doi:10.1103/PhysRevB.59.3527, with the fcc alloy mixing rules of Rafii-Tabar and Sutton, Philosophical Magazine Letters 63, 217 (1991), doi:10.1080/09500839108205994:
+doi:10.1103/PhysRevB.59.3527, Eqs. (1a) to (1c) with the combination rules of its Eq. (2),
+which the paper takes from Rafii-Tabar and Sutton, Philosophical Magazine Letters 63, 217 (1991), doi:10.1080/09500839108205994:
 
 #+attr_rgpot: skip the energy formula, not code
 #+begin_example
 E = sum_{i < j} epsilon_ab * (a_ab / r_ij)^(n_ab)
     - sum_i c_a * epsilon_aa * sqrt(rho_i)
-rho_i = sum_{j != i} (a_bb / r_ij)^(m_b)
+rho_i = sum_{j != i} (a_ab / r_ij)^(m_ab)
 #+end_example
 
 where =a= is the species of atom =i= and =b= is the species of atom =j=.
-For unlike species =a != b= the pair parameters follow the Rafii-Tabar and
-Sutton mixing rules:
+For unlike species =a != b= the pair parameters follow Eq. (2) of the paper:
 
 #+attr_rgpot: skip the mixing rules, not code
 #+begin_example
@@ -28,11 +28,18 @@ n_ab = (n_a + n_b) / 2
 m_ab = (m_a + m_b) / 2
 #+end_example
 
-Each neighbour =j= of species =b= contributes its pure-species density
-=(a_b / r_ij)^(m_b)= to =rho_i=.
-The repulsive exponent
-=n_ab= can be a half-integer on an alloy pair such as copper and silver, where =n_Cu = 10=
+The density term uses the mixed =a_ab= and =m_ab= exactly like the repulsive
+term, so each pair adds the same amount to =rho_i= and =rho_j=.
+There is no combination rule for =c=: it belongs to the atom whose density is
+evaluated.
+The quantum correction of the Q-SC force field sits in the fitted parameters
+(they include the zero-point energy), so the functional form is that of
+Sutton-Chen and the energy has no extra term.
+The repulsive and density exponents
+=n_ab= and =m_ab= can be half-integers on an alloy pair such as copper and silver, where =n_Cu = 10=
 and =n_Ag = 11= give =n_CuAg = 10.5=.
+The paper truncates each pair at =2 a_ab=; =QSCConfig::cutoff= is one global
+distance instead.
 
 ** Parameter table and reference values
 

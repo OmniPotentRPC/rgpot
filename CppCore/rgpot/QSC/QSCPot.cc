@@ -388,19 +388,13 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
             }
             const auto ui = static_cast<std::size_t>(i);
             const auto uj = static_cast<std::size_t>(j);
-            const std::size_t si = slots[ui];
-            const std::size_t sj = slots[uj];
-            const ElementSpec &ei = elems[si];
-            const ElementSpec &ej = elems[sj];
-            const PairSpec &pij = pairs[si * n_species + sj];
+            const PairSpec &pij = pairs[slots[ui] * n_species + slots[uj]];
             const double inv_r2 = 1.0 / r2;
-            const double phi_i = pow_qsc(ej.a, r2, inv_r2, ej.m, false);
-            const double phi_j =
-                si == sj ? phi_i : pow_qsc(ei.a, r2, inv_r2, ei.m, false);
+            const double phi = pow_qsc(pij.a, r2, inv_r2, pij.m, false);
             const double rep =
                 pij.epsilon * pow_qsc(pij.a, r2, inv_r2, pij.n, false);
-            rho_ptr[ui] += phi_i;
-            rho_ptr[uj] += phi_j;
+            rho_ptr[ui] += phi;
+            rho_ptr[uj] += phi;
             e_sum[ui * decltype(stride)::value] += rep;
             if (atom_e != nullptr) {
               atom_e[ui] += 0.5 * rep;
@@ -428,14 +422,11 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
       }
       const auto ui = static_cast<std::size_t>(i);
       const auto uj = static_cast<std::size_t>(j);
-      const std::size_t si = slots[ui];
-      const std::size_t sj = slots[uj];
-      const ElementSpec &ej = elems[sj];
-      const PairSpec &pij = pairs[si * n_species + sj];
+      const PairSpec &pij = pairs[slots[ui] * n_species + slots[uj]];
       const double inv_r2 = 1.0 / r2;
-      const double phi_i = pow_qsc(ej.a, r2, inv_r2, ej.m, false);
+      const double phi = pow_qsc(pij.a, r2, inv_r2, pij.m, false);
       const double rep = pij.epsilon * pow_qsc(pij.a, r2, inv_r2, pij.n, false);
-      rho_ptr[ui] += phi_i;
+      rho_ptr[ui] += phi;
       if (j > i) {
         e_sum[ui] += rep;
       }
@@ -480,22 +471,12 @@ void QSCPot::compute(const ForceInput &in, ForceOut *out,
     }
     const auto lo = static_cast<std::size_t>(std::min(i, j));
     const auto hi = static_cast<std::size_t>(std::max(i, j));
-    const std::size_t s_lo = slots[lo];
-    const std::size_t s_hi = slots[hi];
-    const ElementSpec &e_lo = elems[s_lo];
-    const ElementSpec &e_hi = elems[s_hi];
-    const PairSpec &pij = pairs[s_lo * n_species + s_hi];
+    const PairSpec &pij = pairs[slots[lo] * n_species + slots[hi]];
     const double inv_r2 = 1.0 / r2;
     const double rep_term =
         pij.n * pij.epsilon * pow_qsc(pij.a, r2, inv_r2, pij.n, true);
-    const double dphi_lo = e_hi.m * pow_qsc(e_hi.a, r2, inv_r2, e_hi.m, true);
-    double emb_term = 0.0;
-    if (s_lo == s_hi) {
-      emb_term = dphi_lo * (w_ptr[lo] + w_ptr[hi]);
-    } else {
-      const double dphi_hi = e_lo.m * pow_qsc(e_lo.a, r2, inv_r2, e_lo.m, true);
-      emb_term = w_ptr[lo] * dphi_lo + w_ptr[hi] * dphi_hi;
-    }
+    const double dphi = pij.m * pow_qsc(pij.a, r2, inv_r2, pij.m, true);
+    const double emb_term = dphi * (w_ptr[lo] + w_ptr[hi]);
     const double fscale = (rep_term - emb_term) * inv_r2;
     const double fx = fscale * dx;
     const double fy = fscale * dy;
@@ -625,22 +606,18 @@ void QSCPot::hessianVectorImpl(const ForceInput &in, const double *v,
         }
         const auto ui = static_cast<std::size_t>(i);
         const auto uj = static_cast<std::size_t>(j);
-        const std::size_t si = slots[ui];
-        const std::size_t sj = slots[uj];
-        const ElementSpec &ei = elems[si];
-        const ElementSpec &ej = elems[sj];
+        const PairSpec &pij = pairs[slots[ui] * n_species + slots[uj]];
         const double inv_r2 = 1.0 / r2;
-        const double phi_ij = pow_qsc(ej.a, r2, inv_r2, ej.m, false);
-        const double phi_ji =
-            si == sj ? phi_ij : pow_qsc(ei.a, r2, inv_r2, ei.m, false);
-        rho[ui] += phi_ij;
-        rho[uj] += phi_ji;
+        const double phi = pow_qsc(pij.a, r2, inv_r2, pij.m, false);
+        rho[ui] += phi;
+        rho[uj] += phi;
         const double dvx = v[3 * ui] - v[3 * uj];
         const double dvy = v[3 * ui + 1] - v[3 * uj + 1];
         const double dvz = v[3 * ui + 2] - v[3 * uj + 2];
         const double ddv = dx * dvx + dy * dvy + dz * dvz;
-        drho[ui] += (-ej.m * phi_ij * inv_r2) * ddv;
-        drho[uj] += (-ei.m * phi_ji * inv_r2) * ddv;
+        const double drho_pair = (-pij.m * phi * inv_r2) * ddv;
+        drho[ui] += drho_pair;
+        drho[uj] += drho_pair;
       });
 
   if (coincident) {
@@ -666,30 +643,22 @@ void QSCPot::hessianVectorImpl(const ForceInput &in, const double *v,
         }
         const auto ui = static_cast<std::size_t>(i);
         const auto uj = static_cast<std::size_t>(j);
-        const std::size_t si = slots[ui];
-        const std::size_t sj = slots[uj];
-        const ElementSpec &ei = elems[si];
-        const ElementSpec &ej = elems[sj];
-        const PairSpec &pij = pairs[si * n_species + sj];
+        const PairSpec &pij = pairs[slots[ui] * n_species + slots[uj]];
         const double inv_r2 = 1.0 / r2;
         const double vij =
             pij.epsilon * pow_qsc(pij.a, r2, inv_r2, pij.n, true);
-        const double phi_ij = pow_qsc(ej.a, r2, inv_r2, ej.m, true);
-        const double phi_ji =
-            si == sj ? phi_ij : pow_qsc(ei.a, r2, inv_r2, ei.m, true);
+        const double phi = pow_qsc(pij.a, r2, inv_r2, pij.m, true);
+        const double w_sum = w[ui] + w[uj];
         const double psi_p_over_r =
-            (-pij.n * vij + w[ui] * ej.m * phi_ij + w[uj] * ei.m * phi_ji) *
-            inv_r2;
+            (-pij.n * vij + w_sum * pij.m * phi) * inv_r2;
         const double psi_pp = (pij.n * (pij.n + 1.0) * vij -
-                               w[ui] * ej.m * (ej.m + 1.0) * phi_ij -
-                               w[uj] * ei.m * (ei.m + 1.0) * phi_ji) *
+                               w_sum * pij.m * (pij.m + 1.0) * phi) *
                               inv_r2;
         const double dvx = v[3 * ui] - v[3 * uj];
         const double dvy = v[3 * ui + 1] - v[3 * uj + 1];
         const double dvz = v[3 * ui + 2] - v[3 * uj + 2];
         const double ddv = dx * dvx + dy * dvy + dz * dvz;
-        const double dw_term =
-            (dw[ui] * ej.m * phi_ij + dw[uj] * ei.m * phi_ji) * inv_r2;
+        const double dw_term = ((dw[ui] + dw[uj]) * pij.m * phi) * inv_r2;
         const double radial_coeff =
             (psi_pp - psi_p_over_r) * (ddv * inv_r2) + dw_term;
         const double hvx = psi_p_over_r * dvx + radial_coeff * dx;
@@ -709,7 +678,8 @@ void QSCPot::densityStage(const HalfList &list, double *densities) const {
     throw std::invalid_argument("QSCPot: null atomic numbers in HalfList");
   }
   const auto table = m_state->snapshot();
-  const ElementSpec *elems = table->elements.data();
+  const std::size_t n_species = table->elements.size();
+  const PairSpec *pairs = table->pairs.data();
   const double cutoff = searchCutoff(m_config);
   const double cutoff2 = cutoff * cutoff;
   staged::forEachPair(list, [&](int i, int j, double, double, double, double r2,
@@ -724,15 +694,13 @@ void QSCPot::densityStage(const HalfList &list, double *densities) const {
       throw std::invalid_argument("QSCPot: no parameters for atomic number " +
                                   std::to_string(bad_z));
     }
-    const ElementSpec &ei = elems[static_cast<std::size_t>(si)];
-    const ElementSpec &ej = elems[static_cast<std::size_t>(sj)];
+    const PairSpec &pij = pairs[static_cast<std::size_t>(si) * n_species +
+                                static_cast<std::size_t>(sj)];
     const double inv_r2 = 1.0 / r2;
-    const double phi_i = pow_qsc(ej.a, r2, inv_r2, ej.m, false);
-    densities[i] += phi_i;
+    const double phi = pow_qsc(pij.a, r2, inv_r2, pij.m, false);
+    densities[i] += phi;
     if (both) {
-      const double phi_j =
-          si == sj ? phi_i : pow_qsc(ei.a, r2, inv_r2, ei.m, false);
-      densities[j] += phi_j;
+      densities[j] += phi;
     }
   });
 }
@@ -787,18 +755,13 @@ void QSCPot::forceStage(const HalfList &list, const double *densities,
       }
       const auto si = static_cast<std::size_t>(si_raw);
       const auto sj = static_cast<std::size_t>(sj_raw);
-      const ElementSpec &ei = elems[si];
-      const ElementSpec &ej = elems[sj];
       const PairSpec &pij = pairs[si * n_species + sj];
       const double inv_r2 = 1.0 / r2;
       const double vij = pij.epsilon * pow_qsc(pij.a, r2, inv_r2, pij.n, true);
-      const double dphi_i = ej.m * pow_qsc(ej.a, r2, inv_r2, ej.m, true);
-      const double dphi_j =
-          si == sj ? dphi_i : ei.m * pow_qsc(ei.a, r2, inv_r2, ei.m, true);
+      const double dphi = pij.m * pow_qsc(pij.a, r2, inv_r2, pij.m, true);
       const double wi = weight[static_cast<std::size_t>(i)];
       const double wj = weight[static_cast<std::size_t>(j)];
-      const double fscale =
-          (pij.n * vij - (wi * dphi_i + wj * dphi_j)) * inv_r2;
+      const double fscale = (pij.n * vij - (wi + wj) * dphi) * inv_r2;
       staged::addPair(tallied, forces, tally, i, j, both, vij, fscale, dx, dy,
                       dz);
     });
