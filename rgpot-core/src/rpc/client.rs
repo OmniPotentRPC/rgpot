@@ -77,6 +77,39 @@ pub struct NeighborReply {
     pub mask: Vec<u8>,
 }
 
+fn validate_neighbor_columns(
+    query: &NeighborQuery,
+    pair_count: usize,
+    shift_len: usize,
+    vector_len: usize,
+    distance_len: usize,
+    mask_len: usize,
+) -> Result<(), String> {
+    if query.shifts && shift_len < pair_count.saturating_mul(3) {
+        return Err(format!(
+            "neighbour shift column is undersized: got {shift_len}, expected at least {}",
+            pair_count * 3
+        ));
+    }
+    if query.vectors && vector_len < pair_count.saturating_mul(3) {
+        return Err(format!(
+            "neighbour vector column is undersized: got {vector_len}, expected at least {}",
+            pair_count * 3
+        ));
+    }
+    if query.distances && distance_len < pair_count {
+        return Err(format!(
+            "neighbour distance column is undersized: got {distance_len}, expected at least {pair_count}",
+        ));
+    }
+    if mask_len < pair_count {
+        return Err(format!(
+            "neighbour mask column is undersized: got {mask_len}, expected at least {pair_count}",
+        ));
+    }
+    Ok(())
+}
+
 /// RPC client that connects to a remote rgpot server.
 pub struct RpcClient {
     runtime: Runtime,
@@ -430,6 +463,14 @@ impl RpcClient {
         let mask = list
             .get_mask()
             .map_err(|e| format!("failed to read mask: {e}"))?;
+        validate_neighbor_columns(
+            query,
+            first.len() as usize,
+            shift.len() as usize,
+            vector.len() as usize,
+            distance.len() as usize,
+            mask.len() as usize,
+        )?;
         Ok(NeighborReply {
             first: (0..first.len()).map(|i| first.get(i)).collect(),
             second: (0..second.len()).map(|i| second.get(i)).collect(),
@@ -660,5 +701,46 @@ mod tests {
         };
         let err = client.calculate(&guard.input, &mut output).unwrap_err();
         assert!(err.contains("connection failed"), "{err}");
+    }
+
+    fn query_with_all_columns() -> NeighborQuery {
+        NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 0,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        }
+    }
+
+    #[test]
+    fn neighbour_columns_reject_short_shift() {
+        let q = query_with_all_columns();
+        let err = validate_neighbor_columns(&q, 2, 5, 6, 2, 2).unwrap_err();
+        assert!(err.contains("shift column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_columns_reject_short_vector() {
+        let q = query_with_all_columns();
+        let err = validate_neighbor_columns(&q, 2, 6, 5, 2, 2).unwrap_err();
+        assert!(err.contains("vector column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_columns_reject_short_distance() {
+        let q = query_with_all_columns();
+        let err = validate_neighbor_columns(&q, 2, 6, 6, 1, 2).unwrap_err();
+        assert!(err.contains("distance column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_columns_reject_short_mask() {
+        let q = query_with_all_columns();
+        let err = validate_neighbor_columns(&q, 2, 6, 6, 2, 1).unwrap_err();
+        assert!(err.contains("mask column"), "{err}");
     }
 }
