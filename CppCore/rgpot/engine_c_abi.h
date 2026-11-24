@@ -246,6 +246,7 @@ typedef struct {
  * invalid or overlapping arguments or order < 1, RGPOT_ENGINE_ERR_UNSUPPORTED
  * (3) when the backend serves no jet or order exceeds jet_order, and
  * RGPOT_ENGINE_ERR_EVAL (2) when the evaluation fails.
+ * Nothing is written to jet_out or report unless the call succeeds.
  */
 RGPOT_ENGINE_API int rgpot_engine_taylor_jet(
     RgpotEnginePot *pot, long nSystems, long nAtoms, const double *positions,

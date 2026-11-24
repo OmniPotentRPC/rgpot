@@ -604,16 +604,31 @@ TEST_CASE("CBE engine energy, force, Hessian product and jet keep their bits",
   }
 
   std::array<double, 54> jet{};
+  std::memset(jet.data(), 0x5A, sizeof(jet));
+  std::array<unsigned char, sizeof(jet)> jet_before{};
+  std::memcpy(jet_before.data(), jet.data(), sizeof(jet));
+  RgpotEngineDerivativeReport untouched{};
+  untouched.tracked = 3;
+  untouched.operations = 17;
+  untouched.scale = -4.0;
+  std::array<unsigned char, sizeof(untouched)> report_before{};
+  std::memcpy(report_before.data(), &untouched, sizeof(untouched));
   const auto &p = kSaddlePositions;
   const auto &d = kSaddleDirection;
   REQUIRE(e.taylor_jet(pot, 1, 6, p.data(), z.data(), d.data(), 4, jet.data(),
-                       nullptr, kBox.data()) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+                       &untouched, kBox.data()) == RGPOT_ENGINE_ERR_UNSUPPORTED);
   REQUIRE(error_of(e, pot).find("exceeds") != std::string::npos);
+  REQUIRE(std::memcmp(jet.data(), jet_before.data(), sizeof(jet)) == 0);
+  REQUIRE(std::memcmp(&untouched, report_before.data(), sizeof(untouched)) == 0);
   REQUIRE(e.taylor_jet(pot, 1, 6, p.data(), z.data(), d.data(), 0, jet.data(),
-                       nullptr, kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+                       &untouched, kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(std::memcmp(jet.data(), jet_before.data(), sizeof(jet)) == 0);
+  REQUIRE(std::memcmp(&untouched, report_before.data(), sizeof(untouched)) == 0);
   REQUIRE(e.taylor_jet(pot, 1, 5, p.data(), z.data(), d.data(), 1, jet.data(),
-                       nullptr, kBox.data()) == RGPOT_ENGINE_ERR_EVAL);
+                       &untouched, kBox.data()) == RGPOT_ENGINE_ERR_EVAL);
   REQUIRE(error_of(e, pot).find("six atoms") != std::string::npos);
+  REQUIRE(std::memcmp(jet.data(), jet_before.data(), sizeof(jet)) == 0);
+  REQUIRE(std::memcmp(&untouched, report_before.data(), sizeof(untouched)) == 0);
   REQUIRE(e.taylor_jet(pot, 1, 6, p.data(), z.data(), jet.data(), 1, jet.data(),
                        nullptr, kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
   REQUIRE(error_of(e, pot).find("overlap") != std::string::npos);

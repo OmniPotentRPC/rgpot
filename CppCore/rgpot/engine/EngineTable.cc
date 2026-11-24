@@ -379,9 +379,14 @@ int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long nSystems, long nAtoms,
   try {
     RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    // A backend may write part of its buffer and then throw. Hold the jet
+    // until the call returns, so jet_out and report stay byte-identical on
+    // any failure.
+    std::vector<double> scratch(jet_bytes / sizeof(double));
     const rgpot::DerivativeReport measured =
         jet->gradientJet(systems, atoms, positions, atomicNrs, boxes,
-                         directions, static_cast<int>(order), jet_out);
+                         directions, static_cast<int>(order), scratch.data());
+    std::memcpy(jet_out, scratch.data(), jet_bytes);
     if (report) {
       report->tracked = measured.tracked ? 1 : 0;
       report->operations = measured.tracked ? measured.operations : 0;
