@@ -72,7 +72,7 @@ OpenMMSession::OpenMMSession(std::unique_ptr<OpenMM::System> system,
 
   auto custom = std::make_unique<OpenMM::CustomIntegrator>(config.time_step);
   custom->addGlobalVariable("normal_force", 0.0);
-  custom->addGlobalVariable("temperature", config.temperature);
+  custom->addGlobalVariable("kT", config.temperature);
   custom->addGlobalVariable("friction", config.friction);
   custom->addGlobalVariable("noise_scale", 1.0);
   custom->addPerDofVariable("normal", 0.0);
@@ -80,7 +80,7 @@ OpenMMSession::OpenMMSession(std::unique_ptr<OpenMM::System> system,
   custom->addComputePerDof("x", "x+0.5*dt*v");
   custom->addComputePerDof(
       "v",
-      "v*exp(-friction*dt)+sqrt(noise_scale*temperature*(1-exp(-2*friction*dt))/m)*gaussian");
+      "v*exp(-friction*dt)+sqrt(noise_scale*kT*(1-exp(-2*friction*dt))/m)*gaussian");
   custom->addComputePerDof("x", "x+0.5*dt*v");
   custom->addComputePerDof("v", "v+0.5*dt*(f-normal*normal_force)/m");
   custom->setRandomNumberSeed(config.random_seed);
