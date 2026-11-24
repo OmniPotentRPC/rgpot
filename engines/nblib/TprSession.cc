@@ -92,6 +92,11 @@ md::LangevinResult TprSession::run(const md::LangevinSettings &settings,
   std::uint64_t evaluations = 0;
   const md::ForceFunction forcesAt = [&](const double *positions,
                                          double *forces) {
+    // A chunked run starts where the last one ended, with forces in hand.
+    if (forcesValid_ && std::equal(x_.begin(), x_.end(), positions)) {
+      std::copy(force_.begin(), force_.end(), forces);
+      return potential_;
+    }
     ++evaluations;
     return engine_.evaluate(positions, forces);
   };
