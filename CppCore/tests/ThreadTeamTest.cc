@@ -33,6 +33,7 @@
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/PerAtom.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/Slices.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
@@ -141,6 +142,15 @@ System cluster(std::size_t n, double a, int z) {
     s.z.push_back(z);
   }
   s.length = 1000 * a;
+  return s;
+}
+
+// Species from `table` in a fixed irregular order, so that most neighbour
+// pairs have two different species (s_lo != s_hi).
+System alloy(System s, const std::vector<int> &table) {
+  for (std::size_t k = 0; k < s.z.size(); ++k) {
+    s.z[k] = table[(7 * k + k / 5) % table.size()];
+  }
   return s;
 }
 
@@ -605,6 +615,16 @@ TEST_CASE("many-body potentials give the one-thread bits on any team",
   checkPotential("Sutton-Chen on every pair", every_pair,
                  cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts);
 
+  rgpot::QSCConfig qsc;
+  qsc.periodic = true;
+  qsc.stress = true;
+  for (const int side : {4, 13}) {
+    qsc.cutoff = side == 4 ? 7.0 : 4.2;
+    const auto pt = fcc(side, 3.92, 78);
+    checkPotential("stored QSC", mode<rgpot::QSCPot>(qsc, kStored), pt);
+    checkPotential("streamed QSC", mode<rgpot::QSCPot>(qsc, kStream), pt);
+  }
+
   for (const int side : {3, 11}) {
     const auto si = diamond(side, 5.431, 14);
     checkPotential("stored Stillinger-Weber", mode<rgpot::StillingerWeberSi>(kStored), si);
@@ -612,6 +632,37 @@ TEST_CASE("many-body potentials give the one-thread bits on any team",
     checkPotential("stored Tersoff", mode<rgpot::TersoffSiC>(kStored), si);
     checkPotential("streamed Tersoff", mode<rgpot::TersoffSiC>(kStream), si);
   }
+}
+
+TEST_CASE("multi-species QSC gives the one-thread bits on any team",
+          "[threads][manybody][qsc]") {
+  const std::vector<int> metals = {29, 47, 28, 79};
+  rgpot::QSCConfig qsc;
+  qsc.periodic = true;
+  qsc.stress = true;
+  for (const int side : {4, 13}) {
+    qsc.cutoff = side == 4 ? 7.0 : 4.2;
+    const auto cell = alloy(fcc(side, 3.9, 29), metals);
+    std::size_t unlike = 0;
+    for (std::size_t k = 1; k < cell.z.size(); ++k) {
+      unlike += cell.z[k] != cell.z[k - 1];
+    }
+    REQUIRE(unlike > cell.z.size() / 2);
+    checkPotential("stored multi-species QSC",
+                   mode<rgpot::QSCPot>(qsc, kStored), cell);
+    checkPotential("streamed multi-species QSC",
+                   mode<rgpot::QSCPot>(qsc, kStream), cell);
+  }
+
+  rgpot::QSCConfig open;
+  open.periodic = false;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto block = alloy(cluster(55, 3.9, 29), metals);
+  checkPotential("stored multi-species QSC on every pair",
+                 mode<rgpot::QSCPot>(open, kStored), block);
+  checkPotential("streamed multi-species QSC on every pair",
+                 mode<rgpot::QSCPot>(open, kStream), block);
 }
 
 namespace {

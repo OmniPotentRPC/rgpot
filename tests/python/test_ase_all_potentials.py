@@ -130,6 +130,7 @@ CASES = [
     PotentialCase("lj", pair_cluster),
     PotentialCase("ljcluster", pair_cluster),
     PotentialCase("morse", pair_cluster),
+    PotentialCase("qsc", copper_cluster),
     PotentialCase("stillingerwebersi", silicon_cluster),
     PotentialCase("tersoffsic", silicon_cluster),
     PotentialCase("emt", copper_cluster),

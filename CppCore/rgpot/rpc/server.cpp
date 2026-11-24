@@ -64,10 +64,11 @@ class MpiPefSession;
 #include "rgpot/CPMDPot/CPMDPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
-#include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/NWChemPot/NWChemPot.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_CBE
@@ -533,7 +534,7 @@ public:
  * ./potserv <port> <PotentialType>
  * @endcode
  *
- * PotentialType is one of LJ, LJCluster, Morse, ZBL, Eckart, MullerBrown,
+ * PotentialType is one of LJ, LJCluster, Morse, SWSi, ZBL, QSC, Eckart, MullerBrown,
  * ModifiedMullerBrown, LEPS-HH2, LEPS-HCl2, LEPS-FH2, DoubleWell,
  * CoupledProtonWell, Composite, D2 and D2Cpmd, plus the backends this build
  * compiled in. The printed usage line is the same list.
@@ -550,7 +551,7 @@ int runServer(int argc, char *argv[]
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
     std::cerr
-        << "  Available PotentialTypes: LJ, LJCluster, Morse, SWSi, ZBL, Eckart, "
+        << "  Available PotentialTypes: LJ, LJCluster, Morse, SWSi, ZBL, QSC, Eckart, "
            "MullerBrown, ModifiedMullerBrown, LEPS-HH2, LEPS-HCl2, "
            "LEPS-FH2, Composite, D2, D2Cpmd"
 #ifdef RGPOT_HAS_FORTRAN_POTS
@@ -580,13 +581,11 @@ int runServer(int argc, char *argv[]
 #ifdef RGPOT_HAS_SKALA
               << ", Skala, Skala:<basis>"
 #endif
-              << ", NWChem[:basis[:theory[:xc]]]"
-              << ", CPMD"
+              << ", NWChem[:basis[:theory[:xc]]]" << ", CPMD"
 #ifdef RGPOT_HAS_CP2K
               << ", CP2K"
 #endif
-              << ", DoubleWell, CoupledProtonWell"
-              << std::endl;
+              << ", DoubleWell, CoupledProtonWell" << std::endl;
     return 1;
   }
 
@@ -638,6 +637,9 @@ int runServer(int argc, char *argv[]
   } else if (pot_type == "ZBL") {
     std::cout << "Loading ZBL potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::ZBLPot>();
+  } else if (pot_type == "QSC") {
+    std::cout << "Loading QSC potential..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::QSCPot>();
   } else if (pot_type == "Eckart") {
     potential_to_use = std::make_unique<rgpot::EckartPot>();
   } else if (pot_type == "MullerBrown") {

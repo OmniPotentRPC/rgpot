@@ -1,5 +1,5 @@
 // MIT License — generic rgpot engine table for the classical potentials.
-// BuiltinParams names the potential: lj, ljcluster, morse, zbl and, when the
+// BuiltinParams names the potential: lj, ljcluster, morse, qsc, zbl and, when the
 // water option is on, tip4p, spce, tip4p_pt. When the Fortran kernels are
 // built: sw, edip, lenosky, tersoff, eamal, fehe, cuh2, waterh. Every
 // potential takes its default parameters, except muller_brown, which reads
@@ -13,6 +13,7 @@
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_CBE
 #include "rgpot/CBEPot/CBEPot.hpp"
@@ -51,6 +52,8 @@ Created create(const void *config, std::size_t config_len) {
       pot = std::make_unique<MorsePot>();
     } else if (n == "zbl") {
       pot = std::make_unique<ZBLPot>();
+    } else if (n == "qsc") {
+      pot = std::make_unique<QSCPot>();
     } else if (n == "eckart") {
       pot = std::make_unique<EckartPot>();
     } else if (n == "muller_brown") {

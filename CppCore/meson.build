@@ -528,6 +528,9 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/SuttonChen')  # 'sutton_chen'
     rgpotentials += [sutton_chen]
 
+    subdir('rgpot/QSC')  # 'qsc'
+    rgpotentials += [qsc]
+
     # Unshifted cluster pairs. Separate from LJCluster, which is shifted.
     subdir('rgpot/ReducedPair')  # 'reduced_pair'
     rgpotentials += [reduced_pair]
@@ -750,6 +753,7 @@ if not get_option('with_rpc_client_only')
             lennard_jones,
             morse,
             zbl,
+            qsc,
             model_pots,
             rgpot_halfshell,
         ]

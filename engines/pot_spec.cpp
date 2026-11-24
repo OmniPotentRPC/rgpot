@@ -7,6 +7,7 @@
 #include "rgpot/EMT/EMTPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/QSC/QSCPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
@@ -263,6 +264,14 @@ Built make(const std::string &key, Reader &r, double fallback) {
     c.stress = true;
     return ownCut<SuttonChenPot>(c);
   }
+  if (key == "qsc") {
+    QSCConfig c;
+    c.cutoff = r.real("cutoff", fallback > 0.0 ? fallback : c.cutoff);
+    c.verlet_skin = r.real("verlet_skin", c.verlet_skin);
+    c.periodic = true;
+    c.stress = true;
+    return ownCut<QSCPot>(c);
+  }
 #ifdef RGPOT_HAS_EAM_TABLE
   if (key == "eamtable") {
     EAMTableConfig c;
@@ -321,7 +330,7 @@ Built make(const std::string &key, Reader &r, double fallback) {
 } // namespace
 
 std::string names() {
-  std::string out = "LJ Morse SuttonChen";
+  std::string out = "LJ Morse SuttonChen QSC";
 #ifdef RGPOT_POT_SPEC_HAS_CPMD
   out += " CPMD";
 #endif
