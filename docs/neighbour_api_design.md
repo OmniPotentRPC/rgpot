@@ -566,7 +566,7 @@ C: `rgpot_nlist_request_init`, `rgpot_nlist_build`,
 
 Cap'n Proto: `NeighborRequest` and `NeighborList` use those columns.
 `mode = 2` with `cursor`, `limit`, `next`, `status` and `message` is the
-stream. The potserv server does not answer `Potential.neighbours`.
+stream. `potserv` and `rgpot_rpc_server_start` answer `Potential.neighbours`.
 
 ## The query walks the cell list
 

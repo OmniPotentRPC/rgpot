@@ -625,6 +625,28 @@ RpcClient(const std::string &host, uint16_t port);
   text without a category prefix, or "failed to create RPC client" when that
   pointer is NULL.
 
+*** =rgpot::RpcNeighborQuery=
+
+- Inputs :: =cutoff= (=double=, default 0.0), =skin= (=double=, default 0.0),
+  =format=
+  (=uint8_t=, default 0 for half pairs, 1 for full pairs, 2 for a cluster of four), =cut= (=uint8_t=,
+  default 0 for strict, 1 for loose), =periodic= (=std::array<bool, 3>=, default
+  all true), and =shifts=, =vectors= and =distances= (=bool=, default true).
+- Units :: =cutoff= and =skin= in the length unit of the positions; the other
+  fields have none.
+- Outputs :: none; a plain query struct passed to
+  =rgpot::RpcClient::neighbours=.
+- Errors :: none.
+
+*** =rgpot::RpcNeighborList=
+
+- Inputs :: none; returned by =rgpot::RpcClient::neighbours=.
+- Units :: =vector= and =distance= in the length unit of the positions; the
+  other columns have none.
+- Outputs :: =first=, =second= and =shift=
+  (=std::vector<int32_t>=), =vector= and =distance= (=std::vector<double>=), and =mask= (=std::vector<uint8_t>=).
+- Errors :: none.
+
 *** =rgpot::RpcClient::calculate=
 
 #+attr_rgpot: signature
@@ -637,6 +659,23 @@ CalcResult calculate(const InputSpec &input);
 - Outputs :: a =CalcResult= with energy, variance and forces from the server.
 - Errors :: throws =rgpot::Error= when =rgpot_rpc_calculate= returns a
   non-success status, for example "RPC error" on a transport or server failure.
+
+*** =rgpot::RpcClient::neighbours=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+RpcNeighborList neighbours(const InputSpec &input,
+                           const RpcNeighborQuery &query);
+#+end_src
+
+- Inputs :: =input=, the configuration sent to the server; =query=, the
+  =RpcNeighborQuery= parameters.
+- Units :: =cutoff=, =skin=, =vector= and =distance= in the length unit of
+  =input=.
+- Outputs :: a =RpcNeighborList= with the requested neighbour arrays from the
+  server.
+- Errors :: throws =rgpot::Error= when =rgpot_rpc_neighbours= returns a
+  non-success status.
 
 *** =rgpot::RpcClient::select_orbitals=
 
