@@ -16,27 +16,13 @@ def schema_path() -> Path:
     here = Path(__file__).resolve().parent / "ase" / "Potentials.capnp"
     if here.is_file():
         return here
-    root = Path(__file__).resolve().parents[2]
-    repo = root / "CppCore" / "rgpot" / "rpc" / "Potentials.capnp"
-    local_series = repo.parent / "local" / "series"
-    if repo.is_file() and local_series.is_file():
-        # The source tree holds the vendored upstream schema; the local series
-        # must be applied to get the schema rgpot installs and serves.
-        import os
-        import sys
-        import tempfile
-
-        rpc_dir = str(repo.parent)
-        if rpc_dir not in sys.path:
-            sys.path.insert(0, rpc_dir)
-        import schema_ledger  # pyright: ignore[reportMissingImports]
-
-        out = (
-            Path(tempfile.gettempdir())
-            / f"rgpot_effective_{os.getpid()}_Potentials.capnp"
-        )
-        schema_ledger.main(["apply", "--root", str(root), "--out", str(out)])
-        return out
+    repo = (
+        Path(__file__).resolve().parents[2]
+        / "CppCore"
+        / "rgpot"
+        / "rpc"
+        / "Potentials.capnp"
+    )
     if repo.is_file():
         return repo
     raise FileNotFoundError("Potentials.capnp is not installed with rgpot.ase")
