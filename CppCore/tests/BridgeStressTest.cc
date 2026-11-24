@@ -19,6 +19,12 @@
 const std::string HOST = "127.0.0.1";
 const int PORT = 12345;
 
+static bool require_potserv() {
+  const char *v = std::getenv("RGPOT_REQUIRE_POTSERV");
+  return v != nullptr && v[0] != '\0' && std::string(v) != "0" &&
+         std::string(v) != "false";
+}
+
 // Helper to generate random double data
 std::vector<double> gen_random_data(size_t size) {
   static std::mt19937 rng(42);
@@ -231,13 +237,18 @@ TEST_CASE("Bridge Calculation Stress", "[bridge][perf]") {
   double energy = 0;
 
   // pot_client_init is lazy: connection only opens on first calculate.
-  // Without potserv (packaging/unit CI), skip rather than hard-fail.
+  // Without potserv (packaging/unit CI), skip rather than hard-fail unless
+  // RGPOT_REQUIRE_POTSERV is set.
   {
     int probe = pot_calculate(client, natoms, pos.data(), atmnrs.data(),
                               box.data(), &energy, forces.data());
     if (probe != 0) {
       std::string err = pot_get_last_error(client);
       pot_client_free(client);
+      if (require_potserv()) {
+        FAIL("potserv required but not reachable at " << HOST << ":" << PORT
+                                                      << ": " << err);
+      }
       SKIP("potserv not reachable at " << HOST << ":" << PORT << ": " << err);
     }
   }
@@ -306,12 +317,66 @@ TEST_CASE("Bridge Concurrency", "[bridge][threaded]") {
   for (auto &t : threads)
     t.join();
 
-  // If server is up, expect all calls to succeed
-  // If server is down, count is 0, which is also a valid state for the test
-  // code (don't crash) but ideally we want to see successes.
-  if (success_count > 0) {
+  if (success_count > 0 || require_potserv()) {
     CHECK(success_count == NUM_THREADS * CALLS_PER_THREAD);
   } else {
     WARN("Concurrency test skipped (server likely down)");
   }
+}
+
+TEST_CASE("Bridge Neighbours", "[bridge][core]") {
+  PotNeighborsRequest req{};
+  req.cutoff = 2.0;
+  req.periodic[0] = 1;
+  req.periodic[1] = 1;
+  req.periodic[2] = 1;
+  req.shifts = 1;
+  req.vectors = 1;
+  req.distances = 1;
+  size_t count = 0;
+  size_t needed = 0;
+  int32_t atmnrs[2] = {1, 1};
+  double pos[6] = {0.0, 0.0, 0.0, 1.2, 0.0, 0.0};
+  double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  CHECK(pot_neighbours(nullptr, 2, pos, atmnrs, box, &req, nullptr, &count,
+                       &needed) != 0);
+
+  PotClient *client = pot_client_init(HOST.c_str(), PORT);
+  if (!client) {
+    if (require_potserv()) {
+      FAIL("Server required at " << HOST << ":" << PORT);
+    }
+    SKIP("Server not available at " << HOST << ":" << PORT);
+  }
+  int probe = pot_neighbours(client, 2, pos, atmnrs, box, &req, nullptr, &count,
+                             &needed);
+  if (probe < 0) {
+    std::string err = pot_get_last_error(client);
+    pot_client_free(client);
+    if (require_potserv()) {
+      FAIL("potserv required but not reachable at " << HOST << ":" << PORT
+                                                    << ": " << err);
+    }
+    SKIP("potserv not reachable at " << HOST << ":" << PORT << ": " << err);
+  }
+  REQUIRE(probe == 0);
+  REQUIRE(needed == 1);
+  std::vector<int32_t> first(needed), second(needed), shift(needed * 3);
+  std::vector<double> vector(needed * 3), distance(needed);
+  std::vector<uint8_t> mask(needed);
+  PotNeighborsOut out{};
+  out.first = first.data();
+  out.second = second.data();
+  out.shift = shift.data();
+  out.vector = vector.data();
+  out.distance = distance.data();
+  out.mask = mask.data();
+  out.cap = needed;
+  REQUIRE(pot_neighbours(client, 2, pos, atmnrs, box, &req, &out, &count,
+                         &needed) == 0);
+  CHECK(count == 1);
+  CHECK(first[0] == 0);
+  CHECK(second[0] == 1);
+  CHECK(distance[0] == Catch::Approx(1.2));
+  pot_client_free(client);
 }

@@ -226,6 +226,107 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
   CATCH_AND_REPORT(client, -1)
 }
 
+int32_t pot_neighbours(PotClient *client, int32_t natoms, const double *pos,
+                       const int32_t *atmnrs, const double *box,
+                       const PotNeighborsRequest *request, PotNeighborsOut *out,
+                       size_t *out_count, size_t *out_needed) {
+  if (out_count)
+    *out_count = 0;
+  if (out_needed)
+    *out_needed = 0;
+  if (!client || !request || natoms < 0 || (natoms > 0 && (!pos || !atmnrs)) ||
+      !box)
+    return -1;
+  client->last_error.clear();
+
+  try {
+    auto &waitScope = *client->wait_scope;
+    if (!client->server_checked) {
+      const std::string why =
+          rgpot::abi::check_server(client->capability, waitScope);
+      if (!why.empty()) {
+        client->last_error = "server refused: " + why;
+        return -3;
+      }
+      client->server_checked = true;
+    }
+    auto req = client->capability.neighboursRequest();
+    auto fip = req.initFip();
+    fip.setPos(kj::arrayPtr(pos, static_cast<size_t>(natoms) * 3));
+    fip.setAtmnrs(kj::arrayPtr(atmnrs, static_cast<size_t>(natoms)));
+    fip.setBox(kj::arrayPtr(box, 9));
+
+    auto nreq = req.initRequest();
+    nreq.setCutoff(request->cutoff);
+    nreq.setSkin(request->skin);
+    nreq.setFormat(request->format);
+    nreq.setCut(request->cut);
+    auto pbc = nreq.initPeriodic(3);
+    for (unsigned k = 0; k < 3; ++k)
+      pbc.set(k, request->periodic[k] != 0);
+    nreq.setShifts(request->shifts != 0);
+    nreq.setVectors(request->vectors != 0);
+    nreq.setDistances(request->distances != 0);
+    nreq.setMode(1);
+
+    auto response = req.send().wait(waitScope);
+    auto list = response.getNeighbors();
+    if (list.getStatus() != 0) {
+      client->last_error = list.getMessage().cStr();
+      return list.getStatus();
+    }
+    const auto first = list.getFirst();
+    const auto second = list.getSecond();
+    const size_t total = first.size();
+    if (second.size() != total) {
+      client->last_error = "Server returned mismatched pair arrays";
+      return -2;
+    }
+    if (out_needed)
+      *out_needed = total;
+    if (!out || out->cap == 0)
+      return 0;
+    if (!out->first || !out->second || (request->shifts && !out->shift) ||
+        (request->vectors && !out->vector) ||
+        (request->distances && !out->distance)) {
+      client->last_error = "Required neighbour output pointer is null";
+      return 2;
+    }
+    const size_t nwrite = std::min(out->cap, total);
+    const auto shift = list.getShift();
+    const auto vector = list.getVector();
+    const auto distance = list.getDistance();
+    const auto mask = list.getMask();
+    for (size_t i = 0; i < nwrite; ++i) {
+      const auto idx = static_cast<unsigned>(i);
+      out->first[i] = first[idx];
+      out->second[i] = second[idx];
+      if (out->shift && shift.size() >= (i + 1) * 3) {
+        out->shift[3 * i] = shift[3 * idx];
+        out->shift[3 * i + 1] = shift[3 * idx + 1];
+        out->shift[3 * i + 2] = shift[3 * idx + 2];
+      }
+      if (out->vector && vector.size() >= (i + 1) * 3) {
+        out->vector[3 * i] = vector[3 * idx];
+        out->vector[3 * i + 1] = vector[3 * idx + 1];
+        out->vector[3 * i + 2] = vector[3 * idx + 2];
+      }
+      if (out->distance && distance.size() > i) {
+        out->distance[i] = distance[idx];
+      }
+      if (out->mask && mask.size() > i) {
+        out->mask[i] = mask[idx];
+      }
+    }
+    if (out_count)
+      *out_count = nwrite;
+    if (nwrite < total)
+      return 6;
+    return 0;
+  }
+  CATCH_AND_REPORT(client, -1)
+}
+
 /**
  * @details
  * Checks if a valid client handle is provided and if the @c last_error
