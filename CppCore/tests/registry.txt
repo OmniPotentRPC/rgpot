@@ -95,6 +95,7 @@ AotiPublicationStressTest | tests | custom timeout=600 |
 MolecularFrameTest | tests | custom |
 AotiUnpackTest | tests | custom |
 UnitsTest | tests | unit units_test UnitsTest.cc |
+MdProjectedLangevinTest | tests | unit md_projected_langevin_test MdProjectedLangevinTest.cc |
 CuH2test | tests fortran | unit cuh2_test CuH2PotTest.cc |
 RPCTest | tests rpc | unit test_rpc CapnpAdapterTest.cc |
 RPCClientTest | tests client | unit test_rpc_client BridgeStressTest.cc |
