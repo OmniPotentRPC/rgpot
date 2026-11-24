@@ -96,7 +96,7 @@ fn open_engine_validates_the_vtable_and_releases_refused_sessions() {
 
     let request = MdNlistRequest {
         want_distances: 1,
-        ..MdNlistRequest::default()
+        ..MdNlistRequest::new()
     };
     let (mut first, mut second, mut distance) = ([-1; 2], [-1; 2], [0.0; 2]);
     let buffers = MdNlistBuffers::new(&mut first, &mut second).with_distance(&mut distance);
@@ -107,7 +107,7 @@ fn open_engine_validates_the_vtable_and_releases_refused_sessions() {
     assert_eq!((first[0], second[0]), (0, 1));
     assert_eq!(distance[0], (2.0f64 * 2.0 + 4.0 * 4.0).sqrt());
     assert!(session
-        .set_neighbors(&MdNlistRequest::default(), &MdNlistPairs::new(&[0], &[1]))
+        .set_neighbors(&MdNlistRequest::new(), &MdNlistPairs::new(&[0], &[1]))
         .unwrap_err()
         .to_string()
         .contains("does not accept supplied neighbors"));

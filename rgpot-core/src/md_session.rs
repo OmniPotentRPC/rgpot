@@ -370,6 +370,24 @@ pub struct MdNlistRequest {
     pub want_distances: i32,
 }
 
+/// `RGPOT_NLIST_ABI` in `rgpot_nlist.h`.
+const NLIST_REQUEST_ABI: u32 = 4;
+
+impl MdNlistRequest {
+    /// A request the neighbour library accepts.
+    ///
+    /// `bytes` is the size of this struct and `abi` is `RGPOT_NLIST_ABI`.
+    /// [`Default`] leaves both at zero, and the engine refuses that request.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            bytes: std::mem::size_of::<Self>() as u32,
+            abi: NLIST_REQUEST_ABI,
+            ..Self::default()
+        }
+    }
+}
+
 /// Structure-of-arrays pair buffers shared with `rgpot_nlist_soa`.
 ///
 /// This is the raw layout handed to the engine callbacks. Safe callers pass
@@ -748,7 +766,9 @@ pub trait MdSession {
     ///
     /// Returns the number of pairs written into `out` and the number the
     /// full list holds. With `out` of `None` nothing is written and only the
-    /// full number is reported.
+    /// full number is reported. A buffer shorter than that list is an error.
+    /// The message names the pair count the caller must provide. The engine
+    /// may already have written the pairs that fit.
     fn get_neighbors(
         &mut self,
         _request: &MdNlistRequest,
@@ -1843,40 +1863,65 @@ mod tests {
         boxed.destroyed.store(true, Ordering::SeqCst);
     }
 
-    /// Reports `nlist_pairs` pairs `(k, k + 1)` at distance `k + 1`, and
-    /// claims one more pair than fits when `fail_next` is set.
+    /// Reports `nlist_pairs` pairs `(k, k + 1)` at distance `k + 1`.
+    /// A buffer with `cap > 0` that cannot hold them is an error and the
+    /// message names the required count. `fail_next` still returns success
+    /// with a count past `cap`, which the wrapper refuses.
     unsafe extern "C" fn mock_get_neighbors(
         ctx: *mut c_void,
         _request: *const MdNlistRequest,
         out: *mut MdNlistSoa,
         count: *mut usize,
         needed: *mut usize,
-        _err: *mut c_char,
-        _err_len: usize,
+        err: *mut c_char,
+        err_len: usize,
     ) -> i32 {
         let state = unsafe { &mut *(ctx as *mut MockCtx) };
         state.nlist_calls += 1;
         let total = state.nlist_pairs;
-        let mut written = 0;
-        if let Some(out) = unsafe { out.as_ref() } {
-            written = total.min(out.cap);
-            for k in 0..written {
-                unsafe {
-                    *out.first.add(k) = k as i32;
-                    *out.second.add(k) = k as i32 + 1;
-                    if !out.distance.is_null() {
-                        *out.distance.add(k) = k as f64 + 1.0;
-                    }
+        let Some(out) = (unsafe { out.as_ref() }) else {
+            unsafe {
+                *count = 0;
+                *needed = total;
+            }
+            return MdNlistStatus::Ok as i32;
+        };
+        if out.cap == 0 {
+            unsafe {
+                *count = 0;
+                *needed = total;
+            }
+            return MdNlistStatus::Ok as i32;
+        }
+        let written = total.min(out.cap);
+        for k in 0..written {
+            unsafe {
+                *out.first.add(k) = k as i32;
+                *out.second.add(k) = k as i32 + 1;
+                if !out.distance.is_null() {
+                    *out.distance.add(k) = k as f64 + 1.0;
                 }
             }
-            if state.fail_next {
-                state.fail_next = false;
-                written = out.cap + 1;
+        }
+        if state.fail_next {
+            state.fail_next = false;
+            unsafe {
+                *count = out.cap + 1;
+                *needed = total;
             }
+            return MdNlistStatus::Ok as i32;
         }
         unsafe {
             *count = written;
             *needed = total;
+        }
+        if written < total {
+            write_c_err(
+                err,
+                err_len,
+                &format!("neighbour buffer holds {written} pairs; {total} are required"),
+            );
+            return MdNlistStatus::Error as i32;
         }
         MdNlistStatus::Ok as i32
     }
@@ -2075,7 +2120,7 @@ mod tests {
         let (mut session, ctx) = mock_session(mock_ops(), &destroyed);
         let request = MdNlistRequest {
             want_distances: 1,
-            ..MdNlistRequest::default()
+            ..MdNlistRequest::new()
         };
         assert_eq!(session.get_neighbors(&request, None).unwrap(), (0, 3));
 
@@ -2091,15 +2136,13 @@ mod tests {
         assert_eq!(distance, [1.0, 2.0, 3.0, 0.0]);
 
         let (mut first, mut second) = ([0; 2], [0; 2]);
-        assert_eq!(
-            session
-                .get_neighbors(
-                    &MdNlistRequest::default(),
-                    Some(MdNlistBuffers::new(&mut first, &mut second))
-                )
-                .unwrap(),
-            (2, 3)
-        );
+        let short = session
+            .get_neighbors(
+                &MdNlistRequest::new(),
+                Some(MdNlistBuffers::new(&mut first, &mut second)),
+            )
+            .unwrap_err();
+        assert!(short.to_string().contains("3 are required"), "{short}");
         assert_eq!(unsafe { (*ctx).nlist_calls }, 3);
 
         // Columns that disagree with the capacity or the request are refused
@@ -2117,7 +2160,7 @@ mod tests {
         let (mut first, mut second, mut vector) = ([0; 2], [0; 2], [0.0; 5]);
         let short_vector = session
             .get_neighbors(
-                &MdNlistRequest::default(),
+                &MdNlistRequest::new(),
                 Some(MdNlistBuffers::new(&mut first, &mut second).with_vector(&mut vector)),
             )
             .unwrap_err();
@@ -2127,7 +2170,7 @@ mod tests {
         );
         let cluster = MdNlistRequest {
             shape: 1,
-            ..MdNlistRequest::default()
+            ..MdNlistRequest::new()
         };
         let (mut first, mut second) = ([0; 2], [0; 2]);
         assert!(session
@@ -2142,7 +2185,7 @@ mod tests {
         let (mut first, mut second) = ([0; 2], [0; 2]);
         let overrun = session
             .get_neighbors(
-                &MdNlistRequest::default(),
+                &MdNlistRequest::new(),
                 Some(MdNlistBuffers::new(&mut first, &mut second)),
             )
             .unwrap_err();
@@ -2153,7 +2196,7 @@ mod tests {
         let pairs = MdNlistPairs::new(&[0, 1], &[1, 0]);
         assert_eq!(pairs.count(), 2);
         session
-            .set_neighbors(&MdNlistRequest::default(), &pairs)
+            .set_neighbors(&MdNlistRequest::new(), &pairs)
             .unwrap();
         assert_eq!(unsafe { &(*ctx).received_pairs }, &[(0, 1), (1, 0)]);
         assert!(session
@@ -2165,14 +2208,14 @@ mod tests {
             .set_neighbors(&request, &pairs.with_distance(&[1.0, 1.0]))
             .unwrap();
         assert!(session
-            .set_neighbors(&MdNlistRequest::default(), &MdNlistPairs::new(&[0], &[]))
+            .set_neighbors(&MdNlistRequest::new(), &MdNlistPairs::new(&[0], &[]))
             .is_err());
 
         let mut refusing = mock_ops();
         refusing.set_neighbors = Some(mock_refuse_neighbors);
         let (mut refuser, _ctx) = mock_session(refusing, &destroyed);
         let refused = refuser
-            .set_neighbors(&MdNlistRequest::default(), &MdNlistPairs::new(&[], &[]))
+            .set_neighbors(&MdNlistRequest::new(), &MdNlistPairs::new(&[], &[]))
             .unwrap_err();
         assert!(refused
             .to_string()
