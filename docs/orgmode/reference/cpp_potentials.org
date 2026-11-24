@@ -79,16 +79,59 @@ evaluateCoordinates(std::span<const double> coordinates,
 
 *** =rgpot::CBEPot=
 
-The optional linked frontend to the external =cbe-pes= H + CH4 library.
+The optional linked frontend to the CH5 2008 (H + CH4) surface, =ch52008=, of
+the external =potlibc= library.
 
-- Inputs :: exactly six Cartesian atoms ordered as required by =cbe-pes=.
+- Inputs :: exactly six Cartesian atoms ordered as required by =ch52008=.
 - Units :: positions in Angstrom, energy in eV, force and HVP result in
   eV/Angstrom.
-- Outputs :: energy, force and the external library's analytic Hessian-vector
-  product.
-- Errors :: throws for the wrong atom count or a non-success =cbe-pes= status.
-  It is built only with =with_cbe= / =RGPOT_WITH_CBE= and does not load a local
-  PES library.
+- Outputs :: energy, force and potlibc's analytic Hessian-vector product.
+- Errors :: throws for the wrong atom count or a non-success =potlibc= status.
+  It is built only with =with_cbe= / =RGPOT_WITH_CBE= and does not compile a
+  local PES library: the surface is the one potlibc generates from the PotLib
+  2023 deposit, loaded as a private plugin image per handle.
+  It evaluates a batch of systems in one =potlibc_evaluate= call and reports
+  =PotCaps::batched=; the bits equal the per-system answers. potlibc permits
+  concurrent use of distinct handles and forbids overlapping calls on one
+  handle.
+  Each handle serializes its own potlibc calls, and =caps().reentrancy= is
+  =Reentrancy::PerInstance=.
+
+*** =rgpot::CBEPot::maxJetOrder=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] int maxJetOrder() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =POTLIBC_JET_MAX_ORDER= of =potlibc=, 3.
+- Errors :: none; the method is =noexcept=.
+
+*** =rgpot::CBEPot::gradientJet=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+DerivativeReport gradientJet(std::size_t systems, std::size_t nAtoms,
+                             const double *positions, const int *atomicNrs,
+                             const double *boxes, const double *directions,
+                             int order, double *jet) const override;
+#+end_src
+
+- Inputs :: =systems= systems of six atoms, =directions= of 18 entries per
+  system and an =order= in 1 to 3.
+- Units :: positions and directions in Angstrom; every block of =jet= is
+  eV/Angstrom.
+- Outputs :: =jet= receives =order * systems * 18= values laid out
+  =[order][system][18]=, the exact derivatives with respect to the line
+  parameter of the gradient at =positions + t * directions= (block 0 is the
+  Hessian-vector product), from one =potlibc_gradient_jet= call for the whole
+  batch; the returned =DerivativeReport= holds the summed operation count of
+  =potlibc= and its largest magnitude in eV/Angstrom.
+- Errors :: throws
+  =std::invalid_argument= for the wrong atom count or an order outside 1 to 3, and =std::runtime_error=
+  for a non-success =potlibc= status.
 
 A force call takes a =rgpot::ForceInput=: =nAtoms=, =pos= (3 * nAtoms doubles, x
 y z per atom, Angstrom), =atmnrs= (one atomic number per atom) and =box= (nine

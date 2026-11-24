@@ -60,7 +60,7 @@
 //! resident until then. Every other plugin is refused.
 
 use std::collections::HashMap;
-use std::ffi::{c_char, c_int, c_long, c_uint, c_ushort, c_void, CString};
+use std::ffi::{c_char, c_int, c_long, c_longlong, c_uint, c_ushort, c_void, CString};
 use std::fmt;
 use std::mem::ManuallyDrop;
 use std::num::NonZeroU32;
@@ -83,7 +83,7 @@ pub const ENGINE_ERR_LOCK: c_int = -2;
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
 /// The ABI minor this loader advertises, `RGPOT_ENGINE_ABI_MINOR` of the header.
-pub const ENGINE_ABI_MINOR: u16 = 8;
+pub const ENGINE_ABI_MINOR: u16 = 11;
 /// The struct layout revision this loader expects, `RGPOT_ENGINE_ABI_LAYOUT_REVISION` of the header.
 pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 /// Engine code meaning an argument is invalid.
@@ -707,6 +707,30 @@ pub type HvpFn = unsafe extern "C" fn(
     *mut f64,
     *const f64,
 ) -> c_int;
+/// `RgpotEngineDerivativeReport` of `rgpot/engine_c_abi.h`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RgpotEngineDerivativeReport {
+    /// Nonzero when `operations` and `scale` are meaningful.
+    pub tracked: c_int,
+    /// Arithmetic operations of the derivative evaluation.
+    pub operations: c_longlong,
+    /// Largest magnitude in the units of the jet.
+    pub scale: f64,
+}
+/// `rgpot_engine_taylor_jet`.
+pub type TaylorJetFn = unsafe extern "C" fn(
+    *mut RgpotEnginePot,
+    c_long,
+    c_long,
+    *const f64,
+    *const c_int,
+    *const f64,
+    c_long,
+    *mut f64,
+    *mut RgpotEngineDerivativeReport,
+    *const f64,
+) -> c_int;
 /// `rgpot_engine_caps`.
 pub type CapsFn = unsafe extern "C" fn(*const RgpotEnginePot, *mut RgpotEngineCaps) -> c_int;
 /// `rgpot_engine_last_error`.
@@ -825,6 +849,8 @@ pub struct RgpotEngineCaps {
     pub orbital_copy: c_int,
     /// Nonzero when analytic HVP (`rgpot_engine_hvp`) is supported.
     pub analytic_hvp: c_int,
+    /// Highest order of `rgpot_engine_taylor_jet`; 0 when it is not served.
+    pub jet_order: c_int,
 }
 
 /// Capabilities advertised by an engine instance via `rgpot_engine_caps`.
@@ -844,6 +870,89 @@ pub struct EngineCaps {
     pub group_collective: bool,
     /// Whether analytic HVP (`rgpot_engine_hvp`) is supported.
     pub analytic_hvp: bool,
+    /// Highest order of `rgpot_engine_taylor_jet`; 0 when it is not served.
+    pub jet_order: usize,
+}
+
+/// Roundoff report of one derivative call: `operations` times the machine
+/// epsilon times `scale` is the engine's first-order estimate (not a rigorous
+/// bound) of the roundoff of the returned derivatives. `scale` is in the units
+/// of the jet. For a batch, `operations` is the sum over the systems and
+/// `scale` the largest.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DerivativeReport {
+    /// Arithmetic operations of the evaluation.
+    pub operations: u64,
+    /// Largest magnitude among the gradient and the returned orders.
+    pub scale: f64,
+}
+
+/// A uniform batch of jet requests: `n_systems` systems of one composition.
+#[derive(Debug, Clone, Copy)]
+pub struct JetBatchRequest<'a> {
+    /// Atomic numbers, one per atom, shared by every system.
+    pub atomic_numbers: &'a [i32],
+    /// Positions in Angstrom, `n_systems` blocks of `3 * n_atoms`.
+    pub positions: &'a [f64],
+    /// Directions in Angstrom, laid out like `positions`.
+    pub directions: &'a [f64],
+    /// Row-major 3 by 3 cells in Angstrom, `n_systems` blocks of 9.
+    pub boxes: &'a [f64],
+}
+
+/// Directional derivatives of the gradient along a line, from
+/// `rgpot_engine_taylor_jet`, for a uniform batch. Derivative `k` of system
+/// `s` is the `k`-th derivative with respect to the line parameter of the
+/// gradient at the request positions of that system, in eV/Angstrom for a
+/// direction in Angstrom (every derivative of the gradient is a force, and the
+/// Angstrom of the line parameter is absorbed by the direction). Derivative 1
+/// is the Hessian-vector product. These are derivatives, not Taylor
+/// coefficients.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GradientJet {
+    order: usize,
+    n_atoms: usize,
+    n_systems: usize,
+    derivatives: Vec<f64>,
+    report: Option<DerivativeReport>,
+}
+
+impl GradientJet {
+    /// Highest derivative order held.
+    pub fn order(&self) -> usize {
+        self.order
+    }
+
+    /// Number of systems in the batch.
+    pub fn n_systems(&self) -> usize {
+        self.n_systems
+    }
+
+    /// The `k`-th derivative of every system, `n_systems * 3 * n_atoms`
+    /// entries in system order, for `k` in `1..=order`.
+    pub fn derivative(&self, k: usize) -> Option<&[f64]> {
+        if k == 0 || k > self.order {
+            return None;
+        }
+        let block = self.n_systems * 3 * self.n_atoms;
+        self.derivatives.get((k - 1) * block..k * block)
+    }
+
+    /// The `k`-th derivative of system `system`, `3 * n_atoms` entries.
+    pub fn system_derivative(&self, k: usize, system: usize) -> Option<&[f64]> {
+        if system >= self.n_systems {
+            return None;
+        }
+        let width = 3 * self.n_atoms;
+        self.derivative(k)?
+            .get(system * width..(system + 1) * width)
+    }
+
+    /// The roundoff report of the call, `None` when the engine does not count
+    /// operations.
+    pub fn report(&self) -> Option<DerivativeReport> {
+        self.report
+    }
 }
 
 /// The symbols of one engine library. `abi_version`, `available`, `create`,
@@ -872,6 +981,8 @@ pub struct EngineSymbols {
     pub force_batch: Option<ForceBatchFn>,
     /// Optional symbol `rgpot_engine_hvp`.
     pub hvp: Option<HvpFn>,
+    /// Optional symbol `rgpot_engine_taylor_jet`.
+    pub taylor_jet: Option<TaylorJetFn>,
     /// Optional symbol `rgpot_engine_caps`.
     pub caps: Option<CapsFn>,
     /// Optional symbol `rgpot_engine_last_error`.
@@ -908,6 +1019,7 @@ impl EngineSymbols {
             force,
             force_batch: None,
             hvp: None,
+            taylor_jet: None,
             caps: None,
             last_error: None,
             last_components: None,
@@ -936,6 +1048,13 @@ impl EngineSymbols {
     #[must_use]
     pub fn with_hvp(mut self, hvp: HvpFn) -> Self {
         self.hvp = Some(hvp);
+        self
+    }
+
+    /// Provide the optional symbol `rgpot_engine_taylor_jet`.
+    #[must_use]
+    pub fn with_taylor_jet(mut self, taylor_jet: TaylorJetFn) -> Self {
+        self.taylor_jet = Some(taylor_jet);
         self
     }
 
@@ -1293,6 +1412,7 @@ pub struct EnginePotential {
     handle: NonNull<RgpotEnginePot>,
     fatal: OnceLock<EngineError>,
     process_lock: Option<Arc<Mutex<()>>>,
+    caps: OnceLock<EngineCaps>,
     library: Option<Arc<Resident>>,
 }
 
@@ -1766,6 +1886,7 @@ impl EnginePotential {
                     handle,
                     fatal: OnceLock::new(),
                     process_lock,
+                    caps: OnceLock::new(),
                     library: None,
                 })
             }
@@ -1937,9 +2058,15 @@ impl EnginePotential {
         Ok(out)
     }
 
-    /// Query the engine's capabilities via `rgpot_engine_caps`.
+    /// The engine's capabilities from `rgpot_engine_caps`, queried once per
+    /// instance. A caps struct shorter than this host's (an older engine
+    /// minor) leaves the missing trailing fields at zero, so `jet_order` of a
+    /// minor-4 engine is 0.
     pub fn caps(&self) -> Result<EngineCaps, EngineError> {
         self.check_alive()?;
+        if let Some(caps) = self.caps.get() {
+            return Ok(*caps);
+        }
         let caps_fn = self
             .symbols
             .caps
@@ -1953,7 +2080,16 @@ impl EnginePotential {
             unsafe { caps_fn(self.handle.as_ptr(), &mut raw) }
         };
         self.settle(code, "rgpot_engine_caps", None)?;
-        Ok(EngineCaps {
+        let written = raw.size as usize;
+        let jet_end =
+            std::mem::offset_of!(RgpotEngineCaps, jet_order) + std::mem::size_of::<c_int>();
+        let served_jet = if written >= jet_end { raw.jet_order } else { 0 };
+        let jet_order = usize::try_from(served_jet).map_err(|_| {
+            EngineError::Invalid(format!(
+                "the engine reports a negative jet order {served_jet}"
+            ))
+        })?;
+        let caps = EngineCaps {
             reentrancy: raw.reentrancy,
             per_image_instances: raw.per_image_instances != 0,
             batched: raw.batched != 0,
@@ -1961,7 +2097,9 @@ impl EnginePotential {
             stress: raw.stress != 0,
             group_collective: raw.group_collective != 0,
             analytic_hvp: raw.analytic_hvp != 0,
-        })
+            jet_order,
+        };
+        Ok(*self.caps.get_or_init(|| caps))
     }
 
     /// Analytic Hessian-vector product `H(positions) * direction` in eV/Angstrom^2
@@ -2154,6 +2292,164 @@ impl EnginePotential {
         let mut buf = vec![0 as c_char; len + 1];
         unsafe { component_name(self.handle.as_ptr(), index, buf.as_mut_ptr(), buf.len()) };
         Ok(text_of(&buf))
+    }
+
+    /// Directional derivatives of the gradient up to `order` along the
+    /// directions (Angstrom) of a uniform batch, in one engine call, with the
+    /// engine's roundoff report when it tracks one.
+    ///
+    /// Returns [`EngineError::Unsupported`] when the library omits
+    /// `rgpot_engine_taylor_jet` or `rgpot_engine_caps` (an older ABI minor),
+    /// when `jet_order` is below `order`, or when the call returns
+    /// `ENGINE_ERR_UNSUPPORTED` (3). No finite-difference fallback is
+    /// attempted. A non-finite position, direction or box, and an order of
+    /// zero, are [`EngineError::Invalid`] before the engine is called. A
+    /// non-finite or negative report scale is [`EngineError::Invalid`] as
+    /// well.
+    pub fn taylor_jet(
+        &mut self,
+        request: &JetBatchRequest<'_>,
+        order: usize,
+    ) -> Result<GradientJet, EngineError> {
+        self.taylor_jet_with_host(request, order, HostCallbacks::NONE)
+    }
+
+    fn taylor_jet_with_host(
+        &mut self,
+        request: &JetBatchRequest<'_>,
+        order: usize,
+        callbacks: HostCallbacks<'_>,
+    ) -> Result<GradientJet, EngineError> {
+        self.check_alive()?;
+        let jet_fn = self
+            .symbols
+            .taylor_jet
+            .ok_or_else(|| unsupported_symbol("rgpot_engine_taylor_jet"))?;
+        if self.symbols.caps.is_none() {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_taylor_jet",
+                message: "rgpot_engine_caps is not exported".into(),
+            });
+        }
+        if order == 0 {
+            return Err(EngineError::Invalid("a jet needs order at least 1".into()));
+        }
+        let served = self.caps()?.jet_order;
+        if served < order {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_taylor_jet",
+                message: format!("jet order {order} requested; the engine serves {served}"),
+            });
+        }
+        let n_atoms = request.atomic_numbers.len();
+        if n_atoms == 0
+            || request.positions.is_empty()
+            || !request.positions.len().is_multiple_of(3 * n_atoms)
+        {
+            return Err(EngineError::Invalid(format!(
+                "{} coordinates are not a whole number of {n_atoms}-atom systems",
+                request.positions.len()
+            )));
+        }
+        let n_systems = request.positions.len() / (3 * n_atoms);
+        if request.directions.len() != request.positions.len() {
+            return Err(EngineError::Invalid(format!(
+                "{} direction entries for {} coordinates",
+                request.directions.len(),
+                request.positions.len()
+            )));
+        }
+        if request.boxes.len() != 9 * n_systems {
+            return Err(EngineError::Invalid(format!(
+                "{} cell values for {n_systems} systems; expected {}",
+                request.boxes.len(),
+                9 * n_systems
+            )));
+        }
+        if let Some(i) = request.positions.iter().position(|v| !v.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine position at element {i} is not finite"
+            )));
+        }
+        if let Some(i) = request.directions.iter().position(|v| !v.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine direction at element {i} is not finite"
+            )));
+        }
+        if let Some(i) = request.boxes.iter().position(|v| !v.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine box at element {i} is not finite"
+            )));
+        }
+        let jet_len = order.checked_mul(request.positions.len()).ok_or_else(|| {
+            EngineError::Invalid(format!(
+                "a jet of order {order} for {} coordinates does not fit in memory",
+                request.positions.len()
+            ))
+        })?;
+        let mut derivatives = vec![0.0; jet_len];
+        let mut raw = RgpotEngineDerivativeReport::default();
+        let code = {
+            let _serial = self.lock_process("rgpot_engine_taylor_jet")?;
+            unsafe {
+                jet_fn(
+                    self.handle.as_ptr(),
+                    n_systems as c_long,
+                    n_atoms as c_long,
+                    request.positions.as_ptr(),
+                    request.atomic_numbers.as_ptr(),
+                    request.directions.as_ptr(),
+                    order as c_long,
+                    derivatives.as_mut_ptr(),
+                    &mut raw,
+                    request.boxes.as_ptr(),
+                )
+            }
+        };
+        let failure = host_failure(None, callbacks);
+        if code == ENGINE_ERR_UNSUPPORTED && failure.is_none() {
+            return Err(EngineError::Unsupported {
+                operation: "rgpot_engine_taylor_jet",
+                message: self.last_error_text(code),
+            });
+        }
+        self.settle(code, "rgpot_engine_taylor_jet", failure)?;
+        if let Some(i) = derivatives.iter().position(|v| !v.is_finite()) {
+            return Err(EngineError::Invalid(format!(
+                "the engine jet at element {i} is not finite"
+            )));
+        }
+        let report = if raw.tracked != 0 {
+            let operations = u64::try_from(raw.operations).map_err(|_| {
+                EngineError::Invalid(format!(
+                    "the engine reports a negative operation count {}",
+                    raw.operations
+                ))
+            })?;
+            if !raw.scale.is_finite() {
+                return Err(EngineError::Invalid(
+                    "the engine jet scale is not finite".into(),
+                ));
+            }
+            if raw.scale < 0.0 {
+                return Err(EngineError::Invalid(
+                    "the engine jet scale is negative".into(),
+                ));
+            }
+            Some(DerivativeReport {
+                operations,
+                scale: raw.scale,
+            })
+        } else {
+            None
+        };
+        Ok(GradientJet {
+            order,
+            n_atoms,
+            n_systems,
+            derivatives,
+            report,
+        })
     }
 
     /// The instance as a [`PotentialImpl`]. The handle owns the engine and
@@ -2544,6 +2840,27 @@ impl EngineSession {
         self.finish(answer)
     }
 
+    /// Directional derivatives of the gradient up to `order` along the
+    /// directions of a uniform batch, in one engine call.
+    ///
+    /// A failure a registered callback reports during the call is settled with
+    /// the code the engine returns, exactly as for [`Self::force`]. An engine
+    /// that serves no jet, or none of this order, is
+    /// [`EngineError::Unsupported`]; nothing is estimated by finite
+    /// differences instead.
+    pub fn taylor_jet(
+        &mut self,
+        request: &JetBatchRequest<'_>,
+        order: usize,
+    ) -> Result<GradientJet, EngineError> {
+        let answer = self.engine.taylor_jet_with_host(
+            request,
+            order,
+            HostCallbacks::new(&self.callbacks, &self.refused),
+        );
+        self.finish(answer)
+    }
+
     /// Register owned learning-engine callbacks, or clear them with `None`.
     ///
     /// `None` is represented by a null callback-table pointer. If native
@@ -2903,6 +3220,7 @@ unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
         force: unsafe { required(library, "rgpot_engine_force")? },
         force_batch: unsafe { optional(library, "rgpot_engine_force_batch") },
         hvp: unsafe { optional(library, "rgpot_engine_hvp") },
+        taylor_jet: unsafe { optional(library, "rgpot_engine_taylor_jet") },
         caps: unsafe { optional(library, "rgpot_engine_caps") },
         last_error: unsafe { optional(library, "rgpot_engine_last_error") },
         last_components: unsafe { optional(library, "rgpot_engine_last_components") },

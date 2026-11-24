@@ -66,8 +66,9 @@ dftd3, dftd4, ExprPot, XcKernel and CP2K have no engine library.
 
 Every library above except
 =libpotlibc_engine= and =libcoupled_well_engine= exports =rgpot_engine_force_batch=,
-=rgpot_engine_hvp=, =rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible=,
-=rgpot_engine_name=, =rgpot_engine_version=,
+=rgpot_engine_hvp=, =rgpot_engine_taylor_jet=,
+=rgpot_engine_abi_stamp=, =rgpot_engine_abi_compatible=, =rgpot_engine_name=,
+=rgpot_engine_version=,
 =rgpot_engine_model_digest=, =rgpot_engine_caps=, =rgpot_engine_last_error=,
 =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
 =rgpot_engine_select_orbitals=, =rgpot_engine_copy_orbitals=,
@@ -204,7 +205,7 @@ A host calls it before =rgpot_engine_create=, and the Rust loader returns
 - Units :: none.
 - Outputs :: three =unsigned short= fields:
   =abi_major= (=RGPOT_ENGINE_ABI_VERSION=, 1),
-  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 8) and
+  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 11) and
   =layout_revision= (=RGPOT_ENGINE_ABI_LAYOUT_REVISION=, 1).
 - Errors :: none.
 
@@ -232,6 +233,9 @@ Minor 5 added =RgpotEngineComponent=,
 Minor 6 adds =rgpot_engine_set_cache= and =rgpot_engine_cache_counts=.
 Minor 7 adds =rgpot_engine_unload_policy=, =RGPOT_ENGINE_UNLOAD_RESIDENT= and
 =RGPOT_ENGINE_UNLOAD_SAFE=.
+Minor 11 adds
+=rgpot_engine_taylor_jet=, =RgpotEngineDerivativeReport= and the trailing =RgpotEngineCaps.jet_order=
+field.
 The version does not cover the Cap'n Proto params schema, the tensor runtime the
 engine links, or the model.
 
@@ -470,6 +474,20 @@ void rgpot_engine_destroy(RgpotEnginePot *pot);
 Required symbol.
 Must not run concurrently with another call on the same handle.
 
+*** =RgpotEngineDerivativeReport=
+
+- Inputs :: none; the engine fills it in =rgpot_engine_taylor_jet=.
+- Units :: =scale= is in the units of the returned jet, eV/Angstrom.
+- Outputs :: =tracked= (0 or 1), =operations= (=long long=) and =scale=
+  (=double=).
+- Errors :: none.
+
+When =tracked= is 1, =operations= times the machine epsilon times =scale= is the
+engine's first-order estimate of the roundoff of the returned derivatives; it is
+an estimate from an operation count, not a rigorous bound.
+For a batch, =operations= is the sum over the systems and =scale= the largest.
+When =tracked= is 0, =operations= and =scale= are 0.
+
 *** =RgpotEngineCaps=
 
 - Inputs :: =size=, set by the host to =sizeof(RgpotEngineCaps)= before
@@ -477,8 +495,8 @@ Must not run concurrently with another call on the same handle.
 - Units :: none.
 - Outputs :: =size= (bytes the engine wrote), =reentrancy=,
   =per_image_instances=, =batched=, =periodic=, =stress=,
-  =group_collective=, =orbital_selection=, =orbital_copy= and =analytic_hvp=;
-  the flags are 0 or 1.
+  =group_collective=, =orbital_selection=, =orbital_copy=, =analytic_hvp= and
+  =jet_order=; the flags are 0 or 1.
 - Errors :: none.
 
 The fields mirror rgpot's =PotCaps=.
@@ -492,6 +510,8 @@ returns it.
 =orbital_selection= means the backend supports =rgpot_engine_select_orbitals=.
 =orbital_copy= means the backend supports =rgpot_engine_copy_orbitals=.
 =analytic_hvp= means =rgpot_engine_hvp= returns an exact directional product.
+=jet_order= is the highest order =rgpot_engine_taylor_jet= serves, 0 when the
+backend has no gradient jet.
 
 =reentrancy= decides how the table admits concurrent =rgpot_engine_force= and
 =rgpot_engine_force_batch= calls:
@@ -539,8 +559,9 @@ size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buf, size_t len)
 Optional symbol.
 Reading does not clear the message.
 A successful =rgpot_engine_force=,
-=rgpot_engine_force_batch=, =rgpot_engine_hvp=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=
-or =rgpot_engine_copy_orbitals= clears it.
+=rgpot_engine_force_batch=, =rgpot_engine_hvp=, =rgpot_engine_taylor_jet=,
+=rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
+=rgpot_engine_select_orbitals= or =rgpot_engine_copy_orbitals= clears it.
 Under concurrent calls on one handle, a success in one call may clear a failure
 message written by another before the reader observes it.
 Errors of =rgpot_engine_create= go to its =errbuf=.
@@ -868,6 +889,60 @@ Absence of the symbol or a false =analytic_hvp= is a hard unsupported result;
 the adapter and Rust loader never approximate it with finite differences.
 For learning engines the call is also an incorporation boundary.
 A variant for groups of different compositions would be a separate symbol.
+
+*** =rgpot_engine_taylor_jet=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long nSystems, long nAtoms,
+                            const double *positions, const int *atomicNrs,
+                            const double *directions, long order,
+                            double *jet_out,
+                            RgpotEngineDerivativeReport *report,
+                            const double *boxes);
+#+end_src
+
+- Inputs :: =nSystems= systems sharing one composition (=atomicNrs=, =nAtoms=),
+  as for =rgpot_engine_force_batch=.
+  =positions= and =directions= hold =nSystems * 3 * nAtoms= doubles, =boxes=
+  holds =nSystems * 9=, and =order= is the highest order wanted.
+  =jet_out= holds =order * nSystems * 3 * nAtoms= doubles laid out
+  =[order][system][3 * nAtoms]= and must not overlap =directions=, the geometry
+  buffers or =report=.
+  =report= may be NULL.
+- Units :: positions, boxes and directions in Angstrom; every block of =jet_out=
+  is eV/Angstrom, a force, because the Angstrom of the line parameter is
+  absorbed by the direction.
+- Outputs :: =RGPOT_ENGINE_OK= and, in block =k - 1= of system =s=, the exact
+  =k=-th derivative with respect to =t= of the energy gradient at
+  =positions_s + t * directions_s=, at =t = 0=.
+  These are derivatives, not Taylor coefficients, and not the interval
+  enclosures of the energy jet of =rgpot_jet_*=.
+  Block 0 is the Hessian-vector product, so an engine that serves the jet also
+  serves what =rgpot_engine_hvp= returns, and for the same inputs the two agree
+  in every bit when the backend takes both from one evaluation.
+  =report= receives =RgpotEngineDerivativeReport= for the whole call: when
+  =tracked= is nonzero, =operations= times the machine epsilon times =scale= is
+  the engine's first-order estimate (not a rigorous bound) of the roundoff of
+  the returned derivatives, with =operations= summed and =scale= the largest
+  over the systems; when =tracked= is 0 the other fields are 0.
+- Errors :: returns
+  =RGPOT_ENGINE_ERR_INVALID= for a NULL pointer, an invalid system or atom count, =order= below 1 or overlapping buffers; =RGPOT_ENGINE_ERR_UNSUPPORTED=
+  when the backend has no gradient jet or =order= exceeds
+  =jet_order=; and =RGPOT_ENGINE_ERR_EVAL= when the implementation throws.
+  The reason is available from =rgpot_engine_last_error=.
+  Nothing is written to =jet_out= or =report= on an error.
+
+Optional symbol, minor 11.
+A backend serves it by deriving =rgpot::GradientJet= next to its potential
+class; the table finds the interface with =dynamic_cast=, so =PotentialBase= and
+its layout stamp do not change.
+Absence of the symbol, =jet_order= 0 or an order above =jet_order= is a hard
+unsupported result; the adapter and the Rust loader never approximate it with
+finite differences.
+A host loads an engine of an earlier minor that has neither the symbol nor the
+trailing caps field, and gets that unsupported result only when it asks for the
+jet.
 
 ** Learning engines
 
@@ -1539,7 +1614,7 @@ a host that does call =dlclose= on them leaves them mapped.
 
 - =ENGINE_ERR_LOCK= :: Rust constant for =RGPOT_ENGINE_ERR_LOCK= (-2).
 - =ENGINE_ABI_VERSION=, =ENGINE_ABI_MINOR=,
-  =ENGINE_ABI_LAYOUT_REVISION= :: Host ABI identity (=1=, =8=, =1=) matching =RGPOT_ENGINE_ABI_VERSION=,
+  =ENGINE_ABI_LAYOUT_REVISION= :: Host ABI identity (=1=, =11=, =1=) matching =RGPOT_ENGINE_ABI_VERSION=,
   =RGPOT_ENGINE_ABI_MINOR= and =RGPOT_ENGINE_ABI_LAYOUT_REVISION=.
 - =ENGINE_UNLOAD_RESIDENT=, =ENGINE_UNLOAD_SAFE=,
   =ENGINE_UNLOAD_POLICY_MINOR= :: =RGPOT_ENGINE_UNLOAD_RESIDENT= (=0=),
@@ -1564,13 +1639,13 @@ a host that does call =dlclose= on them leaves them mapped.
   The engines also accept the version-1 layouts of 48 and 144 bytes when their
   =version= field is set to the =_V1= constant.
 - =CoordTransformFn=, =AbiVersionFn=, =AvailableFn=, =AbiStampFn=, =CreateFn=,
-  =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =CapsFn=, =LastErrorFn=,
+  =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =TaylorJetFn=, =CapsFn=, =LastErrorFn=,
   =LastComponentsFn=, =ComponentNameFn=, =ModelStateFn=, =SetCallbacksFn=,
   =HintFn=, =UnloadPolicyFn= :: =extern "C"= function-pointer types matching the
   C declarations above.
 - =EngineSymbols= :: Resolved symbol table holding required
   (=abi_version=, =available=, =create=, =destroy=, =force=) and optional (=abi_stamp=,
-  =force_batch=, =hvp=, =caps=, =last_error=,
+  =force_batch=, =hvp=, =taylor_jet=, =caps=, =last_error=,
   =last_components=, =component_name=, =model_state=, =set_callbacks=, =hint=)
   function pointers.
   The struct is
@@ -1651,6 +1726,28 @@ a host that does call =dlclose= on them leaves them mapped.
   =analytic_hvp= bit, or =RGPOT_ENGINE_ERR_UNSUPPORTED= returns
   =EngineError::Unsupported= (retaining the engine's last-error message) without
   a finite-difference fallback.
+- =EnginePotential::taylor_jet(&JetBatchRequest, order)= :: Dispatches =rgpot_engine_taylor_jet=
+  for a uniform batch in one engine call and returns a =GradientJet=: =order()=,
+  =n_systems()=, =derivative(k)= (every system, =k= in =1..=order=; block 0 is the Hessian-vector product), =system_derivative(k, s)=
+  and =report()=, a =DerivativeReport= (=operations= summed, =scale= the
+  largest) or =None= when the engine does not count operations.
+  =JetBatchRequest= holds =atomic_numbers=, =positions=, =directions= and
+  =boxes=.
+  A missing symbol, a
+  =jet_order= below =order=, or =RGPOT_ENGINE_ERR_UNSUPPORTED= returns
+  =EngineError::Unsupported= naming =rgpot_engine_taylor_jet= (retaining the
+  engine's last-error message) without a finite-difference fallback.
+  =order= 0, a length mismatch and a non-finite position, direction or box are
+  =EngineError::Invalid= before the engine is called.
+  A non-finite or negative report scale is =EngineError::Invalid=, and the
+  loader substitutes no other scale.
+  =EngineSession::taylor_jet(&JetBatchRequest, order)= is the same call on a
+  session: a failure a registered callback reports during the call is settled
+  with the engine's return code as for =EngineSession::force=, so a fatal one
+  poisons the session.
+  =EnginePotential::caps()= asks the engine once and caches the answer;
+  =EngineCaps::jet_order= carries the capability and is 0 for an engine whose
+  caps struct ends before the field.
 - =EnginePotential::into_potential(self)= :: Converts the instance into a =PotentialImpl= callback handle, serializes calls to its engine instance, and registers an analytic callback on the underlying =rgpot_potential_t= only when both =rgpot_engine_caps= and =rgpot_engine_hvp= are exported and =analytic_hvp=
   is true.
 - =unsafe EnginePotential::unload(path)= :: Removes the registry entry of a

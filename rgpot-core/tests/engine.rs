@@ -7,16 +7,19 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "schema")]
+use rgpot_core::engine::builtin_params;
 use rgpot_core::engine::{
-    AcquireReason, CoordTransformFn, CoordinateTransform, CoupledWellConfig, EngineCallbacks,
-    EngineError, EngineEvaluation, EngineFailure, EnginePotential, EngineRequest, EngineSession,
-    EngineStatus, EngineSymbols, PotlibcConfig, RgpotEngineAbiStamp, RgpotEngineCaps,
-    RgpotEngineComponent, RgpotEnginePot, COUPLED_WELL_CONFIG_MAGIC, COUPLED_WELL_CONFIG_MIN_SIZE,
-    COUPLED_WELL_CONFIG_V1_SIZE, COUPLED_WELL_CONFIG_VERSION, COUPLED_WELL_CONFIG_VERSION_V1,
-    ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_INVALID,
-    ENGINE_ERR_UNSUPPORTED, ENGINE_UNLOAD_POLICY_MINOR, POTLIBC_CONFIG_MAGIC,
-    POTLIBC_CONFIG_MIN_SIZE, POTLIBC_CONFIG_V1_SIZE, POTLIBC_CONFIG_VERSION,
-    POTLIBC_CONFIG_VERSION_V1, POTLIBC_SURFACE_ID_CAPACITY,
+    AcquireReason, CoordTransformFn, CoordinateTransform, CoupledWellConfig, DerivativeReport,
+    EngineCallbacks, EngineCaps, EngineError, EngineEvaluation, EngineFailure, EnginePotential,
+    EngineRequest, EngineSession, EngineStatus, EngineSymbols, GradientJet, JetBatchRequest,
+    PotlibcConfig, RgpotEngineAbiStamp, RgpotEngineCaps, RgpotEngineComponent, RgpotEnginePot,
+    COUPLED_WELL_CONFIG_MAGIC, COUPLED_WELL_CONFIG_MIN_SIZE, COUPLED_WELL_CONFIG_V1_SIZE,
+    COUPLED_WELL_CONFIG_VERSION, COUPLED_WELL_CONFIG_VERSION_V1, ENGINE_ABI_LAYOUT_REVISION,
+    ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_INVALID, ENGINE_ERR_UNSUPPORTED,
+    ENGINE_UNLOAD_POLICY_MINOR, POTLIBC_CONFIG_MAGIC, POTLIBC_CONFIG_MIN_SIZE,
+    POTLIBC_CONFIG_V1_SIZE, POTLIBC_CONFIG_VERSION, POTLIBC_CONFIG_VERSION_V1,
+    POTLIBC_SURFACE_ID_CAPACITY,
 };
 use rgpot_core::hvp::rgpot_hvp_scheme_t;
 use rgpot_core::status::rgpot_status_t;
@@ -413,7 +416,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 8,
+            abi_minor: 11,
             layout_revision: 1,
         }
     );
@@ -471,6 +474,10 @@ fn library_is_mapped(path: &Path) -> bool {
     maps.lines()
         .filter_map(|line| line.split_whitespace().last())
         .any(|mapped| Path::new(mapped) == canonical)
+}
+
+fn native_calls(path: &Path) -> c_int {
+    FixtureObserver::open(path).native_calls()
 }
 
 fn batch_calls(path: &Path) -> c_int {
@@ -1602,8 +1609,8 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 }
 
 #[test]
-fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newer_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 8);
+fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected() {
+    assert_eq!(ENGINE_ABI_MINOR, 11);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -1658,6 +1665,8 @@ fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newe
             ..RgpotEngineAbiStamp::HOST
         }
     );
+    assert!(minor5.symbols().taylor_jet.is_none());
+    assert_eq!(minor5.caps().expect("caps").jet_order, 0);
     assert!(minor5.symbols().last_components.is_some());
     assert!(minor5.symbols().component_name.is_some());
     assert_eq!(minor5.component_name(0).expect("component 0"), "harmonic");
@@ -1688,6 +1697,13 @@ fn minor_4_plugin_is_served_without_component_exports_minor_5_gets_them_and_newe
             has_stress: 0,
         }]
     );
+
+    // A minor-11 plugin is the current minor and also exports the jet.
+    let minor11_path = build("harmonic_stamp_minor11", &["FIXTURE_ABI_MINOR=11"]);
+    let minor11 = load(&minor11_path);
+    assert_eq!(minor11.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert!(minor11.symbols().taylor_jet.is_some());
+    assert_eq!(minor11.caps().expect("caps").jet_order, 3);
 
     // A plugin whose minor is newer than the host's is rejected.
     let newer_define = format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1);
@@ -2674,6 +2690,7 @@ fn engine_caps_layout_is_the_c_header_layout() {
         ),
         ("orbital_copy", offset_of!(RgpotEngineCaps, orbital_copy)),
         ("analytic_hvp", offset_of!(RgpotEngineCaps, analytic_hvp)),
+        ("jet_order", offset_of!(RgpotEngineCaps, jet_order)),
     ];
     let names: Vec<&str> = loader.iter().map(|(name, _)| *name).collect();
     assert_eq!(names, declared, "field order differs from engine_c_abi.h");
@@ -3311,6 +3328,35 @@ fn one_atom_request() -> EngineRequest<'static> {
     EngineRequest {
         positions: &[1.0, 2.0, 3.0],
         atomic_numbers: &[1],
+        box_matrix: &CELL,
+    }
+}
+
+fn jet_call(
+    engine: &mut EnginePotential,
+    positions: &[f64],
+    numbers: &[i32],
+    directions: &[f64],
+    order: usize,
+) -> Result<GradientJet, EngineError> {
+    assert!(!numbers.is_empty() && positions.len().is_multiple_of(3 * numbers.len()));
+    let systems = positions.len() / (3 * numbers.len());
+    let boxes: Vec<f64> = CELL.iter().copied().cycle().take(9 * systems).collect();
+    engine.taylor_jet(
+        &JetBatchRequest {
+            atomic_numbers: numbers,
+            positions,
+            directions,
+            boxes: &boxes,
+        },
+        order,
+    )
+}
+
+fn hvp_request<'a>(positions: &'a [f64], numbers: &'a [i32]) -> EngineRequest<'a> {
+    EngineRequest {
+        positions,
+        atomic_numbers: numbers,
         box_matrix: &CELL,
     }
 }
@@ -4820,4 +4866,656 @@ fn coupled_well_honours_the_engine_identity_contract() {
         ..host
     }));
     assert_eq!(unsafe { compatible(std::ptr::null()) }, 0);
+}
+
+#[test]
+fn taylor_jet_returns_the_harmonic_derivatives_and_the_report() {
+    let path = build("harmonic_jet", &[]);
+    let mut engine = load(&path);
+    assert_eq!(engine.caps().expect("caps").jet_order, 3);
+    let positions = [0.5, -1.0, 2.0, 0.0, 3.0, -0.25];
+    let direction = [1.0, -0.5, 0.25, -2.0, 0.0, 4.0];
+    let jet = jet_call(&mut engine, &positions, &[1, 8], &direction, 3).expect("jet");
+    assert_eq!(jet.order(), 3);
+    assert_eq!(jet.n_systems(), 1);
+    let expected: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
+    assert!(all_within_roundoff(
+        jet.derivative(1).expect("order 1"),
+        &expected
+    ));
+    assert_eq!(jet.derivative(2), Some(&[0.0; 6][..]));
+    assert_eq!(jet.derivative(3), Some(&[0.0; 6][..]));
+    assert_eq!(jet.derivative(0), None);
+    assert_eq!(jet.derivative(4), None);
+    assert_eq!(
+        jet.report(),
+        Some(DerivativeReport {
+            operations: 6,
+            scale: SPRING * 4.0,
+        })
+    );
+    let one = jet_call(&mut engine, &positions, &[1, 8], &direction, 1).expect("order one");
+    assert_eq!(one.order(), 1);
+    assert_eq!(one.derivative(1), jet.derivative(1));
+    assert_eq!(one.derivative(2), None);
+    let hvp = engine
+        .hvp(&hvp_request(&positions, &[1, 8]), &direction)
+        .expect("hvp");
+    assert_eq!(Some(hvp.as_slice()), one.derivative(1));
+}
+
+#[test]
+fn a_jet_batch_is_one_engine_call_with_summed_operations_and_largest_scale() {
+    let path = build("harmonic_jet_batch", &[]);
+    let mut engine = load(&path);
+    let _ = engine.caps().expect("caps");
+    let positions = [
+        0.5, -1.0, 2.0, 0.0, 3.0, -0.25, 1.0, 1.0, 1.0, -2.0, 0.5, 0.0,
+    ];
+    let directions = [
+        1.0, -0.5, 0.25, -2.0, 0.0, 4.0, 0.5, 0.5, 0.5, 8.0, 0.0, -1.0,
+    ];
+    let before = native_calls(&path);
+    let jet = jet_call(&mut engine, &positions, &[1, 8], &directions, 2).expect("batch");
+    assert_eq!(native_calls(&path) - before, 1, "one engine call");
+    assert_eq!(jet.n_systems(), 2);
+    let first: Vec<f64> = directions[..6].iter().map(|d| SPRING * d).collect();
+    let second: Vec<f64> = directions[6..].iter().map(|d| SPRING * d).collect();
+    assert!(all_within_roundoff(
+        jet.system_derivative(1, 0).expect("system 0"),
+        &first
+    ));
+    assert!(all_within_roundoff(
+        jet.system_derivative(1, 1).expect("system 1"),
+        &second
+    ));
+    assert_eq!(jet.system_derivative(1, 2), None);
+    assert_eq!(jet.derivative(2).map(<[f64]>::len), Some(12));
+    assert_eq!(
+        jet.report(),
+        Some(DerivativeReport {
+            operations: 12,
+            scale: SPRING * 8.0,
+        })
+    );
+    let boxes = [CELL[0]; 9 * 3];
+    let err = engine
+        .taylor_jet(
+            &JetBatchRequest {
+                atomic_numbers: &[1, 8],
+                positions: &positions,
+                directions: &directions,
+                boxes: &boxes,
+            },
+            1,
+        )
+        .unwrap_err();
+    assert!(matches!(err, EngineError::Invalid(_)), "{err:?}");
+}
+
+#[test]
+fn taylor_jet_without_a_report_is_reported_as_untracked() {
+    let path = build("harmonic_jet_untracked", &["JET_UNTRACKED"]);
+    let mut engine = load(&path);
+    let jet = jet_call(&mut engine, &[0.5; 3], &[1], &[1.0, 0.0, 0.0], 2).expect("jet");
+    assert_eq!(jet.report(), None);
+}
+
+#[test]
+fn taylor_jet_absence_is_a_typed_status_and_never_a_fallback() {
+    let direction = [1.0, 0.0, 0.0];
+    let expect_unsupported = |engine: &mut EnginePotential, order: usize| {
+        let err = jet_call(engine, &[0.0; 3], &[1], &direction, order).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                EngineError::Unsupported {
+                    operation: "rgpot_engine_taylor_jet",
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        assert_eq!(err.status(), rgpot_status_t::RGPOT_INTERNAL_ERROR);
+    };
+
+    let no_symbol = build("harmonic_nojet", &["NO_JET"]);
+    let mut engine = load(&no_symbol);
+    assert_eq!(engine.caps().expect("caps").jet_order, 0);
+    expect_unsupported(&mut engine, 1);
+
+    let no_capability = build("harmonic_nojetcap", &["NO_JET_CAP"]);
+    let mut engine = load(&no_capability);
+    assert_eq!(engine.caps().expect("caps").jet_order, 0);
+    expect_unsupported(&mut engine, 1);
+
+    let order_two = build("harmonic_jetorder2", &["FIXTURE_JET_ORDER=2"]);
+    let mut engine = load(&order_two);
+    assert_eq!(engine.caps().expect("caps").jet_order, 2);
+    let before = native_calls(&order_two);
+    expect_unsupported(&mut engine, 3);
+    assert_eq!(
+        native_calls(&order_two) - before,
+        0,
+        "the capabilities are queried once per instance, so a refused order never reaches the engine"
+    );
+    assert!(jet_call(&mut engine, &[0.0; 3], &[1], &direction, 2).is_ok());
+
+    let refused = build("harmonic_jetrefused", &["JET_UNSUPPORTED"]);
+    let mut engine = load(&refused);
+    let err = jet_call(&mut engine, &[0.0; 3], &[1], &direction, 1).unwrap_err();
+    assert_eq!(
+        err,
+        EngineError::Unsupported {
+            operation: "rgpot_engine_taylor_jet",
+            message: "harmonic engine built without a jet".into(),
+        }
+    );
+
+    let no_caps = build("harmonic_jetnocaps", &["NO_CAPS"]);
+    let mut engine = load(&no_caps);
+    assert_eq!(
+        jet_call(&mut engine, &[0.0; 3], &[1], &direction, 1).unwrap_err(),
+        EngineError::Unsupported {
+            operation: "rgpot_engine_taylor_jet",
+            message: "rgpot_engine_caps is not exported".into(),
+        }
+    );
+}
+
+#[test]
+fn a_minor_four_engine_without_the_jet_loads_and_refuses_only_the_jet() {
+    let path = build(
+        "harmonic_minor4",
+        &["FIXTURE_ABI_MINOR=4", "NO_JET", "FIXTURE_CAPS_MINOR4"],
+    );
+    let mut engine = load(&path);
+    assert_eq!(
+        engine.abi_stamp(),
+        RgpotEngineAbiStamp {
+            abi_major: ENGINE_ABI_VERSION as u16,
+            abi_minor: 4,
+            layout_revision: ENGINE_ABI_LAYOUT_REVISION,
+        }
+    );
+    assert!(engine.abi_stamp().serves(RgpotEngineAbiStamp::HOST));
+    let caps = engine.caps().expect("caps of a minor-4 engine");
+    assert!(caps.analytic_hvp);
+    assert_eq!(
+        caps.jet_order, 0,
+        "a caps struct without the field serves no jet"
+    );
+    let answer = engine
+        .force(&hvp_request(&[1.0, 0.0, 0.0], &[1]))
+        .expect("force on a minor-4 engine");
+    assert!(within_roundoff(answer.energy, 0.5 * SPRING, 3));
+    let hvp = engine
+        .hvp(&hvp_request(&[1.0, 0.0, 0.0], &[1]), &[1.0, 0.0, 0.0])
+        .expect("hvp on a minor-4 engine");
+    assert!(within_roundoff(hvp[0], SPRING, 3));
+    let err = jet_call(&mut engine, &[1.0, 0.0, 0.0], &[1], &[1.0, 0.0, 0.0], 1).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            EngineError::Unsupported {
+                operation: "rgpot_engine_taylor_jet",
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn taylor_jet_refuses_malformed_requests_before_the_engine() {
+    let path = build("harmonic_jetinvalid", &[]);
+    let mut engine = load(&path);
+    let before = native_calls(&path);
+    for (direction, order) in [
+        (&[1.0, 0.0][..], 1),
+        (&[1.0, f64::NAN, 0.0][..], 1),
+        (&[1.0, 0.0, 0.0][..], 0),
+    ] {
+        let err = jet_call(&mut engine, &[0.0; 3], &[1], direction, order).unwrap_err();
+        assert!(matches!(err, EngineError::Invalid(_)), "{err:?}");
+    }
+    let err = jet_call(&mut engine, &[f64::INFINITY, 0.0, 0.0], &[1], &[1.0; 3], 1).unwrap_err();
+    assert!(matches!(err, EngineError::Invalid(_)), "{err:?}");
+    assert_eq!(
+        native_calls(&path) - before,
+        1,
+        "one capability query, cached for the rest"
+    );
+}
+
+#[test]
+fn taylor_jet_maps_recoverable_codes() {
+    let path = build("harmonic_jetrecoverable", &[]);
+    let mut engine = load(&path);
+    let err = jet_call(&mut engine, &[0.0; 3], &[0], &[1.0, 0.0, 0.0], 1).unwrap_err();
+    assert!(
+        matches!(&err, EngineError::Recoverable { code: 1, .. }),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn a_jet_the_engine_cannot_vouch_for_fails_closed() {
+    let direction = [1.0, 0.0, 0.0];
+    for (name, define, what) in [
+        (
+            "harmonic_jet_nan_output",
+            "JET_NONFINITE_OUTPUT=NAN",
+            "the engine jet at element 2 is not finite",
+        ),
+        (
+            "harmonic_jet_inf_output",
+            "JET_NONFINITE_OUTPUT=INFINITY",
+            "the engine jet at element 2 is not finite",
+        ),
+        (
+            "harmonic_jet_nan_scale",
+            "JET_NONFINITE_SCALE",
+            "the engine jet scale is not finite",
+        ),
+        (
+            "harmonic_jet_negative_operations",
+            "JET_NEGATIVE_OPERATIONS",
+            "the engine reports a negative operation count -1",
+        ),
+        (
+            "harmonic_jet_negative_scale",
+            "JET_NEGATIVE_SCALE",
+            "the engine jet scale is negative",
+        ),
+    ] {
+        let path = build(name, &[define, "FIXTURE_JET_ORDER=1"]);
+        let mut engine = load(&path);
+        let error = jet_call(&mut engine, &[0.0; 3], &[1], &direction, 1)
+            .expect_err("a jet that is not finite or not countable is refused");
+        assert_eq!(error, EngineError::Invalid(what.into()), "{name}");
+        assert_eq!(error.status(), rgpot_status_t::RGPOT_INVALID_PARAMETER);
+        let mut session = load_session(&path);
+        assert_eq!(
+            session_jet(&mut session, 1).expect_err("session refuses it too"),
+            error,
+            "{name}"
+        );
+    }
+
+    let negative = build("harmonic_jet_negative_cap", &["JET_NEGATIVE_CAP"]);
+    let mut engine = load(&negative);
+    let error = engine.caps().expect_err("a negative jet order is refused");
+    assert_eq!(
+        error,
+        EngineError::Invalid("the engine reports a negative jet order -1".into())
+    );
+    assert_eq!(
+        jet_call(&mut engine, &[0.0; 3], &[1], &direction, 1),
+        Err(error)
+    );
+}
+
+#[test]
+fn a_non_finite_box_is_refused_before_the_engine() {
+    let path = build("harmonic_jet_nonfinite_box", &[]);
+    let mut engine = load(&path);
+    let _ = engine.caps().expect("caps");
+    let before = native_calls(&path);
+    let positions = [0.0; 3];
+    let directions = [1.0, 0.0, 0.0];
+    for (index, value, what) in [
+        (
+            0_usize,
+            f64::NAN,
+            "the engine box at element 0 is not finite",
+        ),
+        (
+            8_usize,
+            f64::INFINITY,
+            "the engine box at element 8 is not finite",
+        ),
+        (
+            4_usize,
+            f64::NEG_INFINITY,
+            "the engine box at element 4 is not finite",
+        ),
+    ] {
+        let mut boxes = CELL;
+        boxes[index] = value;
+        assert_eq!(
+            engine.taylor_jet(
+                &JetBatchRequest {
+                    atomic_numbers: &[1],
+                    positions: &positions,
+                    directions: &directions,
+                    boxes: &boxes,
+                },
+                1,
+            ),
+            Err(EngineError::Invalid(what.into())),
+            "box element {index}"
+        );
+    }
+    assert_eq!(native_calls(&path), before);
+    let mut session = load_session(&path);
+    let mut boxes = CELL;
+    boxes[2] = f64::NAN;
+    assert_eq!(
+        session.taylor_jet(
+            &JetBatchRequest {
+                atomic_numbers: &[1],
+                positions: &positions,
+                directions: &directions,
+                boxes: &boxes,
+            },
+            1,
+        ),
+        Err(EngineError::Invalid(
+            "the engine box at element 2 is not finite".into()
+        ))
+    );
+}
+
+#[test]
+fn a_non_finite_jet_input_is_refused_before_the_engine() {
+    let path = build("harmonic_jet_nonfinite_input", &[]);
+    let mut engine = load(&path);
+    let positions = [0.0; 3];
+    let _ = engine.caps().expect("caps");
+    let before = native_calls(&path);
+    for (positions, directions, what) in [
+        (
+            [f64::NAN, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            "the engine position at element 0 is not finite",
+        ),
+        (
+            positions,
+            [0.0, f64::NAN, 0.0],
+            "the engine direction at element 1 is not finite",
+        ),
+        (
+            positions,
+            [0.0, 0.0, f64::INFINITY],
+            "the engine direction at element 2 is not finite",
+        ),
+    ] {
+        assert_eq!(
+            jet_call(&mut engine, &positions, &[1], &directions, 1),
+            Err(EngineError::Invalid(what.into()))
+        );
+    }
+    assert_eq!(native_calls(&path), before);
+}
+
+#[test]
+fn caps_carry_every_field_and_ignore_bytes_past_the_reported_size() {
+    let path = build("harmonic_caps_fields", &[]);
+    assert_eq!(
+        load(&path).caps().expect("caps"),
+        EngineCaps {
+            reentrancy: 0,
+            per_image_instances: false,
+            batched: false,
+            periodic: true,
+            stress: false,
+            group_collective: false,
+            analytic_hvp: true,
+            jet_order: 3,
+        }
+    );
+
+    let dirty = build(
+        "harmonic_caps_dirty_tail",
+        &[
+            "FIXTURE_ABI_MINOR=4",
+            "FIXTURE_CAPS_MINOR4",
+            "FIXTURE_CAPS_DIRTY_TAIL",
+        ],
+    );
+    let mut engine = load(&dirty);
+    assert_eq!(engine.caps().expect("caps").jet_order, 0);
+    assert!(matches!(
+        jet_call(&mut engine, &[0.0; 3], &[1], &[1.0, 0.0, 0.0], 1),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_taylor_jet",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn a_jet_request_that_is_not_whole_systems_is_refused_before_the_engine() {
+    let path = build("harmonic_jet_shapes", &[]);
+    let mut engine = load(&path);
+    let _ = engine.caps().expect("caps");
+    let before = native_calls(&path);
+    let zeros = [0.0; 9];
+    for (numbers, coordinates) in [(&[][..], 3), (&[1][..], 0), (&[1][..], 4), (&[1, 8][..], 7)] {
+        let error = engine
+            .taylor_jet(
+                &JetBatchRequest {
+                    atomic_numbers: numbers,
+                    positions: &zeros[..coordinates],
+                    directions: &zeros[..coordinates],
+                    boxes: &CELL,
+                },
+                1,
+            )
+            .expect_err("not a whole number of systems");
+        assert!(
+            matches!(&error, EngineError::Invalid(text) if text.contains("are not a whole number")),
+            "{numbers:?} with {coordinates} coordinates: {error:?}"
+        );
+    }
+    assert_eq!(native_calls(&path), before);
+}
+
+fn session_jet(session: &mut EngineSession, order: usize) -> Result<GradientJet, EngineError> {
+    session_jet_of(session, &[1.0, -0.5, 0.25], order)
+}
+
+fn session_jet_of(
+    session: &mut EngineSession,
+    directions: &[f64],
+    order: usize,
+) -> Result<GradientJet, EngineError> {
+    session.taylor_jet(
+        &JetBatchRequest {
+            atomic_numbers: &[1],
+            positions: &[0.5, -1.0, 2.0],
+            directions,
+            boxes: &CELL,
+        },
+        order,
+    )
+}
+
+fn call_oracle_outside_a_call(path: &Path) -> c_int {
+    let library = unsafe { libloading::Library::new(path) }.expect("reopen the fixture");
+    let call: libloading::Symbol<unsafe extern "C" fn() -> c_int> =
+        unsafe { library.get(b"fixture_call_oracle_outside_a_call\0") }.expect("oracle hook");
+    unsafe { call() }
+}
+
+fn session_with_oracle(
+    name: &str,
+    defines: &[&str],
+    answer: Result<EngineEvaluation, EngineFailure>,
+) -> (PathBuf, EngineSession) {
+    let path = build(name, defines);
+    let mut session = load_session(&path);
+    session
+        .set_callbacks(Some(Box::new(ScriptedOracle { answer })))
+        .expect("set callbacks");
+    (path, session)
+}
+
+#[test]
+fn a_session_serves_the_jet_the_engine_serves() {
+    let path = build("harmonic_session_jet", &[]);
+    let mut session = load_session(&path);
+    let jet = session_jet(&mut session, 3).expect("session jet");
+    assert_eq!(jet.order(), 3);
+    assert_eq!(jet.n_systems(), 1);
+    assert!(all_within_roundoff(
+        jet.derivative(1).expect("order 1"),
+        &[SPRING, -0.5 * SPRING, 0.25 * SPRING]
+    ));
+    assert_eq!(jet.derivative(2), Some(&[0.0; 3][..]));
+    assert_eq!(jet.derivative(3), Some(&[0.0; 3][..]));
+    assert_eq!(
+        jet.report(),
+        Some(DerivativeReport {
+            operations: 3,
+            scale: SPRING * 2.0,
+        })
+    );
+
+    let before = native_calls(&path);
+    assert!(matches!(
+        session_jet(&mut session, 4),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_taylor_jet",
+            ..
+        })
+    ));
+    assert!(matches!(
+        session_jet_of(&mut session, &[1.0, 0.0], 1),
+        Err(EngineError::Invalid(_))
+    ));
+    assert_eq!(
+        native_calls(&path) - before,
+        0,
+        "the capabilities are cached, so a refused request never reaches the engine"
+    );
+
+    let no_jet = build("harmonic_session_nojet", &["NO_JET"]);
+    let mut session = load_session(&no_jet);
+    assert!(matches!(
+        session_jet(&mut session, 1),
+        Err(EngineError::Unsupported {
+            operation: "rgpot_engine_taylor_jet",
+            ..
+        })
+    ));
+}
+
+#[test]
+fn a_session_jet_reaches_the_registered_oracle_and_succeeds_when_it_answers() {
+    let (path, mut session) = session_with_oracle(
+        "harmonic_session_jet_oracle",
+        &[],
+        Ok(EngineEvaluation {
+            energy: 0.0,
+            forces: vec![0.0; 3],
+        }),
+    );
+    let jet = session_jet(&mut session, 1).expect("jet through a registered oracle");
+    assert_eq!(last_oracle_rc(&path), 0);
+    assert_eq!(jet.order(), 1);
+}
+
+#[test]
+fn a_fatal_oracle_failure_during_a_jet_is_latched_over_the_engines_own_fatal_code() {
+    let (path, mut session) = session_with_oracle(
+        "harmonic_session_jet_fatal",
+        &["FATAL_AFTER_HOST_FAILURE"],
+        Err(EngineFailure {
+            status: EngineStatus::from_code(-9),
+            message: "oracle lost its backend".into(),
+        }),
+    );
+    let error = session_jet(&mut session, 1).expect_err("fatal oracle failure");
+    assert_eq!(last_oracle_rc(&path), -9);
+    assert_eq!(
+        error,
+        EngineError::Fatal {
+            code: -9,
+            message: "oracle lost its backend".into(),
+        }
+    );
+    let before = native_calls(&path);
+    for _ in 0..2 {
+        assert_eq!(session_jet(&mut session, 1), Err(error.clone()));
+    }
+    assert_eq!(native_calls(&path), before);
+    assert_poisoned_without_an_extra_force(&mut session, &path, &error);
+}
+
+#[test]
+fn a_recoverable_oracle_failure_during_a_jet_is_not_an_unsupported_jet() {
+    let (path, mut session) = session_with_oracle(
+        "harmonic_session_jet_recoverable",
+        &[],
+        Err(EngineFailure {
+            status: EngineStatus::from_code(ENGINE_ERR_UNSUPPORTED),
+            message: "oracle declined this geometry".into(),
+        }),
+    );
+    let error = session_jet(&mut session, 1).expect_err("recoverable oracle failure");
+    assert_eq!(last_oracle_rc(&path), ENGINE_ERR_UNSUPPORTED);
+    assert_eq!(
+        error,
+        EngineError::Recoverable {
+            code: ENGINE_ERR_UNSUPPORTED,
+            message: "oracle declined this geometry".into(),
+        }
+    );
+    session.set_callbacks(None).expect("clear callbacks");
+    assert!(
+        session_jet(&mut session, 1).is_ok(),
+        "the session is usable"
+    );
+}
+
+#[test]
+fn a_fatal_callback_failure_no_call_has_settled_wins_over_a_refused_jet() {
+    let (path, mut session) = session_with_oracle(
+        "harmonic_session_jet_unsettled_fatal",
+        &[],
+        Err(EngineFailure {
+            status: EngineStatus::from_code(-9),
+            message: "oracle lost its backend".into(),
+        }),
+    );
+    assert_eq!(call_oracle_outside_a_call(&path), -9);
+    let before = native_calls(&path);
+    let error = session_jet(&mut session, 0).expect_err("refused jet");
+    assert_eq!(
+        error,
+        EngineError::Fatal {
+            code: -9,
+            message: "oracle lost its backend".into(),
+        }
+    );
+    assert_eq!(native_calls(&path), before);
+    assert_eq!(session_jet(&mut session, 1), Err(error));
+}
+
+#[cfg(feature = "schema")]
+#[test]
+fn builtin_params_is_a_flat_capnp_message_naming_the_backend() {
+    use rgpot_core::Potentials_capnp::builtin_params;
+
+    let bytes = builtin_params("cbe");
+    assert_eq!(bytes.len() % 8, 0);
+    let mut words = vec![0_u64; bytes.len() / 8];
+    let (chunks, tail) = bytes.as_chunks::<8>();
+    assert!(tail.is_empty());
+    for (word, chunk) in words.iter_mut().zip(chunks) {
+        *word = u64::from_ne_bytes(*chunk);
+    }
+    let slice = unsafe { std::slice::from_raw_parts(words.as_ptr().cast::<u8>(), bytes.len()) };
+    let reader = capnp::serialize::read_message_from_flat_slice(
+        &mut &slice[..],
+        capnp::message::ReaderOptions::new(),
+    )
+    .expect("flat message");
+    let params: builtin_params::Reader<'_> = reader.get_root().expect("BuiltinParams");
+    assert_eq!(
+        params.get_name().expect("name").to_str().expect("utf8"),
+        "cbe"
+    );
 }

@@ -3,6 +3,7 @@
 
 #include "rgpot/engine_c_abi.h"
 
+#include "rgpot/GradientJet.hpp"
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine/Sha256.hpp"
 
@@ -122,6 +123,10 @@ struct RgpotEnginePot {
 };
 
 namespace {
+
+const rgpot::GradientJet *gradient_jet(const RgpotEnginePot *pot) {
+  return dynamic_cast<const rgpot::GradientJet *>(pot->backend->pot.get());
+}
 
 int fail(RgpotEnginePot *pot, int code, const std::string &message) {
   if (code == 2) {
@@ -324,6 +329,78 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
   }
 }
 
+int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long nSystems, long nAtoms,
+                            const double *positions, const int *atomicNrs,
+                            const double *directions, long order,
+                            double *jet_out,
+                            RgpotEngineDerivativeReport *report,
+                            const double *boxes) {
+  if (!pot || !pot->backend) {
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  const rgpot::GradientJet *jet = gradient_jet(pot);
+  if (!jet) {
+    return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
+                "potential has no gradient jet");
+  }
+  if (!positions || !atomicNrs || !directions || !jet_out || !boxes ||
+      nAtoms <= 0 || nSystems <= 0 || order < 1) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID, "invalid jet argument");
+  }
+  if (order > jet->maxJetOrder()) {
+    return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
+                "jet order " + std::to_string(order) +
+                    " exceeds the highest supported order " +
+                    std::to_string(jet->maxJetOrder()));
+  }
+  const auto limit = std::numeric_limits<size_t>::max() / sizeof(double);
+  const auto atoms = static_cast<size_t>(nAtoms);
+  const auto systems = static_cast<size_t>(nSystems);
+  if (atoms > limit / 3 || systems > limit / 9 / 3 / atoms / static_cast<size_t>(order)) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID, "invalid jet argument");
+  }
+  const std::uintptr_t block = systems * atoms * 3 * sizeof(double);
+  const std::uintptr_t jet_bytes = block * static_cast<std::uintptr_t>(order);
+  const auto jb = reinterpret_cast<std::uintptr_t>(jet_out);
+  const auto overlaps = [jb, jet_bytes](const void *input,
+                                        std::uintptr_t inputBytes) {
+    const auto begin = reinterpret_cast<std::uintptr_t>(input);
+    return jb < begin + inputBytes && begin < jb + jet_bytes;
+  };
+  const auto rb = reinterpret_cast<std::uintptr_t>(report);
+  if (overlaps(directions, block) || overlaps(positions, block) ||
+      overlaps(atomicNrs, atoms * sizeof(int)) ||
+      overlaps(boxes, systems * 9 * sizeof(double)) ||
+      (report && overlaps(report, sizeof(*report))) ||
+      (report && rb % alignof(RgpotEngineDerivativeReport) != 0)) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID,
+                "jet output overlaps an input buffer");
+  }
+  try {
+    RgpotEnginePot::CallGuard guard(*pot);
+    SoftGilRelease no_gil;
+    // A backend may write part of its buffer and then throw. Hold the jet
+    // until the call returns, so jet_out and report stay byte-identical on
+    // any failure.
+    std::vector<double> scratch(jet_bytes / sizeof(double));
+    const rgpot::DerivativeReport measured =
+        jet->gradientJet(systems, atoms, positions, atomicNrs, boxes,
+                         directions, static_cast<int>(order), scratch.data());
+    std::memcpy(jet_out, scratch.data(), jet_bytes);
+    if (report) {
+      report->tracked = measured.tracked ? 1 : 0;
+      report->operations = measured.tracked ? measured.operations : 0;
+      report->scale = measured.tracked ? measured.scale : 0.0;
+    }
+    pot->clear_error();
+    return RGPOT_ENGINE_OK;
+  } catch (const std::exception &e) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, e.what());
+  } catch (...) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, "unknown exception");
+  }
+}
+
 int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
                              const double *positions, const int *atomicNrs,
                              double *forces, double *energies,
@@ -407,6 +484,9 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   filled.orbital_selection = pot->backend->select_orbitals ? 1 : 0;
   filled.orbital_copy = pot->backend->copy_orbitals ? 1 : 0;
   filled.analytic_hvp = pot->caps.analyticHvp ? 1 : 0;
+  if (const rgpot::GradientJet *jet = gradient_jet(pot)) {
+    filled.jet_order = jet->maxJetOrder();
+  }
   // The host's struct may be older (smaller) than this engine's: write only
   // the bytes it announced room for.
   const unsigned room = out->size < sizeof(filled) ? out->size : sizeof(filled);

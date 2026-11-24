@@ -11,6 +11,7 @@
 // a real value there, and it is not the same as leaving byte 4 clear. The
 // library exports how many calls were inside the backend at once.
 
+#include "rgpot/GradientJet.hpp"
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine_c_abi.h"
 
@@ -75,6 +76,38 @@ private:
   rgpot::Reentrancy reentrancy_;
   bool analytic_hvp_;
 };
+
+/// Writes the whole jet and then throws, so a table that forwards the
+/// caller's buffer would leave that buffer partly updated.
+class PartialJet final : public rgpot::PotentialBase, public rgpot::GradientJet {
+public:
+  PartialJet() : PotentialBase(rgpot::PotType::UNKNOWN) {}
+
+  [[nodiscard]] rgpot::PotCaps caps() const noexcept override {
+    return {.reentrancy = rgpot::Reentrancy::PerInstance};
+  }
+
+  std::tuple<double, rgpot::types::AtomMatrix, double>
+  operator()(const rgpot::types::AtomMatrix &positions,
+             const std::vector<int> &,
+             const std::array<std::array<double, 3>, 3> &) override {
+    return {0.0, rgpot::types::AtomMatrix::Zero(positions.rows(), 3), 0.0};
+  }
+
+  [[nodiscard]] int maxJetOrder() const noexcept override { return 3; }
+
+  rgpot::DerivativeReport
+  gradientJet(std::size_t systems, std::size_t nAtoms, const double *,
+              const int *, const double *, const double *, int order,
+              double *jet) const override {
+    const std::size_t n =
+        systems * nAtoms * 3 * static_cast<std::size_t>(order);
+    for (std::size_t i = 0; i < n; ++i) {
+      jet[i] = 42.0;
+    }
+    throw std::runtime_error("jet failed after writing the buffer");
+  }
+};
 } // namespace
 
 namespace rgpot::engine {
@@ -91,8 +124,12 @@ Created create(const void *config, std::size_t config_len) {
   }
   Created out;
   auto backend = std::make_unique<Backend>();
-  backend->pot = std::make_unique<StubPot>(static_cast<Reentrancy>(bytes[0]),
-                                           bytes[3] != 0);
+  if (bytes[4] != 0) {
+    backend->pot = std::make_unique<PartialJet>();
+  } else {
+    backend->pot = std::make_unique<StubPot>(static_cast<Reentrancy>(bytes[0]),
+                                             bytes[3] != 0);
+  }
   if (bytes[1] == 0) {
     backend->set_charge_spin = [](int charge, int spin) {
       if (charge == 99) {

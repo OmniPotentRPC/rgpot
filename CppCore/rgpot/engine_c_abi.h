@@ -103,7 +103,7 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
  * minor 0, layout 1.
  */
 #define RGPOT_ENGINE_ABI_VERSION 1
-#define RGPOT_ENGINE_ABI_MINOR 8
+#define RGPOT_ENGINE_ABI_MINOR 11
 #define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
 
 #define RGPOT_ENGINE_OK 0
@@ -213,6 +213,45 @@ RGPOT_ENGINE_API int rgpot_engine_hvp(
     RgpotEnginePot *pot, long nAtoms, const double *positions,
     const int *atomicNrs, const double *direction, double *hv_out,
     const double *box);
+
+/**
+ * Roundoff report of a derivative evaluation. `tracked` is nonzero when the
+ * engine counts its arithmetic: then `operations` times the machine epsilon
+ * times `scale` is the engine's first-order estimate of the roundoff of the
+ * returned derivatives, `scale` being in the units of the jet. It is an
+ * estimate from an operation count, not a rigorous bound. For a batch,
+ * `operations` is the sum over the systems and `scale` the largest. When
+ * `tracked` is 0 the other fields are 0.
+ */
+typedef struct {
+  int tracked;
+  long long operations;
+  double scale;
+} RgpotEngineDerivativeReport;
+
+/**
+ * Directional derivatives of the gradient to higher order, for nSystems
+ * systems sharing one composition (atomicNrs, nAtoms), in one call.
+ * positions and directions hold nSystems * 3 * nAtoms doubles, boxes
+ * nSystems * 9. jet_out holds order * nSystems * 3 * nAtoms doubles laid out
+ * [order][system][3 * nAtoms]: block k - 1 of system s is the k-th derivative
+ * with respect to t of the gradient of the energy at positions_s + t *
+ * directions_s, at t = 0, in eV/Angstrom for directions in Angstrom (each
+ * derivative of the gradient is a force; the Angstrom of the line parameter
+ * is absorbed by the direction). These are exact derivatives, not Taylor
+ * coefficients. Order 1 is the Hessian-vector product. The highest order the
+ * engine serves is RgpotEngineCaps.jet_order. report may be NULL.
+ * directions and jet_out must not overlap each other or any other input.
+ * Returns RGPOT_ENGINE_OK (0) on success, RGPOT_ENGINE_ERR_INVALID (1) for
+ * invalid or overlapping arguments or order < 1, RGPOT_ENGINE_ERR_UNSUPPORTED
+ * (3) when the backend serves no jet or order exceeds jet_order, and
+ * RGPOT_ENGINE_ERR_EVAL (2) when the evaluation fails.
+ * Nothing is written to jet_out or report unless the call succeeds.
+ */
+RGPOT_ENGINE_API int rgpot_engine_taylor_jet(
+    RgpotEnginePot *pot, long nSystems, long nAtoms, const double *positions,
+    const int *atomicNrs, const double *directions, long order,
+    double *jet_out, RgpotEngineDerivativeReport *report, const double *boxes);
 
 /**
  * Strided-uniform batched evaluation: nSystems systems sharing one
@@ -341,6 +380,7 @@ typedef struct {
   int orbital_selection;   /**< select_orbitals is supported */
   int orbital_copy;        /**< copy_orbitals is supported */
   int analytic_hvp;        /**< rgpot_engine_hvp is exact for this potential */
+  int jet_order;           /**< highest order of rgpot_engine_taylor_jet; 0 none */
 } RgpotEngineCaps;
 
 RGPOT_ENGINE_API int rgpot_engine_caps(const RgpotEnginePot *pot,

@@ -1149,6 +1149,19 @@ if get_option('with_tests')
     )
     test_args = _args
     test_args += ['-DRGPOTTEST']
+    # Committed CBE bit goldens are the doubles of x86-64 glibc libm.
+    # Other hosts keep the tolerance checks and skip the bit comparison.
+    if host_machine.system() == 'linux' and host_machine.cpu_family() == 'x86_64'
+        if cc.has_header('features.h')
+            _cbe_glibc = cc.get_define(
+                '__GLIBC__',
+                prefix: '#include <features.h>',
+            )
+            if _cbe_glibc != ''
+                test_args += ['-DRGPOT_CBE_BIT_EXACT_HOST']
+            endif
+        endif
+    endif
     if _mpi_dep.found()
         # Tests expect librgpot_mpi next to them (it builds in this
         # directory), whether or not they link MPI themselves.

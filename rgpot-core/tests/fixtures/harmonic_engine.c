@@ -42,6 +42,10 @@
 #define FIXTURE_ABI_MINOR RGPOT_ENGINE_ABI_MINOR
 #endif
 
+#ifndef FIXTURE_JET_ORDER
+#define FIXTURE_JET_ORDER 3
+#endif
+
 #ifndef FIXTURE_ABI_LAYOUT
 #define FIXTURE_ABI_LAYOUT RGPOT_ENGINE_ABI_LAYOUT_REVISION
 #endif
@@ -77,6 +81,7 @@ static int initializer_reentry_failed = 0;
 static int active_calls = 0;
 static int max_concurrent_calls = 0;
 static int max_handle_concurrent_calls = 0;
+static RgpotEnginePot *last_pot = NULL;
 #ifdef FATAL_ONCE
 static int fatal_once_fired = 0;
 #endif
@@ -177,6 +182,19 @@ void fixture_reset_concurrent(void) {
 int fixture_unsupported_code(void) { return RGPOT_ENGINE_ERR_UNSUPPORTED; }
 int fixture_lock_error_code(void) { return RGPOT_ENGINE_ERR_LOCK; }
 
+/* Invokes the registered oracle the way an engine thread would, outside any
+ * call the host made. */
+int fixture_call_oracle_outside_a_call(void) {
+  double positions[3] = {1.0, 2.0, 3.0};
+  double forces[3];
+  double energy = 0.0;
+  double box[9] = {10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0};
+  int number = 1;
+  if (last_pot == NULL || last_pot->callbacks.oracle == NULL) return -1000000;
+  return last_pot->callbacks.oracle(last_pot->callbacks.ctx, 1, positions,
+                                    &number, forces, &energy, box);
+}
+
 int rgpot_engine_abi_version(void) { return FIXTURE_ABI; }
 
 #ifndef NO_AVAILABLE
@@ -233,6 +251,7 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
   }
   pot = calloc(1, sizeof *pot);
   memcpy(&pot->k, config, sizeof(double));
+  last_pot = pot;
   return pot;
 }
 
@@ -260,6 +279,7 @@ int rgpot_engine_cache_counts(RgpotEnginePot *pot, uint64_t *computed,
 
 void rgpot_engine_destroy(RgpotEnginePot *pot) {
   __atomic_add_fetch(&destroyed, 1, __ATOMIC_SEQ_CST);
+  if (last_pot == pot) last_pot = NULL;
   free(pot);
 }
 
@@ -479,8 +499,24 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 #if !defined(NO_HVP) && !defined(NO_HVP_CAP)
   filled.analytic_hvp = 1;
 #endif
+#if !defined(NO_JET) && !defined(NO_JET_CAP) && (FIXTURE_ABI_MINOR >= 11)
+  filled.jet_order = FIXTURE_JET_ORDER;
+#ifdef JET_NEGATIVE_CAP
+  filled.jet_order = -1;
+#endif
+#endif
   room = out->size < sizeof filled ? out->size : sizeof filled;
+#ifdef FIXTURE_CAPS_MINOR4
+  /* A minor-4 engine's caps struct ends before jet_order. */
+  if (room > offsetof(RgpotEngineCaps, jet_order)) {
+    room = (unsigned)offsetof(RgpotEngineCaps, jet_order);
+  }
+#endif
   memcpy(out, &filled, room);
+#ifdef FIXTURE_CAPS_DIRTY_TAIL
+  /* Bytes past the size the engine reports are not part of the answer. */
+  out->jet_order = FIXTURE_JET_ORDER;
+#endif
   out->size = room;
   return 0;
 }
@@ -610,4 +646,108 @@ size_t rgpot_engine_component_name(const RgpotEnginePot *pot, long index,
 
 #ifdef FIXTURE_UNLOAD_POLICY
 int rgpot_engine_unload_policy(void) { return FIXTURE_UNLOAD_POLICY; }
+#endif
+
+#if !defined(NO_JET) && (FIXTURE_ABI_MINOR >= 11)
+/* The gradient of the harmonic energy is k x, so along x + t v its first
+ * derivative is k v and every higher one is zero. The report counts one
+ * product per coordinate and system and the larger of |k x| and |k v| over
+ * all systems as the scale. Layout of jet_out: [order][system][3 * n]. */
+int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long systems, long n,
+                            const double *positions, const int *atomic_nrs,
+                            const double *directions, long order,
+                            double *jet_out,
+                            RgpotEngineDerivativeReport *report,
+                            const double *boxes) {
+  count_native_call();
+  if (!pot || !positions || !atomic_nrs || !directions || !jet_out || !boxes ||
+      systems <= 0 || n <= 0 || order < 1) {
+    if (pot) {
+      snprintf(pot->error, sizeof pot->error, "invalid jet argument");
+    }
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+#ifdef JET_UNSUPPORTED
+  (void)report;
+  snprintf(pot->error, sizeof pot->error, "harmonic engine built without a jet");
+  return RGPOT_ENGINE_ERR_UNSUPPORTED;
+#else
+  long i;
+  long k;
+  long s;
+  double scale = 0.0;
+  if (order > FIXTURE_JET_ORDER) {
+    snprintf(pot->error, sizeof pot->error, "jet order %ld is not served", order);
+    return RGPOT_ENGINE_ERR_UNSUPPORTED;
+  }
+  enter_call(pot);
+  for (i = 0; i < n; i++) {
+    if (atomic_nrs[i] == 0) {
+      snprintf(pot->error, sizeof pot->error, "atom %ld has atomic number 0", i);
+      leave_call(pot);
+      return 1;
+    }
+  }
+  if (pot->callbacks.oracle != NULL) {
+    int rc;
+    double energy = 0.0;
+    double *scratch = malloc((size_t)(3 * n) * sizeof(double));
+    rc = pot->callbacks.oracle(pot->callbacks.ctx, n, positions, atomic_nrs,
+                               scratch, &energy, boxes);
+    last_oracle_rc = rc;
+    free(scratch);
+    if (rc != 0) {
+#ifdef FATAL_AFTER_HOST_FAILURE
+      snprintf(pot->error, sizeof pot->error, "host failure left the engine unusable");
+      leave_call(pot);
+      return -8;
+#else
+      leave_call(pot);
+      return rc;
+#endif
+    }
+  }
+  for (k = 0; k < order; k++) {
+    for (i = 0; i < systems * 3 * n; i++) {
+      jet_out[k * systems * 3 * n + i] = k == 0 ? pot->k * directions[i] : 0.0;
+    }
+  }
+  for (s = 0; s < systems; s++) {
+    for (i = 0; i < 3 * n; i++) {
+      double a = fabs(pot->k * positions[s * 3 * n + i]);
+      double b = fabs(pot->k * directions[s * 3 * n + i]);
+      if (a > scale) scale = a;
+      if (b > scale) scale = b;
+    }
+  }
+#ifdef JET_UNTRACKED
+  if (report) {
+    report->tracked = 0;
+    report->operations = 0;
+    report->scale = 0.0;
+  }
+#else
+  if (report) {
+    report->tracked = 1;
+    report->operations = systems * 3 * n;
+    report->scale = scale;
+#ifdef JET_NEGATIVE_OPERATIONS
+    report->operations = -1;
+#endif
+#ifdef JET_NONFINITE_SCALE
+    report->scale = NAN;
+#endif
+#ifdef JET_NEGATIVE_SCALE
+    report->scale = -1.0;
+#endif
+  }
+#endif
+#ifdef JET_NONFINITE_OUTPUT
+  jet_out[order * systems * 3 * n - 1] = JET_NONFINITE_OUTPUT;
+#endif
+  pot->error[0] = '\0';
+  leave_call(pot);
+  return 0;
+#endif
+}
 #endif

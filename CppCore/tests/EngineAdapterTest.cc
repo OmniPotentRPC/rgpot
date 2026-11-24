@@ -40,6 +40,9 @@ struct Stub {
   int (*force_batch)(RgpotEnginePot *, long, long, const double *, const int *,
                      double *, double *, double *, const double *,
                      rgpot_engine_coord_transform, void *) = nullptr;
+  int (*taylor_jet)(RgpotEnginePot *, long, long, const double *, const int *,
+                    const double *, long, double *,
+                    RgpotEngineDerivativeReport *, const double *) = nullptr;
   RgpotEngineAbiStamp (*stamp)() = nullptr;
   int (*compatible)(const RgpotEngineAbiStamp *) = nullptr;
   int (*caps)(const RgpotEnginePot *, RgpotEngineCaps *) = nullptr;
@@ -82,6 +85,7 @@ Stub &stub() {
     out.force = sym<decltype(out.force)>(h, "rgpot_engine_force");
     out.hvp = sym<decltype(out.hvp)>(h, "rgpot_engine_hvp");
     out.force_batch = sym<decltype(out.force_batch)>(h, "rgpot_engine_force_batch");
+    out.taylor_jet = sym<decltype(out.taylor_jet)>(h, "rgpot_engine_taylor_jet");
     out.stamp = sym<decltype(out.stamp)>(h, "rgpot_engine_abi_stamp");
     out.compatible =
         sym<decltype(out.compatible)>(h, "rgpot_engine_abi_compatible");
@@ -113,9 +117,10 @@ Stub &stub() {
 /// A word-aligned configuration: reentrancy, hooks cleared, model named.
 RgpotEnginePot *make(Stub &s, unsigned char reentrancy,
                      unsigned char no_hooks = 0, unsigned char model = 0,
-                     unsigned char with_hvp = 1) {
+                     unsigned char with_hvp = 1,
+                     unsigned char partial_jet = 0) {
   alignas(8) unsigned char cfg[8] = {reentrancy, no_hooks, model, with_hvp,
-                                     0,          0,        0,     0};
+                                     partial_jet, 0,       0,     0};
   char err[256] = {0};
   RgpotEnginePot *pot = s.create(cfg, sizeof(cfg), err, sizeof(err));
   INFO(err);
@@ -549,4 +554,38 @@ TEST_CASE("SHA-256 matches the published vectors", "[engine][sha256]") {
   REQUIRE(h.hex_digest() ==
           "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
   REQUIRE(Sha256::of_file("/nonexistent/file").empty());
+}
+
+TEST_CASE("a failed jet leaves the caller buffers byte-identical",
+          "[engine][adapter][jet]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 1, 0, 0, 0, 1);
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(s.caps(pot, &caps) == 0);
+  REQUIRE(caps.jet_order == 3);
+
+  const double positions[3] = {1.0, 2.0, 3.0};
+  const int z[1] = {1};
+  const double direction[3] = {0.2, -0.3, 0.4};
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  // Order 2, one atom: 2 * 3 doubles. The backend writes every entry, then
+  // throws. The caller's jet and report must still match the bytes they had.
+  std::array<double, 6> jet{};
+  std::memset(jet.data(), 0xA5, sizeof(jet));
+  std::array<unsigned char, sizeof(jet)> jet_before{};
+  std::memcpy(jet_before.data(), jet.data(), sizeof(jet));
+  RgpotEngineDerivativeReport report{};
+  report.tracked = 4;
+  report.operations = 11;
+  report.scale = -2.5;
+  std::array<unsigned char, sizeof(report)> report_before{};
+  std::memcpy(report_before.data(), &report, sizeof(report));
+
+  REQUIRE(s.taylor_jet(pot, 1, 1, positions, z, direction, 2, jet.data(),
+                       &report, box) == RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(std::memcmp(jet.data(), jet_before.data(), sizeof(jet)) == 0);
+  REQUIRE(std::memcmp(&report, report_before.data(), sizeof(report)) == 0);
+  REQUIRE(error_of(s, pot).find("after writing") != std::string::npos);
+  s.destroy(pot);
 }
