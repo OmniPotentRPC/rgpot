@@ -23,7 +23,7 @@ a Fortran compiler and a =lapack= pkg-config module.
 #+attr_rgpot: syntax
 #+begin_src bash
 git clone https://github.com/OmniPotentRPC/potlibc.git
-git -C potlibc checkout 362e3d8fc4a82283b363665d1072ed4eb07e30c8
+git -C potlibc checkout 85e9896be0da2b7f95d9a281a6f30c2c8ca76d8c
 meson setup potlibc/build potlibc --prefix="$HOME/.local" --libdir=lib
 meson compile -C potlibc/build
 meson install -C potlibc/build
