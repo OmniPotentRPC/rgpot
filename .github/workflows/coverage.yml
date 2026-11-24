@@ -104,10 +104,11 @@ jobs:
 
   coverage-cpp:
     runs-on: ubuntu-22.04
-    # 65, not the p95 rule's 30. run_coverage_cpp.sh took 2058s on 4 pinned
-    # cores. 60% of 65 minutes is 2340s, so that run is 52.8% of the job.
-    # 60 minutes would leave 102s under that line.
-    timeout-minutes: 65
+    # 70, not the p95 rule's 30. run_coverage_cpp.sh took 2058s on 4 pinned
+    # cores, and that run included one shard that stalled for about 300s.
+    # 60% of 70 minutes is 2520s, so the measured run is 49% of the job and
+    # one more stall of that size still fits. 65 minutes would not.
+    timeout-minutes: 70
     name: cpp coverage
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -180,9 +181,9 @@ jobs:
   # Dedicated fortran path when the cpp job skipped the kernels; no-op if already uploaded.
   coverage-fortran:
     runs-on: ubuntu-22.04
-    # Same 65 as coverage-cpp: an empty build directory runs run_coverage_cpp.sh
+    # Same 70 as coverage-cpp: an empty build directory runs run_coverage_cpp.sh
     # before the Fortran extract.
-    timeout-minutes: 65
+    timeout-minutes: 70
     name: fortran coverage
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
