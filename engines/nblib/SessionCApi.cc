@@ -259,6 +259,7 @@ extern "C" int rgpot_md_session_engine_create(
       session = std::make_unique<rgpot::nblibpot::TprSession>(
           path, threadCount(options));
 #else
+      (void)options;
       throw std::invalid_argument(
           "this nblib engine was built without the TPR session; build it with "
           "-Dnblib_source and -Dnblib_build naming the GROMACS trees");

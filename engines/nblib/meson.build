@@ -37,15 +37,71 @@ endif
 nblib_rpath = nblib_prefix != '' ? nblib_prefix / 'lib' : ''
 
 if nblib_lib.found() and nblib_gmx_core.found()
+    nblib_sources = files(
+        'NblibEngine.cc',
+        'NblibSession.cc',
+        'NblibTopology.cc',
+        'SessionCApi.cc',
+    )
+    nblib_deps = [nblib_lib, nblib_gmx_core]
+    # The TPR session calls libgromacs directly. GROMACS installs the library
+    # and not the headers of those calls, so the source and build trees of
+    # the prefix supply them.
+    nblib_source = get_option('nblib_source')
+    nblib_build = get_option('nblib_build')
+    if nblib_source != '' and nblib_build != ''
+        nblib_sources += files('TprEngine.cc', 'TprSession.cc')
+        nblib_deps += dependency('openmp', language: 'cpp')
+        nblib_compile += ['-DRGPOT_NBLIB_HAS_TPR', '-DHAVE_CONFIG_H']
+        nblib_modules = run_command(
+            find_program('find'),
+            nblib_source / 'src/gromacs',
+            '-mindepth',
+            '2',
+            '-maxdepth',
+            '2',
+            '-name',
+            'include',
+            '-type',
+            'd',
+            check: true,
+        ).stdout().strip().split('\n')
+        foreach dir : nblib_modules + [
+            nblib_source / 'src',
+            nblib_source / 'src/include',
+            nblib_source / 'src/external',
+            nblib_source / 'src/external/thread_mpi/include',
+            nblib_source / 'api/legacy/include',
+            nblib_build / 'src/include',
+            nblib_build / 'api/legacy/include',
+        ]
+            nblib_compile += ['-isystem', dir]
+        endforeach
+        # The headers fix the SIMD layout the library was built with.
+        if cppc.compiles(
+            '''#include "config.h"
+            #if !GMX_SIMD_X86_AVX2_256
+            #error other SIMD
+            #endif''',
+            args: ['-I' + nblib_build / 'src/include'],
+            name: 'GROMACS built for AVX2',
+        )
+            nblib_compile += ['-mavx2', '-mfma']
+        elif cppc.compiles(
+            '''#include "config.h"
+            #if !GMX_SIMD_X86_AVX_512
+            #error other SIMD
+            #endif''',
+            args: ['-I' + nblib_build / 'src/include'],
+            name: 'GROMACS built for AVX-512',
+        )
+            nblib_compile += ['-mavx512f', '-mavx512dq', '-mfma']
+        endif
+    endif
     nblib_engine = shared_library(
         'nblib_engine',
-        files(
-            'NblibTopology.cc',
-            'NblibEngine.cc',
-            'NblibSession.cc',
-            'SessionCApi.cc',
-        ),
-        dependencies: [nblib_lib, nblib_gmx_core],
+        nblib_sources,
+        dependencies: nblib_deps,
         link_with: rgpot,
         include_directories: [engines_inc, rgpot_inc, include_directories('.')],
         cpp_args: _args + nblib_compile,
