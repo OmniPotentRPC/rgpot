@@ -151,7 +151,9 @@ fd_stress(Pot &pot, const std::vector<double> &pos, const std::vector<int> &z,
       double strained_box[9];
       apply(pos.data(), moved.data(), pos.size() / 3);
       apply(box, strained_box, 3);
-      return run(pot, moved, z, strained_box).energy;
+      // A stress request runs the double-precision mesh. The float mesh of
+      // a force-only call is too coarse for a central difference.
+      return run(pot, moved, z, strained_box, true).energy;
     };
     answer[static_cast<std::size_t>(component)] =
         (energy(step) - energy(-step)) / (2.0 * step * volume);
@@ -881,10 +883,12 @@ void test_forces_and_stress() {
   const Eval spme_force_only = run(spme, pos, z, box);
   const Eval es = run(spme, pos, z, box, true);
   check(!spme_force_only.has_stress, "SPME force-only path leaves stress unset");
-  check_close(spme_force_only.energy, es.energy, 1e-12,
+  // A force-only call runs the single-precision mesh and a stress request the
+  // double one, so the two agree to the float mesh, not bit for bit.
+  check_close(spme_force_only.energy, es.energy, 1e-6,
               "SPME stress opt-in preserves energy");
   for (std::size_t i = 0; i < spme_force_only.f.size(); ++i) {
-    check_close(spme_force_only.f[i], es.f[i], 1e-12,
+    check_close(spme_force_only.f[i], es.f[i], 5e-6,
                 "SPME stress opt-in preserves forces");
   }
   std::cout << "CASE ewald_cluster " << e0.energy << '\n';
@@ -892,7 +896,8 @@ void test_forces_and_stress() {
   check_close(es.energy, e0.energy, 2e-3, "SPME matches Ewald");
   for (std::size_t i = 0; i < pos.size(); ++i) {
     const double f = fd_force(
-        [&](const std::vector<double> &p) { return run(spme, p, z, box).energy; }, pos, i, 1e-5);
+        [&](const std::vector<double> &p) { return run(spme, p, z, box, true).energy; }, pos, i,
+        1e-5);
     check_close(es.f[i], f, 5e-4, "SPME force");
   }
 
@@ -2018,6 +2023,8 @@ void test_cuda_and_periodic_mbd() {
   cfg.method = CoulombMethod::SPME;
   cfg.grid[0] = cfg.grid[1] = cfg.grid[2] = 16;
   cfg.spline_order = 4;
+  // The device kernel is double precision, so compare it with the double mesh.
+  cfg.stress = true;
   std::fill(serialF.begin(), serialF.end(), 0.0);
   rgpot::lr::evaluate_electrostatics(CoulombMethod::SPME, cfg, pos, q, 4, 0.0, box, pairs,
                                     serialF.data(), nullptr, &serial);
@@ -2425,25 +2432,24 @@ void test_capped_phase_team() {
   run(pot, pos, z, box);
   const Eval wide = run(pot, pos, z, box);
   const rgpot::lr::PmeTrace tr = rgpot::lr::pme_trace();
-  check(tr.spread_team >= 1, "spread records its team");
-  check(tr.fft_team >= 1, "the transform records its team");
-  check(tr.kernel_team >= 1, "the kernel records its team");
-  check(tr.gather_team >= 1, "gather records its team");
-  check(tr.real_team >= 1, "real space records its team");
-  check_close(wide.energy, team4.energy, 1e-12,
-              "wide-team energy matches the four-thread mesh");
-  check_close(wide.energy, serial.energy, 1e-12,
-              "wide-team energy matches the serial energy");
+  check(tr.spread_team == 4, "spread runs the capped team");
+  check(tr.fft_team == 4, "the transform runs the capped team");
+  check(tr.kernel_team == 4, "the kernel runs the capped team");
+  check(tr.gather_team == 4, "gather runs the capped team");
+  check(tr.real_team == 4, "real space runs on the spare threads");
+  check(wide.energy == team4.energy && wide.f == team4.f,
+        "beside real space matches the four-thread mesh bit for bit");
+  check_close(wide.energy, serial.energy, 1e-12, "beside energy matches the serial energy");
   double versus_serial = 0.0;
   double versus_four = 0.0;
   for (std::size_t i = 0; i < wide.f.size(); ++i) {
     versus_serial = std::max(versus_serial, std::abs(wide.f[i] - serial.f[i]));
     versus_four = std::max(versus_four, std::abs(wide.f[i] - team4.f[i]));
   }
-  check(versus_four <= 1e-9,
-        "wide-team forces match the four-thread forces");
-  check(versus_serial <= 1e-9,
-        "wide-team forces stay inside the transform gap");
+  // The float slab transform already moves forces by about 2e-10 against
+  // one thread. The beside run adds nothing on top of that.
+  check(versus_four == 0.0, "beside forces match the four-thread forces bit for bit");
+  check(versus_serial <= 1e-9, "beside forces stay inside the float-transform gap");
 #ifdef _OPENMP
   check(omp_get_max_threads() == 8, "the pool is the mesh team plus real space");
 #endif

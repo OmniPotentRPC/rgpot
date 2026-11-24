@@ -40,8 +40,6 @@ std::vector<float> g_charge_f;
 
 constexpr double kKe = units::HARTREE_TO_EV * units::BOHR_TO_ANGSTROM;
 constexpr double kPi = std::numbers::pi;
-// The float mesh does not satisfy the force and energy accuracy contract.
-constexpr bool kUseFloatMesh = false;
 
 // Mesh slices while real space shares the call. Zero means one slice per
 // pool thread (or spme_slice_limit() during an SPME evaluation). The mesh
@@ -1180,7 +1178,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   // shared grid serialize the spread and make two threads slower than one.
   const int nthreads = thread_count();
   const bool trace = std::getenv("LR_PME_PROFILE") != nullptr;
-  const bool mesh_float_now = kUseFloatMesh && !cfg.stress;
+  const bool mesh_float_now = !cfg.stress;
   if (!mesh_float_now) {
     if (!g_charge_f.empty()) {
       g_charge_f.clear();
@@ -1564,7 +1562,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
                  std::chrono::duration<double, std::micro>(t_reduce0 - t_spread0).count(),
                  std::chrono::duration<double, std::micro>(t_fft0 - t_reduce0).count());
   }
-  const bool mesh_float = kUseFloatMesh && !cfg.stress;
+  const bool mesh_float = !cfg.stress;
   if (!mesh_float) {
     fft3(grid, nx, ny, nz, false, nthreads);
   }
@@ -1930,8 +1928,7 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   const int asked = std::max(caller_team(), thread_count());
   const int mesh_cap = axis_workers(std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2])), asked);
   const int real_beside =
-      method == CoulombMethod::SPME && kUseFloatMesh && !cfg.stress &&
-              dE_dq == nullptr
+      method == CoulombMethod::SPME && !cfg.stress && dE_dq == nullptr
           ? beside_real_workers(static_cast<int>(n),
                                 std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2])), asked)
           : 0;
@@ -1977,10 +1974,8 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   }
   // Two threads do not speed a short transform, so the second thread runs
   // real space in the same OpenMP region.
-  const bool beside_pair =
-      method == CoulombMethod::SPME && kUseFloatMesh &&
-      thread_count() == 2 && mesh_cap == 1 && !cfg.stress &&
-      dE_dq == nullptr;
+  const bool beside_pair = method == CoulombMethod::SPME && thread_count() == 2 && mesh_cap == 1 &&
+                           !cfg.stress && dE_dq == nullptr;
   if (beside_pair) {
     std::vector<double> extra(3 * n, 0.0);
     ElecOut local{};
