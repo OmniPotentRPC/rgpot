@@ -796,7 +796,8 @@ void Neighbours::buildStored(const double *xyz, std::size_t n,
               continue;
             }
             const double r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 <= search2) {
+            // A NaN length is not outside the search. The potential decides.
+            if (!(r2 > search2)) {
               out.push_back(j);
             }
           }
