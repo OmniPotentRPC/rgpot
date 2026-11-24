@@ -777,11 +777,11 @@ rgpot.TersoffPot()
   =caps()["stress"]= is true.
   A call with a positive cell volume returns stress from the gather path or the
   silicon-carbon path.
-  A mixed-species call with an orthorhombic cell of non-positive volume returns
-  =stress= =None=.
+  A mixed-species call with a zero-volume orthorhombic cell returns =stress=
+  =None=.
 - Errors :: an atomic number other than 6 or 14 raises =ValueError=
   =TersoffSiC: atomic number Z is neither carbon (6) nor silicon (14)=.
-  An all-silicon call with a non-positive or non-finite cell raises
+  An all-silicon call with a zero-volume or non-finite cell raises
   =RuntimeError=
   =Tersoff potential failed (status 4): rgpot_neighbors: box must be finite, and a periodic box must have positive volume=.
   A mixed-species call with a non-finite cell raises =ValueError=

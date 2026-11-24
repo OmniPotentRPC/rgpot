@@ -136,12 +136,12 @@ A zero-atom call with a null box succeeds without stress.
 A call with no atoms does the same for any box.
 An all-silicon call with atoms and a null box throws
 =std::runtime_error= =Tersoff potential failed (status 2): rgpot_neighbors: a required neighbour pointer is null=.
-An all-silicon call with atoms and a non-positive or non-finite box throws
+An all-silicon call with atoms and a zero-volume or non-finite box throws
 =std::runtime_error= =Tersoff potential failed (status 4): rgpot_neighbors: box must be finite, and a periodic box must have positive volume=.
 A mixed-species call with atoms and a null box throws =std::invalid_argument=
 =TersoffSiC: null cell=.
-A mixed-species call with atoms and an orthorhombic cell of non-positive volume
-leaves =has_stress= at 0 and the nine entries at zero.
+A mixed-species call with atoms and a zero-volume orthorhombic cell leaves
+=has_stress= at 0 and the nine entries at zero.
 A mixed-species call with atoms and a singular skewed cell throws
 =std::invalid_argument= =periodic cell must be nonsingular=.
 A mixed-species call with a non-finite cell throws =std::invalid_argument=
