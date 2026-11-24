@@ -171,7 +171,7 @@ jobs, matrix legs pooled: the last 100 completed orchestrator runs and the last
 |------|-----------|----------------------|-------------------|
 | `potentials_uma_engine` | 10.9 | 1200 s, `doccheck_examples` | 35 |
 | `build_and_test`, `thread_limit`, `potentials_metatomic` | 7.2, 5.2, 8.4 | 1200 s | 30 |
-| `coverage-cpp`, `coverage-fortran` (`coverage.yml`) | 6.3, 6.1 | 1440 s with the coverage multiplier (thread-team shards, registry 480 s) | 70 |
+| `coverage-cpp`, `coverage-fortran` (`coverage.yml`) | 6.3, 6.1 | 1920 s with the coverage multiplier of 4 (thread-team shards, registry 480 s) | 70 |
 | `nodownload_rehearsal`, `build_fast_nlist_off`, `potentials_tight_binding` | 4.0, 3.9, 4.4 | 1200 s | 25 |
 | `build_windows_meson` | 7.1 | 900 s, `StreamParityTest` | 25 |
 | `engines` | 5.4 | 600 s, the plumed tests | 20 |
@@ -187,6 +187,8 @@ run included one shard at 341 s that took 50 s when the same binary was run
 again. 60% of 70 minutes is 2520 s, so the measured run is 49% of the job and
 another stall of that size still fits. 65 minutes would not. `coverage-fortran`
 runs the same script when `bbdir-cov` is absent, then extracts the Fortran kernels.
+Both jobs take the multiplier of 4 from `RGPOT_COV_TIMEOUT_MULTIPLIER` in the
+workflow `env`, so the Fortran fallback cannot run with a different limit.
 
 Timeouts set before the rule stay, all above it: cosmo `build-ape` 120 (a cache
 miss rebuilds the Cosmopolitan toolchain), the reusable `py-wheels` 150,
