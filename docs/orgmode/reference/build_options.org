@@ -31,6 +31,7 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =team_min_atoms= | integer | =8192= | Minimum atom count for opening an OpenMP team. |
 | =with_fast_nlist= | feature | =auto= | linkcell/minimage pair list. Auto when cargo and rustc 1.89 or newer are found; otherwise the C++ pair scan is used. |
 | =with_cp2k= | feature | =disabled= | CP2KPot, the potserv CP2K backend and libcp2kc_rgpot.so against libcp2k (pkg-config libcp2k); needs with_rpc |
+| =with_potlibc= | feature | =disabled= | Build =libpotlibc_engine.so= against the potlibc C API. |
 | =with_mpi= | feature | =disabled= | Build =librgpot_mpi=, which =librgpot= loads with =dlopen= so calculator groups can split and share across ranks. =librgpot= itself never links MPI. |
 | =with_xtb= | boolean | =false= | Link xtb (=dependency('xtb')=) and build =XTBPot=. |
 | =with_xckernel= | boolean | =false= | Build the in-process libxckernel XC kernel (=XcKernel=, generated C ABI; not a Potential). |
