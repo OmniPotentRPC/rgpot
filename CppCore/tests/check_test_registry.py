@@ -231,6 +231,67 @@ def inside(path: str | Path, directory: Path) -> bool:
     return Path(os.path.realpath(path)).is_relative_to(os.path.realpath(directory))
 
 
+def _cmake_tokens(text: str) -> list[str]:
+    tokens: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        if text[i].isspace():
+            i += 1
+            continue
+        if text[i] == '"':
+            i += 1
+            buf: list[str] = []
+            while i < n and text[i] != '"':
+                if text[i] == "\\" and i + 1 < n:
+                    i += 1
+                buf.append(text[i])
+                i += 1
+            i += 1
+            tokens.append("".join(buf))
+            continue
+        bracket = re.match(r"\[(=*)\[", text[i:])
+        if bracket:
+            close = f"]{bracket.group(1)}]"
+            start = i + bracket.end()
+            end = text.find(close, start)
+            if end == -1:
+                tokens.append(text[start:])
+                break
+            tokens.append(text[start:end])
+            i = end + len(close)
+            continue
+        j = i
+        while j < n and not text[j].isspace():
+            j += 1
+        tokens.append(text[i:j])
+        i = j
+    return tokens
+
+
+def ctest_testfile_commands(build: Path) -> dict[str, list[str]]:
+    commands: dict[str, list[str]] = {}
+    pending = [build]
+    seen: set[Path] = set()
+    while pending:
+        directory = pending.pop(0).resolve()
+        if directory in seen:
+            continue
+        seen.add(directory)
+        testfile = directory / "CTestTestfile.cmake"
+        if not testfile.is_file():
+            continue
+        for raw in testfile.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if line.startswith("add_test(") and line.endswith(")"):
+                tokens = _cmake_tokens(line[len("add_test(") : -1])
+                if len(tokens) >= 2:
+                    commands[tokens[0]] = tokens[1:]
+            elif line.startswith("subdirs(") and line.endswith(")"):
+                for sub in _cmake_tokens(line[len("subdirs(") : -1]):
+                    pending.append(directory / sub)
+    return commands
+
+
 def cmake_tests(build: Path, ctest: str) -> list[Test]:
     shown = subprocess.run(
         [ctest, "--show-only=json-v1"],
@@ -241,6 +302,7 @@ def cmake_tests(build: Path, ctest: str) -> list[Test]:
     )
     data = json.loads(shown.stdout)
     graph = data["backtraceGraph"]
+    fallback_commands = ctest_testfile_commands(build)
     tests = []
     for test in data["tests"]:
         # Tests a fetched dependency registers are defined under the build tree.
@@ -249,6 +311,7 @@ def cmake_tests(build: Path, ctest: str) -> list[Test]:
             continue
         props = {p["name"]: p["value"] for p in test.get("properties", [])}
         env = dict(item.partition("=")[::2] for item in props.get("ENVIRONMENT", []))
+        raw_cmd = test.get("command") or fallback_commands.get(test["name"], [])
         tests.append(
             Test(
                 name=test["name"],
@@ -258,7 +321,7 @@ def cmake_tests(build: Path, ctest: str) -> list[Test]:
                 env=env,
                 serial=bool(props.get("RUN_SERIAL", False)),
                 should_fail=bool(props.get("WILL_FAIL", False)),
-                command=[str(part) for part in test.get("command", [])],
+                command=[str(part) for part in raw_cmd],
             )
         )
     return tests
@@ -425,9 +488,6 @@ def check_thread_team_shards(
     built = registered.get(unit.name)
     if built is None:
         return []
-    exe = built.command[0] if built.command else ""
-    if not exe or not os.path.isfile(exe):
-        return [f"{unit.name}: no executable to compare shard tags against --list-tests"]
     problems = []
     families: dict[str, list[tuple[Entry, str]]] = {}
     for entry in entries.values():
@@ -440,6 +500,22 @@ def check_thread_team_shards(
         families.setdefault(entry.env.get("OMP_THREAD_LIMIT", ""), []).append((entry, tags[0]))
     if problems:
         return problems
+    family_tags = {
+        limit: {tag for _, tag in members} for limit, members in sorted(families.items())
+    }
+    if len(family_tags) > 1:
+        baseline_limit, baseline_tags = next(iter(family_tags.items()))
+        for limit, tags in family_tags.items():
+            if tags != baseline_tags:
+                problems.append(
+                    f"ThreadTeamTest.cc {family_label(limit)} shard tags differ from "
+                    f"{family_label(baseline_limit)}"
+                )
+    if problems:
+        return problems
+    exe = built.command[0] if built.command else ""
+    if not exe or not os.path.isfile(exe):
+        return []
     full, error = catch_list(exe, built.env)
     if error:
         return [error]
@@ -760,6 +836,43 @@ def selftest() -> int:
                 self.assertEqual(shown.returncode, 0, shown.stderr)
                 names = [test["name"] for test in json.loads(shown.stdout)["tests"]]
             self.assertEqual(names, ["CuH2 Utils Test"])
+
+        def test_ctest_testfile_fallback_and_unbuilt_shards(self) -> None:
+            entries, problems = parse(REGISTRY)
+            self.assertEqual(problems, [])
+            with tempfile.TemporaryDirectory() as tmp:
+                build = Path(tmp) / "build"
+                sub = build / "sub"
+                sub.mkdir(parents=True)
+                (build / "CTestTestfile.cmake").write_text(
+                    'add_test([=[ThreadTeamTest_slices]=] "/missing/thread_team_test" "[slices]")\n'
+                    'subdirs("sub")\n',
+                    encoding="utf-8",
+                )
+                (sub / "CTestTestfile.cmake").write_text(
+                    'add_test([=[PluginTest]=] "/missing/PluginTest")\n',
+                    encoding="utf-8",
+                )
+                commands = ctest_testfile_commands(build)
+                self.assertEqual(
+                    commands["ThreadTeamTest_slices"],
+                    ["/missing/thread_team_test", "[slices]"],
+                )
+                self.assertEqual(commands["PluginTest"], ["/missing/PluginTest"])
+                tests = [
+                    Test(
+                        name="ThreadTeamTest_slices",
+                        timeout=480,
+                        suites={"core"},
+                        workdir=str(ROOT),
+                        env={},
+                        serial=False,
+                        should_fail=False,
+                        command=commands["ThreadTeamTest_slices"],
+                    )
+                ]
+                features = {"tests": True, "core": True}
+                self.assertEqual(check_thread_team_shards(entries, tests, features), [])
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(CliAndParitySelfTest)
     result = unittest.TextTestRunner(stream=sys.stdout, verbosity=2).run(suite)
