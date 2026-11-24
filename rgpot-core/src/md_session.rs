@@ -22,20 +22,49 @@ pub const NM_PER_ANGSTROM: f64 = 0.1;
 /// Conversion factor from `eV` to `amu * (Angstrom / ps)^2`.
 pub const AMU_A2_PS2_PER_EV: f64 = KJ_PER_EV * 100.0;
 
+/// What an [`MdSessionError`] reports.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MdSessionErrorKind {
+    /// The engine or an argument check refused the call.
+    Failed,
+    /// The engine's operation table has a null required callback, named here.
+    MissingOperation(&'static str),
+}
+
 /// Error raised by an MD session or its C ABI boundary.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MdSessionError(String);
+pub struct MdSessionError {
+    kind: MdSessionErrorKind,
+    message: String,
+}
 
 impl MdSessionError {
     /// Construct an MD session error with a diagnostic message.
     pub fn new(message: impl Into<String>) -> Self {
-        Self(message.into())
+        Self {
+            kind: MdSessionErrorKind::Failed,
+            message: message.into(),
+        }
+    }
+
+    /// The error for a null required callback `slot` of [`MdSessionOps`].
+    pub fn missing_operation(slot: &'static str) -> Self {
+        Self {
+            kind: MdSessionErrorKind::MissingOperation(slot),
+            message: format!("MD session operation table has a null {slot}"),
+        }
+    }
+
+    /// What this error reports.
+    pub fn kind(&self) -> MdSessionErrorKind {
+        self.kind
     }
 }
 
 impl fmt::Display for MdSessionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.message)
     }
 }
 
@@ -557,6 +586,30 @@ pub struct MdSessionOps {
     >,
 }
 
+/// The callbacks every [`MdSessionOps`] must hold, by name and offset.
+const REQUIRED_OPS: [(&str, usize); 7] = [
+    (
+        "set_positions",
+        std::mem::offset_of!(MdSessionOps, set_positions),
+    ),
+    (
+        "set_velocities",
+        std::mem::offset_of!(MdSessionOps, set_velocities),
+    ),
+    (
+        "step_langevin",
+        std::mem::offset_of!(MdSessionOps, step_langevin),
+    ),
+    ("step_nve", std::mem::offset_of!(MdSessionOps, step_nve)),
+    ("get_state", std::mem::offset_of!(MdSessionOps, get_state)),
+    ("get_masses", std::mem::offset_of!(MdSessionOps, get_masses)),
+    ("destroy", std::mem::offset_of!(MdSessionOps, destroy)),
+];
+
+/// The smallest `struct_size` that holds every required callback.
+const REQUIRED_OPS_SIZE: usize = std::mem::offset_of!(MdSessionOps, destroy)
+    + std::mem::size_of::<unsafe extern "C" fn(*mut c_void)>();
+
 /// Rust owner for an engine-agnostic C ABI MD session vtable.
 pub struct CAbiMdSession {
     ctx: NonNull<c_void>,
@@ -580,9 +633,7 @@ impl CAbiMdSession {
         ops: MdSessionOps,
         n_atoms: usize,
     ) -> Result<Self, MdSessionError> {
-        let required = std::mem::offset_of!(MdSessionOps, destroy)
-            + std::mem::size_of::<unsafe extern "C" fn(*mut c_void)>();
-        if ops.struct_size < required {
+        if ops.struct_size < REQUIRED_OPS_SIZE {
             return Err(MdSessionError::new(
                 "MD session vtable struct_size is too small",
             ));
@@ -590,16 +641,30 @@ impl CAbiMdSession {
         let mut ops = ops;
         // A vtable built against an older header ends before the optional
         // callbacks; whatever the struct holds there is not a callback.
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, set_periodic_box) + 8 {
+        let size = ops.struct_size;
+        let holds = |offset: usize, slot: usize| offset + slot <= size;
+        if !holds(
+            std::mem::offset_of!(MdSessionOps, set_periodic_box),
+            std::mem::size_of_val(&ops.set_periodic_box),
+        ) {
             ops.set_periodic_box = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, get_periodic_box) + 8 {
+        if !holds(
+            std::mem::offset_of!(MdSessionOps, get_periodic_box),
+            std::mem::size_of_val(&ops.get_periodic_box),
+        ) {
             ops.get_periodic_box = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, initialize) + 8 {
+        if !holds(
+            std::mem::offset_of!(MdSessionOps, initialize),
+            std::mem::size_of_val(&ops.initialize),
+        ) {
             ops.initialize = None;
         }
-        if ops.struct_size < std::mem::offset_of!(MdSessionOps, run_langevin) + 8 {
+        if !holds(
+            std::mem::offset_of!(MdSessionOps, run_langevin),
+            std::mem::size_of_val(&ops.run_langevin),
+        ) {
             ops.run_langevin = None;
         }
         let Some(n3) = n_atoms.checked_mul(3) else {
@@ -615,6 +680,63 @@ impl CAbiMdSession {
             n3,
             #[cfg(feature = "profile")]
             _library: None,
+        })
+    }
+
+    /// Take ownership of the context and the operation table an engine's
+    /// create call wrote.
+    ///
+    /// `ops` is the table the engine filled after it was zeroed, so a slot
+    /// it left out reads as null. A null `ctx`, a `struct_size` that does
+    /// not reach `destroy`, or a null required callback is an error, the
+    /// last of kind [`MdSessionErrorKind::MissingOperation`]. Once `destroy`
+    /// is known to be present, every error calls it on `ctx`, so a refused
+    /// session is released. A table without `destroy` cannot release its
+    /// context, and the engine leaks it.
+    ///
+    /// # Safety
+    ///
+    /// Every non-null slot of `ops` inside its `struct_size` must be a
+    /// callback that upholds the C ABI contract in `external_potentials.h`
+    /// for `ctx`, and `ctx` must stay valid until `destroy` is called.
+    pub unsafe fn from_engine_ops(
+        ctx: *mut c_void,
+        ops: std::mem::MaybeUninit<MdSessionOps>,
+        n_atoms: usize,
+    ) -> Result<Self, MdSessionError> {
+        let Some(ctx) = NonNull::new(ctx) else {
+            return Err(MdSessionError::new("MD engine returned null session"));
+        };
+        let base = ops.as_ptr().cast::<u8>();
+        // An Option of a function pointer is defined for every bit pattern,
+        // null included, so each slot can be read before the table is.
+        let slot = |offset: usize| unsafe {
+            base.add(offset)
+                .cast::<Option<unsafe extern "C" fn()>>()
+                .read()
+        };
+        let struct_size = unsafe { base.cast::<usize>().read() };
+        if struct_size < REQUIRED_OPS_SIZE {
+            return Err(MdSessionError::new(
+                "MD session vtable struct_size is too small",
+            ));
+        }
+        let Some(destroy) = (unsafe {
+            base.add(std::mem::offset_of!(MdSessionOps, destroy))
+                .cast::<Option<unsafe extern "C" fn(*mut c_void)>>()
+                .read()
+        }) else {
+            return Err(MdSessionError::missing_operation("destroy"));
+        };
+        for (name, offset) in REQUIRED_OPS {
+            if slot(offset).is_none() {
+                unsafe { destroy(ctx.as_ptr()) };
+                return Err(MdSessionError::missing_operation(name));
+            }
+        }
+        let ops = unsafe { ops.assume_init() };
+        unsafe { Self::from_ops(ctx, ops, n_atoms) }.inspect_err(|_| unsafe {
+            destroy(ctx.as_ptr());
         })
     }
 
@@ -658,7 +780,7 @@ impl CAbiMdSession {
             Some(value) => value.as_ptr(),
             None => std::ptr::null(),
         };
-        let mut ops: MdSessionOps = unsafe { std::mem::zeroed() };
+        let mut ops = std::mem::MaybeUninit::<MdSessionOps>::zeroed();
         let mut ctx: *mut c_void = std::ptr::null_mut();
         let mut n_atoms: usize = 0;
         let mut error = [0 as c_char; 1024];
@@ -671,7 +793,7 @@ impl CAbiMdSession {
                 },
                 spec.len(),
                 options_ptr,
-                &mut ops,
+                ops.as_mut_ptr(),
                 &mut ctx,
                 &mut n_atoms,
                 error.as_mut_ptr(),
@@ -681,10 +803,7 @@ impl CAbiMdSession {
         if status != 0 {
             return Err(MdSessionError::new(error_message(&error)));
         }
-        let Some(ctx) = NonNull::new(ctx) else {
-            return Err(MdSessionError::new("MD engine returned null session"));
-        };
-        let mut session = unsafe { Self::from_ops(ctx, ops, n_atoms) }?;
+        let mut session = unsafe { Self::from_engine_ops(ctx, ops, n_atoms) }?;
         session._library = Some(library);
         Ok(session)
     }
@@ -1448,7 +1567,7 @@ mod tests {
         let mut ops = mock_ops();
         ops.run_langevin = Some(mock_run_langevin);
         ops.set_periodic_box = Some(mock_set_periodic_box);
-        ops.struct_size = std::mem::offset_of!(MdSessionOps, destroy) + 8;
+        ops.struct_size = REQUIRED_OPS_SIZE;
         let (mut session, _ctx) = mock_session(ops, &destroyed);
         assert!(session.set_periodic_box(&[0.0; 9]).is_err());
         assert!(session
@@ -1474,6 +1593,100 @@ mod tests {
             unsafe { CAbiMdSession::from_ops(NonNull::new_unchecked(ctx.cast()), tiny, 2) };
         assert!(refused.is_err());
         drop(unsafe { Box::from_raw(ctx) });
+    }
+
+    fn mock_ctx(destroyed: &Arc<AtomicBool>) -> *mut MockCtx {
+        Box::into_raw(Box::new(MockCtx {
+            positions: vec![0.0; 6],
+            velocities: vec![0.0; 6],
+            masses: vec![4.0, 39.9],
+            last_seed: 0,
+            last_k_t: 0.0,
+            last_time_step: 0.0,
+            last_n_walls: 0,
+            last_wall_mode: -1,
+            cell: [0.0; 9],
+            fail_next: false,
+            destroyed: Arc::clone(destroyed),
+        }))
+    }
+
+    /// The table an engine writes, with the slot at `offset` left null.
+    fn engine_ops_without(offset: usize) -> std::mem::MaybeUninit<MdSessionOps> {
+        let mut ops = std::mem::MaybeUninit::new(mock_ops());
+        unsafe {
+            ops.as_mut_ptr()
+                .cast::<u8>()
+                .add(offset)
+                .write_bytes(0, std::mem::size_of::<Option<unsafe extern "C" fn()>>());
+        }
+        ops
+    }
+
+    #[test]
+    fn a_null_required_callback_is_refused_and_the_context_released() {
+        for (name, offset) in REQUIRED_OPS {
+            if name == "destroy" {
+                continue;
+            }
+            let destroyed = Arc::new(AtomicBool::new(false));
+            let ctx = mock_ctx(&destroyed);
+            let err = unsafe {
+                CAbiMdSession::from_engine_ops(ctx.cast(), engine_ops_without(offset), 2)
+            }
+            .err()
+            .expect("a null callback is refused");
+            assert_eq!(err.kind(), MdSessionErrorKind::MissingOperation(name));
+            assert!(err.to_string().contains(name));
+            assert!(
+                destroyed.load(Ordering::SeqCst),
+                "{name} leaked the context"
+            );
+        }
+    }
+
+    #[test]
+    fn a_null_destroy_is_refused() {
+        let destroyed = Arc::new(AtomicBool::new(false));
+        let ctx = mock_ctx(&destroyed);
+        let ops = engine_ops_without(std::mem::offset_of!(MdSessionOps, destroy));
+        let err = unsafe { CAbiMdSession::from_engine_ops(ctx.cast(), ops, 2) }
+            .err()
+            .expect("a null destroy is refused");
+        assert_eq!(err.kind(), MdSessionErrorKind::MissingOperation("destroy"));
+        assert!(!destroyed.load(Ordering::SeqCst));
+        drop(unsafe { Box::from_raw(ctx) });
+    }
+
+    #[test]
+    fn a_refused_engine_table_releases_the_context() {
+        let destroyed = Arc::new(AtomicBool::new(false));
+        let ctx = mock_ctx(&destroyed);
+        let ops = std::mem::MaybeUninit::new(mock_ops());
+        let err = unsafe { CAbiMdSession::from_engine_ops(ctx.cast(), ops, 0) }
+            .err()
+            .expect("zero atoms are refused");
+        assert_eq!(err.kind(), MdSessionErrorKind::Failed);
+        assert!(destroyed.load(Ordering::SeqCst));
+
+        let null = unsafe {
+            CAbiMdSession::from_engine_ops(
+                std::ptr::null_mut(),
+                std::mem::MaybeUninit::new(mock_ops()),
+                2,
+            )
+        };
+        assert!(null.is_err());
+
+        let destroyed = Arc::new(AtomicBool::new(false));
+        let ctx = mock_ctx(&destroyed);
+        let session = unsafe {
+            CAbiMdSession::from_engine_ops(ctx.cast(), std::mem::MaybeUninit::new(mock_ops()), 2)
+        }
+        .expect("a full table is adopted");
+        assert_eq!(session.dof(), 6);
+        drop(session);
+        assert!(destroyed.load(Ordering::SeqCst));
     }
 
     #[test]
