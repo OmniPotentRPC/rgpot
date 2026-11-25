@@ -5,6 +5,7 @@
 #include "rgpot/Potential.hpp"
 #include "rgpot/engine/EngineError.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -46,11 +47,19 @@ public:
             .analyticHvp = true};
   }
 
+  [[nodiscard]] uint64_t paramsKey() const noexcept override {
+    return params_key_;
+  }
+
   void setChargeSpin(int charge, int multiplicity);
   void setNumThreads(int intra_op, int inter_op);
 
 private:
+  static constexpr uint64_t kKernelVersion = 1;
+
   class Worker;
+  DxtbConfig config_;
+  uint64_t params_key_;
   std::unique_ptr<Worker> worker_;
 };
 

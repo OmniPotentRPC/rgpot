@@ -1471,6 +1471,7 @@ if not meson.is_subproject() and get_option('with_tests')
             'cp2kc_shim',
             'rgpot_cuh2',
             'xtb_engine',
+            'dxtb_engine',
             'metatomic_engine',
             'uma_engine',
             'rgpot',

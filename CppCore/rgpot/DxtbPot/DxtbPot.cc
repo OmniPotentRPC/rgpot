@@ -4,6 +4,7 @@
 #include "rgpot/DxtbPot/DxtbPot.hpp"
 
 #include "rgpot/DxtbPot/DxtbWorkerSource.hpp"
+#include "rgpot/ParamHash.hpp"
 #include "rgpot/engine/EngineError.hpp"
 
 #include <cerrno>
@@ -74,6 +75,19 @@ double readF64(const unsigned char *data) {
 
 std::string systemMessage(const char *operation) {
   return std::string(operation) + ": " + std::strerror(errno);
+}
+
+uint64_t paramsKeyFor(const DxtbConfig &config, uint64_t kernelVersion) {
+  Fnv1a hash;
+  hash.str("rgpot::DxtbPot");
+  hash.u64(kernelVersion);
+  hash.i64(config.method == DxtbMethod::GFN1 ? 1 : 2);
+  hash.f64(config.charge);
+  hash.i64(config.uhf);
+  hash.f64(config.accuracy);
+  hash.f64(config.electronic_temperature);
+  hash.i64(config.max_iterations);
+  return hash.h;
 }
 
 } // namespace
@@ -359,7 +373,9 @@ private:
 };
 
 DxtbPot::DxtbPot(const DxtbConfig &config)
-    : Potential(PotType::UNKNOWN), worker_(std::make_unique<Worker>(config)) {}
+    : Potential(PotType::UNKNOWN), config_(config),
+      params_key_(paramsKeyFor(config_, kKernelVersion)),
+      worker_(std::make_unique<Worker>(config_)) {}
 
 DxtbPot::~DxtbPot() = default;
 
@@ -374,6 +390,9 @@ void DxtbPot::hessianVectorImpl(const ForceInput &in, const double *direction,
 
 void DxtbPot::setChargeSpin(int charge, int multiplicity) {
   worker_->setChargeSpin(charge, multiplicity);
+  config_.charge = static_cast<double>(charge);
+  config_.uhf = multiplicity - 1;
+  params_key_ = paramsKeyFor(config_, kKernelVersion);
 }
 
 void DxtbPot::setNumThreads(int intra_op, int inter_op) {

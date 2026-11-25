@@ -744,6 +744,21 @@ changes.
 =forceImpl= differentiates the float64 dxtb energy once.
 =hessianVectorImpl= uses Torch double backward, not finite differences.
 
+*** =rgpot::DxtbPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a hash of the method, charge, unpaired-electron
+  count, accuracy, electronic temperature and iteration limit, together with a
+  kernel version.
+  Instances that differ in these values get different result-cache keys.
+- Errors :: none.
+
 *** =rgpot::DxtbPot::setChargeSpin=
 
 #+attr_rgpot: signature
@@ -754,7 +769,8 @@ void setChargeSpin(int charge, int multiplicity);
 - Inputs :: integral =charge= and positive =multiplicity=; dxtb receives
   =multiplicity - 1= as its unpaired-electron count.
 - Units :: charge is in elementary charges.
-- Outputs :: reconfigures the persistent worker and drops its calculator.
+- Outputs :: reconfigures the persistent worker, drops its calculator and
+  refreshes =paramsKey=.
 - Errors :: =engine::Unsupported= for a multiplicity below one, which the engine
   reports as return code 3 as the Skala and Metatomic engines do, or =DxtbError=
   with the worker's typed failure code.

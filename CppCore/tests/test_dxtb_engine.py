@@ -73,6 +73,9 @@ class Engine:
         method: str = "gfn2",
         charge: float = 0.0,
         uhf: int = 0,
+        accuracy: float = 1.0,
+        electronic_temperature: float = 300.0,
+        max_iterations: int = 300,
         library: str = "",
     ):
         self.lib = ctypes.CDLL(path)
@@ -134,6 +137,17 @@ class Engine:
             ctypes.c_int,
             ctypes.c_int,
         ]
+        self.lib.rgpot_engine_set_cache.restype = ctypes.c_int
+        self.lib.rgpot_engine_set_cache.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_char_p,
+        ]
+        self.lib.rgpot_engine_cache_counts.restype = ctypes.c_int
+        self.lib.rgpot_engine_cache_counts.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.POINTER(ctypes.c_uint64),
+        ]
         self.lib.rgpot_engine_last_error.restype = ctypes.c_size_t
         self.lib.rgpot_engine_last_error.argtypes = [
             ctypes.c_void_p,
@@ -146,9 +160,9 @@ class Engine:
         config = message.init("config")
         xtb = config.init("xtb")
         xtb.method = method
-        xtb.accuracy = 1.0
-        xtb.electronicTemperature = 300.0
-        xtb.maxIterations = 300
+        xtb.accuracy = accuracy
+        xtb.electronicTemperature = electronic_temperature
+        xtb.maxIterations = max_iterations
         xtb.charge = charge
         xtb.uhf = uhf
         encoded = message.to_bytes()
@@ -198,6 +212,18 @@ class Engine:
 
     def set_charge_spin(self, charge: int, spin: int) -> int:
         return int(self.lib.rgpot_engine_set_charge_spin(self.handle, charge, spin))
+
+    def attach_cache(self, path: Path) -> int:
+        return int(self.lib.rgpot_engine_set_cache(self.handle, os.fsencode(path)))
+
+    def cache_counts(self) -> tuple[int, int]:
+        computed = ctypes.c_uint64()
+        served = ctypes.c_uint64()
+        status = self.lib.rgpot_engine_cache_counts(
+            self.handle, ctypes.byref(computed), ctypes.byref(served)
+        )
+        assert status == 0
+        return computed.value, served.value
 
     def last_error(self) -> str:
         size = int(self.lib.rgpot_engine_last_error(self.handle, None, 0))
@@ -402,6 +428,51 @@ def test_charge_and_spin_come_from_config():
         )
         np.testing.assert_allclose(energy, ref_energy, rtol=2e-13, atol=2e-12)
         np.testing.assert_allclose(forces, ref_forces, rtol=2e-12, atol=2e-11)
+    finally:
+        engine.close()
+
+
+def test_cache_separates_every_dxtb_setting_and_runtime_charge_spin(tmp_path):
+    numbers = [6]
+    positions = [[0.0, 0.0, 0.0]]
+    cache = tmp_path / "dxtb-cache"
+    variants = [
+        {},
+        {"method": "gfn2"},
+        {"charge": 2.0},
+        {"uhf": 2},
+        {"accuracy": 0.8},
+        {"electronic_temperature": 500.0},
+        {"max_iterations": 301},
+    ]
+
+    for settings in variants:
+        engine = Engine(
+            os.environ["RGPOT_ENGINE_DXTB"],
+            "dxtb",
+            **{"method": "gfn1", **settings},
+        )
+        try:
+            status = engine.attach_cache(cache)
+            if status == 3:
+                pytest.skip("dxtb engine was built without cache support")
+            assert status == 0
+            engine.force(numbers, positions)
+            assert engine.cache_counts() == (1, 0)
+        finally:
+            engine.close()
+
+    engine = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", "gfn1")
+    try:
+        assert engine.attach_cache(cache) == 0
+        engine.force(numbers, positions)
+        assert engine.cache_counts() == (0, 1)
+        assert engine.set_charge_spin(2, 1) == 0
+        engine.force(numbers, positions)
+        assert engine.cache_counts() == (0, 2)
+        assert engine.set_charge_spin(0, 3) == 0
+        engine.force(numbers, positions)
+        assert engine.cache_counts() == (0, 3)
     finally:
         engine.close()
 
