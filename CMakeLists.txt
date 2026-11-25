@@ -623,8 +623,13 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_WITH_RPC)
     target_link_libraries(rgpot PUBLIC ptlrpc)
+    # ExternalPot.cc includes the generated Potentials.capnp.h. Listing the
+    # generated headers as sources orders them before its compile in a
+    # parallel build, as ptlrpc_hdr_dep does for Meson.
+    target_sources(rgpot PRIVATE ${CAPNP_HEADERS})
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_NWCHEM_FRONTEND
                                             RGPOT_HAS_CPMD_FRONTEND)
+    target_compile_definitions(rgpot PRIVATE RGPOT_LAMMPC_PROFILE=1)
     # DynLib / dlopen for libnwchemc.so / libcpmdc.so at runtime
     if(UNIX AND NOT APPLE)
       target_link_libraries(rgpot PUBLIC ${CMAKE_DL_LIBS})
