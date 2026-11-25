@@ -460,8 +460,8 @@ They do not pin an ORCA energy.
   keyword, empty for a composite method), =keywords= (further simple-input
   keywords, empty for none), =charge= (default 0), =multiplicity= (default 1),
   =nprocs= (default 1),
-  =maxcore_mb= (default 1024), =restart= (default true), =scratch_dir= (empty
-  for the system temporary directory),
+  =maxcore_mb= (default 1024; 0 leaves =%maxcore= out so ORCA's own default applies, 4096 MB in ORCA 6.1; negative is refused), =restart= (default false), =scratch_dir=
+  (empty for the system temporary directory),
   =keep_files= (default false) and =timeout_s= (default
   =ORCAConfig::kDefaultTimeout=, 3600 seconds; 0 waits with no limit).
 - Units ::
@@ -469,19 +469,21 @@ They do not pin an ORCA energy.
   seconds; the other fields have no unit.
 - Outputs :: a plain struct read by =rgpot::ORCAPot=.
   =method=, =basis= and =keywords= become the =!= line, =nprocs= above 1 becomes
-  =%pal nprocs=, =maxcore_mb= becomes =%maxcore=, and =charge= and
+  =%pal nprocs=, a positive =maxcore_mb= becomes =%maxcore=, and =charge= and
   =multiplicity= go on the =* xyz= line.
   =restart= turns the =%moinp= and =MORead= reuse of the previous =.gbw= on and
-  off.
+  off; off, every call starts from ORCA's own guess.
+  The input always carries =%scf ConvForced true end= (section 2.6.1 of the ORCA
+  6.1 manual).
   =timeout_s= is the time to wait for the =orca= process.
   The process is the leader of a new process group.
   Past the limit that group is sent SIGTERM and, if any process in the group is
   still alive two seconds later, SIGKILL even if the leader has exited, and the
   child is reaped.
 - Errors :: =rgpot::ORCAPot= throws
-  =std::invalid_argument= for an empty =method=, for =multiplicity=, =nprocs= or =maxcore_mb=
-  below 1, for a =timeout_s= that is negative or not finite, and for a =method=,
-  =basis= or =keywords= that holds a line break.
+  =std::invalid_argument= for an empty =method=, for =multiplicity= or =nprocs= below 1, for a negative =maxcore_mb=,
+  for a =timeout_s= that is negative or not finite, and for a =method=, =basis=
+  or =keywords= that holds a line break.
 
 *** =rgpot::ORCAPot=
 
@@ -494,10 +496,14 @@ explicit ORCAPot(const ORCAConfig &config);
 - Units :: positions in Angstrom, energy in eV, forces in
   eV/Angstrom. ORCA takes Angstrom in a =* xyz= block, so the positions are written as they are. The =.engrad= energy in Hartree is multiplied by =units::HARTREE_TO_EV= and its Hartree/bohr
   gradient by =units::NEG_GRAD_TO_FORCE=.
-  The box must be absent or all zero, in Angstrom.
+  The box, in Angstrom, is padding only: absent, all zero, or a cell in which
+  the atoms span at most half the width along each cell vector, such as the cube
+  of at least 100 Angstrom that =rgpot.ase= pads a cluster into.
+  The positions are passed to ORCA unchanged.
 - Outputs :: a potential that runs one ORCA energy and gradient per force call.
   =caps()= reports =Reentrancy::PerInstance=, =periodic = false= and no stress.
-  The constructor resolves the executable and makes a directory of its own under
+  The constructor resolves the executable, reads the modification time of the
+  file it names with symlinks resolved, and makes a directory of its own under
   =scratch_dir=; the destructor removes it unless =keep_files= is set.
   Each call writes
   =rgpot_orca.inp= there, closes extra file descriptors above 2 before =exec=, runs =orca rgpot_orca.inp=
@@ -514,14 +520,16 @@ explicit ORCAPot(const ORCAConfig &config);
 - Errors :: the constructor throws =std::invalid_argument= in the cases of
   =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or the
   directory cannot be made.
-  A force call throws =std::invalid_argument= for a box with a non-zero entry
-  (ORCA has no periodic boundary conditions), for an atomic number outside 1 to
-  118, and for a charge and multiplicity that the electron count cannot hold.
+  A force call throws =std::invalid_argument= for a box in which the atoms would
+  wrap across a boundary, a singular box or a non-finite box entry (ORCA has no
+  periodic boundary conditions), for an atomic number outside 1 to 118, and for
+  a charge and multiplicity that the electron count cannot hold.
   It throws =rgpot::ORCAError=, a
   =std::runtime_error=, when a stale =.engrad= or =.gbw= cannot be removed, the input cannot be written, ORCA cannot be started or is ended by a signal, the run passes =timeout_s=
-  (the process group is then stopped and the child reaped), ORCA exits with a
-  non-zero status, no =.engrad= appears, the =.engrad= is malformed or lists
-  other atoms, or the energy or a gradient component is not finite.
+  (the process group is then stopped and the child reaped), the output reports
+  an SCF that did not converge, ORCA exits with a non-zero status, no =.engrad=
+  appears, the =.engrad= is malformed or lists other atoms, or the energy or a
+  gradient component is not finite.
   The message holds the last 2048 bytes of the standard error and of the output
   file.
 
@@ -1977,9 +1985,12 @@ A member whose description differs between classes has one entry per class.
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a 64-bit FNV-1a hash of =method=, =basis=, =keywords=, =charge=,
-  =multiplicity=, =restart= and a kernel version.
-  =executable=, =nprocs=, =maxcore_mb=, =scratch_dir=,
-  =keep_files= and =timeout_s= do not change the result and are left out.
+  =multiplicity=, =restart=, the executable path with symlinks resolved, the
+  modification time of that file and a kernel version, 2.
+  Results of another ORCA installation, of a binary replaced in place, or of
+  another charge or multiplicity therefore get other result-cache keys.
+  =nprocs=, =maxcore_mb=, =scratch_dir=, =keep_files= and =timeout_s= do not
+  change the result and are left out.
 - Errors :: none.
 
 *** =rgpot::SkalaPot::paramsKey=
