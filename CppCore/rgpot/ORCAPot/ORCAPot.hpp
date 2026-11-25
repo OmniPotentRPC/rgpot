@@ -42,10 +42,10 @@ namespace rgpot {
 /// removed, the input could not be written, the process could not be started,
 /// ran past ORCAConfig::timeout_s, ended with a non-zero status or a signal,
 /// reported an SCF that did not converge, left no .engrad file, or wrote one
-/// that is malformed or holds a non-finite
-/// number. The message carries the tail of ORCA's stderr and of its output
-/// file. Input a caller got wrong (a periodic cell, an unknown atomic number,
-/// an impossible spin, a timeout that is negative or not finite) throws
+/// that is malformed or holds a non-finite number. The message carries the
+/// tail of ORCA's stderr and of its output file. Input a caller got wrong (a
+/// box in which the atoms would wrap, an unknown atomic number, an
+/// impossible spin, a timeout that is negative or not finite) throws
 /// std::invalid_argument instead.
 class ORCAError : public std::runtime_error {
 public:
@@ -114,10 +114,15 @@ public:
   ORCAPot(const ORCAPot &) = delete;
   ORCAPot &operator=(const ORCAPot &) = delete;
 
-  /// Positions in Angstrom, energy in eV, forces in eV/Angstrom. The box
-  /// must be absent or all zero: ORCA has no periodic boundary conditions
-  /// and a non-zero box throws std::invalid_argument. A run that fails,
-  /// including one that passes timeout_s, throws ORCAError.
+  /// Positions in Angstrom, energy in eV, forces in eV/Angstrom. ORCA has
+  /// no periodic boundary conditions, so a box is only padding around the
+  /// cluster and ORCA sees the atoms where they are. The box may be absent,
+  /// all zero, or a cell in which the atoms span at most half the width
+  /// along each cell vector, such as the cube of at least 100 Angstrom that
+  /// rgpot.ase pads a cluster into. A box in which the atoms would wrap
+  /// across a boundary, a singular box and a non-finite entry throw
+  /// std::invalid_argument. A run that fails, including one that passes
+  /// timeout_s, throws ORCAError.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /// One instance owns one working directory and one wavefunction, so
