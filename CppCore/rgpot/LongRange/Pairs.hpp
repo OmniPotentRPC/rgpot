@@ -17,6 +17,7 @@
 // adds the other.
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -48,6 +49,11 @@ public:
   [[nodiscard]] const std::vector<Pair> &long_pairs() const noexcept;
   [[nodiscard]] bool short_rebuilt() const noexcept { return short_rebuilt_; }
   [[nodiscard]] bool long_rebuilt() const noexcept { return long_rebuilt_; }
+  // Id of the long pairs as last emitted, unique in the process. It
+  // changes whenever update() refills them and is zero when there are
+  // none. A reader that shares the list with other terms compares it with
+  // the id it saw last, since any of them may have called update().
+  [[nodiscard]] std::uint64_t long_emission() const noexcept;
 
 private:
   struct Skin;

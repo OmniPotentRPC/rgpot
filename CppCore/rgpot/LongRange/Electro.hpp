@@ -92,12 +92,14 @@ struct PmeTrace {
   int real_team = 1;
 };
 
+// Phases of the last finished Ewald or SPME evaluation in the process.
 PmeTrace pme_trace();
 
 // Writes energy, adds forces into F (length 3 n, caller zeroes), and
 // optionally dE/dq (length n). pairs is the long half list. For DSF the
 // list cutoff is the DSF cutoff. For Ewald and SPME it is the real-space
-// cutoff. box is null only for DSF.
+// cutoff. box is null only for DSF. The buffers belong to the calling
+// thread.
 void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg,
                              const double *pos, const double *q, std::size_t n,
                              double total_charge, const double *box,
@@ -114,6 +116,7 @@ class CoulombPot final : public Potential<CoulombPot> {
 public:
   CoulombPot(CoulombConfig cfg, std::shared_ptr<ChargeSource> charges,
              std::shared_ptr<ChargeResponse> response = nullptr);
+  ~CoulombPot() override;
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 

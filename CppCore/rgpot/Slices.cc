@@ -114,6 +114,29 @@ int teamSize(std::size_t n) { return teamSize(n, kTeamMinAtoms, {}); }
 
 std::uint64_t teamsOpened() noexcept { return t_teams_opened; }
 
+bool inCallerTeam() noexcept {
+#if defined(_OPENMP)
+  return omp_in_parallel() != 0;
+#else
+  return false;
+#endif
+}
+
+int activeThreads(int fallback) noexcept {
+#if defined(_OPENMP)
+  if (inCallerTeam()) {
+    return 1;
+  }
+  if (const int explicit_count = resolvedExplicit(); explicit_count > 0) {
+    return explicit_count;
+  }
+  return fallback > 0 ? fallback : 1;
+#else
+  (void)fallback;
+  return 1;
+#endif
+}
+
 void setThreadCount(int threads) {
   if (threads < 1) {
     throw std::invalid_argument("rgpot thread count must be at least 1");

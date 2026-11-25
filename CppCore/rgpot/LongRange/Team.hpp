@@ -14,10 +14,30 @@ namespace rgpot::lr {
 // workers after that. A longer axis needs at least 8 planes per worker
 // (80 points can feed 8, 40 points can feed 5).
 // The ladder records the team it asked for. The mesh may run fewer
-// workers than that, and this remembers the request.
+// workers than that, and this remembers the request. It belongs to the
+// calling thread, and an SPME call reads it only when the caller has set
+// no explicit count and is not already inside a team of its own.
 inline int &caller_team() {
-  static int n = 1;
+  thread_local int n = 1;
   return n;
+}
+
+// Partials of a mesh reduction. The count follows the axis length, not
+// the team, so every thread count folds the same pieces in the same
+// order. A short axis is one partial: that is the serial sum, and the
+// worker ladder already keeps those axes on one worker below four threads.
+inline int axis_chunks(int npoints) noexcept {
+  if (npoints <= 32) {
+    return 1;
+  }
+  int cap = npoints / 8;
+  if (cap < 1) {
+    cap = 1;
+  }
+  if (cap > 16) {
+    cap = 16;
+  }
+  return cap;
 }
 
 inline int axis_workers(int npoints, int team) {
