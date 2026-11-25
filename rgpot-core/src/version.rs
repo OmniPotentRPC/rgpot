@@ -232,9 +232,9 @@ mod tests {
         }
     }
 
-    /// The bundled Cu_u3 EAM table and SkinList Verlet skin support on
-    /// `EamTablePotential` are additive within major 1, so the minor moves
-    /// to 14 and every earlier caller still matches.
+    /// The user-supplied Cu_u3 EAM table constructors and SkinList Verlet
+    /// skin support on `EamTablePotential` are additive within major 1, so the
+    /// minor moves to 14 and every earlier caller still matches.
     #[test]
     fn the_minor_counts_the_eam_table_skin_revision() {
         assert_eq!(RGPOT_ABI_VERSION_MAJOR, 1);

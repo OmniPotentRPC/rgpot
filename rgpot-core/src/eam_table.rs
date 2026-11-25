@@ -46,16 +46,13 @@ use std::fmt;
 use std::fs;
 use std::os::raw::c_int;
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 use linkcell::{Cell, SkinList};
 
 use crate::potential::PotentialImpl;
 use crate::status::rgpot_status_t;
 use crate::tensor::create_owned_f64_tensor;
-
-const CU_U3_FUNCFL: &str = include_str!("../../CppCore/tests/data/eam_table/Cu_u3.eam");
-static CU_U3_TABLE: OnceLock<EamTable> = OnceLock::new();
 
 /// Format code of the C ABI: choose from the suffix of the file name.
 /// `.eam.alloy` and `.setfl` are setfl, `.eam.fs` is Finnis-Sinclair and
@@ -231,6 +228,14 @@ impl EamTable {
         }
     }
 
+    /// Read a table from UTF-8 bytes in the given layout. [`EamTableFormat::Auto`]
+    /// has no file name to read, so it is refused.
+    pub fn from_bytes(bytes: &[u8], format: EamTableFormat) -> Result<Self, EamTableError> {
+        let text = std::str::from_utf8(bytes)
+            .map_err(|why| EamTableError::Malformed(format!("table is not valid UTF-8: {why}")))?;
+        Self::from_text(text, format)
+    }
+
     /// Radial cutoff of the table, in Angstrom.
     pub fn cutoff(&self) -> f64 {
         self.cutoff
@@ -241,13 +246,13 @@ impl EamTable {
         &self.z
     }
 
-    /// Bundled `Cu_u3.eam` copper `funcfl` table (Foiles, Baskes, and Daw,
-    /// Phys. Rev. B 33, 7983, 1986).
-    pub fn cu_u3() -> &'static Self {
-        CU_U3_TABLE.get_or_init(|| {
-            Self::from_text(CU_U3_FUNCFL, EamTableFormat::Funcfl)
-                .expect("bundled Cu_u3.eam must parse")
-        })
+    /// Read a user-supplied LAMMPS `Cu_u3.eam` copper `funcfl` table
+    /// (Foiles, Baskes, and Daw, Phys. Rev. B 33, 7983, 1986) from `path`.
+    ///
+    /// `rgpot-core` does not ship or embed the LAMMPS `Cu_u3.eam` file (which
+    /// is distributed under GPL-2.0 in LAMMPS); the caller supplies the file.
+    pub fn cu_u3(path: &Path) -> Result<Self, EamTableError> {
+        Self::open(path, EamTableFormat::Funcfl)
     }
 
     fn parse(text: &str, layout: Layout) -> Result<Self, EamTableError> {
@@ -624,9 +629,24 @@ impl EamTablePotential {
         })
     }
 
-    /// Build a potential for the bundled `Cu_u3.eam` copper table.
-    pub fn cu_u3(periodic: bool) -> Result<Self, EamTableError> {
-        Self::new(EamTable::cu_u3().clone(), periodic)
+    /// Parse a table from UTF-8 bytes in the given layout and build the
+    /// potential. [`EamTableFormat::Auto`] has no file name to read, so it is
+    /// refused.
+    pub fn from_bytes(
+        bytes: &[u8],
+        format: EamTableFormat,
+        periodic: bool,
+    ) -> Result<Self, EamTableError> {
+        Self::new(EamTable::from_bytes(bytes, format)?, periodic)
+    }
+
+    /// Build a potential from a user-supplied LAMMPS `Cu_u3.eam` copper
+    /// `funcfl` file at `path`.
+    ///
+    /// `rgpot-core` does not ship or embed the LAMMPS `Cu_u3.eam` file (which
+    /// is distributed under GPL-2.0 in LAMMPS); the caller supplies the file.
+    pub fn cu_u3(path: &Path, periodic: bool) -> Result<Self, EamTableError> {
+        Self::new(EamTable::cu_u3(path)?, periodic)
     }
 
     /// Configure the Verlet pair-list skin distance in Angstrom (`>= 0.0`),
@@ -1123,5 +1143,23 @@ mod tests {
         let pairs = pot.pairs(&across, &cell).unwrap();
         assert_eq!(pairs.len(), 1);
         assert!((pairs[0].r - 1.0).abs() < f64::EPSILON * 16.0);
+    }
+
+    #[test]
+    fn from_bytes_parses_valid_utf8_and_refuses_invalid_utf8_or_auto() {
+        let text = two_element_fs();
+        let pot =
+            EamTablePotential::from_bytes(text.as_bytes(), EamTableFormat::FinnisSinclair, false)
+                .unwrap();
+        assert_eq!(dimer(&pot, [13, 28]), -5.0 - 2.0 * 3.0);
+
+        assert!(matches!(
+            EamTable::from_bytes(text.as_bytes(), EamTableFormat::Auto),
+            Err(EamTableError::Invalid(_))
+        ));
+        assert!(matches!(
+            EamTable::from_bytes(&[0xff, 0xfe], EamTableFormat::Funcfl),
+            Err(EamTableError::Malformed(_))
+        ));
     }
 }

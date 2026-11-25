@@ -218,9 +218,9 @@ The session operation table carries its byte size and the new slots follow
 =destroy=, so an older table still loads.
 The C++ layout revision stays 2 and =kCxxSoversion= stays 9, because the session
 vtable is not one of the covered potential types.
-Core C minor 14 belongs to the =Cu_u3.eam= constructors and =linkcell::SkinList=
-Verlet-skin pair lists in =EamTablePotential=; no exported struct changes, so
-the layout revision stays at 1.
+Core C minor 14 belongs to the user-supplied =Cu_u3.eam= constructors and
+=linkcell::SkinList= Verlet-skin pair lists in =EamTablePotential=; no exported
+struct changes, so the layout revision stays at 1.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.

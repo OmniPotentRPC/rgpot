@@ -66,10 +66,12 @@ instead of returning NULL.
 The Rust crate holds its own evaluation of the table, in
 =rgpot_core::eam_table=, because =rgpot-core= links no C++ kernel and the handle
 must work in a build that has none.
-=EamTablePotential::open(path, format, periodic)= builds it,
-=EamTable::cu_u3= and =EamTablePotential::cu_u3= load the bundled copper
-=Cu_u3.eam= table, and =EamTablePotential::force= returns the energy and the
-forces.
+=EamTablePotential::open(path, format, periodic)= and
+=EamTablePotential::from_bytes(bytes, format, periodic)= build it, =EamTable::cu_u3(path)=
+and
+=EamTablePotential::cu_u3(path, periodic)= load a user-supplied LAMMPS =Cu_u3.eam=
+table (=rgpot-core= does not ship or embed the GPL-2.0 LAMMPS file; the caller
+supplies it), and =EamTablePotential::force= returns the energy and the forces.
 It repeats the steps of the previous section, so the two implementations are
 checked against the same LAMMPS data rather than against each other.
 It differs from =EAMTablePot= in what it leaves out: no stress and no per-atom

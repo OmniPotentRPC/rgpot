@@ -152,6 +152,13 @@ mod tests {
     fn panic_after_parsing_is_caught_and_returns_null() {
         let table =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../CppCore/tests/data/eam_table/Cu_u3.eam");
+        if !table.is_file() {
+            eprintln!(
+                "skipping panic_after_parsing_is_caught_and_returns_null: external LAMMPS fixture {} is absent (for example in a packaged crate)",
+                table.display()
+            );
+            return;
+        }
         let path = CString::new(table.to_str().unwrap()).unwrap();
         PANIC_IN_HANDLE.with(|flag| flag.set(true));
         let handle =

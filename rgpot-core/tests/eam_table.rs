@@ -41,6 +41,19 @@ fn data_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../CppCore/tests/data/eam_table")
 }
 
+fn require_fixture(name: &str, test_name: &str) -> Option<PathBuf> {
+    let path = data_dir().join(name);
+    if path.is_file() {
+        Some(path)
+    } else {
+        eprintln!(
+            "skipping {test_name}: external LAMMPS fixture {} is absent (for example in a packaged crate)",
+            path.display()
+        );
+        None
+    }
+}
+
 fn last_error() -> String {
     unsafe { CStr::from_ptr(rgpot_last_error()) }
         .to_string_lossy()
@@ -55,8 +68,8 @@ struct Reference {
     forces: Vec<f64>,
 }
 
-fn reference(name: &str) -> Reference {
-    let path = data_dir().join(name);
+fn try_reference(name: &str, test_name: &str) -> Option<Reference> {
+    let path = require_fixture(name, test_name)?;
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|why| panic!("cannot read {}: {why}", path.display()));
     let mut cell = [0.0; 9];
@@ -86,13 +99,13 @@ fn reference(name: &str) -> Reference {
         }
     }
     assert_eq!(Some(z.len()), count, "{name}: atom count");
-    Reference {
+    Some(Reference {
         cell,
         energy: energy.expect("energy line"),
         z,
         positions,
         forces,
-    }
+    })
 }
 
 fn assert_matches(name: &str, energy: f64, forces: &[f64], reference: &Reference) {
@@ -115,11 +128,21 @@ fn assert_matches(name: &str, energy: f64, forces: &[f64], reference: &Reference
 
 #[test]
 fn copper_vacancy_matches_lammps_through_the_wrapper() {
-    let reference = reference("cu_u3_vacancy.ref");
+    let Some(reference) = try_reference(
+        "cu_u3_vacancy.ref",
+        "copper_vacancy_matches_lammps_through_the_wrapper",
+    ) else {
+        return;
+    };
+    let Some(cu_path) = require_fixture(
+        "Cu_u3.eam",
+        "copper_vacancy_matches_lammps_through_the_wrapper",
+    ) else {
+        return;
+    };
     assert_eq!(reference.z.len(), 107);
     let potential =
-        EamTablePotential::open(&data_dir().join("Cu_u3.eam"), EamTableFormat::Funcfl, true)
-            .expect("open Cu_u3.eam");
+        EamTablePotential::open(&cu_path, EamTableFormat::Funcfl, true).expect("open Cu_u3.eam");
     let answer = potential
         .force(&reference.positions, &reference.z, &reference.cell)
         .expect("evaluate the vacancy cell");
@@ -128,10 +151,18 @@ fn copper_vacancy_matches_lammps_through_the_wrapper() {
 
 #[test]
 fn the_vacancy_carries_a_net_force_free_cell() {
-    let reference = reference("cu_u3_vacancy.ref");
-    let potential =
-        EamTablePotential::open(&data_dir().join("Cu_u3.eam"), EamTableFormat::Auto, true)
-            .expect("open Cu_u3.eam by its suffix");
+    let Some(reference) = try_reference(
+        "cu_u3_vacancy.ref",
+        "the_vacancy_carries_a_net_force_free_cell",
+    ) else {
+        return;
+    };
+    let Some(cu_path) = require_fixture("Cu_u3.eam", "the_vacancy_carries_a_net_force_free_cell")
+    else {
+        return;
+    };
+    let potential = EamTablePotential::open(&cu_path, EamTableFormat::Auto, true)
+        .expect("open Cu_u3.eam by its suffix");
     let answer = potential
         .force(&reference.positions, &reference.z, &reference.cell)
         .unwrap();
@@ -146,22 +177,37 @@ fn the_vacancy_carries_a_net_force_free_cell() {
 
 #[test]
 fn the_whole_cell_and_the_setfl_cell_match_lammps() {
-    let cubic = reference("cu_u3_cubic.ref");
-    let funcfl =
-        EamTablePotential::open(&data_dir().join("Cu_u3.eam"), EamTableFormat::Funcfl, true)
-            .unwrap();
+    let Some(cubic) = try_reference(
+        "cu_u3_cubic.ref",
+        "the_whole_cell_and_the_setfl_cell_match_lammps",
+    ) else {
+        return;
+    };
+    let Some(cu_path) = require_fixture(
+        "Cu_u3.eam",
+        "the_whole_cell_and_the_setfl_cell_match_lammps",
+    ) else {
+        return;
+    };
+    let funcfl = EamTablePotential::open(&cu_path, EamTableFormat::Funcfl, true).unwrap();
     let answer = funcfl
         .force(&cubic.positions, &cubic.z, &cubic.cell)
         .unwrap();
     assert_matches("cubic", answer.energy, &answer.forces, &cubic);
 
-    let sheared = reference("cuni_sheared.ref");
-    let setfl = EamTablePotential::open(
-        &data_dir().join("CuNi.eam.alloy"),
-        EamTableFormat::Auto,
-        true,
-    )
-    .unwrap();
+    let Some(sheared) = try_reference(
+        "cuni_sheared.ref",
+        "the_whole_cell_and_the_setfl_cell_match_lammps",
+    ) else {
+        return;
+    };
+    let Some(cuni_path) = require_fixture(
+        "CuNi.eam.alloy",
+        "the_whole_cell_and_the_setfl_cell_match_lammps",
+    ) else {
+        return;
+    };
+    let setfl = EamTablePotential::open(&cuni_path, EamTableFormat::Auto, true).unwrap();
     let answer = setfl
         .force(&sheared.positions, &sheared.z, &sheared.cell)
         .unwrap();
@@ -170,11 +216,17 @@ fn the_whole_cell_and_the_setfl_cell_match_lammps() {
 
 #[test]
 fn one_potential_serves_several_threads() {
-    let reference = Arc::new(reference("cu_u3_vacancy.ref"));
-    let potential = Arc::new(
-        EamTablePotential::open(&data_dir().join("Cu_u3.eam"), EamTableFormat::Funcfl, true)
-            .unwrap(),
-    );
+    let Some(reference) =
+        try_reference("cu_u3_vacancy.ref", "one_potential_serves_several_threads")
+    else {
+        return;
+    };
+    let Some(cu_path) = require_fixture("Cu_u3.eam", "one_potential_serves_several_threads") else {
+        return;
+    };
+    let reference = Arc::new(reference);
+    let potential =
+        Arc::new(EamTablePotential::open(&cu_path, EamTableFormat::Funcfl, true).unwrap());
     let workers: Vec<_> = (0..4)
         .map(|_| {
             let (reference, potential) = (Arc::clone(&reference), Arc::clone(&potential));
@@ -212,7 +264,10 @@ fn scratch(name: &str, contents: &[u8]) -> PathBuf {
 
 #[test]
 fn a_truncated_table_is_malformed() {
-    let whole = std::fs::read(data_dir().join("Cu_u3.eam")).unwrap();
+    let Some(cu_path) = require_fixture("Cu_u3.eam", "a_truncated_table_is_malformed") else {
+        return;
+    };
+    let whole = std::fs::read(cu_path).unwrap();
     let path = scratch("truncated.eam", &whole[..whole.len() / 2]);
     let err = open_error(&path, EamTableFormat::Funcfl);
     assert!(matches!(err, EamTableError::Malformed(_)), "{err}");
@@ -229,7 +284,11 @@ fn a_file_that_is_not_a_table_is_malformed() {
 
 #[test]
 fn a_funcfl_file_read_as_setfl_is_malformed() {
-    let err = open_error(&data_dir().join("Cu_u3.eam"), EamTableFormat::Setfl);
+    let Some(cu_path) = require_fixture("Cu_u3.eam", "a_funcfl_file_read_as_setfl_is_malformed")
+    else {
+        return;
+    };
+    let err = open_error(&cu_path, EamTableFormat::Setfl);
     assert!(matches!(err, EamTableError::Malformed(_)), "{err}");
 }
 
@@ -299,7 +358,12 @@ impl Drop for CInput<'_> {
 
 #[test]
 fn the_c_abi_input_keeps_the_cell_at_its_borrowed_address() {
-    let reference = reference("cu_u3_vacancy.ref");
+    let Some(reference) = try_reference(
+        "cu_u3_vacancy.ref",
+        "the_c_abi_input_keeps_the_cell_at_its_borrowed_address",
+    ) else {
+        return;
+    };
     let mut owner = Input::new(&reference);
     let expected_cell_ptr = owner.cell.as_ptr();
     let expected_cell = owner.cell;
@@ -326,8 +390,18 @@ fn calculate(handle: &Handle, reference: &Reference) -> (rgpot_status_t, rgpot_f
 
 #[test]
 fn copper_vacancy_matches_lammps_through_the_c_abi() {
-    let reference = reference("cu_u3_vacancy.ref");
-    let table = data_dir().join("Cu_u3.eam");
+    let Some(reference) = try_reference(
+        "cu_u3_vacancy.ref",
+        "copper_vacancy_matches_lammps_through_the_c_abi",
+    ) else {
+        return;
+    };
+    let Some(table) = require_fixture(
+        "Cu_u3.eam",
+        "copper_vacancy_matches_lammps_through_the_c_abi",
+    ) else {
+        return;
+    };
     for format in [RGPOT_EAM_TABLE_FUNCFL, RGPOT_EAM_TABLE_AUTO] {
         let handle = new_handle(table.to_str().unwrap(), format, true);
         let (status, output) = calculate(&handle, &reference);
@@ -344,13 +418,20 @@ fn copper_vacancy_matches_lammps_through_the_c_abi() {
 
 #[test]
 fn the_c_abi_refuses_a_cell_smaller_than_the_cutoff_allows() {
-    let mut reference = reference("cu_u3_vacancy.ref");
+    let Some(mut reference) = try_reference(
+        "cu_u3_vacancy.ref",
+        "the_c_abi_refuses_a_cell_smaller_than_the_cutoff_allows",
+    ) else {
+        return;
+    };
+    let Some(cu_path) = require_fixture(
+        "Cu_u3.eam",
+        "the_c_abi_refuses_a_cell_smaller_than_the_cutoff_allows",
+    ) else {
+        return;
+    };
     reference.cell = [8.0, 0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0, 8.0];
-    let handle = new_handle(
-        data_dir().join("Cu_u3.eam").to_str().unwrap(),
-        RGPOT_EAM_TABLE_FUNCFL,
-        true,
-    );
+    let handle = new_handle(cu_path.to_str().unwrap(), RGPOT_EAM_TABLE_FUNCFL, true);
     let (status, output) = calculate(&handle, &reference);
     assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
     assert!(output.forces.is_null());
@@ -363,10 +444,16 @@ fn the_c_abi_refuses_a_cell_smaller_than_the_cutoff_allows() {
 
 #[test]
 fn the_c_abi_constructor_reports_each_refusal_with_null() {
+    let Some(cu_path) = require_fixture(
+        "Cu_u3.eam",
+        "the_c_abi_constructor_reports_each_refusal_with_null",
+    ) else {
+        return;
+    };
     let missing = CString::new("/nonexistent/dir/Cu_u3.eam").unwrap();
     let empty = CString::new("").unwrap();
     let unknown_suffix = CString::new("Cu_u3.dat").unwrap();
-    let table = CString::new(data_dir().join("Cu_u3.eam").to_str().unwrap()).unwrap();
+    let table = CString::new(cu_path.to_str().unwrap()).unwrap();
     let cases: [(&str, *const std::os::raw::c_char, i32, &str); 6] = [
         (
             "null path",
@@ -412,7 +499,11 @@ fn the_c_abi_constructor_reports_each_refusal_with_null() {
 
 #[test]
 fn a_truncated_file_is_refused_by_the_c_abi() {
-    let whole = std::fs::read(data_dir().join("Cu_u3.eam")).unwrap();
+    let Some(cu_path) = require_fixture("Cu_u3.eam", "a_truncated_file_is_refused_by_the_c_abi")
+    else {
+        return;
+    };
+    let whole = std::fs::read(cu_path).unwrap();
     let path = scratch("truncated_c_abi.eam", &whole[..whole.len() / 3]);
     let path = CString::new(path.to_str().unwrap()).unwrap();
     let handle =
@@ -427,8 +518,18 @@ fn a_truncated_file_is_refused_by_the_c_abi() {
 
 #[test]
 fn a_free_cluster_ignores_the_box_and_loses_the_bonds_past_its_surface() {
-    let mut reference = reference("cu_u3_cubic.ref");
-    let table = data_dir().join("Cu_u3.eam");
+    let Some(mut reference) = try_reference(
+        "cu_u3_cubic.ref",
+        "a_free_cluster_ignores_the_box_and_loses_the_bonds_past_its_surface",
+    ) else {
+        return;
+    };
+    let Some(table) = require_fixture(
+        "Cu_u3.eam",
+        "a_free_cluster_ignores_the_box_and_loses_the_bonds_past_its_surface",
+    ) else {
+        return;
+    };
     let periodic = EamTablePotential::open(&table, EamTableFormat::Funcfl, true)
         .unwrap()
         .force(&reference.positions, &reference.z, &reference.cell)
@@ -442,36 +543,76 @@ fn a_free_cluster_ignores_the_box_and_loses_the_bonds_past_its_surface() {
 }
 
 #[test]
-fn bundled_cu_u3_matches_lammps_vacancy_reference() {
-    let reference = reference("cu_u3_vacancy.ref");
-    let table = EamTable::cu_u3();
+fn cu_u3_path_and_bytes_match_lammps_vacancy_reference() {
+    let Some(reference) = try_reference(
+        "cu_u3_vacancy.ref",
+        "cu_u3_path_and_bytes_match_lammps_vacancy_reference",
+    ) else {
+        return;
+    };
+    let Some(cu_path) = require_fixture(
+        "Cu_u3.eam",
+        "cu_u3_path_and_bytes_match_lammps_vacancy_reference",
+    ) else {
+        return;
+    };
+    let table = EamTable::cu_u3(&cu_path).expect("read Cu_u3.eam from path");
     assert_eq!(table.atomic_numbers(), &[29]);
     assert!((table.cutoff() - 4.95).abs() < 1.0e-12);
-    let potential = EamTablePotential::cu_u3(true).expect("bundled Cu_u3.eam");
+    let potential = EamTablePotential::cu_u3(&cu_path, true).expect("build Cu_u3.eam potential");
     let answer = potential
         .force(&reference.positions, &reference.z, &reference.cell)
-        .expect("evaluate bundled Cu_u3 vacancy");
+        .expect("evaluate Cu_u3 vacancy");
     assert_matches(
-        "bundled Cu_u3 vacancy",
+        "Cu_u3 path vacancy",
         answer.energy,
         &answer.forces,
+        &reference,
+    );
+
+    let bytes = std::fs::read(&cu_path).expect("read Cu_u3.eam bytes");
+    let bytes_table =
+        EamTable::from_bytes(&bytes, EamTableFormat::Funcfl).expect("parse Cu_u3.eam bytes");
+    assert_eq!(bytes_table.atomic_numbers(), &[29]);
+    let bytes_pot = EamTablePotential::from_bytes(&bytes, EamTableFormat::Funcfl, true)
+        .expect("build Cu_u3.eam potential from bytes");
+    let bytes_answer = bytes_pot
+        .force(&reference.positions, &reference.z, &reference.cell)
+        .expect("evaluate Cu_u3 bytes vacancy");
+    assert_matches(
+        "Cu_u3 bytes vacancy",
+        bytes_answer.energy,
+        &bytes_answer.forces,
         &reference,
     );
 }
 
 #[test]
 fn verlet_skin_delegates_to_linkcell_and_matches_unskinned_evaluation() {
-    let reference = reference("cu_u3_vacancy.ref");
+    let Some(reference) = try_reference(
+        "cu_u3_vacancy.ref",
+        "verlet_skin_delegates_to_linkcell_and_matches_unskinned_evaluation",
+    ) else {
+        return;
+    };
+    let Some(cu_path) = require_fixture(
+        "Cu_u3.eam",
+        "verlet_skin_delegates_to_linkcell_and_matches_unskinned_evaluation",
+    ) else {
+        return;
+    };
     assert!(matches!(
-        EamTablePotential::cu_u3(true).unwrap().with_skin(-0.5),
+        EamTablePotential::cu_u3(&cu_path, true)
+            .unwrap()
+            .with_skin(-0.5),
         Err(EamTableError::Invalid(_))
     ));
-    let warm = EamTablePotential::cu_u3(true)
-        .expect("bundled Cu_u3.eam")
+    let warm = EamTablePotential::cu_u3(&cu_path, true)
+        .expect("load Cu_u3.eam")
         .with_skin(1.0)
         .expect("skin 1.0");
-    let cold = EamTablePotential::cu_u3(true)
-        .expect("bundled Cu_u3.eam")
+    let cold = EamTablePotential::cu_u3(&cu_path, true)
+        .expect("load Cu_u3.eam")
         .with_skin(0.0)
         .expect("skin 0.0");
 
@@ -479,12 +620,7 @@ fn verlet_skin_delegates_to_linkcell_and_matches_unskinned_evaluation() {
     let first = warm
         .force(&pos, &reference.z, &reference.cell)
         .expect("first warm");
-    assert_matches(
-        "bundled Cu_u3 vacancy",
-        first.energy,
-        &first.forces,
-        &reference,
-    );
+    assert_matches("Cu_u3 vacancy", first.energy, &first.forces, &reference);
     assert!(!warm.list_reused());
     assert_eq!(warm.list_builds(), 1);
     assert_eq!(warm.list_reuses(), 0);
