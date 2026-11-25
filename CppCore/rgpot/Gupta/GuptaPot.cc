@@ -229,7 +229,7 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
           neighbours_, 0, n_atoms,
           [=, &lane](int32_t i, int32_t j, double, double, double,
                      double r2) RGPOT_GUPTA_PAIR_INLINE {
-            if (!(r2 >= 0.0) || r2 > cutoff2) {
+            if (r2 > cutoff2) {
               return;
             }
             double phi = 0.0;
@@ -250,7 +250,7 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
         nt,
         [=](int t, int32_t i, int32_t j, double, double, double,
             double r2) RGPOT_GUPTA_PAIR_INLINE {
-          if (!(r2 >= 0.0) || r2 > cutoff2) {
+          if (r2 > cutoff2) {
             return;
           }
           double phi = 0.0;
@@ -287,7 +287,7 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
   auto apply = [=](auto stride, int32_t i, int32_t j, double dx, double dy,
                    double dz, double r2, double *force, double *virial,
                    bool both, Terms &terms) RGPOT_GUPTA_PAIR_INLINE {
-    if (!(r2 >= 0.0) || r2 > cutoff2) {
+    if (r2 > cutoff2) {
       return;
     }
     double r = 0.0;
@@ -390,7 +390,7 @@ void GuptaPot::densityStage(const HalfList &list, double *densities) const {
   const double xi2 = cfg.xi * cfg.xi;
   staged::forEachPair(
       list, [&](int i, int j, double, double, double, double r2, bool both) {
-        if (!(r2 >= 0.0) || r2 > cutoff2) {
+        if (r2 > cutoff2) {
           return;
         }
         const double r = std::sqrt(r2);
@@ -426,7 +426,7 @@ void GuptaPot::forceStage(const HalfList &list, const double *densities,
   staged::withTally(tally, [&](auto tallied) {
     staged::forEachPair(list, [&](int i, int j, double dx, double dy, double dz,
                                   double r2, bool both) {
-      if (!(r2 >= 0.0) || r2 > cutoff2) {
+      if (r2 > cutoff2) {
         return;
       }
       const double r = std::sqrt(r2);
