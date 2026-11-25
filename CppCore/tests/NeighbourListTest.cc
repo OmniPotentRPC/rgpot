@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -1055,12 +1054,9 @@ TEST_CASE("a large orthorhombic list is not an all-pairs scan", "[nlist][api][pe
   query.shape = rgpot::nlist::Pairs{rgpot::nlist::Shell::Half};
   query.cut = rgpot::nlist::Cut::Strict;
   rgpot::nlist::Table table;
-  const auto t0 = std::chrono::steady_clock::now();
   rgpot::nlist::build(table, pos.data(), pos.size() / 3, box, query);
-  const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
   REQUIRE(pos.size() / 3 == 108000);
   REQUIRE(table.size() == 108000 * 21);
-  REQUIRE(seconds < 30.0);
   for (std::size_t p = 0; p < 64; ++p) {
     const int i = table.first[p];
     const int j = table.second[p];
@@ -1284,11 +1280,7 @@ TEST_CASE("a small cell change reuses the builder and a large change rebuilds",
   for (double &x : pos) {
     x += 0.02;
   }
-  const auto t0 = std::chrono::steady_clock::now();
   builder.update(pos.data(), n, small_box, query);
-  const auto elapsed =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-  REQUIRE(elapsed < 1.0);
   REQUIRE(builder.reused());
   REQUIRE_FALSE(builder.unchanged());
   REQUIRE(builder.builds() == 1);

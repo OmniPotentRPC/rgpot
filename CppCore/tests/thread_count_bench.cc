@@ -23,7 +23,8 @@
 // gives no team and no row sums at any size, and an atom count opens a
 // team on any thread count above one from there. --cutoff replaces the
 // cutoff of LJ, the LJ cluster and Morse, 2.5 sigma and 9.5 Angstrom, to
-// change the partners per atom.
+// change the partners per atom. `--pots lj --sizes 8788 --cutoff 4.5`
+// times a periodic cell where a team has enough work to share.
 //
 // thread_count_bench [--pots sc,lj,ljcluster,morse,zbl,eam,sw,tersoff]
 //                    [--sizes 38,55,80,500,4000,10000] [--threads 1,8]

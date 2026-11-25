@@ -43,12 +43,8 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
 
   auto pot = std::make_shared<rgpot::LJPot>();
 
-  // Baseline timing (no cache attached)
-  auto start_base = high_resolution_clock::now();
+  // Baseline (no cache attached)
   auto [e_base, f_base, v_base] = (*pot)(positions, types, box);
-  auto end_base = high_resolution_clock::now();
-  auto base_duration =
-      duration_cast<nanoseconds>(end_base - start_base).count();
 
   SECTION("Manual DB Management (Raw Pointer)") {
     // Setup RocksDB Manually
@@ -76,15 +72,11 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
     REQUIRE_THAT(e1, WithinAbs(e_base, 1e-12));
 
     // 2. Hit & Read
-    auto start = high_resolution_clock::now();
     auto [e2, f2, v2] = (*pot)(positions, types, box);
-    auto end = high_resolution_clock::now();
-    auto dur = duration_cast<nanoseconds>(end - start).count();
 
     REQUIRE_THAT(e2, WithinAbs(e1, 1e-12));
-    // Shared CI runners (esp. macOS) have noisy wall-clock; keep a loose
-    // bound that still fails if the cache is completely ineffective.
-    REQUIRE(dur < base_duration * 50);
+    REQUIRE(pcache.counts().computed == 1);
+    REQUIRE(pcache.counts().served == 1);
   }
 
   SECTION("Managed DB Life-cycle (Path String)") {
@@ -102,13 +94,11 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
       (*pot)(positions, types, box);
 
       // 2. Hit
-      auto start = high_resolution_clock::now();
       auto [e2, f2, v2] = (*pot)(positions, types, box);
-      auto end = high_resolution_clock::now();
-      auto dur = duration_cast<nanoseconds>(end - start).count();
 
       REQUIRE_THAT(e2, WithinAbs(e_base, 1e-12));
-      REQUIRE(dur < base_duration * 50);
+      REQUIRE(pcache.counts().computed == 1);
+      REQUIRE(pcache.counts().served == 1);
     }
     // pcache goes out of scope here, should close DB cleanly
 
@@ -133,16 +123,12 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
       auto pcache_read = rgpot::cache::PotentialCache(db_path);
       pot->setCache(&pcache_read);
 
-      auto start = high_resolution_clock::now();
       auto [e_read, f_read, v_read] = (*pot)(positions, types, box);
-      auto end = high_resolution_clock::now();
-      auto dur = duration_cast<nanoseconds>(end - start).count();
 
-      // Should be a Hit (fast) despite being a new object
+      // A hit despite being a new object
       REQUIRE_THAT(e_read, WithinAbs(e_base, 1e-12));
-      // Timing is noisy on CI (esp. macOS/shared runners); keep a loose bound
-      // so we still catch pathological misses (orders of magnitude slower).
-      REQUIRE(dur < base_duration * 50);
+      REQUIRE(pcache_read.counts().computed == 0);
+      REQUIRE(pcache_read.counts().served == 1);
     }
   }
 
@@ -152,13 +138,9 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
     pot->setCache(&pcache_empty);
 
     // Should call forceImpl directly without crashing
-    auto start = high_resolution_clock::now();
     auto [e, f, v] = (*pot)(positions, types, box);
-    auto end = high_resolution_clock::now();
 
     REQUIRE_THAT(e, WithinAbs(e_base, 1e-12));
-    // Should NOT be faster than base (it effectively IS base overhead)
-    // We just check it didn't throw exceptions
   }
 }
 
