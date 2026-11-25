@@ -1007,7 +1007,7 @@ if openmm_opt.allowed() and python3_engines.found()
             openmm_abi_test = executable(
                 'test_openmm_abi',
                 files('openmm/test_openmm_abi.cpp'),
-                dependencies: [openmm_lib, engines_rgpot],
+                dependencies: [openmm_lib, engines_rgpot, dl_dep],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: rgpot_consumer_args,
                 build_rpath: openmm_libdir,
