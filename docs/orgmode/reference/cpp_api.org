@@ -676,11 +676,12 @@ void setThreadCount(int threads);
 
 - Inputs :: =threads=, the thread count for this potential's evaluations.
 - Units :: none.
-- Outputs :: none. The count is stored beside the object, not in it, so the
-  C++ layout stamp does not move. A =rgpot::ThreadCount= already on the
-  calling thread wins over it. With nothing set, the call keeps the
-  default: =OMP_NUM_THREADS= for =threadsRequested=, and the OpenMP pool
-  for a long-range team.
+- Outputs :: none.
+  The count is stored beside the object, not in it, so the C++ layout stamp does
+  not move.
+  A =rgpot::ThreadCount= already on the calling thread wins over it.
+  With nothing set, the call keeps the default: =OMP_NUM_THREADS= for
+  =threadsRequested=, and the OpenMP pool for a long-range team.
 - Errors :: throws =std::invalid_argument= when =threads= is below 1.
 
 *** =rgpot::PotentialBase::clearThreadCount=
@@ -692,7 +693,8 @@ void clearThreadCount() noexcept;
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: none. Drops this potential's opt-in count.
+- Outputs :: none.
+  Drops this potential's opt-in count.
 - Errors :: none; the method is =noexcept=.
 
 *** =rgpot::PotentialBase::threadCount=
