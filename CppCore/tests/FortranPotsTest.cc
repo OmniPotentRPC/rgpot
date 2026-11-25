@@ -25,6 +25,7 @@
 #include <atomic>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <random>
 #include <vector>
 
@@ -261,6 +262,36 @@ TEST_CASE("SW batch returns the forceImpl energies and forces without stress",
       REQUIRE(v == 0.0);
     }
   }
+}
+
+TEST_CASE("SW batch keeps its bits from one to four threads",
+          "[fortran][sw][threads]") {
+  constexpr std::size_t nconfig = 8;
+  const std::array<double, 6> pos{0.0, 0.0, 0.0, 2.3, 0.0, 0.0};
+  const std::array<int, 2> types{14, 14};
+  const std::array<double, 9> box{10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0};
+  std::vector<rgpot::ForceInput> in(
+      nconfig, {.nAtoms = 2, .pos = pos.data(), .atmnrs = types.data(), .box = box.data()});
+  auto run = [&](rgpot::fortranpots::SWPot &pot, int threads) {
+    pot.setThreadCount(threads);
+    std::vector<double> forces(nconfig * pos.size(), 0.0);
+    std::vector<rgpot::ForceOut> out(nconfig);
+    for (std::size_t s = 0; s < nconfig; ++s) {
+      out[s].F = forces.data() + s * pos.size();
+    }
+    pot.forceBatch({.nSystems = nconfig, .in = in.data(), .out = out.data()});
+    std::vector<double> bits;
+    for (const auto &o : out) {
+      bits.push_back(o.energy);
+    }
+    bits.insert(bits.end(), forces.begin(), forces.end());
+    return bits;
+  };
+  rgpot::fortranpots::SWPot pot;
+  const auto serial = run(pot, 1);
+  const auto parallel = run(pot, 4);
+  REQUIRE(parallel.size() == serial.size());
+  REQUIRE(std::memcmp(parallel.data(), serial.data(), serial.size() * sizeof(double)) == 0);
 }
 
 TEST_CASE("Tersoff silicon matches the eOn reference", "[fortran][tersoff]") {

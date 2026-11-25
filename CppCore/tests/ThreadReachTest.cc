@@ -6,8 +6,9 @@
 // and the kernels of MEAMPot, D2Pot and D2CpmdPot take the count of the
 // object they were called on. Each check watches the team an OpenMP region
 // really has, or the count a child really reads, and not only that the call
-// returns. The dlopen frontends are checked beside their own suites
-// (XTBPotTest, MetatomicPotTest).
+// returns. The dlopen frontends and the Fortran Stillinger-Weber batch are
+// checked beside their own suites (XTBPotTest, MetatomicPotTest,
+// FortranPotsTest), so this one builds without the Fortran potentials.
 
 #include <algorithm>
 #include <array>
@@ -33,9 +34,6 @@
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SumPot/SumPot.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
-#ifdef RGPOT_HAS_FORTRAN_POTS
-#include "rgpot/fortran/FortranPots.hpp"
-#endif
 
 #if defined(RGPOT_HAS_LONG_RANGE)
 #include "rgpot/LongRange/SumPot.hpp"
@@ -388,23 +386,6 @@ TEST_CASE("direct silicon batch APIs bind their potential thread count",
   check(sw);
   rgpot::TersoffSiC tersoff;
   check(tersoff);
-
-#ifdef RGPOT_HAS_FORTRAN_POTS
-  System silicon;
-  silicon.pos.assign(one.begin(), one.end());
-  silicon.z.assign(z.begin(), z.end());
-  silicon.box = box;
-  std::vector<System> systems(nconfig, silicon);
-  rgpot::fortranpots::SWPot fortran_sw;
-  fortran_sw.setThreadCount(1);
-  const auto reference = runBatch(fortran_sw, systems);
-  fortran_sw.setThreadCount(4);
-  const auto parallel = runBatch(fortran_sw, systems);
-  REQUIRE(parallel.size() == reference.size());
-  for (std::size_t i = 0; i < parallel.size(); ++i) {
-    CHECK(bitsApart(parallel[i], reference[i]) == 0);
-  }
-#endif
 }
 
 TEST_CASE("a SumPot hands its thread count to the terms", "[threads][SumPot]") {
