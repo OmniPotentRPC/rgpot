@@ -506,11 +506,13 @@ explicit ORCAPot(const ORCAConfig &config);
   The positions are passed to ORCA unchanged.
 - Outputs :: a potential that runs one ORCA energy and gradient per force call.
   =caps()= reports =Reentrancy::PerInstance=, =periodic = false= and no stress.
-  The constructor resolves the executable, reads the modification time of the
-  file it names with symlinks resolved, and makes a directory of its own under
-  =scratch_dir=; the destructor removes it unless =keep_files= is set.
-  Each call writes
-  =rgpot_orca.inp= there, closes extra file descriptors above 2 before =exec=, runs =orca rgpot_orca.inp=
+  The constructor resolves the executable, follows its symlinks, records the
+  size, modification time, device and inode of the file they lead to, and makes
+  a directory of its own under =scratch_dir=; the destructor removes it unless
+  =keep_files= is set.
+  Each call checks that the executable still resolves to that file with that
+  data, writes
+  =rgpot_orca.inp= there, closes extra file descriptors above 2 before =exec=, runs the resolved file with the argument =rgpot_orca.inp=
   with the standard output in
   =rgpot_orca.out= and the standard error in =rgpot_orca.err=, and reads
   =rgpot_orca.engrad= in the C locale (as when writing coordinates).
@@ -523,15 +525,15 @@ explicit ORCAPot(const ORCAConfig &config);
   atomic numbers starts from ORCA's own guess.
   With =restart= on, a result cache passed to =setCache= is not used.
 - Errors :: the constructor throws =std::invalid_argument= in the cases of
-  =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or the
-  directory cannot be made.
+  =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or
+  read, or the directory cannot be made.
   A force call throws =std::invalid_argument= for a box with a periodic image
   closer than the atom itself, a singular box, a cell too skewed to check or a
   non-finite box entry (ORCA has no periodic boundary conditions), for an atomic
   number outside 1 to 118, and for a charge and multiplicity that the electron
   count cannot hold.
   It throws =rgpot::ORCAError=, a
-  =std::runtime_error=, when a stale =.engrad= or =.gbw= cannot be removed, the input cannot be written, ORCA cannot be started or is ended by a signal, the run passes =timeout_s=
+  =std::runtime_error=, when a stale =.engrad= or =.gbw= cannot be removed, the input cannot be written, the executable changed since the instance was made or while it ran, ORCA cannot be started or is ended by a signal, the run passes =timeout_s=
   (the process group is then stopped and the child reaped), the output reports
   an SCF that did not converge, ORCA exits with a non-zero status, no =.engrad=
   appears, the =.engrad= is malformed or lists other atoms, or the energy or a
@@ -573,9 +575,26 @@ void reset();
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: the absolute path of the executable the instance runs.
+- Outputs :: the absolute path of the executable as named or found.
   A name with a directory part is made absolute; a bare name is the first
   executable of that name in the directories of =PATH=.
+  Symlinks are not resolved here; see =resolvedExecutablePath=.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::resolvedExecutablePath=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &resolvedExecutablePath() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =executablePath()= with symlinks resolved by the constructor: the
+  file every call runs.
+  A call throws =rgpot::ORCAError= without running anything once
+  =executablePath()= resolves to another file, or this file's size,
+  modification time or inode has changed.
 - Errors :: none.
 
 *** =rgpot::ORCAPot::runDirectory=
@@ -2228,9 +2247,14 @@ A member whose description differs between classes has one entry per class.
 - Units :: none.
 - Outputs :: a 64-bit FNV-1a hash of =method=, =basis=, =keywords=, =charge=,
   =multiplicity=, =restart=, the executable path with symlinks resolved, the
-  modification time of that file and a kernel version, 2.
-  Results of another ORCA installation, of a binary replaced in place, or of
-  another charge or multiplicity therefore get other result-cache keys.
+  size, modification time, device and inode of that file, a kernel version, 2,
+  and whether the executable still matches them.
+  The constructor records the path and the file data; each call resolves and
+  reads the executable again, and once it no longer matches, the key matches no
+  entry an unchanged instance writes.
+  Results of another ORCA installation, of a binary replaced in place, of a
+  retargeted symlink, or of another charge or multiplicity therefore get other
+  result-cache keys.
   =nprocs=, =maxcore_mb=, =scratch_dir=, =keep_files= and =timeout_s= do not
   change the result and are left out.
 - Errors :: none.
