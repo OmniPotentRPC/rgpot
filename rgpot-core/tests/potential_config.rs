@@ -1,6 +1,6 @@
 use capnp::message::{Builder, ReaderOptions};
 use capnp::serialize;
-use rgpot_core::Potentials_capnp::potential_config;
+use rgpot_core::Potentials_capnp::{o_r_c_a_params, potential_config};
 
 #[test]
 fn morse_arm_round_trips() {
@@ -134,6 +134,67 @@ fn muller_brown_lists_round_trip() {
     check(params.get_y0(), &y0);
 }
 
+#[test]
+fn orca_arm_defaults_and_round_trip() {
+    let mut message = Builder::new_default();
+    message.init_root::<potential_config::Builder>().init_orca();
+    let config = message
+        .get_root_as_reader::<potential_config::Reader>()
+        .expect("PotentialConfig root");
+    let potential_config::Which::Orca(params) = config.which().expect("known arm") else {
+        panic!("PotentialConfig decoded to another arm");
+    };
+    let params = params.expect("orca arm");
+    assert_eq!(params.get_charge(), 0);
+    assert_eq!(params.get_multiplicity(), 1);
+    assert_eq!(params.get_nprocs(), 1);
+    assert_eq!(params.get_maxcore_mb(), 0);
+    assert_eq!(params.get_timeout_s(), 3600.0);
+    assert_eq!(
+        params.get_guess_policy().expect("guessPolicy"),
+        o_r_c_a_params::GuessPolicy::Fresh
+    );
+    assert!(!params.get_keep_files());
+    assert!(params.get_fresh_retry());
+    assert_eq!(params.get_library().expect("library").len(), 0);
+
+    let mut message = Builder::new_default();
+    {
+        let mut orca = message.init_root::<potential_config::Builder>().init_orca();
+        orca.set_method("B3LYP");
+        orca.set_basis("def2-SVP");
+        orca.set_blocks("%scf\n  MaxIter 200\nend");
+        orca.set_charge(-1);
+        orca.set_multiplicity(2);
+        orca.set_guess_policy(o_r_c_a_params::GuessPolicy::Moread);
+        orca.set_fresh_retry(false);
+        orca.set_library("/opt/orcac/lib/liborcac.so");
+    }
+    let encoded = serialize::write_message_to_words(&message);
+    let mut bytes = encoded.as_slice();
+    let reader = serialize::read_message_from_flat_slice(&mut bytes, ReaderOptions::new())
+        .expect("read PotentialConfig");
+    let config = reader
+        .get_root::<potential_config::Reader>()
+        .expect("PotentialConfig root");
+    let potential_config::Which::Orca(orca) = config.which().expect("known arm") else {
+        panic!("PotentialConfig decoded to another arm");
+    };
+    let orca = orca.expect("orca arm");
+    let text = |t: capnp::Result<capnp::text::Reader<'_>>| t.expect("text").to_string().expect("utf-8");
+    assert_eq!(text(orca.get_method()), "B3LYP");
+    assert_eq!(text(orca.get_basis()), "def2-SVP");
+    assert_eq!(text(orca.get_blocks()), "%scf\n  MaxIter 200\nend");
+    assert_eq!(orca.get_charge(), -1);
+    assert_eq!(orca.get_multiplicity(), 2);
+    assert_eq!(
+        orca.get_guess_policy().expect("guessPolicy"),
+        o_r_c_a_params::GuessPolicy::Moread
+    );
+    assert!(!orca.get_fresh_retry());
+    assert_eq!(text(orca.get_library()), "/opt/orcac/lib/liborcac.so");
+}
+
 /// potentials-schema's arm ordinals, shared with gpridge and every other
 /// consumer. A renumbered arm would decode as another backend on the wire.
 const CONFIG_ARMS: [(&str, u16); 17] = [
@@ -157,11 +218,12 @@ const CONFIG_ARMS: [(&str, u16); 17] = [
 ];
 
 /// The arms rgpot adds in CppCore/rgpot/rpc/local, after the upstream ones.
-const LOCAL_ARMS: [(&str, u16); 4] = [
+const LOCAL_ARMS: [(&str, u16); 5] = [
     ("composite", 18),
     ("d2", 19),
     ("d2cpmd", 20),
     ("mullerBrown", 21),
+    ("orca", 22),
 ];
 
 #[test]

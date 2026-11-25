@@ -1,0 +1,45 @@
+# Copyright 2023--present rgpot developers
+diff --git a/Potentials.capnp b/Potentials.capnp
+--- a/Potentials.capnp
++++ b/Potentials.capnp
+@@ -2626,6 +2626,32 @@
+   enginePath @5 :Text;
+ }
+
++# ORCA through liborcac (OmniPotentRPC/orcac), one field per ORCAConfig
++# member of rgpot::ORCAPot. rgpot lowers CommonMethodSpec into these fields
++# before applying them; a field set here wins.
++struct ORCAParams {
++  method @0 :Text;                 # Simple-input method keyword; required.
++  basis @1 :Text;                  # Basis keyword; empty for a composite method.
++  keywords @2 :Text;               # Further simple-input keywords, one line.
++  blocks @3 :Text;                 # Verbatim % blocks; may span lines.
++  charge @4 :Int32 = 0;
++  multiplicity @5 :Int32 = 1;      # 2S+1.
++  nprocs @6 :Int32 = 1;
++  maxcoreMb @7 :Int32 = 0;         # MB per process; 0 keeps ORCA's default.
++  executable @8 :Text;             # orca to run; empty lets orcac search.
++  library @9 :Text;                # liborcac; empty searches ORCAC_LIBRARY first.
++  guessPolicy @10 :GuessPolicy = fresh;
++  timeoutS @11 :Float64 = 3600.0;  # Seconds per run; 0 waits forever.
++  scratchDir @12 :Text;            # Run directory parent; empty for the system one.
++  keepFiles @13 :Bool = false;     # Must stay false under orcac ABI 1.
++  freshRetry @14 :Bool = true;     # Rerun once from a fresh guess on failure.
++
++  enum GuessPolicy {
++    moread @0;                     # From the last orbitals; skips the cache.
++    fresh @1;                      # Always from ORCA's own guess.
++  }
++}
++
+ struct SkalaParams {
+   xc @0 :Text = "skala-1.1";
+   basis @1 :Text = "def2-tzvp";
+@@ -2736,6 +2762,7 @@
+     d2 @19 :D2Params;               # rgpot::D2Pot, Grimme 2006 lattice sum
+     d2cpmd @20 :D2CpmdParams;       # rgpot::D2CpmdPot, CPMD's minimum-image D2
+     mullerBrown @21 :MullerBrownParams;
++    orca @22 :ORCAParams;           # rgpot::ORCAPot through liborcac
+   }
+   # Normalized overlay applied BEFORE the native arm; native settings win.
+   common @3 :CommonMethodSpec;
