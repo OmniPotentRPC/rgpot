@@ -771,8 +771,15 @@ ChildStatus runChild(int exec_fd, bool script, const std::string &executable,
 
 } // namespace
 
+struct ORCAPot::State {
+  std::string real_executable;
+  uint64_t executable_stamp = 0;
+  std::vector<int> guess_numbers;
+};
+
 ORCAPot::ORCAPot(const ORCAConfig &config)
-    : Potential(PotType::ORCA), m_config(config) {
+    : Potential(PotType::ORCA), m_config(config),
+      m_slot{std::make_unique<State>()} {
   if (config.method.empty()) {
     throw std::invalid_argument("ORCAPot: method is required");
   }
@@ -829,8 +836,8 @@ ORCAPot::ORCAPot(const ORCAConfig &config)
   }
   m_run_dir = pattern;
 
-  if (!identifyExecutable(m_executable, &m_real_executable,
-                          &m_executable_stamp)) {
+  if (!identifyExecutable(m_executable, &m_slot.state->real_executable,
+                          &m_slot.state->executable_stamp)) {
     std::error_code ignored;
     fs::remove_all(m_run_dir, ignored);
     throw ORCAError("ORCAPot: could not resolve and read the executable " +
@@ -843,6 +850,10 @@ ORCAPot::~ORCAPot() {
     std::error_code ignored;
     fs::remove_all(m_run_dir, ignored);
   }
+}
+
+const std::string &ORCAPot::resolvedExecutablePath() const noexcept {
+  return m_slot.state->real_executable;
 }
 
 bool ORCAPot::probeAvailable(const std::string &executable) {
@@ -858,12 +869,12 @@ uint64_t ORCAPot::paramsKey() const noexcept {
   fp.i64(m_config.charge);
   fp.i64(m_config.multiplicity);
   fp.b8(m_config.restart);
-  fp.str(m_real_executable);
-  fp.u64(m_executable_stamp);
+  fp.str(m_slot.state->real_executable);
+  fp.u64(m_slot.state->executable_stamp);
   // Once the executable has changed, the key matches no entry an unchanged
   // instance writes, so no result of the old file is served for the new.
-  fp.b8(!executableUnchanged(m_executable, m_real_executable,
-                             m_executable_stamp));
+  fp.b8(!executableUnchanged(m_executable, m_slot.state->real_executable,
+                             m_slot.state->executable_stamp));
   return fp.h;
 }
 
@@ -871,7 +882,7 @@ void ORCAPot::reset() {
   std::error_code ignored;
   fs::remove(fs::path(m_run_dir) / kGuessName, ignored);
   m_has_guess = false;
-  m_guess_numbers.clear();
+  m_slot.state->guess_numbers.clear();
 }
 
 void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
@@ -885,6 +896,7 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       }
     }
   } guard{m_has_guess};
+  State &state = *m_slot.state;
 
   const std::size_t n = in.nAtoms;
   checkClusterBox(in.box, n, in.pos);
@@ -900,7 +912,7 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
   std::error_code ec;
   const bool use_guess = m_config.restart && m_has_guess &&
-                         m_guess_numbers == numbers &&
+                         state.guess_numbers == numbers &&
                          fs::is_regular_file(guess_path, ec) && !ec;
   if (!use_guess) {
     m_has_guess = false;
@@ -926,7 +938,8 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // after the run, so a result is only returned, and cached, for that file.
   const auto changed = [&](const char *when) {
     return ORCAError("ORCAPot: the executable " + m_executable + " changed " +
-                     when + ": it no longer resolves to " + m_real_executable +
+                     when + ": it no longer resolves to " +
+                     state.real_executable +
                      " with the size, modification time, change time, "
                      "device, inode and content hash recorded when the "
                      "instance was made; make a new ORCAPot to run the new "
@@ -939,8 +952,8 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         ::close(fd);
       }
     }
-  } executable{openUnchangedExecutable(m_executable, m_real_executable,
-                                       m_executable_stamp)};
+  } executable{openUnchangedExecutable(m_executable, state.real_executable,
+                                       state.executable_stamp)};
   if (executable.fd < 0) {
     throw changed("since the instance was made");
   }
@@ -974,13 +987,14 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
 
   const ChildStatus child = runChild(
-      executable.fd, isScript(executable.fd), m_real_executable,
+      executable.fd, isScript(executable.fd), state.real_executable,
       std::string(kBase) + ".inp", m_run_dir, output_path, stderr_path,
       m_config.timeout_s);
   uint64_t after = 0;
-  if (!stampOpenFile(executable.fd, &after) || after != m_executable_stamp ||
-      !executableUnchanged(m_executable, m_real_executable,
-                           m_executable_stamp)) {
+  if (!stampOpenFile(executable.fd, &after) ||
+      after != state.executable_stamp ||
+      !executableUnchanged(m_executable, state.real_executable,
+                           state.executable_stamp)) {
     throw changed("while it ran");
   }
   if (!child.problem.empty()) {
@@ -1047,7 +1061,7 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                       ec.message());
     }
     m_has_guess = true;
-    m_guess_numbers = numbers;
+    state.guess_numbers = numbers;
   }
   guard.kept = true;
 }
