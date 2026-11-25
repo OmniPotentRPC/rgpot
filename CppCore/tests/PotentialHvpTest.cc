@@ -161,9 +161,19 @@ TEST_CASE("from_impl registers the analytic product of MorsePot", "[hvp]") {
     CHECK_THAT(central[i], Catch::Matchers::WithinAbs(want[i], 1e-5));
   }
 
+  // The dense Hessian stays registered, but Auto never multiplies it out:
+  // without a product callback it differences forces.
   pot.set_hvp_callback(nullptr);
-  pot.hvp(input, v);
-  CHECK(pot.hvp_counts().analytic == 2);
+  REQUIRE(pot.derivative_caps().hessian_analytic);
+  rgpot_hvp_scheme_t used = RGPOT_HVP_AUTO;
+  const auto forward = pot.hvp(input, v, 0.0, RGPOT_HVP_AUTO, &used);
+  CHECK(used == RGPOT_HVP_FORWARD);
+  const auto counts = pot.hvp_counts();
+  CHECK(counts.analytic == 1);
+  CHECK(counts.force_calls == 4);
+  CHECK(pot.derivative_counts().hessian_analytic == 0);
+  CHECK(forward == pot.hvp(input, v, 0.0, RGPOT_HVP_FORWARD));
+  CHECK(pot.hvp_counts().centre_reused == 1);
 }
 
 TEST_CASE("from_impl keeps LJClusterPot Auto on finite differences", "[hvp]") {
