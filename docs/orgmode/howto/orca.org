@@ -14,11 +14,14 @@ library and carries no ORCA code.
 You install ORCA yourself and accept its license.
 
 ORCA is described in Neese, WIREs Computational Molecular Science 2, 73-78
-(2012),
-doi:10.1002/wcms.81. The program paper is Neese, Wennmohs, Becker and Riplinger, J. Chem. Phys. 152, 224108 (2020), doi:10.1063/5.0004608.
+(2012), [[https://doi.org/10.1002/wcms.81][doi:10.1002/wcms.81]].
+The program paper is Neese, Wennmohs, Becker and Riplinger, The Journal of
+Chemical Physics 152, 224108 (2020),
+[[https://doi.org/10.1063/5.0004608][doi:10.1063/5.0004608]].
 The version 5 update is Neese, WIREs Computational Molecular Science 12, e1606
-(2022),
-doi:10.1002/wcms.1606. The version 6 update is Neese, WIREs Computational Molecular Science 15, e70019 (2025), doi:10.1002/wcms.70019.
+(2022), [[https://doi.org/10.1002/wcms.1606][doi:10.1002/wcms.1606]].
+The version 6 update is Neese, WIREs Computational Molecular Science 15, e70019
+(2025), [[https://doi.org/10.1002/wcms.70019][doi:10.1002/wcms.70019]].
 [[file:../reference/cpp_backends.org][The backend reference]] lists the class
 members.
 
@@ -75,8 +78,7 @@ started by its full path, so =ORCAPot= always runs an absolute path.
 The constructor resolves its symlinks, and every call runs that resolved file,
 which =ORCAPot::resolvedExecutablePath()= reports.
 Before and after each run the path is resolved again and the size, modification
-time, device and inode of the file are compared with those the constructor
-read.
+time, device and inode of the file are compared with those the constructor read.
 When they differ, as after a symlink is retargeted or the binary is replaced,
 the call throws =ORCAError= without running anything, and a new =ORCAPot= is
 needed to run the new file.
@@ -181,8 +183,8 @@ A force call accepts no box, an all-zero box, or a cell in which every pair of
 atoms is its own nearest periodic image.
 An image shifted by the lattice vector L is closer than the atom itself exactly
 when the atoms span more than half the length of L along it, so the check runs
-over the three cell vectors and every other nonzero lattice vector short
-enough to matter.
+over the three cell vectors and every other nonzero lattice vector short enough
+to matter.
 In a skewed cell a combination such as =a1 - a2= can be far shorter than any
 cell vector, and a cluster whose fractional span is below one half along each
 cell vector can still have a closer image.
@@ -197,8 +199,11 @@ skewed to check or a non-finite entry.
 
 rgpot positions are Angstrom, which is also the unit of an ORCA =* xyz= block,
 so the coordinates are written as they are.
-The =.engrad= file holds the energy in Hartree and the gradient in
-Hartree/bohr. =ORCAPot= multiplies the energy by =units::HARTREE_TO_EV= and the gradient by =units::NEG_GRAD_TO_FORCE=, both from =CppCore/rgpot/units.hpp=. The forces are the negative gradient in eV/Angstrom.
+The =.engrad= file holds the energy in Hartree and the gradient in Hartree per
+bohr.
+=ORCAPot= multiplies the energy by =units::HARTREE_TO_EV= and the gradient by
+=units::NEG_GRAD_TO_FORCE=, both from =CppCore/rgpot/units.hpp=.
+The forces are the negative gradient in eV/Angstrom.
 The variance is 0 and no stress is written.
 
 ** Restarting from the previous wavefunction
@@ -255,11 +260,12 @@ standard error and of the output file, where ORCA reports an SCF failure or an
 input mistake.
 A failed call also drops the stored orbitals.
 
-Input the caller got wrong throws
-=std::invalid_argument=: an empty method, a line break in a keyword field, an =nprocs= or =multiplicity= below 1, a negative =maxcore_mb=,
-a =timeout_s= that is negative or not finite, a box with a periodic image closer
-than the atom itself, an atomic number outside 1 to 118, and a charge and
-multiplicity that the electron count cannot hold.
+Input the caller got wrong throws =std::invalid_argument= instead.
+That is an empty method, a line break in a keyword field, an =nprocs= or
+=multiplicity= below 1, a negative =maxcore_mb=, a =timeout_s= that is negative
+or not finite, a box with a periodic image closer than the atom itself, an
+atomic number outside 1 to 118, or a charge and multiplicity that the electron
+count cannot hold.
 An executable that changed since the instance was made, or while it ran, throws
 =ORCAError=.
 
@@ -284,8 +290,8 @@ CI has no ORCA.
 directory.
 The script checks the keyword line, =%maxcore= or its absence,
 =%scf ConvForced=, the coordinates, closed extra file descriptors and the
-=MORead= and =%moinp= lines of the input it is given, keeps a copy of each
-input and the path it was started as, writes an =.engrad= of known numbers and a
+=MORead= and =%moinp= lines of the input it is given, keeps a copy of each input
+and the path it was started as, writes an =.engrad= of known numbers and a
 =.gbw= that names the call, and can fail, sleep past =timeout_s= with a child
 that ignores SIGTERM (both when the leader stays alive and when the leader exits
 on SIGTERM), write nothing, write NaN, write a short file or kill itself.
@@ -297,8 +303,8 @@ restart, the fall-back to a fresh guess, the error paths (including a stale
 paths, modification times, charges and multiplicities, symlink executables, a
 retargeted symlink and a replaced binary with and without the result cache, a
 restart sequence with a result cache, comma-decimal locales, the box that
-=rgpot.ase= builds for a cluster and the rejection of a box with a closer
-image, including skewed cells.
+=rgpot.ase= builds for a cluster and the rejection of a box with a closer image,
+including skewed cells.
 =tests/python/test_ase_orca_box.py= runs =RgpotCalculator= over a non-periodic
 stand-in that applies the same box rule, since =ORCAPot= has no Python class.
 One test case runs a real ORCA and is skipped, with the message "orca is not on
