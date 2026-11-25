@@ -3,93 +3,51 @@ capnp_rpc_dep = dependency('capnp-rpc')
 capnp = find_program('capnp')
 python = find_program('python3', 'python')
 
-# Canonical contract pinned via subprojects/potentials-schema.wrap; the two
-# vendored Potentials.capnp copies must stay byte-identical to it, which is
-# what the sync tests check here and in a parent such as gpridge that
-# resolves the subproject from its own wrap. An offline build
-# (--wrap-mode=nodownload) skips them.
-# rgpot-local fields are the add-only diffs in local/series. The build
-# compiles, installs and serves the effective schema: the vendored copy
-# with the series applied. schema-ordinal-ledger holds the copies, the
-# series and the effective schema to Potentials.ordinals.
+# The schema is rgconf's potential.capnp at the commit pinned in
+# schema.pin, vendored byte for byte with the common.capnp it imports. The
+# build compiles, installs and serves the vendored files as they are;
+# schema-ordinal-ledger holds both copies (here and rgpot-core/schema) to
+# Potentials.ordinals. The comparison with the pinned rgconf commit itself
+# needs the network and runs in CI (schema_ledger.py check --fetch).
 schema_ledger = files('schema_ledger.py')
-rgpot_effective_schema = custom_target(
-    'effective_schema',
-    input: 'Potentials.capnp',
-    output: 'Potentials.capnp',
-    command: [
-        python,
-        schema_ledger,
-        'apply',
-        '--root',
-        meson.project_source_root(),
-        '--schema',
-        '@INPUT@',
-        '--series',
-        meson.current_source_dir() / 'local',
-        '--out',
-        '@OUTPUT@',
-    ],
-    depend_files: rgpot_schema_inputs,
-    install: not meson.is_subproject(),
-    install_dir: get_option('includedir') / 'rgpot' / 'rpc',
-)
-potentials_schema_proj = subproject('potentials-schema', required: false)
-if potentials_schema_proj.found()
-    potentials_schema_canonical = potentials_schema_proj.get_variable(
-        'potentials_capnp_file',
-    )
-    schema_sync_check = files('schema_sync_check.py')
-    test(
-        'schema-sync-canonical-rpc',
-        python,
-        args: [
-            schema_sync_check,
-            meson.current_source_dir() / 'Potentials.capnp',
-            potentials_schema_canonical,
-        ],
-        suite: 'schema',
-    )
-    test(
-        'schema-sync-canonical-core',
-        python,
-        args: [
-            schema_sync_check,
-            meson.project_source_root() / 'rgpot-core/schema/Potentials.capnp',
-            potentials_schema_canonical,
-        ],
-        suite: 'schema',
-    )
-    test(
-        'schema-ordinal-ledger',
-        python,
-        args: [
-            schema_ledger,
-            'check',
-            '--root',
-            meson.project_source_root(),
-            '--subproject-schema',
-            potentials_schema_canonical,
-        ],
-        suite: 'schema',
+if not meson.is_subproject()
+    install_data(
+        rgpot_schema_files,
+        install_dir: get_option('includedir') / 'rgpot' / 'rpc',
     )
 endif
+test(
+    'schema-ordinal-ledger',
+    python,
+    args: [schema_ledger, 'check', '--root', meson.project_source_root()],
+    suite: 'schema',
+)
 
+# Potentials.capnp imports common.capnp, so the generated
+# Potentials.capnp.h includes common.capnp.h and the translation units of
+# both belong in ptlrpc.
 gen_rpc = custom_target(
     'gen_rpc',
-    input: rgpot_effective_schema,
-    output: ['Potentials.capnp.cpp', 'Potentials.capnp.h'],
+    input: rgpot_schema_files,
+    output: [
+        'Potentials.capnp.cpp',
+        'Potentials.capnp.h',
+        'common.capnp.cpp',
+        'common.capnp.h',
+    ],
     command: [
         python,
         meson.current_source_dir() / 'capnp_compile.py',
         capnp,
         '@OUTDIR@',
-        meson.current_build_dir(),
+        meson.current_source_dir(),
         '@INPUT@',
     ],
-    # Install generated header next to vendored schema for pkg-config consumers.
+    # Install the generated headers next to the schema for pkg-config consumers.
     install: not meson.is_subproject(),
     install_dir: [
+        false,
+        get_option('includedir') / 'rgpot' / 'rpc',
         false,
         get_option('includedir') / 'rgpot' / 'rpc',
     ],
@@ -121,7 +79,7 @@ endif
 # archives all link_whole into one librgpot. The archives take this view;
 # only final binaries take the objects through ptlrpc_dep below.
 ptlrpc_hdr_dep = declare_dependency(
-    sources: gen_rpc[1],
+    sources: [gen_rpc[1], gen_rpc[3]],
     include_directories: _incdirs,
     dependencies: _ptlrpc_extra_deps,
 )

@@ -42,12 +42,8 @@ if gmx_dropin_pytest
     gmx_dropin_env.set('RGPOT_GROMACS_DROPIN', gmx_dropin.full_path())
     gmx_dropin_env.set('RGPOT_EVAL', rgpot_eval.full_path())
     gmx_dropin_depends = [gmx_dropin, rgpot_eval]
-    if is_variable('rgpot_effective_schema')
-        gmx_dropin_env.set(
-            'RGPOT_CAPNP_SCHEMA',
-            rgpot_effective_schema.full_path(),
-        )
-        gmx_dropin_depends += [rgpot_effective_schema]
+    if is_variable('rgpot_schema')
+        gmx_dropin_env.set('RGPOT_CAPNP_SCHEMA', rgpot_schema.full_path())
     endif
     if is_variable('classical_engine')
         gmx_dropin_env.set(

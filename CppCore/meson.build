@@ -419,16 +419,10 @@ rgpot_halfshell = static_library(
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
 # (xtb/tblite/metatomic CI) must not require pkg-config 'capnp-rpc'.
 _rpc_stack = rpc_enabled or get_option('with_rpc_client_only')
-# Inputs of the effective schema (the vendored copy plus the rgpot-local
-# series in rgpot/rpc/local/series); every target that applies it depends
-# on them.
-rgpot_schema_inputs = files('rgpot/rpc/local/series')
-foreach _line : _fs.read('rgpot/rpc/local/series').split('\n')
-    _line = _line.strip()
-    if _line != '' and not _line.startswith('#')
-        rgpot_schema_inputs += files('rgpot/rpc/local' / _line)
-    endif
-endforeach
+# The vendored schema: rgconf's potential.capnp and the common.capnp it
+# imports, compiled, installed and served as they are (see rgpot/rpc/schema.pin).
+rgpot_schema_files = files('rgpot/rpc/Potentials.capnp', 'rgpot/rpc/common.capnp')
+rgpot_schema = rgpot_schema_files[0]
 _metatomic_build_rpath = ''
 if _rpc_stack
     subdir('rgpot/rpc')
@@ -2477,8 +2471,7 @@ if get_option('with_tests')
                 dependencies: [_capnp_dep, _capnpc_dep],
                 link_with: _nlist_link,
             ),
-            args: [rgpot_effective_schema.full_path()],
-            depends: rgpot_effective_schema,
+            args: [rgpot_schema.full_path()],
             kwargs: _rt_kw['nlist_stream'],
         )
         _capnp_tool = find_program('capnp', required: false)
@@ -2490,9 +2483,8 @@ if get_option('with_tests')
                     meson.current_source_dir() / 'tests' / 'test_nlist_capnp.py',
                     meson.project_source_root(),
                     _capnp_tool.full_path(),
-                    rgpot_effective_schema.full_path(),
+                    rgpot_schema.full_path(),
                 ],
-                depends: rgpot_effective_schema,
                 kwargs: _rt_kw['nlist_capnp_roundtrip'],
             )
         endif
@@ -3442,8 +3434,8 @@ if not meson.is_subproject()
     # relative to rgpot/. A glob is not such a path, so '*.cc' drops
     # nothing and PotHelpers.cc, EMT/EMTPot.cc and the other
     # implementation files are installed. Pass every implementation path
-    # literally. rpc/Potentials.capnp stays out because rpc/meson.build
-    # installs the effective schema in its place.
+    # literally. The rpc/*.capnp schema files stay out because
+    # rpc/meson.build installs them next to the generated headers.
     _install_py = find_program('python3', required: false)
     if not _install_py.found()
         error('installing headers needs python3 to list implementation sources')
@@ -3457,7 +3449,7 @@ if not meson.is_subproject()
     ).stdout().strip().split(
         '\n',
     )
-    _install_exclude = ['rpc/Potentials.capnp']
+    _install_exclude = ['rpc/Potentials.capnp', 'rpc/common.capnp']
     foreach _rel : _install_impl
         if _rel != ''
             _install_exclude += [_rel]

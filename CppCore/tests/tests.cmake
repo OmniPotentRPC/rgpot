@@ -337,14 +337,14 @@ if(_on)
   add_executable(nlist_stream CppCore/examples/nlist_stream.cc)
   target_link_libraries(nlist_stream PRIVATE ${_rgpot_nlist_link}
                                              CapnProto::capnp CapnProto::capnpc)
-  rgpot_add_test(nlist_stream COMMAND nlist_stream "${RGPOT_EFFECTIVE_SCHEMA}")
+  rgpot_add_test(nlist_stream COMMAND nlist_stream "${RGPOT_POTENTIALS_SCHEMA}")
 endif()
 rgpot_test_enabled(nlist_capnp_roundtrip _on)
 if(_on)
   rgpot_add_test(nlist_capnp_roundtrip
     COMMAND Python3::Interpreter
             "${RGPOT_TEST_ROOT}/CppCore/tests/test_nlist_capnp.py"
-            "${RGPOT_TEST_ROOT}" "${RGPOT_CAPNP_TOOL}" "${RGPOT_EFFECTIVE_SCHEMA}")
+            "${RGPOT_TEST_ROOT}" "${RGPOT_CAPNP_TOOL}" "${RGPOT_POTENTIALS_SCHEMA}")
 endif()
 rgpot_test_enabled(nlist_rust _on)
 if(_on)

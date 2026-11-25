@@ -1440,7 +1440,6 @@ if not meson.is_subproject() and get_option('with_tests')
         _installed_targets = []
         foreach _tgt_name : [
             'rgpot_mpi_lib',
-            'rgpot_effective_schema',
             'gen_rpc',
             'pot_bridge',
             'cp2kc_shim',
@@ -1466,7 +1465,6 @@ if not meson.is_subproject() and get_option('with_tests')
             'native_lj_engine',
             'openmm_engine',
             '_py_core',
-            '_py_ase_schema',
         ]
             if is_variable(_tgt_name)
                 _tgt = get_variable(_tgt_name)
@@ -1523,7 +1521,6 @@ if get_option('with_tests') and _doc_python.found()
             'rgpot_eval',
             'capi_threads',
             '_py_core',
-            '_py_ase_schema',
         ]
             if is_variable(_tgt_name)
                 _tgt = get_variable(_tgt_name)

@@ -197,26 +197,12 @@ py.install_sources(
     pure: false,
     subdir: 'rgpot',
 )
-# rgpot.ase speaks the schema the server serves: the vendored copy with the
-# rgpot-local series applied.
-_py_ase_schema = custom_target(
-    'ase_effective_schema',
-    input: '../CppCore/rgpot/rpc/Potentials.capnp',
-    output: 'Potentials.capnp',
-    command: [
-        py,
-        files('../CppCore/rgpot/rpc/schema_ledger.py'),
-        'apply',
-        '--root',
-        meson.project_source_root(),
-        '--schema',
-        '@INPUT@',
-        '--out',
-        '@OUTPUT@',
-    ],
-    depend_files: rgpot_schema_inputs,
-    install: true,
-    install_dir: py.get_install_dir() / 'rgpot' / 'ase',
+# rgpot.ase speaks the schema the server serves: the vendored
+# Potentials.capnp and the common.capnp it imports, side by side.
+py.install_sources(
+    rgpot_schema_files,
+    pure: false,
+    subdir: 'rgpot' / 'ase',
 )
 py.install_sources(
     files(

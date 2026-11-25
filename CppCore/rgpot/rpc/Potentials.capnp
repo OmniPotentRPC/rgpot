@@ -1,3 +1,4 @@
+# Copyright 2023--present rgconf developers
 # @brief RPC schema for distributed potential evaluations.
 #
 # This schema defines the binary communication contract between the light client
@@ -8,6 +9,11 @@
 # [1] eOn Development Team. eOn Documentation. https://eondocs.org.
 
 @0xbd1f89fa17369103;
+
+using Common = import "common.capnp";
+
+# Additive protocol revision implemented by this schema.
+const protocolMinor :UInt16 = 2;
 
 # @struct ForceInput
 # @brief Input configuration for a potential energy evaluation.
@@ -25,6 +31,14 @@ struct ForceInput {
   charge @6 :Int32 = 0;             # @brief Per-step charge when hasCharge is true.
   hasMultiplicity @7 :Bool = false; # @brief Override NWChemParams.multiplicity for this step.
   multiplicity @8 :Int32 = 1;       # @brief Per-step spin multiplicity when hasMultiplicity is true.
+  neighbors @9 :NeighborRequest;
+  hasOrbitalKey @10 :Bool = false;  # @brief Protocol minor 2: select keyed orbitals.
+  orbitalKey @11 :Int64 = 0;        # @brief Protocol minor 2: image or bead key.
+  # Ordinals 12 to 14 were 10 to 12 in rgconf 0.1.0; 10 and 11 belong to the
+  # orbital key that rgpot shipped first.
+  hessianDisplacement @12 :List(Float64);
+  wantStress @13 :Bool = false;
+  wantHessianVector @14 :Bool = false;
 }
 
 # @struct PotentialResult
@@ -59,6 +73,11 @@ struct PotentialResult {
   mdTrajectoryRow @25 :List(Float64); # MD ENERGY row incl. EKINC when MD ran
   mdTrajectoryValid @26 :Bool = false;
   embedMdPropsSkipped @27 :Bool = true; # true when MD/PROP not harvested this eval (honest skip)
+  neighborList @28 :NeighborList;
+  hessianVector @29 :List(Float64);
+  perAtomEnergies @30 :List(Float64);
+  perAtomUncertainties @31 :List(Float64);
+  forceEvalCount @32 :UInt64 = 1;
 }
 
 # @struct Capabilities
@@ -102,6 +121,7 @@ struct Capabilities {
     stress         @7;
     optimize       @8;
     frequencies    @9;
+    hessianVector  @10;
   }
 }
 
@@ -1364,6 +1384,7 @@ struct CPMDSystemSection {
   classicalCellDegree @88 :Bool = false;   # CLASSICAL CELL DEGREE.
   cellVectors @89 :Bool = false;            # CELL VECTORS.
   referenceCellVectors @90 :Bool = false;   # REFERENCE CELL VECTORS.
+  hasCharge @91 :Bool = false;              # @brief Mark CPMDSystemSection.charge as explicit, including zero.
 }
 
 struct CPMDCpmdSection {
@@ -1901,6 +1922,7 @@ struct CPMDParams {
   enginePath   @10 :Text = "";        # Frontend engine selection hint.
   inputBlocks  @11 :List(Text);       # Raw &SECTION blocks applied before generated ones.
   inputSections @12 :List(CPMDInputSection); # Structured CPMD input sections.
+  hasCharge @13 :Bool = false;        # @brief Mark CPMDParams.charge as explicit, including zero.
   # Long-tail options: use CPMDInputSection.raw, inputBlocks, or set.
 }
 
@@ -1958,6 +1980,7 @@ struct CommonMethodSpec {
   relativityMethod  @10 :Text = "";    # e.g. "ZORA", "DKH".
   vanDerWaalsS6     @11 :Float64 = 0.0; # Global dispersion scaling s6; 0 = engine default.
                                         # Lowers to dft:vdw (NWChem) / vdwParams.s6 (CPMD).
+  hasCharge @12 :Bool = false;         # @brief Mark CommonMethodSpec.charge as explicit, including zero.
 
   struct Smearing {
     kind    @0 :Kind = none;
@@ -2038,6 +2061,8 @@ struct UmaParams {
   intraopThreads          @7 :Int32 = 1; # torch intra-op worker threads.
   interopThreads          @8 :Int32 = 1; # torch inter-op worker threads (settable once per process).
   deterministicAlgorithms @9 :Bool = false; # Request deterministic torch algorithms.
+  cacheDir @10 :Text = "";
+  checkpointSha256 @11 :Text = "";
 }
 
 # @struct PotentialSpec
@@ -2064,6 +2089,7 @@ struct PotentialSpec {
     # geometry on ForceInput carry no params struct of their own.
     builtin    @5 :BuiltinParams;
     cp2k       @6 :CP2KParams;
+    orca       @7 :ORCAParams;
   }
 }
 
@@ -2121,6 +2147,10 @@ struct LammpsParams {
   boundary   @7 :Text = "p p p";  # boundary keyword args.
   extraSetup @8 :List(Text);      # Escape hatch: raw commands after the pair block.
   suffix     @9 :Text = "";       # Accelerator suffix (omp/gpu/kk) when compiled in.
+  mdConfig   @10 :LammpcMdConfig;
+  boundaryConstraint @11 :LammpcBoundaryConfig;
+  openmpThreads @12 :UInt32 = 1;
+  enableLogging @13 :Bool = false;
 }
 
 # @struct NWChemDplotStanza
@@ -2546,6 +2576,7 @@ struct LennardJonesParams {
   u0 @0 :Float64 = 1.0;
   psi @1 :Float64 = 1.0;
   cutoff @2 :Float64 = 15.0;
+  switchWidth @3 :Float64 = 0.0;
 }
 
 struct MorseParams {
@@ -2553,6 +2584,7 @@ struct MorseParams {
   a @1 :Float64 = 1.6047;
   re @2 :Float64 = 2.897;
   cutoff @3 :Float64 = 9.5;
+  switchWidth @4 :Float64 = 0.0;
 }
 
 struct ZBLParams {
@@ -2588,15 +2620,96 @@ struct D4Params {
   functional @0 :Text = "pbe";
   charge @1 :Float64 = 0.0;
   atm @2 :Bool = true;
+  periodic @3 :Bool = false; # Box as a 3D lattice; dftd4 adds the virial.
+}
+
+# @struct D2Params
+# S. Grimme, J. Comput. Chem. 27, 1787 (2006), doi:10.1002/jcc.20495, with
+# the tables of the dftd3 program. The defaults are BLYP. A non-empty
+# functional takes s6 and d from dftd3's D2 table instead of the fields.
+struct D2Params {
+  s6 @0 :Float64 = 1.2;       # Global scaling.
+  d @1 :Float64 = 20.0;       # Steepness of the damping.
+  sr @2 :Float64 = 1.1;       # Scale on the tabulated R0.
+  cutoff @3 :Float64 = 150.0; # Pair cutoff (Angstrom) over all images.
+  functional @4 :Text;        # dftd3 -func name; empty keeps s6 and d.
+}
+
+# @struct D2CpmdParams
+# The term OpenCPMD adds with EMPIRICAL CORRECTION / ALL DFT-D2, with its
+# tables, damping and truncation, so a composite can subtract it from a run
+# that had it on. A non-empty functional takes s6 from CPMD's set_s6.
+struct D2CpmdParams {
+  s6 @0 :Float64 = 1.2;      # CPMD's S6GRIMME (BLYP).
+  alpha @1 :Float64 = 20.0;  # Damping exponent.
+  vdweps @2 :Float64 = 0.01; # Pairs with |alpha (r/R0 - 1)| >= 1/vdweps drop.
+  functional @3 :Text;       # CPMD functional name; empty keeps s6.
+  symmetry @4 :Int32 = -1;   # CPMD SYMMETRY code (ibrav); -1 reads it from the box.
+}
+
+# @struct MullerBrownParams
+# Four entries per list, or none. The PotentialConfig arms page has the rule.
+struct MullerBrownParams {
+  amplitude @0 :List(Float64);
+  a @1 :List(Float64);
+  b @2 :List(Float64);
+  c @3 :List(Float64);
+  x0 @4 :List(Float64);
+  y0 @5 :List(Float64);
+}
+
+# @struct CompositeParams
+# Energy, forces and stress are sum_i weight_i * term_i over the enabled
+# terms. A DFT engine with its own dispersion off plus a dispersion term
+# is one use; subtracting an engine's built-in correction is another.
+struct CompositeParams {
+  terms @0 :List(CompositeTerm);
+}
+
+# @struct CompositeTerm
+# @brief One child of a composite potential: a weighted, switchable
+# PotentialSpec.
+struct CompositeTerm {
+  name @0 :Text;            # Label in the component record and the log.
+  enabled @1 :Bool = true;  # A disabled term is recorded and never evaluated.
+  weight @2 :Float64 = 1.0; # Any finite value; -1 subtracts the term.
+  pot @3 :PotentialSpec;    # The child backend and its settings.
+}
+
+# @struct ORCAParams
+# @brief ORCA energy and gradient through the orca executable (orcac).
+#
+# Every field that shapes the calculation is the caller's: there is no
+# default method or basis. The input is `! <method> <basis> <keywords>
+# EnGrad`, `%pal nprocs` when nprocs is above 1, `%maxcore`, and the
+# coordinates in Angstrom. Keywords that start with `!` or `%`, or span
+# several lines, are copied verbatim after the generated header instead.
+struct ORCAParams {
+  executable   @0 :Text;            # Path or bare name of orca; empty looks up orca on PATH.
+  method       @1 :Text;            # Method keyword, e.g. "PBE0", "UKS PBE0", "r2SCAN-3c". Required.
+  basis        @2 :Text;            # Basis keyword; empty for a composite method.
+  keywords     @3 :Text;            # Further simple-input keywords or a verbatim block.
+  charge       @4 :Int32 = 0;
+  multiplicity @5 :Int32 = 1;       # 2S + 1.
+  nprocs       @6 :Int32 = 1;       # %pal nprocs; above 1 ORCA starts its own MPI ranks.
+  maxcoreMb    @7 :Int32 = 1024;    # %maxcore, MB per process.
+  restart      @8 :Bool = true;     # Start each call from the previous orbitals (MORead).
+  scratchDir   @9 :Text;            # Parent of the per-instance working directory; empty uses the temporary directory.
+  keepFiles    @10 :Bool = false;   # Keep the working directory after the instance ends.
+  timeoutS     @11 :Float64 = 3600.0; # Seconds for one orca run; 0 waits without a limit.
 }
 
 struct MOPACParams {
   charge @0 :Int32 = 0;
   spin @1 :Int32 = 0; # Spin excitations, not multiplicity.
-  model @2 :Int32 = 4; # AM1.
+  model @2 :Int32 = 4; # AM1 (0 PM7, 1 PM6-D3H4, 2 PM6-ORG, 3 PM6, 4 AM1, 5 RM1).
   tolerance @3 :Float64 = 1.0;
   maxTime @4 :Int32 = 3600;
   enginePath @5 :Text;
+  epsilon @6 :Float64 = 1.0; # COSMO dielectric; 1.0 is vacuum.
+  solver @7 :Int32 = 0; # 0 conventional MOPACC_SOLVER_MOPAC, 1 MOPACC_SOLVER_MOZYME.
+  extraKeywords @8 :Text = "";
+  cell @9 :MopacCellParams;
 }
 
 struct SkalaParams {
@@ -2657,9 +2770,25 @@ struct PotentialConfig {
     skala     @15 :SkalaParams;
     expr      @16 :ExprParams;
     cp2k      @17 :CP2KParams;    # CP2KPot / libcp2k shim
+    composite @18 :CompositeParams; # rgpot::SumPot over PotentialSpec terms
+    d2 @19 :D2Params;               # rgpot::D2Pot, Grimme 2006 lattice sum
+    d2cpmd @20 :D2CpmdParams;       # rgpot::D2CpmdPot, CPMD's minimum-image D2
+    mullerBrown @21 :MullerBrownParams;
+    # Ordinals 27 to 30 were 18 to 21 in rgconf 0.1.0; 18 to 21 belong to the
+    # arms rgpot shipped first.
+    gpr       @27 :GprParams;
+    potlib    @28 :PotlibParams;
+    external  @29 :ExternalPotParams;
+    plugin    @30 :PluginPotentialParams;
+    orca      @31 :ORCAParams;      # orcac engine shim (ORCA through a child process)
   }
   # Normalized overlay applied BEFORE the native arm; native settings win.
   common @3 :CommonMethodSpec;
+  commonPatch @22 :CommonMethodPatch;
+  neighborList @23 :Common.NeighborListConfig;
+  rpcEndpoint @24 :RpcEndpointConfig;
+  logPotentialCalls @25 :Bool = false;
+  emtRasmussenParameters @26 :Bool = true;
 }
 # @interface Potential
 # @brief The RPC interface for remote calculations.
@@ -2718,4 +2847,133 @@ interface Potential {
   # @return The protocol, schema, eindir bridge, DLPack and build identity.
   # buildVersion and buildRevision are empty when the build does not know them.
   getCapabilities @12 () -> (capabilities :Capabilities);
+
+  # One chunk of a neighbour query.
+  neighbours @13 (fip :ForceInput, request :NeighborRequest) -> (neighbors :NeighborList);
+
+  # Exact Cartesian energy-Hessian product for one direction.
+  calculateHvp @14 (fip :ForceInput, direction :List(Float64)) -> (product :List(Float64));
+}
+
+struct NeighborRequest {
+  cutoff @0 :Float64;
+  skin @1 :Float64 = 0;
+  format @2 :UInt8 = 0;
+  cut @3 :UInt8 = 0;
+  periodic @4 :List(Bool);
+  shifts @5 :Bool = true;
+  vectors @6 :Bool = true;
+  distances @7 :Bool = true;
+  mode @8 :UInt8 = 1;
+  cursor @9 :UInt64 = 0;
+  limit @10 :UInt32 = 0;
+  systems @11 :List(NeighborSystem);
+}
+
+struct NeighborSystem {
+  count @0 :UInt32;
+  box @1 :List(Float64);
+}
+
+struct NeighborList {
+  first @0 :List(Int32);
+  second @1 :List(Int32);
+  shift @2 :List(Int32);
+  vector @3 :List(Float64);
+  distance @4 :List(Float64);
+  mask @5 :List(UInt8);
+  more @6 :Bool = false;
+  next @7 :UInt64 = 0;
+  status @8 :Int32 = 0;
+  message @9 :Text;
+  system @10 :List(Int32);
+}
+
+struct MopacCellParams {
+  nlattice @0 :Int32 = 0;      # 0..3 periodic lattice vectors
+  nlatticeMove @1 :Int32 = 0;  # number of movable lattice vectors during mopacc_relax
+  pressureGpa @2 :Float64 = 0.0;
+  latticeAngstrom @3 :List(Float64); # 9 elements row-major in Angstrom
+}
+
+enum LammpcPlaneCoordinates {
+  massWeighted @0;
+  cartesian @1;
+}
+
+# Mirrors LammpcMdConfig in lammpc/include/lammpc.h:53-59.
+struct LammpcMdConfig {
+  timeStepPs @0 :Float64 = 0.001;
+  thermalEnergyEv @1 :Float64 = 0.02585;
+  frictionPerPs @2 :Float64 = 1.0;
+  seed @3 :UInt64 = 0;
+  coordinates @4 :LammpcPlaneCoordinates = massWeighted;
+}
+
+# Mirrors lammpc_boundary.h hyperplane / hard-boundary controls.
+struct LammpcBoundaryConfig {
+  enabled @0 :Bool = false;
+  planePoint @1 :List(Float64);
+  planeNormal @2 :List(Float64);
+  reflectVelocities @3 :Bool = true;
+}
+
+struct PotlibParams {
+  surfaceId @0 :Text = "";
+  parameterSetIndex @1 :UInt16 = 0;
+}
+
+struct ExternalPotParams {
+  executablePath @0 :Text = "ext_pot";
+  potentialsDirectory @1 :Text = ".";
+  mpiPollPeriodSeconds @2 :Float64 = 0.0;
+  mpiRank @3 :Int32 = 0;
+}
+
+# Explicit union arm for third-party / runtime-loaded plugin potentials.
+struct PluginPotentialParams {
+  pluginName @0 :Text;
+  pluginVersion @1 :Text = "";
+  libraryPath @2 :Text = "";
+  schemaId @3 :Text = "";
+  opaquePayload @4 :Data;
+}
+
+# Presence-aware patch version of CommonMethodSpec using `unset | value` unions,
+# so explicit arm values equal to schema defaults ("BLYP", 70.0 Ry, charge 0,
+# multiplicity 1) are never misidentified as unset.
+struct CommonMethodPatch {
+  xcFunctionals @0 :Common.OptTextList;
+  basisSet @1 :Common.OptText;
+  planewaveCutoffEv @2 :Common.OptFloat64;
+  charge @3 :Common.OptInt32;
+  spinMultiplicity @4 :Common.OptInt32;
+  scfEnergyToleranceEv @5 :Common.OptFloat64;
+  scfMaxIterations @6 :Common.OptInt32;
+  kMesh @7 :Common.OptInt32List;
+  smearingKind @8 :Common.OptUInt8;
+  smearingWidthEv @9 :Common.OptFloat64;
+  vanDerWaalsMethod @10 :Common.OptText;
+  relativityMethod @11 :Common.OptText;
+  vanDerWaalsS6 @12 :Common.OptFloat64;
+}
+
+struct RpcEndpointConfig {
+  host @0 :Text = "127.0.0.1";
+  port @1 :UInt16 = 0;
+  unixSocketPath @2 :Text = "";
+  timeoutMilliseconds @3 :UInt32 = 30000;
+  autoSpawnEngine @4 :Bool = true;
+  engineBinaryPath @5 :Text = "";
+  engineLibraryPath @6 :Text = "";
+  engineRootDir @7 :Text = "";
+}
+
+struct PotentialPatch {
+  hasBackendOverride @0 :Bool = false;
+  backendConfig @1 :PotentialConfig;
+  commonPatch @2 :CommonMethodPatch;
+  neighborList @3 :Common.NeighborListPatch;
+  logPotentialCalls @4 :Common.OptBool;
+  emtRasmussenParameters @5 :Common.OptBool;
 }

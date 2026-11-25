@@ -5,7 +5,7 @@
 /**
  * @brief Name of the PotentialConfig arm a configure() call carries.
  *
- * A peer built against a newer potentials-schema can send an arm this
+ * A peer built against a newer schema can send an arm this
  * build does not know. which() then returns the raw discriminant, so the
  * name comes from the compiled schema and an unknown arm is reported by
  * its discriminant instead of indexing past the known ones.
