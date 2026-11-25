@@ -92,12 +92,19 @@ struct PmeTrace {
   int real_team = 1;
 };
 
+// Phases of the last finished Ewald or SPME evaluation in the process.
 PmeTrace pme_trace();
+
+// Mesh, wave and reduction buffers of one caller. They are kept between
+// calls and only grow, so a warm call allocates nothing. One CoulombPot
+// owns one. Two evaluations may not share one at the same time.
+struct ElecWorkspace;
 
 // Writes energy, adds forces into F (length 3 n, caller zeroes), and
 // optionally dE/dq (length n). pairs is the long half list. For DSF the
 // list cutoff is the DSF cutoff. For Ewald and SPME it is the real-space
-// cutoff. box is null only for DSF.
+// cutoff. box is null only for DSF. The buffers belong to the calling
+// thread.
 void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg,
                              const double *pos, const double *q, std::size_t n,
                              double total_charge, const double *box,
@@ -114,6 +121,7 @@ class CoulombPot final : public Potential<CoulombPot> {
 public:
   CoulombPot(CoulombConfig cfg, std::shared_ptr<ChargeSource> charges,
              std::shared_ptr<ChargeResponse> response = nullptr);
+  ~CoulombPot() override;
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
@@ -135,6 +143,7 @@ private:
   std::shared_ptr<ChargeResponse> response_;
   std::shared_ptr<DualList> lists_;
   uint64_t params_ = 0;
+  std::unique_ptr<ElecWorkspace> work_;
 };
 
 } // namespace rgpot::lr

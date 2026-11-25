@@ -67,6 +67,16 @@ RgpotXtbPot *rgpot_xtb_create(const RgpotXtbConfig *cfg, char *errbuf,
 
 void rgpot_xtb_destroy(RgpotXtbPot *pot) { delete pot; }
 
+int rgpot_xtb_set_thread_count(RgpotXtbPot *pot, int threads) {
+  if (!pot || !pot->pot || threads < 0)
+    return RGPOT_XTB_RC_INVALID_ARGUMENT;
+  if (threads == 0)
+    pot->pot->clearThreadCount();
+  else
+    pot->pot->setThreadCount(threads);
+  return RGPOT_XTB_RC_OK;
+}
+
 void rgpot_xtb_reset(RgpotXtbPot *pot) {
   if (pot && pot->pot)
     pot->pot->reset();

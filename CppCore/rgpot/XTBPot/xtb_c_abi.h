@@ -53,6 +53,9 @@ RGPOT_XTB_API RgpotXtbPot *rgpot_xtb_create(const RgpotXtbConfig *cfg,
 
 RGPOT_XTB_API void rgpot_xtb_destroy(RgpotXtbPot *pot);
 
+/** Set the rgpot worker count used by this engine handle; zero clears it. */
+RGPOT_XTB_API int rgpot_xtb_set_thread_count(RgpotXtbPot *pot, int threads);
+
 /** Return codes of rgpot_xtb_force. A frontend treats an unknown nonzero
  * code as a failure of unknown kind. */
 enum {

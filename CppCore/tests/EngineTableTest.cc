@@ -1323,6 +1323,7 @@ TEST_CASE("xtb engine matches the generic table contract", "[engine][xtb]") {
     SKIP("no xtb engine in this build");
   }
   check_identity(e, "xtb");
+  REQUIRE(dlsym(e.handle, "rgpot_xtb_set_thread_count") != nullptr);
   RgpotEnginePot *pot = create(e, builtin_params("xtb"));
   REQUIRE(pot != nullptr);
   RgpotEngineCaps caps;
@@ -1366,6 +1367,7 @@ TEST_CASE("metatomic engine keeps its own table and adds the generic one",
   // The Metatomic-specific table is still exported.
   REQUIRE(dlsym(e.handle, "rgpot_mta_abi_version") != nullptr);
   REQUIRE(dlsym(e.handle, "rgpot_mta_create") != nullptr);
+  REQUIRE(dlsym(e.handle, "rgpot_mta_set_thread_count") != nullptr);
 
   std::string error;
   capnp::MallocMessageBuilder empty;

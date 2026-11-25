@@ -2,7 +2,6 @@
 // MIT License — thin XTB frontend: dlopen libxtb_engine.so
 // No libxtb headers; safe for hosts built without -Dwith_xtb.
 #include "rgpot/ForceStructs.hpp"
-#include "rgpot/abi/EngineThreadCount.hpp"
 #include "rgpot/FusedSettings.hpp"
 #include "rgpot/XTBPot/XTBConfig.hpp"
 #include "rgpot/XTBPot/xtb_c_abi.h"
@@ -48,6 +47,10 @@ public:
 
   [[nodiscard]] bool available() const noexcept { return m_pot != nullptr; }
 
+  void setThreadCount(int threads);
+  void clearThreadCount();
+  [[nodiscard]] int threadCount() const noexcept { return m_threads; }
+
   /**
    * @throws SccNotConverged when the engine reports
    *         @c RGPOT_XTB_RC_SCC_NOT_CONVERGED.
@@ -76,16 +79,6 @@ public:
   /// True when the last successful force reused the previous wavefunction.
   [[nodiscard]] bool reusedWavefunction() const;
 
-  /// Records a thread count the way @c PotentialBase::setThreadCount does
-  /// and throws std::invalid_argument when @p threads is below 1. The
-  /// engine ABI has no thread setter, so the count is not passed on and
-  /// evaluation does not change: the engine keeps the threads of its own
-  /// OpenMP and BLAS runtime. See @c abi/EngineThreadCount.hpp.
-  void setThreadCount(int threads) { m_threads.set(threads); }
-  void clearThreadCount() noexcept { m_threads.clear(); }
-  /// Zero when none was recorded.
-  [[nodiscard]] int threadCount() const noexcept { return m_threads.get(); }
-
   /// Convenience operator matching Potential interface shape.
   std::tuple<double, types::AtomMatrix, double>
   operator()(const types::AtomMatrix &positions,
@@ -93,16 +86,17 @@ public:
              const std::array<std::array<double, 3>, 3> &box) const;
 
 private:
-  abi::EngineThreadCount m_threads;
   XTBConfig m_config;
   void *m_lib{nullptr};
   RgpotXtbPot *m_pot{nullptr};
   using create_fn = RgpotXtbPot *(*)(const RgpotXtbConfig *, char *, size_t);
   using destroy_fn = void (*)(RgpotXtbPot *);
+  using set_threads_fn = int (*)(RgpotXtbPot *, int);
   using force_fn = int (*)(RgpotXtbPot *, long, const double *, const int *,
                            double *, double *, double *, const double *);
   create_fn m_create{nullptr};
   destroy_fn m_destroy{nullptr};
+  set_threads_fn m_set_threads{nullptr};
   force_fn m_force{nullptr};
   using reset_fn = void (*)(RgpotXtbPot *);
   using set_warm_fn = void (*)(RgpotXtbPot *, double);
@@ -114,6 +108,7 @@ private:
   set_warm_fn m_set_min_gap{nullptr};
   warm_move_fn m_min_gap{nullptr};
   reused_fn m_reused{nullptr};
+  int m_threads{0};
 };
 
 } // namespace rgpot

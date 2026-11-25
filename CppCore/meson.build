@@ -2360,6 +2360,15 @@ if get_option('with_tests')
         if _rt[1] != 'unit'
             continue
         endif
+        # rgpot.dll exports only the C version symbol today; the C++ thread
+        # registry API used by this test is not exported on Windows.
+        if (
+            _rt[0] == 'ThreadInvariantTest'
+            and host_machine.system() == 'windows'
+            and get_option('default_library') != 'static'
+        )
+            continue
+        endif
         # The fused-scan oracles are plain multiplies and adds, the same
         # form as the cluster kernel and the Fortran 26-image wrap. Apple
         # Clang fuses those products unless contraction is off, and the
@@ -2396,7 +2405,11 @@ if get_option('with_tests')
         endif
         # The thread-count test is also the dynamic-link regression: its
         # header calls must reach the same registry as forceImpl in librgpot.
-        if _rt[0] == 'ThreadInvariantTest' and get_option('default_library') != 'static'
+        if (
+            _rt[0] == 'ThreadInvariantTest'
+            and get_option('default_library') != 'static'
+            and host_machine.system() != 'windows'
+        )
             _test_link = [rgpot]
         else
             _test_link = _linkto
@@ -2435,6 +2448,9 @@ if get_option('with_tests')
     endforeach
     foreach _rt : _rt_tests
         if _rt[1] == 'rerun'
+            if _rt[2][0] not in _rt_exes
+                continue
+            endif
             test(
                 _rt[0],
                 _rt_exes[_rt[2][0]],

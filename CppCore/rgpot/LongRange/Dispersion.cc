@@ -467,18 +467,22 @@ public:
     // fold below is in chunk order. A one-thread call walks the same chunks.
     const int team = rgpot::activeThreads(poolThreads());
     const int chunks = rgpot::fixedChunks(std::max<std::size_t>(pairs.size(), 1), 1024);
-    std::vector<Neumaier> enes(static_cast<std::size_t>(chunks));
-    std::vector<std::vector<double>> forces(static_cast<std::size_t>(chunks));
-    std::vector<std::array<double, 6>> strains(static_cast<std::size_t>(chunks));
+    const int slots = team <= 1 ? 1 : chunks;
+    std::vector<Neumaier> enes(static_cast<std::size_t>(slots));
+    std::vector<std::vector<double>> forces(static_cast<std::size_t>(slots));
+    std::vector<std::array<double, 6>> strains(static_cast<std::size_t>(slots));
     if (F != nullptr) {
       for (auto &buf : forces) {
         buf.assign(3 * in.nAtoms, 0.0);
       }
     }
+    Neumaier serial_ene;
+    std::fill(strain, strain + 6, 0.0);
     forEachChunk(chunks, team, [&](int slice) {
-      auto &ene = enes[static_cast<std::size_t>(slice)];
-      auto &floc = forces[static_cast<std::size_t>(slice)];
-      auto &sloc = strains[static_cast<std::size_t>(slice)];
+      const std::size_t slot = team <= 1 ? 0 : static_cast<std::size_t>(slice);
+      auto &ene = enes[slot];
+      auto &floc = forces[slot];
+      auto &sloc = strains[slot];
       const Range run = partition(static_cast<std::int64_t>(pairs.size()), slice, chunks);
       for (auto ti = static_cast<std::size_t>(run.begin); ti < static_cast<std::size_t>(run.end); ++ti) {
       const Pair &pr = pairs[ti];
@@ -552,12 +556,30 @@ public:
         accumulatePairStrain(sloc.data(), -dedr_A * invr, -pr.x, -pr.y, -pr.z);
       }
       }
+      if (team <= 1) {
+        serial_ene.add(ene);
+        ene = Neumaier{};
+        for (int k = 0; k < 6; ++k) {
+          strain[k] += sloc[k];
+          sloc[k] = 0.0;
+        }
+        if (F != nullptr) {
+          for (std::size_t i = 0; i < floc.size(); ++i) {
+            F[i] += floc[i];
+            floc[i] = 0.0;
+          }
+        }
+      }
     });
+    if (team <= 1) {
+      *energy = serial_ene.total();
+      *has_stress = 1;
+      return;
+    }
     Neumaier ene;
     for (const auto &part : enes) {
       ene.add(part);
     }
-    std::fill(strain, strain + 6, 0.0);
     for (const auto &sloc : strains) {
       for (int k = 0; k < 6; ++k) {
         strain[k] += sloc[k];

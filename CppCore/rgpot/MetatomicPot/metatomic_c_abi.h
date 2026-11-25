@@ -49,6 +49,9 @@ RGPOT_MTA_API RgpotMtaPot *rgpot_mta_create(const RgpotMtaConfig *cfg,
 
 RGPOT_MTA_API void rgpot_mta_destroy(RgpotMtaPot *pot);
 
+/** Set the rgpot worker count used by this engine handle; zero clears it. */
+RGPOT_MTA_API int rgpot_mta_set_thread_count(RgpotMtaPot *pot, int threads);
+
 /**
  * Energy + forces. Returns 0 on success.
  * variance may be NULL.

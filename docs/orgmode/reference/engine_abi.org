@@ -1329,6 +1329,20 @@ void rgpot_xtb_destroy(RgpotXtbPot *pot);
 - Outputs :: none; the handle and its =XTBPot= are freed.
 - Errors :: none; NULL is accepted.
 
+*** =rgpot_xtb_set_thread_count=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_xtb_set_thread_count(RgpotXtbPot *pot, int threads);
+#+end_src
+
+- Inputs :: =pot= and a positive worker count, or zero to clear the count.
+- Units :: none.
+- Outputs :: =RGPOT_XTB_RC_OK= after forwarding the count to the linked
+  =XTBPot=.
+- Errors :: =RGPOT_XTB_RC_INVALID_ARGUMENT= for a null handle or a negative
+  count.
+
 *** =rgpot_xtb_force=
 
 #+attr_rgpot: signature
@@ -1524,6 +1538,18 @@ void rgpot_mta_destroy(RgpotMtaPot *pot);
 - Units :: none.
 - Outputs :: none; the handle and its =MetatomicPot= are freed.
 - Errors :: none; NULL is accepted.
+
+*** =rgpot_mta_set_thread_count=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_mta_set_thread_count(RgpotMtaPot *pot, int threads);
+#+end_src
+
+- Inputs :: =pot= and a positive worker count, or zero to clear the count.
+- Units :: none.
+- Outputs :: 0 after forwarding the count to the linked =MetatomicPot=.
+- Errors :: 1 for a null handle or a negative count.
 
 *** =rgpot_mta_force=
 

@@ -1,5 +1,6 @@
 // MIT License — dlopen frontend for libmetatomic_engine.so
 #include "rgpot/MetatomicPot/MetatomicDlopen.hpp"
+#include "rgpot/Slices.hpp"
 #include "rgpot/abi/DynLib.hpp"
 #include "rgpot/abi/EngineDlopen.hpp"
 
@@ -56,8 +57,10 @@ MetatomicDlopen::MetatomicDlopen(const MetatomicConfig &config) {
   auto abi_fn = lib.sym_optional<int (*)(void)>("rgpot_mta_abi_version");
   m_create = lib.sym_optional<create_fn>("rgpot_mta_create");
   m_destroy = lib.sym_optional<destroy_fn>("rgpot_mta_destroy");
+  m_set_threads =
+      lib.sym_optional<set_threads_fn>("rgpot_mta_set_thread_count");
   m_force = lib.sym_optional<force_fn>("rgpot_mta_force");
-  if (!abi_fn || !m_create || !m_destroy || !m_force) {
+  if (!abi_fn || !m_create || !m_destroy || !m_set_threads || !m_force) {
     throw std::runtime_error(
         "MetatomicDlopen: missing C ABI symbols in engine library");
   }
@@ -84,9 +87,30 @@ MetatomicDlopen::~MetatomicDlopen() {
   m_lib = nullptr;
 }
 
+void MetatomicDlopen::setThreadCount(int threads) {
+  if (threads < 1) {
+    throw std::invalid_argument("rgpot thread count must be at least 1");
+  }
+  if (!m_set_threads || !m_pot || m_set_threads(m_pot, threads) != 0) {
+    throw std::runtime_error("MetatomicDlopen: failed to set thread count");
+  }
+  m_threads = threads;
+}
+
+void MetatomicDlopen::clearThreadCount() {
+  if (!m_set_threads || !m_pot || m_set_threads(m_pot, 0) != 0) {
+    throw std::runtime_error("MetatomicDlopen: failed to clear thread count");
+  }
+  m_threads = 0;
+}
+
 void MetatomicDlopen::forceImpl(const ForceInput &in, ForceOut *out) const {
   if (!m_pot || !m_force)
     throw std::runtime_error("MetatomicDlopen: engine not available");
+  const ThreadBinding bind_threads{m_threads};
+  if (!m_set_threads || m_set_threads(m_pot, explicitThreadCount()) != 0)
+    throw std::runtime_error(
+        "MetatomicDlopen: failed to forward thread count");
   const int rc =
       m_force(m_pot, static_cast<long>(in.nAtoms), in.pos, in.atmnrs, out->F,
               &out->energy, &out->variance, in.box);

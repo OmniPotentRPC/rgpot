@@ -162,6 +162,7 @@ void SWPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 }
 
 void SWPot::forceBatchImpl(const ForceBatch &batch) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   ensure_fortran_params();
   for (size_t i = 0; i < batch.nSystems; ++i) {
     const ForceInput &in = batch.in[i];

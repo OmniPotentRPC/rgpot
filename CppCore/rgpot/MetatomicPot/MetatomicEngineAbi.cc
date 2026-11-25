@@ -102,6 +102,16 @@ RgpotMtaPot *rgpot_mta_create(const RgpotMtaConfig *cfg, char *errbuf,
 
 void rgpot_mta_destroy(RgpotMtaPot *pot) { delete pot; }
 
+int rgpot_mta_set_thread_count(RgpotMtaPot *pot, int threads) {
+  if (!pot || !pot->impl || threads < 0)
+    return 1;
+  if (threads == 0)
+    pot->impl->clearThreadCount();
+  else
+    pot->impl->setThreadCount(threads);
+  return 0;
+}
+
 int rgpot_mta_force(RgpotMtaPot *pot, long nAtoms, const double *positions,
                     const int *atomicNrs, double *forces, double *energy,
                     double *variance, const double *box) {

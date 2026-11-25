@@ -687,8 +687,8 @@ void setThreadCount(int threads);
   A =SumPot= binds its count for the whole call, and every term without a count
   of its own reads it.
   =XTBDlopen= and =MetatomicDlopen= are not potentials; their same-named members
-  record the count and pass none on (see [[file:cpp_backends.org][C++
-  engine-backed potentials]]).
+  pass the resolved count to the loaded engine through its C ABI (see
+  [[file:cpp_backends.org][C++ engine-backed potentials]]).
 - Errors :: throws =std::invalid_argument= when =threads= is below 1.
 
 *** =rgpot::PotentialBase::clearThreadCount=

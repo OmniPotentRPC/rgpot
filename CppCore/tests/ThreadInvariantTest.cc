@@ -164,13 +164,12 @@ void checkBits(const char *name, Make make, const System &s,
     setThreads("");
     INFO("ThreadCount(" << threads << ")");
     rgpot::ThreadCount scope(threads);
-    CHECK(rgpot::threadsRequested() ==
 #if defined(_OPENMP)
-          threads
+    const int expected_threads = threads;
 #else
-          1
+    const int expected_threads = 1;
 #endif
-    );
+    CHECK(rgpot::threadsRequested() == expected_threads);
     CHECK(forceApart(run(*make(), s), serial) == 0);
   }
   setThreads("");
@@ -180,7 +179,9 @@ void checkBits(const char *name, Make make, const System &s,
   const std::uint64_t before = rgpot::teamsOpened();
   CHECK(forceApart(run(*opted, s), serial) == 0);
 #if defined(_OPENMP)
-  CHECK(rgpot::teamsOpened() > before);
+  if (omp_get_thread_limit() >= 2) {
+    CHECK(rgpot::teamsOpened() > before);
+  }
 #endif
   // A call scope wins over the potential. A fresh object: a second
   // evaluation of the same EMT object is not bit-stable on develop.
@@ -302,6 +303,114 @@ void checkCoulombBits(const char *name, const rgpot::lr::CoulombConfig &cfg,
   }
   // A second call on warm caches takes the same bits.
   CHECK(coulombApart(runCoulomb(cfg, ion, 8, 0), serial) == 0);
+}
+
+TEST_CASE("DSF screen caches are safe across concurrent potential instances",
+          "[threads][invariant][coulomb]") {
+  rgpot::lr::CoulombConfig cfg;
+  cfg.method = rgpot::lr::CoulombMethod::DSF;
+  cfg.cutoff = 8.0;
+  cfg.alpha = 0.25;
+  cfg.periodic = false;
+  const Ionic small = rockSalt(3, 5.6);
+  const Ionic large = rockSalt(4, 5.7);
+  const CoulombEval small_ref = runCoulomb(cfg, small, 1, 0);
+  const CoulombEval large_ref = runCoulomb(cfg, large, 1, 0);
+  std::atomic<int> ready{0};
+  std::atomic<bool> go{false};
+  auto evaluate = [&](const Ionic &ion, const CoulombEval &reference) {
+    ready.fetch_add(1, std::memory_order_release);
+    while (!go.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    std::size_t apart = 0;
+    for (int repeat = 0; repeat < 3; ++repeat) {
+      apart += coulombApart(runCoulomb(cfg, ion, 1, 0), reference);
+    }
+    return apart;
+  };
+  auto small_run =
+      std::async(std::launch::async, [&] { return evaluate(small, small_ref); });
+  auto large_run =
+      std::async(std::launch::async, [&] { return evaluate(large, large_ref); });
+  while (ready.load(std::memory_order_acquire) != 2) {
+    std::this_thread::yield();
+  }
+  go.store(true, std::memory_order_release);
+  CHECK(small_run.get() == 0);
+  CHECK(large_run.get() == 0);
+}
+
+CoulombEval evalCoulomb(const rgpot::lr::CoulombPot &pot, const Ionic &ion) {
+  const std::size_t n = ion.s.z.size();
+  const double L = ion.s.length;
+  const double box[9] = {L, 0, 0, 0, L, 0, 0, 0, L};
+  CoulombEval e;
+  e.force.assign(3 * n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = e.force.data();
+  pot.forceImpl(rgpot::ForceInput{n, ion.s.pos.data(), ion.s.z.data(), box}, &out);
+  e.energy = out.energy;
+  e.has_stress = out.has_stress;
+  std::copy(out.stress, out.stress + 9, e.stress);
+  return e;
+}
+
+// Two instances, each on its own thread with its own team, against the
+// one-thread result of a third instance. Every call of both runs while
+// the other instance is evaluating. The systems, waves and meshes differ,
+// so state one instance shares with the other is resized or overwritten
+// under it.
+void checkCoulombPair(const char *name, const rgpot::lr::CoulombConfig &a_cfg,
+                      const Ionic &a_ion, const rgpot::lr::CoulombConfig &b_cfg,
+                      const Ionic &b_ion) {
+  INFO(name);
+  const CoulombEval a_ref = runCoulomb(a_cfg, a_ion, 1, 0);
+  const CoulombEval b_ref = runCoulomb(b_cfg, b_ion, 1, 0);
+  REQUIRE(std::isfinite(a_ref.energy));
+  REQUIRE(std::isfinite(b_ref.energy));
+  for (const int threads : kCounts) {
+    INFO("setThreadCount(" << threads << ") on both instances");
+    constexpr int kRepeats = 4;
+    std::atomic<int> ready{0};
+    std::atomic<int> running{0};
+    auto evaluate = [&](const rgpot::lr::CoulombConfig &cfg, const Ionic &ion,
+                        const CoulombEval &reference) {
+      rgpot::lr::CoulombPot pot(
+          cfg, std::make_shared<rgpot::lr::FixedCharges>(ion.q, 0.0));
+      pot.setThreadCount(threads);
+      ready.fetch_add(1, std::memory_order_acq_rel);
+      while (ready.load(std::memory_order_acquire) != 2) {
+        std::this_thread::yield();
+      }
+      running.fetch_add(1, std::memory_order_acq_rel);
+      std::size_t apart = 0;
+      for (int repeat = 0; repeat < kRepeats; ++repeat) {
+        apart += coulombApart(evalCoulomb(pot, ion), reference);
+      }
+      // A finished instance keeps evaluating until the other one is done,
+      // so neither runs its last call alone.
+      running.fetch_sub(1, std::memory_order_acq_rel);
+      while (running.load(std::memory_order_acquire) != 0) {
+        apart += coulombApart(evalCoulomb(pot, ion), reference);
+      }
+      return apart;
+    };
+    auto a_run = std::async(std::launch::async,
+                            [&] { return evaluate(a_cfg, a_ion, a_ref); });
+    auto b_run = std::async(std::launch::async,
+                            [&] { return evaluate(b_cfg, b_ion, b_ref); });
+    for (auto *run : {&a_run, &b_run}) {
+      if (run->wait_for(std::chrono::seconds(300)) != std::future_status::ready) {
+        std::fprintf(stderr, "%s at %d threads did not finish in 300 s\n", name,
+                     threads);
+        std::fflush(stderr);
+        std::_Exit(3);
+      }
+    }
+    CHECK(a_run.get() == 0);
+    CHECK(b_run.get() == 0);
+  }
 }
 #endif
 
@@ -549,12 +658,50 @@ TEST_CASE("SPME beside the mesh finishes under a potential thread count",
     INFO("setThreadCount(" << threads << ")");
     const CoulombEval bound = runCoulomb(cfg, ion, 0, threads);
 #if defined(_OPENMP)
-    if (threads == 8) {
+    if (threads == 8 && omp_get_thread_limit() >= 8) {
       CHECK(rgpot::lr::pme_trace().real_team == 4);
     }
 #endif
     CHECK(coulombApart(bound, serial) == 0);
   }
+}
+
+TEST_CASE("Ewald and SPME instances on two threads keep their serial bits",
+          "[threads][invariant][coulomb][concurrent]") {
+  setThreads("");
+  const Ionic small = rockSalt(3, 5.6);
+  const Ionic large = rockSalt(4, 5.64);
+  rgpot::lr::CoulombConfig base;
+  base.cutoff = 8.0;
+  base.alpha = 0.3;
+  base.short_cutoff = 3.0;
+  base.skin = 0.5;
+  base.periodic = true;
+  base.stress = false;
+
+  rgpot::lr::CoulombConfig ewald_a = base;
+  ewald_a.method = rgpot::lr::CoulombMethod::Ewald;
+  ewald_a.kmax = 5;
+  rgpot::lr::CoulombConfig ewald_b = ewald_a;
+  ewald_b.kmax = 6;
+  ewald_b.alpha = 0.32;
+
+  // The 25-point mesh on 512 ions runs real space beside the transform at
+  // two and at eight threads; the 20-point mesh stays on one team.
+  rgpot::lr::CoulombConfig spme_a = base;
+  spme_a.method = rgpot::lr::CoulombMethod::SPME;
+  spme_a.grid[0] = spme_a.grid[1] = spme_a.grid[2] = 20;
+  spme_a.spline_order = 4;
+  rgpot::lr::CoulombConfig spme_b = spme_a;
+  spme_b.grid[0] = spme_b.grid[1] = spme_b.grid[2] = 25;
+  spme_b.spline_order = 5;
+  rgpot::lr::CoulombConfig spme_stress = spme_b;
+  spme_stress.stress = true;
+
+  checkCoulombPair("Ewald beside Ewald", ewald_a, small, ewald_b, large);
+  checkCoulombPair("SPME beside SPME", spme_a, small, spme_b, large);
+  checkCoulombPair("Ewald beside SPME", ewald_a, small, spme_b, large);
+  checkCoulombPair("SPME with stress beside Ewald", spme_stress, large, ewald_b, small);
 }
 #endif
 
@@ -562,6 +709,11 @@ TEST_CASE("eight threads still beat one thread on the large Lennard-Jones cell",
           "[threads][invariant][timing]") {
 #if defined(RGPOT_THREAD_SANITIZER)
   SKIP("thread sanitizer instrumentation is not a performance measurement");
+#endif
+#if defined(_OPENMP)
+  if (omp_get_thread_limit() < 2) {
+    SKIP("OpenMP thread limit does not permit a parallel timing check");
+  }
 #endif
   const double a_lj = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
   rgpot::LJConfig lj;

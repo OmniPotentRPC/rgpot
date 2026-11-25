@@ -1,5 +1,6 @@
 // MIT License — dlopen frontend for libxtb_engine.so
 #include "rgpot/XTBPot/XTBDlopen.hpp"
+#include "rgpot/Slices.hpp"
 #include "rgpot/abi/DynLib.hpp"
 #include "rgpot/abi/EngineDlopen.hpp"
 
@@ -70,6 +71,8 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   auto abi_fn = lib.sym_optional<int (*)(void)>("rgpot_xtb_abi_version");
   m_create = lib.sym_optional<create_fn>("rgpot_xtb_create");
   m_destroy = lib.sym_optional<destroy_fn>("rgpot_xtb_destroy");
+  m_set_threads =
+      lib.sym_optional<set_threads_fn>("rgpot_xtb_set_thread_count");
   m_force = lib.sym_optional<force_fn>("rgpot_xtb_force");
   m_reset = lib.sym_optional<reset_fn>("rgpot_xtb_reset");
   m_set_warm = lib.sym_optional<set_warm_fn>("rgpot_xtb_set_warm_move");
@@ -77,7 +80,8 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   m_set_min_gap = lib.sym_optional<set_warm_fn>("rgpot_xtb_set_warm_min_gap");
   m_min_gap = lib.sym_optional<warm_move_fn>("rgpot_xtb_warm_min_gap");
   m_reused = lib.sym_optional<reused_fn>("rgpot_xtb_reused_wavefunction");
-  if (!abi_fn || !m_create || !m_destroy || !m_force || !m_reset ||
+  if (!abi_fn || !m_create || !m_destroy || !m_set_threads || !m_force ||
+      !m_reset ||
       !m_set_warm || !m_warm_move || !m_set_min_gap || !m_min_gap ||
       !m_reused) {
     // The opened library is the one we selected. Do not resume the
@@ -105,6 +109,23 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   m_set_min_gap(m_pot, config.xtb.warm_min_gap);
   m_lib = lib.native_handle();
   lib.release();
+}
+
+void XTBDlopen::setThreadCount(int threads) {
+  if (threads < 1) {
+    throw std::invalid_argument("rgpot thread count must be at least 1");
+  }
+  if (!m_set_threads || !m_pot || m_set_threads(m_pot, threads) != 0) {
+    throw std::runtime_error("XTBDlopen: failed to set thread count");
+  }
+  m_threads = threads;
+}
+
+void XTBDlopen::clearThreadCount() {
+  if (!m_set_threads || !m_pot || m_set_threads(m_pot, 0) != 0) {
+    throw std::runtime_error("XTBDlopen: failed to clear thread count");
+  }
+  m_threads = 0;
 }
 
 void XTBDlopen::reset() {
@@ -169,6 +190,10 @@ FusedSettingsSpec XTBDlopen::fusedSettings() const {
 void XTBDlopen::forceImpl(const ForceInput &in, ForceOut *out) const {
   if (!m_force || !m_pot)
     throw std::runtime_error("XTBDlopen: engine not available");
+  const ThreadBinding bind_threads{m_threads};
+  if (!m_set_threads ||
+      m_set_threads(m_pot, explicitThreadCount()) != RGPOT_XTB_RC_OK)
+    throw std::runtime_error("XTBDlopen: failed to forward thread count");
   double var = 0.0;
   int rc = m_force(m_pot, static_cast<long>(in.nAtoms), in.pos, in.atmnrs,
                    out->F, &out->energy, &var, in.box);

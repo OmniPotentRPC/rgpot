@@ -17,6 +17,7 @@
 
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/Slices.hpp"
 #include "rgpot/SumPot/SumPot.hpp"
 
 using Catch::Matchers::ContainsSubstring;
@@ -96,6 +97,21 @@ private:
   std::shared_ptr<std::atomic<bool>> fail_;
 };
 
+class ThreadProbe final : public rgpot::Potential<ThreadProbe> {
+public:
+  explicit ThreadProbe(std::shared_ptr<std::atomic<int>> observed)
+      : rgpot::Potential<ThreadProbe>(rgpot::PotType::UNKNOWN),
+        observed_(std::move(observed)) {}
+
+  void forceImpl(const rgpot::ForceInput &, rgpot::ForceOut *out) const override {
+    observed_->store(rgpot::explicitThreadCount());
+    out->energy = 1.0;
+  }
+
+private:
+  std::shared_ptr<std::atomic<int>> observed_;
+};
+
 const std::vector<double> kPos = {0.0, 0.0, 0.0, 1.1, 0.1, 0.0, 0.3, 1.2, 0.2};
 const std::vector<int> kZ = {18, 18, 18};
 const std::array<double, 9> kBox = {9.0, 0.0, 0.0, 0.0, 9.5, 0.0, 0.0, 0.0, 10.0};
@@ -144,6 +160,17 @@ TEST_CASE("SumPot adds weighted energies, forces and stress", "[SumPot]") {
     REQUIRE_THAT(c[1].forces[i], WithinAbs(eb.f[i], kTight));
   }
   REQUIRE(c[1].has_stress);
+}
+
+TEST_CASE("SumPot forwards its thread count to children", "[SumPot][threads]") {
+  auto observed = std::make_shared<std::atomic<int>>(0);
+  rgpot::SumPot sum;
+  sum.add(std::make_unique<ThreadProbe>(observed));
+  sum.setThreadCount(3);
+
+  run(sum, kPos, kZ, kBox);
+  REQUIRE(observed->load() == 3);
+  REQUIRE(rgpot::explicitThreadCount() == 0);
 }
 
 TEST_CASE("SumPot weight -1 cancels the same term", "[SumPot]") {

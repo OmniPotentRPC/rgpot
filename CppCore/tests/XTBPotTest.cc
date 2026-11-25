@@ -307,7 +307,7 @@ TEST_CASE("XTBDlopen serial multi-instance via recreate",
   }
 }
 
-TEST_CASE("XTBDlopen records a thread count and passes none on",
+TEST_CASE("XTBDlopen forwards a thread count to its engine",
           "[xtb][dlopen][threads]") {
   AtomMatrix positions(3, 3);
   std::vector<int> atmtypes;
@@ -335,8 +335,8 @@ TEST_CASE("XTBDlopen records a thread count and passes none on",
   CHECK_THROWS_AS(dl->setThreadCount(-3), std::invalid_argument);
   CHECK(dl->threadCount() == 0);
 
-  // The engine ABI has no thread setter, so the count is recorded and the
-  // evaluation is the one it was. The frontend binds nothing on the host.
+  // The engine receives the count through its C ABI. The deterministic
+  // one-system result stays unchanged, and the host binding is call-scoped.
   for (const int threads : {1, 4}) {
     dl->setThreadCount(threads);
     CHECK(dl->threadCount() == threads);

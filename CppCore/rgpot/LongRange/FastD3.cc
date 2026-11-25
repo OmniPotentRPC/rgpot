@@ -175,8 +175,9 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
   // Neighbour slots and energy partials are one per fixed pair chunk.
   // The team only decides how many threads walk those chunks.
   const int team = rgpot::activeThreads(poolThreads());
-  const int nt_build = rgpot::fixedChunks(
+  const int nt = rgpot::fixedChunks(
       static_cast<std::size_t>(std::max<std::int64_t>(npairs, 1)), 2048);
+  const int nt_build = team <= 1 ? 1 : nt;
   std::vector<int> deg(static_cast<std::size_t>(nt_build) * n, 0);
   forEachChunk(nt_build, team, [&](int slice) {
     int *mine = deg.data() + static_cast<std::size_t>(slice) * n;
@@ -255,17 +256,22 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
     r4[i] = r4r2_of(z[i]);
   }
 
-  const int nt = nt_build;
-  std::vector<double> ene_th(static_cast<std::size_t>(nt), 0.0);
-  std::vector<std::vector<double>> dedcn_th(static_cast<std::size_t>(nt), std::vector<double>(n, 0.0));
-  std::vector<std::vector<double>> f_th(static_cast<std::size_t>(nt), std::vector<double>(3 * n, 0.0));
-  std::vector<std::vector<double>> sig_th(static_cast<std::size_t>(nt), std::vector<double>(9, 0.0));
+  const int slots = team <= 1 ? 1 : nt;
+  std::vector<double> ene_th(static_cast<std::size_t>(slots), 0.0);
+  std::vector<std::vector<double>> dedcn_th(static_cast<std::size_t>(slots), std::vector<double>(n, 0.0));
+  std::vector<std::vector<double>> f_th(static_cast<std::size_t>(slots), std::vector<double>(3 * n, 0.0));
+  std::vector<std::vector<double>> sig_th(static_cast<std::size_t>(slots), std::vector<double>(9, 0.0));
+  Neumaier ene;
+  std::vector<double> dedcn(n, 0.0);
+  std::vector<double> grad(3 * n, 0.0);
+  std::array<Neumaier, 9> sig_sum;
 
   forEachChunk(nt, team, [&](int slice) {
-    auto &dedcn = dedcn_th[static_cast<std::size_t>(slice)];
-    auto &floc = f_th[static_cast<std::size_t>(slice)];
-    auto &sig = sig_th[static_cast<std::size_t>(slice)];
-    double ene = 0.0;
+    const std::size_t slot = team <= 1 ? 0 : static_cast<std::size_t>(slice);
+    auto &dedcn_loc = dedcn_th[slot];
+    auto &floc = f_th[slot];
+    auto &sig = sig_th[slot];
+    double ene_loc = 0.0;
     for (std::size_t i = static_cast<std::size_t>(slice); i < n; i += static_cast<std::size_t>(nt)) {
       for (const Nb &a : neigh(i)) {
         if (a.j > static_cast<int>(i) || a.r >= cut2_b) {
@@ -298,13 +304,13 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
         const double gx = c6 * gdisp * a.x;
         const double gy = c6 * gdisp * a.y;
         const double gz = c6 * gdisp * a.z;
-        ene += (a.j == static_cast<int>(i) ? dE : 2.0 * dE);
-        dedcn[i] -= dci * edisp;
+        ene_loc += (a.j == static_cast<int>(i) ? dE : 2.0 * dE);
+        dedcn_loc[i] -= dci * edisp;
         floc[3 * i] += gx;
         floc[3 * i + 1] += gy;
         floc[3 * i + 2] += gz;
         if (a.j != static_cast<int>(i)) {
-          dedcn[static_cast<std::size_t>(a.j)] -= dcj * edisp;
+          dedcn_loc[static_cast<std::size_t>(a.j)] -= dcj * edisp;
           floc[3 * a.j] -= gx;
           floc[3 * a.j + 1] -= gy;
           floc[3 * a.j + 2] -= gz;
@@ -423,7 +429,7 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
           const double gjkx = scale_jk * (b.x - a.x) - dE0 * dswjk / rjk * swij * swik * (b.x - a.x);
           const double gjky = scale_jk * (b.y - a.y) - dE0 * dswjk / rjk * swij * swik * (b.y - a.y);
           const double gjkz = scale_jk * (b.z - a.z) - dE0 * dswjk / rjk * swij * swik * (b.z - a.z);
-          ene -= dE;
+          ene_loc -= dE;
           floc[3 * i] -= (gijx + gikx) * triple;
           floc[3 * i + 1] -= (gijy + giky) * triple;
           floc[3 * i + 2] -= (gijz + gikz) * triple;
@@ -433,26 +439,41 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
           floc[3 * b.j] += (gikx + gjkx) * triple;
           floc[3 * b.j + 1] += (giky + gjky) * triple;
           floc[3 * b.j + 2] += (gikz + gjkz) * triple;
-          dedcn[i] -= dE * 0.5 * (dij_i / c6ij + dik_i / c6ik);
-          dedcn[static_cast<std::size_t>(a.j)] -= dE * 0.5 * (dij_j / c6ij + djk_j / c6jk);
-          dedcn[static_cast<std::size_t>(b.j)] -= dE * 0.5 * (dik_k / c6ik + djk_k / c6jk);
+          dedcn_loc[i] -= dE * 0.5 * (dij_i / c6ij + dik_i / c6ik);
+          dedcn_loc[static_cast<std::size_t>(a.j)] -= dE * 0.5 * (dij_j / c6ij + djk_j / c6jk);
+          dedcn_loc[static_cast<std::size_t>(b.j)] -= dE * 0.5 * (dik_k / c6ik + djk_k / c6jk);
         }
       }
     }
-    ene_th[static_cast<std::size_t>(slice)] = ene;
+    ene_th[slot] = ene_loc;
+    if (team <= 1) {
+      ene.add(ene_loc);
+      ene_th[slot] = 0.0;
+      for (std::size_t i = 0; i < n; ++i) {
+        dedcn[i] += dedcn_loc[i];
+        dedcn_loc[i] = 0.0;
+      }
+      for (std::size_t i = 0; i < grad.size(); ++i) {
+        grad[i] += floc[i];
+        floc[i] = 0.0;
+      }
+      for (int c = 0; c < 9; ++c) {
+        sig_sum[static_cast<std::size_t>(c)].add(sig[static_cast<std::size_t>(c)]);
+        sig[static_cast<std::size_t>(c)] = 0.0;
+      }
+    }
   });
 
-  Neumaier ene;
-  std::vector<double> dedcn(n, 0.0);
   const bool apply_cn_force = true;
-  std::vector<double> grad(3 * n, 0.0);
-  for (int t = 0; t < nt; ++t) {
-    ene.add(ene_th[static_cast<std::size_t>(t)]);
-    for (std::size_t i = 0; i < n; ++i) {
-      dedcn[i] += dedcn_th[static_cast<std::size_t>(t)][i];
-    }
-    for (std::size_t i = 0; i < grad.size(); ++i) {
-      grad[i] += f_th[static_cast<std::size_t>(t)][i];
+  if (team > 1) {
+    for (int t = 0; t < nt; ++t) {
+      ene.add(ene_th[static_cast<std::size_t>(t)]);
+      for (std::size_t i = 0; i < n; ++i) {
+        dedcn[i] += dedcn_th[static_cast<std::size_t>(t)][i];
+      }
+      for (std::size_t i = 0; i < grad.size(); ++i) {
+        grad[i] += f_th[static_cast<std::size_t>(t)][i];
+      }
     }
   }
   for (std::size_t i = 0; i < n && apply_cn_force; ++i) {
@@ -479,11 +500,12 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
     }
   }
   std::vector<double> sig(9, 0.0);
-  std::array<Neumaier, 9> sig_sum;
-  for (int t = 0; t < nt; ++t) {
-    for (int c = 0; c < 9; ++c) {
-      sig_sum[static_cast<std::size_t>(c)].add(
-          sig_th[static_cast<std::size_t>(t)][static_cast<std::size_t>(c)]);
+  if (team > 1) {
+    for (int t = 0; t < nt; ++t) {
+      for (int c = 0; c < 9; ++c) {
+        sig_sum[static_cast<std::size_t>(c)].add(
+            sig_th[static_cast<std::size_t>(t)][static_cast<std::size_t>(c)]);
+      }
     }
   }
   for (int c = 0; c < 9; ++c) {

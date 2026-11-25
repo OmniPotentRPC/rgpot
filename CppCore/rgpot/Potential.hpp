@@ -355,6 +355,7 @@ public:
    * not moved sends only the rest to the kernel.
    */
   void forceBatch(const ForceBatch &batch) override {
+    const rgpot::ThreadBinding bind_threads{threadCount()};
     if (batch.nSystems == 0) {
       return;
     }
