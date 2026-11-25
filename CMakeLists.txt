@@ -299,6 +299,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
        CppCore/rgpot/EAM/EAM.cpp
        CppCore/rgpot/EAM/EAMPot.cc
        CppCore/rgpot/MOPACPot/MOPACPot.cc
+       CppCore/rgpot/ORCACPot/ORCACPot.cc
        CppCore/rgpot/XTBPot/XTBDlopen.cc
        CppCore/rgpot/ExternalPot/ExternalPot.cc
        ${_rgpot_emt_sources})

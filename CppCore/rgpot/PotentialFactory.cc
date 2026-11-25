@@ -20,6 +20,7 @@
 #include "rgpot/ExternalPot/ExternalPot.hpp"
 #include "rgpot/MOPACPot/MOPACPot.hpp"
 #include "rgpot/NWChemPot/NWChemPot.hpp"
+#include "rgpot/ORCACPot/ORCACPot.hpp"
 #include "rgpot/abi/EngineDlopen.hpp"
 #include "rgpot/rpc/CompositeConfigure.hpp"
 #include "rgpot/rpc/D2Configure.hpp"
@@ -342,10 +343,15 @@ std::unique_ptr<PotentialBase> makePotential(const ::PotentialConfig::Reader &cf
   case ::PotentialConfig::UMA:
     return enginePot(engineCandidates("uma_engine", "", {"RGPOT_UMA_ENGINE"}),
                      flatMessage(cfg.getUma()), "uma");
-  case ::PotentialConfig::ORCA:
-    return enginePot(
-        engineCandidates("orcac", "", {"ORCAC_LIBRARY", "RGPOT_ORCAC_ENGINE"}),
-        flatMessage(cfg.getOrca()), "orcac");
+  case ::PotentialConfig::ORCA: {
+    // liborcac reads the whole PotentialConfig, so it lowers common itself.
+    const auto words = flatMessage(cfg);
+    ORCACConfig c;
+    const auto *bytes = reinterpret_cast<const unsigned char *>(words.data());
+    c.message.assign(bytes, bytes + words.size() * sizeof(capnp::word));
+    c.potential_config = true;
+    return std::make_unique<ORCACPot>(std::move(c));
+  }
   case ::PotentialConfig::PLUGIN: {
     const auto p = cfg.getPlugin();
     const std::string name = p.getPluginName().cStr();

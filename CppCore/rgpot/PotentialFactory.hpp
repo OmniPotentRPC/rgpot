@@ -11,12 +11,16 @@
  * everything; the shared fields (common, commonPatch, neighborList,
  * rpcEndpoint, logPotentialCalls, emtRasmussenParameters) are not read,
  * matching the setPotentialConfig methods and the rpc/ *Configure helpers,
- * none of which reads them either.
+ * none of which reads them either. The orca arm is the exception: liborcac
+ * receives the whole PotentialConfig and lowers common.
  *
  * In-process arms: lj, morse, zbl, d2, d2cpmd, mullerBrown, composite (its
  * PotentialSpec terms as rgpot::rpc::potentialFromSpec builds them), cpmd and
  * nwchem (their frontends, which dlopen the split cpmdc and nwchemc engines),
- * mopac (MOPACPot), lammps (the lammpc profile of LammpsPot), and, when the
+ * mopac (MOPACPot), orca (ORCACPot over the split liborcac shim, created
+ * from the whole PotentialConfig so liborcac lowers common itself; library
+ * from ORCAC_LIBRARY, RGPOT_ORCAC_ENGINE, liborcac.so.1, liborcac.so),
+ * lammps (the lammpc profile of LammpsPot), and, when the
  * build has them, d3 (-Dwith_dftd3), d4 (-Dwith_dftd4), xtb (-Dwith_xtb),
  * tblite (-Dwith_tblite), skala (-Dwith_skala), cp2k (-Dwith_cp2k) and expr
  * (-Dwith_expr).
@@ -26,8 +30,7 @@
  * message: metatomic (libmetatomic_engine; MetatomicParams.enginePath,
  * RGPOT_METATOMIC_ENGINE, METATOMIC_ENGINE), uma (libuma_engine;
  * RGPOT_UMA_ENGINE), xtb in a build without -Dwith_xtb (libxtb_engine;
- * RGPOT_XTB_ENGINE, XTB_ENGINE), orca (liborcac; ORCAC_LIBRARY,
- * RGPOT_ORCAC_ENGINE; the message is the arm's ORCAParams) and plugin
+ * RGPOT_XTB_ENGINE, XTB_ENGINE) and plugin
  * (PluginPotentialParams.libraryPath, else lib<pluginName>_engine through
  * RGPOT_<PLUGINNAME>_ENGINE; the message is opaquePayload). Bare library
  * names also search EON_POTENTIALS_PATH and RGPOT_ENGINE_PATH.

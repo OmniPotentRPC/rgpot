@@ -546,6 +546,10 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/MOPACPot')  # 'mopacpot'
     rgpotentials += [mopacpot]
 
+    # Pure dlopen consumer of the split orcac shim (liborcac).
+    subdir('rgpot/ORCACPot')  # 'orcacpot'
+    rgpotentials += [orcacpot]
+
     subdir('rgpot/ExternalPot')  # lammps / gromacs / openmm constructors
     rgpotentials += [external_pot]
 
