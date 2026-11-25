@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# MIT License
+# Copyright 2023--present rgpot developers
 """Read lr_phys_bench ladder lines with and without the active field."""
 
 import sys
