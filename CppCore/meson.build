@@ -2437,6 +2437,17 @@ if get_option('with_tests')
         if 'thread' in _sanitize
             _nlist_rust_env += {'TSAN_OPTIONS': _tsan_options}
         endif
+        if rust_target != ''
+            _nlist_rust_env += {
+                'RGPOT_RUST_TARGET': rust_target,
+                'CXX': rust_linker,
+            }
+        endif
+        if exe_wrapper_args.length() > 0
+            _nlist_rust_env += {
+                'RGPOT_EXE_WRAPPER': exe_wrapper_args[0].full_path(),
+            }
+        endif
         test(
             'nlist_rust',
             find_program('sh'),

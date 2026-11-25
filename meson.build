@@ -939,6 +939,31 @@ endif
 # MSVC cargo writes rgpot_fastnlist.lib; Unix and MinGW write
 # librgpot_fastnlist.a. Link arguments are the system libraries rustc
 # printed for this toolchain, not a fixed -pthread -ldl -lm list.
+# Rust target for a GNU-toolchain Windows build: the cross file's
+# rust_target property, else the MinGW triple. Empty keeps rustc's
+# default. The linker is the C++ compiler from the native or cross file.
+rust_target = meson.get_external_property('rust_target', '')
+if (
+    rust_target == ''
+    and host_system == 'windows'
+    and host_machine.cpu_family() == 'x86_64'
+    and cppc.get_argument_syntax() != 'msvc'
+)
+    rust_target = 'x86_64-pc-windows-gnu'
+endif
+rust_linker = ''
+if rust_target != ''
+    foreach _word : cppc.cmd_array()
+        if rust_linker == '' and not _word.endswith('ccache')
+            rust_linker = _word
+        endif
+    endforeach
+endif
+_fast_target_args = []
+if rust_target != ''
+    _fast_target_args = ['--target', rust_target, '--linker', rust_linker]
+endif
+
 _fast_opt = get_option('with_fast_nlist')
 _fast_cargo = find_program('cargo', required: _fast_opt.enabled())
 _fast_rustc = find_program('rustc', required: false)
@@ -1036,6 +1061,7 @@ if has_fast_nlist
     _fast_probe = run_command(
         _fast_py,
         files('scripts/build_fastnlist.py'),
+        _fast_target_args,
         '--native-libs',
         _fast_cargo.full_path(),
         _fastnlist_src / 'Cargo.toml',
@@ -1091,6 +1117,7 @@ if has_fast_nlist
             command: [
                 _fast_py,
                 files('scripts/build_fastnlist.py'),
+                _fast_target_args,
                 '--copy',
                 _fast_cargo.full_path(),
                 _fastnlist_src / 'Cargo.toml',

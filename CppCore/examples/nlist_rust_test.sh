@@ -6,11 +6,15 @@
 # runtimes the archives were compiled for. Without them -fopenmp, the C++
 # standard library (-lstdc++ or -lc++), and any sanitizer symbols in the
 # archives are probed so standalone and cross-compiler invocations link.
+# RGPOT_RUST_TARGET set to a windows-gnu triple builds a MinGW DLL with
+# $CXX, links the Rust caller with $CXX as well, and runs it under
+# RGPOT_EXE_WRAPPER (a cross build's exe_wrapper).
 set -eu
 (set -o pipefail) 2>/dev/null && set -o pipefail
 root=$1
 build=$2
 shift 2
+target=${RGPOT_RUST_TARGET:-}
 rustc_bin=${RUSTC:-rustc}
 if ! "$rustc_bin" --version >/dev/null 2>&1; then
   rustc_bin=$(find /usr/local/rustup/toolchains "${RUSTUP_HOME:-/usr/local/rustup}/toolchains" \
@@ -50,6 +54,9 @@ for tool_bin in "$cxx" "${CC:-}"; do
   esac
 done
 os=$(uname -s)
+case "$target" in
+  *-windows-gnu*) os=windows-gnu ;;
+esac
 dir=$(mktemp -d)
 out=$(mktemp)
 cleanup() {
@@ -57,10 +64,14 @@ cleanup() {
     "$dir/libnlist.so" \
     "$dir/libnlist.dylib" \
     "$dir/nlist.dll" \
+    "$dir/libnlist.dll.a" \
     "$dir/nlist.lib" \
     "$dir/nlist.exp" \
     "$dir/omp_probe" \
     "$dir/cxx_probe" \
+    "$dir/omp_probe.exe" \
+    "$dir/cxx_probe.exe" \
+    "$dir/nlist_rust.exe" \
     "$out"
   rmdir "$dir" 2>/dev/null || true
 }
@@ -170,6 +181,26 @@ if [ "$has_san" -eq 0 ] && [ -n "$san_flag" ]; then
 fi
 
 case "$os" in
+  windows-gnu)
+    # -static keeps libgomp, libstdc++ and winpthread inside nlist.dll,
+    # so the loader needs only the DLL beside the executable.
+    if [ -n "$core" ]; then
+      "$cxx" -shared -static -o "$dir/nlist.dll" -Wl,--out-implib,"$dir/libnlist.dll.a" \
+        -Wl,--whole-archive "$half" -Wl,--no-whole-archive "$core" \
+        "$@" ${omp_flag:+"$omp_flag"} ${extra_rt:+"$extra_rt"} ${gcov_flag:+"$gcov_flag"}
+    else
+      "$cxx" -shared -static -o "$dir/nlist.dll" -Wl,--out-implib,"$dir/libnlist.dll.a" \
+        -Wl,--whole-archive "$half" "$mini" "$fma" -Wl,--no-whole-archive \
+        "$@" ${omp_flag:+"$omp_flag"} ${extra_rt:+"$extra_rt"} ${gcov_flag:+"$gcov_flag"}
+    fi
+    if command -v cygpath >/dev/null 2>&1; then
+      wdir=$(cygpath -w "$dir")
+      TMP="$wdir"
+      TEMP="$wdir"
+      TMPDIR="$wdir"
+      export TMP TEMP TMPDIR
+    fi
+    ;;
   Darwin)
     if [ -n "$core" ]; then
       "$cxx" -shared -o "$dir/libnlist.dylib" \
@@ -229,6 +260,21 @@ case "$os" in
 esac
 
 case "$os" in
+  windows-gnu)
+    rm -f "$out"
+    out="$dir/nlist_rust.exe"
+    # Under MSYS2, rustc is a Windows binary and takes Windows paths.
+    rmain="$root/CppCore/examples/nlist_rust/main.rs"
+    rdir=$dir
+    rout=$out
+    if command -v cygpath >/dev/null 2>&1; then
+      rmain=$(cygpath -m "$rmain")
+      rdir=$(cygpath -m "$dir")
+      rout=$(cygpath -m "$out")
+    fi
+    "$rustc_bin" --edition 2021 --target "$target" -C "linker=$cxx" \
+      "$rmain" -o "$rout" -L "native=$rdir" -lnlist
+    ;;
   MINGW*|MSYS*|CYGWIN*)
     # rustc's MSVC linker looks for nlist.lib on a native search path.
     # An MSYS -L directory is not one it opens.
@@ -288,6 +334,9 @@ case "$os" in
 esac
 
 case "$os" in
+  windows-gnu)
+    ${RGPOT_EXE_WRAPPER:+"$RGPOT_EXE_WRAPPER"} "$out"
+    ;;
   Darwin)
     DYLD_LIBRARY_PATH="$dir${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}" "$out"
     ;;
