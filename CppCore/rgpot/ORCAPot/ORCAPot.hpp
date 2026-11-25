@@ -128,6 +128,11 @@ public:
             .stress = false};
   }
 
+  /// Hash of method, basis, keywords, charge, multiplicity, restart, and
+  /// the executable path with symlinks resolved and its modification time,
+  /// both read by the constructor. A result-cache entry made by another
+  /// ORCA installation, or by the same one after it was replaced, is
+  /// never served.
   [[nodiscard]] uint64_t paramsKey() const noexcept override;
 
   /// Forget the stored orbitals. The next call starts from ORCA's guess.
@@ -159,6 +164,8 @@ public:
 private:
   ORCAConfig m_config;
   std::string m_executable;
+  std::string m_real_executable;
+  int64_t m_executable_mtime = 0;
   std::string m_run_dir;
   mutable bool m_has_guess = false;
   mutable bool m_last_reused = false;
