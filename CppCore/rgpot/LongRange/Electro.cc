@@ -84,10 +84,14 @@ void mesh_group_sync(int npart) {
   }
 }
 
+// Inside the mesh group this is the group size on every rank. The explicit
+// count is thread-local: rank 0 runs on the caller and sees its binding,
+// the other ranks do not, and a rank that counted differently would wait
+// at mesh_group_sync for arrivals that never come.
 int thread_count() {
   const int grouped = mesh_group_limit();
   if (grouped > 0) {
-    return rgpot::activeThreads(grouped);
+    return grouped;
   }
   const int spme = spme_slice_limit();
   return rgpot::activeThreads(spme > 0 ? spme : poolThreads());
