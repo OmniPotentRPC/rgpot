@@ -165,6 +165,12 @@ let P = S.pins in
       role = "xtb+tblite meson (ubuntu)",
     },
     {
+      id = "potentials_dxtb",
+      needs = ["prepare"],
+      runs_on = P.ubuntu,
+      role = "dxtb engine meson build and DxtbEngineTest (ubuntu)",
+    },
+    {
       id = "xckernel_goldens",
       needs = ["ci-tools"],
       runs_on = P.ubuntu,
@@ -219,6 +225,7 @@ let P = S.pins in
         "potentials_metatomic",
         "potentials_uma_engine",
         "potentials_tight_binding",
+        "potentials_dxtb",
         "xckernel_goldens",
         "potentials_tblite_06",
         "potentials_plugins",

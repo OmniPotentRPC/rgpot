@@ -164,6 +164,33 @@ in
         },
       ],
     },
+    dxtb = {
+      name = "dxtb engine (meson / ubuntu)",
+      "runs-on" = P.ubuntu,
+      "timeout-minutes" = 35,
+      env = S.ccache_env,
+      steps = [
+        S.checkout_full,
+        S.setup_pixi "dxtbbld" "dxtbbld",
+        S.ccache_step "ccache-pot-dxtb",
+        S.run_pixi_env
+          "dxtbbld"
+          m%"
+          meson setup bbdir-dxtb \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_rpc=true \
+            -Dwith_xtb=true \
+            -Dwith_dxtb=true \
+            -Dwith_cache=true \
+            --buildtype=debug
+          meson compile -C bbdir-dxtb
+          meson test -C bbdir-dxtb --print-errorlogs DxtbEngineTest
+          ccache -s
+        "%
+        & { name = "Meson build and DxtbEngineTest" },
+      ],
+    },
     # Compile-only. conda-forge tblite 0.6.0 (gfortran_ha02e54d_0) segfaults in
     # __dftd4_model_d4_MOD_get_polarizabilities on a GFN2 water single point,
     # including `tblite run`. The [tblite] tests stay on tight_binding
