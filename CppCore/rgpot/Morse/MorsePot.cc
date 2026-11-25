@@ -743,25 +743,26 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
         tallyPair(*atoms, ai, static_cast<std::size_t>(jj), pair_e, fscale, dx, dy, dz);
       }
     };
-    neighbours_.forHalf(0, N,
-                        [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                            double r2) RGPOT_MORSE_LAMBDA_INLINE {
-                          if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
-                            return;
-                          }
-                          const std::size_t c = batch.count++;
-                          const double r = std::sqrt(r2);
-                          batch.arg[c] = -range * (r - req);
-                          batch.r[c] = r;
-                          batch.dx[c] = dx;
-                          batch.dy[c] = dy;
-                          batch.dz[c] = dz;
-                          batch.i[c] = i;
-                          batch.j_or_u[c] = j;
-                          if (batch.count == kPairBatch) {
-                            flushBatch(batch, emit);
-                          }
-                        });
+    // A team takes each atom's partners in the order of forRowHalf, so one
+    // slice walks that order too; forHalf on the tiles goes cell by tile.
+    neighbours_.forRowHalf([&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                               double r2) RGPOT_MORSE_LAMBDA_INLINE {
+      if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+        return;
+      }
+      const std::size_t c = batch.count++;
+      const double r = std::sqrt(r2);
+      batch.arg[c] = -range * (r - req);
+      batch.r[c] = r;
+      batch.dx[c] = dx;
+      batch.dy[c] = dy;
+      batch.dz[c] = dz;
+      batch.i[c] = i;
+      batch.j_or_u[c] = j;
+      if (batch.count == kPairBatch) {
+        flushBatch(batch, emit);
+      }
+    });
     flushBatch(batch, emit);
   } else {
     std::vector<PairBatch> batches(static_cast<std::size_t>(slices));
