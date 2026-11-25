@@ -1419,6 +1419,7 @@ int rgpot_gupta_energy_forces(const rgpot_gupta_config *cfg, int32_t natoms,
 - Errors :: returns 1 for a NULL =cfg= or =energy=, a negative =natoms=, or,
   when =natoms= is positive, a NULL =positions= or =forces=, with a message such
   as =invalid parameter: cfg is null=.
+  Returns 1 for =natoms= of 0 with =invalid parameter: nAtoms must be positive=.
   Returns 1 with the exception text when the constructor refuses the
   configuration, for example =Gupta r0 must be positive and finite=, or when the
   evaluation throws, for example for a NULL =box= on a periodic call.
