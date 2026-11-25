@@ -14,7 +14,9 @@ The build then defines =RGPOT_HAS_FAST_NLIST= and links the archive into
 =librgpot=.
 A shared =librgpot= exports the four functions whether or not a potential inside
 it calls them.
-=scripts/abi_baseline_fast.txt= lists them.
+=scripts/abi_baseline_fast.txt= lists them. rustc writes no export directive
+into a static library, so on Windows the DLL exports them through a module
+definition file generated from that list.
 CMake does not build it.
 
 The library does not convert units.
