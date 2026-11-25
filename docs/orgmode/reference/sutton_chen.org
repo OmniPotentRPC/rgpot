@@ -54,8 +54,8 @@ higher-index partners, and the atoms are added in index order.
 When the call has at least the atoms =SuttonChenPot::kTeamFrom= asks of the
 =OMP_NUM_THREADS= threads, a team splits the atoms into as many runs.
 One thread walks each pair once, in the order of those rows.
-On a stored neighbour list, that team runs one three-phase OpenMP region over
-an upper-pair index when the candidate upper pairs are at least 4096
+On a stored neighbour list, that team runs one three-phase OpenMP region over an
+upper-pair index when the candidate upper pairs are at least 4096
 (=kMinParallelHalfPairs=), =total_up <= term_limit= and
 =pairScratchFits(total_up, atoms, scratch_avail)= holds: phase 0 evaluates each
 upper pair once across work-balanced atom slices rounded to 8-atom boundaries,

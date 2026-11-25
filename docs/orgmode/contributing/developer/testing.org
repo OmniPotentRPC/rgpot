@@ -112,12 +112,14 @@ slice.
 =forEachSlice= and =forEachSlicePhase= run each slice once on the threads that
 start, several to a thread on a short team, and the caller adds the buffers in
 slice order, so the slice count fixes the bits and the team only the speed.
-A potential takes its slice count from =teamSize(n, from, team)=, which is one below the atoms
-the =kTeamFrom= of its class asks of the thread count.
-The one-argument =teamSize(std::size_t)= overload is deprecated and remains exported as a compatibility wrapper forwarding to =teamSize(n, rgpot::kTeamMinAtoms, {})=.
-From =kTeamMinAtoms=, the least of those counts, it adds its sums atom by atom in
-index order on any thread count, so neither the slice count nor the team changes
-its bits.
+A potential takes its slice count from =teamSize(n, from, team)=, which is one
+below the atoms the =kTeamFrom= of its class asks of the thread count.
+The one-argument =teamSize(std::size_t)= overload is deprecated and remains
+exported as a compatibility wrapper forwarding to
+=teamSize(n, rgpot::kTeamMinAtoms, {})=.
+From =kTeamMinAtoms=, the least of those counts, it adds its sums atom by atom
+in index order on any thread count, so neither the slice count nor the team
+changes its bits.
 Ranks that wait for each other use =onFullTeam=, which runs them only when each
 has its own thread; otherwise it returns false and the caller does the same work
 through =forEachSlice=.
