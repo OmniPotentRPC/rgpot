@@ -1684,7 +1684,7 @@ enum rgpot_status_t rgpot_rpc_neighbours(
 - Outputs :: =*needed= receives the full pair count and =*count= the number of
   pairs written (0 when =out= is NULL or =out->cap= is 0).
   This is the C wrapper of RPC =Potential.neighbours=, advertised through
-  =Capabilities.neighbors=.
+  =Capabilities.Operation.neighbors=.
 - Errors :: =RGPOT_INVALID_PARAMETER= for a NULL =client=, =input= or =request=,
   or a NULL required output buffer when =out->cap > 0=.
   =RGPOT_BUFFER_SIZE_ERROR= after writing =out->cap= pairs when =*needed=

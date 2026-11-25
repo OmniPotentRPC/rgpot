@@ -262,7 +262,7 @@ The socket-backed =IPIPot= case uses ASE's =SocketClient= and an ASE
 One connection belongs to one calculator.
 A second thread that enters =calculate= or =neighbours= while the first still
 holds the connection gets =RuntimeError=.
-=neighbours(atoms, cutoff=0.0, skin=0.0, full=False, strict=True, shifts=True, vectors=True, distances=True)=
+=neighbours(atoms=None, *, cutoff: float | None = None, skin=0.0, full=False, strict=True, shifts=True, vectors=True, distances=True)=
 asks the server for the potential's neighbour list through
 =Potential.neighbours=.
 The old import =ase_calculator.RgpotCalculator= warns and re-exports this class.

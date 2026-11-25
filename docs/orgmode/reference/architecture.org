@@ -338,16 +338,20 @@ then converts energy and forces into the caller's units on the response.
 Why the handshake exists is in
 [[file:../explanation/architecture.org][Architecture]].
 
-The current RPC identity is family =rgpot.potentials=, major 1, minor 2.
+The current RPC identity is family =rgpot.potentials=, major 1, minor 3.
 =ForceInput.neighbors= (@9) is present from minor 0 (v3.6.0).
-Minor 2 adds only =hasOrbitalKey= and =orbitalKey=.
+Minor 2 adds =hasOrbitalKey= and =orbitalKey=.
+Minor 3 adds =Potential.neighbours= and advertises
+=Capabilities.Operation.neighbors=.
 Clients that set an orbital-key field require a server that advertises minor 2.
+Clients that call =Potential.neighbours= require minor 3 and that operation.
 They report the required and advertised minors instead of sending a request that
 an older server would silently interpret without those fields.
 That floor is the minor in which the fields appeared.
 A later bump of the current minor does not raise it.
 Requests that use only the pre-minor-2 =ForceInput= fields remain valid against
 a minor-1 server.
+A neighbour call is not: a minor-2 server has no =Potential.neighbours=.
 
 A backend loaded through the potential profile reports a =Capabilities= message
 through =<prefix>_capabilities_result=.

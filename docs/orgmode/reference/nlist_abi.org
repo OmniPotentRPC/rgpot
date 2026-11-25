@@ -415,8 +415,10 @@ Lengths are in the unit of the positions, =ForceInput.lengthUnit= on the wire.
 
 =potserv= and =rgpot_rpc_server_start= implement =Potential.neighbours= and
 advertise =Capabilities.Operation.neighbors= at ordinal 11.
-=potserv= also populates =PotentialResult.neighborList= when
-=ForceInput.neighbors= is set.
+=potserv= and =rgpot_rpc_server_start= also populate
+=PotentialResult.neighborList= when =ForceInput.neighbors= is set.
+=rgpot_rpc_server_start= does that from the calculate path in
+=rgpot-core/src/rpc/server.rs=.
 =CppCore/examples/nlist_stream.cc= sends =NeighborRequest= and =NeighborList= as
 framed messages over a socket and serves each chunk from a stored list.
 
