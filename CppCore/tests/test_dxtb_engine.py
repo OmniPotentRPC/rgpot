@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -1285,6 +1286,168 @@ def test_worker_starts_when_stdin_and_stdout_are_closed(tmp_path):
         [1, 1], [[0.0, 0.0, -0.37], [0.0, 0.0, 0.37]], "gfn1", charge=0.0, uhf=0
     )
     np.testing.assert_allclose(energy, ref_energy, rtol=2e-13, atol=2e-12)
+
+
+# Standard library only, so the same script runs on a free-threaded
+# interpreter that has no numpy or pycapnp.
+SAME_HANDLE_THREADS = r'''
+import ctypes
+import faulthandler
+import gc
+import sys
+import threading
+
+engine_path, params_path = sys.argv[1:3]
+threads, rounds, deadline = (int(a) for a in sys.argv[3:6])
+
+# PyDLL keeps the GIL (or the attached thread state) across each call, as a
+# nanobind host does; CDLL would drop it before the engine sees the call.
+lib = ctypes.PyDLL(engine_path)
+lib.rgpot_engine_create.restype = ctypes.c_void_p
+lib.rgpot_engine_create.argtypes = [
+    ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p, ctypes.c_size_t,
+]
+lib.rgpot_engine_destroy.argtypes = [ctypes.c_void_p]
+Dp = ctypes.POINTER(ctypes.c_double)
+Ip = ctypes.POINTER(ctypes.c_int)
+lib.rgpot_engine_force.restype = ctypes.c_int
+lib.rgpot_engine_force.argtypes = [
+    ctypes.c_void_p, ctypes.c_long, Dp, Ip, Dp, Dp, Dp, Dp,
+    ctypes.c_void_p, ctypes.c_void_p,
+]
+lib.rgpot_engine_hvp.restype = ctypes.c_int
+lib.rgpot_engine_hvp.argtypes = [ctypes.c_void_p, ctypes.c_long, Dp, Ip, Dp, Dp, Dp]
+
+N = 3
+Z = (ctypes.c_int * N)(8, 1, 1)
+X = (ctypes.c_double * (3 * N))(
+    0.0, 0.0, 0.1173, 0.0, 0.7572, -0.4692, 0.0, -0.7572, -0.4692
+)
+V = (ctypes.c_double * (3 * N))(*[-0.7 + 1.6 * i / 8 for i in range(3 * N)])
+BOX = (ctypes.c_double * 9)(40.0, 0, 0, 0, 40.0, 0, 0, 0, 40.0)
+
+params = open(params_path, "rb").read()
+storage = ctypes.create_string_buffer(params)
+error = ctypes.create_string_buffer(1024)
+handle = lib.rgpot_engine_create(storage, len(params), error, len(error))
+if not handle:
+    sys.exit("create failed: " + error.value.decode())
+
+
+def force():
+    out = (ctypes.c_double * (3 * N))()
+    energy = ctypes.c_double()
+    status = lib.rgpot_engine_force(
+        handle, N, X, Z, out, ctypes.byref(energy), None, BOX, None, None
+    )
+    return status, [energy.value, *out]
+
+
+def hvp():
+    out = (ctypes.c_double * (3 * N))()
+    status = lib.rgpot_engine_hvp(handle, N, X, Z, V, out, BOX)
+    return status, list(out)
+
+
+# The first calls start the worker; only the concurrent phase is timed.
+reference = {"force": force(), "hvp": hvp()}
+calls = {"force": force, "hvp": hvp}
+results = []
+barrier = threading.Barrier(threads)
+done = threading.Event()
+
+
+def run(index):
+    order = ["force", "hvp"] if index % 2 == 0 else ["hvp", "force"]
+    barrier.wait()
+    for r in range(rounds):
+        kind = order[r % 2]
+        results.append((kind, *calls[kind]()))
+
+
+def collect():
+    # A collection stops the world on a free-threaded build, which needs
+    # every attached thread to reach a safe point.
+    while not done.wait(0.005):
+        gc.collect()
+
+
+faulthandler.dump_traceback_later(deadline, exit=True)
+workers = [threading.Thread(target=run, args=(i,)) for i in range(threads)]
+collector = threading.Thread(target=collect)
+collector.start()
+for w in workers:
+    w.start()
+for w in workers:
+    w.join()
+done.set()
+collector.join()
+faulthandler.cancel_dump_traceback_later()
+lib.rgpot_engine_destroy(handle)
+gil = sys._is_gil_enabled() if hasattr(sys, "_is_gil_enabled") else True
+print(repr({"gil": gil, "reference": reference, "results": results}))
+'''
+
+
+def _free_threaded_python():
+    candidates = [os.environ.get("RGPOT_FREE_THREADED_PYTHON")]
+    candidates += [shutil.which(name) for name in ("python3.14t", "python3.13t")]
+    return next((c for c in candidates if c), None)
+
+
+@pytest.mark.parametrize("build", ["gil", "free-threaded"])
+def test_same_handle_force_and_hvp_from_many_threads_do_not_deadlock(tmp_path, build):
+    if build == "gil":
+        python = sys.executable
+    else:
+        python = _free_threaded_python()
+        if python is None:
+            pytest.skip("no free-threaded Python (set RGPOT_FREE_THREADED_PYTHON)")
+    message = SCHEMA.BuiltinParams.new_message()
+    message.name = "dxtb"
+    xtb = message.init("config").init("xtb")
+    xtb.method = "gfn1"
+    xtb.accuracy = 1.0
+    xtb.electronicTemperature = 300.0
+    xtb.maxIterations = 300
+    params_path = tmp_path / "params.bin"
+    params_path.write_bytes(message.to_bytes())
+    script_path = tmp_path / "same_handle_threads.py"
+    script_path.write_text(SAME_HANDLE_THREADS)
+    threads, rounds, deadline = 3, 2, 60
+
+    try:
+        completed = subprocess.run(
+            [
+                python,
+                *(["-X", "gil=0"] if build == "free-threaded" else []),
+                str(script_path),
+                os.environ["RGPOT_ENGINE_DXTB"],
+                str(params_path),
+                str(threads),
+                str(rounds),
+                str(deadline),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired as e:
+        pytest.fail(f"same-handle calls hung past the watchdog:\n{e.stderr}")
+    assert completed.returncode == 0, (
+        f"same-handle calls deadlocked or failed:\n{completed.stderr}"
+    )
+    report = ast.literal_eval(completed.stdout.strip().splitlines()[-1])
+    assert report["gil"] == (build == "gil")
+    assert len(report["results"]) == threads * rounds
+    for kind, (status, values) in report["reference"].items():
+        assert status == 0, kind
+        assert all(np.isfinite(values)), kind
+    for kind, status, values in report["results"]:
+        assert status == 0, kind
+        np.testing.assert_allclose(
+            values, report["reference"][kind][1], rtol=1e-10, atol=1e-8
+        )
 
 
 def _events(log_path):
