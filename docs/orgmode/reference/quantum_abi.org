@@ -13,14 +13,16 @@ The four ABIs keep their own prefixes: =nwchemc_=, =cpmdc_=,
 The generic engine table of [[file:engine_abi.org][Engine plugin ABI]] is a
 separate interface with its own units.
 
-Every engine library ships with a stub that the repository builds: the stub
-exports the same symbols, reports =*_available= as 0, fails every evaluation and
-returns the version string =nwchemc-stub/1.0.0=, =cpmdc-stub/0.1.0= or
-=mopacc-stub/1.0.0=.
-A frontend that finds only the stub reports that the embed is not available.
+The NWChem, CPMD and MOPAC engine libraries each ship with a stub that the
+repository builds: the stub exports the same symbols, reports =*_available= as
+0, fails every evaluation and returns the version string
+=nwchemc-stub/1.0.0=, =cpmdc-stub/0.1.0= or =mopacc-stub/1.0.0=.
+CP2K has no stub: instead, the repository builds the shim
+=libcp2kc_rgpot= against =libcp2k= when =-Dwith_cp2k=enabled=.
+A frontend that finds only a stub reports that the embed is not available.
 The behaviour of a real engine beyond what the headers state is documented by
-its own project; this page states what the headers promise and what the stubs
-do.
+its own project; this page states what the headers promise, what the stubs do
+and what the CP2K shim provides.
 
 Units at these ABIs are not the units of =librgpot=.
 Geometry is in Angstrom (Bohr for CP2K), energy in Hartree and gradients in
