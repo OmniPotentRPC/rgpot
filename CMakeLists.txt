@@ -520,6 +520,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   target_compile_definitions(rgpot PRIVATE RGPOT_MODEL_BUILD)
   if(WIN32 AND _rgpot_type STREQUAL "STATIC_LIBRARY")
     target_compile_definitions(rgpot INTERFACE
+      $<BUILD_INTERFACE:RGPOT_STATIC>
       $<INSTALL_INTERFACE:RGPOT_STATIC>)
   endif()
   if(RGPOT_WITH_HIGHWAY)
