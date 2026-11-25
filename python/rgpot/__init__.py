@@ -32,6 +32,7 @@ GromacsPot = _core.GromacsPot
 OpenMMPot = _core.OpenMMPot
 LJClusterPot = _core.LJClusterPot
 MorsePot = _core.MorsePot
+GuptaPot = _core.GuptaPot
 D2Pot = _core.D2Pot
 D2CpmdPot = _core.D2CpmdPot
 SumPot = _core.SumPot
@@ -198,6 +199,7 @@ __all__ = [
     "EMTPot",
     "LJClusterPot",
     "MorsePot",
+    "GuptaPot",
     "D2Pot",
     "D2CpmdPot",
     "SumPot",
