@@ -2948,13 +2948,11 @@ if get_option('with_tests')
                 depends: engine_table_depends,
                 workdir: meson.source_root(),
             )
-            # makePotential over the classical engine (plugin arm) and an
-            # engine that echoes its configuration (orca arm).
-            config_echo_engine = shared_library(
-                'config_echo_engine',
-                sources: ['tests/config_echo_engine.c'],
-                include_directories: _incdirs,
-                c_args: ['-DRGPOT_ENGINE_BUILD'],
+            # makePotential over the classical engine (plugin arm) and a
+            # stand-in liborcac (orca arm).
+            orcac_fake_engine = shared_library(
+                'orcac_fake_engine',
+                sources: ['tests/orcac_fake_engine.c'],
                 install: false,
             )
             potential_factory_env = environment()
@@ -2963,8 +2961,8 @@ if get_option('with_tests')
                 classical_engine.full_path(),
             )
             potential_factory_env.set(
-                'RGPOT_FACTORY_ECHO_ENGINE',
-                config_echo_engine.full_path(),
+                'RGPOT_FACTORY_ORCAC_FAKE',
+                orcac_fake_engine.full_path(),
             )
             test(
                 'PotentialFactoryTest',
@@ -2983,7 +2981,7 @@ if get_option('with_tests')
                     build_rpath: _metatomic_build_rpath,
                 ),
                 env: potential_factory_env,
-                depends: [classical_engine, config_echo_engine],
+                depends: [classical_engine, orcac_fake_engine],
                 kwargs: _rt_kw['PotentialFactoryTest'],
             )
         endif

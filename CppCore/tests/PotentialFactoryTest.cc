@@ -2,10 +2,10 @@
 // Copyright 2023--present rgpot developers
 
 // rgpot::makePotential: the in-process arms against the potentials built
-// directly, the plugin arm over the classical engine, the orca arm over an
-// engine that echoes its configuration, and the arms this build cannot
-// construct. RGPOT_FACTORY_CLASSICAL_ENGINE and RGPOT_FACTORY_ECHO_ENGINE name
-// the two engine libraries.
+// directly, the plugin arm over the classical engine, the orca arm over a
+// stand-in liborcac, and the arms this build cannot construct.
+// RGPOT_FACTORY_CLASSICAL_ENGINE and RGPOT_FACTORY_ORCAC_FAKE name the two
+// libraries.
 
 #include <array>
 #include <cstdlib>
@@ -22,8 +22,10 @@
 #include "rgpot/EnginePot/EnginePot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/ORCACPot/ORCACPot.hpp"
 #include "rgpot/PotentialFactory.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+#include "rgpot/units.hpp"
 
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::WithinAbs;
@@ -195,11 +197,12 @@ TEST_CASE("the plugin arm loads an engine library with the opaque payload",
   }
 }
 
-TEST_CASE("the orca arm hands its ORCAParams to liborcac", "[factory][orca]") {
-  const std::string echo = requiredEnv("RGPOT_FACTORY_ECHO_ENGINE");
+TEST_CASE("the orca arm builds an ORCACPot over liborcac", "[factory][orca]") {
+  const std::string fake = requiredEnv("RGPOT_FACTORY_ORCAC_FAKE");
 
   capnp::MallocMessageBuilder message;
-  auto orca = message.initRoot<::PotentialConfig>().initOrca();
+  auto config = message.initRoot<::PotentialConfig>();
+  auto orca = config.initOrca();
   orca.setMethod("PBE0");
   orca.setBasis("def2-SVP");
   orca.setKeywords("TightSCF D4");
@@ -207,40 +210,50 @@ TEST_CASE("the orca arm hands its ORCAParams to liborcac", "[factory][orca]") {
   orca.setMultiplicity(2);
   orca.setNprocs(4);
   orca.setTimeoutS(120.0);
-
-  capnp::MallocMessageBuilder alone;
-  alone.setRoot(orca.asReader());
-  const auto expected = flat(alone);
+  config.initCommon().setBasisSet("def2-TZVP");
+  // liborcac takes the whole PotentialConfig and lowers common itself.
+  const auto expected = flat(message);
   const std::size_t expected_bytes = expected.size() * sizeof(capnp::word);
 
   SECTION("ORCAC_LIBRARY names the library") {
-    ScopedEnv env("ORCAC_LIBRARY", echo.c_str());
+    ScopedEnv env("ORCAC_LIBRARY", fake.c_str());
     ScopedEnv other("RGPOT_ORCAC_ENGINE", nullptr);
-    auto pot = rgpot::makePotential(message.getRoot<::PotentialConfig>().asReader());
-    auto *engine = dynamic_cast<rgpot::EnginePot *>(pot.get());
-    REQUIRE(engine != nullptr);
-    REQUIRE(engine->label() == "orcac");
-    REQUIRE(engine->libraryPath() == echo);
+    auto pot = rgpot::makePotential(config.asReader());
+    auto *orcac = dynamic_cast<rgpot::ORCACPot *>(pot.get());
+    REQUIRE(orcac != nullptr);
+    REQUIRE(pot->getType() == rgpot::PotType::ORCAC);
+    REQUIRE(orcac->available());
+    REQUIRE(orcac->loadError().empty());
+    REQUIRE(orcac->libraryPath() == fake);
+    REQUIRE(orcac->runDirectory() == "/fake/orcac");
 
-    // The echo engine's energy is the length of the message it was created
-    // from, and config_echo_last returns the message itself.
+    // The fake's energy in Hartree is the message length, and its forces are
+    // 0.1 * (i + 1) Hartree/Bohr.
     auto [e, f, v] = (*pot)(kPositions, kZ, kBox);
-    (void)f;
     (void)v;
-    REQUIRE(e == static_cast<double>(expected_bytes));
+    REQUIRE_THAT(e, WithinRel(static_cast<double>(expected_bytes) *
+                                  rgpot::units::HARTREE_TO_EV,
+                              1e-14));
+    for (std::size_t i = 0; i < static_cast<std::size_t>(f.size()); ++i) {
+      REQUIRE_THAT(f.data()[i], WithinRel(0.1 * static_cast<double>(i + 1) *
+                                              rgpot::units::HARTREE_BOHR_TO_EV_ANGSTROM,
+                                          1e-14));
+    }
 
-    void *handle = dlopen(echo.c_str(), RTLD_NOW | RTLD_NOLOAD);
+    void *handle = dlopen(fake.c_str(), RTLD_NOW | RTLD_NOLOAD);
     REQUIRE(handle != nullptr);
-    using LastFn = std::size_t (*)(void *, std::size_t);
-    auto last = reinterpret_cast<LastFn>(dlsym(handle, "config_echo_last"));
+    using LastFn = std::size_t (*)(void *, std::size_t, int *);
+    auto last = reinterpret_cast<LastFn>(dlsym(handle, "orcac_fake_last"));
     REQUIRE(last != nullptr);
     std::vector<capnp::word> seen(expected.size());
-    REQUIRE(last(seen.data(), expected_bytes) == expected_bytes);
+    int from_config = -1;
+    REQUIRE(last(seen.data(), expected_bytes, &from_config) == expected_bytes);
+    REQUIRE(from_config == 1);
     REQUIRE(std::memcmp(seen.data(), expected.data(), expected_bytes) == 0);
     dlclose(handle);
 
     capnp::FlatArrayMessageReader reader(kj::arrayPtr(seen.data(), seen.size()));
-    const auto params = reader.getRoot<::ORCAParams>();
+    const auto params = reader.getRoot<::PotentialConfig>().getOrca();
     REQUIRE(std::string(params.getMethod().cStr()) == "PBE0");
     REQUIRE(params.getCharge() == -1);
     REQUIRE(params.getNprocs() == 4);
@@ -248,22 +261,47 @@ TEST_CASE("the orca arm hands its ORCAParams to liborcac", "[factory][orca]") {
 
   SECTION("RGPOT_ORCAC_ENGINE names the library") {
     ScopedEnv env("ORCAC_LIBRARY", nullptr);
-    ScopedEnv other("RGPOT_ORCAC_ENGINE", echo.c_str());
-    auto pot = rgpot::makePotential(message.getRoot<::PotentialConfig>().asReader());
-    auto *engine = dynamic_cast<rgpot::EnginePot *>(pot.get());
-    REQUIRE(engine != nullptr);
-    REQUIRE(engine->libraryPath() == echo);
+    ScopedEnv other("RGPOT_ORCAC_ENGINE", fake.c_str());
+    auto pot = rgpot::makePotential(config.asReader());
+    auto *orcac = dynamic_cast<rgpot::ORCACPot *>(pot.get());
+    REQUIRE(orcac != nullptr);
+    REQUIRE(orcac->libraryPath() == fake);
   }
 
-  SECTION("without the library the error names liborcac") {
+  SECTION("ORCACPot takes ORCAParams alone") {
+    capnp::MallocMessageBuilder alone;
+    alone.setRoot(orca.asReader());
+    const auto words = flat(alone);
+    rgpot::ORCACConfig c;
+    const auto *bytes = reinterpret_cast<const unsigned char *>(words.data());
+    c.message.assign(bytes, bytes + words.size() * sizeof(capnp::word));
+    c.engine_path = fake;
+    rgpot::ORCACPot pot(std::move(c));
+    REQUIRE(pot.available());
+    void *handle = dlopen(fake.c_str(), RTLD_NOW | RTLD_NOLOAD);
+    REQUIRE(handle != nullptr);
+    using LastFn = std::size_t (*)(void *, std::size_t, int *);
+    auto last = reinterpret_cast<LastFn>(dlsym(handle, "orcac_fake_last"));
+    std::vector<capnp::word> seen(words.size());
+    int from_config = -1;
+    REQUIRE(last(seen.data(), seen.size() * sizeof(capnp::word), &from_config) ==
+            words.size() * sizeof(capnp::word));
+    REQUIRE(from_config == 0);
+    dlclose(handle);
+  }
+
+  SECTION("without liborcac the error names what was tried") {
     ScopedEnv env("ORCAC_LIBRARY", "/nonexistent/liborcac.so");
     ScopedEnv other("RGPOT_ORCAC_ENGINE", nullptr);
-    ScopedEnv path("RGPOT_ENGINE_PATH", nullptr);
-    ScopedEnv eon("EON_POTENTIALS_PATH", nullptr);
-    REQUIRE_THROWS_WITH(rgpot::makePotential(message.getRoot<::PotentialConfig>().asReader()),
-                        ContainsSubstring("orcac: engine library not loaded") &&
-                            ContainsSubstring("/nonexistent/liborcac.so") &&
-                            ContainsSubstring("liborcac.so"));
+    auto pot = rgpot::makePotential(config.asReader());
+    auto *orcac = dynamic_cast<rgpot::ORCACPot *>(pot.get());
+    REQUIRE(orcac != nullptr);
+    REQUIRE_FALSE(orcac->available());
+    REQUIRE_THAT(orcac->loadError(), ContainsSubstring("liborcac not loaded") &&
+                                         ContainsSubstring("/nonexistent/liborcac.so") &&
+                                         ContainsSubstring("liborcac.so.1"));
+    REQUIRE_THROWS_WITH((*pot)(kPositions, kZ, kBox),
+                        ContainsSubstring("ORCACPot: liborcac not loaded"));
   }
 }
 
