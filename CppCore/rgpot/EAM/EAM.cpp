@@ -609,9 +609,10 @@ void EAM::evaluateStreamRows(long N, const int *atomicNrs, double *F, double *U)
   dF_.resize(static_cast<std::size_t>(N));
   row_energy_.assign(static_cast<std::size_t>(N), 0.0);
   // The density of an atom takes its own table, and the pair term of a
-  // pair belongs to its lower atom, as on the half walk.
-  neighbours_.forRowTeam(nt, [&](int, std::int32_t i, std::int32_t j, double, double, double,
-                                 double r2) {
+  // pair belongs to its lower atom, as on the half walk. One thread walks
+  // the pairs of forRowHalf, which reach each atom's partners in the order
+  // of its row, and adds to both atoms; a team adds to the atom of the row.
+  const auto density = [&](std::int32_t i, std::int32_t j, double r2) {
     const auto a = static_cast<std::size_t>(i);
     const auto *si = kind[a];
     if (!(r2 > 0.0) || r2 > si->cutoff2) {
@@ -622,7 +623,28 @@ void EAM::evaluateStreamRows(long N, const int *atomicNrs, double *F, double *U)
     if (j > i) {
       row_energy_[a] += si->pairEnergy(r);
     }
-  });
+  };
+  if (nt == 1) {
+    neighbours_.forRowHalf([&](std::int32_t i, std::int32_t j, double, double, double,
+                               double r2) {
+      if (uniform && only != nullptr) {
+        if (!(r2 > 0.0) || r2 > only->cutoff2) {
+          return;
+        }
+        const double r = std::sqrt(r2);
+        const double rho = only->density(r);
+        rho_[static_cast<std::size_t>(i)] += rho;
+        rho_[static_cast<std::size_t>(j)] += rho;
+        row_energy_[static_cast<std::size_t>(i)] += only->pairEnergy(r);
+        return;
+      }
+      density(i, j, r2);
+      density(j, i, r2);
+    });
+  } else {
+    neighbours_.forRowTeam(nt, [&](int, std::int32_t i, std::int32_t j, double, double, double,
+                                   double r2) { density(i, j, r2); });
+  }
   double energy = 0.0;
   for (long i = 0; i < N; ++i) {
     const auto a = static_cast<std::size_t>(i);
@@ -632,16 +654,15 @@ void EAM::evaluateStreamRows(long N, const int *atomicNrs, double *F, double *U)
   }
   // The scale of a pair is taken from its lower atom first, so both
   // atoms of the pair see the same bits.
-  neighbours_.forRowTeam(nt, [&](int, std::int32_t i, std::int32_t j, double dx, double dy,
-                                 double dz, double r2) {
+  const auto scale_of = [&](std::int32_t i, std::int32_t j, double r2) {
     if (!(r2 > 0.0)) {
-      return;
+      return 0.0;
     }
     const double r = std::sqrt(r2);
     double scale = 0.0;
     if (uniform && only != nullptr) {
       if (r2 > only->cutoff2) {
-        return;
+        return 0.0;
       }
       const double fs = only->densityForce(r);
       scale = only->pairForce(r) -
@@ -659,12 +680,32 @@ void EAM::evaluateStreamRows(long N, const int *atomicNrs, double *F, double *U)
         scale -= dF_[hi] * shi->densityForce(r);
       }
     }
-    if (scale != 0.0) {
-      F[3 * i] += scale * dx;
-      F[3 * i + 1] += scale * dy;
-      F[3 * i + 2] += scale * dz;
-    }
-  });
+    return scale;
+  };
+  if (nt == 1) {
+    neighbours_.forRowHalf([&](std::int32_t i, std::int32_t j, double dx, double dy,
+                               double dz, double r2) {
+      const double scale = scale_of(i, j, r2);
+      if (scale != 0.0) {
+        F[3 * i] += scale * dx;
+        F[3 * i + 1] += scale * dy;
+        F[3 * i + 2] += scale * dz;
+        F[3 * j] -= scale * dx;
+        F[3 * j + 1] -= scale * dy;
+        F[3 * j + 2] -= scale * dz;
+      }
+    });
+  } else {
+    neighbours_.forRowTeam(nt, [&](int, std::int32_t i, std::int32_t j, double dx, double dy,
+                                   double dz, double r2) {
+      const double scale = scale_of(i, j, r2);
+      if (scale != 0.0) {
+        F[3 * i] += scale * dx;
+        F[3 * i + 1] += scale * dy;
+        F[3 * i + 2] += scale * dz;
+      }
+    });
+  }
   for (long i = 0; i < N; ++i) {
     energy += row_energy_[static_cast<std::size_t>(i)];
   }

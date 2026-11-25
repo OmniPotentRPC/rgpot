@@ -729,10 +729,10 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
 
   // From kTeamMinAtoms up, each atom keeps the pair energy and strain of
   // its partners above it and the totals add them in atom order, as in
-  // nlist/PairSum.hpp. A team, or a stream, then walks the rows of the
-  // atoms; one thread on a stored list or an unbounded search keeps the
-  // half walks, whose densities and forces the rows repeat bit for bit.
-  const bool by_row = !sparse_stored && rows && (nt > 1 || (stream && !neighbours_.allPairs()));
+  // nlist/PairSum.hpp. A team then walks the rows of the atoms; one
+  // thread walks each pair once, by forRowHalf, whose densities and forces
+  // the rows repeat bit for bit.
+  const bool by_row = !sparse_stored && rows && nt > 1;
   std::vector<double> row_e(rows ? n_size : 0, 0.0);
   std::vector<double> row_s(rows && cfg.stress ? 6 * n_size : 0, 0.0);
   double *e_sum = rows ? row_e.data() : &epair;
@@ -744,6 +744,14 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
       walk(std::integral_constant<std::size_t, 1>{});
     } else {
       walk(std::integral_constant<std::size_t, 0>{});
+    }
+  };
+  // With row sums one thread takes forRowHalf, in the order of the rows.
+  auto half_walk = [&](auto stride, auto &&body) {
+    if constexpr (decltype(stride)::value == 1) {
+      neighbours_.forRowHalf(body);
+    } else {
+      nlist::visitHalf(neighbours_, 0, n_atoms, body);
     }
   };
 
@@ -797,8 +805,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   if (!by_row) {
     Terms &lane = terms_[0];
     by_stride([&](auto stride) {
-      nlist::visitHalf(neighbours_,
-          0, n_atoms,
+      half_walk(stride,
           [=, &lane](int32_t i, int32_t j, double, double, double,
                      double r2) RGPOT_SC_PAIR_INLINE {
             if (!(r2 > 0.0) || r2 > cutoff2) {
@@ -903,8 +910,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
     Terms &lane = terms_[0];
     double *virial = s_sum;
     by_stride([&](auto stride) {
-      nlist::visitHalf(neighbours_,
-          0, n_atoms,
+      half_walk(stride,
           [=, &lane](int32_t i, int32_t j, double dx, double dy, double dz,
                      double r2) RGPOT_SC_PAIR_INLINE {
             apply(stride, i, j, dx, dy, dz, r2, F, virial, true, lane);

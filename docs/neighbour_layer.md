@@ -254,31 +254,34 @@ From 8192 atoms up a result has the bits of one thread on any
 `OMP_NUM_THREADS`. Each atom keeps the energy and strain of its pairs
 with higher-index partners, and the atoms are added in index order. The
 pair potentials (`nlist::sumPairs` in `CppCore/rgpot/nlist/PairSum.hpp`),
-Sutton-Chen and EAM give each slice a contiguous range of atoms, and
-`forRowTeam` walks each atom's whole row on the slice that owns it, so
-the force on an atom has one writer and sums in the order of the
-one-thread walk. In stored mode and in an unbounded search, a partner
-below the atom takes the negated vector of the half walk from that
-partner, so both visits of a pair agree even where two images tie. One
-thread on a stored list or an unbounded search walks the half list. On a
-stored list with at least `kTeamMinAtoms` atoms and at least 4096
-candidate upper pairs (`kMinParallelHalfPairs`), `MorsePot` evaluates
-each upper pair once in a two-phase OpenMP region (`forEachSlicePhase`),
-batching `simd::exp_fixed_n` and partitioning atoms by pair count on
-8-atom boundaries before reducing forces in partner index order; sparser
-stored lists stay on one thread. Boundary words of the 1-bit active-pair
-mask are merged with `std::atomic_ref` (which on LLVM's C++ library
-requires `libc++` 19 or newer, `_LIBCPP_VERSION >= 190000`), falling
-back to `__atomic_fetch_or` on older `libc++`: Meson checks
-`_LIBCPP_VERSION < 190000` and probes `__atomic_fetch_or`, while CMake
-probes `std::atomic_ref<std::uint64_t>` directly and then probes the
-compiler intrinsic fallback, failing at configure time if neither is
-supported. `fastTiles` runs
-only when `streaming()` holds, so `forCellTeam` on a stored list walks
-`walkStored` instead of rebuilding a 27-cell tile stencil. A
-stream walks whole rows on any thread count, so on one thread a two-body
-potential evaluates each pair twice where a stored list evaluates it
-once. Stillinger-Weber and Tersoff
+Sutton-Chen and EAM give each slice of a team a contiguous range of
+atoms, and `forRowTeam` walks each atom's whole row on the slice that
+owns it, so the force on an atom has one writer. One thread walks each
+pair once, by `forRowHalf`, and a row takes the atom's partners in the
+order in which that walk reaches the atom; a partner below the atom
+takes the negated vector of the walk, so both visits of a pair agree
+even where two images tie. On a stored list, in an unbounded search and
+in a stream without tiles, `forRowHalf` is the half walk, and a row takes
+the partners below the atom in index order, then those above it. A
+stream on the tiles visits each pair from the atom that comes first by
+cell and then by index. A row there takes every atom of the stencil
+cells before its own, by cell, then the atoms before it in its cell,
+then, in stencil order, the atoms after it in its cell and every atom of
+the later cells. On a stored list with at least `kTeamMinAtoms` atoms and
+at least 4096 candidate upper pairs (`kMinParallelHalfPairs`), `MorsePot`
+evaluates each upper pair once in a two-phase OpenMP region
+(`forEachSlicePhase`), batching `simd::exp_fixed_n` and partitioning
+atoms by pair count on 8-atom boundaries before reducing forces in
+partner index order; sparser stored lists stay on one thread. Boundary
+words of the 1-bit active-pair mask are merged with `std::atomic_ref`
+(which on LLVM's C++ library requires `libc++` 19 or newer,
+`_LIBCPP_VERSION >= 190000`), falling back to `__atomic_fetch_or` on
+older `libc++`: Meson checks `_LIBCPP_VERSION < 190000` and probes
+`__atomic_fetch_or`, while CMake probes `std::atomic_ref<std::uint64_t>`
+directly and then probes the compiler intrinsic fallback, failing at
+configure time if neither is supported. `fastTiles` runs only when
+`streaming()` holds, so `forCellTeam` on a stored list walks `walkStored`
+instead of rebuilding a 27-cell tile stencil. Stillinger-Weber and Tersoff
 (`CppCore/rgpot/CentreTerms.hpp`) sum the terms of each centre into one
 force on the centre and on each partner, an energy and a strain, and add
 the centres in index order. `forEachSlice`, with every other OpenMP
@@ -550,11 +553,11 @@ on each call. ZBL takes no cell either and was not timed there. An
 open axis whose nominal grid does not fit is now binned on the atom
 span, as described above.
 
-A stream walks each atom's whole row on any thread count, so one thread
-has the bits of a team, and a two-body potential evaluates each pair
-from both ends. At 100000 atoms that makes the LJ cluster 1.70 times
-slower on one thread, and 2% slower on 8. In `Stream` mode at 10000
-atoms:
+In that build a stream walked each atom's whole row on any thread count,
+so one thread had the bits of a team, and a two-body potential evaluated
+each pair from both ends. At 100000 atoms that made the LJ cluster 1.70
+times slower on one thread, and 2% slower on 8. In `Stream` mode at
+10000 atoms:
 
 | potential | 1 thread, before | 1 thread, after | 8 threads, before | 8 threads, after |
 | --- | ---: | ---: | ---: | ---: |
@@ -564,9 +567,9 @@ atoms:
 | SW | 13560 | 13656 | 2168 | 2154 |
 | Tersoff | 13873 | 13969 | 2563 | 2215 |
 
-One thread on a stream is 1.39 to 1.64 times slower for EAM, Morse and
+One thread on a stream was 1.39 to 1.64 times slower for EAM, Morse and
 LJ, which used to walk half pairs. SW and Tersoff gather each centre's
-bonds either way and stay within 1%. On 8 threads none is slower than
+bonds either way and stayed within 1%. On 8 threads none was slower than
 its old team.
 
 ## Reproduce

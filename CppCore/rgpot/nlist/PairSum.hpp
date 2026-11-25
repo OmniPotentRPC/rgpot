@@ -9,14 +9,12 @@
  * Below the potential's threshold the half pairs are walked on the calling
  * thread and each term goes straight into the totals. From there up, each atom
  * keeps the energy and strain of the pairs to its partners above it, and
- * the totals add those rows in atom order. One thread on a stored list or
- * an unbounded search walks the half pairs, which reach the force of an
- * atom through its partners in index order. A team walks the same rows by
- * atom range and each atom adds the force of all its partners in index
- * order itself. The vectors of forDirected make every term the negation of
- * the one-thread term, and the force adds the rounded product, as the
- * one-thread walk does. A stream reaches the partners of an atom by cell,
- * so it takes the walk by atom on any team.
+ * the totals add those rows in atom order. One thread walks the pairs of
+ * forRowHalf, each pair once. A team walks the rows of forRowTeam by atom
+ * range, and each atom adds the force of all its partners itself, in the
+ * order in which forRowHalf reaches it. The vectors of forRowTeam make
+ * every term the negation of the one-thread term, and the force adds the
+ * rounded product, as the one-thread walk does.
  */
 
 #include "rgpot/PerAtom.hpp"
@@ -45,46 +43,53 @@ enum class Overlap : std::uint8_t { Skip, Poison };
 namespace detail {
 
 /// The half walk. With `Rows` a pair adds its energy to `energy[i]` and its
-/// strain to `strain + 6 * i`; without, every pair adds to `energy[0]` and
-/// `strain`. The body copies what it reads, so a walk keeps it in registers.
+/// strain to `strain + 6 * i`, in the order of forRowHalf; without, every
+/// pair adds to `energy[0]` and `strain`, in the order of forHalf. The body
+/// copies what it reads, so a walk keeps it in registers.
 template <bool Rows, typename Term>
 void halfPairs(const Neighbours &cells, std::size_t n, double cutoff2, Overlap overlap,
                const Term &term, double *force, double *energy, double *strain,
                const PerAtomOut *atoms) {
-  cells.forHalf(0, static_cast<std::int64_t>(n),
-                [=](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                    double r2) RGPOT_PAIR_SUM_INLINE {
-                  if (!(i < j) || r2 > cutoff2) {
-                    return;
-                  }
-                  const std::size_t a = Rows ? static_cast<std::size_t>(i) : 0;
-                  if (!(r2 > 0.0)) {
-                    if (overlap == Overlap::Poison) {
-                      energy[a] = std::numeric_limits<double>::quiet_NaN();
-                    }
-                    return;
-                  }
-                  double pair_e = 0.0;
-                  double fscale = 0.0;
-                  term(i, j, r2, pair_e, fscale);
-                  energy[a] += pair_e;
-                  const double fx = fscale * dx;
-                  const double fy = fscale * dy;
-                  const double fz = fscale * dz;
-                  force[3 * i] += fx;
-                  force[3 * i + 1] += fy;
-                  force[3 * i + 2] += fz;
-                  force[3 * j] -= fx;
-                  force[3 * j + 1] -= fy;
-                  force[3 * j + 2] -= fz;
-                  if (strain != nullptr) {
-                    accumulatePairStrain(strain + 6 * a, fscale, dx, dy, dz);
-                  }
-                  if (atoms != nullptr) {
-                    tallyPair(*atoms, static_cast<std::size_t>(i), static_cast<std::size_t>(j),
-                              pair_e, fscale, dx, dy, dz);
-                  }
-                });
+  const auto walk = [&](auto &&body) {
+    if constexpr (Rows) {
+      cells.forRowHalf(body);
+    } else {
+      cells.forHalf(0, static_cast<std::int64_t>(n), body);
+    }
+  };
+  walk([=](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+           double r2) RGPOT_PAIR_SUM_INLINE {
+    if (!(i < j) || r2 > cutoff2) {
+      return;
+    }
+    const std::size_t a = Rows ? static_cast<std::size_t>(i) : 0;
+    if (!(r2 > 0.0)) {
+      if (overlap == Overlap::Poison) {
+        energy[a] = std::numeric_limits<double>::quiet_NaN();
+      }
+      return;
+    }
+    double pair_e = 0.0;
+    double fscale = 0.0;
+    term(i, j, r2, pair_e, fscale);
+    energy[a] += pair_e;
+    const double fx = fscale * dx;
+    const double fy = fscale * dy;
+    const double fz = fscale * dz;
+    force[3 * i] += fx;
+    force[3 * i + 1] += fy;
+    force[3 * i + 2] += fz;
+    force[3 * j] -= fx;
+    force[3 * j + 1] -= fy;
+    force[3 * j + 2] -= fz;
+    if (strain != nullptr) {
+      accumulatePairStrain(strain + 6 * a, fscale, dx, dy, dz);
+    }
+    if (atoms != nullptr) {
+      tallyPair(*atoms, static_cast<std::size_t>(i), static_cast<std::size_t>(j),
+                pair_e, fscale, dx, dy, dz);
+    }
+  });
 }
 
 } // namespace detail
@@ -113,7 +118,7 @@ void sumPairs(const Neighbours &cells, std::size_t n, std::size_t from, double c
   double *row_e = rows.data();
   double *row_s = strain != nullptr ? row_strain.data() : nullptr;
   const int slices = teamSize(n, from);
-  if (slices == 1 && !(cells.streaming() && !cells.allPairs())) {
+  if (slices == 1) {
     detail::halfPairs<true>(cells, n, cutoff2, overlap, term, force, row_e, row_s, atoms);
   } else {
     cells.forRowTeam(slices, [=](int, std::int32_t i, std::int32_t j, double dx, double dy,
