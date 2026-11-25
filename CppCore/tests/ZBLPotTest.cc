@@ -14,6 +14,7 @@
 
 #include "TestFixtures.hpp"
 #include "rgpot/PerAtom.hpp"
+#include "rgpot/PotHelpers.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
@@ -251,6 +252,46 @@ TEST_CASE("ZBLPot parameter fingerprint tracks the config", "[ZBLPot]") {
   REQUIRE(defaults.getType() == rgpot::PotType::ZBL);
   REQUIRE(defaults.config().cut_inner == 2.0);
   REQUIRE(defaults.config().cut_global == 2.5);
+}
+
+TEST_CASE("ZBLPot declares kCellOptional and an open call is the cluster result",
+          "[ZBLPot][periodic][cell-optional]") {
+  const rgpot::ZBLPot pot;
+  // A kernel that supports a periodic cell and evaluates an open system
+  // without one: a call with no cell is not an error.
+  STATIC_REQUIRE(rgpot::kernelCellOptional<rgpot::ZBLPot>());
+  CHECK(pot.caps().periodic);
+  CHECK_FALSE(rgpot::kernelNeedsCell(pot));
+
+  const std::vector<double> pos{0.0, 0.0, 0.0, 1.5, 0.4, -0.3};
+  const std::vector<int> z{14, 79};
+  const double zero_box[9] = {};
+  // A cell far wider than twice the cutoff changes nothing for a close pair.
+  const double wide_box[9] = {100.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 100.0};
+  // A box extent used as a periodic cell would wrap the pair through its face.
+  const double tight_box[9] = {2.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+
+  std::vector<double> f_null(6, 0.0), f_zero(6, 0.0), f_wide(6, 0.0), f_tight(6, 0.0);
+  rgpot::ForceOut out_null{f_null.data(), 0.0, 0.0, {}, 0};
+  rgpot::ForceOut out_zero{f_zero.data(), 0.0, 0.0, {}, 0};
+  rgpot::ForceOut out_wide{f_wide.data(), 0.0, 0.0, {}, 0};
+  rgpot::ForceOut out_tight{f_tight.data(), 0.0, 0.0, {}, 0};
+  pot.forceImpl({2, pos.data(), z.data(), nullptr}, &out_null);
+  pot.forceImpl({2, pos.data(), z.data(), zero_box}, &out_zero);
+  pot.forceImpl({2, pos.data(), z.data(), wide_box}, &out_wide);
+  pot.forceImpl({2, pos.data(), z.data(), tight_box}, &out_tight);
+
+  REQUIRE(out_null.energy > 1.0);
+  CHECK(out_zero.energy == out_null.energy);
+  CHECK_THAT(out_wide.energy, WithinRel(out_null.energy, 1e-14));
+  CHECK(out_null.has_stress == 0);
+  CHECK(out_zero.has_stress == 0);
+  CHECK(out_wide.has_stress == 1);
+  for (std::size_t k = 0; k < 6; ++k) {
+    CHECK(f_zero[k] == f_null[k]);
+    CHECK_THAT(f_wide[k], WithinAbs(f_null[k], 1e-11));
+  }
+  CHECK(std::abs(out_tight.energy - out_null.energy) > 1.0);
 }
 
 TEST_CASE("ZBLPot folds pairs on a rotated cell and rejects malformed cells",
