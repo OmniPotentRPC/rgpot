@@ -246,3 +246,12 @@ It also stamps =nlist::Builder= and =nlist::Walk=, which move their state behind
 a pointer so each is one pointer wide.
 It also adds a process-unique generation id on =Neighbours=.
 A program linked against soversion 8 does not load =librgpot.so.9=.
+
+Soversion 10 is the first after 3.8.0, which shipped 9.
+=ORCAPot= moved to =liborcac=: it now holds one pointer to its state, and
+=ORCAConfig= gained the guess policy, the library path, user blocks and the
+fresh retry, keeping =restart= as a deprecated member.
+The child-process runner that 3.8.0 shipped as =ORCAPot= is now =ORCALegacyPot=.
+Neither ORCA class is a covered type, so the stamp inputs and the platform
+hashes are those of 9, and the ledger repeats the fingerprint of 9.
+A program linked against soversion 9 does not load =librgpot.so.10=.
