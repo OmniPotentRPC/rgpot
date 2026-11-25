@@ -7,7 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 
-static MopacCParams g_params = {0, 0, MOPACC_MODEL_AM1, 1.0, 3600};
+static MopacCParams g_params = {0,   0,   MOPACC_MODEL_AM1,   1.0,
+                                3600, 1.0, MOPACC_SOLVER_MOPAC};
 
 static int valid_params(const void *params, size_t n) {
   return params != NULL && n == sizeof(MopacCParams);
@@ -26,6 +27,7 @@ MopacCResult mopacc_energy_gradient(int n_atoms, const double *positions_ang,
                                     size_t params_size_bytes,
                                     double *grad_h_bohr) {
   MopacCResult r;
+  memset(&r, 0, sizeof(r));
   r.ok = 0;
   r.energy_h = 0.0;
   r.message[0] = '\0';
@@ -39,11 +41,19 @@ MopacCResult mopacc_energy_gradient(int n_atoms, const double *positions_ang,
     grad_h_bohr[i] = 0.001 * (double)(i + 1);
   r.ok = 1;
   r.energy_h = 0.25 + 0.01 * (double)g_params.charge;
+  r.dipole_debye[0] = 0.5;
+  r.dipole_debye[1] = -0.25;
+  r.dipole_debye[2] = 0.125;
+  r.stress_gpa[0] = 0.01;
+  r.stress_gpa[1] = 0.02;
+  r.stress_gpa[2] = 0.03;
   snprintf(r.message, sizeof(r.message), "ok model=%d", g_params.model);
   return r;
 }
 
 int mopacc_c_abi_version(void) { return RGPOT_MOPACC_C_ABI_VERSION; }
+
+int mopacc_abi_version(void) { return MOPACC_ABI_VERSION; }
 
 int mopacc_available(void) { return 1; }
 

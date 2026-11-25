@@ -8,6 +8,8 @@
 #include "rgpot/abi/EngineDlopen.hpp"
 #include "rgpot/units.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstring>
 #include <mutex>
 #include <stdexcept>
@@ -21,6 +23,38 @@ using units::NEG_GRAD_TO_FORCE;
 
 namespace {
 
+constexpr std::size_t kExpectedMopacCParamsSize =
+    (alignof(double) == 8) ? 48u : 36u;
+constexpr std::size_t kExpectedMopacCResultSize =
+    (alignof(double) == 8) ? 600u : 596u;
+constexpr std::size_t kExpectedMopacCResultDipoleOffset =
+    (alignof(double) == 8) ? 16u : 12u;
+constexpr std::size_t kExpectedMopacCResultStressOffset =
+    (alignof(double) == 8) ? 40u : 36u;
+constexpr std::size_t kExpectedMopacCResultMessageOffset =
+    (alignof(double) == 8) ? 88u : 84u;
+
+static_assert(sizeof(MopacCParams) == kExpectedMopacCParamsSize,
+              "MopacCParams size drifted from vendored mopacc ABI");
+static_assert(sizeof(MopacCResult) == kExpectedMopacCResultSize,
+              "MopacCResult size drifted from vendored mopacc ABI");
+static_assert(offsetof(MopacCResult, dipole_debye) ==
+                  kExpectedMopacCResultDipoleOffset,
+              "MopacCResult::dipole_debye offset drifted from vendored ABI");
+static_assert(offsetof(MopacCResult, stress_gpa) ==
+                  kExpectedMopacCResultStressOffset,
+              "MopacCResult::stress_gpa offset drifted from vendored ABI");
+static_assert(offsetof(MopacCResult, message) ==
+                  kExpectedMopacCResultMessageOffset,
+              "MopacCResult::message offset drifted from vendored mopacc ABI");
+
+bool mopacc_abi_layout_matches(std::size_t params_size, std::size_t result_size,
+                               std::size_t message_offset) noexcept {
+  return params_size == kExpectedMopacCParamsSize &&
+         result_size == kExpectedMopacCResultSize &&
+         message_offset == kExpectedMopacCResultMessageOffset;
+}
+
 using EnergyGradientFn = MopacCResult (*)(int, const double *, const int *,
                                           const void *, size_t, double *);
 using SetParamsFn = int (*)(const void *, size_t);
@@ -32,6 +66,7 @@ struct EngineBundle {
   EnergyGradientFn energy_gradient = nullptr;
   SetParamsFn set_params = nullptr;
   AbiVersionFn abi_version = nullptr;
+  AbiVersionFn lib_abi_version = nullptr;
   AvailableFn available = nullptr;
   std::string load_error;
   bool loaded = false;
@@ -39,6 +74,11 @@ struct EngineBundle {
 
 bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   b = EngineBundle{};
+  if (!mopacc_abi_layout_matches(sizeof(MopacCParams), sizeof(MopacCResult),
+                                 offsetof(MopacCResult, message))) {
+    b.load_error = "incompatible mopacc ABI struct layout";
+    return false;
+  }
   const auto cands = abi::engine_candidates(
       "mopacc", engine_path, {"MOPACC_LIBRARY", "RGPOT_MOPACC_ENGINE"});
   std::string loaded_path;
@@ -53,6 +93,8 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   b.set_params = b.engine_lib.sym_optional<SetParamsFn>("mopacc_set_params");
   b.abi_version =
       b.engine_lib.sym_optional<AbiVersionFn>("mopacc_c_abi_version");
+  b.lib_abi_version =
+      b.engine_lib.sym_optional<AbiVersionFn>("mopacc_abi_version");
   b.available = b.engine_lib.sym_optional<AvailableFn>("mopacc_available");
   if (!b.energy_gradient) {
     b.load_error = "engine missing mopacc_energy_gradient";
@@ -60,6 +102,10 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   }
   if (b.abi_version && b.abi_version() != RGPOT_MOPACC_C_ABI_VERSION) {
     b.load_error = "incompatible mopacc ABI";
+    return false;
+  }
+  if (b.lib_abi_version && b.lib_abi_version() != MOPACC_ABI_VERSION) {
+    b.load_error = "incompatible mopacc library ABI";
     return false;
   }
   if (b.available && !b.available()) {
@@ -99,6 +145,8 @@ MOPACPot::MOPACPot(const Config &cfg)
   impl_->params.model = cfg.model;
   impl_->params.tolerance = cfg.tolerance;
   impl_->params.max_time = cfg.max_time;
+  impl_->params.epsilon = 1.0;
+  impl_->params.solver = MOPACC_SOLVER_MOPAC;
   impl_->engine_path = cfg.engine_path;
   if (try_load_engine(impl_->bundle, impl_->engine_path)) {
     if (impl_->bundle.set_params)
@@ -145,7 +193,12 @@ void MOPACPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   MopacCResult res = impl_->bundle.energy_gradient(
       n, in.pos, in.atmnrs, &impl_->params, sizeof(impl_->params), grad.data());
   if (!res.ok) {
-    throw std::runtime_error(std::string("mopacc AM1 failed: ") + res.message);
+    const char *msg_end =
+        std::find(res.message, res.message + sizeof(res.message), '\0');
+    throw std::runtime_error(
+        std::string("mopacc AM1 failed: ") +
+        std::string(res.message,
+                    static_cast<std::size_t>(msg_end - res.message)));
   }
   out->energy = res.energy_h * HARTREE_TO_EV;
   out->variance = 0.0;

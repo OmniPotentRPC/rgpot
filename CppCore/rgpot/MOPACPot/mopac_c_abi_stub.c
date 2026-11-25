@@ -6,6 +6,7 @@
 #include "mopac_c_abi.h"
 
 #include <stdio.h>
+#include <string.h>
 
 static const char *STUB_VERSION = "mopacc-stub/1.0.0";
 
@@ -27,6 +28,7 @@ MopacCResult mopacc_energy_gradient(int n_atoms, const double *positions_ang,
   (void)params_size_bytes;
   (void)grad_h_bohr;
   MopacCResult r;
+  memset(&r, 0, sizeof(r));
   r.ok = 0;
   r.energy_h = 0.0;
   snprintf(r.message, sizeof(r.message),
@@ -36,6 +38,8 @@ MopacCResult mopacc_energy_gradient(int n_atoms, const double *positions_ang,
 }
 
 int mopacc_c_abi_version(void) { return RGPOT_MOPACC_C_ABI_VERSION; }
+
+int mopacc_abi_version(void) { return MOPACC_ABI_VERSION; }
 
 int mopacc_available(void) { return 0; }
 

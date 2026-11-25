@@ -31,6 +31,10 @@ int main(void) {
     fprintf(stderr, "FAIL: stub ABI version\n");
     return 1;
   }
+  if (mopacc_abi_version() != MOPACC_ABI_VERSION) {
+    fprintf(stderr, "FAIL: stub library ABI version\n");
+    return 1;
+  }
   printf("ok: stub ABI version=%s\n", ver);
   return 0;
 }
