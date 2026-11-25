@@ -3383,12 +3383,24 @@ if get_option('with_tests')
         # tools/lr_physics drives these. The bench pins workers with
         # sched_setaffinity, which only Linux has.
         if has_long_range and host_machine.system() == 'linux'
+            _lr_build_info = custom_target(
+                'lr_build_info',
+                output: 'lr_build_info.h',
+                command: [
+                    find_program('python3'),
+                    files('tests/lr_build_info.py'),
+                    '@OUTPUT@',
+                    meson.project_source_root(),
+                    cppc.get_id() + '-' + cppc.version(),
+                ],
+                build_always_stale: true,
+            )
             foreach _lr : ['lr_phys_bench', 'lr_sets', 'lr_d4_periodic']
                 set_variable(
                     _lr,
                     executable(
                         _lr,
-                        sources: ['tests/' + _lr + '.cc'],
+                        sources: ['tests/' + _lr + '.cc', _lr_build_info],
                         dependencies: test_deps,
                         include_directories: _incdirs + ['.'],
                         cpp_args: test_args,
