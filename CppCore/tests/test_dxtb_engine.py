@@ -864,6 +864,14 @@ while True:
     elif op == 2 and MODE == "drop-force":
         log(event="force", result="drop")
         os._exit(0)
+    elif op == 2 and MODE in ("huge-force", "huge-error"):
+        status = 0 if MODE == "huge-force" else 2
+        out.write(HEADER.pack(b"DXTR", 1, status, 0, 0xFFFFFFF0))
+        out.flush()
+        log(event="force", result="huge")
+        # A host that honoured the announced size would block here.
+        inp.read(1)
+        os._exit(0)
     else:
         reply(0)
 '''
@@ -1199,6 +1207,32 @@ def test_shutdown_treats_a_closed_peer_as_clean_and_a_live_drop_as_an_error(tmp_
         finally:
             engine.close()
         assert not any(ev.get("result") == "broken-pipe" for ev in _events(log_path))
+
+
+@pytest.mark.parametrize("mode", ["huge-force", "huge-error"])
+def test_oversized_worker_reply_is_refused_without_reading_it(tmp_path, mode):
+    wrapper, log_path = fake_worker(tmp_path, mode, mode=mode)
+    engine = Engine(
+        os.environ["RGPOT_ENGINE_DXTB"],
+        "dxtb",
+        "gfn1",
+        library=str(wrapper),
+    )
+    positions = np.asarray(
+        [[0.0, 0.0, 0.1173], [0.0, 0.7572, -0.4692], [0.0, -0.7572, -0.4692]]
+    )
+    try:
+        (pid,) = [ev["pid"] for ev in configure_events(log_path)]
+        started = time.monotonic()
+        assert engine.force_status([8, 1, 1], positions) == -1
+        assert time.monotonic() - started < 30.0
+        assert "exceeds" in engine.last_error()
+        assert _reaped(pid)
+        # The worker is gone; later calls fail instead of reading stale bytes.
+        assert engine.force_status([8, 1, 1], positions) == -1
+        assert "exited" in engine.last_error()
+    finally:
+        engine.close()
 
 
 def _reaped(pid):

@@ -40,6 +40,9 @@ constexpr std::uint32_t kHvp = 3;
 constexpr std::uint32_t kThreads = 4;
 constexpr std::uint32_t kShutdown = 5;
 constexpr std::size_t kHeaderSize = 20;
+/// Largest status or error reply the host reads. A force or HVP reply may be
+/// larger, but never larger than the payload its atom count implies.
+constexpr std::size_t kMaxMessageBytes = std::size_t{1} << 20;
 /// How long shutdown waits for the worker to acknowledge, close its end and
 /// exit before the host kills it.
 constexpr std::chrono::milliseconds kShutdownGrace{3000};
@@ -148,7 +151,7 @@ public:
         try {
           // A peer that vanishes while this request is written or read has
           // already closed. That is the end of shutdown, not a failed call.
-          (void)request(kShutdown, 0, {}, true);
+          (void)request(kShutdown, 0, {}, kMaxMessageBytes, true);
         } catch (...) {
         }
         // Stay readable until the worker closes. Closing first turns the
@@ -176,9 +179,10 @@ public:
   }
 
   void force(const ForceInput &in, ForceOut *out) {
-    const auto response =
-        request(kForce, checkedAtoms(in), geometry(in, nullptr));
+    const std::uint32_t nAtoms = checkedAtoms(in);
     const std::size_t expected = (1 + 3 * in.nAtoms) * sizeof(double);
+    const auto response =
+        request(kForce, nAtoms, geometry(in, nullptr), expected);
     if (response.size() != expected) {
       throw DxtbError(-1, "dxtb worker returned an invalid force payload");
     }
@@ -190,9 +194,10 @@ public:
   }
 
   void hvp(const ForceInput &in, const double *direction, double *product) {
-    const auto response =
-        request(kHvp, checkedAtoms(in), geometry(in, direction));
+    const std::uint32_t nAtoms = checkedAtoms(in);
     const std::size_t expected = 3 * in.nAtoms * sizeof(double);
+    const auto response =
+        request(kHvp, nAtoms, geometry(in, direction), expected);
     if (response.size() != expected) {
       throw DxtbError(-1, "dxtb worker returned an invalid HVP payload");
     }
@@ -400,9 +405,13 @@ private:
   std::vector<unsigned char>
   request(std::uint32_t operation, std::uint32_t nAtoms,
           const std::vector<unsigned char> &payload,
+          std::size_t maxResponse = kMaxMessageBytes,
           bool peer_close_is_clean = false) {
     if (payload.size() > std::numeric_limits<std::uint32_t>::max()) {
       throw DxtbError(1, "dxtb request is too large");
+    }
+    if (fd_ < 0) {
+      throw DxtbError(-1, "dxtb worker exited");
     }
     try {
       std::vector<unsigned char> header;
@@ -427,6 +436,15 @@ private:
       const int status =
           static_cast<std::int32_t>(readU32(responseHeader.data() + 8));
       const std::uint32_t size = readU32(responseHeader.data() + 16);
+      const std::size_t limit = std::max(maxResponse, kMaxMessageBytes);
+      if (size > limit) {
+        // The unread reply leaves the stream out of step, so the worker
+        // cannot serve another request.
+        stop(false);
+        throw DxtbError(-1, "dxtb worker reply of " + std::to_string(size) +
+                                " bytes exceeds the " +
+                                std::to_string(limit) + " byte limit");
+      }
       std::vector<unsigned char> response(size);
       if (size > 0) {
         readAll(response.data(), response.size());
