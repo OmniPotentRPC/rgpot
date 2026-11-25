@@ -258,7 +258,9 @@ pub unsafe extern "C" fn rgpot_rpc_client_select_orbitals(
 /// `*needed` receives the full pair count. A NULL `out`, or `out->cap == 0`,
 /// probes the size and returns `RGPOT_SUCCESS` with `*count = 0`. When
 /// `out->cap` is positive and smaller than `*needed`, `out->cap` pairs are
-/// written and `RGPOT_BUFFER_SIZE_ERROR` is returned.
+/// written and `RGPOT_BUFFER_SIZE_ERROR` is returned. The `shift`, `vector`
+/// and `distance` columns are written only when `request` asks for them, so
+/// the buffer of a column that is not requested may be NULL or of any size.
 ///
 /// # Safety
 ///
@@ -376,17 +378,17 @@ pub unsafe extern "C" fn rgpot_rpc_neighbours(
             unsafe {
                 std::ptr::copy_nonoverlapping(reply.first.as_ptr(), buffers.first, nwrite);
                 std::ptr::copy_nonoverlapping(reply.second.as_ptr(), buffers.second, nwrite);
-                if !buffers.shift.is_null() && reply.shift.len() >= nwrite * 3 {
+                if query.shifts && reply.shift.len() >= nwrite * 3 {
                     std::ptr::copy_nonoverlapping(reply.shift.as_ptr(), buffers.shift, nwrite * 3);
                 }
-                if !buffers.vector.is_null() && reply.vector.len() >= nwrite * 3 {
+                if query.vectors && reply.vector.len() >= nwrite * 3 {
                     std::ptr::copy_nonoverlapping(
                         reply.vector.as_ptr(),
                         buffers.vector,
                         nwrite * 3,
                     );
                 }
-                if !buffers.distance.is_null() && reply.distance.len() >= nwrite {
+                if query.distances && reply.distance.len() >= nwrite {
                     std::ptr::copy_nonoverlapping(
                         reply.distance.as_ptr(),
                         buffers.distance,
@@ -1077,6 +1079,126 @@ mod tests {
         assert_eq!(&shift[0..3], &[0, 0, 0]);
         assert_eq!(&vector[0..3], &[1.0, 0.0, 0.0]);
         assert_eq!(distance[0], 1.0);
+        unsafe { rgpot_rpc_client_free(client) };
+        let _ = join.join();
+    }
+
+    #[test]
+    fn neighbours_leaves_unrequested_columns_untouched() {
+        let (port, join) = start_neighbour_round_trip_server();
+        let host = host_for();
+        let client = unsafe { rgpot_rpc_client_new(host.as_ptr(), port) };
+        let input = make_input(2);
+        let request = rgpot_rpc_neighbors_request_t {
+            cutoff: 0.0,
+            skin: 0.0,
+            format: 0,
+            cut: 1,
+            periodic: [0, 0, 0],
+            shifts: 0,
+            vectors: 0,
+            distances: 0,
+        };
+        let mut first = vec![-1_i32; 4];
+        let mut second = vec![-1_i32; 4];
+        let mut shift = vec![77_i32; 12];
+        let mut vector = vec![77.0_f64; 12];
+        let mut distance = vec![77.0_f64; 4];
+        let mut out = rgpot_rpc_neighbors_out_t {
+            first: first.as_mut_ptr(),
+            second: second.as_mut_ptr(),
+            shift: shift.as_mut_ptr(),
+            vector: vector.as_mut_ptr(),
+            distance: distance.as_mut_ptr(),
+            mask: std::ptr::null_mut(),
+            cap: 4,
+        };
+        let mut count = 0usize;
+        let mut needed = 0usize;
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                client,
+                &input.input,
+                &request,
+                &mut out,
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(
+            status,
+            crate::status::rgpot_status_t::RGPOT_SUCCESS,
+            "{}",
+            last_error()
+        );
+        assert_eq!(count, 1);
+        assert_eq!(needed, 1);
+        assert_eq!(first[0], 0);
+        assert_eq!(second[0], 1);
+        assert!(shift.iter().all(|&value| value == 77));
+        assert!(vector.iter().all(|&value| value == 77.0));
+        assert!(distance.iter().all(|&value| value == 77.0));
+        unsafe { rgpot_rpc_client_free(client) };
+        let _ = join.join();
+    }
+
+    #[test]
+    fn neighbours_accepts_short_buffers_for_unrequested_columns() {
+        let (port, join) = start_neighbour_round_trip_server();
+        let host = host_for();
+        let client = unsafe { rgpot_rpc_client_new(host.as_ptr(), port) };
+        let input = make_input(2);
+        let request = rgpot_rpc_neighbors_request_t {
+            cutoff: 0.0,
+            skin: 0.0,
+            format: 0,
+            cut: 1,
+            periodic: [0, 0, 0],
+            shifts: 0,
+            vectors: 0,
+            distances: 1,
+        };
+        // Each unrequested column gets a one-element buffer; the trailing
+        // guard slots stand in for memory the caller does not own.
+        let mut first = [-1_i32];
+        let mut second = [-1_i32];
+        let mut shift = [55_i32, -7, -7];
+        let mut vector = [55.0_f64, -7.0, -7.0];
+        let mut distance = [-1.0_f64];
+        let mut out = rgpot_rpc_neighbors_out_t {
+            first: first.as_mut_ptr(),
+            second: second.as_mut_ptr(),
+            shift: shift.as_mut_ptr(),
+            vector: vector.as_mut_ptr(),
+            distance: distance.as_mut_ptr(),
+            mask: std::ptr::null_mut(),
+            cap: 1,
+        };
+        let mut count = 0usize;
+        let mut needed = 0usize;
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                client,
+                &input.input,
+                &request,
+                &mut out,
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(
+            status,
+            crate::status::rgpot_status_t::RGPOT_SUCCESS,
+            "{}",
+            last_error()
+        );
+        assert_eq!(count, 1);
+        assert_eq!(needed, 1);
+        assert_eq!(first[0], 0);
+        assert_eq!(second[0], 1);
+        assert_eq!(distance[0], 1.0);
+        assert_eq!(shift, [55, -7, -7]);
+        assert_eq!(vector, [55.0, -7.0, -7.0]);
         unsafe { rgpot_rpc_client_free(client) };
         let _ = join.join();
     }

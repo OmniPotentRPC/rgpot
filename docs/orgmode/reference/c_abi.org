@@ -1661,8 +1661,10 @@ finite-difference product.
   capacity.
 - Units :: =vector= and =distance= in the length unit of the positions; the
   other columns have none.
-- Outputs :: =rgpot_rpc_neighbours= writes up to =cap= pairs into the non-null
-  arrays.
+- Outputs :: =rgpot_rpc_neighbours= writes up to =cap= pairs into =first=,
+  =second=, the columns the request asks for, and =mask= when it is non-null.
+  It does not write =shift=, =vector= or =distance= when the request does not
+  ask for that column, so such a buffer may be NULL or of any size.
 - Errors :: with =cap > 0=, a NULL pointer for a required column makes
   =rgpot_rpc_neighbours= return =RGPOT_INVALID_PARAMETER=.
 
@@ -1683,6 +1685,8 @@ enum rgpot_status_t rgpot_rpc_neighbours(
   =input=.
 - Outputs :: =*needed= receives the full pair count and =*count= the number of
   pairs written (0 when =out= is NULL or =out->cap= is 0).
+  Only the columns the request asks for are written, as for
+  =rgpot_rpc_neighbors_out_t=.
   This is the C wrapper of RPC =Potential.neighbours=, advertised through
   =Capabilities.Operation.neighbors=.
 - Errors :: =RGPOT_INVALID_PARAMETER= for a NULL =client=, =input= or =request=,

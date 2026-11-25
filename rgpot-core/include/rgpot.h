@@ -1340,7 +1340,9 @@ enum rgpot_status_t rgpot_rpc_client_select_orbitals(rgpot_rpc_client_t *client,
  * `*needed` receives the full pair count. A NULL `out`, or `out->cap == 0`,
  * probes the size and returns `RGPOT_SUCCESS` with `*count = 0`. When
  * `out->cap` is positive and smaller than `*needed`, `out->cap` pairs are
- * written and `RGPOT_BUFFER_SIZE_ERROR` is returned.
+ * written and `RGPOT_BUFFER_SIZE_ERROR` is returned. The `shift`, `vector`
+ * and `distance` columns are written only when `request` asks for them, so
+ * the buffer of a column that is not requested may be NULL or of any size.
  *
  * # Safety
  *
