@@ -5778,7 +5778,7 @@ mod md_session_capacity_tests {
 
     use rgpot_core::md_session::{CAbiMdSession, MdSession, MdSessionOps};
 
-    fn build_capacity_engine() -> PathBuf {
+    fn build_capacity_engine_variant(name: &str, defines: &[&str]) -> PathBuf {
         let source = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/md_session_capacity_engine.c");
         let suffix = if cfg!(target_os = "macos") {
@@ -5786,13 +5786,18 @@ mod md_session_capacity_tests {
         } else {
             "so"
         };
-        let out = Path::new(env!("CARGO_TARGET_TMPDIR"))
-            .join(format!("libmd_session_capacity_engine.{suffix}"));
+        let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("lib{name}.{suffix}"));
         let target = env!("RGPOT_BUILD_TARGET");
-        let compiler = cc::Build::new()
-            .target(target)
-            .host(target)
-            .opt_level(0)
+        let mut build = cc::Build::new();
+        build.target(target).host(target).opt_level(0);
+        for def in defines {
+            if let Some((key, val)) = def.split_once('=') {
+                build.define(key, Some(val));
+            } else {
+                build.define(def, None);
+            }
+        }
+        let compiler = build
             .try_get_compiler()
             .expect("C compiler for capacity fixture");
         let mut command = compiler.to_command();
@@ -5808,6 +5813,10 @@ mod md_session_capacity_tests {
             "capacity fixture compile failed: {status}"
         );
         out
+    }
+
+    fn build_capacity_engine() -> PathBuf {
+        build_capacity_engine_variant("md_session_capacity_engine", &[])
     }
 
     #[test]
@@ -6049,5 +6058,51 @@ mod md_session_capacity_tests {
             .expect("larger host works with newer engine");
             assert_eq!(session.dof(), 6);
         }
+    }
+
+    #[test]
+    fn open_engine_honours_unload_policy_on_drop() {
+        let no_policy = build_capacity_engine_variant("md_session_no_policy", &[]);
+        let resident = build_capacity_engine_variant(
+            "md_session_resident_policy",
+            &["FIXTURE_UNLOAD_POLICY=0"],
+        );
+        let older_minor = build_capacity_engine_variant(
+            "md_session_older_minor",
+            &["FIXTURE_UNLOAD_POLICY=1", "FIXTURE_ABI_MINOR=6"],
+        );
+        let no_stamp = build_capacity_engine_variant(
+            "md_session_no_stamp",
+            &["FIXTURE_UNLOAD_POLICY=1", "FIXTURE_NO_STAMP"],
+        );
+        let unload_safe = build_capacity_engine_variant(
+            "md_session_unload_safe",
+            &["FIXTURE_UNLOAD_POLICY=1", "FIXTURE_ABI_MINOR=7"],
+        );
+
+        for (name, path) in [
+            ("no_policy", &no_policy),
+            ("resident", &resident),
+            ("older_minor", &older_minor),
+            ("no_stamp", &no_stamp),
+        ] {
+            let session = unsafe { CAbiMdSession::open_engine(path, &[], Some("current")) }
+                .unwrap_or_else(|err| panic!("open {name}: {err}"));
+            assert!(super::library_is_mapped(path));
+            drop(session);
+            assert!(
+                super::library_is_mapped(path),
+                "{name} MD engine was unmapped on drop despite resident policy"
+            );
+        }
+
+        let session = unsafe { CAbiMdSession::open_engine(&unload_safe, &[], Some("current")) }
+            .expect("open unload_safe");
+        assert!(super::library_is_mapped(&unload_safe));
+        drop(session);
+        assert!(
+            !super::library_is_mapped(&unload_safe),
+            "unload-safe MD engine stayed mapped after drop"
+        );
     }
 }

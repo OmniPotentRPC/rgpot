@@ -333,3 +333,33 @@ int rgpot_md_session_engine_create(const void *spec, size_t spec_len,
   *n_atoms = 2;
   return 0;
 }
+
+#ifdef FIXTURE_ABI_MAJOR
+int rgpot_engine_abi_version(void) { return FIXTURE_ABI_MAJOR; }
+#else
+int rgpot_engine_abi_version(void) { return 1; }
+#endif
+
+#ifndef FIXTURE_NO_STAMP
+typedef struct FakeEngineAbiStamp {
+  uint16_t abi_major;
+  uint16_t abi_minor;
+  uint16_t layout_revision;
+} FakeEngineAbiStamp;
+
+FakeEngineAbiStamp rgpot_engine_abi_stamp(void) {
+  FakeEngineAbiStamp stamp;
+  stamp.abi_major = 1;
+#ifdef FIXTURE_ABI_MINOR
+  stamp.abi_minor = FIXTURE_ABI_MINOR;
+#else
+  stamp.abi_minor = 7;
+#endif
+  stamp.layout_revision = 1;
+  return stamp;
+}
+#endif
+
+#ifdef FIXTURE_UNLOAD_POLICY
+int rgpot_engine_unload_policy(void) { return FIXTURE_UNLOAD_POLICY; }
+#endif

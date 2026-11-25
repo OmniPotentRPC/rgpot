@@ -991,6 +991,72 @@ const REQUIRED_OPS: [(&str, usize); 7] = [
 const REQUIRED_OPS_SIZE: usize = std::mem::offset_of!(MdSessionOps, destroy)
     + std::mem::size_of::<unsafe extern "C" fn(*mut c_void)>();
 
+#[cfg(feature = "engine")]
+struct EngineLibraryHandle {
+    library: std::mem::ManuallyDrop<libloading::Library>,
+    _pin: Option<std::mem::ManuallyDrop<libloading::Library>>,
+    can_unload: bool,
+}
+
+#[cfg(feature = "engine")]
+unsafe fn is_unload_safe(library: &libloading::Library) -> bool {
+    use crate::engine::{
+        AbiStampFn, AbiVersionFn, RgpotEngineAbiStamp, UnloadPolicyFn, ENGINE_ABI_VERSION,
+        ENGINE_UNLOAD_POLICY_MINOR, ENGINE_UNLOAD_SAFE,
+    };
+
+    let version_fn = match unsafe { library.get::<AbiVersionFn>(b"rgpot_engine_abi_version\0") } {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let stamp_fn = match unsafe { library.get::<AbiStampFn>(b"rgpot_engine_abi_stamp\0") } {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let policy_fn = match unsafe { library.get::<UnloadPolicyFn>(b"rgpot_engine_unload_policy\0") }
+    {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    if unsafe { version_fn() } != ENGINE_ABI_VERSION {
+        return false;
+    }
+    let stamp = unsafe { stamp_fn() };
+    if !stamp.serves(RgpotEngineAbiStamp::HOST) || stamp.abi_minor < ENGINE_UNLOAD_POLICY_MINOR {
+        return false;
+    }
+    unsafe { policy_fn() == ENGINE_UNLOAD_SAFE }
+}
+
+#[cfg(all(feature = "engine", unix))]
+unsafe fn pin_resident_library(
+    path: &std::path::Path,
+    anchor: *const c_void,
+) -> Result<Option<std::mem::ManuallyDrop<libloading::Library>>, libloading::Error> {
+    use libloading::os::unix::{Library as UnixLibrary, RTLD_LAZY, RTLD_LOCAL};
+    use std::os::unix::ffi::OsStrExt;
+
+    let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
+    let dladdr_ok = !anchor.is_null() && unsafe { libc::dladdr(anchor, &mut info) } != 0;
+    let pin_path = if dladdr_ok && !info.dli_fname.is_null() {
+        let bytes = unsafe { CStr::from_ptr(info.dli_fname) }.to_bytes();
+        std::path::Path::new(std::ffi::OsStr::from_bytes(bytes)).to_path_buf()
+    } else {
+        path.to_path_buf()
+    };
+    let flags = RTLD_LAZY | RTLD_LOCAL | libc::RTLD_NOLOAD | libc::RTLD_NODELETE;
+    unsafe { UnixLibrary::open(Some(&pin_path), flags) }
+        .map(|pin| Some(std::mem::ManuallyDrop::new(libloading::Library::from(pin))))
+}
+
+#[cfg(all(feature = "engine", not(unix)))]
+unsafe fn pin_resident_library(
+    _path: &std::path::Path,
+    _anchor: *const c_void,
+) -> Result<Option<std::mem::ManuallyDrop<libloading::Library>>, libloading::Error> {
+    Ok(None)
+}
+
 /// Rust owner for an engine-agnostic C ABI MD session vtable.
 pub struct CAbiMdSession {
     ctx: NonNull<c_void>,
@@ -998,7 +1064,7 @@ pub struct CAbiMdSession {
     n_atoms: usize,
     n3: usize,
     #[cfg(feature = "engine")]
-    _library: Option<libloading::Library>,
+    _library: Option<EngineLibraryHandle>,
 }
 
 impl CAbiMdSession {
@@ -1211,14 +1277,43 @@ impl CAbiMdSession {
             return Err(MdSessionError::new(error_message(&error)));
         }
         let mut session = unsafe { Self::from_engine_ops(ctx, ops, n_atoms) }?;
-        session._library = Some(library);
+        let can_unload = unsafe { is_unload_safe(&library) };
+        let pin = if can_unload {
+            None
+        } else {
+            let create_ptr = (*create) as *const () as *const c_void;
+            unsafe { pin_resident_library(engine_path, create_ptr) }.map_err(|err| {
+                MdSessionError::new(format!("failed to pin resident MD engine: {err}"))
+            })?
+        };
+        session._library = Some(EngineLibraryHandle {
+            library: std::mem::ManuallyDrop::new(library),
+            _pin: pin,
+            can_unload,
+        });
         Ok(session)
     }
+
+    #[cfg(feature = "engine")]
+    fn release_library(&mut self) {
+        if let Some(mut owned) = self._library.take() {
+            if owned.can_unload {
+                // SAFETY: `self.ops.destroy` has already returned and the
+                // engine declared itself `RGPOT_ENGINE_UNLOAD_SAFE` with a
+                // compatible ABI stamp at or above `ENGINE_UNLOAD_POLICY_MINOR`.
+                unsafe { std::mem::ManuallyDrop::drop(&mut owned.library) };
+            }
+        }
+    }
+
+    #[cfg(not(feature = "engine"))]
+    fn release_library(&mut self) {}
 }
 
 impl Drop for CAbiMdSession {
     fn drop(&mut self) {
         unsafe { (self.ops.destroy)(self.ctx.as_ptr()) };
+        self.release_library();
     }
 }
 
