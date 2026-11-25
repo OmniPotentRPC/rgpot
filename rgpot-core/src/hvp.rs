@@ -32,9 +32,8 @@
 //! | `RGPOT_HVP_ANALYTIC` | 0 | that of the callback |
 //! | `RGPOT_HVP_AD` | 0 | that of the callback |
 //!
-//! `RGPOT_HVP_AUTO` takes the analytic callback, then an analytic dense
-//! Hessian callback (multiplied by the direction), and falls back to forward
-//! differences only when neither callback is registered.
+//! `RGPOT_HVP_AUTO` takes the analytic callback when one is registered, and
+//! falls back to forward differences otherwise.
 //! `RGPOT_HVP_EXACT` takes the analytic callback, else the dual-number one,
 //! and is refused rather than differenced. Either way
 //! [`rgpot_potential_t::hessian_vector_resolved`] returns the scheme that ran
@@ -297,26 +296,24 @@ fn resolve(
     scheme: rgpot_hvp_scheme_t,
     analytic: bool,
     ad: bool,
-    dense_hessian: bool,
-) -> Result<(rgpot_hvp_scheme_t, bool), HvpError> {
+) -> Result<rgpot_hvp_scheme_t, HvpError> {
     use rgpot_hvp_scheme_t::*;
     match scheme {
-        RGPOT_HVP_AUTO if analytic => Ok((RGPOT_HVP_ANALYTIC, false)),
-        RGPOT_HVP_AUTO if dense_hessian => Ok((RGPOT_HVP_ANALYTIC, true)),
-        RGPOT_HVP_AUTO => Ok((RGPOT_HVP_FORWARD, false)),
+        RGPOT_HVP_AUTO if analytic => Ok(RGPOT_HVP_ANALYTIC),
+        RGPOT_HVP_AUTO => Ok(RGPOT_HVP_FORWARD),
         RGPOT_HVP_ANALYTIC if !analytic => Err(invalid(
             "RGPOT_HVP_ANALYTIC: no Hessian-vector callback is registered",
         )),
         RGPOT_HVP_AD if !ad => Err(invalid(
             "RGPOT_HVP_AD: no dual-number Hessian-vector callback is registered",
         )),
-        RGPOT_HVP_EXACT if analytic => Ok((RGPOT_HVP_ANALYTIC, false)),
-        RGPOT_HVP_EXACT if ad => Ok((RGPOT_HVP_AD, false)),
+        RGPOT_HVP_EXACT if analytic => Ok(RGPOT_HVP_ANALYTIC),
+        RGPOT_HVP_EXACT if ad => Ok(RGPOT_HVP_AD),
         RGPOT_HVP_EXACT => Err(invalid(
             "RGPOT_HVP_EXACT: neither an analytic nor a dual-number \
              Hessian-vector callback is registered",
         )),
-        other => Ok((other, false)),
+        other => Ok(other),
     }
 }
 
@@ -480,12 +477,7 @@ impl rgpot_potential_t {
         let state = self.hvp_state();
         let analytic = *lock(&state.callback);
         let ad = *lock(&state.ad_callback);
-        let (scheme, use_dense_hessian) = resolve(
-            scheme,
-            analytic.is_some(),
-            ad.is_some(),
-            self.has_hessian_callback(),
-        )?;
+        let scheme = resolve(scheme, analytic.is_some(), ad.is_some())?;
         let length = norm(direction);
         if length == 0.0 {
             hv_out.fill(0.0);
@@ -505,20 +497,13 @@ impl rgpot_potential_t {
         };
         match scheme {
             rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC => {
-                if use_dense_hessian {
-                    let wrote = unsafe {
-                        self.hessian_vector_from_hessian_callback(input, direction, hv_out)
-                    }?;
-                    debug_assert!(wrote, "resolved against a dense-Hessian callback");
-                } else {
-                    let callback = analytic.expect("resolved against it");
-                    run_callback(
-                        "analytic HVP callback",
-                        "Hessian-vector callback",
-                        hv_out,
-                        |out| call(callback, out),
-                    )?;
-                }
+                let callback = analytic.expect("resolved against it");
+                run_callback(
+                    "analytic HVP callback",
+                    "Hessian-vector callback",
+                    hv_out,
+                    |out| call(callback, out),
+                )?;
                 state.analytic.fetch_add(1, Ordering::Relaxed);
             }
             rgpot_hvp_scheme_t::RGPOT_HVP_AD => {

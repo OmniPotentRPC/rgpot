@@ -939,6 +939,15 @@ TEST_CASE("classical engine dense Hessian matches a finite difference of forces"
     std::vector<double> dense(dim * dim, 0.0);
     REQUIRE(e.hessian(pot, n, kCluster.data(), kZ.data(), dense.data(),
                       kBox.data()) == RGPOT_ENGINE_OK);
+    for (std::size_t row = 0; row < dim; ++row) {
+      for (std::size_t col = row + 1; col < dim; ++col) {
+        const double a = dense[row * dim + col];
+        const double b = dense[col * dim + row];
+        const double tol = 64.0 * std::numeric_limits<double>::epsilon() *
+                           std::max({1.0, std::abs(a), std::abs(b)});
+        REQUIRE(std::abs(a - b) <= tol);
+      }
+    }
 
     // H[i,j] = -(F_i(x + h e_j) - F_i(x - h e_j)) / (2 h)
     const double h = 1.0e-6;

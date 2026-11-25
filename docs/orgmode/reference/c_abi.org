@@ -798,8 +798,9 @@ bits.
 
 - Inputs :: none; an enum passed as =int32_t=.
 - Units :: none.
-- Outputs :: =RGPOT_HVP_AUTO= (0): the analytic callback when one is registered,
-  else forward; =rgpot_potential_hvp_resolved= reports which ran.
+- Outputs :: =RGPOT_HVP_AUTO= (0): the analytic Hessian-vector callback when
+  one is registered, else forward; =rgpot_potential_hvp_resolved= reports which
+  ran.
   =RGPOT_HVP_FORWARD= (1): =(F(x) - F(x + h u)) |v| / h= with =u = v / |v|=,
   =F(x)= from the cached centre.
   =RGPOT_HVP_CENTRAL= (2): =(F(x - h u) - F(x + h u)) |v| / (2 h)=, two force
@@ -924,8 +925,9 @@ enum rgpot_status_t rgpot_potential_hvp_resolved(const struct rgpot_potential_t 
 - Inputs :: those of =rgpot_potential_hvp=, and =scheme_used= writable.
 - Units :: those of =rgpot_potential_hvp=.
 - Outputs :: =hv_out= as for =rgpot_potential_hvp=, and =*scheme_used= the
-  scheme that computed it: =RGPOT_HVP_AUTO= reports =RGPOT_HVP_ANALYTIC= or
-  =RGPOT_HVP_FORWARD=, =RGPOT_HVP_EXACT= reports =RGPOT_HVP_ANALYTIC= or
+  scheme that computed it: =RGPOT_HVP_AUTO= reports =RGPOT_HVP_ANALYTIC= only
+  when an analytic Hessian-vector callback is registered, else
+  =RGPOT_HVP_FORWARD=; =RGPOT_HVP_EXACT= reports =RGPOT_HVP_ANALYTIC= or
   =RGPOT_HVP_AD=, and any other scheme reports itself.
   =*scheme_used= is written only on success.
 - Errors :: those of =rgpot_potential_hvp=, the messages naming

@@ -407,7 +407,7 @@ int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
   if (!pot || !pot->backend) {
     return RGPOT_ENGINE_ERR_INVALID;
   }
-  if (!pot->caps.analyticHvp) {
+  if (!pot->caps.analyticHessian) {
     return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
                 "potential has no analytic Hessian");
   }
@@ -555,7 +555,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   if (const rgpot::GradientJet *jet = gradient_jet(pot)) {
     filled.jet_order = jet->maxJetOrder();
   }
-  filled.analytic_hessian = pot->caps.analyticHvp ? 1 : 0;
+  filled.analytic_hessian = pot->caps.analyticHessian ? 1 : 0;
   // The host's struct may be older (smaller) than this engine's: write only
   // the bytes it announced room for.
   const unsigned room = out->size < sizeof(filled) ? out->size : sizeof(filled);
