@@ -110,10 +110,13 @@ Types (see =towncrier.toml=): =breaking= (section Breaking, listed first),
 Preview with =uvx towncrier build --draft= or =pixi r towncrier-draft=.
 
 A fragment holds only the text of the entry.
-Do not start it with =- = or =* =, because the template =ci/release-notes.md= writes the bullet and a leading marker would render as a doubled bullet.
-Do not put a copyright or SPDX line, or a comment block, in a fragment, because it would reach the notes.
+Do not start it with =- = or =* =, because the template =ci/release-notes.md=
+writes the bullet and a leading marker would render as a doubled bullet.
+Do not put a copyright or SPDX line, or a comment block, in a fragment, because
+it would reach the notes.
 The template drops both when it builds the notes.
-=python scripts/check_news_fragments.py= (or =pixi r news-fragments-check=) fails on a fragment that carries either, and =--fix= rewrites the files.
+=python scripts/check_news_fragments.py= (or =pixi r news-fragments-check=)
+fails on a fragment that carries either, and =--fix= rewrites the files.
 
 The orchestrator =towncrier= job runs on every pull request:
 =potctl ci towncrier-check --compare-with <base sha>= runs =towncrier check=.
