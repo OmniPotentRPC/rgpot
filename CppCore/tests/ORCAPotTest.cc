@@ -12,6 +12,7 @@
 // by the script, not taken from an ORCA run. The tests that need a real
 // ORCA skip when `orca` is not on PATH.
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -412,6 +413,31 @@ void writeExpectedXyz(const Fake &fake, const std::vector<int> &z,
   }
 }
 
+std::array<double, 9> aseCube(double side) {
+  return {side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side};
+}
+
+/// The box RgpotCalculator hands a non-periodic kernel for a cluster:
+/// `_open_box` of python/rgpot/ase/calculator.py with a cutoff of 0. The
+/// positions themselves are passed on unchanged.
+std::array<double, 9> aseClusterBox(const std::vector<double> &pos) {
+  double extent = 0.0;
+  for (std::size_t k = 0; k < 3; ++k) {
+    double lo = pos[k];
+    double hi = pos[k];
+    for (std::size_t i = 1; 3 * i < pos.size(); ++i) {
+      lo = std::min(lo, pos[3 * i + k]);
+      hi = std::max(hi, pos[3 * i + k]);
+    }
+    extent = std::max(extent, hi - lo);
+  }
+  double side = std::max(100.0, extent);
+  if (side <= 2.0 * extent) {
+    side = 2.0 * extent;
+  }
+  return aseCube(side);
+}
+
 } // namespace
 
 TEST_CASE("ORCAPot input carries the method, resources and geometry", "[orca]") {
@@ -609,22 +635,102 @@ TEST_CASE("ORCAPot drops the guess on reset, deletion and a new composition",
   REQUIRE(pot.reusedWavefunction());
 }
 
-TEST_CASE("ORCAPot refuses a periodic cell and runs for none", "[orca]") {
+TEST_CASE("ORCAPot runs with no box or an all-zero box", "[orca]") {
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());
   rgpot::ORCAPot pot(fake.config());
-
-  const std::array<double, 9> cell = {10.0, 0.0, 0.0, 0.0, 10.0,
-                                      0.0,  0.0, 0.0, 10.0};
-  REQUIRE_THROWS_MATCHES(
-      evaluate(pot, kWater, kWaterZ, cell.data()), std::invalid_argument,
-      Catch::Matchers::MessageMatches(ContainsSubstring("periodic")));
-  REQUIRE(fake.calls() == 0);
-
   const std::array<double, 9> open = {};
   evaluate(pot, kWater, kWaterZ, open.data());
   evaluate(pot, kWater, kWaterZ, nullptr);
   REQUIRE(fake.calls() == 2);
+}
+
+TEST_CASE("ORCAPot accepts the box rgpot.ase pads a cluster into",
+          "[orca][ase]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAPot pot(fake.config());
+
+  // Water as ASE leaves it: centred on the origin, partly at negative
+  // coordinates, so outside the cube the box spans.
+  const std::array<double, 9> water_box = aseClusterBox(kWater);
+  REQUIRE(water_box[0] == 100.0);
+  writeExpectedXyz(fake, kWaterZ, kWater, "water.xyz");
+  {
+    EnvVar expect("FAKE_ORCA_EXPECT_XYZ", (fake.state / "water.xyz").string());
+    const Result r = evaluate(pot, kWater, kWaterZ, water_box.data());
+    REQUIRE_THAT(r.energy,
+                 WithinRel(kFakeEnergy * rgpot::units::HARTREE_TO_EV,
+                           kUnitTolerance));
+  }
+
+  // The same water far from the origin, as a structure read from a file.
+  std::vector<double> shifted = kWater;
+  for (std::size_t i = 0; i < 3; ++i) {
+    shifted[3 * i] -= 140.0;
+    shifted[3 * i + 1] += 37.5;
+  }
+  const std::array<double, 9> shifted_box = aseClusterBox(shifted);
+  evaluate(pot, shifted, kWaterZ, shifted_box.data());
+
+  // Two helium atoms 60 Angstrom apart: the cube grows to twice the
+  // extent, 120 Angstrom, and the span is exactly half the width.
+  const std::vector<int> pair_z = {2, 2};
+  const std::vector<double> pair = {-30.0, 0.0, 0.0, 30.0, 0.0, 0.0};
+  const std::array<double, 9> pair_box = aseClusterBox(pair);
+  REQUIRE(pair_box[0] == 120.0);
+  evaluate(pot, pair, pair_z, pair_box.data());
+  REQUIRE(fake.calls() == 3);
+}
+
+TEST_CASE("ORCAPot accepts a padded triclinic box", "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAPot pot(fake.config());
+  const std::array<double, 9> skewed = {40.0, 0.0,  0.0, 12.0, 38.0,
+                                        0.0,  -5.0, 9.0, 35.0};
+  evaluate(pot, kWater, kWaterZ, skewed.data());
+  REQUIRE(fake.calls() == 1);
+}
+
+TEST_CASE("ORCAPot refuses a box in which the atoms would wrap", "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAPot pot(fake.config());
+  const auto refused = [&](const std::vector<double> &pos,
+                           const std::vector<int> &z,
+                           const std::array<double, 9> &box,
+                           const char *phrase) {
+    REQUIRE_THROWS_MATCHES(
+        evaluate(pot, pos, z, box.data()), std::invalid_argument,
+        Catch::Matchers::MessageMatches(ContainsSubstring(phrase)));
+  };
+
+  // The molecule is 1.51 Angstrom wide along y, more than half of 2.
+  const std::array<double, 9> tight = {2.0, 0.0, 0.0, 0.0, 2.0,
+                                       0.0, 0.0, 0.0, 2.0};
+  refused(kWater, kWaterZ, tight, "would wrap across a periodic boundary");
+  refused(kWater, kWaterZ, tight, "box vector 2");
+
+  // H2 split across the boundary of a 100 Angstrom cube: 2 Angstrom apart
+  // as periodic images, 98 Angstrom apart as ORCA would see them.
+  const std::vector<int> h2_z = {1, 1};
+  const std::vector<double> split = {1.0, 50.0, 50.0, 99.0, 50.0, 50.0};
+  refused(split, h2_z, aseCube(100.0), "would wrap");
+
+  // One periodic vector of a slab, too short for the bond along it.
+  const std::vector<double> bond_x = {0.0, 50.0, 50.0, 0.74, 50.0, 50.0};
+  const std::array<double, 9> slab = {1.2, 0.0, 0.0, 0.0, 100.0,
+                                      0.0, 0.0, 0.0, 100.0};
+  refused(bond_x, h2_z, slab, "box vector 1");
+
+  const std::array<double, 9> flat = {100.0, 0.0, 0.0, 0.0, 100.0,
+                                      0.0,   0.0, 0.0, 0.0};
+  refused(kWater, kWaterZ, flat, "not independent");
+  std::array<double, 9> nan_box = aseCube(100.0);
+  nan_box[4] = std::numeric_limits<double>::quiet_NaN();
+  refused(kWater, kWaterZ, nan_box, "non-finite");
+  REQUIRE(fake.calls() == 0);
 }
 
 TEST_CASE("ORCAPot rejects an impossible spin state", "[orca]") {
