@@ -47,10 +47,10 @@ fi
 meson compile -C "$BUILD"
 
 # The workflow sets RGPOT_COV_TIMEOUT_MULTIPLIER once for every job that
-# runs this script. NeighbourLayerTest's registry timeout is 120s. Four
-# multiples is 480s, and a coverage run used 440s of that. One extra
-# multiple is 600s. That stays on this test: raising the shared multiplier
-# would stretch every other timeout, including ones already at 1200s.
+# runs this script. NeighbourLayerTest's registry timeout is 360s. The
+# shared multiplier is four, and this test gets one extra multiple so its
+# meson limit is 1800s. Raising only the shared multiplier would stretch
+# every other timeout, including ones already at 3600s.
 COV_MULT="${RGPOT_COV_TIMEOUT_MULTIPLIER:-1}"
 if [[ ! "$COV_MULT" =~ ^[0-9]+([.][0-9]+)?$ ]] || ! awk -v v="$COV_MULT" 'BEGIN { exit !(v+0 > 0) }'; then
   echo "ERROR: RGPOT_COV_TIMEOUT_MULTIPLIER must be a positive number, got ${COV_MULT}" >&2
