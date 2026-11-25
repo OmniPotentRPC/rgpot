@@ -34,7 +34,35 @@ using Catch::Matchers::WithinAbs;
 
 namespace {
 
+constexpr std::size_t kTrackedBlockCapacity = 65536;
+
+std::atomic<void *> g_liveBlockPointers[kTrackedBlockCapacity]{};
 std::atomic<long> g_liveBlocks{0};
+
+void trackAllocation(void *block) {
+  for (auto &slot : g_liveBlockPointers) {
+    void *empty = nullptr;
+    if (slot.compare_exchange_strong(empty, block, std::memory_order_relaxed)) {
+      g_liveBlocks.fetch_add(1, std::memory_order_relaxed);
+      return;
+    }
+  }
+  std::abort();
+}
+
+void trackDeallocation(void *block) {
+  // Replacement delete can see allocations that replacement new did not,
+  // notably across MinGW runtime module boundaries. Only a matched pointer
+  // belongs in this test's live-block count.
+  for (auto &slot : g_liveBlockPointers) {
+    void *allocated = block;
+    if (slot.compare_exchange_strong(allocated, nullptr,
+                                     std::memory_order_relaxed)) {
+      g_liveBlocks.fetch_sub(1, std::memory_order_relaxed);
+      return;
+    }
+  }
+}
 
 } // namespace
 
@@ -43,13 +71,13 @@ void *operator new(std::size_t size) {
   if (block == nullptr) {
     throw std::bad_alloc();
   }
-  g_liveBlocks.fetch_add(1, std::memory_order_relaxed);
+  trackAllocation(block);
   return block;
 }
 
 void operator delete(void *block) noexcept {
   if (block != nullptr) {
-    g_liveBlocks.fetch_sub(1, std::memory_order_relaxed);
+    trackDeallocation(block);
     std::free(block);
   }
 }
