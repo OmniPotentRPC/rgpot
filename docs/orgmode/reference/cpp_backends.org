@@ -309,9 +309,11 @@ explicit MOPACPot(const Config &cfg);
 
 The library must export =mopacc_energy_gradient=, =mopacc_c_abi_version=,
 =mopacc_abi_version=, =mopacc_result_size= and =mopacc_params_size=.
-Both versions must be at least 2 (=RGPOT_MOPACC_C_ABI_VERSION= and
+Both versions must equal 2 (=RGPOT_MOPACC_C_ABI_VERSION= and
 =MOPACC_ABI_VERSION=), =mopacc_result_size= must equal =sizeof(MopacCResult)=,
 and =mopacc_params_size= must equal =sizeof(MopacCParams)=.
+A later ABI may change the layout without changing the sizes, so a library
+reporting version 3 is refused even when its sizes match.
 These checks run before any call that returns a =MopacCResult=; a library
 that fails one stays unloaded, and the load error names the missing symbol or
 the expected and found values.
@@ -2104,7 +2106,7 @@ static bool probeAvailable();
 - Units :: none.
 - Outputs :: true when the environment and default-name search, without an
   explicit path, finds a library that passes the =MOPACPot= load check
-  (=mopacc_energy_gradient=, both ABI versions at least 2, and
+  (=mopacc_energy_gradient=, both ABI versions equal to 2, and
   =mopacc_result_size= and =mopacc_params_size= equal to this build's struct
   sizes) and has a nonzero =mopacc_available=, when exported.
   The first result is cached for the process.

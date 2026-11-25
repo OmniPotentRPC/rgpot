@@ -24,11 +24,12 @@ ABI units: Hartree, Hartree/Bohr. Frontend: eV, eV/Å.
 ## Load check
 
 mopacc C ABI 1 and 2 export the same compute symbols, but ABI 2 grew
-`MopacCResult` (returned by value) and `MopacCParams`. Before any call
-that returns a `MopacCResult`, the loader requires:
+`MopacCResult` (returned by value) and `MopacCParams`, and a later ABI
+may change the layout without changing the sizes. Before any call that
+returns a `MopacCResult`, the loader requires:
 
 - `mopacc_c_abi_version()` and `mopacc_abi_version()` both exported and
-  `>= 2`;
+  equal to 2;
 - `mopacc_result_size()` exported and equal to `sizeof(MopacCResult)`;
 - `mopacc_params_size()` exported and equal to `sizeof(MopacCParams)`.
 

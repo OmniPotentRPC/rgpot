@@ -48,8 +48,8 @@ static_assert(offsetof(MopacCResult, message) ==
                   kExpectedMopacCResultMessageOffset,
               "MopacCResult::message offset drifted from vendored mopacc ABI");
 
-static_assert(RGPOT_MOPACC_C_ABI_VERSION >= 2,
-              "MopacCResult grew in mopacc C ABI 2; ABI 1 is incompatible");
+static_assert(RGPOT_MOPACC_C_ABI_VERSION == 2 && MOPACC_ABI_VERSION == 2,
+              "the layout constants above describe mopacc C ABI 2 only");
 
 std::string expected_found(const char *what, std::size_t expected,
                            std::size_t found) {
@@ -103,28 +103,29 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
     return false;
   }
   // ABI 1 libraries export the same compute symbols with a smaller
-  // MopacCResult returned by value, so nothing that returns one may be
-  // called until the version and size queries agree with this build.
+  // MopacCResult returned by value, and a later ABI may change the layout
+  // without changing the sizes, so nothing that returns one may be called
+  // until both versions equal this build's and the size queries agree.
   if (!b.abi_version) {
-    b.load_error = "incompatible mopacc C ABI: expected >= " +
+    b.load_error = "incompatible mopacc C ABI: expected " +
                    std::to_string(RGPOT_MOPACC_C_ABI_VERSION) +
                    ", found no mopacc_c_abi_version";
     return false;
   }
-  if (const int found = b.abi_version(); found < RGPOT_MOPACC_C_ABI_VERSION) {
-    b.load_error = "incompatible mopacc C ABI: expected >= " +
+  if (const int found = b.abi_version(); found != RGPOT_MOPACC_C_ABI_VERSION) {
+    b.load_error = "incompatible mopacc C ABI: expected " +
                    std::to_string(RGPOT_MOPACC_C_ABI_VERSION) + ", found " +
                    std::to_string(found);
     return false;
   }
   if (!b.lib_abi_version) {
-    b.load_error = "incompatible mopacc library ABI: expected >= " +
+    b.load_error = "incompatible mopacc library ABI: expected " +
                    std::to_string(MOPACC_ABI_VERSION) +
                    ", found no mopacc_abi_version";
     return false;
   }
-  if (const int found = b.lib_abi_version(); found < MOPACC_ABI_VERSION) {
-    b.load_error = "incompatible mopacc library ABI: expected >= " +
+  if (const int found = b.lib_abi_version(); found != MOPACC_ABI_VERSION) {
+    b.load_error = "incompatible mopacc library ABI: expected " +
                    std::to_string(MOPACC_ABI_VERSION) + ", found " +
                    std::to_string(found);
     return false;

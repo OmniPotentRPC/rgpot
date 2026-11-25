@@ -86,33 +86,33 @@ void require_refused(const char *env_var, const std::string &expected) {
 TEST_CASE("MOPACPot refuses an ABI 1 libmopacc before any call",
           "[mopac][abi][gate]") {
   require_refused("RGPOT_MOPACC_GATE_ABI1",
-                  "incompatible mopacc C ABI: expected >= 2, found 1");
+                  "incompatible mopacc C ABI: expected 2, found 1");
 }
 
 TEST_CASE("MOPACPot refuses a libmopacc without mopacc_c_abi_version",
           "[mopac][abi][gate]") {
   require_refused("RGPOT_MOPACC_GATE_NO_C_ABI",
-                  "incompatible mopacc C ABI: expected >= 2, found no "
+                  "incompatible mopacc C ABI: expected 2, found no "
                   "mopacc_c_abi_version");
 }
 
 TEST_CASE("MOPACPot refuses C ABI 1 even with ABI 2 layouts and sizes",
           "[mopac][abi][gate]") {
   require_refused("RGPOT_MOPACC_GATE_C_ABI1",
-                  "incompatible mopacc C ABI: expected >= 2, found 1");
+                  "incompatible mopacc C ABI: expected 2, found 1");
 }
 
 TEST_CASE("MOPACPot refuses ABI 2 without mopacc_abi_version",
           "[mopac][abi][gate]") {
   require_refused("RGPOT_MOPACC_GATE_ABI2_NO_LIB_ABI",
-                  "incompatible mopacc library ABI: expected >= 2, found no "
+                  "incompatible mopacc library ABI: expected 2, found no "
                   "mopacc_abi_version");
 }
 
 TEST_CASE("MOPACPot refuses ABI 2 whose library ABI is 1",
           "[mopac][abi][gate]") {
   require_refused("RGPOT_MOPACC_GATE_ABI2_LIB_ABI1",
-                  "incompatible mopacc library ABI: expected >= 2, found 1");
+                  "incompatible mopacc library ABI: expected 2, found 1");
 }
 
 TEST_CASE("MOPACPot refuses ABI 2 reporting the ABI 1 MopacCResult size",
