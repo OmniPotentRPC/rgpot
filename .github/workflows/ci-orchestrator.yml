@@ -384,7 +384,7 @@ jobs:
           export AR=lib
           # flang COFF objects request FortranRuntime.dynamic.lib via DEFAULTLIB.
           # Ensure MSVC link.exe can resolve it from the pixi env.
-          _libdir="$(pixi run -e devbld bash -lc 'printf %s "$CONDA_PREFIX/Library/lib"')"
+          _libdir="$(pixi run -e devbld printenv CONDA_PREFIX)/Library/lib"
           if [ -d "$_libdir" ]; then
             export LIB="${_libdir}${LIB:+;${LIB}}"
           fi
@@ -1173,15 +1173,15 @@ jobs:
           git clone --depth 1 --filter=blob:none --sparse --branch stable_22Jul2025 \
             https://github.com/lammps/lammps.git "$GITHUB_WORKSPACE/lammps-src"
           git -C "$GITHUB_WORKSPACE/lammps-src" sparse-checkout set src cmake
-          pixi run -e engines bash -lc '
-            export CC="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc"
-            export CXX="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
-            cmake -S "$GITHUB_WORKSPACE/lammps-src/cmake" \
-              -B "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
-              -DBUILD_MPI=OFF -DBUILD_SHARED_LIBS=ON -DPKG_PLUGIN=ON \
-              -DCMAKE_BUILD_TYPE=Release -DBUILD_TOOLS=OFF
-            cmake --build "$GITHUB_WORKSPACE/lammps-src/build-lmp" -j "$(nproc)" --target lmp
-          '
+          prefix="$(pixi run -e engines printenv CONDA_PREFIX)"
+          pixi run -e engines cmake -S "$GITHUB_WORKSPACE/lammps-src/cmake" \
+            -B "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
+            -DCMAKE_C_COMPILER="$prefix/bin/x86_64-conda-linux-gnu-cc" \
+            -DCMAKE_CXX_COMPILER="$prefix/bin/x86_64-conda-linux-gnu-c++" \
+            -DBUILD_MPI=OFF -DBUILD_SHARED_LIBS=ON -DPKG_PLUGIN=ON \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TOOLS=OFF
+          pixi run -e engines cmake --build "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
+            -j "$(nproc)" --target lmp
       - name: Build rgpot and run the engine tests
         run: |
           set -euo pipefail
