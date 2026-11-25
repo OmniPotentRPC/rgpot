@@ -16,6 +16,9 @@
 #include <cstring>
 #include <fcntl.h>
 #include <limits>
+#include <map>
+#include <mutex>
+#include <spawn.h>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
@@ -29,6 +32,8 @@
 #ifndef RGPOT_DXTB_PYTHON
 #define RGPOT_DXTB_PYTHON "python3"
 #endif
+
+extern char **environ;
 
 namespace rgpot {
 namespace {
@@ -46,6 +51,8 @@ constexpr std::size_t kMaxMessageBytes = std::size_t{1} << 20;
 /// How long shutdown waits for the worker to acknowledge, close its end and
 /// exit before the host kills it.
 constexpr std::chrono::milliseconds kShutdownGrace{3000};
+/// How long the availability probe may spend importing Torch and dxtb.
+constexpr std::chrono::seconds kProbeTimeout{120};
 
 void appendU32(std::vector<unsigned char> &out, std::uint32_t value) {
   for (int shift = 0; shift < 32; shift += 8) {
@@ -466,6 +473,78 @@ private:
     }
   }
 };
+
+namespace {
+
+enum class Probe { Usable, Unusable, Undecided };
+
+Probe probeRuntime(const std::string &python) {
+  const std::string source =
+      std::string(detail::kDxtbRuntimeCheck) +
+      "\nraise SystemExit(0 if runtime_problem() is None else 3)\n";
+  posix_spawn_file_actions_t actions;
+  if (posix_spawn_file_actions_init(&actions) != 0) {
+    return Probe::Undecided;
+  }
+  (void)posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null",
+                                         O_RDONLY, 0);
+  (void)posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null",
+                                         O_WRONLY, 0);
+  (void)posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null",
+                                         O_WRONLY, 0);
+  std::vector<char> program(python.begin(), python.end());
+  program.push_back('\0');
+  std::vector<char> script(source.begin(), source.end());
+  script.push_back('\0');
+  char flag[] = "-c";
+  char *argv[] = {program.data(), flag, script.data(), nullptr};
+  pid_t pid = -1;
+  const int spawned =
+      posix_spawnp(&pid, program.data(), &actions, nullptr, argv, environ);
+  posix_spawn_file_actions_destroy(&actions);
+  if (spawned != 0) {
+    return Probe::Unusable;
+  }
+  const auto deadline = std::chrono::steady_clock::now() + kProbeTimeout;
+  int status = 0;
+  while (true) {
+    const pid_t done = waitpid(pid, &status, WNOHANG);
+    if (done == pid) {
+      return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? Probe::Usable
+                                                           : Probe::Unusable;
+    }
+    if (done < 0 && errno != EINTR) {
+      return Probe::Undecided;
+    }
+    if (remaining(deadline).count() <= 0) {
+      (void)kill(pid, SIGKILL);
+      while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+      }
+      return Probe::Undecided;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+}
+
+} // namespace
+
+bool DxtbPot::runtimeAvailable() {
+  static std::mutex mutex;
+  static std::map<std::string, bool> verdicts;
+  const std::string python = dxtbPython({});
+  std::lock_guard<std::mutex> lock(mutex);
+  if (const auto found = verdicts.find(python); found != verdicts.end()) {
+    return found->second;
+  }
+  const Probe probe = probeRuntime(python);
+  // A probe that could not finish says nothing about the runtime: report it
+  // usable, leave it uncached, and let creation give the verdict.
+  if (probe == Probe::Undecided) {
+    return true;
+  }
+  verdicts.emplace(python, probe == Probe::Usable);
+  return probe == Probe::Usable;
+}
 
 DxtbPot::DxtbPot(const DxtbConfig &config)
     : Potential(PotType::UNKNOWN), config_(config),

@@ -67,6 +67,8 @@ DxtbConfig readConfig(const void *config, std::size_t config_len,
 
 const char *backend_name() { return "dxtb"; }
 
+bool available() { return DxtbPot::runtimeAvailable(); }
+
 Created create(const void *config, std::size_t config_len) {
   Created out;
   try {

@@ -54,6 +54,10 @@ public:
   void setChargeSpin(int charge, int multiplicity);
   void setNumThreads(int intra_op, int inter_op);
 
+  /// Whether the Python a worker without DxtbConfig::python would run imports
+  /// Torch, dxtb 0.4.0 and a supported tad-libcint. Cached per executable.
+  static bool runtimeAvailable();
+
 private:
   static constexpr uint64_t kKernelVersion = 1;
 

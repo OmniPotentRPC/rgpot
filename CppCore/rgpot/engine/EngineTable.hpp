@@ -71,4 +71,8 @@ Created create(const void *config, std::size_t config_len);
 /// Defined by the engine library: short name of the backend ("uma", "lj").
 const char *backend_name();
 
+/// Defined by an engine library built with RGPOT_ENGINE_PROBES_RUNTIME, whose
+/// rgpot_engine_available returns this; every other library returns 1.
+bool available();
+
 } // namespace rgpot::engine

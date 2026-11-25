@@ -199,8 +199,11 @@ int rgpot_engine_available(void);
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: nonzero when the engine can create instances; the engines in this
-  repository return 1.
+- Outputs :: nonzero when the engine can create instances.
+  =libdxtb_engine= returns 1 only when the Python that =RGPOT_DXTB_PYTHON=, or
+  =python3= when it is unset, selects imports Torch, dxtb 0.4.0 and tad-libcint
+  0.1.2 or newer, and caches that verdict for each executable; the other engines
+  in this repository return 1.
 - Errors :: none; the call cannot fail.
 
 Optional symbol.

@@ -1004,6 +1004,13 @@ def test_missing_library_is_an_error_not_a_fallback(monkeypatch):
         )
 
 
+def engine_available(path: str) -> int:
+    lib = ctypes.CDLL(path)
+    lib.rgpot_engine_available.restype = ctypes.c_int
+    lib.rgpot_engine_available.argtypes = []
+    return int(lib.rgpot_engine_available())
+
+
 def shadowed_python(tmp_path, name, modules):
     """A python whose import path puts stand-in modules before the real ones.
 
@@ -1027,6 +1034,13 @@ def shadowed_python(tmp_path, name, modules):
     return wrapper_path, log_path
 
 
+def test_available_with_the_runtime_python(monkeypatch):
+    monkeypatch.setenv(
+        "RGPOT_DXTB_PYTHON", os.environ.get("RGPOT_DXTB_PYTHON") or sys.executable
+    )
+    assert engine_available(os.environ["RGPOT_ENGINE_DXTB"]) == 1
+
+
 @pytest.mark.parametrize(
     "case,modules,reason",
     [
@@ -1047,18 +1061,29 @@ def shadowed_python(tmp_path, name, modules):
         ),
     ],
 )
-def test_worker_refuses_a_python_that_cannot_run_dxtb(
+def test_unavailable_when_the_selected_python_cannot_run_dxtb(
     tmp_path, monkeypatch, case, modules, reason
 ):
-    wrapper, _starts = shadowed_python(tmp_path, case, modules)
+    wrapper, starts = shadowed_python(tmp_path, case, modules)
     monkeypatch.setenv("RGPOT_DXTB_PYTHON", str(wrapper))
     path = os.environ["RGPOT_ENGINE_DXTB"]
+
+    assert engine_available(path) == 0
+    assert len(starts.read_text().splitlines()) == 1
+    # The verdict is cached for this executable; asking again starts nothing.
+    assert engine_available(path) == 0
+    assert len(starts.read_text().splitlines()) == 1
 
     # Creation names the executable and what it lacks.
     with pytest.raises(RuntimeError) as refused:
         Engine(path, "dxtb", "gfn1")
     assert reason in str(refused.value)
     assert "dxtb worker exited" not in str(refused.value)
+
+
+def test_unavailable_when_the_selected_python_does_not_exist(monkeypatch):
+    monkeypatch.setenv("RGPOT_DXTB_PYTHON", "/nonexistent/rgpot-dxtb-python")
+    assert engine_available(os.environ["RGPOT_ENGINE_DXTB"]) == 0
 
 
 def test_tad_libcint_below_the_dxtb_minimum_is_refused(tmp_path, monkeypatch):
@@ -1082,6 +1107,7 @@ def test_tad_libcint_below_the_dxtb_minimum_is_refused(tmp_path, monkeypatch):
     monkeypatch.setenv("RGPOT_DXTB_PYTHON", str(wrapper))
     path = os.environ["RGPOT_ENGINE_DXTB"]
 
+    assert engine_available(path) == 0
     with pytest.raises(RuntimeError, match="requires tad-libcint 0.1.2 or newer"):
         Engine(path, "dxtb", "gfn1")
 

@@ -1366,6 +1366,8 @@ TEST_CASE("dxtb engine matches the generic table contract", "[engine][dxtb]") {
     SKIP("no dxtb engine in this build");
   }
   check_identity(e, "dxtb");
+  // The test environment selects a Python with the dxtb runtime.
+  REQUIRE(sym<int (*)()>(e.handle, "rgpot_engine_available")() == 1);
   std::string error;
   RgpotEnginePot *pot = create(e, builtin_params("dxtb"), &error);
   INFO(error);

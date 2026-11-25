@@ -750,6 +750,31 @@ changes.
 =forceImpl= differentiates the float64 dxtb energy once.
 =hessianVectorImpl= uses Torch double backward, not finite differences.
 
+*** =rgpot::DxtbPot::runtimeAvailable=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+static bool runtimeAvailable();
+#+end_src
+
+- Inputs :: none; the Python is the one a worker without =DxtbConfig::python=
+  would run: =RGPOT_DXTB_PYTHON= when it is set and not empty, otherwise
+  =python3=.
+- Units :: none.
+- Outputs :: true when that Python passes the worker's runtime check: it imports
+  Torch, tad-libcint and dxtb, dxtb is 0.4.0 and tad-libcint is 0.1.2 or newer.
+  False when the check fails or the executable cannot be started.
+- Errors :: none.
+
+The check runs once per executable name in a process, with its output discarded,
+and the verdict is cached; a later value of =RGPOT_DXTB_PYTHON= gets its own
+check.
+A check that does not finish within 120 s, or whose exit status cannot be read,
+is not cached and reports true, so creation gives the verdict.
+=rgpot_engine_available= of =libdxtb_engine= returns this.
+It cannot see =BuiltinParams.library=; an instance that names its own Python
+gets the same checks when its worker starts.
+
 *** =rgpot::DxtbPot::paramsKey=
 
 #+attr_rgpot: signature

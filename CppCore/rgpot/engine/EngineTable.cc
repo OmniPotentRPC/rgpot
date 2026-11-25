@@ -146,7 +146,17 @@ extern "C" {
 
 int rgpot_engine_abi_version(void) { return RGPOT_ENGINE_ABI_VERSION; }
 
-int rgpot_engine_available(void) { return 1; }
+int rgpot_engine_available(void) {
+#ifdef RGPOT_ENGINE_PROBES_RUNTIME
+  try {
+    return rgpot::engine::available() ? 1 : 0;
+  } catch (...) {
+    return 0;
+  }
+#else
+  return 1;
+#endif
+}
 
 const char *rgpot_engine_name(void) { return rgpot::engine::backend_name(); }
 

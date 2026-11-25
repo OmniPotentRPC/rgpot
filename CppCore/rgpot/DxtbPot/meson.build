@@ -14,6 +14,7 @@ dxtb_engine = library(
     link_with: [rgpot_core],
     cpp_args: _args + [
         '-DRGPOT_ENGINE_BUILD',
+        '-DRGPOT_ENGINE_PROBES_RUNTIME',
         '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
             meson.project_version(),
         ),
