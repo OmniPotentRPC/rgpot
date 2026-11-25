@@ -110,15 +110,74 @@ std::string findExecutable(const std::string &requested) {
   return {};
 }
 
-void rejectPeriodicBox(const double *box) {
+void cross(const double *u, const double *v, double *w) {
+  w[0] = u[1] * v[2] - u[2] * v[1];
+  w[1] = u[2] * v[0] - u[0] * v[2];
+  w[2] = u[0] * v[1] - u[1] * v[0];
+}
+
+double dot(const double *u, const double *v) {
+  return u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+}
+
+/// A box is taken as padding around an isolated cluster. It passes when it
+/// is absent or all zero, or when along each cell vector the atoms span at
+/// most half the cell width: every pair is then its own nearest image, and
+/// no atom would wrap away from the rest of the cluster in a periodic cell.
+/// The positions are not moved, so a cluster may sit across the origin.
+void checkClusterBox(const double *box, std::size_t n, const double *pos) {
   if (box == nullptr) {
     return;
   }
+  bool open = true;
   for (int k = 0; k < 9; ++k) {
-    if (box[k] != 0.0) {
-      throw std::invalid_argument(
-          "ORCAPot: ORCA has no periodic boundary conditions; pass an "
-          "all-zero box for an isolated system");
+    if (!std::isfinite(box[k])) {
+      throw std::invalid_argument("ORCAPot: the box holds a non-finite entry");
+    }
+    open = open && box[k] == 0.0;
+  }
+  if (open) {
+    return;
+  }
+  const double *rows[3] = {box, box + 3, box + 6};
+  double normals[3][3];
+  for (int k = 0; k < 3; ++k) {
+    cross(rows[(k + 1) % 3], rows[(k + 2) % 3], normals[k]);
+  }
+  const double volume = std::abs(dot(rows[0], normals[0]));
+  const double scale = std::sqrt(dot(rows[0], rows[0]) * dot(rows[1], rows[1]) *
+                                 dot(rows[2], rows[2]));
+  if (!(volume > 1.0e-12 * scale)) {
+    throw std::invalid_argument(
+        "ORCAPot: the box vectors are not independent; pass an all-zero box "
+        "for an isolated system, or a padded cell of three independent "
+        "vectors");
+  }
+  for (int k = 0; k < 3; ++k) {
+    const double length = std::sqrt(dot(normals[k], normals[k]));
+    const double width = volume / length;
+    double lo = 0.0;
+    double hi = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+      const double along = dot(pos + 3 * i, normals[k]) / length;
+      lo = i == 0 ? along : std::min(lo, along);
+      hi = i == 0 ? along : std::max(hi, along);
+    }
+    const double extent = hi - lo;
+    // The slack keeps a box made exactly twice the extent, as rgpot.ase
+    // makes for a cluster wider than 50 Angstrom, from failing on rounding.
+    if (2.0 * extent > width * (1.0 + 1.0e-12)) {
+      std::ostringstream text;
+      text.imbue(std::locale::classic());
+      text << "ORCAPot: the atoms span " << extent
+           << " Angstrom across box vector " << (k + 1)
+           << ", more than half the cell width of " << width
+           << " Angstrom, so they would wrap across a periodic boundary. "
+              "ORCA has no periodic boundary conditions: pass an all-zero "
+              "box for an isolated system, or pad the cluster into a box at "
+              "least twice its extent along each vector, as rgpot.ase does "
+              "with a cube of at least 100 Angstrom";
+      throw std::invalid_argument(text.str());
     }
   }
 }
@@ -541,8 +600,8 @@ void ORCAPot::reset() {
 }
 
 void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
-  rejectPeriodicBox(in.box);
   const std::size_t n = in.nAtoms;
+  checkClusterBox(in.box, n, in.pos);
   const std::vector<int> numbers(in.atmnrs, in.atmnrs + n);
   checkSpin(m_config, numbers);
 
