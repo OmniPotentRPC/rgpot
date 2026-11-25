@@ -2345,6 +2345,46 @@ if get_option('with_tests')
             depends: mopacc_upstream_stub,
             kwargs: _rt_kw['MOPACUpstreamAbiTest'],
         )
+        mopacc_gate_env = environment()
+        mopacc_gate_libs = []
+        foreach gate : [
+            ['ABI1', '1', '0', '0'],
+            ['ABI2_WRONG_SIZE', '2', '0', '1'],
+            ['ABI2_NO_SIZE', '2', '1', '0'],
+            ['ABI2_OK', '2', '1', '1'],
+        ]
+            gate_lib = shared_library(
+                'mopacc_gate_' + gate[0].to_lower(),
+                sources: ['tests/mopacc_abi_gate_engine.c'],
+                c_args: [
+                    '-DGATE_C_ABI=' + gate[1],
+                    '-DGATE_NEW_LAYOUT=' + gate[2],
+                    '-DGATE_SIZE_QUERIES=' + gate[3],
+                ],
+                install: false,
+            )
+            mopacc_gate_libs += gate_lib
+            mopacc_gate_env.set(
+                'RGPOT_MOPACC_GATE_' + gate[0],
+                gate_lib.full_path(),
+            )
+        endforeach
+        mopac_abi_gate_test = executable(
+            'mopac_abi_gate_test',
+            sources: ['tests/MOPACAbiGateTest.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'MOPACAbiGateTest',
+            mopac_abi_gate_test,
+            env: mopacc_gate_env,
+            depends: mopacc_gate_libs,
+            kwargs: _rt_kw['MOPACAbiGateTest'],
+        )
         test(
             'test_mopac_abi',
             executable(

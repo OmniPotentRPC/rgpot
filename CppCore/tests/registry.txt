@@ -313,6 +313,7 @@ PluginLifetimeTest | tests core | custom timeout=30 suite=plugin |
 MOPACPotTest | tests core | custom suite=mopac workdir=. |
 MOPACPotEmptyVariable | tests core | custom suite=mopac workdir=. |
 MOPACUpstreamAbiTest | tests core | custom suite=mopac workdir=. |
+MOPACAbiGateTest | tests core | custom suite=mopac workdir=. |
 test_mopac_abi | tests core | custom suite=mopac |
 MOPACDlopenContract | tests core | py CppCore/tests/test_mopac_dlopen_contract.py @root@ suite=mopac |
 MOPACHeaderSync | tests core python | py CppCore/tests/test_mopac_header_sync.py @root@ suite=mopac |
