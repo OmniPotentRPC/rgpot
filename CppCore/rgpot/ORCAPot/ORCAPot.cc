@@ -52,6 +52,28 @@ std::string runFile(const std::string &dir, const char *suffix) {
   return (fs::path(dir) / (std::string(kBase) + suffix)).string();
 }
 
+/// The whole of @p path, or empty when it cannot be read.
+std::string readText(const std::string &path) {
+  std::ifstream file(path, std::ios::binary);
+  std::ostringstream all;
+  if (file) {
+    all << file.rdbuf();
+  }
+  return all.str();
+}
+
+/// True when ORCA output @p text reports an SCF that did not converge:
+/// `SCF NOT CONVERGED` for one that failed, `SCF not fully converged` for
+/// one that stopped near convergence. Case is ignored.
+bool scfNotConverged(const std::string &text) {
+  std::string lower(text.size(), '\0');
+  std::transform(text.begin(), text.end(), lower.begin(), [](char c) {
+    return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+  });
+  return lower.find("scf not converged") != std::string::npos ||
+         lower.find("scf not fully converged") != std::string::npos;
+}
+
 bool isExecutableFile(const fs::path &path) {
   struct stat st {};
   if (::stat(path.c_str(), &st) != 0) {
@@ -576,6 +598,11 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   if (!child.exited) {
     throw fail("orca was killed by signal " + std::to_string(child.signal));
+  }
+  // Checked before the exit status: ConvForced makes ORCA stop with an
+  // error, and the SCF is the cause the caller needs to see.
+  if (scfNotConverged(readText(output_path))) {
+    throw fail("the SCF did not converge, so the gradient is not used");
   }
   if (child.exit_code != 0) {
     throw fail("orca exited with status " + std::to_string(child.exit_code) +
