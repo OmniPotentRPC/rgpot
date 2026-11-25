@@ -67,6 +67,7 @@ class MpiPefSession;
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/Models/ModelPots.hpp"
 #include "rgpot/NWChemPot/NWChemPot.hpp"
+#include "rgpot/ORCAPot/ORCAPot.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
@@ -80,6 +81,7 @@ class MpiPefSession;
 #include "rgpot/rpc/CompositeConfigure.hpp"
 #include "rgpot/rpc/MorseConfigure.hpp"
 #include "rgpot/rpc/MullerBrownConfigure.hpp"
+#include "rgpot/rpc/OrcaConfigure.hpp"
 #include "rgpot/rpc/PotentialConfigArm.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
@@ -92,10 +94,10 @@ class MpiPefSession;
 #endif
 #ifdef RGPOT_HAS_CP2K
 constexpr const char *kOwnArmBackends =
-    "NWChem, CPMD, CP2K, Morse, Composite, MullerBrown, " RGPOT_OWN_ARM_TAIL;
+    "NWChem, CPMD, CP2K, Morse, Composite, MullerBrown, ORCA, " RGPOT_OWN_ARM_TAIL;
 #else
 constexpr const char *kOwnArmBackends =
-    "NWChem, CPMD, Morse, Composite, MullerBrown, " RGPOT_OWN_ARM_TAIL;
+    "NWChem, CPMD, Morse, Composite, MullerBrown, ORCA, " RGPOT_OWN_ARM_TAIL;
 #endif
 #undef RGPOT_OWN_ARM_TAIL
 #ifdef RGPOT_POTSERV_MPI
@@ -131,6 +133,8 @@ private:
   rgpot::D2CpmdPot *m_d2cpmd = nullptr;
   /// Set when the backend is Muller-Brown; configure() replaces the surface.
   rgpot::MullerBrownPot *m_muller_brown = nullptr;
+  /// Set when the backend is ORCA; configure() replaces the pot.
+  rgpot::ORCAPot *m_orca = nullptr;
 #ifdef RGPOT_HAS_DFTD4
   /// Set when the backend is D4; configure() replaces the pot.
   rgpot::D4Pot *m_d4 = nullptr;
@@ -157,7 +161,8 @@ public:
         m_sum(dynamic_cast<rgpot::SumPot *>(m_potential.get())),
         m_d2(dynamic_cast<rgpot::D2Pot *>(m_potential.get())),
         m_d2cpmd(dynamic_cast<rgpot::D2CpmdPot *>(m_potential.get())),
-        m_muller_brown(dynamic_cast<rgpot::MullerBrownPot *>(m_potential.get()))
+        m_muller_brown(dynamic_cast<rgpot::MullerBrownPot *>(m_potential.get())),
+        m_orca(dynamic_cast<rgpot::ORCAPot *>(m_potential.get()))
 #ifdef RGPOT_HAS_DFTD4
         ,
         m_d4(dynamic_cast<rgpot::D4Pot *>(m_potential.get()))
@@ -488,6 +493,16 @@ public:
       results.setMessage(applied.message);
       return kj::READY_NOW;
     }
+    if (m_orca) {
+      auto applied = rgpot::rpc::configureOrca(cfg);
+      if (applied.replacement) {
+        m_orca = applied.replacement.get();
+        m_potential = std::move(applied.replacement);
+      }
+      results.setOk(applied.ok);
+      results.setMessage(applied.message);
+      return kj::READY_NOW;
+    }
     if (!appliesOwnArm()) {
       if (cfg.which() == ::PotentialConfig::NONE) {
         results.setOk(true);
@@ -535,8 +550,8 @@ public:
  *
  * PotentialType is one of LJ, LJCluster, Morse, ZBL, Eckart, MullerBrown,
  * ModifiedMullerBrown, LEPS-HH2, LEPS-HCl2, LEPS-FH2, DoubleWell,
- * CoupledProtonWell, Composite, D2 and D2Cpmd, plus the backends this build
- * compiled in. The printed usage line is the same list.
+ * CoupledProtonWell, Composite, D2, D2Cpmd and ORCA, plus the backends this
+ * build compiled in. The printed usage line is the same list.
  *
  * @param argc Argument count.
  * @param argv Argument vector.
@@ -552,7 +567,7 @@ int runServer(int argc, char *argv[]
     std::cerr
         << "  Available PotentialTypes: LJ, LJCluster, Morse, SWSi, ZBL, Eckart, "
            "MullerBrown, ModifiedMullerBrown, LEPS-HH2, LEPS-HCl2, "
-           "LEPS-FH2, Composite, D2, D2Cpmd"
+           "LEPS-FH2, Composite, D2, D2Cpmd, ORCA"
 #ifdef RGPOT_HAS_FORTRAN_POTS
               << ", CuH2, EAMAl"
 #endif
@@ -673,6 +688,19 @@ int runServer(int argc, char *argv[]
   } else if (pot_type == "D2Cpmd") {
     std::cout << "Loading CPMD's empirical D2 (BLYP s6)..." << std::endl;
     potential_to_use = std::make_unique<rgpot::D2CpmdPot>();
+  } else if (pot_type == "ORCA") {
+    rgpot::ORCAConfig start;
+    start.method = "HF";
+    start.basis = "def2-SVP";
+    auto orca = std::make_unique<rgpot::ORCAPot>(start);
+    if (!orca->available()) {
+      std::cerr << "Error: " << orca->loadError() << std::endl;
+      return 1;
+    }
+    std::cout << "Loading ORCA through liborcac at " << orca->libraryPath()
+              << " (HF/def2-SVP until configure() sends the orca arm)..."
+              << std::endl;
+    potential_to_use = std::move(orca);
 #ifdef RGPOT_HAS_IPI
   } else if (pot_type == "IPI" || pot_type.rfind("IPI:", 0) == 0) {
     if (pot_type.size() < 5) {
