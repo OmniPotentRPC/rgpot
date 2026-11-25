@@ -280,6 +280,12 @@ void team_chunk_phases(int nphases, int nchunks, Fn &&fn) {
     }
     return;
   }
+  if (nchunks == 1) {
+    for (int phase = 0; phase < nphases; ++phase) {
+      fn(phase, 0);
+    }
+    return;
+  }
   team_slice_phases(nphases, [&](int phase, int slice, int nslices) {
     for (int chunk = slice; chunk < nchunks; chunk += nslices) {
       fn(phase, chunk);
@@ -297,9 +303,11 @@ int sum_chunks(std::size_t nitems, std::size_t block) {
   return std::min(rgpot::fixedChunks(nitems, block), 32);
 }
 
-// Slabs of one transform axis. Every slab is one serial pocketfft call over
-// the same lines on any team, so the transform does not follow the team.
-int mesh_slabs(int npoints) { return axis_workers(npoints, 16); }
+// Slabs of one transform axis, one per mesh worker. pocketfft transforms
+// every line of a slab on its own, so the cut moves no bits, and a fixed
+// count that the team does not divide would leave one worker the extra
+// slab on every phase.
+int mesh_slabs(int npoints) { return axis_workers(npoints, std::max(thread_count(), 1)); }
 
 // Rows are kept between calls and only grow, so a call allocates nothing
 // once the largest system has been seen.
@@ -1062,8 +1070,8 @@ void mesh_xy_z(float *real, std::complex<float> *spec, int nx, int ny, int nz, b
   }
 }
 
-// The transforms cut each axis into the fixed mesh slabs and the team walks
-// them. Both return the number of workers that had a slab.
+// The transforms cut each axis into one slab per mesh worker. Both return
+// the number of workers that had a slab.
 int mesh_r2c(float *real, std::complex<float> *spec, int nx, int ny, int nz) {
   const int team = std::max(thread_count(), 1);
   const int cap = mesh_slabs(std::min(nx, std::min(ny, nz)));
