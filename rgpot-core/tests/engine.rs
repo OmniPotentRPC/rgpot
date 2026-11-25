@@ -2836,37 +2836,50 @@ fn hvp_without_the_symbol_or_capability_is_unsupported() {
 }
 
 #[test]
-fn hessian_without_the_symbol_or_capability_is_unsupported() {
+fn hessian_without_the_symbol_is_assembled_from_the_product() {
+    let no_sym = build("harmonic_nohessian", &["NO_HESSIAN"]);
+    let observer = FixtureObserver::open(&no_sym);
+    let mut engine = load(&no_sym);
+    assert!(engine.caps().expect("caps").analytic_hvp);
+    let before = observer.native_calls();
+    let matrix = engine
+        .hessian(&EngineRequest {
+            positions: &[0.5, -1.0, 2.0],
+            atomic_numbers: &[1],
+            box_matrix: &CELL,
+        })
+        .expect("Hessian from the product");
+    assert_eq!(observer.native_calls() - before, 3);
+    let mut expected = vec![0.0; 9];
+    for i in 0..3 {
+        expected[i * 3 + i] = SPRING;
+    }
+    assert!(all_within_roundoff(&matrix, &expected));
+    let potential = load(&no_sym).into_potential();
+    assert!(potential.as_handle().derivative_caps().hessian_analytic);
+}
+
+#[test]
+fn hessian_without_a_source_is_unsupported() {
     let req = EngineRequest {
         positions: &[0.0; 3],
         atomic_numbers: &[1],
         box_matrix: &CELL,
     };
 
-    let no_sym = build("harmonic_nohessian", &["NO_HESSIAN"]);
-    let mut engine = load(&no_sym);
-    let err = engine.hessian(&req).unwrap_err();
-    assert!(matches!(
-        err,
-        EngineError::Unsupported {
-            operation: "rgpot_engine_hessian",
-            ..
-        }
-    ));
-    let potential = load(&no_sym).into_potential();
-    assert!(!potential.as_handle().derivative_caps().hessian_analytic);
-
     let no_cap = build("harmonic_nohessiancap", &["NO_HVP_CAP"]);
     let mut engine = load(&no_cap);
     assert!(!engine.caps().expect("caps").analytic_hessian);
     let err = engine.hessian(&req).unwrap_err();
-    assert!(matches!(
+    assert_eq!(
         err,
         EngineError::Unsupported {
             operation: "rgpot_engine_hessian",
-            ..
+            message: "no dense Hessian (analytic_hessian is not advertised) and no \
+                      Hessian-vector product (analytic_hvp is not advertised)"
+                .into(),
         }
-    ));
+    );
     let potential = load(&no_cap).into_potential();
     assert!(!potential.as_handle().derivative_caps().hessian_analytic);
 
