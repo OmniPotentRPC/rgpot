@@ -421,7 +421,10 @@ rgpot_halfshell = static_library(
 _rpc_stack = rpc_enabled or get_option('with_rpc_client_only')
 # The vendored schema: rgconf's potential.capnp and the common.capnp it
 # imports, compiled, installed and served as they are (see rgpot/rpc/schema.pin).
-rgpot_schema_files = files('rgpot/rpc/Potentials.capnp', 'rgpot/rpc/common.capnp')
+rgpot_schema_files = files(
+    'rgpot/rpc/Potentials.capnp',
+    'rgpot/rpc/common.capnp',
+)
 rgpot_schema = rgpot_schema_files[0]
 _metatomic_build_rpath = ''
 if _rpc_stack
@@ -2964,7 +2967,11 @@ if get_option('with_tests')
                 executable(
                     'potential_factory_test',
                     sources: ['tests/PotentialFactoryTest.cc'],
-                    dependencies: test_deps + [capnp_rpc_dep, ptlrpc_dep, _dl_dep],
+                    dependencies: test_deps + [
+                        capnp_rpc_dep,
+                        ptlrpc_dep,
+                        _dl_dep,
+                    ],
                     include_directories: _incdirs + ['.'],
                     cpp_args: test_args,
                     link_with: _linkto,
