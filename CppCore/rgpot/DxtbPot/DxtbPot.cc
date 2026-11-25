@@ -77,6 +77,14 @@ std::string systemMessage(const char *operation) {
   return std::string(operation) + ": " + std::strerror(errno);
 }
 
+/// The peer closed its end. During an intentional shutdown this is a clean
+/// close; on a live exchange it is reported as the worker exiting.
+struct PeerClosed {};
+
+bool peerClosedErrno(int err) {
+  return err == EPIPE || err == ECONNRESET;
+}
+
 uint64_t paramsKeyFor(const DxtbConfig &config, uint64_t kernelVersion) {
   Fnv1a hash;
   hash.str("rgpot::DxtbPot");
@@ -113,8 +121,23 @@ public:
     if (fd_ >= 0) {
       if (graceful) {
         try {
-          (void)request(kShutdown, 0, {});
+          // A peer that vanishes while this request is written or read has
+          // already closed. That is the end of shutdown, not a failed call.
+          (void)request(kShutdown, 0, {}, true);
         } catch (...) {
+        }
+        // Stay readable until the worker closes. Closing first turns the
+        // worker's last write into EPIPE.
+        ::shutdown(fd_, SHUT_WR);
+        unsigned char extra[256];
+        while (true) {
+          const ssize_t n = ::recv(fd_, extra, sizeof(extra), 0);
+          if (n < 0 && errno == EINTR) {
+            continue;
+          }
+          if (n <= 0) {
+            break;
+          }
         }
       }
       close(fd_);
@@ -303,8 +326,8 @@ private:
       if (done < 0 && errno == EINTR) {
         continue;
       }
-      if (done < 0 && (errno == EPIPE || errno == ECONNRESET)) {
-        throw DxtbError(-1, "dxtb worker exited");
+      if (done < 0 && peerClosedErrno(errno)) {
+        throw PeerClosed();
       }
       if (done <= 0) {
         throw DxtbError(-1, systemMessage("write to dxtb worker"));
@@ -320,8 +343,8 @@ private:
       if (done < 0 && errno == EINTR) {
         continue;
       }
-      if (done == 0 || (done < 0 && errno == ECONNRESET)) {
-        throw DxtbError(-1, "dxtb worker exited");
+      if (done == 0 || (done < 0 && peerClosedErrno(errno))) {
+        throw PeerClosed();
       }
       if (done < 0) {
         throw DxtbError(-1, systemMessage("read from dxtb worker"));
@@ -333,42 +356,50 @@ private:
 
   std::vector<unsigned char>
   request(std::uint32_t operation, std::uint32_t nAtoms,
-          const std::vector<unsigned char> &payload) {
+          const std::vector<unsigned char> &payload,
+          bool peer_close_is_clean = false) {
     if (payload.size() > std::numeric_limits<std::uint32_t>::max()) {
       throw DxtbError(1, "dxtb request is too large");
     }
-    std::vector<unsigned char> header;
-    header.reserve(kHeaderSize);
-    header.insert(header.end(), {'D', 'X', 'T', 'B'});
-    appendU32(header, kProtocolVersion);
-    appendU32(header, operation);
-    appendU32(header, nAtoms);
-    appendU32(header, static_cast<std::uint32_t>(payload.size()));
-    writeAll(header.data(), header.size());
-    if (!payload.empty()) {
-      writeAll(payload.data(), payload.size());
-    }
+    try {
+      std::vector<unsigned char> header;
+      header.reserve(kHeaderSize);
+      header.insert(header.end(), {'D', 'X', 'T', 'B'});
+      appendU32(header, kProtocolVersion);
+      appendU32(header, operation);
+      appendU32(header, nAtoms);
+      appendU32(header, static_cast<std::uint32_t>(payload.size()));
+      writeAll(header.data(), header.size());
+      if (!payload.empty()) {
+        writeAll(payload.data(), payload.size());
+      }
 
-    std::vector<unsigned char> responseHeader(kHeaderSize);
-    readAll(responseHeader.data(), responseHeader.size());
-    if (std::string_view(reinterpret_cast<const char *>(responseHeader.data()),
-                         4) != "DXTR" ||
-        readU32(responseHeader.data() + 4) != kProtocolVersion) {
-      throw DxtbError(-1, "invalid response from dxtb worker");
+      std::vector<unsigned char> responseHeader(kHeaderSize);
+      readAll(responseHeader.data(), responseHeader.size());
+      if (std::string_view(reinterpret_cast<const char *>(responseHeader.data()),
+                           4) != "DXTR" ||
+          readU32(responseHeader.data() + 4) != kProtocolVersion) {
+        throw DxtbError(-1, "invalid response from dxtb worker");
+      }
+      const int status =
+          static_cast<std::int32_t>(readU32(responseHeader.data() + 8));
+      const std::uint32_t size = readU32(responseHeader.data() + 16);
+      std::vector<unsigned char> response(size);
+      if (size > 0) {
+        readAll(response.data(), response.size());
+      }
+      if (status != 0) {
+        throw DxtbError(
+            status, std::string(reinterpret_cast<const char *>(response.data()),
+                                response.size()));
+      }
+      return response;
+    } catch (const PeerClosed &) {
+      if (peer_close_is_clean) {
+        return {};
+      }
+      throw DxtbError(-1, "dxtb worker exited");
     }
-    const int status =
-        static_cast<std::int32_t>(readU32(responseHeader.data() + 8));
-    const std::uint32_t size = readU32(responseHeader.data() + 16);
-    std::vector<unsigned char> response(size);
-    if (size > 0) {
-      readAll(response.data(), response.size());
-    }
-    if (status != 0) {
-      throw DxtbError(
-          status, std::string(reinterpret_cast<const char *>(response.data()),
-                              response.size()));
-    }
-    return response;
   }
 };
 

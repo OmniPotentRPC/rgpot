@@ -5,11 +5,13 @@
 namespace rgpot::detail {
 
 inline constexpr char kDxtbWorkerSource[] = R"DXTBPY(
+import os
 import struct
 import sys
 
 _out = sys.stdout.buffer
 sys.stdout = sys.stderr
+_shutting_down = False
 
 import torch
 import dxtb
@@ -48,9 +50,13 @@ def read_exact(size):
 
 
 def response(status, payload=b""):
-    _out.write(HEADER.pack(MAGIC_RESPONSE, VERSION, status & 0xffffffff, 0, len(payload)))
-    _out.write(payload)
-    _out.flush()
+    try:
+        _out.write(HEADER.pack(MAGIC_RESPONSE, VERSION, status & 0xffffffff, 0, len(payload)))
+        _out.write(payload)
+        _out.flush()
+    except (BrokenPipeError, ConnectionResetError):
+        # The peer has gone. A shutdown may exit cleanly; a live call must not.
+        os._exit(0 if _shutting_down else 1)
 
 
 def error(status, exc):
@@ -171,6 +177,8 @@ while True:
         raw = read_exact(HEADER.size)
     except EOFError:
         break
+    except (BrokenPipeError, ConnectionResetError):
+        os._exit(0 if _shutting_down else 1)
     try:
         magic, version, op, natoms, size = HEADER.unpack(raw)
         if magic != MAGIC_REQUEST or version != VERSION:
@@ -179,8 +187,11 @@ while True:
         if op == OP_SHUTDOWN:
             if size != 0:
                 raise ProtocolError("shutdown has a payload")
+            _shutting_down = True
             response(OK)
-            break
+            # Skip interpreter teardown so it cannot write to the socket after
+            # the host has finished reading this acknowledgement.
+            os._exit(0)
         if op == OP_CONFIG:
             apply_config(payload)
             response(OK)
@@ -200,12 +211,15 @@ while True:
             response(OK)
         else:
             raise ProtocolError("unknown operation")
+    except (BrokenPipeError, ConnectionResetError):
+        os._exit(0 if _shutting_down else 1)
     except ProtocolError as exc:
         error(FATAL, exc)
     except InvalidError as exc:
         error(INVALID, exc)
     except Exception as exc:
         error(EVAL, exc)
+os._exit(0)
 )DXTBPY";
 
 } // namespace rgpot::detail

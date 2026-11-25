@@ -765,9 +765,11 @@ import json
 import os
 import struct
 import sys
+import time
 
 LOG = os.environ["FAKE_DXTB_LOG"]
 REFUSE_UHF = int(os.environ.get("FAKE_DXTB_REFUSE_UHF", "-1"))
+MODE = os.environ.get("FAKE_DXTB_MODE", "")
 HEADER = struct.Struct("<4sIIII")
 CONFIG = struct.Struct("<Iii3dii")
 inp = sys.stdin.buffer
@@ -783,6 +785,40 @@ def reply(status, payload=b""):
     out.write(HEADER.pack(b"DXTR", 1, status & 0xFFFFFFFF, 0, len(payload)))
     out.write(payload)
     out.flush()
+
+
+def shutdown():
+    if MODE == "drop":
+        log(event="shutdown", result="drop")
+        os._exit(0)
+    if MODE == "partial":
+        try:
+            out.write(b"DX")
+            out.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            log(event="shutdown", result="broken-pipe")
+            os._exit(0)
+        log(event="shutdown", result="partial")
+        os._exit(0)
+    try:
+        reply(0)
+    except (BrokenPipeError, ConnectionResetError):
+        log(event="shutdown", result="broken-pipe")
+        os._exit(0)
+    if MODE == "late-write":
+        # Keep writing after the acknowledgement. An early close on the host
+        # turns one of these writes into a broken pipe.
+        deadline = time.monotonic() + 0.1
+        while time.monotonic() < deadline:
+            try:
+                out.write(b"\x00")
+                out.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                log(event="shutdown", result="broken-pipe")
+                os._exit(0)
+            time.sleep(0.005)
+    log(event="shutdown", result="ok")
+    os._exit(0)
 
 
 while True:
@@ -809,14 +845,16 @@ while True:
         else:
             reply(0)
     elif op == 5:
-        reply(0)
-        break
+        shutdown()
+    elif op == 2 and MODE == "drop-force":
+        log(event="force", result="drop")
+        os._exit(0)
     else:
         reply(0)
 '''
 
 
-def fake_worker(tmp_path, name, refuse_uhf=-1):
+def fake_worker(tmp_path, name, refuse_uhf=-1, mode=""):
     """A python stand-in that logs every configuration the engine sends."""
     log_path = tmp_path / f"{name}.jsonl"
     driver_path = tmp_path / f"{name}_driver.py"
@@ -827,6 +865,7 @@ def fake_worker(tmp_path, name, refuse_uhf=-1):
         "#!/bin/sh\n"
         f"FAKE_DXTB_LOG={shlex.quote(str(log_path))} "
         f"FAKE_DXTB_REFUSE_UHF={refuse_uhf} "
+        f"FAKE_DXTB_MODE={shlex.quote(mode)} "
         f"exec {shlex.quote(real_python)} {shlex.quote(str(driver_path))} \"$@\"\n"
     )
     wrapper_path.chmod(0o755)
@@ -1094,3 +1133,54 @@ def test_worker_starts_when_stdin_and_stdout_are_closed(tmp_path):
         [1, 1], [[0.0, 0.0, -0.37], [0.0, 0.0, 0.37]], "gfn1", charge=0.0, uhf=0
     )
     np.testing.assert_allclose(energy, ref_energy, rtol=2e-13, atol=2e-12)
+
+
+def _events(log_path):
+    if not log_path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def test_shutdown_treats_a_closed_peer_as_clean_and_a_live_drop_as_an_error(tmp_path):
+    """Repeat shutdown while the worker closes, truncates, or writes late.
+
+    A broken pipe during that shutdown must not fail the host. The same
+    condition on a live force call must still be reported.
+    """
+    cycles = 20
+    for mode in ("late-write", "drop", "partial"):
+        for i in range(cycles):
+            wrapper, log_path = fake_worker(tmp_path, f"{mode}-{i}", mode=mode)
+            engine = Engine(
+                os.environ["RGPOT_ENGINE_DXTB"],
+                "dxtb",
+                "gfn1",
+                library=str(wrapper),
+            )
+            engine.close()
+            events = _events(log_path)
+            assert any(ev.get("event") == "shutdown" for ev in events), events
+            assert not any(ev.get("result") == "broken-pipe" for ev in events), events
+
+    positions = np.asarray(
+        [[0.0, 0.0, 0.1173], [0.0, 0.7572, -0.4692], [0.0, -0.7572, -0.4692]]
+    )
+    for i in range(cycles):
+        wrapper, log_path = fake_worker(tmp_path, f"live-{i}", mode="drop-force")
+        engine = Engine(
+            os.environ["RGPOT_ENGINE_DXTB"],
+            "dxtb",
+            "gfn1",
+            library=str(wrapper),
+        )
+        try:
+            status = engine.force_status([8, 1, 1], positions)
+            assert status != 0
+            assert "exited" in engine.last_error()
+        finally:
+            engine.close()
+        assert not any(ev.get("result") == "broken-pipe" for ev in _events(log_path))
