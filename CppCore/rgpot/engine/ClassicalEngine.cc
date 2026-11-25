@@ -1,14 +1,15 @@
 // MIT License — generic rgpot engine table for the classical potentials.
-// BuiltinParams names the potential: lj, ljcluster, morse, zbl and, when the
-// water option is on, tip4p, spce, tip4p_pt. When the Fortran kernels are
-// built: sw, edip, lenosky, tersoff, eamal, fehe, cuh2, waterh. Every
-// potential takes its default parameters, except muller_brown, which reads
-// BuiltinParams.config.mullerBrown. An arm that names another potential is
-// an error.
+// BuiltinParams names the potential: lj, ljcluster, morse, zbl, gupta and,
+// when the water option is on, tip4p, spce, tip4p_pt. When the Fortran
+// kernels are built: sw, edip, lenosky, tersoff, eamal, fehe, cuh2, waterh.
+// Every potential takes its default parameters, except muller_brown, which
+// reads BuiltinParams.config.mullerBrown. An arm that names another
+// potential is an error.
 
 #include "rgpot/engine/BuiltinParams.hpp"
 #include "rgpot/engine/EngineTable.hpp"
 
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
@@ -51,6 +52,8 @@ Created create(const void *config, std::size_t config_len) {
       pot = std::make_unique<MorsePot>();
     } else if (n == "zbl") {
       pot = std::make_unique<ZBLPot>();
+    } else if (n == "gupta") {
+      pot = std::make_unique<GuptaPot>();
     } else if (n == "eckart") {
       pot = std::make_unique<EckartPot>();
     } else if (n == "muller_brown") {
