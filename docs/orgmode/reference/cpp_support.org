@@ -1304,3 +1304,139 @@ The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
 - Units :: eV/Angstrom^2 on Hessian entries.
 - Outputs :: one dense block in the pair Hessian assembly.
 - Errors :: none.
+
+** Projected Langevin dynamics
+
+=rgpot/MDSession/ProjectedLangevin.hpp= holds the BAOAB driver that every MD
+session engine shares, in the namespace =rgpot::md=.
+The driver knows no units: its arrays have one entry per coordinate, three per
+atom in atom-major order, =kT= is in mass times velocity squared of those
+arrays, the friction in inverse time and the time step in time.
+=rgpot::OpenMMSession= calls it in OpenMM native units.
+
+*** =rgpot::md::SplitMix64=
+
+- Inputs :: =SplitMix64(seed)= with a 64-bit seed.
+- Units :: none.
+- Outputs :: a generator whose stream is a pure function of the seed on every
+  platform.
+  =nextU64()= returns the next 64-bit word, =nextUniform()= a double in the open
+  interval (0, 1) from its top 53 bits, and =nextNormal()= a standard normal
+  from the Box-Muller pair, whose spare value is part of the state.
+- Errors :: none; every member is =noexcept=.
+
+*** =rgpot::md::SeededStream=
+
+- Inputs :: none to construct.
+  =forSeed(seed)= takes the seed of the stream wanted.
+- Units :: none.
+- Outputs :: =forSeed= returns the live =SplitMix64= when =seed= is the seed of
+  the previous call, with its state and spare as that call left them, and
+  otherwise starts the stream of =seed= from its beginning.
+  A run split in chunks with one seed therefore draws the same numbers as one
+  long run.
+  =reset()= ends the live stream, so the same seed after a new state replays the
+  same noise.
+- Errors :: none.
+
+*** =rgpot::md::WallMode=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Reflect= mirrors a drift that ends outside a wall back inside and
+  reflects the velocity in the mass-weighted metric, as often as needed;
+  =Reject= undoes the drift and reflects the velocity.
+  Both keep the velocity on the constraint manifold.
+- Errors :: none.
+
+*** =rgpot::md::WallSpec=
+
+- Inputs :: none; a struct of =point= and =normal=, one entry per coordinate
+  each.
+- Units :: the length unit of the positions for =point=; =normal= need not be
+  unit length.
+- Outputs :: one planar hard wall =normal . (x - point) <= 0= over all
+  coordinates.
+- Errors :: =ProjectedLangevin::run= throws =std::invalid_argument= when either
+  vector has the wrong length or a non-finite entry, or the normal is zero.
+
+*** =rgpot::md::PlaneSpec=
+
+- Inputs :: none; a struct of =point= and =normal=, one entry per coordinate
+  each.
+- Units :: the length unit of the positions for =point=; =normal= need not be
+  unit length.
+- Outputs :: the hyperplane =normal . (x - point) = 0= that the dynamics stays
+  on.
+  The driver normalises the normal and corrects positions with =x -= M^-1 n
+  sigma / (n M^-1 n)= and velocities with =v -= M^-1 n (n . v) / (n M^-1 n)=.
+- Errors :: =ProjectedLangevin::run= throws =std::invalid_argument= when either
+  vector has the wrong length or a non-finite entry, the normal is zero, or it
+  acts on no massive coordinate.
+
+*** =rgpot::md::DistanceConstraint=
+
+- Inputs :: none; a struct of the atom indices =first= and =second= and the
+  =length= between them.
+  Atom =a= owns the coordinates =3a=, =3a + 1= and =3a + 2=.
+- Units :: the length unit of the positions.
+- Outputs :: one fixed distance that holds in every step, through the SHAKE
+  iteration on the positions and a conjugate gradient projection of the
+  velocities on all constraint gradients.
+- Errors :: the =ProjectedLangevin= constructor throws =std::invalid_argument=
+  for an index past the last atom, two equal atoms or a length that is not
+  positive and finite.
+
+*** =rgpot::md::LangevinSettings=
+
+- Inputs :: none; a struct of =kT=, =friction=, =timeStep=, =steps=, =seed=,
+  =wallMode= (default =WallMode::Reflect=) and =recordConstraintForce= (default
+  false).
+- Units :: =kT= in mass times velocity squared of the arrays, =friction= in
+  inverse time and =timeStep= in time.
+- Outputs :: the controls of one =ProjectedLangevin::run=.
+  =seed= starts the stream of the overload of =run= that takes no generator, and
+  =recordConstraintForce= asks for one plane multiplier per step in
+  =LangevinResult=.
+- Errors :: =run= throws =std::invalid_argument= unless =kT= and =timeStep= are
+  positive and finite and =friction= is finite and not negative.
+
+*** =rgpot::md::LangevinResult=
+
+- Inputs :: none; a struct returned by =ProjectedLangevin::run=.
+- Units :: the force and energy units of the caller's force function.
+- Outputs :: =wallHits=, the wall reflections of the run; =constraintForce=, one
+  entry per step when recorded and a plane is set, the mean of the plane
+  multipliers =lambda = -(n . M^-1 F) / (n M^-1 n)= of the two force kicks of
+  the step; =forces=, the forces at the final positions, and =potential=, the
+  energy there.
+  A run of zero steps returns it empty.
+- Errors :: none.
+
+*** =rgpot::md::ProjectedLangevin=
+
+- Inputs :: =ProjectedLangevin(masses, distances = {})= with one mass per
+  coordinate, where zero marks a coordinate that does not move, and the
+  =DistanceConstraint= list that holds in every run.
+  =run(settings, plane, walls, x, v, forces, rng)= takes a =LangevinSettings=, a
+  =PlaneSpec= pointer that may be null, a vector of =WallSpec=, the positions
+  and velocities, updated in place, a =ForceFunction= that returns the energy
+  and writes the forces, and a =SplitMix64=; the overload without =rng= starts
+  one from =settings.seed=.
+- Units :: those of the caller's arrays; the driver converts none.
+- Outputs :: =run= first moves the state onto the constraints, evaluates the
+  force there and integrates =settings.steps= steps of
+  =B(dt/2) A(dt/2) O(dt) A(dt/2) B(dt/2)=, with the walls applied after each
+  half drift.
+  It returns a =LangevinResult=.
+  =dimension()= returns the coordinate count.
+  The object holds no state between runs, so the stream lives in the caller's
+  generator.
+- Errors :: the constructor throws =std::invalid_argument= for a negative or
+  non-finite mass, no massive coordinate, distance constraints on a coordinate
+  count that is not a multiple of three, or a malformed constraint.
+  =run= throws =std::invalid_argument= for bad settings, plane or walls.
+  It throws the same for positions that start outside a wall.
+  It throws =std::runtime_error= when the constraints are degenerate, the
+  constraint solve or the position iteration does not converge, or the walls
+  cannot return the state inside.
