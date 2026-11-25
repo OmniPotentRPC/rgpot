@@ -307,12 +307,19 @@ explicit MOPACPot(const Config &cfg);
   A force throws =std::runtime_error= when the engine is not loaded, =nAtoms= is
   zero, a buffer is null, or the engine reports failure.
 
-The library must export =mopacc_energy_gradient=.
-When it exports
-=mopacc_c_abi_version=, the version must equal =RGPOT_MOPACC_C_ABI_VERSION=, and when it exports =mopacc_available=,
-that must be nonzero.
-The constructor passes the params once through =mopacc_set_params= when present
-and ignores its status.
+The library must export =mopacc_energy_gradient=, =mopacc_c_abi_version=,
+=mopacc_abi_version=, =mopacc_result_size= and =mopacc_params_size=.
+Both versions must equal 2 (=RGPOT_MOPACC_C_ABI_VERSION= and
+=MOPACC_ABI_VERSION=), =mopacc_result_size= must equal =sizeof(MopacCResult)=,
+and =mopacc_params_size= must equal =sizeof(MopacCParams)=.
+A later ABI may change the layout without changing the sizes, so a library
+reporting version 3 is refused even when its sizes match.
+These checks run before any call that returns a =MopacCResult=; a library
+that fails one stays unloaded, and the load error names the missing symbol or
+the expected and found values.
+When the library exports =mopacc_available=, that must be nonzero.
+The constructor passes the params once through =mopacc_set_params= when
+present; a nonzero status leaves the engine unloaded.
 
 *** =rgpot::MOPACPot::available=
 
@@ -323,8 +330,8 @@ bool available() const;
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: true when =libmopacc= is loaded and exports
-  =mopacc_energy_gradient=.
+- Outputs :: true when =libmopacc= passed the load check above and
+  =mopacc_set_params=, when exported, returned 0.
 - Errors :: none.
 
 ** NWChem
@@ -2334,8 +2341,10 @@ static bool probeAvailable();
 - Inputs :: none.
 - Units :: none.
 - Outputs :: true when the environment and default-name search, without an
-  explicit path, finds a library that has =mopacc_energy_gradient=, the ABI
-  version and a nonzero =mopacc_available=, when exported.
+  explicit path, finds a library that passes the =MOPACPot= load check
+  (=mopacc_energy_gradient=, both ABI versions equal to 2, and
+  =mopacc_result_size= and =mopacc_params_size= equal to this build's struct
+  sizes) and has a nonzero =mopacc_available=, when exported.
   The first result is cached for the process.
 - Errors :: none; a load failure gives false.
 

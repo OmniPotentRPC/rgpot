@@ -312,8 +312,11 @@ PluginLifetimeTest | tests core | custom timeout=30 suite=plugin |
 # MOPAC frontend over a fake engine.
 MOPACPotTest | tests core | custom suite=mopac workdir=. |
 MOPACPotEmptyVariable | tests core | custom suite=mopac workdir=. |
+MOPACUpstreamAbiTest | tests core | custom suite=mopac workdir=. |
+MOPACAbiGateTest | tests core | custom suite=mopac workdir=. |
 test_mopac_abi | tests core | custom suite=mopac |
 MOPACDlopenContract | tests core | py CppCore/tests/test_mopac_dlopen_contract.py @root@ suite=mopac |
+MOPACHeaderSync | tests core python | py CppCore/tests/test_mopac_header_sync.py @root@ suite=mopac |
 
 # Schema contract. Registered with the RPC stack, with or without tests.
 schema-ordinal-ledger-vendored | rpc | py CppCore/rgpot/rpc/schema_ledger.py check --root @root@ suite=schema |

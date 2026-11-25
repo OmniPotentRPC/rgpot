@@ -684,6 +684,54 @@ rgpot_add_test(MOPACPotTest COMMAND mopac_pot_test
 rgpot_add_test(MOPACPotEmptyVariable COMMAND mopac_pot_test "[empty-variable]"
                ENVIRONMENT ${_rgpot_mopacc_env} "MOPACC_LIBRARY=")
 
+add_library(mopacc_upstream_stub SHARED CppCore/tests/mopacc_upstream_stub.c)
+rgpot_test_executable(mopac_upstream_abi_test
+                      CppCore/tests/MOPACUpstreamAbiTest.cc)
+set(_rgpot_mopacc_upstream_env
+    "RGPOT_MOPACC_ENGINE=$<TARGET_FILE:mopacc_upstream_stub>")
+rgpot_add_test(MOPACUpstreamAbiTest COMMAND mopac_upstream_abi_test
+               ENVIRONMENT ${_rgpot_mopacc_upstream_env})
+
+set(_rgpot_mopacc_gate_env)
+# name:c abi:lib abi:new layout:result size:params size:set_params status;
+# see CppCore/tests/mopacc_abi_gate_engine.c.
+foreach(_gate IN ITEMS
+        ABI1:1:1:0:0:0:0
+        NO_C_ABI:0:2:1:1:1:0
+        C_ABI1:1:2:1:1:1:0
+        ABI3:3:3:1:1:1:0
+        ABI2_NO_LIB_ABI:2:0:1:1:1:0
+        ABI2_LIB_ABI1:2:1:1:1:1:0
+        ABI2_LIB_ABI3:2:3:1:1:1:0
+        ABI2_OLD_LAYOUT:2:2:0:1:1:0
+        ABI2_NO_RESULT_SIZE:2:2:1:0:1:0
+        ABI2_BAD_RESULT_SIZE:2:2:1:2:1:0
+        ABI2_NO_PARAMS_SIZE:2:2:1:1:0:0
+        ABI2_BAD_PARAMS_SIZE:2:2:1:1:2:0
+        ABI2_SET_PARAMS_FAILS:2:2:1:1:1:7
+        ABI2_OK:2:2:1:1:1:0)
+  string(REPLACE ":" ";" _gate "${_gate}")
+  list(GET _gate 0 _gate_name)
+  list(GET _gate 1 _gate_abi)
+  list(GET _gate 2 _gate_lib_abi)
+  list(GET _gate 3 _gate_layout)
+  list(GET _gate 4 _gate_result_size)
+  list(GET _gate 5 _gate_params_size)
+  list(GET _gate 6 _gate_set_params)
+  string(TOLOWER "mopacc_gate_${_gate_name}" _gate_target)
+  add_library(${_gate_target} SHARED CppCore/tests/mopacc_abi_gate_engine.c)
+  target_compile_definitions(${_gate_target} PRIVATE
+    GATE_C_ABI=${_gate_abi} GATE_LIB_ABI=${_gate_lib_abi}
+    GATE_NEW_LAYOUT=${_gate_layout} GATE_RESULT_SIZE=${_gate_result_size}
+    GATE_PARAMS_SIZE=${_gate_params_size}
+    GATE_SET_PARAMS_STATUS=${_gate_set_params})
+  list(APPEND _rgpot_mopacc_gate_env
+       "RGPOT_MOPACC_GATE_${_gate_name}=$<TARGET_FILE:${_gate_target}>")
+endforeach()
+rgpot_test_executable(mopac_abi_gate_test CppCore/tests/MOPACAbiGateTest.cc)
+rgpot_add_test(MOPACAbiGateTest COMMAND mopac_abi_gate_test
+               ENVIRONMENT ${_rgpot_mopacc_gate_env})
+
 # Each frontend's C ABI against its no-op stub.
 set(_rgpot_abi_stubs mopac:MOPACPot)
 if(RGPOT_WITH_RPC)
