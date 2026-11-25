@@ -4,6 +4,7 @@ name = "rgpot"
 version = "3.7.0"
 # [[[end]]]
 directory = "docs/newsfragments"
+template = "ci/release-notes.md"
 filename = "CHANGELOG.md"
 start_string = "<!-- towncrier release notes start -->\n"
 underlines = ["", "", ""]

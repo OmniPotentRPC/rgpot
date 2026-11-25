@@ -55,6 +55,7 @@ running the tasks that call them.
 | =gen-gha= | =cigen= | Export the Nickel workflows (=release.yml=, =release-prepare.yml=, =ci_docs.yml=, =cosmo-potctl.yml=, =ci_doc_commenter.yml=); =ci-orchestrator.yml= is hand-maintained |
 | =gha-drift= | =cigen= | Fail when =.github/workflows= differs from a fresh =gen-gha= |
 | =towncrier-draft= | default | Preview release notes (dry run) |
+| =news-fragments-check= | default | Fail when a news fragment carries a copyright line, a comment block or a leading list marker (=--fix= rewrites) |
 | =towncrier-build= | default | Write release notes into =CHANGELOG.md= |
 | =release-potctl= | default | Project CLI (=cargo run -q -p potctl --=); for example =pixi r release-potctl -- release assert= |
 | =release-sync-versions= | default | Write the version in =Cargo.toml= (=potctl release sync=; =pixi r release-sync-versions -- 1.2.3=), then run =release-cog= |

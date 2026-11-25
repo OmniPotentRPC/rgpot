@@ -19,6 +19,20 @@ for Sphinx) and removes the fragment files.
   `docs` / `ci` / `chore` / `style` change also needs a fragment (`dev` type
   when it does not alter library/CLI/crate behaviour).
 
+## Fragment text
+
+A fragment holds only the text of the entry. The template
+`ci/release-notes.md` writes the bullet and the heading, so:
+
+- Do not start a fragment with `- ` or `* `. The entry would render as a
+  doubled bullet. Continuation lines need no indent.
+- Do not put a copyright or SPDX line, or a comment block (`<!-- ... -->`),
+  in a fragment. Neither belongs in the notes.
+
+The template drops both when it builds the notes, and
+`python scripts/check_news_fragments.py` (or `pixi r news-fragments-check`)
+fails on a fragment that carries either. Add `--fix` to rewrite the files.
+
 Preview: `uvx towncrier build --draft` or `pixi r towncrier-draft` if defined.
 
 ## Naming
