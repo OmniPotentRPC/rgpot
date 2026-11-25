@@ -522,11 +522,54 @@ int c_initialize(void *ctx, char *err, size_t err_len) {
 int c_run_langevin(void *ctx, const rgpot_md_langevin_request *request,
                    rgpot_md_langevin_result *result, char *err,
                    size_t err_len) {
+  if (err != nullptr && err_len > 0) {
+    err[0] = '\0';
+  }
   try {
+    if (ctx == nullptr || request == nullptr || result == nullptr) {
+      throw std::invalid_argument(
+          "MD Langevin ctx, request, or result pointer is null");
+    }
+    if (request->struct_size < sizeof(rgpot_md_langevin_request)) {
+      throw std::invalid_argument(
+          "MD Langevin request struct_size is too small");
+    }
+    if (result->struct_size < sizeof(rgpot_md_langevin_result)) {
+      throw std::invalid_argument(
+          "MD Langevin result struct_size is too small");
+    }
+    if (request->wall_mode != RGPOT_MD_WALL_REFLECT &&
+        request->wall_mode != RGPOT_MD_WALL_REJECT) {
+      throw std::invalid_argument("MD Langevin wall_mode is invalid");
+    }
+    if ((request->plane_point == nullptr) !=
+        (request->plane_normal == nullptr)) {
+      throw std::invalid_argument(
+          "MD Langevin plane point and normal must both be set or both null");
+    }
+    if (request->n_walls > 0 &&
+        (request->wall_points == nullptr || request->wall_normals == nullptr)) {
+      throw std::invalid_argument("MD Langevin wall buffer is null");
+    }
+    if (result->constraint_force == nullptr &&
+        result->constraint_force_len > 0) {
+      throw std::invalid_argument(
+          "MD Langevin constraint_force buffer is null");
+    }
     auto *session = static_cast<OpenMMSession *>(ctx);
     const size_t n3 = request->n3;
     if (n3 != 3 * session->numParticles()) {
       throw std::invalid_argument("MD Langevin vector length differs from 3*N");
+    }
+    if (request->n_walls > 0 &&
+        request->n_walls > std::numeric_limits<size_t>::max() / n3) {
+      throw std::invalid_argument("MD Langevin wall buffer size overflows");
+    }
+    if (request->plane_point != nullptr &&
+        result->constraint_force != nullptr &&
+        result->constraint_force_len < request->steps) {
+      throw std::invalid_argument(
+          "MD Langevin constraint_force buffer is shorter than steps");
     }
     std::vector<OpenMM::Vec3> p_point;
     std::vector<OpenMM::Vec3> p_normal;
