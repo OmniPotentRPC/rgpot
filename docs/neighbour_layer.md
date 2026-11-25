@@ -592,6 +592,7 @@ its old team. One thread now walks each pair of a stream once;
 [Before and after the thresholds](#before-and-after-the-thresholds)
 gives its times.
 
+(per-potential-thresholds)=
 ### Per-potential thresholds
 
 Each potential class keeps three atom counts as `kTeamFrom`: the atoms
@@ -763,6 +764,7 @@ of SW at 24 and 32, and of ZBL at 128 and 96. The LJ cluster crossed at
 was not timed there. All 280 team results had the bits of one thread
 with row sums.
 
+(before-and-after-the-thresholds)=
 ### Before and after the thresholds
 
 Against 424629e5, on the clusters, neighbour mode, build and cores of
