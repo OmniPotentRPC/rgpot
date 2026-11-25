@@ -4,6 +4,7 @@
 #include "rgpot/engine_c_abi.h"
 
 #include "rgpot/GradientJet.hpp"
+#include "rgpot/engine/EngineError.hpp"
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine/Sha256.hpp"
 
@@ -150,8 +151,9 @@ int rgpot_engine_available(void) { return 1; }
 const char *rgpot_engine_name(void) { return rgpot::engine::backend_name(); }
 
 const char *rgpot_engine_version(void) {
-  static const std::string version = std::string(rgpot::engine::backend_name()) +
-                                     "/" RGPOT_ENGINE_PROJECT_VERSION;
+  static const std::string version =
+      std::string(rgpot::engine::backend_name()) +
+      "/" RGPOT_ENGINE_PROJECT_VERSION;
   return version.c_str();
 }
 
@@ -243,8 +245,8 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
                        const double *box,
                        rgpot_engine_coord_transform transform,
                        void *transform_user) {
-  if (!pot || !pot->backend || !positions || !atomicNrs || !forces ||
-      !energy || !box || nAtoms <= 0) {
+  if (!pot || !pot->backend || !positions || !atomicNrs || !forces || !energy ||
+      !box || nAtoms <= 0) {
     return fail(pot, 1, "invalid argument");
   }
   try {
@@ -275,6 +277,8 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
     pot->last_atoms = nAtoms;
     pot->clear_error();
     return 0;
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {
@@ -282,10 +286,9 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
   }
 }
 
-int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
-                     const double *positions, const int *atomicNrs,
-                     const double *direction, double *hv_out,
-                     const double *box) {
+int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms, const double *positions,
+                     const int *atomicNrs, const double *direction,
+                     double *hv_out, const double *box) {
   if (!pot || !pot->backend) {
     return RGPOT_ENGINE_ERR_INVALID;
   }
@@ -299,7 +302,6 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
           std::numeric_limits<size_t>::max() / (3 * sizeof(double))) {
     return fail(pot, RGPOT_ENGINE_ERR_INVALID, "invalid HVP argument");
   }
-  const auto db = reinterpret_cast<std::uintptr_t>(direction);
   const auto hb = reinterpret_cast<std::uintptr_t>(hv_out);
   const std::uintptr_t bytes =
       static_cast<std::uintptr_t>(nAtoms) * 3 * sizeof(double);
@@ -317,11 +319,13 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
   try {
     RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
-    const rgpot::ForceInput in{static_cast<size_t>(nAtoms),
-                               positions, atomicNrs, box};
+    const rgpot::ForceInput in{static_cast<size_t>(nAtoms), positions,
+                               atomicNrs, box};
     pot->backend->pot->hessianVectorImpl(in, direction, hv_out);
     pot->clear_error();
     return RGPOT_ENGINE_OK;
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, RGPOT_ENGINE_ERR_EVAL, e.what());
   } catch (...) {
@@ -449,6 +453,8 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
     pot->last_atoms = nAtoms;
     pot->clear_error();
     return 0;
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {
@@ -537,6 +543,8 @@ int rgpot_engine_set_num_threads(RgpotEnginePot *pot, int intra_op,
     pot->backend->set_num_threads(intra_op, inter_op);
     pot->clear_error();
     return 0;
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {
@@ -557,6 +565,8 @@ int rgpot_engine_set_charge_spin(RgpotEnginePot *pot, int charge, int spin) {
     return 0;
   } catch (const rgpot::engine::Unsupported &e) {
     return fail(pot, 3, e.what());
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {

@@ -47,6 +47,7 @@ potential from the params message) and =rgpot::engine::backend_name=.
 | =libuma_engine= | =UmaParams= | =uma= | the UMA package at =modelPath= |
 | =libmetatomic_engine= | =MetatomicParams= | =metatomic= | the metatomic model at =modelPath= |
 | =libxtb_engine= | =BuiltinParams= | =xtb= | GFN2-xTB with the =XTBConfig= defaults; =name= is empty or =xtb= |
+| =libdxtb_engine= | =BuiltinParams= | =dxtb= | dxtb 0.4.0 GFN1/GFN2-xTB; =config.xtb= supplies method, charge, unpaired electrons, SCF iterations, accuracy and electronic temperature |
 | =libclassical_engine= | =BuiltinParams= | =classical= | =name= =lj=, =ljcluster=, =morse=, =zbl=, =eckart=, =muller_brown=, =modified_muller_brown=, =leps_hh2=, =leps_hcl2=, =leps_fh2=, =double_well=, =coupled_proton_well= and (when built with CBE) =cbe=; with the water kernels =tip4p=, =spce=, =tip4p_pt=; with the Fortran kernels =sw=, =edip=, =lenosky=, =tersoff=, =eamal=, =fehe=, =cuh2=, =waterh=; defaults except that =muller_brown= reads =BuiltinParams.config.mullerBrown=, where an empty list keeps that parameter's default |
 | =libcomposite_engine= | =CompositeParams= | =composite= | a weighted sum: each =CompositeTerm= names its child with a =PotentialSpec=, the =builtin= arm for =lj=, =morse=, =zbl=, =d2=, =d2cpmd=, =d4= (on a build with dftd4) and a nested =composite= (with their config arms) or the =cpmd= arm; a disabled term is not built |
 | =libmopac_engine= | =BuiltinParams= | =mopac= | MOPAC; =name= is empty or =mopac=, =library= is the path of =libmopacc= |
@@ -57,6 +58,13 @@ potential from the params message) and =rgpot::engine::backend_name=.
 | =libcoupled_well_engine= | =RgpotCoupledWellConfigV1= or =RgpotCoupledWellConfigV2= | =coupled-well= | one atom on the analytic two-coordinate coupled well; the message carries the atomic number and the four parameters |
 
 =BuiltinParams.name= is compared in lower case.
+For dxtb, =BuiltinParams.library= may name the Python executable; otherwise
+=RGPOT_DXTB_PYTHON= and then =python3= select it.
+Creation starts one worker process and imports Python, Torch and dxtb once.
+Force and HVP calls use a typed binary stream to that same process, so each call
+pays pipe serialization and two process crossings but no Python startup.
+The worker rebuilds its calculator only when the element sequence or
+configuration changes.
 The Metatomic and XTB libraries also export their own tables
 (=rgpot_mta_*=, =rgpot_xtb_*=).
 NWChem and CPMD keep the prefix-parameterized profile ABI that =NWChemPot= and
@@ -233,6 +241,8 @@ field.
 Minor 5 added =RgpotEngineComponent=,
 =rgpot_engine_last_components= and =rgpot_engine_component_name=.
 Minor 6 adds =rgpot_engine_set_cache= and =rgpot_engine_cache_counts=.
+The persistent dxtb engine uses minor 5 and adds no field to
+=RgpotEngineCaps=.
 Minor 7 adds =rgpot_engine_unload_policy=, =RGPOT_ENGINE_UNLOAD_RESIDENT= and
 =RGPOT_ENGINE_UNLOAD_SAFE=.
 Minor 11 adds
@@ -877,6 +887,9 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
 - Inputs :: the potential and geometry as for =rgpot_engine_force=, plus
   =direction= with =3 * nAtoms= Cartesian entries; =direction= and =hv_out= must
   not overlap.
+  The coordinate order is atom-major =(x0,y0,z0,x1,y1,z1,...)=. This is the
+  Saddle-coordinate order used by the rgsaddle/rgpot ABI; no component or
+  mass-weighting permutation is applied.
 - Units :: positions, box and direction in Angstrom; =hv_out= is the energy
   Hessian (eV/Angstrom squared) times that direction, hence eV/Angstrom.
 - Outputs :: =RGPOT_ENGINE_OK= and the exact energy-Hessian product in =hv_out=.

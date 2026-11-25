@@ -53,6 +53,18 @@ option(
 )
 option('with_xtb', type: 'boolean', value: false)
 option(
+    'with_dxtb',
+    type: 'boolean',
+    value: false,
+    description: 'Persistent dxtb Python worker engine with analytic HVP support (requires with_rpc)',
+)
+option(
+    'dxtb_python',
+    type: 'string',
+    value: 'python3',
+    description: 'Python executable containing dxtb 0.4.0, Torch and tad-libcint',
+)
+option(
     'with_xckernel',
     type: 'boolean',
     value: false,

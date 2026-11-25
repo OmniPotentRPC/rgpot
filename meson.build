@@ -573,6 +573,29 @@ if get_option('with_xtb')
     has_xtb = true
 endif
 
+has_dxtb = get_option('with_dxtb')
+if has_dxtb
+    if host_system == 'windows'
+        error('with_dxtb=true requires POSIX process and socket APIs')
+    endif
+    if not rpc_enabled
+        error('with_dxtb=true needs with_rpc=true (BuiltinParams / Cap\'n Proto)')
+    endif
+    dxtb_python = find_program(get_option('dxtb_python'), required: true)
+    _dxtb_probe = run_command(
+        dxtb_python,
+        '-c',
+        'import dxtb, tad_libcint, torch; assert dxtb.__version__ == "0.4.0"; assert torch.float64 is not None',
+        check: false,
+    )
+    if _dxtb_probe.returncode() != 0
+        error(
+            'with_dxtb=true requires dxtb 0.4.0 and PyTorch in the selected python3',
+        )
+    endif
+    _args += ['-DRGPOT_HAS_DXTB=TRUE']
+endif
+
 has_xckernel = false
 if get_option('with_xckernel')
     _args += ['-DRGPOT_HAS_XCKERNEL=TRUE']

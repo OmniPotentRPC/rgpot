@@ -93,6 +93,7 @@ setup = [
   "-Dwith_eam_table=true",
   "-Dwith_metatomic=true",
   "-Dwith_xtb=false",
+  "-Dwith_dxtb=false",
   "-Dwith_xckernel=true",
   "-Dwith_dftd3=true",
   "-Dwith_dftd4=true",
