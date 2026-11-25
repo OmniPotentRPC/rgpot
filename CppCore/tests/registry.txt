@@ -210,6 +210,7 @@ CalculatorGroupTest | tests core | unit calculator_group_test CalculatorGroupTes
 CalculatorAbortFlagTest | tests core | unit calculator_abort_flag_test CalculatorAbortFlagTest.cc |
 LJClusterPotTest | tests core | unit ljcluster_pot_test LJClusterPotTest.cc |
 LJPotThreadsTest | tests core | unit lj_pot_threads_test LJPotThreadsTest.cc timeout=120 |
+LJTailTest | tests core | unit lj_tail_test LJTailTest.cc |
 ZBLPotTest | tests core | unit zbl_pot_test ZBLPotTest.cc |
 SumPotTest | tests core | unit sum_pot_test SumPotTest.cc |
 D2PotTest | tests core | unit d2_pot_test D2PotTest.cc timeout=600 |

@@ -130,6 +130,34 @@ TEST_CASE("composite terms nest and take the other builtins", "[composite][rpc]"
   REQUIRE(e == Catch::Approx(expected).margin(1e-12 * std::abs(expected)));
 }
 
+TEST_CASE("composite LJ terms forward tailCorrection", "[composite][rpc]") {
+  capnp::MallocMessageBuilder builder;
+  auto cfg = builder.initRoot<::PotentialConfig>();
+  auto term = cfg.initComposite().initTerms(1)[0];
+  term.setName("lj_tail");
+  auto b = term.initPot().initBuiltin();
+  b.setName("lj");
+  auto lj = b.initConfig().initLj();
+  lj.setU0(1.0);
+  lj.setPsi(1.0);
+  lj.setCutoff(4.0);
+  lj.setTailCorrection(true);
+
+  auto result = rgpot::rpc::configureComposite(cfg.asReader());
+  INFO(result.message);
+  REQUIRE(result.ok);
+  auto [e, f, v] = (*result.replacement)(kPositions, kZ, kBox);
+  (void)f;
+  (void)v;
+  rgpot::LJPot direct(
+      rgpot::LJConfig{.u0 = 1.0, .cutoff = 4.0, .psi = 1.0, .tail_correction = true});
+  rgpot::LJPot notail(rgpot::LJConfig{.u0 = 1.0, .cutoff = 4.0, .psi = 1.0});
+  const double want = std::get<0>(direct(kPositions, kZ, kBox));
+  const double bare = std::get<0>(notail(kPositions, kZ, kBox));
+  REQUIRE(want != Catch::Approx(bare));
+  REQUIRE(e == Catch::Approx(want).margin(1e-14));
+}
+
 TEST_CASE("the composite backend refuses what it cannot build", "[composite][rpc]") {
   {
     capnp::MallocMessageBuilder builder;

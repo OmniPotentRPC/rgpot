@@ -41,6 +41,21 @@ struct LJConfig {
   /// takes each pair term to zero over [cutoff - switch_width, cutoff].
   /// 0 keeps the shifted truncation, whose force jumps at the cutoff.
   double switch_width = 0.0;
+  /// Add the analytic continuum long-range tail correction to the energy,
+  /// the Cauchy stress and the per-atom outputs of @c forceImpl and
+  /// @c forcePerAtom on a fully periodic cell. It assumes a uniform fluid
+  /// (g(r) = 1) from @c cutoff - @c switch_width outward, and turns the
+  /// shift off (Allen and Tildesley; LAMMPS `pair_modify tail yes`; OpenMM
+  /// `setUseDispersionCorrection`). With a switch, the correction also adds
+  /// back the part of the bare 12-6 term that the switch removes inside
+  /// [cutoff - switch_width, cutoff], so the corrected result approximates
+  /// the untruncated, unswitched fluid. The constructor then throws
+  /// @c std::invalid_argument unless @c switch_width < @c cutoff. Because
+  /// the tail correction depends on the global cell volume and total atom
+  /// count, @c locality() reports no finite range and @c densityStage /
+  /// @c forceStage throw @c std::invalid_argument when @c tail_correction
+  /// is enabled.
+  bool tail_correction = false;
 };
 
 /**
@@ -52,26 +67,7 @@ class LJPot : public Potential<LJPot> {
 public:
   LJPot() : LJPot(LJConfig{}) {}
 
-  explicit LJPot(const LJConfig &c)
-      : Potential(PotType::LJ), u0{c.u0}, cuttOffR{c.cutoff}, psi{c.psi},
-        m_config{c} {
-    // Shift so U(cuttOffR) = 0 (standard shifted 12-6 LJ).
-    const double a = std::pow(psi / cuttOffR, 6.0);
-    cuttOffU = 4.0 * u0 * a * (a - 1.0);
-    if (c.switch_width != 0.0) {
-      m_switch = QuinticSwitch::endingAt(c.cutoff, c.switch_width);
-    }
-    Fnv1a fp;
-    fp.u64(kKernelVersion);
-    fp.f64(c.u0);
-    fp.f64(c.cutoff);
-    fp.f64(c.psi);
-    // Hashed only when set, so unswitched configs keep their cache keys.
-    if (c.switch_width != 0.0) {
-      fp.f64(c.switch_width);
-    }
-    m_paramsKey = fp.h;
-  }
+  explicit LJPot(const LJConfig &c);
 
   ~LJPot() override;
   LJPot(const LJPot &) = default;
@@ -94,9 +90,13 @@ public:
     return m_paramsKey;
   }
 
-  /// Pairs count out to the cutoff; a cutoff <= 0 has no pairs.
+  /// Pairs count out to the cutoff unless tail_correction adds a whole-cell
+  /// continuum term; a cutoff <= 0 has no pairs.
   [[nodiscard]] Locality locality() const noexcept {
-    return {.cutoff = cuttOffR > 0.0 ? cuttOffR : 0.0, .pairwise = true};
+    if (m_config.tail_correction || !(cuttOffR > 0.0)) {
+      return {};
+    }
+    return {.cutoff = cuttOffR, .pairwise = true};
   }
 
   /**
@@ -147,12 +147,15 @@ public:
                            double *hv) const override;
 
   /// forceImpl plus each pair energy and virial split half to each atom.
-  void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const;
+  void forcePerAtom(const ForceInput &in, ForceOut *out,
+                    const PerAtomOut &atoms) const;
 
-  /// Staged.hpp: a pair potential has no densities.
-  void densityStage(const HalfList &, double *) const {}
+  /// Staged.hpp: a pair potential has no densities. Throws
+  /// std::invalid_argument when tail_correction is enabled.
+  void densityStage(const HalfList &list, double *densities) const;
 
-  /// Staged.hpp: the pair terms of forceImpl on a host's list.
+  /// Staged.hpp: the pair terms of forceImpl on a host's list. Throws
+  /// std::invalid_argument when tail_correction is enabled.
   void forceStage(const HalfList &list, const double *densities, double *forces,
                   StageTally *tally) const;
 
@@ -180,7 +183,8 @@ private:
   /// Bump when the kernel numerics change, so stale cache entries die.
   static constexpr uint64_t kKernelVersion = 2;
 
-  void compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms) const;
+  void compute(const ForceInput &in, ForceOut *out,
+               const PerAtomOut *atoms) const;
 
   double u0;       //!< Well depth parameter.
   double cuttOffR; //!< Distance beyond which potential is truncated.

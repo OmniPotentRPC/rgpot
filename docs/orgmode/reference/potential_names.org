@@ -15,7 +15,7 @@ Options come as =key value= pairs separated by spaces.
 
 | Name         | Options                                                                  | Stress |
 |--------------+--------------------------------------------------------------------------+--------|
-| =LJ=         | =u0=, =psi=, =cutoff=, =switch_width=                                    | yes    |
+| =LJ=         | =u0=, =psi=, =cutoff=, =switch_width=, =tail_correction=                 | yes    |
 | =Morse=      | =de=, =a=, =re=, =cutoff=, =switch_width=                                | yes    |
 | =ZBL=        | =cut_inner=, =cut_global=                                                | yes    |
 | =SuttonChen= | =preset= (=platinum= or =gold=), =epsilon=, =c=, =a=, =n=, =m=, =cutoff= | yes    |

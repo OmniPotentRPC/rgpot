@@ -8,6 +8,7 @@
 #include "rgpot/engine_c_abi.h"
 #include "rgpot/plugin/DynLib.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -23,10 +24,10 @@ void fail(char *err, size_t err_len, const char *sentence) {
 
 } // namespace
 
-int rgpot_lj_eval(const double *xyz, const int *atomic_numbers, size_t n,
-                  const double *box9, double u0, double cutoff, double psi,
-                  double *forces, double *energy, int *has_stress,
-                  double stress[9]) {
+int rgpot_lj_eval_ext(const double *xyz, const int *atomic_numbers, size_t n,
+                      const double *box9, double u0, double cutoff, double psi,
+                      double switch_width, int tail_correction, double *forces,
+                      double *energy, int *has_stress, double stress[9]) {
   if (energy == nullptr || has_stress == nullptr || stress == nullptr) {
     return 1;
   }
@@ -34,13 +35,20 @@ int rgpot_lj_eval(const double *xyz, const int *atomic_numbers, size_t n,
                 forces == nullptr)) {
     return 1;
   }
-  if (!(cutoff > 0.0) || !(psi > 0.0)) {
+  if (!(cutoff > 0.0) || !(psi > 0.0) || !std::isfinite(u0) ||
+      !std::isfinite(cutoff) || !std::isfinite(psi) ||
+      !std::isfinite(switch_width) || switch_width < 0.0) {
     return 1;
   }
+  const bool tail = tail_correction != 0;
   // The pair list carries over to the next call with the same parameters,
   // atom count and atomic numbers.
   rgpot::KeptKey key;
-  key.f64(u0).f64(cutoff).f64(psi).atoms(n, n > 0 ? atomic_numbers : nullptr);
+  key.f64(u0).f64(cutoff).f64(psi);
+  if (switch_width != 0.0 || tail) {
+    key.f64(switch_width).i64(tail ? 1 : 0);
+  }
+  key.atoms(n, n > 0 ? atomic_numbers : nullptr);
   try {
     rgpot::Kept<rgpot::LJPot>::with(
         key,
@@ -49,6 +57,8 @@ int rgpot_lj_eval(const double *xyz, const int *atomic_numbers, size_t n,
           config.u0 = u0;
           config.cutoff = cutoff;
           config.psi = psi;
+          config.switch_width = switch_width;
+          config.tail_correction = tail;
           return std::make_unique<rgpot::LJPot>(config);
         },
         [&](const rgpot::LJPot &pot) {
@@ -63,6 +73,14 @@ int rgpot_lj_eval(const double *xyz, const int *atomic_numbers, size_t n,
     return 1;
   }
   return 0;
+}
+
+int rgpot_lj_eval(const double *xyz, const int *atomic_numbers, size_t n,
+                  const double *box9, double u0, double cutoff, double psi,
+                  double *forces, double *energy, int *has_stress,
+                  double stress[9]) {
+  return rgpot_lj_eval_ext(xyz, atomic_numbers, n, box9, u0, cutoff, psi, 0.0,
+                           0, forces, energy, has_stress, stress);
 }
 
 namespace {

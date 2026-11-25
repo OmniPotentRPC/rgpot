@@ -4,12 +4,14 @@
 // In-process engine plugin. Metatomic and UMA export the same
 // rgpot_engine_* names from their own libraries. A null config is the
 // default shifted Lennard-Jones potential (u0 = 1 eV, cutoff = 15 A,
-// psi = 1 A). A 24-byte config is three little-endian float64 values:
-// u0, cutoff, psi.
+// psi = 1 A). A 24-, 32- or 40-byte config is three, four or five
+// little-endian float64 values: u0, cutoff, psi[, switch_width[,
+// tail_correction]].
 
 #include "rgpot/engine_c_abi.h"
 #include "lj_eval.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <new>
@@ -22,6 +24,8 @@ struct LjEngine {
   double u0 = 1.0;
   double cutoff = 15.0;
   double psi = 1.0;
+  double switch_width = 0.0;
+  int tail_correction = 0;
   std::string last_error;
 };
 
@@ -50,16 +54,36 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
   if (config == nullptr || config_len == 0) {
     return reinterpret_cast<RgpotEnginePot *>(pot);
   }
-  if (config_len != 3 * sizeof(double)) {
+  if (config_len != 3 * sizeof(double) && config_len != 4 * sizeof(double) &&
+      config_len != 5 * sizeof(double)) {
     delete pot;
-    set_error(errbuf, errlen, "LJ engine config is three float64 values");
+    set_error(errbuf, errlen, "LJ engine config is 3, 4 or 5 float64 values");
     return nullptr;
   }
-  std::memcpy(&pot->u0, config, sizeof(double));
-  std::memcpy(&pot->cutoff, static_cast<const char *>(config) + sizeof(double),
-              sizeof(double));
-  std::memcpy(&pot->psi, static_cast<const char *>(config) + 2 * sizeof(double),
-              sizeof(double));
+  const auto *bytes = static_cast<const char *>(config);
+  std::memcpy(&pot->u0, bytes, sizeof(double));
+  std::memcpy(&pot->cutoff, bytes + sizeof(double), sizeof(double));
+  std::memcpy(&pot->psi, bytes + 2 * sizeof(double), sizeof(double));
+  if (config_len >= 4 * sizeof(double)) {
+    std::memcpy(&pot->switch_width, bytes + 3 * sizeof(double), sizeof(double));
+  }
+  double tail_raw = 0.0;
+  if (config_len == 5 * sizeof(double)) {
+    std::memcpy(&tail_raw, bytes + 4 * sizeof(double), sizeof(double));
+  }
+  if (tail_raw != 0.0 && tail_raw != 1.0) {
+    delete pot;
+    set_error(errbuf, errlen, "LJ engine tail_correction must be 0 or 1");
+    return nullptr;
+  }
+  pot->tail_correction = tail_raw != 0.0 ? 1 : 0;
+  if (pot->tail_correction && pot->switch_width > 0.0 &&
+      !(pot->switch_width < pot->cutoff)) {
+    delete pot;
+    set_error(errbuf, errlen,
+              "LJ engine tail_correction requires switch_width < cutoff");
+    return nullptr;
+  }
   return reinterpret_cast<RgpotEnginePot *>(pot);
 }
 
@@ -93,8 +117,10 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms, const double *positions
   }
   int has_stress = 0;
   double stress[9];
-  const int code = rgpot_lj_eval(pos, atomicNrs, static_cast<size_t>(nAtoms), cell, lj->u0,
-                                 lj->cutoff, lj->psi, forces, energy, &has_stress, stress);
+  const int code = rgpot_lj_eval_ext(
+      pos, atomicNrs, static_cast<size_t>(nAtoms), cell, lj->u0, lj->cutoff,
+      lj->psi, lj->switch_width, lj->tail_correction, forces, energy,
+      &has_stress, stress);
   if (variance != nullptr) {
     *variance = 0.0;
   }

@@ -21,6 +21,14 @@ int rgpot_lj_eval(const double *xyz, const int *atomic_numbers, size_t n,
                   double *forces, double *energy, int *has_stress,
                   double stress[9]);
 
+/* Like rgpot_lj_eval, with switch_width (Angstrom, 0 for no switch) and
+ * tail_correction (nonzero to add the continuum long-range tail
+ * correction on a periodic cell and leave the pair term unshifted). */
+int rgpot_lj_eval_ext(const double *xyz, const int *atomic_numbers, size_t n,
+                      const double *box9, double u0, double cutoff, double psi,
+                      double switch_width, int tail_correction, double *forces,
+                      double *energy, int *has_stress, double stress[9]);
+
 /* Load an rgpot_engine_* plugin and evaluate one frame. config may be
  * null. The library is kept open for the process. Returns 0, or 1 and
  * writes a sentence into err (err_len bytes, including the NUL). */

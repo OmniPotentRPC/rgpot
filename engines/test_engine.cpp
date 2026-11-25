@@ -137,6 +137,59 @@ int main(int argc, char **argv) {
   if (check_last_error(argv[1]) != 0) {
     return 1;
   }
+  // 5-double config (u0, cutoff, psi, switch_width, tail_correction) threads
+  // switch_width and tail_correction through the C engine ABI and rejects
+  // invalid combinations.
+  void *lib = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
+  if (lib == nullptr) {
+    return 1;
+  }
+  auto create = reinterpret_cast<CreateFn>(dlsym(lib, "rgpot_engine_create"));
+  auto force = reinterpret_cast<ForceFn>(dlsym(lib, "rgpot_engine_force"));
+  auto destroy = reinterpret_cast<DestroyFn>(dlsym(lib, "rgpot_engine_destroy"));
+  const double ext_config[5] = {1.0, 8.0, 1.0, 1.5, 1.0};
+  double ext_direct_f[6] = {};
+  double ext_direct_e = 0.0;
+  int ext_hs = 0;
+  double ext_stress[9] = {};
+  if (rgpot_lj_eval_ext(xyz, z, 2, box, 1.0, 8.0, 1.0, 1.5, 1, ext_direct_f,
+                        &ext_direct_e, &ext_hs, ext_stress) != 0) {
+    dlclose(lib);
+    return 1;
+  }
+  double ext_plugin_f[6] = {};
+  double ext_plugin_e = 0.0;
+  double ext_var = 0.0;
+  RgpotEnginePot *ext_pot = create(ext_config, sizeof(ext_config), err, sizeof(err));
+  if (ext_pot == nullptr) {
+    std::fprintf(stderr, "create ext: %s\n", err);
+    dlclose(lib);
+    return 1;
+  }
+  if (force(ext_pot, 2, xyz, z, ext_plugin_f, &ext_plugin_e, &ext_var, box,
+            nullptr, nullptr) != RGPOT_ENGINE_OK) {
+    destroy(ext_pot);
+    dlclose(lib);
+    return 1;
+  }
+  destroy(ext_pot);
+  if (ext_plugin_e != ext_direct_e ||
+      std::memcmp(ext_plugin_f, ext_direct_f, sizeof(ext_direct_f)) != 0) {
+    std::fprintf(stderr, "ext engine %g direct %g\n", ext_plugin_e, ext_direct_e);
+    dlclose(lib);
+    return 1;
+  }
+  const double bad_tail_config[5] = {1.0, 8.0, 1.0, 8.0, 1.0};
+  RgpotEnginePot *bad_pot =
+      create(bad_tail_config, sizeof(bad_tail_config), err, sizeof(err));
+  if (bad_pot != nullptr) {
+    destroy(bad_pot);
+    dlclose(lib);
+    std::fprintf(stderr,
+                 "lj_engine accepted switch_width == cutoff with tail_correction\n");
+    return 1;
+  }
+  dlclose(lib);
   std::printf("engine energy %.10f\n", plugin_e);
   return 0;
 }

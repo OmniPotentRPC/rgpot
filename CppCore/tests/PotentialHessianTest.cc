@@ -165,6 +165,25 @@ TEST_CASE("from_impl registers every derivative callback LJPot advertises",
   CHECK(pot.hvp_counts().force_calls == 0);
 }
 
+TEST_CASE("LJPot tail-corrected Hessians match coordinate differences",
+          "[hessian][LJPot][tail]") {
+  auto s = ljCluster();
+  LJPot lj(rgpot::LJConfig{.u0 = 0.0104,
+                           .cutoff = 12.0,
+                           .psi = 3.4,
+                           .switch_width = 1.5,
+                           .tail_correction = true});
+  auto pot = PotentialHandle::from_impl(lj);
+  auto input = s.input();
+
+  const auto central = pot.hessian(input, RGPOT_HESSIAN_CENTRAL, 1e-4);
+  const auto analytic = pot.hessian(input, RGPOT_HESSIAN_ANALYTIC);
+  const auto ad = pot.hessian(input, RGPOT_HESSIAN_AD);
+  const double scale = largest(central);
+  CHECK(largestDifference(analytic, central) <= 1e-6 * scale);
+  CHECK(largestDifference(ad, central) <= 1e-6 * scale);
+}
+
 TEST_CASE("Exact takes the dual-number callbacks when the analytic ones are "
           "cleared",
           "[hessian][handle]") {

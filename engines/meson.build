@@ -269,7 +269,7 @@ test(
     executable(
         'test_lj_eval',
         files('test_lj_eval.cpp'),
-        dependencies: [lj_dep, engines_rgpot_cxx],
+        dependencies: [lj_dep, pot_spec_dep, engines_rgpot_cxx],
         cpp_args: rgpot_consumer_args,
     ),
     timeout: 60,

@@ -900,6 +900,18 @@ def test_mode_on_one_rank(tmp_path):
     refused = mode_log(tmp_path, fcc(3.61, False) + with_mode(emt_pair, "domain") + ["run 0"])
     assert ("pair_style rgpot mode domain: the rgpot potential EMT declares no finite range"
             in refused)
+    lj_tail_pair = [
+        f"plugin load {PLUGIN}",
+        f"pair_style rgpot {CUT}",
+        f"pair_coeff * * LJ u0 {U0} psi {PSI} cutoff {CUT} tail_correction true Ar Ar",
+    ]
+    refused_tail = mode_log(
+        tmp_path, fcc(A_LJ, False) + with_mode(lj_tail_pair, "domain") + ["run 0"]
+    )
+    assert (
+        "pair_style rgpot mode domain: the rgpot potential LJ declares no finite range"
+        in refused_tail
+    )
 
 
 @pytest.mark.skipif(not LJ_ENGINE, reason="needs RGPOT_LJ_ENGINE")
