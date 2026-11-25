@@ -24,6 +24,7 @@
 #                 client-only build)
 #   ipi           the i-PI server and driver client
 #   eam_table     tabulated EAM / Finnis-Sinclair
+#   orca          the ORCA frontend (ORCAPot)
 #   xtensor       the xtensor faces
 #   cp2k          the CP2K frontend and shim
 #   mpi           librgpot_mpi, built against an MPI found at configure
@@ -224,6 +225,7 @@ IPIPotTest | tests core ipi | unit ipi_pot_test IPIPotTest.cc |
 IPIDriverTest | tests core ipi | unit ipi_driver_test IPIDriverTest.cc |
 EAMTablePotTest | tests core eam_table | unit eam_table_pot_test EAMTablePotTest.cc |
 MEAMPotTest | tests core | unit meam_pot_test MEAMPotTest.cc |
+ORCAPotTest | tests core orca | unit orca_pot_test ORCAPotTest.cc |
 EAMMultiImageTest | tests core eam_table | unit eam_multi_image_test EAMMultiImageTest.cc |
 CuH2 Utils Test | tests core xtensor | unit cuh2_util_test cuh2UtilsTest.cc |
 TestTempDirTest | tests core | unit test_temp_dir_test TestTempDirTest.cc |
