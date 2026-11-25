@@ -28,11 +28,13 @@
 #include <vector>
 
 #include "rgpot/ExternalPot/ExternalPot.hpp"
+#include "rgpot/ExternalPot/detail/LoadedIdentity.hpp"
 #include "rgpot/abi/DynLib.hpp"
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/rpc/Potentials.capnp.h"
 
 using Catch::Matchers::ContainsSubstring;
+using Catch::Matchers::StartsWith;
 using Catch::Matchers::WithinAbs;
 
 namespace {
@@ -501,6 +503,30 @@ private:
 };
 
 } // namespace
+
+TEST_CASE("Loaded-module identity errors prefix only a requested path",
+          "[external][lammpc]") {
+  // A stack address lies in no loaded module, so the loader cannot name one.
+  const int unmapped = 0;
+  const auto identify_error = [&](const std::string &path) {
+    try {
+      (void)rgpot::detail::loaded_canonical(&unmapped, path);
+    } catch (const std::runtime_error &ex) {
+      return std::string(ex.what());
+    }
+    FAIL("an address outside every module was identified");
+    return std::string{};
+  };
+
+  const std::string unnamed = identify_error("");
+  REQUIRE_FALSE(unnamed.empty());
+  REQUIRE_THAT(unnamed, !StartsWith(":"));
+  REQUIRE_THAT(unnamed, !StartsWith(" "));
+
+  const std::string named = identify_error(kMissing);
+  REQUIRE_THAT(named, StartsWith(std::string(kMissing) + ": "));
+  REQUIRE(named.substr(std::string(kMissing).size() + 2) == unnamed);
+}
 
 TEST_CASE("LammpsPot lammpc keys follow the engine the environment selects",
           "[external][lammpc][cache]") {

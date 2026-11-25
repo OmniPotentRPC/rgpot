@@ -861,6 +861,7 @@ if(RGPOT_IS_TOP_LEVEL)
       DIRECTORY CppCore/rgpot
       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
       FILES_MATCHING
+      PATTERN "ExternalPot/detail" EXCLUDE
       PATTERN "Morse/detail" EXCLUDE
       PATTERN "SuttonChen/detail" EXCLUDE
       PATTERN "*.hpp"

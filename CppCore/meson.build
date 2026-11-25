@@ -3462,6 +3462,7 @@ if not meson.is_subproject()
         exclude_directories: [
             '__pycache__',
             'rpc/local',
+            'ExternalPot/detail',
             'Morse/detail',
             'SuttonChen/detail',
         ],

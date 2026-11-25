@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/ExternalPot/ExternalPot.hpp"
+#include "rgpot/ExternalPot/detail/LoadedIdentity.hpp"
 
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/abi/ProfileLoader.hpp"
@@ -299,14 +300,16 @@ std::string win_error(DWORD code) {
 #endif
 
 FileIdentity identify_loaded(const void *anchor, const std::string &path) {
+  const std::string path_prefix =
+      path.empty() ? std::string{} : path + ": ";
 #if defined(_WIN32)
   HMODULE module = nullptr;
   if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                          reinterpret_cast<LPCWSTR>(anchor), &module) == 0 ||
       module == nullptr) {
-    throw std::runtime_error(path +
-                             ": the loader did not report the module it "
+    throw std::runtime_error(path_prefix +
+                             "the loader did not report the module it "
                              "loaded, so the engine cannot be identified: " +
                              win_error(GetLastError()));
   }
@@ -315,8 +318,8 @@ FileIdentity identify_loaded(const void *anchor, const std::string &path) {
     const DWORD n = GetModuleFileNameW(module, loaded.data(),
                                        static_cast<DWORD>(loaded.size()));
     if (n == 0) {
-      throw std::runtime_error(path +
-                               ": the loader did not report the file it "
+      throw std::runtime_error(path_prefix +
+                               "the loader did not report the file it "
                                "loaded, so the engine cannot be identified: " +
                                win_error(GetLastError()));
     }
@@ -332,7 +335,7 @@ FileIdentity identify_loaded(const void *anchor, const std::string &path) {
       loaded.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
       nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
   if (file == INVALID_HANDLE_VALUE) {
-    throw std::runtime_error(path + ": cannot identify the loaded file " +
+    throw std::runtime_error(path_prefix + "cannot identify the loaded file " +
                              narrow_path(loaded) + ": " +
                              win_error(GetLastError()));
   }
@@ -350,15 +353,15 @@ FileIdentity identify_loaded(const void *anchor, const std::string &path) {
   const DWORD failure = n == 0 ? GetLastError() : 0;
   CloseHandle(file);
   if (n == 0) {
-    throw std::runtime_error(path + ": cannot identify the loaded file " +
+    throw std::runtime_error(path_prefix + "cannot identify the loaded file " +
                              narrow_path(loaded) + ": " + win_error(failure));
   }
   canonical.resize(n);
   FileIdentity id;
   id.canonical = narrow_path(canonical);
   if (id.canonical.empty()) {
-    throw std::runtime_error(path +
-                             ": the loaded file name is not valid UTF-16, so "
+    throw std::runtime_error(path_prefix +
+                             "the loaded file name is not valid UTF-16, so "
                              "the engine cannot be identified");
   }
   return id;
@@ -366,15 +369,15 @@ FileIdentity identify_loaded(const void *anchor, const std::string &path) {
   Dl_info info{};
   if (dladdr(anchor, &info) == 0 || info.dli_fname == nullptr ||
       info.dli_fname[0] == '\0') {
-    throw std::runtime_error(path +
-                             ": the dynamic linker did not report the file "
+    throw std::runtime_error(path_prefix +
+                             "the dynamic linker did not report the file "
                              "it loaded, so the engine cannot be identified");
   }
   char canonical[PATH_MAX];
   struct stat st {};
   if (realpath(info.dli_fname, canonical) == nullptr ||
       stat(canonical, &st) != 0) {
-    throw std::runtime_error(path + ": cannot identify the loaded file " +
+    throw std::runtime_error(path_prefix + "cannot identify the loaded file " +
                              info.dli_fname + ": " + std::strerror(errno));
   }
   FileIdentity id;
@@ -739,6 +742,14 @@ void release_profile(ProfileFinalizeFn finalize) {
 }
 
 } // namespace
+
+namespace detail {
+
+std::string loaded_canonical(const void *anchor, const std::string &path) {
+  return identify_loaded(anchor, path).canonical;
+}
+
+} // namespace detail
 
 struct LammpsPot::Impl {
   enum class Mode { LegacyLJ, LammpcProfile };
