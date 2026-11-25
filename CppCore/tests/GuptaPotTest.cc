@@ -273,21 +273,84 @@ TEST_CASE("GuptaPot degenerate pairs match all-pairs and neighbour paths",
 
   SECTION("coincident dimer") {
     const std::vector<double> positions(6, 0.0);
-    const StressEval result = compare_paths(positions);
-    const double expected =
-        2.0 * base.A * std::exp(base.p) -
-        2.0 * std::abs(base.xi) * std::exp(base.q);
-    require_scaled_match(result.energy, expected);
-    for (double force : result.forces) {
-      require_scaled_match(force, 0.0);
+    const StressEval all_pairs =
+        eval_stress(rgpot::GuptaPot(base), positions, nullptr);
+    const StressEval neighbours =
+        eval_stress(rgpot::GuptaPot(bounded), positions, nullptr);
+    // The free cluster delegates to rgpot_gupta, which reports +infinity.
+    REQUIRE(std::isinf(all_pairs.energy));
+    REQUIRE(all_pairs.energy > 0.0);
+    for (double force : all_pairs.forces) {
+      REQUIRE(force == 0.0);
+    }
+    // The neighbour walk poisons the energy, as LJPot does.
+    REQUIRE(std::isnan(neighbours.energy));
+    for (double force : neighbours.forces) {
+      REQUIRE(force == 0.0);
     }
   }
 
   SECTION("trimer with one coincident pair") {
     const std::vector<double> positions = {
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, base.r0, 0.0, 0.0};
-    compare_paths(positions);
+    const StressEval all_pairs =
+        eval_stress(rgpot::GuptaPot(base), positions, nullptr);
+    const StressEval neighbours =
+        eval_stress(rgpot::GuptaPot(bounded), positions, nullptr);
+    REQUIRE(std::isinf(all_pairs.energy));
+    REQUIRE(all_pairs.energy > 0.0);
+    REQUIRE(std::isnan(neighbours.energy));
   }
+
+  SECTION("staged coincidence") {
+    const rgpot::GuptaPot pot(bounded);
+    const double pos[6] = {};
+    const int atmnrs[2] = {1, 1};
+    const int rows[1] = {0};
+    const int count[2] = {1, 0};
+    const int neigh0[1] = {1};
+    const int *neighs[2] = {neigh0, nullptr};
+    rgpot::HalfList list;
+    list.nAtoms = 2;
+    list.nOwned = 2;
+    list.pos = pos;
+    list.atmnrs = atmnrs;
+    list.nRows = 1;
+    list.rows = rows;
+    list.count = count;
+    list.neighbours = neighs;
+    double dens[2] = {};
+    pot.densityStage(list, dens);
+    double forces[6] = {};
+    rgpot::StageTally tally;
+    pot.forceStage(list, dens, forces, &tally);
+    REQUIRE(std::isnan(tally.energy));
+    for (double component : forces) {
+      REQUIRE(component == 0.0);
+    }
+  }
+}
+
+TEST_CASE("GuptaPot forces match central differences near a coincidence",
+          "[Gupta]") {
+  rgpot::GuptaConfig cfg{
+      .A = 0.2061, .xi = 0.8900, .p = 10.229, .q = 4.036, .r0 = 2.5};
+  const double gap = std::ldexp(cfg.r0, -8);
+  const std::vector<double> pos = {0.0, 0.0, 0.0, gap, 0.0, 0.0};
+  rgpot::GuptaConfig cut = cfg;
+  cut.cutoff = 4.0 * cfg.r0;
+  check_forces_central_difference(rgpot::GuptaPot(cut), pos, nullptr, 1e-6,
+                                  1e-5);
+
+  const unsigned char slot[2] = {0, 0};
+  double c_energy = 0.0;
+  double c_grad[6] = {};
+  rgpot_gupta(pos.data(), 2, slot, 1, &cfg.A, &cfg.xi, &cfg.p, &cfg.q, &cfg.r0,
+              &c_energy, c_grad);
+  const StressEval got = eval_stress(rgpot::GuptaPot(cut), pos, nullptr);
+  require_scaled_match(got.energy, c_energy);
+  require_scaled_match(got.forces[0], -c_grad[0]);
+  require_scaled_match(got.forces[3], -c_grad[3]);
 }
 
 TEST_CASE("GuptaPot propagates a NaN coordinate on the neighbour path",
@@ -631,6 +694,24 @@ TEST_CASE("GuptaPot C entry point matches GuptaPot and validates inputs",
   REQUIRE_THROWS_AS(rgpot::GuptaPot({.r0 = 0.0}), std::invalid_argument);
   REQUIRE_THROWS_AS(rgpot::GuptaPot({.cutoff = 0.0, .periodic = true}),
                     std::invalid_argument);
+
+  // Coincident atoms: the free cluster is +infinity from rgpot_gupta, and a
+  // cutoff poisons the energy the way LJPot does. Neither is a finite cusp.
+  rgpot_gupta_config open = raw;
+  open.cutoff = 0.0;
+  open.periodic = 0;
+  const double stacked[6] = {};
+  double stacked_energy = 0.0;
+  double stacked_forces[6] = {};
+  REQUIRE(rgpot_gupta_energy_forces(&open, 2, stacked, nullptr, &stacked_energy,
+                                    stacked_forces) == 0);
+  REQUIRE(std::isinf(stacked_energy));
+  REQUIRE(stacked_energy > 0.0);
+  open.cutoff = 4.0;
+  stacked_energy = 0.0;
+  REQUIRE(rgpot_gupta_energy_forces(&open, 2, stacked, nullptr, &stacked_energy,
+                                    stacked_forces) == 0);
+  REQUIRE(std::isnan(stacked_energy));
 
   // Isolated atom beyond cutoff has rho_i = 0 and produces finite zero force.
   const rgpot::GuptaPot cut_pot({.cutoff = 2.5});
