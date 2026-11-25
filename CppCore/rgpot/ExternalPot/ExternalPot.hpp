@@ -50,8 +50,10 @@ public:
 
   [[nodiscard]] PotCaps caps() const noexcept override;
 
-  /// Fingerprint of the engine path and either the LJ parameters or the
-  /// lammpc config bytes, so no two configurations share cache entries.
+  /// Fingerprint of the backend that loaded (the canonical path of the mapped
+  /// file, and for lammpc the version and ABI it reports) with either the LJ
+  /// parameters or the lammpc config bytes. Requested paths that resolve to
+  /// one file share a key, and no two configurations do.
   [[nodiscard]] uint64_t paramsKey() const noexcept override;
 
   [[nodiscard]] const ExternalLjConfig &config() const noexcept {

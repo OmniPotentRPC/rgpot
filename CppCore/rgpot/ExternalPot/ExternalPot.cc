@@ -600,6 +600,29 @@ bool declares_stress(const rgpot::abi::ProfileLoader &loader) {
 // Bump when the numerics either LammpsPot mode returns change.
 constexpr uint64_t kLammpsKernelVersion = 1;
 
+#if RGPOT_HAS_LAMMPC_PROFILE
+// The key follows the backend that loaded, not the path that was asked for:
+// the canonical path of the mapped file plus the version and ABI revision the
+// library reports. Two requests that resolve to one file share a key, and a
+// path that now points at another file gets a new one.
+uint64_t lammpc_params_key(const rgpot::abi::ProfileLoader &loader,
+                           const std::string &requested,
+                           const std::vector<unsigned char> &config) {
+  const FileIdentity backend = identify_loaded(
+      reinterpret_cast<const void *>(loader.capabilities_result), requested);
+  const char *version = loader.version ? loader.version() : nullptr;
+  Fnv1a fp;
+  fp.str("lammpc");
+  fp.u64(kLammpsKernelVersion);
+  fp.str(backend.canonical);
+  fp.i64(loader.abi_version());
+  fp.str(version != nullptr ? version : "");
+  fp.u64(config.size());
+  fp.bytes(config.data(), config.size());
+  return fp.h;
+}
+#endif
+
 // A lammpc backend keeps process-global state that finalize releases. Every
 // LammpsPot that may have created a session holds its backend, keyed by the
 // resolved finalize symbol, and the last holder to leave calls finalize, so
@@ -675,7 +698,10 @@ LammpsPot::LammpsPot(const ExternalLjConfig &config)
   Fnv1a fp;
   fp.str("lammps-lj");
   fp.u64(kLammpsKernelVersion);
-  fp.str(config_.engine_path);
+  fp.str(identify_loaded(reinterpret_cast<const void *>(
+                             impl_->legacy_engine.create),
+                         config_.engine_path)
+             .canonical);
   fp.f64(config_.u0);
   fp.f64(config_.cutoff);
   fp.f64(config_.psi);
@@ -698,19 +724,14 @@ LammpsPot::LammpsPot(const void *config_capnp, size_t config_capnp_size,
   impl_->profile_config.resize(config_capnp_size);
   std::memcpy(impl_->profile_config.data(), config_capnp, config_capnp_size);
   require_lammps_config(impl_->profile_config);
-  Fnv1a fp;
-  fp.str("lammpc");
-  fp.u64(kLammpsKernelVersion);
-  fp.str(engine_path);
-  fp.u64(impl_->profile_config.size());
-  fp.bytes(impl_->profile_config.data(), impl_->profile_config.size());
-  impl_->params_key = fp.h;
   const std::string backend =
       engine_path.empty() ? std::string("lammpc")
                           : "lammpc engine_path '" + engine_path + "'";
   try {
     rgpot::abi::checked_load(impl_->profile_loader, "lammpc", engine_path);
     impl_->profile_stress = declares_stress(impl_->profile_loader);
+    impl_->params_key = lammpc_params_key(impl_->profile_loader, engine_path,
+                                          impl_->profile_config);
   } catch (const std::exception &ex) {
     throw std::runtime_error(backend + ": " + ex.what());
   }
