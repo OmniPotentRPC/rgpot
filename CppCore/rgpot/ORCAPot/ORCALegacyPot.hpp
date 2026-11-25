@@ -3,17 +3,20 @@
 // Copyright 2023--present rgpot developers
 
 /**
- * @file ORCAPot.hpp
- * @brief ORCA single-point energy and gradient behind the Potential interface.
+ * @file ORCALegacyPot.hpp
+ * @brief ORCA through the orca executable run as a child process.
+ *
+ * Deprecated: ORCAPot.hpp loads the orcac library instead. This runner is
+ * kept for one release behind with_orca_legacy (RGPOT_WITH_ORCA_LEGACY).
  *
  * Each force call writes an ORCA input with `! EnGrad`, runs the `orca`
  * executable as a child process in its own process group and working
  * directory, and reads the `.engrad` file ORCA writes.
- * ORCAConfig::timeout_s bounds that wait (one hour by default; zero waits
+ * ORCALegacyConfig::timeout_s bounds that wait (one hour by default; zero waits
  * without a limit). Past the limit the process group is sent SIGTERM and,
  * if any process in the group is still alive, SIGKILL even if the leader has
  * exited. ORCA is neither linked nor loaded. The only
- * dependency is an executable, named by ORCAConfig::executable or found as
+ * dependency is an executable, named by ORCALegacyConfig::executable or found as
  * `orca` on PATH.
  * The energy is converted from Hartree to eV and the gradient from
  * Hartree/Bohr to forces in eV/Angstrom with the constants of units.hpp.
@@ -23,7 +26,7 @@
  * so ORCA stops after an SCF that did not converge. A call whose output
  * reports such an SCF throws ORCAError even when ORCA wrote a gradient.
  *
- * Each call starts from ORCA's own guess. With ORCAConfig::restart on, the
+ * Each call starts from ORCA's own guess. With ORCALegacyConfig::restart on, the
  * converged orbitals are carried forward instead: the .gbw of one call is
  * copied to a second name and handed to the next through `%moinp` and
  * `! MORead`. Without a .gbw, or after a failure or a change of
@@ -31,6 +34,7 @@
  * restart on, the result cache is not used (see setCache).
  */
 
+#include "rgpot/ORCAPot/ORCAError.hpp"
 #include "rgpot/Potential.hpp"
 
 #include <cstdint>
@@ -41,28 +45,13 @@
 
 namespace rgpot {
 
-/// A failure of the ORCA run itself: a stale .engrad or .gbw could not be
-/// removed, the input could not be written, the executable changed since
-/// the instance was made or while it ran, the process could not be started,
-/// ran past ORCAConfig::timeout_s, ended with a non-zero status or a signal,
-/// reported an SCF that did not converge, left no .engrad file, or wrote one
-/// that is malformed or holds a non-finite number. The message carries the
-/// tail of ORCA's stderr and of its output file. Input a caller got wrong (a
-/// box in which the atoms would wrap, an unknown atomic number, an
-/// impossible spin, a timeout that is negative or not finite) throws
-/// std::invalid_argument instead.
-class ORCAError : public std::runtime_error {
-public:
-  using std::runtime_error::runtime_error;
-};
-
 /**
- * @brief Parameters for ORCAPot.
+ * @brief Parameters for ORCALegacyPot.
  *
  * Every field that shapes the calculation is the caller's: there is no
  * default method or basis, and the ORCA installation is not assumed.
  */
-struct ORCAConfig {
+struct ORCALegacyConfig {
   /// Default of timeout_s: one hour, in seconds.
   static constexpr double kDefaultTimeout = 3600.0;
 
@@ -91,7 +80,7 @@ struct ORCAConfig {
   /// Start each call from the orbitals of the previous one, through
   /// `! MORead`. Off by default, so every call starts from ORCA's own guess
   /// and its result does not depend on the calls before it. With restart
-  /// on, ORCAPot does not use a result cache it is given.
+  /// on, ORCALegacyPot does not use a result cache it is given.
   bool restart = false;
   /// Directory under which the per-instance working directory is created.
   /// Empty uses the system temporary directory.
@@ -108,11 +97,11 @@ struct ORCAConfig {
 };
 
 /**
- * @class ORCAPot
+ * @class ORCALegacyPot
  * @brief ORCA energy and gradient through a child process.
  * @ingroup rgpot_potentials
  */
-class ORCAPot : public Potential<ORCAPot> {
+class ORCALegacyPot : public Potential<ORCALegacyPot> {
 public:
   /// Resolves the executable and creates the working directory.
   /// Throws std::invalid_argument for a config that cannot run (empty
@@ -120,11 +109,11 @@ public:
   /// line break in a keyword field, a timeout_s
   /// that is negative or not finite) and ORCAError when no executable is
   /// found or the directory cannot be made.
-  explicit ORCAPot(const ORCAConfig &config);
-  ~ORCAPot() override;
+  explicit ORCALegacyPot(const ORCALegacyConfig &config);
+  ~ORCALegacyPot() override;
 
-  ORCAPot(const ORCAPot &) = delete;
-  ORCAPot &operator=(const ORCAPot &) = delete;
+  ORCALegacyPot(const ORCALegacyPot &) = delete;
+  ORCALegacyPot &operator=(const ORCALegacyPot &) = delete;
 
   /// Positions in Angstrom, energy in eV, forces in eV/Angstrom. ORCA has
   /// no periodic boundary conditions, so a box is only padding around the
@@ -162,19 +151,19 @@ public:
   [[nodiscard]] uint64_t paramsKey() const noexcept override;
 
 #ifdef RGPOT_HAS_CACHE
-  /// With ORCAConfig::restart on, the result cache is not used: a call it
+  /// With ORCALegacyConfig::restart on, the result cache is not used: a call it
   /// served would run no ORCA and leave the orbitals of an earlier call as
   /// the guess of the next one, so that call would depend on which calls
   /// happened to be cached. Without restart the cache is used as given.
   void setCache(rgpot::cache::PotentialCache *c) override {
-    Potential<ORCAPot>::setCache(m_config.restart ? nullptr : c);
+    Potential<ORCALegacyPot>::setCache(m_config.restart ? nullptr : c);
   }
 #endif
 
   /// Forget the stored orbitals. The next call starts from ORCA's guess.
   void reset();
 
-  [[nodiscard]] const ORCAConfig &config() const noexcept { return m_config; }
+  [[nodiscard]] const ORCALegacyConfig &config() const noexcept { return m_config; }
 
   /// Absolute path of the executable as named, or as found on PATH.
   [[nodiscard]] const std::string &executablePath() const noexcept {
@@ -214,7 +203,7 @@ private:
   struct State;
   /// Holds the state that is not read by an inline member, in the place,
   /// size and alignment of the std::vector<int> the class was added with,
-  /// so the members before it keep their offsets and sizeof(ORCAPot) is
+  /// so the members before it keep their offsets and sizeof(ORCALegacyPot) is
   /// unchanged.
   struct StateSlot {
     std::unique_ptr<State> state;
@@ -226,7 +215,7 @@ private:
                 "StateSlot must keep the layout of the std::vector<int> "
                 "member it replaces");
 
-  ORCAConfig m_config;
+  ORCALegacyConfig m_config;
   std::string m_executable;
   std::string m_run_dir;
   mutable bool m_has_guess = false;

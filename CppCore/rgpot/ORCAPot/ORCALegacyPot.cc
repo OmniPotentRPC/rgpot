@@ -1,7 +1,7 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
-#include "rgpot/ORCAPot/ORCAPot.hpp"
+#include "rgpot/ORCAPot/ORCALegacyPot.hpp"
 
 #include "rgpot/ORCAPot/ORCAFiles.hpp"
 #include "rgpot/ParamHash.hpp"
@@ -249,7 +249,7 @@ void checkClusterBox(const double *box, std::size_t n, const double *pos) {
   bool open = true;
   for (int k = 0; k < 9; ++k) {
     if (!std::isfinite(box[k])) {
-      throw std::invalid_argument("ORCAPot: the box holds a non-finite entry");
+      throw std::invalid_argument("ORCALegacyPot: the box holds a non-finite entry");
     }
     open = open && box[k] == 0.0;
   }
@@ -259,7 +259,7 @@ void checkClusterBox(const double *box, std::size_t n, const double *pos) {
   for (std::size_t k = 0; k < 3 * n; ++k) {
     if (!std::isfinite(pos[k])) {
       throw std::invalid_argument(
-          "ORCAPot: a position is not finite, so the box cannot be checked");
+          "ORCALegacyPot: a position is not finite, so the box cannot be checked");
     }
   }
   const double *rows[3] = {box, box + 3, box + 6};
@@ -272,7 +272,7 @@ void checkClusterBox(const double *box, std::size_t n, const double *pos) {
                                  dot(rows[2], rows[2]));
   if (!(volume > 1.0e-12 * scale)) {
     throw std::invalid_argument(
-        "ORCAPot: the box vectors are not independent; pass an all-zero box "
+        "ORCALegacyPot: the box vectors are not independent; pass an all-zero box "
         "for an isolated system, or a padded cell of three independent "
         "vectors");
   }
@@ -301,7 +301,7 @@ void checkClusterBox(const double *box, std::size_t n, const double *pos) {
   const double reach = std::sqrt(reach2);
   const auto tooSkewed = [] {
     return std::invalid_argument(
-        "ORCAPot: the box is too skewed, or too small for the cluster, to "
+        "ORCALegacyPot: the box is too skewed, or too small for the cluster, to "
         "check every periodic image; pass an all-zero box for an isolated "
         "system, or pad the cluster into a less skewed cell");
   };
@@ -340,7 +340,7 @@ void checkClusterBox(const double *box, std::size_t n, const double *pos) {
     const double length = std::sqrt(length2);
     std::ostringstream text;
     text.imbue(std::locale::classic());
-    text << "ORCAPot: the atoms span " << span / length << " Angstrom along ";
+    text << "ORCALegacyPot: the atoms span " << span / length << " Angstrom along ";
     const long coef[3] = {a, b, c};
     const int nonzero = (a != 0) + (b != 0) + (c != 0);
     if (nonzero == 1 && std::abs(a + b + c) == 1) {
@@ -389,14 +389,14 @@ void checkClusterBox(const double *box, std::size_t n, const double *pos) {
   }
 }
 
-void checkSpin(const ORCAConfig &config, const std::vector<int> &numbers) {
+void checkSpin(const ORCALegacyConfig &config, const std::vector<int> &numbers) {
   const long protons = std::accumulate(numbers.begin(), numbers.end(), 0L);
   const long electrons = protons - config.charge;
   const long unpaired = static_cast<long>(config.multiplicity) - 1;
   if (electrons < 0 || electrons < unpaired ||
       (electrons - unpaired) % 2 != 0) {
     throw std::invalid_argument(
-        "ORCAPot: charge " + std::to_string(config.charge) +
+        "ORCALegacyPot: charge " + std::to_string(config.charge) +
         " and multiplicity " + std::to_string(config.multiplicity) +
         " are impossible for " + std::to_string(electrons) + " electrons");
   }
@@ -771,32 +771,32 @@ ChildStatus runChild(int exec_fd, bool script, const std::string &executable,
 
 } // namespace
 
-struct ORCAPot::State {
+struct ORCALegacyPot::State {
   std::string real_executable;
   uint64_t executable_stamp = 0;
   std::vector<int> guess_numbers;
 };
 
-ORCAPot::ORCAPot(const ORCAConfig &config)
-    : Potential(PotType::ORCA), m_config(config),
+ORCALegacyPot::ORCALegacyPot(const ORCALegacyConfig &config)
+    : Potential(PotType::ORCA_LEGACY), m_config(config),
       m_slot{std::make_unique<State>()} {
   if (config.method.empty()) {
-    throw std::invalid_argument("ORCAPot: method is required");
+    throw std::invalid_argument("ORCALegacyPot: method is required");
   }
   if (config.multiplicity < 1) {
-    throw std::invalid_argument("ORCAPot: multiplicity must be at least 1");
+    throw std::invalid_argument("ORCALegacyPot: multiplicity must be at least 1");
   }
   if (config.nprocs < 1) {
-    throw std::invalid_argument("ORCAPot: nprocs must be at least 1");
+    throw std::invalid_argument("ORCALegacyPot: nprocs must be at least 1");
   }
   if (config.maxcore_mb < 0) {
     throw std::invalid_argument(
-        "ORCAPot: maxcore_mb must be 0, to use ORCA's own default, or a "
+        "ORCALegacyPot: maxcore_mb must be 0, to use ORCA's own default, or a "
         "positive number of MB");
   }
   if (!std::isfinite(config.timeout_s) || config.timeout_s < 0.0) {
     throw std::invalid_argument(
-        "ORCAPot: timeout_s must be a finite number of seconds, or 0 to wait "
+        "ORCALegacyPot: timeout_s must be a finite number of seconds, or 0 to wait "
         "without a limit");
   }
   // The keyword fields are checked here too, so a bad config fails before a
@@ -810,9 +810,9 @@ ORCAPot::ORCAPot(const ORCAConfig &config)
   m_executable = findExecutable(config.executable);
   if (m_executable.empty()) {
     throw ORCAError(
-        "ORCAPot: no ORCA executable found for '" +
+        "ORCALegacyPot: no ORCA executable found for '" +
         (config.executable.empty() ? std::string("orca") : config.executable) +
-        "'; set ORCAConfig::executable or put orca on PATH");
+        "'; set ORCALegacyConfig::executable or put orca on PATH");
   }
 
   std::error_code ec;
@@ -826,12 +826,12 @@ ORCAPot::ORCAPot(const ORCAConfig &config)
     fs::create_directories(parent, ec);
   }
   if (ec) {
-    throw ORCAError("ORCAPot: scratch directory " + parent.string() + ": " +
+    throw ORCAError("ORCALegacyPot: scratch directory " + parent.string() + ": " +
                     ec.message());
   }
   std::string pattern = (parent / "rgpot-orca-XXXXXX").string();
   if (::mkdtemp(pattern.data()) == nullptr) {
-    throw ORCAError("ORCAPot: could not create a directory under " +
+    throw ORCAError("ORCALegacyPot: could not create a directory under " +
                     parent.string() + ": " + std::strerror(errno));
   }
   m_run_dir = pattern;
@@ -840,27 +840,27 @@ ORCAPot::ORCAPot(const ORCAConfig &config)
                           &m_slot.state->executable_stamp)) {
     std::error_code ignored;
     fs::remove_all(m_run_dir, ignored);
-    throw ORCAError("ORCAPot: could not resolve and read the executable " +
+    throw ORCAError("ORCALegacyPot: could not resolve and read the executable " +
                     m_executable);
   }
 }
 
-ORCAPot::~ORCAPot() {
+ORCALegacyPot::~ORCALegacyPot() {
   if (!m_config.keep_files && !m_run_dir.empty()) {
     std::error_code ignored;
     fs::remove_all(m_run_dir, ignored);
   }
 }
 
-const std::string &ORCAPot::resolvedExecutablePath() const noexcept {
+const std::string &ORCALegacyPot::resolvedExecutablePath() const noexcept {
   return m_slot.state->real_executable;
 }
 
-bool ORCAPot::probeAvailable(const std::string &executable) {
+bool ORCALegacyPot::probeAvailable(const std::string &executable) {
   return !findExecutable(executable).empty();
 }
 
-uint64_t ORCAPot::paramsKey() const noexcept {
+uint64_t ORCALegacyPot::paramsKey() const noexcept {
   Fnv1a fp;
   fp.u64(kKernelVersion);
   fp.str(m_config.method);
@@ -878,14 +878,14 @@ uint64_t ORCAPot::paramsKey() const noexcept {
   return fp.h;
 }
 
-void ORCAPot::reset() {
+void ORCALegacyPot::reset() {
   std::error_code ignored;
   fs::remove(fs::path(m_run_dir) / kGuessName, ignored);
   m_has_guess = false;
   m_slot.state->guess_numbers.clear();
 }
 
-void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+void ORCALegacyPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // Any call that does not finish keeps no orbitals for the next one.
   struct GuessGuard {
     bool &has_guess;
@@ -937,12 +937,12 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // that open file, and both the open file and the path are checked again
   // after the run, so a result is only returned, and cached, for that file.
   const auto changed = [&](const char *when) {
-    return ORCAError("ORCAPot: the executable " + m_executable + " changed " +
+    return ORCAError("ORCALegacyPot: the executable " + m_executable + " changed " +
                      when + ": it no longer resolves to " +
                      state.real_executable +
                      " with the size, modification time, change time, "
                      "device, inode and content hash recorded when the "
-                     "instance was made; make a new ORCAPot to run the new "
+                     "instance was made; make a new ORCALegacyPot to run the new "
                      "file");
   };
   struct Descriptor {
@@ -959,7 +959,7 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
 
   const auto fail = [&](const std::string &what) {
-    return ORCAError("ORCAPot: " + what + "\n  input: " + input_path +
+    return ORCAError("ORCALegacyPot: " + what + "\n  input: " + input_path +
                      "\n  stderr tail:\n" +
                      orca::fileTail(stderr_path, kTailBytes) +
                      "\n  output tail:\n" +
@@ -971,7 +971,7 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     std::error_code remove_ec;
     fs::remove(path, remove_ec);
     if (remove_ec && remove_ec != std::errc::no_such_file_or_directory) {
-      throw ORCAError("ORCAPot: could not remove stale " + path + ": " +
+      throw ORCAError("ORCALegacyPot: could not remove stale " + path + ": " +
                       remove_ec.message());
     }
   };
@@ -982,7 +982,7 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     file << text;
     file.flush();
     if (!file) {
-      throw ORCAError("ORCAPot: could not write " + input_path);
+      throw ORCAError("ORCALegacyPot: could not write " + input_path);
     }
   }
 
@@ -1057,7 +1057,7 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     fs::copy_file(gbw_path, guess_path, fs::copy_options::overwrite_existing,
                   ec);
     if (ec) {
-      throw ORCAError("ORCAPot: could not keep the orbitals of this call: " +
+      throw ORCAError("ORCALegacyPot: could not keep the orbitals of this call: " +
                       ec.message());
     }
     m_has_guess = true;
