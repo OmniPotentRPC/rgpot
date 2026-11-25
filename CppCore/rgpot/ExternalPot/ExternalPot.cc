@@ -189,6 +189,7 @@ dyn::Handle as_dyn(void *handle) {
 
 struct Loaded {
   LibraryHandle library;
+  void *anchor = nullptr;
   EngineCreate create = nullptr;
   EngineDestroy destroy = nullptr;
   EngineForce force = nullptr;
@@ -205,9 +206,10 @@ struct Loaded {
   Loaded(const Loaded &) = delete;
   Loaded &operator=(const Loaded &) = delete;
   Loaded(Loaded &&other) noexcept
-      : library(std::move(other.library)), create(other.create),
-        destroy(other.destroy), force(other.force), native(other.native),
-        pot(other.pot) {
+      : library(std::move(other.library)), anchor(other.anchor),
+        create(other.create), destroy(other.destroy), force(other.force),
+        native(other.native), pot(other.pot) {
+    other.anchor = nullptr;
     other.create = nullptr;
     other.destroy = nullptr;
     other.force = nullptr;
@@ -220,11 +222,13 @@ struct Loaded {
         destroy(pot);
       }
       library = std::move(other.library);
+      anchor = other.anchor;
       create = other.create;
       destroy = other.destroy;
       force = other.force;
       native = other.native;
       pot = other.pot;
+      other.anchor = nullptr;
       other.create = nullptr;
       other.destroy = nullptr;
       other.force = nullptr;
@@ -509,8 +513,8 @@ LibraryHandle open_attempt(const std::string &path) {
 
 void bind_symbols(Loaded &loaded, bool native) {
   void *handle = loaded.library.get();
-  loaded.create =
-      dyn::loadSym<EngineCreate>(as_dyn(handle), "rgpot_engine_create");
+  loaded.anchor = dyn::sym(as_dyn(handle), "rgpot_engine_create");
+  loaded.create = reinterpret_cast<EngineCreate>(loaded.anchor);
   loaded.destroy =
       dyn::loadSym<EngineDestroy>(as_dyn(handle), "rgpot_engine_destroy");
   if (native) {
@@ -571,9 +575,7 @@ Loaded open_library(const std::vector<std::string> &paths, bool native) {
     LibraryHandle resident;
     {
       std::lock_guard<std::mutex> lock(table.mutex);
-      resident = publish_resident(
-          table, path, loaded.library,
-          reinterpret_cast<const void *>(loaded.create));
+      resident = publish_resident(table, path, loaded.library, loaded.anchor);
     }
     loaded.library = std::move(resident);
     return loaded;
@@ -688,8 +690,12 @@ constexpr uint64_t kLammpsKernelVersion = 1;
 uint64_t lammpc_params_key(const rgpot::abi::ProfileLoader &loader,
                            const std::string &requested,
                            const std::vector<unsigned char> &config) {
+  const std::string anchor_name = loader.prefix() + "_capabilities_result";
+  void *anchor = loader.lib().sym_optional<void *>(anchor_name.c_str());
+  if (anchor == nullptr)
+    throw std::runtime_error("missing " + anchor_name);
   const FileIdentity backend = identify_loaded(
-      reinterpret_cast<const void *>(loader.capabilities_result), requested);
+      anchor, requested.empty() ? loader.loaded_path() : requested);
   const char *version = loader.version ? loader.version() : nullptr;
   Fnv1a fp;
   fp.str("lammpc");
@@ -778,9 +784,7 @@ LammpsPot::LammpsPot(const ExternalLjConfig &config)
   Fnv1a fp;
   fp.str("lammps-lj");
   fp.u64(kLammpsKernelVersion);
-  fp.str(identify_loaded(reinterpret_cast<const void *>(
-                             impl_->legacy_engine.create),
-                         config_.engine_path)
+  fp.str(identify_loaded(impl_->legacy_engine.anchor, config_.engine_path)
              .canonical);
   fp.f64(config_.u0);
   fp.f64(config_.cutoff);
