@@ -80,7 +80,10 @@ RGPOT_NOINLINE void call_with_canaries(EnergyGradientFn fn, int n_atoms,
   verify_canaries(out->after, kCanaryWords, kCanaryAfter);
 }
 
-RGPOT_NOINLINE void call_pot_with_canaries(rgpot::MOPACPot &pot,
+constexpr std::array<double, 9> kBox = {100.0, 0.0, 0.0, 0.0, 100.0,
+                                        0.0,   0.0, 0.0, 100.0};
+
+RGPOT_NOINLINE void call_pot_with_canaries(const rgpot::MOPACPot &pot,
                                            const AtomMatrix &pos,
                                            const std::vector<int> &z,
                                            double *energy_out,
@@ -90,30 +93,32 @@ RGPOT_NOINLINE void call_pot_with_canaries(rgpot::MOPACPot &pot,
   volatile std::uint64_t stack_after[kCanaryWords];
   fill_canaries(stack_after, kCanaryWords, kCanaryAfter);
 
-  const std::array<std::array<double, 3>, 3> box = {
-      {{100.0, 0.0, 0.0}, {0.0, 100.0, 0.0}, {0.0, 0.0, 100.0}}};
-  auto [energy, forces, variance] = pot(pos, z, box);
-  (void)variance;
-  *energy_out = energy;
-  *forces_out = forces;
+  *forces_out = AtomMatrix::Zero(z.size(), 3);
+  const rgpot::ForceInput in{z.size(), pos.data(), z.data(), kBox.data()};
+  rgpot::ForceOut out{};
+  out.F = forces_out->data();
+  pot.forceImpl(in, &out);
+  *energy_out = out.energy;
 
   verify_canaries(stack_before, kCanaryWords, kCanaryBefore);
   verify_canaries(stack_after, kCanaryWords, kCanaryAfter);
 }
 
 RGPOT_NOINLINE void call_pot_expect_throw_with_canaries(
-    rgpot::MOPACPot &pot, const AtomMatrix &pos,
+    const rgpot::MOPACPot &pot, const AtomMatrix &pos,
     const std::vector<int> &z) {
   volatile std::uint64_t stack_before[kCanaryWords];
   fill_canaries(stack_before, kCanaryWords, kCanaryBefore);
   volatile std::uint64_t stack_after[kCanaryWords];
   fill_canaries(stack_after, kCanaryWords, kCanaryAfter);
 
-  const std::array<std::array<double, 3>, 3> box = {
-      {{100.0, 0.0, 0.0}, {0.0, 100.0, 0.0}, {0.0, 0.0, 100.0}}};
+  std::vector<double> forces(z.size() * 3u, 0.0);
+  const rgpot::ForceInput in{z.size(), pos.data(), z.data(), kBox.data()};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
   bool threw = false;
   try {
-    (void)pot(pos, z, box);
+    pot.forceImpl(in, &out);
   } catch (const std::runtime_error &e) {
     threw = true;
     const std::string what = e.what();

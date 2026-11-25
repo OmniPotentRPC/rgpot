@@ -48,13 +48,17 @@ struct GateLib {
   GateCallsFn calls = nullptr;
 };
 
-std::string force_error(rgpot::MOPACPot &pot) {
+std::string force_error(const rgpot::MOPACPot &pot) {
   const AtomMatrix pos{{0.0, 0.0, 0.0}, {1.15, 0.0, 0.0}, {-1.06, 0.0, 0.0}};
   const std::vector<int> z{1, 6, 7};
-  const std::array<std::array<double, 3>, 3> box = {
-      {{100.0, 0.0, 0.0}, {0.0, 100.0, 0.0}, {0.0, 0.0, 100.0}}};
+  const std::array<double, 9> box = {100.0, 0.0, 0.0, 0.0, 100.0,
+                                     0.0,   0.0, 0.0, 100.0};
+  std::array<double, 9> forces{};
+  const rgpot::ForceInput in{z.size(), pos.data(), z.data(), box.data()};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
   try {
-    (void)pot(pos, z, box);
+    pot.forceImpl(in, &out);
   } catch (const std::runtime_error &e) {
     return e.what();
   }
