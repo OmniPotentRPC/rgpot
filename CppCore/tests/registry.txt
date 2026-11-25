@@ -418,6 +418,7 @@ EAMTableCAbiTest | tests rust_core | custom | @rust_core
 EAMTableHandleTest | tests core rust_core | unit eam_table_handle_test EAMTableHandleTest.cc | @rust_core
 EngineTableTest | tests core rpc posix | custom workdir=. | @engine_plugins
 PotentialFactoryTest | tests core rpc posix | custom suite=factory workdir=. | @engine_plugins
+OrcacFakeExports | tests core rpc posix python | custom suite=factory | @engine_plugins
 lj_eval | core | custom timeout=60 | @engines
 lj_engine | core | custom timeout=60 | @engines
 mdi_concrete_potentials | tests core posix python mdi pymdi | custom timeout=120 |

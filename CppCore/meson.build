@@ -3028,10 +3028,12 @@ if get_option('with_tests')
                 workdir: meson.source_root(),
             )
             # makePotential over the classical engine (plugin arm) and a
-            # stand-in liborcac (orca arm).
+            # stand-in liborcac ABI 1 (orca arm).
             orcac_fake_engine = shared_library(
                 'orcac_fake_engine',
                 sources: ['tests/orcac_fake_engine.c'],
+                include_directories: _incdirs,
+                gnu_symbol_visibility: 'hidden',
                 install: false,
             )
             potential_factory_env = environment()
@@ -3043,6 +3045,24 @@ if get_option('with_tests')
                 'RGPOT_FACTORY_ORCAC_FAKE',
                 orcac_fake_engine.full_path(),
             )
+            potential_factory_depends = [classical_engine, orcac_fake_engine]
+            _orcac_exports = [
+                files('../scripts/check_engine_exports.py'),
+                files('tests/orcac_abi1_exports.txt'),
+            ]
+            _orcac_exports_py = find_program('python3', required: false)
+            if _orcac_exports_py.found()
+                test(
+                    'OrcacFakeExports',
+                    _orcac_exports_py,
+                    args: [
+                        _orcac_exports[0],
+                        orcac_fake_engine,
+                        _orcac_exports[1],
+                    ],
+                    kwargs: _rt_kw['OrcacFakeExports'],
+                )
+            endif
             test(
                 'PotentialFactoryTest',
                 executable(
@@ -3060,7 +3080,7 @@ if get_option('with_tests')
                     build_rpath: _metatomic_build_rpath,
                 ),
                 env: potential_factory_env,
-                depends: [classical_engine, orcac_fake_engine],
+                depends: potential_factory_depends,
                 kwargs: _rt_kw['PotentialFactoryTest'],
             )
         endif
