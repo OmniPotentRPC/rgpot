@@ -1,0 +1,9 @@
+# Copyright 2023--present rgpot developers
+# The orcac header rgpot builds against. sha256 covers the text of
+# orcac.h below its marker line. Update all fields together.
+upstream: OmniPotentRPC/orcac include/orcac.h
+state: frozen
+abi: 1
+commit: ffa953c2834b48bb8773eadf838b64df4afcc5b2
+tree: e249b377dec5bb556c48b047c80eb87f6bfe03b6
+sha256: 7a53f679cb9acb8786af9c4101f57db97edebe37a7c9f5c0c26a7f96d2fc6587
