@@ -3,6 +3,7 @@
 
 #include "rgpot/ExternalPot/ExternalPot.hpp"
 
+#include "rgpot/ParamHash.hpp"
 #include "rgpot/abi/ProfileLoader.hpp"
 #include "rgpot/ExternalPot/md_units.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -597,6 +598,9 @@ bool declares_stress(const rgpot::abi::ProfileLoader &loader) {
 }
 #endif
 
+// Bump when the numerics either LammpsPot mode returns change.
+constexpr uint64_t kLammpsKernelVersion = 1;
+
 // A lammpc backend keeps process-global state that finalize releases. Every
 // LammpsPot that may have created a session holds its backend, keyed by the
 // resolved finalize symbol, and the last holder to leave calls finalize, so
@@ -643,6 +647,7 @@ struct LammpsPot::Impl {
   void *profile_session = nullptr;
   bool profile_held = false;
   bool profile_stress = false;
+  uint64_t params_key = 0;
   mutable std::mutex mutex;
 
   // Safe to call twice: the failed constructor and the destructor both do.
@@ -668,6 +673,14 @@ LammpsPot::LammpsPot(const ExternalLjConfig &config)
   impl_->legacy_engine = open_library(lammps_paths(config_.engine_path), false);
   const double packed[3] = {config_.u0, config_.cutoff, config_.psi};
   create_engine(impl_->legacy_engine, packed, sizeof(packed));
+  Fnv1a fp;
+  fp.str("lammps-lj");
+  fp.u64(kLammpsKernelVersion);
+  fp.str(config_.engine_path);
+  fp.f64(config_.u0);
+  fp.f64(config_.cutoff);
+  fp.f64(config_.psi);
+  impl_->params_key = fp.h;
 }
 
 LammpsPot::LammpsPot(const void *config_capnp, size_t config_capnp_size,
@@ -686,6 +699,13 @@ LammpsPot::LammpsPot(const void *config_capnp, size_t config_capnp_size,
   impl_->profile_config.resize(config_capnp_size);
   std::memcpy(impl_->profile_config.data(), config_capnp, config_capnp_size);
   require_lammps_config(impl_->profile_config);
+  Fnv1a fp;
+  fp.str("lammpc");
+  fp.u64(kLammpsKernelVersion);
+  fp.str(engine_path);
+  fp.u64(impl_->profile_config.size());
+  fp.bytes(impl_->profile_config.data(), impl_->profile_config.size());
+  impl_->params_key = fp.h;
   const std::string backend =
       engine_path.empty() ? std::string("lammpc")
                           : "lammpc engine_path '" + engine_path + "'";
@@ -711,6 +731,10 @@ LammpsPot::LammpsPot(const void *config_capnp, size_t config_capnp_size,
 LammpsPot::~LammpsPot() = default;
 LammpsPot::LammpsPot(LammpsPot &&) noexcept = default;
 LammpsPot &LammpsPot::operator=(LammpsPot &&) noexcept = default;
+
+uint64_t LammpsPot::paramsKey() const noexcept {
+  return impl_ ? impl_->params_key : 0;
+}
 
 PotCaps LammpsPot::caps() const noexcept {
   const bool stress = impl_ && impl_->mode == Impl::Mode::LammpcProfile &&

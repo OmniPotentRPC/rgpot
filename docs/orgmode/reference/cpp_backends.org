@@ -1945,6 +1945,21 @@ A member whose description differs between classes has one entry per class.
   Instances that differ in these values get different result-cache keys.
 - Errors :: none.
 
+*** =rgpot::LammpsPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a hash of the constructor mode, a kernel-version
+  salt and =engine_path=, with =u0=, =cutoff= and =psi= for the plugin
+  constructor or the flat =PotentialConfig= bytes for the lammpc constructor.
+  Instances that differ in these values get different result-cache keys.
+- Errors :: none.
+
 *** =rgpot::ORCAPot::paramsKey=
 
 #+attr_rgpot: signature

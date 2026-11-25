@@ -56,13 +56,13 @@ std::vector<unsigned char> flat_bytes(::capnp::MallocMessageBuilder &msg) {
   return std::vector<unsigned char>(bytes.begin(), bytes.end());
 }
 
-std::vector<unsigned char>
-lammps_config(const char *pair_style = "lj/cut 10.0") {
+std::vector<unsigned char> lammps_config(const char *pair_style = "lj/cut 10.0",
+                                         const char *coeff = "1 1 0.2 2.5") {
   ::capnp::MallocMessageBuilder msg;
   auto lammps = msg.initRoot<::PotentialConfig>().initLammps();
   lammps.setPairStyle(pair_style);
   auto coeffs = lammps.initPairCoeffs(1);
-  coeffs.set(0, "1 1 0.2 2.5");
+  coeffs.set(0, coeff);
   auto types = lammps.initTypeToAtomicNumber(1);
   types.set(0, 29);
   lammps.setBoundary("f f f");
@@ -333,4 +333,37 @@ TEST_CASE("LammpsPot lammpc refuses an engine with an incompatible ABI",
                                  err, sizeof err) == nullptr);
   REQUIRE_THAT(std::string(err),
                ContainsSubstring("eindir bridge ABI major 2 is not 1"));
+}
+
+TEST_CASE("LammpsPot lammpc cache keys follow the engine path and config",
+          "[external][lammpc][cache]") {
+  const std::string path = fake_engine_path();
+  const std::string other_path = env_path("RGPOT_LAMMPC_NOSTRESS_ENGINE");
+  const auto config = lammps_config();
+  const auto deeper = lammps_config("lj/cut 10.0", "1 1 0.3 2.5");
+
+  const rgpot::LammpsPot a(config.data(), config.size(), path);
+  const rgpot::LammpsPot a_again(config.data(), config.size(), path);
+  const rgpot::LammpsPot b(deeper.data(), deeper.size(), path);
+  const rgpot::LammpsPot a_elsewhere(config.data(), config.size(), other_path);
+
+  REQUIRE(a.paramsKey() != 0);
+  REQUIRE(a.paramsKey() == a_again.paramsKey());
+  REQUIRE(a.paramsKey() != b.paramsKey());
+  REQUIRE(a.paramsKey() != a_elsewhere.paramsKey());
+  REQUIRE(b.paramsKey() != a_elsewhere.paramsKey());
+
+  Dimer d;
+  std::array<double, 6> forces{};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  const rgpot::ForceInput in{.nAtoms = 2,
+                             .pos = d.pos.data(),
+                             .atmnrs = d.atmnrs.data(),
+                             .box = d.box.data()};
+  a.forceImpl(in, &out);
+  const double energy_a = out.energy;
+  b.forceImpl(in, &out);
+  REQUIRE(out.energy != energy_a);
+  REQUIRE_THAT(out.energy, WithinAbs(lj_energy(kSeparation) * 1.5, 1e-12));
 }

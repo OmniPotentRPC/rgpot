@@ -18,6 +18,7 @@
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/Potential.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -48,6 +49,10 @@ public:
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   [[nodiscard]] PotCaps caps() const noexcept override;
+
+  /// Fingerprint of the engine path and either the LJ parameters or the
+  /// lammpc config bytes, so no two configurations share cache entries.
+  [[nodiscard]] uint64_t paramsKey() const noexcept override;
 
   [[nodiscard]] const ExternalLjConfig &config() const noexcept {
     return config_;
