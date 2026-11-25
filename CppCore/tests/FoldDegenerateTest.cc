@@ -7,7 +7,6 @@
 // test with a timeout.
 
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <random>
 
@@ -46,7 +45,6 @@ TEST_CASE("Fold returns on thin and sheared cells under every periodic mask",
   };
   std::mt19937_64 rng(11);
   std::uniform_real_distribution<double> u(-3.0, 3.0);
-  const auto t0 = std::chrono::steady_clock::now();
   for (const auto &cell : cells) {
     for (int mask = 1; mask < 8; ++mask) {
       const std::array<bool, 3> periodic{(mask & 1) != 0, (mask & 2) != 0,
@@ -75,8 +73,4 @@ TEST_CASE("Fold returns on thin and sheared cells under every periodic mask",
       }
     }
   }
-  const double wall = std::chrono::duration<double>(
-                          std::chrono::steady_clock::now() - t0)
-                          .count();
-  REQUIRE(wall < 20.0);
 }

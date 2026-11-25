@@ -189,8 +189,7 @@ ThreadTeamTest_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] suit
 ThreadTeamTest_sw | tests core | rerun ThreadTeamTest_slices [sw] suite=threadteam timeout=480 coverage_serial |
 ThreadTeamTest_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] suite=threadteam timeout=480 coverage_serial |
 ThreadTeamTest_nlist | tests core | rerun ThreadTeamTest_slices [nlist] suite=threadteam timeout=480 coverage_serial |
-# Bit identity at 1, 2, 4 and 8 threads, including the opt-in thread API,
-# plus a check that 8 threads still beats 1 on the large cell.
+# Bit identity at 1, 2, 4 and 8 threads, including the opt-in thread API.
 ThreadInvariantTest | tests core | unit thread_invariant_test ThreadInvariantTest.cc fp_contract=off timeout=180 serial |
 # The count of an object reaches the batch fan-out of a shared-instance
 # potential, the terms of a SumPot and the MEAM and D2 kernels: the team an

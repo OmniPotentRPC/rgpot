@@ -13,7 +13,6 @@
 #include "rgpot/units.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <functional>
 #include <iomanip>
@@ -342,22 +341,13 @@ void test_lists() {
   for (double &x : pos) {
     x *= 1.002;
   }
-  const auto t0 = std::chrono::steady_clock::now();
   lists.update(pos.data(), n, small_box, true);
-  const auto reuse_us =
-      std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
-  check(reuse_us < 1e6, "small cell change smoke time");
   check(!lists.short_rebuilt() && !lists.long_rebuilt(),
         "a small cell change stays inside the skin");
   check(lists.long_changed(), "a small cell change refreshes the emitted long pairs");
   check_matches_brute(pos, small_box, "small cell change matches brute force");
 
-  const auto t_steady = std::chrono::steady_clock::now();
   lists.update(pos.data(), n, small_box, true);
-  const auto steady_us =
-      std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t_steady)
-          .count();
-  check(steady_us < 1e6, "steady repeat smoke time");
   check(!lists.short_rebuilt() && !lists.long_rebuilt(),
         "a steady repeat reuses the list");
   check(!lists.long_changed(), "a steady repeat keeps the emitted long pairs");

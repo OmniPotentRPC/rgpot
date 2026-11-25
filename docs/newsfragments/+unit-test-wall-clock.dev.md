@@ -1,0 +1,1 @@
+Unit tests no longer assert wall-clock bounds, which failed under `OMP_THREAD_LIMIT`, coverage instrumentation or a loaded runner. The cache tests check served and computed counts instead of hit timings, and `thread_count_bench --pots lj --cutoff 4.5` times the large Lennard-Jones cell whose speedup a unit test used to assert.
