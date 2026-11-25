@@ -296,6 +296,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   list(APPEND RGPOT_SOURCES
        CppCore/rgpot/Morse/cambridge_morse.c
        CppCore/rgpot/Gupta/gupta.c
+       CppCore/rgpot/Gupta/GuptaPot.cc
        CppCore/rgpot/EAM/EAM.cpp
        CppCore/rgpot/EAM/EAMPot.cc
        CppCore/rgpot/MOPACPot/MOPACPot.cc
@@ -452,6 +453,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/Morse/cambridge_morse.c
       CppCore/rgpot/ZBL/ZBLPot.cc
       CppCore/rgpot/Gupta/gupta.c
+      CppCore/rgpot/Gupta/GuptaPot.cc
       CppCore/rgpot/SuttonChen/SuttonChenPot.cc
       CppCore/rgpot/SuttonChen/SuttonChenScales.cc
       CppCore/rgpot/Tersoff/TersoffSiC.cc

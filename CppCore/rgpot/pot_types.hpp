@@ -79,7 +79,8 @@ enum class PotType {
   MEAM,         //!< Modified embedded-atom method (LAMMPS meam files).
   ORCA,         //!< ORCA energy and gradient through a child process.
   Engine,       //!< An engine library over the generic engine C ABI (EnginePot).
-  ORCAC         //!< ORCA through the split liborcac shim (ORCACPot).
+  ORCAC,        //!< ORCA through the split liborcac shim (ORCACPot).
+  Gupta         //!< Cleri-Rosato Gupta many-body potential.
 };
 
 } // namespace rgpot
