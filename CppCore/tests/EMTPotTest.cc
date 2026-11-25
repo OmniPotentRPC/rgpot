@@ -721,6 +721,33 @@ TEST_CASE("EMT OpenMP force path is bit-identical across threads",
   }
 }
 
+TEST_CASE("EMT opens its team from a TeamThreshold", "[emt][threads]") {
+  ThreadGuard guard;
+  const auto small = fccCu(12, 3.615 / std::sqrt(2.0));
+  REQUIRE(small.z.size() < rgpot::kTeamMinAtoms);
+  const rgpot::TeamThreshold any(small.z.size());
+  const auto moved = shifted(small.pos, 0.02);
+
+  ThreadGuard::set("1");
+  rgpot::EMTPot serial;
+  (void)runEval(serial, small.pos, small.z, small.box);
+  const auto ref = runEval(serial, moved, small.z, small.box);
+
+  for (const char *th : {"2", "8"}) {
+    INFO("OMP_NUM_THREADS=" << th);
+    ThreadGuard::set(th);
+    rgpot::EMTPot pot;
+    (void)runEval(pot, small.pos, small.z, small.box);
+    const auto before = rgpot::teamsOpened();
+    CHECK(countBitDiffs(runEval(pot, moved, small.z, small.box), ref) == 0);
+#if defined(_OPENMP)
+    CHECK(rgpot::teamsOpened() == before + 1);
+#else
+    CHECK(rgpot::teamsOpened() == before);
+#endif
+  }
+}
+
 TEST_CASE("EMT Exception keeps its message per object and per copy", "[emt]") {
   static_assert(sizeof(Exception) == sizeof(void *),
                 "Exception is a single pointer in the installed header");
