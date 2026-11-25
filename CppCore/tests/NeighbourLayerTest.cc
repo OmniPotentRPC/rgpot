@@ -25,6 +25,7 @@
 #include "TestFixtures.hpp"
 #include "lsan_libomp.hpp"
 #include "rgpot/EAM/EAMPot.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
@@ -198,6 +199,15 @@ TEST_CASE("neighbour modes agree for the classical potentials", "[nlist]") {
   const std::vector<int> pt(scpos.size() / 3, 78);
   checkModes(sc_s, sc_w, scpos, pt, 3 * std::sqrt(2.0));
 
+  rgpot::GuptaConfig gupta;
+  gupta.cutoff = 3.0;
+  gupta.periodic = true;
+  rgpot::GuptaPot gupta_s(gupta);
+  rgpot::GuptaPot gupta_w(gupta);
+  gupta_s.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  gupta_w.setNeighbourMode(rgpot::nlist::Mode::Stream);
+  checkModes(gupta_s, gupta_w, scpos, pt, 3 * std::sqrt(2.0));
+
   const auto si = diamond(2, 5.431);
   const std::vector<int> zsi(si.size() / 3, 14);
   rgpot::StillingerWeberSi sw_s;
@@ -309,6 +319,22 @@ TEST_CASE("threaded classical forces repeat and stay near one thread",
   sc_one_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
   sc_two_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
   checkThreads(std::move(sc_one_s), std::move(sc_two_s), scpos, pt,
+               3 * std::sqrt(2.0));
+
+  rgpot::GuptaConfig gupta;
+  gupta.cutoff = 3.0;
+  gupta.periodic = true;
+  rgpot::GuptaPot g_one(gupta);
+  rgpot::GuptaPot g_two(gupta);
+  g_one.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  g_two.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  checkThreads(std::move(g_one), std::move(g_two), scpos, pt,
+               3 * std::sqrt(2.0));
+  rgpot::GuptaPot g_one_s(gupta);
+  rgpot::GuptaPot g_two_s(gupta);
+  g_one_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
+  g_two_s.setNeighbourMode(rgpot::nlist::Mode::Stream);
+  checkThreads(std::move(g_one_s), std::move(g_two_s), scpos, pt,
                3 * std::sqrt(2.0));
 
   const auto si = diamond(2, 5.431);
