@@ -79,9 +79,12 @@ The constructor resolves its symlinks, and every call runs that resolved file,
 which =ORCAPot::resolvedExecutablePath()= reports.
 Before and after each run the path is resolved again and the size, modification
 time, device and inode of the file are compared with those the constructor read.
-When they differ, as after a symlink is retargeted or the binary is replaced,
-the call throws =ORCAError= without running anything, and a new =ORCAPot= is
-needed to run the new file.
+When they differ before the run, as after a symlink is retargeted or the binary
+is replaced, the call throws =ORCAError= without running anything.
+When they differ only after the run, ORCA has already run: the call throws
+=ORCAError= instead of returning or caching the result, and the orbitals of that
+run are not kept.
+Either way, a new =ORCAPot= is needed to run the new file.
 
 ** Time limit
 
