@@ -35,6 +35,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "rgpot/rgpot_api.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -93,16 +95,16 @@ typedef struct rgpot_nlist_soa {
 } rgpot_nlist_soa;
 
 /* Returns RGPOT_NLIST_ABI. */
-int32_t rgpot_nlist_abi_version(void);
+RGPOT_API int32_t rgpot_nlist_abi_version(void);
 
 /* Sentence for a code. Unknown codes return "unknown neighbour error".
  * The pointer is a literal and is not freed. */
-const char *rgpot_nlist_strerror(int32_t code);
+RGPOT_API const char *rgpot_nlist_strerror(int32_t code);
 
 /* Sets bytes, abi, a half pair list, a strict cutoff, periodic
  * boundaries on every axis, and shifts, vectors and distances.
  * cutoff and skin are left at 0. A null request is ignored. */
-void rgpot_nlist_request_init(rgpot_nlist_request *request);
+RGPOT_API void rgpot_nlist_request_init(rgpot_nlist_request *request);
 
 /* Stored fill into caller arrays. *count is the number written.
  * *needed is the full number, which may exceed out->cap. A null out,
@@ -111,9 +113,9 @@ void rgpot_nlist_request_init(rgpot_nlist_request *request);
  * after writing cap pairs. A requested column whose pointer is null
  * returns RGPOT_NLIST_NULL and writes nothing. On any other error
  * *count is 0 when count is not null. */
-int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
-                          const rgpot_nlist_request *request, rgpot_nlist_soa *out,
-                          size_t *count, size_t *needed);
+RGPOT_API int32_t rgpot_nlist_build(const double *positions, size_t n, const double *box9,
+                                    const rgpot_nlist_request *request, rgpot_nlist_soa *out,
+                                    size_t *count, size_t *needed);
 
 /* Opaque chunked walk. It does not store the pairs of the whole system. */
 typedef struct rgpot_nlist_walk rgpot_nlist_walk;
@@ -121,19 +123,19 @@ typedef struct rgpot_nlist_walk rgpot_nlist_walk;
 /* Opens a walk into *walk. On failure *walk is null when walk is not
  * null, and the return is the code from rgpot_nlist_strerror. The walk
  * borrows positions and box9. */
-int32_t rgpot_nlist_walk_open(const double *positions, size_t n,
-                              const double *box9,
-                              const rgpot_nlist_request *request,
-                              rgpot_nlist_walk **walk);
+RGPOT_API int32_t rgpot_nlist_walk_open(const double *positions, size_t n,
+                                        const double *box9,
+                                        const rgpot_nlist_request *request,
+                                        rgpot_nlist_walk **walk);
 
 /* Writes at most out->cap pairs straight into the caller arrays.
  * *done is 1 when the geometry is exhausted. A null out, or a column
  * the request asked for whose pointer is null while cap > 0, returns
  * RGPOT_NLIST_NULL and does not advance. cap 0 writes nothing. */
-int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_soa *out,
-                              size_t *count, int32_t *done);
+RGPOT_API int32_t rgpot_nlist_walk_pull(rgpot_nlist_walk *walk, rgpot_nlist_soa *out,
+                                        size_t *count, int32_t *done);
 
-void rgpot_nlist_walk_close(rgpot_nlist_walk *walk);
+RGPOT_API void rgpot_nlist_walk_close(rgpot_nlist_walk *walk);
 
 /* Several systems that do not interact. positions is the concatenation
  * of counts[s] atoms. box9 holds 9 * nsystems lattice values. first and
@@ -141,11 +143,11 @@ void rgpot_nlist_walk_close(rgpot_nlist_walk *walk);
  * null, receives the system id of each written pair and must hold cap
  * ints. A null system pointer skips that column. The size probe and
  * the short-buffer rule match rgpot_nlist_build. */
-int32_t rgpot_nlist_build_systems(const double *positions, const int32_t *counts,
-                                  size_t nsystems, const double *box9,
-                                  const rgpot_nlist_request *request,
-                                  rgpot_nlist_soa *out, int32_t *system,
-                                  size_t *count, size_t *needed);
+RGPOT_API int32_t rgpot_nlist_build_systems(const double *positions, const int32_t *counts,
+                                            size_t nsystems, const double *box9,
+                                            const rgpot_nlist_request *request,
+                                            rgpot_nlist_soa *out, int32_t *system,
+                                            size_t *count, size_t *needed);
 
 /* A builder keeps the last list and skips the search while the atom
  * moves, and the image moves of a cell change at every sign of the
@@ -161,16 +163,16 @@ int32_t rgpot_nlist_build_systems(const double *positions, const int32_t *counts
  * the last search. close frees the builder. */
 typedef struct rgpot_nlist_builder rgpot_nlist_builder;
 
-int32_t rgpot_nlist_builder_open(rgpot_nlist_builder **builder);
+RGPOT_API int32_t rgpot_nlist_builder_open(rgpot_nlist_builder **builder);
 
-int32_t rgpot_nlist_builder_update(rgpot_nlist_builder *builder,
-                                   const double *positions, size_t n,
-                                   const double *box9,
-                                   const rgpot_nlist_request *request,
-                                   rgpot_nlist_soa *out, size_t *count,
-                                   size_t *needed, int32_t *reused);
+RGPOT_API int32_t rgpot_nlist_builder_update(rgpot_nlist_builder *builder,
+                                             const double *positions, size_t n,
+                                             const double *box9,
+                                             const rgpot_nlist_request *request,
+                                             rgpot_nlist_soa *out, size_t *count,
+                                             size_t *needed, int32_t *reused);
 
-void rgpot_nlist_builder_close(rgpot_nlist_builder *builder);
+RGPOT_API void rgpot_nlist_builder_close(rgpot_nlist_builder *builder);
 
 /* Fortran gather bridge. One list keeps a builder. The search runs at
  * cutoff + skin and is reused under the rule of the builder above. Each
@@ -181,16 +183,16 @@ void rgpot_nlist_builder_close(rgpot_nlist_builder *builder);
  * A null `first` only sets *count. `periodic` is three ints, 0 or 1. */
 typedef struct rgpot_nlist_fortran_list rgpot_nlist_fortran_list;
 
-rgpot_nlist_fortran_list *rgpot_nlist_fortran_open(void);
+RGPOT_API rgpot_nlist_fortran_list *rgpot_nlist_fortran_open(void);
 
-void rgpot_nlist_fortran_close(rgpot_nlist_fortran_list *list);
+RGPOT_API void rgpot_nlist_fortran_close(rgpot_nlist_fortran_list *list);
 
-int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list,
-                                  const double *positions, size_t natoms,
-                                  const double *box9, double cutoff, double skin,
-                                  const int32_t periodic[3], int32_t *first,
-                                  int32_t *second, double *vector, double *distance,
-                                  size_t cap, size_t *count, int32_t *reused);
+RGPOT_API int32_t rgpot_nlist_fortran_build(rgpot_nlist_fortran_list *list,
+                                            const double *positions, size_t natoms,
+                                            const double *box9, double cutoff, double skin,
+                                            const int32_t periodic[3], int32_t *first,
+                                            int32_t *second, double *vector, double *distance,
+                                            size_t cap, size_t *count, int32_t *reused);
 
 #ifdef __cplusplus
 }

@@ -1294,7 +1294,7 @@ if get_option('with_rpc_client_only')
     rgpot_dep = declare_dependency(
         include_directories: _incdirs,
         link_with: _linkto,
-        compile_args: _args,
+        compile_args: rgpot_consumer_args + ['-DRGPOT_STATIC'],
         dependencies: _deps + [ptlrpc_dep, fastnlist_dep],
     )
     # The client-only archives take no OpenMP flags.
@@ -1402,8 +1402,7 @@ _doc_python = find_program('python3', required: false)
 if get_option('with_tests') and _doc_python.found()
     _doccheck = files('docs/doccheck.py')
     # The C and C++ blocks are built with a cc driver (-fsyntax-only, -l,
-    # -Wl,-rpath), and most run blocks link librgpot. Windows has cl.exe,
-    # and rgpot.dll exports only rgpot_library_version, as for engines/.
+    # -Wl,-rpath), and most run blocks link librgpot. Windows has cl.exe.
     if host_system != 'windows'
         _doccheck_depends = []
         foreach _tgt_name : [

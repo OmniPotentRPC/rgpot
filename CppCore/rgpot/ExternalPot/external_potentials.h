@@ -18,6 +18,8 @@
 #include <stdint.h>
 #include "rgpot/nlist/rgpot_nlist.h"
 
+#include "rgpot/rgpot_api.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,8 +27,8 @@ extern "C" {
 typedef struct rgpot_external_potential rgpot_external_potential;
 
 /* kJ/mol in one eV, and nanometres in one Angstrom. */
-double rgpot_md_kj_per_ev(void);
-double rgpot_md_nm_per_angstrom(void);
+RGPOT_API double rgpot_md_kj_per_ev(void);
+RGPOT_API double rgpot_md_nm_per_angstrom(void);
 
 /*
  * Shifted 12-6 Lennard-Jones. u0 is eV, cutoff and psi are Angstrom.
@@ -42,10 +44,10 @@ double rgpot_md_nm_per_angstrom(void);
  * the open. An open that does not become the resident engine is closed.
  * A file replaced at a path that was already loaded is refused.
  */
-rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
-                                                double u0, double cutoff,
-                                                double psi, char *err,
-                                                size_t err_len);
+RGPOT_API rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
+                                                          double u0, double cutoff,
+                                                          double psi, char *err,
+                                                          size_t err_len);
 
 /*
  * The same potential. The constructor stores u0 in kJ/mol and the
@@ -53,20 +55,20 @@ rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
  * in process. A path is a library that exports rgpot_engine_create,
  * rgpot_engine_destroy and rgpot_md_native_force in those units.
  */
-rgpot_external_potential *rgpot_gromacs_potential(const char *engine_path,
-                                                 double u0, double cutoff,
-                                                 double psi, char *err,
-                                                 size_t err_len);
+RGPOT_API rgpot_external_potential *rgpot_gromacs_potential(const char *engine_path,
+                                                           double u0, double cutoff,
+                                                           double psi, char *err,
+                                                           size_t err_len);
 
-rgpot_external_potential *rgpot_openmm_potential(const char *engine_path,
-                                                double u0, double cutoff,
-                                                double psi, char *err,
-                                                size_t err_len);
+RGPOT_API rgpot_external_potential *rgpot_openmm_potential(const char *engine_path,
+                                                          double u0, double cutoff,
+                                                          double psi, char *err,
+                                                          size_t err_len);
 
-void rgpot_external_potential_free(rgpot_external_potential *pot);
+RGPOT_API void rgpot_external_potential_free(rgpot_external_potential *pot);
 
 /* Returns 0, or 1 and writes err. forces holds 3 * n doubles. */
-int rgpot_external_potential_energy_forces(
+RGPOT_API int rgpot_external_potential_energy_forces(
     rgpot_external_potential *pot, const double *xyz, const int *atomic_numbers,
     size_t n, const double *box9, double *forces, double *energy, char *err,
     size_t err_len);
@@ -214,43 +216,44 @@ typedef int (*rgpot_md_session_engine_create_fn)(
     rgpot_md_session_ops *ops, void **ctx, size_t *n_atoms, char *err,
     size_t err_len);
 
-rgpot_md_session *rgpot_md_session_from_ops(void *ctx,
-                                            const rgpot_md_session_ops *ops,
-                                            size_t n_atoms, char *err,
-                                            size_t err_len);
-rgpot_md_session *rgpot_md_session_create(const char *engine,
-                                          const char *engine_path,
-                                          const void *spec, size_t spec_len,
-                                          const char *options, char *err,
+RGPOT_API rgpot_md_session *
+rgpot_md_session_from_ops(void *ctx, const rgpot_md_session_ops *ops,
+                          size_t n_atoms, char *err, size_t err_len);
+RGPOT_API rgpot_md_session *
+rgpot_md_session_create(const char *engine, const char *engine_path,
+                        const void *spec, size_t spec_len, const char *options,
+                        char *err, size_t err_len);
+RGPOT_API size_t rgpot_md_session_n_atoms(const rgpot_md_session *session);
+RGPOT_API int rgpot_md_session_get_masses(rgpot_md_session *session,
+                                          double *masses, size_t n_atoms,
+                                          char *err, size_t err_len);
+RGPOT_API int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
+                                                const double *box9, char *err,
+                                                size_t err_len);
+RGPOT_API int rgpot_md_session_get_periodic_box(rgpot_md_session *session,
+                                                double *box9, char *err,
+                                                size_t err_len);
+RGPOT_API int rgpot_md_session_set_positions(rgpot_md_session *session,
+                                             const double *positions, size_t n3,
+                                             char *err, size_t err_len);
+RGPOT_API int rgpot_md_session_set_velocities(rgpot_md_session *session,
+                                              const double *velocities,
+                                              size_t n3, char *err,
+                                              size_t err_len);
+RGPOT_API int rgpot_md_session_initialize(rgpot_md_session *session, char *err,
                                           size_t err_len);
-size_t rgpot_md_session_n_atoms(const rgpot_md_session *session);
-int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
-                                size_t n_atoms, char *err, size_t err_len);
-int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
-                                      const double *box9, char *err,
-                                      size_t err_len);
-int rgpot_md_session_get_periodic_box(rgpot_md_session *session, double *box9,
-                                      char *err, size_t err_len);
-int rgpot_md_session_set_positions(rgpot_md_session *session,
-                                   const double *positions, size_t n3,
-                                   char *err, size_t err_len);
-int rgpot_md_session_set_velocities(rgpot_md_session *session,
-                                    const double *velocities, size_t n3,
-                                    char *err, size_t err_len);
-int rgpot_md_session_initialize(rgpot_md_session *session, char *err,
-                                size_t err_len);
-int rgpot_md_session_step_langevin(
+RGPOT_API int rgpot_md_session_step_langevin(
     rgpot_md_session *session, double kT, double friction, double time_step,
     const double *plane_point, const double *plane_normal,
     const double *wall_points, const double *wall_normals, size_t n_walls,
     size_t n3, size_t steps, uint64_t seed, uint64_t *wall_hits, char *err,
     size_t err_len);
-int rgpot_md_session_run_langevin(rgpot_md_session *session,
-                                  const rgpot_md_langevin_request *request,
-                                  rgpot_md_langevin_result *result, char *err,
-                                  size_t err_len);
-int rgpot_md_session_step_nve(rgpot_md_session *session, double time_step,
-                              size_t steps, char *err, size_t err_len);
+RGPOT_API int rgpot_md_session_run_langevin(
+    rgpot_md_session *session, const rgpot_md_langevin_request *request,
+    rgpot_md_langevin_result *result, char *err, size_t err_len);
+RGPOT_API int rgpot_md_session_step_nve(rgpot_md_session *session,
+                                        double time_step, size_t steps,
+                                        char *err, size_t err_len);
 /*
  * Draw velocities from the Maxwell-Boltzmann distribution at kT (eV) and set
  * them. With plane_normal (n3 doubles) the draw is conditioned on
@@ -258,39 +261,45 @@ int rgpot_md_session_step_nve(rgpot_md_session *session, double time_step,
  * null draws all 3 * n_atoms components. A particle of zero mass is at rest.
  * seed makes the draw reproducible and is the same stream on every engine.
  */
-int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
-                                       uint64_t seed,
-                                       const double *plane_normal, size_t n3,
-                                       char *err, size_t err_len);
-int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
-                               double *velocities, double *forces, size_t n3,
-                               double *potential_energy, double *kinetic_energy,
-                               char *err, size_t err_len);
-int rgpot_md_session_get_positions(rgpot_md_session *session,
-                                   double *positions, size_t n3, char *err,
-                                   size_t err_len);
-int rgpot_md_session_get_velocities(rgpot_md_session *session,
-                                    double *velocities, size_t n3, char *err,
-                                    size_t err_len);
+RGPOT_API int rgpot_md_session_reseed_velocities(rgpot_md_session *session,
+                                                 double kT, uint64_t seed,
+                                                 const double *plane_normal,
+                                                 size_t n3, char *err,
+                                                 size_t err_len);
+RGPOT_API int rgpot_md_session_get_state(rgpot_md_session *session,
+                                         double *positions, double *velocities,
+                                         double *forces, size_t n3,
+                                         double *potential_energy,
+                                         double *kinetic_energy, char *err,
+                                         size_t err_len);
+RGPOT_API int rgpot_md_session_get_positions(rgpot_md_session *session,
+                                             double *positions, size_t n3,
+                                             char *err, size_t err_len);
+RGPOT_API int rgpot_md_session_get_velocities(rgpot_md_session *session,
+                                              double *velocities, size_t n3,
+                                              char *err, size_t err_len);
 /* Forces and the potential energy at the current positions. */
-int rgpot_md_session_get_forces(rgpot_md_session *session, double *forces,
-                                size_t n3, double *potential_energy,
-                                char *err, size_t err_len);
+RGPOT_API int rgpot_md_session_get_forces(rgpot_md_session *session,
+                                          double *forces, size_t n3,
+                                          double *potential_energy, char *err,
+                                          size_t err_len);
 /* Potential and kinetic energy, either of which may be null. */
-int rgpot_md_session_get_energy(rgpot_md_session *session,
-                                double *potential_energy,
-                                double *kinetic_energy, char *err,
-                                size_t err_len);
+RGPOT_API int rgpot_md_session_get_energy(rgpot_md_session *session,
+                                          double *potential_energy,
+                                          double *kinetic_energy, char *err,
+                                          size_t err_len);
 /* See the neighbour-exchange note above for the short-buffer contract. */
-int rgpot_md_session_get_neighbors(rgpot_md_session *session,
-                                   const rgpot_nlist_request *request,
-                                   rgpot_nlist_soa *out, size_t *count,
-                                   size_t *needed, char *err, size_t err_len);
-int rgpot_md_session_set_neighbors(rgpot_md_session *session,
-                                   const rgpot_nlist_request *request,
-                                   const rgpot_nlist_soa *pairs, size_t count,
-                                   char *err, size_t err_len);
-void rgpot_md_session_destroy(rgpot_md_session *session);
+RGPOT_API int rgpot_md_session_get_neighbors(rgpot_md_session *session,
+                                             const rgpot_nlist_request *request,
+                                             rgpot_nlist_soa *out,
+                                             size_t *count, size_t *needed,
+                                             char *err, size_t err_len);
+RGPOT_API int rgpot_md_session_set_neighbors(rgpot_md_session *session,
+                                             const rgpot_nlist_request *request,
+                                             const rgpot_nlist_soa *pairs,
+                                             size_t count, char *err,
+                                             size_t err_len);
+RGPOT_API void rgpot_md_session_destroy(rgpot_md_session *session);
 
 #ifdef __cplusplus
 }

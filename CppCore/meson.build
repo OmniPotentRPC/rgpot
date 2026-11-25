@@ -163,6 +163,16 @@ if get_option('with_cache') and not get_option('with_rpc_client_only')
     _rgpot_srcs += files('rgpot/PotentialCache.cc')
 endif
 
+# RGPOT_API (rgpot/rgpot_api.h) exports the C ABI from code built with
+# RGPOT_BUILDING: the library archives and the tests that link them.
+# A consumer gets these arguments without it, and imports from the DLL.
+rgpot_api_args = []
+if get_option('default_library') == 'static'
+    rgpot_api_args += ['-DRGPOT_STATIC']
+endif
+rgpot_consumer_args = _args + rgpot_api_args
+_args += ['-DRGPOT_BUILDING']
+
 # ELF soversion of librgpot. The single assignment is kCxxSoversion in
 # rgpot/abi/CxxLayout.hpp, next to the C++ layout stamp. A layout edit
 # that bumps the constant moves every build system's SONAME with it.
@@ -885,7 +895,7 @@ if not get_option('with_rpc_client_only')
         link_with: rgpot,
         dependencies: _rgpot_consumer_deps + _rgpot_openmp_consumer,
         include_directories: _incdirs,
-        compile_args: _args,
+        compile_args: rgpot_consumer_args,
     )
     # The same list built from the dependencies taken before OpenMP joined
     # _deps, so nothing has to be told apart by name afterwards. A static
@@ -901,7 +911,7 @@ if not get_option('with_rpc_client_only')
         link_with: rgpot,
         dependencies: _rgpot_consumer_deps_no_openmp,
         include_directories: _incdirs,
-        compile_args: _args,
+        compile_args: rgpot_consumer_args,
     )
 
     # The Fortran kernels must stay invisible outside librgpot: an
@@ -3431,6 +3441,12 @@ if not meson.is_subproject()
             '-DRGPOT_HAS_NWCHEM_FRONTEND=TRUE',
             '-DRGPOT_HAS_CPMD_FRONTEND=TRUE',
         ]
+    endif
+    if (
+        get_option('default_library') == 'static'
+        or get_option('with_rpc_client_only')
+    )
+        _pc_cflags += ['-DRGPOT_STATIC']
     endif
 
     pkg = import('pkgconfig')
