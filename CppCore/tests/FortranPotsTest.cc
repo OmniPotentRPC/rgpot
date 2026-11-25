@@ -19,6 +19,7 @@
 
 #include <catch2/catch_all.hpp>
 #include "rgpot/ForceStructs.hpp"
+#include <barrier>
 #include <thread>
 #include <functional>
 #include <atomic>
@@ -690,6 +691,55 @@ TEST_CASE("Tersoff negative-determinant box matches right-handed mirror",
       REQUIRE(c == 0.0);
     }
   }
+}
+
+TEST_CASE("Tersoff concurrent errors keep complete messages",
+          "[fortran][tersoff][threads]") {
+  constexpr int threadCount = 16;
+  constexpr int iterations = 100;
+  const AtomMatrix pos = siDiamond();
+  const std::vector<int> types(pos.rows(), 14);
+  const std::array<double, 9> zeroBox{10.0, 0, 0, 0, 0.0, 0, 0, 0, 10.0};
+  const std::string expected =
+      "Tersoff potential failed (status 4): rgpot_neighbors: box must be "
+      "finite, and a periodic box must have positive volume";
+  std::barrier<> ready(threadCount);
+  std::atomic<int> failures{0};
+  std::vector<std::thread> threads;
+  threads.reserve(threadCount);
+
+  for (int worker = 0; worker < threadCount; ++worker) {
+    threads.emplace_back([&] {
+      rgpot::fortranpots::TersoffPot pot;
+      std::vector<double> force(pos.size(), 0.0);
+      rgpot::ForceInput in{.nAtoms = pos.rows(),
+                           .pos = pos.data(),
+                           .atmnrs = types.data(),
+                           .box = zeroBox.data()};
+      for (int attempt = 0; attempt < iterations; ++attempt) {
+        rgpot::ForceOut out{.F = force.data(),
+                            .energy = 0.0,
+                            .variance = 0.0,
+                            .stress = {},
+                            .has_stress = 0};
+        ready.arrive_and_wait();
+        try {
+          pot.forceImpl(in, &out);
+          ++failures;
+        } catch (const std::runtime_error &error) {
+          if (error.what() != expected) {
+            ++failures;
+          }
+        } catch (...) {
+          ++failures;
+        }
+      }
+    });
+  }
+  for (auto &thread : threads) {
+    thread.join();
+  }
+  REQUIRE(failures.load() == 0);
 }
 
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {

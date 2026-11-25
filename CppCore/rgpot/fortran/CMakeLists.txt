@@ -12,7 +12,8 @@ foreach(flag IN ITEMS -std=f2018 -fimplicit-none -Wall
 endforeach()
 
 set(_rgpot_common_sources
-    rgpot_kinds.f90 rgpot_ferror.f90 rgpot_neighbors.f90 rgpot_workspace.f90)
+    rgpot_kinds.f90 rgpot_error_text.f90 rgpot_ferror.f90
+    rgpot_neighbors.f90 rgpot_workspace.f90)
 set(_rgpot_kernel_sources
     rgpot_cuh2.f90 rgpot_cuh2_capi.f90
     rgpot_eam_al.f90 rgpot_eam_al_capi.f90

@@ -38,6 +38,7 @@ fortran_pots_sources = files(
     'rgpot_eam_al_capi.f90',
     'rgpot_edip.f90',
     'rgpot_edip_capi.f90',
+    'rgpot_error_text.f90',
     'rgpot_fehe.f90',
     'rgpot_fehe_capi.f90',
     'rgpot_ferror.f90',
@@ -181,6 +182,7 @@ _cuh2_plugin_args = fc.get_supported_arguments(
 rgpot_cuh2_sources = files(
     'rgpot_cuh2.f90',
     'rgpot_cuh2_capi.f90',
+    'rgpot_error_text.f90',
     'rgpot_ferror.f90',
     'rgpot_kinds.f90',
     'rgpot_neighbors.f90',

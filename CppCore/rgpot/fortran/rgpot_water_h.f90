@@ -42,6 +42,7 @@
 !! that way. `energy_scale` converts the result to the eV/Angstrom that
 !! every rgpot entry point reports.
 module rgpot_water_h
+   use rgpot_error_text, only: error_text_t
    use rgpot_kinds, only: wp, ip, c_double, c_int, c_size_t
    implicit none
    private
@@ -396,6 +397,7 @@ contains
       character(len=:), allocatable, intent(out) :: errmsg
 
       integer(ip) :: natoms, n_oxygen, n_hydrogen
+      type(error_text_t) :: error_text
 
       status = 0
       errmsg = ""
@@ -404,22 +406,25 @@ contains
 
       if (natoms < 4_ip) then
          status = 3
-         errmsg = "rgpot_water_h: one water plus one H needs at least 4 atoms, got " &
-                  //itoa(natoms)
+         call error_text%append("rgpot_water_h: one water plus one H needs at least 4 atoms, got ")
+         call error_text%append_int(natoms)
+         call error_text%finish(errmsg)
          return
       end if
 
       if (any(atomic_numbers /= z_hydrogen .and. atomic_numbers /= z_oxygen)) then
          status = 3
-         errmsg = "rgpot_water_h: only hydrogen (Z=1) and oxygen (Z=8) atoms belong "// &
-                  "in a water plus H system"
+         errmsg = "rgpot_water_h: only hydrogen (Z=1) and oxygen (Z=8) atoms belong in a water plus H system"
          return
       end if
 
       if (atomic_numbers(natoms) /= z_hydrogen) then
          status = 3
-         errmsg = "rgpot_water_h: the lone H must be the last atom, but atom " &
-                  //itoa(natoms)//" has Z="//itoa(atomic_numbers(natoms))
+         call error_text%append("rgpot_water_h: the lone H must be the last atom, but atom ")
+         call error_text%append_int(natoms)
+         call error_text%append(" has Z=")
+         call error_text%append_int(atomic_numbers(natoms))
+         call error_text%finish(errmsg)
          return
       end if
 
@@ -428,16 +433,20 @@ contains
 
       if (n_oxygen < 1_ip) then
          status = 3
-         errmsg = "rgpot_water_h: no oxygen atoms, so there is no water for the H "// &
-                  "atom to move in"
+         errmsg = "rgpot_water_h: no oxygen atoms, so there is no water for the H atom to move in"
          return
       end if
 
       if (n_hydrogen /= 2_ip*n_oxygen + 1_ip) then
          status = 3
-         errmsg = "rgpot_water_h: composition is not whole water molecules plus one "// &
-                  "H: "//itoa(n_oxygen)//" O and "//itoa(n_hydrogen)//" H, where " &
-                  //itoa(2_ip*n_oxygen + 1_ip)//" H are needed"
+         call error_text%append("rgpot_water_h: composition is not whole water molecules plus one H: ")
+         call error_text%append_int(n_oxygen)
+         call error_text%append(" O and ")
+         call error_text%append_int(n_hydrogen)
+         call error_text%append(" H, where ")
+         call error_text%append_int(2_ip*n_oxygen + 1_ip)
+         call error_text%append(" H are needed")
+         call error_text%finish(errmsg)
          return
       end if
 
@@ -532,8 +541,7 @@ contains
 
       if (.not. all(usable)) then
          status = 2
-         errmsg = "rgpot_water_h: an atom coincides with the lone H atom, leaving "// &
-                  "the radial derivative without a direction"
+         errmsg = "rgpot_water_h: an atom coincides with the lone H atom, leaving the radial derivative without a direction"
          return
       end if
 
@@ -541,16 +549,5 @@ contains
       forces = leg_force
       forces(:, lone_h) = -sum(leg_force, dim=2)
    end subroutine water_h_energy_forces
-
-   !> Decimal text for an index or a count, for the error messages.
-   function itoa(value) result(text)
-      integer(ip), intent(in) :: value
-      character(len=:), allocatable :: text
-
-      character(len=16) :: buffer
-
-      write (buffer, '(i0)') value
-      text = trim(buffer)
-   end function itoa
 
 end module rgpot_water_h
