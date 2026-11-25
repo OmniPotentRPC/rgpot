@@ -312,18 +312,24 @@ the plane, and the multiplier of the plane accounts for them.
 
 *** =rgpot_md_session_ops=
 
-- Inputs :: =struct_size= (=sizeof(rgpot_md_session_ops)=) and backend callbacks
-  =set_positions=, =set_velocities=, =step_langevin=, =step_nve=,
-  =get_state=, =get_masses=, and =destroy=, followed by the optional
-  =set_periodic_box=, =get_periodic_box=, =initialize=,
-  =run_langevin=, =get_neighbors=, and =set_neighbors=.
+- Inputs :: =struct_size= (set by a host to its =sizeof(rgpot_md_session_ops)=
+  as the buffer capacity before calling
+  =rgpot_md_session_engine_create_fn=) and backend callbacks =set_positions=,
+  =set_velocities=, =step_langevin=, =step_nve=, =get_state=,
+  =get_masses=, and =destroy=, followed by the optional =set_periodic_box=, =get_periodic_box=, =initialize=, =run_langevin=,
+  =get_neighbors=, and =set_neighbors=.
   The macro =RGPOT_MD_OPS_HAS(ops, member)= tests that a vtable carries an
   optional member.
 - Units :: rgpot host units (Angstrom, eV, ps, amu).
-- Outputs :: vtable consumed by =rgpot_md_session_from_ops= and exported by
-  engine plugins implementing =rgpot_md_session_engine_create_fn=.
+- Outputs :: vtable consumed by =rgpot_md_session_from_ops= and populated by
+  engine plugins implementing
+  =rgpot_md_session_engine_create_fn=, which write at most =min(capacity, sizeof(rgpot_md_session_ops))=
+  bytes (only members whose end offset fits) and set =ops->struct_size= to that
+  filled byte count.
 - Errors :: =rgpot_md_session_from_ops= rejects null required callbacks or a
   =struct_size= that ends before =destroy=.
+  An engine plugin refuses a capacity below =RGPOT_MD_OPS_END(destroy)= without
+  writing to =*ops=.
   A vtable that ends earlier than an optional member, or leaves it null, makes
   that call fail with a message naming the missing callback.
 
@@ -358,11 +364,16 @@ typedef int (*rgpot_md_session_engine_create_fn)(
     size_t err_len);
 #+end_src
 
-- Inputs :: opaque backend specification =spec= of length =spec_len= and backend
-  =options= string.
+- Inputs :: opaque backend specification =spec= of length
+  =spec_len=, backend =options= string, and zeroed =*ops= whose =struct_size=
+  holds the host's =sizeof(rgpot_md_session_ops)= capacity.
 - Units :: the returned callbacks speak rgpot units.
-- Outputs :: returns 0 and populates =*ops=, =*ctx=, and =*n_atoms=.
-- Errors :: returns 1 and writes =err= on failure.
+- Outputs :: returns 0, writes at most
+  =min(capacity, sizeof(rgpot_md_session_ops))= bytes into =*ops= (only members that fit within that bound), sets =ops->struct_size=
+  to the filled byte size, and populates =*ctx= and =*n_atoms=.
+- Errors :: returns 1 and writes =err= on failure, including when the host's
+  =ops->struct_size= capacity is smaller than =RGPOT_MD_OPS_END(destroy)= (in
+  which case =*ops= is left untouched and no context is returned).
 
 *** =rgpot_md_session_from_ops=
 
@@ -399,7 +410,9 @@ rgpot_md_session *rgpot_md_session_create(const char *engine,
 - Units :: the returned session speaks rgpot units (Angstrom, eV, ps, amu).
 - Outputs :: opens the engine plugin
   (=engine_path=, else =RGPOT_<ENGINE>_ENGINE=, else =<ENGINE>_ENGINE=, else
-  =lib<engine>_engine=), resolves =rgpot_md_session_engine_create=, and returns a new =rgpot_md_session *=.
+  =lib<engine>_engine=), passes a zeroed =rgpot_md_session_ops= with
+  =struct_size= set to =sizeof(rgpot_md_session_ops)= as its capacity to
+  =rgpot_md_session_engine_create=, and returns a new =rgpot_md_session *=.
 - Errors :: returns null and writes =err= if no library opens or engine
   initialization fails.
 

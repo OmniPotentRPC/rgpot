@@ -1044,8 +1044,27 @@ bool valid_md_ops(const rgpot_md_session_ops *ops) {
 // declares and leave the rest null, so RGPOT_MD_OPS_HAS sees them as absent.
 rgpot_md_session_ops copy_md_ops(const rgpot_md_session_ops *ops) {
   rgpot_md_session_ops out{};
-  std::memcpy(&out, ops, std::min(ops->struct_size, sizeof(out)));
-  out.struct_size = std::min(ops->struct_size, sizeof(out));
+  const size_t filled = std::min(ops->struct_size, sizeof(out));
+  std::memcpy(&out, ops, filled);
+  out.struct_size = filled;
+  if (!RGPOT_MD_OPS_HAS(&out, set_periodic_box)) {
+    out.set_periodic_box = nullptr;
+  }
+  if (!RGPOT_MD_OPS_HAS(&out, get_periodic_box)) {
+    out.get_periodic_box = nullptr;
+  }
+  if (!RGPOT_MD_OPS_HAS(&out, initialize)) {
+    out.initialize = nullptr;
+  }
+  if (!RGPOT_MD_OPS_HAS(&out, run_langevin)) {
+    out.run_langevin = nullptr;
+  }
+  if (!RGPOT_MD_OPS_HAS(&out, get_neighbors)) {
+    out.get_neighbors = nullptr;
+  }
+  if (!RGPOT_MD_OPS_HAS(&out, set_neighbors)) {
+    out.set_neighbors = nullptr;
+  }
   return out;
 }
 
@@ -1233,6 +1252,7 @@ rgpot_md_session *rgpot_md_session_create(const char *engine,
         continue;
       }
       rgpot_md_session_ops ops{};
+      ops.struct_size = sizeof(ops);
       void *ctx = nullptr;
       size_t n_atoms = 0;
       char inner_err[512] = {};
@@ -1245,7 +1265,9 @@ rgpot_md_session *rgpot_md_session_create(const char *engine,
       }
       if (ctx == nullptr || !valid_md_ops(&ops) || n_atoms == 0 ||
           n_atoms > std::numeric_limits<size_t>::max() / 3) {
-        if (ctx != nullptr && ops.destroy != nullptr) {
+        if (ctx != nullptr &&
+            ops.struct_size >= RGPOT_MD_OPS_END(destroy) &&
+            ops.destroy != nullptr) {
           ops.destroy(ctx);
         }
         rgpot::plugin::dynlib::close(handle);

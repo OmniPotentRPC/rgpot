@@ -860,7 +860,8 @@ pub type MdStepLangevinFn = unsafe extern "C" fn(
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct MdSessionOps {
-    /// Byte size of this struct (`std::mem::size_of::<MdSessionOps>()`).
+    /// Host capacity (`std::mem::size_of::<MdSessionOps>()`) on input to
+    /// `rgpot_md_session_engine_create`, and filled byte size on output.
     pub struct_size: usize,
     /// Set flat positions in Angstrom.
     pub set_positions: unsafe extern "C" fn(
@@ -1022,7 +1023,10 @@ impl CAbiMdSession {
         let mut ops = ops;
         // A vtable built against an older header ends before the optional
         // callbacks; whatever the struct holds there is not a callback.
-        let size = ops.struct_size;
+        // Clamp to our own size so an oversized struct_size cannot read past
+        // our fields.
+        let size = ops.struct_size.min(std::mem::size_of::<MdSessionOps>());
+        ops.struct_size = size;
         let holds = |offset: usize, slot: usize| offset + slot <= size;
         if !holds(
             std::mem::offset_of!(MdSessionOps, set_periodic_box),
@@ -1135,6 +1139,11 @@ impl CAbiMdSession {
 
     /// Dynamically load an MD engine plugin exporting `rgpot_md_session_engine_create`.
     ///
+    /// Zeroes `MdSessionOps` and passes `size_of::<MdSessionOps>()` in
+    /// `struct_size` as the byte capacity before calling the engine; the engine
+    /// fills at most `min(capacity, sizeof(engine ops))` bytes and sets
+    /// `struct_size` to the filled size.
+    ///
     /// # Safety
     ///
     /// `engine_path` must point to a valid rgpot MD session plugin implementing
@@ -1174,6 +1183,11 @@ impl CAbiMdSession {
             None => std::ptr::null(),
         };
         let mut ops = std::mem::MaybeUninit::<MdSessionOps>::zeroed();
+        // SAFETY: `ops` is allocated on the stack and `struct_size` is an aligned `usize` field.
+        unsafe {
+            std::ptr::addr_of_mut!((*ops.as_mut_ptr()).struct_size)
+                .write(std::mem::size_of::<MdSessionOps>());
+        }
         let mut ctx: *mut c_void = std::ptr::null_mut();
         let mut n_atoms: usize = 0;
         let mut error = [0 as c_char; 1024];
@@ -2462,5 +2476,70 @@ mod tests {
         unsafe {
             assert_eq!((&*ctx).velocities, expected);
         }
+    }
+
+    #[test]
+    fn a_larger_host_struct_size_is_clamped_and_still_works() {
+        let destroyed = Arc::new(AtomicBool::new(false));
+        let mut ops = mock_ops();
+        ops.set_periodic_box = Some(mock_set_periodic_box);
+        ops.get_periodic_box = Some(mock_get_periodic_box);
+        ops.run_langevin = Some(mock_run_langevin);
+        ops.struct_size = std::mem::size_of::<MdSessionOps>() + 64;
+
+        let ctx = mock_ctx(&destroyed);
+        let mut session = unsafe {
+            CAbiMdSession::from_engine_ops(ctx.cast(), std::mem::MaybeUninit::new(ops), 2)
+        }
+        .expect("larger struct_size is accepted and clamped");
+        assert_eq!(session.ops.struct_size, std::mem::size_of::<MdSessionOps>());
+        let cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        session.set_periodic_box(&cell).unwrap();
+        assert_eq!(session.periodic_box().unwrap(), cell);
+        drop(session);
+        assert!(destroyed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_smaller_capacity_copy_keeps_guard_bytes_intact() {
+        #[repr(C)]
+        struct GuardedBuffer {
+            bytes: [u8; std::mem::size_of::<MdSessionOps>() + 32],
+        }
+        let mut buf = GuardedBuffer {
+            bytes: [0xA5; std::mem::size_of::<MdSessionOps>() + 32],
+        };
+        let cap = REQUIRED_OPS_SIZE;
+        buf.bytes[..cap].fill(0);
+        let src = mock_ops();
+        let src_bytes = unsafe {
+            std::slice::from_raw_parts(
+                (&src as *const MdSessionOps).cast::<u8>(),
+                std::mem::size_of::<MdSessionOps>(),
+            )
+        };
+        let filled = cap.min(std::mem::size_of::<MdSessionOps>());
+        buf.bytes[..filled].copy_from_slice(&src_bytes[..filled]);
+        unsafe {
+            buf.bytes.as_mut_ptr().cast::<usize>().write(filled);
+        }
+        assert!(buf.bytes[cap..].iter().all(|&b| b == 0xA5));
+
+        let mut ops = std::mem::MaybeUninit::<MdSessionOps>::zeroed();
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                buf.bytes.as_ptr(),
+                ops.as_mut_ptr().cast::<u8>(),
+                filled,
+            );
+        }
+        let destroyed = Arc::new(AtomicBool::new(false));
+        let ctx = mock_ctx(&destroyed);
+        let mut session = unsafe { CAbiMdSession::from_engine_ops(ctx.cast(), ops, 2) }
+            .expect("truncated capacity vtable is adopted");
+        assert_eq!(session.ops.struct_size, REQUIRED_OPS_SIZE);
+        assert!(session.set_periodic_box(&[0.0; 9]).is_err());
+        drop(session);
+        assert!(destroyed.load(Ordering::SeqCst));
     }
 }

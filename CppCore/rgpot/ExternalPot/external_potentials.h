@@ -111,6 +111,19 @@ RGPOT_API int rgpot_external_potential_energy_forces(
  * written, *needed is the full count the caller must provide, and the error
  * text names that required count. The OpenMM session and the in-tree mock
  * follow this rule.
+ *
+ * Capacity negotiation for rgpot_md_session_engine_create:
+ *   1. Before calling the engine, the host zeroes *ops and sets
+ *      ops->struct_size = sizeof(rgpot_md_session_ops) as its byte capacity.
+ *   2. The engine reads capacity = ops->struct_size. If capacity is smaller
+ *      than RGPOT_MD_OPS_END(destroy), the engine refuses with nonzero status
+ *      and an error message without writing to *ops or returning a context.
+ *   3. Otherwise, the engine computes filled = min(capacity,
+ *      sizeof(rgpot_md_session_ops)), writes at most filled bytes (populating
+ *      only callbacks whose end offset fits in filled, leaving any partial
+ *      tail zeroed), and sets ops->struct_size = filled.
+ *   4. Hosts inspect optional members solely through RGPOT_MD_OPS_HAS(ops,
+ *      member) and clamp struct_size to their own sizeof when copying.
  */
 typedef struct rgpot_md_session rgpot_md_session;
 
@@ -222,6 +235,13 @@ enum {
 #define RGPOT_MD_OPS_END(member) (offsetof(rgpot_md_session_ops, member) + sizeof(((rgpot_md_session_ops *)0)->member))
 #define RGPOT_MD_OPS_HAS(ops, member) ((ops)->struct_size >= RGPOT_MD_OPS_END(member) && (ops)->member != NULL)
 
+/*
+ * Entry point exported by an MD session engine plugin. The caller zeroes *ops
+ * and sets ops->struct_size to the host buffer capacity before calling; the
+ * engine writes at most min(capacity, sizeof(rgpot_md_session_ops)) bytes and
+ * sets ops->struct_size to the size it filled, or fails with nonzero status if
+ * capacity < RGPOT_MD_OPS_END(destroy).
+ */
 typedef int (*rgpot_md_session_engine_create_fn)(
     const void *spec, size_t spec_len, const char *options,
     rgpot_md_session_ops *ops, void **ctx, size_t *n_atoms, char *err,

@@ -159,8 +159,11 @@ private:
 
 /**
  * Populate an rgpot_md_session_ops vtable backed by an OpenMMSession
- * deserialized from system_xml on the requested platform. All C ABI
- * inputs/outputs use rgpot units (Angstrom, eV, ps, amu).
+ * deserialized from system_xml on the requested platform. The caller sets
+ * ops->struct_size to the capacity of *ops before calling; this function writes
+ * at most min(capacity, sizeof(rgpot_md_session_ops)) bytes and sets
+ * ops->struct_size to that filled size. All C ABI inputs/outputs use rgpot
+ * units (Angstrom, eV, ps, amu).
  */
 int openmm_md_session_init(const char *system_xml, const char *platform,
                            rgpot_md_session_ops *ops, void **ctx,
