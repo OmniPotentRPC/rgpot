@@ -4,6 +4,6 @@
 # common.capnp; schema_ledger.py check --fetch compares them with the pin.
 [rgconf]
 url = https://github.com/OmniPotentRPC/rgconf.git
-revision = b6643e836abdb2891d6d0e3b74e99b2515e4cc53
+revision = b642c02cb44b7c8658692c8d02c779c8b4bb7a90
 schema = crates/rgconf-core/schema/potential.capnp
 common = crates/rgconf-core/schema/common.capnp
