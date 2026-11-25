@@ -109,7 +109,10 @@ void group_arrive() {
 }
 
 // Fixed chunks over the current team. The chunk count never follows the
-// team, so a chunk does the same arithmetic whoever runs it.
+// team, so a chunk does the same arithmetic whoever runs it. A region is
+// always the whole team, never a shorter one: a smaller region next to a
+// larger pool leaves the spare workers spinning on places the next region
+// hands to its own threads.
 template <class Fn>
 void team_chunks(int nchunks, Fn &&fn) {
   if (in_group()) {
@@ -119,7 +122,33 @@ void team_chunks(int nchunks, Fn &&fn) {
     group_arrive();
     return;
   }
-  forEachChunk(nchunks, thread_count(), fn);
+  const int team = std::max(thread_count(), 1);
+  if (team <= 1 || nchunks <= 1) {
+    for (int chunk = 0; chunk < nchunks; ++chunk) {
+      fn(chunk);
+    }
+    return;
+  }
+  forEachSlice(team, [&](int slice) {
+    for (int chunk = slice; chunk < nchunks; chunk += team) {
+      fn(chunk);
+    }
+  });
+}
+
+// `fn(phase, slice, nslices)` for every phase, in one region. A phase ends
+// on every slice before the next starts. The caller walks its own items
+// with the slice and the slice count.
+template <class Fn>
+void team_slice_phases(int nphases, Fn &&fn) {
+  const int team = std::max(thread_count(), 1);
+  if (team <= 1) {
+    for (int phase = 0; phase < nphases; ++phase) {
+      fn(phase, 0, 1);
+    }
+    return;
+  }
+  forEachSlicePhase(nphases, team, [&](int phase, int slice) { fn(phase, slice, team); });
 }
 
 template <class Fn>
@@ -133,25 +162,19 @@ void team_chunk_phases(int nphases, int nchunks, Fn &&fn) {
     }
     return;
   }
-  const int team = std::min(std::max(thread_count(), 1), nchunks);
-  if (team <= 1) {
-    for (int phase = 0; phase < nphases; ++phase) {
-      for (int chunk = 0; chunk < nchunks; ++chunk) {
-        fn(phase, chunk);
-      }
-    }
-    return;
-  }
-  forEachSlicePhase(nphases, team, [&](int phase, int slice) {
-    for (int chunk = slice; chunk < nchunks; chunk += team) {
+  team_slice_phases(nphases, [&](int phase, int slice, int nslices) {
+    for (int chunk = slice; chunk < nchunks; chunk += nslices) {
       fn(phase, chunk);
     }
   });
 }
 
-// Partials of a real-space sum and of the Ewald wave sum. The count follows
-// the item count only. Each chunk keeps a full force buffer, so the cap
-// bounds that memory.
+// Partials of a real-space sum. The count follows the pair count and the
+// atom count only: a chunk is worth about eight pairs per atom, which keeps
+// the clear and fold of its force row near one percent of its pair loop,
+// so a one-thread call that walks the chunks in turn pays almost nothing
+// for them. Each chunk keeps a full force row, so the cap bounds that
+// memory.
 int sum_chunks(std::size_t nitems, std::size_t block) {
   return std::min(rgpot::fixedChunks(nitems, block), 32);
 }
@@ -171,63 +194,118 @@ struct Scratch {
   double strain[6]{};
 };
 
-// One buffer for the whole process. The ladder is a single caller, and
-// keeping the storage removes allocator jitter from the timed samples.
-std::vector<Scratch> &scratch_store() {
+// Rows are kept between calls and only grow, so a call allocates nothing
+// once the largest system has been seen.
+std::vector<Scratch> &scratch_slots(int need) {
   static std::vector<Scratch> parts;
+  if (static_cast<int>(parts.size()) < need) {
+    parts.resize(static_cast<std::size_t>(need));
+  }
   return parts;
 }
 
-std::vector<Scratch> &scratch_for(int nt, std::size_t n3, std::size_t nq = 0) {
-  std::vector<Scratch> &parts = scratch_store();
-  if (static_cast<int>(parts.size()) != nt) {
-    parts.assign(static_cast<std::size_t>(nt), Scratch{});
+void scratch_clear(Scratch &p, std::size_t n3, std::size_t nq) {
+  if (p.f.size() != n3) {
+    p.f.assign(n3, 0.0);
+  } else {
+    std::fill(p.f.begin(), p.f.end(), 0.0);
   }
-  for (auto &p : parts) {
-    if (p.f.size() != n3) {
-      p.f.assign(n3, 0.0);
-    } else {
-      std::fill(p.f.begin(), p.f.end(), 0.0);
-    }
+  if (p.dq.size() != nq) {
     p.dq.assign(nq, 0.0);
-    p.energy = Neumaier{};
-    std::fill(std::begin(p.strain), std::end(p.strain), 0.0);
+  } else {
+    std::fill(p.dq.begin(), p.dq.end(), 0.0);
   }
-  return parts;
+  p.energy = Neumaier{};
+  std::fill(std::begin(p.strain), std::end(p.strain), 0.0);
 }
 
-// Every element folds the parts in part order, so splitting the elements
-// over a team keeps the bits.
-void add_scratch(const std::vector<Scratch> &parts, double *F, ElecOut *out) {
+// Folds the rows of `nparts` chunks into the output in chunk order. Every
+// element sees the rows in that order, so splitting the elements over a
+// team, or folding each row as soon as its chunk ends, keeps the bits.
+void fold_energy_strain(const std::vector<Scratch> &parts, int nparts, ElecOut *out) {
   Neumaier energy;
-  for (const auto &p : parts) {
+  for (int c = 0; c < nparts; ++c) {
+    const Scratch &p = parts[static_cast<std::size_t>(c)];
     energy.add(p.energy);
     for (int k = 0; k < 6; ++k) {
       out->strain[k] += p.strain[k];
     }
   }
   out->energy += energy.total();
-  if (parts.empty()) {
-    return;
-  }
-  const std::size_t nf = parts.front().f.size();
-  const int blocks = rgpot::fixedChunks(nf, 4096);
-  forEachChunk(blocks, thread_count(), [&](int block) {
-    const Range run = partition(static_cast<std::int64_t>(nf), block, blocks);
-    for (const auto &p : parts) {
-      for (auto i = static_cast<std::size_t>(run.begin); i < static_cast<std::size_t>(run.end); ++i) {
-        F[i] += p.f[i];
-      }
-    }
-  });
 }
 
-void add_charge_scratch(const std::vector<Scratch> &parts, double *dE_dq) {
-  for (const auto &p : parts) {
-    for (std::size_t i = 0; i < p.dq.size(); ++i) {
-      dE_dq[i] += p.dq[i];
+void fold_rows(const std::vector<Scratch> &parts, int nparts, int block, int nblocks, double *F,
+               double *dE_dq) {
+  const std::size_t n3 = parts.front().f.size();
+  const std::size_t nq = dE_dq != nullptr ? parts.front().dq.size() : 0;
+  const Range run = partition(static_cast<std::int64_t>(n3), block, nblocks);
+  for (int c = 0; c < nparts; ++c) {
+    const double *row = parts[static_cast<std::size_t>(c)].f.data();
+    for (auto i = static_cast<std::size_t>(run.begin); i < static_cast<std::size_t>(run.end); ++i) {
+      F[i] += row[i];
     }
   }
+  if (nq != 0) {
+    const Range qrun = partition(static_cast<std::int64_t>(nq), block, nblocks);
+    for (int c = 0; c < nparts; ++c) {
+      const double *row = parts[static_cast<std::size_t>(c)].dq.data();
+      for (auto i = static_cast<std::size_t>(qrun.begin); i < static_cast<std::size_t>(qrun.end); ++i) {
+        dE_dq[i] += row[i];
+      }
+    }
+  }
+}
+
+// Runs `body(chunk, row)` over the fixed chunks and folds the rows into
+// F, dE_dq and the energy and strain in chunk order. One thread walks the
+// chunks through a single row, clearing and folding it after each chunk:
+// the same additions in the same order, with no row per chunk. A team
+// opens one region. Its first phase fills one row per chunk, each cleared
+// by the thread that fills it, and its second phase folds the rows over
+// blocks of the force vector.
+template <class Body>
+void reduce_chunks(int nchunks, std::size_t n3, std::size_t nq, double *F, double *dE_dq, ElecOut *out,
+                   Body &&body) {
+  const int team = in_group() ? 1 : std::max(thread_count(), 1);
+  if (team <= 1 || nchunks <= 1) {
+    std::vector<Scratch> &slot = scratch_slots(1);
+    Scratch &row = slot.front();
+    Neumaier energy;
+    for (int chunk = 0; chunk < nchunks; ++chunk) {
+      scratch_clear(row, n3, nq);
+      body(chunk, row);
+      for (std::size_t i = 0; i < n3; ++i) {
+        F[i] += row.f[i];
+      }
+      if (dE_dq != nullptr) {
+        for (std::size_t i = 0; i < nq; ++i) {
+          dE_dq[i] += row.dq[i];
+        }
+      }
+      energy.add(row.energy);
+      for (int k = 0; k < 6; ++k) {
+        out->strain[k] += row.strain[k];
+      }
+    }
+    out->energy += energy.total();
+    return;
+  }
+  std::vector<Scratch> &parts = scratch_slots(nchunks);
+  const int nblocks = rgpot::fixedChunks(n3, 4096);
+  team_slice_phases(2, [&](int phase, int slice, int nslices) {
+    if (phase == 0) {
+      for (int chunk = slice; chunk < nchunks; chunk += nslices) {
+        Scratch &row = parts[static_cast<std::size_t>(chunk)];
+        scratch_clear(row, n3, nq);
+        body(chunk, row);
+      }
+      return;
+    }
+    for (int block = slice; block < nblocks; block += nslices) {
+      fold_rows(parts, nchunks, block, nblocks, F, dE_dq);
+    }
+  });
+  fold_energy_strain(parts, nchunks, out);
 }
 
 void require_charges(const double *q, std::size_t n, double total) {
@@ -413,7 +491,9 @@ void real_cached_chunk(const double *q, const std::vector<Pair> &pairs, double r
   slot.energy.add(energy);
 }
 
-int real_chunks(const std::vector<Pair> &pairs) { return sum_chunks(pairs.size(), 4096); }
+int real_chunks(const std::vector<Pair> &pairs, std::size_t natoms) {
+  return sum_chunks(pairs.size(), std::max<std::size_t>(1024, 8 * natoms));
+}
 
 void add_ewald_self(const CoulombConfig &cfg, const double *q, std::size_t n, ElecOut *out) {
   const double self = -kKe * cfg.alpha / std::sqrt(kPi);
@@ -430,17 +510,16 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
   const double e_shift = dsf ? erfc_over_r(alpha, rc) : 0.0;
   const double bare_prime_rc = dsf ? derfc_over_r(alpha, rc) : 0.0;
   const ScreenTable &screen = screen_table(alpha, rc);
-  const int nchunks = real_chunks(pairs);
-  std::vector<Scratch> &parts = scratch_for(nchunks, 3 * n, dE_dq != nullptr ? n : 0);
+  const int nchunks = real_chunks(pairs, n);
+  const std::size_t nq = dE_dq != nullptr ? n : 0;
   if (!dsf && !cfg.stress && dE_dq == nullptr) {
     // The screen depends only on distance. The benchmark repeats one
     // geometry, so the interpolation is done once and the timed calls
     // only scatter forces. Neighbours of one atom stay together.
     ensure_screen_cache(cfg, pairs);
-    forEachChunk(nchunks, thread_count(), [&](int chunk) {
-      real_cached_chunk(q, pairs, rc, parts[static_cast<std::size_t>(chunk)], chunk, nchunks);
+    reduce_chunks(nchunks, 3 * n, 0, F, nullptr, out, [&](int chunk, Scratch &row) {
+      real_cached_chunk(q, pairs, rc, row, chunk, nchunks);
     });
-    add_scratch(parts, F, out);
     add_ewald_self(cfg, q, n, out);
     g_pme_trace.real_us =
         std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t_real0).count();
@@ -448,8 +527,7 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
     return;
   }
   const auto npairs = static_cast<std::int64_t>(pairs.size());
-  forEachChunk(nchunks, thread_count(), [&](int chunk) {
-    auto &p = parts[static_cast<std::size_t>(chunk)];
+  reduce_chunks(nchunks, 3 * n, nq, F, dE_dq, out, [&](int chunk, Scratch &p) {
     const Range run = partition(npairs, chunk, nchunks);
     for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
       const Pair &pr = pairs[t];
@@ -489,10 +567,6 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
       }
     }
   });
-  add_scratch(parts, F, out);
-  if (dE_dq != nullptr) {
-    add_charge_scratch(parts, dE_dq);
-  }
   if (dsf) {
     const double self = -(e_shift + 2.0 * alpha / std::sqrt(kPi));
     for (std::size_t i = 0; i < n; ++i) {
@@ -514,6 +588,17 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
   g_pme_trace.real_team = std::min(thread_count(), nchunks);
 }
 
+// The wave sum runs in two phases of one region. The first walks fixed
+// chunks of waves and keeps each wave's structure factor, with one energy
+// and strain partial per chunk. The second gives every atom its own force
+// and charge response, summed over the waves in wave order. An atom is
+// owned by one thread, so no force row is shared and nothing is folded
+// across threads: the bits do not follow the team.
+struct alignas(64) WaveSum {
+  Neumaier energy;
+  double strain[6]{};
+};
+
 void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const double *pos,
                       const double *q, std::size_t n, double total, double *F, double *dE_dq,
                       ElecOut *out) {
@@ -530,93 +615,136 @@ void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doub
     s[3 * i + 1] = fs[1];
     s[3 * i + 2] = fs[2];
   }
-  const int nshell = (2 * mmax + 1) * (2 * mmax + 1) * (2 * mmax + 1) - 1;
-  std::vector<int> mx, my, mz;
-  mx.reserve(static_cast<std::size_t>(nshell));
-  my.reserve(static_cast<std::size_t>(nshell));
-  mz.reserve(static_cast<std::size_t>(nshell));
-  for (int iz = -mmax; iz <= mmax; ++iz) {
-    for (int iy = -mmax; iy <= mmax; ++iy) {
-      for (int ix = -mmax; ix <= mmax; ++ix) {
-        if (ix == 0 && iy == 0 && iz == 0) {
-          continue;
+  static std::vector<int> mx, my, mz;
+  static int waves_for = -1;
+  if (waves_for != mmax) {
+    mx.clear();
+    my.clear();
+    mz.clear();
+    for (int iz = -mmax; iz <= mmax; ++iz) {
+      for (int iy = -mmax; iy <= mmax; ++iy) {
+        for (int ix = -mmax; ix <= mmax; ++ix) {
+          if (ix == 0 && iy == 0 && iz == 0) {
+            continue;
+          }
+          mx.push_back(ix);
+          my.push_back(iy);
+          mz.push_back(iz);
         }
-        mx.push_back(ix);
-        my.push_back(iy);
-        mz.push_back(iz);
       }
     }
+    waves_for = mmax;
   }
   const auto nwave = static_cast<std::int64_t>(mx.size());
   const int nchunks = sum_chunks(mx.size(), 16);
-  std::vector<Scratch> &parts = scratch_for(nchunks, 3 * n, dE_dq != nullptr ? n : 0);
-  forEachChunk(nchunks, thread_count(), [&](int chunk) {
-    auto &p = parts[static_cast<std::size_t>(chunk)];
-    const Range run = partition(nwave, chunk, nchunks);
-    for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
-      const double m0 = mx[t];
-      const double m1 = my[t];
-      const double m2 = mz[t];
-      double kv[3];
-      for (int c = 0; c < 3; ++c) {
-        kv[c] = 2.0 * kPi *
-                (m0 * cell.recip[0][c] + m1 * cell.recip[1][c] + m2 * cell.recip[2][c]);
-      }
-      const double k2 = kv[0] * kv[0] + kv[1] * kv[1] + kv[2] * kv[2];
-      if (!(k2 > 0.0)) {
-        continue;
-      }
-      const double f = std::exp(-k2 / (4.0 * alpha * alpha)) / k2;
-      double C = 0.0;
-      double D = 0.0;
-      for (std::size_t i = 0; i < n; ++i) {
-        const double theta =
-            2.0 * kPi * (m0 * s[3 * i] + m1 * s[3 * i + 1] + m2 * s[3 * i + 2]);
-        C += q[i] * std::cos(theta);
-        D += q[i] * std::sin(theta);
-      }
-      const double s2 = C * C + D * D;
-      p.energy.add(pref * f * s2);
-      const double common = pref * f;
-      for (std::size_t i = 0; i < n; ++i) {
-        const double theta =
-            2.0 * kPi * (m0 * s[3 * i] + m1 * s[3 * i + 1] + m2 * s[3 * i + 2]);
-        const double ct = std::cos(theta);
-        const double st = std::sin(theta);
-        const double g = 2.0 * q[i] * (D * ct - C * st);
-        p.f[3 * i] += -common * g * kv[0];
-        p.f[3 * i + 1] += -common * g * kv[1];
-        p.f[3 * i + 2] += -common * g * kv[2];
-        if (dE_dq != nullptr) {
-          p.dq[i] += common * 2.0 * (C * ct + D * st);
-        }
-      }
-      // Strain derivative at fixed fractional coordinates. |S| is invariant.
-      const double inv4a = 1.0 / (4.0 * alpha * alpha);
-      for (int b = 0; b < 3; ++b) {
-        for (int c = 0; c < 3; ++c) {
-          const double dfac = -((b == c) ? 1.0 : 0.0) +
-                              2.0 * (inv4a + 1.0 / k2) * kv[b] * kv[c];
-          const double dE = s2 * common * f * 0.0 + s2 * pref * f * dfac / 1.0;
-          // d(pref * f)/d eps_bc * |S|^2, and pref's 1/V piece is -pref * delta.
-          // dfac already holds -delta + 2 (1/(4 a^2) + 1/k^2) k_b k_c,
-          // and d(pref f)/deps = pref * f * dfac.
-          (void)dE;
-          const int voigt = b == 0 && c == 0   ? 0
-                            : b == 1 && c == 1 ? 1
-                            : b == 2 && c == 2 ? 2
-                            : (b == 1 && c == 2) || (b == 2 && c == 1) ? 3
-                            : (b == 0 && c == 2) || (b == 2 && c == 0) ? 4
-                                                                        : 5;
-          if (b > c) {
+  // Per wave: kv (3), the weight pref * f, and the structure factor C, D.
+  static std::vector<double> wave;
+  static std::vector<WaveSum> sums;
+  wave.resize(static_cast<std::size_t>(6 * nwave));
+  sums.assign(static_cast<std::size_t>(nchunks), WaveSum{});
+  const double inv4a = 1.0 / (4.0 * alpha * alpha);
+  team_slice_phases(2, [&](int phase, int slice, int nslices) {
+    if (phase == 0) {
+      for (int chunk = slice; chunk < nchunks; chunk += nslices) {
+        WaveSum p;
+        const Range run = partition(nwave, chunk, nchunks);
+        for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
+          double *w = wave.data() + 6 * t;
+          const double m0 = mx[t];
+          const double m1 = my[t];
+          const double m2 = mz[t];
+          double kv[3];
+          for (int c = 0; c < 3; ++c) {
+            kv[c] = 2.0 * kPi *
+                    (m0 * cell.recip[0][c] + m1 * cell.recip[1][c] + m2 * cell.recip[2][c]);
+          }
+          const double k2 = kv[0] * kv[0] + kv[1] * kv[1] + kv[2] * kv[2];
+          w[0] = kv[0];
+          w[1] = kv[1];
+          w[2] = kv[2];
+          if (!(k2 > 0.0)) {
+            w[3] = 0.0;
+            w[4] = 0.0;
+            w[5] = 0.0;
             continue;
           }
-          p.strain[voigt] += s2 * pref * f * dfac;
+          const double f = std::exp(-k2 / (4.0 * alpha * alpha)) / k2;
+          double C = 0.0;
+          double D = 0.0;
+          for (std::size_t i = 0; i < n; ++i) {
+            const double theta =
+                2.0 * kPi * (m0 * s[3 * i] + m1 * s[3 * i + 1] + m2 * s[3 * i + 2]);
+            C += q[i] * std::cos(theta);
+            D += q[i] * std::sin(theta);
+          }
+          const double s2 = C * C + D * D;
+          p.energy.add(pref * f * s2);
+          w[3] = pref * f;
+          w[4] = C;
+          w[5] = D;
+          // Strain derivative at fixed fractional coordinates. |S| is invariant.
+          // d(pref * f)/deps = pref * f * dfac, and pref's 1/V piece is -pref * delta.
+          for (int b = 0; b < 3; ++b) {
+            for (int c = b; c < 3; ++c) {
+              const double dfac = -((b == c) ? 1.0 : 0.0) +
+                                  2.0 * (inv4a + 1.0 / k2) * kv[b] * kv[c];
+              const int voigt = b == 0 && c == 0   ? 0
+                                : b == 1 && c == 1 ? 1
+                                : b == 2 && c == 2 ? 2
+                                : (b == 1 && c == 2) ? 3
+                                : (b == 0 && c == 2) ? 4
+                                                     : 5;
+              p.strain[voigt] += s2 * pref * f * dfac;
+            }
+          }
         }
+        sums[static_cast<std::size_t>(chunk)] = p;
+      }
+      return;
+    }
+    const Range atoms = partition(static_cast<std::int64_t>(n), slice, nslices);
+    for (auto i = static_cast<std::size_t>(atoms.begin); i < static_cast<std::size_t>(atoms.end); ++i) {
+      double fx = 0.0;
+      double fy = 0.0;
+      double fz = 0.0;
+      double dq = 0.0;
+      const double qi = q[i];
+      const double s0 = s[3 * i];
+      const double s1 = s[3 * i + 1];
+      const double s2 = s[3 * i + 2];
+      for (std::size_t t = 0; t < static_cast<std::size_t>(nwave); ++t) {
+        const double *w = wave.data() + 6 * t;
+        const double common = w[3];
+        if (common == 0.0) {
+          continue;
+        }
+        const double theta = 2.0 * kPi * (mx[t] * s0 + my[t] * s1 + mz[t] * s2);
+        const double ct = std::cos(theta);
+        const double st = std::sin(theta);
+        const double g = 2.0 * qi * (w[5] * ct - w[4] * st);
+        fx += -common * g * w[0];
+        fy += -common * g * w[1];
+        fz += -common * g * w[2];
+        if (dE_dq != nullptr) {
+          dq += common * 2.0 * (w[4] * ct + w[5] * st);
+        }
+      }
+      F[3 * i] += fx;
+      F[3 * i + 1] += fy;
+      F[3 * i + 2] += fz;
+      if (dE_dq != nullptr) {
+        dE_dq[i] += dq;
       }
     }
   });
-  add_scratch(parts, F, out);
+  Neumaier energy;
+  for (const WaveSum &p : sums) {
+    energy.add(p.energy);
+    for (int k = 0; k < 6; ++k) {
+      out->strain[k] += p.strain[k];
+    }
+  }
+  out->energy += energy.total();
   const double ebg = -kKe * kPi * total * total / (2.0 * cell.volume * alpha * alpha);
   out->energy += ebg;
   // E_bg = C / V, dE/d eps_bb = -E_bg.
@@ -624,7 +752,6 @@ void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doub
   out->strain[1] += -ebg;
   out->strain[2] += -ebg;
   if (dE_dq != nullptr) {
-    add_charge_scratch(parts, dE_dq);
     const double dbg = -kKe * kPi * total / (cell.volume * alpha * alpha);
     for (std::size_t i = 0; i < n; ++i) {
       dE_dq[i] += dbg;
@@ -1670,8 +1797,12 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   // Real space always lands in its own buffers and is added to the
   // reciprocal result once at the end. Which threads ran it, and whether
   // it ran beside the mesh, then leaves the sum order alone.
-  std::vector<double> real_f(3 * n, 0.0);
-  std::vector<double> real_dq(dE_dq != nullptr ? n : 0, 0.0);
+  static std::vector<double> real_f_store;
+  static std::vector<double> real_dq_store;
+  real_f_store.assign(3 * n, 0.0);
+  real_dq_store.assign(dE_dq != nullptr ? n : 0, 0.0);
+  std::vector<double> &real_f = real_f_store;
+  std::vector<double> &real_dq = real_dq_store;
   ElecOut real_out{};
   auto add_real = [&]() {
     for (std::size_t i = 0; i < real_f.size(); ++i) {
@@ -1700,8 +1831,13 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   if (real_beside > 0 && mesh_cap >= 4) {
     const auto t_real0 = std::chrono::steady_clock::now();
     ensure_screen_cache(cfg, pairs);
-    const int nchunks = real_chunks(pairs);
-    std::vector<Scratch> &parts = scratch_for(nchunks, 3 * n);
+    const int nchunks = real_chunks(pairs, n);
+    std::vector<Scratch> &parts = scratch_slots(nchunks);
+    auto run_chunk = [&](int chunk) {
+      Scratch &row = parts[static_cast<std::size_t>(chunk)];
+      scratch_clear(row, 3 * n, 0);
+      real_cached_chunk(q, pairs, cfg.cutoff, row, chunk, nchunks);
+    };
     mesh_group_limit() = mesh_cap;
     const bool together = onFullTeam(mesh_cap + real_beside, [&](int rank) {
       if (rank < mesh_cap) {
@@ -1710,18 +1846,19 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
         t_group_rank = -1;
       } else {
         for (int chunk = rank - mesh_cap; chunk < nchunks; chunk += real_beside) {
-          real_cached_chunk(q, pairs, cfg.cutoff, parts[static_cast<std::size_t>(chunk)], chunk, nchunks);
+          run_chunk(chunk);
         }
       }
     });
     if (!together) {
       spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out);
-      forEachChunk(nchunks, real_beside, [&](int chunk) {
-        real_cached_chunk(q, pairs, cfg.cutoff, parts[static_cast<std::size_t>(chunk)], chunk, nchunks);
-      });
+      for (int chunk = 0; chunk < nchunks; ++chunk) {
+        run_chunk(chunk);
+      }
     }
     mesh_group_limit() = 0;
-    add_scratch(parts, real_f.data(), &real_out);
+    fold_rows(parts, nchunks, 0, 1, real_f.data(), nullptr);
+    fold_energy_strain(parts, nchunks, &real_out);
     add_ewald_self(cfg, q, n, &real_out);
     g_pme_trace.real_us =
         std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t_real0).count();
