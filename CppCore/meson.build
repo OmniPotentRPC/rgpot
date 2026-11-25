@@ -846,6 +846,17 @@ if not get_option('with_rpc_client_only')
             gnu_symbol_visibility: 'default',
             install: not meson.is_subproject(),
         )
+        orca_engine = shared_library(
+            'orca_engine',
+            [_engine_common, files('rgpot/engine/OrcaEngine.cc')],
+            dependencies: _engine_deps + [orcac_dl_dep],
+            link_with: [rgpot],
+            link_whole: [orcapot],
+            cpp_args: _engine_args,
+            include_directories: _incdirs,
+            gnu_symbol_visibility: 'default',
+            install: not meson.is_subproject(),
+        )
         nwchem_engine = shared_library(
             'nwchem_engine',
             [_engine_common, files('rgpot/engine/NWChemEngine.cc')],
@@ -2905,11 +2916,14 @@ if get_option('with_tests')
                 'MOPAC',
                 'NWCHEM',
                 'CPMD',
+                'ORCA',
             ]
             engine_table_depends = [
                 classical_engine,
                 composite_engine,
                 mopac_engine,
+                orca_engine,
+                orcac_h_fake_engine,
                 nwchem_engine,
                 cpmd_engine,
                 cpmdc_fake_engine,
@@ -2923,6 +2937,11 @@ if get_option('with_tests')
                 composite_engine.full_path(),
             )
             engine_table_env.set('RGPOT_ENGINE_MOPAC', mopac_engine.full_path())
+            engine_table_env.set('RGPOT_ENGINE_ORCA', orca_engine.full_path())
+            engine_table_env.set(
+                'RGPOT_ORCAC_ENGINE',
+                orcac_h_fake_engine.full_path(),
+            )
             engine_table_env.set(
                 'RGPOT_ENGINE_NWCHEM',
                 nwchem_engine.full_path(),
@@ -3070,12 +3089,14 @@ if get_option('with_tests')
                     classical_engine.full_path(),
                     composite_engine.full_path(),
                     mopac_engine.full_path(),
+                    orca_engine.full_path(),
                     nwchem_engine.full_path(),
                 ]
                 _soversion_depends += [
                     classical_engine,
                     composite_engine,
                     mopac_engine,
+                    orca_engine,
                     nwchem_engine,
                 ]
                 if has_skala

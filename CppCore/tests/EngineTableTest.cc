@@ -3,12 +3,12 @@
 //
 // The generic engine table of each backend library this build produces:
 // classical (lj, ljcluster, morse, zbl and the Fortran potentials), metatomic,
-// mopac, nwchem, skala and xtb. Each library is opened the way a host opens
+// mopac, nwchem, orca, skala and xtb. Each library is opened the way a host opens
 // it: dlopen of the path in RGPOT_ENGINE_<NAME> and dlsym of each symbol.
 // RGPOT_ENGINE_EXPECT lists the engines the build made; one of them without a
 // path fails the test instead of skipping it. The metatomic cases load the
 // models in MTA_<NAME>_PT, which scripts/export_tiny_metatomic_model.py
-// writes.
+// writes. The orca cases load the fake liborcac in RGPOT_ORCAC_ENGINE.
 
 #include <algorithm>
 #include <array>
@@ -44,6 +44,7 @@
 #endif
 #include "rgpot/rpc/Potentials.capnp.h"
 #include "rgpot/types/AtomMatrix.hpp"
+#include "rgpot/units.hpp"
 
 namespace {
 
@@ -1188,6 +1189,117 @@ TEST_CASE("composite engine takes a D4 term", "[engine][composite][d4]") {
 
 TEST_CASE("mopac engine", "[engine][mopac]") {
   check_unavailable_engine("MOPAC", "mopac", builtin_params("mopac"), 2);
+}
+
+kj::Array<capnp::word> orca_params() {
+  capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::ORCAParams>();
+  p.setMethod("B3LYP");
+  p.setBasis("def2-SVP");
+  p.setExecutable("/bin/sh");
+  return capnp::messageToFlatArray(msg);
+}
+
+TEST_CASE("orca engine runs liborcac and changes charge and spin",
+          "[engine][orca]") {
+  Engine e;
+  if (!open_engine("ORCA", e)) {
+    SKIP("no orca engine in this build");
+  }
+  check_identity(e, "orca");
+  std::string error;
+  RgpotEnginePot *pot = create(e, orca_params(), &error);
+  INFO(error);
+  REQUIRE(pot != nullptr);
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  // One orcac session per instance: PerInstance.
+  REQUIRE(caps.reentrancy == 1);
+  REQUIRE(caps.periodic == 0);
+  // orcac ABI 1 chains guesses itself and has no guess slots.
+  REQUIRE(caps.orbital_selection == 0);
+  REQUIRE(caps.orbital_copy == 0);
+
+  const double pos[6] = {0, 0, 0, 0, 0, 0.74};
+  const int z[2] = {1, 1};
+  std::vector<double> forces(6, 0.0);
+  double energy = 0.0;
+  auto evaluate = [&] {
+    const int rc = e.force(pot, 2, pos, z, forces.data(), &energy, nullptr,
+                           kBox.data(), nullptr, nullptr);
+    INFO(error_of(e, pot));
+    REQUIRE(rc == 0);
+    return energy;
+  };
+  REQUIRE(evaluate() == Catch::Approx(-1.0 * rgpot::units::HARTREE_TO_EV));
+  for (int k = 0; k < 6; ++k) {
+    REQUIRE(forces[k] ==
+            Catch::Approx(0.001 * (k + 1) * rgpot::units::NEG_GRAD_TO_FORCE));
+  }
+  REQUIRE(e.set_charge_spin(pot, 1, 2) == 0);
+  REQUIRE(evaluate() ==
+          Catch::Approx((-1.0 + 0.01 + 0.001) * rgpot::units::HARTREE_TO_EV));
+  REQUIRE(e.set_charge_spin(pot, 0, 0) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(e.set_charge_spin(pot, 0, 12) == RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE_THAT(error_of(e, pot),
+               Catch::Matchers::ContainsSubstring("multiplicity 1 to 9"));
+
+  REQUIRE(e.select_orbitals(pot, 3) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(e.copy_orbitals(pot, 3, 4) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  e.destroy(pot);
+}
+
+TEST_CASE("orca engine without liborcac fails each call with the reason",
+          "[engine][orca]") {
+  Engine e;
+  if (!open_engine("ORCA", e)) {
+    SKIP("no orca engine in this build");
+  }
+  // ORCAParams names no library, so ORCAC_LIBRARY names the missing one.
+  // RGPOT_ORCAC_ENGINE, which this test runs with, would be tried next.
+  struct EnvSet {
+    const char *name;
+    std::string value;
+    bool had = false;
+    EnvSet(const char *n, const char *v) : name(n) {
+      if (const char *old = std::getenv(n)) {
+        had = true;
+        value = old;
+      }
+      if (v) {
+        setenv(n, v, 1);
+      } else {
+        unsetenv(n);
+      }
+    }
+    ~EnvSet() {
+      if (had) {
+        setenv(name, value.c_str(), 1);
+      } else {
+        unsetenv(name);
+      }
+    }
+  };
+  RgpotEnginePot *pot = nullptr;
+  {
+    EnvSet library("ORCAC_LIBRARY", "/nonexistent/liborcac.so");
+    EnvSet engine("RGPOT_ORCAC_ENGINE", nullptr);
+    pot = create(e, orca_params());
+  }
+  REQUIRE(pot != nullptr);
+  std::vector<double> forces(3, 0.0);
+  double energy = 0.0;
+  const double pos[3] = {0, 0, 0};
+  const int z[1] = {8};
+  REQUIRE(e.force(pot, 1, pos, z, forces.data(), &energy, nullptr, kBox.data(),
+                  nullptr, nullptr) == RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE_THAT(error_of(e, pot),
+               Catch::Matchers::ContainsSubstring("liborcac not loaded"));
+  REQUIRE(e.set_charge_spin(pot, 0, 1) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE_THAT(error_of(e, pot),
+               Catch::Matchers::ContainsSubstring("/nonexistent/liborcac.so"));
+  e.destroy(pot);
 }
 
 TEST_CASE("nwchem engine", "[engine][nwchem]") {

@@ -79,7 +79,7 @@
 # not build.
 
 @engines CMake does not build engines/: the drivers, engine plugins and the LAMMPS, PLUMED, GROMACS, OpenMM and i-PI harnesses these tests run.
-@engine_plugins CMake does not build the rgpot_engine_* plugins (classical, MOPAC, NWChem) this test loads.
+@engine_plugins CMake does not build the rgpot_engine_* plugins (classical, MOPAC, NWChem, ORCA) this test loads.
 @examples CMake does not build the example executables.
 @meson The test configures meson, reads meson's build directory, or reads a subproject only a meson wrap resolves.
 @cmake_package CMake does not install its own package and build a consumer of it from inside its own build.
@@ -315,7 +315,8 @@ MOPACPotEmptyVariable | tests core | custom suite=mopac workdir=. |
 test_mopac_abi | tests core | custom suite=mopac |
 MOPACDlopenContract | tests core | py CppCore/tests/test_mopac_dlopen_contract.py @root@ suite=mopac |
 
-# ORCA frontend over a fake liborcac.
+# ORCA frontend over a fake liborcac. EngineTableTest loads liborca_engine
+# through RGPOT_ENGINE_ORCA.
 ORCAPotTest | tests core | custom suite=orca workdir=. |
 ORCAPotAbsentLibrary | tests core | custom suite=orca workdir=. |
 ORCACHeaderPin | tests core | py CppCore/tests/test_orcac_header_pin.py @root@ suite=orca |
