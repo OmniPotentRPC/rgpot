@@ -293,7 +293,8 @@ The kernel does not read the atomic numbers; every atom is aluminium.
 - Python: =rgpot.EAMAlPot=.
 - =rgpot-eval=, LAMMPS
   =pair_coeff= and PLUMED name: =EAMAl= (a build with the Fortran potentials), as in =pair_coeff * * EAMAl Al=.
-- =potserv=: no type name.
+- =potserv=: type =EAMAl= (a build with the Fortran potentials), as in
+  =potserv 12345 EAMAl=.
 - Reference: [[file:../reference/cpp_potentials.org][C++ potentials]],
   [[file:../reference/fortran_potentials.org][Fortran potentials]] and
   [[file:../reference/python_api.org][Python API]].
