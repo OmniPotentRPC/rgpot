@@ -2,9 +2,10 @@
 // Copyright 2023--present rgpot developers
 //
 // A potential's thread count reaches the threads the potential uses. The
-// batch fan-out of every shared-instance potential takes the count of the
-// object it was called on. Each check watches the team an OpenMP region
-// really has, and not only that the call returns.
+// batch fan-out of every shared-instance potential and the terms of a SumPot
+// take the count of the object they were called on. Each check watches the
+// team an OpenMP region really has, or the count a child really reads, and
+// not only that the call returns.
 
 #include <algorithm>
 #include <array>
@@ -24,6 +25,11 @@
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/Slices.hpp"
+#include "rgpot/SumPot/SumPot.hpp"
+
+#if defined(RGPOT_HAS_LONG_RANGE)
+#include "rgpot/LongRange/SumPot.hpp"
+#endif
 
 #if defined(_OPENMP)
 #include <omp.h>
@@ -104,6 +110,10 @@ std::vector<Eval> runBatch(rgpot::PotentialBase &pot,
     std::copy(out[i].stress, out[i].stress + 9, evals[i].stress.begin());
   }
   return evals;
+}
+
+Eval runOne(rgpot::PotentialBase &pot, const System &s) {
+  return runBatch(pot, {s}).front();
 }
 
 // What one Probe call saw on the thread that ran it.
@@ -194,6 +204,29 @@ int widestOuter(const std::vector<Seen> &seen) {
     widest = std::max(widest, s.outer_team);
   }
   return widest;
+}
+
+// A potential that takes its thread binding does so at the top of forceImpl.
+// The nest holds 32 bindings, so with 32 already on the stack a potential
+// that opted in cannot take a 33rd and throws std::logic_error, while one
+// that did not opt in binds nothing and evaluates.
+template <typename Pot> void checkTakesBinding(Pot &pot, const System &s) {
+  std::vector<double> f(s.pos.size(), 0.0);
+  const rgpot::ForceInput in{s.z.size(), s.pos.data(), s.z.data(),
+                             s.box.data()};
+  rgpot::ForceOut out{};
+  out.F = f.data();
+  std::vector<std::unique_ptr<rgpot::ThreadBinding>> full;
+  for (int i = 0; i < 32; ++i) {
+    full.push_back(std::make_unique<rgpot::ThreadBinding>(2));
+  }
+  pot.clearThreadCount();
+  CHECK_NOTHROW(pot.forceImpl(in, &out));
+  pot.setThreadCount(3);
+  CHECK_THROWS_AS(pot.forceImpl(in, &out), std::logic_error);
+  pot.clearThreadCount();
+  full.clear();
+  CHECK(rgpot::explicitThreadCount() == 0);
 }
 
 } // namespace
@@ -287,5 +320,173 @@ TEST_CASE("a batch of small systems spreads over the potential's own count",
     CHECK_THROWS_AS(runBatch(pot, systems), std::runtime_error);
     CHECK(rgpot::explicitThreadCount() == 0);
   }
+  setThreads("");
+}
+
+TEST_CASE("a SumPot hands its thread count to the terms", "[threads][SumPot]") {
+  setThreads("");
+  const System sys = pair(1, 2.0);
+  auto log = std::make_shared<Log>();
+  auto build = [&](rgpot::SumPot &sum, int terms) {
+    for (int i = 0; i < terms; ++i) {
+      sum.add(std::make_unique<Probe>(log));
+    }
+  };
+  auto seenByTerms = [&](rgpot::PotentialBase &sum) {
+    log->clear();
+    runOne(sum, sys);
+    return log->take();
+  };
+
+  SECTION("the setter rejects a count below 1") {
+    rgpot::SumPot sum;
+    CHECK_THROWS_AS(sum.setThreadCount(0), std::invalid_argument);
+    CHECK_THROWS_AS(sum.setThreadCount(-2), std::invalid_argument);
+    CHECK(sum.threadCount() == 0);
+  }
+
+  SECTION("a sum without a count leaves every term at its default") {
+    rgpot::SumPot sum;
+    build(sum, 2);
+    const auto seen = seenByTerms(sum);
+    REQUIRE(seen.size() == 2);
+    for (const Seen &s : seen) {
+      CHECK(s.explicit_count == 0);
+      CHECK(s.requested == 1);
+      CHECK(s.inner_team == 1);
+    }
+  }
+
+  SECTION("every term reads the count, and its own region has that team") {
+    if (!canSpread()) {
+      SKIP("this runtime cannot start a team of two");
+    }
+    for (const int threads : {2, 3, 4}) {
+      INFO("setThreadCount(" << threads << ")");
+      rgpot::SumPot sum;
+      build(sum, 3);
+      sum.setThreadCount(threads);
+      const auto seen = seenByTerms(sum);
+      REQUIRE(seen.size() == 3);
+      for (const Seen &s : seen) {
+        CHECK(s.explicit_count == threads);
+#if defined(_OPENMP)
+        CHECK(s.requested == threads);
+        CHECK(s.inner_team == teamFor(threads));
+#endif
+      }
+    }
+  }
+
+  SECTION("a term with its own count keeps it and the others follow the sum") {
+    rgpot::SumPot sum;
+    build(sum, 3);
+    sum.child(1)->setThreadCount(2);
+    sum.setThreadCount(4);
+    const auto seen = seenByTerms(sum);
+    REQUIRE(seen.size() == 3);
+    CHECK(seen[0].explicit_count == 4);
+    CHECK(seen[1].explicit_count == 2);
+    CHECK(seen[2].explicit_count == 4);
+  }
+
+  SECTION("a ThreadCount on the call wins over the sum and its terms") {
+    rgpot::SumPot sum;
+    build(sum, 2);
+    sum.child(0)->setThreadCount(2);
+    sum.setThreadCount(4);
+    const rgpot::ThreadCount one(1);
+    const auto seen = seenByTerms(sum);
+    REQUIRE(seen.size() == 2);
+    for (const Seen &s : seen) {
+      CHECK(s.explicit_count == 1);
+      CHECK(s.inner_team == 1);
+    }
+  }
+
+  SECTION("clearing the count on the sum takes it from every term at once") {
+    rgpot::SumPot sum;
+    build(sum, 2);
+    sum.setThreadCount(4);
+    for (const Seen &s : seenByTerms(sum)) {
+      CHECK(s.explicit_count == 4);
+    }
+    sum.clearThreadCount();
+    CHECK(sum.threadCount() == 0);
+    for (const Seen &s : seenByTerms(sum)) {
+      CHECK(s.explicit_count == 0);
+    }
+  }
+
+  SECTION("a term added after the count is set follows it") {
+    rgpot::SumPot sum;
+    sum.setThreadCount(3);
+    build(sum, 1);
+    const auto seen = seenByTerms(sum);
+    REQUIRE(seen.size() == 1);
+    CHECK(seen[0].explicit_count == 3);
+  }
+
+  SECTION("a disabled term is not evaluated and sees nothing") {
+    rgpot::SumPot sum;
+    build(sum, 2);
+    sum.setEnabled(0, false);
+    sum.setThreadCount(3);
+    const auto seen = seenByTerms(sum);
+    REQUIRE(seen.size() == 1);
+    CHECK(seen[0].explicit_count == 3);
+  }
+
+  SECTION("a sum inside a sum passes the outer count down") {
+    rgpot::SumPot outer;
+    auto inner = std::make_unique<rgpot::SumPot>();
+    build(*inner, 2);
+    outer.add(std::move(inner));
+    outer.setThreadCount(3);
+    const auto seen = seenByTerms(outer);
+    REQUIRE(seen.size() == 2);
+    for (const Seen &s : seen) {
+      CHECK(s.explicit_count == 3);
+    }
+  }
+
+  SECTION("the inner sum's own count wins for its terms") {
+    rgpot::SumPot outer;
+    auto inner = std::make_unique<rgpot::SumPot>();
+    build(*inner, 2);
+    inner->setThreadCount(2);
+    outer.add(std::move(inner));
+    outer.setThreadCount(5);
+    for (const Seen &s : seenByTerms(outer)) {
+      CHECK(s.explicit_count == 2);
+    }
+  }
+
+  SECTION("the binding ends with the call, also when a term throws") {
+    rgpot::SumPot sum;
+    sum.add(std::make_unique<Probe>(log, true));
+    sum.setThreadCount(4);
+    CHECK_THROWS_AS(runOne(sum, sys), std::runtime_error);
+    CHECK(rgpot::explicitThreadCount() == 0);
+  }
+
+  SECTION("the sum takes its binding when it evaluates") {
+    rgpot::SumPot sum;
+    build(sum, 1);
+    checkTakesBinding(sum, sys);
+  }
+
+#if defined(RGPOT_HAS_LONG_RANGE)
+  SECTION("the long-range sum forwards the count the same way") {
+    rgpot::lr::SumPot sum;
+    build(sum, 2);
+    sum.setThreadCount(3);
+    const auto seen = seenByTerms(sum);
+    REQUIRE(seen.size() == 2);
+    for (const Seen &s : seen) {
+      CHECK(s.explicit_count == 3);
+    }
+  }
+#endif
   setThreads("");
 }

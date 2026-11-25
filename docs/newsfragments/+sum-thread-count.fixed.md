@@ -1,0 +1,2 @@
+<!-- Copyright 2023--present rgpot developers -->
+`SumPot` now passes its thread count on to its terms. `setThreadCount` on a sum used to be ignored, because the sum evaluates its terms on the calling thread and only the terms that bound a count themselves could use one. The sum now binds its count for the whole call, so every term without a count of its own reads it. A term with a count of its own keeps it, a `ThreadCount` scope on the call still wins over both, and clearing the count on the sum takes it from every term at once. The same holds for the long-range `SumPot`.
