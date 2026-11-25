@@ -5,11 +5,17 @@ Medians and interquartile ranges are type-7 quantiles of the samples
 on the following samples_us line. The printed values are %.17g. The
 active column is the OpenMP team the bench ran, which can be smaller
 than the requested threads. Logs that predate it leave it empty.
+
+A ladder line is read by key, so a field the bench adds or moves
+leaves the other columns where they were.
 """
 
 import math
 import sys
 from collections import defaultdict
+
+LADDERS = ("strong", "weak128", "weak1024", "matched")
+METHODS = ("ewald", "dsf", "pme", "d3", "d4")
 
 
 def quantile7(values, p):
@@ -38,12 +44,7 @@ def parse(path):
                 pending = None
                 continue
             parts = line.split()
-            if len(parts) >= 3 and parts[0] in ("strong", "weak128", "weak1024", "matched") and parts[1] in (
-                "ewald",
-                "pme",
-                "d3",
-                "d4",
-            ):
+            if len(parts) >= 3 and parts[0] in LADDERS and parts[1] in METHODS:
                 fields = {}
                 for item in parts[2:]:
                     if "=" in item:
