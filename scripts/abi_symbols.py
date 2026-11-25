@@ -89,6 +89,8 @@ def pe_exports(path: Path) -> list[str]:
 
     ed = offset(export_rva)
     count, names_rva = struct.unpack_from("<24xI4xI", data, ed)
+    if count == 0:
+        return []
     names = offset(names_rva)
     out = []
     for i in range(count):
