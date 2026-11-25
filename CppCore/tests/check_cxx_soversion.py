@@ -19,7 +19,11 @@ librgpot_mpi stays at soversion 3 (RGPOT_MPI_ABI_VERSION 1).
 
 Usage:
   check_cxx_soversion.py [soversion-from-meson] [path-to-librgpot|-]
-                         [print_cxx_layout_stamp]
+                         [print_cxx_layout_stamp [engine ...]
+                          [--exe-wrapper WORD ...]]
+
+A cross build passes its exe_wrapper last, after --exe-wrapper, and the
+printer then runs under it.
 """
 from __future__ import annotations
 
@@ -405,6 +409,11 @@ def check_soname(lib: Path, soversion: int) -> None:
     print(f"SONAME {match.group(1)}")
 
 
+def is_elf(path: Path) -> bool:
+    with path.open("rb") as handle:
+        return handle.read(4) == b"\x7fELF"
+
+
 def defined_generation_symbols(lib: Path) -> list[str]:
     try:
         symbols = subprocess.run(
@@ -434,6 +443,9 @@ def check_generation_symbol(lib: Path, engines: list[Path]) -> None:
         fail("Neighbours.hpp must not define nextGeneration")
     if not sys.platform.startswith("linux"):
         return
+    # The check reads ELF dynamic symbols. A cross build's DLLs have none.
+    if lib.suffix not in {".a", ".lib"} and not is_elf(lib):
+        return
     # A static umbrella keeps the generation counter in rgpot_nlist, so
     # the three-export check applies only to the shared library. Plugins
     # are still checked: a static link used to copy that counter into
@@ -450,7 +462,7 @@ def check_generation_symbol(lib: Path, engines: list[Path]) -> None:
     for engine in engines:
         if not engine.is_file():
             fail(f"engine library not found: {engine}")
-        if engine.suffix in {".a", ".lib"}:
+        if engine.suffix in {".a", ".lib"} or not is_elf(engine):
             continue
         engine_defs = defined_generation_symbols(engine)
         if engine_defs:
@@ -523,11 +535,13 @@ STAMP_RE = re.compile(
 )
 
 
-def check_stamp(binary: Path, table: list[tuple[str, int]]) -> None:
+def check_stamp(
+    binary: Path, table: list[tuple[str, int]], wrapper: list[str]
+) -> None:
     if not binary.is_file():
         fail(f"layout stamp printer not found: {binary}")
     run = subprocess.run(
-        [str(binary)],
+        [*wrapper, str(binary)],
         capture_output=True,
         text=True,
         check=False,
@@ -587,13 +601,18 @@ def main() -> None:
         )
     check_against_base(rows, layout_text)
     check_build_files(soversion)
+    rest = sys.argv[4:]
+    wrapper: list[str] = []
+    if "--exe-wrapper" in rest:
+        at = rest.index("--exe-wrapper")
+        rest, wrapper = rest[:at], rest[at + 1 :]
     if len(sys.argv) > 2 and sys.argv[2] != "-":
         library = Path(sys.argv[2])
         check_soname(library, soversion)
-        engines = [Path(arg) for arg in sys.argv[4:] if arg != "-"]
+        engines = [Path(arg) for arg in rest if arg != "-"]
         check_generation_symbol(library, engines)
     if len(sys.argv) > 3:
-        check_stamp(Path(sys.argv[3]), table)
+        check_stamp(Path(sys.argv[3]), table, wrapper)
     tags = ", ".join(tag for tag, _ in table) or "none yet"
     print(f"cxx soversion {soversion} platforms [{tags}]")
 

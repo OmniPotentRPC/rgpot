@@ -2882,7 +2882,7 @@ if get_option('with_tests')
             test(
                 'CxxSoversion',
                 python3_prog,
-                args: _soversion_args,
+                args: _soversion_args + ['--exe-wrapper'] + exe_wrapper_args,
                 depends: _soversion_depends,
             )
         endif

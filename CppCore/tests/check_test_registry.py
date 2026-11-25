@@ -457,11 +457,15 @@ def parse_catch_list(text: str) -> list[str]:
     return names
 
 
+# A cross build's exe_wrapper, run in front of every test executable.
+EXE_WRAPPER: list[str] = []
+
+
 def catch_list(exe: str, env: dict[str, str], *specs: str) -> tuple[list[str], str]:
     merged = os.environ.copy()
     merged.update(env)
     proc = subprocess.run(
-        [exe, "--list-tests", *specs],
+        [*EXE_WRAPPER, exe, "--list-tests", *specs],
         check=False,
         capture_output=True,
         text=True,
@@ -642,6 +646,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("rest", nargs="*", metavar="FEATURE=0|1")
     parser.add_argument("--ctest", default="ctest")
     parser.add_argument("--list", type=Path, default=os.environ.get("RGPOT_TEST_LIST"))
+    parser.add_argument("--exe-wrapper", action="append", default=[], metavar="WORD")
     return parser
 
 
@@ -887,6 +892,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_cli(argv)
     if args.system == "selftest":
         return selftest()
+    EXE_WRAPPER[:] = args.exe_wrapper
 
     entries, problems = parse(REGISTRY)
     features, errors = parse_features(args.features)
