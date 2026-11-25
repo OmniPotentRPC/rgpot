@@ -33,6 +33,10 @@
 
 #if defined(RGPOT_HAS_LONG_RANGE)
 #include "rgpot/LongRange/Dispersion.hpp"
+#include "rgpot/LongRange/Electro.hpp"
+
+#include <cstdio>
+#include <future>
 #endif
 
 #if defined(_OPENMP)
@@ -180,6 +184,117 @@ void checkBits(const char *name, Make make, const System &s,
   }
   setThreads("");
 }
+
+#if defined(RGPOT_HAS_LONG_RANGE)
+// Rock salt with the same small displacement as `lattice`, +1 on the first
+// four basis sites and -1 on the last four.
+struct Ionic {
+  System s;
+  std::vector<double> q;
+};
+
+Ionic rockSalt(int n, double a) {
+  Ionic out;
+  out.s = lattice({{0, 0, 0},
+                   {0, 0.5, 0.5},
+                   {0.5, 0, 0.5},
+                   {0.5, 0.5, 0},
+                   {0.5, 0, 0},
+                   {0, 0.5, 0},
+                   {0, 0, 0.5},
+                   {0.5, 0.5, 0.5}},
+                  n, a, 11);
+  for (std::size_t i = 0; i < out.s.z.size(); ++i) {
+    const bool cation = i % 8 < 4;
+    out.s.z[i] = cation ? 11 : 17;
+    out.q.push_back(cation ? 1.0 : -1.0);
+  }
+  return out;
+}
+
+struct CoulombEval {
+  double energy = 0;
+  std::vector<double> force;
+  double stress[9]{};
+  int has_stress = 0;
+};
+
+std::size_t coulombApart(const CoulombEval &a, const CoulombEval &b) {
+  std::size_t apart = bits(a.energy) == bits(b.energy) ? 0 : 1;
+  apart += a.force.size() == b.force.size() ? 0 : 1;
+  for (std::size_t i = 0; i < std::min(a.force.size(), b.force.size()); ++i) {
+    apart += bits(a.force[i]) == bits(b.force[i]) ? 0 : 1;
+  }
+  apart += a.has_stress == b.has_stress ? 0 : 1;
+  for (int k = 0; k < 9; ++k) {
+    apart += bits(a.stress[k]) == bits(b.stress[k]) ? 0 : 1;
+  }
+  return apart;
+}
+
+// Runs `fn` on its own thread and ends the process when it does not come
+// back: a rank stuck at the mesh gate never returns, and a hung suite
+// would hide which call it was.
+template <typename Fn> auto guarded(const std::string &what, Fn fn) {
+  using Result = decltype(fn());
+  std::packaged_task<Result()> task(std::move(fn));
+  auto done = task.get_future();
+  std::thread worker(std::move(task));
+  if (done.wait_for(std::chrono::seconds(120)) != std::future_status::ready) {
+    std::fprintf(stderr, "%s did not finish in 120 s; the mesh group is deadlocked\n",
+                 what.c_str());
+    std::fflush(stderr);
+    std::_Exit(3);
+  }
+  worker.join();
+  return done.get();
+}
+
+CoulombEval runCoulomb(const rgpot::lr::CoulombConfig &cfg, const Ionic &ion,
+                       int scope_threads, int pot_threads) {
+  return guarded("CoulombPot", [&] {
+    rgpot::lr::CoulombPot pot(cfg,
+                              std::make_shared<rgpot::lr::FixedCharges>(ion.q, 0.0));
+    if (pot_threads > 0) {
+      pot.setThreadCount(pot_threads);
+    }
+    std::unique_ptr<rgpot::ThreadCount> scope;
+    if (scope_threads > 0) {
+      scope = std::make_unique<rgpot::ThreadCount>(scope_threads);
+    }
+    const std::size_t n = ion.s.z.size();
+    const double L = ion.s.length;
+    const double box[9] = {L, 0, 0, 0, L, 0, 0, 0, L};
+    CoulombEval e;
+    e.force.assign(3 * n, 0.0);
+    rgpot::ForceOut out{};
+    out.F = e.force.data();
+    pot.forceImpl(rgpot::ForceInput{n, ion.s.pos.data(), ion.s.z.data(), box}, &out);
+    e.energy = out.energy;
+    e.has_stress = out.has_stress;
+    std::copy(out.stress, out.stress + 9, e.stress);
+    return e;
+  });
+}
+
+// Bit-identical energy, forces and stress for a call scope and for a
+// potential binding at every count, against the one-thread call.
+void checkCoulombBits(const char *name, const rgpot::lr::CoulombConfig &cfg,
+                      const Ionic &ion) {
+  INFO(name << " on " << ion.s.z.size() << " atoms");
+  const CoulombEval serial = runCoulomb(cfg, ion, 1, 0);
+  REQUIRE(std::isfinite(serial.energy));
+  CHECK(coulombApart(runCoulomb(cfg, ion, 0, 0), serial) == 0);
+  for (const int threads : kCounts) {
+    INFO("ThreadCount(" << threads << ")");
+    CHECK(coulombApart(runCoulomb(cfg, ion, threads, 0), serial) == 0);
+    INFO("setThreadCount(" << threads << ")");
+    CHECK(coulombApart(runCoulomb(cfg, ion, 0, threads), serial) == 0);
+  }
+  // A second call on warm caches takes the same bits.
+  CHECK(coulombApart(runCoulomb(cfg, ion, 8, 0), serial) == 0);
+}
+#endif
 
 } // namespace
 
@@ -360,6 +475,79 @@ TEST_CASE("classical potentials match at 1, 2, 4 and 8 threads",
       fcc(13, 3.5, 6));
 #endif
 }
+
+#if defined(RGPOT_HAS_LONG_RANGE)
+TEST_CASE("Coulomb DSF, Ewald and SPME match at 1, 2, 4 and 8 threads",
+          "[threads][invariant][coulomb]") {
+  setThreads("");
+  // 512 ions in a 22.56 A cell. The 25-point mesh runs real space beside
+  // the transform at two and at eight threads and on one team at four, so
+  // all three SPME paths meet the same reference.
+  const Ionic ion = rockSalt(4, 5.64);
+  rgpot::lr::CoulombConfig base;
+  base.cutoff = 9.0;
+  base.alpha = 0.3;
+  base.short_cutoff = 3.0;
+  base.skin = 0.5;
+  base.periodic = true;
+
+  rgpot::lr::CoulombConfig dsf = base;
+  dsf.method = rgpot::lr::CoulombMethod::DSF;
+  dsf.alpha = 0.2;
+  checkCoulombBits("DSF", dsf, ion);
+
+  rgpot::lr::CoulombConfig ewald = base;
+  ewald.method = rgpot::lr::CoulombMethod::Ewald;
+  ewald.kmax = 6;
+  checkCoulombBits("Ewald with stress", ewald, ion);
+  ewald.stress = false;
+  checkCoulombBits("Ewald without stress", ewald, ion);
+
+  rgpot::lr::CoulombConfig spme = base;
+  spme.method = rgpot::lr::CoulombMethod::SPME;
+  spme.grid[0] = spme.grid[1] = spme.grid[2] = 25;
+  spme.spline_order = 5;
+  spme.stress = false;
+  checkCoulombBits("SPME float mesh 25", spme, ion);
+  spme.stress = true;
+  checkCoulombBits("SPME double mesh 25", spme, ion);
+  spme.grid[0] = spme.grid[1] = spme.grid[2] = 48;
+  spme.spline_order = 6;
+  spme.stress = false;
+  checkCoulombBits("SPME float mesh 48", spme, ion);
+  spme.stress = true;
+  checkCoulombBits("SPME double mesh 48", spme, ion);
+}
+
+TEST_CASE("SPME beside the mesh finishes under a potential thread count",
+          "[threads][invariant][coulomb]") {
+  setThreads("");
+  // A potential binding is thread-local, so only mesh rank 0 sees it. At
+  // eight the mesh group is four ranks and real space takes four more; at
+  // two the second thread runs real space beside a one-rank mesh.
+  const Ionic ion = rockSalt(4, 5.64);
+  rgpot::lr::CoulombConfig cfg;
+  cfg.method = rgpot::lr::CoulombMethod::SPME;
+  cfg.cutoff = 9.0;
+  cfg.alpha = 0.3;
+  cfg.short_cutoff = 3.0;
+  cfg.skin = 0.5;
+  cfg.grid[0] = cfg.grid[1] = cfg.grid[2] = 25;
+  cfg.spline_order = 5;
+  cfg.stress = false;
+  const CoulombEval serial = runCoulomb(cfg, ion, 1, 0);
+  for (const int threads : {8, 2}) {
+    INFO("setThreadCount(" << threads << ")");
+    const CoulombEval bound = runCoulomb(cfg, ion, 0, threads);
+#if defined(_OPENMP)
+    if (threads == 8) {
+      CHECK(rgpot::lr::pme_trace().real_team == 4);
+    }
+#endif
+    CHECK(coulombApart(bound, serial) == 0);
+  }
+}
+#endif
 
 TEST_CASE("eight threads still beat one thread on the large Lennard-Jones cell",
           "[threads][invariant][timing]") {
