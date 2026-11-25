@@ -19,6 +19,9 @@ from pathlib import Path
 EXPECTED_SHA256 = (
     "10fc452df7ab84dea2fd2ed2b5b6d1036f961000ca3e614358d89a971cf29de4"
 )
+# The digest only vouches for the header at this commit, so without a
+# checkout to diff against the wrap must still point here.
+EXPECTED_REVISION = "342d90a2c23a1a4f322ea519fb49ff152d86ec65"
 
 
 def read_wrap(wrap_path: Path) -> tuple[str, str, str]:
@@ -137,6 +140,12 @@ def main(argv: list[str] | None = None) -> int:
     upstream, source = load_upstream(
         root, url, revision, directory, args.fetch
     )
+    if upstream is None and revision != EXPECTED_REVISION:
+        raise AssertionError(
+            f"subprojects/mopacc.wrap revision {revision} != pinned "
+            f"{EXPECTED_REVISION}; diff the header with --fetch and update "
+            "EXPECTED_SHA256 and EXPECTED_REVISION together"
+        )
     if upstream is not None:
         if vendored != upstream:
             diff = "\n".join(
