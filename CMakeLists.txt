@@ -315,9 +315,12 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   # NWChemPot / CPMDPot are pure dlopen consumers of the split nwchemc / cpmdc
   # engines (parity with meson). Cap'n Proto params live in the generated schema,
   # so the frontends are only compiled when RGPOT_WITH_RPC enables ptlrpc.
+  # makePotential (PotentialFactory.cc) reads PotentialConfig and builds
+  # engine-library arms through EnginePot, so both come with the RPC stack too.
   if(RGPOT_WITH_RPC)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/NWChemPot/NWChemPot.cc
-         CppCore/rgpot/CPMDPot/CPMDPot.cc)
+         CppCore/rgpot/CPMDPot/CPMDPot.cc CppCore/rgpot/EnginePot/EnginePot.cc
+         CppCore/rgpot/PotentialFactory.cc)
   endif()
   # CP2KPot dlopens the libcp2k shim. It is built only with the shim, so a
   # build without libcp2k compiles no CP2K code.

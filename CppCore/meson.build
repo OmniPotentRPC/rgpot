@@ -634,6 +634,22 @@ if not get_option('with_rpc_client_only')
         endif
     endif
 
+    # makePotential: one entry point from a PotentialConfig to a potential.
+    # It reads the generated schema, so it ships with the RPC stack, and
+    # builds the engine-library arms through EnginePot.
+    if _rpc_stack
+        potential_factory = static_library(
+            'potential_factory',
+            files('rgpot/EnginePot/EnginePot.cc', 'rgpot/PotentialFactory.cc'),
+            dependencies: _deps + [ptlrpc_hdr_dep, external_pot_dl],
+            cpp_args: _args,
+            include_directories: _incdirs,
+            pic: true,
+            install: false,
+        )
+        rgpotentials += [potential_factory]
+    endif
+
     _linkto += rgpotentials
 
     # Create the umbrella library: every pot and the core ship inside one
