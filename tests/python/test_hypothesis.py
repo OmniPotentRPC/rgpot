@@ -111,6 +111,10 @@ def test_nan_energy_is_numerical_error() -> None:
     positions = np.zeros((2, 3), dtype=np.float64)
     with pytest.raises(rgpot.NumericalError):
         pot.evaluate(positions, _types(2), _box())
+    far_box = np.eye(3, dtype=np.float64) * 1000.0
+    far = np.array([[np.nan, 0.0, 0.0], [500.0, 0.0, 0.0]], dtype=np.float64)
+    with pytest.raises(rgpot.NumericalError):
+        pot.evaluate(far, _types(2), far_box)
 
 
 def test_hessian_and_unknown_kind() -> None:
