@@ -745,6 +745,14 @@ rgpot_test_executable(profile_loader_test CppCore/tests/ProfileLoaderTest.cc)
 rgpot_add_test(ProfileLoaderTest COMMAND profile_loader_test
                ENVIRONMENT ${_rgpot_cpmdc_env})
 
+add_library(lammpc_fake_engine SHARED CppCore/tests/lammpc_fake_engine.cc)
+target_compile_definitions(lammpc_fake_engine PRIVATE ${_rgpot_build_identity})
+target_link_libraries(lammpc_fake_engine PRIVATE ptlrpc)
+target_include_directories(lammpc_fake_engine PRIVATE CppCore include)
+rgpot_test_executable(lammpc_pot_test CppCore/tests/LammpcPotTest.cc)
+rgpot_add_test(LammpcPotTest COMMAND lammpc_pot_test
+  ENVIRONMENT "RGPOT_LAMMPC_ENGINE=$<TARGET_FILE:lammpc_fake_engine>")
+
 # CP2K over a fake engine, and over libcp2k through the shim.
 if(RGPOT_WITH_CP2K)
   add_library(cp2kc_fake_engine SHARED CppCore/tests/cp2kc_fake_engine.cc)

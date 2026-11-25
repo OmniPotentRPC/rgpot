@@ -323,6 +323,7 @@ MorseConfigureTest | tests core rpc | unit morse_configure_test MorseConfigureTe
 CompositeConfigureTest | tests core rpc | unit composite_configure_test CompositeConfigureTest.cc |
 ProfileLoaderTest | tests core rpc | custom suite=abi workdir=. |
 LammpcProfileTest | tests core rpc | unit lammpc_profile_test LammpcProfileTest.cc |
+LammpcPotTest | tests core rpc | custom workdir=. |
 NWChemPotLifetime-ordinary | tests core rpc | custom suite=nwchem |
 NWChemPotLifetime-probe | tests core rpc | custom suite=nwchem |
 NWChemPotTest | tests core rpc | custom suite=nwchem workdir=. |

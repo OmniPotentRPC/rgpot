@@ -2159,6 +2159,35 @@ if get_option('with_tests')
             depends: cpmdc_fake_engine,
             kwargs: _rt_kw['ProfileLoaderTest'],
         )
+        lammpc_fake_engine = shared_library(
+            'lammpc_fake_engine',
+            sources: ['tests/lammpc_fake_engine.cc'],
+            cpp_args: _build_identity_args,
+            dependencies: [ptlrpc_dep],
+            include_directories: _incdirs + ['.'],
+            install: false,
+        )
+        lammpc_fake_env = environment()
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPC_ENGINE',
+            lammpc_fake_engine.full_path(),
+        )
+        test(
+            'LammpcPotTest',
+            executable(
+                'lammpc_pot_test',
+                sources: ['tests/LammpcPotTest.cc'],
+                dependencies: test_deps + [ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: lammpc_fake_env,
+            depends: lammpc_fake_engine,
+            kwargs: _rt_kw['LammpcPotTest'],
+        )
         test(
             'test_cpmd_abi',
             executable(
