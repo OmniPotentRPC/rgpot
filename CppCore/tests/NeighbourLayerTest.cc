@@ -3574,3 +3574,89 @@ TEST_CASE("a row walk takes each atom's partners in the order of forRowHalf",
   checkRows("unbounded search", jitteredCluster(3, 3.9), kFreeBox, kInf, false, Image::Round,
             Mode::Stream);
 }
+
+namespace {
+
+/// The atoms of `pos`, each moved by up to `reach` on every axis, wrapped
+/// into [0, side) and put in a fixed shuffled order.
+std::vector<double> shuffledAcrossCells(const std::vector<double> &pos, double side,
+                                        double reach, std::uint32_t seed) {
+  const std::size_t n = pos.size() / 3;
+  std::mt19937 gen(seed);
+  const auto unit = [&gen] {
+    return static_cast<double>(gen()) / static_cast<double>(std::mt19937::max());
+  };
+  std::vector<double> moved = pos;
+  for (double &x : moved) {
+    x += reach * (2.0 * unit() - 1.0);
+  }
+  wrapInto(moved, side);
+  std::vector<std::size_t> order(n);
+  for (std::size_t k = 0; k < n; ++k) {
+    order[k] = k;
+  }
+  for (std::size_t k = n; k > 1; --k) {
+    std::swap(order[k - 1], order[static_cast<std::size_t>(gen()) % k]);
+  }
+  std::vector<double> out(3 * n);
+  for (std::size_t k = 0; k < n; ++k) {
+    for (std::size_t c = 0; c < 3; ++c) {
+      out[3 * k + c] = moved[3 * order[k] + c];
+    }
+  }
+  return out;
+}
+
+/// Each atom's visits in the order forHalf makes them, as in halfRows.
+std::vector<Visits> forHalfRows(const rgpot::nlist::Neighbours &cells, std::size_t n) {
+  std::vector<Visits> rows(n);
+  cells.forHalf(0, static_cast<std::int64_t>(n),
+                [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+                  into(rows[static_cast<std::size_t>(i)])(i, j, dx, dy, dz, r2);
+                  into(rows[static_cast<std::size_t>(j)])(j, i, -dx, -dy, -dz, r2);
+                });
+  return rows;
+}
+
+} // namespace
+
+TEST_CASE("a row walk keeps the order of forRowHalf on shuffled atoms that cross cells",
+          "[nlist][stream][rows]") {
+  // A lattice in index order puts the atoms of a cell next to each other,
+  // so the order of the cells and that of the indices agree. Shuffled, and
+  // moved across the faces of their cells, they do not, and only then does
+  // the order of forHalf on the tiles part from that of the rows.
+  setThreads("1");
+  const double a = 4.05;
+  const double six = 6 * a;
+  const double six_box[9] = {six, 0, 0, 0, six, 0, 0, 0, six};
+  const auto block6 = shuffledAcrossCells(fccBlock(6, 6, 6, a), six, 0.3, 178);
+  const double four = 4 * a;
+  const double four_box[9] = {four, 0, 0, 0, four, 0, 0, 0, four};
+  const auto block4 = shuffledAcrossCells(fccBlock(4, 4, 4, a), four, 0.3, 179);
+  using rgpot::nlist::Image;
+  using rgpot::nlist::Mode;
+  checkRows("shuffled tiles, cell shifts", block6, six_box, 4.0, true, Image::Round,
+            Mode::Stream);
+  checkRows("shuffled tiles, rounded images", block4, four_box, 4.0, true, Image::Round,
+            Mode::Stream);
+  checkRows("shuffled tiles, half image", block6, six_box, 4.0, true, Image::Half,
+            Mode::Stream);
+  checkRows("shuffled MinimumImage", block4, four_box, 4.0, true, Image::General,
+            Mode::Stream);
+  checkRows("shuffled stored list", block6, six_box, 4.0, true, Image::Round, Mode::Stored);
+
+  // The case tells the two walks apart: forHalf on the same tiles gives
+  // some atom its partners in another order than its row.
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 4.0;
+  spec.skin = 0.0;
+  spec.periodic = {true, true, true};
+  spec.image = Image::Round;
+  spec.mode = Mode::Stream;
+  rgpot::nlist::Neighbours cells;
+  const std::size_t n = block6.size() / 3;
+  cells.update(block6.data(), n, six_box, spec);
+  REQUIRE(cells.streaming());
+  CHECK(forHalfRows(cells, n) != teamRows(cells, n, 3));
+}
