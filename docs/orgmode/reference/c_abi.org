@@ -1386,6 +1386,40 @@ model potentials exposed by =librgpot=.
 The API evaluates row-major batches in rgpot native units (eV and angstrom) and
 reports failures as status integers plus a thread-local error string.
 
+*** Gupta C API
+
+=CppCore/rgpot/Gupta/GuptaPot.hpp= declares a C entry point for the Cleri-Rosato
+Gupta potential.
+
+**** =rgpot_gupta_config=
+
+- Inputs :: =A=, =xi=, =p=, =q=, =r0=, =cutoff= and =periodic=.
+- Units :: =A= and =xi= in eV; =p= and =q= dimensionless; =r0= and =cutoff= in
+  the coordinate length unit.
+- Outputs :: parameter block for =rgpot_gupta_energy_forces=.
+  Field order is part of the ABI.
+- Errors :: none.
+
+**** =rgpot_gupta_energy_forces=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_gupta_energy_forces(const rgpot_gupta_config *cfg, int32_t natoms,
+                              const double *positions, const double *box,
+                              double *energy, double *forces);
+#+end_src
+
+- Inputs :: =cfg= parameter block; =natoms= atom count; =positions= as a
+  row-major =(natoms, 3)= array; =box= as a row-major 3x3 cell when
+  =cfg->periodic= is nonzero (it may be NULL for non-periodic calls); writable
+  =energy= and =forces= buffers with =3 * natoms= doubles in =forces=.
+- Units :: positions and box in Angstrom, energy in eV and forces in
+  eV/Angstrom.
+- Outputs :: returns 0 and writes the total energy and forces.
+- Errors :: returns 1 when any pointer argument is NULL, when =natoms= is
+  negative, or when the configuration is invalid for the kernel.
+  The reason is stored in =rgpot_last_error()=.
+
 *** =rgpot_builtin_model=
 
 - Inputs :: none; an opaque handle type.
