@@ -1165,9 +1165,12 @@ caps()
 - Units :: none.
 - Outputs :: a dict with the keys =reentrancy= (="shared"=,
   ="per_instance"= or ="process_serial"=),
-  =per_image=, =batched=, =periodic=, =group_collective= and =stress=
-  (booleans).
+  =per_image=, =batched=, =periodic=, =cell_optional=, =group_collective= and
+  =stress= (booleans).
   =stress= true means =evaluate= returns a stress tensor.
+  =cell_optional= true means the kernel takes a periodic cell and also
+  evaluates an open system when the cell is all zero.
+  =D2Pot= and =D2CpmdPot= report it; the other classes report false.
 - Errors :: none.
 
 *** =.config=
