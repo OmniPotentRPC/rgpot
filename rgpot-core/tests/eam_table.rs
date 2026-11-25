@@ -24,7 +24,7 @@ use rgpot_core::c_api::eam_table::rgpot_potential_new_eam_table;
 use rgpot_core::c_api::potential::{rgpot_potential_calculate, rgpot_potential_free};
 use rgpot_core::c_api::types::{rgpot_force_input_create, rgpot_force_input_free};
 use rgpot_core::eam_table::{
-    EamTableError, EamTableFormat, EamTablePotential, RGPOT_EAM_TABLE_AUTO,
+    EamTable, EamTableError, EamTableFormat, EamTablePotential, RGPOT_EAM_TABLE_AUTO,
     RGPOT_EAM_TABLE_FINNIS_SINCLAIR, RGPOT_EAM_TABLE_FUNCFL, RGPOT_EAM_TABLE_SETFL,
 };
 use rgpot_core::status::{rgpot_last_error, rgpot_status_t};
@@ -439,4 +439,79 @@ fn a_free_cluster_ignores_the_box_and_loses_the_bonds_past_its_surface() {
     assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS, "{}", last_error());
     assert!(output.energy > periodic.energy, "{}", output.energy);
     unsafe { rgpot_tensor_free(output.forces) };
+}
+
+#[test]
+fn bundled_cu_u3_matches_lammps_vacancy_reference() {
+    let reference = reference("cu_u3_vacancy.ref");
+    let table = EamTable::cu_u3();
+    assert_eq!(table.atomic_numbers(), &[29]);
+    assert!((table.cutoff() - 4.95).abs() < 1.0e-12);
+    let potential = EamTablePotential::cu_u3(true).expect("bundled Cu_u3.eam");
+    let answer = potential
+        .force(&reference.positions, &reference.z, &reference.cell)
+        .expect("evaluate bundled Cu_u3 vacancy");
+    assert_matches(
+        "bundled Cu_u3 vacancy",
+        answer.energy,
+        &answer.forces,
+        &reference,
+    );
+}
+
+#[test]
+fn verlet_skin_delegates_to_linkcell_and_matches_unskinned_evaluation() {
+    let reference = reference("cu_u3_vacancy.ref");
+    assert!(matches!(
+        EamTablePotential::cu_u3(true).unwrap().with_skin(-0.5),
+        Err(EamTableError::Invalid(_))
+    ));
+    let warm = EamTablePotential::cu_u3(true)
+        .expect("bundled Cu_u3.eam")
+        .with_skin(1.0)
+        .expect("skin 1.0");
+    let cold = EamTablePotential::cu_u3(true)
+        .expect("bundled Cu_u3.eam")
+        .with_skin(0.0)
+        .expect("skin 0.0");
+
+    let mut pos = reference.positions.clone();
+    let first = warm
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("first warm");
+    assert_matches(
+        "bundled Cu_u3 vacancy",
+        first.energy,
+        &first.forces,
+        &reference,
+    );
+    assert!(!warm.list_reused());
+    assert_eq!(warm.list_builds(), 1);
+    assert_eq!(warm.list_reuses(), 0);
+
+    for (idx, coord) in pos.iter_mut().enumerate() {
+        *coord += 0.03 * ((idx as f64) * 0.37).sin();
+    }
+    let second_warm = warm
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("second warm");
+    let second_cold = cold
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("second cold");
+    assert!(warm.list_reused());
+    assert_eq!(warm.list_builds(), 1);
+    assert_eq!(warm.list_reuses(), 1);
+    assert_eq!(second_warm, second_cold);
+
+    pos[0] += 0.6;
+    let third_warm = warm
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("third warm");
+    let third_cold = cold
+        .force(&pos, &reference.z, &reference.cell)
+        .expect("third cold");
+    assert!(!warm.list_reused());
+    assert_eq!(warm.list_builds(), 2);
+    assert_eq!(warm.list_reuses(), 1);
+    assert_eq!(third_warm, third_cold);
 }

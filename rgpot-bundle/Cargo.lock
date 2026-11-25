@@ -454,9 +454,8 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "linkcell"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d37b50d4e1643620f68f9f37c8a55a444a44ca4166b87b86959bfb300aca463"
+version = "0.4.3"
+source = "git+https://github.com/d-SEAMS/linkcell?rev=adc7eedc28582a7b5876a4cda56d3ca7a670bd6f#adc7eedc28582a7b5876a4cda56d3ca7a670bd6f"
 dependencies = [
  "cc",
  "minimage",
@@ -718,6 +717,7 @@ dependencies = [
  "futures",
  "libc",
  "libloading",
+ "linkcell",
  "maryada",
  "tokio",
  "tokio-util",

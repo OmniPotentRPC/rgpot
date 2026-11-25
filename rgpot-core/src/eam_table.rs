@@ -34,9 +34,8 @@
 //! A pair counts when `r` is below the cutoff of the file. A periodic
 //! evaluation keeps the nearest image of each partner, so it needs the cutoff
 //! under half of every face spacing of the cell, and refuses a smaller cell.
-//! The pair search visits every pair, which costs the square of the atom
-//! count and suits the cells of a few hundred atoms that a saddle search
-//! evaluates.
+//! Neighbour lookup and Verlet skin caching are delegated to
+//! [`linkcell::SkinList`].
 //!
 //! Failures are [`EamTableError`]. Through the C ABI,
 //! `rgpot_potential_new_eam_table` returns NULL with the message in
@@ -47,10 +46,16 @@ use std::fmt;
 use std::fs;
 use std::os::raw::c_int;
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
+
+use linkcell::{Cell, SkinList};
 
 use crate::potential::PotentialImpl;
 use crate::status::rgpot_status_t;
 use crate::tensor::create_owned_f64_tensor;
+
+const CU_U3_FUNCFL: &str = include_str!("../../CppCore/tests/data/eam_table/Cu_u3.eam");
+static CU_U3_TABLE: OnceLock<EamTable> = OnceLock::new();
 
 /// Format code of the C ABI: choose from the suffix of the file name.
 /// `.eam.alloy` and `.setfl` are setfl, `.eam.fs` is Finnis-Sinclair and
@@ -234,6 +239,15 @@ impl EamTable {
     /// Atomic number of each element of the table, in file order.
     pub fn atomic_numbers(&self) -> &[i32] {
         &self.z
+    }
+
+    /// Bundled `Cu_u3.eam` copper `funcfl` table (Foiles, Baskes, and Daw,
+    /// Phys. Rev. B 33, 7983, 1986).
+    pub fn cu_u3() -> &'static Self {
+        CU_U3_TABLE.get_or_init(|| {
+            Self::from_text(CU_U3_FUNCFL, EamTableFormat::Funcfl)
+                .expect("bundled Cu_u3.eam must parse")
+        })
     }
 
     fn parse(text: &str, layout: Layout) -> Result<Self, EamTableError> {
@@ -509,13 +523,38 @@ impl<'a> Knot<'a> {
 ///
 /// The potential is immutable once built, so one instance serves any number
 /// of threads.
-#[derive(Debug, Clone)]
 pub struct EamTablePotential {
     table: EamTable,
     frho: Vec<Vec<f64>>,
     rhor: Vec<Vec<f64>>,
     z2r: Vec<Vec<f64>>,
     periodic: bool,
+    skin: f64,
+    skin_list: Mutex<Option<SkinList>>,
+}
+
+impl fmt::Debug for EamTablePotential {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EamTablePotential")
+            .field("table", &self.table)
+            .field("periodic", &self.periodic)
+            .field("skin", &self.skin)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Clone for EamTablePotential {
+    fn clone(&self) -> Self {
+        Self {
+            table: self.table.clone(),
+            frho: self.frho.clone(),
+            rhor: self.rhor.clone(),
+            z2r: self.z2r.clone(),
+            periodic: self.periodic,
+            skin: self.skin,
+            skin_list: Mutex::new(None),
+        }
+    }
 }
 
 /// Energy in eV and forces in eV/Angstrom of one geometry.
@@ -580,7 +619,59 @@ impl EamTablePotential {
             z2r: cubics(&table.z2r, table.dr),
             table,
             periodic,
+            skin: 0.0,
+            skin_list: Mutex::new(None),
         })
+    }
+
+    /// Build a potential for the bundled `Cu_u3.eam` copper table.
+    pub fn cu_u3(periodic: bool) -> Result<Self, EamTableError> {
+        Self::new(EamTable::cu_u3().clone(), periodic)
+    }
+
+    /// Configure the Verlet pair-list skin distance in Angstrom (`>= 0.0`),
+    /// backed by [`linkcell::SkinList`].
+    pub fn with_skin(mut self, skin: f64) -> Result<Self, EamTableError> {
+        if !skin.is_finite() || skin < 0.0 {
+            return Err(EamTableError::Invalid(
+                "skin must be finite and not negative".into(),
+            ));
+        }
+        self.skin = skin;
+        self.skin_list = Mutex::new(None);
+        Ok(self)
+    }
+
+    /// Configured Verlet pair-list skin distance in Angstrom.
+    pub fn skin(&self) -> f64 {
+        self.skin
+    }
+
+    /// Whether the most recent [`Self::force`] call reused [`linkcell::SkinList`]'s cached candidates.
+    pub fn list_reused(&self) -> bool {
+        let guard = match self.skin_list.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard.as_ref().is_some_and(SkinList::last_reused)
+    }
+
+    /// Number of [`linkcell::SkinList`] candidate builds performed so far.
+    pub fn list_builds(&self) -> u64 {
+        let guard = match self.skin_list.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard.as_ref().map_or(0, SkinList::builds)
+    }
+
+    /// Number of [`linkcell::SkinList`] candidate reuses performed so far.
+    pub fn list_reuses(&self) -> u64 {
+        let guard = match self.skin_list.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        guard.as_ref().map_or(0, SkinList::reuses)
     }
 
     /// The table this potential evaluates.
@@ -621,43 +712,67 @@ impl EamTablePotential {
         )
     }
 
-    /// The pair list within the cutoff, each pair once, `d = r_i - r_j`.
+    /// The pair list within the cutoff, each pair once, `d = r_i - r_j`,
+    /// delegated to [`linkcell::SkinList`].
     fn pairs(&self, positions: &[f64], cell: &[f64; 9]) -> Result<Vec<Pair>, EamTableError> {
         let n = positions.len() / 3;
-        let cutoff = self.table.cutoff;
-        let cut2 = cutoff * cutoff;
-        let inverse = if self.periodic {
-            Some(self.cell_inverse(cell)?)
+        if self.periodic {
+            self.validate_cell(cell)?;
+        }
+        if n < 2 {
+            return Ok(Vec::new());
+        }
+        let (xyz, _) = positions.as_chunks::<3>();
+        let lc_cell = if self.periodic {
+            Cell::from_vectors(
+                [cell[0], cell[1], cell[2]],
+                [cell[3], cell[4], cell[5]],
+                [cell[6], cell[7], cell[8]],
+                [0.0; 3],
+            )
+            .map_err(|e| EamTableError::Geometry(e.to_string()))?
         } else {
-            None
+            Cell::ortho(1.0, 1.0, 1.0).map_err(|e| EamTableError::Geometry(e.to_string()))?
         };
-        let mut pairs = Vec::new();
-        for i in 0..n {
-            for j in i + 1..n {
-                let mut d = [0.0; 3];
-                for (k, v) in d.iter_mut().enumerate() {
-                    *v = positions[3 * i + k] - positions[3 * j + k];
-                }
-                if let Some(inverse) = &inverse {
-                    d = nearest_image(d, cell, inverse);
-                }
-                let r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-                if r2 > 0.0 && r2 < cut2 {
-                    pairs.push(Pair {
-                        i,
-                        j,
-                        d,
-                        r: r2.sqrt(),
-                    });
-                }
+        let mut guard = match self.skin_list.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let list = match guard.as_mut() {
+            Some(existing) => {
+                existing.set_cell(lc_cell);
+                existing
+            }
+            None => {
+                let created = SkinList::new(lc_cell, self.table.cutoff, self.skin, true)
+                    .map_err(|e| EamTableError::Geometry(e.to_string()))?
+                    .with_periodic([self.periodic; 3]);
+                guard.insert(created)
+            }
+        };
+        list.update(xyz, true)
+            .map_err(|e| EamTableError::Geometry(e.to_string()))?;
+        let cols = list.columns();
+        let vecs = list.vectors();
+        let mut pairs = Vec::with_capacity(cols.len());
+        for (((&i, &j), &r2), &v) in cols.i.iter().zip(&cols.j).zip(&cols.dist2).zip(vecs) {
+            let i = i as usize;
+            let j = j as usize;
+            if i != j && r2 > 0.0 {
+                pairs.push(Pair {
+                    i,
+                    j,
+                    d: [-v[0], -v[1], -v[2]],
+                    r: r2.sqrt(),
+                });
             }
         }
         Ok(pairs)
     }
 
-    /// The inverse of the cell, after the check that one image of each
-    /// partner is all there is within the cutoff.
-    fn cell_inverse(&self, cell: &[f64; 9]) -> Result<[f64; 9], EamTableError> {
+    /// Check that the periodic cell has positive volume and face spacings above
+    /// twice the radial cutoff.
+    fn validate_cell(&self, cell: &[f64; 9]) -> Result<(), EamTableError> {
         let row = |k: usize| [cell[3 * k], cell[3 * k + 1], cell[3 * k + 2]];
         let cross = |u: [f64; 3], v: [f64; 3]| {
             [
@@ -682,15 +797,7 @@ impl EamTablePotential {
                 return geometry("cutoff exceeds half a face spacing");
             }
         }
-        // Columns of the inverse are the cross products of the other rows
-        // over the determinant: inverse[m][k] = normals[k][m] / det.
-        let mut inverse = [0.0; 9];
-        for m in 0..3 {
-            for k in 0..3 {
-                inverse[3 * m + k] = normals[k][m] / det;
-            }
-        }
-        Ok(inverse)
+        Ok(())
     }
 
     /// Energy and forces of one geometry.
@@ -776,22 +883,6 @@ impl EamTablePotential {
             Some(drop_eam_table),
         )
     }
-}
-
-/// The nearest image of the displacement `d` in the cell of lattice vectors
-/// `cell` (rows) with inverse `inverse`: the fractional coordinates are
-/// rounded to the nearest whole cell.
-fn nearest_image(d: [f64; 3], cell: &[f64; 9], inverse: &[f64; 9]) -> [f64; 3] {
-    let mut s = [0.0; 3];
-    for (k, v) in s.iter_mut().enumerate() {
-        let fractional = d[0] * inverse[k] + d[1] * inverse[3 + k] + d[2] * inverse[6 + k];
-        *v = fractional - fractional.round();
-    }
-    let mut out = [0.0; 3];
-    for (k, v) in out.iter_mut().enumerate() {
-        *v = s[0] * cell[k] + s[1] * cell[3 + k] + s[2] * cell[6 + k];
-    }
-    out
 }
 
 /// Drops the `Box<T>` behind `user_data`. A panic in the drop is caught and
