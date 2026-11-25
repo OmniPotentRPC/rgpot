@@ -94,6 +94,55 @@ let windows_meson_build_test =
   & { name = "Build & Test (Meson / MSVC + Flang kernels)" }
 in
 
+let mingw_options = m%"
+    -Dwith_tests=true \
+    -Dwith_examples=false \
+    -Dwith_xtensor=false \
+    -Dwith_eigen=true \
+    -Dwith_rpc=false \
+    -Dwith_fortran_pots=enabled \
+    -Dwith_cache=false \
+    -Dpure_lib=false
+"%
+in
+
+let mingw_wine_install =
+  S.run_bash m%"
+  set -euo pipefail
+  sudo apt-get update
+  sudo apt-get install -y --no-install-recommends \
+    g++-mingw-w64-x86-64-posix gfortran-mingw-w64-x86-64-posix \
+    wine wine64 cmake ninja-build pipx
+  pipx install 'meson>=1.5.2,<2'
+  echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+  rustup target add x86_64-pc-windows-gnu
+"%
+  & { name = "Install mingw-w64, wine and the Rust windows-gnu target" }
+in
+
+# The script reads the cross file %{P.mingw64_wine_cross_file}.
+let mingw_wine_build_test =
+  S.run_bash m%"
+  ci/gha/mingw_wine_build.sh build-mingw \
+    -Dwith_fast_nlist=enabled \
+    %{mingw_options}
+"%
+  & { name = "Build and test (tests under wine)" }
+in
+
+let msys2_build_test = {
+  name = "Build and test",
+  shell = "msys2 {0}",
+  run = m%"
+    set -euo pipefail
+    meson setup bbdir \
+      %{mingw_options}
+    meson compile -C bbdir
+    meson test -C bbdir --print-errorlogs
+  "%,
+}
+in
+
 let nodownload_export =
   S.run_bash m%"
   set -euo pipefail
@@ -226,6 +275,37 @@ in
         S.setup_pixi "devbld" false,
         S.activate_msvc,
         windows_meson_build_test,
+      ],
+    },
+    # Cross build from Ubuntu with the tests under wine, then a native MSYS2
+    # MINGW64 build. Both use mingw-w64's C runtime, whose fma is not fused,
+    # and GNU ld for librgpot.dll.
+    build_mingw_wine = {
+      name = "meson / ubuntu-24.04 mingw-w64 cross [tests under wine]",
+      "runs-on" = P.ubuntu_mingw,
+      steps = [S.checkout_minimal, mingw_wine_install, mingw_wine_build_test],
+    },
+    build_msys2_mingw64 = {
+      name = "meson / windows-latest MSYS2 MINGW64",
+      "runs-on" = P.windows_msys2,
+      steps = [
+        # The image sets core.autocrlf=true; the .sh tests need LF endings.
+        {
+          name = "Keep LF line endings",
+          shell = "pwsh",
+          run = "git config --global core.autocrlf false",
+        },
+        S.checkout_minimal,
+        {
+          uses = P.setup_msys2,
+          with = {
+            msystem = "MINGW64",
+            update = true,
+            install = "git",
+            pacboy = "gcc:p gcc-fortran:p meson:p ninja:p cmake:p pkgconf:p catch:p eigen3:p rust:p python:p",
+          },
+        },
+        msys2_build_test,
       ],
     },
     # Offline rehearsal for the conda-forge source build: configure, build and
