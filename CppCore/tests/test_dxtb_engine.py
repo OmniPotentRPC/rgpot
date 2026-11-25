@@ -1004,6 +1004,88 @@ def test_missing_library_is_an_error_not_a_fallback(monkeypatch):
         )
 
 
+def shadowed_python(tmp_path, name, modules):
+    """A python whose import path puts stand-in modules before the real ones.
+
+    Every start appends one line to the returned log.
+    """
+    shadow = tmp_path / f"{name}_site"
+    for module, source in modules.items():
+        package = shadow / module
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_text(source)
+    log_path = tmp_path / f"{name}_starts.log"
+    wrapper_path = tmp_path / f"{name}_python.sh"
+    real_python = os.environ.get("RGPOT_DXTB_PYTHON") or sys.executable
+    wrapper_path.write_text(
+        "#!/bin/sh\n"
+        f"echo start >> {shlex.quote(str(log_path))}\n"
+        f"PYTHONPATH={shlex.quote(str(shadow))} "
+        f"exec {shlex.quote(real_python)} \"$@\"\n"
+    )
+    wrapper_path.chmod(0o755)
+    return wrapper_path, log_path
+
+
+@pytest.mark.parametrize(
+    "case,modules,reason",
+    [
+        (
+            "no_dxtb",
+            {"dxtb": 'raise ImportError("no dxtb in this python")\n'},
+            "cannot import dxtb",
+        ),
+        (
+            "old_dxtb",
+            {"dxtb": '__version__ = "0.3.9"\n'},
+            "has dxtb 0.3.9; the dxtb engine requires dxtb 0.4.0",
+        ),
+        (
+            "no_libcint",
+            {"tad_libcint": 'raise ImportError("no tad-libcint in this python")\n'},
+            "cannot import tad-libcint",
+        ),
+    ],
+)
+def test_worker_refuses_a_python_that_cannot_run_dxtb(
+    tmp_path, monkeypatch, case, modules, reason
+):
+    wrapper, _starts = shadowed_python(tmp_path, case, modules)
+    monkeypatch.setenv("RGPOT_DXTB_PYTHON", str(wrapper))
+    path = os.environ["RGPOT_ENGINE_DXTB"]
+
+    # Creation names the executable and what it lacks.
+    with pytest.raises(RuntimeError) as refused:
+        Engine(path, "dxtb", "gfn1")
+    assert reason in str(refused.value)
+    assert "dxtb worker exited" not in str(refused.value)
+
+
+def test_tad_libcint_below_the_dxtb_minimum_is_refused(tmp_path, monkeypatch):
+    shadow = tmp_path / "old_libcint_site"
+    package = shadow / "tad_libcint"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('__version__ = "0.1.1"\n')
+    metadata = shadow / "tad_libcint-0.1.1.dist-info"
+    metadata.mkdir()
+    (metadata / "METADATA").write_text(
+        "Metadata-Version: 2.1\nName: tad-libcint\nVersion: 0.1.1\n"
+    )
+    real_python = os.environ.get("RGPOT_DXTB_PYTHON") or sys.executable
+    wrapper = tmp_path / "old_libcint_python.sh"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f"PYTHONPATH={shlex.quote(str(shadow))} "
+        f"exec {shlex.quote(real_python)} \"$@\"\n"
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("RGPOT_DXTB_PYTHON", str(wrapper))
+    path = os.environ["RGPOT_ENGINE_DXTB"]
+
+    with pytest.raises(RuntimeError, match="requires tad-libcint 0.1.2 or newer"):
+        Engine(path, "dxtb", "gfn1")
+
+
 @pytest.mark.parametrize(
     "spelled,method",
     [

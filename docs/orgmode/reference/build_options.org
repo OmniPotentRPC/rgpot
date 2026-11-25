@@ -35,7 +35,7 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_mpi= | feature | =disabled= | Build =librgpot_mpi=, which =librgpot= loads with =dlopen= so calculator groups can split and share across ranks. =librgpot= itself never links MPI. |
 | =with_xtb= | boolean | =false= | Link xtb (=dependency('xtb')=) and build =XTBPot=. |
 | =with_dxtb= | boolean | =false= | Build =libdxtb_engine= with a persistent dxtb 0.4.0 Python worker. Needs =with_rpc=. |
-| =dxtb_python= | string | =python3= | Python executable used to validate and test =with_dxtb=; it must provide dxtb 0.4.0, Torch and tad-libcint. Runtime may override it with =RGPOT_DXTB_PYTHON= or =BuiltinParams.library=. |
+| =dxtb_python= | string | =python3= | Python executable used to validate and test =with_dxtb=; it must provide dxtb 0.4.0, Torch and tad-libcint 0.1.2 or newer. Runtime may override it with =RGPOT_DXTB_PYTHON= or =BuiltinParams.library=; the worker checks the same versions in that Python when it starts. |
 | =with_xckernel= | boolean | =false= | Build the in-process libxckernel XC kernel (=XcKernel=, generated C ABI; not a Potential). |
 | =with_dftd3= | boolean | =false= | Link s-dftd3 (installed, or the s-dftd3 wrap built static) and build =D3Pot=. Needs a Fortran compiler. |
 | =with_dftd4= | boolean | =false= | Link dftd4 (installed, or the dftd4 wrap built static) and build =D4Pot=. Needs a Fortran compiler. |

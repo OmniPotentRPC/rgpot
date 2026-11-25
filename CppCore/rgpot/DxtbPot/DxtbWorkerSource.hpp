@@ -4,6 +4,45 @@
 
 namespace rgpot::detail {
 
+/// Defines runtime_problem(): None when this Python can run the worker,
+/// otherwise the reason it cannot. The worker and the availability probe both
+/// run it, so they agree on what a usable runtime is.
+inline constexpr char kDxtbRuntimeCheck[] = R"DXTBPY(
+DXTB_VERSION = "0.4.0"
+TAD_LIBCINT_MINIMUM = (0, 1, 2)
+
+
+def runtime_problem():
+    import importlib
+    import importlib.metadata
+    import sys
+
+    where = "Python " + sys.executable
+    for module, package in (("torch", "torch"), ("tad_libcint", "tad-libcint"), ("dxtb", "dxtb")):
+        try:
+            importlib.import_module(module)
+        except Exception as exc:
+            return where + " cannot import " + package + " (" + type(exc).__name__ + ": " + str(exc) + ")"
+    found = getattr(sys.modules["dxtb"], "__version__", "unknown")
+    if found != DXTB_VERSION:
+        return where + " has dxtb " + found + "; the dxtb engine requires dxtb " + DXTB_VERSION
+    try:
+        cint = importlib.metadata.version("tad-libcint")
+    except importlib.metadata.PackageNotFoundError:
+        cint = getattr(sys.modules["tad_libcint"], "__version__", "")
+    parts = []
+    for part in cint.split(".")[:3]:
+        digits = len(part) - len(part.lstrip("0123456789"))
+        parts.append(int(part[:digits] or 0))
+    if not cint or tuple(parts) < TAD_LIBCINT_MINIMUM:
+        return (
+            where + " has tad-libcint " + (cint or "of unknown version")
+            + "; the dxtb engine requires tad-libcint "
+            + ".".join(str(n) for n in TAD_LIBCINT_MINIMUM) + " or newer"
+        )
+    return None
+)DXTBPY";
+
 inline constexpr char kDxtbWorkerSource[] = R"DXTBPY(
 import os
 import struct
@@ -13,8 +52,10 @@ _out = sys.stdout.buffer
 sys.stdout = sys.stderr
 _shutting_down = False
 
-import torch
-import dxtb
+_runtime_problem = runtime_problem()
+if _runtime_problem is None:
+    import torch
+    import dxtb
 
 MAGIC_REQUEST = b"DXTB"
 MAGIC_RESPONSE = b"DXTR"
@@ -192,6 +233,9 @@ while True:
             # Skip interpreter teardown so it cannot write to the socket after
             # the host has finished reading this acknowledgement.
             os._exit(0)
+        if _runtime_problem is not None:
+            response(FATAL, _runtime_problem.encode("utf-8"))
+            continue
         if op == OP_CONFIG:
             apply_config(payload)
             response(OK)

@@ -111,6 +111,19 @@ remaining(std::chrono::steady_clock::time_point deadline) {
       deadline - std::chrono::steady_clock::now());
 }
 
+/// DxtbConfig::python when set, then RGPOT_DXTB_PYTHON, then the build
+/// default.
+std::string dxtbPython(const std::string &configured) {
+  if (!configured.empty()) {
+    return configured;
+  }
+  const char *environment = std::getenv("RGPOT_DXTB_PYTHON");
+  if (environment && environment[0] != '\0') {
+    return environment;
+  }
+  return RGPOT_DXTB_PYTHON;
+}
+
 uint64_t paramsKeyFor(const DxtbConfig &config, uint64_t kernelVersion) {
   Fnv1a hash;
   hash.str("rgpot::DxtbPot");
@@ -278,18 +291,6 @@ private:
 #endif
   }
 
-  /// BuiltinParams.library, then RGPOT_DXTB_PYTHON, then the build default.
-  std::string pythonExecutable() const {
-    if (!config_.python.empty()) {
-      return config_.python;
-    }
-    const char *configured = std::getenv("RGPOT_DXTB_PYTHON");
-    if (configured && configured[0] != '\0') {
-      return configured;
-    }
-    return RGPOT_DXTB_PYTHON;
-  }
-
   void start() {
     int sockets[2] = {-1, -1};
     makeSocketPair(sockets);
@@ -302,7 +303,9 @@ private:
       throw DxtbError(-1, systemMessage("setsockopt(SO_NOSIGPIPE)"));
     }
 #endif
-    const std::string python = pythonExecutable();
+    const std::string python = dxtbPython(config_.python);
+    const std::string source =
+        std::string(detail::kDxtbRuntimeCheck) + detail::kDxtbWorkerSource;
     pid_ = fork();
     if (pid_ < 0) {
       const std::string message = systemMessage("fork");
@@ -324,8 +327,8 @@ private:
       if (sockets[1] != STDIN_FILENO && sockets[1] != STDOUT_FILENO) {
         close(sockets[1]);
       }
-      execlp(python.c_str(), python.c_str(), "-u", "-c",
-             detail::kDxtbWorkerSource, static_cast<char *>(nullptr));
+      execlp(python.c_str(), python.c_str(), "-u", "-c", source.c_str(),
+             static_cast<char *>(nullptr));
       _exit(127);
     }
     close(sockets[1]);

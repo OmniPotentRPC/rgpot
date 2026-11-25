@@ -587,12 +587,12 @@ if has_dxtb
     _dxtb_probe = run_command(
         dxtb_python,
         '-c',
-        'import dxtb, tad_libcint, torch; assert dxtb.__version__ == "0.4.0"; assert torch.float64 is not None',
+        'import importlib.metadata as m, dxtb, tad_libcint, torch; assert dxtb.__version__ == "0.4.0"; v = tuple(int(p) for p in m.version("tad-libcint").split(".")[:3]); assert v >= (0, 1, 2), v',
         check: false,
     )
     if _dxtb_probe.returncode() != 0
         error(
-            'with_dxtb=true requires dxtb 0.4.0 and PyTorch in the selected python3',
+            'with_dxtb=true requires dxtb 0.4.0, tad-libcint 0.1.2 or newer and PyTorch in dxtb_python: ' + _dxtb_probe.stderr().strip(),
         )
     endif
     _args += ['-DRGPOT_HAS_DXTB=TRUE']
