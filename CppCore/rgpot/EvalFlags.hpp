@@ -9,8 +9,10 @@
  * An evaluation that returns success may still have needed help to get
  * there. A potential that can tell records the bits below for each call;
  * zero is a plain evaluation. The values are those of
- * @c RGPOT_ENGINE_EVAL_* in engine_c_abi.h and @c RGPOT_XTB_EVAL_* in
- * xtb_c_abi.h, so the bits pass through either ABI unchanged.
+ * @c RGPOT_ENGINE_EVAL_* in engine_c_abi.h, so the bits pass through that
+ * ABI unchanged. @c RGPOT_XTB_EVAL_* in xtb_c_abi.h has the same values for
+ * @c SccRescued and @c SccRetried; @c Cached exists only in the engine ABI,
+ * whose table attaches the result cache.
  *
  * @ingroup rgpot_cpp
  */

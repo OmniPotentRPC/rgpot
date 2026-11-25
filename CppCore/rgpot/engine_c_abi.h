@@ -39,10 +39,11 @@
  * the process across all handles of the library. A host that wants
  * parallelism from a backend that reports 1 or 2 creates one handle per
  * worker (1 only). rgpot_engine_set_num_threads,
- * rgpot_engine_set_charge_spin, rgpot_engine_select_orbitals,
- * rgpot_engine_set_callbacks, rgpot_engine_set_cache, rgpot_engine_hint
- * and rgpot_engine_destroy must not run concurrently with a call on the
- * same handle. rgpot_engine_last_error and
+ * rgpot_engine_set_charge_spin, rgpot_engine_set_scc_rescue,
+ * rgpot_engine_select_orbitals, rgpot_engine_set_callbacks,
+ * rgpot_engine_set_cache, rgpot_engine_hint and rgpot_engine_destroy must
+ * not run concurrently with a call on the same handle.
+ * rgpot_engine_last_error, rgpot_engine_last_eval_flags and
  * rgpot_engine_model_digest may run at any time.
  * - Capability discovery is by symbol presence: entry points marked
  *   optional are probed with dlsym. An absent symbol means the engine

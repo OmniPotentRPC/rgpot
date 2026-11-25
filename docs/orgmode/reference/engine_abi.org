@@ -992,6 +992,7 @@ long rgpot_engine_last_eval_flags(const RgpotEnginePot *pot, uint64_t *flags,
 
 Optional symbol, minor 12.
 A backend that tells nothing about its evaluations reports 0 for each system.
+May run at any time.
 
 *** =rgpot_engine_set_scc_rescue=
 

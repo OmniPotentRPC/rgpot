@@ -1002,6 +1002,9 @@ void setSccRescue(bool enabled);
 - Units :: none.
 - Outputs :: none; later forces use the setting, and =fusedSettings= and
   =paramsKey= follow it.
+  A handle made by =PotentialHandle::from_impl= needs =sync_fused_settings=
+  after the change; without it the handle keeps returning a failure stored
+  under the old setting.
 - Errors :: none.
 
 *** =rgpot::XTBPot::sccRescue=
