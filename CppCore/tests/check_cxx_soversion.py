@@ -376,9 +376,9 @@ def check_against_base(rows: list[tuple[int, str]], layout_text: str) -> None:
 def check_soname(lib: Path, soversion: int) -> None:
     if not lib.is_file():
         fail(f"librgpot not found: {lib}")
-    # macOS meson passes -Ddefault_library=static, so the artifact is
-    # librgpot.a and the runner has no readelf. A static archive has no
-    # SONAME. Windows import libs are the same kind of file.
+    # A static archive has no SONAME. Windows import libs are the same kind
+    # of file. A static Meson build outside Windows passes the shared
+    # umbrella its plugins link, so macOS checks its install name.
     if lib.suffix in {".a", ".lib"}:
         print(f"soversion: {lib.name} is a static archive, skipped SONAME check")
         return
@@ -409,15 +409,51 @@ def check_soname(lib: Path, soversion: int) -> None:
     print(f"SONAME {match.group(1)}")
 
 
-def is_elf(path: Path) -> bool:
+ELF_MAGIC = b"\x7fELF"
+# Thin Mach-O in either byte order, and fat (universal) binaries.
+MACHO_MAGICS = frozenset(
+    bytes.fromhex(word)
+    for word in (
+        "feedface",
+        "cefaedfe",
+        "feedfacf",
+        "cffaedfe",
+        "cafebabe",
+        "cafebabf",
+    )
+)
+GENERATION_SYMBOL_RE = re.compile(
+    r" (rgpot::nlist::Neighbours::(?:"
+    r"nextGeneration\(\)"
+    r"|assignGeneration\(\) const"
+    # std::uint64_t is unsigned long on LP64 Linux, unsigned long long on macOS.
+    r"|exchangeGenerationCounter\(unsigned long(?: long)?\)"
+    r"))$"
+)
+
+
+def binary_format(path: Path) -> str | None:
     with path.open("rb") as handle:
-        return handle.read(4) == b"\x7fELF"
+        magic = handle.read(4)
+    if magic == ELF_MAGIC:
+        return "elf"
+    if magic in MACHO_MAGICS:
+        return "macho"
+    return None
 
 
-def defined_generation_symbols(lib: Path) -> list[str]:
+def nm_command(lib: Path, fmt: str) -> list[str]:
+    if fmt == "macho":
+        # Mach-O has no separate dynamic table: the external defined
+        # symbols are the ones a dylib exports.
+        return ["nm", "-g", "-U", "-C", str(lib)]
+    return ["nm", "-D", "--defined-only", "--demangle", str(lib)]
+
+
+def defined_generation_symbols(lib: Path, fmt: str) -> list[str]:
     try:
         symbols = subprocess.run(
-            ["nm", "-D", "--defined-only", "--demangle", str(lib)],
+            nm_command(lib, fmt),
             capture_output=True,
             text=True,
             check=True,
@@ -425,33 +461,35 @@ def defined_generation_symbols(lib: Path) -> list[str]:
     except FileNotFoundError:
         fail("nm is required to check the Neighbours generation symbol")
         return []
-    names = (
-        "rgpot::nlist::Neighbours::nextGeneration()",
-        "rgpot::nlist::Neighbours::assignGeneration() const",
-        "rgpot::nlist::Neighbours::exchangeGenerationCounter(unsigned long)",
+    except subprocess.CalledProcessError as error:
+        fail(f"nm could not read {lib}: {error.stderr.strip()}")
+        return []
+    # A fat Mach-O lists every slice, so count each symbol once.
+    return sorted(
+        {
+            match.group(1)
+            for match in map(GENERATION_SYMBOL_RE.search, symbols.splitlines())
+            if match
+        }
     )
-    return [
-        line
-        for line in symbols.splitlines()
-        if any(line.endswith(" " + name) for name in names)
-    ]
 
 
 def check_generation_symbol(lib: Path, engines: list[Path]) -> None:
     header = NEIGHBOURS.read_text()
     if re.search(r"nextGeneration\(\)\s*(?:noexcept\s*)?\{", header):
         fail("Neighbours.hpp must not define nextGeneration")
-    if not sys.platform.startswith("linux"):
-        return
-    # The check reads ELF dynamic symbols. A cross build's DLLs have none.
-    if lib.suffix not in {".a", ".lib"} and not is_elf(lib):
-        return
+    lib_format = None
+    if lib.suffix not in {".a", ".lib"}:
+        lib_format = binary_format(lib)
+        # A Windows DLL is neither ELF nor Mach-O, and is not inspected.
+        if lib_format is None:
+            return
     # A static umbrella keeps the generation counter in rgpot_nlist, so
     # the three-export check applies only to the shared library. Plugins
     # are still checked: a static link used to copy that counter into
     # librgpot_cuh2 and the composite engine.
-    if lib.suffix not in {".a", ".lib"}:
-        definitions = defined_generation_symbols(lib)
+    if lib_format is not None:
+        definitions = defined_generation_symbols(lib, lib_format)
         if len(definitions) != 3:
             fail(
                 "librgpot must export exactly three Neighbours generation symbols, "
@@ -462,9 +500,12 @@ def check_generation_symbol(lib: Path, engines: list[Path]) -> None:
     for engine in engines:
         if not engine.is_file():
             fail(f"engine library not found: {engine}")
-        if engine.suffix in {".a", ".lib"} or not is_elf(engine):
+        if engine.suffix in {".a", ".lib"}:
             continue
-        engine_defs = defined_generation_symbols(engine)
+        engine_format = binary_format(engine)
+        if engine_format is None:
+            continue
+        engine_defs = defined_generation_symbols(engine, engine_format)
         if engine_defs:
             fail(
                 f"{engine.name} must not define Neighbours generation symbols, "

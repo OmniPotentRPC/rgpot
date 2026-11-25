@@ -125,6 +125,7 @@ ExprLeptonSymbols | tests core posix | custom suite=expr |
 CxxLayoutTest | tests core | custom workdir=. |
 CxxLayoutVirtualCounts | tests core python | py CppCore/tests/check_virtual_counts.py |
 CxxSoversion | tests core python | custom |
+CxxSoversionSelftest | tests python | py CppCore/tests/test_check_cxx_soversion.py |
 abi_symbols | core | custom |
 abi_symbols_fast | core fast_beside | custom | @fast_nlist
 abi_symbols_fixture_shared | tests core posix | custom |

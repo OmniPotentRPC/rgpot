@@ -103,7 +103,9 @@ foreach _line : _fs.read('tests/registry.txt').split('\n')
             _first = false
         elif _word.startswith('timeout=')
             _has_timeout = true
-            _kw += {'timeout': _word.substring(8).to_int() * _timeout_scale}
+            _kw += {
+                'timeout': _word.substring(8).to_int() * _timeout_scale,
+            }
         elif _word.startswith('suite=')
             _kw += {'suite': _word.substring(6)}
         elif _word.startswith('workdir=')
@@ -180,7 +182,9 @@ _args += ['-DRGPOT_BUILDING']
 _cxx_layout_hpp = _fs.read('rgpot/abi/CxxLayout.hpp')
 _cxx_so_parts = _cxx_layout_hpp.split('kCxxSoversion = ')
 if _cxx_so_parts.length() != 2
-    error('CxxLayout.hpp must contain exactly one "kCxxSoversion = " assignment')
+    error(
+        'CxxLayout.hpp must contain exactly one "kCxxSoversion = " assignment',
+    )
 endif
 rgpot_cxx_soversion = _cxx_so_parts[1].split(';')[0].strip()
 
@@ -221,7 +225,10 @@ _rgpot_srcs += files('rgpot/units.cc')
 _rgpot_srcs += files('rgpot/SumPot/SumPot.cc')
 _rgpot_srcs += files('rgpot/D2Pot/D2CpmdPot.cc', 'rgpot/D2Pot/D2Pot.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
-_rgpot_srcs += files('rgpot/simd/dispatch.cc', 'rgpot/simd/scalar_kernels.cc')
+_rgpot_srcs += files(
+    'rgpot/simd/dispatch.cc',
+    'rgpot/simd/scalar_kernels.cc',
+)
 if have_highway
     _rgpot_srcs += files('rgpot/simd/hwy_kernels.cc')
 endif
@@ -681,20 +688,49 @@ if not get_option('with_rpc_client_only')
             '-DMESON_PROJECT_VERSION="@0@"'.format(meson.project_version()),
         ]
     endif
-    rgpot = library(
-        'rgpot',
-        _rgpot_srcs,
-        dependencies: rgpot_deps,
-        cpp_args: _rgpot_cpp_args,
-        link_args: _rgpot_link_args,
-        build_rpath: _metatomic_build_rpath,
-        include_directories: _incdirs,
-        link_whole: [rgpot_core] + _linkto + _rpc_whole,
-        version: meson.project_version(),
-        soversion: rgpot_cxx_soversion,
-        install: not meson.is_subproject(),
-        kwargs: fastnlist_umbrella_kwargs,
+    # A loadable plugin cannot embed a static umbrella: that would give it a
+    # private Neighbours generation counter. Every build of the umbrella also
+    # builds the engines/ plugins, so a static build also builds a shared
+    # umbrella for them, while normal consumers continue to link the
+    # requested static library.
+    _needs_plugin_umbrella = (
+        get_option('default_library') == 'static'
+        and host_system != 'windows'
     )
+    if _needs_plugin_umbrella
+        _rgpot_both = both_libraries(
+            'rgpot',
+            _rgpot_srcs,
+            dependencies: rgpot_deps,
+            cpp_args: _rgpot_cpp_args,
+            link_args: _rgpot_link_args,
+            build_rpath: _metatomic_build_rpath,
+            include_directories: _incdirs,
+            link_whole: [rgpot_core] + _linkto + _rpc_whole,
+            version: meson.project_version(),
+            soversion: rgpot_cxx_soversion,
+            install: not meson.is_subproject(),
+            kwargs: fastnlist_umbrella_kwargs,
+        )
+        rgpot = _rgpot_both.get_static_lib()
+        rgpot_plugin_umbrella = _rgpot_both.get_shared_lib()
+    else
+        rgpot = library(
+            'rgpot',
+            _rgpot_srcs,
+            dependencies: rgpot_deps,
+            cpp_args: _rgpot_cpp_args,
+            link_args: _rgpot_link_args,
+            build_rpath: _metatomic_build_rpath,
+            include_directories: _incdirs,
+            link_whole: [rgpot_core] + _linkto + _rpc_whole,
+            version: meson.project_version(),
+            soversion: rgpot_cxx_soversion,
+            install: not meson.is_subproject(),
+            kwargs: fastnlist_umbrella_kwargs,
+        )
+        rgpot_plugin_umbrella = rgpot
+    endif
 
     # 73 rgpot_* exports when the rust archive is linked normally, 127 when
     # the bundle is whole-archived. The extra 54 are the public C ABI.
@@ -742,10 +778,10 @@ if not get_option('with_rpc_client_only')
         # Plugin anneal dlopens this as RGPOT_CUH2_LIBRARY. Link the shared
         # umbrella instead of embedding the neighbour implementation again,
         # so every process uses one Neighbours generation counter.
-        rgpot_cuh2 = library(
+        rgpot_cuh2 = shared_library(
             'rgpot_cuh2',
             rgpot_cuh2_sources,
-            link_with: rgpot,
+            link_with: rgpot_plugin_umbrella,
             # C++ is the link language so Meson does not add the Fortran
             # runtime. fortran_rt_deps is the same search the umbrella uses
             # for _gfortran_* and the flang equivalents.
@@ -794,7 +830,7 @@ if not get_option('with_rpc_client_only')
             'classical_engine',
             [_engine_common, files('rgpot/engine/ClassicalEngine.cc')],
             dependencies: _engine_deps,
-            link_with: [rgpot],
+            link_with: [rgpot_plugin_umbrella],
             link_whole: _classical_whole,
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -809,7 +845,7 @@ if not get_option('with_rpc_client_only')
             'composite_engine',
             [_engine_common, files('rgpot/engine/CompositeEngine.cc')],
             dependencies: _engine_deps + [cpmd_dl_dep],
-            link_with: [rgpot],
+            link_with: [rgpot_plugin_umbrella],
             link_whole: _composite_whole,
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -820,7 +856,7 @@ if not get_option('with_rpc_client_only')
             'mopac_engine',
             [_engine_common, files('rgpot/engine/MopacEngine.cc')],
             dependencies: _engine_deps + [mopac_dl_dep],
-            link_with: [rgpot],
+            link_with: [rgpot_plugin_umbrella],
             link_whole: [mopacpot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -831,7 +867,7 @@ if not get_option('with_rpc_client_only')
             'nwchem_engine',
             [_engine_common, files('rgpot/engine/NWChemEngine.cc')],
             dependencies: _engine_deps + [nwchem_dl_dep],
-            link_with: [rgpot],
+            link_with: [rgpot_plugin_umbrella],
             link_whole: [nwchempot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -866,7 +902,7 @@ if not get_option('with_rpc_client_only')
                 'skala_engine',
                 [_engine_common, files('rgpot/engine/SkalaEngine.cc')],
                 dependencies: _engine_deps + [nwchem_dl_dep],
-                link_with: [rgpot],
+                link_with: [rgpot_plugin_umbrella],
                 link_whole: [nwchempot, skala],
                 cpp_args: _engine_args,
                 include_directories: _incdirs,
@@ -887,7 +923,10 @@ if not get_option('with_rpc_client_only')
     # The static umbrella already contains the relocatable fast-list
     # object. Repeating that object through rgpot_dep defines it twice.
     # Shared builds keep the archive on the consumer link line.
-    _rgpot_consumer_deps = _deps_sans_core + [vesin_dep, fastnlist_native_dep] + fortran_rt_deps
+    _rgpot_consumer_deps = _deps_sans_core + [
+        vesin_dep,
+        fastnlist_native_dep,
+    ] + fortran_rt_deps
     if _rpc_stack
         _rgpot_consumer_deps += [ptlrpc_hdr_dep]
     endif
@@ -1027,7 +1066,9 @@ endif
 if get_option('with_examples') and not get_option('with_rpc_client_only')
     example_array = []
     if has_fortran
-        example_array += [['CallCuH2Pot', 'cuh2_call', 'call_cuh2.cc', '']]
+        example_array += [
+            ['CallCuH2Pot', 'cuh2_call', 'call_cuh2.cc', ''],
+        ]
     endif
     if has_eigen
         example_array += [
@@ -1756,7 +1797,10 @@ if get_option('with_tests')
             install: false,
         )
         cpmdc_fake_env = environment()
-        cpmdc_fake_env.set('RGPOT_CPMD_ENGINE', cpmdc_fake_engine.full_path())
+        cpmdc_fake_env.set(
+            'RGPOT_CPMD_ENGINE',
+            cpmdc_fake_engine.full_path(),
+        )
         cpmdc_gradient_engine = shared_library(
             'cpmdc_gradient_engine',
             sources: ['tests/cpmdc_gradient_engine.cc'],
@@ -2442,7 +2486,11 @@ if get_option('with_tests')
             )
         endif
     endforeach
-    _nlist_link = [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma]
+    _nlist_link = [
+        rgpot_halfshell,
+        rgpot_minimage,
+        rgpot_exact_fma,
+    ]
     if not get_option('with_rpc_client_only')
         _nlist_link += [rgpot_core]
     endif
@@ -2944,41 +2992,38 @@ if get_option('with_tests')
                 cpp_args: _args,
                 link_language: 'cpp',
             )
-            _soversion_args = [
+            # engines/meson.build registers CxxSoversion once it has added
+            # its own plugins to these lists.
+            cxx_soversion_prog = python3_prog
+            cxx_soversion_args = [
                 files('tests/check_cxx_soversion.py'),
                 rgpot_cxx_soversion,
-                rgpot.full_path(),
+                rgpot_plugin_umbrella.full_path(),
                 cxx_layout_stamp.full_path(),
             ]
-            _soversion_depends = [rgpot, cxx_layout_stamp]
+            cxx_soversion_depends = [rgpot_plugin_umbrella, cxx_layout_stamp]
             if has_fortran and host_system != 'windows'
-                _soversion_args += [rgpot_cuh2.full_path()]
-                _soversion_depends += [rgpot_cuh2]
+                cxx_soversion_args += [rgpot_cuh2.full_path()]
+                cxx_soversion_depends += [rgpot_cuh2]
             endif
             if _rpc_stack and host_system != 'windows'
-                _soversion_args += [
+                cxx_soversion_args += [
                     classical_engine.full_path(),
                     composite_engine.full_path(),
                     mopac_engine.full_path(),
                     nwchem_engine.full_path(),
                 ]
-                _soversion_depends += [
+                cxx_soversion_depends += [
                     classical_engine,
                     composite_engine,
                     mopac_engine,
                     nwchem_engine,
                 ]
                 if has_skala
-                    _soversion_args += [skala_engine.full_path()]
-                    _soversion_depends += [skala_engine]
+                    cxx_soversion_args += [skala_engine.full_path()]
+                    cxx_soversion_depends += [skala_engine]
                 endif
             endif
-            test(
-                'CxxSoversion',
-                python3_prog,
-                args: _soversion_args + ['--exe-wrapper'] + exe_wrapper_args,
-                depends: _soversion_depends,
-            )
         endif
     endif
     if _mpi_dep.found() and not is_disabler(calculator_group_test_exe)
@@ -3454,9 +3499,7 @@ if not meson.is_subproject()
         '--list',
         meson.current_source_dir() / 'rgpot',
         check: true,
-    ).stdout().strip().split(
-        '\n',
-    )
+    ).stdout().strip().split('\n')
     _install_exclude = ['rpc/Potentials.capnp']
     foreach _rel : _install_impl
         if _rel != ''
