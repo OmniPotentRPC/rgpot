@@ -246,3 +246,10 @@ It also stamps =nlist::Builder= and =nlist::Walk=, which move their state behind
 a pointer so each is one pointer wide.
 It also adds a process-unique generation id on =Neighbours=.
 A program linked against soversion 8 does not load =librgpot.so.9=.
+
+Soversion 10 stamps =GuptaConfig=, =GuptaPot= and =PotType::Gupta=.
+=PotType::Gupta= follows =PotType::ORCA= at the end of the enum, so no stamped
+value moves, but the hash covers the new types.
+Soversion 9 shipped in 3.8.0, so the change takes a new soversion and the ledger
+line of 9 stays as it shipped.
+A program linked against soversion 9 does not load =librgpot.so.10=.
