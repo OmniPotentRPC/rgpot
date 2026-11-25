@@ -184,11 +184,23 @@ class RgpotRpcCalculator(Calculator):
         with self._claim:
             if not self._closed:
                 self._closed = True
-                try:
-                    self._loop.run_until_complete(self._kj.__aexit__(None, None, None))
-                except Exception:  # noqa: BLE001, S110
-                    pass
-                self._loop.close()
+                # Drop Python-side capability references before kj teardown.
+                self._pot = None
+                if hasattr(self, "_client"):
+                    self._client = None
+                if hasattr(self, "_connection"):
+                    self._connection = None
+                if not self._loop.is_closed():
+                    exit_coro = self._kj.__aexit__(None, None, None)
+                    try:
+                        self._loop.run_until_complete(exit_coro)
+                    except Exception:  # noqa: BLE001
+                        # If teardown fails after creating the coroutine
+                        # (for example because the loop closes), close the
+                        # coroutine to avoid "never awaited" warnings.
+                        exit_coro.close()
+                    if not self._loop.is_closed():
+                        self._loop.close()
             if self._server_proc is not None:
                 self._server_proc.kill()
                 self._server_proc.wait()

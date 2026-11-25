@@ -103,6 +103,31 @@ _SCENARIOS = {
         assert len(spy.seen) == 1, spy.seen
         assert calc._loop.is_closed()
     """,
+    "close_after_loop_closed": """
+        calc = fresh()
+        spy = ExitSpy(calc)
+        calc._loop.close()
+        calc.close()
+        calc.close()
+        assert spy.seen == [], spy.seen
+        assert calc._loop.is_closed()
+    """,
+    "masked_loop_closed_during_teardown": """
+        calc = fresh()
+        spy = ExitSpy(calc)
+        original_run = calc._loop.run_until_complete
+
+        def close_then_raise(coro):
+            calc._loop.close()
+            raise RuntimeError("Event loop is closed")
+
+        calc._loop.run_until_complete = close_then_raise
+        calc.close()
+        calc.close()
+        calc._loop.run_until_complete = original_run
+        assert spy.seen == [], spy.seen
+        assert calc._loop.is_closed()
+    """,
     "close_then_gc": """
         calc = fresh()
         calc.close()
@@ -151,6 +176,8 @@ def test_rpc_close_ordering(scenario: str, potserv_factory) -> None:
             sys.executable,
             "-X",
             "faulthandler",
+            "-W",
+            "error::RuntimeWarning",
             "-c",
             script,
             server.host,
