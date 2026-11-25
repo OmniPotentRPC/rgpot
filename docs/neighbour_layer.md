@@ -262,8 +262,16 @@ remains exported as a compatibility wrapper forwarding to
 From the `kTeamMinAtoms` of its class up, the least of its `kTeamFrom`
 counts (24 atoms for Morse, 28 for Tersoff, 32 for SW, 40 for LJ and
 EAM, 48 for the LJ cluster, 64 for Sutton-Chen and 192 for ZBL), a
-result has the bits of one thread on any `OMP_NUM_THREADS`. Each atom
-keeps the energy and strain of its pairs
+result has the bits of one thread on any `OMP_NUM_THREADS`, and on any
+count passed to `rgpot::setThreadCount`, `rgpot::ThreadCount` or
+`PotentialBase::setThreadCount`. Such a count takes the place of
+`OMP_NUM_THREADS` in `teamSize`, so the same `kTeamFrom` decides whether
+it opens a team. Those calls are opt-in: with none of them set, the
+count is still `OMP_NUM_THREADS` (unset, empty or below 1 is one
+thread). `clearThreadCount` drops the sticky override. A `ThreadCount`
+already on the stack is not replaced by a potential's own setting.
+Without OpenMP the request is reported by `explicitThreadCount` and the
+call stays one thread. Each atom keeps the energy and strain of its pairs
 with higher-index partners, and the atoms are added in index order. The
 pair potentials (`nlist::sumPairs` in `CppCore/rgpot/nlist/PairSum.hpp`),
 Sutton-Chen and EAM give each slice of a team a contiguous range of

@@ -108,6 +108,7 @@ void SumPot::resetComponents() const {
 }
 
 void SumPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   const std::size_t n3 = 3 * in.nAtoms;
   std::fill(out->F, out->F + n3, 0.0);
   out->energy = 0.0;

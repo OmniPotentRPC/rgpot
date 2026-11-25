@@ -57,6 +57,10 @@ _rt_atoms = {
     'rust_core': get_option('with_rust_core'),
     'mdi': mdi_enabled,
     'pymdi': has_pymdi,
+    'thread_registry': not (
+        host_machine.system() == 'windows'
+        and get_option('default_library') != 'static'
+    ),
 }
 # Flipped only in the block that registers rgpot_so_exports. The registry
 # feature of the same name is this value, so a static fast-list object,
@@ -601,6 +605,7 @@ if not get_option('with_rpc_client_only')
     endif
 
     if has_long_range
+        _args += ['-DRGPOT_HAS_LONG_RANGE']
         subdir('rgpot/LongRange')  # 'lr_phys'
         rgpotentials += [lr_phys]
     endif
@@ -2351,7 +2356,10 @@ if get_option('with_tests')
                 rgpot_minimage,
                 rgpot_exact_fma,
             ],
+            # It links the pot archives, not librgpot, so RGPOT_API must not
+            # import on Windows.
             cpp_args: [
+                '-DRGPOT_STATIC',
                 '-DRGPOT_ASV_DATA="@0@"'.format(
                     meson.project_source_root() / 'benchmarks' / 'data',
                 ),
@@ -2400,13 +2408,24 @@ if get_option('with_tests')
             # declarations must not name DLL import thunks.
             case_args += ['-DRGPOT_MODEL_BUILD']
         endif
+        # The thread-count test is also the dynamic-link regression: its
+        # header calls must reach the same registry as forceImpl in librgpot.
+        if (
+            _rt[0] == 'ThreadInvariantTest'
+            and get_option('default_library') != 'static'
+            and host_machine.system() != 'windows'
+        )
+            _test_link = [rgpot]
+        else
+            _test_link = _linkto
+        endif
         _test_exe = executable(
             _rt[2][0],
             sources: ['tests/' + _rt[2][1]],
             dependencies: test_deps,
             include_directories: _incdirs + ['.'],
             cpp_args: case_args,
-            link_with: _linkto,
+            link_with: _test_link,
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
             export_dynamic: _export_dynamic,
@@ -2434,6 +2453,9 @@ if get_option('with_tests')
     endforeach
     foreach _rt : _rt_tests
         if _rt[1] == 'rerun'
+            if _rt[2][0] not in _rt_exes
+                continue
+            endif
             test(
                 _rt[0],
                 _rt_exes[_rt[2][0]],

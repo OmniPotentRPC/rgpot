@@ -470,6 +470,7 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
   Per-atom energies sum to =out->energy=.
   The virial order per atom is xx, yy, zz, yz, xz, xy.
   A null array is skipped.
+  It binds the count set with =setThreadCount= as =forceImpl= does.
 - Errors :: the exceptions of the class's =forceImpl=.
 
 =rgpot::LJClusterPot= always walks the cells here, so its energy can differ from
@@ -1890,6 +1891,11 @@ SumPot();
   component record belongs to the instance.
   Setting =RGPOT_SUM_LOG= to anything but empty or =0= writes one line per term
   and call, and a total, to standard error.
+  =setThreadCount= on the sum binds that count on the calling thread for the
+  whole call, so every term reads it as its explicit count.
+  A term with a count of its own keeps it, a =rgpot::ThreadCount= already on the
+  stack wins over both, and clearing the count on the sum takes it from every
+  term at once.
 - Errors :: a term that throws stops the call; the exception reaches the caller
   unchanged after a line naming the term is logged, so a failing child's status
   (a NumericalError, a refused geometry) is the sum's status.

@@ -667,6 +667,54 @@ explicit PotentialBase(PotType inp_type);
   numbers and a 3 x 3 cell, and returns energy, forces (n x 3) and variance.
 - Errors :: none.
 
+*** =rgpot::PotentialBase::setThreadCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setThreadCount(int threads);
+#+end_src
+
+- Inputs :: =threads=, the thread count for this potential's evaluations.
+- Units :: none.
+- Outputs :: none.
+  The count is stored beside the object, not in it, so the C++ layout stamp does
+  not move.
+  A =rgpot::ThreadCount= already on the calling thread wins over it.
+  With nothing set, the call keeps the default: =OMP_NUM_THREADS= for
+  =threadsRequested=, and the OpenMP pool for a long-range team.
+  The default =forceBatchImpl= binds the count before it spreads a batch of
+  small systems, so the batch uses that many threads too.
+  A =SumPot= binds its count for the whole call, and every term without a count
+  of its own reads it.
+  =HessianVectorCache= binds it around the analytic and dual-number Hessian and
+  Hessian-vector hooks, which are not =forceImpl= and do not bind it themselves.
+- Errors :: throws =std::invalid_argument= when =threads= is below 1.
+
+*** =rgpot::PotentialBase::clearThreadCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void clearThreadCount() noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: none.
+  Drops this potential's opt-in count.
+- Errors :: none; the method is =noexcept=.
+
+*** =rgpot::PotentialBase::threadCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] int threadCount() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the opt-in count, or 0 when this potential has not set one.
+- Errors :: none; the method is =noexcept=.
+
 *** =rgpot::PotentialBase::caps=
 
 #+attr_rgpot: signature

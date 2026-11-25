@@ -176,10 +176,12 @@ std::shared_ptr<const ZblTables> ZBLPot::tablesFor(const int *atomicNrs,
  * list keeps candidates out to the cutoff plus one fifth of the cutoff.
  */
 void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   compute(in, out, nullptr);
 }
 
 void ZBLPot::forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   guardForceCall(in, out, kernelNeedsCell(*this));
   clearPerAtom(atoms, in.nAtoms);
   compute(in, out, &atoms);

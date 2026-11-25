@@ -504,6 +504,7 @@ void ORCAPot::reset() {
 }
 
 void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   rejectPeriodicBox(in.box);
   const std::size_t n = in.nAtoms;
   const std::vector<int> numbers(in.atmnrs, in.atmnrs + n);

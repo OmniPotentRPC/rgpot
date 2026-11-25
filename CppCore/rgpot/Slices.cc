@@ -3,7 +3,11 @@
 
 #include "rgpot/Slices.hpp"
 
+#include <atomic>
 #include <cstdlib>
+#include <mutex>
+#include <stdexcept>
+#include <unordered_map>
 
 namespace rgpot {
 namespace {
@@ -13,10 +17,62 @@ thread_local std::uint64_t t_teams_opened = 0;
 thread_local bool t_threshold_set = false;
 thread_local std::size_t t_threshold = 0;
 
+// kind 1 is a call-scope ThreadCount, kind 2 a potential ThreadBinding.
+struct ExplicitFrame {
+  int count = 0;
+  unsigned char kind = 0;
+};
+
+constexpr int kExplicitDepth = 32;
+thread_local ExplicitFrame t_explicit[kExplicitDepth];
+thread_local int t_explicit_depth = 0;
+thread_local int t_sticky = 0;
+
+int resolvedExplicit() noexcept {
+  if (t_explicit_depth > 0) {
+    return t_explicit[t_explicit_depth - 1].count;
+  }
+  return t_sticky;
+}
+
+bool callScopeActive() noexcept {
+  for (int i = 0; i < t_explicit_depth; ++i) {
+    if (t_explicit[i].kind == 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void pushExplicit(int count, unsigned char kind) {
+  if (t_explicit_depth >= kExplicitDepth) {
+    throw std::logic_error("rgpot thread-count nest is deeper than 32");
+  }
+  t_explicit[t_explicit_depth].count = count;
+  t_explicit[t_explicit_depth].kind = kind;
+  ++t_explicit_depth;
+}
+
+struct PotThreads {
+  std::mutex mutex;
+  std::unordered_map<const void *, int> counts;
+  std::atomic<std::size_t> live{0};
+};
+
+PotThreads &potentialThreads() {
+  // Potential destructors may run after other namespace-scope objects. Keep
+  // this registry alive until process exit so erasure is always safe.
+  static PotThreads *threads = new PotThreads;
+  return *threads;
+}
+
 } // namespace
 
 int threadsRequested() {
 #if defined(_OPENMP)
+  if (const int explicit_count = resolvedExplicit(); explicit_count > 0) {
+    return explicit_count;
+  }
   const char *env = std::getenv("OMP_NUM_THREADS");
   if (env == nullptr || env[0] == '\0') {
     return 1;
@@ -57,6 +113,45 @@ int teamSize(std::size_t n, std::size_t from, TeamFrom team) {
 int teamSize(std::size_t n) { return teamSize(n, kTeamMinAtoms, {}); }
 
 std::uint64_t teamsOpened() noexcept { return t_teams_opened; }
+
+void setThreadCount(int threads) {
+  if (threads < 1) {
+    throw std::invalid_argument("rgpot thread count must be at least 1");
+  }
+  t_sticky = threads;
+}
+
+void clearThreadCount() noexcept { t_sticky = 0; }
+
+int explicitThreadCount() noexcept { return resolvedExplicit(); }
+
+ThreadCount::ThreadCount(int threads) : pushed_(false) {
+  if (threads < 1) {
+    throw std::invalid_argument("rgpot thread count must be at least 1");
+  }
+  pushExplicit(threads, 1);
+  pushed_ = true;
+}
+
+ThreadCount::~ThreadCount() {
+  if (pushed_ && t_explicit_depth > 0) {
+    --t_explicit_depth;
+  }
+}
+
+ThreadBinding::ThreadBinding(int threads) : pushed_(false) {
+  if (threads < 1 || callScopeActive()) {
+    return;
+  }
+  pushExplicit(threads, 2);
+  pushed_ = true;
+}
+
+ThreadBinding::~ThreadBinding() {
+  if (pushed_ && t_explicit_depth > 0) {
+    --t_explicit_depth;
+  }
+}
 
 int poolThreads() noexcept {
 #if defined(_OPENMP)
@@ -110,6 +205,31 @@ namespace detail {
 int teamFor(int wanted) noexcept {
   const int cap = t_team_cap;
   return cap > 0 && cap < wanted ? cap : wanted;
+}
+
+void notePotentialThreads(const void *key, int count) noexcept {
+  auto &threads = potentialThreads();
+  std::lock_guard<std::mutex> lock(threads.mutex);
+  if (count < 1) {
+    if (threads.counts.erase(key) != 0) {
+      threads.live.fetch_sub(1, std::memory_order_release);
+    }
+  } else {
+    const auto result = threads.counts.insert_or_assign(key, count);
+    if (result.second) {
+      threads.live.fetch_add(1, std::memory_order_release);
+    }
+  }
+}
+
+int lookupPotentialThreads(const void *key) noexcept {
+  auto &threads = potentialThreads();
+  if (threads.live.load(std::memory_order_acquire) == 0) {
+    return 0;
+  }
+  std::lock_guard<std::mutex> lock(threads.mutex);
+  const auto it = threads.counts.find(key);
+  return it == threads.counts.end() ? 0 : it->second;
 }
 
 void countTeam() noexcept { ++t_teams_opened; }

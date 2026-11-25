@@ -376,6 +376,7 @@ void MetatomicPot::attachSystemExtras(
 
 
 void MetatomicPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   std::lock_guard<std::mutex> lock(m_mutex);
 
   long nAtoms = static_cast<long>(in.nAtoms);

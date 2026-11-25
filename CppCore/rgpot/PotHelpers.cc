@@ -9,6 +9,7 @@
  */
 
 #include "PotHelpers.hpp"
+#include "rgpot/Potential.hpp"
 #include <rgpot/plugin.h>
 #include <stdexcept>
 #include <string>
@@ -127,6 +128,8 @@ int rejectForceCall(const ForceInput &in, const ForceOut *out,
                     bool needsCell) {
   return rejectForceCall(in, out, needsCell, true);
 }
+
+PotentialBase::~PotentialBase() { detail::notePotentialThreads(this, 0); }
 
 void guardInputCall(const ForceInput &in, bool needsCell) {
   guardInputCall(in, needsCell, true);

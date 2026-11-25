@@ -84,6 +84,7 @@ void EMTPot::reset() const {
 EMTPot::~EMTPot() { reset(); }
 
 void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   const long n = static_cast<long>(in.nAtoms);
   out->variance = 0.0;
   out->has_stress = 0;

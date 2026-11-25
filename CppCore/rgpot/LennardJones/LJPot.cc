@@ -160,10 +160,12 @@ std::size_t LJPot::retainedPairs() const noexcept {
  *
  */
 void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   compute(in, out, nullptr);
 }
 
 void LJPot::forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   guardForceCall(in, out, kernelNeedsCell(*this), false);
   clearPerAtom(atoms, in.nAtoms);
   compute(in, out, &atoms);

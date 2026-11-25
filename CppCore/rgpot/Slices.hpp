@@ -70,9 +70,14 @@ struct Range {
   return {(n * s) / ns, (n * (s + 1)) / ns};
 }
 
-/// Slice count from OMP_NUM_THREADS, read on every call. Unset, empty, or
-/// a non-positive value is one slice, so a call that does not ask for
-/// threads matches the serial order. One without OpenMP.
+/// Slice count for a call. An explicit count set by `ThreadCount`,
+/// `ThreadBinding` or `setThreadCount` wins. Otherwise this is
+/// OMP_NUM_THREADS, read on every call: unset, empty, or non-positive is
+/// one slice, so a call that does not ask for threads matches the serial
+/// order. One without OpenMP, even when an explicit count is set: a build
+/// without OpenMP has no team, and honouring the count would take the
+/// multi-slice serial path and move the bits. `explicitThreadCount` still
+/// reports the request.
 [[nodiscard]] int threadsRequested();
 
 /// Atoms below which a call without a threshold of its own, such as a
@@ -139,6 +144,50 @@ struct TeamFrom {
 /// OpenMP. The runtime may still start fewer.
 [[nodiscard]] int poolThreads() noexcept;
 
+/// Sets the sticky explicit count for this thread. Throws
+/// std::invalid_argument when `threads` is below 1. There is no clamp.
+/// `clearThreadCount` removes it. A `ThreadCount` or a potential
+/// `ThreadBinding` on the stack wins over the sticky value for as long
+/// as it is alive.
+void setThreadCount(int threads);
+void clearThreadCount() noexcept;
+
+/// The explicit count that would apply now: the innermost `ThreadCount`
+/// or `ThreadBinding`, else the sticky value, else 0. This reports the
+/// request even without OpenMP, where `threadsRequested` stays 1.
+[[nodiscard]] int explicitThreadCount() noexcept;
+
+/// While alive, this thread's explicit count is `threads`, above the
+/// sticky value and above any potential binding. Throws
+/// std::invalid_argument when `threads` is below 1, and std::logic_error
+/// when more than 32 counts are nested.
+class ThreadCount {
+public:
+  explicit ThreadCount(int threads);
+  ~ThreadCount();
+  ThreadCount(const ThreadCount &) = delete;
+  ThreadCount &operator=(const ThreadCount &) = delete;
+
+private:
+  bool pushed_ = false;
+};
+
+/// While alive, and when `threads` is at least 1, this thread's explicit
+/// count is `threads` unless a `ThreadCount` is already on the stack
+/// (the call scope wins and is not overridden). Zero or less binds
+/// nothing, which is a potential that has not opted in. Throws
+/// std::logic_error when more than 32 counts are nested.
+class ThreadBinding {
+public:
+  explicit ThreadBinding(int threads);
+  ~ThreadBinding();
+  ThreadBinding(const ThreadBinding &) = delete;
+  ThreadBinding &operator=(const ThreadBinding &) = delete;
+
+private:
+  bool pushed_ = false;
+};
+
 /// Sets the team `poolThreads` reports and fixes it against dynamic
 /// adjustment. Shrinking it first lets the idle workers go.
 void resizePool(int threads) noexcept;
@@ -177,6 +226,21 @@ private:
 namespace detail {
 /// Threads to request for `wanted` slices or ranks under this thread's cap.
 [[nodiscard]] int teamFor(int wanted) noexcept;
+
+/// Per-potential opt-in count. Zero clears. Kept out of line so every
+/// dynamically linked caller and librgpot use the same synchronized map.
+#if defined(__GNUC__) || defined(__clang__)
+#define RGPOT_POT_THREADS_API __attribute__((visibility("default")))
+#else
+#define RGPOT_POT_THREADS_API
+#endif
+RGPOT_POT_THREADS_API void notePotentialThreads(const void *key,
+                                                int count) noexcept;
+[[nodiscard]] RGPOT_POT_THREADS_API int
+lookupPotentialThreads(const void *key) noexcept;
+
+#undef RGPOT_POT_THREADS_API
+
 /// Counts a region for teamsOpened.
 void countTeam() noexcept;
 

@@ -149,6 +149,7 @@ StillingerWeberSi::StillingerWeberSi() : Potential(PotType::SWSi1985) {
 }
 
 void StillingerWeberSi::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (out == nullptr) {
     throw std::invalid_argument("StillingerWeberSi: null ForceOut");
   }
@@ -171,6 +172,7 @@ void StillingerWeberSi::energyAndGradient(
     const double *positions, const int *atomic_numbers, const double *box,
     std::size_t n_atoms, double *energy, double *gradient,
     nlist::NeighborList *neighbors) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   (void)atomic_numbers;
   if (energy == nullptr ||
       (n_atoms > 0 &&
@@ -186,6 +188,7 @@ void StillingerWeberSi::energyAndGradientBatch(
     std::size_t n_config, const double *positions, const int *atomic_numbers,
     const double *box, std::size_t n_atoms, double *energies,
     double *gradients) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (n_config == 0) {
     return;
   }

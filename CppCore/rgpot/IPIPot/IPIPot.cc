@@ -298,6 +298,7 @@ void IPIPot::evaluateLocked(const double h[9], const double ih[9],
 }
 
 void IPIPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (out == nullptr || out->F == nullptr) {
     throw std::invalid_argument("IPIPot: force output is missing");
   }

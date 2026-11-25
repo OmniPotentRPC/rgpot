@@ -205,6 +205,7 @@ ModelEvaluation AnalyticModelPot::evaluateCoordinates(
 }
 
 void AnalyticModelPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   const std::size_t carrier = 3 * in.nAtoms;
   if (carrier < dimensions())
     throw std::invalid_argument("atom carrier is shorter than model coordinates");
