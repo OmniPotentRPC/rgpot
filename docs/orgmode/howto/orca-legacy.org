@@ -7,7 +7,8 @@
 
 =ORCALegacyPot= is the in-tree runner that =ORCAPot= replaces.
 It is kept for one release behind =with_orca_legacy=; new code should use
-=ORCAPot=, which loads the orcac library.
+=ORCAPot=, which loads the orcac library (see
+[[file:orca.org][ORCA through liborcac]]).
 
 =ORCALegacyPot= gives ORCA the normal rgpot =Potential= interface.
 Each force call runs one ORCA energy and gradient and returns them in eV and

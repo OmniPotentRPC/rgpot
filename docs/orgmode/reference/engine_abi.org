@@ -50,6 +50,7 @@ potential from the params message) and =rgpot::engine::backend_name=.
 | =libclassical_engine= | =BuiltinParams= | =classical= | =name= =lj=, =ljcluster=, =morse=, =zbl=, =eckart=, =muller_brown=, =modified_muller_brown=, =leps_hh2=, =leps_hcl2=, =leps_fh2=, =double_well=, =coupled_proton_well= and (when built with CBE) =cbe=; with the water kernels =tip4p=, =spce=, =tip4p_pt=; with the Fortran kernels =sw=, =edip=, =lenosky=, =tersoff=, =eamal=, =fehe=, =cuh2=, =waterh=; defaults except that =muller_brown= reads =BuiltinParams.config.mullerBrown=, where an empty list keeps that parameter's default |
 | =libcomposite_engine= | =CompositeParams= | =composite= | a weighted sum: each =CompositeTerm= names its child with a =PotentialSpec=, the =builtin= arm for =lj=, =morse=, =zbl=, =d2=, =d2cpmd=, =d4= (on a build with dftd4) and a nested =composite= (with their config arms) or the =cpmd= arm; a disabled term is not built |
 | =libmopac_engine= | =BuiltinParams= | =mopac= | MOPAC; =name= is empty or =mopac=, =library= is the path of =libmopacc= |
+| =liborca_engine= | =ORCAParams= | =orca= | ORCA through =liborcac=, found from =ORCAC_LIBRARY= or =RGPOT_ORCAC_ENGINE=; =executable= is the =orca= program |
 | =libnwchem_engine= | =NWChemParams= | =nwchem= | NWChem through =libnwchemc= |
 | =libcpmd_engine= | =CPMDParams= | =cpmd= | CPMD through =libcpmdc= |
 | =libskala_engine= | =NWChemParams= | =skala= | Skala XC on NWChem; reads =basis=, =charge=, =multiplicity=, =enginePath= and =nwchemRoot= |
@@ -60,7 +61,8 @@ potential from the params message) and =rgpot::engine::backend_name=.
 The Metatomic and XTB libraries also export their own tables
 (=rgpot_mta_*=, =rgpot_xtb_*=).
 NWChem and CPMD keep the prefix-parameterized profile ABI that =NWChemPot= and
-=CPMDPot= load, and MOPAC keeps =mopac_c_abi.h=.
+=CPMDPot= load, MOPAC keeps =mopac_c_abi.h= and ORCA keeps the vendored
+=orcac.h=.
 The plugin interface in =include/rgpot/plugin.h= is a separate family. tblite,
 dftd3, dftd4, ExprPot, XcKernel and CP2K have no engine library.
 
@@ -521,7 +523,7 @@ backend has no gradient jet.
 - 0, shared instance: calls run concurrently on one handle (UMA, Metatomic, and
   the coupled-well engine).
 - 1, per instance: one call at a time per handle; calls on different handles run
-  concurrently (XTB and every potential of the classical engine).
+  concurrently (XTB, ORCA and every potential of the classical engine).
 - 2, process serial: one call at a time across all handles of the library in the
   process (MOPAC, NWChem, Skala).
 
@@ -675,6 +677,8 @@ int rgpot_engine_select_orbitals(RgpotEnginePot *pot, long long key);
 Optional symbol.
 =libcpmd_engine= routes this call directly to =CPMDPot::selectOrbitals=; it does
 not keep a second orbital table.
+=liborca_engine= has no guess slots, since orcac chains guesses itself, and
+returns 3.
 The RPC equivalent sets =ForceInput.hasOrbitalKey= and =ForceInput.orbitalKey=
 on every keyed calculation.
 Must not run concurrently with another call on the same handle.
@@ -698,6 +702,8 @@ int rgpot_engine_copy_orbitals(RgpotEnginePot *pot, long long from_key,
   exception, with the reason in =rgpot_engine_last_error=.
   Returns 2 for another backend exception, with the reason in
   =rgpot_engine_last_error=.
+
+=liborca_engine= returns 3.
 
 Optional symbol.
 
@@ -1117,6 +1123,7 @@ No engine returns 0 for a value its model does not receive.
 | =libuma_engine= | graph inputs of every call; =UmaParams.charge= and =spin= at create |
 | =libmetatomic_engine= | system data the model declares; =MetatomicParams.charge= and =spin= at create |
 | =libskala_engine= | the NWChem input of the next call; =NWChemParams.charge= and =multiplicity= at create |
+| =liborca_engine= | =orcac_configure= of the session; =ORCAParams.charge= and =multiplicity= at create; =spin= is the multiplicity |
 | =libclassical_engine=, =libmopac_engine=, =libnwchem_engine=, =libxtb_engine= | none, so 3 for any value |
 
 A UMA package records the charge and spin it was exported for, and the next
