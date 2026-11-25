@@ -1350,6 +1350,17 @@ if get_option('with_rust_core')
             depends: rgpot_rust_target,
             timeout: 30,
         )
+        test(
+            'EAMTableBridgeOomTest',
+            executable(
+                'eam_table_bridge_oom_test',
+                'rgpot-core/tests/c/eam_table_bridge_oom.cpp',
+                dependencies: [rgpot_rust_lib, fastnlist_dep, thread_dep, dl_dep],
+                build_by_default: true,
+            ),
+            depends: rgpot_rust_target,
+            timeout: 30,
+        )
     endif
 
     # Include paths: generated C header + C++ RAII wrappers

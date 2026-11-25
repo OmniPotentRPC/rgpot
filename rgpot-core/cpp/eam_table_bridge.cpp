@@ -3,11 +3,11 @@
 
 #include "rgpot/EAMTable/EAMTablePot.hpp"
 
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
-#include <mutex>
 #include <stdexcept>
 #include <string>
 
@@ -16,11 +16,23 @@ namespace {
 enum : int32_t { kSuccess = 0, kInvalidParameter = 1, kInternalError = 2 };
 enum : int32_t { kAuto = 0, kFuncfl = 1, kSetfl = 2, kFinnisSinclair = 3 };
 
-thread_local std::string g_last_error;
-std::int64_t g_drop_count = 0;
-std::mutex g_drop_count_mutex;
+constexpr const char *kErrorLost =
+    "EAM table: out of memory while recording the error";
 
-void set_error(const std::string &text) { g_last_error = text; }
+// Error paths run inside catch handlers of extern "C" functions, so they
+// must not throw: a failed copy leaves the static message instead.
+thread_local std::string g_last_error;
+thread_local const char *g_last_error_static = nullptr;
+std::atomic<std::int64_t> g_drop_count{0};
+
+void set_error(const char *text) noexcept {
+  try {
+    g_last_error.assign(text);
+    g_last_error_static = nullptr;
+  } catch (...) {
+    g_last_error_static = kErrorLost;
+  }
+}
 
 rgpot::EAMTableFormat parse_format(int32_t format, const std::string &path) {
   if (format == kFuncfl) {
@@ -58,19 +70,17 @@ std::vector<std::vector<double>> rows(const double *data, std::size_t count,
   return out;
 }
 
-int32_t to_status(const std::exception &e) {
-  set_error(e.what());
-  return kInvalidParameter;
-}
-
 } // namespace
 
 extern "C" {
 
-const char *eam_bridge_cpp_last_error() { return g_last_error.c_str(); }
+const char *eam_bridge_cpp_last_error() noexcept {
+  return g_last_error_static != nullptr ? g_last_error_static
+                                        : g_last_error.c_str();
+}
 
 void *eam_bridge_cpp_new_from_file(const char *path, int32_t format,
-                                   bool periodic, double skin) {
+                                   bool periodic, double skin) noexcept {
   try {
     if (path == nullptr) {
       throw std::invalid_argument("EAM table: path is NULL");
@@ -97,7 +107,7 @@ void *eam_bridge_cpp_new_from_table(std::size_t n_elements, const int32_t *z,
                                     double dr, double cutoff, double rhomax,
                                     const double *frho, const double *rhor,
                                     const double *z2r, bool periodic,
-                                    double skin) {
+                                    double skin) noexcept {
   try {
     if (z == nullptr || frho == nullptr || rhor == nullptr || z2r == nullptr) {
       throw std::invalid_argument("EAM table: null table array");
@@ -132,18 +142,17 @@ void *eam_bridge_cpp_new_from_table(std::size_t n_elements, const int32_t *z,
   }
 }
 
-void eam_bridge_cpp_free(void *handle) {
+void eam_bridge_cpp_free(void *handle) noexcept {
   if (handle != nullptr) {
     delete static_cast<rgpot::EAMTablePot *>(handle);
-    std::lock_guard<std::mutex> hold(g_drop_count_mutex);
-    ++g_drop_count;
+    g_drop_count.fetch_add(1, std::memory_order_relaxed);
   }
 }
 
 int32_t eam_bridge_cpp_force(void *handle, std::size_t n_atoms,
                              const double *positions,
                              const int32_t *atomic_numbers, const double *cell,
-                             double *forces, double *energy) {
+                             double *forces, double *energy) noexcept {
   try {
     if (handle == nullptr) {
       throw std::invalid_argument("EAM table: null potential handle");
@@ -160,21 +169,20 @@ int32_t eam_bridge_cpp_force(void *handle, std::size_t n_atoms,
     *energy = out.energy;
     return kSuccess;
   } catch (const std::exception &e) {
-    return to_status(e);
+    set_error(e.what());
+    return kInvalidParameter;
   } catch (...) {
     set_error("EAM table: unknown exception while evaluating EAMTablePot");
     return kInternalError;
   }
 }
 
-int64_t eam_bridge_cpp_drop_count() {
-  std::lock_guard<std::mutex> hold(g_drop_count_mutex);
-  return g_drop_count;
+int64_t eam_bridge_cpp_drop_count() noexcept {
+  return g_drop_count.load(std::memory_order_relaxed);
 }
 
-void eam_bridge_cpp_reset_drop_count() {
-  std::lock_guard<std::mutex> hold(g_drop_count_mutex);
-  g_drop_count = 0;
+void eam_bridge_cpp_reset_drop_count() noexcept {
+  g_drop_count.store(0, std::memory_order_relaxed);
 }
 
 } // extern "C"
