@@ -588,7 +588,9 @@ times slower on one thread, and 2% slower on 8. In `Stream` mode at
 One thread on a stream was 1.39 to 1.64 times slower for EAM, Morse and
 LJ, which used to walk half pairs. SW and Tersoff gather each centre's
 bonds either way and stayed within 1%. On 8 threads none was slower than
-its old team.
+its old team. One thread now walks each pair of a stream once;
+[Before and after the thresholds](#before-and-after-the-thresholds)
+gives its times.
 
 ### Per-potential thresholds
 
@@ -761,6 +763,171 @@ of SW at 24 and 32, and of ZBL at 128 and 96. The LJ cluster crossed at
 was not timed there. All 280 team results had the bits of one thread
 with row sums.
 
+### Before and after the thresholds
+
+Against 424629e5, on the clusters, neighbour mode, build and cores of
+the thread-count table: before is 424629e5, with one threshold of 8192
+atoms, and after has the counts above. Each pass ran both builds in
+turn, a process per potential and build that runs the sizes in turn and
+each size on 1, 2, 4 and 8 threads. A time is the median of three pass
+medians, in microseconds per call. On 8 threads, for SW at 500 atoms on
+4 threads and for LJ at 10000 atoms on 2, eight more passes ran that
+thread count alone, and a time is the median of eleven.
+
+| potential | atoms | 1 thread, before | 1 thread, after | 2 threads, before | 2 threads, after | 4 threads, before | 4 threads, after | 8 threads, before | 8 threads, after |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Sutton-Chen | 38 | 6.45 | 6.40 | 6.49 | 6.49 | 6.45 | 6.45 | 6.46 | 6.40 |
+| Sutton-Chen | 55 | 13.3 | 13.3 | 13.3 | 13.3 | 13.3 | 13.6 | 13.3 | 13.2 |
+| Sutton-Chen | 80 | 27.6 | 28.1 | 27.7 | 28.5 | 27.7 | 28.6 | 27.8 | 16.2 |
+| Sutton-Chen | 500 | 1048 | 1051 | 1042 | 1054 | 1041 | 721 | 1040 | 393 |
+| Sutton-Chen | 4000 | 85812 | 88547 | 84957 | 87286 | 87236 | 50307 | 85598 | 25977 |
+| Sutton-Chen | 10000 | 579920 | 566454 | 629843 | 582923 | 314191 | 324716 | 161173 | 161496 |
+| LJ | 38 | 9.09 | 9.22 | 9.05 | 9.31 | 9.04 | 9.27 | 8.94 | 9.22 |
+| LJ | 55 | 18.1 | 17.8 | 18.2 | 17.8 | 18.2 | 13.7 | 17.8 | 10.8 |
+| LJ | 80 | 35.0 | 34.3 | 35.4 | 35.5 | 34.9 | 28.6 | 34.9 | 16.9 |
+| LJ | 500 | 491 | 472 | 475 | 483 | 478 | 343 | 472 | 176 |
+| LJ | 4000 | 4742 | 4765 | 4760 | 4754 | 4748 | 3000 | 4735 | 1534 |
+| LJ | 10000 | 13003 | 12456 | 14674 | 12334 | 7623 | 7442 | 3821 | 3822 |
+| LJ cluster | 38 | 4.21 | 4.30 | 4.22 | 4.29 | 4.17 | 4.27 | 4.15 | 4.29 |
+| LJ cluster | 55 | 8.93 | 8.47 | 9.04 | 8.60 | 8.88 | 6.89 | 8.81 | 5.90 |
+| LJ cluster | 80 | 17.2 | 16.3 | 17.2 | 16.2 | 17.1 | 13.2 | 16.6 | 8.08 |
+| LJ cluster | 500 | 220 | 211 | 223 | 215 | 221 | 154 | 219 | 82.4 |
+| LJ cluster | 4000 | 2230 | 2193 | 2246 | 2286 | 2232 | 1334 | 2168 | 676 |
+| LJ cluster | 10000 | 5728 | 5769 | 6579 | 5868 | 3298 | 3392 | 1751 | 1702 |
+| Morse | 38 | 20.7 | 21.4 | 20.8 | 21.1 | 20.7 | 13.7 | 20.4 | 11.1 |
+| Morse | 55 | 41.9 | 43.8 | 41.5 | 42.7 | 41.8 | 23.5 | 41.2 | 17.1 |
+| Morse | 80 | 80.4 | 81.8 | 79.8 | 81.6 | 79.6 | 48.6 | 79.4 | 27.3 |
+| Morse | 500 | 1262 | 1236 | 1206 | 1239 | 1206 | 876 | 1208 | 472 |
+| Morse | 4000 | 13395 | 13589 | 13440 | 13560 | 13490 | 8790 | 13363 | 4508 |
+| Morse | 10000 | 37168 | 36193 | 45195 | 36380 | 22367 | 22380 | 11195 | 11320 |
+| ZBL | 38 | 2.78 | 2.82 | 2.77 | 2.81 | 3.04 | 2.81 | 2.77 | 2.78 |
+| ZBL | 55 | 3.76 | 3.73 | 3.76 | 3.73 | 3.75 | 3.74 | 3.76 | 3.81 |
+| ZBL | 80 | 6.04 | 6.03 | 6.07 | 5.97 | 5.94 | 6.29 | 5.99 | 6.02 |
+| ZBL | 500 | 41.8 | 44.5 | 41.7 | 45.3 | 42.0 | 33.8 | 41.8 | 24.2 |
+| ZBL | 4000 | 373 | 394 | 376 | 397 | 372 | 258 | 369 | 163 |
+| ZBL | 10000 | 1022 | 1013 | 1008 | 1007 | 584 | 583 | 407 | 372 |
+| EAM | 38 | 17.2 | 17.6 | 17.1 | 17.4 | 17.4 | 17.6 | 17.3 | 17.3 |
+| EAM | 55 | 30.0 | 30.7 | 30.2 | 30.4 | 29.5 | 25.2 | 29.9 | 16.4 |
+| EAM | 80 | 50.8 | 51.1 | 51.5 | 51.0 | 54.4 | 40.8 | 49.8 | 27.1 |
+| EAM | 500 | 489 | 472 | 479 | 466 | 475 | 306 | 461 | 170 |
+| EAM | 4000 | 4243 | 4140 | 4167 | 4179 | 4152 | 2382 | 4114 | 1249 |
+| EAM | 10000 | 10636 | 10544 | 10287 | 10576 | 5500 | 5495 | 3067 | 3045 |
+| SW | 38 | 11.3 | 12.6 | 11.3 | 12.3 | 11.4 | 9.31 | 11.4 | 9.72 |
+| SW | 55 | 16.4 | 18.3 | 16.3 | 18.9 | 16.3 | 12.6 | 16.4 | 10.8 |
+| SW | 80 | 26.3 | 29.6 | 26.8 | 28.6 | 26.2 | 17.4 | 26.4 | 13.8 |
+| SW | 500 | 217 | 230 | 217 | 163 | 217 | 99.6 | 218 | 62.8 |
+| SW | 4000 | 2033 | 2128 | 2033 | 1330 | 2030 | 759 | 2042 | 431 |
+| SW | 10000 | 5513 | 5620 | 3353 | 3521 | 1900 | 2034 | 1102 | 1090 |
+| Tersoff | 38 | 16.5 | 17.2 | 16.5 | 17.2 | 16.4 | 10.9 | 16.3 | 9.65 |
+| Tersoff | 55 | 22.5 | 23.6 | 22.6 | 24.2 | 22.5 | 16.1 | 22.6 | 12.3 |
+| Tersoff | 80 | 37.1 | 38.9 | 37.2 | 30.6 | 37.1 | 21.7 | 37.3 | 15.7 |
+| Tersoff | 500 | 270 | 280 | 269 | 200 | 270 | 123 | 269 | 72.6 |
+| Tersoff | 4000 | 2465 | 2492 | 2409 | 1515 | 2406 | 853 | 2406 | 482 |
+| Tersoff | 10000 | 6396 | 6376 | 3887 | 3844 | 2152 | 2192 | 1178 | 1184 |
+
+On 8 threads every potential now opens a team below 8192 atoms, from its
+`kTeamMinAtoms`, and from there to 4000 atoms a call took 0.20 to 0.86
+of its time before, the least for Tersoff and SW at 4000 atoms and the
+most for SW at 38. SW at 4000 atoms took 431 µs per call, against 2042
+µs before and the 469 µs that the thread-count table gave the team of
+47c46f97. On 4 threads the same sizes took 0.35 to 0.85 of the time
+before, but for Sutton-Chen at 80 atoms. On 2 threads SW opens a team
+from 112 atoms and Tersoff from 80, and from there to 4000 atoms they
+took 0.63 to 0.82 of the time before. The other potentials open no team
+of two: at 10000 atoms, where 424629e5 opens one, LJ, the LJ cluster,
+Morse and Sutton-Chen took 0.80 to 0.93 of the time before on 2
+threads, and ZBL and EAM 1.000 and 1.028 times, within the passes
+before, 992 to 1021 µs and 10142 to 10762 µs.
+
+Sutton-Chen's team of four at 80 atoms took 28.6 µs per call, as long
+as one thread, where the scan had it at 0.83 of one thread, and its
+team of eight took 15.3 to 17.4 µs in seven of the eleven passes and
+24.7 to 30.7 µs in the other four. In processes that ran 38 and 55
+atoms on 1, 2, 4 and 8 threads and then one size, the first at which
+they opened a team, its team of four took 1.10 to 1.20 times one thread
+at 64 atoms, 0.99 to 1.13 times at 80, and 0.68 to 0.84 times at 96,
+112, 128 or 160, in three processes each. Its team of eight took 0.58
+to 0.74 of one thread at 64 and 80 atoms in five of those six processes
+and 1.12 times in the sixth. Builds with a count of 96 and of 112, run
+on 38, 55 and 80 atoms and then up from the count, took 0.88 to 0.96
+and 0.75 to 0.79 times one thread on four threads at their count. One
+count serves every team of four or more threads, and a higher one would
+give up the sizes at which the team of eight won, so Sutton-Chen keeps
+its count of 64.
+
+On one thread, from its `kTeamMinAtoms` to 4000 atoms, a call sums by
+rows, where 424629e5 sums directly, and took 0.95 to 1.12 times its
+time before: at most 0.98 times for the LJ cluster, 1.00 for LJ, 1.02
+for EAM, 1.03 for Sutton-Chen, 1.05 for Morse and Tersoff, 1.07 for ZBL
+and 1.12 for SW. Below `kTeamMinAtoms` both builds sum directly on any
+thread count, and after took 0.92 to 1.06 times the time before. At
+10000 atoms both sum by rows, on one thread and in the same teams of
+four and eight, and of two for SW and Tersoff, and after took 0.92 to
+1.07 times the time before.
+
+No result of either build had bits apart from one thread, and no point
+had other bits in another pass. The builds gave the same bits below
+each `kTeamMinAtoms` and at 10000 atoms, and other bits between, where
+after sums by rows. The pass medians of a point spread by 5.8% of its
+time at the median point and by 34% at the ninetieth percentile. The
+five widest were teams of four and eight after, where the slowest pass
+took up to 2.08 times the median: EAM at 55 atoms on 8 threads took
+15.9 to 34.1 µs, with a median of 16.4, and SW at 10000 atoms 1020 to
+2078 µs, with a median of 1090.
+
+In `Stream` mode at 10000 atoms, with 47c46f97 in the same three passes:
+
+| potential | 1 thread, 47c46f97 | 1 thread, before | 1 thread, after | 8 threads, 47c46f97 | 8 threads, before | 8 threads, after |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| LJ | 31116 | 50760 | 32602 | 18585 | 12281 | 10784 |
+| LJ cluster | 86509 | 150759 | 86697 | 19671 | 19507 | 16116 |
+| Morse | 32993 | 51367 | 28889 | 41620 | 8632 | 8938 |
+| ZBL | 77515 | 144099 | 70866 | 67876 | 18984 | 15160 |
+| EAM | 36804 | 50599 | 35638 | 13019 | 11833 | 11453 |
+| SW | 13934 | 13864 | 13753 | 2424 | 2586 | 2241 |
+| Tersoff | 14048 | 14257 | 14268 | 2822 | 2458 | 2330 |
+
+One thread took 0.49 to 0.70 of the time before for the two-body
+potentials and EAM, which evaluate each pair once on one thread again,
+and 0.88 to 1.00 times the time of 47c46f97, but 1.05 times for LJ.
+Three more passes timed the after build with `--team-from none`, which
+sums directly on the half walk as 47c46f97 did and gave its bits on all
+five: LJ took 0.98 of the time of 47c46f97 that way and 1.05 times with
+its own row sums, 1.07 times its direct sums. Morse, ZBL and the LJ
+cluster took 0.80 to 0.89 of their direct time with row sums, and EAM
+0.97. On all five the direct sums gave other bits than the rows, which
+8 threads repeat, so those 7% on LJ are what the bits of a team cost
+one thread there. SW and Tersoff gather each centre's bonds either way
+and stayed within 1% of the time before on one thread.
+
+On 8 threads after took 0.80 to 0.88 of the time before for LJ, the LJ
+cluster and ZBL, 0.97 for EAM, and 0.87 to 1.04 for Morse, SW and
+Tersoff, whose fastest passes were within 1% of those before. That is
+0.21 to 0.92 of the time of 47c46f97. 47c46f97 moved the energy of all
+16 frames on 8 threads for every potential but ZBL. LJ and EAM gave
+other bits than before, the same on every thread count, and the others
+the bits of before.
+
+At 100000 atoms, in three passes, and in two for the LJ cluster, which
+ran two frames and three runs a pass:
+
+| potential | 1 thread, before | 1 thread, after | 8 threads, before | 8 threads, after |
+| --- | ---: | ---: | ---: | ---: |
+| LJ | 143117 | 137251 | 40383 | 40230 |
+| LJ cluster | 15063065 | 9353114 | 1970369 | 1769786 |
+| Morse | 426946 | 424074 | 117863 | 115859 |
+| EAM | 114791 | 116618 | 34207 | 36101 |
+| SW | 63278 | 60870 | 11999 | 12491 |
+| Tersoff | 72327 | 69518 | 12647 | 12620 |
+
+The LJ cluster streams its one bin at this size, and one thread took
+0.62 of the time before, 9.35 s per call against 15.06 s, with the bits
+of before, and 8 threads 0.90. The other potentials store their lists
+here and walk them the same way in both builds, with the same bits, and
+took 0.96 to 1.02 times the time before on one thread and 0.98 to 1.06
+times on 8, where the fastest pass after took 0.97 to 1.02 times the
+fastest before.
+
 ## Reproduce
 
 `benches/neighbour_api_bench.py` times the public query against vesin
@@ -853,8 +1020,25 @@ the frames whose energy bits differ and the force components whose bits
 differ, and hashes the bits of every energy and force, so two builds can
 be compared.
 
+`--team-from` sets the threshold of every potential for the crossovers
+of [Per-potential thresholds](#per-potential-thresholds): `none` sums
+directly on the calling thread, and `0` sums by rows and opens a team on
+any thread count above one. `--cutoff` sets the cutoff of LJ, the LJ
+cluster and Morse. The first table of
+[Before and after the thresholds](#before-and-after-the-thresholds) is
+the loop above with `--threads 1,2,4,8`, its stream table takes
+`--mode stream --sizes 10000` on 47c46f97 as well, and the LJ cluster at
+100000 atoms takes `--frames 2 --runs 3`.
+
 `morse_omp_bench` (`CppCore/tests/morse_omp_bench.cc`, Meson benchmark
-`morse_omp_bench`) runs a smoke check for `MorsePot` at 1, 2, 4, 8 and 16
-threads on a 6×6×6 Cu vacancy (863 atoms, below `kTeamMinAtoms`), a 14×14×14 Cu
-vacancy (10,975 atoms, stored list) and the 10,000-atom Pt cluster, checking
-bit-for-bit agreement against 1 thread.
+`morse_omp_bench`) runs a smoke check for `MorsePot` at 1, 2, 4, 8 and
+16 threads on a 6×6×6 Cu vacancy (863 atoms, below the neighbour-list
+default of 8192 atoms), a 14×14×14 Cu vacancy (10,975 atoms, stored list)
+and the 10,000-atom Pt cluster, checking bit-for-bit agreement against 1
+thread. On the 8-core Xeon host above (GCC 13.3.0, release build),
+evaluating each stored upper pair once and batching `simd::exp_fixed_n`
+moves the 14×14×14 Cu vacancy median from 10,795 / 11,317 / 5,771 µs at
+1 / 2 / 4 threads to 5,591 / 3,459 / 1,789 µs (1.62× at 2 threads, 3.12×
+at 4 threads), the 10,000-atom Pt cluster from 36,007 / 45,698 / 23,290
+µs to 25,026 / 17,672 / 9,185 µs (1.42× at 2 threads, 2.72× at 4 threads),
+and the 863-atom Cu vacancy from 805 µs to 457 µs.
