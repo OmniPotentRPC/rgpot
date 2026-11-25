@@ -21,4 +21,9 @@ dxtb_engine = library(
     include_directories: _incdirs,
     install: not meson.is_subproject(),
     gnu_symbol_visibility: 'default',
+    # A live handle owns a worker process and its socket; a dlclose of the
+    # engine must not unmap the code that shuts the worker down and reaps it.
+    link_args: meson.get_compiler('cpp').get_supported_link_arguments(
+        ['-Wl,-z,nodelete'],
+    ),
 )
