@@ -45,6 +45,55 @@ def evaluate_metatomic_dlopen(positions: Annotated[NDArray[numpy.float64], dict(
     Evaluate forces through a Metatomic engine opened with dlopen. With an empty engine_path the search is RGPOT_METATOMIC_ENGINE, METATOMIC_ENGINE, libmetatomic_engine.so on the loader path, then the directories in EON_POTENTIALS_PATH and RGPOT_ENGINE_PATH. rgpot.evaluate_metatomic also tries the engines bundled with the package. Each call builds its own frontend.
     """
 
+EVAL_SCC_RESCUED: int = 1
+
+EVAL_SCC_RETRIED: int = 2
+
+EVAL_CACHED: int = 4
+
+class SccNotConverged(RuntimeError):
+    pass
+
+class XTBDlopen:
+    def __init__(self, engine_path: str = '', method: str = 'GFN2-xTB', accuracy: float = 1.0, electronic_temperature: float = 300.0, max_iterations: int = 250, charge: float = 0.0, uhf: int = 0, scc_rescue: bool = True) -> None:
+        """
+        GFN-xTB through libxtb_engine opened with dlopen. With an empty engine_path the search is RGPOT_XTB_ENGINE, XTB_ENGINE, the bare soname, then EON_POTENTIALS_PATH and RGPOT_ENGINE_PATH. scc_rescue=False makes an SCC that does not converge raise SccNotConverged instead of retrying with a smeared occupation; an engine too old to switch it off refuses construction.
+        """
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
+        """
+        Energy (eV), forces (eV/Angstrom) and variance. Raises SccNotConverged when the SCC fails and the rescue is off.
+        """
+
+    @property
+    def last_eval_flags(self) -> int:
+        """
+        EVAL_* bits of the last successful call, zero after a failed one. EVAL_SCC_RESCUED marks an energy from the smeared-occupation rescue.
+        """
+
+    @property
+    def last_scc_rescued(self) -> bool:
+        """True when the last successful call needed the SCC rescue."""
+
+    @property
+    def scc_rescue(self) -> bool:
+        """
+        Whether the engine retries a nonconverged SCC with a smeared occupation.
+        """
+
+    @scc_rescue.setter
+    def scc_rescue(self, arg: bool, /) -> None: ...
+
+    @property
+    def reports_eval_flags(self) -> bool:
+        """
+        False for an engine that predates evaluation flags; last_eval_flags is then always zero.
+        """
+
+    @property
+    def engine_revision(self) -> str:
+        """Source revision the engine was built from, empty when it does not say."""
+
 class LJPot:
     def __init__(self, u0: float = 1.0, cutoff: float = 15.0, psi: float = 1.0, switch_width: float = 0.0) -> None:
         """
