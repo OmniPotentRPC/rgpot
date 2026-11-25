@@ -17,6 +17,8 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/LongRange/Pairs.hpp"
+#include "rgpot/MetatomicPot/MetatomicDlopen.hpp"
+#include "rgpot/XTBPot/XTBDlopen.hpp"
 
 #if defined(RGPOT_HAS_LONG_RANGE)
 #include "rgpot/LongRange/Electro.hpp"
@@ -28,6 +30,22 @@
 #endif
 
 namespace {
+
+using fn = void (*)();
+
+struct XTBDlopenMirror {
+  rgpot::XTBConfig config;
+  void *lib;
+  void *pot;
+  fn create, destroy, force, reset, set_warm, warm_move, set_min_gap, min_gap,
+      reused;
+};
+
+struct MetatomicDlopenMirror {
+  void *lib;
+  void *pot;
+  fn create, destroy, force;
+};
 
 struct DualListMirror {
   double short_cut, long_cut, skin;
@@ -41,9 +59,14 @@ template <typename T, typename Mirror> constexpr bool sameShape() {
   return sizeof(T) == sizeof(Mirror) && alignof(T) == alignof(Mirror);
 }
 
+static_assert(sameShape<rgpot::XTBDlopen, XTBDlopenMirror>());
+static_assert(sameShape<rgpot::MetatomicDlopen, MetatomicDlopenMirror>());
 static_assert(sameShape<rgpot::lr::DualList, DualListMirror>());
 
 #if defined(RGPOT_LAYOUT_PINNED)
+static_assert(sizeof(rgpot::XTBDlopen) == 152 && alignof(rgpot::XTBDlopen) == 8);
+static_assert(sizeof(rgpot::MetatomicDlopen) == 40 &&
+              alignof(rgpot::MetatomicDlopen) == 8);
 static_assert(sizeof(rgpot::lr::DualList) == 168 &&
               alignof(rgpot::lr::DualList) == 8);
 #endif
@@ -74,6 +97,8 @@ static_assert(alignof(rgpot::lr::CoulombPot) == 8);
 } // namespace
 
 TEST_CASE("installed classes keep their size and alignment", "[abi]") {
+  CHECK(sameShape<rgpot::XTBDlopen, XTBDlopenMirror>());
+  CHECK(sameShape<rgpot::MetatomicDlopen, MetatomicDlopenMirror>());
   CHECK(sameShape<rgpot::lr::DualList, DualListMirror>());
 #if defined(RGPOT_HAS_LONG_RANGE)
   CHECK(sameShape<rgpot::lr::CoulombPot, CoulombPotMirror>());

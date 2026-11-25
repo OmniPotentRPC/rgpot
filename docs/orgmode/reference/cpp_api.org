@@ -688,6 +688,9 @@ void setThreadCount(int threads);
   of its own reads it.
   =HessianVectorCache= binds it around the analytic and dual-number Hessian and
   Hessian-vector hooks, which are not =forceImpl= and do not bind it themselves.
+  =XTBDlopen= and =MetatomicDlopen= are not potentials; their same-named members
+  pass the resolved count to the loaded engine through its C ABI (see
+  [[file:cpp_backends.org][C++ engine-backed potentials]]).
 - Errors :: throws =std::invalid_argument= when =threads= is below 1.
 
 *** =rgpot::PotentialBase::clearThreadCount=

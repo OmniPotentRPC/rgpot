@@ -44,7 +44,7 @@ typedef struct RgpotXtbConfig {
   int uhf;
 } RgpotXtbConfig;
 
-#define RGPOT_XTB_ABI_VERSION 1
+#define RGPOT_XTB_ABI_VERSION 2
 
 RGPOT_XTB_API int rgpot_xtb_abi_version(void);
 
@@ -52,6 +52,9 @@ RGPOT_XTB_API RgpotXtbPot *rgpot_xtb_create(const RgpotXtbConfig *cfg,
                                             char *errbuf, size_t errlen);
 
 RGPOT_XTB_API void rgpot_xtb_destroy(RgpotXtbPot *pot);
+
+/** Set the rgpot worker count used by this engine handle; zero clears it. */
+RGPOT_XTB_API int rgpot_xtb_set_thread_count(RgpotXtbPot *pot, int threads);
 
 /** Return codes of rgpot_xtb_force. A frontend treats an unknown nonzero
  * code as a failure of unknown kind. */

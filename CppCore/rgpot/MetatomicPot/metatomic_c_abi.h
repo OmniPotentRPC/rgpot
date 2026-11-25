@@ -40,7 +40,7 @@ typedef struct RgpotMtaConfig {
   int torch_determinism_strict; /**< 0=Fast, 1=Strict */
 } RgpotMtaConfig;
 
-#define RGPOT_MTA_ABI_VERSION 1
+#define RGPOT_MTA_ABI_VERSION 2
 
 RGPOT_MTA_API int rgpot_mta_abi_version(void);
 
@@ -48,6 +48,9 @@ RGPOT_MTA_API RgpotMtaPot *rgpot_mta_create(const RgpotMtaConfig *cfg,
                                             char *errbuf, size_t errlen);
 
 RGPOT_MTA_API void rgpot_mta_destroy(RgpotMtaPot *pot);
+
+/** Set the rgpot worker count used by this engine handle; zero clears it. */
+RGPOT_MTA_API int rgpot_mta_set_thread_count(RgpotMtaPot *pot, int threads);
 
 /**
  * Energy + forces. Returns 0 on success.
