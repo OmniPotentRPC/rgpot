@@ -10,18 +10,17 @@
 #include "rgpot/MDSession/ProjectedLangevin.hpp"
 #include "rgpot/engine_c_abi.h"
 #include "rgpot/plugin/DynLib.hpp"
-// The build system defines RGPOT_LAMMPC_PROFILE when the RPC stack is on and
-// orders the generated Potentials.capnp.h before this file, so a missing
-// header is a compile error rather than a build without lammpc.
-#if defined(RGPOT_LAMMPC_PROFILE)
-#define RGPOT_HAS_LAMMPC_PROFILE 1
+// Both build systems pass RGPOT_HAS_LAMMPC_PROFILE as 0 or 1. With 1 they also
+// order the generated Potentials.capnp.h before this file, so a missing header
+// is a compile error rather than a build without lammpc.
+#if !defined(RGPOT_HAS_LAMMPC_PROFILE)
+#error "RGPOT_HAS_LAMMPC_PROFILE must be defined to 0 or 1 by the build"
+#elif RGPOT_HAS_LAMMPC_PROFILE
 #include "rgpot/abi/Compat.hpp"
 #include "rgpot/rpc/Potentials.capnp.h"
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 #include <kj/array.h>
-#else
-#define RGPOT_HAS_LAMMPC_PROFILE 0
 #endif
 
 #include <algorithm>

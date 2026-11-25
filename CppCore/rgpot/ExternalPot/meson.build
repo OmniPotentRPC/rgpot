@@ -17,7 +17,9 @@ external_pot_deps = _deps_sans_core + [external_pot_dl]
 external_pot_args = _args
 if _rpc_stack
     external_pot_deps += [ptlrpc_hdr_dep]
-    external_pot_args += ['-DRGPOT_LAMMPC_PROFILE=1']
+    external_pot_args += ['-DRGPOT_HAS_LAMMPC_PROFILE=1']
+else
+    external_pot_args += ['-DRGPOT_HAS_LAMMPC_PROFILE=0']
 endif
 
 external_pot = static_library(

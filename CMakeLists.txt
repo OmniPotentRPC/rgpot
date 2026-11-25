@@ -629,7 +629,6 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_sources(rgpot PRIVATE ${CAPNP_HEADERS})
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_NWCHEM_FRONTEND
                                             RGPOT_HAS_CPMD_FRONTEND)
-    target_compile_definitions(rgpot PRIVATE RGPOT_LAMMPC_PROFILE=1)
     # DynLib / dlopen for libnwchemc.so / libcpmdc.so at runtime
     if(UNIX AND NOT APPLE)
       target_link_libraries(rgpot PUBLIC ${CMAKE_DL_LIBS})
@@ -637,6 +636,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       target_link_libraries(rgpot PUBLIC dl)
     endif()
   endif()
+
+  if(RGPOT_WITH_RPC)
+    set(_rgpot_lammpc_profile 1)
+  else()
+    set(_rgpot_lammpc_profile 0)
+  endif()
+  set_source_files_properties(CppCore/rgpot/ExternalPot/ExternalPot.cc
+    PROPERTIES COMPILE_DEFINITIONS
+    RGPOT_HAS_LAMMPC_PROFILE=${_rgpot_lammpc_profile})
 
   add_library(rgpot::rgpot ALIAS rgpot)
 
