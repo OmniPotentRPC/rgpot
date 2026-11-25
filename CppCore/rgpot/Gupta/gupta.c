@@ -57,6 +57,13 @@ static int rgpot_gupta_ensure(size_t n, size_t pairs) {
 static double *rgpot_gupta_rho(void) { return rho_buf; }
 
 static double *rgpot_gupta_pack(void) { return pack_buf; }
+// Small clusters use stack scratch; larger calls cap stored pair derivatives
+// at 32 MiB and free the heap scratch before returning, recomputing pairs
+// past the cap identically in the force pass.
+#define RGPOT_GUPTA_STACK_ATOMS 64
+#define RGPOT_GUPTA_STACK_PAIRS \
+  (RGPOT_GUPTA_STACK_ATOMS * (RGPOT_GUPTA_STACK_ATOMS - 1) / 2)
+#define RGPOT_GUPTA_MAX_PACK_PAIRS ((32u << 20) / (6u * sizeof(double)))
 
 static void gupta_scalar(const double *x, size_t n, const unsigned char *slot,
                          size_t n_species, const double *a, const double *xi,
