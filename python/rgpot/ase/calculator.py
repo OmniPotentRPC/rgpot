@@ -327,11 +327,13 @@ def _open_side(extent: float, cutoff: float) -> float:
 
     At least 100 Angstrom and at least the extent plus twice the kernel
     cutoff. It is also longer than twice the extent, so a minimum-image
-    kernel does not fold the structure.
+    kernel does not fold the structure. A non-positive cutoff means an
+    unbounded search and counts as zero here.
     """
-    side = max(_OPEN_BOX_FLOOR_ANGSTROM, extent + 2.0 * float(cutoff))
+    reach = max(0.0, float(cutoff))
+    side = max(_OPEN_BOX_FLOOR_ANGSTROM, extent + 2.0 * reach)
     if side <= 2.0 * extent:
-        side = 2.0 * extent + 2.0 * float(cutoff)
+        side = 2.0 * extent + 2.0 * reach
     return side
 
 
