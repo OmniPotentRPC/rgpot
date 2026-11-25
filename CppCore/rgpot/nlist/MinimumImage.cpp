@@ -39,7 +39,7 @@ constexpr double kBoundSlack = 1e-6;
 thread_local std::uint64_t searches_run = 0;
 
 // Hardware instantiations are compiled inside a target("fma") function, so
-// __builtin_fma becomes vfmadd there. That builtin and the target attribute
+// fma_insn becomes vfmadd there. That helper and the target attribute
 // are GCC and Clang. MSVC uses std::fma in the same instantiation. The other
 // instantiation is mul_add: the same instruction when this unit was built
 // with FMA, and the Dekker TwoProduct plus TwoSum otherwise. Both match
@@ -48,7 +48,7 @@ template <bool Hardware>
 double product_add(double a, double b, double c) {
   if constexpr (Hardware) {
 #if defined(__GNUC__) || defined(__clang__)
-    return __builtin_fma(a, b, c);
+    return rgpot::simd::detail::fma_insn(a, b, c);
 #else
     return std::fma(a, b, c);
 #endif

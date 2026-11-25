@@ -108,7 +108,7 @@
       const double inner = neg_b1 - b2_term;
       double mag = 0;
       if constexpr (RGPOT_EAM_HW) {
-        mag = __builtin_fma(r6, inner, t_a);
+        mag = detail::fma_insn(r6, inner, t_a);
       } else {
         mag = fma_trunc(r6, inner, t_a);
       }
@@ -131,7 +131,7 @@
         const double dd = a.d_m * md;
         double phi = 0;
         if constexpr (RGPOT_EAM_HW) {
-          phi = __builtin_fma(dd, md, -a.d_m);
+          phi = detail::fma_insn(dd, md, -a.d_m);
         } else {
           phi = fma_trunc(dd, md, -a.d_m);
         }

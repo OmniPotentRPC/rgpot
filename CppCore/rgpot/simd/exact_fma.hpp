@@ -197,20 +197,253 @@ RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double fma_ro(double a, double b, d
   return y;
 }
 
+// x * 2^n with one rounding, after musl's scalbn. A subnormal result is
+// reached in a step that leaves n below -53, so it rounds only once.
+inline double scale2(double x, int n) {
+  if (n > 1023) {
+    x *= 0x1p1023;
+    n -= 1023;
+    if (n > 1023) {
+      x *= 0x1p1023;
+      n -= 1023;
+      if (n > 1023) {
+        n = 1023;
+      }
+    }
+  } else if (n < -1022) {
+    x *= 0x1p-1022 * 0x1p53;
+    n += 1022 - 53;
+    if (n < -1022) {
+      x *= 0x1p-1022 * 0x1p53;
+      n += 1022 - 53;
+      if (n < -1022) {
+        n = -1022;
+      }
+    }
+  }
+  return x * from_bits(static_cast<std::uint64_t>(0x3ff + n) << 52);
+}
+
+inline int clz64(std::uint64_t x) {
+#if defined(__GNUC__) || defined(__clang__)
+  return __builtin_clzll(x);
+#else
+  int n = 0;
+  for (std::uint64_t bit = 1ULL << 63; (x & bit) == 0; bit >>= 1) {
+    ++n;
+  }
+  return n;
+#endif
+}
+
+struct fma_num {
+  std::uint64_t m;
+  int e;
+  bool neg;
+};
+
+// Significand shifted so its top ten bits and last bit are clear, and
+// x == m * 2^e. Zero gets an exponent above every finite one, infinity
+// and NaN exactly kFmaZeroInfNan.
+inline constexpr int kFmaZeroInfNan = 0x7ff - 0x3ff - 52 - 1;
+inline fma_num fma_normalize(double x) {
+  std::uint64_t ix = bits_of(x);
+  int e = static_cast<int>(ix >> 52);
+  const bool neg = (e & 0x800) != 0;
+  e &= 0x7ff;
+  if (e == 0) {
+    ix = bits_of(x * 0x1p63);
+    e = static_cast<int>(ix >> 52) & 0x7ff;
+    e = e != 0 ? e - 63 : 0x800;
+  }
+  ix &= (1ULL << 52) - 1;
+  ix |= 1ULL << 52;
+  ix <<= 1;
+  e -= 0x3ff + 52 + 1;
+  return fma_num{ix, e, neg};
+}
+
+inline void mul64(std::uint64_t x, std::uint64_t y, std::uint64_t &hi,
+                  std::uint64_t &lo) {
+  const std::uint64_t xlo = static_cast<std::uint32_t>(x);
+  const std::uint64_t xhi = x >> 32;
+  const std::uint64_t ylo = static_cast<std::uint32_t>(y);
+  const std::uint64_t yhi = y >> 32;
+  const std::uint64_t t1 = xlo * ylo;
+  const std::uint64_t t2 = xlo * yhi + xhi * ylo;
+  const std::uint64_t t3 = xhi * yhi;
+  lo = t1 + (t2 << 32);
+  hi = t3 + (t2 >> 32) + (t1 > lo ? 1u : 0u);
+}
+
+/// a*b+c with one rounding in round-to-nearest, from integer arithmetic
+/// only: musl's fma (Szabolcs Nagy, MIT). A NaN input comes back quiet, as
+/// the x86 instruction returns it; the default NaN appears only when no
+/// input is a NaN. Used where the C library's fma is not fused.
+RGPOT_NO_FP_CONTRACT inline double fma_soft(double x, double y, double z) {
+  if (std::isnan(z) && !std::isnan(x) && !std::isnan(y)) {
+    return z + z;
+  }
+  const fma_num nx = fma_normalize(x);
+  const fma_num ny = fma_normalize(y);
+  const fma_num nz = fma_normalize(z);
+  if (nx.e >= kFmaZeroInfNan || ny.e >= kFmaZeroInfNan) {
+    return x * y + z;
+  }
+  if (nz.e >= kFmaZeroInfNan) {
+    // A zero z: x*y is exact and nonzero, so its one rounding is the
+    // answer. Adding z would turn a product that underflows to -0 into +0.
+    if (nz.e > kFmaZeroInfNan) {
+      return x * y;
+    }
+    return z;
+  }
+
+  std::uint64_t rhi = 0;
+  std::uint64_t rlo = 0;
+  std::uint64_t zhi = 0;
+  std::uint64_t zlo = 0;
+  mul64(nx.m, ny.m, rhi, rlo);
+  int e = nx.e + ny.e;
+  int d = nz.e - e;
+  if (d > 0) {
+    if (d < 64) {
+      zlo = nz.m << d;
+      zhi = nz.m >> (64 - d);
+    } else {
+      zlo = 0;
+      zhi = nz.m;
+      e = nz.e - 64;
+      d -= 64;
+      if (d == 0) {
+      } else if (d < 64) {
+        rlo = (rhi << (64 - d)) | (rlo >> d) | ((rlo << (64 - d)) != 0 ? 1u : 0u);
+        rhi = rhi >> d;
+      } else {
+        rlo = 1;
+        rhi = 0;
+      }
+    }
+  } else {
+    zhi = 0;
+    d = -d;
+    if (d == 0) {
+      zlo = nz.m;
+    } else if (d < 64) {
+      zlo = (nz.m >> d) | ((nz.m << (64 - d)) != 0 ? 1u : 0u);
+    } else {
+      zlo = 1;
+    }
+  }
+
+  bool neg = nx.neg != ny.neg;
+  const bool samesign = neg == nz.neg;
+  bool nonzero = true;
+  if (samesign) {
+    rlo += zlo;
+    rhi += zhi + (rlo < zlo ? 1u : 0u);
+  } else {
+    const std::uint64_t t = rlo;
+    rlo -= zlo;
+    rhi = rhi - zhi - (t < rlo ? 1u : 0u);
+    if ((rhi >> 63) != 0) {
+      rlo = 0 - rlo;
+      rhi = 0 - rhi - (rlo != 0 ? 1u : 0u);
+      neg = !neg;
+    }
+    nonzero = rhi != 0;
+  }
+
+  if (nonzero) {
+    e += 64;
+    d = clz64(rhi) - 1;
+    rhi = (rhi << d) | (rlo >> (64 - d)) | ((rlo << d) != 0 ? 1u : 0u);
+  } else if (rlo != 0) {
+    d = clz64(rlo) - 1;
+    if (d < 0) {
+      rhi = (rlo >> 1) | (rlo & 1u);
+    } else {
+      rhi = rlo << d;
+    }
+  } else {
+    return x * y + z;
+  }
+  e -= d;
+
+  std::int64_t i = static_cast<std::int64_t>(rhi);
+  if (neg) {
+    i = -i;
+  }
+  double r = static_cast<double>(i);
+  if (e < -1022 - 62) {
+    if (e == -1022 - 63) {
+      const double c = neg ? -0x1p63 : 0x1p63;
+      if (r == c) {
+        return neg ? -0x1p-1022 : 0x1p-1022;
+      }
+      // One bit goes when scaled; a set top bit keeps the conversion to
+      // the only rounding when the value is inexact.
+      if ((rhi << 53) != 0) {
+        i = static_cast<std::int64_t>((rhi >> 1) | (rhi & 1u) | (1ULL << 62));
+        if (neg) {
+          i = -i;
+        }
+        r = static_cast<double>(i);
+        r = 2 * r - c;
+      }
+    } else {
+      d = 10;
+      i = static_cast<std::int64_t>(((rhi >> d) | ((rhi << (64 - d)) != 0 ? 1u : 0u))
+                                    << d);
+      if (neg) {
+        i = -i;
+      }
+      r = static_cast<double>(i);
+    }
+  }
+  return scale2(r, e);
+}
+
+/// The fallback for inputs the round-to-odd path does not take.
+/// mingw-w64's fma (libmingwex) is not fused: it returns the rounded a*b+c
+/// when that is infinite or NaN and sums separately rounded partial products
+/// otherwise.
+RGPOT_NO_FP_CONTRACT inline double fma_fallback(double a, double b, double c) {
+#if defined(__MINGW32__) && defined(__x86_64__)
+  return fma_soft(a, b, c);
+#else
+  return std::fma(a, b, c);
+#endif
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+/// The instruction, for hardware bodies inlined into a target("fma")
+/// function. A copy left out of line calls the C library's fma instead,
+/// and at -O0 every copy is, since flatten does nothing there.
+inline double fma_insn(double a, double b, double c) {
+#if defined(__MINGW32__) && defined(__x86_64__) && !defined(__FMA__) &&         \
+    !defined(__OPTIMIZE__)
+  return fma_soft(a, b, c);
+#else
+  return __builtin_fma(a, b, c);
+#endif
+}
+#endif
+
 } // namespace detail
 
 /// a*b+c with one rounding, the same bits as a hardware fused multiply-add.
 /// Normals in range use a Dekker product and a round-to-odd sum
 /// (Boldo and Melquiond). Inputs outside that range and subnormal results
-/// use std::fma.
+/// use the C library's fma, or fma_soft where that is not fused.
 RGPOT_NO_FP_CONTRACT RGPOT_FMA_INLINE inline double exact_fma(double a, double b, double c) {
   if (RGPOT_UNLIKELY(!detail::fma_ro_domain(a, b, c))) {
-    return std::fma(a, b, c);
+    return detail::fma_fallback(a, b, c);
   }
   bool ok = true;
   const double y = detail::fma_ro(a, b, c, ok);
   if (RGPOT_UNLIKELY(!ok)) {
-    return std::fma(a, b, c);
+    return detail::fma_fallback(a, b, c);
   }
   return y;
 }
