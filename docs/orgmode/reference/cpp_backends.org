@@ -23,9 +23,9 @@ to eV/Angstrom), all from =CppCore/rgpot/units.hpp=.
 
 The dlopen frontends try a list of library names in order.
 A bare name is resolved by the dynamic linker search path.
-=CP2KPot=, =CPMDPot=, =MOPACPot=, =NWChemPot=, =XTBDlopen= and =MetatomicDlopen=
-stop at the first library that opens and then check its symbols, so a library
-with missing symbols ends the search.
+=CP2KPot=, =CPMDPot=, =MOPACPot=, =NWChemPot=, =ORCAPot=, =XTBDlopen= and
+=MetatomicDlopen= stop at the first library that opens and then check its
+symbols, so a library with missing symbols ends the search.
 =LammpsPot=, =GromacsPot= and =OpenMMPot= skip a library that lacks the symbols
 and try the next name.
 
@@ -36,15 +36,16 @@ and try the next name.
 | =MOPACPot=   | =libmopacc=             | =Config::engine_path=, =MOPACC_LIBRARY=, =RGPOT_MOPACC_ENGINE=, =libmopacc.so=, =./libmopacc.so= |
 | =NWChemPot=  | =libnwchemc=            | =enginePath= alone when set; else the variables that are set among =NWCHEMC_LIBRARY=, =RGPOT_NWCHEMC_ENGINE= and =RGPOT_NWCHEM_ENGINE=, in that order, with no default names after them; else =libnwchemc.so=, =./libnwchemc.so= |
 | =SkalaPot=   | =libnwchemc=            | as =NWChemPot=                                                                                |
+| =ORCAPot=    | =liborcac=              | =ORCAConfig::library= alone when set; else the variables that are set among =ORCAC_LIBRARY= and =RGPOT_ORCAC_ENGINE=, in that order, with no default names after them; else =liborcac.so=, =./liborcac.so= |
 | =LammpsPot=  | engine plugin           | =engine_path= alone when set; else =RGPOT_LAMMPS_ENGINE=, =LAMMPS_ENGINE=, =liblammps_engine.so=, =liblj_engine.so= |
 | =GromacsPot= | =rgpot_md_native_force= | =engine_path= alone; empty means the in-process Lennard-Jones                                 |
 | =OpenMMPot=  | =rgpot_md_native_force= | as =GromacsPot=                                                                               |
 | =XTBDlopen=  | =libxtb_engine=         | =engine_path= alone when set; else =RGPOT_XTB_ENGINE=, =XTB_ENGINE=, =libxtb_engine.so=, then each directory of =EON_POTENTIALS_PATH= and =RGPOT_ENGINE_PATH= |
 | =MetatomicDlopen= | =libmetatomic_engine= | =engine_path=, =RGPOT_METATOMIC_ENGINE=, =METATOMIC_ENGINE=, =libmetatomic_engine.so=, then each directory of =EON_POTENTIALS_PATH= and =RGPOT_ENGINE_PATH= |
 
-After the =.so= names the CP2K, CPMD, MOPAC and NWChem lists also try the
-=.dylib= names (bare and with =./=), and CPMD, MOPAC and NWChem try =cpmdc.dll=,
-=mopacc.dll= and =nwchemc.dll=.
+After the =.so= names the CP2K, CPMD, MOPAC, NWChem and ORCA lists also try the
+=.dylib= names (bare and with =./=), and CPMD, MOPAC, NWChem and ORCA try
+=cpmdc.dll=, =mopacc.dll=, =nwchemc.dll= and =orcac.dll=.
 =LammpsPot= uses =.dylib= names on macOS and =.dll= names on Windows instead of
 =.so=.
 =XTBDlopen= and =MetatomicDlopen= try the =.dylib= name before the =.so= name on
@@ -58,6 +59,7 @@ their engine libraries carry the C ABIs in
 [[file:engine_abi.org][Engine C ABI]].
 =IPIPot= opens a socket and waits for a driver.
 =ORCALegacyPot= starts the =orca= program for every force and needs no library.
+=ORCAPot= is in every =librgpot= and opens =liborcac= at run time.
 
 None of the dlopen constructors throw when the library is missing.
 They record the reason, =available()= returns false, and the first force throws
@@ -437,6 +439,242 @@ int main() {
   return 0;
 }
 #+end_src
+
+** ORCA
+
+=ORCAPot= runs ORCA through =liborcac=, the standalone orcac library, which it
+opens with dlopen. rgpot carries orcac's public header as
+=CppCore/rgpot/ORCAPot/orcac.h= and no ORCA or orcac code.
+ORCA is described in Neese, WIREs Computational Molecular Science 2, 73-78
+(2012),
+doi:10.1002/wcms.81, and in Neese, Wennmohs, Becker and Riplinger, J. Chem. Phys. 152, 224108 (2020), doi:10.1063/5.0004608.
+The how-to is [[file:../howto/orca.org][ORCA through liborcac]].
+=ORCAPotTest= runs over a fake =liborcac= that returns -1 Hartree for charge 0
+and multiplicity 1 and requires the host energy to equal that times
+=HARTREE_TO_EV=, -27.211386245988 eV.
+It does not pin an ORCA energy.
+
+*** =rgpot::ORCAConfig=
+
+- Inputs :: =method= (an ORCA simple-input method keyword, required), =basis=
+  (empty for a composite method), =keywords= (one line), =blocks= (verbatim =%=
+  blocks, may span lines), =charge= (default 0), =multiplicity= (default 1),
+  =nprocs= (default 1),
+  =maxcore_mb= (default 0, ORCA's own), =executable= (empty lets orcac search), =library= (empty searches), =guess_policy=
+  (=GuessPolicy::Fresh= or =GuessPolicy::MoRead=, default =Fresh=),
+  =timeout_s= (default =ORCAConfig::kDefaultTimeout=, 3600; 0 waits with no limit), =scratch_dir=
+  (empty for the system temporary directory),
+  =keep_files= (default false, and must stay false) and =fresh_retry= (default
+  true).
+- Units ::
+  =maxcore_mb= in MB per process; =charge= in elementary charges; =timeout_s= in
+  seconds; the other fields have no unit.
+- Outputs :: a plain struct read by =rgpot::ORCAPot= and mirrored by
+  =ORCAParams= on the wire.
+  =ORCAPot= hands every field except =library= and
+  =keep_files= to orcac in an =OrcaCConfig=: =MoRead= as =ORCAC_GUESS_CHAIN=, =Fresh= as =ORCAC_GUESS_FRESH=, and =fresh_retry=
+  false as =ORCAC_F_NO_FRESH_RETRY=.
+- Errors :: =rgpot::ORCAPot= throws
+  =std::invalid_argument= for an empty =method=, a =multiplicity= or =nprocs= below 1, a negative =maxcore_mb=,
+  a
+  =timeout_s= that is negative or not finite, a line break in any text field except =blocks=, and =keep_files=
+  set, since orcac ABI 1 always removes the run directory.
+
+*** =rgpot::ORCAPot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+explicit ORCAPot(const ORCAConfig &config);
+#+end_src
+
+- Inputs :: =config=, an =rgpot::ORCAConfig=.
+- Units :: positions in Angstrom, which orcac takes as they are; energy in eV
+  and forces in
+  eV/Angstrom. orcac returns the energy in Hartree and the gradient in Hartree/bohr,
+  which the class multiplies by =units::HARTREE_TO_EV= and
+  =units::NEG_GRAD_TO_FORCE=.
+- Outputs :: a potential that runs one ORCA energy and gradient per force call
+  in one orcac session.
+  =caps()= reports =Reentrancy::PerInstance=, =perImageInstances=, no
+  periodicity and no stress.
+  A zero box is an isolated cluster.
+  Any other box must be finite and non-singular, and every pair of atoms must be
+  its own nearest periodic image: along every nonzero lattice vector the atoms
+  span at most half its length, the rule of =rgpot::ORCALegacyPot=.
+  The padded box of =RgpotCalculator= passes, and the positions go to orcac
+  unchanged.
+  With =GuessPolicy::MoRead= a result cache passed to =setCache= is not used,
+  since a chained guess makes a result depend on the calls before it.
+- Errors :: the constructor throws =std::invalid_argument= in the cases of
+  =rgpot::ORCAConfig= and does not throw for a missing or refused =liborcac=, an
+  executable orcac rejects, or a session orcac cannot open.
+  It records the reason, =available()= is false and every force throws
+  =rgpot::ORCAError= with it.
+  A force throws
+  =std::invalid_argument= for zero atoms, a null buffer, a box with a periodic image closer than the atom itself, a singular box, a cell too skewed to check (including one whose image bound is not finite or out of range), a non-finite box entry or, with a box, a non-finite position, and =ORCAError= when the executable changed since the session was opened or while it ran, or when =orcac_energy_gradient= returns a status other than =ORCAC_OK=,
+  with the status name and orcac's message.
+
+The load uses the =orcac= stem with =ORCAC_LIBRARY= and =RGPOT_ORCAC_ENGINE=.
+Before any session or ORCA run, a library that opens is refused, and closed
+again, when
+=orcac_c_abi_version()= or =orcac_abi_version()= (resolved first) is not 1, when it lacks another function of =orcac.h=, when =orcac_config_init= fails or reports an =OrcaCConfig= =struct_size=
+below
+=ORCAC_CONFIG_MIN_SIZE= or a wrong magic or version, or when =orcac_energy_gradient= on no session does not answer =ORCAC_E_INVALID= with an =OrcaCResult= =struct_size=
+of at least =ORCAC_RESULT_MIN_SIZE=.
+The constructor then calls =orcac_probe_executable= on =executable= (or on
+orcac's own search,
+=$ORCAC_ORCA= then =PATH=, when it is empty), records the size, modification time, change time, device, inode and content hash of the file it resolves to, and opens the session with =orcac_create=
+on that resolved path.
+Before and after each call the name is probed again; a different file, or the
+same file with a different stamp, makes the call throw =ORCAError= without using
+its result, as =rgpot::ORCALegacyPot= does.
+=paramsKey()= hashes the method fields, the charge and multiplicity, the guess
+policy, the resolved path and its stamp, and changes once the executable has.
+An explicit =executable= is never refused because =orcac_available()= is 0.
+
+*** =rgpot::ORCAPot::available=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool available() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when =liborcac= loaded, passed the handshake, found an
+  executable and opened a session.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::loadError=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &loadError() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: why =available()= is false: the paths tried and the loader's
+  message, ending with "Install orcac and set
+  ORCAC_LIBRARY or RGPOT_ORCAC_ENGINE to the path of liborcac"; the missing
+  functions; the ABI version or struct size that differs; or the status of the
+  executable probe or session.
+  Empty when =available()= is true.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::libraryPath=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &libraryPath() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the path =liborcac= was opened from; empty when none opened.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::engineVersion=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::string engineVersion() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =orcac_version()= of the loaded library; empty when nothing loaded.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::executableIdentity=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &executableIdentity() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the absolute path, with symlinks resolved, of the =orca= executable
+  the session runs, as =orcac_probe_executable= found it; empty before a probe
+  succeeded.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::config=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const ORCAConfig &config() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: as =rgpot::ORCAConfig=.
+- Outputs :: the configuration in use, with a charge and multiplicity set by
+  =setChargeMultiplicity=.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::setChargeMultiplicity=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setChargeMultiplicity(int charge, int multiplicity);
+#+end_src
+
+- Inputs :: the total =charge= and the spin =multiplicity= 2S + 1.
+- Units :: =charge= in elementary charges; =multiplicity= none.
+- Outputs :: none; later runs use the new values through =orcac_configure=,
+  which drops orcac's stored guesses, and =paramsKey()= is recomputed.
+- Errors :: =std::invalid_argument= for a multiplicity below 1;
+  =rgpot::ORCAError= when the session is not open or orcac refuses, in which
+  case the previous values stay.
+
+*** =rgpot::ORCAPot::cancel=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void cancel() noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: none;
+  =orcac_cancel= stops the force call running on this instance, whose ORCA process group is terminated, and that call throws =rgpot::ORCAError= naming =ORCAC_E_CANCELLED=.
+  Safe from any thread of the process; calls that start later run normally.
+- Errors :: none; it does nothing when no session is open.
+
+*** =rgpot::ORCAPot::probeAvailable=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] static bool probeAvailable();
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when the environment and default-name search, without an
+  explicit path, finds a =liborcac= that passes the handshake.
+  The first result is cached for the process, and the probed library stays
+  loaded.
+- Errors :: none; a load failure gives false.
+
+*** =rgpot::ORCAPot::abiAvailable=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] static bool abiAvailable();
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =probeAvailable()= and a nonzero =orcac_available()=, which tells
+  whether orcac's own search finds an =orca= executable.
+  The first result is cached for the process.
+- Errors :: none.
+
+=rgpot::ORCAError= is a =std::runtime_error= in
+=CppCore/rgpot/ORCAPot/ORCAError.hpp=, shared by =ORCAPot= and =ORCALegacyPot=.
+=ORCAPot= throws it for an unloaded =liborcac= and for a status other than
+=ORCAC_OK=.
 
 ** ORCA child-process runner (deprecated)
 
@@ -2025,6 +2263,23 @@ A member whose description differs between classes has one entry per class.
   and the flat =PotentialConfig= bytes.
   Requests that resolve to one backend file share a key.
   Instances that differ in these values get different result-cache keys.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the low 64 bits of a SHA-256 over the length-prefixed =method=,
+  =basis=, =keywords=, =blocks= and resolved executable path, then
+  =ORCAC_ABI_VERSION=, the charge and the multiplicity.
+  =setChargeMultiplicity= recomputes it.
+  The library path, =nprocs=, =maxcore_mb=, =timeout_s=, the scratch settings
+  and the guess policy do not change the result and are left out.
 - Errors :: none.
 
 *** =rgpot::ORCALegacyPot::paramsKey=

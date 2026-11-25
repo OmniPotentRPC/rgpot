@@ -1,0 +1,270 @@
+# Copyright 2023--present rgpot developers
+#+TITLE: ORCA through liborcac
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* ORCA through liborcac
+
+=ORCAPot= gives ORCA the normal rgpot =Potential= interface through =liborcac=,
+the standalone orcac library.
+Each force call runs one ORCA energy and gradient and returns them in eV and
+eV/Angstrom.
+The class is in =CppCore/rgpot/ORCAPot/= and reports =PotType::ORCA=. rgpot
+links neither ORCA nor orcac: =liborcac= is opened with dlopen when an =ORCAPot=
+is constructed, so every =librgpot= has the class and runs wherever orcac is
+installed.
+You install ORCA yourself and accept its license.
+
+ORCA is described in Neese, WIREs Computational Molecular Science 2, 73-78
+(2012),
+doi:10.1002/wcms.81. The program paper is Neese, Wennmohs, Becker and Riplinger, J. Chem. Phys. 152, 224108 (2020), doi:10.1063/5.0004608.
+[[file:../reference/cpp_backends.org][The backend reference]] lists the class
+members, and
+[[file:../reference/potential_config.org][the PotentialConfig reference]] the
+fields of the =orca= arm.
+
+The child-process runner of
+[[file:orca-legacy.org][ORCA through a child process]] is now =ORCALegacyPot=,
+built only with =-Dwith_orca_legacy=true= and kept for one release.
+
+** Find liborcac
+
+Build orcac, then point rgpot at the library.
+The search stops at the first library that opens:
+
+1. =ORCAConfig::library= (=library= in Python and on the wire).
+   When it is set, no other path is tried.
+2. Otherwise the variables that are set among
+   =ORCAC_LIBRARY= and =RGPOT_ORCAC_ENGINE=, in that order.
+   When one is set, no default name is tried after them.
+3. Otherwise =liborcac.so=,
+   =./liborcac.so=, =liborcac.dylib=, =./liborcac.dylib= and =orcac.dll=, by the
+   dynamic linker search path.
+
+#+attr_rgpot: syntax points rgpot at an installed liborcac
+#+begin_src bash
+export ORCAC_LIBRARY=/opt/orcac/lib/liborcac.so
+#+end_src
+
+When nothing loads, =available()= is false and =loadError()= names the paths
+tried and the loader's message, ending with "Install orcac and set
+ORCAC_LIBRARY or RGPOT_ORCAC_ENGINE to the path of liborcac".
+The constructor does not throw for a missing library; every force call then
+throws =rgpot::ORCAError= with that message.
+
+The =orca= executable is checked with =orcac_probe_executable= before the
+session opens.
+An explicit =executable= is probed as given, and an empty one lets orcac search
+=$ORCAC_ORCA=, then =PATH=.
+An explicit executable is never refused because =orcac_available()= reports that
+orcac's own search finds no =orca=.
+The file the probe resolves to is pinned: its path with symlinks resolved, and
+its size, modification time, change time, device, inode and content hash, as
+=ORCALegacyPot= does.
+The session is opened on that resolved path, and before and after each call
+=ORCAPot= resolves the configured name again and checks the file.
+When it has changed, as after a symlink is retargeted or the file is replaced,
+the call throws =ORCAError= without using the result; a new =ORCAPot= runs the
+new file.
+
+** ABI handshake
+
+=CppCore/rgpot/ORCAPot/orcac.h= is orcac's public header, vendored unchanged
+below a banner and pinned by =orcac.h.pin= (upstream state, ABI version, commit,
+tree and SHA-256).
+The header is frozen at orcac ABI 1.
+The handshake runs before any session or ORCA run, and a library that opens is
+refused, and closed again, when
+
+- =orcac_c_abi_version()= or =orcac_abi_version()=, resolved before any other
+  symbol, is not 1,
+- it lacks one of the other functions of =orcac.h=,
+- =orcac_config_init= fails, or reports an =OrcaCConfig=
+  =struct_size= below =ORCAC_CONFIG_MIN_SIZE= or a wrong magic or version, or
+- =orcac_energy_gradient= on no session does not answer =ORCAC_E_INVALID= with
+  an =OrcaCResult= =struct_size= of at least =ORCAC_RESULT_MIN_SIZE=.
+  That call is orcac's argument check and runs nothing.
+
+The message says which, for example "reports ABI version 2, but rgpot was built
+against 1".
+
+To move to a new orcac header, replace the part of =orcac.h= below the banner
+with orcac's new public header, update the SHA-256 and ABI version in
+=orcac.h.pin=, and rebuild.
+=ORCACHeaderPin= checks the pin, and diffs the vendored copy against the header
+of the orcac checkout that =ORCAC_SOURCE_DIR= names, when it is set.
+
+** Configuration
+
+=ORCAConfig= mirrors =orcac_config= plus =library=.
+
+| Field          | Meaning                                                            |
+|----------------+--------------------------------------------------------------------|
+| =method=       | ORCA method keyword; required                                      |
+| =basis=        | Basis set keyword; empty for a composite method                    |
+| =keywords=     | Further simple-input keywords on one line, such as =TightSCF D4=   |
+| =blocks=       | Verbatim =%= blocks; may span lines                                |
+| =charge=       | Total charge, default 0                                            |
+| =multiplicity= | Spin multiplicity 2S + 1, default 1                                |
+| =nprocs=       | ORCA processes, default 1                                          |
+| =maxcore_mb=   | MB per process; default 0 keeps ORCA's default                     |
+| =executable=   | The =orca= program; empty lets orcac search                        |
+| =library=      | Explicit =liborcac= path                                           |
+| =guess_policy= | =Fresh= (default) starts from ORCA's guess, =MoRead= from the last orbitals |
+| =timeout_s=    | Seconds for one ORCA run, default 3600; 0 waits with no limit      |
+| =scratch_dir=  | Parent of the run directory; empty uses the temp directory         |
+| =keep_files=   | Must stay false: orcac ABI 1 always removes the run directory      |
+| =fresh_retry=  | Rerun once from a fresh guess when a run that read a guess fails, default true |
+
+An empty =method=, a multiplicity or =nprocs= below 1, a negative
+=maxcore_mb=, a negative or non-finite =timeout_s= or a line break in a text
+field other than =blocks=, or =keep_files= set, throws =std::invalid_argument=
+from the constructor.
+=MoRead= maps to =ORCAC_GUESS_CHAIN=, =Fresh= to =ORCAC_GUESS_FRESH=, and
+=fresh_retry= false sets =ORCAC_F_NO_FRESH_RETRY=. orcac chains guesses inside
+the session and drops them when the charge, the multiplicity or the atoms
+change, so there are no guess slots to select.
+A chained guess makes a result depend on the calls before it, so with =MoRead=
+=setCache= installs no cache and every call runs ORCA, as for
+=ORCALegacyConfig::restart=.
+=paramsKey()= hashes the method fields, the charge and multiplicity, the guess
+policy, the pinned path and its file stamp, so cached results do not cross ORCA
+installations, and it changes once the executable has changed.
+
+=setChargeMultiplicity(charge, multiplicity)= changes a live session through
+=orcac_configure= and recomputes =paramsKey()=; a rejected change keeps the
+previous state and throws =ORCAError=.
+=cancel()= calls
+=orcac_cancel= and may be called from another thread; the force call in flight throws =ORCAError= naming =ORCAC_E_CANCELLED=.
+A failed run throws =ORCAError= with the status name, such as
+=ORCAC_E_NOT_CONVERGED=, and orcac's message.
+
+#+attr_rgpot: fragment needs liborcac and ORCA installed
+#+begin_src cpp
+#include "rgpot/ORCAPot/ORCAPot.hpp"
+
+#include <stdexcept>
+#include <vector>
+
+rgpot::ORCAConfig cfg;
+cfg.method = "PBE";
+cfg.basis = "def2-SVP";
+cfg.keywords = "TightSCF";
+cfg.nprocs = 4;
+
+rgpot::ORCAPot pot(cfg);
+if (!pot.available()) {
+  throw std::runtime_error(pot.loadError());
+}
+std::vector<int> z = {8, 1, 1};
+std::vector<double> xyz = {0.0, 0.0, 0.1173, 0.0, 0.7572, -0.4692,
+                           0.0, -0.7572, -0.4692};
+std::vector<double> forces(xyz.size());
+rgpot::ForceOut out{};
+out.F = forces.data();
+pot.forceImpl(rgpot::ForceInput{z.size(), xyz.data(), z.data(), nullptr}, &out);
+#+end_src
+
+** Units
+
+Positions are Angstrom, which =liborcac= takes as they are.
+=liborcac= returns the energy in Hartree and the gradient in Hartree/bohr.
+=ORCAPot= multiplies them by =units::HARTREE_TO_EV= and
+=units::NEG_GRAD_TO_FORCE= from =CppCore/rgpot/units.hpp=.
+The variance is 0 and no stress is written.
+
+** Clusters and boxes
+
+ORCA runs an isolated cluster, so =caps().periodic= is false.
+A zero box is taken as no box.
+Any other box must be finite and non-singular, and every pair of atoms must be
+its own nearest periodic image: along every nonzero lattice vector, not only the
+cell vectors, the atoms span at most half its length.
+A skewed cell whose cell vectors are long but whose short combination brings an
+image closer is refused.
+=ORCAPot= and =ORCALegacyPot= share this check, =checkClusterBox= in
+=CppCore/rgpot/ORCAPot/ORCAGuards.cc=.
+The padded cubic box that =RgpotCalculator= builds around a cluster meets the
+rule and gives the same energy and forces as a zero box; a box that would wrap
+the atoms throws =std::invalid_argument=.
+The positions are never folded or shifted.
+=caps().reentrancy= is =Reentrancy::PerInstance=: each =ORCAPot= owns one orcac
+session and its run directory, so give each thread its own.
+
+** Python and ASE
+
+=rgpot.ORCAPot= takes the same fields as keywords, with =guess_policy= as
+="fresh"= (the default) or ="moread"=.
+The constructor raises =RuntimeError= when =liborcac= is absent or refused or
+finds no executable.
+=RgpotCalculator= accepts the kinds ="ORCAPot"= and ="orca"=.
+
+#+attr_rgpot: fragment needs liborcac and ORCA installed
+#+begin_src python
+from ase.build import molecule
+
+from rgpot.ase import RgpotCalculator
+
+atoms = molecule("H2O")
+atoms.center(vacuum=6.0)
+atoms.calc = RgpotCalculator("orca", method="PBE", basis="def2-SVP")
+energy = atoms.get_potential_energy()
+#+end_src
+
+Each Python thread gets its own instance, so a charge or multiplicity goes in
+the constructor.
+
+** potserv and the engine plugin
+
+=potserv <port> ORCA= serves an =ORCAPot= with HF/def2-SVP and exits with the
+load error when =liborcac= is absent.
+=configure= with the =orca= arm of =PotentialConfig= builds a new pot from
+=ORCAParams=, after lowering a =common= overlay into ORCA keywords and blocks,
+and swaps it in when its session opens; otherwise the running pot stays and the
+reply says why.
+A non-zero =ForceInput.orbitalKey= is refused, as for every backend but CPMD and
+CP2K.
+Every other arm is refused by name.
+
+=liborca_engine= is the engine plugin of [[file:../reference/engine_abi.org][the
+engine ABI]] for the same class, built beside =libmopac_engine= on Linux and
+macOS.
+Its root message is =ORCAParams= and =rgpot_engine_set_charge_spin= takes the
+charge and the multiplicity.
+=rgpot_engine_select_orbitals= and =rgpot_engine_copy_orbitals= return
+=RGPOT_ENGINE_ERR_UNSUPPORTED=.
+Adding it changes neither =RGPOT_ENGINE_ABI_MINOR= nor the C++ soversion.
+
+** Tests
+
+CI has no ORCA and no orcac.
+=CppCore/tests/orcac_fake_engine.c= implements =orcac.h= with canned results: -1 +
+0.01 charge + 0.001 (multiplicity - 1) Eh, gradient component k of 0.001 (k + 1)
+Eh/bohr, a failed run for the method =FAIL=, an unconverged one for =NOCONV= and
+a run that waits for =orcac_cancel= for =SLOW=.
+Meson and CMake build it six times: as is, and with
+=ORCAC_FAKE_C_ABI=2=, =ORCAC_FAKE_ABI=2=, =ORCAC_FAKE_SMALL_CONFIG=,
+=ORCAC_FAKE_SMALL_RESULT= or =ORCAC_FAKE_NO_COMPUTE= defined.
+
+- =ORCAPotTest= loads the fake through =RGPOT_ORCAC_ENGINE=, checks the unit
+  conversion, the lowering into =OrcaCConfig=, the box rule on small and skewed
+  cells, the charge and multiplicity, guess chaining, the cache with each guess
+  policy, failed runs, cancel, the executable probe and its pin against a
+  retargeted symlink and a new modification time, and that each variant is
+  refused with its reason before a session opens.
+  Every variant but the short result is refused before =orcac_energy_gradient=
+  is called at all.
+- =ORCAPotAbsentLibrary= points =RGPOT_ORCAC_ENGINE= at a file that does not
+  exist and checks the error.
+- =ORCACHeaderPin= checks the vendored header against its pin.
+- =ORCADlopenContract= checks that the frontend loads =liborcac= with dlopen and
+  never links it.
+- =EngineTableTest= opens =liborca_engine= over the fake.
+- =tests/python/test_orca.py= compiles the fake with the C compiler and runs
+  =rgpot.ORCAPot= and =RgpotCalculator= on a water cluster in a padded box.
+
+#+attr_rgpot: syntax runs the ORCA tests
+#+begin_src bash
+meson setup bbdir -Dwith_tests=true
+meson test -C bbdir --suite orca
+#+end_src

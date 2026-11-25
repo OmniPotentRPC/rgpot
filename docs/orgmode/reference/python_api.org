@@ -687,6 +687,70 @@ rgpot.MullerBrownPot(amplitude=[-200, -100, -170, 15], a=[-1, -1, -6.5, 0.7], b=
 - Errors :: a length other than 0 or 4 raises =ValueError=.
   So does a non-finite value.
 
+*** =rgpot.ORCAPot=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ORCAPot(*, method, basis='', keywords='', blocks='', charge=0, multiplicity=1, nprocs=1, maxcore_mb=0, executable='', library='', guess_policy='fresh', timeout_s=3600.0, scratch_dir='', keep_files=False, fresh_retry=True)
+#+end_src
+
+- Inputs :: the fields of =rgpot::ORCAConfig=, as keywords only; =method= is
+  required and =guess_policy= is ="fresh"= (every call from ORCA's own guess) or
+  ="moread"= (from the previous call's orbitals, with no result cache).
+  An empty =library= searches =ORCAC_LIBRARY=, =RGPOT_ORCAC_ENGINE=, then
+  =liborcac= on the loader path; an empty =executable= lets orcac search for
+  =orca=.
+  The file the executable resolves to is pinned when the instance is made.
+- Units :: positions in Angstrom, energy in eV, forces in eV/Angstrom.
+  A zero box is an isolated cluster, and in any other box every pair of atoms
+  must be its own nearest periodic image, along every lattice vector, which
+  holds in the padded box of =RgpotCalculator=.
+- Outputs :: ORCA energies and gradients through =liborcac=.
+  =caps()["periodic"]= and =caps()["stress"]= are false.
+  Each calling thread gets its own instance and orcac session.
+- Errors :: =RuntimeError= when =liborcac= is absent, fails the handshake or
+  finds no executable, when an ORCA run fails, and when the executable has
+  changed since the instance was made; =ValueError= for the configuration errors
+  of =rgpot::ORCAConfig=
+  (=keep_files= must stay false), an unknown =guess_policy= and a box that would
+  wrap the atoms.
+
+*** =rgpot.ORCAPot.library_path=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: the path =liborcac= was opened from.
+- Errors :: none.
+
+*** =rgpot.ORCAPot.engine_version=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: =orcac_version()= of the loaded library.
+- Errors :: none.
+
+*** =rgpot.ORCAPot.executable_identity=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: the absolute path of the =orca= executable the session runs, with
+  symlinks resolved, as =orcac_probe_executable= reported it.
+- Errors :: none.
+
+*** =rgpot.ORCAPot.probe_available=
+
+#+attr_rgpot: signature
+#+begin_src python
+probe_available()
+#+end_src
+
+- Inputs :: none; a static method.
+- Units :: none.
+- Outputs :: true when the default search, without an explicit path, finds a
+  =liborcac= that passes the handshake.
+  The first result is cached for the process.
+- Errors :: none; a load failure gives false.
+
 *** =rgpot.EMTPot=
 
 #+attr_rgpot: signature
@@ -1128,12 +1192,12 @@ __call__(positions, atom_types, box)
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.StillingerWeberSi,
-  rgpot.TersoffSiC, rgpot.IPIPot, rgpot.LammpsPot, rgpot.GromacsPot,
-  rgpot.OpenMMPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.StillingerWeberSi, rgpot.TersoffSiC, rgpot.IPIPot, rgpot.LammpsPot,
+  rgpot.GromacsPot, rgpot.OpenMMPot, rgpot.EMTPot
 - Inputs :: =positions= =(N, 3)=, =atom_types= (=N= integers) and =box=
   =(3, 3)=, as in the conventions.
 - Units :: positions and box in Angstrom; energy eV; forces eV/Angstrom;
@@ -1152,11 +1216,11 @@ caps()
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.StillingerWeberSi,
-  rgpot.TersoffSiC, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.StillingerWeberSi, rgpot.TersoffSiC, rgpot.EMTPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a dict with the keys =reentrancy= (="shared"=,
@@ -1174,7 +1238,8 @@ config()
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.D4Pot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.D4Pot, rgpot.EMTPot
 - Inputs :: none.
 - Units :: as the constructor: eV for =u0= and =De=, 1/Angstrom for =a=,
   Angstrom for the lengths.
@@ -1196,11 +1261,11 @@ evaluate(positions, atom_types, box)
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.StillingerWeberSi,
-  rgpot.TersoffSiC, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.StillingerWeberSi, rgpot.TersoffSiC, rgpot.EMTPot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions.
 - Units :: energy eV; forces eV/Angstrom; variance eV^2; stress eV/Angstrom^3,
   the Cauchy stress (1/V) dE/dε.
@@ -1280,10 +1345,11 @@ evaluate_batch(positions, atom_types, box, n_threads=0)
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: three lists of equal length: =positions= arrays, =atom_types=
   sequences and =box= arrays, one entry per configuration, each as in the
   conventions.
@@ -1331,10 +1397,11 @@ hvp(positions, atom_types, box, direction, step=0.0, scheme='auto')
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions;
   =direction= is a float64 C-contiguous =(N, 3)= array.
   =step= is the length of the displacement along the unit direction; 0 means
@@ -1410,10 +1477,11 @@ hvp_resolved(positions, atom_types, box, direction, step=0.0, scheme='auto')
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: those of =hvp=.
 - Units :: those of =hvp=.
 - Outputs :: a tuple =(product, scheme)=: the product of =hvp=, and the name of
@@ -1431,10 +1499,11 @@ hessian(positions, atom_types, box, scheme, step=0.0)
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions.
   =scheme= has no default: ="analytic"= uses the kernel's closed-form Hessian,
   available for =LJPot= and =MorsePot=; ="ad"= its dual-number Hessian,
@@ -1465,10 +1534,11 @@ hvp_centre(positions, atom_types, box)
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions.
 - Units :: energy eV; forces eV/Angstrom; variance eV^2.
 - Outputs :: a tuple =(energy, forces, variance)= at the geometry.
@@ -1488,10 +1558,11 @@ invalidate_hvp()
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =None=; the next =hvp= or =hvp_centre= call computes a new centre.
@@ -1506,10 +1577,11 @@ hvp_counts()
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: none.
 - Units :: none; the values are counts.
 - Outputs :: a dict with =products= (products answered),
@@ -1526,10 +1598,11 @@ reset_hvp_counts()
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =None=; every =hvp_counts()= and =derivative_counts()= value
@@ -1545,10 +1618,11 @@ has_analytic_hvp()
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =True= when the kernel has its own Hessian-vector product, so
@@ -1566,10 +1640,11 @@ derivative_caps()
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: none.
 - Units :: none; flags and counts of force calls.
 - Outputs :: a dict with the flags =hvp_analytic=, =hvp_ad=,
@@ -1590,10 +1665,11 @@ derivative_counts()
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
-  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
-  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
-  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+  rgpot.MullerBrownPot, rgpot.ORCAPot, rgpot.D2Pot, rgpot.D2CpmdPot,
+  rgpot.SWPot, rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot,
+  rgpot.EAMAlPot, rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot,
+  rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot,
+  rgpot.EMTPot
 - Inputs :: none.
 - Units :: none; the values are counts.
 - Outputs :: a dict with =hvp_forward=, =hvp_central=,
