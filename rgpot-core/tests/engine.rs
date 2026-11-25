@@ -417,7 +417,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 11,
+            abi_minor: 12,
             layout_revision: 1,
         }
     );
@@ -1788,8 +1788,8 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 }
 
 #[test]
-fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 11);
+fn older_minors_lack_later_capabilities_and_a_newer_minor_is_rejected() {
+    assert_eq!(ENGINE_ABI_MINOR, 12);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -1877,12 +1877,20 @@ fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected(
         }]
     );
 
-    // A minor-11 plugin is the current minor and also exports the jet.
+    // A minor-11 plugin exports the jet but predates the Hessian capability.
     let minor11_path = build("harmonic_stamp_minor11", &["FIXTURE_ABI_MINOR=11"]);
     let minor11 = load(&minor11_path);
-    assert_eq!(minor11.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert_eq!(
+        minor11.abi_stamp(),
+        RgpotEngineAbiStamp {
+            abi_minor: 11,
+            ..RgpotEngineAbiStamp::HOST
+        }
+    );
     assert!(minor11.symbols().taylor_jet.is_some());
-    assert_eq!(minor11.caps().expect("caps").jet_order, 3);
+    let minor11_caps = minor11.caps().expect("caps");
+    assert_eq!(minor11_caps.jet_order, 3);
+    assert!(!minor11_caps.analytic_hessian);
 
     // A plugin whose minor is newer than the host's is rejected.
     let newer_define = format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1);
@@ -5635,7 +5643,9 @@ fn caps_carry_every_field_and_ignore_bytes_past_the_reported_size() {
         ],
     );
     let mut engine = load(&dirty);
-    assert_eq!(engine.caps().expect("caps").jet_order, 0);
+    let dirty_caps = engine.caps().expect("caps");
+    assert_eq!(dirty_caps.jet_order, 0);
+    assert!(!dirty_caps.analytic_hessian);
     assert!(matches!(
         jet_call(&mut engine, &[0.0; 3], &[1], &[1.0, 0.0, 0.0], 1),
         Err(EngineError::Unsupported {
