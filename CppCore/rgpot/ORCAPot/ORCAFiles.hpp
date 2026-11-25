@@ -6,7 +6,7 @@
  * @file ORCAFiles.hpp
  * @brief ORCA input text and .engrad parsing, with no process handling.
  *
- * Pure text functions so the input ORCAPot hands ORCA, and the reading of
+ * Pure text functions so the input ORCALegacyPot hands ORCA, and the reading of
  * what ORCA wrote back, can be checked without an ORCA installation.
  */
 
@@ -32,6 +32,7 @@ struct InputSpec {
   int charge = 0;
   int multiplicity = 1;
   int nprocs = 1;
+  /// `%maxcore` in MB; 0 leaves the line out.
   int maxcore_mb = 0;
   /// Name of the .gbw ORCA reads its starting orbitals from, relative to
   /// the run directory. Empty starts from ORCA's own guess.

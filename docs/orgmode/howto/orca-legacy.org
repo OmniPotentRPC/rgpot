@@ -1,0 +1,346 @@
+# Copyright 2023--present rgpot developers
+#+TITLE: ORCA through a child process (deprecated)
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* ORCA through a child process (deprecated)
+
+=ORCALegacyPot= is the in-tree runner that =ORCAPot= replaces.
+It is kept for one release behind =with_orca_legacy=; new code should use
+=ORCAPot=, which loads the orcac library (see
+[[file:orca.org][ORCA through liborcac]]).
+
+=ORCALegacyPot= gives ORCA the normal rgpot =Potential= interface.
+Each force call runs one ORCA energy and gradient and returns them in eV and
+eV/Angstrom.
+The class is in =CppCore/rgpot/ORCAPot/= and reports =PotType::ORCA_LEGACY=.
+It starts the =orca= executable as a child process, so rgpot links no ORCA
+library and carries no ORCA code.
+You install ORCA yourself and accept its license.
+
+ORCA is described in Neese, WIREs Computational Molecular Science 2, 73-78
+(2012), [[https://doi.org/10.1002/wcms.81][doi:10.1002/wcms.81]].
+The program paper is Neese, Wennmohs, Becker and Riplinger, The Journal of
+Chemical Physics 152, 224108 (2020),
+[[https://doi.org/10.1063/5.0004608][doi:10.1063/5.0004608]].
+The version 5 update is Neese, WIREs Computational Molecular Science 12, e1606
+(2022), [[https://doi.org/10.1002/wcms.1606][doi:10.1002/wcms.1606]].
+The version 6 update is Neese, WIREs Computational Molecular Science 15, e70019
+(2025), [[https://doi.org/10.1002/wcms.70019][doi:10.1002/wcms.70019]].
+[[file:../reference/cpp_backends.org][The backend reference]] lists the class
+members.
+
+** Build
+
+=ORCALegacyPot= is off by default.
+Meson turns it on with =-Dwith_orca_legacy=true= and CMake with
+=-DRGPOT_WITH_ORCA_LEGACY=ON=.
+It needs =fork= and =exec=, so enabling it on Windows is a configure error.
+The option does not look for ORCA.
+The executable is found when an =ORCALegacyPot= is constructed, so a build made
+on a machine without ORCA runs wherever ORCA is installed.
+
+#+attr_rgpot: syntax configures a build with the ORCA frontend
+#+begin_src bash
+meson setup bbdir -Dwith_orca_legacy=true -Dwith_tests=true
+meson test -C bbdir ORCALegacyPotTest
+#+end_src
+
+** Configuration
+
+=ORCALegacyConfig= holds every choice.
+There is no default method or basis, and no ORCA path is built in.
+
+| Field          | Meaning                                                            |
+|----------------+--------------------------------------------------------------------|
+| =executable=   | A path to =orca=, or a bare name; empty looks up =orca= on =PATH=  |
+| =method=       | The ORCA method keyword; required                                  |
+| =basis=        | The basis set keyword; empty for a composite method                |
+| =keywords=     | Further simple-input keywords, such as =TightSCF D4=               |
+| =charge=       | Total charge, default 0                                            |
+| =multiplicity= | Spin multiplicity 2S + 1, default 1                                |
+| =nprocs=       | Processes for =%pal=, default 1                                    |
+| =maxcore_mb=   | =%maxcore=, MB per process, default 1024; 0 leaves it out          |
+| =restart=      | Start from the previous orbitals, default false                    |
+| =scratch_dir=  | Where the working directory is made; empty uses the temp directory |
+| =keep_files=   | Keep the working directory after the instance is destroyed         |
+| =timeout_s=    | Seconds for one orca run; default 3600, and 0 waits with no limit  |
+
+The default of =maxcore_mb=, 1024 MB, is rgpot's choice and not ORCA's.
+A =maxcore_mb= of 0 leaves =%maxcore= out of the input, so ORCA's own default
+applies.
+That default is 4096 MB in ORCA 6.1, per section 2.1.3 of the
+[[https://www.faccts.de/docs/orca/6.1/manual/contents/essentialelements/input.html][input chapter of the ORCA 6.1 manual]];
+earlier versions used less.
+A negative =maxcore_mb= throws =std::invalid_argument= from the constructor.
+
+The executable is the =executable= field when it is set, and otherwise the first
+=orca= in the directories of =PATH=.
+A bare name in =executable= is looked up the same way, and symlinks to
+executable regular files are accepted.
+ORCA starts its own MPI processes when =nprocs= is above 1, and it must then be
+started by its full path, so =ORCALegacyPot= always runs an absolute path.
+=ORCALegacyPot::executablePath()= reports the path as named or found on =PATH=.
+The constructor resolves its symlinks, and every call runs that resolved file,
+which =ORCALegacyPot::resolvedExecutablePath()= reports.
+Before and after each run the path is resolved again and the size, modification
+time, change time, device, inode and content hash of the file are compared with
+those the constructor read.
+The change time moves on every write, rename or change of attributes and its
+owner cannot set it back, so a binary rewritten in place at the same size, with
+its modification time restored, no longer matches; the content hash catches such
+a rewrite as well.
+The check before the run comes ahead of anything else in the run directory.
+When they differ there, as after a symlink is retargeted or the binary is
+replaced, the call throws =ORCAError= before it removes the files of the last
+call, writes an input or runs anything.
+When they differ only after the run, ORCA has already run: the call throws
+=ORCAError= instead of returning or caching the result, and the orbitals of that
+run are not kept.
+Either way, a new =ORCALegacyPot= is needed to run the new file.
+On Linux, FreeBSD and NetBSD the call opens the file once, checks that open
+file, and runs it through its descriptor with =fexecve=.
+A file swapped in after the check is then never run.
+A script is read by its interpreter through =/dev/fd=, so it sees =$0= as a path
+there.
+Elsewhere, as on macOS, or when the kernel cannot run a descriptor, the child
+falls back to =execv= on the path.
+A swap between the check and the exec is then caught only by the check after the
+run.
+
+** Time limit
+
+The =orca= process is the leader of a new process group.
+=timeout_s= is how many seconds that process may run.
+The default is =ORCALegacyConfig::kDefaultTimeout=, 3600 seconds, one hour.
+Zero waits until the process ends, for a single point that needs longer.
+When the limit passes, the group is sent SIGTERM.
+If any process in the group is still alive two seconds later, the group is sent
+SIGKILL even if the leader has already exited.
+The child is reaped and the group is waited on, and the call throws =ORCAError=.
+Children that stay in the group, including ORCA's MPI ranks, are stopped with
+it.
+A =timeout_s= that is negative or not finite throws =std::invalid_argument= from
+the constructor.
+=paramsKey()= leaves the limit out, because it does not change the energy.
+
+#+attr_rgpot: fragment needs -Dwith_orca_legacy=true and ORCA installed
+#+begin_src cpp
+#include "rgpot/ORCAPot/ORCALegacyPot.hpp"
+
+#include <array>
+#include <vector>
+
+rgpot::ORCALegacyConfig cfg;
+cfg.method = "PBE";
+cfg.basis = "def2-SVP";
+cfg.keywords = "TightSCF";
+cfg.nprocs = 4;
+cfg.maxcore_mb = 2000;
+
+rgpot::ORCALegacyPot pot(cfg);
+std::vector<int> z = {8, 1, 1};
+std::vector<double> xyz = {0.0, 0.0, 0.1173, 0.0, 0.7572, -0.4692,
+                           0.0, -0.7572, -0.4692};
+rgpot::ForceOut out{};
+std::vector<double> forces(xyz.size());
+out.F = forces.data();
+pot.forceImpl(rgpot::ForceInput{z.size(), xyz.data(), z.data(), nullptr}, &out);
+#+end_src
+
+The input of that call is:
+
+#+attr_rgpot: output ORCA input written by the call above
+#+begin_example
+! PBE def2-SVP TightSCF EnGrad
+%maxcore 2000
+%pal nprocs 4 end
+%scf ConvForced true end
+* xyz 0 1
+O  0.000000000000 0.000000000000 0.117300000000
+H  0.000000000000 0.757200000000 -0.469200000000
+H  0.000000000000 -0.757200000000 -0.469200000000
+*
+#+end_example
+
+** SCF convergence
+
+The input carries =%scf ConvForced true end=.
+Section 2.6.1 of the
+[[https://www.faccts.de/docs/orca/6.1/manual/contents/essentialelements/scf.html][SCF chapter of the ORCA 6.1 manual]]
+describes =ConvForced= as the switch that breaks the run when the SCF misses its
+convergence criteria.
+Without it, a gradient job that ends near SCF convergence goes on to the
+gradient.
+=ORCALegacyPot= also reads the output of every call.
+A call whose output holds =SCF NOT CONVERGED= or =SCF not fully converged=, with
+case ignored, throws =ORCAError=, even when ORCA exited with status 0 and wrote
+an =.engrad=, so the gradient of an unconverged SCF is never returned.
+The check runs before the exit status is looked at, so the message names the SCF
+when =ConvForced= stopped the run.
+There is no switch to accept the gradient of an unconverged SCF.
+
+** Result-cache key
+
+=paramsKey()= feeds the key of the rgpot result cache.
+It hashes =method=, =basis=, =keywords=, =charge=, =multiplicity=, =restart=,
+the executable path with symlinks resolved, and the size, modification time,
+change time, device, inode and content hash of that file.
+The constructor reads them once, so they stay fixed for the life of the
+instance.
+Each lookup resolves and reads the executable again, and once it no longer
+matches, the key matches no entry an unchanged instance writes, so no result of
+the old file is served for the new one.
+A symlink and its target share cached results.
+Two installations, a binary replaced in place, two charges or two multiplicities
+do not.
+
+With =restart= on, =ORCALegacyPot= does not use a result cache it is given.
+A call served from the cache runs no ORCA and leaves the orbitals of an earlier
+call in place, so the next call would start from a guess that depends on which
+geometries happened to be cached.
+
+** Box
+
+ORCA has no periodic boundary conditions, so a box is only padding around the
+cluster, and the atoms go to ORCA where they are.
+A force call accepts no box, an all-zero box, or a cell in which every pair of
+atoms is its own nearest periodic image.
+An image shifted by the lattice vector L is closer than the atom itself exactly
+when the atoms span more than half the length of L along it, so the check runs
+over the three cell vectors and every other nonzero lattice vector short enough
+to matter.
+In a skewed cell a combination such as =a1 - a2= can be far shorter than any
+cell vector, and a cluster whose fractional span is below one half along each
+cell vector can still have a closer image.
+=RgpotCalculator= in =rgpot.ase= pads a cluster into a cube of at least 100
+Angstrom and at least twice the cluster extent without moving the atoms, and
+that box passes even for a cluster that sits across the origin.
+A box with a closer image throws =std::invalid_argument= naming the cell vector
+or lattice vector, the span and the length.
+A singular box, a cell too skewed to check, a non-finite box entry and, with a
+box, a non-finite position throw it too.
+So does a box for which the bound on the lattice coefficients to try is not
+finite or out of range, which is checked before that bound is converted to an
+integer.
+
+** Units
+
+rgpot positions are Angstrom, which is also the unit of an ORCA =* xyz= block,
+so the coordinates are written as they are.
+The =.engrad= file holds the energy in Hartree and the gradient in Hartree per
+bohr.
+=ORCALegacyPot= multiplies the energy by =units::HARTREE_TO_EV= and the gradient
+by =units::NEG_GRAD_TO_FORCE=, both from =CppCore/rgpot/units.hpp=.
+The forces are the negative gradient in eV/Angstrom.
+The variance is 0 and no stress is written.
+
+** Restarting from the previous wavefunction
+
+Every call starts from ORCA's own guess unless =restart= is set, so the result
+of a call does not depend on the calls before it.
+With =restart= on, the converged orbitals of one call start the next.
+After a call, ORCA's =rgpot_orca.gbw= is copied to =rgpot_orca_guess.gbw=.
+The next input then carries =%moinp "rgpot_orca_guess.gbw"= and =MORead= on its
+=!= line.
+The copy has a name of its own because ORCA overwrites its own =.gbw=, and an
+input that names the file it is about to write would lose the guess.
+
+Even with =restart= on, the call starts from ORCA's own guess when
+
+- no =.gbw= exists, because ORCA wrote none or the copy was deleted,
+- the atomic numbers differ from those of the call that made the orbitals,
+- the previous call failed, or
+- =reset()= was called.
+
+=reusedWavefunction()= tells whether the last successful call read orbitals.
+A restart helps along a path of nearby geometries.
+After a large jump, call =reset()= so the guess does not pull an SCF into the
+wrong state.
+
+** Working directory
+
+Every instance makes a directory of its own with =mkdtemp= under =scratch_dir=,
+or under the system temporary directory when that is empty.
+It holds =rgpot_orca.inp=, =rgpot_orca.out=,
+=rgpot_orca.err=, =rgpot_orca.engrad=, the =.gbw= files and whatever else ORCA
+writes.
+Two instances never share a directory, so two instances may run at once, each
+from its own thread.
+The directory is removed when the instance is destroyed, unless =keep_files= is
+set.
+=runDirectory()= reports it.
+Before each run the old =.engrad= and =.gbw= are deleted, so a result of an
+earlier call cannot pass for this one.
+Any removal failure other than a missing file throws =ORCAError=.
+Extra file descriptors above 2 are closed before =exec=, and inputs and
+=.engrad= files are formatted and parsed independently of the process locale.
+
+** Errors
+
+An error in the run throws =rgpot::ORCAError=, a =std::runtime_error=.
+That covers a stale =.engrad= or =.gbw= that cannot be removed, a missing
+executable, a process that cannot start, a run past =timeout_s=, a process
+killed by a signal, an SCF that did not converge, a non-zero exit status, a
+missing or malformed =.engrad=, an =.engrad= for other atoms, and an energy or
+gradient that is not finite.
+The message names the input file and ends with the last 2048 bytes of the
+standard error and of the output file, where ORCA reports an SCF failure or an
+input mistake.
+A failed call also drops the stored orbitals, whatever the failure, so the next
+call starts from ORCA's own guess.
+
+Input the caller got wrong throws =std::invalid_argument= instead.
+That is an empty method, a line break in a keyword field, an =nprocs= or
+=multiplicity= below 1, a negative =maxcore_mb=, a =timeout_s= that is negative
+or not finite, a box with a periodic image closer than the atom itself, an
+atomic number outside 1 to 118, or a charge and multiplicity that the electron
+count cannot hold.
+An executable that changed since the instance was made, or while it ran, throws
+=ORCAError=.
+
+** Limits
+
+- ORCA has no periodic boundary conditions.
+  =caps().periodic= is false, and a box is taken only as padding, as described
+  under Box.
+- No stress is written.
+- The potential is per instance: =caps().reentrancy= is
+  =Reentrancy::PerInstance=.
+  Give each thread its own =ORCALegacyPot=.
+- Each call starts a process, so a call costs the ORCA start-up time on top of
+  the SCF.
+  The class suits a few hundred to a few thousand single points.
+- There is no =potserv= backend, engine plugin or Python class for it yet.
+
+** Tests
+
+CI has no ORCA.
+=ORCALegacyPotTest= writes a small fake =orca= shell script into a temporary
+directory.
+The script checks the keyword line, =%maxcore= or its absence,
+=%scf ConvForced=, the coordinates, closed extra file descriptors and the
+=MORead= and =%moinp= lines of the input it is given, keeps a copy of each input
+and the path it was started as, writes an =.engrad= of known numbers and a
+=.gbw= that names the call, and can fail, sleep past =timeout_s= with a child
+that ignores SIGTERM (both when the leader stays alive and when the leader exits
+on SIGTERM), write nothing, write NaN, write a short file or kill itself.
+Four modes print SCF report lines in ORCA's wording; the script writes them, and
+they are not output of an ORCA run.
+The test then checks the unit conversion, the fresh guess by default, the
+restart, the fall-back to a fresh guess, the error paths (including a stale
+=.engrad= that cannot be removed, an input that cannot be written and an
+unconverged SCF), the check of the executable ahead of any change to the run
+directory, the cache key across paths, modification and change times, a binary
+rewritten in place at the same size and modification time, charges and
+multiplicities, symlink executables, a retargeted symlink and a replaced binary
+with and without the result cache, a file swapped in after the check and before
+the exec on Linux, a restart sequence with a result cache, comma-decimal
+locales, the box that =rgpot.ase= builds for a cluster and the rejection of a
+box with a closer image, including skewed cells, and of a box whose image bound
+is not finite or out of range.
+=tests/python/test_ase_orca_box.py= runs =RgpotCalculator= over a non-periodic
+stand-in that applies the same box rule, since =ORCALegacyPot= has no Python
+class.
+One test case runs a real ORCA and is skipped, with the message "orca is not on
+PATH", when =ORCALegacyPot::probeAvailable()= is false.

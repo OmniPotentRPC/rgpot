@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <string>
@@ -25,8 +26,10 @@
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/rpc/MorseConfigure.hpp"
 #include "rgpot/rpc/MullerBrownConfigure.hpp"
+#include "rgpot/rpc/OrcaConfigure.hpp"
 #include "rgpot/rpc/PotentialConfigArm.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+#include "rgpot/units.hpp"
 
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::WithinRel;
@@ -372,4 +375,250 @@ TEST_CASE(
   }
   REQUIRE(pot->config().a == defaults.a);
   REQUIRE(energyAt(*pot) == energyAt(reference));
+}
+
+TEST_CASE("PotentialConfig.orca round-trips at ordinal 31", "[orca][rpc]") {
+  const auto field =
+      capnp::Schema::from<::PotentialConfig>().getFieldByName("orca");
+  REQUIRE(field.getProto().getOrdinal().getExplicit() == 31);
+
+  capnp::MallocMessageBuilder builder;
+  auto orca = builder.initRoot<::PotentialConfig>().initOrca();
+  orca.setMethod("B3LYP");
+  orca.setBasis("def2-SVP");
+  orca.setKeywords("TightSCF D3BJ");
+  orca.setCharge(-1);
+  orca.setMultiplicity(2);
+  orca.setNprocs(4);
+  orca.setMaxcoreMb(2000);
+  orca.setExecutable("/opt/orca/orca");
+  orca.setRestart(true);
+  orca.setTimeoutS(600.0);
+  orca.setScratchDir("/scratch");
+  orca.setKeepFiles(true);
+  const auto words = capnp::messageToFlatArray(builder);
+
+  capnp::FlatArrayMessageReader reader(words.asPtr());
+  const auto cfg = reader.getRoot<::PotentialConfig>();
+  REQUIRE(cfg.which() == ::PotentialConfig::ORCA);
+  REQUIRE(rgpot::rpc::potentialConfigArm(cfg) == "orca");
+  const auto back = rgpot::rpc::orcaConfigFrom(cfg.getOrca());
+  REQUIRE(back.method == "B3LYP");
+  REQUIRE(back.basis == "def2-SVP");
+  REQUIRE(back.keywords == "TightSCF D3BJ");
+  REQUIRE(back.blocks.empty());
+  REQUIRE(back.charge == -1);
+  REQUIRE(back.multiplicity == 2);
+  REQUIRE(back.nprocs == 4);
+  REQUIRE(back.maxcore_mb == 2000);
+  REQUIRE(back.executable == "/opt/orca/orca");
+  REQUIRE(back.guess_policy == rgpot::ORCAConfig::GuessPolicy::MoRead);
+  REQUIRE(back.timeout_s == 600.0);
+  REQUIRE(back.scratch_dir == "/scratch");
+  REQUIRE(back.keep_files);
+
+  orca.setRestart(false);
+  orca.setMaxcoreMb(0);
+  orca.setKeywords("%scf\n  MaxIter 200\nend");
+  const auto verbatim = rgpot::rpc::orcaConfigFrom(orca.asReader());
+  REQUIRE(verbatim.guess_policy == rgpot::ORCAConfig::GuessPolicy::Fresh);
+  REQUIRE(verbatim.maxcore_mb == 0);
+  REQUIRE(verbatim.keywords.empty());
+  REQUIRE(verbatim.blocks == "%scf\n  MaxIter 200\nend");
+}
+
+TEST_CASE("ORCAParams defaults lower to ORCAConfig", "[orca][rpc]") {
+  capnp::MallocMessageBuilder builder;
+  auto cfg = builder.initRoot<::PotentialConfig>();
+  cfg.initOrca();
+  const auto wire = rgpot::rpc::orcaConfigFrom(cfg.asReader().getOrca());
+  const rgpot::ORCAConfig native{};
+  REQUIRE(wire.method == native.method);
+  REQUIRE(wire.basis == native.basis);
+  REQUIRE(wire.keywords == native.keywords);
+  REQUIRE(wire.blocks == native.blocks);
+  REQUIRE(wire.charge == native.charge);
+  REQUIRE(wire.multiplicity == native.multiplicity);
+  REQUIRE(wire.nprocs == native.nprocs);
+  // The schema's restart and maxcoreMb defaults are those of the 3.8.0
+  // ORCAConfig: chained guesses and 1024 MB.
+  REQUIRE(wire.maxcore_mb == 1024);
+  REQUIRE(wire.executable == native.executable);
+  REQUIRE(wire.library == native.library);
+  REQUIRE(wire.guess_policy == rgpot::ORCAConfig::GuessPolicy::MoRead);
+  REQUIRE(wire.timeout_s == native.timeout_s);
+  REQUIRE(wire.scratch_dir == native.scratch_dir);
+  REQUIRE(wire.keep_files == native.keep_files);
+  REQUIRE(wire.fresh_retry == native.fresh_retry);
+}
+
+TEST_CASE("CommonMethodSpec lowers into ORCA keywords and blocks",
+          "[orca][rpc]") {
+  capnp::MallocMessageBuilder builder;
+  auto cfg = builder.initRoot<::PotentialConfig>();
+  auto common = cfg.initCommon();
+  auto xc = common.initXcFunctionals(2);
+  xc.set(0, "GGA_X_PBE");
+  xc.set(1, "GGA_C_PBE");
+  common.setBasisSet("def2-TZVP");
+  common.setCharge(1);
+  common.setSpinMultiplicity(2);
+  common.setScfEnergyToleranceEv(rgpot::units::HARTREE_TO_EV * 1e-8);
+  common.setScfMaxIterations(150);
+  common.setVanDerWaalsMethod("DFT-D3(BJ)");
+  common.setVanDerWaalsS6(0.75);
+  common.setRelativityMethod("ZORA");
+  cfg.initOrca().setKeywords("TightSCF");
+
+  const auto lowered = rgpot::rpc::orcaConfigFrom(cfg.asReader());
+  REQUIRE(lowered.method == "PBE");
+  REQUIRE(lowered.basis == "def2-TZVP");
+  REQUIRE(lowered.charge == 1);
+  REQUIRE(lowered.multiplicity == 2);
+  REQUIRE(lowered.keywords == "D3BJ ZORA TightSCF");
+  const std::string tole = "%scf\n  TolE ";
+  const auto at = lowered.blocks.find(tole);
+  REQUIRE(at != std::string::npos);
+  REQUIRE(std::stod(lowered.blocks.substr(at + tole.size())) ==
+          Catch::Approx(1e-8));
+  REQUIRE_THAT(lowered.blocks, ContainsSubstring("\n  MaxIter 150\nend"));
+  REQUIRE_THAT(lowered.blocks, ContainsSubstring("%method\n  D3S6 0.75\nend"));
+}
+
+TEST_CASE("the orca arm wins over CommonMethodSpec", "[orca][rpc]") {
+  capnp::MallocMessageBuilder builder;
+  auto cfg = builder.initRoot<::PotentialConfig>();
+  auto common = cfg.initCommon();
+  common.initXcFunctionals(1).set(0, "B3LYP");
+  common.setBasisSet("def2-SVP");
+  common.setSpinMultiplicity(3);
+  auto orca = cfg.initOrca();
+  orca.setMethod("PBE0");
+  orca.setMultiplicity(1);
+  orca.setBasis("def2-TZVP");
+  const auto lowered = rgpot::rpc::orcaConfigFrom(cfg.asReader());
+  REQUIRE(lowered.method == "PBE0");
+  REQUIRE(lowered.basis == "def2-TZVP");
+  // The arm's multiplicity equals its default, so the overlay's stands.
+  REQUIRE(lowered.multiplicity == 3);
+}
+
+TEST_CASE("CommonMethodSpec refuses what ORCA cannot take", "[orca][rpc]") {
+  auto refused = [](auto &&fill) {
+    capnp::MallocMessageBuilder builder;
+    auto cfg = builder.initRoot<::PotentialConfig>();
+    fill(cfg.initCommon());
+    cfg.initOrca().setMethod("PBE");
+    REQUIRE_THROWS_AS(rgpot::rpc::orcaConfigFrom(cfg.asReader()),
+                      std::invalid_argument);
+  };
+  refused([](::CommonMethodSpec::Builder c) { c.setBasisSet("planewave"); });
+  refused([](::CommonMethodSpec::Builder c) { c.setPlanewaveCutoffEv(400.0); });
+  refused([](::CommonMethodSpec::Builder c) {
+    auto k = c.initKMesh(3);
+    k.set(0, 2);
+    k.set(1, 2);
+    k.set(2, 2);
+  });
+  refused([](::CommonMethodSpec::Builder c) {
+    c.getSmearing().setKind(::CommonMethodSpec::Smearing::Kind::GAUSSIAN);
+  });
+  refused([](::CommonMethodSpec::Builder c) {
+    auto xc = c.initXcFunctionals(2);
+    xc.set(0, "GGA_X_RPBE");
+    xc.set(1, "GGA_C_PBE");
+  });
+  refused([](::CommonMethodSpec::Builder c) { c.setVanDerWaalsMethod("MBD"); });
+  refused([](::CommonMethodSpec::Builder c) { c.setRelativityMethod("RECP"); });
+
+  capnp::MallocMessageBuilder builder;
+  auto cfg = builder.initRoot<::PotentialConfig>();
+  cfg.initCommon();
+  cfg.initOrca().setMethod("PBE");
+  REQUIRE_NOTHROW(rgpot::rpc::orcaConfigFrom(cfg.asReader()));
+}
+
+namespace {
+
+void putEnv(const char *name, const char *value) {
+#ifdef _WIN32
+  _putenv_s(name, value ? value : "");
+#else
+  if (value) {
+    setenv(name, value, 1);
+  } else {
+    unsetenv(name);
+  }
+#endif
+}
+
+struct ScopedEnv {
+  const char *name;
+  std::string previous;
+  bool had = false;
+  ScopedEnv(const char *n, const char *value) : name(n) {
+    if (const char *v = std::getenv(n)) {
+      had = true;
+      previous = v;
+    }
+    putEnv(name, value);
+  }
+  ~ScopedEnv() { putEnv(name, had ? previous.c_str() : nullptr); }
+  ScopedEnv(const ScopedEnv &) = delete;
+  ScopedEnv &operator=(const ScopedEnv &) = delete;
+};
+
+} // namespace
+
+TEST_CASE("configure with orca keeps the pot when liborcac is absent",
+          "[orca][rpc]") {
+  capnp::MallocMessageBuilder builder;
+  auto orca = builder.initRoot<::PotentialConfig>().initOrca();
+  orca.setMethod("B3LYP");
+  rgpot::rpc::OrcaConfigureResult applied;
+  {
+    // ORCAParams names no library, so ORCAC_LIBRARY names the missing one;
+    // a set RGPOT_ORCAC_ENGINE would be tried after it.
+    ScopedEnv library("ORCAC_LIBRARY", "no-such-dir/liborcac.so");
+    ScopedEnv engine("RGPOT_ORCAC_ENGINE", nullptr);
+    applied = rgpot::rpc::configureOrca(
+        builder.getRoot<::PotentialConfig>().asReader());
+  }
+  REQUIRE_FALSE(applied.ok);
+  REQUIRE(applied.replacement == nullptr);
+  REQUIRE_THAT(applied.message, ContainsSubstring("liborcac not loaded"));
+}
+
+TEST_CASE("configure with orca rejects a configuration that cannot run",
+          "[orca][rpc]") {
+  capnp::MallocMessageBuilder builder;
+  auto orca = builder.initRoot<::PotentialConfig>().initOrca();
+  orca.setMethod("B3LYP");
+  orca.setMultiplicity(0);
+  auto applied = rgpot::rpc::configureOrca(
+      builder.getRoot<::PotentialConfig>().asReader());
+  REQUIRE_FALSE(applied.ok);
+  REQUIRE_THAT(applied.message, ContainsSubstring("rejected"));
+  REQUIRE_THAT(applied.message, ContainsSubstring("multiplicity"));
+}
+
+TEST_CASE("configure on the ORCA backend refuses other arms", "[orca][rpc]") {
+  capnp::MallocMessageBuilder builder;
+  builder.initRoot<::PotentialConfig>().initMorse();
+  auto applied = rgpot::rpc::configureOrca(
+      builder.getRoot<::PotentialConfig>().asReader());
+  REQUIRE_FALSE(applied.ok);
+  REQUIRE_THAT(applied.message, ContainsSubstring("morse"));
+
+  capnp::MallocMessageBuilder none;
+  none.initRoot<::PotentialConfig>();
+  REQUIRE(rgpot::rpc::configureOrca(
+              none.getRoot<::PotentialConfig>().asReader())
+              .ok);
+
+  capnp::MallocMessageBuilder common_only;
+  common_only.initRoot<::PotentialConfig>().initCommon();
+  REQUIRE_FALSE(rgpot::rpc::configureOrca(
+                    common_only.getRoot<::PotentialConfig>().asReader())
+                    .ok);
 }

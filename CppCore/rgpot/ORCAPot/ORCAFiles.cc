@@ -23,7 +23,7 @@ namespace {
 
 void rejectLineBreak(const std::string &field, const char *name) {
   if (field.find_first_of("\r\n") != std::string::npos) {
-    throw std::invalid_argument(std::string("ORCAPot: ") + name +
+    throw std::invalid_argument(std::string("ORCALegacyPot: ") + name +
                                 " must not contain a line break");
   }
 }
@@ -37,13 +37,13 @@ void appendWord(std::string &line, const std::string &word) {
 }
 
 [[noreturn]] void malformed(const std::string &what) {
-  throw std::runtime_error("ORCAPot: malformed .engrad file: " + what);
+  throw std::runtime_error("ORCALegacyPot: malformed .engrad file: " + what);
 }
 
 locale_t cLocale() {
   static const locale_t loc = ::newlocale(LC_NUMERIC_MASK, "C", nullptr);
   if (loc == nullptr) {
-    throw std::runtime_error("ORCAPot: could not create the C locale");
+    throw std::runtime_error("ORCALegacyPot: could not create the C locale");
   }
   return loc;
 }
@@ -72,7 +72,7 @@ long parseInteger(const std::string &token, const char *what) {
 
 std::string elementSymbol(int z) {
   if (z < 1 || z > static_cast<int>(elements::symbols.size())) {
-    throw std::invalid_argument("ORCAPot: atomic number " + std::to_string(z) +
+    throw std::invalid_argument("ORCALegacyPot: atomic number " + std::to_string(z) +
                                 " has no element symbol");
   }
   return std::string(elements::symbols[static_cast<std::size_t>(z) - 1]);
@@ -97,10 +97,13 @@ std::string renderInput(const InputSpec &spec, std::size_t n_atoms,
   text += '\n';
   std::ostringstream out;
   out.imbue(std::locale::classic());
-  out << "%maxcore " << spec.maxcore_mb << '\n';
+  if (spec.maxcore_mb > 0) {
+    out << "%maxcore " << spec.maxcore_mb << '\n';
+  }
   if (spec.nprocs > 1) {
     out << "%pal nprocs " << spec.nprocs << " end\n";
   }
+  out << "%scf ConvForced true end\n";
   if (!spec.moinp.empty()) {
     out << "%moinp \"" << spec.moinp << "\"\n";
   }

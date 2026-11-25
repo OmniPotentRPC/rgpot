@@ -3,635 +3,560 @@
 
 #include "rgpot/ORCAPot/ORCAPot.hpp"
 
-#include "rgpot/ORCAPot/ORCAFiles.hpp"
-#include "rgpot/ParamHash.hpp"
+#include "rgpot/ORCAPot/ORCAGuards.hpp"
+#include "rgpot/ORCAPot/orcac.h"
+#include "rgpot/abi/DynLib.hpp"
+#include "rgpot/abi/EngineDlopen.hpp"
+#include "rgpot/engine/Sha256.hpp"
 #include "rgpot/units.hpp"
 
 #include <algorithm>
-#include <cerrno>
-#include <chrono>
 #include <cmath>
-#include <csignal>
-#include <cstdlib>
+#include <cstddef>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <locale>
-#include <numeric>
-#include <sstream>
-#include <system_error>
-
-#include <fcntl.h>
-#include <sys/stat.h>
-#if defined(__linux__)
-#include <sys/syscall.h>
-#endif
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <time.h>
-#include <unistd.h>
+#include <mutex>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 namespace rgpot {
 
-namespace fs = std::filesystem;
-
 namespace {
 
-constexpr const char *kBase = "rgpot_orca";
-constexpr const char *kGuessName = "rgpot_orca_guess.gbw";
-// How much of ORCA's stderr and output file an error message carries.
-constexpr std::size_t kTailBytes = 2048;
-// After the timeout, SIGTERM is sent to the process group. A rank that can
-// still exit is given this long before SIGKILL.
-constexpr double kTermGraceSeconds = 2.0;
-// A process stuck in uninterruptible sleep can outlive SIGKILL. The wait
-// stops here and the caller is told, instead of blocking.
-constexpr double kReapGraceSeconds = 5.0;
+static_assert(sizeof(OrcaCConfig) >= ORCAC_CONFIG_MIN_SIZE);
+static_assert(sizeof(OrcaCResult) >= ORCAC_RESULT_MIN_SIZE);
 
-std::string runFile(const std::string &dir, const char *suffix) {
-  return (fs::path(dir) / (std::string(kBase) + suffix)).string();
+using IntFn = int (*)(void);
+using VersionFn = const char *(*)(void);
+using ConfigInitFn = int (*)(OrcaCConfig *, size_t);
+using CreateFn = int (*)(const OrcaCConfig *, OrcaCSession **, char *,
+                         size_t);
+using ConfigureFn = int (*)(OrcaCSession *, const OrcaCConfig *);
+using EnergyGradientFn = int (*)(OrcaCSession *, int, const double *,
+                                 const int *, uint32_t, double *, double *,
+                                 OrcaCResult *);
+using CancelFn = int (*)(OrcaCSession *);
+using LastErrorFn = const char *(*)(const OrcaCSession *);
+using DestroyFn = void (*)(OrcaCSession *);
+using StatusNameFn = const char *(*)(int);
+using ProbeExecutableFn = int (*)(const OrcaCConfig *, char *, size_t);
+
+constexpr std::size_t kPathCapacity = 4096;
+
+/// liborcac opened and checked against the vendored orcac.h.
+struct OrcacLibrary {
+  DynLib lib;
+  std::string path;
+  std::string error;
+  IntFn c_abi_version = nullptr;
+  IntFn abi_version = nullptr;
+  VersionFn version = nullptr;
+  ConfigInitFn config_init = nullptr;
+  CreateFn create = nullptr;
+  ConfigureFn configure = nullptr;
+  EnergyGradientFn energy_gradient = nullptr;
+  CancelFn cancel = nullptr;
+  LastErrorFn last_error = nullptr;
+  DestroyFn destroy = nullptr;
+  StatusNameFn status_name = nullptr;
+  IntFn available = nullptr;
+  ProbeExecutableFn probe_executable = nullptr;
+  bool loaded = false;
+};
+
+std::string join(const std::vector<std::string> &items) {
+  std::string out;
+  for (const auto &item : items) {
+    out += (out.empty() ? "" : ", ") + item;
+  }
+  return out;
 }
 
-bool isExecutableFile(const fs::path &path) {
-  struct stat st {};
-  if (::stat(path.c_str(), &st) != 0) {
-    return false;
-  }
-  return S_ISREG(st.st_mode) && ::access(path.c_str(), X_OK) == 0;
+std::string bounded(const char *text, std::size_t cap) {
+  return text ? std::string(text, strnlen(text, cap)) : std::string{};
 }
 
-/// Absolute path of the executable @p requested names, or empty. A name with
-/// a directory part is taken as it stands, a bare name is looked up on PATH.
-std::string findExecutable(const std::string &requested) {
-  if (requested.find('/') != std::string::npos) {
-    std::error_code ec;
-    const fs::path path = fs::absolute(requested, ec);
-    return (!ec && isExecutableFile(path)) ? path.string() : std::string();
+/// The name orcac.h gives a status; the library's own table is not trusted
+/// for codes this header defines.
+std::string status_name(int status) {
+  switch (status) {
+  case ORCAC_OK:
+    return "ORCAC_OK";
+  case ORCAC_E_INVALID:
+    return "ORCAC_E_INVALID";
+  case ORCAC_E_ERROR:
+    return "ORCAC_E_ERROR";
+  case ORCAC_E_UNSUPPORTED:
+    return "ORCAC_E_UNSUPPORTED";
+  case ORCAC_E_TIMEOUT:
+    return "ORCAC_E_TIMEOUT";
+  case ORCAC_E_NOT_CONVERGED:
+    return "ORCAC_E_NOT_CONVERGED";
+  case ORCAC_E_BUSY:
+    return "ORCAC_E_BUSY";
+  case ORCAC_E_NOT_FOUND:
+    return "ORCAC_E_NOT_FOUND";
+  case ORCAC_E_CANCELLED:
+    return "ORCAC_E_CANCELLED";
+  default:
+    return "status " + std::to_string(status);
   }
-  const std::string name = requested.empty() ? "orca" : requested;
-  const char *search = std::getenv("PATH");
-  if (search == nullptr) {
-    return {};
+}
+
+template <typename Fn>
+void need(OrcacLibrary &b, Fn &slot, const char *name,
+          std::vector<std::string> &missing) {
+  slot = b.lib.sym_optional<Fn>(name);
+  if (!slot) {
+    missing.emplace_back(name);
   }
-  std::istringstream entries(search);
-  std::string dir;
-  while (std::getline(entries, dir, ':')) {
-    if (dir.empty()) {
-      continue;
-    }
-    std::error_code ec;
-    const fs::path path = fs::absolute(fs::path(dir) / name, ec);
-    if (!ec && isExecutableFile(path)) {
-      return path.string();
-    }
+}
+
+/// Empty when the opened library matches orcac.h, else the reason. Only the
+/// version calls, orcac_config_init and a NULL-session
+/// orcac_energy_gradient run here: no session is made and nothing is
+/// evaluated.
+std::string handshake(OrcacLibrary &b) {
+  const std::string at = "liborcac at " + b.path;
+  std::vector<std::string> missing;
+  need(b, b.c_abi_version, "orcac_c_abi_version", missing);
+  need(b, b.abi_version, "orcac_abi_version", missing);
+  if (!missing.empty()) {
+    return at + " lacks " + join(missing);
+  }
+  const int c_abi = b.c_abi_version();
+  if (c_abi != RGPOT_ORCAC_C_ABI_VERSION) {
+    return at + " reports C ABI version " + std::to_string(c_abi) +
+           ", but rgpot was built against " +
+           std::to_string(RGPOT_ORCAC_C_ABI_VERSION);
+  }
+  const int abi = b.abi_version();
+  if (abi != ORCAC_ABI_VERSION) {
+    return at + " reports ABI version " + std::to_string(abi) +
+           ", but rgpot was built against " +
+           std::to_string(ORCAC_ABI_VERSION);
+  }
+
+  need(b, b.version, "orcac_version", missing);
+  need(b, b.config_init, "orcac_config_init", missing);
+  need(b, b.create, "orcac_create", missing);
+  need(b, b.configure, "orcac_configure", missing);
+  need(b, b.energy_gradient, "orcac_energy_gradient", missing);
+  need(b, b.cancel, "orcac_cancel", missing);
+  need(b, b.last_error, "orcac_last_error", missing);
+  need(b, b.destroy, "orcac_destroy", missing);
+  need(b, b.status_name, "orcac_status_name", missing);
+  need(b, b.available, "orcac_available", missing);
+  need(b, b.probe_executable, "orcac_probe_executable", missing);
+  if (!missing.empty()) {
+    return at + " lacks " + join(missing);
+  }
+
+  OrcaCConfig cfg{};
+  const int st = b.config_init(&cfg, sizeof(cfg));
+  if (st != ORCAC_OK) {
+    return at + ": orcac_config_init returned " + status_name(st);
+  }
+  if (cfg.struct_size < ORCAC_CONFIG_MIN_SIZE ||
+      cfg.struct_size > sizeof(cfg)) {
+    return at + " reports an OrcaCConfig struct_size of " +
+           std::to_string(cfg.struct_size) + "; ABI 1 needs " +
+           std::to_string(ORCAC_CONFIG_MIN_SIZE) + " to " +
+           std::to_string(sizeof(cfg));
+  }
+  if (cfg.magic != ORCAC_CONFIG_MAGIC || cfg.version < 1u ||
+      cfg.version > ORCAC_CONFIG_VERSION) {
+    return at + " fills OrcaCConfig with magic " + std::to_string(cfg.magic) +
+           " and version " + std::to_string(cfg.version) +
+           "; rgpot's orcac.h expects " + std::to_string(ORCAC_CONFIG_MAGIC) +
+           " and 1 to " + std::to_string(ORCAC_CONFIG_VERSION);
+  }
+
+  OrcaCResult meta{};
+  meta.struct_size = sizeof(meta);
+  const int probed = b.energy_gradient(nullptr, 0, nullptr, nullptr, 0,
+                                       nullptr, nullptr, &meta);
+  if (probed != ORCAC_E_INVALID) {
+    return at + " answers orcac_energy_gradient without a session with " +
+           status_name(probed) + " instead of ORCAC_E_INVALID";
+  }
+  if (meta.struct_size < ORCAC_RESULT_MIN_SIZE ||
+      meta.struct_size > sizeof(meta)) {
+    return at + " reports an OrcaCResult struct_size of " +
+           std::to_string(meta.struct_size) + "; ABI 1 needs " +
+           std::to_string(ORCAC_RESULT_MIN_SIZE) + " to " +
+           std::to_string(sizeof(meta));
   }
   return {};
 }
 
-void rejectPeriodicBox(const double *box) {
-  if (box == nullptr) {
-    return;
-  }
-  for (int k = 0; k < 9; ++k) {
-    if (box[k] != 0.0) {
-      throw std::invalid_argument(
-          "ORCAPot: ORCA has no periodic boundary conditions; pass an "
-          "all-zero box for an isolated system");
-    }
-  }
-}
-
-void checkSpin(const ORCAConfig &config, const std::vector<int> &numbers) {
-  const long protons = std::accumulate(numbers.begin(), numbers.end(), 0L);
-  const long electrons = protons - config.charge;
-  const long unpaired = static_cast<long>(config.multiplicity) - 1;
-  if (electrons < 0 || electrons < unpaired ||
-      (electrons - unpaired) % 2 != 0) {
-    throw std::invalid_argument(
-        "ORCAPot: charge " + std::to_string(config.charge) +
-        " and multiplicity " + std::to_string(config.multiplicity) +
-        " are impossible for " + std::to_string(electrons) + " electrons");
-  }
-}
-
-int openAbove(int fd) {
-  // The child maps these onto 0, 1 and 2, so keep them clear of those.
-  if (fd > 2) {
-    return fd;
-  }
-  const int moved = ::fcntl(fd, F_DUPFD_CLOEXEC, 3);
-  ::close(fd);
-  return moved;
-}
-
-struct ChildStatus {
-  bool exited = false;
-  int exit_code = 0;
-  int signal = 0;
-  std::string problem; // the process could not be started or waited for
-};
-
-enum class WaitKind { Done, Timeout, Failed };
-
-void sleepSeconds(double seconds) {
-  if (!(seconds > 0.0)) {
-    return;
-  }
-  struct timespec req;
-  req.tv_sec = static_cast<time_t>(seconds);
-  const double frac = seconds - static_cast<double>(req.tv_sec);
-  req.tv_nsec = static_cast<long>(frac * 1.0e9);
-  if (req.tv_nsec < 0) {
-    req.tv_nsec = 0;
-  }
-  if (req.tv_nsec > 999999999L) {
-    req.tv_nsec = 999999999L;
-  }
-  while (::nanosleep(&req, &req) < 0 && errno == EINTR) {
-  }
-}
-
-/// @p budget below zero waits without a limit. A still-running child is
-/// Timeout once the budget has passed. EINTR retries the wait and the sleep.
-WaitKind waitChild(pid_t pid, int *wait_status, double budget,
-                   std::string *problem) {
-  using clock = std::chrono::steady_clock;
-  const bool forever = budget < 0.0;
-  const auto deadline =
-      forever ? clock::time_point::max()
-              : clock::now() + std::chrono::duration<double>(budget);
-  for (;;) {
-    pid_t got;
-    do {
-      got = ::waitpid(pid, wait_status, WNOHANG);
-    } while (got < 0 && errno == EINTR);
-    if (got == pid) {
-      return WaitKind::Done;
-    }
-    if (got < 0) {
-      *problem = std::string("waitpid failed: ") + std::strerror(errno);
-      return WaitKind::Failed;
-    }
-    const auto now = clock::now();
-    if (!forever && now >= deadline) {
-      return WaitKind::Timeout;
-    }
-    double pause = 0.05;
-    if (!forever) {
-      const double left = std::chrono::duration<double>(deadline - now).count();
-      if (left <= 1.0e-4) {
-        return WaitKind::Timeout;
-      }
-      if (left < pause) {
-        pause = left;
-      }
-    }
-    sleepSeconds(pause);
-  }
-}
-
-/// Signals the child's process group. A group that is already gone falls
-/// back to the child itself, which covers a setpgid that did not take.
-void signalGroup(pid_t pid, int signo) {
-  if (pid <= 1) {
-    return;
-  }
-  int rc;
-  do {
-    rc = ::kill(-pid, signo);
-  } while (rc < 0 && errno == EINTR);
-  if (rc == 0 || errno != ESRCH) {
-    return;
-  }
-  do {
-    rc = ::kill(pid, signo);
-  } while (rc < 0 && errno == EINTR);
-}
-
-void killGroupOnly(pid_t pgid, int signo) {
-  if (pgid <= 1) {
-    return;
-  }
-  int rc;
-  do {
-    rc = ::kill(-pgid, signo);
-  } while (rc < 0 && errno == EINTR);
-}
-
-bool groupAlive(pid_t pgid) {
-  if (pgid <= 1) {
+bool load_library(OrcacLibrary &b, const std::string &explicit_path) {
+  b = OrcacLibrary{};
+  const auto cands = abi::engine_candidates(
+      "orcac", explicit_path, {"ORCAC_LIBRARY", "RGPOT_ORCAC_ENGINE"},
+      abi::CandidateOptions{.exclusive_explicit = true,
+                            .exclusive_env = true});
+  std::string open_error;
+  if (!abi::open_first_candidate(b.lib, cands, &b.path, &open_error)) {
+    b.error = "liborcac not loaded (tried " + join(cands) + "): " +
+              open_error +
+              ". Install orcac and set ORCAC_LIBRARY or RGPOT_ORCAC_ENGINE "
+              "to the path of liborcac";
     return false;
   }
-  int rc;
-  do {
-    rc = ::kill(-pgid, 0);
-  } while (rc < 0 && errno == EINTR);
-  return rc == 0 || errno != ESRCH;
+  b.error = handshake(b);
+  if (!b.error.empty()) {
+    b.lib.close();
+    return false;
+  }
+  b.loaded = true;
+  return true;
 }
 
-/// Waits until both the leader @p pid is reaped and its process group has no
-/// remaining processes, or until @p budget seconds pass.
-WaitKind waitGroup(pid_t pid, int *wait_status, double budget,
-                   bool *leader_reaped, std::string *problem) {
-  using clock = std::chrono::steady_clock;
-  const auto deadline =
-      clock::now() + std::chrono::duration<double>(budget);
-  for (;;) {
-    if (!*leader_reaped) {
-      pid_t got;
-      do {
-        got = ::waitpid(pid, wait_status, WNOHANG);
-      } while (got < 0 && errno == EINTR);
-      if (got == pid) {
-        *leader_reaped = true;
-      } else if (got < 0) {
-        if (errno == ECHILD) {
-          *leader_reaped = true;
-        } else {
-          *problem = std::string("waitpid failed: ") + std::strerror(errno);
-          return WaitKind::Failed;
-        }
-      }
-    }
-    if (*leader_reaped && !groupAlive(pid)) {
-      return WaitKind::Done;
-    }
-    const auto now = clock::now();
-    if (now >= deadline) {
-      return WaitKind::Timeout;
-    }
-    double pause = 0.05;
-    const double left = std::chrono::duration<double>(deadline - now).count();
-    if (left <= 1.0e-4) {
-      return WaitKind::Timeout;
-    }
-    if (left < pause) {
-      pause = left;
-    }
-    sleepSeconds(pause);
+void check_line(const std::string &value, const char *field) {
+  if (value.find_first_of("\r\n") != std::string::npos) {
+    throw std::invalid_argument(std::string("ORCAPot: ") + field +
+                                " must not contain a line break");
   }
 }
 
-void closeExtraFds(long max_fd) noexcept {
-#if (defined(__GLIBC__) &&                                                     \
-     (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34)) &&         \
-     defined(_GNU_SOURCE)) ||                                                \
-    (defined(__FreeBSD__) && __FreeBSD__ >= 13)
-  if (::close_range(3U, ~0U, 0U) == 0) {
-    return;
-  }
-#endif
-#if defined(__linux__) && defined(SYS_close_range)
-  if (::syscall(SYS_close_range, 3U, ~0U, 0U) == 0) {
-    return;
-  }
-#endif
-  const long limit = max_fd > 0 ? std::min(max_fd, 1048576L) : 1024L;
-  for (int fd = 3; fd < static_cast<int>(limit); ++fd) {
-    ::close(fd);
+void check_multiplicity(int multiplicity) {
+  if (multiplicity < 1) {
+    throw std::invalid_argument("ORCAPot: multiplicity must be >= 1, got " +
+                                std::to_string(multiplicity));
   }
 }
 
-void storeWait(ChildStatus *status, int wait_status) {
-  if (WIFEXITED(wait_status)) {
-    status->exited = true;
-    status->exit_code = WEXITSTATUS(wait_status);
-  } else if (WIFSIGNALED(wait_status)) {
-    status->signal = WTERMSIG(wait_status);
-  } else {
-    status->problem = "waitpid returned an unexpected status";
+void validate(const ORCAConfig &cfg) {
+  if (cfg.method.empty()) {
+    throw std::invalid_argument("ORCAPot: method is required");
+  }
+  check_line(cfg.method, "method");
+  check_line(cfg.basis, "basis");
+  check_line(cfg.keywords, "keywords");
+  check_line(cfg.executable, "executable");
+  check_line(cfg.library, "library");
+  check_line(cfg.scratch_dir, "scratch_dir");
+  check_multiplicity(cfg.multiplicity);
+  if (cfg.nprocs < 1) {
+    throw std::invalid_argument("ORCAPot: nprocs must be >= 1, got " +
+                                std::to_string(cfg.nprocs));
+  }
+  if (cfg.maxcore_mb < 0) {
+    throw std::invalid_argument("ORCAPot: maxcore_mb must be >= 0, got " +
+                                std::to_string(cfg.maxcore_mb));
+  }
+  if (!std::isfinite(cfg.timeout_s) || cfg.timeout_s < 0.0) {
+    throw std::invalid_argument(
+        "ORCAPot: timeout_s must be finite and >= 0, got " +
+        std::to_string(cfg.timeout_s));
+  }
+  if (cfg.guess_policy != ORCAConfig::GuessPolicy::MoRead &&
+      cfg.guess_policy != ORCAConfig::GuessPolicy::Fresh) {
+    throw std::invalid_argument("ORCAPot: unknown guess_policy");
+  }
+  if (cfg.keep_files) {
+    throw std::invalid_argument(
+        "ORCAPot: keep_files is not part of the orcac ABI 1 config; "
+        "orcac_destroy always removes the run directory");
   }
 }
 
-std::string timeoutText(double timeout_s, bool sent_kill) {
-  std::ostringstream text;
-  text.imbue(std::locale::classic());
-  text << "orca timed out after " << timeout_s
-       << " s; the process group was sent SIGTERM";
-  if (sent_kill) {
-    text << " and then SIGKILL";
-  }
-  return text.str();
+const char *or_null(const std::string &s) {
+  return s.empty() ? nullptr : s.c_str();
 }
 
-/// Runs `executable input` in @p cwd with the standard streams on files. The
-/// child is the leader of a new process group. Only async-signal-safe calls
-/// run between fork and exec, so a threaded caller is safe. @p timeout_s is
-/// the wait in seconds; 0 waits without a limit. Past the limit the group is
-/// sent SIGTERM and then, if it is still alive, SIGKILL, and the child is
-/// reaped.
-ChildStatus runChild(const std::string &executable, const std::string &input,
-                     const std::string &cwd, const std::string &out_path,
-                     const std::string &err_path, double timeout_s) {
-  ChildStatus status;
-  const int in_fd = openAbove(::open("/dev/null", O_RDONLY | O_CLOEXEC));
-  const int out_fd = openAbove(::open(
-      out_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644));
-  const int err_fd = openAbove(::open(
-      err_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644));
-  if (in_fd < 0 || out_fd < 0 || err_fd < 0) {
-    status.problem = std::string("could not open the standard streams: ") +
-                     std::strerror(errno);
-    for (const int fd : {in_fd, out_fd, err_fd}) {
-      if (fd >= 0) {
-        ::close(fd);
-      }
-    }
-    return status;
-  }
-  const long max_fd = ::sysconf(_SC_OPEN_MAX);
-  char *argv[] = {const_cast<char *>(executable.c_str()),
-                  const_cast<char *>(input.c_str()), nullptr};
-  const pid_t pid = ::fork();
-  if (pid < 0) {
-    status.problem = std::string("fork failed: ") + std::strerror(errno);
-  } else if (pid == 0) {
-    int grouped;
-    do {
-      grouped = ::setpgid(0, 0);
-    } while (grouped != 0 && errno == EINTR);
-    if (grouped != 0 || ::dup2(in_fd, 0) < 0 || ::dup2(out_fd, 1) < 0 ||
-        ::dup2(err_fd, 2) < 0 || ::chdir(cwd.c_str()) != 0) {
-      ::_exit(126);
-    }
-    closeExtraFds(max_fd);
-    ::execv(executable.c_str(), argv);
-    ::_exit(127);
-  }
-  ::close(in_fd);
-  ::close(out_fd);
-  ::close(err_fd);
-  if (pid < 0) {
-    return status;
-  }
-  // The child calls setpgid too. EACCES means it has already exec'd, ESRCH
-  // means it has already exited; either way there is nothing to repair.
-  int grouped;
-  do {
-    grouped = ::setpgid(pid, pid);
-  } while (grouped != 0 && errno == EINTR);
-  (void)grouped;
+/// OrcaCConfig over cfg's strings with @p executable in place of
+/// cfg.executable; both must outlive the result. An empty basis is passed
+/// as "" so orcac omits it instead of using STO-3G.
+OrcaCConfig to_c(const OrcacLibrary &b, const ORCAConfig &cfg,
+                 const std::string &executable) {
+  OrcaCConfig c{};
+  (void)b.config_init(&c, sizeof(c));
+  c.method = cfg.method.c_str();
+  c.basis = cfg.basis.c_str();
+  c.keywords = or_null(cfg.keywords);
+  c.blocks = or_null(cfg.blocks);
+  c.executable = or_null(executable);
+  c.scratch_dir = or_null(cfg.scratch_dir);
+  c.charge = cfg.charge;
+  c.multiplicity = cfg.multiplicity;
+  c.nprocs = cfg.nprocs;
+  c.maxcore_mb = cfg.maxcore_mb;
+  c.timeout_s = cfg.timeout_s;
+  c.guess_policy = cfg.guess_policy == ORCAConfig::GuessPolicy::Fresh
+                       ? ORCAC_GUESS_FRESH
+                       : ORCAC_GUESS_CHAIN;
+  c.flags = cfg.fresh_retry ? 0u : ORCAC_F_NO_FRESH_RETRY;
+  return c;
+}
 
-  int wait_status = 0;
-  const double budget = timeout_s == 0.0 ? -1.0 : timeout_s;
-  const WaitKind first = waitChild(pid, &wait_status, budget, &status.problem);
-  if (first == WaitKind::Failed) {
-    signalGroup(pid, SIGKILL);
-    bool leader_reaped = false;
-    std::string ignored;
-    waitGroup(pid, &wait_status, kReapGraceSeconds, &leader_reaped, &ignored);
-    return status;
-  }
-  if (first == WaitKind::Timeout) {
-    signalGroup(pid, SIGTERM);
-    bool leader_reaped = false;
-    std::string ignored;
-    const WaitKind grace = waitGroup(pid, &wait_status, kTermGraceSeconds,
-                                     &leader_reaped, &ignored);
-    if (grace != WaitKind::Done) {
-      if (leader_reaped) {
-        killGroupOnly(pid, SIGKILL);
-      } else {
-        signalGroup(pid, SIGKILL);
-      }
-      std::string reap_problem;
-      const WaitKind dead = waitGroup(pid, &wait_status, kReapGraceSeconds,
-                                      &leader_reaped, &reap_problem);
-      status.problem = timeoutText(timeout_s, true);
-      if (dead != WaitKind::Done) {
-        status.problem += "; the process could not be reaped";
-        if (!reap_problem.empty()) {
-          status.problem += ": ";
-          status.problem += reap_problem;
-        }
-      }
-      return status;
+void put_u32(engine::Sha256 &h, uint32_t v) {
+  const uint8_t bytes[4] = {
+      static_cast<uint8_t>(v), static_cast<uint8_t>(v >> 8),
+      static_cast<uint8_t>(v >> 16), static_cast<uint8_t>(v >> 24)};
+  h.update(bytes, sizeof(bytes));
+}
+
+void put_text(engine::Sha256 &h, const std::string &text) {
+  put_u32(h, static_cast<uint32_t>(text.size()));
+  h.update(text.data(), text.size());
+}
+
+/// Low 64 bits of SHA-256(method, basis, keywords, blocks, executable and
+/// its stamp, ORCAC_ABI_VERSION, charge, multiplicity, guess policy,
+/// changed): the last 16 hex digits.
+uint64_t params_key(const ORCAConfig &cfg, const std::string &executable,
+                    uint64_t stamp, bool changed) {
+  engine::Sha256 h;
+  put_text(h, cfg.method);
+  put_text(h, cfg.basis);
+  put_text(h, cfg.keywords);
+  put_text(h, cfg.blocks);
+  put_text(h, executable);
+  put_u32(h, static_cast<uint32_t>(stamp));
+  put_u32(h, static_cast<uint32_t>(stamp >> 32));
+  put_u32(h, static_cast<uint32_t>(ORCAC_ABI_VERSION));
+  put_u32(h, static_cast<uint32_t>(cfg.charge));
+  put_u32(h, static_cast<uint32_t>(cfg.multiplicity));
+  put_u32(h, static_cast<uint32_t>(cfg.guess_policy));
+  put_u32(h, changed ? 1u : 0u);
+  const std::string hex = h.hex_digest();
+  return std::stoull(hex.substr(hex.size() - 16), nullptr, 16);
+}
+
+std::mutex g_probe_mu;
+bool g_probe_done = false;
+bool g_probe_ok = false;
+bool g_abi_probe_done = false;
+bool g_abi_probe_ok = false;
+
+OrcacLibrary &probe_library() {
+  static OrcacLibrary retained;
+  return retained;
+}
+
+} // namespace
+
+struct ORCAPot::Impl {
+  OrcacLibrary lib;
+  ORCAConfig config;
+  OrcaCSession *session = nullptr;
+  std::string error;
+  std::string identity;
+  uint64_t stamp = 0;
+  mutable std::vector<double> gradient;
+
+  ~Impl() {
+    if (session && lib.destroy) {
+      lib.destroy(session);
     }
-    status.problem = timeoutText(timeout_s, false);
-    return status;
   }
-  storeWait(&status, wait_status);
-  return status;
+
+  [[nodiscard]] std::string session_error() const {
+    std::string why = bounded(lib.last_error(session), ORCAC_MESSAGE_SIZE);
+    return why.empty() ? std::string("no message") : why;
+  }
+
+  /// The executable config.executable names now, as orcac resolves it,
+  /// or empty with the status in @p status.
+  std::string resolve(int *status) const {
+    const OrcaCConfig c = to_c(lib, config, config.executable);
+    std::vector<char> resolved(kPathCapacity, '\0');
+    *status = lib.probe_executable(&c, resolved.data(), resolved.size());
+    return *status == ORCAC_OK ? bounded(resolved.data(), resolved.size())
+                               : std::string{};
+  }
+
+  /// True while the executable resolves to identity with stamp, or when
+  /// no session is open.
+  [[nodiscard]] bool executable_unchanged() const noexcept {
+    if (session == nullptr) {
+      return true;
+    }
+    try {
+      int status = ORCAC_OK;
+      return resolve(&status) == identity &&
+             orca::executableUnchanged(identity, identity, stamp);
+    } catch (...) {
+      return false;
+    }
+  }
+
+  void check_executable(const char *when) const {
+    if (!executable_unchanged()) {
+      throw ORCAError(
+          "ORCAPot: the executable " +
+          (config.executable.empty() ? std::string("orcac found")
+                                     : config.executable) +
+          " changed " + when + ": it no longer resolves to " + identity +
+          " with the size, modification time, change time, device, inode "
+          "and content hash recorded when the session was opened; make a "
+          "new ORCAPot to run the new file");
+    }
+  }
+
+  void open() {
+    if (!load_library(lib, config.library)) {
+      error = lib.error;
+      return;
+    }
+    int probed = ORCAC_OK;
+    const std::string resolved = resolve(&probed);
+    if (probed != ORCAC_OK) {
+      error = "orcac_probe_executable(" +
+              (config.executable.empty() ? std::string("orcac's search")
+                                         : config.executable) +
+              ") returned " + status_name(probed) + ": " +
+              bounded(lib.last_error(nullptr), ORCAC_MESSAGE_SIZE);
+      return;
+    }
+    if (!orca::identifyExecutable(resolved, &identity, &stamp)) {
+      error = "could not resolve and read the executable " + resolved;
+      identity.clear();
+      return;
+    }
+    const OrcaCConfig c = to_c(lib, config, identity);
+    std::vector<char> errbuf(ORCAC_MESSAGE_SIZE, '\0');
+    const int created =
+        lib.create(&c, &session, errbuf.data(), errbuf.size());
+    if (created != ORCAC_OK || session == nullptr) {
+      error = "orcac_create returned " + status_name(created) + ": " +
+              bounded(errbuf.data(), errbuf.size());
+      session = nullptr;
+    }
+  }
+};
+
+namespace {
+
+ORCAConfig with_restart_folded(const ORCAConfig &config) {
+  ORCAConfig cfg = config;
+  if (cfg.restart) {
+    cfg.guess_policy = ORCAConfig::GuessPolicy::MoRead;
+  }
+  return cfg;
 }
 
 } // namespace
 
 ORCAPot::ORCAPot(const ORCAConfig &config)
-    : Potential(PotType::ORCA), m_config(config) {
-  if (config.method.empty()) {
-    throw std::invalid_argument("ORCAPot: method is required");
-  }
-  if (config.multiplicity < 1) {
-    throw std::invalid_argument("ORCAPot: multiplicity must be at least 1");
-  }
-  if (config.nprocs < 1) {
-    throw std::invalid_argument("ORCAPot: nprocs must be at least 1");
-  }
-  if (config.maxcore_mb < 1) {
-    throw std::invalid_argument("ORCAPot: maxcore_mb must be at least 1");
-  }
-  if (!std::isfinite(config.timeout_s) || config.timeout_s < 0.0) {
-    throw std::invalid_argument(
-        "ORCAPot: timeout_s must be a finite number of seconds, or 0 to wait "
-        "without a limit");
-  }
-  // The keyword fields are checked here too, so a bad config fails before a
-  // directory is made.
-  orca::InputSpec probe;
-  probe.method = config.method;
-  probe.basis = config.basis;
-  probe.keywords = config.keywords;
-  (void)orca::renderInput(probe, 0, nullptr, nullptr);
-
-  m_executable = findExecutable(config.executable);
-  if (m_executable.empty()) {
-    throw ORCAError(
-        "ORCAPot: no ORCA executable found for '" +
-        (config.executable.empty() ? std::string("orca") : config.executable) +
-        "'; set ORCAConfig::executable or put orca on PATH");
-  }
-
-  std::error_code ec;
-  fs::path parent = config.scratch_dir.empty()
-                        ? fs::temp_directory_path(ec)
-                        : fs::path(config.scratch_dir);
-  if (!ec) {
-    parent = fs::absolute(parent, ec);
-  }
-  if (!ec) {
-    fs::create_directories(parent, ec);
-  }
-  if (ec) {
-    throw ORCAError("ORCAPot: scratch directory " + parent.string() + ": " +
-                    ec.message());
-  }
-  std::string pattern = (parent / "rgpot-orca-XXXXXX").string();
-  if (::mkdtemp(pattern.data()) == nullptr) {
-    throw ORCAError("ORCAPot: could not create a directory under " +
-                    parent.string() + ": " + std::strerror(errno));
-  }
-  m_run_dir = pattern;
+    : Potential(PotType::ORCA), impl_(nullptr) {
+  const ORCAConfig cfg = with_restart_folded(config);
+  validate(cfg);
+  impl_ = new Impl;
+  impl_->config = cfg;
+  impl_->open();
 }
 
-ORCAPot::~ORCAPot() {
-  if (!m_config.keep_files && !m_run_dir.empty()) {
-    std::error_code ignored;
-    fs::remove_all(m_run_dir, ignored);
-  }
+ORCAPot::~ORCAPot() { delete impl_; }
+
+bool ORCAPot::available() const noexcept {
+  return impl_->lib.loaded && impl_->session != nullptr;
 }
 
-bool ORCAPot::probeAvailable(const std::string &executable) {
-  return !findExecutable(executable).empty();
+const std::string &ORCAPot::loadError() const noexcept { return impl_->error; }
+
+const std::string &ORCAPot::libraryPath() const noexcept {
+  return impl_->lib.path;
 }
+
+std::string ORCAPot::engineVersion() const {
+  return impl_->lib.version ? bounded(impl_->lib.version(), 256)
+                            : std::string{};
+}
+
+const std::string &ORCAPot::executableIdentity() const noexcept {
+  return impl_->identity;
+}
+
+const ORCAConfig &ORCAPot::config() const noexcept { return impl_->config; }
 
 uint64_t ORCAPot::paramsKey() const noexcept {
-  Fnv1a fp;
-  fp.u64(kKernelVersion);
-  fp.str(m_config.method);
-  fp.str(m_config.basis);
-  fp.str(m_config.keywords);
-  fp.i64(m_config.charge);
-  fp.i64(m_config.multiplicity);
-  fp.b8(m_config.restart);
-  return fp.h;
+  return params_key(impl_->config, impl_->identity, impl_->stamp,
+                    !impl_->executable_unchanged());
 }
 
-void ORCAPot::reset() {
-  std::error_code ignored;
-  fs::remove(fs::path(m_run_dir) / kGuessName, ignored);
-  m_has_guess = false;
-  m_guess_numbers.clear();
+void ORCAPot::setChargeMultiplicity(int charge, int multiplicity) {
+  check_multiplicity(multiplicity);
+  if (!available()) {
+    throw ORCAError("ORCAPot: " + impl_->error);
+  }
+  ORCAConfig next = impl_->config;
+  next.charge = charge;
+  next.multiplicity = multiplicity;
+  const OrcaCConfig c = to_c(impl_->lib, next, impl_->identity);
+  const int st = impl_->lib.configure(impl_->session, &c);
+  if (st != ORCAC_OK) {
+    throw ORCAError("ORCAPot: orcac_configure returned " + status_name(st) +
+                    ": " + impl_->session_error());
+  }
+  impl_->config = next;
+}
+
+void ORCAPot::cancel() noexcept {
+  if (impl_->session != nullptr && impl_->lib.cancel != nullptr) {
+    (void)impl_->lib.cancel(impl_->session);
+  }
 }
 
 void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
-  rejectPeriodicBox(in.box);
-  const std::size_t n = in.nAtoms;
-  const std::vector<int> numbers(in.atmnrs, in.atmnrs + n);
-  checkSpin(m_config, numbers);
-
-  const std::string input_path = runFile(m_run_dir, ".inp");
-  const std::string output_path = runFile(m_run_dir, ".out");
-  const std::string stderr_path = runFile(m_run_dir, ".err");
-  const std::string engrad_path = runFile(m_run_dir, ".engrad");
-  const std::string gbw_path = runFile(m_run_dir, ".gbw");
-  const fs::path guess_path = fs::path(m_run_dir) / kGuessName;
-
-  std::error_code ec;
-  const bool use_guess = m_config.restart && m_has_guess &&
-                         m_guess_numbers == numbers &&
-                         fs::is_regular_file(guess_path, ec) && !ec;
-  if (!use_guess) {
-    m_has_guess = false;
+  if (!available()) {
+    throw ORCAError("ORCAPot: " + impl_->error);
   }
-
-  orca::InputSpec spec;
-  spec.method = m_config.method;
-  spec.basis = m_config.basis;
-  spec.keywords = m_config.keywords;
-  spec.charge = m_config.charge;
-  spec.multiplicity = m_config.multiplicity;
-  spec.nprocs = m_config.nprocs;
-  spec.maxcore_mb = m_config.maxcore_mb;
-  if (use_guess) {
-    spec.moinp = kGuessName;
+  if (in.nAtoms == 0) {
+    throw std::invalid_argument("ORCAPot: nAtoms must be positive");
   }
-  const std::string text =
-      orca::renderInput(spec, n, in.pos, in.atmnrs);
-
-  const auto fail = [&](const std::string &what) {
-    m_has_guess = false;
-    return ORCAError("ORCAPot: " + what + "\n  input: " + input_path +
-                     "\n  stderr tail:\n" +
-                     orca::fileTail(stderr_path, kTailBytes) +
-                     "\n  output tail:\n" +
-                     orca::fileTail(output_path, kTailBytes));
-  };
-
-  // A result of an earlier call must never pass for this one.
-  const auto removeStale = [&](const std::string &path) {
-    std::error_code remove_ec;
-    fs::remove(path, remove_ec);
-    if (remove_ec && remove_ec != std::errc::no_such_file_or_directory) {
-      m_has_guess = false;
-      throw ORCAError("ORCAPot: could not remove stale " + path + ": " +
-                      remove_ec.message());
+  if (!in.pos || !in.atmnrs || !out || !out->F) {
+    throw std::invalid_argument(
+        "ORCAPot: null positions, atomic numbers or forces buffer");
+  }
+  orca::checkClusterBox("ORCAPot", in.box, in.nAtoms, in.pos);
+  std::vector<int> z(in.atmnrs, in.atmnrs + in.nAtoms);
+  std::vector<double> &g = impl_->gradient;
+  g.assign(in.nAtoms * 3u, 0.0);
+  double energy_h = 0.0;
+  OrcaCResult meta{};
+  meta.struct_size = sizeof(meta);
+  // The file orcac runs is the one paramsKey fingerprints. It is checked
+  // before the run and again after it, so a result is only returned, and
+  // cached, for that file.
+  impl_->check_executable("since the session was opened");
+  const int st = impl_->lib.energy_gradient(
+      impl_->session, static_cast<int>(in.nAtoms), in.pos, z.data(),
+      ORCAC_WANT_ENERGY | ORCAC_WANT_GRADIENT, &energy_h, g.data(), &meta);
+  impl_->check_executable("while it ran");
+  if (st != ORCAC_OK) {
+    std::string why = bounded(meta.message, sizeof(meta.message));
+    if (why.empty()) {
+      why = impl_->session_error();
     }
-  };
-  removeStale(engrad_path);
-  removeStale(gbw_path);
-  {
-    std::ofstream file(input_path, std::ios::binary | std::ios::trunc);
-    file << text;
-    file.flush();
-    if (!file) {
-      throw ORCAError("ORCAPot: could not write " + input_path);
-    }
+    throw ORCAError("ORCAPot: orcac_energy_gradient returned " +
+                    status_name(st) + ": " + why);
   }
-
-  const ChildStatus child =
-      runChild(m_executable, std::string(kBase) + ".inp", m_run_dir,
-               output_path, stderr_path, m_config.timeout_s);
-  if (!child.problem.empty()) {
-    throw fail(child.problem);
-  }
-  if (!child.exited) {
-    throw fail("orca was killed by signal " + std::to_string(child.signal));
-  }
-  if (child.exit_code != 0) {
-    throw fail("orca exited with status " + std::to_string(child.exit_code) +
-               (child.exit_code == 127 ? " (the executable could not be run)"
-                                       : ""));
-  }
-
-  std::string engrad_text;
-  {
-    std::ifstream file(engrad_path, std::ios::binary);
-    if (!file) {
-      throw fail("orca finished without writing " + engrad_path);
-    }
-    std::ostringstream all;
-    all << file.rdbuf();
-    engrad_text = all.str();
-  }
-  orca::Engrad result;
-  try {
-    result = orca::parseEngrad(engrad_text, n);
-  } catch (const std::runtime_error &error) {
-    throw fail(error.what());
-  }
-  if (result.atomic_numbers != numbers) {
-    throw fail("the .engrad atomic numbers differ from the input");
-  }
-  bool finite = std::isfinite(result.energy_hartree);
-  for (const double g : result.gradient_hartree_per_bohr) {
-    finite = finite && std::isfinite(g);
-  }
-  if (!finite) {
-    throw fail("non-finite energy or gradient in the .engrad file");
-  }
-
-  out->energy = result.energy_hartree * units::HARTREE_TO_EV;
-  for (std::size_t k = 0; k < 3 * n; ++k) {
-    out->F[k] = result.gradient_hartree_per_bohr[k] * units::NEG_GRAD_TO_FORCE;
-  }
+  out->energy = energy_h * units::HARTREE_TO_EV;
   out->variance = 0.0;
-  out->has_stress = 0;
+  for (std::size_t i = 0; i < g.size(); ++i) {
+    out->F[i] = g[i] * units::NEG_GRAD_TO_FORCE;
+  }
+}
 
-  m_last_reused = use_guess;
-  if (!m_config.restart) {
-    return;
-  }
-  m_has_guess = false;
-  if (fs::is_regular_file(gbw_path, ec) && !ec) {
-    fs::copy_file(gbw_path, guess_path, fs::copy_options::overwrite_existing,
-                  ec);
-    if (ec) {
-      throw ORCAError("ORCAPot: could not keep the orbitals of this call: " +
-                      ec.message());
+bool ORCAPot::probeAvailable() {
+  return abi::probe_once(g_probe_mu, g_probe_done, g_probe_ok, [] {
+    OrcacLibrary &b = probe_library();
+    return b.loaded || load_library(b, "");
+  });
+}
+
+bool ORCAPot::abiAvailable() {
+  return abi::probe_once(g_probe_mu, g_abi_probe_done, g_abi_probe_ok, [] {
+    OrcacLibrary &b = probe_library();
+    if (!b.loaded && !load_library(b, "")) {
+      return false;
     }
-    m_has_guess = true;
-    m_guess_numbers = numbers;
-  }
+    return b.available != nullptr && b.available() != 0;
+  });
 }
 
 } // namespace rgpot

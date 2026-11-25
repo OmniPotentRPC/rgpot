@@ -24,7 +24,7 @@
 #                 client-only build)
 #   ipi           the i-PI server and driver client
 #   eam_table     tabulated EAM / Finnis-Sinclair
-#   orca          the ORCA frontend (ORCAPot)
+#   orca_legacy   the deprecated child-process ORCA runner (ORCALegacyPot)
 #   xtensor       the xtensor faces
 #   cp2k          the CP2K frontend and shim
 #   mpi           librgpot_mpi, built against an MPI found at configure
@@ -79,7 +79,7 @@
 # not build.
 
 @engines CMake does not build engines/: the drivers, engine plugins and the LAMMPS, PLUMED, GROMACS, OpenMM and i-PI harnesses these tests run.
-@engine_plugins CMake does not build the rgpot_engine_* plugins (classical, MOPAC, NWChem) this test loads.
+@engine_plugins CMake does not build the rgpot_engine_* plugins (classical, MOPAC, NWChem, ORCA) this test loads.
 @examples CMake does not build the example executables.
 @meson The test configures meson, reads meson's build directory, or reads a subproject only a meson wrap resolves.
 @cmake_package CMake does not install its own package and build a consumer of it from inside its own build.
@@ -231,7 +231,7 @@ IPIPotTest | tests core ipi | unit ipi_pot_test IPIPotTest.cc |
 IPIDriverTest | tests core ipi | unit ipi_driver_test IPIDriverTest.cc |
 EAMTablePotTest | tests core eam_table | unit eam_table_pot_test EAMTablePotTest.cc |
 MEAMPotTest | tests core | unit meam_pot_test MEAMPotTest.cc |
-ORCAPotTest | tests core orca | unit orca_pot_test ORCAPotTest.cc |
+ORCALegacyPotTest | tests core orca_legacy | unit orca_legacy_pot_test ORCALegacyPotTest.cc |
 EAMMultiImageTest | tests core eam_table | unit eam_multi_image_test EAMMultiImageTest.cc |
 CuH2 Utils Test | tests core xtensor | unit cuh2_util_test cuh2UtilsTest.cc |
 TestTempDirTest | tests core | unit test_temp_dir_test TestTempDirTest.cc |
@@ -314,6 +314,13 @@ MOPACPotTest | tests core | custom suite=mopac workdir=. |
 MOPACPotEmptyVariable | tests core | custom suite=mopac workdir=. |
 test_mopac_abi | tests core | custom suite=mopac |
 MOPACDlopenContract | tests core | py CppCore/tests/test_mopac_dlopen_contract.py @root@ suite=mopac |
+
+# ORCA frontend over a fake liborcac. EngineTableTest loads liborca_engine
+# through RGPOT_ENGINE_ORCA.
+ORCAPotTest | tests core | custom suite=orca workdir=. |
+ORCAPotAbsentLibrary | tests core | custom suite=orca workdir=. |
+ORCACHeaderPin | tests core | py CppCore/tests/test_orcac_header_pin.py @root@ suite=orca |
+ORCADlopenContract | tests core | py CppCore/tests/test_orca_dlopen_contract.py @root@ suite=orca |
 
 # Schema contract. Registered with the RPC stack, with or without tests.
 schema-ordinal-ledger-vendored | rpc | py CppCore/rgpot/rpc/schema_ledger.py check --root @root@ suite=schema |

@@ -134,6 +134,58 @@ fn muller_brown_lists_round_trip() {
     check(params.get_y0(), &y0);
 }
 
+#[test]
+fn orca_arm_defaults_and_round_trip() {
+    let mut message = Builder::new_default();
+    message.init_root::<potential_config::Builder>().init_orca();
+    let config = message
+        .get_root_as_reader::<potential_config::Reader>()
+        .expect("PotentialConfig root");
+    let potential_config::Which::Orca(params) = config.which().expect("known arm") else {
+        panic!("PotentialConfig decoded to another arm");
+    };
+    let params = params.expect("orca arm");
+    assert_eq!(params.get_charge(), 0);
+    assert_eq!(params.get_multiplicity(), 1);
+    assert_eq!(params.get_nprocs(), 1);
+    assert_eq!(params.get_maxcore_mb(), 1024);
+    assert_eq!(params.get_timeout_s(), 3600.0);
+    assert!(params.get_restart());
+    assert!(!params.get_keep_files());
+    assert_eq!(params.get_executable().expect("executable").len(), 0);
+
+    let mut message = Builder::new_default();
+    {
+        let mut orca = message.init_root::<potential_config::Builder>().init_orca();
+        orca.set_method("B3LYP");
+        orca.set_basis("def2-SVP");
+        orca.set_keywords("TightSCF D4");
+        orca.set_charge(-1);
+        orca.set_multiplicity(2);
+        orca.set_restart(false);
+        orca.set_executable("/opt/orca/orca");
+    }
+    let encoded = serialize::write_message_to_words(&message);
+    let mut bytes = encoded.as_slice();
+    let reader = serialize::read_message_from_flat_slice(&mut bytes, ReaderOptions::new())
+        .expect("read PotentialConfig");
+    let config = reader
+        .get_root::<potential_config::Reader>()
+        .expect("PotentialConfig root");
+    let potential_config::Which::Orca(orca) = config.which().expect("known arm") else {
+        panic!("PotentialConfig decoded to another arm");
+    };
+    let orca = orca.expect("orca arm");
+    let text = |t: capnp::Result<capnp::text::Reader<'_>>| t.expect("text").to_string().expect("utf-8");
+    assert_eq!(text(orca.get_method()), "B3LYP");
+    assert_eq!(text(orca.get_basis()), "def2-SVP");
+    assert_eq!(text(orca.get_keywords()), "TightSCF D4");
+    assert_eq!(orca.get_charge(), -1);
+    assert_eq!(orca.get_multiplicity(), 2);
+    assert!(!orca.get_restart());
+    assert_eq!(text(orca.get_executable()), "/opt/orca/orca");
+}
+
 /// The arm ordinals potentials-schema assigned, which rgconf keeps and
 /// gpridge and every other consumer share. A renumbered arm would decode as
 /// another backend on the wire.

@@ -27,8 +27,8 @@ Outside the union, =common= @3 is a =CommonMethodSpec= overlay, and rgconf's
 [[file:cpp_backends.org][C++ engine-backed potentials]]).
 Geometry stays on =ForceInput=; =configure(config)= applies method and backend
 setup only.
-=potserv= applies =nwchem=, =cpmd=, =morse=, =composite=, =d2=, =d2cpmd= and
-=mullerBrown= on the matching backend.
+=potserv= applies =nwchem=, =cpmd=, =morse=, =composite=, =d2=, =d2cpmd=,
+=mullerBrown= and =orca= on the matching backend.
 It applies =cp2k= on a build with CP2K and =d4= on a build with dftd4.
 =none= is a no-op on every backend.
 Every other arm gets =ok=false= with a message that names the arm.
@@ -90,6 +90,56 @@ The rule applies to these entry points.
   A field that is not assigned stays at its default.
 - =rgpot_builtin_muller_brown_new=, where a NULL config is the defaults.
   Its arrays are fixed at four values, so it has no empty form.
+
+** ORCA arm (=PotentialConfig.orca= / =ORCAParams=)
+
+With =potserv <port> ORCA=, the =orca= arm builds a new =ORCAPot= and swaps it
+in when =liborcac= loads and opens a session.
+The same struct is the root message of =liborca_engine=.
+Each call describes the whole configuration; nothing carries over from the pot
+it replaces.
+
+| field | type | default | meaning |
+|-------+------+---------+---------|
+| =ORCAParams.executable= | Text | empty | the =orca= program; empty lets orcac search |
+| =ORCAParams.method= | Text | empty | ORCA simple-input method keyword; required |
+| =ORCAParams.basis= | Text | empty | basis set keyword; empty for a composite method |
+| =ORCAParams.keywords= | Text | empty | further simple-input keywords; text that starts with =!= or =%=, or spans lines, goes verbatim into =ORCAConfig::blocks= |
+| =ORCAParams.charge= | Int32 | 0 | total charge |
+| =ORCAParams.multiplicity= | Int32 | 1 | spin multiplicity 2S + 1 |
+| =ORCAParams.nprocs= | Int32 | 1 | ORCA processes |
+| =ORCAParams.maxcoreMb= | Int32 | 1024 | memory per process in MB, taken as sent; 0 keeps ORCA's default |
+| =ORCAParams.restart= | Bool | true | taken as sent: true starts from the session's last orbitals (=moread=, =ORCAC_GUESS_CHAIN=) and leaves the result cache unused, false always starts from ORCA's own guess (=fresh=) |
+| =ORCAParams.scratchDir= | Text | empty | parent of the run directory; empty uses the system temporary directory |
+| =ORCAParams.keepFiles= | Bool | false | must stay false; orcac ABI 1 always removes the run directory |
+| =ORCAParams.timeoutS= | Float64 | 3600 | seconds orcac waits for one ORCA run; 0 waits forever |
+
+The arm names no library: =liborcac= comes from
+=ORCAC_LIBRARY=, then =RGPOT_ORCAC_ENGINE=, then the default names.
+A rerun from a fresh guess after a failed run that read a guess stays on, as
+=ORCAConfig::fresh_retry= defaults.
+
+=common= is lowered into these fields first, in rgpot, and a field the arm sets
+to something other than its default wins; =restart= and =maxcoreMb=, which the
+overlay never sets, are taken as sent.
+The functionals become =method= (a single non-libxc name as given, a libxc list
+when it matches PBE, BLYP, B3LYP, PBE0, TPSS, r2SCAN or wB97X), =basisSet=
+becomes =basis=, =charge= and a non-zero =spinMultiplicity= carry over, the SCF
+energy tolerance (converted to Hartree), the iteration limit and Fermi smearing
+(as a temperature) become a =%scf= block, =DFT-D2=, =DFT-D3=, =DFT-D3(BJ)= and
+=DFT-D4= become =D2=, =D3ZERO=, =D3BJ= and =D4=, =ZORA=, =DKH= and =X2C= become
+keywords, and =vanDerWaalsS6= becomes a =%method= block.
+The overlay's keywords and blocks come before the arm's.
+Plane waves, a k mesh with a division above 1, smearing other than Fermi and a
+name with no ORCA keyword get =ok=false= with the reason.
+A =common= overlay with the =none= arm is refused: it needs the =orca= arm.
+
+A =liborcac= that is absent or fails the handshake, an executable orcac cannot
+find, an empty =method=, a multiplicity or =nprocs= below 1, a negative
+=maxcoreMb=, a negative =timeoutS=, =keepFiles= set and a line break in
+=method=, =basis=, =executable= or =scratchDir= get =ok=false= with the reason
+and leave the running pot as it was.
+=CppCore/rgpot/rpc/OrcaConfigure.hpp= holds the mapping.
 
 ** Composite arm (=PotentialConfig.composite= / =CompositeParams=)
 

@@ -92,6 +92,7 @@ meson compile -C bbdir && meson test -C bbdir
    howto/dft-plus-dispersion
    howto/ipi
    howto/orca
+   howto/orca-legacy
    howto/integration
    howto/add-potential
    howto/engine-plugins

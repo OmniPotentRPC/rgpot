@@ -105,15 +105,21 @@ if has_eam_table
     _args += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
 endif
 
-# ORCAPot runs the orca executable as a child process. POSIX only; off unless
-# asked for. The executable is looked up at run time, never at configure time.
-has_orca = get_option('with_orca')
-if has_orca
+# ORCALegacyPot runs the orca executable as a child process. POSIX only; off
+# unless asked for. The executable is looked up at run time, never at
+# configure time. ORCAPot itself loads liborcac and is always built.
+has_orca_legacy = get_option('with_orca_legacy')
+if has_orca_legacy
     if host_system == 'windows'
         error(
-            'with_orca runs ORCA through fork and exec and cannot be enabled on Windows',
+            'with_orca_legacy runs ORCA through fork and exec and cannot be enabled on Windows',
         )
     endif
+    _args += ['-DRGPOT_HAS_ORCA_LEGACY=TRUE']
+endif
+# RGPOT_HAS_ORCA still names ORCAPot, which builds with every librgpot that
+# carries potentials.
+if not get_option('with_rpc_client_only')
     _args += ['-DRGPOT_HAS_ORCA=TRUE']
 endif
 
@@ -1451,6 +1457,7 @@ if not meson.is_subproject() and get_option('with_tests')
             'librgpot_soname',
             'classical_engine',
             'mopac_engine',
+            'orca_engine',
             'nwchem_engine',
             'cpmd_engine',
             'skala_engine',

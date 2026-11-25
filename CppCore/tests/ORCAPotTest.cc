@@ -1,1072 +1,535 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// ORCAPot checks. CI has no ORCA, so a fake `orca` shell script, written
-// into a temporary directory at run time, stands in for it. The script
-// checks the input it is given (keyword line, %maxcore, coordinates, the
-// MORead and %moinp lines), keeps a copy of every input, and writes a known
-// .engrad file and a .gbw whose text names the call. One mode sleeps in its
-// own process group with a child that ignores SIGTERM, so a timeout has to
-// kill the group; another exits with a non-zero status. The tests that need
-// a real ORCA skip when `orca` is not on PATH.
-
-#include <array>
-#include <cerrno>
-#include <chrono>
-#include <clocale>
-#include <cmath>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <limits>
-#include <locale>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <vector>
-
-#include <catch2/catch_all.hpp>
+// ORCAPot over the fake liborcac (orcac_h_fake_engine.c). RGPOT_ORCAC_ENGINE
+// names the conforming fake; ORCAC_FAKE_C_ABI_MISMATCH,
+// ORCAC_FAKE_ABI_MISMATCH, ORCAC_FAKE_SMALL_CONFIG, ORCAC_FAKE_SMALL_RESULT
+// and ORCAC_FAKE_NO_COMPUTE name the variants the handshake must refuse
+// before any session or evaluation.
 
 #include "TestTempDir.hpp"
-#include "rgpot/ORCAPot/ORCAFiles.hpp"
 #include "rgpot/ORCAPot/ORCAPot.hpp"
+#include "rgpot/abi/DynLib.hpp"
+#include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/units.hpp"
+#ifdef RGPOT_HAS_CACHE
+#include "rgpot/PotentialCache.hpp"
+#endif
 
-#include <fcntl.h>
-#include <signal.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <unistd.h>
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <limits>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
 
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+
+using Catch::Approx;
 using Catch::Matchers::ContainsSubstring;
-using Catch::Matchers::WithinRel;
-namespace fs = std::filesystem;
+using rgpot::types::AtomMatrix;
 
 namespace {
 
-// Energy of the fake engrad in Hartree, and the gradient of component k
-// (counting from 1) in Hartree/Bohr is kGradientStep * k.
-constexpr double kFakeEnergy = -1.25;
-constexpr double kGradientStep = 0.01;
-constexpr double kUnitTolerance = 1.0e-9;
-
-const char *const kFakeOrca = R"SH(#!/usr/bin/env bash
-set -euo pipefail
-inp=$1
-base=${inp%.inp}
-state=$FAKE_ORCA_STATE
-n=0
-if [[ -f "$state/count" ]]; then n=$(<"$state/count"); fi
-n=$((n + 1))
-echo "$n" > "$state/count"
-cp "$inp" "$state/call$n.inp"
-pwd > "$state/call$n.cwd"
-fail() { echo "fake orca: $*" >&2; exit 3; }
-
-first=$(head -n 1 "$inp")
-last=$(tail -n 1 "$inp")
-[[ $first =~ ^!\ .*\ EnGrad ]] || fail "no EnGrad on the keyword line"
-grep -Eq '^%maxcore [0-9]+$' "$inp" || fail "no %maxcore line"
-grep -Eq '^\* xyz -?[0-9]+ [0-9]+$' "$inp" || fail "no xyz header"
-[[ $last == "*" ]] || fail "the xyz block is not closed"
-
-if [[ $first == *" MORead"* ]]; then
-  moread=1
-  moinp=$(sed -n 's/^%moinp "\(.*\)"$/\1/p' "$inp")
-  [[ -n $moinp ]] || fail "MORead without a %moinp line"
-  [[ $moinp != "$base.gbw" ]] || fail "%moinp names the file ORCA writes"
-  [[ -f $moinp ]] || fail "the %moinp file $moinp is missing"
-  [[ $(<"$moinp") == "gbw$((n - 1))" ]] || fail "the guess is not the last gbw"
-else
-  moread=0
-  if grep -q '^%moinp' "$inp"; then fail "%moinp without MORead"; fi
-fi
-case "${FAKE_ORCA_EXPECT_MOREAD:-any}" in
-  1) [[ $moread == 1 ]] || fail "MORead was expected" ;;
-  0) [[ $moread == 0 ]] || fail "MORead was not expected" ;;
-esac
-
-if [[ -n ${FAKE_ORCA_EXPECT_XYZ:-} ]]; then
-  awk 'NR == FNR { el[NR] = $1; for (k = 1; k <= 3; k++) v[NR, k] = $(k + 1); n = NR; next }
-       /^\* xyz/ { f = 1; next }
-       f && /^\*$/ { f = 0 }
-       f { i++; if ($1 != el[i]) bad = 1
-           for (k = 1; k <= 3; k++) { d = $(k + 1) - v[i, k]; if (d < 0) d = -d; if (d > 1e-9) bad = 1 } }
-       END { exit (bad || i != n) }' "$FAKE_ORCA_EXPECT_XYZ" "$inp" \
-    || fail "the coordinates differ from the expected ones"
-fi
-
-if [[ -n ${FAKE_ORCA_FORBIDDEN_FDS:-} ]]; then
-  for fd in $FAKE_ORCA_FORBIDDEN_FDS; do
-    if ( : >&"$fd" ) 2>/dev/null; then
-      fail "inherited open fd $fd"
-    fi
-  done
-fi
-
-pgid_of() { awk -F') ' '{ split($2, f, " "); print f[3] }' "/proc/$1/stat"; }
-mode=${FAKE_ORCA_MODE:-ok}
-case "$mode" in
-  fail)
-    echo $$ > "$state/pid"
-    echo "ORCA finished by error termination in SCF"
-    echo "STDERR-HEAD-MARKER" >&2
-    for ((i = 0; i < 400; i++)); do echo "filler line $i of the ORCA error stream" >&2; done
-    echo "STDERR-TAIL-MARKER" >&2
-    exit 1 ;;
-  hang)
-    echo $$ > "$state/pid"
-    pgid_of $$ > "$state/pgid"
-    trap '' TERM
-    (
-      trap '' TERM
-      echo "$BASHPID" > "$state/child.pid"
-      pgid_of "$BASHPID" > "$state/child.pgid"
-      exec sleep 300
-    ) &
-    for _ in $(seq 1 200); do
-      [[ -s "$state/child.pgid" ]] && break
-      sleep 0.01
-    done
-    sleep 300
-    exit 0 ;;
-  hang_leader_exits)
-    echo $$ > "$state/pid"
-    pgid_of $$ > "$state/pgid"
-    (
-      trap '' TERM
-      echo "$BASHPID" > "$state/child.pid"
-      pgid_of "$BASHPID" > "$state/child.pgid"
-      exec sleep 300
-    ) &
-    for _ in $(seq 1 200); do
-      [[ -s "$state/child.pgid" ]] && break
-      sleep 0.01
-    done
-    trap 'echo 1 > "$state/leader_exited"; exit 0' TERM
-    sleep 300 &
-    wait $!
-    exit 0 ;;
-  killed) kill -9 $$ ;;
-  noengrad) exit 0 ;;
-esac
-
-if [[ -z ${FAKE_ORCA_NO_GBW:-} ]]; then echo "gbw$n" > "$base.gbw"; fi
-
-energy=-1.25
-if [[ $mode == nan ]]; then energy=nan; fi
-awk -v e="$energy" -v mode="$mode" '
-  BEGIN { split("H He Li Be B C N O F Ne", sym, " ") }
-  /^\* xyz/ { f = 1; next }
-  f && /^\*$/ { f = 0 }
-  f { n++; for (i = 1; i <= 10; i++) if (sym[i] == $1) z[n] = i
-      for (k = 1; k <= 3; k++) c[n, k] = $(k + 1) / 0.529177210903 }
-  END {
-    print "#\n# Number of atoms\n#\n", n
-    if (mode == "truncated") exit
-    print "#\n# The current total energy in Eh\n#"
-    printf "%.12f\n", e
-    print "#\n# The current gradient in Eh/bohr\n#"
-    for (k = 1; k <= 3 * n; k++) printf "%.12f\n", 0.01 * k
-    print "#\n# The atomic numbers and current coordinates in Bohr\n#"
-    for (i = 1; i <= n; i++) {
-      zi = z[i]; if (mode == "wrongz") zi = zi + 1
-      printf "%d %.12f %.12f %.12f\n", zi, c[i, 1], c[i, 2], c[i, 3]
-    }
-  }' "$inp" > "$base.engrad"
-)SH";
-
-/// Sets an environment variable for one scope and puts the old value back.
-class EnvVar {
-public:
-  EnvVar(const char *name, const std::string &value) : m_name(name) {
-    if (const char *old = std::getenv(name)) {
-      m_had = true;
-      m_old = old;
-    }
-    ::setenv(name, value.c_str(), 1);
-  }
-  ~EnvVar() {
-    if (m_had) {
-      ::setenv(m_name.c_str(), m_old.c_str(), 1);
-    } else {
-      ::unsetenv(m_name.c_str());
-    }
-  }
-  EnvVar(const EnvVar &) = delete;
-  EnvVar &operator=(const EnvVar &) = delete;
-
-private:
-  std::string m_name;
-  std::string m_old;
-  bool m_had = false;
+// Mirrors orcac_fake_state_t in orcac_h_fake_engine.c.
+struct FakeState {
+  int sessions_created;
+  int sessions_live;
+  int evaluations;
+  int null_probes;
+  int in_call;
+  int guess_policy;
+  unsigned flags;
+  int charge;
+  int multiplicity;
+  int nprocs;
+  int maxcore_mb;
+  double timeout_s;
+  int used_guess;
+  char method[256];
+  char basis[256];
+  char blocks[256];
+  char executable[256];
 };
 
-bool processGone(pid_t pid) {
-  if (pid <= 0) {
-    return false;
-  }
-  for (int i = 0; i < 250; ++i) {
-    if (::kill(pid, 0) < 0 && errno == ESRCH) {
-      return true;
-    }
-    timespec ts{};
-    ts.tv_nsec = 20'000'000;
-    ::nanosleep(&ts, nullptr);
-  }
-  return false;
+AtomMatrix water() {
+  return AtomMatrix{
+      {0.0, 0.0, 0.117}, {0.0, 0.757, -0.469}, {0.0, -0.757, -0.469}};
 }
 
-bool isZombie(pid_t pid) {
-  std::ifstream in("/proc/" + std::to_string(pid) + "/stat");
-  if (!in) {
-    return false;
-  }
-  std::string line;
-  std::getline(in, line);
-  const auto close = line.rfind(')');
-  return close != std::string::npos && close + 2 < line.size() &&
-         line[close + 2] == 'Z';
+const std::vector<int> kWaterZ{8, 1, 1};
+constexpr const char *kExecutable = "/bin/sh";
+
+using Box = std::array<std::array<double, 3>, 3>;
+
+Box zeroBox() { return {}; }
+
+/// The cubic box RgpotCalculator builds around a cluster with pbc=False.
+Box paddedBox() {
+  return {{{100.0, 0.0, 0.0}, {0.0, 100.0, 0.0}, {0.0, 0.0, 100.0}}};
 }
 
-bool groupGone(pid_t pgid) {
-  if (pgid <= 1) {
-    return false;
-  }
-  for (int i = 0; i < 250; ++i) {
-    if (::kill(-pgid, 0) < 0 && errno == ESRCH) {
-      return true;
-    }
-    timespec ts{};
-    ts.tv_nsec = 20'000'000;
-    ::nanosleep(&ts, nullptr);
-  }
-  return false;
+std::string envPath(const char *name) {
+  const char *value = std::getenv(name);
+  REQUIRE(value != nullptr);
+  REQUIRE(*value != '\0');
+  return value;
 }
 
-class FdGuard {
-public:
-  explicit FdGuard(int fd = -1) : m_fd(fd) {}
-  ~FdGuard() { close(); }
-  FdGuard(const FdGuard &) = delete;
-  FdGuard &operator=(const FdGuard &) = delete;
-  int get() const noexcept { return m_fd; }
-  void close() noexcept {
-    if (m_fd >= 0) {
-      ::close(m_fd);
-      m_fd = -1;
-    }
-  }
-
-private:
-  int m_fd = -1;
-};
-
-class CommaDecimalPunct : public std::numpunct<char> {
-protected:
-  char do_decimal_point() const override { return ','; }
-};
-
-class CxxLocaleGuard {
-public:
-  explicit CxxLocaleGuard(const std::locale &next)
-      : m_saved(std::locale::global(next)) {}
-  ~CxxLocaleGuard() { std::locale::global(m_saved); }
-  CxxLocaleGuard(const CxxLocaleGuard &) = delete;
-  CxxLocaleGuard &operator=(const CxxLocaleGuard &) = delete;
-
-private:
-  std::locale m_saved;
-};
-
-class CLocaleGuard {
-public:
-  CLocaleGuard() {
-    if (const char *cur = std::setlocale(LC_ALL, nullptr)) {
-      m_saved = cur;
-    }
-  }
-  ~CLocaleGuard() {
-    if (!m_saved.empty()) {
-      std::setlocale(LC_ALL, m_saved.c_str());
-    }
-  }
-  CLocaleGuard(const CLocaleGuard &) = delete;
-  CLocaleGuard &operator=(const CLocaleGuard &) = delete;
-
-private:
-  std::string m_saved;
-};
-
-std::string slurp(const fs::path &path) {
-  std::ifstream in(path, std::ios::binary);
-  REQUIRE(in.good());
-  std::ostringstream all;
-  all << in.rdbuf();
-  return all.str();
+rgpot::ORCAConfig baseConfig() {
+  rgpot::ORCAConfig cfg;
+  cfg.method = "B3LYP";
+  cfg.basis = "def2-SVP";
+  cfg.executable = kExecutable;
+  return cfg;
 }
 
-pid_t readPid(const fs::path &path) {
-  return static_cast<pid_t>(std::stoi(slurp(path)));
+FakeState *stateOf(rgpot::DynLib &lib) {
+  using StateFn = FakeState *(*)();
+  return lib.sym<StateFn>("orcac_fake_state")();
 }
 
-/// A directory holding the fake `orca` and the state it records into.
-struct Fake {
-  rgpot::tests::TestTempDir dir{"rgpot-orca-test"};
-  fs::path bin;
-  fs::path state;
-  fs::path scratch;
-  std::string orca;
-
-  Fake() {
-    bin = dir.path() / "bin";
-    state = dir.path() / "state";
-    scratch = dir.path() / "scratch";
-    fs::create_directories(bin);
-    fs::create_directories(state);
-    orca = (bin / "orca").string();
-    {
-      std::ofstream script(orca, std::ios::binary);
-      script << kFakeOrca;
-    }
-    fs::permissions(orca,
-                    fs::perms::owner_all | fs::perms::group_read |
-                        fs::perms::group_exec | fs::perms::others_read |
-                        fs::perms::others_exec);
-  }
-
-  int calls() const {
-    const fs::path count = state / "count";
-    if (!fs::exists(count)) {
-      return 0;
-    }
-    return std::stoi(slurp(count));
-  }
-
-  std::string input(int call) const {
-    return slurp(state / ("call" + std::to_string(call) + ".inp"));
-  }
-
-  rgpot::ORCAConfig config() const {
-    rgpot::ORCAConfig c;
-    c.executable = orca;
-    c.method = "PBE";
-    c.basis = "def2-SVP";
-    c.keywords = "TightSCF";
-    c.nprocs = 2;
-    c.maxcore_mb = 2000;
-    c.scratch_dir = scratch.string();
-    return c;
-  }
-};
-
-// Water, with exact decimals so the coordinate rows read back unchanged.
-const std::vector<int> kWaterZ = {8, 1, 1};
-const std::vector<double> kWater = {0.0, 0.0,   0.1173, 0.0, 0.7572,
-                                    -0.4692, 0.0, -0.7572, -0.4692};
-
-struct Result {
-  double energy = 0.0;
-  std::vector<double> forces;
-};
-
-Result evaluate(const rgpot::ORCAPot &pot, const std::vector<double> &pos,
-                const std::vector<int> &z, const double *box = nullptr) {
-  Result r;
-  r.forces.assign(pos.size(), 0.0);
-  rgpot::ForceOut out{};
-  out.F = r.forces.data();
-  pot.forceImpl(rgpot::ForceInput{z.size(), pos.data(), z.data(), box}, &out);
-  r.energy = out.energy;
-  return r;
+const FakeState &fakeState() {
+  static rgpot::DynLib lib(envPath("RGPOT_ORCAC_ENGINE"));
+  static FakeState *state = stateOf(lib);
+  return *state;
 }
 
-void writeExpectedXyz(const Fake &fake, const std::vector<int> &z,
-                      const std::vector<double> &pos, const char *name) {
-  std::ofstream out(fake.state / name);
-  for (std::size_t i = 0; i < z.size(); ++i) {
-    out << rgpot::orca::elementSymbol(z[i]) << ' ' << pos[3 * i] << ' '
-        << pos[3 * i + 1] << ' ' << pos[3 * i + 2] << '\n';
-  }
+std::string resolvedExecutable() {
+  return std::filesystem::canonical(kExecutable).string();
+}
+
+double fakeEnergyEv(int charge, int multiplicity) {
+  return (-1.0 + 0.01 * charge + 0.001 * (multiplicity - 1)) *
+         rgpot::units::HARTREE_TO_EV;
 }
 
 } // namespace
 
-TEST_CASE("ORCAPot input carries the method, resources and geometry", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  EnvVar mode("FAKE_ORCA_MODE", "ok");
-  writeExpectedXyz(fake, kWaterZ, kWater, "expected.xyz");
-  EnvVar expect("FAKE_ORCA_EXPECT_XYZ", (fake.state / "expected.xyz").string());
+TEST_CASE("ORCAPot loads the fake liborcac", "[orca]") {
+  REQUIRE(rgpot::ORCAPot::probeAvailable());
+  // The fake's default lookup finds no orca.
+  REQUIRE_FALSE(rgpot::ORCAPot::abiAvailable());
 
-  rgpot::ORCAPot pot(fake.config());
-  evaluate(pot, kWater, kWaterZ);
-
-  REQUIRE(fake.calls() == 1);
-  const std::string text = fake.input(1);
-  REQUIRE(text ==
-          "! PBE def2-SVP TightSCF EnGrad\n"
-          "%maxcore 2000\n"
-          "%pal nprocs 2 end\n"
-          "* xyz 0 1\n"
-          "O  0.000000000000 0.000000000000 0.117300000000\n"
-          "H  0.000000000000 0.757200000000 -0.469200000000\n"
-          "H  0.000000000000 -0.757200000000 -0.469200000000\n"
-          "*\n");
-  const std::string cwd = slurp(fake.state / "call1.cwd");
-  REQUIRE_THAT(cwd, ContainsSubstring(pot.runDirectory()));
+  const int probes = fakeState().null_probes;
+  rgpot::ORCAPot pot(baseConfig());
+  REQUIRE(pot.available());
+  REQUIRE(pot.loadError().empty());
+  REQUIRE(fakeState().null_probes == probes + 1);
+  REQUIRE(pot.getType() == rgpot::PotType::ORCA);
+  REQUIRE(pot.libraryPath() == envPath("RGPOT_ORCAC_ENGINE"));
+  REQUIRE(pot.engineVersion() == "orcac-fake/1.0");
+  REQUIRE(pot.executableIdentity() == resolvedExecutable());
+  const auto caps = pot.caps();
+  REQUIRE(caps.reentrancy == rgpot::Reentrancy::PerInstance);
+  REQUIRE(caps.perImageInstances);
+  REQUIRE_FALSE(caps.periodic);
+  REQUIRE_FALSE(caps.stress);
 }
 
-TEST_CASE("ORCAPot leaves out %pal for one process and sets charge and spin",
-          "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.nprocs = 1;
-  cfg.basis.clear();
-  cfg.keywords.clear();
-  cfg.method = "r2SCAN-3c";
-  cfg.charge = 1;
-  cfg.multiplicity = 2;
-  rgpot::ORCAPot pot(cfg);
-  evaluate(pot, kWater, kWaterZ);
-  const std::string text = fake.input(1);
-  REQUIRE_THAT(text, ContainsSubstring("! r2SCAN-3c EnGrad\n"));
-  REQUIRE_THAT(text, !ContainsSubstring("%pal"));
-  REQUIRE_THAT(text, ContainsSubstring("* xyz 1 2\n"));
-}
-
-TEST_CASE("ORCAPot converts the energy and the gradient with units.hpp",
-          "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-  const Result r = evaluate(pot, kWater, kWaterZ);
-
-  REQUIRE_THAT(r.energy,
-               WithinRel(kFakeEnergy * rgpot::units::HARTREE_TO_EV,
-                         kUnitTolerance));
-  REQUIRE(r.forces.size() == 9);
-  for (std::size_t k = 0; k < r.forces.size(); ++k) {
-    // The force is the negative gradient, Hartree/Bohr to eV/Angstrom.
-    const double gradient = kGradientStep * static_cast<double>(k + 1);
-    REQUIRE_THAT(r.forces[k],
-                 WithinRel(-gradient * rgpot::units::HARTREE_BOHR_TO_EV_ANGSTROM,
-                           kUnitTolerance));
-  }
-}
-
-TEST_CASE("ORCAPot works through the Potential call operator", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-  rgpot::types::AtomMatrix pos = rgpot::types::AtomMatrix::Zero(3, 3);
-  for (std::size_t i = 0; i < 3; ++i) {
-    for (std::size_t k = 0; k < 3; ++k) {
-      pos(i, k) = kWater[3 * i + k];
+TEST_CASE("ORCAPot converts Eh and Eh/bohr", "[orca]") {
+  rgpot::ORCAPot pot(baseConfig());
+  REQUIRE(pot.available());
+  auto [energy, forces, variance] = pot(water(), kWaterZ, zeroBox());
+  REQUIRE(energy == Approx(fakeEnergyEv(0, 1)));
+  REQUIRE(variance == 0.0);
+  for (int i = 0; i < 3; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      REQUIRE(forces(i, k) ==
+              Approx(0.001 * (3 * i + k + 1) * rgpot::units::NEG_GRAD_TO_FORCE));
     }
   }
-  const std::array<std::array<double, 3>, 3> open_box{};
-  const auto [energy, forces, variance] = pot(pos, kWaterZ, open_box);
-  REQUIRE_THAT(energy, WithinRel(kFakeEnergy * rgpot::units::HARTREE_TO_EV,
-                                 kUnitTolerance));
-  REQUIRE(forces.rows() == 3);
-  REQUIRE(variance == 0.0);
-  REQUIRE(pot.getType() == rgpot::PotType::ORCA);
 }
 
-TEST_CASE("ORCAPot reads the previous .gbw through MORead", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-
-  {
-    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
-    evaluate(pot, kWater, kWaterZ);
-  }
-  REQUIRE_FALSE(pot.reusedWavefunction());
-  REQUIRE_THAT(fake.input(1), !ContainsSubstring("MORead"));
-
-  {
-    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "1");
-    evaluate(pot, kWater, kWaterZ);
-    evaluate(pot, kWater, kWaterZ);
-  }
-  REQUIRE(pot.reusedWavefunction());
-  for (int call : {2, 3}) {
-    const std::string text = fake.input(call);
-    REQUIRE_THAT(text, ContainsSubstring("! PBE def2-SVP TightSCF EnGrad MORead\n"));
-    REQUIRE_THAT(text, ContainsSubstring("%moinp \"rgpot_orca_guess.gbw\"\n"));
-  }
-  // The guess is a copy under a second name, beside ORCA's own output.
-  REQUIRE(fs::exists(fs::path(pot.runDirectory()) / "rgpot_orca_guess.gbw"));
-  REQUIRE(fs::exists(fs::path(pot.runDirectory()) / "rgpot_orca.gbw"));
-  REQUIRE(slurp(fs::path(pot.runDirectory()) / "rgpot_orca_guess.gbw") ==
-          "gbw3\n");
-}
-
-TEST_CASE("ORCAPot with restart off never writes MORead", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.restart = false;
+TEST_CASE("ORCAPot lowers ORCAConfig into OrcaCConfig", "[orca]") {
+  rgpot::ORCAConfig cfg = baseConfig();
+  cfg.blocks = "%scf\n  MaxIter 200\nend";
+  cfg.nprocs = 4;
+  cfg.maxcore_mb = 2000;
+  cfg.timeout_s = 120.0;
+  cfg.guess_policy = rgpot::ORCAConfig::GuessPolicy::Fresh;
+  cfg.fresh_retry = false;
   rgpot::ORCAPot pot(cfg);
-  evaluate(pot, kWater, kWaterZ);
-  evaluate(pot, kWater, kWaterZ);
-  REQUIRE(fake.calls() == 2);
-  REQUIRE_FALSE(pot.reusedWavefunction());
-  REQUIRE_FALSE(fs::exists(fs::path(pot.runDirectory()) / "rgpot_orca_guess.gbw"));
+  REQUIRE(pot.available());
+  const FakeState &s = fakeState();
+  REQUIRE(std::string(s.method) == "B3LYP");
+  REQUIRE(std::string(s.basis) == "def2-SVP");
+  REQUIRE(std::string(s.blocks) == cfg.blocks);
+  // The session runs the pinned file, not the name it was given.
+  REQUIRE(std::string(s.executable) == resolvedExecutable());
+  REQUIRE(s.nprocs == 4);
+  REQUIRE(s.maxcore_mb == 2000);
+  REQUIRE(s.timeout_s == 120.0);
+  REQUIRE(s.guess_policy == 0);
+  REQUIRE(s.flags == 1u);
+
+  rgpot::ORCAConfig plain = baseConfig();
+  plain.basis.clear();
+  rgpot::ORCAPot defaults(plain);
+  REQUIRE(defaults.available());
+  REQUIRE(defaults.config().guess_policy ==
+          rgpot::ORCAConfig::GuessPolicy::Fresh);
+  REQUIRE(s.guess_policy == 0);
+  REQUIRE(s.flags == 0u);
+  REQUIRE(std::string(s.basis).empty());
+  REQUIRE(s.timeout_s == rgpot::ORCAConfig::kDefaultTimeout);
+
+  rgpot::ORCAConfig chained = baseConfig();
+  chained.guess_policy = rgpot::ORCAConfig::GuessPolicy::MoRead;
+  rgpot::ORCAPot moread(chained);
+  REQUIRE(moread.available());
+  REQUIRE(s.guess_policy == 1);
+  REQUIRE(moread.paramsKey() != defaults.paramsKey());
+
+  rgpot::ORCAConfig legacy = baseConfig();
+  legacy.restart = true;
+  rgpot::ORCAPot restarted(legacy);
+  REQUIRE(restarted.available());
+  REQUIRE(restarted.config().guess_policy ==
+          rgpot::ORCAConfig::GuessPolicy::MoRead);
+  REQUIRE(s.guess_policy == 1);
+  REQUIRE(restarted.paramsKey() == moread.paramsKey());
+
+  rgpot::ORCAConfig keep = baseConfig();
+  keep.keep_files = true;
+  REQUIRE_THROWS_WITH(rgpot::ORCAPot(keep), ContainsSubstring("keep_files"));
 }
 
-TEST_CASE("ORCAPot starts afresh when no gbw exists", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-
-  {
-    EnvVar no_gbw("FAKE_ORCA_NO_GBW", "1");
-    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
-    evaluate(pot, kWater, kWaterZ);
-    evaluate(pot, kWater, kWaterZ);
-  }
-  REQUIRE_FALSE(pot.reusedWavefunction());
-  REQUIRE_THAT(fake.input(2), !ContainsSubstring("MORead"));
-  REQUIRE_THAT(fake.input(2), !ContainsSubstring("%moinp"));
-
-  {
-    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
-    evaluate(pot, kWater, kWaterZ); // makes the first gbw
-  }
-  {
-    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "1");
-    evaluate(pot, kWater, kWaterZ);
-  }
-  REQUIRE(pot.reusedWavefunction());
-}
-
-TEST_CASE("ORCAPot drops the guess on reset, deletion and a new composition",
+TEST_CASE("ORCAPot accepts the padded ASE box and refuses a wrapping cell",
           "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-  const fs::path guess = fs::path(pot.runDirectory()) / "rgpot_orca_guess.gbw";
+  rgpot::ORCAPot pot(baseConfig());
+  auto padded = pot(water(), kWaterZ, paddedBox());
+  auto open = pot(water(), kWaterZ, zeroBox());
+  REQUIRE(std::get<0>(padded) == std::get<0>(open));
 
-  evaluate(pot, kWater, kWaterZ);
-  REQUIRE(fs::exists(guess));
+  // Exactly twice the extent along z is the smallest cell ASE pads to.
+  const double z_extent = 0.117 + 0.469;
+  Box tight = paddedBox();
+  tight[2][2] = 2.0 * z_extent;
+  REQUIRE_NOTHROW(pot(water(), kWaterZ, tight));
 
-  pot.reset();
-  REQUIRE_FALSE(fs::exists(guess));
-  {
-    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
-    evaluate(pot, kWater, kWaterZ);
-  }
-  REQUIRE(fs::exists(guess));
+  Box wrapping = paddedBox();
+  wrapping[2][2] = 1.5 * z_extent;
+  REQUIRE_THROWS_WITH(pot(water(), kWaterZ, wrapping),
+                      ContainsSubstring("ORCAPot: the atoms span") &&
+                          ContainsSubstring("box vector 3") &&
+                          ContainsSubstring("wrap across a periodic boundary"));
 
-  fs::remove(guess);
-  {
-    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
-    evaluate(pot, kWater, kWaterZ);
-  }
+  // Long box vectors whose difference is short: the image along b - a
+  // sits 1.1 Angstrom away, inside the 1.5 Angstrom span of the hydrogens.
+  Box skewed = paddedBox();
+  skewed[1] = {99.5, 1.0, 0.0};
+  const int evaluations = fakeState().evaluations;
+  REQUIRE_THROWS_WITH(pot(water(), kWaterZ, skewed),
+                      ContainsSubstring("ORCAPot: the atoms span") &&
+                          ContainsSubstring("wrap across a periodic boundary"));
+  REQUIRE(fakeState().evaluations == evaluations);
 
-  // Ammonia has water's ten electrons but other atoms: the orbitals of the
-  // last call do not carry over, and the call after that restarts again.
-  const std::vector<int> ammonia_z = {7, 1, 1, 1};
-  const std::vector<double> ammonia = {0.0,  0.0,    0.1165, 0.0,
-                                       0.9377, -0.3816, 0.8121, -0.4689,
-                                       -0.3816, -0.8121, -0.4689, -0.3816};
-  {
-    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
-    evaluate(pot, ammonia, ammonia_z);
-  }
-  {
-    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "1");
-    evaluate(pot, ammonia, ammonia_z);
-  }
-  REQUIRE(pot.reusedWavefunction());
+  Box singular = paddedBox();
+  singular[2] = singular[1];
+  REQUIRE_THROWS_AS(pot(water(), kWaterZ, singular), std::invalid_argument);
+  Box nonfinite = paddedBox();
+  nonfinite[0][1] = std::numeric_limits<double>::quiet_NaN();
+  REQUIRE_THROWS_AS(pot(water(), kWaterZ, nonfinite), std::invalid_argument);
 }
 
-TEST_CASE("ORCAPot refuses a periodic cell and runs for none", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
+TEST_CASE("ORCAPot charge and multiplicity go through orcac_configure",
+          "[orca]") {
+  rgpot::ORCAPot pot(baseConfig());
+  const uint64_t neutral = pot.paramsKey();
+  pot.setChargeMultiplicity(1, 2);
+  REQUIRE(pot.paramsKey() != neutral);
+  REQUIRE(pot.config().charge == 1);
+  REQUIRE(pot.config().multiplicity == 2);
+  REQUIRE(fakeState().multiplicity == 2);
+  auto [energy, forces, variance] = pot(water(), kWaterZ, zeroBox());
+  REQUIRE(energy == Approx(fakeEnergyEv(1, 2)));
 
-  const std::array<double, 9> cell = {10.0, 0.0, 0.0, 0.0, 10.0,
-                                      0.0,  0.0, 0.0, 10.0};
-  REQUIRE_THROWS_MATCHES(
-      evaluate(pot, kWater, kWaterZ, cell.data()), std::invalid_argument,
-      Catch::Matchers::MessageMatches(ContainsSubstring("periodic")));
-  REQUIRE(fake.calls() == 0);
+  pot.setChargeMultiplicity(0, 1);
+  REQUIRE(pot.paramsKey() == neutral);
 
-  const std::array<double, 9> open = {};
-  evaluate(pot, kWater, kWaterZ, open.data());
-  evaluate(pot, kWater, kWaterZ, nullptr);
-  REQUIRE(fake.calls() == 2);
+  rgpot::ORCAConfig cation = baseConfig();
+  cation.charge = 1;
+  cation.multiplicity = 2;
+  rgpot::ORCAPot fresh(cation);
+  pot.setChargeMultiplicity(1, 2);
+  REQUIRE(fresh.paramsKey() == pot.paramsKey());
+
+  REQUIRE_THROWS_AS(pot.setChargeMultiplicity(0, 0), std::invalid_argument);
+  REQUIRE_THROWS_WITH(pot.setChargeMultiplicity(0, 12),
+                      ContainsSubstring("ORCAC_E_INVALID") &&
+                          ContainsSubstring("multiplicity 1 to 9"));
+  REQUIRE(pot.config().multiplicity == 2);
+  REQUIRE(pot.paramsKey() == fresh.paramsKey());
 }
 
-TEST_CASE("ORCAPot rejects an impossible spin state", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.multiplicity = 2; // ten electrons cannot hold one unpaired spin
+TEST_CASE("ORCAPot key follows the method and not the resources", "[orca]") {
+  rgpot::ORCAPot a(baseConfig());
+  rgpot::ORCAConfig more = baseConfig();
+  more.nprocs = 8;
+  more.timeout_s = 10.0;
+  rgpot::ORCAPot b(more);
+  REQUIRE(a.paramsKey() == b.paramsKey());
+  rgpot::ORCAConfig other = baseConfig();
+  other.method = "PBE0";
+  rgpot::ORCAPot c(other);
+  REQUIRE(a.paramsKey() != c.paramsKey());
+  rgpot::ORCAConfig blocks = baseConfig();
+  blocks.blocks = "%scf\n  MaxIter 50\nend";
+  rgpot::ORCAPot d(blocks);
+  REQUIRE(a.paramsKey() != d.paramsKey());
+}
+
+TEST_CASE("ORCAPot chains guesses only when the policy is moread", "[orca]") {
+  rgpot::ORCAConfig chained = baseConfig();
+  chained.guess_policy = rgpot::ORCAConfig::GuessPolicy::MoRead;
+  rgpot::ORCAPot pot(chained);
+  (void)pot(water(), kWaterZ, zeroBox());
+  REQUIRE_FALSE(fakeState().used_guess);
+  (void)pot(water(), kWaterZ, zeroBox());
+  REQUIRE(fakeState().used_guess);
+  pot.setChargeMultiplicity(0, 3);
+  (void)pot(water(), kWaterZ, zeroBox());
+  REQUIRE_FALSE(fakeState().used_guess);
+
+  rgpot::ORCAPot fresh(baseConfig());
+  (void)fresh(water(), kWaterZ, zeroBox());
+  (void)fresh(water(), kWaterZ, zeroBox());
+  REQUIRE_FALSE(fakeState().used_guess);
+}
+
+TEST_CASE("ORCAPot pins the executable it resolved", "[orca]") {
+  namespace fs = std::filesystem;
+  rgpot::tests::TestTempDir dir("rgpot-orcapot-exec");
+  const fs::path copy = dir.path() / "orca";
+  fs::copy_file(kExecutable, copy);
+  fs::permissions(copy, fs::perms::owner_all);
+  const fs::path link = dir.path() / "orca-link";
+  fs::create_symlink(kExecutable, link);
+
+  rgpot::ORCAConfig cfg = baseConfig();
+  cfg.executable = link.string();
   rgpot::ORCAPot pot(cfg);
-  REQUIRE_THROWS_AS(evaluate(pot, kWater, kWaterZ), std::invalid_argument);
-  REQUIRE(fake.calls() == 0);
+  REQUIRE(pot.available());
+  REQUIRE(pot.executableIdentity() == resolvedExecutable());
+  REQUIRE(std::string(fakeState().executable) == resolvedExecutable());
+  const uint64_t key = pot.paramsKey();
+  REQUIRE(key == rgpot::ORCAPot(baseConfig()).paramsKey());
+  (void)pot(water(), kWaterZ, zeroBox());
 
-  const std::vector<int> unknown = {8, 1, 119};
-  rgpot::ORCAPot plain(fake.config());
-  REQUIRE_THROWS_AS(evaluate(plain, kWater, unknown), std::invalid_argument);
+  // Retargeting the name changes the key and stops the runs.
+  fs::remove(link);
+  fs::create_symlink(copy, link);
+  REQUIRE(pot.paramsKey() != key);
+  int evaluations = fakeState().evaluations;
+  REQUIRE_THROWS_AS(pot(water(), kWaterZ, zeroBox()), rgpot::ORCAError);
+  REQUIRE_THROWS_WITH(pot(water(), kWaterZ, zeroBox()),
+                      ContainsSubstring("changed since the session was opened"));
+  REQUIRE(fakeState().evaluations == evaluations);
+
+  fs::remove(link);
+  fs::create_symlink(kExecutable, link);
+  REQUIRE(pot.paramsKey() == key);
+  (void)pot(water(), kWaterZ, zeroBox());
+
+  // The same name and file with a new modification time is a new build.
+  cfg.executable = copy.string();
+  rgpot::ORCAPot local(cfg);
+  REQUIRE(local.executableIdentity() == fs::canonical(copy).string());
+  const uint64_t local_key = local.paramsKey();
+  REQUIRE(local_key != key);
+  (void)local(water(), kWaterZ, zeroBox());
+  fs::last_write_time(copy, fs::last_write_time(copy) + std::chrono::seconds(5));
+  REQUIRE(local.paramsKey() != local_key);
+  evaluations = fakeState().evaluations;
+  REQUIRE_THROWS_WITH(local(water(), kWaterZ, zeroBox()),
+                      ContainsSubstring("ORCAPot: the executable") &&
+                          ContainsSubstring("make a new ORCAPot"));
+  REQUIRE(fakeState().evaluations == evaluations);
+  rgpot::ORCAPot rebuilt(cfg);
+  REQUIRE(rebuilt.paramsKey() != local_key);
+  (void)rebuilt(water(), kWaterZ, zeroBox());
 }
 
-TEST_CASE("ORCAPot reports a failed run with the tail of stderr", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-  evaluate(pot, kWater, kWaterZ);
-
-  EnvVar mode("FAKE_ORCA_MODE", "fail");
-  try {
-    evaluate(pot, kWater, kWaterZ);
-    FAIL("a non-zero exit status must throw");
-  } catch (const rgpot::ORCAError &e) {
-    const std::string message = e.what();
-    REQUIRE_THAT(message, ContainsSubstring("status 1"));
-    REQUIRE_THAT(message, ContainsSubstring("STDERR-TAIL-MARKER"));
-    REQUIRE_THAT(message, !ContainsSubstring("STDERR-HEAD-MARKER"));
-    REQUIRE_THAT(message,
-                 ContainsSubstring("ORCA finished by error termination in SCF"));
-  }
-  const pid_t failed = readPid(fake.state / "pid");
-  REQUIRE(processGone(failed));
-  REQUIRE_FALSE(isZombie(failed));
-  // ORCAError is a std::runtime_error, the type the other frontends throw.
-  REQUIRE_THROWS_AS(evaluate(pot, kWater, kWaterZ), std::runtime_error);
-
-  // A failure forgets the orbitals: the next call starts fresh.
-  EnvVar ok("FAKE_ORCA_MODE", "ok");
-  EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
-  evaluate(pot, kWater, kWaterZ);
-  REQUIRE_FALSE(pot.reusedWavefunction());
-}
-
-TEST_CASE("ORCAPot does not take an old engrad for a new result", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-  evaluate(pot, kWater, kWaterZ);
-  REQUIRE(fs::exists(fs::path(pot.runDirectory()) / "rgpot_orca.engrad"));
-
-  EnvVar mode("FAKE_ORCA_MODE", "noengrad");
-  REQUIRE_THROWS_MATCHES(
-      evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
-      Catch::Matchers::MessageMatches(ContainsSubstring("without writing")));
-}
-
-TEST_CASE("ORCAPot fails when a stale engrad cannot be removed", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-  evaluate(pot, kWater, kWaterZ);
-  REQUIRE(fake.calls() == 1);
-
-  const fs::path engrad = fs::path(pot.runDirectory()) / "rgpot_orca.engrad";
-  fs::remove(engrad);
-  // A non-empty directory cannot be unlinked by fs::remove, even as root.
-  fs::create_directories(engrad / "blocker");
-  {
-    std::ofstream keep(engrad / "blocker" / "keep");
-    keep << "keep\n";
-  }
-
-  REQUIRE_THROWS_MATCHES(
-      evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
-      Catch::Matchers::MessageMatches(ContainsSubstring("remove stale")));
-  REQUIRE(fake.calls() == 1);
-
-  fs::remove_all(engrad);
-  evaluate(pot, kWater, kWaterZ);
-  REQUIRE(fake.calls() == 2);
-  REQUIRE_FALSE(pot.reusedWavefunction());
-}
-
-TEST_CASE("ORCAPot rejects a NaN energy, a short or a mismatched engrad",
-          "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-  {
-    EnvVar mode("FAKE_ORCA_MODE", "nan");
-    REQUIRE_THROWS_MATCHES(
-        evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
-        Catch::Matchers::MessageMatches(ContainsSubstring("non-finite")));
-  }
-  {
-    EnvVar mode("FAKE_ORCA_MODE", "truncated");
-    REQUIRE_THROWS_MATCHES(
-        evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
-        Catch::Matchers::MessageMatches(ContainsSubstring("malformed")));
-  }
-  {
-    EnvVar mode("FAKE_ORCA_MODE", "wrongz");
-    REQUIRE_THROWS_MATCHES(
-        evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
-        Catch::Matchers::MessageMatches(ContainsSubstring("atomic numbers")));
-  }
-}
-
-TEST_CASE("ORCAPot stops a sleeping process group when the timeout passes",
-          "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  EnvVar mode("FAKE_ORCA_MODE", "hang");
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.timeout_s = 1.0;
-  rgpot::ORCAPot pot(cfg);
-  const auto started = std::chrono::steady_clock::now();
-  try {
-    evaluate(pot, kWater, kWaterZ);
-    FAIL("a run past timeout_s must throw");
-  } catch (const rgpot::ORCAError &e) {
-    const std::string message = e.what();
-    REQUIRE_THAT(message, ContainsSubstring("timed out"));
-    REQUIRE_THAT(message, ContainsSubstring("process group"));
-    REQUIRE_THAT(message, ContainsSubstring("SIGKILL"));
-  }
-  const double elapsed =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - started)
-          .count();
-  // The stand-in sleeps for 300s and ignores SIGTERM. Stopping the group
-  // has to finish well inside that, after the 1s budget and the 2s grace.
-  REQUIRE(elapsed < 20.0);
-  const pid_t shell = readPid(fake.state / "pid");
-  const pid_t group = readPid(fake.state / "pgid");
-  const pid_t child = readPid(fake.state / "child.pid");
-  const pid_t child_group = readPid(fake.state / "child.pgid");
-  REQUIRE(group == shell);
-  REQUIRE(child != shell);
-  REQUIRE(child_group == shell);
-  REQUIRE(processGone(shell));
-  REQUIRE(processGone(child));
-  REQUIRE(groupGone(group));
-  REQUIRE_FALSE(isZombie(shell));
-  REQUIRE_FALSE(isZombie(child));
-}
-
-TEST_CASE("ORCAPot escalates to SIGKILL when the leader exits but a child survives",
-          "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  EnvVar mode("FAKE_ORCA_MODE", "hang_leader_exits");
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.timeout_s = 1.0;
-  rgpot::ORCAPot pot(cfg);
-  const auto started = std::chrono::steady_clock::now();
-  try {
-    evaluate(pot, kWater, kWaterZ);
-    FAIL("a run past timeout_s must throw");
-  } catch (const rgpot::ORCAError &e) {
-    const std::string message = e.what();
-    REQUIRE_THAT(message, ContainsSubstring("timed out"));
-    REQUIRE_THAT(message, ContainsSubstring("process group"));
-    REQUIRE_THAT(message, ContainsSubstring("SIGKILL"));
-  }
-  const double elapsed =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - started)
-          .count();
-  REQUIRE(elapsed < 20.0);
-  const pid_t shell = readPid(fake.state / "pid");
-  const pid_t group = readPid(fake.state / "pgid");
-  const pid_t child = readPid(fake.state / "child.pid");
-  const pid_t child_group = readPid(fake.state / "child.pgid");
-  REQUIRE(group == shell);
-  REQUIRE(child != shell);
-  REQUIRE(child_group == shell);
-  REQUIRE(processGone(shell));
-  REQUIRE(processGone(child));
-  REQUIRE(groupGone(group));
-  REQUIRE(fs::exists(fake.state / "leader_exited"));
-  REQUIRE_FALSE(isZombie(shell));
-  REQUIRE_FALSE(isZombie(child));
-}
-
-TEST_CASE("ORCAPot closes extra non-CLOEXEC file descriptors before exec",
-          "[orca]") {
-  int fds[2] = {-1, -1};
-  REQUIRE(::pipe(fds) == 0);
-  FdGuard read_end(fds[0]);
-  FdGuard write_end(fds[1]);
-  REQUIRE(write_end.get() > 2);
-  REQUIRE(::fcntl(write_end.get(), F_GETFD) == 0);
-  REQUIRE(::fcntl(read_end.get(), F_SETFL, O_NONBLOCK) == 0);
-
-  FdGuard high_write(::dup2(write_end.get(), 42));
-  REQUIRE(high_write.get() == 42);
-  REQUIRE(::fcntl(high_write.get(), F_GETFD) == 0);
-
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  EnvVar forbidden("FAKE_ORCA_FORBIDDEN_FDS",
-                   std::to_string(write_end.get()) + " " +
-                       std::to_string(high_write.get()));
-  rgpot::ORCAPot pot(fake.config());
-  evaluate(pot, kWater, kWaterZ);
-  REQUIRE(fake.calls() == 1);
-
-  char buf[16];
-  errno = 0;
-  REQUIRE(::read(read_end.get(), buf, sizeof(buf)) == -1);
-  REQUIRE(errno == EAGAIN);
-}
-
-TEST_CASE("ORCAPot reports a signal", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  EnvVar mode("FAKE_ORCA_MODE", "killed");
-  rgpot::ORCAPot pot(fake.config());
-  REQUIRE_THROWS_MATCHES(
-      evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
-      Catch::Matchers::MessageMatches(ContainsSubstring("signal 9")));
-}
-
-TEST_CASE("ORCAPot finds the executable by name on PATH", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.executable.clear();
-
-  const char *inherited = std::getenv("PATH");
-  const std::string with_fake =
-      fake.bin.string() + ":" + (inherited != nullptr ? inherited : "");
-  {
-    EnvVar path("PATH", with_fake);
-    REQUIRE(rgpot::ORCAPot::probeAvailable());
+#ifdef RGPOT_HAS_CACHE
+TEST_CASE("ORCAPot uses the cache only for fresh guesses", "[orca][cache]") {
+  rgpot::tests::TestTempDir db("rgpot-orcapot-cache");
+  rgpot::cache::PotentialCache cache((db.path() / "db").string());
+  const auto run = [&](const rgpot::ORCAConfig &cfg) {
     rgpot::ORCAPot pot(cfg);
-    REQUIRE(pot.executablePath() == (fake.bin / "orca").string());
-    evaluate(pot, kWater, kWaterZ);
+    pot.setCache(&cache);
+    (void)pot(water(), kWaterZ, zeroBox());
+  };
+
+  const int before = fakeState().evaluations;
+  run(baseConfig());
+  REQUIRE(fakeState().evaluations == before + 1);
+  run(baseConfig());
+  REQUIRE(fakeState().evaluations == before + 1);
+
+  // A chained guess makes the result depend on the previous geometry.
+  rgpot::ORCAConfig chained = baseConfig();
+  chained.guess_policy = rgpot::ORCAConfig::GuessPolicy::MoRead;
+  run(chained);
+  REQUIRE(fakeState().evaluations == before + 2);
+  run(chained);
+  REQUIRE(fakeState().evaluations == before + 3);
+}
+#endif
+
+TEST_CASE("ORCAPot reports failed runs as ORCAError", "[orca]") {
+  struct Case {
+    const char *method;
+    const char *status;
+    const char *message;
+  } cases[] = {
+      {"FAIL", "ORCAC_E_ERROR", "method FAIL"},
+      {"NOCONV", "ORCAC_E_NOT_CONVERGED", "did not converge"},
+  };
+  for (const auto &c : cases) {
+    INFO(c.method);
+    rgpot::ORCAConfig cfg = baseConfig();
+    cfg.method = c.method;
+    rgpot::ORCAPot pot(cfg);
+    REQUIRE(pot.available());
+    REQUIRE_THROWS_AS(pot(water(), kWaterZ, zeroBox()), rgpot::ORCAError);
+    REQUIRE_THROWS_WITH(pot(water(), kWaterZ, zeroBox()),
+                        ContainsSubstring(c.status) &&
+                            ContainsSubstring(c.message));
   }
-  {
-    EnvVar path("PATH", fake.state.string());
-    REQUIRE_FALSE(rgpot::ORCAPot::probeAvailable());
-    REQUIRE_THROWS_AS(rgpot::ORCAPot(cfg), rgpot::ORCAError);
-  }
-  cfg.executable = (fake.bin / "no-such-orca").string();
-  REQUIRE_THROWS_AS(rgpot::ORCAPot(cfg), rgpot::ORCAError);
 }
 
-TEST_CASE("ORCAPot accepts a symlink to an executable", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  const fs::path links = fake.dir.path() / "links";
-  fs::create_directories(links);
-  const fs::path link_orca = links / "orca";
-  const fs::path link_broken = links / "broken";
-  const fs::path link_dir = links / "dirlink";
-  fs::create_symlink(fake.orca, link_orca);
-  fs::create_symlink(fake.dir.path() / "does-not-exist", link_broken);
-  fs::create_symlink(fake.state, link_dir);
+TEST_CASE("ORCAPot cancel stops the running call", "[orca]") {
+  rgpot::ORCAConfig cfg = baseConfig();
+  cfg.method = "SLOW";
+  rgpot::ORCAPot pot(cfg);
+  REQUIRE(pot.available());
+  pot.cancel();
+  std::string error;
+  std::thread worker([&] {
+    try {
+      (void)pot(water(), kWaterZ, zeroBox());
+    } catch (const rgpot::ORCAError &e) {
+      error = e.what();
+    }
+  });
+  const volatile int *in_call = &fakeState().in_call;
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(4);
+  while (*in_call == 0 && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  pot.cancel();
+  worker.join();
+  REQUIRE_THAT(error, ContainsSubstring("ORCAC_E_CANCELLED"));
+}
 
-  REQUIRE(rgpot::ORCAPot::probeAvailable(link_orca.string()));
-  REQUIRE_FALSE(rgpot::ORCAPot::probeAvailable(link_broken.string()));
-  REQUIRE_FALSE(rgpot::ORCAPot::probeAvailable(link_dir.string()));
+TEST_CASE("ORCAPot runs an explicit executable without orcac_available",
+          "[orca]") {
+  rgpot::ORCAConfig cfg = baseConfig();
+  rgpot::ORCAPot pot(cfg);
+  REQUIRE(pot.available());
 
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.executable = link_orca.string();
-  rgpot::ORCAPot direct(cfg);
-  evaluate(direct, kWater, kWaterZ);
-  REQUIRE(fake.calls() == 1);
+  cfg.executable = "/nonexistent/orca";
+  rgpot::ORCAPot missing(cfg);
+  REQUIRE_FALSE(missing.available());
+  REQUIRE_THAT(missing.loadError(),
+               ContainsSubstring("orcac_probe_executable(/nonexistent/orca)") &&
+                   ContainsSubstring("ORCAC_E_NOT_FOUND"));
+  REQUIRE_THROWS_AS(missing(water(), kWaterZ, zeroBox()), rgpot::ORCAError);
 
   cfg.executable.clear();
-  const char *inherited = std::getenv("PATH");
-  const std::string with_links =
-      links.string() + ":" + (inherited != nullptr ? inherited : "");
-  EnvVar path("PATH", with_links);
-  REQUIRE(rgpot::ORCAPot::probeAvailable());
-  rgpot::ORCAPot via_path(cfg);
-  REQUIRE(via_path.executablePath() == link_orca.string());
-  evaluate(via_path, kWater, kWaterZ);
-  REQUIRE(fake.calls() == 2);
+  ::unsetenv("ORCAC_ORCA");
+  rgpot::ORCAPot searched(cfg);
+  REQUIRE_FALSE(searched.available());
+  REQUIRE_THAT(searched.loadError(), ContainsSubstring("orcac's search"));
 
-  cfg.executable = link_broken.string();
-  REQUIRE_THROWS_AS(rgpot::ORCAPot(cfg), rgpot::ORCAError);
-  cfg.executable = link_dir.string();
-  REQUIRE_THROWS_AS(rgpot::ORCAPot(cfg), rgpot::ORCAError);
+  ::setenv("ORCAC_ORCA", kExecutable, 1);
+  rgpot::ORCAPot found(cfg);
+  ::unsetenv("ORCAC_ORCA");
+  REQUIRE(found.available());
+  REQUIRE(found.executableIdentity() == resolvedExecutable());
+}
+
+TEST_CASE("ORCAPot refuses a liborcac that disagrees with orcac.h before "
+          "any evaluation",
+          "[orca]") {
+  // null_probes counts the session-less orcac_energy_gradient call of the
+  // handshake. Only the result size needs it, so every other mismatch is
+  // refused before the compute entry point is called at all.
+  struct Variant {
+    const char *env;
+    const char *reason;
+    int null_probes;
+  } variants[] = {
+      {"ORCAC_FAKE_C_ABI_MISMATCH",
+       "reports C ABI version 2, but rgpot was built against 1", 0},
+      {"ORCAC_FAKE_ABI_MISMATCH",
+       "reports ABI version 2, but rgpot was built against 1", 0},
+      {"ORCAC_FAKE_SMALL_CONFIG", "reports an OrcaCConfig struct_size of", 0},
+      {"ORCAC_FAKE_SMALL_RESULT", "reports an OrcaCResult struct_size of", 1},
+      {"ORCAC_FAKE_NO_COMPUTE", "lacks orcac_energy_gradient", 0},
+  };
+  for (const auto &v : variants) {
+    INFO(v.env);
+    rgpot::DynLib held(envPath(v.env));
+    const FakeState *state = stateOf(held);
+    rgpot::ORCAConfig cfg = baseConfig();
+    cfg.library = envPath(v.env);
+    rgpot::ORCAPot pot(cfg);
+    REQUIRE_FALSE(pot.available());
+    REQUIRE_THAT(pot.loadError(), ContainsSubstring(v.reason));
+    REQUIRE_THROWS_WITH(pot(water(), kWaterZ, zeroBox()),
+                        ContainsSubstring(v.reason));
+    REQUIRE(state->sessions_created == 0);
+    REQUIRE(state->evaluations == 0);
+    REQUIRE(state->null_probes == v.null_probes);
+  }
 }
 
 TEST_CASE("ORCAPot rejects a config that cannot run", "[orca]") {
-  Fake fake;
-  const auto bad = [&](auto edit) {
-    rgpot::ORCAConfig cfg = fake.config();
-    edit(cfg);
-    REQUIRE_THROWS_AS(rgpot::ORCAPot(cfg), std::invalid_argument);
-  };
-  bad([](rgpot::ORCAConfig &c) { c.method.clear(); });
-  bad([](rgpot::ORCAConfig &c) { c.keywords = "TightSCF\n%pal nprocs 64 end"; });
-  bad([](rgpot::ORCAConfig &c) { c.basis = "def2-SVP\r"; });
-  bad([](rgpot::ORCAConfig &c) { c.nprocs = 0; });
-  bad([](rgpot::ORCAConfig &c) { c.maxcore_mb = 0; });
-  bad([](rgpot::ORCAConfig &c) { c.multiplicity = 0; });
-  bad([](rgpot::ORCAConfig &c) { c.timeout_s = -0.1; });
-  bad([](rgpot::ORCAConfig &c) {
-    c.timeout_s = std::numeric_limits<double>::quiet_NaN();
-  });
-  bad([](rgpot::ORCAConfig &c) {
-    c.timeout_s = std::numeric_limits<double>::infinity();
-  });
-  REQUIRE(rgpot::ORCAConfig{}.timeout_s == rgpot::ORCAConfig::kDefaultTimeout);
-  REQUIRE(rgpot::ORCAConfig::kDefaultTimeout == 3600.0);
-  rgpot::ORCAConfig unlimited = fake.config();
-  unlimited.timeout_s = 0.0;
-  REQUIRE_NOTHROW(rgpot::ORCAPot(unlimited));
+  rgpot::ORCAConfig cfg = baseConfig();
+  cfg.method.clear();
+  REQUIRE_THROWS_AS(rgpot::ORCAPot(cfg), std::invalid_argument);
+  cfg = baseConfig();
+  cfg.multiplicity = 0;
+  REQUIRE_THROWS_AS(rgpot::ORCAPot(cfg), std::invalid_argument);
+  cfg = baseConfig();
+  cfg.keywords = "TightSCF\nPrintBasis";
+  REQUIRE_THROWS_AS(rgpot::ORCAPot(cfg), std::invalid_argument);
+  cfg = baseConfig();
+  cfg.timeout_s = -1.0;
+  REQUIRE_THROWS_AS(rgpot::ORCAPot(cfg), std::invalid_argument);
 }
 
-TEST_CASE("ORCAPot advertises a per-instance, open-boundary kernel", "[orca]") {
-  Fake fake;
-  rgpot::ORCAPot pot(fake.config());
-  const rgpot::PotCaps caps = pot.caps();
-  REQUIRE(caps.reentrancy == rgpot::Reentrancy::PerInstance);
-  REQUIRE_FALSE(caps.periodic);
-  REQUIRE_FALSE(caps.stress);
-
-  rgpot::ORCAConfig other = fake.config();
-  other.method = "B3LYP";
-  rgpot::ORCAPot different(other);
-  REQUIRE(pot.paramsKey() != different.paramsKey());
-  rgpot::ORCAConfig more_cores = fake.config();
-  more_cores.nprocs = 8;
-  REQUIRE(rgpot::ORCAPot(more_cores).paramsKey() == pot.paramsKey());
-  rgpot::ORCAConfig longer = fake.config();
-  longer.timeout_s = 10.0;
-  REQUIRE(rgpot::ORCAPot(longer).paramsKey() == pot.paramsKey());
-}
-
-TEST_CASE("ORCAPot instances keep separate working directories", "[orca]") {
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  std::string kept;
-  {
-    rgpot::ORCAPot a(fake.config());
-    rgpot::ORCAPot b(fake.config());
-    REQUIRE(a.runDirectory() != b.runDirectory());
-    REQUIRE(fs::path(a.runDirectory()).parent_path() == fake.scratch);
-    evaluate(a, kWater, kWaterZ);
-    REQUIRE(fs::exists(fs::path(a.runDirectory()) / "rgpot_orca.inp"));
-    REQUIRE_FALSE(fs::exists(fs::path(b.runDirectory()) / "rgpot_orca.inp"));
-    kept = a.runDirectory();
-  }
-  REQUIRE_FALSE(fs::exists(kept));
-
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.keep_files = true;
-  {
-    rgpot::ORCAPot pot(cfg);
-    evaluate(pot, kWater, kWaterZ);
-    kept = pot.runDirectory();
-  }
-  REQUIRE(fs::exists(fs::path(kept) / "rgpot_orca.engrad"));
-}
-
-TEST_CASE("parseEngrad reads the layout ORCA writes", "[orca]") {
-  const std::string text =
-      "#\n# Number of atoms\n#\n 2\n#\n# The current total energy in Eh\n#\n"
-      "   -2.500000000000\n#\n# The current gradient in Eh/bohr\n#\n"
-      "  0.1\n  0.2\n  0.3\n -0.1\n -0.2\n -0.3\n"
-      "#\n# The atomic numbers and current coordinates in Bohr\n#\n"
-      "   1    0.0 0.0 0.0\n   1    0.0 0.0 1.4\n";
-  const auto engrad = rgpot::orca::parseEngrad(text, 2);
-  REQUIRE(engrad.energy_hartree == -2.5);
-  REQUIRE(engrad.gradient_hartree_per_bohr.size() == 6);
-  REQUIRE(engrad.gradient_hartree_per_bohr[5] == -0.3);
-  REQUIRE(engrad.atomic_numbers == std::vector<int>{1, 1});
-  REQUIRE_THROWS_AS(rgpot::orca::parseEngrad(text, 3),
-                    std::runtime_error);
-  REQUIRE_THROWS_AS(rgpot::orca::parseEngrad("", 2),
-                    std::runtime_error);
-  REQUIRE_THROWS_AS(rgpot::orca::parseEngrad(text + " 7\n", 2),
-                    std::runtime_error);
-}
-
-TEST_CASE("ORCAPot input and engrad ignore the C++ global locale", "[orca]") {
-  CxxLocaleGuard guard(std::locale(std::locale::classic(), new CommaDecimalPunct));
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-  const Result r = evaluate(pot, kWater, kWaterZ);
-  REQUIRE_THAT(r.energy,
-               WithinRel(kFakeEnergy * rgpot::units::HARTREE_TO_EV,
-                         kUnitTolerance));
-  REQUIRE_THAT(fake.input(1), ContainsSubstring("0.117300000000"));
-  REQUIRE_THAT(fake.input(1), !ContainsSubstring(","));
-
-  const std::string comma_engrad =
-      "1\n-2,5\n0,1\n0,2\n0,3\n1 0,0 0,0 0,0\n";
-  REQUIRE_THROWS_AS(rgpot::orca::parseEngrad(comma_engrad, 1),
-                    std::runtime_error);
-}
-
-TEST_CASE("ORCAPot input and engrad ignore a comma-decimal C locale",
-          "[orca]") {
-  CLocaleGuard guard;
-  bool found = false;
-  for (const char *cand :
-       {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "fr_FR.utf8",
-        "es_ES.UTF-8", "es_ES.utf8", "it_IT.UTF-8", "pt_BR.UTF-8"}) {
-    if (std::setlocale(LC_ALL, cand) != nullptr) {
-      const std::lconv *conv = std::localeconv();
-      if (conv != nullptr && conv->decimal_point != nullptr &&
-          conv->decimal_point[0] == ',') {
-        found = true;
-        break;
-      }
-    }
-  }
-  if (!found) {
-    SKIP("no comma-decimal C locale is installed");
-  }
-
-  Fake fake;
-  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
-  const Result r = evaluate(pot, kWater, kWaterZ);
-  REQUIRE_THAT(r.energy,
-               WithinRel(kFakeEnergy * rgpot::units::HARTREE_TO_EV,
-                         kUnitTolerance));
-  REQUIRE_THAT(fake.input(1), ContainsSubstring("0.117300000000"));
-  REQUIRE_THAT(fake.input(1), !ContainsSubstring(","));
-
-  const std::string comma_engrad =
-      "1\n-2,5\n0,1\n0,2\n0,3\n1 0,0 0,0 0,0\n";
-  REQUIRE_THROWS_AS(rgpot::orca::parseEngrad(comma_engrad, 1),
-                    std::runtime_error);
-}
-
-TEST_CASE("ORCAPot against a real ORCA", "[orca][real]") {
-  if (!rgpot::ORCAPot::probeAvailable()) {
-    SKIP("orca is not on PATH");
-  }
-  rgpot::tests::TestTempDir scratch("rgpot-orca-real");
-  rgpot::ORCAConfig cfg;
-  cfg.method = "PBE";
-  cfg.basis = "def2-SVP";
-  cfg.keywords = "TightSCF";
-  cfg.scratch_dir = scratch.string();
+TEST_CASE("ORCAPot names an explicit library it cannot open", "[orca]") {
+  rgpot::ORCAConfig cfg = baseConfig();
+  cfg.library = "/nonexistent/liborcac.so";
   rgpot::ORCAPot pot(cfg);
+  REQUIRE_FALSE(pot.available());
+  REQUIRE_THAT(pot.loadError(),
+               ContainsSubstring("liborcac not loaded (tried "
+                                 "/nonexistent/liborcac.so)") &&
+                   ContainsSubstring("ORCAC_LIBRARY or RGPOT_ORCAC_ENGINE"));
+}
 
-  const Result first = evaluate(pot, kWater, kWaterZ);
-  REQUIRE(std::isfinite(first.energy));
-  REQUIRE(first.energy < 0.0);
-  double net[3] = {0.0, 0.0, 0.0};
-  for (std::size_t i = 0; i < 3; ++i) {
-    for (std::size_t k = 0; k < 3; ++k) {
-      net[k] += first.forces[3 * i + k];
-    }
-  }
-  // Translational invariance: the forces on an isolated molecule sum to
-  // zero.
-  for (const double component : net) {
-    REQUIRE_THAT(component, Catch::Matchers::WithinAbs(0.0, 1.0e-4));
-  }
-
-  const Result second = evaluate(pot, kWater, kWaterZ);
-  REQUIRE(pot.reusedWavefunction());
-  REQUIRE_THAT(second.energy, WithinRel(first.energy, 1.0e-6));
+// Hidden: meson runs it in a process of its own as ORCAPotAbsentLibrary,
+// with RGPOT_ORCAC_ENGINE naming a file that does not exist. The exclusive
+// environment rule must stop the search there, with no fallback.
+TEST_CASE("ORCAPot without liborcac", "[.][orca][absent-library]") {
+  const std::string missing = envPath("RGPOT_ORCAC_ENGINE");
+  REQUIRE_FALSE(rgpot::ORCAPot::probeAvailable());
+  rgpot::ORCAConfig cfg;
+  cfg.method = "B3LYP";
+  rgpot::ORCAPot pot(cfg);
+  REQUIRE_FALSE(pot.available());
+  REQUIRE_THAT(pot.loadError(), ContainsSubstring("tried " + missing + ")"));
+  REQUIRE_THROWS_WITH(pot(water(), kWaterZ, zeroBox()),
+                      ContainsSubstring("Install orcac"));
 }

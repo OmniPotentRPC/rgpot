@@ -38,6 +38,7 @@
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Models/ModelPots.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/ORCAPot/ORCAPot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SumPot/SumPot.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
@@ -1022,6 +1023,118 @@ NB_MODULE(_core, m) {
     return out;
   });
   rgpot::pybind::bind_calls(muller);
+
+  auto orca = nb::class_<PotHolder<rgpot::ORCAPot>>(m, "ORCAPot");
+  orca.def(
+      "__init__",
+      [](PotHolder<rgpot::ORCAPot> *self, const std::string &method,
+         const std::string &basis, const std::string &keywords,
+         const std::string &blocks, int charge, int multiplicity, int nprocs,
+         int maxcore_mb, const std::string &executable,
+         const std::string &library, const std::string &guess_policy,
+         double timeout_s, const std::string &scratch_dir, bool keep_files,
+         bool fresh_retry) {
+        rgpot::ORCAConfig cfg;
+        cfg.method = method;
+        cfg.basis = basis;
+        cfg.keywords = keywords;
+        cfg.blocks = blocks;
+        cfg.charge = charge;
+        cfg.multiplicity = multiplicity;
+        cfg.nprocs = nprocs;
+        cfg.maxcore_mb = maxcore_mb;
+        cfg.executable = executable;
+        cfg.library = library;
+        if (guess_policy == "moread") {
+          cfg.guess_policy = rgpot::ORCAConfig::GuessPolicy::MoRead;
+        } else if (guess_policy == "fresh") {
+          cfg.guess_policy = rgpot::ORCAConfig::GuessPolicy::Fresh;
+        } else {
+          throw nb::value_error(
+              ("ORCAPot: guess_policy must be 'moread' or 'fresh', got '" +
+               guess_policy + "'")
+                  .c_str());
+        }
+        cfg.timeout_s = timeout_s;
+        cfg.scratch_dir = scratch_dir;
+        cfg.keep_files = keep_files;
+        cfg.fresh_retry = fresh_retry;
+        new (self) PotHolder<rgpot::ORCAPot>([cfg] {
+          auto pot = std::make_unique<rgpot::ORCAPot>(cfg);
+          if (!pot->available()) {
+            throw std::runtime_error("ORCAPot: " + pot->loadError());
+          }
+          return pot;
+        });
+      },
+      nb::kw_only(), nb::arg("method"), nb::arg("basis") = "",
+      nb::arg("keywords") = "", nb::arg("blocks") = "", nb::arg("charge") = 0,
+      nb::arg("multiplicity") = 1, nb::arg("nprocs") = 1,
+      nb::arg("maxcore_mb") = 0, nb::arg("executable") = "",
+      nb::arg("library") = "", nb::arg("guess_policy") = "fresh",
+      nb::arg("timeout_s") = rgpot::ORCAConfig::kDefaultTimeout,
+      nb::arg("scratch_dir") = "", nb::arg("keep_files") = false,
+      nb::arg("fresh_retry") = true,
+      "ORCA energies and gradients through liborcac, opened at run time. "
+      "With an empty library the search is ORCAC_LIBRARY, then "
+      "RGPOT_ORCAC_ENGINE, then liborcac on the loader path; a library or "
+      "variable that is set is the only path tried. An empty executable "
+      "lets orcac search for orca; the file it resolves to is pinned, and "
+      "a call after that file changes raises RuntimeError. guess_policy "
+      "'fresh' starts every call from ORCA's own guess; 'moread' starts "
+      "from the previous call's orbitals and leaves the result cache "
+      "unused. keep_files must stay False: orcac ABI 1 always removes the "
+      "run directory. Raises RuntimeError when liborcac is absent, fails "
+      "the ABI handshake, or finds no executable, and ValueError for a "
+      "config that cannot run. A box is accepted when it is zero or when "
+      "every pair of atoms is its own nearest periodic image, as in the "
+      "box the ASE calculator pads a cluster into. Each calling thread "
+      "gets its own instance and orcac session.");
+  orca.def("config", [](const PotHolder<rgpot::ORCAPot> &self) {
+    const auto &config = self.primary().config();
+    nb::dict out;
+    out["method"] = config.method;
+    out["basis"] = config.basis;
+    out["keywords"] = config.keywords;
+    out["blocks"] = config.blocks;
+    out["charge"] = config.charge;
+    out["multiplicity"] = config.multiplicity;
+    out["nprocs"] = config.nprocs;
+    out["maxcore_mb"] = config.maxcore_mb;
+    out["executable"] = config.executable;
+    out["library"] = config.library;
+    out["guess_policy"] =
+        config.guess_policy == rgpot::ORCAConfig::GuessPolicy::Fresh
+            ? "fresh"
+            : "moread";
+    out["timeout_s"] = config.timeout_s;
+    out["scratch_dir"] = config.scratch_dir;
+    out["keep_files"] = config.keep_files;
+    out["fresh_retry"] = config.fresh_retry;
+    return out;
+  });
+  orca.def_prop_ro(
+      "library_path",
+      [](const PotHolder<rgpot::ORCAPot> &self) {
+        return self.primary().libraryPath();
+      },
+      "Path liborcac was opened from.");
+  orca.def_prop_ro(
+      "engine_version",
+      [](const PotHolder<rgpot::ORCAPot> &self) {
+        return self.primary().engineVersion();
+      },
+      "orcac_version() of the loaded library.");
+  orca.def_prop_ro(
+      "executable_identity",
+      [](const PotHolder<rgpot::ORCAPot> &self) {
+        return self.primary().executableIdentity();
+      },
+      "Absolute path of the orca executable, as orcac resolves it.");
+  orca.def_static("probe_available", &rgpot::ORCAPot::probeAvailable,
+                  "True when the default search finds a liborcac that "
+                  "passes the ABI handshake.");
+  rgpot::pybind::bind_calls(orca);
 
   auto emt_cls = nb::class_<PotHolder<rgpot::EMTPot>>(m, "EMTPot");
   emt_cls.def(

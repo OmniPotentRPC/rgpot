@@ -43,7 +43,7 @@ _rt_atoms = {
     'cache': get_option('with_cache'),
     'ipi': has_ipi and not get_option('with_rpc_client_only'),
     'eam_table': has_eam_table,
-    'orca': has_orca,
+    'orca_legacy': has_orca_legacy,
     'eigen': has_eigen,
     'xtensor': has_xtensor,
     'python': find_program('python3', required: false).found(),
@@ -504,11 +504,6 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/MEAM')  # 'meam': Baskes MEAM and Lee-Baskes 2NN MEAM
     rgpotentials += [meam]
 
-    if has_orca
-        subdir('rgpot/ORCAPot')  # 'orca_pot': child-process ORCA frontend
-        rgpotentials += [orca_pot]
-    endif
-
     subdir('rgpot/EMT')  # 'asap_emt'
     rgpotentials += [asap_emt]
 
@@ -549,6 +544,13 @@ if not get_option('with_rpc_client_only')
     # Pure dlopen consumer of the split orcac shim (liborcac).
     subdir('rgpot/ORCACPot')  # 'orcacpot'
     rgpotentials += [orcacpot]
+
+    # Pure dlopen consumer of split orcac, and the deprecated runner.
+    subdir('rgpot/ORCAPot')  # 'orcapot', 'orca_legacy_pot'
+    rgpotentials += [orcapot]
+    if has_orca_legacy
+        rgpotentials += [orca_legacy_pot]
+    endif
 
     subdir('rgpot/ExternalPot')  # lammps / gromacs / openmm constructors
     rgpotentials += [external_pot]
@@ -839,6 +841,17 @@ if not get_option('with_rpc_client_only')
             dependencies: _engine_deps + [mopac_dl_dep],
             link_with: [rgpot],
             link_whole: [mopacpot],
+            cpp_args: _engine_args,
+            include_directories: _incdirs,
+            gnu_symbol_visibility: 'default',
+            install: not meson.is_subproject(),
+        )
+        orca_engine = shared_library(
+            'orca_engine',
+            [_engine_common, files('rgpot/engine/OrcaEngine.cc')],
+            dependencies: _engine_deps + [orcac_dl_dep],
+            link_with: [rgpot],
+            link_whole: [orcapot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
             gnu_symbol_visibility: 'default',
@@ -2348,6 +2361,63 @@ if get_option('with_tests')
             ),
             kwargs: _rt_kw['test_mopac_abi'],
         )
+        # The fake liborcac and the variants the handshake must refuse.
+        _orcac_fake_variants = {
+            'orcac_h_fake_engine': [],
+            'orcac_fake_c_abi_mismatch': ['-DORCAC_FAKE_C_ABI=2'],
+            'orcac_fake_abi_mismatch': ['-DORCAC_FAKE_ABI=2'],
+            'orcac_fake_small_config': ['-DORCAC_FAKE_SMALL_CONFIG'],
+            'orcac_fake_small_result': ['-DORCAC_FAKE_SMALL_RESULT'],
+            'orcac_fake_no_compute': ['-DORCAC_FAKE_NO_COMPUTE'],
+        }
+        _orcac_fakes = {}
+        foreach _name, _cargs : _orcac_fake_variants
+            _orcac_fakes += {
+                _name: shared_library(
+                    _name,
+                    sources: ['tests/orcac_h_fake_engine.c'],
+                    c_args: _cargs,
+                    include_directories: include_directories('rgpot/ORCAPot'),
+                    install: false,
+                ),
+            }
+        endforeach
+        orcac_h_fake_engine = _orcac_fakes['orcac_h_fake_engine']
+        orcac_fake_env = environment(
+            {
+                'RGPOT_ORCAC_ENGINE': orcac_h_fake_engine.full_path(),
+                'ORCAC_FAKE_C_ABI_MISMATCH': _orcac_fakes['orcac_fake_c_abi_mismatch'].full_path(),
+                'ORCAC_FAKE_ABI_MISMATCH': _orcac_fakes['orcac_fake_abi_mismatch'].full_path(),
+                'ORCAC_FAKE_SMALL_CONFIG': _orcac_fakes['orcac_fake_small_config'].full_path(),
+                'ORCAC_FAKE_SMALL_RESULT': _orcac_fakes['orcac_fake_small_result'].full_path(),
+                'ORCAC_FAKE_NO_COMPUTE': _orcac_fakes['orcac_fake_no_compute'].full_path(),
+            },
+        )
+        orca_pot_test = executable(
+            'orca_pot_test',
+            sources: ['tests/ORCAPotTest.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'ORCAPotTest',
+            orca_pot_test,
+            env: orcac_fake_env,
+            depends: _orcac_fakes.values(),
+            kwargs: _rt_kw['ORCAPotTest'],
+        )
+        test(
+            'ORCAPotAbsentLibrary',
+            orca_pot_test,
+            args: ['[absent-library]'],
+            env: {
+                'RGPOT_ORCAC_ENGINE': meson.current_build_dir() / 'liborcac-not-built.so',
+            },
+            kwargs: _rt_kw['ORCAPotAbsentLibrary'],
+        )
     endif
 
     # asv loads this shared library and times one force call per method.
@@ -2846,11 +2916,14 @@ if get_option('with_tests')
                 'MOPAC',
                 'NWCHEM',
                 'CPMD',
+                'ORCA',
             ]
             engine_table_depends = [
                 classical_engine,
                 composite_engine,
                 mopac_engine,
+                orca_engine,
+                orcac_h_fake_engine,
                 nwchem_engine,
                 cpmd_engine,
                 cpmdc_fake_engine,
@@ -2864,6 +2937,11 @@ if get_option('with_tests')
                 composite_engine.full_path(),
             )
             engine_table_env.set('RGPOT_ENGINE_MOPAC', mopac_engine.full_path())
+            engine_table_env.set('RGPOT_ENGINE_ORCA', orca_engine.full_path())
+            engine_table_env.set(
+                'RGPOT_ORCAC_ENGINE',
+                orcac_h_fake_engine.full_path(),
+            )
             engine_table_env.set(
                 'RGPOT_ENGINE_NWCHEM',
                 nwchem_engine.full_path(),
@@ -3011,12 +3089,14 @@ if get_option('with_tests')
                     classical_engine.full_path(),
                     composite_engine.full_path(),
                     mopac_engine.full_path(),
+                    orca_engine.full_path(),
                     nwchem_engine.full_path(),
                 ]
                 _soversion_depends += [
                     classical_engine,
                     composite_engine,
                     mopac_engine,
+                    orca_engine,
                     nwchem_engine,
                 ]
                 if has_skala
@@ -3535,6 +3615,7 @@ if not meson.is_subproject()
     if not get_option('with_rpc_client_only')
         _pc_libs += [rgpot]
         _pc_cflags += ['-DRGPOT_HAS_POTLIB=TRUE']
+        _pc_cflags += ['-DRGPOT_HAS_ORCA=TRUE']
         if has_fortran
             _pc_cflags += ['-DRGPOT_HAS_FORTRAN_POTS=TRUE']
         endif
@@ -3547,8 +3628,8 @@ if not meson.is_subproject()
         if has_eam_table
             _pc_cflags += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
         endif
-        if has_orca
-            _pc_cflags += ['-DRGPOT_HAS_ORCA=TRUE']
+        if has_orca_legacy
+            _pc_cflags += ['-DRGPOT_HAS_ORCA_LEGACY=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']

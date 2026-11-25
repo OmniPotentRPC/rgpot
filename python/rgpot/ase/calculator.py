@@ -68,6 +68,7 @@ _ASE_KEYS = {
 _ALIASES = {
     "lennardjones": "LJPot",
     "gromacs": "rgpot_gromacs_potential",
+    "orca": "ORCAPot",
     "openmm": "rgpot_openmm_potential",
 }
 
@@ -98,7 +99,7 @@ _FACTORY_DEFAULTS = {
 # image itself (D2Pot, D4Pot), is not periodic (D3Pot, MullerBrownPot), has no
 # cutoff (WaterHPot), is defined by a single minimum image (D2CpmdPot), or
 # hands the geometry to an engine that owns the neighbour search (IPIPot,
-# LammpsPot). A
+# LammpsPot) or runs a cluster calculation in the padded box (ORCAPot). A
 # class that is in neither this table nor one of the three published forms
 # has no known cutoff, and :func:`_kernel_cutoff` raises for it.
 _KERNEL_CUTOFF_ANGSTROM = {
@@ -120,6 +121,7 @@ _KERNEL_CUTOFF_ANGSTROM = {
     "D2CpmdPot": 0.0,
     "D3Pot": 0.0,
     "MullerBrownPot": 0.0,
+    "ORCAPot": 0.0,
     "D4Pot": 0.0,
     "IPIPot": 0.0,
     "LammpsPot": 0.0,

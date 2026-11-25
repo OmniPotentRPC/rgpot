@@ -36,6 +36,7 @@ D2Pot = _core.D2Pot
 D2CpmdPot = _core.D2CpmdPot
 SumPot = _core.SumPot
 MullerBrownPot = _core.MullerBrownPot
+ORCAPot = _core.ORCAPot
 NumericalError = _core.NumericalError
 atomic_number = _core.atomic_number
 unit_conversion_factor = _core.unit_conversion_factor
@@ -202,6 +203,7 @@ __all__ = [
     "D2CpmdPot",
     "SumPot",
     "MullerBrownPot",
+    "ORCAPot",
     "LammpsPot",
     "GromacsPot",
     "OpenMMPot",

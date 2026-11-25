@@ -4,159 +4,170 @@
 
 /**
  * @file ORCAPot.hpp
- * @brief ORCA single-point energy and gradient behind the Potential interface.
+ * @brief ORCA energies and gradients through the runtime-loaded liborcac.
  *
- * Each force call writes an ORCA input with `! EnGrad`, runs the `orca`
- * executable as a child process in its own process group and working
- * directory, and reads the `.engrad` file ORCA writes.
- * ORCAConfig::timeout_s bounds that wait (one hour by default; zero waits
- * without a limit). Past the limit the process group is sent SIGTERM and,
- * if any process in the group is still alive, SIGKILL even if the leader has
- * exited. ORCA is neither linked nor loaded. The only
- * dependency is an executable, named by ORCAConfig::executable or found as
- * `orca` on PATH.
- * The energy is converted from Hartree to eV and the gradient from
- * Hartree/Bohr to forces in eV/Angstrom with the constants of units.hpp.
+ * Pure consumer of the split orcac library: the frontend dlopens liborcac,
+ * checks it against the vendored orcac.h, and runs every force call through
+ * one orcac session. rgpot links no ORCA and no orcac code.
  *
- * Between calls the converged orbitals are carried forward: the .gbw of one
- * call is copied to a second name and handed to the next through `%moinp`
- * and `! MORead`. Without a .gbw, or after a failure or a change of
- * composition, the next call starts from ORCA's own guess.
+ * liborcac is found from ORCAConfig::library, else ORCAC_LIBRARY, else
+ * RGPOT_ORCAC_ENGINE, else the platform library names. A path that is given
+ * is the only one tried. A library whose ABI version is not 1, or whose
+ * reported OrcaCConfig or OrcaCResult size is below the ABI 1 minimum, is
+ * refused before any session or evaluation. Positions go to orcac in
+ * Angstrom; the Eh energy and the Eh/bohr gradient come back and are
+ * converted to eV and eV/Angstrom forces with the constants of units.hpp.
+ *
+ * The box rule and the pinning of the orca executable are those of
+ * ORCALegacyPot (ORCAGuards.hpp). Each call starts from ORCA's own guess
+ * unless ORCAConfig::guess_policy is MoRead; with MoRead the result cache is
+ * not used (see setCache).
  */
 
+#include "rgpot/ORCAPot/ORCAError.hpp"
 #include "rgpot/Potential.hpp"
 
 #include <cstdint>
-#include <stdexcept>
 #include <string>
-#include <vector>
 
 namespace rgpot {
 
-/// A failure of the ORCA run itself: a stale .engrad or .gbw could not be
-/// removed, the input could not be written, the process could not be started,
-/// ran past ORCAConfig::timeout_s, ended with a non-zero status or a signal,
-/// left no .engrad file, or wrote one that is malformed or holds a non-finite
-/// number. The message carries the tail of ORCA's stderr and of its output
-/// file. Input a caller got wrong (a periodic cell, an unknown atomic number,
-/// an impossible spin, a timeout that is negative or not finite) throws
-/// std::invalid_argument instead.
-class ORCAError : public std::runtime_error {
-public:
-  using std::runtime_error::runtime_error;
-};
-
 /**
- * @brief Parameters for ORCAPot.
- *
- * Every field that shapes the calculation is the caller's: there is no
- * default method or basis, and the ORCA installation is not assumed.
+ * @brief Parameters for ORCAPot, mirrored by ORCAParams on the wire.
  */
 struct ORCAConfig {
-  /// Default of timeout_s: one hour, in seconds.
   static constexpr double kDefaultTimeout = 3600.0;
 
-  /// The orca executable: a path, or a bare name looked up on PATH. Empty
-  /// looks up `orca` on PATH.
-  std::string executable;
-  /// ORCA method keyword (a functional, `HF`, `DLPNO-CCSD(T)`, a composite
-  /// such as `r2SCAN-3c`). Required.
-  std::string method;
-  /// Basis set keyword. Empty for a composite method that carries its own.
-  std::string basis;
-  /// Further simple-input keywords, separated by blanks, for example
-  /// `TightSCF D4 RIJCOSX`.
-  std::string keywords;
+  /// How a run starts its SCF.
+  enum class GuessPolicy : int {
+    MoRead = 0, ///< From the session's last orbitals (ORCAC_GUESS_CHAIN).
+    Fresh = 1,  ///< Always from ORCA's own guess (ORCAC_GUESS_FRESH).
+  };
+
+  std::string method;   ///< Simple-input method keyword; required.
+  std::string basis;    ///< Basis keyword; empty for a composite method.
+  std::string keywords; ///< Further simple-input keywords, one line.
+  std::string blocks;   ///< Verbatim % blocks; may span lines.
   int charge = 0;
-  /// Spin multiplicity 2S + 1.
-  int multiplicity = 1;
-  /// Processes for `%pal nprocs`. Above 1 ORCA starts its own MPI ranks.
-  int nprocs = 1;
-  /// `%maxcore`, memory per process in MB. 1024 is ORCA's own default.
-  int maxcore_mb = 1024;
-  /// Start each call from the orbitals of the previous one.
-  bool restart = true;
-  /// Directory under which the per-instance working directory is created.
-  /// Empty uses the system temporary directory.
-  std::string scratch_dir;
-  /// Leave the working directory in place when the instance is destroyed.
+  int multiplicity = 1; ///< 2S+1, at least 1.
+  int nprocs = 1;       ///< At least 1.
+  int maxcore_mb = 0;   ///< Memory per process in MB; 0 keeps ORCA's default.
+  std::string executable; ///< orca to run; empty lets orcac search.
+  std::string library;    ///< liborcac to load; empty searches.
+  /// Fresh by default, so a result does not depend on the calls before it.
+  /// With MoRead, ORCAPot does not use a result cache it is given.
+  GuessPolicy guess_policy = GuessPolicy::Fresh;
+  double timeout_s = kDefaultTimeout; ///< Seconds per run; 0 waits forever.
+  std::string scratch_dir; ///< Run directory parent; empty for the system one.
+  /// Must stay false: orcac ABI 1 always removes the run directory.
   bool keep_files = false;
-  /// Seconds to wait for one orca process. The default is one hour. Zero
-  /// waits until the process ends. Past the limit the process group is sent
-  /// SIGTERM and, if any process in the group is still alive two seconds
-  /// later, SIGKILL even if the leader has exited; the child is reaped and
-  /// the call throws ORCAError. A negative or non-finite value is rejected.
-  /// Not part of the result-cache key: it does not change the energy.
-  double timeout_s = kDefaultTimeout;
+  bool fresh_retry = true; ///< Rerun once from a fresh guess on failure.
+  /// Deprecated: kept from the 3.8.0 ORCAConfig; set guess_policy instead.
+  /// True makes the instance use GuessPolicy::MoRead whatever guess_policy
+  /// says. Not marked [[deprecated]], since the implicit copy and move of
+  /// ORCAConfig would then warn in every program that copies one.
+  bool restart = false;
 };
 
 /**
  * @class ORCAPot
- * @brief ORCA energy and gradient through a child process.
- * @ingroup rgpot_potentials
+ * @brief ORCA through liborcac, one orcac session per instance.
+ *
+ * The constructor never throws for a missing or mismatched liborcac or a
+ * missing orca executable: it records the reason, available() is false and
+ * the first force throws ORCAError with it. A config that cannot run
+ * throws std::invalid_argument.
  */
 class ORCAPot : public Potential<ORCAPot> {
 public:
-  /// Resolves the executable and creates the working directory.
-  /// Throws std::invalid_argument for a config that cannot run (empty
-  /// method, a count below 1, a line break in a keyword field, a timeout_s
-  /// that is negative or not finite) and ORCAError when no executable is
-  /// found or the directory cannot be made.
   explicit ORCAPot(const ORCAConfig &config);
   ~ORCAPot() override;
 
   ORCAPot(const ORCAPot &) = delete;
   ORCAPot &operator=(const ORCAPot &) = delete;
 
-  /// Positions in Angstrom, energy in eV, forces in eV/Angstrom. The box
-  /// must be absent or all zero: ORCA has no periodic boundary conditions
-  /// and a non-zero box throws std::invalid_argument. A run that fails,
-  /// including one that passes timeout_s, throws ORCAError.
+  /// One ORCA energy and gradient. ORCA has no periodic boundary
+  /// conditions, so a box is only padding: absent, all zero, or a cell in
+  /// which every pair of atoms is its own nearest periodic image, checked
+  /// along every nonzero lattice vector. Positions are passed unchanged; a
+  /// box with a closer periodic image, a singular box, a cell too skewed to
+  /// check (including one whose image bound is not finite or out of range),
+  /// a non-finite box entry and, with a box, a non-finite position throw
+  /// std::invalid_argument. The call throws ORCAError without running ORCA
+  /// once the executable has changed (see executableIdentity()), and
+  /// discards the result when it changed during the run.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
-  /// One instance owns one working directory and one wavefunction, so
-  /// concurrent callers need one instance each. No stress, no periodicity.
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::PerInstance,
+            .perImageInstances = true,
             .periodic = false,
             .stress = false};
   }
 
+  /// Low 64 bits of the SHA-256 of the method, basis, keywords and blocks,
+  /// the resolved executable and the size, modification time, change time,
+  /// device, inode and content hash of that file, ORCAC_ABI_VERSION, the
+  /// charge, the multiplicity, the guess policy, and whether the executable
+  /// has changed since. Once it has, the key matches no entry an unchanged
+  /// instance writes.
   [[nodiscard]] uint64_t paramsKey() const noexcept override;
 
-  /// Forget the stored orbitals. The next call starts from ORCA's guess.
-  void reset();
-
-  [[nodiscard]] const ORCAConfig &config() const noexcept { return m_config; }
-
-  /// Absolute path of the executable the instance runs.
-  [[nodiscard]] const std::string &executablePath() const noexcept {
-    return m_executable;
+#ifdef RGPOT_HAS_CACHE
+  /// With GuessPolicy::MoRead the result cache is not used: a call it
+  /// served would run no ORCA and leave orcac's stored guess unchanged, so
+  /// the next result would depend on which calls happened to be cached.
+  /// With Fresh the cache is used as given.
+  void setCache(rgpot::cache::PotentialCache *c) override {
+    Potential<ORCAPot>::setCache(
+        config().guess_policy == ORCAConfig::GuessPolicy::MoRead ? nullptr
+                                                                 : c);
   }
+#endif
 
-  /// Directory holding the input, output and .gbw files of the instance.
-  [[nodiscard]] const std::string &runDirectory() const noexcept {
-    return m_run_dir;
-  }
+  /// True when liborcac loaded, passed the handshake, found an executable
+  /// and opened a session.
+  [[nodiscard]] bool available() const noexcept;
 
-  /// True when the last successful call started from stored orbitals.
-  [[nodiscard]] bool reusedWavefunction() const noexcept {
-    return m_last_reused;
-  }
+  /// Why available() is false; empty when it is true.
+  [[nodiscard]] const std::string &loadError() const noexcept;
 
-  /// True when an executable can be resolved for @p executable (empty for
-  /// `orca` on PATH).
-  [[nodiscard]] static bool probeAvailable(const std::string &executable = {});
+  /// Path liborcac was opened from; empty when none opened.
+  [[nodiscard]] const std::string &libraryPath() const noexcept;
 
-  static constexpr uint64_t kKernelVersion = 1;
+  /// orcac_version() of the loaded library; empty when none loaded.
+  [[nodiscard]] std::string engineVersion() const;
+
+  /// The absolute orca path orcac_probe_executable resolved, with symlinks
+  /// followed: the file orcac runs. Every call resolves the executable
+  /// again and throws ORCAError, without running anything, once it names
+  /// another file or the size, modification time, change time, device,
+  /// inode or content hash of this file changed.
+  [[nodiscard]] const std::string &executableIdentity() const noexcept;
+
+  [[nodiscard]] const ORCAConfig &config() const noexcept;
+
+  /// Charge and multiplicity of later runs, through orcac_configure.
+  /// Throws std::invalid_argument for a multiplicity below 1 and
+  /// ORCAError when orcac refuses; the previous values then stay.
+  void setChargeMultiplicity(int charge, int multiplicity);
+
+  /// Stops the force call running on this instance (orcac_cancel); it then
+  /// throws ORCAError with ORCAC_E_CANCELLED. Safe from any thread of the
+  /// process. A call that starts after cancel() is not affected.
+  void cancel() noexcept;
+
+  /// True when liborcac loads from the default search and passes the
+  /// handshake. Cached after the first call.
+  [[nodiscard]] static bool probeAvailable();
+
+  /// probeAvailable(), and orcac_available() reports an orca executable on
+  /// orcac's own search. Cached after the first call.
+  [[nodiscard]] static bool abiAvailable();
 
 private:
-  ORCAConfig m_config;
-  std::string m_executable;
-  std::string m_run_dir;
-  mutable bool m_has_guess = false;
-  mutable bool m_last_reused = false;
-  mutable std::vector<int> m_guess_numbers;
+  struct Impl;
+  Impl *impl_;
 };
 
 } // namespace rgpot
