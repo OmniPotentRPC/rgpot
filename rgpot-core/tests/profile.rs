@@ -215,11 +215,20 @@ mod md_session_capacity_tests {
         let newer_opt = CString::new("newer").unwrap();
         let current_opt = CString::new("current").unwrap();
 
+        #[repr(C)]
+        struct AlignedOpsBuffer {
+            _align: [MdSessionOps; 0],
+            bytes: [u8; std::mem::size_of::<MdSessionOps>() + 64],
+        }
+
         // Capacity smaller than destroy (0 and required_size - 1) is refused cleanly.
         for tiny_cap in [0usize, required_size - 1] {
-            let mut buf = vec![0xA5u8; std::mem::size_of::<MdSessionOps>() + 64];
+            let mut buf = AlignedOpsBuffer {
+                _align: [],
+                bytes: [0xA5u8; std::mem::size_of::<MdSessionOps>() + 64],
+            };
             unsafe {
-                buf.as_mut_ptr().cast::<usize>().write(tiny_cap);
+                buf.bytes.as_mut_ptr().cast::<usize>().write(tiny_cap);
             }
             let mut ctx: *mut c_void = std::ptr::null_mut();
             let mut n_atoms: usize = 0;
@@ -229,7 +238,7 @@ mod md_session_capacity_tests {
                     std::ptr::null(),
                     0,
                     newer_opt.as_ptr(),
-                    buf.as_mut_ptr().cast::<MdSessionOps>(),
+                    buf.bytes.as_mut_ptr().cast::<MdSessionOps>(),
                     &mut ctx,
                     &mut n_atoms,
                     err.as_mut_ptr(),
@@ -238,17 +247,20 @@ mod md_session_capacity_tests {
             };
             assert_ne!(status, 0);
             assert!(ctx.is_null());
-            assert!(buf[std::mem::size_of::<usize>()..]
+            assert!(buf.bytes[std::mem::size_of::<usize>()..]
                 .iter()
                 .all(|&b| b == 0xA5));
         }
 
         // Smaller host capacity against "newer" engine: guard bytes stay intact.
         for cap in [required_size, mid_size] {
-            let mut buf = vec![0xA5u8; std::mem::size_of::<MdSessionOps>() + 64];
-            buf[..cap].fill(0);
+            let mut buf = AlignedOpsBuffer {
+                _align: [],
+                bytes: [0xA5u8; std::mem::size_of::<MdSessionOps>() + 64],
+            };
+            buf.bytes[..cap].fill(0);
             unsafe {
-                buf.as_mut_ptr().cast::<usize>().write(cap);
+                buf.bytes.as_mut_ptr().cast::<usize>().write(cap);
             }
             let mut ctx: *mut c_void = std::ptr::null_mut();
             let mut n_atoms: usize = 0;
@@ -258,7 +270,7 @@ mod md_session_capacity_tests {
                     std::ptr::null(),
                     0,
                     newer_opt.as_ptr(),
-                    buf.as_mut_ptr().cast::<MdSessionOps>(),
+                    buf.bytes.as_mut_ptr().cast::<MdSessionOps>(),
                     &mut ctx,
                     &mut n_atoms,
                     err.as_mut_ptr(),
@@ -266,13 +278,17 @@ mod md_session_capacity_tests {
                 )
             };
             assert_eq!(status, 0);
-            let reported = unsafe { buf.as_ptr().cast::<usize>().read() };
+            let reported = unsafe { buf.bytes.as_ptr().cast::<usize>().read() };
             assert_eq!(reported, cap);
-            assert!(buf[cap..].iter().all(|&b| b == 0xA5));
+            assert!(buf.bytes[cap..].iter().all(|&b| b == 0xA5));
 
             let mut ops = std::mem::MaybeUninit::<MdSessionOps>::zeroed();
             unsafe {
-                std::ptr::copy_nonoverlapping(buf.as_ptr(), ops.as_mut_ptr().cast::<u8>(), cap);
+                std::ptr::copy_nonoverlapping(
+                    buf.bytes.as_ptr(),
+                    ops.as_mut_ptr().cast::<u8>(),
+                    cap,
+                );
             }
             let session = unsafe { CAbiMdSession::from_engine_ops(ctx, ops, n_atoms) }
                 .expect("adopt truncated ops");
@@ -292,16 +308,10 @@ mod md_session_capacity_tests {
 
         {
             let mut host = std::mem::MaybeUninit::<LargerHostOps>::uninit();
-            let host_bytes = unsafe {
-                std::slice::from_raw_parts_mut(
-                    host.as_mut_ptr().cast::<u8>(),
-                    std::mem::size_of::<LargerHostOps>(),
-                )
-            };
-            host_bytes.fill(0xA5);
             let base_len = std::mem::size_of::<MdSessionOps>();
-            host_bytes[..base_len].fill(0);
             unsafe {
+                host.as_mut_ptr().write_bytes(0xA5, 1);
+                host.as_mut_ptr().cast::<u8>().write_bytes(0, base_len);
                 std::ptr::addr_of_mut!((*host.as_mut_ptr()).base.struct_size)
                     .write(std::mem::size_of::<LargerHostOps>());
             }
@@ -321,17 +331,17 @@ mod md_session_capacity_tests {
                 )
             };
             assert_eq!(status, 0);
-            let host = unsafe { host.assume_init() };
-            assert_eq!(host.base.struct_size, base_len);
             let tail = unsafe {
                 std::slice::from_raw_parts(
-                    (&host as *const LargerHostOps).cast::<u8>().add(base_len),
+                    host.as_ptr().cast::<u8>().add(base_len),
                     std::mem::size_of::<LargerHostOps>() - base_len,
                 )
             };
             assert!(tail.iter().all(|&b| b == 0xA5));
+            let base = unsafe { std::ptr::addr_of!((*host.as_ptr()).base).read() };
+            assert_eq!(base.struct_size, base_len);
             let mut session = unsafe {
-                CAbiMdSession::from_engine_ops(ctx, std::mem::MaybeUninit::new(host.base), n_atoms)
+                CAbiMdSession::from_engine_ops(ctx, std::mem::MaybeUninit::new(base), n_atoms)
             }
             .expect("larger host works with current engine");
             let cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
@@ -340,17 +350,11 @@ mod md_session_capacity_tests {
 
         {
             let mut host = std::mem::MaybeUninit::<LargerHostOps>::uninit();
-            let host_bytes = unsafe {
-                std::slice::from_raw_parts_mut(
-                    host.as_mut_ptr().cast::<u8>(),
-                    std::mem::size_of::<LargerHostOps>(),
-                )
-            };
-            host_bytes.fill(0xA5);
             let newer_end =
                 std::mem::offset_of!(LargerHostOps, future_tag) + std::mem::size_of::<u64>();
-            host_bytes[..newer_end].fill(0);
             unsafe {
+                host.as_mut_ptr().write_bytes(0xA5, 1);
+                host.as_mut_ptr().cast::<u8>().write_bytes(0, newer_end);
                 std::ptr::addr_of_mut!((*host.as_mut_ptr()).base.struct_size)
                     .write(std::mem::size_of::<LargerHostOps>());
             }

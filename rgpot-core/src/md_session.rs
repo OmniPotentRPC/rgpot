@@ -2504,23 +2504,23 @@ mod tests {
     fn a_smaller_capacity_copy_keeps_guard_bytes_intact() {
         #[repr(C)]
         struct GuardedBuffer {
+            _align: [MdSessionOps; 0],
             bytes: [u8; std::mem::size_of::<MdSessionOps>() + 32],
         }
         let mut buf = GuardedBuffer {
+            _align: [],
             bytes: [0xA5; std::mem::size_of::<MdSessionOps>() + 32],
         };
         let cap = REQUIRED_OPS_SIZE;
         buf.bytes[..cap].fill(0);
         let src = mock_ops();
-        let src_bytes = unsafe {
-            std::slice::from_raw_parts(
-                (&src as *const MdSessionOps).cast::<u8>(),
-                std::mem::size_of::<MdSessionOps>(),
-            )
-        };
         let filled = cap.min(std::mem::size_of::<MdSessionOps>());
-        buf.bytes[..filled].copy_from_slice(&src_bytes[..filled]);
         unsafe {
+            std::ptr::copy_nonoverlapping(
+                (&src as *const MdSessionOps).cast::<u8>(),
+                buf.bytes.as_mut_ptr(),
+                filled,
+            );
             buf.bytes.as_mut_ptr().cast::<usize>().write(filled);
         }
         assert!(buf.bytes[cap..].iter().all(|&b| b == 0xA5));
