@@ -649,18 +649,17 @@ pub fn is_conventional_commit_subject(subj: &str) -> bool {
     if is_ignored_merge_commit_subject(s) {
         return true;
     }
-    // type(scope): or type:
+    // type(scope): or type:, matched case-insensitively like cog, which
+    // lowercases the parsed type before looking it up.
     let types = [
         "feat", "fix", "perf", "bench", "refactor", "docs", "test", "build", "ci", "chore",
         "style", "revert", "enh", "bug", "maint", "doc", "tst", "bld", "gen", "simd", "pot",
         "python", "nlist", "dev",
     ];
-    for t in types {
-        if s.starts_with(&format!("{t}(")) || s.starts_with(&format!("{t}:")) {
-            return true;
-        }
-    }
-    false
+    let lower = s.to_ascii_lowercase();
+    types
+        .iter()
+        .any(|t| lower.starts_with(&format!("{t}(")) || lower.starts_with(&format!("{t}:")))
 }
 
 /// Resolve active Python interpreter (PATH `python` / `python3`).
@@ -1897,6 +1896,19 @@ mod tests {
         ));
         assert!(!is_conventional_commit_subject("wip stuff"));
         assert!(!is_conventional_commit_subject(""));
+    }
+
+    #[test]
+    fn conventional_commit_types_match_cog() {
+        assert!(is_conventional_commit_subject(
+            "dev: note Meson 1.10 floor in newsfragments"
+        ));
+        assert!(is_conventional_commit_subject("dev(ci): trim the queue"));
+        assert!(is_conventional_commit_subject("BLD: apply meson format"));
+        assert!(is_conventional_commit_subject("Feat(ci): thin steps"));
+        assert!(!is_conventional_commit_subject("wibble: not a type"));
+        assert!(!is_conventional_commit_subject("WIBBLE(ci): not a type"));
+        assert!(!is_conventional_commit_subject("development: not a type"));
     }
 
     #[test]
