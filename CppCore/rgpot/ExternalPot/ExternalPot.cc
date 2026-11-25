@@ -50,9 +50,37 @@
 #endif
 
 namespace rgpot {
-namespace detail {
+namespace {
 
 namespace dyn = plugin::dynlib;
+
+using EngineCreate = RgpotEnginePot *(*)(const void *, size_t, char *, size_t);
+using EngineDestroy = void (*)(RgpotEnginePot *);
+using EngineForce = int (*)(RgpotEnginePot *, long, const double *, const int *,
+                            double *, double *, double *, const double *,
+                            rgpot_engine_coord_transform, void *);
+using NativeForce = int (*)(void *, long, const double *, const int *, double *,
+                            double *, double *, const double *);
+
+void require_lj(const ExternalLjConfig &config) {
+  const auto usable = [](double v) { return v > 0.0 && std::isfinite(v); };
+  if (!usable(config.u0) || !usable(config.cutoff) || !usable(config.psi)) {
+    throw std::invalid_argument(
+        "u0, cutoff and psi must be positive and finite (eV and Angstrom)");
+  }
+}
+
+void add_soname(std::vector<std::string> &out, const char *stem) {
+#if defined(_WIN32)
+  out.emplace_back(std::string(stem) + ".dll");
+  out.emplace_back(std::string("lib") + stem + ".dll");
+#elif defined(__APPLE__)
+  out.emplace_back(std::string("lib") + stem + ".dylib");
+  out.emplace_back(std::string("lib") + stem + ".so");
+#else
+  out.emplace_back(std::string("lib") + stem + ".so");
+#endif
+}
 
 std::string last_dl() {
   const std::string text = dyn::error();
@@ -155,42 +183,6 @@ private:
 
   Ref *ref_ = nullptr;
 };
-
-} // namespace detail
-
-namespace {
-
-namespace dyn = plugin::dynlib;
-using detail::last_dl;
-using detail::LibraryHandle;
-
-using EngineCreate = RgpotEnginePot *(*)(const void *, size_t, char *, size_t);
-using EngineDestroy = void (*)(RgpotEnginePot *);
-using EngineForce = int (*)(RgpotEnginePot *, long, const double *, const int *,
-                            double *, double *, double *, const double *,
-                            rgpot_engine_coord_transform, void *);
-using NativeForce = int (*)(void *, long, const double *, const int *, double *,
-                            double *, double *, const double *);
-
-void require_lj(const ExternalLjConfig &config) {
-  const auto usable = [](double v) { return v > 0.0 && std::isfinite(v); };
-  if (!usable(config.u0) || !usable(config.cutoff) || !usable(config.psi)) {
-    throw std::invalid_argument(
-        "u0, cutoff and psi must be positive and finite (eV and Angstrom)");
-  }
-}
-
-void add_soname(std::vector<std::string> &out, const char *stem) {
-#if defined(_WIN32)
-  out.emplace_back(std::string(stem) + ".dll");
-  out.emplace_back(std::string("lib") + stem + ".dll");
-#elif defined(__APPLE__)
-  out.emplace_back(std::string("lib") + stem + ".dylib");
-  out.emplace_back(std::string("lib") + stem + ".so");
-#else
-  out.emplace_back(std::string("lib") + stem + ".so");
-#endif
-}
 
 dyn::Handle as_dyn(void *handle) {
   return reinterpret_cast<dyn::Handle>(handle);
@@ -962,25 +954,7 @@ rgpot_openmm_potential(const ExternalLjConfig &config) {
   return std::make_unique<OpenMMPot>(config);
 }
 
-namespace detail {
-
-LibraryHandle find_md_resident(const std::string &path) {
-  ResidentTable &table = residents();
-  std::lock_guard<std::mutex> lock(table.mutex);
-  return find_resident(table, path);
-}
-
-LibraryHandle open_md_attempt(const std::string &path) {
-  return open_attempt(path);
-}
-
-LibraryHandle publish_md_resident(const std::string &path,
-                                  const LibraryHandle &opened,
-                                  const void *anchor) {
-  ResidentTable &table = residents();
-  std::lock_guard<std::mutex> lock(table.mutex);
-  return publish_resident(table, path, opened, anchor);
-}
+namespace {
 
 bool md_engine_unload_safe(void *raw) {
   if (raw == nullptr) {
@@ -1013,7 +987,7 @@ bool md_engine_unload_safe(void *raw) {
   return policy_fn() == RGPOT_ENGINE_UNLOAD_SAFE;
 }
 
-} // namespace detail
+} // namespace
 
 } // namespace rgpot
 
@@ -1022,7 +996,10 @@ struct rgpot_external_potential {
 };
 
 struct rgpot_md_session {
-  rgpot::detail::LibraryHandle library;
+  struct LibraryBox {
+    virtual ~LibraryBox() = default;
+  };
+  std::unique_ptr<LibraryBox> library;
   void *ctx = nullptr;
   rgpot_md_session_ops ops{};
   size_t n_atoms = 0;
@@ -1032,9 +1009,89 @@ struct rgpot_md_session {
       ops.destroy(ctx);
       ctx = nullptr;
     }
-    library = {};
+    library.reset();
   }
 };
+
+namespace rgpot {
+namespace {
+
+struct MdLibraryBox final : rgpot_md_session::LibraryBox {
+  explicit MdLibraryBox(LibraryHandle handle) : handle_(std::move(handle)) {}
+  LibraryHandle handle_;
+};
+
+std::unique_ptr<rgpot_md_session>
+open_md_session_from_paths(const std::vector<std::string> &paths,
+                           const void *spec, size_t spec_len,
+                           const char *options,
+                           bool (*valid_ops)(const rgpot_md_session_ops *),
+                           rgpot_md_session_ops (*copy_ops)(
+                               const rgpot_md_session_ops *)) {
+  ResidentTable &table = residents();
+  std::string tried;
+  for (const std::string &path : paths) {
+    LibraryHandle library;
+    {
+      std::lock_guard<std::mutex> lock(table.mutex);
+      library = find_resident(table, path);
+    }
+    if (!library) {
+      library = open_attempt(path);
+    }
+    if (!library) {
+      tried += path + ": " + last_dl() + "; ";
+      continue;
+    }
+    auto create_fn = dyn::loadSym<rgpot_md_session_engine_create_fn>(
+        as_dyn(library.get()), "rgpot_md_session_engine_create");
+    if (create_fn == nullptr) {
+      tried += path + ": missing rgpot_md_session_engine_create; ";
+      continue;
+    }
+    rgpot_md_session_ops ops{};
+    ops.struct_size = sizeof(ops);
+    void *ctx = nullptr;
+    size_t n_atoms = 0;
+    char inner_err[512] = {};
+    if (create_fn(spec, spec_len, options, &ops, &ctx, &n_atoms, inner_err,
+                  sizeof(inner_err)) != 0) {
+      throw std::runtime_error(inner_err[0] != '\0'
+                                   ? inner_err
+                                   : "rgpot_md_session_engine_create failed");
+    }
+    if (ctx == nullptr || !valid_ops(&ops) || n_atoms == 0 ||
+        n_atoms > std::numeric_limits<size_t>::max() / 3) {
+      if (ctx != nullptr &&
+          ops.struct_size >= RGPOT_MD_OPS_END(destroy) &&
+          ops.destroy != nullptr) {
+        ops.destroy(ctx);
+      }
+      throw std::runtime_error("engine returned an invalid MD session");
+    }
+    if (!md_engine_unload_safe(library.get())) {
+      // Assign outside the table lock so releasing a redundant handle does
+      // not hold the registry mutex across dlclose.
+      LibraryHandle resident;
+      {
+        std::lock_guard<std::mutex> lock(table.mutex);
+        resident = publish_resident(
+            table, path, library, reinterpret_cast<const void *>(create_fn));
+      }
+      library = std::move(resident);
+    }
+    auto out = std::make_unique<rgpot_md_session>();
+    out->library = std::make_unique<MdLibraryBox>(std::move(library));
+    out->ctx = ctx;
+    out->ops = copy_ops(&ops);
+    out->n_atoms = n_atoms;
+    return out;
+  }
+  throw std::runtime_error("MD engine library was not opened: " + tried);
+}
+
+} // namespace
+} // namespace rgpot
 
 namespace {
 
@@ -1293,61 +1350,9 @@ rgpot_md_session *rgpot_md_session_create(const char *engine,
       throw std::invalid_argument("MD session spec buffer is null");
     }
     const auto paths = md_engine_paths(engine, engine_path);
-    std::string tried;
-    for (const std::string &path : paths) {
-      rgpot::detail::LibraryHandle library =
-          rgpot::detail::find_md_resident(path);
-      if (!library) {
-        library = rgpot::detail::open_md_attempt(path);
-      }
-      if (!library) {
-        tried += path + ": " + rgpot::detail::last_dl() + "; ";
-        continue;
-      }
-      auto create_fn =
-          rgpot::plugin::dynlib::loadSym<rgpot_md_session_engine_create_fn>(
-              reinterpret_cast<rgpot::plugin::dynlib::Handle>(library.get()),
-              "rgpot_md_session_engine_create");
-      if (create_fn == nullptr) {
-        tried += path + ": missing rgpot_md_session_engine_create; ";
-        continue;
-      }
-      rgpot_md_session_ops ops{};
-      ops.struct_size = sizeof(ops);
-      void *ctx = nullptr;
-      size_t n_atoms = 0;
-      char inner_err[512] = {};
-      if (create_fn(spec, spec_len, options, &ops, &ctx, &n_atoms, inner_err,
-                    sizeof(inner_err)) != 0) {
-        throw std::runtime_error(inner_err[0] != '\0'
-                                     ? inner_err
-                                     : "rgpot_md_session_engine_create failed");
-      }
-      if (ctx == nullptr || !valid_md_ops(&ops) || n_atoms == 0 ||
-          n_atoms > std::numeric_limits<size_t>::max() / 3) {
-        if (ctx != nullptr &&
-            ops.struct_size >= RGPOT_MD_OPS_END(destroy) &&
-            ops.destroy != nullptr) {
-          ops.destroy(ctx);
-        }
-        throw std::runtime_error("engine returned an invalid MD session");
-      }
-      if (!rgpot::detail::md_engine_unload_safe(library.get())) {
-        // Assign outside publish_md_resident's lock so releasing a redundant
-        // non-resident handle does not hold the registry mutex across dlclose.
-        rgpot::detail::LibraryHandle resident =
-            rgpot::detail::publish_md_resident(
-                path, library, reinterpret_cast<const void *>(create_fn));
-        library = std::move(resident);
-      }
-      auto out = std::make_unique<rgpot_md_session>();
-      out->library = std::move(library);
-      out->ctx = ctx;
-      out->ops = copy_md_ops(&ops);
-      out->n_atoms = n_atoms;
-      return out.release();
-    }
-    throw std::runtime_error("MD engine library was not opened: " + tried);
+    return rgpot::open_md_session_from_paths(paths, spec, spec_len, options,
+                                             valid_md_ops, copy_md_ops)
+        .release();
   } catch (const std::exception &ex) {
     write_err(err, err_len, ex.what());
     return nullptr;
