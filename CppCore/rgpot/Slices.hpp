@@ -276,8 +276,8 @@ namespace detail {
 #endif
 RGPOT_POT_THREADS_API void notePotentialThreads(const void *key,
                                                 int count) noexcept;
-RGPOT_POT_THREADS_API
-[[nodiscard]] int lookupPotentialThreads(const void *key) noexcept;
+[[nodiscard]] RGPOT_POT_THREADS_API int
+lookupPotentialThreads(const void *key) noexcept;
 
 #undef RGPOT_POT_THREADS_API
 
