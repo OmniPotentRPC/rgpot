@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/ExternalPot/ExternalPot.hpp"
+#include "rgpot/ExternalPot/detail/LoadedIdentity.hpp"
 
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/abi/ProfileLoader.hpp"
@@ -268,122 +269,9 @@ std::string canonical_file(const std::string &path) {
 #endif
 }
 
-struct FileIdentity {
-  std::string canonical;
-#if !defined(_WIN32)
-  dev_t dev = 0;
-  ino_t ino = 0;
-#endif
-};
-
-#if defined(_WIN32)
-std::string narrow_path(const std::wstring &wide) {
-  if (wide.empty()) {
-    return {};
-  }
-  const int size = WideCharToMultiByte(CP_UTF8, 0, wide.data(),
-                                       static_cast<int>(wide.size()), nullptr,
-                                       0, nullptr, nullptr);
-  if (size <= 0) {
-    return {};
-  }
-  std::string out(static_cast<size_t>(size), '\0');
-  WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()),
-                      out.data(), size, nullptr, nullptr);
-  return out;
-}
-
-std::string win_error(DWORD code) {
-  return "Windows error " + std::to_string(static_cast<unsigned long>(code));
-}
-#endif
-
-FileIdentity identify_loaded(const void *anchor, const std::string &path) {
-#if defined(_WIN32)
-  HMODULE module = nullptr;
-  if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                         reinterpret_cast<LPCWSTR>(anchor), &module) == 0 ||
-      module == nullptr) {
-    throw std::runtime_error(path +
-                             ": the loader did not report the module it "
-                             "loaded, so the engine cannot be identified: " +
-                             win_error(GetLastError()));
-  }
-  std::wstring loaded(MAX_PATH, L'\0');
-  for (;;) {
-    const DWORD n = GetModuleFileNameW(module, loaded.data(),
-                                       static_cast<DWORD>(loaded.size()));
-    if (n == 0) {
-      throw std::runtime_error(path +
-                               ": the loader did not report the file it "
-                               "loaded, so the engine cannot be identified: " +
-                               win_error(GetLastError()));
-    }
-    if (n < loaded.size()) {
-      loaded.resize(n);
-      break;
-    }
-    loaded.resize(loaded.size() * 2);
-  }
-  // The final path resolves links and short names, as realpath does on POSIX,
-  // so two requests that load one file share an identity.
-  const HANDLE file = CreateFileW(
-      loaded.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-      nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
-  if (file == INVALID_HANDLE_VALUE) {
-    throw std::runtime_error(path + ": cannot identify the loaded file " +
-                             narrow_path(loaded) + ": " +
-                             win_error(GetLastError()));
-  }
-  std::wstring canonical(MAX_PATH, L'\0');
-  DWORD n = 0;
-  for (;;) {
-    n = GetFinalPathNameByHandleW(file, canonical.data(),
-                                  static_cast<DWORD>(canonical.size()),
-                                  FILE_NAME_NORMALIZED);
-    if (n == 0 || n < canonical.size()) {
-      break;
-    }
-    canonical.resize(n);
-  }
-  const DWORD failure = n == 0 ? GetLastError() : 0;
-  CloseHandle(file);
-  if (n == 0) {
-    throw std::runtime_error(path + ": cannot identify the loaded file " +
-                             narrow_path(loaded) + ": " + win_error(failure));
-  }
-  canonical.resize(n);
-  FileIdentity id;
-  id.canonical = narrow_path(canonical);
-  if (id.canonical.empty()) {
-    throw std::runtime_error(path +
-                             ": the loaded file name is not valid UTF-16, so "
-                             "the engine cannot be identified");
-  }
-  return id;
-#else
-  Dl_info info{};
-  if (dladdr(anchor, &info) == 0 || info.dli_fname == nullptr ||
-      info.dli_fname[0] == '\0') {
-    throw std::runtime_error(path +
-                             ": the dynamic linker did not report the file "
-                             "it loaded, so the engine cannot be identified");
-  }
-  char canonical[PATH_MAX];
-  struct stat st {};
-  if (realpath(info.dli_fname, canonical) == nullptr ||
-      stat(canonical, &st) != 0) {
-    throw std::runtime_error(path + ": cannot identify the loaded file " +
-                             info.dli_fname + ": " + std::strerror(errno));
-  }
-  FileIdentity id;
-  id.canonical = canonical;
-  id.dev = st.st_dev;
-  id.ino = st.st_ino;
-  return id;
-#endif
-}
+using detail::FileIdentity;
+using detail::identify_loaded;
+using detail::path_prefix;
 
 void ensure_current(const ResidentEntry &entry, const std::string &path) {
 #if defined(_WIN32)
@@ -392,25 +280,27 @@ void ensure_current(const ResidentEntry &entry, const std::string &path) {
 #else
   struct stat st {};
   if (stat(entry.canonical.c_str(), &st) != 0) {
-    throw std::runtime_error(path + ": cannot identify the loaded file " +
+    throw std::runtime_error(path_prefix(path) +
+                             "cannot identify the loaded file " +
                              entry.canonical + ": " + std::strerror(errno));
   }
   if (st.st_dev != entry.dev || st.st_ino != entry.ino) {
     throw std::runtime_error(
-        path + ": " + entry.canonical +
+        path_prefix(path) + entry.canonical +
         " was replaced after it was loaded, and the loaded engine stays "
         "resident; load the new file from another path or restart the process");
   }
   if (!canonical_file(path).empty()) {
     struct stat requested {};
     if (stat(path.c_str(), &requested) != 0) {
-      throw std::runtime_error(path + ": cannot identify the requested file: " +
+      throw std::runtime_error(path_prefix(path) +
+                               "cannot identify the requested file: " +
                                std::strerror(errno));
     }
     if (requested.st_dev != entry.dev || requested.st_ino != entry.ino) {
       throw std::runtime_error(
-          path +
-          ": the requested path was replaced or retargeted after it loaded "
+          path_prefix(path) +
+          "the requested path was replaced or retargeted after it loaded "
           "another engine; use a new path or restart the process");
     }
   }
@@ -447,8 +337,8 @@ LibraryHandle pin_resident(const std::string &path) {
   if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, path.c_str(),
                          &pinned) == 0 ||
       pinned == nullptr) {
-    throw std::runtime_error(path +
-                             ": the engine library could not be pinned: " +
+    throw std::runtime_error(path_prefix(path) +
+                             "the engine library could not be pinned: " +
                              dyn::error());
   }
   return LibraryHandle(reinterpret_cast<void *>(pinned));
@@ -457,7 +347,8 @@ LibraryHandle pin_resident(const std::string &path) {
   void *pin = dlopen(path.c_str(),
                      RTLD_NOW | RTLD_LOCAL | RTLD_NOLOAD | RTLD_NODELETE);
   if (pin == nullptr) {
-    throw std::runtime_error(path + ": RTLD_NODELETE could not be set: " +
+    throw std::runtime_error(path_prefix(path) +
+                             "RTLD_NODELETE could not be set: " +
                              last_dl());
   }
   return LibraryHandle(pin);
@@ -485,7 +376,8 @@ LibraryHandle publish_resident(ResidentTable &table, const std::string &path,
 #endif
   auto [it, inserted] = table.by_canon.emplace(id.canonical, std::move(entry));
   if (!inserted) {
-    throw std::runtime_error(path + ": the engine file was registered twice");
+    throw std::runtime_error(path_prefix(path) +
+                             "the engine file was registered twice");
   }
   table.request_to_canon[path] = id.canonical;
   const std::string via = canonical_file(path);

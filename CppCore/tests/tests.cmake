@@ -775,6 +775,13 @@ foreach(engine lammps_legacy_engine_a lammps_legacy_engine_b)
   target_compile_definitions(${engine} PRIVATE RGPOT_ENGINE_BUILD)
 endforeach()
 rgpot_test_executable(lammpc_pot_test CppCore/tests/LammpcPotTest.cc)
+# The loaded-module identity lookup the test calls is hidden in a shared
+# librgpot. It has its own translation unit, so compiling it here leaves the
+# resident engine tables in librgpot alone.
+if(BUILD_SHARED_LIBS)
+  target_sources(lammpc_pot_test PRIVATE
+                 CppCore/rgpot/ExternalPot/detail/LoadedIdentity.cc)
+endif()
 rgpot_add_test(LammpcPotTest COMMAND lammpc_pot_test
   ENVIRONMENT
     "RGPOT_LAMMPS_LEGACY_ENGINE_A=$<TARGET_FILE:lammps_legacy_engine_a>"

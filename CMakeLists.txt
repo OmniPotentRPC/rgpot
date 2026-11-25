@@ -319,6 +319,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
        CppCore/rgpot/MOPACPot/MOPACPot.cc
        CppCore/rgpot/XTBPot/XTBDlopen.cc
        CppCore/rgpot/ExternalPot/ExternalPot.cc
+       CppCore/rgpot/ExternalPot/detail/LoadedIdentity.cc
        ${_rgpot_emt_sources})
   # Asap's short includes (Atoms.h, EMT.h) resolve in its own directory.
   set_source_files_properties(${_rgpot_emt_sources} PROPERTIES
@@ -861,6 +862,7 @@ if(RGPOT_IS_TOP_LEVEL)
       DIRECTORY CppCore/rgpot
       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
       FILES_MATCHING
+      PATTERN "ExternalPot/detail" EXCLUDE
       PATTERN "Morse/detail" EXCLUDE
       PATTERN "SuttonChen/detail" EXCLUDE
       PATTERN "*.hpp"
