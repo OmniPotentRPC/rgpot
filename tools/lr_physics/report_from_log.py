@@ -2,7 +2,9 @@
 """Build the ladder tables from one bench log.
 
 Medians and interquartile ranges are type-7 quantiles of the samples
-on the following samples_us line. The printed values are %.17g.
+on the following samples_us line. The printed values are %.17g. The
+active column is the OpenMP team the bench ran, which can be smaller
+than the requested threads. Logs that predate it leave it empty.
 """
 
 import math
@@ -52,6 +54,7 @@ def parse(path):
                     "method": parts[1],
                     "n": int(fields["n"]),
                     "threads": int(fields["threads"]),
+                    "active": fields.get("active", ""),
                     "energy": fields.get("energy_eV", ""),
                 }
                 continue
@@ -77,11 +80,11 @@ def emit(header, rows):
         ladder, method = key
         print(f"## {ladder} {method}")
         print()
-        print("| n | threads | median_s | iqr_us |")
-        print("| --- | --- | --- | --- |")
+        print("| n | threads | active | median_s | iqr_us |")
+        print("| --- | --- | --- | --- | --- |")
         for row in grouped[key]:
             print(
-                f"| {row['n']} | {row['threads']} | {row['median_s']:.17g} | {row['iqr_us']:.17g} |"
+                f"| {row['n']} | {row['threads']} | {row['active']} | {row['median_s']:.17g} | {row['iqr_us']:.17g} |"
             )
         print()
 

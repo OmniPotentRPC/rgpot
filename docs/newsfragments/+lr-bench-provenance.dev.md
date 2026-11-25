@@ -1,0 +1,1 @@
+The long-range bench logs now record the checkout head, tree, dirty flag and compiler of the build instead of `unknown`, and every ladder line and report table carries the OpenMP team that ran as `active`.

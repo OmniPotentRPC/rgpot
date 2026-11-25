@@ -283,6 +283,9 @@ const std::string &binary_sha() {
   return value;
 }
 
+#if __has_include("lr_build_info.h")
+#include "lr_build_info.h"
+#endif
 #ifndef RGPOT_GIT_HEAD
 #define RGPOT_GIT_HEAD "unknown"
 #endif
@@ -376,7 +379,7 @@ void report(std::ostream &out, const std::string &ladder, const std::string &nam
   char warm[64];
   std::snprintf(warm, sizeof(warm), "%.17g", warmup_us);
   out << "warmup_us=" << warm << '\n';
-  out << ladder << ' ' << name << " n=" << n << " threads=" << threads
+  out << ladder << ' ' << name << " n=" << n << " threads=" << threads << " active=" << active_threads
       << " repeats=" << samples.size() << " median_us=" << med << " iqr7_us=" << iqr
       << " energy_eV=" << energy << ' ' << load << '\n';
   out << "samples_us";
