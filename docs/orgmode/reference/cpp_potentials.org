@@ -483,12 +483,13 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
 #+end_src
 
 - Applies to :: rgpot::EAMTablePot, rgpot::LJPot, rgpot::MorsePot,
-  rgpot::StillingerWeberSi, rgpot::SuttonChenPot, rgpot::TersoffSiC
+  rgpot::StillingerWeberSi, rgpot::SuttonChenPot, rgpot::TersoffSiC,
+  rgpot::ZBLPot
 - Inputs :: none.
 - Units :: =cutoff= in the length unit of the potential: Angstrom for
-  =rgpot::LJPot=, =rgpot::MorsePot=, =rgpot::StillingerWeberSi= and
-  =rgpot::TersoffSiC=, the unit of =a= for =rgpot::SuttonChenPot= and the unit
-  of the table for =rgpot::EAMTablePot=.
+  =rgpot::LJPot=, =rgpot::MorsePot=, =rgpot::StillingerWeberSi=,
+  =rgpot::TersoffSiC= and =rgpot::ZBLPot=, the unit of =a= for
+  =rgpot::SuttonChenPot= and the unit of the table for =rgpot::EAMTablePot=.
 - Outputs :: a =rgpot::Locality= from =CppCore/rgpot/Locality.hpp=.
   =cutoff= is the range of each site energy, =pairwise= is true when every
   energy term is a function of one pair distance, and =densities= is the number
@@ -510,8 +511,8 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
   A =cutoff= of 0 declares no finite range.
 - Errors :: none.
 
-=rgpot::LJPot= and =rgpot::MorsePot= return their cutoff with =pairwise= set,
-and 0 when the cutoff is 0 or less.
+=rgpot::LJPot=, =rgpot::MorsePot= and =rgpot::ZBLPot= return their cutoff with
+=pairwise= set, and 0 when the cutoff is 0 or less.
 =rgpot::SuttonChenPot= and =rgpot::EAMTablePot= return their cutoff as a
 many-body range with =densities= 1.
 =rgpot::SuttonChenPot= returns 0 when its cutoff is 0 or less, since it then
@@ -548,8 +549,8 @@ void densityStage(const HalfList &list, double *densities) const;
   within the cutoff has an atomic number in no element line.
   =rgpot::SuttonChenPot= throws nothing.
 
-=rgpot::LJPot= and =rgpot::MorsePot= have no densities; their =densityStage= is
-listed with each class.
+=rgpot::LJPot=, =rgpot::MorsePot= and =rgpot::ZBLPot= have no densities; their
+=densityStage= is listed with each class.
 
 *** =.forceStage=
 
@@ -560,7 +561,7 @@ void forceStage(const HalfList &list, const double *densities, double *forces,
 #+end_src
 
 - Applies to :: rgpot::EAMTablePot, rgpot::LJPot, rgpot::MorsePot,
-  rgpot::SuttonChenPot
+  rgpot::SuttonChenPot, rgpot::ZBLPot
 - Inputs :: =list= as for =.densityStage=, and =densities= after the host
   completed them; the pair potentials do not read =densities=.
   =forces= holds 3 * nAtoms doubles, and =tally= is a =rgpot::StageTally= or
@@ -940,10 +941,13 @@ explicit ZBLPot(const ZBLConfig &c);
   zero at =cut_global=.
   Coefficients come from the atomic numbers of the call, so any atomic number is
   accepted.
-  Boundaries are free: =caps().periodic= is false and the cell is not used to
-  fold pairs.
+  Pairs use the minimum image through the shared neighbour layer on an
+  orthogonal or sheared cell when a non-zero cell is given, and free boundaries
+  when the cell is null or all zero.
   The force call writes the stress when the cell volume is positive.
-- Errors :: the errors of =rgpot::ZBLConfig=.
+- Errors :: the errors of =rgpot::ZBLConfig=,
+  =std::invalid_argument= for an invalid cell, and =std::overflow_error= when
+  the image search bound overflows.
 
 Parameter source: Ziegler, Biersack and Littmark, The Stopping and Range of Ions
 in Matter, Pergamon (1985).
@@ -963,6 +967,20 @@ The cutoffs are eOn's defaults, 2.0 and 2.5 Angstrom.
 - Inputs :: none.
 - Units :: Angstrom.
 - Outputs :: the =rgpot::ZBLConfig= the instance was built with.
+- Errors :: none.
+
+*** =rgpot::ZBLPot::densityStage=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void densityStage(const HalfList &, double *) const;
+#+end_src
+
+- Inputs :: a =rgpot::HalfList= and a density array, as for =.densityStage=.
+- Units :: none.
+- Outputs :: none.
+  A pair potential has no densities: =locality().densities= is 0, and the call
+  writes nothing.
 - Errors :: none.
 
 ** Embedded-atom and many-body metals
