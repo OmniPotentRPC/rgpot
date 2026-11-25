@@ -7,6 +7,9 @@ Needs an engine library: set RGPOT_XTB_ENGINE to libxtb_engine.so.
 """
 
 import os
+import subprocess
+import sys
+import threading
 
 import numpy as np
 import pytest
@@ -91,3 +94,47 @@ def test_engine_names_its_revision():
     revision = make().engine_revision
     assert isinstance(revision, str)
     assert revision.isalnum()
+
+
+def share_one_handle(rounds=20):
+    """Two threads call one handle and read its flags and switch."""
+    pot = make()
+    errors = []
+
+    def work(first):
+        try:
+            for i in range(rounds):
+                if i == 0 and first:
+                    pot(AMMONIA_XYZ, AMMONIA_Z, BOX)
+                else:
+                    pot(WATER_XYZ, WATER_Z, BOX)
+                for _ in range(200):
+                    _ = (pot.last_eval_flags, pot.last_scc_rescued)
+                    pot.scc_rescue = pot.scc_rescue
+        except BaseException as err:  # noqa: BLE001
+            errors.append(err)
+
+    threads = [threading.Thread(target=work, args=(k == 0,)) for k in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    if errors:
+        raise errors[0]
+
+
+def test_two_threads_share_one_handle():
+    # A thread that waited for the handle while holding the GIL used to
+    # deadlock the call that needed the GIL back. A hung interpreter cannot
+    # be joined from inside, so the threads run in a child process.
+    child = subprocess.run(
+        [sys.executable, __file__, "share"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert child.returncode == 0, child.stdout + child.stderr
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["share"]:
+    share_one_handle()

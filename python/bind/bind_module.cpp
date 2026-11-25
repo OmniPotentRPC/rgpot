@@ -701,6 +701,8 @@ rgpot::GFNMethod gfn_method(const std::string &name) {
 // One engine handle; the lock keeps an evaluation and the flags it leaves
 // together when threads share the object.
 struct XtbHandle {
+  /// Taken only with the GIL released; holding it while the GIL is
+  /// acquired deadlocks against a thread that holds the GIL and waits here.
   std::mutex mutex;
   std::unique_ptr<rgpot::XTBDlopen> pot;
   std::uint64_t flags = 0;
@@ -880,11 +882,13 @@ NB_MODULE(_core, m) {
           [](XtbHandle &self, const F64 &positions, nb::handle atom_types,
              const F64 &box) {
             auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
-            std::lock_guard<std::mutex> lock(self.mutex);
-            self.flags = 0;
-            auto [energy, forces, variance] = rgpot::pybind::run_detached(
-                [&] { return (*self.pot)(geom.pos, geom.types, geom.box); });
-            self.flags = self.pot->lastEvalFlags();
+            auto [energy, forces, variance] = rgpot::pybind::run_detached([&] {
+              std::lock_guard<std::mutex> lock(self.mutex);
+              self.flags = 0;
+              auto result = (*self.pot)(geom.pos, geom.types, geom.box);
+              self.flags = self.pot->lastEvalFlags();
+              return result;
+            });
             if (!std::isfinite(energy)) {
               throw rgbind::NumericalError("energy is not finite");
             }
@@ -898,6 +902,7 @@ NB_MODULE(_core, m) {
       .def_prop_ro(
           "last_eval_flags",
           [](XtbHandle &self) {
+            nb::gil_scoped_release release;
             std::lock_guard<std::mutex> lock(self.mutex);
             return self.flags;
           },
@@ -907,6 +912,7 @@ NB_MODULE(_core, m) {
       .def_prop_ro(
           "last_scc_rescued",
           [](XtbHandle &self) {
+            nb::gil_scoped_release release;
             std::lock_guard<std::mutex> lock(self.mutex);
             return (self.flags & rgpot::eval_flags::SccRescued) != 0;
           },
@@ -914,10 +920,12 @@ NB_MODULE(_core, m) {
       .def_prop_rw(
           "scc_rescue",
           [](XtbHandle &self) {
+            nb::gil_scoped_release release;
             std::lock_guard<std::mutex> lock(self.mutex);
             return self.pot->sccRescue();
           },
           [](XtbHandle &self, bool enabled) {
+            nb::gil_scoped_release release;
             std::lock_guard<std::mutex> lock(self.mutex);
             self.pot->setSccRescue(enabled);
           },
