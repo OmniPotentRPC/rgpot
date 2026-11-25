@@ -71,9 +71,9 @@ For example, [[file:potlibc-engine.org][the potlibc plugin]] takes
 
 Do not =dlclose= an engine: the tensor runtime keeps process-wide state.
 =libuma_engine.so=, =libmetatomic_engine.so=,
-=libxtb_engine.so=, =libdxtb_engine.so=, =libopenmm_engine.so=,
-=libnwchem_engine.so= and =libskala_engine.so= are linked with =-z nodelete=, so
-a =dlclose= leaves them mapped.
+=libxtb_engine.so=, =libdxtb_engine.so=,
+=libopenmm_engine.so=, =libnwchem_engine.so= and =libskala_engine.so= are linked
+with =-z nodelete=, so a =dlclose= leaves them mapped.
 The Rust loader keeps one registry handle and a separate =RTLD_NODELETE= pin for
 each resident engine.
 The =LammpsPot=, =GromacsPot= and =OpenMMPot= constructors likewise keep one
