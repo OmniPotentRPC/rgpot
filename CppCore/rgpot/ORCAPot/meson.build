@@ -4,6 +4,7 @@
 orca_legacy_pot = static_library(
     'orca_legacy_pot',
     'ORCAFiles.cc',
+    'ORCAGuards.cc',
     'ORCALegacyPot.cc',
     dependencies: _deps,
     cpp_args: _args,
