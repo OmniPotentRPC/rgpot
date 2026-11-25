@@ -1957,8 +1957,13 @@ A member whose description differs between classes has one entry per class.
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a 64-bit FNV-1a hash of the constructor mode, a kernel-version salt
-  and =engine_path=, with =u0=, =cutoff= and =psi= for the plugin constructor or
-  the flat =PotentialConfig= bytes for the lammpc constructor.
+  and the canonical path of the backend file that loaded.
+  The path is the one resolved after the environment hints are applied, not the
+  path that was requested.
+  The plugin constructor adds =u0=, =cutoff= and =psi=.
+  The lammpc constructor adds the version and ABI revision the backend reports
+  and the flat =PotentialConfig= bytes.
+  Requests that resolve to one backend file share a key.
   Instances that differ in these values get different result-cache keys.
 - Errors :: none.
 

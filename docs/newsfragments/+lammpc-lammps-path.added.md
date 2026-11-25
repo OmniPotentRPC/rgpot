@@ -7,4 +7,5 @@ flat `PotentialConfig` bytes, and the external C ABI adds
 The lammpc backend passes the same `Capabilities` handshake as the other
 profile backends and is refused, naming its path, on a mismatch. `LammpsPot`
 reports stress only when that backend declares the `stress` operation, and its
-result-cache key covers the engine path and the configuration in both modes.
+result-cache key covers the resolved backend file and the configuration in
+both modes.
