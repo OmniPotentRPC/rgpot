@@ -1048,7 +1048,7 @@ jobs:
           key: ccache-pot-dxtb-${{ runner.os }}-${{ github.sha }}
           path: .ccache
           restore-keys: ccache-pot-dxtb-${{ runner.os }}-
-      - name: Meson build and DxtbEngineTest
+      - name: Meson build, DxtbEngineTest and EngineTableTest
         shell: pixi run -e dxtbbld bash -e {0}
         run: |
           meson setup bbdir-dxtb \
@@ -1060,7 +1060,7 @@ jobs:
             -Dwith_cache=true \
             --buildtype=debug
           meson compile -C bbdir-dxtb
-          meson test -C bbdir-dxtb --print-errorlogs DxtbEngineTest
+          meson test -C bbdir-dxtb --print-errorlogs DxtbEngineTest EngineTableTest
           ccache -s
 
   # with_xckernel defaults off, so the build matrix never registers

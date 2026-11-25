@@ -168,7 +168,7 @@ let P = S.pins in
       id = "potentials_dxtb",
       needs = ["prepare"],
       runs_on = P.ubuntu,
-      role = "dxtb engine meson build and DxtbEngineTest (ubuntu)",
+      role = "dxtb engine meson build, DxtbEngineTest and EngineTableTest (ubuntu)",
     },
     {
       id = "xckernel_goldens",

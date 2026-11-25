@@ -185,10 +185,10 @@ in
             -Dwith_cache=true \
             --buildtype=debug
           meson compile -C bbdir-dxtb
-          meson test -C bbdir-dxtb --print-errorlogs DxtbEngineTest
+          meson test -C bbdir-dxtb --print-errorlogs DxtbEngineTest EngineTableTest
           ccache -s
         "%
-        & { name = "Meson build and DxtbEngineTest" },
+        & { name = "Meson build, DxtbEngineTest and EngineTableTest" },
       ],
     },
     # Compile-only. conda-forge tblite 0.6.0 (gfortran_ha02e54d_0) segfaults in
