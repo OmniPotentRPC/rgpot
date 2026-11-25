@@ -395,6 +395,14 @@ struct ScratchDir {
     std::filesystem::create_symlink(target, at);
     return at.string();
   }
+
+  std::string copy(const std::string &prefix, const std::string &source) const {
+    const auto at =
+        path / (prefix + std::filesystem::path(source).filename().string());
+    std::filesystem::copy_file(
+        source, at, std::filesystem::copy_options::overwrite_existing);
+    return at.string();
+  }
 };
 
 uint64_t key_for(const std::vector<unsigned char> &config,
@@ -544,6 +552,30 @@ TEST_CASE("LammpsPot lammpc environment engines keep separate results",
   REQUIRE(with_stress.caps().stress);
   REQUIRE_FALSE(without_stress.caps().stress);
   REQUIRE(with_stress.paramsKey() != without_stress.paramsKey());
+}
+
+TEST_CASE("LammpsPot lammpc identical backends the environment selects get "
+          "separate keys",
+          "[external][lammpc][cache]") {
+  const auto config = lammps_config();
+  const EnvGuard restore_engine("RGPOT_LAMMPC_ENGINE");
+  const EnvGuard restore_library("LAMMPC_LIBRARY");
+  const ScratchDir dir;
+  // Byte-identical copies report one version, ABI and capability set, so only
+  // the file that loaded can tell them apart.
+  const std::string first = dir.copy("first_", fake_engine_path());
+  const std::string second = dir.copy("second_", fake_engine_path());
+  clear_env("LAMMPC_LIBRARY");
+
+  set_env("RGPOT_LAMMPC_ENGINE", first);
+  const uint64_t first_key = key_for(config, "");
+  set_env("RGPOT_LAMMPC_ENGINE", second);
+  const uint64_t second_key = key_for(config, "");
+
+  REQUIRE(first_key != 0);
+  REQUIRE(first_key != second_key);
+  REQUIRE(first_key == key_for(config, first));
+  REQUIRE(second_key == key_for(config, second));
 }
 
 TEST_CASE("LammpsPot LJ keys follow the engine the environment selects",
