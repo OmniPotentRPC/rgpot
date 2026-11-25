@@ -973,7 +973,8 @@ The systems are independent: each has its own atom count, cell and species.
   =SWSi1985=, =EAMTable=, =Lammps=, =Gromacs=, =OpenMM=, =CP2K=, =LrCoulomb=,
   =LrDispersion=, =LrNlh=, =LrSum=, =Eckart=, =MullerBrown=,
   =ModifiedMullerBrown=, =LepsHH2=, =LepsHCl2=, =LepsFH2=, =DoubleWell=,
-  =CoupledProtonWell=, =CBE=, =Gupta=, =D2=, =D2Cpmd=, numbered in that order.
+  =CoupledProtonWell=, =CBE=, =D2=, =D2Cpmd=, =MEAM=, =ORCA=, =Engine=, =ORCAC=,
+  =Gupta=, numbered in that order.
 - Errors :: none.
 
 Every enumerator is declared in every build; whether the potential behind it is
