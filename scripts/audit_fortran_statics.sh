@@ -33,7 +33,28 @@ fi
 
 # Lowercase b, d, g, s and v are local symbols in writable sections.
 # Read-only constants (r) are shared safely.
-offenders=$(nm -A "$@" | awk 'NF >= 3 && $(NF-1) ~ /^[bdgsv]$/ {print $1, $NF}')
+#
+# Compiler instrumentation and profiling passes also place per-function
+# metadata and counters in writable local symbols:
+# - GCC / gfortran (gcc/coverage.cc:build_var): __gcov<N><sep><fn> and
+#   __gcov_<sep><fn>, where <sep> is '.', '_' or '$'.
+# - LLVM / Clang / Flang / Intel ifx (llvm/ProfileData/InstrProf.h,
+#   GCOVProfiling.cpp, SanitizerCoverage.cpp): __profc_, __profd_,
+#   __profn_, __profv_, __profvp_, __profbm_, __profvt_, __llvm_gcov_,
+#   __llvm_internal_gcov_, __llvm_prf_, __llvm_profile_, __llvm_cov*,
+#   __covrec_ and __sancov_.
+offenders=$(nm -A "$@" | awk '
+   NF >= 3 && $(NF-1) ~ /^[bdgsv]$/ {
+      sym = $NF
+      if (sym ~ /^__gcov([0-9]+|_)[._$]/) next
+      if (sym ~ /^__prof(c|d|n|v|vp|bm|vt)_/) next
+      if (sym ~ /^__llvm_(gcov|internal_gcov|prf|profile)_/) next
+      if (sym ~ /^__llvm_cov/) next
+      if (sym ~ /^__covrec_/) next
+      if (sym ~ /^__sancov_/) next
+      print $1, sym
+   }
+')
 
 if [[ -n "$offenders" ]]; then
    echo "audit: Fortran kernels keep procedure-local static data:" >&2

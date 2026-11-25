@@ -119,6 +119,7 @@ CallExprPot | tests core examples expr | custom workdir=. | @examples
 # The library's exported surface.
 FortranSymbolAudit | tests core fortran linux | custom |
 FortranStaticAudit | tests core fortran linux | custom |
+FortranStaticAuditSelftest | tests core fortran python | py CppCore/tests/test_audit_fortran_statics.py |
 CoreLinksNoMpi | tests core linux | custom |
 ExprLeptonSymbols | tests core posix | custom suite=expr |
 CxxLayoutTest | tests core | custom workdir=. |
