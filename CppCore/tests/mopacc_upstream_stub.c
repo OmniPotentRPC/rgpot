@@ -85,9 +85,17 @@ UPSTREAM_STUB_API UpstreamMopacCResult mopacc_energy_gradient(
   return r;
 }
 
-UPSTREAM_STUB_API int mopacc_c_abi_version(void) { return 1; }
+UPSTREAM_STUB_API int mopacc_c_abi_version(void) { return 2; }
 
-UPSTREAM_STUB_API int mopacc_abi_version(void) { return 1; }
+UPSTREAM_STUB_API int mopacc_abi_version(void) { return 2; }
+
+UPSTREAM_STUB_API size_t mopacc_result_size(void) {
+  return sizeof(UpstreamMopacCResult);
+}
+
+UPSTREAM_STUB_API size_t mopacc_params_size(void) {
+  return sizeof(UpstreamMopacCParams);
+}
 
 UPSTREAM_STUB_API int mopacc_available(void) { return 1; }
 

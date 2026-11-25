@@ -17,13 +17,20 @@
  * via mopacc_set_cell. There is no Cap'n Proto arm.
  *
  * Not thread-safe: OpenMOPAC's API is process-global.
+ *
+ * ABI 2 grew MopacCParams (epsilon, solver) and MopacCResult
+ * (dipole_debye, stress_gpa). ABI 1 libraries share the function names
+ * but not the layouts, so a dlopen caller must check
+ * mopacc_c_abi_version() and compare mopacc_result_size() and
+ * mopacc_params_size() with its own sizeof before calling anything that
+ * returns MopacCResult.
  */
 #pragma once
 
 #include <stddef.h>
 
-#define RGPOT_MOPACC_C_ABI_VERSION 1
-#define MOPACC_ABI_VERSION 1 /* matches shared-library soversion 1 */
+#define RGPOT_MOPACC_C_ABI_VERSION 2
+#define MOPACC_ABI_VERSION 2 /* matches shared-library soversion 2 */
 
 #ifdef __cplusplus
 extern "C" {
@@ -131,6 +138,10 @@ RGPOT_MOPACC_API int mopacc_session_charges(const MopacCSession *session,
 RGPOT_MOPACC_API const char *mopacc_version(void);
 RGPOT_MOPACC_API int mopacc_c_abi_version(void);
 RGPOT_MOPACC_API int mopacc_abi_version(void);
+/** sizeof(MopacCResult) in this library. New in ABI 2. */
+RGPOT_MOPACC_API size_t mopacc_result_size(void);
+/** sizeof(MopacCParams) in this library. New in ABI 2. */
+RGPOT_MOPACC_API size_t mopacc_params_size(void);
 RGPOT_MOPACC_API int mopacc_available(void);
 RGPOT_MOPACC_API const char *mopacc_last_error(void);
 RGPOT_MOPACC_API void mopacc_finalize(void);

@@ -17,7 +17,7 @@ import urllib.request
 from pathlib import Path
 
 EXPECTED_SHA256 = (
-    "589499d40247516da097ea230a26e8b987563d755be864d5f2a470c05a7623df"
+    "10fc452df7ab84dea2fd2ed2b5b6d1036f961000ca3e614358d89a971cf29de4"
 )
 
 

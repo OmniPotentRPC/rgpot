@@ -35,6 +35,11 @@ int main(void) {
     fprintf(stderr, "FAIL: stub library ABI version\n");
     return 1;
   }
+  if (mopacc_result_size() != sizeof(MopacCResult) ||
+      mopacc_params_size() != sizeof(MopacCParams)) {
+    fprintf(stderr, "FAIL: stub struct size queries\n");
+    return 1;
+  }
   printf("ok: stub ABI version=%s\n", ver);
   return 0;
 }

@@ -149,8 +149,8 @@ TEST_CASE("Vendored mopacc ABI layout matches upstream", "[mopac][abi]") {
   static_assert(offsetof(MopacCResult, stress_gpa) == expected_stress_off);
   static_assert(offsetof(MopacCResult, message) == expected_msg_off);
 
-  REQUIRE(RGPOT_MOPACC_C_ABI_VERSION == 1);
-  REQUIRE(MOPACC_ABI_VERSION == 1);
+  REQUIRE(RGPOT_MOPACC_C_ABI_VERSION == 2);
+  REQUIRE(MOPACC_ABI_VERSION == 2);
   REQUIRE(sizeof(MopacCParams) == expected_params_size);
   REQUIRE(sizeof(MopacCResult) == expected_result_size);
   REQUIRE(offsetof(MopacCResult, dipole_debye) == expected_dipole_off);

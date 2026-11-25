@@ -55,6 +55,10 @@ int mopacc_c_abi_version(void) { return RGPOT_MOPACC_C_ABI_VERSION; }
 
 int mopacc_abi_version(void) { return MOPACC_ABI_VERSION; }
 
+size_t mopacc_result_size(void) { return sizeof(MopacCResult); }
+
+size_t mopacc_params_size(void) { return sizeof(MopacCParams); }
+
 int mopacc_available(void) { return 1; }
 
 const char *mopacc_version(void) { return "mopacc-fake/0.1"; }

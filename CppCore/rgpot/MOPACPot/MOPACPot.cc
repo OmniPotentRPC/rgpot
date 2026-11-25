@@ -48,17 +48,20 @@ static_assert(offsetof(MopacCResult, message) ==
                   kExpectedMopacCResultMessageOffset,
               "MopacCResult::message offset drifted from vendored mopacc ABI");
 
-bool mopacc_abi_layout_matches(std::size_t params_size, std::size_t result_size,
-                               std::size_t message_offset) noexcept {
-  return params_size == kExpectedMopacCParamsSize &&
-         result_size == kExpectedMopacCResultSize &&
-         message_offset == kExpectedMopacCResultMessageOffset;
+static_assert(RGPOT_MOPACC_C_ABI_VERSION >= 2,
+              "MopacCResult grew in mopacc C ABI 2; ABI 1 is incompatible");
+
+std::string expected_found(const char *what, std::size_t expected,
+                           std::size_t found) {
+  return std::string(what) + ": expected " + std::to_string(expected) +
+         ", found " + std::to_string(found);
 }
 
 using EnergyGradientFn = MopacCResult (*)(int, const double *, const int *,
                                           const void *, size_t, double *);
 using SetParamsFn = int (*)(const void *, size_t);
 using AbiVersionFn = int (*)(void);
+using SizeQueryFn = size_t (*)(void);
 using AvailableFn = int (*)(void);
 
 struct EngineBundle {
@@ -67,6 +70,8 @@ struct EngineBundle {
   SetParamsFn set_params = nullptr;
   AbiVersionFn abi_version = nullptr;
   AbiVersionFn lib_abi_version = nullptr;
+  SizeQueryFn result_size = nullptr;
+  SizeQueryFn params_size = nullptr;
   AvailableFn available = nullptr;
   std::string load_error;
   bool loaded = false;
@@ -74,11 +79,6 @@ struct EngineBundle {
 
 bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
   b = EngineBundle{};
-  if (!mopacc_abi_layout_matches(sizeof(MopacCParams), sizeof(MopacCResult),
-                                 offsetof(MopacCResult, message))) {
-    b.load_error = "incompatible mopacc ABI struct layout";
-    return false;
-  }
   const auto cands = abi::engine_candidates(
       "mopacc", engine_path, {"MOPACC_LIBRARY", "RGPOT_MOPACC_ENGINE"});
   std::string loaded_path;
@@ -95,18 +95,55 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
       b.engine_lib.sym_optional<AbiVersionFn>("mopacc_c_abi_version");
   b.lib_abi_version =
       b.engine_lib.sym_optional<AbiVersionFn>("mopacc_abi_version");
+  b.result_size = b.engine_lib.sym_optional<SizeQueryFn>("mopacc_result_size");
+  b.params_size = b.engine_lib.sym_optional<SizeQueryFn>("mopacc_params_size");
   b.available = b.engine_lib.sym_optional<AvailableFn>("mopacc_available");
   if (!b.energy_gradient) {
     b.load_error = "engine missing mopacc_energy_gradient";
     return false;
   }
-  if (b.abi_version && b.abi_version() != RGPOT_MOPACC_C_ABI_VERSION) {
-    b.load_error = "incompatible mopacc ABI";
+  // ABI 1 libraries export the same compute symbols with a smaller
+  // MopacCResult returned by value, so nothing that returns one may be
+  // called until the version and size queries agree with this build.
+  if (!b.abi_version) {
+    b.load_error = "incompatible mopacc C ABI: expected >= " +
+                   std::to_string(RGPOT_MOPACC_C_ABI_VERSION) +
+                   ", found no mopacc_c_abi_version";
     return false;
   }
-  if (b.lib_abi_version && b.lib_abi_version() != MOPACC_ABI_VERSION) {
-    b.load_error = "incompatible mopacc library ABI";
+  if (const int found = b.abi_version(); found < RGPOT_MOPACC_C_ABI_VERSION) {
+    b.load_error = "incompatible mopacc C ABI: expected >= " +
+                   std::to_string(RGPOT_MOPACC_C_ABI_VERSION) + ", found " +
+                   std::to_string(found);
     return false;
+  }
+  if (b.lib_abi_version) {
+    if (const int found = b.lib_abi_version(); found < MOPACC_ABI_VERSION) {
+      b.load_error = "incompatible mopacc library ABI: expected >= " +
+                     std::to_string(MOPACC_ABI_VERSION) + ", found " +
+                     std::to_string(found);
+      return false;
+    }
+  }
+  if (!b.result_size) {
+    b.load_error = "incompatible mopacc MopacCResult size: expected " +
+                   std::to_string(sizeof(MopacCResult)) +
+                   ", found no mopacc_result_size";
+    return false;
+  }
+  if (const std::size_t found = b.result_size();
+      found != sizeof(MopacCResult)) {
+    b.load_error = expected_found("incompatible mopacc MopacCResult size",
+                                  sizeof(MopacCResult), found);
+    return false;
+  }
+  if (b.params_size) {
+    if (const std::size_t found = b.params_size();
+        found != sizeof(MopacCParams)) {
+      b.load_error = expected_found("incompatible mopacc MopacCParams size",
+                                    sizeof(MopacCParams), found);
+      return false;
+    }
   }
   if (b.available && !b.available()) {
     b.load_error = "mopacc stub (libmopac not linked)";
