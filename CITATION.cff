@@ -1,0 +1,30 @@
+# Copyright 2023--present rgpot developers
+cff-version: 1.2.0
+title: rgpot
+message: "If you use rgpot, please cite it using the metadata below."
+type: software
+authors:
+  - given-names: Rohit
+    family-names: Goswami
+    email: rgoswami@ieee.org
+    orcid: "https://orcid.org/0000-0002-2393-8056"
+    affiliation: "TurtleTech ehf"
+license: MIT
+repository-code: "https://github.com/OmniPotentRPC/rgpot"
+url: "https://rgpot.rgoswami.me"
+# [[[cog import rgpot_version as v; cog.outl(f'version: "{v.VERSION}"')]]]
+version: "3.8.0"
+# [[[end]]]
+# [[[cog import rgpot_version as v; cog.outl(f'date-released: "{v.release_date()}"')]]]
+date-released: "2026-11-25"
+# [[[end]]]
+keywords:
+  - potential-energy
+  - rpc
+  - molecular-dynamics
+  - dlpack
+  - ffi
+abstract: >-
+  rgpot is a potential-energy library and Cap'n Proto RPC server for
+  atomistic simulation codes. It gives clients one geometry carrier, one
+  result carrier, and one extensible backend-configuration carrier.
