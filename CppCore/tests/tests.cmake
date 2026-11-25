@@ -756,9 +756,16 @@ target_compile_definitions(lammpc_fake_engine_nostress
                            PRIVATE LAMMPC_FAKE_NO_STRESS)
 target_compile_definitions(lammpc_fake_engine_abi2
                            PRIVATE LAMMPC_FAKE_BRIDGE_ABI_MAJOR=2)
+foreach(engine lammps_legacy_engine_a lammps_legacy_engine_b)
+  add_library(${engine} SHARED CppCore/tests/external_refcount_engine.c)
+  target_include_directories(${engine} PRIVATE "${RGPOT_TEST_ROOT}/CppCore")
+  target_compile_definitions(${engine} PRIVATE RGPOT_ENGINE_BUILD)
+endforeach()
 rgpot_test_executable(lammpc_pot_test CppCore/tests/LammpcPotTest.cc)
 rgpot_add_test(LammpcPotTest COMMAND lammpc_pot_test
   ENVIRONMENT
+    "RGPOT_LAMMPS_LEGACY_ENGINE_A=$<TARGET_FILE:lammps_legacy_engine_a>"
+    "RGPOT_LAMMPS_LEGACY_ENGINE_B=$<TARGET_FILE:lammps_legacy_engine_b>"
     "RGPOT_LAMMPC_ENGINE=$<TARGET_FILE:lammpc_fake_engine>"
     "RGPOT_LAMMPC_NOSTRESS_ENGINE=$<TARGET_FILE:lammpc_fake_engine_nostress>"
     "RGPOT_LAMMPC_ABI2_ENGINE=$<TARGET_FILE:lammpc_fake_engine_abi2>")

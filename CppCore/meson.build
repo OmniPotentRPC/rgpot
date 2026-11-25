@@ -2179,7 +2179,28 @@ if get_option('with_tests')
             }
             lammpc_fake_targets += lammpc_fake_libs[_name]
         endforeach
+        lammps_legacy_engines = {}
+        foreach _name : ['lammps_legacy_engine_a', 'lammps_legacy_engine_b']
+            lammps_legacy_engines += {
+                _name: shared_library(
+                    _name,
+                    sources: ['tests/external_refcount_engine.c'],
+                    include_directories: _incdirs,
+                    c_args: ['-DRGPOT_ENGINE_BUILD'],
+                    install: false,
+                ),
+            }
+            lammpc_fake_targets += lammps_legacy_engines[_name]
+        endforeach
         lammpc_fake_env = environment()
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPS_LEGACY_ENGINE_A',
+            lammps_legacy_engines['lammps_legacy_engine_a'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPS_LEGACY_ENGINE_B',
+            lammps_legacy_engines['lammps_legacy_engine_b'].full_path(),
+        )
         lammpc_fake_env.set(
             'RGPOT_LAMMPC_ENGINE',
             lammpc_fake_libs['lammpc_fake_engine'].full_path(),

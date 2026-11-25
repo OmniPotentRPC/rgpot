@@ -17,8 +17,10 @@
 #include <kj/array.h>
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -366,4 +368,216 @@ TEST_CASE("LammpsPot lammpc cache keys follow the engine path and config",
   b.forceImpl(in, &out);
   REQUIRE(out.energy != energy_a);
   REQUIRE_THAT(out.energy, WithinAbs(lj_energy(kSeparation) * 1.5, 1e-12));
+}
+
+namespace {
+
+struct ScratchDir {
+  std::filesystem::path path;
+
+  ScratchDir() {
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch();
+    path = std::filesystem::temp_directory_path() /
+           ("rgpot_lammpc_key_" + std::to_string(stamp.count()));
+    std::filesystem::create_directories(path);
+  }
+  ~ScratchDir() {
+    std::error_code ignored;
+    std::filesystem::remove_all(path, ignored);
+  }
+  ScratchDir(const ScratchDir &) = delete;
+  ScratchDir &operator=(const ScratchDir &) = delete;
+
+  std::string link(const std::string &name, const std::string &target) const {
+    const auto at = path / name;
+    std::error_code ignored;
+    std::filesystem::remove(at, ignored);
+    std::filesystem::create_symlink(target, at);
+    return at.string();
+  }
+};
+
+uint64_t key_for(const std::vector<unsigned char> &config,
+                 const std::string &path) {
+  const rgpot::LammpsPot pot(config.data(), config.size(), path);
+  return pot.paramsKey();
+}
+
+} // namespace
+
+TEST_CASE("LammpsPot lammpc requests that resolve to one backend share a key",
+          "[external][lammpc][cache]") {
+  const std::filesystem::path real =
+      std::filesystem::canonical(fake_engine_path());
+  const auto config = lammps_config();
+  const ScratchDir dir;
+  const std::string first = dir.link("first.so", real.string());
+  const std::string second = dir.link("second.so", first);
+  const std::string detour = (dir.path / ".." / dir.path.filename() /
+                              "first.so").string();
+
+  const uint64_t direct = key_for(config, real.string());
+  REQUIRE(direct != 0);
+  REQUIRE(key_for(config, first) == direct);
+  REQUIRE(key_for(config, second) == direct);
+  REQUIRE(key_for(config, detour) == direct);
+
+  const rgpot::LammpsPot a(config.data(), config.size(), first);
+  const rgpot::LammpsPot b(config.data(), config.size(), second);
+  REQUIRE(a.paramsKey() == b.paramsKey());
+
+  const auto deeper = lammps_config("lj/cut 10.0", "1 1 0.3 2.5");
+  REQUIRE(key_for(deeper, first) != direct);
+}
+
+TEST_CASE("LammpsPot lammpc a re-pointed path gets a new key",
+          "[external][lammpc][cache]") {
+  const std::string stress = fake_engine_path();
+  const std::string nostress = env_path("RGPOT_LAMMPC_NOSTRESS_ENGINE");
+  const auto config = lammps_config();
+  const ScratchDir dir;
+  const std::string moving = dir.link("moving.so", stress);
+
+  const uint64_t before = key_for(config, moving);
+  REQUIRE(before == key_for(config, stress));
+
+  dir.link("moving.so", nostress);
+  const uint64_t after = key_for(config, moving);
+  REQUIRE(after != before);
+  REQUIRE(after == key_for(config, nostress));
+
+  dir.link("moving.so", stress);
+  REQUIRE(key_for(config, moving) == before);
+}
+
+namespace {
+
+void set_env(const char *name, const std::string &value) {
+#if defined(_WIN32)
+  _putenv_s(name, value.c_str());
+#else
+  setenv(name, value.c_str(), 1);
+#endif
+}
+
+void clear_env(const char *name) {
+#if defined(_WIN32)
+  _putenv_s(name, "");
+#else
+  unsetenv(name);
+#endif
+}
+
+class EnvGuard {
+public:
+  explicit EnvGuard(const char *name) : name_(name) {
+    if (const char *old = std::getenv(name)) {
+      saved_ = old;
+      had_ = true;
+    }
+  }
+  ~EnvGuard() {
+    if (had_) {
+      set_env(name_, saved_);
+    } else {
+      clear_env(name_);
+    }
+  }
+  EnvGuard(const EnvGuard &) = delete;
+  EnvGuard &operator=(const EnvGuard &) = delete;
+
+private:
+  const char *name_;
+  std::string saved_;
+  bool had_ = false;
+};
+
+} // namespace
+
+TEST_CASE("LammpsPot lammpc keys follow the engine the environment selects",
+          "[external][lammpc][cache]") {
+  const std::string stress = fake_engine_path();
+  const std::string nostress = env_path("RGPOT_LAMMPC_NOSTRESS_ENGINE");
+  const auto config = lammps_config();
+  const EnvGuard restore_library("LAMMPC_LIBRARY");
+  const EnvGuard restore_engine("RGPOT_LAMMPC_ENGINE");
+  const ScratchDir dir;
+  const std::string alias = dir.link("alias.so", stress);
+
+  const uint64_t stress_key = key_for(config, stress);
+  const uint64_t nostress_key = key_for(config, nostress);
+  REQUIRE(stress_key != nostress_key);
+
+  clear_env("LAMMPC_LIBRARY");
+  set_env("RGPOT_LAMMPC_ENGINE", stress);
+  REQUIRE(key_for(config, "") == stress_key);
+  set_env("RGPOT_LAMMPC_ENGINE", nostress);
+  REQUIRE(key_for(config, "") == nostress_key);
+  set_env("RGPOT_LAMMPC_ENGINE", alias);
+  REQUIRE(key_for(config, "") == stress_key);
+
+  set_env("LAMMPC_LIBRARY", nostress);
+  set_env("RGPOT_LAMMPC_ENGINE", stress);
+  REQUIRE(key_for(config, "") == nostress_key);
+
+  set_env("LAMMPC_LIBRARY", kMissing);
+  REQUIRE(key_for(config, "") == stress_key);
+
+  set_env("LAMMPC_LIBRARY", nostress);
+  REQUIRE(key_for(config, stress) == stress_key);
+}
+
+TEST_CASE("LammpsPot lammpc environment engines keep separate results",
+          "[external][lammpc][cache]") {
+  const std::string stress = fake_engine_path();
+  const std::string nostress = env_path("RGPOT_LAMMPC_NOSTRESS_ENGINE");
+  const auto config = lammps_config();
+  const EnvGuard restore_engine("RGPOT_LAMMPC_ENGINE");
+  const EnvGuard restore_library("LAMMPC_LIBRARY");
+  clear_env("LAMMPC_LIBRARY");
+
+  set_env("RGPOT_LAMMPC_ENGINE", stress);
+  const rgpot::LammpsPot with_stress(config.data(), config.size());
+  set_env("RGPOT_LAMMPC_ENGINE", nostress);
+  const rgpot::LammpsPot without_stress(config.data(), config.size());
+
+  REQUIRE(with_stress.caps().stress);
+  REQUIRE_FALSE(without_stress.caps().stress);
+  REQUIRE(with_stress.paramsKey() != without_stress.paramsKey());
+}
+
+TEST_CASE("LammpsPot LJ keys follow the engine the environment selects",
+          "[external][lammpc][cache]") {
+  const std::string first = env_path("RGPOT_LAMMPS_LEGACY_ENGINE_A");
+  const std::string second = env_path("RGPOT_LAMMPS_LEGACY_ENGINE_B");
+  const EnvGuard restore_primary("RGPOT_LAMMPS_ENGINE");
+  const EnvGuard restore_secondary("LAMMPS_ENGINE");
+  const ScratchDir dir;
+  const std::string alias = dir.link("legacy_alias.so", first);
+  clear_env("LAMMPS_ENGINE");
+
+  const auto key = [](const std::string &path) {
+    rgpot::ExternalLjConfig config;
+    config.engine_path = path;
+    return rgpot::LammpsPot(config).paramsKey();
+  };
+
+  const uint64_t first_key = key(first);
+  const uint64_t second_key = key(second);
+  REQUIRE(first_key != second_key);
+  REQUIRE(key(alias) == first_key);
+
+  set_env("RGPOT_LAMMPS_ENGINE", first);
+  REQUIRE(key("") == first_key);
+  set_env("RGPOT_LAMMPS_ENGINE", second);
+  REQUIRE(key("") == second_key);
+  set_env("RGPOT_LAMMPS_ENGINE", alias);
+  REQUIRE(key("") == first_key);
+
+  set_env("RGPOT_LAMMPS_ENGINE", kMissing);
+  set_env("LAMMPS_ENGINE", second);
+  REQUIRE(key("") == second_key);
+
+  set_env("RGPOT_LAMMPS_ENGINE", second);
+  REQUIRE(key(first) == first_key);
 }
