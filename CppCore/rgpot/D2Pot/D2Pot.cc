@@ -126,6 +126,7 @@ D2Pot::D2Pot(D2Config cfg) : Potential(PotType::D2), cfg_(cfg) {
 }
 
 void D2Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   using units::BOHR_TO_ANGSTROM;
   using units::HARTREE_TO_EV;
   const std::size_t n = in.nAtoms;

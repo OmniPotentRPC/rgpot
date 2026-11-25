@@ -360,6 +360,7 @@ MEAMPot::MEAMPot(MEAMModel model, bool periodic, bool stress,
 }
 
 void MEAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (out == nullptr) {
     bad("null output buffer");
   }

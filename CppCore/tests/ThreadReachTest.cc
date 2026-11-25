@@ -2,10 +2,12 @@
 // Copyright 2023--present rgpot developers
 //
 // A potential's thread count reaches the threads the potential uses. The
-// batch fan-out of every shared-instance potential and the terms of a SumPot
-// take the count of the object they were called on. Each check watches the
-// team an OpenMP region really has, or the count a child really reads, and
-// not only that the call returns.
+// batch fan-out of every shared-instance potential, the terms of a SumPot,
+// and the kernels of MEAMPot, D2Pot and D2CpmdPot take the count of the
+// object they were called on. Each check watches the team an OpenMP region
+// really has, or the count a child really reads, and not only that the call
+// returns. The dlopen frontends, whose engine ABIs carry no thread count,
+// are checked beside their own suites (XTBPotTest, MetatomicPotTest).
 
 #include <algorithm>
 #include <array>
@@ -22,8 +24,11 @@
 #include <catch2/catch_all.hpp>
 
 #include "lsan_libomp.hpp"
+#include "rgpot/D2Pot/D2CpmdPot.hpp"
+#include "rgpot/D2Pot/D2Pot.hpp"
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/MEAM/MEAMPot.hpp"
 #include "rgpot/Slices.hpp"
 #include "rgpot/SumPot/SumPot.hpp"
 
@@ -36,6 +41,8 @@
 #endif
 
 namespace {
+
+constexpr std::array<int, 4> kCounts{1, 2, 4, 8};
 
 void setThreads(const char *value) {
 #if defined(_WIN32)
@@ -76,6 +83,12 @@ int teamHere() {
 #endif
 }
 
+std::uint64_t bits(double v) {
+  std::uint64_t out = 0;
+  std::memcpy(&out, &v, sizeof(out));
+  return out;
+}
+
 struct System {
   std::vector<double> pos;
   std::vector<int> z;
@@ -114,6 +127,19 @@ std::vector<Eval> runBatch(rgpot::PotentialBase &pot,
 
 Eval runOne(rgpot::PotentialBase &pot, const System &s) {
   return runBatch(pot, {s}).front();
+}
+
+int bitsApart(const Eval &a, const Eval &b) {
+  int apart = bits(a.energy) != bits(b.energy) ? 1 : 0;
+  apart += a.has_stress != b.has_stress ? 1 : 0;
+  for (std::size_t k = 0; k < 9; ++k) {
+    apart += bits(a.stress[k]) != bits(b.stress[k]) ? 1 : 0;
+  }
+  REQUIRE(a.f.size() == b.f.size());
+  for (std::size_t k = 0; k < a.f.size(); ++k) {
+    apart += bits(a.f[k]) != bits(b.f[k]) ? 1 : 0;
+  }
+  return apart;
 }
 
 // What one Probe call saw on the thread that ran it.
@@ -489,4 +515,142 @@ TEST_CASE("a SumPot hands its thread count to the terms", "[threads][SumPot]") {
   }
 #endif
   setThreads("");
+}
+
+namespace {
+
+System openMolecule() {
+  System s;
+  s.pos = {0.0, 0.0, 0.0, 3.4, 0.0, 0.0, 1.7, 2.9, 0.4, -0.5, 3.1, 3.6};
+  s.z = {6, 6, 8, 1};
+  return s;
+}
+
+System nickelCell() {
+  System s;
+  const double a = 3.52;
+  const int cells = 2;
+  const double basis[4][3] = {
+      {0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}};
+  for (int ix = 0; ix < cells; ++ix) {
+    for (int iy = 0; iy < cells; ++iy) {
+      for (int iz = 0; iz < cells; ++iz) {
+        for (const auto &b : basis) {
+          const double lattice[3] = {ix + b[0], iy + b[1], iz + b[2]};
+          const std::size_t i = s.z.size();
+          for (int k = 0; k < 3; ++k) {
+            // A small fixed displacement so the forces are not all zero.
+            const double shake =
+                0.02 * std::sin(1.7 * static_cast<double>(i) + 0.9 * k);
+            s.pos.push_back(a * lattice[k] + shake);
+          }
+          s.z.push_back(28);
+        }
+      }
+    }
+  }
+  s.box = {a * cells, 0, 0, 0, a * cells, 0, 0, 0, a * cells};
+  return s;
+}
+
+// What a kernel with no region of its own must still do: give one answer on
+// any count, take the binding, and let the batch fan-out use the count.
+template <typename Make>
+void checkSerialKernel(const char *name, Make make, const System &s) {
+  INFO(name << " on " << s.z.size() << " atoms");
+  setThreads("");
+  REQUIRE(s.z.size() < rgpot::kTeamMinAtoms);
+  auto reference_pot = make();
+  const Eval reference = runOne(*reference_pot, s);
+
+  for (const int threads : kCounts) {
+    INFO("setThreadCount(" << threads << ")");
+    auto pot = make();
+    pot->setThreadCount(threads);
+    CHECK(pot->threadCount() == threads);
+    CHECK(bitsApart(runOne(*pot, s), reference) == 0);
+    CHECK(rgpot::explicitThreadCount() == 0);
+  }
+
+  {
+    const std::vector<System> batch(8, s);
+    {
+      auto pot = make();
+      const std::uint64_t before = rgpot::teamsOpened();
+      for (const Eval &e : runBatch(*pot, batch)) {
+        CHECK(bitsApart(e, reference) == 0);
+      }
+      CHECK(rgpot::teamsOpened() == before);
+    }
+    if (canSpread()) {
+      auto pot = make();
+      pot->setThreadCount(4);
+      const std::uint64_t before = rgpot::teamsOpened();
+      for (const Eval &e : runBatch(*pot, batch)) {
+        CHECK(bitsApart(e, reference) == 0);
+      }
+#if defined(_OPENMP)
+      CHECK(rgpot::teamsOpened() > before);
+#endif
+      auto scoped = make();
+      scoped->setThreadCount(4);
+      const rgpot::ThreadCount one(1);
+      const std::uint64_t held = rgpot::teamsOpened();
+      runBatch(*scoped, batch);
+      CHECK(rgpot::teamsOpened() == held);
+    }
+  }
+
+  auto probe = make();
+  checkTakesBinding(*probe, s);
+}
+
+// An error from the kernel leaves nothing bound on the thread.
+template <typename Pot> void checkBindingEndsOnError(Pot &pot, const System &s) {
+  std::vector<double> f(s.pos.size(), 0.0);
+  const rgpot::ForceInput bad{s.z.size(), s.pos.data(), nullptr,
+                              s.box.data()};
+  rgpot::ForceOut out{};
+  out.F = f.data();
+  pot.setThreadCount(4);
+  CHECK_THROWS(pot.forceImpl(bad, &out));
+  pot.clearThreadCount();
+  CHECK(rgpot::explicitThreadCount() == 0);
+}
+
+} // namespace
+
+TEST_CASE("D2Pot takes the thread count of its object", "[threads][D2]") {
+  rgpot::D2Config cfg;
+  cfg.cutoff = 12.0;
+  checkSerialKernel(
+      "D2Pot", [&] { return std::make_unique<rgpot::D2Pot>(cfg); },
+      openMolecule());
+  rgpot::D2Pot pot(cfg);
+  checkBindingEndsOnError(pot, openMolecule());
+}
+
+TEST_CASE("D2CpmdPot takes the thread count of its object",
+          "[threads][D2Cpmd]") {
+  checkSerialKernel(
+      "D2CpmdPot", [] { return std::make_unique<rgpot::D2CpmdPot>(); },
+      openMolecule());
+  rgpot::D2CpmdPot pot;
+  checkBindingEndsOnError(pot, openMolecule());
+}
+
+TEST_CASE("MEAMPot takes the thread count of its object", "[threads][MEAM]") {
+  const std::string data = "CppCore/tests/data/meam/";
+  auto make = [&] {
+    rgpot::MEAMConfig c;
+    c.library = data + "library.meam";
+    c.parameters = data + "Ni.meam";
+    c.elements = {"Ni"};
+    c.periodic = true;
+    c.stress = true;
+    return std::make_unique<rgpot::MEAMPot>(c);
+  };
+  checkSerialKernel("MEAMPot", make, nickelCell());
+  auto pot = make();
+  checkBindingEndsOnError(*pot, nickelCell());
 }
