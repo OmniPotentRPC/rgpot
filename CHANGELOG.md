@@ -252,6 +252,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolution across `CP2KPot`, `CPMDPot`, `MOPACPot`, `NWChemPot`,
   `XTBDlopen`, and `MetatomicDlopen`, sharing Cap'n Proto serialization and
   communicator-adopter registration helpers in `CppCore/rgpot/abi/`.
+- Conventional commit checks accept the `dev` type. `potctl ci cog-check`
+  now matches commit types case-insensitively, as cog does, so `BLD:`
+  subjects pass.
 - Deduplicated `energy_gradient`, LJ-like bindings, and GROMACS/OpenMM
   wrappers in `python/bind/bind_module.cpp`, and extracted shared geometry,
   cell, and OpenMP thread-count fixtures into `CppCore/tests/TestFixtures.hpp`.
@@ -271,10 +274,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - NWChem configuration message tests now distinguish a loaded engine refusal from a missing engine.
 - Refines the Tersoff stress tests by clarifying the thread-setting check
   as a determinism smoke test and deduplicating Voigt index constants.
+- Release docs describe the fragment checks and which pull requests skip them.
 - Rust sources now pass the repository formatting and clippy checks.
+- Sutton-Chen workspace tests now assert serial behavior when OpenMP is disabled.
 - The C++ coverage build enables `-fprofile-update=atomic` for concurrent OpenMP gcov counters, and the capture script disables synthetic exception-unwind branches under lcov 2 so capture and extract run without error suppressions.
+- The EMT leak-accounting test now pairs each counted deallocation with its
+  allocation, so it stays valid when MinGW routes a delete across runtime modules.
+  The pairing uses a hashed pointer table, so the test keeps its earlier runtime.
 - The EMT reference now states which failures keep the cached kernel and which drop it. A call that fails before the kernel runs, and a non-finite energy or force, keep a kernel from an earlier successful call. An Asap failure and any other exception raised by the kernel drop it.
 - The Fortran coverage job uses the same test timeout multiplier as the C++ coverage job. NeighbourLayerTest gets one extra multiple of its registry timeout in that build, because four multiples left it about forty seconds inside an eight minute limit.
+- The FortranStaticAudit test fails when a Fortran kernel archive holds
+  procedure-local static data, which every thread would share. gfortran
+  emits such a static for the hidden length of a deferred-length function
+  result inside a concatenation, even under -frecursive. That static
+  truncated Tersoff error messages and corrupted the heap when several
+  free-threaded Python callers failed at once. New native and Python tests
+  run the Tersoff stress path from many threads at once, interleaved with
+  simultaneous zero-volume failures, and require results identical to one
+  thread.
 - The Gupta and reduced pair reference now records the `!(re > 0.0)` Morse checks and the error conditions of each C entry point.
 - The Gupta, reduced-pair and Sutton-Chen C entry points now have reference entries, so the documented signatures stay aligned with the headers.
 - The LeakSanitizer lane runs `llvm-symbolizer` through `tools/lsan/llvm-symbolizer`, which clears `LD_LIBRARY_PATH` so the system binary does not load pixi's libraries. The libomp suppression matches function names, so a symbolizer that cannot start left libomp's 128-byte allocation reported as a bare `libomp.so` offset. `tools/check_lsan_libomp.sh` now fails if frames are not symbolized, and leaks 137 bytes from `main` and 53 bytes from inside an OpenMP region on purpose; it requires LeakSanitizer to report those two and no libomp allocation.
@@ -284,6 +301,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Python typing job installs mpi4py, which ships its own type hints, so `rgpot.lammps` is checked by mypy and pyright against the real package.
 - The `engine_abi_stamps` test now opens `libpotlibc_engine` when `with_potlibc` is enabled, and the new `potlibc_engine_rust_loader` test loads it with `EnginePotential::load`, evaluates a surface, and drives the lock-failure build to check that `EngineError::Lock` latches the handle.
 - The engine ABI reference wraps the shared export list and the Rust symbol table on semantic lines.
+- The engine config size checks compare against the public minimum message sizes,
+  so the lint run with warnings denied passes at the minimum supported Rust
+  version with the engine feature on.
 - The engine loader tests now check that a refused load destroys every engine instance it created and creates none when it is refused before creation. The cases are an engine that reports itself unavailable, another ABI major, a newer minor, another layout revision, and a lock or fatal code from `rgpot_engine_caps`. The failed-first-load test also reopens the unavailable, newer minor and caps failure cases.
 - The manual index includes the design notes and the documentation style guide. `doccheck` fails when an org page or a pinned citation drops out of the manual.
 - The neighbour-layer tests now cover orthorhombic periodic coordinates outside the primary box, verifying both Stream and Stored neighbour modes against the direct minimum-image reference on the boundary pair and randomized multi-wrap trials.
@@ -477,6 +497,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OpenMM plugins, and the test stub all add that file. A loader such as
   `EnginePotential` in `rgpot-core` can now read the ABI minor and layout revision
   of these plugins directly instead of assuming minor 0.
+- Exported rgpot_lammpc_potential from the shared library and added it to
+  the ABI baseline checks so hidden-visibility and Windows builds keep the
+  constructor in the public C surface.
 - Fixed building the Python extension when `with_python` is enabled: the
   `has_analytic_hvp()` query no longer calls a non-const thread-slot accessor
   on a const handle (the same `primary().caps()` path as `caps()`).
@@ -698,6 +721,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rgpot_engine_taylor_jet` keeps the caller's jet and derivative report unchanged when the evaluation fails.
 - `scripts/export_uma_aoti.py` now compiles each `.pt2` archive inside an isolated `TORCHINDUCTOR_CACHE_DIR`, preventing concurrent exports of identical AOTInductor graphs from overwriting each other's embedded package metadata.
 - `scripts/run_coverage_fortran.sh` again enables branch coverage with `lcov_branch_coverage=1` on lcov 1.x and `branch_coverage=1` on 2.x, matching `scripts/run_coverage_cpp.sh`, so the Fortran Codecov upload on Ubuntu 22.04 keeps BRDA data instead of line hits only.
+- lammpc and LAMMPS engine loading errors now omit an empty engine path prefix,
+  so wrapped failures read `lammpc: ...` instead of `lammpc: : ...`.
 
 ### Miscellaneous
 
