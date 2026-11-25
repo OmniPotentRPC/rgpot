@@ -14,8 +14,10 @@ doi:10.1088/1361-648X/aa680e.
 
 ``protocol_reentrant`` is True for :meth:`RgpotCalculator.__rg_evaluate__`
 only (F5). :meth:`calculate` and ``get_property`` mutate ``self.atoms``
-and ``self.results`` and must not run on two threads at once. The
-potential object underneath keeps one workspace per calling thread (F2).
+and ``self.results`` and must not run on two threads at once. A bound
+kernel keeps one workspace per calling thread (F2), except for a kernel
+that shares one instance. :class:`rgpot.XTBDlopen` has a single engine
+handle: concurrent calls on one object run one at a time.
 
 The bound kernels are fully periodic and take the minimum image of each
 pair. The calculator turns any ASE geometry into a kernel call that
