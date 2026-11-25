@@ -856,10 +856,14 @@ rgpot_potential_set_hessian_byte_budget(const struct rgpot_potential_t *pot,
  *
  * NULL pointers, an unknown scheme, a negative or non-finite step and a
  * `hessian_out` that overlaps the positions, atomic numbers or box
- * return `RGPOT_INVALID_PARAMETER` without a call. Otherwise `pot` must be a
- * live handle, `input` must point to a valid `rgpot_force_input_t` whose
- * tensors stay alive for the call, `hessian_out` must point to `(3 *
- * n_atoms)^2` writable doubles and `scheme_used` must be writable.
+ * return `RGPOT_INVALID_PARAMETER` without a call. So does a matrix whose
+ * byte count `(3 * n_atoms)^2 * sizeof(double)` overflows or exceeds the
+ * budget set by `rgpot_potential_set_hessian_byte_budget`, before
+ * `hessian_out` is touched: a caller whose buffer may be short installs its
+ * length in bytes as the budget. Otherwise `pot` must be a live handle,
+ * `input` must point to a valid `rgpot_force_input_t` whose tensors stay
+ * alive for the call, `hessian_out` must point to `(3 * n_atoms)^2`
+ * writable doubles and `scheme_used` must be writable.
  */
 enum rgpot_status_t
 rgpot_potential_hessian(const struct rgpot_potential_t *pot,
