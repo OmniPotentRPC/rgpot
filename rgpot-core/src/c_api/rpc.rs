@@ -317,6 +317,13 @@ pub unsafe extern "C" fn rgpot_rpc_neighbours(
         }
         let inp = unsafe { &*input };
         let client_ref = unsafe { &mut *client };
+        let geometry = match unsafe { RpcClient::neighbor_geometry(inp) } {
+            Ok(geometry) => geometry,
+            Err(error) => {
+                set_last_error(&format!("rgpot_rpc_neighbours: {error}"));
+                return rgpot_status_t::RGPOT_RPC_ERROR;
+            }
+        };
         let probe = out.is_null() || unsafe { (*out).cap == 0 };
         let reply = if probe {
             match client_ref.neighbours(inp, &query) {
@@ -326,7 +333,7 @@ pub unsafe extern "C" fn rgpot_rpc_neighbours(
                     return rgpot_status_t::RGPOT_RPC_ERROR;
                 }
             }
-        } else if let Some(reply) = client_ref.take_cached_neighbours(input, &query) {
+        } else if let Some(reply) = client_ref.take_cached_neighbours(&geometry, &query) {
             reply
         } else {
             match client_ref.neighbours(inp, &query) {
@@ -360,7 +367,7 @@ pub unsafe extern "C" fn rgpot_rpc_neighbours(
             unsafe { *needed = total };
         }
         if probe {
-            client_ref.cache_neighbours(input, query, reply);
+            client_ref.cache_neighbours(geometry, query, reply);
             return rgpot_status_t::RGPOT_SUCCESS;
         }
         let buffers = unsafe { &*out };
@@ -1070,6 +1077,187 @@ mod tests {
         assert_eq!(&shift[0..3], &[0, 0, 0]);
         assert_eq!(&vector[0..3], &[1.0, 0.0, 0.0]);
         assert_eq!(distance[0], 1.0);
+        unsafe { rgpot_rpc_client_free(client) };
+        let _ = join.join();
+    }
+
+    struct PositionEchoPotential {
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl potential::Server for PositionEchoPotential {
+        fn get_capabilities(
+            &mut self,
+            _params: potential::GetCapabilitiesParams,
+            mut results: potential::GetCapabilitiesResults,
+        ) -> capnp::capability::Promise<(), CapnpError> {
+            crate::compat::describe_server(results.get().init_capabilities(), false);
+            capnp::capability::Promise::ok(())
+        }
+
+        fn neighbours(
+            &mut self,
+            params: potential::NeighboursParams,
+            mut results: potential::NeighboursResults,
+        ) -> capnp::capability::Promise<(), CapnpError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let params = match params.get() {
+                Ok(value) => value,
+                Err(error) => return capnp::capability::Promise::err(error),
+            };
+            let fip = match params.get_fip() {
+                Ok(value) => value,
+                Err(error) => return capnp::capability::Promise::err(error),
+            };
+            let pos = match fip.get_pos() {
+                Ok(value) => value,
+                Err(error) => return capnp::capability::Promise::err(error),
+            };
+            let marker = if pos.len() == 0 { 0.0 } else { pos.get(0) };
+            let mut list = results.get().init_neighbors();
+            list.set_status(0);
+            list.set_message("ok");
+            list.set_more(false);
+            list.set_next(1);
+            let mut first = list.reborrow().init_first(1);
+            first.set(0, 0);
+            let mut second = list.reborrow().init_second(1);
+            second.set(0, 1);
+            let mut distance = list.reborrow().init_distance(1);
+            distance.set(0, marker);
+            let mut mask = list.reborrow().init_mask(1);
+            mask.set(0, 0);
+            capnp::capability::Promise::ok(())
+        }
+    }
+
+    fn start_position_echo_server(
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> (u16, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|e| panic!("{e}"));
+        listener
+            .set_nonblocking(true)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let port = listener
+            .local_addr()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .port();
+        let join = thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap_or_else(|e| panic!("{e}"));
+            for _ in 0..2 {
+                let started = std::time::Instant::now();
+                let stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            if started.elapsed() >= Duration::from_secs(5) {
+                                return;
+                            }
+                            thread::sleep(Duration::from_millis(20));
+                        }
+                        Err(error) => panic!("{error}"),
+                    }
+                };
+                stream
+                    .set_nonblocking(true)
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let calls = calls.clone();
+                runtime.block_on(async move {
+                    let stream =
+                        tokio::net::TcpStream::from_std(stream).unwrap_or_else(|e| panic!("{e}"));
+                    let capability =
+                        capnp_rpc::new_client::<potential::Client, _>(PositionEchoPotential {
+                            calls,
+                        });
+                    let (reader, writer) =
+                        tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+                    let network = twoparty::VatNetwork::new(
+                        futures::io::BufReader::new(reader),
+                        futures::io::BufWriter::new(writer),
+                        rpc_twoparty_capnp::Side::Server,
+                        Default::default(),
+                    );
+                    let rpc_system = RpcSystem::new(Box::new(network), Some(capability.client));
+                    let _ = rpc_system.await;
+                });
+            }
+        });
+        (port, join)
+    }
+
+    #[test]
+    fn neighbour_probe_cache_misses_after_positions_change() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (port, join) = start_position_echo_server(calls.clone());
+        let host = host_for();
+        let client = unsafe { rgpot_rpc_client_new(host.as_ptr(), port) };
+        let mut input = make_input(2);
+        input._pos[0] = 1.0;
+        let request = rgpot_rpc_neighbors_request_t {
+            cutoff: 0.0,
+            skin: 0.0,
+            format: 0,
+            cut: 1,
+            periodic: [0, 0, 0],
+            shifts: 0,
+            vectors: 0,
+            distances: 1,
+        };
+        let mut count = 0usize;
+        let mut needed = 0usize;
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                client,
+                &input.input,
+                &request,
+                std::ptr::null_mut(),
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(
+            status,
+            crate::status::rgpot_status_t::RGPOT_SUCCESS,
+            "{}",
+            last_error()
+        );
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        input._pos[0] = 9.0;
+        let mut first = [-1_i32];
+        let mut second = [-1_i32];
+        let mut distance = [-1.0_f64];
+        let mut out = rgpot_rpc_neighbors_out_t {
+            first: first.as_mut_ptr(),
+            second: second.as_mut_ptr(),
+            shift: std::ptr::null_mut(),
+            vector: std::ptr::null_mut(),
+            distance: distance.as_mut_ptr(),
+            mask: std::ptr::null_mut(),
+            cap: 1,
+        };
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                client,
+                &input.input,
+                &request,
+                &mut out,
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(
+            status,
+            crate::status::rgpot_status_t::RGPOT_SUCCESS,
+            "{}",
+            last_error()
+        );
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(distance[0], 9.0);
+        assert_eq!(first[0], 0);
+        assert_eq!(second[0], 1);
         unsafe { rgpot_rpc_client_free(client) };
         let _ = join.join();
     }

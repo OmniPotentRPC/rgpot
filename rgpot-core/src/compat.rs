@@ -22,6 +22,9 @@ pub const PROTOCOL_MINOR: u16 = 3;
 /// Protocol minor that introduced the orbital-key ForceInput fields.
 /// It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
 pub const ORBITAL_KEY_INTRODUCED_MINOR: u16 = 2;
+/// Protocol minor that introduced `Potential.neighbours`.
+/// It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
+pub const NEIGHBORS_INTRODUCED_MINOR: u16 = 3;
 /// Cap'n Proto identity of `Potentials.capnp`.
 pub const SCHEMA_ID: &str = "0xbd1f89fa17369103";
 
@@ -55,6 +58,14 @@ pub fn force_input_expectation(uses_orbital_key: bool) -> Expectation {
         },
         ..Expectation::default()
     }
+}
+
+/// Expectation for `Potential.neighbours`: minor 3 and the neighbors operation.
+pub fn neighbours_expectation() -> Expectation {
+    let mut want = Expectation::default();
+    want.protocol_minor_min = NEIGHBORS_INTRODUCED_MINOR;
+    want.required_operations.push(Operation::Neighbors);
+    want
 }
 
 impl Default for Expectation {
@@ -444,6 +455,11 @@ mod tests {
             force_input_expectation(true).protocol_minor_min,
             ORBITAL_KEY_INTRODUCED_MINOR
         );
+        let neighbours = neighbours_expectation();
+        assert_eq!(neighbours.protocol_minor_min, NEIGHBORS_INTRODUCED_MINOR);
+        assert!(neighbours
+            .required_operations
+            .contains(&Operation::Neighbors));
     }
 }
 

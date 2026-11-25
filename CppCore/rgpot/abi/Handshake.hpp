@@ -46,6 +46,8 @@ inline constexpr uint16_t kProtocolMajor = 1;
 inline constexpr uint16_t kProtocolMinor = 3;
 /** Minor that introduced the orbital-key fields; not tied to kProtocolMinor. */
 inline constexpr uint16_t kOrbitalKeyIntroducedMinor = 2;
+/** Minor that introduced Potential.neighbours; not tied to kProtocolMinor. */
+inline constexpr uint16_t kNeighborsIntroducedMinor = 3;
 inline constexpr const char *kSchemaId = "0xbd1f89fa17369103";
 
 /** What the host requires of a backend. */
@@ -69,6 +71,27 @@ inline Expectation force_input_expectation(bool uses_orbital_key) {
   Expectation want;
   if (uses_orbital_key)
     want.protocol_minor_min = kOrbitalKeyIntroducedMinor;
+  return want;
+}
+
+inline const char *operation_name(::Capabilities::Operation op) {
+  switch (op) {
+  case ::Capabilities::Operation::ENERGY:
+    return "energy";
+  case ::Capabilities::Operation::FORCES:
+    return "forces";
+  case ::Capabilities::Operation::NEIGHBORS:
+    return "neighbors";
+  default:
+    return "required";
+  }
+}
+
+/** Expectation for `Potential.neighbours`: minor 3 and the neighbors operation. */
+inline Expectation neighbours_expectation() {
+  Expectation want;
+  want.protocol_minor_min = kNeighborsIntroducedMinor;
+  want.required_operations.push_back(::Capabilities::Operation::NEIGHBORS);
   return want;
 }
 
@@ -145,7 +168,7 @@ inline std::string check_capabilities(::Capabilities::Reader caps,
     for (const auto op : caps.getOperations())
       served = served || op == required;
     if (!served)
-      return "a required operation is not served";
+      return std::string("operation ") + operation_name(required) + " is not served";
   }
   return {};
 }

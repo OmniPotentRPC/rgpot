@@ -37,6 +37,8 @@ PROTOCOL_MINOR = 3
 # The minor that introduced the orbital-key fields. It is a fixed number so a
 # later PROTOCOL_MINOR bump does not raise the floor for keyed requests.
 ORBITAL_KEY_INTRODUCED_MINOR = 2
+# The minor that introduced Potential.neighbours. Fixed, like the orbital-key floor.
+NEIGHBORS_INTRODUCED_MINOR = 3
 
 
 class ProtocolMinorMismatchError(RuntimeError):
@@ -121,6 +123,7 @@ class RgpotRpcCalculator(Calculator):
         self._server_proc = server_proc
         self._orbital_key = None if orbital_key is None else int(orbital_key)
         self._server_protocol_minor: int | None = None
+        self._server_has_neighbors = False
         self._claim = ConnectionClaim("RgpotRpcCalculator")
 
         self._schema = load_potentials_schema()
@@ -268,6 +271,7 @@ class RgpotRpcCalculator(Calculator):
             for operation in reply.capabilities.operations
         }
         self._server_has_stress = "stress" in operations
+        self._server_has_neighbors = "neighbors" in operations
         properties = ["energy", "free_energy", "forces"]
         if self._server_has_stress:
             properties.append("stress")
@@ -380,6 +384,13 @@ class RgpotRpcCalculator(Calculator):
         vectors: bool,
         distances: bool,
     ) -> dict[str, np.ndarray]:
+        await self._check_server_protocol(NEIGHBORS_INTRODUCED_MINOR, "neighbours")
+        await self._refresh_capabilities_async()
+        if not self._server_has_neighbors:
+            raise RuntimeError(
+                "Potential.neighbours requires Capabilities.Operation.neighbors, "
+                "but the connected server does not advertise it"
+            )
         fip = self._schema.ForceInput.new_message()
         fip.pos = np.asarray(positions, dtype=float).ravel().tolist()
         fip.atmnrs = [int(z) for z in numbers]
@@ -394,7 +405,18 @@ class RgpotRpcCalculator(Calculator):
         req.vectors = bool(vectors)
         req.distances = bool(distances)
         req.mode = 1
-        reply = (await self._pot.neighbours(fip, req)).neighbors
+        try:
+            reply = (await self._pot.neighbours(fip, req)).neighbors
+        except (
+            ProtocolMinorMismatchError,
+            CalculatorError,
+            PropertyNotImplementedError,
+        ):
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                "RgpotRpcCalculator: neighbours RPC failed"
+            ) from exc
         if int(reply.status) != 0:
             raise ValueError(str(reply.message))
         out: dict[str, np.ndarray] = {
@@ -458,8 +480,12 @@ class RgpotRpcCalculator(Calculator):
     def _resolve_cutoff(
         self, frame: Any, pbc_flags: list[bool], cutoff: float | None, skin: float
     ) -> float:
-        if cutoff is not None and float(cutoff) > 0.0:
-            return float(cutoff)
+        # 0.0 is the wire value potserv replaces with potentialCutoffAngstrom.
+        # None still picks a geometry heuristic so an omitted cutoff has a list.
+        if cutoff is not None:
+            value = float(cutoff)
+            if value >= 0.0:
+                return value
         if any(pbc_flags):
             cell = np.asarray(frame.cell.array, dtype=float)
             if cell.shape == (3, 3):

@@ -7,7 +7,7 @@ index aa4a3a6..34dc2ba 100644
  @0xbd1f89fa17369103;
  
 +# Additive protocol revision implemented by this effective schema.
-+const protocolMinor :UInt16 = 2;
++const protocolMinor :UInt16 = 3;
 +
  # @struct ForceInput
  # @brief Input configuration for a potential energy evaluation.

@@ -5,6 +5,7 @@
 #include <catch2/catch_all.hpp>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <thread>
@@ -135,6 +136,19 @@ TEST_CASE("Bridge input guards", "[bridge][guards]") {
     CHECK(std::string(pot_get_last_error(client)) == "natoms is too large");
   }
 
+  SECTION("natoms whose neighbour coordinate count overflows int32 is rejected") {
+    PotNeighborsRequest req{};
+    size_t count = 0;
+    size_t needed = 0;
+    const int32_t limit = std::numeric_limits<int32_t>::max() / 3;
+    CHECK(pot_neighbours(client, limit + 1, pos, atmnrs, box, &req, nullptr,
+                         &count, &needed) == -1);
+    CHECK(std::string(pot_get_last_error(client)) == "natoms is too large");
+    CHECK(pot_neighbours(client, std::numeric_limits<int32_t>::max(), pos,
+                         atmnrs, box, &req, nullptr, &count, &needed) == -1);
+    CHECK(std::string(pot_get_last_error(client)) == "natoms is too large");
+  }
+
   SECTION("a guard failure is cleared by the next call") {
     CHECK(pot_calculate(client, -1, pos, atmnrs, box, &eng, forces) == -1);
     CHECK(pot_calculate(client, 0, nullptr, nullptr, nullptr, nullptr,
@@ -220,6 +234,322 @@ TEST_CASE("Bridge reports server-side failures as errors",
           "Server returned force array of incorrect size");
     pot_client_free(client);
   }
+}
+
+namespace {
+
+struct NeighbourCalls {
+  std::atomic<int> neighbours{0};
+  std::atomic<int> calculate{0};
+};
+
+enum class NeighbourScript { Current, OldMinor, NoNeighbors, Throw };
+
+class NeighbourScriptServer final : public Potential::Server {
+public:
+  NeighbourScriptServer(std::shared_ptr<NeighbourCalls> calls, NeighbourScript kind,
+                        bool fill_unrequested)
+      : calls_(std::move(calls)), kind_(kind), fill_unrequested_(fill_unrequested) {}
+
+  kj::Promise<void> getCapabilities(GetCapabilitiesContext context) override {
+    auto caps = context.getResults().initCapabilities();
+    if (kind_ == NeighbourScript::OldMinor || kind_ == NeighbourScript::NoNeighbors) {
+      auto ops = caps.initOperations(2);
+      ops.set(0, ::Capabilities::Operation::ENERGY);
+      ops.set(1, ::Capabilities::Operation::FORCES);
+      rgpot::abi::fill_compatibility(caps);
+      if (kind_ == NeighbourScript::OldMinor)
+        caps.setProtocolMinor(2);
+      return kj::READY_NOW;
+    }
+    auto ops = caps.initOperations(3);
+    ops.set(0, ::Capabilities::Operation::ENERGY);
+    ops.set(1, ::Capabilities::Operation::FORCES);
+    ops.set(2, ::Capabilities::Operation::NEIGHBORS);
+    rgpot::abi::fill_compatibility(caps);
+    return kj::READY_NOW;
+  }
+
+  kj::Promise<void> calculate(CalculateContext context) override {
+    calls_->calculate.fetch_add(1);
+    auto result = context.getResults().initResult();
+    result.setEnergy(1.0);
+    const auto n = context.getParams().getFip().getAtmnrs().size();
+    result.initForces(n * 3);
+    return kj::READY_NOW;
+  }
+
+  kj::Promise<void> neighbours(NeighboursContext context) override {
+    calls_->neighbours.fetch_add(1);
+    if (kind_ == NeighbourScript::Throw)
+      return KJ_EXCEPTION(FAILED, "intentional neighbour exception");
+    auto params = context.getParams();
+    auto request = params.getRequest();
+    auto pos = params.getFip().getPos();
+    auto list = context.getResults().initNeighbors();
+    list.setStatus(0);
+    list.setMessage("ok");
+    list.setMore(false);
+    list.setNext(1);
+    list.initFirst(1).set(0, 0);
+    list.initSecond(1).set(0, 1);
+    list.initMask(1).set(0, 0xff);
+    if (fill_unrequested_ || request.getShifts()) {
+      auto shift = list.initShift(3);
+      shift.set(0, 4);
+      shift.set(1, 5);
+      shift.set(2, 6);
+    }
+    if (fill_unrequested_ || request.getVectors()) {
+      auto vector = list.initVector(3);
+      vector.set(0, 1.5);
+      vector.set(1, 2.5);
+      vector.set(2, 3.5);
+    }
+    if (fill_unrequested_ || request.getDistances())
+      list.initDistance(1).set(0, pos.size() == 0 ? 0.0 : pos[0]);
+    return kj::READY_NOW;
+  }
+
+private:
+  std::shared_ptr<NeighbourCalls> calls_;
+  NeighbourScript kind_;
+  bool fill_unrequested_;
+};
+
+struct HostedNeighbours {
+  HostedNeighbours(NeighbourScript kind, bool fill_unrequested)
+      : calls(std::make_shared<NeighbourCalls>()),
+        server(kj::heap<NeighbourScriptServer>(calls, kind, fill_unrequested),
+               "127.0.0.1", 0),
+        port(server.getPort().wait(server.getWaitScope())) {}
+
+  std::shared_ptr<NeighbourCalls> calls;
+  capnp::EzRpcServer server;
+  unsigned port;
+};
+
+PotNeighborsRequest pair_request() {
+  PotNeighborsRequest req{};
+  req.cutoff = 2.0;
+  req.distances = 1;
+  return req;
+}
+
+} // namespace
+
+TEST_CASE("unrequested neighbour columns are not read", "[bridge][guards]") {
+  HostedNeighbours hosted(NeighbourScript::Current, true);
+  PotClient *client =
+      pot_client_init("127.0.0.1", static_cast<int32_t>(hosted.port));
+  REQUIRE(client != nullptr);
+  int32_t atmnrs[2] = {1, 1};
+  double pos[6] = {1.25, 0, 0, 2, 0, 0};
+  double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  PotNeighborsRequest req = pair_request();
+  req.shifts = 0;
+  req.vectors = 0;
+  req.distances = 0;
+  int32_t first[1] = {-1};
+  int32_t second[1] = {-1};
+  int32_t shift[3] = {70, 71, 72};
+  double vector[3] = {70, 71, 72};
+  double distance[1] = {70};
+  uint8_t mask[1] = {3};
+  PotNeighborsOut out{};
+  out.first = first;
+  out.second = second;
+  out.shift = shift;
+  out.vector = vector;
+  out.distance = distance;
+  out.mask = mask;
+  out.cap = 1;
+  size_t count = 0;
+  size_t needed = 0;
+  REQUIRE(pot_neighbours(client, 2, pos, atmnrs, box, &req, &out, &count,
+                         &needed) == 0);
+  CHECK(count == 1);
+  CHECK(first[0] == 0);
+  CHECK(second[0] == 1);
+  CHECK(mask[0] == 0xff);
+  CHECK(shift[0] == 70);
+  CHECK(shift[1] == 71);
+  CHECK(shift[2] == 72);
+  CHECK(vector[0] == 70);
+  CHECK(distance[0] == 70);
+
+  req.shifts = 1;
+  req.vectors = 1;
+  req.distances = 1;
+  REQUIRE(pot_neighbours(client, 2, pos, atmnrs, box, &req, &out, &count,
+                         &needed) == 0);
+  CHECK(shift[0] == 4);
+  CHECK(shift[1] == 5);
+  CHECK(shift[2] == 6);
+  CHECK(vector[0] == Catch::Approx(1.5));
+  CHECK(distance[0] == Catch::Approx(1.25));
+  pot_client_free(client);
+}
+
+TEST_CASE("an empty unrequested neighbour column is not read", "[bridge][guards]") {
+  HostedNeighbours hosted(NeighbourScript::Current, false);
+  PotClient *client =
+      pot_client_init("127.0.0.1", static_cast<int32_t>(hosted.port));
+  REQUIRE(client != nullptr);
+  int32_t atmnrs[2] = {1, 1};
+  double pos[6] = {0, 0, 0, 1, 0, 0};
+  double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  PotNeighborsRequest req = pair_request();
+  req.shifts = 0;
+  req.vectors = 0;
+  req.distances = 0;
+  int32_t first[1] = {-1};
+  int32_t second[1] = {-1};
+  int32_t shift[3] = {70, 71, 72};
+  double vector[3] = {70, 71, 72};
+  double distance[1] = {70};
+  PotNeighborsOut out{};
+  out.first = first;
+  out.second = second;
+  out.shift = shift;
+  out.vector = vector;
+  out.distance = distance;
+  out.cap = 1;
+  size_t count = 0;
+  size_t needed = 0;
+  REQUIRE(pot_neighbours(client, 2, pos, atmnrs, box, &req, &out, &count,
+                         &needed) == 0);
+  CHECK(shift[0] == 70);
+  CHECK(vector[0] == 70);
+  CHECK(distance[0] == 70);
+  pot_client_free(client);
+}
+
+TEST_CASE("a cluster neighbour reply requires a mask buffer", "[bridge][guards]") {
+  HostedNeighbours hosted(NeighbourScript::Current, false);
+  PotClient *client =
+      pot_client_init("127.0.0.1", static_cast<int32_t>(hosted.port));
+  REQUIRE(client != nullptr);
+  int32_t atmnrs[2] = {1, 1};
+  double pos[6] = {0, 0, 0, 1, 0, 0};
+  double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  PotNeighborsRequest req = pair_request();
+  req.format = 2;
+  int32_t first[1] = {-1};
+  int32_t second[1] = {-1};
+  PotNeighborsOut out{};
+  out.first = first;
+  out.second = second;
+  out.cap = 1;
+  size_t count = 0;
+  size_t needed = 0;
+  CHECK(pot_neighbours(client, 2, pos, atmnrs, box, &req, &out, &count,
+                       &needed) == 2);
+  CHECK(std::string(pot_get_last_error(client)) ==
+        "Required neighbour output pointer is null");
+  pot_client_free(client);
+}
+
+TEST_CASE("neighbours refuses an old-minor server before the call",
+          "[bridge][guards]") {
+  HostedNeighbours hosted(NeighbourScript::OldMinor, false);
+  PotClient *client =
+      pot_client_init("127.0.0.1", static_cast<int32_t>(hosted.port));
+  REQUIRE(client != nullptr);
+  int32_t atmnrs[2] = {1, 1};
+  double pos[6] = {0, 0, 0, 1, 0, 0};
+  double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  PotNeighborsRequest req = pair_request();
+  size_t count = 0;
+  size_t needed = 0;
+  CHECK(pot_neighbours(client, 2, pos, atmnrs, box, &req, nullptr, &count,
+                       &needed) == -3);
+  const std::string err = pot_get_last_error(client);
+  CHECK_THAT(err, Catch::Matchers::ContainsSubstring("protocol minor"));
+  CHECK_THAT(err, Catch::Matchers::ContainsSubstring("3"));
+  CHECK(hosted.calls->neighbours.load() == 0);
+  pot_client_free(client);
+}
+
+TEST_CASE("calculate does not satisfy the neighbours capability check",
+          "[bridge][guards]") {
+  HostedNeighbours hosted(NeighbourScript::NoNeighbors, false);
+  PotClient *client =
+      pot_client_init("127.0.0.1", static_cast<int32_t>(hosted.port));
+  REQUIRE(client != nullptr);
+  int32_t atmnrs[2] = {1, 1};
+  double pos[6] = {0, 0, 0, 1, 0, 0};
+  double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  double energy = 0;
+  double forces[6] = {0};
+  REQUIRE(pot_calculate(client, 2, pos, atmnrs, box, &energy, forces) == 0);
+  PotNeighborsRequest req = pair_request();
+  size_t count = 0;
+  size_t needed = 0;
+  CHECK(pot_neighbours(client, 2, pos, atmnrs, box, &req, nullptr, &count,
+                       &needed) == -3);
+  const std::string err = pot_get_last_error(client);
+  CHECK_THAT(err, Catch::Matchers::ContainsSubstring("neighbors"));
+  CHECK(hosted.calls->neighbours.load() == 0);
+  pot_client_free(client);
+}
+
+TEST_CASE("a kj exception during neighbours is described", "[bridge][guards]") {
+  HostedNeighbours hosted(NeighbourScript::Throw, false);
+  PotClient *client =
+      pot_client_init("127.0.0.1", static_cast<int32_t>(hosted.port));
+  REQUIRE(client != nullptr);
+  int32_t atmnrs[2] = {1, 1};
+  double pos[6] = {0, 0, 0, 1, 0, 0};
+  double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  PotNeighborsRequest req = pair_request();
+  size_t count = 0;
+  size_t needed = 0;
+  CHECK(pot_neighbours(client, 2, pos, atmnrs, box, &req, nullptr, &count,
+                       &needed) == -1);
+  const std::string err = pot_get_last_error(client);
+  CHECK_THAT(err, Catch::Matchers::ContainsSubstring("intentional neighbour exception"));
+  CHECK(err != "Unknown C++ exception");
+  pot_client_free(client);
+}
+
+TEST_CASE("a neighbour probe cache misses after the geometry changes",
+          "[bridge][guards]") {
+  HostedNeighbours hosted(NeighbourScript::Current, false);
+  PotClient *client =
+      pot_client_init("127.0.0.1", static_cast<int32_t>(hosted.port));
+  REQUIRE(client != nullptr);
+  int32_t atmnrs[2] = {1, 1};
+  double pos[6] = {1.0, 0, 0, 2, 0, 0};
+  double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  PotNeighborsRequest req = pair_request();
+  size_t count = 0;
+  size_t needed = 0;
+  REQUIRE(pot_neighbours(client, 2, pos, atmnrs, box, &req, nullptr, &count,
+                         &needed) == 0);
+  CHECK(hosted.calls->neighbours.load() == 1);
+  pos[0] = 9.0;
+  int32_t first[1] = {-1};
+  int32_t second[1] = {-1};
+  double distance[1] = {-1};
+  PotNeighborsOut out{};
+  out.first = first;
+  out.second = second;
+  out.distance = distance;
+  out.cap = 1;
+  REQUIRE(pot_neighbours(client, 2, pos, atmnrs, box, &req, &out, &count,
+                         &needed) == 0);
+  CHECK(hosted.calls->neighbours.load() == 2);
+  CHECK(distance[0] == Catch::Approx(9.0));
+
+  REQUIRE(pot_neighbours(client, 2, pos, atmnrs, box, &req, nullptr, &count,
+                         &needed) == 0);
+  CHECK(hosted.calls->neighbours.load() == 3);
+  REQUIRE(pot_neighbours(client, 2, pos, atmnrs, box, &req, &out, &count,
+                         &needed) == 0);
+  CHECK(hosted.calls->neighbours.load() == 3);
+  CHECK(distance[0] == Catch::Approx(9.0));
+  pot_client_free(client);
 }
 
 TEST_CASE("Bridge Calculation Stress", "[bridge][perf]") {

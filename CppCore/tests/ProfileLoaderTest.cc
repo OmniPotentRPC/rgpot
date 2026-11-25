@@ -327,6 +327,11 @@ TEST_CASE("Capabilities handshake rejection matrix",
   REQUIRE(rgpot::abi::force_input_expectation(false).protocol_minor_min == 0);
   REQUIRE(rgpot::abi::force_input_expectation(true).protocol_minor_min ==
           rgpot::abi::kOrbitalKeyIntroducedMinor);
+  const auto neighbours = rgpot::abi::neighbours_expectation();
+  REQUIRE(neighbours.protocol_minor_min == rgpot::abi::kNeighborsIntroducedMinor);
+  REQUIRE(neighbours.required_operations.size() == 3);
+  REQUIRE(neighbours.required_operations.back() ==
+          ::Capabilities::Operation::NEIGHBORS);
 }
 
 TEST_CASE("Capabilities handshake accepts a schema id with an optional 0x prefix",

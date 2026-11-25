@@ -24,9 +24,11 @@
 
 struct NeighborReplyCache {
   int32_t natoms = 0;
-  const double *pos = nullptr;
-  const int32_t *atmnrs = nullptr;
-  const double *box = nullptr;
+  // Content of the geometry, not the caller's pointers. A probe followed by
+  // an in-place edit of those buffers must miss this cache.
+  std::vector<double> pos;
+  std::vector<int32_t> atmnrs;
+  std::vector<double> box;
   PotNeighborsRequest request{};
   std::vector<int32_t> first;
   std::vector<int32_t> second;
@@ -49,7 +51,8 @@ struct PotClient {
   Potential::Client capability; //!< The RPC capability for potential calls.
   kj::WaitScope *wait_scope;    //!< Reference to the client wait scope.
   std::string last_error;       //!< Buffer for the most recent error message.
-  bool server_checked = false;  //!< True once the server passed the handshake.
+  bool server_checked = false;  //!< True once calculate passed the handshake.
+  bool neighbors_checked = false; //!< True once neighbours passed its handshake.
   bool has_orbital_key = false; //!< Whether following requests name a key.
   int64_t orbital_key = 0;      //!< Image or bead key sent with each request.
   std::optional<NeighborReplyCache> neighbor_cache;
@@ -96,12 +99,25 @@ bool sameNeighborRequest(const PotNeighborsRequest &left,
          left.vectors == right.vectors && left.distances == right.distances;
 }
 
+bool sameGeometry(const NeighborReplyCache &cached, int32_t natoms,
+                  const double *pos, const int32_t *atmnrs, const double *box) {
+  const auto npos = static_cast<size_t>(natoms) * 3;
+  if (cached.natoms != natoms || cached.pos.size() != npos ||
+      cached.atmnrs.size() != static_cast<size_t>(natoms) ||
+      cached.box.size() != 9)
+    return false;
+  if (natoms > 0 &&
+      (!std::equal(cached.pos.begin(), cached.pos.end(), pos) ||
+       !std::equal(cached.atmnrs.begin(), cached.atmnrs.end(), atmnrs)))
+    return false;
+  return std::equal(cached.box.begin(), cached.box.end(), box);
+}
+
 bool matchesNeighborProbe(const NeighborReplyCache &cached, int32_t natoms,
                           const double *pos, const int32_t *atmnrs,
                           const double *box,
                           const PotNeighborsRequest &request) {
-  return cached.natoms == natoms && cached.pos == pos &&
-         cached.atmnrs == atmnrs && cached.box == box &&
+  return sameGeometry(cached, natoms, pos, atmnrs, box) &&
          sameNeighborRequest(cached.request, request);
 }
 
@@ -120,7 +136,8 @@ int32_t copyNeighborReply(PotClient *client, int32_t natoms,
     return 0;
   if (!out->first || !out->second || (request.shifts && !out->shift) ||
       (request.vectors && !out->vector) ||
-      (request.distances && !out->distance)) {
+      (request.distances && !out->distance) ||
+      (request.format == 2 && !out->mask)) {
     client->last_error = "Required neighbour output pointer is null";
     return 2;
   }
@@ -156,17 +173,17 @@ int32_t copyNeighborReply(PotClient *client, int32_t natoms,
     }
     out->first[i] = center;
     out->second[i] = partner;
-    if (out->shift) {
+    if (request.shifts) {
       out->shift[3 * i] = reply.shift[3 * i];
       out->shift[3 * i + 1] = reply.shift[3 * i + 1];
       out->shift[3 * i + 2] = reply.shift[3 * i + 2];
     }
-    if (out->vector) {
+    if (request.vectors) {
       out->vector[3 * i] = reply.vector[3 * i];
       out->vector[3 * i + 1] = reply.vector[3 * i + 1];
       out->vector[3 * i + 2] = reply.vector[3 * i + 2];
     }
-    if (out->distance)
+    if (request.distances)
       out->distance[i] = reply.distance[i];
     if (out->mask)
       out->mask[i] = reply.mask[i];
@@ -355,6 +372,11 @@ int32_t pot_neighbours(PotClient *client, int32_t natoms, const double *pos,
       !box)
     return -1;
   client->last_error.clear();
+  constexpr int32_t kMaxAtoms = std::numeric_limits<int32_t>::max() / 3;
+  if (natoms > kMaxAtoms) {
+    client->last_error = "natoms is too large";
+    return -1;
+  }
   if (out && out->cap > 0 && client->neighbor_cache) {
     if (matchesNeighborProbe(*client->neighbor_cache, natoms, pos, atmnrs, box,
                              *request)) {
@@ -368,14 +390,26 @@ int32_t pot_neighbours(PotClient *client, int32_t natoms, const double *pos,
 
   try {
     auto &waitScope = *client->wait_scope;
-    if (!client->server_checked) {
+    if (!client->neighbors_checked) {
+      const auto expectation = rgpot::abi::neighbours_expectation();
       const std::string why =
-          rgpot::abi::check_server(client->capability, waitScope);
+          rgpot::abi::check_server(client->capability, waitScope, expectation);
       if (!why.empty()) {
-        client->last_error = "server refused: " + why;
+        if (why.find("protocol minor") != std::string::npos)
+          client->last_error =
+              "Potential.neighbours requires RPC protocol minor " +
+              std::to_string(rgpot::abi::kNeighborsIntroducedMinor) +
+              ": server refused: " + why;
+        else if (why.find("not served") != std::string::npos)
+          client->last_error =
+              "Potential.neighbours requires Capabilities.Operation.neighbors: "
+              "server refused: " +
+              why;
+        else
+          client->last_error = "server refused: " + why;
         return -3;
       }
-      client->server_checked = true;
+      client->neighbors_checked = true;
     }
     auto req = client->capability.neighboursRequest();
     auto fip = req.initFip();
@@ -404,9 +438,11 @@ int32_t pot_neighbours(PotClient *client, int32_t natoms, const double *pos,
     }
     NeighborReplyCache reply;
     reply.natoms = natoms;
-    reply.pos = pos;
-    reply.atmnrs = atmnrs;
-    reply.box = box;
+    if (natoms > 0) {
+      reply.pos.assign(pos, pos + static_cast<size_t>(natoms) * 3);
+      reply.atmnrs.assign(atmnrs, atmnrs + static_cast<size_t>(natoms));
+    }
+    reply.box.assign(box, box + 9);
     reply.request = *request;
     const auto first = list.getFirst();
     const auto second = list.getSecond();
@@ -425,6 +461,9 @@ int32_t pot_neighbours(PotClient *client, int32_t natoms, const double *pos,
     if (status == 0 && (!out || out->cap == 0))
       client->neighbor_cache = std::move(reply);
     return status;
+  } catch (const kj::Exception &error) {
+    client->last_error = error.getDescription().cStr();
+    return -1;
   }
   CATCH_AND_REPORT(client, -1)
 }

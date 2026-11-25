@@ -96,7 +96,10 @@ struct PotentialServer {
     callback: PotentialCallback,
     user_data: *mut c_void,
     potential: *const rgpot_potential_t,
-    neighbor_stream: Option<NeighborStream>,
+    neighbor_stream: Option<NeighborCursor>,
+    /// Bumped on every `calculate`. A continuation whose cursor was built
+    /// under an older generation is stale.
+    neighbor_generation: u64,
 }
 
 #[derive(Default)]
@@ -111,6 +114,95 @@ struct NeighborStream {
     shifts: bool,
     vectors: bool,
     distances: bool,
+}
+
+/// Geometry and query that produced a mode-2 cursor. A later page is served
+/// only when the caller repeats this content.
+#[derive(Clone, PartialEq)]
+struct StreamGeometry {
+    positions: Vec<f64>,
+    atomic_numbers: Vec<i32>,
+    box9: Vec<f64>,
+    cutoff: f64,
+    skin: f64,
+    format: u8,
+    cut: u8,
+    periodic: Vec<bool>,
+    shifts: bool,
+    vectors: bool,
+    distances: bool,
+    systems: Vec<(u32, Vec<f64>)>,
+}
+
+struct NeighborCursor {
+    generation: u64,
+    geometry: StreamGeometry,
+    stream: NeighborStream,
+}
+
+fn read_stream_geometry(
+    fip: crate::rpc::schema::force_input::Reader<'_>,
+    request: crate::rpc::schema::neighbor_request::Reader<'_>,
+) -> Result<StreamGeometry, (i32, String)> {
+    let pos_reader = fip
+        .get_pos()
+        .map_err(|e| (2, format!("invalid positions: {e}")))?;
+    if pos_reader.len() % 3 != 0 {
+        return Err((5, "positions length must be a multiple of 3".to_string()));
+    }
+    let positions: Vec<f64> = (0..pos_reader.len()).map(|i| pos_reader.get(i)).collect();
+    let n_atoms = positions.len() / 3;
+    let atm_reader = fip
+        .get_atmnrs()
+        .map_err(|e| (2, format!("invalid atomic numbers: {e}")))?;
+    if !atm_reader.is_empty() && atm_reader.len() as usize != n_atoms {
+        return Err((5, "atomic numbers size mismatch".to_string()));
+    }
+    let atomic_numbers: Vec<i32> = (0..atm_reader.len()).map(|i| atm_reader.get(i)).collect();
+    let systems_reader = request
+        .get_systems()
+        .map_err(|e| (5, format!("invalid systems list: {e}")))?;
+    let mut systems = Vec::with_capacity(systems_reader.len() as usize);
+    for index in 0..systems_reader.len() {
+        let entry = systems_reader.get(index);
+        let box_reader = entry
+            .get_box()
+            .map_err(|e| (4, format!("invalid system box: {e}")))?;
+        systems.push((
+            entry.get_count(),
+            (0..box_reader.len()).map(|k| box_reader.get(k)).collect(),
+        ));
+    }
+    let box9 = if systems.is_empty() {
+        let box_reader = fip
+            .get_box()
+            .map_err(|e| (4, format!("invalid box: {e}")))?;
+        (0..box_reader.len()).map(|i| box_reader.get(i)).collect()
+    } else {
+        match fip.get_box() {
+            Ok(box_reader) => (0..box_reader.len()).map(|i| box_reader.get(i)).collect(),
+            Err(_) => Vec::new(),
+        }
+    };
+    let periodic_reader = request
+        .get_periodic()
+        .map_err(|e| (5, format!("invalid periodic list: {e}")))?;
+    Ok(StreamGeometry {
+        positions,
+        atomic_numbers,
+        box9,
+        cutoff: request.get_cutoff(),
+        skin: request.get_skin(),
+        format: request.get_format(),
+        cut: request.get_cut(),
+        periodic: (0..periodic_reader.len())
+            .map(|i| periodic_reader.get(i))
+            .collect(),
+        shifts: request.get_shifts(),
+        vectors: request.get_vectors(),
+        distances: request.get_distances(),
+        systems,
+    })
 }
 
 // Safety: the user_data pointer is only accessed through the callback
@@ -135,6 +227,10 @@ impl potential::Server for PotentialServer {
         params: potential::CalculateParams,
         mut results: potential::CalculateResults,
     ) -> capnp::capability::Promise<(), CapnpError> {
+        // A calculate changes the geometry this server will answer for.
+        // Drop any mode-2 cursor from the previous geometry.
+        self.neighbor_generation = self.neighbor_generation.wrapping_add(1);
+        self.neighbor_stream = None;
         let fip = pry!(pry!(params.get()).get_fip());
 
         let positions = pry!(fip.get_pos());
@@ -225,9 +321,14 @@ impl potential::Server for PotentialServer {
                     return capnp::capability::Promise::ok(());
                 }
             };
-            if let Err((code, msg)) =
-                answer_neighbours(fip, neighbor_request, list_out.reborrow(), None)
-            {
+            let generation = self.neighbor_generation;
+            if let Err((code, msg)) = answer_neighbours(
+                fip,
+                neighbor_request,
+                list_out.reborrow(),
+                Some(&mut self.neighbor_stream),
+                generation,
+            ) {
                 list_out.set_status(code);
                 list_out.set_message(&msg);
                 list_out.set_more(false);
@@ -313,11 +414,13 @@ impl potential::Server for PotentialServer {
         let fip = pry!(params.get_fip());
         let request = pry!(params.get_request());
         let mut out = results.get().init_neighbors();
+        let generation = self.neighbor_generation;
         if let Err((code, msg)) = answer_neighbours(
             fip,
             request,
             out.reborrow(),
             Some(&mut self.neighbor_stream),
+            generation,
         ) {
             out.set_status(code);
             out.set_message(&msg);
@@ -332,22 +435,47 @@ fn answer_neighbours(
     fip: crate::rpc::schema::force_input::Reader<'_>,
     request: crate::rpc::schema::neighbor_request::Reader<'_>,
     mut out: crate::rpc::schema::neighbor_list::Builder<'_>,
-    mut stream_slot: Option<&mut Option<NeighborStream>>,
+    mut stream_slot: Option<&mut Option<NeighborCursor>>,
+    generation: u64,
 ) -> Result<(), (i32, String)> {
     let mode = request.get_mode();
     if mode != 1 && mode != 2 {
         return Err((5, "mode must be 1 (stored) or 2 (stream)".to_string()));
     }
+    if mode == 2 && stream_slot.is_none() {
+        return Err((
+            6,
+            "embedded mode-2 neighbour responses cannot be continued; use Potential.neighbours"
+                .to_string(),
+        ));
+    }
     if mode == 2 && request.get_cursor() != 0 {
         let Some(slot) = stream_slot.as_deref_mut() else {
-            return Err((6, "stream continuation has no server state".to_string()));
+            return Err((
+                6,
+                "embedded mode-2 neighbour responses cannot be continued; use Potential.neighbours"
+                    .to_string(),
+            ));
         };
-        let Some(stream) = slot.take() else {
+        let Some(cursor) = slot.take() else {
             return Err((6, "stream continuation has no active stream".to_string()));
         };
-        let more = write_neighbor_page(&stream, mode, request, out.reborrow())?;
+        if cursor.generation != generation {
+            return Err((
+                6,
+                "stream continuation was invalidated by calculate".to_string(),
+            ));
+        }
+        let geometry = read_stream_geometry(fip, request)?;
+        if geometry != cursor.geometry {
+            return Err((
+                6,
+                "stream continuation geometry does not match the cached list".to_string(),
+            ));
+        }
+        let more = write_neighbor_page(&cursor.stream, mode, request, out.reborrow())?;
         if more {
-            *slot = Some(stream);
+            *slot = Some(cursor);
         }
         return Ok(());
     }
@@ -598,12 +726,21 @@ fn answer_neighbours(
         vectors: c_req.want_vectors != 0,
         distances: c_req.want_distances != 0,
     };
+    let geometry = read_stream_geometry(fip, request)?;
     let more = write_neighbor_page(&stream, mode, request, out.reborrow())?;
     if mode == 2 && more {
         let Some(slot) = stream_slot else {
-            return Err((6, "stream request has no server state".to_string()));
+            return Err((
+                6,
+                "embedded mode-2 neighbour responses cannot be continued; use Potential.neighbours"
+                    .to_string(),
+            ));
         };
-        *slot = Some(stream);
+        *slot = Some(NeighborCursor {
+            generation,
+            geometry,
+            stream,
+        });
     } else if let Some(slot) = stream_slot {
         *slot = None;
     }
@@ -763,6 +900,7 @@ pub unsafe extern "C" fn rgpot_rpc_server_start(
                     user_data: pot_ref.pot_user_data,
                     potential: pot,
                     neighbor_stream: None,
+                    neighbor_generation: 0,
                 };
 
                 let potential_client = capnp_rpc::new_client::<potential::Client, _>(server_impl);
@@ -843,6 +981,7 @@ mod tests {
             user_data: probe as *const Probe as *mut c_void,
             potential: std::ptr::null(),
             neighbor_stream: None,
+            neighbor_generation: 0,
         });
         let mut request = client.calculate_request();
         {
@@ -897,6 +1036,7 @@ mod tests {
             user_data: &probe as *const Probe as *mut c_void,
             potential: pot,
             neighbor_stream: None,
+            neighbor_generation: 0,
         });
         let direction = [0.2, -0.3, 0.4];
         let mut request = client.calculate_hvp_request();
@@ -968,6 +1108,7 @@ mod tests {
             user_data: &p as *const Probe as *mut c_void,
             potential: std::ptr::null(),
             neighbor_stream: None,
+            neighbor_generation: 0,
         });
         let pos = [0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7, 2.2, 2.1, 3.9];
         let box9 = [4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2];
@@ -1030,6 +1171,7 @@ mod tests {
             user_data: &p as *const Probe as *mut c_void,
             potential: std::ptr::null(),
             neighbor_stream: None,
+            neighbor_generation: 0,
         });
         let mut request = client.calculate_request();
         {
@@ -1072,5 +1214,288 @@ mod tests {
         let list = result.get_neighbor_list().expect("neighbor list");
         assert_eq!(list.get_status(), 0);
         assert!(!list.get_first().expect("first").is_empty());
+    }
+
+    const STREAM_POS: [f64; 12] = [0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7, 2.2, 2.1, 3.9];
+    const STREAM_BOX: [f64; 9] = [4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2];
+
+    fn neighbour_client(probe: &Probe) -> potential::Client {
+        capnp_rpc::new_client::<potential::Client, _>(PotentialServer {
+            callback: probe_callback,
+            user_data: probe as *const Probe as *mut c_void,
+            potential: std::ptr::null(),
+            neighbor_stream: None,
+            neighbor_generation: 0,
+        })
+    }
+
+    fn fill_geometry(
+        mut fip: crate::rpc::schema::force_input::Builder<'_>,
+        pos: &[f64],
+        box9: &[f64],
+    ) {
+        let mut b_pos = fip.reborrow().init_pos(pos.len() as u32);
+        for (i, &value) in pos.iter().enumerate() {
+            b_pos.set(i as u32, value);
+        }
+        let natoms = (pos.len() / 3) as u32;
+        let mut b_atm = fip.reborrow().init_atmnrs(natoms);
+        for i in 0..natoms {
+            b_atm.set(i, 1);
+        }
+        let mut b_box = fip.init_box(box9.len() as u32);
+        for (i, &value) in box9.iter().enumerate() {
+            b_box.set(i as u32, value);
+        }
+    }
+
+    fn fill_neighbor_request(
+        mut nreq: crate::rpc::schema::neighbor_request::Builder<'_>,
+        mode: u8,
+        cursor: u64,
+        limit: u32,
+    ) {
+        nreq.set_cutoff(3.2);
+        nreq.set_skin(0.2);
+        nreq.set_format(1);
+        nreq.set_cut(1);
+        let mut pbc = nreq.reborrow().init_periodic(3);
+        pbc.set(0, true);
+        pbc.set(1, true);
+        pbc.set(2, false);
+        nreq.set_shifts(true);
+        nreq.set_vectors(true);
+        nreq.set_distances(true);
+        nreq.set_mode(mode);
+        nreq.set_cursor(cursor);
+        nreq.set_limit(limit);
+    }
+
+    fn pair_column(list: crate::rpc::schema::neighbor_list::Reader<'_>) -> Vec<(i32, i32)> {
+        let first = list.get_first().expect("first");
+        let second = list.get_second().expect("second");
+        (0..first.len())
+            .map(|i| (first.get(i), second.get(i)))
+            .collect()
+    }
+
+    #[test]
+    fn mode2_pages_follow_the_stored_list_for_the_same_geometry() {
+        let probe = probe(false);
+        let client = neighbour_client(&probe);
+        let mut stored = client.neighbours_request();
+        {
+            let mut root = stored.get();
+            fill_geometry(root.reborrow().init_fip(), &STREAM_POS, &STREAM_BOX);
+            fill_neighbor_request(root.init_request(), 1, 0, 0);
+        }
+        let stored_reply =
+            futures::executor::block_on(stored.send().promise).expect("stored neighbours");
+        let stored_list = stored_reply
+            .get()
+            .and_then(|r| r.get_neighbors())
+            .expect("stored list");
+        assert_eq!(stored_list.get_status(), 0);
+        let full = pair_column(stored_list);
+        assert!(full.len() > 1, "fixture needs more than one pair");
+
+        let mut first_page = client.neighbours_request();
+        {
+            let mut root = first_page.get();
+            fill_geometry(root.reborrow().init_fip(), &STREAM_POS, &STREAM_BOX);
+            fill_neighbor_request(root.init_request(), 2, 0, 1);
+        }
+        let page = futures::executor::block_on(first_page.send().promise).expect("first page");
+        let page_list = page.get().and_then(|r| r.get_neighbors()).expect("page");
+        assert_eq!(page_list.get_status(), 0);
+        assert!(page_list.get_more());
+        let mut got = pair_column(page_list);
+        let mut cursor = page_list.get_next();
+        let mut pages = 1usize;
+        while got.len() < full.len() {
+            pages += 1;
+            assert!(
+                pages <= full.len() + 1,
+                "continuation did not finish the list"
+            );
+            let mut cont = client.neighbours_request();
+            {
+                let mut root = cont.get();
+                fill_geometry(root.reborrow().init_fip(), &STREAM_POS, &STREAM_BOX);
+                fill_neighbor_request(root.init_request(), 2, cursor, 1);
+            }
+            let response = futures::executor::block_on(cont.send().promise).expect("continuation");
+            let list = response
+                .get()
+                .and_then(|r| r.get_neighbors())
+                .expect("continued page");
+            let message = list
+                .get_message()
+                .ok()
+                .and_then(|text| text.to_str().ok())
+                .unwrap_or("");
+            assert_eq!(list.get_status(), 0, "{message}");
+            let page_pairs = pair_column(list);
+            assert!(!page_pairs.is_empty(), "continuation page was empty");
+            got.extend(page_pairs);
+            if !list.get_more() {
+                break;
+            }
+            cursor = list.get_next();
+        }
+        assert_eq!(got, full);
+    }
+
+    #[test]
+    fn mode2_continuation_rejects_a_different_geometry() {
+        let probe = probe(false);
+        let client = neighbour_client(&probe);
+        let mut first_page = client.neighbours_request();
+        {
+            let mut root = first_page.get();
+            fill_geometry(root.reborrow().init_fip(), &STREAM_POS, &STREAM_BOX);
+            fill_neighbor_request(root.init_request(), 2, 0, 1);
+        }
+        let page = futures::executor::block_on(first_page.send().promise).expect("first page");
+        let page_list = page.get().and_then(|r| r.get_neighbors()).expect("page");
+        assert_eq!(page_list.get_status(), 0);
+        assert!(page_list.get_more());
+        let cursor = page_list.get_next();
+        let mut moved = STREAM_POS;
+        moved[0] += 1.5;
+        let mut cont = client.neighbours_request();
+        {
+            let mut root = cont.get();
+            fill_geometry(root.reborrow().init_fip(), &moved, &STREAM_BOX);
+            fill_neighbor_request(root.init_request(), 2, cursor, 1);
+        }
+        let response = futures::executor::block_on(cont.send().promise).expect("continuation");
+        let list = response
+            .get()
+            .and_then(|r| r.get_neighbors())
+            .expect("continued page");
+        assert_ne!(list.get_status(), 0);
+        let message = list
+            .get_message()
+            .ok()
+            .and_then(|text| text.to_str().ok())
+            .unwrap_or("");
+        assert!(message.contains("geometry"), "{message}");
+        assert!(pair_column(list).is_empty());
+    }
+
+    #[test]
+    fn mode2_continuation_is_invalidated_by_calculate() {
+        let probe = probe(false);
+        let client = neighbour_client(&probe);
+        let mut first_page = client.neighbours_request();
+        {
+            let mut root = first_page.get();
+            fill_geometry(root.reborrow().init_fip(), &STREAM_POS, &STREAM_BOX);
+            fill_neighbor_request(root.init_request(), 2, 0, 1);
+        }
+        let page = futures::executor::block_on(first_page.send().promise).expect("first page");
+        let page_list = page.get().and_then(|r| r.get_neighbors()).expect("page");
+        assert_eq!(page_list.get_status(), 0);
+        assert!(page_list.get_more());
+        let cursor = page_list.get_next();
+        let stale_next = pair_column(page_list);
+
+        let mut calc = client.calculate_request();
+        fill_geometry(calc.get().init_fip(), &STREAM_POS, &STREAM_BOX);
+        futures::executor::block_on(calc.send().promise).expect("calculate");
+
+        let mut cont = client.neighbours_request();
+        {
+            let mut root = cont.get();
+            fill_geometry(root.reborrow().init_fip(), &STREAM_POS, &STREAM_BOX);
+            fill_neighbor_request(root.init_request(), 2, cursor, 1);
+        }
+        let response = futures::executor::block_on(cont.send().promise).expect("continuation");
+        let list = response
+            .get()
+            .and_then(|r| r.get_neighbors())
+            .expect("continued page");
+        assert_ne!(list.get_status(), 0);
+        let message = list
+            .get_message()
+            .ok()
+            .and_then(|text| text.to_str().ok())
+            .unwrap_or("");
+        assert!(
+            message.contains("no active stream") || message.contains("invalidated"),
+            "{message}"
+        );
+        assert_ne!(pair_column(list), stale_next);
+        assert!(pair_column(list).is_empty());
+    }
+
+    #[test]
+    fn embedded_mode2_page_can_be_continued_until_the_next_calculate() {
+        let probe = probe(false);
+        let client = neighbour_client(&probe);
+        let mut calc = client.calculate_request();
+        {
+            let mut fip = calc.get().init_fip();
+            fill_geometry(fip.reborrow(), &STREAM_POS, &STREAM_BOX);
+            fill_neighbor_request(fip.init_neighbors(), 2, 0, 1);
+        }
+        let response = futures::executor::block_on(calc.send().promise).expect("calculate");
+        let result = response.get().and_then(|r| r.get_result()).expect("result");
+        let list = result.get_neighbor_list().expect("neighbor list");
+        assert_eq!(
+            list.get_status(),
+            0,
+            "{}",
+            list.get_message()
+                .ok()
+                .and_then(|t| t.to_str().ok())
+                .unwrap_or("")
+        );
+        assert!(
+            list.get_more(),
+            "embedded mode-2 page should be continuable"
+        );
+        let cursor = list.get_next();
+        let mut got = pair_column(list);
+
+        let mut cont = client.neighbours_request();
+        {
+            let mut root = cont.get();
+            fill_geometry(root.reborrow().init_fip(), &STREAM_POS, &STREAM_BOX);
+            fill_neighbor_request(root.init_request(), 2, cursor, 0);
+        }
+        let continued = futures::executor::block_on(cont.send().promise).expect("continuation");
+        let rest = continued
+            .get()
+            .and_then(|r| r.get_neighbors())
+            .expect("rest");
+        assert_eq!(
+            rest.get_status(),
+            0,
+            "{}",
+            rest.get_message()
+                .ok()
+                .and_then(|t| t.to_str().ok())
+                .unwrap_or("")
+        );
+        got.extend(pair_column(rest));
+        assert!(got.len() > 1);
+
+        let mut again = client.calculate_request();
+        fill_geometry(again.get().init_fip(), &STREAM_POS, &STREAM_BOX);
+        futures::executor::block_on(again.send().promise).expect("second calculate");
+        let mut after = client.neighbours_request();
+        {
+            let mut root = after.get();
+            fill_geometry(root.reborrow().init_fip(), &STREAM_POS, &STREAM_BOX);
+            fill_neighbor_request(root.init_request(), 2, cursor, 1);
+        }
+        let rejected = futures::executor::block_on(after.send().promise).expect("rejected");
+        let rejected_list = rejected
+            .get()
+            .and_then(|r| r.get_neighbors())
+            .expect("rejected list");
+        assert_ne!(rejected_list.get_status(), 0);
     }
 }

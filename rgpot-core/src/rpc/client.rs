@@ -110,12 +110,22 @@ fn validate_neighbor_columns(
     Ok(())
 }
 
+/// Geometry a neighbour probe cached. The fill must repeat this content.
+/// Pointer identity is not part of the key: editing the caller's buffers
+/// between the probe and the fill misses the cache.
+#[derive(Clone, PartialEq)]
+pub(crate) struct NeighborGeometry {
+    pub positions: Vec<f64>,
+    pub atomic_numbers: Vec<i32>,
+    pub box_data: Vec<f64>,
+}
+
 /// RPC client that connects to a remote rgpot server.
 pub struct RpcClient {
     runtime: Runtime,
     addr: String,
     orbital_key: Option<i64>,
-    neighbor_cache: Option<(usize, NeighborQuery, NeighborReply)>,
+    neighbor_cache: Option<(NeighborGeometry, NeighborQuery, NeighborReply)>,
 }
 
 impl RpcClient {
@@ -170,24 +180,41 @@ impl RpcClient {
         local.block_on(&self.runtime, self.neighbours_async(input, query))
     }
 
-    /// Save a probed reply for the matching C API fill call.
+    /// Copy the CPU geometry that keys a neighbour probe cache.
+    ///
+    /// # Safety
+    /// `input` must hold valid CPU tensors, as for `neighbours`.
+    pub(crate) unsafe fn neighbor_geometry(
+        input: &rgpot_force_input_t,
+    ) -> Result<NeighborGeometry, String> {
+        let n = unsafe { input.n_atoms() }
+            .ok_or_else(|| "cannot determine n_atoms from input tensors".to_string())?;
+        let (positions, atomic_numbers, box_data) = unsafe { extract_cpu_input(input, n)? };
+        Ok(NeighborGeometry {
+            positions,
+            atomic_numbers,
+            box_data,
+        })
+    }
+
+    /// Save a probed reply for a later fill of the same geometry and query.
     pub(crate) fn cache_neighbours(
         &mut self,
-        input: *const rgpot_force_input_t,
+        geometry: NeighborGeometry,
         query: NeighborQuery,
         reply: NeighborReply,
     ) {
-        self.neighbor_cache = Some((input as usize, query, reply));
+        self.neighbor_cache = Some((geometry, query, reply));
     }
 
-    /// Consume a reply saved by a matching C API probe call.
+    /// Consume a reply saved for this geometry and query.
     pub(crate) fn take_cached_neighbours(
         &mut self,
-        input: *const rgpot_force_input_t,
+        geometry: &NeighborGeometry,
         query: &NeighborQuery,
     ) -> Option<NeighborReply> {
         let cached = self.neighbor_cache.take()?;
-        (cached.0 == input as usize && cached.1 == *query).then_some(cached.2)
+        (&cached.0 == geometry && cached.1 == *query).then_some(cached.2)
     }
 
     async fn calculate_async(
@@ -405,8 +432,20 @@ impl RpcClient {
             rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
         tokio::task::spawn_local(rpc_system);
 
-        crate::compat::check_server(&potential_client, &crate::compat::Expectation::default())
-            .await?;
+        crate::compat::check_server(&potential_client, &crate::compat::neighbours_expectation())
+            .await
+            .map_err(|why| {
+                if why.contains("protocol minor") {
+                    format!(
+                        "Potential.neighbours requires RPC protocol minor {}: {why}",
+                        crate::compat::NEIGHBORS_INTRODUCED_MINOR
+                    )
+                } else if why.contains("not served") {
+                    format!("Potential.neighbours requires Capabilities.Operation.neighbors: {why}")
+                } else {
+                    why
+                }
+            })?;
 
         let mut request = potential_client.neighbours_request();
         {
@@ -764,5 +803,146 @@ mod tests {
         let q = query_with_all_columns();
         let err = validate_neighbor_columns(&q, 2, 6, 6, 2, 1).unwrap_err();
         assert!(err.contains("mask column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_probe_cache_keys_on_geometry_content() {
+        let mut client = RpcClient::new("127.0.0.1", 1).unwrap();
+        let geometry = NeighborGeometry {
+            positions: vec![1.0, 0.0, 0.0, 2.0, 0.0, 0.0],
+            atomic_numbers: vec![1, 1],
+            box_data: vec![10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0],
+        };
+        let query = NeighborQuery {
+            distances: true,
+            ..NeighborQuery::default()
+        };
+        let reply = NeighborReply {
+            first: vec![0],
+            second: vec![1],
+            distance: vec![1.0],
+            ..NeighborReply::default()
+        };
+        client.cache_neighbours(geometry.clone(), query, reply.clone());
+        let hit = client
+            .take_cached_neighbours(&geometry, &query)
+            .expect("unchanged geometry hits");
+        assert_eq!(hit, reply);
+
+        client.cache_neighbours(geometry.clone(), query, reply);
+        let mut edited = geometry.clone();
+        edited.positions[0] = 9.0;
+        assert!(
+            client.take_cached_neighbours(&edited, &query).is_none(),
+            "an in-place geometry edit must miss the probe cache"
+        );
+    }
+
+    struct ExpectationPotential {
+        minor: u16,
+        neighbors: bool,
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl potential::Server for ExpectationPotential {
+        fn get_capabilities(
+            &mut self,
+            _: potential::GetCapabilitiesParams,
+            mut results: potential::GetCapabilitiesResults,
+        ) -> capnp::capability::Promise<(), CapnpError> {
+            let mut caps = results.get().init_capabilities();
+            crate::compat::fill_compatibility(caps.reborrow());
+            let count = if self.neighbors { 3 } else { 2 };
+            let mut ops = caps.reborrow().init_operations(count);
+            ops.set(0, Operation::Energy);
+            ops.set(1, Operation::Forces);
+            if self.neighbors {
+                ops.set(2, Operation::Neighbors);
+            }
+            caps.set_protocol_minor(self.minor);
+            capnp::capability::Promise::ok(())
+        }
+
+        fn neighbours(
+            &mut self,
+            _: potential::NeighboursParams,
+            _: potential::NeighboursResults,
+        ) -> capnp::capability::Promise<(), CapnpError> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            capnp::capability::Promise::ok(())
+        }
+    }
+
+    fn neighbour_expectation_server(
+        minor: u16,
+        neighbors: bool,
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) -> (std::thread::JoinHandle<()>, u16) {
+        use capnp_rpc::{rpc_twoparty_capnp, twoparty, RpcSystem};
+        use futures::AsyncReadExt;
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async move {
+                listener.set_nonblocking(true).unwrap();
+                let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                let (stream, _) = listener.accept().await.unwrap();
+                stream.set_nodelay(true).unwrap();
+                let (read, write) =
+                    tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+                let network = twoparty::VatNetwork::new(
+                    futures::io::BufReader::new(read),
+                    futures::io::BufWriter::new(write),
+                    rpc_twoparty_capnp::Side::Server,
+                    Default::default(),
+                );
+                let client: potential::Client = capnp_rpc::new_client(ExpectationPotential {
+                    minor,
+                    neighbors,
+                    calls,
+                });
+                let rpc_system = RpcSystem::new(Box::new(network), Some(client.client));
+                rpc_system.await.ok();
+            });
+        });
+        (handle, port)
+    }
+
+    #[test]
+    fn neighbours_refuses_a_server_below_minor_3() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (handle, port) = neighbour_expectation_server(2, false, calls.clone());
+        let mut client = RpcClient::new("127.0.0.1", port).unwrap();
+        let input = make_input(2);
+        let error = client
+            .neighbours(&input.input, &NeighborQuery::default())
+            .unwrap_err();
+        assert!(error.contains("protocol minor"), "{error}");
+        assert!(error.contains('3'), "{error}");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        drop(client);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn neighbours_refuses_a_server_without_the_operation() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (handle, port) = neighbour_expectation_server(3, false, calls.clone());
+        let mut client = RpcClient::new("127.0.0.1", port).unwrap();
+        let input = make_input(2);
+        let error = client
+            .neighbours(&input.input, &NeighborQuery::default())
+            .unwrap_err();
+        assert!(error.contains("neighbors"), "{error}");
+        assert!(error.contains("not served"), "{error}");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        drop(client);
+        handle.join().unwrap();
     }
 }

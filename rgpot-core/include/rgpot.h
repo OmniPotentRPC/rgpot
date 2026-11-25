@@ -94,6 +94,14 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 #define ORBITAL_KEY_INTRODUCED_MINOR 2
 #endif
 
+#if defined(RGPOT_HAS_SCHEMA)
+/**
+ * Protocol minor that introduced `Potential.neighbours`.
+ * It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
+ */
+#define NEIGHBORS_INTRODUCED_MINOR 3
+#endif
+
 /**
  * The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
  */
