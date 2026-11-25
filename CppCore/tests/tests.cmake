@@ -752,6 +752,31 @@ rgpot_test_executable(profile_loader_test CppCore/tests/ProfileLoaderTest.cc)
 rgpot_add_test(ProfileLoaderTest COMMAND profile_loader_test
                ENVIRONMENT ${_rgpot_cpmdc_env})
 
+foreach(engine lammpc_fake_engine lammpc_fake_engine_nostress
+               lammpc_fake_engine_abi2)
+  add_library(${engine} SHARED CppCore/tests/lammpc_fake_engine.cc)
+  target_compile_definitions(${engine} PRIVATE ${_rgpot_build_identity})
+  target_link_libraries(${engine} PRIVATE ptlrpc)
+  target_include_directories(${engine} PRIVATE CppCore include)
+endforeach()
+target_compile_definitions(lammpc_fake_engine_nostress
+                           PRIVATE LAMMPC_FAKE_NO_STRESS)
+target_compile_definitions(lammpc_fake_engine_abi2
+                           PRIVATE LAMMPC_FAKE_BRIDGE_ABI_MAJOR=2)
+foreach(engine lammps_legacy_engine_a lammps_legacy_engine_b)
+  add_library(${engine} SHARED CppCore/tests/external_refcount_engine.c)
+  target_include_directories(${engine} PRIVATE "${RGPOT_TEST_ROOT}/CppCore")
+  target_compile_definitions(${engine} PRIVATE RGPOT_ENGINE_BUILD)
+endforeach()
+rgpot_test_executable(lammpc_pot_test CppCore/tests/LammpcPotTest.cc)
+rgpot_add_test(LammpcPotTest COMMAND lammpc_pot_test
+  ENVIRONMENT
+    "RGPOT_LAMMPS_LEGACY_ENGINE_A=$<TARGET_FILE:lammps_legacy_engine_a>"
+    "RGPOT_LAMMPS_LEGACY_ENGINE_B=$<TARGET_FILE:lammps_legacy_engine_b>"
+    "RGPOT_LAMMPC_ENGINE=$<TARGET_FILE:lammpc_fake_engine>"
+    "RGPOT_LAMMPC_NOSTRESS_ENGINE=$<TARGET_FILE:lammpc_fake_engine_nostress>"
+    "RGPOT_LAMMPC_ABI2_ENGINE=$<TARGET_FILE:lammpc_fake_engine_abi2>")
+
 # CP2K over a fake engine, and over libcp2k through the shim.
 if(RGPOT_WITH_CP2K)
   add_library(cp2kc_fake_engine SHARED CppCore/tests/cp2kc_fake_engine.cc)

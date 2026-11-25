@@ -3,11 +3,25 @@
 
 #include "rgpot/ExternalPot/ExternalPot.hpp"
 
+#include "rgpot/ParamHash.hpp"
+#include "rgpot/abi/ProfileLoader.hpp"
 #include "rgpot/ExternalPot/md_units.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/MDSession/ProjectedLangevin.hpp"
 #include "rgpot/engine_c_abi.h"
 #include "rgpot/plugin/DynLib.hpp"
+// Both build systems pass RGPOT_HAS_LAMMPC_PROFILE as 0 or 1. With 1 they also
+// order the generated Potentials.capnp.h before this file, so a missing header
+// is a compile error rather than a build without lammpc.
+#if !defined(RGPOT_HAS_LAMMPC_PROFILE)
+#error "RGPOT_HAS_LAMMPC_PROFILE must be defined to 0 or 1 by the build"
+#elif RGPOT_HAS_LAMMPC_PROFILE
+#include "rgpot/abi/Compat.hpp"
+#include "rgpot/rpc/Potentials.capnp.h"
+#include <capnp/message.h>
+#include <capnp/serialize.h>
+#include <kj/array.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -17,6 +31,7 @@
 #include <climits>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -24,6 +39,7 @@
 #include <map>
 #include <mutex>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -260,11 +276,91 @@ struct FileIdentity {
 #endif
 };
 
+#if defined(_WIN32)
+std::string narrow_path(const std::wstring &wide) {
+  if (wide.empty()) {
+    return {};
+  }
+  const int size = WideCharToMultiByte(CP_UTF8, 0, wide.data(),
+                                       static_cast<int>(wide.size()), nullptr,
+                                       0, nullptr, nullptr);
+  if (size <= 0) {
+    return {};
+  }
+  std::string out(static_cast<size_t>(size), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, wide.data(), static_cast<int>(wide.size()),
+                      out.data(), size, nullptr, nullptr);
+  return out;
+}
+
+std::string win_error(DWORD code) {
+  return "Windows error " + std::to_string(static_cast<unsigned long>(code));
+}
+#endif
+
 FileIdentity identify_loaded(const void *anchor, const std::string &path) {
 #if defined(_WIN32)
-  (void)anchor;
+  HMODULE module = nullptr;
+  if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                         reinterpret_cast<LPCWSTR>(anchor), &module) == 0 ||
+      module == nullptr) {
+    throw std::runtime_error(path +
+                             ": the loader did not report the module it "
+                             "loaded, so the engine cannot be identified: " +
+                             win_error(GetLastError()));
+  }
+  std::wstring loaded(MAX_PATH, L'\0');
+  for (;;) {
+    const DWORD n = GetModuleFileNameW(module, loaded.data(),
+                                       static_cast<DWORD>(loaded.size()));
+    if (n == 0) {
+      throw std::runtime_error(path +
+                               ": the loader did not report the file it "
+                               "loaded, so the engine cannot be identified: " +
+                               win_error(GetLastError()));
+    }
+    if (n < loaded.size()) {
+      loaded.resize(n);
+      break;
+    }
+    loaded.resize(loaded.size() * 2);
+  }
+  // The final path resolves links and short names, as realpath does on POSIX,
+  // so two requests that load one file share an identity.
+  const HANDLE file = CreateFileW(
+      loaded.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    throw std::runtime_error(path + ": cannot identify the loaded file " +
+                             narrow_path(loaded) + ": " +
+                             win_error(GetLastError()));
+  }
+  std::wstring canonical(MAX_PATH, L'\0');
+  DWORD n = 0;
+  for (;;) {
+    n = GetFinalPathNameByHandleW(file, canonical.data(),
+                                  static_cast<DWORD>(canonical.size()),
+                                  FILE_NAME_NORMALIZED);
+    if (n == 0 || n < canonical.size()) {
+      break;
+    }
+    canonical.resize(n);
+  }
+  const DWORD failure = n == 0 ? GetLastError() : 0;
+  CloseHandle(file);
+  if (n == 0) {
+    throw std::runtime_error(path + ": cannot identify the loaded file " +
+                             narrow_path(loaded) + ": " + win_error(failure));
+  }
+  canonical.resize(n);
   FileIdentity id;
-  id.canonical = path;
+  id.canonical = narrow_path(canonical);
+  if (id.canonical.empty()) {
+    throw std::runtime_error(path +
+                             ": the loaded file name is not valid UTF-16, so "
+                             "the engine cannot be identified");
+  }
   return id;
 #else
   Dl_info info{};
@@ -522,38 +618,298 @@ void check_geometry(const ForceInput &in, const ForceOut *out) {
   }
 }
 
+constexpr size_t kCapnpWordBytes = 8;
+
+#if RGPOT_HAS_LAMMPC_PROFILE
+std::vector<::capnp::word> serialize_force_input(const ForceInput &in) {
+  ::capnp::MallocMessageBuilder msg;
+  auto force_input = msg.initRoot<::ForceInput>();
+  const unsigned int coord_count = static_cast<unsigned int>(in.nAtoms * 3u);
+  auto pos = force_input.initPos(coord_count);
+  auto atmnrs = force_input.initAtmnrs(static_cast<unsigned int>(in.nAtoms));
+  auto box = force_input.initBox(9);
+  for (unsigned int i = 0; i < coord_count; ++i)
+    pos.set(i, in.pos[i]);
+  for (unsigned int i = 0; i < in.nAtoms; ++i)
+    atmnrs.set(i, in.atmnrs[i]);
+  for (unsigned int i = 0; i < 9; ++i)
+    box.set(i, in.box[i]);
+  force_input.setLengthUnit("angstrom");
+  force_input.setEnergyUnit("eV");
+  auto words = ::capnp::messageToFlatArray(msg);
+  std::vector<::capnp::word> out(words.size());
+  std::memcpy(out.data(), words.begin(), words.asBytes().size());
+  return out;
+}
+
+void require_lammps_config(const std::vector<unsigned char> &bytes) {
+  try {
+    ::capnp::FlatArrayMessageReader reader(
+        kj::arrayPtr(reinterpret_cast<const ::capnp::word *>(bytes.data()),
+                     bytes.size() / sizeof(::capnp::word)));
+    if (reader.getRoot<::PotentialConfig>().which() !=
+        ::PotentialConfig::LAMMPS)
+      throw std::invalid_argument(
+          "lammpc config bytes are not a PotentialConfig with the lammps arm");
+  } catch (const kj::Exception &ex) {
+    throw std::invalid_argument(
+        std::string("lammpc config bytes are not a flat PotentialConfig: ") +
+        ex.getDescription().cStr());
+  }
+}
+
+std::string profile_message(const rgpot::abi::ProfileResult &result) {
+  const size_t n = strnlen(result.message, sizeof(result.message));
+  return std::string(result.message, n);
+}
+
+bool declares_stress(const rgpot::abi::ProfileLoader &loader) {
+  const auto bytes = loader.capabilities();
+  std::vector<::capnp::word> storage(bytes.size() / sizeof(::capnp::word));
+  std::memcpy(storage.data(), bytes.data(), bytes.size());
+  ::capnp::FlatArrayMessageReader reader(
+      kj::arrayPtr(storage.data(), storage.size()));
+  for (const auto op : reader.getRoot<::Capabilities>().getOperations()) {
+    if (op == ::Capabilities::Operation::STRESS)
+      return true;
+  }
+  return false;
+}
+#endif
+
+// Bump when the numerics either LammpsPot mode returns change.
+constexpr uint64_t kLammpsKernelVersion = 1;
+
+#if RGPOT_HAS_LAMMPC_PROFILE
+// The key follows the backend that loaded, not the path that was asked for:
+// the canonical path of the mapped file plus the version and ABI revision the
+// library reports. Two requests that resolve to one file share a key, and a
+// path that now points at another file gets a new one.
+uint64_t lammpc_params_key(const rgpot::abi::ProfileLoader &loader,
+                           const std::string &requested,
+                           const std::vector<unsigned char> &config) {
+  const FileIdentity backend = identify_loaded(
+      reinterpret_cast<const void *>(loader.capabilities_result), requested);
+  const char *version = loader.version ? loader.version() : nullptr;
+  Fnv1a fp;
+  fp.str("lammpc");
+  fp.u64(kLammpsKernelVersion);
+  fp.str(backend.canonical);
+  fp.i64(loader.abi_version());
+  fp.str(version != nullptr ? version : "");
+  fp.u64(config.size());
+  fp.bytes(config.data(), config.size());
+  return fp.h;
+}
+#endif
+
+// A lammpc backend keeps process-global state that finalize releases. Every
+// LammpsPot that may have created a session holds its backend, keyed by the
+// resolved finalize symbol, and the last holder to leave calls finalize, so
+// destroying one pot leaves a live peer's backend initialized.
+using ProfileFinalizeFn = rgpot::abi::ProfileLoader::FinalizeFn;
+
+struct ProfileHolds {
+  std::mutex mutex;
+  std::map<ProfileFinalizeFn, size_t> count;
+};
+
+ProfileHolds &profile_holds() {
+  // Leaked, so a pot destroyed during static teardown still finds it.
+  static auto *holds = new ProfileHolds;
+  return *holds;
+}
+
+void hold_profile(ProfileFinalizeFn finalize) {
+  auto &holds = profile_holds();
+  std::lock_guard<std::mutex> lock(holds.mutex);
+  ++holds.count[finalize];
+}
+
+// finalize runs under the lock, so a new holder cannot create a session
+// while the backend is still tearing down.
+void release_profile(ProfileFinalizeFn finalize) {
+  auto &holds = profile_holds();
+  std::lock_guard<std::mutex> lock(holds.mutex);
+  const auto it = holds.count.find(finalize);
+  if (it == holds.count.end() || --it->second != 0)
+    return;
+  holds.count.erase(it);
+  finalize();
+}
+
 } // namespace
 
 struct LammpsPot::Impl {
-  Loaded engine;
+  enum class Mode { LegacyLJ, LammpcProfile };
+  Mode mode = Mode::LegacyLJ;
+  Loaded legacy_engine;
+  rgpot::abi::ProfileLoader profile_loader;
+  std::vector<unsigned char> profile_config;
+  void *profile_session = nullptr;
+  bool profile_held = false;
+  bool profile_stress = false;
+  uint64_t params_key = 0;
   mutable std::mutex mutex;
+
+  // Safe to call twice: the failed constructor and the destructor both do.
+  void release_profile_session() {
+    if (profile_session) {
+      profile_loader.session_destroy(profile_session);
+      profile_session = nullptr;
+    }
+    if (profile_held) {
+      profile_held = false;
+      release_profile(profile_loader.finalize);
+    }
+  }
+
+  ~Impl() { release_profile_session(); }
 };
 
 LammpsPot::LammpsPot(const ExternalLjConfig &config)
     : Potential(PotType::Lammps), impl_(std::make_unique<Impl>()),
       config_(config) {
   require_lj(config_);
-  impl_->engine = open_library(lammps_paths(config_.engine_path), false);
+  impl_->mode = Impl::Mode::LegacyLJ;
+  impl_->legacy_engine = open_library(lammps_paths(config_.engine_path), false);
   const double packed[3] = {config_.u0, config_.cutoff, config_.psi};
-  create_engine(impl_->engine, packed, sizeof(packed));
+  create_engine(impl_->legacy_engine, packed, sizeof(packed));
+  Fnv1a fp;
+  fp.str("lammps-lj");
+  fp.u64(kLammpsKernelVersion);
+  fp.str(identify_loaded(reinterpret_cast<const void *>(
+                             impl_->legacy_engine.create),
+                         config_.engine_path)
+             .canonical);
+  fp.f64(config_.u0);
+  fp.f64(config_.cutoff);
+  fp.f64(config_.psi);
+  impl_->params_key = fp.h;
+}
+
+LammpsPot::LammpsPot(const void *config_capnp, size_t config_capnp_size,
+                     const std::string &engine_path)
+    : Potential(PotType::Lammps), impl_(std::make_unique<Impl>()), config_{} {
+  if (!config_capnp || config_capnp_size == 0)
+    throw std::invalid_argument("lammpc config bytes are required");
+  if (config_capnp_size % kCapnpWordBytes != 0)
+    throw std::invalid_argument("lammpc config bytes must be word-aligned");
+#if !RGPOT_HAS_LAMMPC_PROFILE
+  (void)engine_path;
+  throw std::runtime_error(
+      "lammpc profile mode needs an RPC-capable build (Potentials.capnp.h)");
+#else
+  impl_->mode = Impl::Mode::LammpcProfile;
+  impl_->profile_config.resize(config_capnp_size);
+  std::memcpy(impl_->profile_config.data(), config_capnp, config_capnp_size);
+  require_lammps_config(impl_->profile_config);
+  const std::string backend =
+      engine_path.empty() ? std::string("lammpc")
+                          : "lammpc engine_path '" + engine_path + "'";
+  try {
+    rgpot::abi::checked_load(impl_->profile_loader, "lammpc", engine_path);
+    impl_->profile_stress = declares_stress(impl_->profile_loader);
+    impl_->params_key = lammpc_params_key(impl_->profile_loader, engine_path,
+                                          impl_->profile_config);
+  } catch (const std::exception &ex) {
+    throw std::runtime_error(backend + ": " + ex.what());
+  }
+  if (impl_->profile_loader.available() != 1)
+    throw std::runtime_error(backend + " reports unavailable");
+  hold_profile(impl_->profile_loader.finalize);
+  impl_->profile_held = true;
+  impl_->profile_session = impl_->profile_loader.session_create_from_config(
+      impl_->profile_config.data(), impl_->profile_config.size());
+  if (!impl_->profile_session) {
+    impl_->release_profile_session();
+    throw std::runtime_error("lammpc_session_create_from_config failed");
+  }
+#endif
 }
 
 LammpsPot::~LammpsPot() = default;
 LammpsPot::LammpsPot(LammpsPot &&) noexcept = default;
 LammpsPot &LammpsPot::operator=(LammpsPot &&) noexcept = default;
 
+uint64_t LammpsPot::paramsKey() const noexcept {
+  return impl_ ? impl_->params_key : 0;
+}
+
+PotCaps LammpsPot::caps() const noexcept {
+  const bool stress = impl_ && impl_->mode == Impl::Mode::LammpcProfile &&
+                      impl_->profile_stress;
+  return {.reentrancy = Reentrancy::PerInstance,
+          .periodic = true,
+          .stress = stress};
+}
+
 void LammpsPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   check_geometry(in, out);
   std::lock_guard<std::mutex> lock(impl_->mutex);
-  double variance = 0.0;
-  const int status = impl_->engine.force(
-      impl_->engine.pot, static_cast<long>(in.nAtoms), in.pos, in.atmnrs,
-      out->F, &out->energy, &variance, in.box, nullptr, nullptr);
-  if (status != 0) {
-    throw std::runtime_error("rgpot_engine_force failed");
+  if (impl_->mode == Impl::Mode::LegacyLJ) {
+    double variance = 0.0;
+    const int status = impl_->legacy_engine.force(
+        impl_->legacy_engine.pot, static_cast<long>(in.nAtoms), in.pos,
+        in.atmnrs, out->F, &out->energy, &variance, in.box, nullptr, nullptr);
+    if (status != 0)
+      throw std::runtime_error("rgpot_engine_force failed");
+    out->variance = variance;
+    out->has_stress = 0;
+    return;
   }
-  out->variance = variance;
+
+#if !RGPOT_HAS_LAMMPC_PROFILE
+  throw std::runtime_error(
+      "lammpc profile mode needs an RPC-capable build (Potentials.capnp.h)");
+#else
+  const auto force_input_words = serialize_force_input(in);
+  const void *step_ptr = force_input_words.data();
+  const size_t step_bytes = force_input_words.size() * sizeof(::capnp::word);
+  const size_t result_size =
+      impl_->profile_loader.potential_result_size_for_force_input(step_ptr,
+                                                                  step_bytes);
+  if (result_size == 0)
+    throw std::runtime_error("lammpc refused PotentialResult sizing");
+
+  std::vector<unsigned char> out_bytes(result_size);
+  size_t written = 0;
+  const auto result = impl_->profile_loader.session_calculate_result(
+      impl_->profile_session, step_ptr, step_bytes, out_bytes.data(),
+      out_bytes.size(), &written);
+  if (!result.ok)
+    throw std::runtime_error("lammpc failed: " + profile_message(result));
+  if (written == 0 || written > out_bytes.size() ||
+      (written % sizeof(::capnp::word)) != 0)
+    throw std::runtime_error("lammpc returned invalid PotentialResult");
+
+  auto words = kj::arrayPtr(
+      reinterpret_cast<const ::capnp::word *>(out_bytes.data()),
+      written / sizeof(::capnp::word));
+  ::capnp::FlatArrayMessageReader reader(words);
+  const auto potential_result = reader.getRoot<::PotentialResult>();
+  const auto forces = potential_result.getForces();
+  if (forces.size() != in.nAtoms * 3u)
+    throw std::runtime_error("lammpc returned wrong force count");
+  out->energy = potential_result.getEnergy();
+  out->variance = 0.0;
+  for (unsigned int i = 0; i < forces.size(); ++i)
+    out->F[i] = forces[i];
   out->has_stress = 0;
+  const auto stress = potential_result.getStress();
+  if (stress.size() != 0 && stress.size() != 9)
+    throw std::runtime_error("lammpc returned " +
+                             std::to_string(stress.size()) +
+                             " stress values, not 9");
+  if (impl_->profile_stress) {
+    if (stress.size() != 9)
+      throw std::runtime_error(
+          "lammpc declared the stress operation but returned no stress");
+    for (unsigned int i = 0; i < 9; ++i)
+      out->stress[i] = stress[i];
+    out->has_stress = 1;
+  }
+#endif
 }
 
 struct NativeState {
@@ -683,6 +1039,13 @@ void OpenMMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 std::unique_ptr<LammpsPot>
 rgpot_lammps_potential(const ExternalLjConfig &config) {
   return std::make_unique<LammpsPot>(config);
+}
+
+std::unique_ptr<LammpsPot>
+rgpot_lammpc_potential(const void *config_capnp, size_t config_capnp_size,
+                       const std::string &engine_path) {
+  return std::make_unique<LammpsPot>(config_capnp, config_capnp_size,
+                                     engine_path);
 }
 
 std::unique_ptr<GromacsPot>
@@ -841,6 +1204,19 @@ rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
       [&] {
         return rgpot::rgpot_lammps_potential(
             lj_config(engine_path, u0, cutoff, psi));
+      },
+      err, err_len);
+}
+
+rgpot_external_potential *
+rgpot_lammpc_potential(const char *engine_path, const void *config_capnp,
+                       size_t config_capnp_size, char *err, size_t err_len) {
+  return adopt(
+      [&] {
+        const std::string path =
+            (engine_path != nullptr) ? std::string(engine_path) : std::string{};
+        return rgpot::rgpot_lammpc_potential(config_capnp, config_capnp_size,
+                                             path);
       },
       err, err_len);
 }

@@ -25,6 +25,7 @@ from ase.calculators.calculator import (
     all_changes,
 )
 
+from rgpot._schema import load_potentials_schema, schema_path
 from rgpot.ase._registry import register_calculator as _register_calculator
 from rgpot.ase.calculator import _voigt
 from rgpot.ase.claim import ConnectionClaim
@@ -72,19 +73,7 @@ def _capnp() -> Any:
 
 
 def _schema_path() -> Path:
-    here = Path(__file__).resolve().parent / "Potentials.capnp"
-    if here.is_file():
-        return here
-    repo = (
-        Path(__file__).resolve().parents[3]
-        / "CppCore"
-        / "rgpot"
-        / "rpc"
-        / "Potentials.capnp"
-    )
-    if repo.is_file():
-        return repo
-    raise FileNotFoundError("Potentials.capnp is not installed with rgpot.ase")
+    return schema_path()
 
 
 def _free_port() -> int:
@@ -133,7 +122,7 @@ class RgpotRpcCalculator(Calculator):
         self._server_protocol_minor: int | None = None
         self._claim = ConnectionClaim("RgpotRpcCalculator")
 
-        self._schema = _capnp().load(str(_schema_path()))
+        self._schema = load_potentials_schema()
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
         self._kj = _capnp().kj_loop()

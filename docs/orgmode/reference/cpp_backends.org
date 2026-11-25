@@ -1714,6 +1714,36 @@ rgpot_lammps_potential(const ExternalLjConfig &config);
   =std::invalid_argument= for a non-positive parameter, =std::runtime_error=
   when no plugin loads or =rgpot_engine_create= fails.
 
+*** =rgpot::rgpot_lammpc_potential=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+std::unique_ptr<LammpsPot>
+rgpot_lammpc_potential(const void *config_capnp, size_t config_capnp_size,
+                       const std::string &engine_path = "");
+#+end_src
+
+- Inputs ::
+  =config_capnp= and =config_capnp_size=, a flat =PotentialConfig= whose =lammps= arm is =LammpsParams=, and =engine_path=.
+  A non-empty =engine_path= is the only library tried.
+  An empty =engine_path= tries =LAMMPC_LIBRARY= and =RGPOT_LAMMPC_ENGINE= when
+  either is set and not empty, and nothing after them; with neither set it
+  searches =liblammpc.so=, =./liblammpc.so= and the macOS and Windows names.
+- Units :: those of =LammpsParams.unitsStyle=; =metal= is eV and Angstrom.
+- Outputs :: a new =LammpsPot= that keeps one lammpc session, owned by the
+  returned =std::unique_ptr=.
+  Destroying it destroys the session.
+  The last =LammpsPot= on a lammpc backend to go, or to have its session
+  refused, calls =lammpc_finalize=.
+- Errors :: =std::invalid_argument= when the bytes are missing, not a multiple
+  of a Cap'n Proto word, truncated, or not a =PotentialConfig= with the =lammps=
+  arm.
+  =std::runtime_error= when the build has no Cap'n Proto headers, no =liblammpc= loads, its =Capabilities= fail the handshake of =rgpot::abi::checked_load=,
+  the backend reports unavailable, or =lammpc_session_create_from_config=
+  returns null.
+  A non-empty =engine_path= that does not open, or whose backend the handshake
+  refuses, throws a message that names it.
+
 *** =rgpot::rgpot_gromacs_potential=
 
 #+attr_rgpot: signature
@@ -1753,21 +1783,34 @@ rgpot_openmm_potential(const ExternalLjConfig &config);
 #+attr_rgpot: signature
 #+begin_src cpp
 explicit LammpsPot(const ExternalLjConfig &config);
+LammpsPot(const void *config_capnp, size_t config_capnp_size,
+          const std::string &engine_path = "");
 #+end_src
 
-- Inputs :: =ExternalLjConfig=.
+- Inputs :: =ExternalLjConfig=, or a flat =PotentialConfig=
+  (=config_capnp=, =config_capnp_size=) with the =lammps= arm and =engine_path=.
 - Units :: =u0= in eV, =cutoff= and =psi= in Angstrom; positions in Angstrom,
   energy in eV, forces in eV/Angstrom.
   The plugin receives these values as three doubles and nothing is converted.
+  The lammpc constructor uses the units of =LammpsParams.unitsStyle=.
 - Outputs :: a potential whose forces come from =rgpot_engine_force= of the
-  loaded plugin; the plugin stays the backend.
+  loaded plugin, or from =lammpc_session_calculate_result= when the config bytes
+  are given.
+  The plugin or the lammpc session stays the backend.
+  =caps().stress= is true only for a lammpc backend whose =Capabilities= list
+  the =stress= operation; its forces then set =has_stress= and the stress.
 - Errors ::
   =std::invalid_argument= when =u0=, =cutoff= or =psi= is not positive and finite; =std::runtime_error=
   when no library opens with =rgpot_engine_create=, =rgpot_engine_destroy= and
   =rgpot_engine_force=, or =rgpot_engine_create= fails.
+  The lammpc constructor throws
+  =std::invalid_argument= for missing or misaligned config bytes, and =std::runtime_error=
+  when =liblammpc= does not load, fails the =Capabilities= handshake, reports
+  unavailable, or refuses the session.
   A force throws
   =std::invalid_argument= for missing buffers and =std::runtime_error= when
-  =rgpot_engine_force= returns nonzero.
+  =rgpot_engine_force= returns nonzero, the lammpc result is refused, a stress
+  is not 9 values, or a backend that declares =stress= returns none.
 
 *** =rgpot::GromacsPot=
 
@@ -1901,6 +1944,26 @@ A member whose description differs between classes has one entry per class.
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a 64-bit FNV-1a hash of =address= and =timeout_s=.
+  Instances that differ in these values get different result-cache keys.
+- Errors :: none.
+
+*** =rgpot::LammpsPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a hash of the constructor mode, a kernel-version salt
+  and the canonical path of the backend file that loaded.
+  The path is the one resolved after the environment hints are applied, not the
+  path that was requested.
+  The plugin constructor adds =u0=, =cutoff= and =psi=.
+  The lammpc constructor adds the version and ABI revision the backend reports
+  and the flat =PotentialConfig= bytes.
+  Requests that resolve to one backend file share a key.
   Instances that differ in these values get different result-cache keys.
 - Errors :: none.
 

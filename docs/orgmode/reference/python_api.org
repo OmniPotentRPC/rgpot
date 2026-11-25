@@ -429,19 +429,34 @@ available_metatomic_engine_abis()
 #+attr_rgpot: signature
 #+begin_src python
 rgpot_lammps_potential(u0=1.0, cutoff=8.0, psi=1.0, engine_path='')
+rgpot_lammps_potential(config_bytes, engine_path='')
 #+end_src
 
-- Inputs :: the shifted 12-6 Lennard-Jones parameters =u0= (well depth),
-  =cutoff= and =psi= (zero crossing), and =engine_path=.
+- Inputs :: two overloads.
+  The shifted 12-6 one takes =u0= (well depth), =cutoff= and =psi= (zero
+  crossing), and =engine_path=.
   An empty =engine_path= tries =RGPOT_LAMMPS_ENGINE=, =LAMMPS_ENGINE=,
   =liblammps_engine.so= and =liblj_engine.so=, in that order.
+  The lammpc one takes
+  =config_bytes=, a flat =PotentialConfig= with the =lammps= arm, and =engine_path=.
+  A non-empty =engine_path= is the only library tried.
+  An empty =engine_path= tries =LAMMPC_LIBRARY= and =RGPOT_LAMMPC_ENGINE= when
+  either is set and not empty, and nothing after them; with neither set it tries
+  =liblammpc.so=.
 - Units :: =u0= eV; =cutoff= and =psi= Angstrom.
-- Outputs :: a =rgpot.LammpsPot= whose backend is the engine plugin the
-  constructor opened.
+  The lammpc overload uses the units of =LammpsParams.unitsStyle=.
+- Outputs :: a =rgpot.LammpsPot=.
+  The first overload keeps the engine plugin it opened.
+  The second keeps one lammpc session.
 - Errors :: =u0=, =cutoff= or =psi= that is not positive and finite raises
   =ValueError=.
   No engine library that opens and exports =rgpot_engine_force= raises
   =RuntimeError= =engine library was not opened: ...=, listing each path tried.
+  The lammpc overload raises =ValueError= for =config_bytes= that are missing,
+  misaligned, truncated, or not a =PotentialConfig= with the =lammps= arm.
+  It raises =RuntimeError= when =liblammpc= does not load, fails the
+  =Capabilities= handshake, reports unavailable, or refuses the session.
+  A non-empty =engine_path= that does not open raises =RuntimeError= naming it.
 
 *** =rgpot.rgpot_gromacs_potential=
 
@@ -1070,11 +1085,15 @@ rgpot.IPIPot(address, timeout_s=30.0)
   raises =TypeError=.
   =rgpot.rgpot_lammps_potential= returns instances.
 - Units :: positions and box in Angstrom, energy eV, forces eV/Angstrom.
-- Outputs :: a shifted 12-6 Lennard-Jones potential evaluated by the engine
-  plugin.
-  It has only =__call__=.
+- Outputs :: the potential of the overload that built it.
+  The shifted 12-6 overload evaluates a shifted 12-6 Lennard-Jones potential in
+  the engine plugin.
+  The lammpc overload evaluates the =pair_style= of its =PotentialConfig= in one
+  lammpc session.
+  Dropping the last instance on a lammpc backend calls its =lammpc_finalize=.
+  It has only =__call__=, which returns no stress.
 - Errors :: =TypeError= on direct construction; calls raise as the conventions
-  list, and an engine failure raises =RuntimeError=.
+  list, and an engine or lammpc failure raises =RuntimeError=.
 
 *** =rgpot.GromacsPot=
 

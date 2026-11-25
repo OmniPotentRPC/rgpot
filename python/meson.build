@@ -190,6 +190,7 @@ py.install_sources(
     files(
         'rgpot/__init__.py',
         'rgpot/_core.pyi',
+        'rgpot/_schema.py',
         'rgpot/lammps.py',
         'rgpot/py.typed',
     ),

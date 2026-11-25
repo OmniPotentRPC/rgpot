@@ -50,6 +50,18 @@ RGPOT_API rgpot_external_potential *rgpot_lammps_potential(const char *engine_pa
                                                           size_t err_len);
 
 /*
+ * Lammpc-backed LAMMPS potential configured by a flat PotentialConfig
+ * message containing the lammps arm. engine_path NULL or "" tries
+ * LAMMPC_LIBRARY and RGPOT_LAMMPC_ENGINE when either is set and liblammpc.so
+ * only when neither is. Any other engine_path is the only library tried, and
+ * err names it when it fails.
+ */
+rgpot_external_potential *rgpot_lammpc_potential(const char *engine_path,
+                                                const void *config_capnp,
+                                                size_t config_capnp_size,
+                                                char *err, size_t err_len);
+
+/*
  * The same potential. The constructor stores u0 in kJ/mol and the
  * lengths in nanometres. engine_path NULL evaluates that potential
  * in process. A path is a library that exports rgpot_engine_create,

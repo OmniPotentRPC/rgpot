@@ -55,3 +55,8 @@ PLUMED stops instead, unless the action has =NOPBC=.
 
 Species are element symbols (=Cu=, case as printed).
 =RGPOT= also takes atomic numbers.
+
+The table above is for named built-in potentials parsed by
+=engines/pot_spec.hpp=.
+The lammpc-backed LAMMPS path is configured through =PotentialConfig.lammps=
+(=LammpsParams=) and is not selected by one of these name tokens.

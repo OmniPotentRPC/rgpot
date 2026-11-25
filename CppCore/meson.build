@@ -696,7 +696,7 @@ if not get_option('with_rpc_client_only')
         kwargs: fastnlist_umbrella_kwargs,
     )
 
-    # 72 rgpot_* exports when the rust archive is linked normally, 126 when
+    # 73 rgpot_* exports when the rust archive is linked normally, 127 when
     # the bundle is whole-archived. The extra 54 are the public C ABI.
     # Two of the umbrella exports are the Muller-Brown entry points and 21 are
     # the MD session entry points.
@@ -2169,6 +2169,76 @@ if get_option('with_tests')
             env: cpmdc_fake_env,
             depends: cpmdc_fake_engine,
             kwargs: _rt_kw['ProfileLoaderTest'],
+        )
+        lammpc_fake_variants = {
+            'lammpc_fake_engine': [],
+            'lammpc_fake_engine_nostress': ['-DLAMMPC_FAKE_NO_STRESS'],
+            'lammpc_fake_engine_abi2': ['-DLAMMPC_FAKE_BRIDGE_ABI_MAJOR=2'],
+        }
+        lammpc_fake_libs = {}
+        lammpc_fake_targets = []
+        foreach _name, _defs : lammpc_fake_variants
+            lammpc_fake_libs += {
+                _name: shared_library(
+                    _name,
+                    sources: ['tests/lammpc_fake_engine.cc'],
+                    cpp_args: _build_identity_args + _defs,
+                    dependencies: [ptlrpc_dep],
+                    include_directories: _incdirs + ['.'],
+                    install: false,
+                ),
+            }
+            lammpc_fake_targets += lammpc_fake_libs[_name]
+        endforeach
+        lammps_legacy_engines = {}
+        foreach _name : ['lammps_legacy_engine_a', 'lammps_legacy_engine_b']
+            lammps_legacy_engines += {
+                _name: shared_library(
+                    _name,
+                    sources: ['tests/external_refcount_engine.c'],
+                    include_directories: _incdirs,
+                    c_args: ['-DRGPOT_ENGINE_BUILD'],
+                    install: false,
+                ),
+            }
+            lammpc_fake_targets += lammps_legacy_engines[_name]
+        endforeach
+        lammpc_fake_env = environment()
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPS_LEGACY_ENGINE_A',
+            lammps_legacy_engines['lammps_legacy_engine_a'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPS_LEGACY_ENGINE_B',
+            lammps_legacy_engines['lammps_legacy_engine_b'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPC_ENGINE',
+            lammpc_fake_libs['lammpc_fake_engine'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPC_NOSTRESS_ENGINE',
+            lammpc_fake_libs['lammpc_fake_engine_nostress'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPC_ABI2_ENGINE',
+            lammpc_fake_libs['lammpc_fake_engine_abi2'].full_path(),
+        )
+        test(
+            'LammpcPotTest',
+            executable(
+                'lammpc_pot_test',
+                sources: ['tests/LammpcPotTest.cc'],
+                dependencies: test_deps + [ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: lammpc_fake_env,
+            depends: lammpc_fake_targets,
+            kwargs: _rt_kw['LammpcPotTest'],
         )
         test(
             'test_cpmd_abi',

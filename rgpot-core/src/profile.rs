@@ -73,19 +73,37 @@ impl From<capnp::Error> for ProfileError {
 pub type ProfileResult<T> = Result<T, ProfileError>;
 
 /// Ordered shared-library candidates for a backend prefix.
+///
+/// A non-empty explicit path is the only candidate. Otherwise the non-empty
+/// values of the two hint variables (`CPMDC_LIBRARY` and `RGPOT_CPMDC_ENGINE`
+/// for the prefix `cpmdc`) are the only candidates when either is set, and
+/// the platform default names are tried only when neither is.
 pub fn library_candidates(prefix: &str, explicit_path: Option<&str>) -> Vec<String> {
-    let mut candidates = Vec::new();
+    candidates_with_env(prefix, explicit_path, |variable| {
+        std::env::var_os(variable).and_then(|value| value.into_string().ok())
+    })
+}
+
+fn candidates_with_env(
+    prefix: &str,
+    explicit_path: Option<&str>,
+    env: impl Fn(&str) -> Option<String>,
+) -> Vec<String> {
     if let Some(path) = explicit_path.filter(|path| !path.is_empty()) {
-        candidates.push(path.to_owned());
+        return vec![path.to_owned()];
     }
 
+    let mut candidates = Vec::new();
     let upper = prefix.to_ascii_uppercase();
     for variable in [format!("{upper}_LIBRARY"), format!("RGPOT_{upper}_ENGINE")] {
-        if let Some(path) = std::env::var_os(variable).and_then(|value| value.into_string().ok()) {
+        if let Some(path) = env(&variable) {
             if !path.is_empty() && !candidates.contains(&path) {
                 candidates.push(path);
             }
         }
+    }
+    if !candidates.is_empty() {
+        return candidates;
     }
 
     for path in [
@@ -582,6 +600,59 @@ mod tests {
                 .to_string();
         assert!(refused.contains("fake backend refused"), "{refused}");
         assert!(refused.contains("DLPack major"), "{refused}");
+    }
+
+    fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |variable| {
+            pairs
+                .iter()
+                .find(|(name, _)| *name == variable)
+                .map(|(_, value)| (*value).to_owned())
+        }
+    }
+
+    #[test]
+    fn explicit_path_is_the_only_candidate() {
+        let env = env_of(&[("LAMMPC_LIBRARY", "/env/liblammpc.so")]);
+        assert_eq!(
+            candidates_with_env("lammpc", Some("/opt/liblammpc.so"), env),
+            ["/opt/liblammpc.so"]
+        );
+    }
+
+    #[test]
+    fn set_environment_hints_exclude_the_default_names() {
+        let env = env_of(&[
+            ("LAMMPC_LIBRARY", "/a/liblammpc.so"),
+            ("RGPOT_LAMMPC_ENGINE", "/b/liblammpc.so"),
+        ]);
+        assert_eq!(
+            candidates_with_env("lammpc", None, env),
+            ["/a/liblammpc.so", "/b/liblammpc.so"]
+        );
+        let env = env_of(&[
+            ("LAMMPC_LIBRARY", ""),
+            ("RGPOT_LAMMPC_ENGINE", "/b/liblammpc.so"),
+        ]);
+        assert_eq!(
+            candidates_with_env("lammpc", Some(""), env),
+            ["/b/liblammpc.so"]
+        );
+    }
+
+    #[test]
+    fn default_names_follow_only_when_no_hint_is_set() {
+        let names = candidates_with_env("lammpc", None, env_of(&[("LAMMPC_LIBRARY", "")]));
+        assert_eq!(
+            names,
+            [
+                "liblammpc.so",
+                "./liblammpc.so",
+                "liblammpc.dylib",
+                "./liblammpc.dylib",
+                "lammpc.dll"
+            ]
+        );
     }
 
     #[test]

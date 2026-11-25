@@ -70,8 +70,9 @@ public:
           c >= 'a' && c <= 'z' ? c - ('a' - 'A') : c));
     const std::string env_lib = upper + "_LIBRARY";
     const std::string env_eng = "RGPOT_" + upper + "_ENGINE";
-    return engine_candidates(prefix, explicit_path,
-                             {env_lib.c_str(), env_eng.c_str()});
+    return engine_candidates(
+        prefix, explicit_path, {env_lib.c_str(), env_eng.c_str()},
+        CandidateOptions{.exclusive_explicit = true, .exclusive_env = true});
   }
 
   void clear() {
@@ -113,10 +114,28 @@ public:
    * non-conforming build fails loudly at load time instead of at dispatch.
    */
   void load(const std::string &prefix, const std::string &explicit_path = "") {
+    clear();
+    prefix_ = prefix;
+    const auto cands = candidates(prefix, explicit_path);
     std::string open_error;
-    if (!open_candidates(prefix, candidates(prefix, explicit_path),
-                         &open_error)) {
-      throw std::runtime_error("lib" + prefix + " not loaded: " + open_error);
+    std::string failures;
+    for (const auto &cand : cands) {
+      try {
+        lib_.open(cand);
+        loaded_path_ = cand;
+        open_error.clear();
+        break;
+      } catch (const std::exception &ex) {
+        open_error = ex.what();
+        failures += (failures.empty() ? "" : "; ") + cand + ": " + open_error;
+      }
+    }
+    if (!lib_.valid() && !explicit_path.empty()) {
+      throw std::runtime_error("lib" + prefix + " not loaded from '" +
+                               explicit_path + "': " + open_error);
+    }
+    if (!lib_.valid()) {
+      throw std::runtime_error("lib" + prefix + " not loaded; " + failures);
     }
 
     std::vector<std::string> missing;
