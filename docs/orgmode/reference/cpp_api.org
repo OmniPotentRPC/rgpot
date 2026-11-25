@@ -350,9 +350,9 @@ std::vector<double> hvp(const InputSpec &input,
   returned as a new vector by the second overload.
   The scheme that computed it, from
   =rgpot_potential_hvp_resolved=, is returned by the first overload and written to a non-null =scheme_used=
-  by the second: =RGPOT_HVP_AUTO= reports =RGPOT_HVP_ANALYTIC= or
-  =RGPOT_HVP_FORWARD=, and =RGPOT_HVP_EXACT= reports =RGPOT_HVP_ANALYTIC= or
-  =RGPOT_HVP_AD=.
+  by the second: =RGPOT_HVP_AUTO= reports =RGPOT_HVP_ANALYTIC= only when an
+  analytic Hessian-vector callback is registered, else =RGPOT_HVP_FORWARD=, and
+  =RGPOT_HVP_EXACT= reports =RGPOT_HVP_ANALYTIC= or =RGPOT_HVP_AD=.
 - Errors :: throws =rgpot::Error= when
   =rgpot_potential_hvp_resolved= returns a non-success status: NULL pointers, an unknown scheme, a negative or non-finite step, a non-finite direction value, overlapping buffers, =RGPOT_HVP_ANALYTIC= with no analytic callback, =RGPOT_HVP_AD= with no dual-number callback, or =RGPOT_HVP_EXACT=
   with neither give "invalid parameter"; a failing force callback gives the

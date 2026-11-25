@@ -31,7 +31,7 @@
 
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eindir::rgpot_potential_t;
 use crate::fused::lock;
@@ -45,7 +45,9 @@ use crate::types::rgpot_force_input_t;
 /// The callback receives the `user_data` of the potential handle, the
 /// geometry and room for `(3 * n_atoms)^2` doubles. It writes the Hessian,
 /// row-major, to `hessian_out` and returns `RGPOT_SUCCESS`, or an error
-/// status code.
+/// status code. It must not call back into this handle's Hessian entry
+/// points, and must not replace or clear the callback: the call holds the
+/// registration, and replacement waits for it to finish.
 pub type HessianCallback = unsafe extern "C" fn(
     user_data: *mut c_void,
     input: *const rgpot_force_input_t,
@@ -132,15 +134,60 @@ pub struct rgpot_derivative_counts_t {
     pub hessian_force_calls: u64,
 }
 
+/// Element count of a dense Hessian.
+///
+/// The structural limit is a byte count that fits in `usize`. `budget` is the
+/// caller's optional ceiling in bytes. `None` installs no ceiling: there is
+/// no built-in component count or MiB default. A `Some` budget, including
+/// zero, refuses a larger matrix before any callback or allocation.
+pub(crate) fn hessian_len(dim: usize, budget: Option<u64>) -> Result<usize, HvpError> {
+    let n2 = dim
+        .checked_mul(dim)
+        .ok_or_else(|| invalid("Hessian dimension overflows"))?;
+    let bytes = n2
+        .checked_mul(std::mem::size_of::<f64>())
+        .ok_or_else(|| invalid("Hessian byte count overflows"))?;
+    if let Some(limit) = budget {
+        let bytes = u64::try_from(bytes)
+            .map_err(|_| invalid("Hessian byte count does not fit in 64 bits"))?;
+        if bytes > limit {
+            return Err(invalid(format!(
+                "Hessian of {bytes} bytes exceeds the caller budget of {limit} bytes"
+            )));
+        }
+    }
+    Ok(n2)
+}
+
 /// Per-handle dense-Hessian state, kept in the handle's opaque cache.
 #[derive(Default)]
 pub(crate) struct HessianState {
-    analytic: Mutex<Option<HessianCallback>>,
-    ad: Mutex<Option<HessianCallback>>,
+    /// An evaluation holds a read guard for the whole callback call.
+    /// Replacing or clearing the callback takes the write guard, so it
+    /// returns only after every in-flight call of the old callback has
+    /// finished, and no call of it can start afterwards.
+    analytic: RwLock<Option<HessianCallback>>,
+    ad: RwLock<Option<HessianCallback>>,
+    /// `None` means no caller byte budget. The only structural limit is a
+    /// representable byte count.
+    byte_budget: Mutex<Option<u64>>,
     by_central: AtomicU64,
     by_analytic: AtomicU64,
     by_ad: AtomicU64,
     force_calls: AtomicU64,
+}
+
+fn read_callback(
+    lock: &RwLock<Option<HessianCallback>>,
+) -> RwLockReadGuard<'_, Option<HessianCallback>> {
+    lock.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn write_callback(
+    lock: &RwLock<Option<HessianCallback>>,
+) -> RwLockWriteGuard<'_, Option<HessianCallback>> {
+    lock.write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// The scheme a request runs: `EXACT` resolved against the registered
@@ -171,14 +218,39 @@ fn resolve(
 impl rgpot_potential_t {
     /// Register `callback` as the analytic Hessian of this handle, or clear
     /// it with `None`. It is called with the handle's `user_data`.
+    ///
+    /// Returns only after every call of the previous callback that was
+    /// already running has returned; no call of it starts after this
+    /// returns. The caller may therefore release the old callback and its
+    /// `user_data` as soon as this returns.
+    ///
+    /// This waits on in-flight evaluations, so it must not be called from a
+    /// Hessian callback, or from any thread that is inside one of this
+    /// handle's Hessian entry points. Doing so deadlocks.
     pub fn set_hessian_callback(&self, callback: Option<HessianCallback>) {
-        *lock(&self.hessian_state().analytic) = callback;
+        *write_callback(&self.hessian_state().analytic) = callback;
     }
 
     /// Register `callback` as the dual-number Hessian of this handle, or
     /// clear it with `None`.
+    ///
+    /// Waits for in-flight calls of the previous dual-number callback to
+    /// finish, as [`Self::set_hessian_callback`] does.
     pub fn set_ad_hessian_callback(&self, callback: Option<HessianCallback>) {
-        *lock(&self.hessian_state().ad) = callback;
+        *write_callback(&self.hessian_state().ad) = callback;
+    }
+
+    /// Install or clear the dense-Hessian byte budget.
+    ///
+    /// `None` clears it. There is no default size. `Some(0)` refuses every
+    /// positive matrix.
+    pub fn set_hessian_byte_budget(&self, max_bytes: Option<u64>) {
+        *lock(&self.hessian_state().byte_budget) = max_bytes;
+    }
+
+    /// The installed dense-Hessian byte budget, if any.
+    pub fn hessian_byte_budget(&self) -> Option<u64> {
+        *lock(&self.hessian_state().byte_budget)
     }
 
     /// Which derivative schemes this handle has, from the callbacks
@@ -190,8 +262,8 @@ impl rgpot_potential_t {
             hvp_analytic: hvp.has_analytic(),
             hvp_ad: hvp.has_ad(),
             hvp_fd: true,
-            hessian_analytic: lock(&hessian.analytic).is_some(),
-            hessian_ad: lock(&hessian.ad).is_some(),
+            hessian_analytic: read_callback(&hessian.analytic).is_some(),
+            hessian_ad: read_callback(&hessian.ad).is_some(),
             hessian_fd: true,
             hvp_forward_force_calls: 1,
             hvp_central_force_calls: 2,
@@ -264,35 +336,42 @@ impl rgpot_potential_t {
             )));
         }
         unsafe { refuse_overlap(input, hessian_out.as_ptr(), hessian_out.len()) }?;
+        let dim = n_atoms * 3;
+        hessian_len(dim, self.hessian_byte_budget())?;
         let geometry = unsafe { read_geometry(input) }?;
-        let dim = geometry.positions.len();
         let h = checked_step(step)?;
         let state = self.hessian_state();
-        let analytic = *lock(&state.analytic);
-        let ad = *lock(&state.ad);
-        let scheme = resolve(scheme, analytic.is_some(), ad.is_some())?;
+        let analytic_guard = read_callback(&state.analytic);
+        let ad_guard = read_callback(&state.ad);
+        let scheme = resolve(scheme, analytic_guard.is_some(), ad_guard.is_some())?;
         let call = |callback: HessianCallback, out: *mut f64| unsafe {
             callback(self.pot_user_data, input, out)
         };
         match scheme {
             rgpot_hessian_scheme_t::RGPOT_HESSIAN_ANALYTIC => {
-                let callback = analytic.expect("resolved against it");
+                drop(ad_guard);
+                let callback = analytic_guard.expect("resolved against it");
                 run_callback("Hessian callback", "Hessian callback", hessian_out, |out| {
                     call(callback, out)
                 })?;
+                drop(analytic_guard);
                 state.by_analytic.fetch_add(1, Ordering::Relaxed);
             }
             rgpot_hessian_scheme_t::RGPOT_HESSIAN_AD => {
-                let callback = ad.expect("resolved against it");
+                drop(analytic_guard);
+                let callback = ad_guard.expect("resolved against it");
                 run_callback(
                     "dual-number Hessian callback",
                     "dual-number Hessian callback",
                     hessian_out,
                     |out| call(callback, out),
                 )?;
+                drop(ad_guard);
                 state.by_ad.fetch_add(1, Ordering::Relaxed);
             }
             rgpot_hessian_scheme_t::RGPOT_HESSIAN_CENTRAL => {
+                drop(analytic_guard);
+                drop(ad_guard);
                 let scale = 1.0 / (2.0 * h);
                 let mut x = geometry.positions.clone();
                 for c in 0..dim {
@@ -403,5 +482,22 @@ mod tests {
             rgpot_force_input_free(&mut empty);
             rgpot_force_input_free(&mut one);
         }
+    }
+
+    #[test]
+    fn a_byte_count_that_does_not_fit_in_usize_is_refused() {
+        let dim = 1usize << (usize::BITS / 2);
+        let err = hessian_len(dim, None).expect_err("overflow");
+        let text = err.to_string();
+        assert!(text.contains("overflows"), "{text}");
+    }
+
+    #[test]
+    fn a_caller_budget_is_the_only_practical_ceiling() {
+        assert_eq!(hessian_len(3, None).expect("no budget"), 9);
+        let err = hessian_len(3, Some(8)).expect_err("over budget");
+        assert!(err.to_string().contains("caller budget"));
+        assert_eq!(hessian_len(1, Some(8)).expect("one double fits"), 1);
+        assert!(hessian_len(1, Some(0)).is_err());
     }
 }

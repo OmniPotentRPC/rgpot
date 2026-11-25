@@ -48,3 +48,4 @@ rgpot_potential_hessian
 rgpot_potential_derivative_caps
 rgpot_potential_derivative_counts
 rgpot_mdi_server_start
+rgpot_potential_set_hessian_byte_budget

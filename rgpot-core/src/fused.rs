@@ -357,7 +357,12 @@ impl<V: Clone> FusedCache<V> {
         }
         self.computed.fetch_add(1, Ordering::Relaxed);
         let outcome = engine();
-        if matches!(&outcome, Err(error) if error.is_validation()) {
+        // A key sampled before `invalidate` carries the old epoch. Do not
+        // publish it: a later `key` call would miss it, but it would also
+        // evict the current entry.
+        if key.fingerprint.epoch < self.epoch.load(Ordering::Acquire)
+            || matches!(&outcome, Err(error) if error.is_validation())
+        {
             return (outcome, FusedSource::Computed);
         }
         *entry = Some(Entry {
@@ -631,5 +636,31 @@ mod tests {
         assert_ne!(scc.kind(), other.kind());
         assert_eq!(scc.status(), rgpot_status_t::RGPOT_SCC_NOT_CONVERGED);
         assert_eq!(other.status(), rgpot_status_t::RGPOT_INTERNAL_ERROR);
+    }
+
+    #[test]
+    fn a_key_sampled_before_invalidation_is_not_published() {
+        let cache = FusedCache::<f64>::new();
+        let x = positions();
+        let stale = key(&cache, &x);
+        cache.invalidate();
+        let calls = Cell::new(0u32);
+        let engine = || {
+            calls.set(calls.get() + 1);
+            Ok(1.0)
+        };
+        assert_eq!(
+            cache.evaluate(stale.clone(), engine).1,
+            FusedSource::Computed
+        );
+        assert_eq!(cache.evaluate(stale, engine).1, FusedSource::Computed);
+        assert_eq!(calls.get(), 2);
+        let fresh = key(&cache, &x);
+        assert_eq!(
+            cache.evaluate(fresh.clone(), engine).1,
+            FusedSource::Computed
+        );
+        assert_eq!(cache.evaluate(fresh, engine).1, FusedSource::Stored);
+        assert_eq!(calls.get(), 3);
     }
 }

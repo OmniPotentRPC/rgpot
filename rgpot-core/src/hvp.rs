@@ -32,12 +32,13 @@
 //! | `RGPOT_HVP_ANALYTIC` | 0 | that of the callback |
 //! | `RGPOT_HVP_AD` | 0 | that of the callback |
 //!
-//! `RGPOT_HVP_AUTO` takes the analytic callback and falls back to forward
-//! differences without one. `RGPOT_HVP_EXACT` takes the analytic callback,
-//! else the dual-number one, and is refused rather than differenced. Either
-//! way [`rgpot_potential_t::hessian_vector_resolved`] returns the scheme
-//! that ran and [`rgpot_potential_t::derivative_counts`] counts it, so a
-//! fallback is never silent.
+//! `RGPOT_HVP_AUTO` takes the analytic callback when one is registered, and
+//! falls back to forward differences otherwise.
+//! `RGPOT_HVP_EXACT` takes the analytic callback, else the dual-number one,
+//! and is refused rather than differenced. Either way
+//! [`rgpot_potential_t::hessian_vector_resolved`] returns the scheme that ran
+//! and [`rgpot_potential_t::derivative_counts`] counts it, so a fallback is
+//! never silent.
 //!
 //! `h` is the length of the displacement along the unit direction
 //! `v / |v|`, in the units of the positions. The difference is scaled back

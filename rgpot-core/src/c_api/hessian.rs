@@ -33,11 +33,20 @@ use crate::types::rgpot_force_input_t;
 /// writes `(3 * n_atoms)^2` doubles, row-major. `RGPOT_HESSIAN_ANALYTIC`
 /// calls it, and so does `RGPOT_HESSIAN_EXACT`.
 ///
+/// Replacing or clearing the callback returns only after every call of the
+/// previous callback that was already running has returned, and the previous
+/// callback is never called after this function returns. The caller may
+/// release the old callback and its state as soon as this function returns.
+/// Because it waits for those calls, this function must not be called from
+/// inside a Hessian callback, nor from a thread that is inside this handle's
+/// Hessian entry points: it would wait for itself.
+///
 /// # Safety
 ///
 /// `pot` must be NULL or a live handle. A NULL `pot` returns
 /// `RGPOT_INVALID_PARAMETER`. `callback` must be safe to call with the
-/// handle's `user_data` for as long as it stays registered.
+/// handle's `user_data` for as long as it stays registered, and must not
+/// re-enter this handle's Hessian entry points or replace the callback.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_set_hessian_callback(
     pot: *const rgpot_potential_t,
@@ -83,6 +92,36 @@ pub unsafe extern "C" fn rgpot_potential_set_ad_hessian_callback(
         return refuse("rgpot_potential_set_ad_hessian_callback: pot is NULL");
     }
     unsafe { &*pot }.set_ad_hessian_callback(callback);
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+/// Install or clear the caller's dense-Hessian byte budget.
+///
+/// A NULL `max_bytes` clears the budget. No component count or byte size is
+/// assumed in its place: a request is then refused only when the byte count
+/// does not fit in `size_t`, or when the allocation itself fails. A non-NULL
+/// pointer installs that many bytes, and zero is a budget that refuses every
+/// positive matrix. The pointer is read once; it need not stay alive.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a live handle. A NULL `pot` returns
+/// `RGPOT_INVALID_PARAMETER`. A non-NULL `max_bytes` must point at a readable
+/// `uint64_t`.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_set_hessian_byte_budget(
+    pot: *const rgpot_potential_t,
+    max_bytes: *const u64,
+) -> rgpot_status_t {
+    if pot.is_null() {
+        return refuse("rgpot_potential_set_hessian_byte_budget: pot is NULL");
+    }
+    let budget = if max_bytes.is_null() {
+        None
+    } else {
+        Some(unsafe { *max_bytes })
+    };
+    unsafe { &*pot }.set_hessian_byte_budget(budget);
     rgpot_status_t::RGPOT_SUCCESS
 }
 

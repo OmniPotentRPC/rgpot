@@ -103,7 +103,7 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
  * minor 0, layout 1.
  */
 #define RGPOT_ENGINE_ABI_VERSION 1
-#define RGPOT_ENGINE_ABI_MINOR 11
+#define RGPOT_ENGINE_ABI_MINOR 12
 #define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
 
 #define RGPOT_ENGINE_OK 0
@@ -255,6 +255,18 @@ RGPOT_ENGINE_API int rgpot_engine_taylor_jet(
     double *jet_out, RgpotEngineDerivativeReport *report, const double *boxes);
 
 /**
+ * Exact energy Hessian, row-major (3*nAtoms)^2 doubles, in eV/Angstrom^2.
+ * hessian_out must not overlap positions, atomicNrs or box. Returns
+ * RGPOT_ENGINE_OK (0) on success, RGPOT_ENGINE_ERR_INVALID (1) for invalid
+ * or overlapping arguments, and RGPOT_ENGINE_ERR_UNSUPPORTED (3) when the
+ * backend does not advertise analytic curvature. The matrix is the analytic
+ * Hessian-vector product on each unit direction. It is not a finite difference.
+ */
+RGPOT_ENGINE_API int rgpot_engine_hessian(
+    RgpotEnginePot *pot, long nAtoms, const double *positions,
+    const int *atomicNrs, double *hessian_out, const double *box);
+
+/**
  * Strided-uniform batched evaluation: nSystems systems sharing one
  * composition (atomicNrs, nAtoms). positions and forces hold
  * 3*nAtoms*nSystems doubles with system stride 3*nAtoms, energies
@@ -382,6 +394,7 @@ typedef struct {
   int orbital_copy;        /**< copy_orbitals is supported */
   int analytic_hvp;        /**< rgpot_engine_hvp is exact for this potential */
   int jet_order;           /**< highest order of rgpot_engine_taylor_jet; 0 none */
+  int analytic_hessian;    /**< rgpot_engine_hessian is the exact energy Hessian */
 } RgpotEngineCaps;
 
 RGPOT_ENGINE_API int rgpot_engine_caps(const RgpotEnginePot *pot,
