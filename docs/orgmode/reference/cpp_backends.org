@@ -1901,6 +1901,132 @@ int main() {
   =std::invalid_argument= if =platform= is empty, =time_step= or =temperature=
   is not positive and finite, or =friction= is negative or non-finite.
 
+** Construction from a PotentialConfig
+
+=rgpot::makePotential= (=CppCore/rgpot/PotentialFactory.hpp=) is the one entry
+point from a =PotentialConfig= to a potential. It is in every =librgpot= built
+with the Cap'n Proto stack. A consumer includes =rgpot/PotentialFactory.hpp=
+with the directory that holds the generated =rgpot/rpc/Potentials.capnp.h= and
+=rgpot/rpc/common.capnp.h= on its include path (the installation's
+include directory, or =CppCore= of a meson build tree): the schema
+imports =common.capnp=, so =Potentials.capnp.h= includes =common.capnp.h=.
+
+*** =rgpot::makePotential=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::unique_ptr<PotentialBase>
+makePotential(const ::PotentialConfig::Reader &config);
+[[nodiscard]] std::unique_ptr<PotentialBase>
+makePotential(const void *bytes, std::size_t size);
+#+end_src
+
+- Inputs :: a =PotentialConfig= reader, or the flat-array bytes of one
+  (=size= a non-zero multiple of 8). Only the union arm is read; the shared
+  fields (=common=, =commonPatch=, =neighborList=, =rpcEndpoint=,
+  =logPotentialCalls=, =emtRasmussenParameters=) are not, as no
+  =setPotentialConfig= method reads them either.
+- Units :: those of the potential returned.
+- Outputs :: the potential the arm configures, owned by the returned pointer.
+  =lj=, =morse= (with =switchWidth=), =zbl=, =d2=, =d2cpmd=, =mullerBrown= and
+  =composite= build the in-process kernels; =cpmd=, =nwchem=, =mopac= and
+  =lammps= build =CPMDPot=, =NWChemPot=, =MOPACPot= and the lammpc profile of
+  =LammpsPot=; =d3=, =d4=, =xtb=, =tblite=, =skala=, =cp2k= and =expr= build
+  =D3Pot=, =D4Pot=, =XTBPot=, =TBLitePot=, =SkalaPot=, =CP2KPot= and =ExprPot=
+  when the build has them.
+  =metatomic=, =uma=, =orca=, =plugin=, and =xtb= in a build without
+  =-Dwith_xtb=, return an =rgpot::EnginePot= over an engine library whose
+  configuration message is the arm's params struct (=BuiltinParams= naming =xtb=
+  for =libxtb_engine=, the =opaquePayload= bytes for =plugin=):
+
+  | Arm         | Library                 | Search order                                                                 |
+  |-------------+-------------------------+------------------------------------------------------------------------------|
+  | =metatomic= | =libmetatomic_engine=   | =enginePath= alone when set; else =RGPOT_METATOMIC_ENGINE=, =METATOMIC_ENGINE= |
+  | =uma=       | =libuma_engine=         | =RGPOT_UMA_ENGINE=                                                           |
+  | =xtb=       | =libxtb_engine=         | =RGPOT_XTB_ENGINE=, =XTB_ENGINE=                                             |
+  | =orca=      | =liborcac=              | =ORCAC_LIBRARY=, =RGPOT_ORCAC_ENGINE=                                        |
+  | =plugin=    | =lib<pluginName>_engine= | =libraryPath= alone when set; else =RGPOT_<PLUGINNAME>_ENGINE=              |
+
+  After the variables each search tries =lib<stem>.so=, =./lib<stem>.so=, the
+  =.dylib= names and =<stem>.dll=, then the directories of
+  =EON_POTENTIALS_PATH= and =RGPOT_ENGINE_PATH=.
+- Errors :: =std::invalid_argument= for bytes that are not a =PotentialConfig=
+  message, for the =none=, =gpr=, =potlib= and =external= arms (rgpot has no
+  backend for them), for =d3=, =d4=, =tblite=, =skala=, =cp2k= and =expr= in a
+  build without =-Dwith_dftd3=, =-Dwith_dftd4=, =-Dwith_tblite=,
+  =-Dwith_skala=, =-Dwith_cp2k= or =-Dwith_expr= (the message names the
+  option), for a =mopac= arm that sets =epsilon=, =solver=, =extraKeywords= or
+  =cell= (=MOPACPot= takes none of them), for an =xtb=, =tblite= or =d3= method
+  or damping it does not know, for a =plugin= arm with neither =pluginName= nor
+  =libraryPath=, and for an arm newer than the compiled schema. The
+  constructors of the potentials throw as their entries say, and
+  =rgpot::EnginePot= throws =std::runtime_error= as below.
+
+*** =rgpot::EnginePot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+EnginePot(const std::vector<std::string> &candidates, const void *config,
+          std::size_t config_len, std::string label);
+#+end_src
+
+- Inputs :: =candidates=, library paths tried in order; =config= and
+  =config_len=, the configuration message handed to =rgpot_engine_create=
+  (for the in-tree engines a word-aligned Cap'n Proto flat array whose root is
+  the backend's params struct); =label=, the name used in messages.
+- Units :: positions in Angstrom, energy in eV and forces in eV/Angstrom, the
+  units of =rgpot_engine_force=.
+- Outputs :: one engine instance, destroyed with the potential, from the first
+  candidate that opens and exports =rgpot_engine_create=,
+  =rgpot_engine_destroy= and =rgpot_engine_force=. =caps()= reports
+  =Reentrancy::PerInstance=, and calls on one instance are serialised. The
+  library stays mapped for the life of the process. =getType()= is
+  =PotType::Engine=.
+- Errors :: =std::runtime_error= when no candidate opens or exports the three
+  symbols (the message names every path tried), when the library's
+  =rgpot_engine_abi_version= is not =RGPOT_ENGINE_ABI_VERSION=, when its
+  =rgpot_engine_available= returns 0, or when =rgpot_engine_create= fails (the
+  message carries the engine's reason). A force call throws
+  =std::runtime_error= with the code =rgpot_engine_force= returned and the
+  engine's =rgpot_engine_last_error=.
+
+*** =rgpot::EnginePot::libraryPath=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &libraryPath() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the candidate the library was opened from.
+- Errors :: none.
+
+*** =rgpot::EnginePot::label=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &label() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the label given to the constructor (=orcac=, =plugin <name>=).
+- Errors :: none.
+
+*** =rgpot::EnginePot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a hash of the library path and the configuration bytes, so cached
+  results never cross engines or configurations.
+- Errors :: none.
+
 ** Members common to several classes
 
 These members have the same declaration in each class that has them.

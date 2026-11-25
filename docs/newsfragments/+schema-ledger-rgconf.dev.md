@@ -1,0 +1,1 @@
+`schema_ledger.py` pins `Potentials.ordinals` to the rgconf commit in `CppCore/rgpot/rpc/schema.pin`: `check --fetch` compares both vendored copies of `Potentials.capnp` and `common.capnp` with it, and `append` retired the former local entries by recording them again as upstream. The `apply` command, the series checks and the `schema-sync-canonical-*` meson tests are gone.

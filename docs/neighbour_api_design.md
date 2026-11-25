@@ -3,9 +3,8 @@
 
 The public surface is `rgpot::nlist::Query`, `Builder` and `Walk`, the C
 ABI in `CppCore/rgpot/nlist/rgpot_nlist.h`, and `NeighborRequest` /
-`NeighborList`, which the rgpot-local schema diff
-`CppCore/rgpot/rpc/local/neighbour-chunk.diff` adds to the
-`Potentials.capnp` that rgpot compiles and installs. The classical
+`NeighborList` in `Potentials.capnp`, which rgpot added through a local
+schema diff before rgconf's schema adopted them at the same ordinals. The classical
 kernels keep `rgpot::nlist::Neighbours`. This log is the design of the
 public surface. Each pass below was written against the API as it stood,
 then the API moved. A code block inside a pass shows the API at that

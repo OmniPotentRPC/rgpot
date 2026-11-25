@@ -330,8 +330,8 @@ foreach(test IN LISTS _rgpot_py)
     COMMAND Python3::Interpreter "${RGPOT_TEST_ROOT}/${_script}" ${_args})
 endforeach()
 
-# The neighbour C ABI over Cap'n Proto and from Rust. The neighbour
-# structs exist only in the effective schema, which CMakeLists.txt writes.
+# The neighbour C ABI over Cap'n Proto and from Rust, against the vendored
+# schema.
 rgpot_test_enabled(nlist_stream _on)
 if(_on)
   add_executable(nlist_stream CppCore/examples/nlist_stream.cc)

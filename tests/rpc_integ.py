@@ -871,7 +871,7 @@ def main():
         help="Also run CPMD configure() smoke on a separate server port",
     )
     args = parser.parse_args()
-    # Use the schema that potserv was built with, including local diffs.
+    # Use the schema that potserv was built with: the vendored Potentials.capnp.
     pot_capnp = effective_schema(args.server_bin)
 
     # 1. Start Server

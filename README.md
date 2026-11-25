@@ -67,9 +67,9 @@ See `docs/orgmode/howto/ase.org`.
 
 The public wire schema lives in `CppCore/rgpot/rpc/Potentials.capnp` and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
-That file is the pinned potentials-schema release byte for byte; the build
-adds the rgpot-local fields listed in `CppCore/rgpot/rpc/local/series` and
-installs the result.
+That file is rgconf's `potential.capnp` at the commit
+`CppCore/rgpot/rpc/schema.pin` names, byte for byte, with the `common.capnp` it
+imports beside it; the build compiles and installs both as they are.
 Native rgpot units are eV and Angstrom.
 RPC clients may request compatible units through `ForceInput.lengthUnit` and
 `ForceInput.energyUnit`.

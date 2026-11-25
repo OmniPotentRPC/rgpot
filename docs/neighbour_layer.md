@@ -121,11 +121,11 @@ fills a half pair list, periodic boundaries and every geometry column.
 structure-of-arrays buffers. `rgpot_nlist_strerror` names a code. A
 cluster with a half shell is `RGPOT_NLIST_SHAPE`.
 
-The rgpot-local schema diff `CppCore/rgpot/rpc/local/neighbour-chunk.diff`
-adds `NeighborRequest`, `NeighborList`, an optional `ForceInput.neighbors` at
-ordinal 9, an optional `PotentialResult.neighborList` at ordinal 28, and
-`Potential.neighbours` at ordinal 13 to the `Potentials.capnp` that rgpot
-compiles and installs; the vendored copy is the pinned upstream file. Older fields are
+`Potentials.capnp` has `NeighborRequest`, `NeighborList`, an optional
+`ForceInput.neighbors` at ordinal 9, an optional `PotentialResult.neighborList`
+at ordinal 28, and `Potential.neighbours` at ordinal 13; rgpot added them
+through a local schema diff before rgconf's schema adopted them at the same
+ordinals. Older fields are
 unchanged. `NeighborRequest.mode = 2` asks for a stream: a chunk sets
 `NeighborList.more` and `next`, and the client repeats the call with
 `cursor` instead of receiving every pair in one message. `mode = 1` is

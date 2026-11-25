@@ -696,6 +696,7 @@ CPP_TYPE_HEADERS = (
 )
 CPP_FUNCTION_HEADERS = (
     "CppCore/rgpot/ExternalPot/ExternalPot.hpp",
+    "CppCore/rgpot/PotentialFactory.hpp",
     "CppCore/rgpot/CalculatorGroup.hpp",
     "CppCore/rgpot/UmaPot/UmaConfig.hpp",
 )
