@@ -6,3 +6,5 @@ preserving the existing LJ plugin constructor.
 The Python `rgpot_lammps_potential()` binding now has an overload that accepts
 flat `PotentialConfig` bytes, and the external C ABI adds
 `rgpot_lammpc_potential()`.
+The lammpc backend passes the same `Capabilities` handshake as the other
+profile backends and is refused, naming its path, on a mismatch.

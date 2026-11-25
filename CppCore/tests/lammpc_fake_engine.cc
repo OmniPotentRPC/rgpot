@@ -3,10 +3,13 @@
 //
 // A liblammpc stand-in exporting the minimum potential ABI profile. A session
 // reads lj/cut "1 1 eps sigma" from PotentialConfig.lammps and evaluates the
-// unshifted 12-6 pair over all atom pairs, open boundaries. Every result
-// carries the stress kStress, so a host can check it is passed through.
-// lammpc_fake_init_calls and lammpc_fake_finalize_calls count how often its
-// backend-global state was set up and finalized.
+// unshifted 12-6 pair over all atom pairs, open boundaries. It declares the
+// stress operation and every result carries kStress, so a host can check it
+// is passed through. lammpc_fake_init_calls and lammpc_fake_finalize_calls
+// count how often its backend-global state was set up and finalized.
+//
+// Built with LAMMPC_FAKE_BRIDGE_ABI_MAJOR, it reports that eindir bridge ABI
+// major in its Capabilities, which a host with another major must refuse.
 
 #include "rgpot/abi/Compat.hpp"
 #include "rgpot/rpc/Potentials.capnp.h"
@@ -273,13 +276,17 @@ LAMMPC_FAKE_EXPORT int lammpc_capabilities_result(void *out, size_t capacity,
     caps.setBackendVersion(lammpc_version());
     caps.setAbiVersion(lammpc_abi_version());
     caps.setAvailable(true);
-    auto ops = caps.initOperations(2);
+    auto ops = caps.initOperations(3);
+    ops.set(2, ::Capabilities::Operation::STRESS);
     ops.set(0, ::Capabilities::Operation::ENERGY);
     ops.set(1, ::Capabilities::Operation::FORCES);
     auto kinds = caps.initConfigKinds(1);
     kinds.set(0, "lammps");
     caps.setSchemaVersion("fake");
     rgpot::abi::fill_compatibility(caps);
+#ifdef LAMMPC_FAKE_BRIDGE_ABI_MAJOR
+    caps.setBridgeAbiMajor(LAMMPC_FAKE_BRIDGE_ABI_MAJOR);
+#endif
     auto words = ::capnp::messageToFlatArray(msg);
     const auto bytes = words.asBytes();
     *written = bytes.size();

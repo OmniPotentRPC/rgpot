@@ -4,7 +4,8 @@
 // LammpsPot over lammpc_fake_engine, which RGPOT_LAMMPC_ENGINE names. The
 // fake evaluates the unshifted lj/cut pair from PotentialConfig.lammps and
 // returns a fixed stress, so each value here is checked against the analytic
-// dimer and the fake's constants.
+// dimer and the fake's constants. RGPOT_LAMMPC_ABI2_ENGINE names the variant
+// reporting an incompatible eindir bridge ABI major.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -39,11 +40,14 @@ constexpr double kSeparation = 3.0;
 constexpr double kStress[9] = {0.1, 0.2, 0.3, 0.2, 0.4, 0.5, 0.3, 0.5, 0.6};
 constexpr const char *kMissing = "./liblammpc_missing_for_test.so";
 
-std::string fake_engine_path() {
-  const char *path = std::getenv("RGPOT_LAMMPC_ENGINE");
+std::string env_path(const char *name) {
+  const char *path = std::getenv(name);
+  INFO(name);
   REQUIRE(path != nullptr);
   return path;
 }
+
+std::string fake_engine_path() { return env_path("RGPOT_LAMMPC_ENGINE"); }
 
 std::vector<unsigned char> flat_bytes(::capnp::MallocMessageBuilder &msg) {
   auto words = ::capnp::messageToFlatArray(msg);
@@ -289,4 +293,21 @@ TEST_CASE("LammpsPot lammpc finalizes the backend on every teardown path",
     REQUIRE(init_calls() == inits + 1);
     REQUIRE(finalize_calls() == finals + 1);
   }
+}
+
+TEST_CASE("LammpsPot lammpc refuses an engine with an incompatible ABI",
+          "[external][lammpc][compat]") {
+  REQUIRE(!fake_engine_path().empty());
+  const std::string path = env_path("RGPOT_LAMMPC_ABI2_ENGINE");
+  const auto config = lammps_config();
+  const std::string what = construct_error(config, path);
+  REQUIRE_THAT(what, ContainsSubstring(path));
+  REQUIRE_THAT(what, ContainsSubstring("lammpc backend refused"));
+  REQUIRE_THAT(what, ContainsSubstring("eindir bridge ABI major 2 is not 1"));
+
+  char err[512] = {0};
+  REQUIRE(rgpot_lammpc_potential(path.c_str(), config.data(), config.size(),
+                                 err, sizeof err) == nullptr);
+  REQUIRE_THAT(std::string(err),
+               ContainsSubstring("eindir bridge ABI major 2 is not 1"));
 }

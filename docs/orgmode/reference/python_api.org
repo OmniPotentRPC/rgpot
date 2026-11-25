@@ -453,8 +453,8 @@ rgpot_lammps_potential(config_bytes, engine_path='')
   =RuntimeError= =engine library was not opened: ...=, listing each path tried.
   The lammpc overload raises =ValueError= for =config_bytes= that are missing,
   misaligned, truncated, or not a =PotentialConfig= with the =lammps= arm.
-  It raises =RuntimeError= when =liblammpc= does not load, reports
-  unavailable, or refuses the session.
+  It raises =RuntimeError= when =liblammpc= does not load, fails the
+  =Capabilities= handshake, reports unavailable, or refuses the session.
   A non-empty =engine_path= that does not open raises =RuntimeError= naming it.
 
 *** =rgpot.rgpot_gromacs_potential=

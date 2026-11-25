@@ -2159,18 +2159,33 @@ if get_option('with_tests')
             depends: cpmdc_fake_engine,
             kwargs: _rt_kw['ProfileLoaderTest'],
         )
-        lammpc_fake_engine = shared_library(
-            'lammpc_fake_engine',
-            sources: ['tests/lammpc_fake_engine.cc'],
-            cpp_args: _build_identity_args,
-            dependencies: [ptlrpc_dep],
-            include_directories: _incdirs + ['.'],
-            install: false,
-        )
+        lammpc_fake_variants = {
+            'lammpc_fake_engine': [],
+            'lammpc_fake_engine_abi2': ['-DLAMMPC_FAKE_BRIDGE_ABI_MAJOR=2'],
+        }
+        lammpc_fake_libs = {}
+        lammpc_fake_targets = []
+        foreach _name, _defs : lammpc_fake_variants
+            lammpc_fake_libs += {
+                _name: shared_library(
+                    _name,
+                    sources: ['tests/lammpc_fake_engine.cc'],
+                    cpp_args: _build_identity_args + _defs,
+                    dependencies: [ptlrpc_dep],
+                    include_directories: _incdirs + ['.'],
+                    install: false,
+                ),
+            }
+            lammpc_fake_targets += lammpc_fake_libs[_name]
+        endforeach
         lammpc_fake_env = environment()
         lammpc_fake_env.set(
             'RGPOT_LAMMPC_ENGINE',
-            lammpc_fake_engine.full_path(),
+            lammpc_fake_libs['lammpc_fake_engine'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPC_ABI2_ENGINE',
+            lammpc_fake_libs['lammpc_fake_engine_abi2'].full_path(),
         )
         test(
             'LammpcPotTest',
@@ -2185,7 +2200,7 @@ if get_option('with_tests')
                 build_rpath: _metatomic_build_rpath,
             ),
             env: lammpc_fake_env,
-            depends: lammpc_fake_engine,
+            depends: lammpc_fake_targets,
             kwargs: _rt_kw['LammpcPotTest'],
         )
         test(

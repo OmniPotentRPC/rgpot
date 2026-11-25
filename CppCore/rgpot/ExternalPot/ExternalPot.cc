@@ -31,6 +31,7 @@
 #include <climits>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -38,6 +39,7 @@
 #include <map>
 #include <mutex>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -674,7 +676,7 @@ LammpsPot::LammpsPot(const void *config_capnp, size_t config_capnp_size,
       engine_path.empty() ? std::string("lammpc")
                           : "lammpc engine_path '" + engine_path + "'";
   try {
-    impl_->profile_loader.load("lammpc", engine_path);
+    rgpot::abi::checked_load(impl_->profile_loader, "lammpc", engine_path);
   } catch (const std::exception &ex) {
     throw std::runtime_error(backend + ": " + ex.what());
   }
