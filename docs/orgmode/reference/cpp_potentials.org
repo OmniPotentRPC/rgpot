@@ -508,9 +508,10 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
   rgpot::TersoffSiC
 - Inputs :: none.
 - Units :: =cutoff= in the length unit of the potential: Angstrom for
-  =rgpot::GuptaPot=, =rgpot::LJPot=, =rgpot::MorsePot=,
-  =rgpot::StillingerWeberSi= and =rgpot::TersoffSiC=, the unit of =a= for
-  =rgpot::SuttonChenPot= and the unit of the table for =rgpot::EAMTablePot=.
+  =rgpot::LJPot=, =rgpot::MorsePot=, =rgpot::StillingerWeberSi= and
+  =rgpot::TersoffSiC=, the coordinate length unit for =rgpot::GuptaPot=, the
+  unit of =a= for =rgpot::SuttonChenPot= and the unit of the table for
+  =rgpot::EAMTablePot=.
 - Outputs :: a =rgpot::Locality= from =CppCore/rgpot/Locality.hpp=.
   =cutoff= is the range of each site energy, =pairwise= is true when every
   energy term is a function of one pair distance, and =densities= is the number
