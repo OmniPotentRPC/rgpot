@@ -43,9 +43,9 @@ namespace rgpot {
 
 namespace {
 
-/// Stored upper-pair count below which a call stays on one thread even when
-/// in.nAtoms >= kTeamMinAtoms (dilute configurations where barrier latency
-/// exceeds the pair work).
+/// Stored upper-pair count below which a stored call walks its pairs on one
+/// thread even when teamSize gives it a team (dilute configurations where
+/// barrier latency exceeds the pair work). A stream does not consult it.
 constexpr std::size_t kMinParallelHalfPairs = 4096;
 
 /// Interior atom split indices in partitionAtomsByWork are rounded to the
