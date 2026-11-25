@@ -49,6 +49,23 @@ protected:
   registry(const registry &) { count.fetch_add(1, std::memory_order_relaxed); }
 
   /**
+   * @brief Move constructor.
+   */
+  registry(registry &&) noexcept {
+    count.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  /**
+   * @brief Copy assignment leaves this live registry entry in place.
+   */
+  registry &operator=(const registry &) noexcept { return *this; }
+
+  /**
+   * @brief Move assignment leaves this live registry entry in place.
+   */
+  registry &operator=(registry &&) noexcept { return *this; }
+
+  /**
    * @brief Destructor.
    */
   ~registry() { count.fetch_sub(1, std::memory_order_relaxed); }

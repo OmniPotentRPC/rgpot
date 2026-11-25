@@ -415,9 +415,13 @@ def is_elf(path: Path) -> bool:
 
 
 def defined_generation_symbols(lib: Path) -> list[str]:
+    if sys.platform == "darwin":
+        command = ["nm", "-gU", "-C", str(lib)]
+    else:
+        command = ["nm", "-D", "--defined-only", "--demangle", str(lib)]
     try:
         symbols = subprocess.run(
-            ["nm", "-D", "--defined-only", "--demangle", str(lib)],
+            command,
             capture_output=True,
             text=True,
             check=True,
@@ -441,7 +445,7 @@ def check_generation_symbol(lib: Path, engines: list[Path]) -> None:
     header = NEIGHBOURS.read_text()
     if re.search(r"nextGeneration\(\)\s*(?:noexcept\s*)?\{", header):
         fail("Neighbours.hpp must not define nextGeneration")
-    if not sys.platform.startswith("linux"):
+    if not (sys.platform.startswith("linux") or sys.platform == "darwin"):
         return
     # The check reads ELF dynamic symbols. A cross build's DLLs have none.
     if lib.suffix not in {".a", ".lib"} and not is_elf(lib):
