@@ -3063,6 +3063,40 @@ if get_option('with_tests')
                     kwargs: _rt_kw['OrcacFakeExports'],
                 )
             endif
+            # -Dorcac_main=enabled builds liborcac from the orcac commit of
+            # subprojects/orcac.wrap (the commit orcac.h.pin names) and runs
+            # the orca arm against it and orcac's fake_orca.sh replay.
+            _orcac_main = subproject(
+                'orcac',
+                required: get_option('orcac_main'),
+                default_options: ['with_tests=false'],
+            )
+            if _orcac_main.found()
+                _orcac_wrap = _fs.read('../subprojects/orcac.wrap')
+                _orcac_tree = _orcac_wrap.split('directory = ')[1].split('\n')[0].strip()
+                _liborcac_main = _orcac_main.get_variable('liborcac')
+                potential_factory_env.set(
+                    'RGPOT_FACTORY_ORCAC_REAL',
+                    _liborcac_main.full_path(),
+                )
+                potential_factory_env.set(
+                    'RGPOT_FACTORY_ORCAC_DATA',
+                    meson.global_source_root() / 'subprojects' / _orcac_tree / 'tests' / 'data' / 'orca',
+                )
+                potential_factory_depends += [_liborcac_main]
+                if _orcac_exports_py.found()
+                    test(
+                        'OrcacMainExports',
+                        _orcac_exports_py,
+                        args: [
+                            _orcac_exports[0],
+                            _liborcac_main,
+                            _orcac_exports[1],
+                        ],
+                        kwargs: _rt_kw['OrcacMainExports'],
+                    )
+                endif
+            endif
             test(
                 'PotentialFactoryTest',
                 executable(

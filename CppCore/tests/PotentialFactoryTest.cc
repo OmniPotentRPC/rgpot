@@ -3,11 +3,14 @@
 
 // rgpot::makePotential: the in-process arms against the potentials built
 // directly, the plugin arm over the classical engine, the orca arm over a
-// stand-in liborcac ABI 1, and the arms this build cannot construct.
+// stand-in liborcac ABI 1 and, when one is given, a liborcac built from
+// orcac main, and the arms this build cannot construct.
 // RGPOT_FACTORY_CLASSICAL_ENGINE and RGPOT_FACTORY_ORCAC_FAKE name the two
 // stand-in libraries.
 
 #include <array>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -372,6 +375,59 @@ TEST_CASE("the orca arm builds an ORCACPot over liborcac ABI 1", "[factory][orca
                         ContainsSubstring("ORCACPot: liborcac not loaded"));
   }
   std::filesystem::remove(log);
+}
+
+// RGPOT_FACTORY_ORCAC_REAL names a liborcac built from orcac main and
+// RGPOT_FACTORY_ORCAC_DATA its tests/data/orca, whose fake_orca.sh replays
+// a fixed engrad: -75.5 Eh and the gradient below for this water.
+TEST_CASE("the orca arm runs a liborcac built from orcac main", "[factory][orca][orcac-main]") {
+  const char *real = std::getenv("RGPOT_FACTORY_ORCAC_REAL");
+  const char *data = std::getenv("RGPOT_FACTORY_ORCAC_DATA");
+  if (real == nullptr || *real == '\0' || data == nullptr || *data == '\0') {
+    SKIP("RGPOT_FACTORY_ORCAC_REAL and RGPOT_FACTORY_ORCAC_DATA are not set");
+  }
+  const AtomMatrix water{{0.0, 0.0, 0.1173}, {0.0, 0.7572, -0.4692}, {0.0, -0.7572, -0.4692}};
+  const std::vector<int> z{8, 1, 1};
+  const std::array<double, 9> grad{0.020, -0.010, 0.005, -0.015, 0.012,
+                                   -0.003, -0.005, -0.002, -0.002};
+  const auto scratch = scratchFile("rgpot_orcac_main");
+  std::filesystem::create_directories(scratch);
+  ScopedEnv replay("ORCAC_FAKE_REPLAY", data);
+  ScopedEnv env("ORCAC_LIBRARY", real);
+
+  capnp::MallocMessageBuilder message;
+  auto orca = message.initRoot<::PotentialConfig>().initOrca();
+  orca.setMethod("HF");
+  orca.setBasis("STO-3G");
+  orca.setKeywords("TightSCF");
+  orca.setExecutable((std::filesystem::path(data) / "fake_orca.sh").string());
+  orca.setScratchDir(scratch.string());
+  orca.setNprocs(2);
+  orca.setMaxcoreMb(400);
+  orca.setTimeoutS(30.0);
+  {
+    auto pot = rgpot::makePotential(message.getRoot<::PotentialConfig>().asReader());
+    auto *orcac = dynamic_cast<rgpot::ORCACPot *>(pot.get());
+    REQUIRE(orcac != nullptr);
+    INFO(orcac->loadError());
+    REQUIRE(orcac->available());
+    REQUIRE(orcac->libraryPath() == real);
+
+    for (int call = 0; call < 2; ++call) {
+      auto [e, f, v] = (*pot)(water, z, kBox);
+      (void)v;
+      const double e_h = e / rgpot::units::HARTREE_TO_EV;
+      std::printf("orcac main call %d: E = %.12f eV = %.12f Eh, |E/Eh + 75.5| = %.3e\n",
+                  call, e, e_h, std::abs(e_h + 75.5));
+      REQUIRE_THAT(e_h, WithinAbs(-75.5, 1e-9));
+      for (std::size_t i = 0; i < grad.size(); ++i) {
+        const double f_h = f.data()[i] / rgpot::units::HARTREE_BOHR_TO_EV_ANGSTROM;
+        std::printf("  F[%zu] = %+.12f eV/A = %+.12f Eh/bohr\n", i, f.data()[i], f_h);
+        REQUIRE_THAT(f_h, WithinAbs(-grad[i], 1e-9));
+      }
+    }
+  }
+  std::filesystem::remove_all(scratch);
 }
 
 TEST_CASE("arms this build cannot construct are refused by name", "[factory]") {

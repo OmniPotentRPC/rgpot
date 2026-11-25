@@ -764,6 +764,19 @@ explicit ORCACPot(ORCACConfig config);
   keywords, blocks and executable, the charge, the multiplicity and =restart=.
 - Errors :: none.
 
+*** Testing against orcac main
+
+=PotentialFactoryTest= runs the =orca= arm against
+=CppCore/tests/orcac_fake_engine.c=, a stand-in that exports exactly the
+thirteen ABI 1 functions; =OrcacFakeExports= checks that list.
+With =-Dorcac_main=enabled= the test build also compiles =liborcac= at the orcac
+commit of =subprojects/orcac.wrap=.
+=OrcacMainExports= checks its exports.
+=PotentialFactoryTest= then runs the =orca= arm against it, with the
+=fake_orca.sh= replay of the orcac test data as the ORCA executable.
+That replay gives -75.5 Hartree for a water molecule, and the test requires the
+energy and forces to within 1e-9 in Hartree units on two calls.
+
 ** Skala
 
 skala-1.1 is the exchange-correlation keyword this class writes into NWChem, not

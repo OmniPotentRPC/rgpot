@@ -50,6 +50,7 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_water= | boolean | =false= | Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option. |
 | =with_eam_table= | boolean | =false= | EAM and Finnis-Sinclair potentials read from LAMMPS funcfl, setfl and eam/fs tables. |
 | =with_orca= | boolean | =false= | ORCAPot: ORCA energy and gradient through the orca executable run as a child process (POSIX). The executable is found at run time. |
+| =orcac_main= | feature | =disabled= | Tests: build liborcac from the orcac commit pinned in =subprojects/orcac.wrap= and run the orca arm of =makePotential= against it (=PotentialFactoryTest=, =OrcacMainExports=). |
 | =with_cbe= | feature | =disabled= | Link =potlibc= and build the CBE (CH5 2008) H + CH4 frontend. potlibc must provide =potlibc_gradient_jet=. |
 | =with_lammps= | feature | =auto= | LAMMPS pair_style rgpot and the lj/cut comparison. Needs the lammps Python module. pair_style rgpot also needs lammps_src. |
 | =lammps_src= | string | =(empty)= | LAMMPS src directory that contains pair.h, matching the liblammps that will load the plugin. |
