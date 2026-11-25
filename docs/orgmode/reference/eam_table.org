@@ -77,6 +77,15 @@ fractional coordinates, so a periodic call needs every face spacing above twice
 the cutoff, and the call fails with =RGPOT_INVALID_PARAMETER= for a smaller
 cell.
 
+=rgpot_core::eam_table_factory= instead constructs the C++ implementation and
+returns an owned =PotentialImpl=.
+=eam_table_from_file= reads a DYNAMO table through the C++ parser, while =eam_table_from_data=
+serializes an =EamTable= into a lossless Finnis-Sinclair table before
+constructing the potential.
+Both factories accept periodic-boundary and neighbour-list skin options.
+The crate packages the required C++ source closure, so downstream Rust crates do
+not need a separate =librgpot= installation.
+
 Python builds the C++ potential, not the Rust one:
 =rgpot.EAMTablePot(file, format)= is in [[file:python_api.org][the Python API]].
 
@@ -85,9 +94,8 @@ Python builds the C++ potential, not the Rust one:
 The tables go through the steps of =src/MANYBODY/pair_eam.cpp=, so a file gives
 the LAMMPS energy and forces to rounding.
 
-- A =Funcfl= file is resampled by four-point Lagrange interpolation onto
-  =lround((N - 1) d / d)= points, one fewer than the file lists, as
-  =PairEAM::file2array= does for a single file.
+- A =Funcfl= file keeps all =N= tabulated points when its source and destination
+  spacings are equal, including both grid endpoints.
 - The pair term of a =Funcfl= file is ~r phi = 27.2 * 0.529 * Z(r)^2~ in eV
   Angstrom.
   27.2 is the Hartree in eV and 0.529 the Bohr radius in Angstrom, the rounded
