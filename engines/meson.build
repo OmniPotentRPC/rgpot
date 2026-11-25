@@ -789,8 +789,21 @@ endif
 abi_python = find_program('python3', 'python')
 abi_script = files('../scripts/abi_symbols.py')
 abi_baselines = files('../scripts/abi_baseline.txt')
-if has_fast_nlist
+if has_fast_nlist and fastnlist_beside_lib.length() == 0
     abi_baselines += files('../scripts/abi_baseline_fast.txt')
+endif
+# A static MinGW librgpot keeps the fast list in its own archive.
+if fastnlist_beside_lib.length() > 0
+    test(
+        'abi_symbols_fast',
+        abi_python,
+        args: [
+            abi_script,
+            fastnlist_beside_lib[0],
+            files('../scripts/abi_baseline_fast.txt'),
+        ],
+        timeout: 30,
+    )
 endif
 test(
     'abi_symbols',

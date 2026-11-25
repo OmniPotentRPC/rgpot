@@ -43,6 +43,8 @@
 #   rust_core     meson-only features (meson options of the same name)
 #   so_exports    rgpot_so_exports is registered: Linux, the Rust core, the
 #                 full library, and not a static fast-list object
+#   fast_beside   a static MinGW build keeps the fast pair list archive
+#                 beside librgpot
 #   probe         an optional program or module the build looks for: the
 #                 test may be absent even when the rest of the gate holds
 #
@@ -90,6 +92,7 @@
 @metatomic CMake has no option for libtorch, metatomic or UMA.
 @skala CMake has no option for Skala.
 @rust_core CMake builds rgpot-core only for RGPOT_WITH_MDI, and none of these tests uses that build.
+@fast_nlist CMake does not build the fast pair list.
 
 # Header-only and role-independent tests.
 AotiPublicationTest | tests | custom |
@@ -120,6 +123,7 @@ CxxLayoutTest | tests core | custom workdir=. |
 CxxLayoutVirtualCounts | tests core python | py CppCore/tests/check_virtual_counts.py |
 CxxSoversion | tests core python | custom |
 abi_symbols | core | custom |
+abi_symbols_fast | core fast_beside | custom | @fast_nlist
 abi_symbols_fixture_shared | tests core posix | custom |
 abi_symbols_fixture_archive_a | tests core posix | custom |
 abi_symbols_fixture_archive_lib | tests core posix | custom |

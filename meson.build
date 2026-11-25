@@ -1000,6 +1000,15 @@ if has_fast_nlist
         get_option('default_library') == 'static'
         and host_system != 'windows'
     )
+    # A partial link is not safe for PE objects, so a static MinGW build
+    # keeps the rust archive beside librgpot and installs it with it.
+    # Meson then propagates it to the final link instead of handing it
+    # to ar.
+    _fast_beside = (
+        get_option('default_library') == 'static'
+        and host_system == 'windows'
+        and cppc.get_argument_syntax() != 'msvc'
+    )
     # With with_rust_core, rgpot-core is linked too. Each is a Rust
     # staticlib that embeds its own std, so two archives define the runtime
     # twice. rgpot-bundle links both into one staticlib instead, and that
@@ -1073,6 +1082,8 @@ if has_fast_nlist
             build_always_stale: true,
             build_by_default: true,
             console: true,
+            install: _fast_beside and not meson.is_subproject(),
+            install_dir: [get_option('libdir'), false],
         )
     else
         _fastnlist_tgt = custom_target(
@@ -1094,9 +1105,13 @@ if has_fast_nlist
             output: _fast_lib_name,
             build_by_default: true,
             console: true,
+            install: _fast_beside and not meson.is_subproject(),
+            install_dir: get_option('libdir'),
         )
     endif
     _args += ['-DRGPOT_HAS_FAST_NLIST']
+    fastnlist_pc_libs = []
+    fastnlist_beside_lib = []
     # Archive first, then the system libraries rustc named. The generated
     # source is what ninja builds; repeating its path here keeps that
     # order on a single-pass link. A response file is not used: gcc leaves
@@ -1115,6 +1130,17 @@ if has_fast_nlist
         fastnlist_native_dep = declare_dependency(
             link_args: _fast_native,
         )
+    elif _fast_beside
+        fastnlist_dep = declare_dependency(
+            sources: _fast_bundled ? [_fastnlist_tgt[1]] : [],
+            link_with: _fastnlist_tgt[0],
+            link_args: _fast_native,
+        )
+        fastnlist_native_dep = fastnlist_dep
+        # Meson would list the archive after the system libraries it needs;
+        # naming it first keeps the order a single-pass link wants.
+        fastnlist_pc_libs = [_fastnlist_tgt[0]] + _fast_native
+        fastnlist_beside_lib = [_fastnlist_tgt[0]]
     else
         fastnlist_dep = declare_dependency(
             sources: [_fast_bundled ? _fastnlist_tgt[1] : _fastnlist_tgt],
@@ -1161,6 +1187,8 @@ else
     fastnlist_native_dep = fastnlist_dep
     fastnlist_export_args = []
     fastnlist_umbrella_kwargs = {}
+    fastnlist_pc_libs = []
+    fastnlist_beside_lib = []
     message('fast pair list: disabled, classical pots use the C++ scan')
 endif
 
@@ -1519,6 +1547,7 @@ if get_option('with_tests') and _rt_atoms['python']
         'mpiexec': find_program('mpirun', 'mpiexec', required: false).found(),
         'linux': host_system == 'linux',
         'so_exports': rgpot_registers_so_exports,
+        'fast_beside': fastnlist_beside_lib.length() > 0,
         'posix': host_system != 'windows',
         'capnp_tool': find_program('capnp', required: false).found(),
         'rustc': find_program('rustc', required: false).found(),

@@ -3452,6 +3452,8 @@ if not meson.is_subproject()
         _pc_cflags += ['-DRGPOT_STATIC']
     endif
 
+    _pc_libs += fastnlist_pc_libs
+
     pkg = import('pkgconfig')
     pkg.generate(
         name: 'rgpot',
