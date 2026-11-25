@@ -1,3 +1,1 @@
-<!-- Copyright 2023--present rgpot developers -->
-
 The EMT reference now states which failures keep the cached kernel and which drop it. A call that fails before the kernel runs, and a non-finite energy or force, keep a kernel from an earlier successful call. An Asap failure and any other exception raised by the kernel drop it.
