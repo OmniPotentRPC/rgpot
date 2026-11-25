@@ -33,11 +33,20 @@ use crate::types::rgpot_force_input_t;
 /// writes `(3 * n_atoms)^2` doubles, row-major. `RGPOT_HESSIAN_ANALYTIC`
 /// calls it, and so does `RGPOT_HESSIAN_EXACT`.
 ///
+/// Replacing or clearing the callback returns only after every call of the
+/// previous callback that was already running has returned, and the previous
+/// callback is never called after this function returns. The caller may
+/// release the old callback and its state as soon as this function returns.
+/// Because it waits for those calls, this function must not be called from
+/// inside a Hessian callback, nor from a thread that is inside this handle's
+/// Hessian entry points: it would wait for itself.
+///
 /// # Safety
 ///
 /// `pot` must be NULL or a live handle. A NULL `pot` returns
 /// `RGPOT_INVALID_PARAMETER`. `callback` must be safe to call with the
-/// handle's `user_data` for as long as it stays registered.
+/// handle's `user_data` for as long as it stays registered, and must not
+/// re-enter this handle's Hessian entry points or replace the callback.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_set_hessian_callback(
     pot: *const rgpot_potential_t,
