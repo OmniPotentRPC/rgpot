@@ -176,7 +176,7 @@ Enable the generic loader, not an engine-specific feature.
 #+attr_rgpot: syntax
 #+begin_src toml
 [dependencies]
-rgpot-core = { version = "3.7.0", features = ["engine"] }
+rgpot-core = { version = "3.8.0", features = ["engine"] }
 #+end_src
 
 =rgpot_core::engine::CoupledWellConfig= is the typed create message.

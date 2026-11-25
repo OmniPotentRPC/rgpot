@@ -1,1 +1,0 @@
-The AOTI package export enables deterministic algorithms while it compiles, so a scatter that used to lower to unordered atomic adds gives one output for one input, and the caller's deterministic setting is restored afterwards.

@@ -1,1 +1,0 @@
-`RgpotRpcCalculator.close` now drops the Python capability handle before tearing down the `kj` event loop, handles already-closed loops and unawaited teardown coroutines, always closes its loop and managed `potserv` process in `finally`, avoids unclosed or blocking subprocess pipes in `spawn`, and never masks an active `with`-block exception in `__exit__`.

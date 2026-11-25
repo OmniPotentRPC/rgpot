@@ -188,6 +188,49 @@ def test_tersoff_concurrent_errors_keep_complete_messages() -> None:
         list(pool.map(fail_together, range(workers)))
 
 
+@pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no TersoffPot in this build")
+def test_tersoff_stress_path_from_many_threads() -> None:
+    """Stress, forces and failures from many threads match one thread."""
+    workers = 12
+    rounds = 15
+    frames = [
+        _silicon_cell(500 + k) if k % 2 == 0 else _sic_cell(500 + k)
+        for k in range(workers)
+    ]
+    zero_box = np.diag([10.0, 0.0, 10.0])
+    expected = (
+        "Tersoff potential failed (status 4): rgpot_neighbors: box must be "
+        "finite, and a periodic box must have positive volume"
+    )
+    reference_pot = rgpot.TersoffPot()
+    references = [reference_pot.evaluate(*frame) for frame in frames]
+    shared = rgpot.TersoffPot()
+    ready = Barrier(workers)
+
+    def run(worker: int) -> None:
+        pos, numbers, box = frames[worker]
+        si_pos, si_numbers, _ = frames[worker - worker % 2]
+        ref = references[worker]
+        pot = shared if worker % 3 == 0 else rgpot.TersoffPot()
+        try:
+            for _ in range(rounds):
+                ready.wait(timeout=120)
+                res = pot.evaluate(pos, numbers, box)
+                assert res["energy"] == ref["energy"]
+                np.testing.assert_array_equal(res["forces"], ref["forces"])
+                np.testing.assert_array_equal(res["stress"], ref["stress"])
+                ready.wait(timeout=120)
+                with pytest.raises(RuntimeError) as caught:
+                    pot.evaluate(si_pos, si_numbers, zero_box)
+                assert str(caught.value) == expected
+        except BaseException:
+            ready.abort()
+            raise
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(run, range(workers)))
+
+
 @pytest.mark.thread_unsafe
 @pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no TersoffPot in this build")
 @pytest.mark.parametrize("kind", ("tersoff", "tersoffsic"))

@@ -25,7 +25,7 @@ Data exchange uses the [DLPack](https://github.com/dmlc/dlpack) tensor protocol 
 <!-- [[[cog import rgpot_version as v; cog.outl(v.readme_md())]]] -->
 ```toml
 [dependencies]
-rgpot-core = "3.7.0"
+rgpot-core = "3.8.0"
 ```
 <!-- [[[end]]] -->
 
@@ -34,7 +34,7 @@ Enable the in-process profile loader for backends such as `nwchemc` and `cpmdc`:
 <!-- [[[cog import rgpot_version as v; cog.outl(v.readme_md("profile"))]]] -->
 ```toml
 [dependencies]
-rgpot-core = { version = "3.7.0", features = ["profile"] }
+rgpot-core = { version = "3.8.0", features = ["profile"] }
 ```
 <!-- [[[end]]] -->
 
@@ -43,7 +43,7 @@ Enable the RPC client and server:
 <!-- [[[cog import rgpot_version as v; cog.outl(v.readme_md("rpc"))]]] -->
 ```toml
 [dependencies]
-rgpot-core = { version = "3.7.0", features = ["rpc"] }
+rgpot-core = { version = "3.8.0", features = ["rpc"] }
 ```
 <!-- [[[end]]] -->
 
@@ -51,7 +51,7 @@ Enable the generic engine C ABI loader:
 
 ```toml
 [dependencies]
-rgpot-core = { version = "3.7.0", features = ["engine"] }
+rgpot-core = { version = "3.8.0", features = ["engine"] }
 ```
 
 With the `schema` and `engine` features, the generated `Potentials_capnp`

@@ -1,1 +1,0 @@
-The variance that `ExprPot` returns now scales each child variance by the square of its weight, as `SumPot` does, where it used the weight itself. The two agree only for a weight of one, and a negative weight no longer gives a negative variance.

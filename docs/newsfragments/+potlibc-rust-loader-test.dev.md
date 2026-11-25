@@ -1,1 +1,0 @@
-The `engine_abi_stamps` test now opens `libpotlibc_engine` when `with_potlibc` is enabled, and the new `potlibc_engine_rust_loader` test loads it with `EnginePotential::load`, evaluates a surface, and drives the lock-failure build to check that `EngineError::Lock` latches the handle.

@@ -742,6 +742,104 @@ TEST_CASE("Tersoff concurrent errors keep complete messages",
   REQUIRE(failures.load() == 0);
 }
 
+TEST_CASE("Tersoff stress path from many threads matches one thread",
+          "[fortran][tersoff][stress][threads]") {
+  constexpr int threadCount = 12;
+  constexpr int rounds = 20;
+  struct Frame {
+    std::vector<double> pos;
+    std::vector<int> types;
+    std::array<double, 9> box{};
+  };
+  std::vector<Frame> frames(threadCount);
+  for (int k = 0; k < threadCount; ++k) {
+    Frame &frame = frames[static_cast<std::size_t>(k)];
+    const bool silicon = k % 2 == 0;
+    const double a = silicon ? 5.432 : 4.03;
+    rgpot::test_fixtures::appendDiamond(frame.pos, 2, a);
+    frame.types.assign(frame.pos.size() / 3, 14);
+    if (!silicon) {
+      for (std::size_t i = 0; i < frame.types.size(); ++i) {
+        if (i % 8 < 4) {
+          frame.types[i] = 6;
+        }
+      }
+    }
+    std::mt19937_64 gen(20261125 + static_cast<unsigned>(k));
+    for (double &x : frame.pos) {
+      x += 0.08 * (static_cast<double>(gen() >> 11) * 0x1.0p-53 - 0.5);
+    }
+    frame.box = {2 * a, 0, 0, 0.03 * k, 2 * a, 0, 0, -0.02 * k, 2 * a};
+  }
+  const std::array<double, 9> zeroBox{10.0, 0, 0, 0, 0.0, 0, 0, 0, 10.0};
+  const std::string expected =
+      "Tersoff potential failed (status 4): rgpot_neighbors: box must be "
+      "finite, and a periodic box must have positive volume";
+
+  std::vector<TersoffStress> refs;
+  {
+    rgpot::fortranpots::TersoffPot pot;
+    for (const Frame &frame : frames) {
+      refs.push_back(tersoffStress(pot, frame.pos, frame.types, frame.box));
+    }
+  }
+
+  std::barrier<> ready(threadCount);
+  std::atomic<int> failures{0};
+  std::vector<std::thread> threads;
+  threads.reserve(threadCount);
+  for (int worker = 0; worker < threadCount; ++worker) {
+    threads.emplace_back([&, worker] {
+      const Frame &frame = frames[static_cast<std::size_t>(worker)];
+      const Frame &silicon = frames[static_cast<std::size_t>(worker - worker % 2)];
+      const TersoffStress &ref = refs[static_cast<std::size_t>(worker)];
+      rgpot::fortranpots::TersoffPot pot;
+      std::vector<double> force(frame.pos.size(), 0.0);
+      rgpot::ForceInput in{.nAtoms = frame.pos.size() / 3,
+                           .pos = frame.pos.data(),
+                           .atmnrs = frame.types.data(),
+                           .box = frame.box.data()};
+      rgpot::ForceInput bad{.nAtoms = silicon.pos.size() / 3,
+                            .pos = silicon.pos.data(),
+                            .atmnrs = silicon.types.data(),
+                            .box = zeroBox.data()};
+      for (int round = 0; round < rounds; ++round) {
+        rgpot::ForceOut out{.F = force.data(),
+                            .energy = 0.0,
+                            .variance = 0.0,
+                            .stress = {},
+                            .has_stress = 0};
+        ready.arrive_and_wait();
+        try {
+          pot.forceImpl(in, &out);
+          if (out.has_stress != 1 || out.energy != ref.energy ||
+              force != ref.force ||
+              !std::equal(ref.stress.begin(), ref.stress.end(), out.stress)) {
+            ++failures;
+          }
+        } catch (...) {
+          ++failures;
+        }
+        ready.arrive_and_wait();
+        try {
+          pot.forceImpl(bad, &out);
+          ++failures;
+        } catch (const std::runtime_error &error) {
+          if (error.what() != expected) {
+            ++failures;
+          }
+        } catch (...) {
+          ++failures;
+        }
+      }
+    });
+  }
+  for (auto &thread : threads) {
+    thread.join();
+  }
+  REQUIRE(failures.load() == 0);
+}
+
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {
   rgpot::fortranpots::EDIPPot pot;
   const std::vector<int> types(8, 14);

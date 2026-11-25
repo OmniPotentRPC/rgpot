@@ -7,6 +7,703 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [3.8.0] - 2026-11-25
+
+[3.8.0]: https://github.com/OmniPotentRPC/rgpot/tree/v3.8.0
+
+### Added
+
+- A build option `with_uma` builds the UMA engine plugin against torch alone, without the metatensor and metatomic packages that `with_metatomic` needs. Torch is then a Python package or the C++ distribution: `RGPOT_TORCH_ROOT` may name a libtorch tree (`lib`, `include` and a `build-version` file), and the plugin records that library directory as its run path.
+- A how-to, "Add dispersion to a DFT engine", walks through running a DFT engine such as cpmdc BLYP with its own dispersion off beside a `d2` or `d4` composite term from Python, `potserv` and `libcomposite_engine`, and through correcting existing CPMD BLYP-D2 data with `d2cpmd` at weight -1.
+- A potential handle answers validated Taylor jets along a line: `rgpot_potential_taylor_jet` writes enclosures `lo_k <= D^k V(x)[v^k] / k! <= hi_k` from a jet registered with `rgpot_potential_set_taylor_jet` (`TaylorJet` and `serve_taylor_jet` on the Rust side).
+  A handle without a jet answers the new status `RGPOT_NO_JET` (6), and a jet that meets an undecided branch or leaves a function's domain answers `RGPOT_JET_BRANCH` (7) or `RGPOT_JET_DOMAIN` (8); nothing is differenced in their place.
+  The ABI minor is 4.
+- Add a lammpc-backed constructor path for `LammpsPot` so rgpot can evaluate full
+  LAMMPS `pair_style` setups from `PotentialConfig.lammps` (`LammpsParams`), while
+  preserving the existing LJ plugin constructor.
+  The Python `rgpot_lammps_potential()` binding now has an overload that accepts
+  flat `PotentialConfig` bytes, and the external C ABI adds
+  `rgpot_lammpc_potential()`.
+  The lammpc backend passes the same `Capabilities` handshake as the other
+  profile backends and is refused, naming its path, on a mismatch. `LammpsPot`
+  reports stress only when that backend declares the `stress` operation, and its
+  result-cache key covers the resolved backend file and the configuration in
+  both modes.
+- Add an engine-agnostic `rgpot_md_session_*` C ABI and `rgpot_core::md_session`
+  contract in Angstrom/eV/ps/amu units, backed by an in-process OpenMM session
+  with `3N` hyperplane BAOAB, specular planar walls, deterministic 64-bit seeding,
+  and unconstrained Verlet NVE. `CAbiMdSession::from_engine_ops` adopts the
+  operation table an engine's create call writes: a null required callback is
+  refused with `MdSessionErrorKind::MissingOperation`, and a refused table has
+  its context released through `destroy`.
+- Add the optional `rgpot_engine_taylor_jet` entry point, the
+  `RgpotEngineDerivativeReport` roundoff report and the trailing
+  `RgpotEngineCaps.jet_order` capability to the generic engine C ABI. One call
+  serves a uniform batch of systems and returns the exact first `jet_order`
+  directional derivatives of the gradient along a line for each, the first block
+  being the Hessian-vector product, with the summed operation count and largest
+  scale as a roundoff estimate. An engine without the jet reports
+  `RGPOT_ENGINE_ERR_UNSUPPORTED`, and the Rust loader maps that, a missing symbol
+  or a lower `jet_order` to `EngineError::Unsupported` through
+  `EngineSession::taylor_jet` and `EnginePotential::taylor_jet`. The loader asks
+  for the capabilities once per instance. A potential serves the jet by deriving
+  `rgpot::GradientJet`.
+- Add the public Rust `EngineSession` host with typed engine status, owned
+  callbacks, model-state and hint support, serialized coordinate transforms, and
+  batched force evaluation. Extend public `EngineSymbols` with the optional
+  `model_state`, `set_callbacks`, and `hint` entry points.
+- Added `rgpot.EAMTablePot(file, format, periodic=True, stress=False, skin=1.0)`
+  and `rgpot.has_eam_table`. The class reads a funcfl, setfl or fs table, has a
+  `cutoff` property, and works with `RgpotCalculator("eam_table", ...)`. The
+  wheel build now enables `with_eam_table`.
+- Added `rgpot::PotentialHandle::eam_table(path, format, periodic)`, the C++
+  face of `rgpot_potential_new_eam_table`. It throws `rgpot::Error` where the C
+  constructor returns NULL.
+- Added `rgpot_potential_new_eam_table(path, format, periodic)` to the C ABI
+  of `rgpot-core`, with `rgpot_core::eam_table::EamTablePotential` as its safe
+  Rust wrapper and `rgpot::PotentialHandle::eam_table` for C++. A host reads a
+  LAMMPS funcfl, setfl or Finnis-Sinclair table in process, with no C++ kernel
+  and no engine plugin. The evaluation matches LAMMPS `pair_style eam` on
+  `Cu_u3.eam` for a copper cell with a vacancy to 3e-12 eV and 3e-14 eV per
+  Angstrom.
+- Added optional MD-session neighbour exchange slots to `rgpot_md_session_ops`
+  using the shared `rgpot_nlist_request` / `rgpot_nlist_soa` shape, with clear
+  unsupported status reporting. In Rust, `MdSession::get_neighbors` and
+  `MdSession::set_neighbors` take `MdNlistBuffers` and `MdNlistPairs`, which
+  borrow one slice per column and check their lengths against the pair count and
+  the request before the engine is called.
+
+  The OpenMM session now serves neighbour queries from the current Context
+  geometry through the shared rgpot neighbour builder fallback and reports
+  external neighbour injection as unsupported.
+- Added the controls a rare-event sampler needs to the generic MD session
+  ABI: `rgpot_md_session_run_langevin` returns the Lagrange multiplier of a
+  hyperplane per step (the `dF/dc` integrand of PAFI and the force of
+  Bennett-Chandler), accepts reflecting or rejecting walls, and keeps its
+  seeded random stream across calls; `rgpot_md_session_reseed_velocities` draws
+  Maxwell-Boltzmann velocities, with `n . v = 0` on a plane, identically for
+  every engine; and the periodic box and the first force are set and read through
+  `rgpot_md_session_set_periodic_box`, `rgpot_md_session_get_periodic_box`,
+  `rgpot_md_session_initialize`, and the getters for positions, velocities,
+  forces and energies. The new callbacks follow `destroy` in the vtable, so an
+  engine built against the previous header still loads. `rgpot_core::md_session`
+  mirrors them with `MdSession::run_langevin` and the matching
+  Maxwell-Boltzmann draw.
+- Added user-facing analytic model support end to end: potserv now serves
+  `DoubleWell` and `CoupledProtonWell`, clients can call `calculateHvp` over
+  RPC for their analytic Hessian-vector products, and the C model API
+  documents constructor and evaluation usage.
+- An opt-in MDI compatibility frontend now serves every `rgpot_potential_t` to drivers such as LAMMPS `fix mdi/qm`, with atomic-unit wire conversion, shared energy/force evaluations, and TCP low-latency mode. Direct in-process calls and Cap'n Proto RPC remain the default paths. Meson `-Dwith_mdi=true` and CMake `-DRGPOT_WITH_MDI=ON` build it, TCP is refused with an error where POSIX sockets are missing, and `rgpot_mdi_server_start` is exported by every build, so the C ABI minor of 9 is true of each library; a build without the `mdi` feature returns `RGPOT_RPC_ERROR`.
+- CPMD engine and RPC callers can select a stable orbital key per image or bead, including through the Python RPC calculator.
+- Engine plugins expose optional C calls to attach an rgpot result cache and report how many geometry results the kernel computed and how many the cache served.
+- Load the optional `rgpot_engine_hvp` and `analytic_hvp` capability through
+  `rgpot_core::engine::EnginePotential`. Engine-backed potentials use the
+  existing `Capabilities.hessianVector` and `Potential.calculateHvp` RPC path;
+  an engine without the analytic operation returns
+  `RGPOT_ENGINE_ERR_UNSUPPORTED` and never falls back to finite differences, and
+  overlapping `direction` and `hv_out` buffers are rejected with
+  `RGPOT_ENGINE_ERR_INVALID`.
+- Meson consumers can take `rgpot_dep_no_openmp` in place of `rgpot_dep` to compile and link against rgpot without the OpenMP flag. librgpot is still built with OpenMP and keeps its thread teams: a shared librgpot records the runtime as `NEEDED`, and a static one now links the runtime library by name, so its archives no longer put `-fopenmp` on the consumer's link line. `rgpot_dep` still passes the flag to its consumers.
+- Setting `use_openmp` to false builds the cell walk and the potentials serially. `librgpot` and a consumer of its dependency then get neither the OpenMP flag nor the runtime, and the regions guarded by `_OPENMP` run on one thread.
+- The C API of `rgpot-core` computes dense Hessians with
+  `rgpot_potential_hessian`, under an explicit `rgpot_hessian_scheme_t`
+  (`RGPOT_HESSIAN_ANALYTIC`, `RGPOT_HESSIAN_AD`, `RGPOT_HESSIAN_EXACT` or
+  `RGPOT_HESSIAN_CENTRAL`, the last making `6 * n_atoms` force calls), and writes
+  the scheme that ran to `scheme_used`. `rgpot_potential_set_hessian_callback`
+  and `rgpot_potential_set_ad_hessian_callback` register the analytic and
+  dual-number Hessians, and `rgpot_potential_set_ad_hvp_callback` a dual-number
+  Hessian-vector product, which `RGPOT_HVP_AD` calls. `RGPOT_HVP_EXACT` takes the
+  analytic product, else the dual-number one, and refuses rather than
+  differencing. `rgpot_potential_hvp_resolved` reports the scheme an
+  `RGPOT_HVP_AUTO` product resolved to. `rgpot_potential_derivative_caps` reports
+  which analytic, dual-number and finite-difference schemes a handle has, with
+  their force-call costs, and `rgpot_potential_derivative_counts` counts the
+  requests each scheme answered.
+- The Cap'n Proto ASE calculator now provides remote stress for periodic cells, including cell filters and barostats.
+- The Hessian-vector explanation page now covers the dual-number and exact product schemes, how the scheme that answered is reported, the dense Hessian schemes and the capability query, and when to take the dense Hessian instead of products: the break-even `k* = (t_dense - t_hvp)/t_apply + 1`, which is `6N - 1` with finite differences only, and the correction when a multiply by the stored Hessian is not free.
+- The Muller-Brown analytic surface now has configurable parameters and C++, C, Rust, Python, RPC, and generic-engine interfaces.
+  Each configure call describes the whole surface, and an empty parameter list takes the published default; the PotentialConfig arms reference has the rule.
+  A PotentialConfig arm that does not belong on that builtin is refused with an error that names the arm.
+  MullerBrownPot::paramsKey follows the six parameter lists, so two surfaces do not share a result-cache entry.
+- The Python potentials gain `hessian(positions, atom_types, box, scheme)`, which
+  returns the dense `(3N, 3N)` Hessian and the name of the scheme that computed
+  it; `scheme` has no default, and `"analytic"`, `"ad"` and `"exact"` are refused
+  on a kernel without them while `"central"` makes `6N` force calls.
+  `hvp_resolved` returns the product with the scheme that ran, so an `"auto"`
+  product that resolved to forward differences reports it, and `hvp` accepts
+  `"ad"` and `"exact"`. `derivative_caps()` reports which analytic, dual-number
+  and finite-difference schemes a kernel has, with their force-call costs, and
+  `derivative_counts()` counts the requests each scheme answered.
+- The always-built `libcoupled_well_engine.so` is an analytic engine plugin for one atom on a two-coordinate coupled well, with a quartic barrier along x and a transverse spring shifted by the barrier coordinate. It takes a versioned create message with the atomic number and the barrier energy, well position, transverse spring and coupling, and provides exact energy, forces, batch evaluation and Hessian-vector products. `rgpot_core::engine::CoupledWellConfig` and `PotlibcConfig` are the typed create messages for it and for the potlibc plugin; both are `#[non_exhaustive]`, have `Default` and `with_*` builders, and `validate`. `libpotlibc_engine.so` now evaluates a batch natively.
+- The built-in plugin registry now includes classical-morse and sutton-chen, and eam-funcfl and eam-setfl when tabulated EAM is built. Each one reads a flat JSON configuration. An external plugin whose name is already registered is refused, and the existing plugin is kept.
+- The default-disabled `with_potlibc` option builds `libpotlibc_engine.so`, which selects fixed-size and variable-size POTLIB surfaces through a versioned engine create message.
+  The plugin converts the engine ABI units, accepts species where potlibc metadata marks them unspecified, and exposes analytic forces and Hessian-vector products reported by the selected surface.
+  The plugin refuses an atom count whose coordinate buffers would not fit in `size_t`, at create and at every force or HVP call, instead of letting the buffer size wrap.
+- The generic engine C ABI adds `RgpotEngineComponent`, `rgpot_engine_last_components` and `rgpot_engine_component_name` for the per-term record of a composite engine, and bumps `RGPOT_ENGINE_ABI_MINOR` to 5.
+- The generic engine C ABI adds rgpot_engine_select_orbitals and rgpot_engine_copy_orbitals, bumps RGPOT_ENGINE_ABI_MINOR to 3, and reports orbital capabilities through RgpotEngineCaps.
+- The generic engine C ABI adds the optional `rgpot_engine_unload_policy` export with `RGPOT_ENGINE_UNLOAD_RESIDENT` and `RGPOT_ENGINE_UNLOAD_SAFE`. This is an additive change to the engine ABI, so `RGPOT_ENGINE_ABI_MINOR` and `ENGINE_ABI_MINOR` are now 7. No existing layout or call changes, a host of minor 7 still loads plugins of minor 0 to 6, and a host older than minor 7 refuses a plugin that reports minor 7. A plugin of minor 7 or later that returns `RGPOT_ENGINE_UNLOAD_SAFE` can be unloaded with the new `unsafe` `EnginePotential::unload(path)` once no instance uses it, and the unload closes the library after it releases the registry lock. Every other plugin stays loaded, and `unload` refuses it with `EngineError::Unsupported`. The C++ library soversion stays 9.
+- The in-process and RPC ASE calculators are discoverable as `rgpot` and `rgpot_rpc` through ASE's calculator registry, and installed wheels expose lazy ASE 3.29 calculator plugins without breaking ASE 3.23–3.28.
+- `CBEPot` now evaluates the CH5 2008 surface through potlibc's `ch52008` instead
+  of the external cbe-pes library, and serves the engine gradient jet to order 3
+  through `potlibc_gradient_jet`, in one call for a whole batch, with the
+  forward-mode operation count and scale of the call, so the `cbe` backend of the
+  classical engine answers `rgpot_engine_taylor_jet` with `jet_order` 3. It also
+  evaluates energies and forces for a batch in one `potlibc_evaluate` call and
+  reports `batched`. Building with `with_cbe` needs a potlibc that provides
+  `potlibc_gradient_jet` and its `potlibc` pkg-config file. Bit goldens of the
+  energy, force, Hessian product and jet at the saddle and at a displaced
+  geometry pin the engine.
+- `D2CpmdConfig` takes a `symmetry` code, the SYMMETRY value of the CPMD run, which selects the branch of `pbc3` that `D2CpmdPot` follows. Code 12 takes the monoclinic branch, which its box cannot show because it has the shape of code 14, and a code that `pbc3` does not handle is refused. `-1` keeps reading the branch from the box. `D2CpmdParams` carries it at ordinal 4, and `rgpot.D2CpmdPot` takes a `symmetry` argument.
+- `EngineSession` gains `attach_cache`, `cache_counts` and `clear_cache`, so session users can attach a result cache and read its counts. On Windows the loader refuses a cache path that is not valid Unicode, because the engine opens it as UTF-8.
+- `ExprPot` and `SumPot` have a read-only `cutoff` property: the largest cutoff
+  among their terms, in Angstrom.
+- `LJPot` has a dense analytic Hessian, `hessianImpl`, and a dense Hessian and
+  Hessian-vector product from dual numbers, `hessianAdImpl` and
+  `hessianVectorAdImpl`, and advertises them as `analyticHessian`,
+  `adHessian` and `adHvp`. The dual-number pair term is the templated
+  `lj::pairEnergy` of `rgpot/LennardJones/LJPairEnergy.hpp`, the energy the
+  force kernel sums, so its second derivative comes from the energy itself
+  rather than from the hand-written one. Both Hessians are symmetric to the
+  last bit and agree to 1e-12 of their largest entry. Coincident atoms throw
+  `std::domain_error`.
+- `LJPot` has an analytic Hessian-vector product, the pair second derivatives
+  of the shifted or switched 12-6 term contracted with the direction, so
+  `HvpScheme::Auto` and `rgpot.LJPot.hvp` make no force calls. Two atoms on
+  one point make the product NaN, which `HessianVectorCache` reports as
+  `std::domain_error`.
+- `MEAMPot` is the modified embedded-atom method of Baskes, Phys. Rev. B 46, 2727 (1992), doi:10.1103/PhysRevB.46.2727, with the second-neighbour form of Lee and Baskes, Phys. Rev. B 62, 8564 (2000), doi:10.1103/PhysRevB.62.8564. It reads the library and parameter files of the LAMMPS `pair_style meam`, handles periodic and triclinic cells with every image inside the cutoff, and writes the energy, the forces and the stress. Energy, forces and virial match LAMMPS to 1e-11 on the reference sets of the test suite.
+- `MorsePot` has a dense analytic Hessian, `hessianImpl`, built from the pair
+  derivatives of its Hessian-vector product, and advertises it as
+  `analyticHessian`. It is symmetric to the last bit. Morse has no
+  dual-number path; its `hessianAdImpl` and `hessianVectorAdImpl` throw.
+- `ORCAPot` (`PotType::ORCA`) runs ORCA single-point energies and gradients behind the normal `Potential` interface, built with `-Dwith_orca=true` (CMake `RGPOT_WITH_ORCA`). Each call writes an input with `! EnGrad`, runs the `orca` executable (including symlinks to executables) found by `ORCAConfig::executable` or on `PATH` in a working directory of its own with extra file descriptors closed before `exec`, and parses the `.engrad` energy and gradient in the C locale using `units.hpp`. Stale `.engrad` and `.gbw` files are removed before each run, treating any removal failure other than a missing file as `ORCAError`. The converged `.gbw` is passed to the next call through `%moinp` and `! MORead` unless `restart` is turned off, and a call without one starts from ORCA's own guess. The potential is per instance and non-periodic, and a box with a non-zero entry is refused. A failed run throws `ORCAError` with the tail of ORCA's standard error. One run is bounded by `ORCAConfig::timeout_s` (one hour by default; 0 waits with no limit): past that limit the process group is sent SIGTERM and then SIGKILL if any process in the group is still alive two seconds later (even if the leader has exited), the child is reaped, and the call throws `ORCAError`. ORCA is described in Neese, WIREs Comput. Mol. Sci. 2, 73 (2012), doi:10.1002/wcms.81, and Neese, WIREs Comput. Mol. Sci. 12, e1606 (2022), doi:10.1002/wcms.1606. The tests run a fake `orca` script, and a test against a real ORCA skips when `orca` is not on `PATH`.
+- `RGPOT_SCC_NOT_CONVERGED` (5) is a new `rgpot_status_t` for an engine whose self-consistent field did not converge, `rgpot_set_last_error` lets a callback store the message that goes with its status, and `rgpot_potential_fused_error_kind` tells an SCC failure from another failure on the eindir path. The ABI minor is 3; no existing call changes.
+  `rgpot::SccNotConverged` is the exception a C++ potential throws for it: `XTBPot` and `XTBDlopen` do, `PotentialHandle::from_impl` returns the new status with the message, and `rgpot::Error::status()` carries it. The xtb engine ABI returns `RGPOT_XTB_RC_SCC_NOT_CONVERGED` (-4) from `rgpot_xtb_force`.
+  `rgpot_fused_settings_t` with `rgpot_fused_settings_default` and `rgpot_potential_set_fused_settings` install the engine settings that key the fused cache. `XTBPot` gains `setAccuracy`, `setElectronicTemperature`, `setMaxIterations` and `fusedSettings()`.
+- `StillingerWeberSi` and `TersoffSiC` can be evaluated on a local region plus ghost atoms. Each declares a full neighbour list and a ghost reach of twice its cutoff. A driver sums the energy of the owned atoms and adds the forces written on ghost atoms back to their owners. Results for a whole cell are unchanged.
+- `fortranpots::CuH2Pot` has an analytic Hessian-vector product from the pair,
+  density and embedding second derivatives of the copper-hydrogen EAM, through
+  the new `rgpot_cuh2_hvp_ws` entry point, so `HvpScheme::Auto` and
+  `rgpot.CuH2Pot.hvp` make no force calls. It reports the same species and
+  geometry faults as the force.
+- `fortranpots::TersoffPot` now advertises and publishes analytic Cauchy stress
+  on both dispatch paths of `PotType::TersoffSi`: the all-silicon Fortran gather
+  and the mixed-species fallback to `TersoffSiC`. The gather computes `dE/dε`
+  analytically in the same Voigt order and sign convention as `stress.hpp`.
+- `rgpot-core` loads any library that exports the generic engine C ABI
+  (`rgpot/engine_c_abi.h`) from Rust. The `engine` feature adds
+  `rgpot_core::engine::EnginePotential`: it opens the library, checks both the
+  ABI major and `rgpot_engine_abi_stamp` (major, minor and layout revision),
+  creates an instance from the backend's configuration message, and answers
+  energy and forces per geometry, or per batch when the library exports
+  `rgpot_engine_force_batch`. A positive return code is a recoverable
+  `EngineError`, and a negative one poisons the handle and returns a fatal
+  `EngineError` with the engine's own message without re-entering native code on
+  later calls. `EnginePotential::into_potential` wraps the instance as a
+  `PotentialImpl`.
+- `rgpot-ipi-driver` serves `CPMD` through the generic i-PI driver, using `--pot "CPMD params <file>"`, with `--preserve-open-cell` for an isolated deck that must keep its own cell, and it rejects an init string that requests a `batch_size` above 1.
+- `rgpot.EMTPot` brings the Asap effective-medium potential to Python, with `config`, `caps`, `evaluate`, `evaluate_batch` and the `hvp` family, and `RgpotCalculator("emt")` uses it with a kernel cutoff of 6.855 Angstrom, so a small cell such as cubic copper with `a=3.6` is tiled. Energies and forces agree with ASE's `EMT` when that is built with `asap_cutoff=True`.
+- `rgpot.lammps.FixExternal` now runs any Python rgpot potential through LAMMPS `fix external`, including unit conversion, triclinic cells, image unwrapping, analytic virials, deadlock-safe MPI error propagation, and complete callback teardown, without importing LAMMPS or mpi4py until needed.
+- `rgpot/Dual.hpp` adds forward-mode dual numbers, `rgpot::ad::Dual<T>`, with
+  `Dual2` for second derivatives and `secondDerivative` to read a value and
+  its first two derivatives from one evaluation. A kernel written as a
+  template over its scalar type is differentiated from its own source, with
+  no step and no truncation error.
+- `rgpot::D2CpmdPot` reproduces OpenCPMD's built-in empirical D2 (`EMPIRICAL CORRECTION` / `ALL DFT-D2`) term for term: CPMD's tables, constants, damping, 6 R0 truncation and minimum image convention, so a composite can subtract it from existing CPMD BLYP-D2 results and put the periodic `rgpot::D2Pot` in its place. It is configurable through the new `PotentialConfig.d2cpmd` arm (`potserv <port> D2Cpmd`), as a `d2cpmd` composite term, and as `rgpot.D2CpmdPot` and a `"d2cpmd"` kind in Python. Its forces jump when a pair crosses half the cell; `rgpot::D2Pot` does not.
+- `rgpot::D2Pot` is Grimme's DFT-D2 (J. Comput. Chem. 27, 1787 (2006)) with the tables and per-functional parameters of the dftd3 program, summed over every periodic image within a cutoff in any cell, sheared or not, with energy, forces and stress. The default cutoff of 150 Angstrom converges the energy of liquid water to below `sqrt(eps)` Hartree per atom. It is configurable through the new `PotentialConfig.d2` arm (`potserv <port> D2`), as a `d2` builtin term of a composite, and as `rgpot.D2Pot` and a `"d2"` term kind in Python.
+- `rgpot::D4Pot` takes a `periodic` flag (`D4Config::periodic`, `D4Params.periodic`, `rgpot.D4Pot(periodic=True)`) that passes the box to dftd4 as a 3D lattice and returns the stress from dftd4's virial; the default stays molecular. `potserv`'s D4 backend now applies the `PotentialConfig.d4` arm instead of refusing it, and `d4` is a builtin composite term, so a DFT engine with its own dispersion off can run beside D4 with dftd4's BLYP parameters (`functional = "blyp"`).
+- `rgpot::HessianVectorCache::apply` returns the scheme that computed the
+  product, so a `HvpScheme::Auto` request that resolved to `Forward` reports it,
+  and `derivativeCounts()` counts products by that scheme. `HvpScheme::Ad`
+  uses a potential's dual-number product and `HvpScheme::Exact` takes the
+  analytic product, else the dual-number one, and refuses rather than
+  differencing. `HessianVectorCache::hessian` writes the dense Hessian under an
+  explicit `HessianScheme` (`Analytic`, `Ad`, `Exact` or `Central`, the last
+  making `6N` force calls) and returns the one that ran. `rgpot::derivativeCaps`
+  reports which analytic, dual-number and finite-difference ways a potential
+  has, with their force-call costs.
+- `rgpot::PotentialHandle::hessian` computes the dense Hessian through the Rust
+  core under an explicit scheme and returns the one that ran, and
+  `PotentialHandle::hvp` now returns the scheme that computed the product, so an
+  `RGPOT_HVP_AUTO` request that resolved to forward differences reports it.
+  `from_impl` registers the analytic and dual-number Hessian and Hessian-vector
+  hooks of a potential from its `caps()` bits, and `derivative_caps` and
+  `derivative_counts` report what the handle can do and has done.
+- `rgpot::SumPot` is a weighted sum of child potentials with a name, a weight (sign allowed) and an on/off switch per term, a per-term record of energies, forces and stress, and logging through `RGPOT_SUM_LOG` or a sink. It is configurable through the new `PotentialConfig.composite` arm (`potserv <port> Composite`), `libcomposite_engine` and `rgpot.SumPot` in Python; `rgpot::lr::SumPot` now builds on it.
+- `rgpot::nlist::Builder::frames()` counts the times an update folded the positions into the cell. Each accepted update folds once, whether it keeps the table or searches again, so `frames()` equals the number of accepted updates and `builds()` the number of searches among them. The state stays behind the builder's pointer, so the layout of `Builder` and the soversion of `librgpot` do not change.
+- `rgpot_ch5_2008_taylor_jet` (`rgpot_core::ch5_2008::Ch52008` in Rust) is the exact Taylor jet of the CH5 2008 surface of Corchado, Bravo and Espinosa-Garcia, in Bohr and Hartree, for registration with `rgpot_potential_set_taylor_jet` on a handle that evaluates that surface.
+  Its saturation guards, the `rch < 3.8` switch and the handedness swap are decided on enclosures; an undecided one is `RGPOT_JET_BRANCH`.
+- `rgpot_core::taylor::Taylor::from_coefficients` builds a truncated series from supplied interval coefficients and refuses an empty list with `JetError::Shape`.
+  The `TaylorCoefficient` trait names the coefficient operations that the exponential recurrence needs, and `TaylorExponential<C>` evaluates `exp(u)` one coefficient at a time in the Griewank-Walther order.
+  `Taylor::exp` now runs through that recurrence and returns the same enclosures as before.
+- `rgpot_core::taylor` carries truncated Taylor series with outward-rounded interval coefficients (`maryada`): sums, products, quotients, `sqrt`, `exp`, `tanh`, `acos` and integer powers, with branch tests decided on enclosures.
+  A potential whose energy is an explicit formula evaluates it on `Taylor::line` coordinates to implement `TaylorJet`; a quotient, root or arc cosine at the edge of its domain is `JetError::Domain`, and an undecided comparison is `JetError::Branch`.
+- librgpot now exports unmangled C calculator-group entry points rgpot_mpi_host_abi_version, rgpot_mpi_bind_calculators, and rgpot_mpi_share_bytes for hosts that dlopen symbols.
+
+### Developer
+
+- Added ASE `Calculator` and `BaseCalculator` contract conformance tests (`calculation_required`, `calculate_properties`, `export_properties`, `reset`, `atoms`/`results` copy isolation, `todict` JSON round-trip, `PropertyNotImplementedError`, `ase.calculators.test.gradient_test`, `BFGS`, `FrechetCellFilter`, and `CppCore/rgpot/rpc/ase_helpers.py` / `ase_calculator.py` shim coverage). `RgpotCalculator` already conforms on `develop`.
+- Added a Linux CI leg that builds with OpenMP disabled and runs `LongRangeTest` and `consumer_no_openmp`, keeping the serial long-range path and the OpenMP-free consumer link under coverage.
+- Added a regression test that verifies external potential constructors do not
+  leave heap allocations behind when backend factory setup fails.
+- Build and test workflows skip documentation-only changes. A superseded run is cancelled except on main and tags. Wheels, thread sanitizer, address and leak sanitizer, and the macOS ISA audit run on main, tags, a manual dispatch, or a pull request labeled ci:full.
+- CBE bit-exact engine goldens are compared on x86-64 with glibc. Other hosts keep the tolerance checks.
+- Consolidated `DynLib.hpp`, candidate-path search, and `ProfileLoader`
+  resolution across `CP2KPot`, `CPMDPot`, `MOPACPot`, `NWChemPot`,
+  `XTBDlopen`, and `MetatomicDlopen`, sharing Cap'n Proto serialization and
+  communicator-adopter registration helpers in `CppCore/rgpot/abi/`.
+- Deduplicated `energy_gradient`, LJ-like bindings, and GROMACS/OpenMM
+  wrappers in `python/bind/bind_module.cpp`, and extracted shared geometry,
+  cell, and OpenMP thread-count fixtures into `CppCore/tests/TestFixtures.hpp`.
+- Deduplicated three-body inner loops and neighbour-cache synchronization in
+  `SWSi.cc` and `TersoffSiC.cc` via `ThreeBodyCommon.hpp`, shared cell-team
+  pair walks, free-box fallbacks, and the 12-6 Lennard-Jones pair kernel across
+  `LJPot`, `LJClusterPot`, `MorsePot`, `ZBLPot`, `SuttonChenPot`, and
+  `EAMTablePot` via `PairEval.hpp` and `LJPair.hpp`, and unified orthorhombic
+  minimum-image and Morse/density evaluation in `EAM.cpp`.
+- Enforced binary-only SciPy resolution on free-threaded Python 3.13 in the reduced build helper, resolved rustdoc intra-doc link warnings in `potctl` and `rgpot-core`, and avoided `SIGPIPE` failures during wheel symbol-table inspection.
+- Engine plugins export the C ABI only. A coverage build no longer publishes
+  the GCC gcov runtime from those libraries.
+- Engine, tight-binding and Fortran kernel pages now cite the method papers, and the libxckernel note cites its journal article.
+- Give the neighbour-list test binary an explicit 120s timeout and trim the dense field-invariance test boxes so coverage runs stay well within that budget even under parallel suite contention.
+- Hessian-vector tests compare the LJ product with a closed-form 12-6 Hessian and a force finite difference, the CuH2 product with wrapped periodic pairs, and the RPC unit smoke with the energy gradient and curvature.
+- Install `llvm` during free-threaded CPython bootstrap in `py-tsan.yml` and ensure `llvm-symbolizer` is on `PATH` so ThreadSanitizer symbolizes frames and applies upstream and Python 3.13 suppressions during parallel pytest runs.
+- NWChem configuration message tests now distinguish a loaded engine refusal from a missing engine.
+- Refines the Tersoff stress tests by clarifying the thread-setting check
+  as a determinism smoke test and deduplicating Voigt index constants.
+- Rust sources now pass the repository formatting and clippy checks.
+- The C++ coverage build enables `-fprofile-update=atomic` for concurrent OpenMP gcov counters, and the capture script disables synthetic exception-unwind branches under lcov 2 so capture and extract run without error suppressions.
+- The EMT reference now states which failures keep the cached kernel and which drop it. A call that fails before the kernel runs, and a non-finite energy or force, keep a kernel from an earlier successful call. An Asap failure and any other exception raised by the kernel drop it.
+- The Fortran coverage job uses the same test timeout multiplier as the C++ coverage job. NeighbourLayerTest gets one extra multiple of its registry timeout in that build, because four multiples left it about forty seconds inside an eight minute limit.
+- The Gupta and reduced pair reference now records the `!(re > 0.0)` Morse checks and the error conditions of each C entry point.
+- The Gupta, reduced-pair and Sutton-Chen C entry points now have reference entries, so the documented signatures stay aligned with the headers.
+- The LeakSanitizer lane runs `llvm-symbolizer` through `tools/lsan/llvm-symbolizer`, which clears `LD_LIBRARY_PATH` so the system binary does not load pixi's libraries. The libomp suppression matches function names, so a symbolizer that cannot start left libomp's 128-byte allocation reported as a bare `libomp.so` offset. `tools/check_lsan_libomp.sh` now fails if frames are not symbolized, and leaks 137 bytes from `main` and 53 bytes from inside an OpenMP region on purpose; it requires LeakSanitizer to report those two and no libomp allocation.
+- The Meson build options page lists `with_uma`, which builds the UMA engine plugin against torch alone.
+- The NWChem reference now says a non-empty engine path that names another library replaces the loaded one.
+  The Skala reference now says a non-empty engine path is forwarded whenever it is set.
+- The Python typing job installs mpi4py, which ships its own type hints, so `rgpot.lammps` is checked by mypy and pyright against the real package.
+- The `engine_abi_stamps` test now opens `libpotlibc_engine` when `with_potlibc` is enabled, and the new `potlibc_engine_rust_loader` test loads it with `EnginePotential::load`, evaluates a surface, and drives the lock-failure build to check that `EngineError::Lock` latches the handle.
+- The engine ABI reference wraps the shared export list and the Rust symbol table on semantic lines.
+- The engine loader tests now check that a refused load destroys every engine instance it created and creates none when it is refused before creation. The cases are an engine that reports itself unavailable, another ABI major, a newer minor, another layout revision, and a lock or fatal code from `rgpot_engine_caps`. The failed-first-load test also reopens the unavailable, newer minor and caps failure cases.
+- The manual index includes the design notes and the documentation style guide. `doccheck` fails when an org page or a pinned citation drops out of the manual.
+- The neighbour-layer tests now cover orthorhombic periodic coordinates outside the primary box, verifying both Stream and Stored neighbour modes against the direct minimum-image reference on the boundary pair and randomized multi-wrap trials.
+- The potential and backend pages now name the parameter source and a checked reference value for Lennard-Jones, Morse, ZBL, EAM, EMT, water, D3, D4, xtb, metatomic and CPMD.
+- The potlibc engine howto now pins the potlibc checkout used for plugin regression tests to the main revision that makes the LSTH Hessian symmetric.
+- The release guide wraps its fragment rules to the documentation line limit, so the org formatting check passes again.
+- The release-notes template now drops copyright lines and comment blocks from fragments and writes the bullet itself, so a fragment that starts with `- ` no longer renders as a doubled bullet. Existing fragments are rewritten to match, and `scripts/check_news_fragments.py` (`pixi r news-fragments-check`) checks the rule.
+- The root `meson.build` matches the output of the pinned Meson formatter, so the meson-format hook no longer rewrites it.
+- The root `meson.build` now requires Meson 1.10 or newer (`meson_version: '>=1.10'`), matching use of `array.slice()` for registry command arguments.
+- The six manual pages snapper still wanted to wrap now match its org formatter.
+- The timeouts of `MorsePotTest`, `SuttonChenPotTest`, `ThreadTeamTest` and its `OMP_THREAD_LIMIT` reruns (300 s) and `D2PotTest` (600 s) leave at least 3.5 times the wall time they took on a 2-CPU runner, where meson runs one test per CPU and each test's OpenMP team shares those CPUs. The 120 s of `omp_crossover_v3_analysis`, a pure Python bootstrap that takes 8 s alone, leaves the same margin. A test that is only slow no longer fails the lane, and a hang still does.
+- The version-drift check fails when `rgpot-bundle/Cargo.lock` has lost the cog
+  markers around the `rgpot-core` version. The ABI stamp page records that a
+  whole-archive bundle exports 127 `rgpot_*` symbols, and `rgpot_so_exports` pins
+  that count next to the 73 of a normal link. Of those 73, two are
+  `rgpot_builtin_muller_brown_new` and `rgpot_muller_brown_config_default`, and
+  one is `rgpot_lammpc_potential`.
+- The wheel workflow installs each repaired wheel with its `ase` extra and runs `tests/test_ase_plugin_wheel.py`, which skips itself on ASE releases without the plugin API.
+- Workflows run on pushes to main and develop and on pull requests, so a branch with an open pull request starts each workflow once. A newer push to a pull request cancels its older run.
+- `EMTPot` keeps its installed class layout. The cached Asap kernel lives behind the existing cell pointer, so the C++ soversion and the layout stamp stay as they are.
+- `NWChemPotMessageAbiTest` now counts `nwchemc_set_params` calls through `nwchemc_fake_engine` and pins `NWChemPot::setPotentialConfig` across initial parameter refusal, repeated refusal, applied parameters, `none`, and unhandled configuration arms.
+- `check_cxx_soversion.py` compares the soversion ledger with `main` for every pull request, as the ABI guide states, so a pull request into `develop` may edit the soversion line `develop` has not released. In a CI clone without `main`, its fallback fetch now writes `origin/main`, so the comparison runs instead of being skipped.
+- `doccheck_examples` in a `-Dwith_rpc_client_only=true` build skips the C and C++ examples that link `librgpot`, with the reason `client-only build has no librgpot`, instead of failing with `ld: cannot find -lrgpot`. The examples are still compiled, and a build that is not client-only still fails when `librgpot` is missing.
+- `hessian_bench`, a meson benchmark, times the LJPot dense Hessian (analytic, dual-number, central) and Hessian-vector product (analytic, dual-number, central, forward at a new and at the cached centre) on free clusters through `rgpot::HessianVectorCache`, with each result's error against the analytic Hessian and the break-even `k*` of each pair.
+- `rgpot_so_exports` is in the test registry, under the feature that is on
+  only when that pin is registered. The tabulated EAM and vendored vesin
+  pytest modules read their fixtures from the checkout named by
+  `RGPOT_PROJECT` or from pytest's rootdir when that directory is the
+  checkout, and they skip only when no checkout is present. A file missing
+  from a checkout that is present fails the test.
+- `tools/check_header_drift.sh`, run by the `rust_tests` job and by `pixi r check-header-drift`, fails when `rgpot-core/include/rgpot.h` differs from the cbindgen output. The `gen-header` build now reruns when the Rust source changes, and the header carries the `# Safety` notes of the RPC client functions.
+
+### Changed
+
+- A batch is spread across the threads requested by `OMP_NUM_THREADS` when no system would open a team of its own. `StillingerWeberSi::energyAndGradientBatch`, `TersoffSiC::energyAndGradientBatch`, and the default `Potential::forceBatchImpl` for a shared instance that is not per-image and not group-collective use `teamSize` with that potential's `kTeamMinAtoms` and `kTeamFrom`, or `rgpot::kTeamMinAtoms` when the potential has no counts of its own. A system that would open a team stays on the calling thread, so the team is not nested and a spread worker does not open one. The results match the one-thread loop. Each Stillinger-Weber or Tersoff configuration uses its own neighbour list.
+- CPMD and engine ABI docs clarify that seeding an orbital key chooses the next SCF initial guess from the session's current or stored converged orbitals.
+- Repeated loads of one generic engine plugin share a single resident entry. The Rust loader keys plugins by device and inode, opens each file once with `RTLD_NODELETE`, never unloads it, and reuses it for every later load of that file through any path. A path whose file was replaced after it was loaded, or a bare library name, is refused with `EngineError::Load`. The `LammpsPot`, `GromacsPot` and `OpenMMPot` constructors keep their engine loaded the same way, and the metatomic, xtb, OpenMM, NWChem and Skala engines are linked with `-z nodelete` like the UMA engine. A load that fails validation, or finds its file replaced while it loads, closes its handle and leaves no registry entry, so a later load opens the file again and reports the same error.
+- The C ABI minor of `rgpot-core` is now 10, in `RGPOT_ABI_VERSION_MINOR`, for the
+  additive `rgpot_rpc_client_select_orbitals` RPC export. A caller built against
+  minor 0 to 9 still matches; a caller built against minor 10 is refused by an
+  older library.
+- The C ABI minor of `rgpot-core` is now 5, in `RGPOT_ABI_VERSION_MINOR`, for
+  the additive engine and RPC Hessian-vector exports. A caller built against
+  minor 0, 1, 2, 3 or 4 still matches; a caller built against minor 5 is refused
+  by an older library.
+- The C ABI minor of `rgpot-core` is now 6, in `RGPOT_ABI_VERSION_MINOR`, for the
+  additive `rgpot_potential_new_eam_table` constructor and the four
+  `RGPOT_EAM_TABLE_*` format codes. A caller built against minor 0 to 5 still
+  matches; a caller built against minor 6 is refused by an older library.
+- The C ABI minor of `rgpot-core` is now 8, in `RGPOT_ABI_VERSION_MINOR`, for the
+  additive dense-Hessian, dual-number and derivative-capability functions, the
+  `rgpot_hessian_scheme_t` enum, the `rgpot_derivative_caps_t` and
+  `rgpot_derivative_counts_t` structs, and the `RGPOT_HVP_AD` and
+  `RGPOT_HVP_EXACT` values. A caller built against minor 0 to 7 still matches; a
+  caller built against minor 8 is refused by an older library.
+- The OpenMP team activation threshold of calls without one of their own, such as
+  a neighbour-list build or `EMTPot`, can now be configured with Meson's
+  `team_min_atoms` option or the `RGPOT_TEAM_MIN_ATOMS` compile definition while
+  retaining 8192 atoms as the default; each classical potential keeps its own
+  counts as `kTeamFrom`.
+- The RPC protocol minor is now 2 in the C++, Rust and Python mirrors and in the generated C header.
+  The wire check reads the minor from all three sources and fails when they disagree, and it keeps the orbital-key introduction minor from exceeding the current minor.
+- The engine C ABI header and reference now say that `rgpot_engine_create` takes no callbacks, so a host registers an oracle with `rgpot_engine_set_callbacks` on the handle create returned, and a learning engine that needs one fails its evaluations until then. `EngineSession::load` documents the same order.
+- The generic engine C ABI minor is now 11, in `RGPOT_ENGINE_ABI_MINOR` and
+  `ENGINE_ABI_MINOR`, for the additive `rgpot_engine_taylor_jet` entry point and
+  the trailing `RgpotEngineCaps.jet_order` field. A host serves any engine of the
+  same major and layout whose minor is at most its own, so an engine of minor 10
+  or earlier without the jet still loads and reports `EngineError::Unsupported`
+  only when the jet is requested.
+- The generic engine C ABI minor is now 4, in `RGPOT_ENGINE_ABI_MINOR` and
+  `ENGINE_ABI_MINOR`, for the additive `rgpot_engine_hvp` entry point and the
+  trailing `RgpotEngineCaps.analytic_hvp` capability flag. An engine at minor 4
+  serves a host built against minor 4 or newer; a host built against minor 3
+  refuses that newer engine.
+- The generic engine C ABI minor is now 8, in `RGPOT_ENGINE_ABI_MINOR` and
+  `ENGINE_ABI_MINOR`, for the additive return code `RGPOT_ENGINE_ERR_LOCK` (-2).
+  An engine at minor 8 serves a host built against minor 8 or newer; a host built
+  against minor 7 refuses that newer engine.
+- The molecular-dynamics session entry points and operation tables add optional
+  neighbour-query and neighbour-setter tail slots while preserving compatibility
+  with older callers. The slots are on the C++ session operation table. They are
+  not exports of the rgpot-core C ABI, so that minor is unchanged and the C++
+  soversion stays 9.
+- The workspace declares `rust-version = "1.88"` for `rgpot-core`, `rgpot-pair` and `potctl`, and the pixi `rust` requirement is `>=1.88.0`. An older toolchain now stops with a version message.
+- With an empty path, `rgpot::abi::ProfileLoader` and the Rust
+  `rgpot_core::profile::library_candidates` try only the `<PREFIX>_LIBRARY` and
+  `RGPOT_<PREFIX>_ENGINE` values that are set and not empty, and try the default
+  library names only when neither is set. A hint that does not open now fails
+  with a message naming each library tried instead of loading a default one.
+- `EngineStatus` now carries the magnitude of a failure code as a `NonZeroU32`, so a recoverable failure is always a positive C code, a fatal one is always negative, and no failure can encode as success. `recoverable` and `fatal` build a status from a code of the matching sign, `from_code` and `code` round-trip every `c_int`, and `or_invalid` turns a success into `ENGINE_ERR_INVALID`.
+- `EngineSymbols` is now `#[non_exhaustive]`, so a symbol added to the engine ABI no longer breaks code that builds one.
+  Build it with `EngineSymbols::new`, which takes the four required symbols, and add each optional symbol with a `with_*` method such as `with_set_callbacks`.
+  The optional `model_state`, `set_callbacks` and `hint` symbols this release adds are set the same way.
+- `MetatomicPot` now reports `ForceOut::variance` as a variance in squared units rather than an RMS: the square of the mean model `energy_uncertainty` in eV^2, or, when a multi-pass run has no model uncertainty, the mean-square force residual over orientations in (eV/Angstrom)^2.
+  The value is passed through unchanged by the C++, C and Python entry points.
+  Direct users who relied on the previously documented eV or eV/Angstrom must take the square root of `variance` to get the old units back.
+- `librgpot` takes soversion 9 in `kCxxSoversion`. `lr::SumPot` now derives from `SumPot` and grows from 56 to 120 bytes, and its old constructor and `add` symbols are gone, and `D4Config` gains `periodic`, and `D2CpmdConfig` gains `symmetry`. `PotCaps` gains `analyticHessian`, `adHessian` and `adHvp`, and `PotentialBase` gains the virtuals `hessianImpl`, `hessianAdImpl` and `hessianVectorAdImpl`, so `kCxxLayoutRevision` is 2. `nlist::Builder` and `nlist::Walk` keep their state behind a pointer, so each is one pointer wide. The layout stamp now covers `SumPot`, `lr::SumPot`, `PotType::LrSum`, `D2Config`, `D2Pot`, `PotType::D2`, `D2CpmdConfig`, `D2CpmdPot`, `PotType::D2Cpmd`, `D4Config`, `MullerBrownConfig`, `MullerBrownPot`, `nlist::Builder` and `nlist::Walk`.
+- `rgpot.lammps.FixExternal` does less work per step: it skips unit factors that equal one, passes atom IDs that already run 1..N straight through without a sort and a scatter, takes the volume from the diagonal of LAMMPS' lower-triangular cell instead of a determinant, and symmetrizes the virial with plain floats. Results are unchanged, and the virial no longer depends on a potential leaving its cell argument alone.
+- `rgpot.lammps.FixExternal` now raises `ValueError` when the LAMMPS box is non-periodic in every direction (`boundary f f f`) and the potential reports `caps()["periodic"]`. Such a potential, for example `rgpot.LJPot`, wrapped pairs across the box extents and returned a wrong energy without a warning; use a non-periodic potential such as `rgpot.LJClusterPot`. The new keyword `allow_periodic_on_free_box=True` restores the previous behavior.
+- `rgpot::abi::ProfileLoader` now tries only the library a non-empty explicit
+  path names. When it does not open, `load()` throws a message that names the
+  path instead of falling back to the `<PREFIX>_LIBRARY` and
+  `RGPOT_<PREFIX>_ENGINE` hints and the default library names. The lammpc
+  `LammpsPot` constructor, `rgpot_lammpc_potential()` and the Python
+  `rgpot_lammps_potential(config_bytes, engine_path)` overload inherit this.
+  The lammpc constructor also refuses truncated bytes and a `PotentialConfig`
+  without the `lammps` arm with `std::invalid_argument` (`ValueError` in Python).
+
+### Fixed
+
+- A Hessian-vector product or Hessian callback of `rgpot-core` that fails without calling `rgpot_set_last_error` is reported as `<callback> returned <status>`, instead of with a message an earlier call on the thread left in `rgpot_last_error`, and a successful derivative call, forward and central differences included, leaves that earlier message in place.
+- A MinGW build, native or cross, builds the fast pair list for `x86_64-pc-windows-gnu` and links Rust with the C++ compiler from the native or cross file (`CARGO_TARGET_<TRIPLE>_LINKER`). Before, a cross build took the Rust target from `CARGO_BUILD_TARGET` in the environment, so a reconfigure without it linked Linux system libraries into the DLL. A cross file can name another triple with the `rust_target` property. The `nlist_rust` test builds its DLL and Rust caller with the same compiler and target and runs the caller under the cross file's `exe_wrapper`.
+- A Windows `librgpot` DLL exports the whole public C ABI. Before, it exported the version, the ReducedPair and Sutton-Chen functions and the C++ layout stamp, and none of the neighbour-list, MD session, fast pair list or external-potential functions. The public C headers mark their functions with `RGPOT_API` from `rgpot/rgpot_api.h`, and the fast pair list names reach the DLL through a module definition file. On Windows the engines that call only the C ABI link the DLL. `lj_eval`, `pot_spec` and the drivers built on them link the static archives instead, because the DLL exports no C++ class. The `abi_symbols` test runs on Windows and reads the DLL export table, and its baseline now lists every `RGPOT_API` function.
+- A `Neighbours::update` that rejects a cell or a coordinate, or finds the
+  generation counter exhausted, throws before anything changes, so a built
+  object keeps its list and generation and a default-constructed object stays
+  empty without a generation.
+  An allocation that fails part way through an update leaves a
+  default-constructed object with a cleared generation, so the next update
+  rebuilds instead of reusing a partial list, and a copy assignment that throws
+  leaves its target unchanged.
+  A moved-from `Neighbours` is left as a default-constructed one with a cleared
+  generation, so its next update builds from its own coordinates instead of
+  reading coordinates it no longer holds.
+- A cached metatomic engine no longer serves results computed under a previous charge or spin after `rgpot_engine_set_charge_spin`. The metatomic potential now fingerprints the settings its model sees, so a change of charge or spin is a cache miss with a new key.
+- A classical potential call too small to gain from an OpenMP team no longer starts one, whatever `OMP_NUM_THREADS` asks for.
+  `SuttonChenPot` started one on every call: on 8 threads a 55-atom cluster took 41.9 to 62.4 µs per call over four runs, against 14.0 to 14.1 µs on one thread, and now takes 13.0 to 13.1 µs on either.
+  From the `kTeamMinAtoms` of their class up, `SuttonChenPot`, `LJPot`, `LJClusterPot`, `MorsePot`, `ZBLPot`, EAM, `StillingerWeberSi` and `TersoffSiC` sum each atom's energy, force and strain on their own and add the atoms in index order, so the energy, forces, stress and per-atom terms have the same bits on any `OMP_NUM_THREADS`.
+  A team used to add one partial sum per thread: on 8 threads the energy moved in the last bits on 10 to 16 of 16 noisy cluster frames for every potential but ZBL, by up to 2.06e-4 epsilon for a 10000-atom reduced Sutton-Chen cluster, and the forces moved for every potential but Sutton-Chen and ZBL.
+  `rgpot::teamSize` gives the thread count of a call from the counts of the potential's class, `rgpot::TeamThreshold` sets one threshold for every potential called on its thread, for benchmarks, and `rgpot::teamsOpened` counts the OpenMP regions the calling thread has opened.
+  The installed headers add `teamSize(std::size_t, std::size_t, TeamFrom)` and change the signatures of `nlist::sumPairs` and `sumCentres`; `teamSize(std::size_t)` remains exported and deprecated as a forwarding wrapper to `teamSize(n, kTeamMinAtoms, {})` under `kCxxSoversion` 9, and the C and engine ABIs (`RGPOT_ABI_VERSION_MINOR` 10, `RGPOT_ENGINE_ABI_MINOR` 11) are unchanged.
+  `kEamThreadedTolerance` is gone from `EAM.h`, since every thread count now gives the bits of one thread.
+- A fatal engine failure is no longer hidden behind a recoverable one in `EngineSession`.
+  A callback or transform failure and the code the engine returns are judged together, and a fatal failure from either side wins.
+  The first fatal failure, with its message, is the one that poisons the handle, so every later call returns the identical `EngineError::Fatal`.
+  A later recoverable callback failure no longer replaces an earlier panic, and a fatal hint whose error buffer is empty reports a message naming its code instead of an empty one.
+- A negative return code of `RGPOT_ENGINE_ERR_LOCK` (`-2`) now reports
+  `EngineError::Lock` with the operation name and poisons the handle like
+  other fatal codes. Handles of an engine that declares `reentrancy` 2 now
+  serialize their native calls process wide, so two handles on the same
+  engine library no longer run native code at the same time. The
+  `libpotlibc_engine` plugin frees the handle in `rgpot_engine_destroy` even
+  when its lock cannot be taken.
+  A negative `rgpot_engine_caps` code at load now rejects the engine and
+  destroys its handle instead of being read as a reentrant engine, and a
+  positive code or a truncated answer keeps process wide serialization.
+  A handle that finds the process wide lock poisoned by a panic in native code
+  reports `EngineError::Lock` and stays unusable, so every later call returns
+  that error instead of retrying the lock.
+- A neighbour query on coordinates that lie whole cells outside the box no longer drops pairs. `rgpot::nlist::build`, `Builder`, `Walk`, the C ABI and `rgpot::lr::DualList` fold periodic coordinates in fractional space before the image search. The shift each pair reports is for the coordinates as given, so `r_j - r_i + S H` is the pair vector for unwrapped input too, which is what the Fortran bridge, metatomic and UMA rebuild their vectors from. In a 10 Å box, atoms at 0 and 18.5 Å with a 2 Å cutoff now give their one pair, at shift -2. Moving an atom by whole cells keeps the same pairs and changes their shifts by the same whole cells. A periodic coordinate that is not finite, or lies more than 2^29 cells from the origin, is rejected with `Code::Box`. `rgpot::lr::DualList` rejects a non-finite position with `std::invalid_argument` ("positions must be finite").
+- A non-periodic OpenMM session no longer wraps neighbour queries through the
+  placeholder box. A neighbour buffer shorter than the list is an error from
+  that session, and the error names the pair count the caller must provide.
+- A periodic `Cluster4` neighbour list now holds the same rows whichever output fields it stores. Rows of one cluster and partner were merged by their stored shift, so a query without shifts merged every periodic image of a partner into one row and lost the rest. In a 3 Å cubic cell with four atoms and a 4 Å cutoff, `build`, `Walk` and `Builder` now give 74 rows for every choice of shifts, vectors and distances, where a query without shifts gave 4. Pair lists were not affected.
+- A rejected `shareFromCalculator` now waits until every rank has written the mismatch before `MPI_Abort`, so a peer killed by the first abort no longer leaves an empty log.
+- A static MinGW build with the fast pair list builds. It installs `librgpot_fastnlist.a` beside `librgpot.a` and lists it in `rgpot.pc`; before, `ar` took the Rust archive for the archive it was writing. `print_cxx_layout_stamp` declares fmt, so `CxxSoversion` has its printer when fmt is not on the default include path. `PluginLifetimeTest` and `CxxSoversion` run their program under the cross file's `exe_wrapper`, and `test_list_parity` lists a cross build's Catch2 tests under it. The `abi_symbols` test is a Python script and needs no POSIX shell, `dumpbin` or `objdump`.
+- A static Windows `librgpot` now defines `RGPOT_STATIC` for in-tree targets.
+  Targets in the same CMake build no longer compile its headers as dllimport.
+  `scripts/abi_symbols.py` reads a PE export table with no names as empty.
+  It used to fail on the zero name table address of such a table.
+- A test name that contains spaces stays one test when the project is configured.
+  The accepted version range now includes every release this tree is tested with, through 3.31.8.
+- A variable-cell neighbour update now measures image shifts of both signs before it reuses a stored list. A lattice change whose signs differ no longer drops a pair that has moved into the cutoff. A negative, infinite or NaN skin does not count as a reuse in either `withinSkin` overload. Periodic positions are folded before the skin comparison, so adding whole lattice vectors does not move an atom.
+- An engine oracle callback can no longer hand native code a success it did not earn. A failure that carries a success status is reported to the engine as `ENGINE_ERR_INVALID`, and an oracle answer with a non-finite energy or force is refused with the same code, so the evaluation fails with a recoverable `EngineError` instead of returning the unwritten buffers.
+- CPMDPot drops a session when the engine refuses the selected orbital key, so a later setParams with the same parameters creates a session and applies the key again.
+- CPMDPot now applies selectOrbitals immediately on a live cpmdc session and re-applies the key after session recreation, so select-select-force sequences are unambiguous.
+  CPMDPot adds copyOrbitals(from_key, to_key) and uses cpmdc_session_copy_orbitals when the engine exports it, while engines without that primitive report unsupported instead of silently succeeding.
+- CPMDPot now carries the embed refusal detail when session creation fails, and `CPMDPotMessageAbiTest` pins the exact `rejected by embed` wording with that reason.
+- CPMDPot reports the orbital key refusal on a later force when configure could not open a session, instead of an empty libcpmdc not loaded suffix.
+- CPMDPot::setPotentialConfig reports a config rejected by embed, with the orbital key refusal, when configure drops the session after the engine refuses a key, instead of saying the engine is not loaded.
+- Cache and parameter contract tests no longer hard-code shared temporary paths.
+  They now use per-test temporary locations, which avoids cross-test collisions in
+  parallel runs and works across sandboxed environments.
+- Configuring the build no longer fails when the Python prefix has no include directory and GROMACS cannot be found. A build that requests GROMACS and cannot find it still stops with an error.
+- Constructing and freeing a LAMMPS, GROMACS or OpenMM potential no longer takes another dynamic-linker reference for an engine file that is already open. An open that does not become the resident engine is closed, and the resident engine stays mapped.
+- Coverage instrumentation multiplies every C++ test timeout by 4. That multiplier is what lets the instrumented suite pass: the thread-team matrix and `NeighbourListTest` both run past their ordinary limits, and concurrency among the thread-team copies was only part of the thread-team failures.
+  Each thread-team registration runs one Catch2 tag. Open Sutton-Chen is split across tags, one thread count of the large cluster at a time, because a coarser registration stayed over half its coverage limit on 4 cores. A coverage build runs those registrations one at a time. An ordinary build still runs them in parallel. The limit on each one is 480 seconds: two instrumented runs each had a single registration take about 330 seconds after that same binary had taken under a minute.
+  `NeighbourListTest` takes about 40 seconds once it is instrumented, past the 30 second default, so its limit is 120 seconds.
+- Direct `forcePerAtom` calls, the C ABI Hessian-vector entry points, and `cellVolume` now reject missing or non-finite inputs before invoking kernels or publishing stress, while `FusedCache` no longer stores validation failures.
+- Each classical potential opens an OpenMP team from atom counts measured for it, one each for teams of two, three, and four or more threads (`kTeamFrom`, a `rgpot::TeamFrom`), where one threshold of 8192 atoms held for every potential.
+  On 8 threads, from those counts to 4000 atoms, a call takes 0.20 to 0.86 of its time under that threshold: `StillingerWeberSi` at 4000 atoms takes 431 µs per call, against 2042 µs.
+  Only `StillingerWeberSi`, from 112 atoms, and `TersoffSiC`, from 80, open a team of two, since the other potentials evaluate each pair twice on a team and gained nothing from two threads: at 10000 atoms on 2 threads `LJPot`, `LJClusterPot`, `MorsePot` and `SuttonChenPot` now take 0.80 to 0.93 of their time.
+  One thread sums atom by atom from the `kTeamMinAtoms` of the class, the least of its counts, so the bits still do not depend on `OMP_NUM_THREADS`; below 8192 atoms that costs one thread up to 12% (`StillingerWeberSi`).
+  A batch spreads a system only when that potential would leave it on one thread, so a system between the class floor and 8192 atoms is not spread and a spread worker does not open an inner team.
+  In `Stream` mode one thread evaluates each pair once again, with the bits of a team: at 10000 atoms `LJPot`, `LJClusterPot`, `MorsePot`, `ZBLPot` and EAM take 0.49 to 0.70 of their time, and `LJClusterPot` at 100000 atoms 0.62.
+  The one-argument `rgpot::teamSize(std::size_t)` overload is deprecated and remains exported as a forwarding wrapper under `kCxxSoversion` 9, and the C and engine ABIs (`RGPOT_ABI_VERSION_MINOR` 10, `RGPOT_ENGINE_ABI_MINOR` 11) are unchanged.
+- Every engine plugin built from this repository now exports
+  `rgpot_engine_abi_stamp`, which reports the engine ABI major, minor and layout
+  revision. The stamp is defined once, in `CppCore/rgpot/engine/EngineAbiStamp.cc`,
+  and the table-based libraries, the standalone Lennard-Jones, native-unit and
+  OpenMM plugins, and the test stub all add that file. A loader such as
+  `EnginePotential` in `rgpot-core` can now read the ABI minor and layout revision
+  of these plugins directly instead of assuming minor 0.
+- Fixed building the Python extension when `with_python` is enabled: the
+  `has_analytic_hvp()` query no longer calls a non-const thread-slot accessor
+  on a const handle (the same `primary().caps()` path as `caps()`).
+- Fixed strict-aliasing undefined behavior in `rgpot::Potential::cacheKey` under GCC 13 `-O3` Release builds by defining `XXH_FORCE_MEMORY_ACCESS 0` before including `<xxhash.h>` and copying the hashed scalar keys into byte arrays via `std::memcpy`.
+- Fixed the `RgpotEngineAbiStamp` minor-version rule in `engine_abi.org` to match
+  `rgpot_engine_abi_compatible` and `RgpotEngineAbiStamp::serves`: a host built
+  against minor `N` accepts an engine of the same major and layout revision whose
+  minor is at most `N` (rejecting plugins with a newer minor than the host's).
+- Force and energy calls now reject a missing coordinate, species or force buffer, a missing cell on a periodic potential that needs one (a molecular dispersion sum such as D2 still takes none), and a system with no atoms. A system with no atoms is reported on its own, including when the force buffer is also absent.
+- Fortran-backed potentials now preserve complete error messages when separate instances fail concurrently.
+- Generic and external engine initializers may load another engine without deadlocking the process. Engine handles enter the resident registry only after their initializer, required-symbol checks, ABI validation and first successful construction complete.
+- Listed `d2cpmd-symmetry.diff` (`D2CpmdParams.symmetry`) among the local schema diffs in `docs/orgmode/reference/potential_config.org`.
+- Listed `libcomposite_engine`, its Windows exclusion, and `RGPOT_ENGINE_COMPOSITE` in `docs/orgmode/howto/engine-plugins.org`.
+- MEAMPot now rejects a null force buffer when the system has atoms, with a clear error before it writes any result.
+- MEAMPot now rejects a null output pointer with a clear error before it writes any result.
+- Meson registers the `ipi_driver_ase` test only when the `python3` that runs it can import pytest, numpy and ASE, so a build whose Python lacks numpy, such as an offline `--wrap-mode=nodownload` build, no longer fails the test with `ModuleNotFoundError`.
+- Moved the vendored vesin lockstep test into the Python CI test path and aligned potctl/CI vesin wheel constraints with the vendored 0.6 series.
+- On MinGW, `simd::exact_fma`, `mul_add`, `fma_quick` and `fma_array` return the bits of a hardware fused multiply-add for every input. They handed zeros, subnormal results and inputs with extreme exponents to the C library's `fma`, and mingw-w64's `fma` is not fused, so those results could be off in the last bit or return the default NaN instead of the input NaN. A MinGW build now uses a correctly rounded software fma there. In an unoptimized build the hardware bodies of the LJ, Morse and EAM kernels and of `exp` also called mingw-w64's `fma`, because nothing was inlined into their `target("fma")` functions; they now use the instruction, or the same software fma when the copy stays out of line. `exp_hw_n` and the EAM hardware body are flattened like the other hardware bodies. `FmaExactTest` and `ExactFmaEq` compare against the instruction on MinGW instead of mingw-w64's `fma`, and `ExactFmaEq` checks the software fma against the instruction on every x86-64 GCC or Clang build running on a CPU with FMA.
+- On Windows, the `LammpsPot` result-cache key now hashes the final path of the
+  module that loaded, read from the loader, instead of the requested path. A
+  backend selected through the environment passes an empty path, so two such
+  backends with the same version, ABI revision and configuration used to share
+  one key.
+- One fused-evaluation cache now stands in front of every fused potential, and it stores a failed call like a result: `eindir_objective_eval` and `eindir_objective_grad` at one geometry, and the Hessian-vector centre, run the engine once, and a failed energy followed by its gradient used to run a GFN2 SCC twice.
+  The cache key is the position bits plus the atomic numbers, the cell and the settings of the engine (charge, spin, accuracy, electronic temperature, SCC iterations and mixer, engine build), and a request with the stored key returns the stored success or failure with no engine call. `rgpot::HessianVectorCache` follows the same rule for potentials used without the Rust core.
+  A failed energy is not retried at the same bits: a warm-start retry after an SCC failure needs a changed setting, installed with `rgpot_potential_set_fused_settings` or `PotentialHandle::sync_fused_settings`, or `rgpot_potential_hvp_invalidate`.
+  The gradient of a failed energy returns the same status and the same `rgpot_last_error` message as the energy.
+- Periodic `EAMTablePot` evaluation sums every image inside the cutoff, so a cell whose face spacing is at most twice the cutoff is valid.
+  An atom can interact with its own lattice translations.
+  Evaluation still throws `std::invalid_argument` when one axis would search past an image extent of 1024, or when the three axes together would visit more than 262144 lattice shifts for one pair.
+  A fractional separation that is not finite, or whose nearest integer plus the image extent does not fit in `int`, throws `std::invalid_argument` as well.
+- Periodic and partially periodic cells with any nonzero off-diagonal entry are binned in fractional coordinates from the internal minimum image inverse, shifted to a coordinate reference and wrapped on periodic axes before projection so translation stability holds at large coordinates, while non-periodic fractional axes span the actual coordinate range without wrapping. Fractional projections are retained only as reusable update workspace. Orthorhombic cells keep a Cartesian grid. Cells with a zero or negative diagonal entry on a periodic axis, such as a cube rotated by 90, 120 or 180 degrees, also take the fractional binning path and stay periodic along that axis. Uniformly scaled tiny cells keep their scaled inverse in `MinimumImage`, while a singular or ill conditioned cell in fractional binning, or a non-finite fractional coordinate, raises an error instead of falling back to Cartesian bins.
+- Persistent result-cache keys are a version byte followed by a 64-bit hash in little-endian order, independent of the width of `size_t`. The engine ABI reference documents that the cache has no size cap and is bounded by removing its directory.
+- Persistent result-cache keys preserve the order of the potential type, parameter fingerprint, and geometry fields. Scalar and batched callers reuse the same results under optimized builds. An existing database retains its old entries and recomputes each geometry on its first visit using the new key format.
+- Python potential calls now map kernel `std::domain_error` failures, including coincident `LJPot` atoms across `__call__`, `evaluate`, `evaluate_per_atom`, `evaluate_batch`, `evaluate_lj`, `GromacsPot`, `OpenMMPot`, and `ExprPot`, to `rgpot.NumericalError`, and `rgpot_lj_eval` catches C++ exceptions so the C engine path returns an evaluation error code instead of unwinding across `extern "C"`.
+- RPC clients now check the advertised protocol minor before sending the orbital-key `ForceInput` fields.
+  Those fields first appeared in minor 2, and a keyed request to an older server fails with the required and advertised minors.
+  `ForceInput.neighbors` needs no minor above 0, and requests without an orbital key stay valid against a minor-1 server.
+- Remote RPC failures now return error statuses instead of aborting: closed peers, truncated replies, callback-side server exceptions, and NULL RPC tensor data are all reported through the C ABI and Python RPC calculator as ordinary call failures.
+- Rust C-ABI EAM table tests keep their borrowed periodic cell storage alive across evaluation.
+- Taylor jet callbacks now reject non-finite directions, interval operations
+  handle empty inputs consistently, and the API reference lists the complete
+  Taylor jet error and entry point sets.
+- Tersoff and ZBL build a stored neighbour list on the same OpenMP atom slices as the other classical potentials once a system has 8192 atoms and the stencil holds at least 4096 candidates, more than one per atom.
+  The index matches one thread.
+  An open axis whose nominal grid does not fit in memory is binned on the atom span, so a cluster in a huge box keeps a real cell list.
+- Tersoff reference documentation now describes rejected cells as
+  zero-volume or non-finite to match `cellVolume` using `|det|`, and the
+  test suite adds C++ left-handed mirror checks alongside Fortran and
+  Python strain finite-difference and thread-invariance stress tests.
+- The AOTI package export enables deterministic algorithms while it compiles, so a scatter that used to lower to unordered atomic adds gives one output for one input, and the caller's deterministic setting is restored afterwards.
+- The Asap `Exception` class used by `EMT` no longer shares one `thread_local` buffer between `GetMessage` calls, so the messages of two live exceptions no longer overwrite each other, and copy assignment no longer leaves two exceptions deleting the same message stream. `GetMessage` still returns `const char *`, `sizeof(Exception)` is still 8 bytes, and every symbol the class exported before is still exported; copy assignment is added.
+- The C++ neighbour table comments, the neighbour list tutorial and the neighbour layer notes now state that a reused update rewrites only the shifts. The pair vectors and distances stay those of the last search until a full rebuild, as the C header already says.
+- The C-ABI potential tests in `rgpot-core` keep the position, atomic number and cell arrays on the heap, so the borrowed force input still points at live storage when it is evaluated.
+- The Meson configure step reads the libc++ version again on Windows toolchains built on clang (clang, clang-cl, llvm-mingw, MSYS2 CLANG64). A libc++ older than 19 once more gets the `__atomic_fetch_or` fallback check, and configure stops with a clear error when that fallback cannot link. MSVC is still skipped, and the probe passes the C++20 standard flag again.
+- The OpenMM MD session takes its first Langevin force on the hyperplane, keeps
+  its random stream across calls, holds serialized distance constraints, and
+  reflects at walls until the state is inside, where it used to return after
+  eight passes.
+- The Python RPC calculator no longer replaces a protocol minor mismatch with a generic calculate failure.
+  It raises `ProtocolMinorMismatchError`, a `RuntimeError` whose message and `required_minor`, `server_minor` and `client_minor` attributes report the minor the request needs, the one the server advertised and the one the client implements.
+- The Python extension exports `evaluate_metatomic_dlopen` in every build.
+  `has_metatomic_dlopen` is true whether or not torch is linked, and the
+  engine library is still opened at runtime.
+  Installing the package includes the `librgpot` SONAME as a regular file,
+  so the extension can load the library from a wheel.
+- The Rust engine loader rejects a non-finite cell and a negative jet scale with `EngineError::Invalid`.
+- The `RgpotRpcCalculator` ASE calculator now lists `free_energy` in `implemented_properties`, so `get_potential_energy(force_consistent=True)` returns the energy instead of raising `PropertyNotImplementedError`.
+- The `rgpot-pair` C kernels now build with GCC 4.8, the compiler in the
+  manylinux2014 aarch64 cross image. The build asks for `-std=gnu99` where the
+  compiler is not MSVC, and the Gupta buffers use `__thread` on GCC and Clang.
+- The `rgpot-pair` x86 kernels now select their AVX2/FMA clones with CPUID and
+  XGETBV instead of compiler runtime tables. This keeps accelerated kernels
+  available when Rust links the static library with `-nodefaultlibs`, including
+  on x86_64 macOS, while retaining the scalar fallback.
+- The built-in LEPS presets now use the extended-LEPS singlet and anti-Morse
+  triplet factors, restoring their published well depths and barriers.
+- The capability handshake, in Rust and in C++, treats a schema id
+  with an optional `0x` prefix, in either case, as the same Cap'n
+  Proto file id. The C++ check uses one helper for that comparison.
+- The composite engine and the CMake CuH2 plugin link the umbrella library.
+  They no longer define their own `Neighbours` generation counter.
+- The documentation of `EngineStatus::code` no longer promises an exact round trip for every status.
+  A status built from a return code round-trips exactly, while a failure built directly with a magnitude beyond the range of `c_int` saturates to `c_int::MAX` or `c_int::MIN`.
+- The engine drivers build on Windows. `lj_eval.cpp` and the engine tests load engine libraries through the cross-platform loader in `rgpot/plugin/DynLib.hpp` instead of `dlfcn.h`. `capi_threads` uses Win32 threads on Windows. The native Lennard-Jones engine exports `rgpot_md_native_force`, which a Windows DLL did not. The ThreadSanitizer binary is skipped on Windows. The `lj_eval` library declares the fmt headers `LJPot.hpp` includes, so the engines build when fmt is not on the default include path.
+- The fast neighbour list now uses `linkcell` 0.4.2 and `minimage` 0.2.3,
+  without `minimage` compatibility C symbols that can conflict with mimalloc.
+- The generated C header `rgpot-core/include/rgpot.h` now declares `ENGINE_ERR_INVALID`, the engine code for an invalid argument, next to `ENGINE_ERR_UNSUPPORTED`, so C hosts can name the code that the Rust loader returns.
+- The installed CMake package of a static rgpot built with OpenMP now finds OpenMP itself. `find_package(rgpot)` used to fail at generate time because `rgpot_nlist` named `OpenMP::OpenMP_CXX` and nothing defined it. A consumer links the runtime library and is not compiled or linked with `-fopenmp`.
+- The lazy ASE 3.29 calculator plugins keep the module ASE binds when `rgpot.ase.__ase_plugins__` is first read, including when several threads read that attribute at once.
+- The two argument `rejectInputCall` and `guardInputCall` and the three argument `rejectForceCall` and `guardForceCall` stay exported from `librgpot` as wrappers over the new forms with `needsSpecies` true, so binaries built against the old signatures still load under `kCxxSoversion` 9. The `needsSpecies` parameter no longer has a default, and the C ABI in `rgpot.h` is unchanged.
+- The variance that `ExprPot` returns now scales each child variance by the square of its weight, as `SumPot` does, where it used the weight itself. The two agree only for a weight of one, and a negative weight no longer gives a negative variance.
+- UMA tasks, including `omol`, accept explicit spin `0` without rewriting it to `1`. `rgpot::validate_uma_spin_for_task` in `rgpot/UmaPot/UmaConfig.hpp` now enforces `[0, 100]` for every UMA task, with only negative spins and spins above `100` rejected. The same bounds are enforced in `UmaPot` and `libuma_engine`, while `rgpot_engine_set_charge_spin` still reports unsupported values through `rgpot_engine_last_error`. Also tightened drop-in behavior so `librgpot_gromacs` keeps an explicit engine spin when the qmi `MULTIPLICITY` is the grompp default `1`, including when `CHARGE` is not `0`. The setter takes charge and spin together, so the drop-in reads that spin back out of the engine `CONFIG` and applies the qmi charge with it. Only a non-default `MULTIPLICITY` replaces the spin. A config that leaves spin at its default falls back to the qmi charge and multiplicity, and the default pair `CHARGE 0 / MULTIPLICITY 1` is still left on the engine config. Metatomic and Skala reject spin values below `1`, and `librgpot_gromacs` refuses an engine `CONFIG` whose spin is below the minimum of its engine (`0` for UMA, `1` for metatomic, Skala and NWChem) instead of forwarding it.
+- UmaPot refuses a device that the AOTI package was not exported for, passes a CUDA index to the runner and rejects an unknown device string.
+- Updated the README, the XC-kernel note and the architecture reference to
+  describe how `PotentialConfig.d4` configures `potserv <port> D4` (including
+  periodic 3D lattice evaluation and stress) and `d4` builtin composite terms,
+  rather than stating that the `d4` arm is unapplied and refused everywhere.
+- `CBEPot` serializes potlibc calls on one handle. Distinct handles may run at the same time, and the classical engine reports per-instance reentrancy for CBE.
+- `EMTPot` no longer crashes after a refused call. An element the provider does not cover, a cell too thin for the kernel, a singular or non-finite cell and non-finite positions raise `std::invalid_argument` in C++ and `ValueError` in Python, and the next call starts from a clean state. A refused call no longer leaks the Asap neighbor list index, which AddressSanitizer reported. A call with zero atoms raises `std::invalid_argument` (`invalid parameter: nAtoms must be positive`) in C++ and `ValueError` in Python.
+
+  `EMTPot` raises `std::domain_error` when atoms sit on top of each other and the forces are not finite, and Python reports it as `rgpot.NumericalError` from `__call__`, `evaluate` and `evaluate_batch`. Before, the call returned NaN forces without an error.
+- `EMTPot` no longer keeps force evaluation serial above `rgpot::kTeamMinAtoms`.
+  It now evaluates the Asap half list in two OpenMP phases, one owner-row pass
+  and one incoming-partner pass, so the force sum order is fixed and the
+  energy and forces are bit-identical at 1, 2, 4 and 8 threads.
+  Below `rgpot::kTeamMinAtoms` it still runs on the calling thread and opens
+  no OpenMP region.
+- `EMTPot` no longer recomputes forces for a second `EMT::GetCartesianForces` call on unchanged atoms above `rgpot::kTeamMinAtoms`. The two phase OpenMP force path now records the atoms change counter the way the serial paths do, and the forces are bit-identical to before at every thread count.
+- `EMTPot` returns the energy and forces of the new cell when the cell changes between calls with the same species. Asap's neighbour list does not notice a new cell, so the kernel kept the old pairs and a strain of 5% gave an energy tens of eV off. Numerical stress through `RgpotCalculator` with `"emt"` now agrees with ASE's `EMT`.
+- `EnginePotential::load` now calls `rgpot_engine_available` before
+  `rgpot_engine_create` when the plugin exports it, and refuses an engine that
+  reports itself unavailable with `EngineError::Unavailable`. A plugin that does
+  not export the symbol, or exports a null entry for it, is treated as available,
+  so such a plugin keeps loading. The symbol is the optional
+  `EngineSymbols::available` field, set with `EngineSymbols::with_available`, and
+  `EngineSymbols::new` keeps taking the four required symbols. Every other
+  resolved symbol is checked for a null address, so a library that exports a null
+  required entry is reported as a missing symbol instead of being called.
+- `EnginePotential` now validates `rgpot_engine_abi_stamp` (major, minor and
+  layout revision) on load and poisons its handle after a negative return code so
+  subsequent calls never re-enter a failed native engine, and `rgpot_engine_hvp`
+  rejects overlapping `direction` and `hv_out` buffers with
+  `RGPOT_ENGINE_ERR_INVALID`.
+- `EngineSession::set_callbacks` no longer frees a callback context the engine may still hold.
+  A successful replacement installs the new callbacks before the old ones are dropped, and a panic in the old callbacks' destructor is caught and reported as a fatal failure instead of unwinding out of the call.
+  The callbacks of a refused replacement are kept alive until the engine is destroyed, because an engine built before the header forbade it may have retained them.
+  The `rgpot_engine_set_callbacks` header and reference now state the lifetime of the previous and the supplied `ctx` after a successful and a refused call.
+- `EngineSession` no longer returns a false success when a refused callback state that the engine kept registered fails.
+  A panic in the oracle, acquisition or model-update callback of such a state is now collected like one from the registered callbacks and reported as a fatal failure.
+  The same holds for `set_callbacks`, `hint` and the force calls.
+- `LJPot` keeps its `nlist::Neighbours` scratch per thread through `rgpot::Kept`, so concurrent `const` evaluations on a shared `LJPot` instance run without locks or races, and `LJPot::caps().reentrancy` is now `Reentrancy::SharedInstance`.
+- `LJPot` keys the neighbour list it keeps on each thread on
+  `Neighbours::generation()` instead of its own address.
+  A destructor releases only the lists of the thread it runs on, so an `LJPot`
+  built at the address of a destroyed one used to find that one's list on every
+  other thread.
+- `MinImageIsaVariants` runs its binaries under the cross file's `exe_wrapper` and accepts the CRLF line a Windows binary prints, so it passes in a MinGW cross build and under MSYS2.
+- `MorsePot` on a stored neighbour list no longer evaluates each pair from both ends on an OpenMP team, and `Neighbours::fastTiles` no longer bypasses `walkStored` on stored lists.
+  When `MorsePot::kTeamFrom` opens a team for the requested thread count, from 2048 atoms on three threads and from 24 (`MorsePot::kTeamMinAtoms`) on four or more but never on two, and the stored list holds at least 4096 candidate upper pairs, `MorsePot` evaluates each upper pair once in a single two-phase region with work-balanced atom slices rounded to 8-atom boundaries and vectorised `simd::exp_fixed_n` batches, while keeping the one-thread energy, force, stress and per-atom bits across all thread counts (including 1, 2, 4, 8 and 16 threads).
+  The private split-snapshot test hook is no longer exported from `librgpot`, and an installed tree no longer includes implementation sources such as `MorsePot.cc`.
+- `Neighbours.hpp` no longer marks `Neighbours::nextGeneration`
+  `__declspec(dllimport)` for consumers on Windows, so a program linked to a
+  static `librgpot` resolves it.
+  A consumer of the shared library still resolves it through the import library.
+- `Neighbours::generation()` is a process-unique identifier that changes at
+  construction and on every rebuild, copy and move.
+  It comes from one counter exported by `librgpot`.
+  The `MorsePot` stored-pair workspace and the `fastTiles` stencil cache are keyed
+  on it instead of an object address, so an object built at the address of a
+  destroyed one does not reuse that object's pair index, slice splits or stencil.
+  Periodic and partially periodic skewed cells are binned in fractional coordinates
+  from the internal minimum-image inverse, wrapped on periodic axes and spanned
+  on open axes, so a sheared stream with zero skin does not miss pairs across
+  cell faces.
+  A singular or ill-conditioned cell in fractional binning, or a non-finite
+  fractional coordinate, is an error instead of falling back to Cartesian
+  binning.
+  Orthorhombic cells and fully open skewed cells use Cartesian binning.
+  The C++ soversion of `librgpot` is 9.
+- `Neighbours` counts the cells of a grid in 64-bit arithmetic and bins a box
+  whose grid has more cells than an `int` can name as one cell.
+  A periodic box of 3e9 Å with a 1 Å search used to overflow the cell count and
+  throw `std::length_error` instead.
+- `Neighbours` keeps nothrow default construction and guards the 64-bit
+  generation counter against wraparound at `UINT64_MAX`, throwing
+  `std::overflow_error` instead of returning the `0` sentinel.
+- `RgpotCalculator("mullerbrown")` resolves a cutoff of 0. Muller-Brown is a
+  non-periodic surface, so a periodic cell is refused and a free cluster is not
+  tiled. A caller-supplied potential still has to publish its own cutoff.
+- `RgpotCalculator` now advertises only constructible potential kinds, exposes
+  the analytic `TersoffSiC` stress, forwards i-PI driver stress, rejects periodic
+  D3/D4 geometries, and is checked against ASE's numerical derivatives and
+  standard relaxation tools for every potential type in the build.
+- `RgpotCalculator` now tiles a short periodic cell by the cutoff of the
+  potential it was given. An `ExprPot` or `SumPot` built from kind strings or
+  terms without a `cutoff` key, and a GROMACS or OpenMM engine object, resolved
+  to a cutoff of 0 and gave the wrong energy and forces in a cell narrower than
+  twice the cutoff. A potential whose cutoff cannot be determined now raises
+  `ValueError` when the calculator is built.
+- `RgpotRpcCalculator.close` now drops the Python capability handle before tearing down the `kj` event loop, handles already-closed loops and unawaited teardown coroutines, always closes its loop and managed `potserv` process in `finally`, avoids unclosed or blocking subprocess pipes in `spawn`, and never masks an active `with`-block exception in `__exit__`.
+- `SuttonChenPot` keys its stored-pair workspace on `Neighbours::generation()`
+  instead of the neighbour-list object's address, so a potential constructed at a
+  recycled address does not reuse another object's pair index or slice splits.
+- `SuttonChenPot` now requires both `total_up <= term_limit` (from `setPairTermLimit(pairs)`) and `pairScratchFits` before entering the three-phase stored OpenMP region, skips `buildStoredHalfIndex` up front when `est_half_pairs > term_limit`, falls back to the threaded two-pass row walk with `PairTerms<3>` capped at `term_limit / lanes` per lane when the three-phase path is skipped, releases the per-call three-phase scratch vectors from the thread-local workspace when the call returns, and includes `SuttonChenConfig`, `PotType::SuttonChen`, and `SuttonChenPot` in the `CxxLayout.hpp` ABI layout stamp (`kCxxSoversion` 8).
+- `SuttonChenPot` on a stored neighbour list no longer evaluates each pair from both ends or runs serial embedding and reduction loops between separate OpenMP regions, which made 2 threads slower than 1 thread and capped multi-core scaling.
+  When `SuttonChenPot::kTeamFrom` opens a team for the requested thread count, from 2048 atoms on three threads and from 64 (`SuttonChenPot::kTeamMinAtoms`) on four or more but never on two, and the stored list holds at least 4096 candidate upper pairs, `SuttonChenPot` evaluates each upper pair once in a single three-phase `forEachSlicePhase` region over work-balanced atom slices rounded to 8-atom boundaries, computing pair terms once, accumulating densities and embedding weights in parallel, and reducing forces, stress, and per-atom virials in one-thread summation order so every thread count keeps the exact one-thread bits.
+- `TersoffSiC` names a missing atomic-number array as a missing species buffer. A null position buffer, cell or force buffer is reported on its own.
+- `UmaPot` compiles against torch 2.8 again. Loading a package's constants blob called `update_constant_buffer_from_blob`, which that torch does not have; the call is now made only where the member exists, and a package with a blob reports that the linked torch cannot load it.
+- `ZBLPot` on a stored neighbour list keeps the energy, forces, stress and per-atom terms of one thread on every `OMP_NUM_THREADS`, including on arm64.
+  The row walk rounds `fscale * d` and then adds that product, as the one-thread walk does.
+  `ZBLPot.cc` is built with contraction off, as the other classical kernels are, so a compiler that fuses across statements rounds both walks the same way.
+- `aoti_unpack::detail::unique_token` now has hidden symbol visibility so `librgpot` does not export its function-local static symbols (`counter`, `seed` and its guard variable) in Metatomic builds.
+- `libpotlibc_engine` and `libcoupled_well_engine` accept the original version-1 create messages (144 and 48 bytes) and the version-2 messages that carry a size and reserved words. `RGPOT_POTLIBC_CONFIG_VERSION` and `RGPOT_COUPLED_WELL_CONFIG_VERSION` now name version 2, so callers that recompile a version-1 struct against the current headers must set `version` to `RGPOT_POTLIBC_CONFIG_VERSION_V1` or `RGPOT_COUPLED_WELL_CONFIG_VERSION_V1` (with `RGPOT_POTLIBC_CONFIG_V1_SIZE` and `RGPOT_COUPLED_WELL_CONFIG_V1_SIZE` for the 144- and 48-byte sizes). Any other version is refused with its own error.
+- `librgpot` exports `rgpot_fast_pairs`, `rgpot_fast_wrap`, `rgpot_fast_wrap_axes` and `rgpot_fast_last_error` whenever the fast pair list is built. Before, a shared `librgpot` exported them only when the Fortran water-H kernel was built too, because nothing else in the library called them.
+- `meson setup -Dwith_examples=true` builds again: `time_pair_scaling` links the fast pair list, so the water-H kernels no longer leave `rgpot_fast_wrap` undefined.
+- `meson setup -Dwith_rust_core=true` now works in a clean build directory. The
+  Rust library is built by a target that ninja runs before anything links it, so
+  setup no longer needs a prior cargo run. With the fast pair list on,
+  `rgpot-core` and the pair list are linked as one archive, `librgpot_bundle.a`,
+  so the Rust runtime is defined once. The EAM table free function also catches
+  a panic and records it in `rgpot_last_error` instead of unwinding into the
+  host.
+- `meson setup -Dwith_rust_core=true` without the fast pair list builds again on
+  the workspace Rust version, 1.88. The build asked for a 1.89 toolchain only
+  the pair list needs, and stopped when rustup had none. That toolchain is now
+  used only when the pair list is on. On macOS every Rust archive, with or
+  without the pair list, is still written with `/usr/bin/ar`.
+- `nlist::build` lists every periodic image inside the cutoff for a one-atom cell and for a periodic cell narrower than twice the cutoff, including an atom's images of itself. A periodic orthorhombic neighbour search folds each coordinate into the cell before Cartesian binning, so an atom outside the box is found with its image inside. Pair kernels still sum one nearest image of each distinct pair. Sheared cells stay on the fractional grid.
+- `potserv` now serves the `EAMAl` potential when the Fortran potentials are built, and lists it in its usage message. Before, asking for `EAMAl` failed with an unknown potential type.
+- `potserv` usage now names `TBLiteGFN2` and the optional Metatomic device, and lists `CuH2` only when the Fortran potentials are built.
+- `rgpot.lammps.FixExternal` now imports `mpi4py` through `importlib.import_module` when LAMMPS runs on multiple ranks and verifies the broadcast error report type, so `mypy --strict` and `pyright` pass without `mpi4py` installed.
+- `rgpot::lr::DualList` now builds its half-shell candidate lists through `rgpot::nlist::Builder`, enumerating every periodic image inside the cutoff once (including one canonical direction for self images when the cutoff exceeds a cubic or triclinic cell vector), and filters candidates on the active OpenMP team while skipping the distance pass when coordinates and the cell are unchanged.
+  `rgpot::nlist::Builder::update` checks both signs of image shifts and measures folded coordinates against the nearest reference image, so variable-cell and NPT steps within the skin reuse the stored candidate table instead of rebuilding on every box change.
+  D3 and D4 now restore the opposite directed neighbor for each canonical periodic self image, preserving their energies, coordination numbers and forces; D3 also restores self-image stress.
+- `rgpot::lr::DualList` rebuilds after an update with no atoms, or one molecular atom. Passing the earlier atoms again used to leave both lists empty.
+- `rgpot::lr::DualList` rejects an infinite or NaN skin with `std::invalid_argument` ("skin must be finite and non-negative"), as it already did for a negative skin.
+- `rgpot::nlist::build` and `buildByAtom` now leave the previous table in place when they reject a periodic coordinate that is not finite or lies more than 2^29 cells from the origin, as the header promises for a rejected geometry. Both cleared the table before that check and left it empty.
+- `rgpot_engine_taylor_jet` keeps the caller's jet and derivative report unchanged when the evaluation fails.
+- `scripts/export_uma_aoti.py` now compiles each `.pt2` archive inside an isolated `TORCHINDUCTOR_CACHE_DIR`, preventing concurrent exports of identical AOTInductor graphs from overwriting each other's embedded package metadata.
+- `scripts/run_coverage_fortran.sh` again enables branch coverage with `lcov_branch_coverage=1` on lcov 1.x and `branch_coverage=1` on 2.x, matching `scripts/run_coverage_cpp.sh`, so the Fortran Codecov upload on Ubuntu 22.04 keeps BRDA data instead of line hits only.
+
+### Miscellaneous
+
+- Restored the develop CI checks across Meson formatting, link validation, LeakSanitizer libomp symbolization, lcov 2 coverage capture, isolated readcon golden environments, optional `mpi4py` typing, wheel EAM table fixtures, ThreadSanitizer container execution, benchmark analysis timeout headroom, and synchronized `MPI_Abort` error flushing across calculator ranks.
+
+
 ## [3.7.0] - 2026-11-17
 
 [3.7.0]: https://github.com/OmniPotentRPC/rgpot/tree/v3.7.0

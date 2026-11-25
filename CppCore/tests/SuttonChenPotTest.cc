@@ -1548,10 +1548,17 @@ TEST_CASE("SuttonChenPot workspace invalidates when a new potential reuses a "
   auto prime = [&](rgpot::SuttonChenPot &pot) {
     setThreads("4");
     pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    const auto teams_before = rgpot::teamsOpened();
     pot.forceImpl(in1, &out);
     const auto after_first = rgpot::detail::suttonChenWorkspaceSnapshot();
+#if defined(_OPENMP)
     REQUIRE(after_first.index_builds >= 1);
     REQUIRE(after_first.generation != 0);
+#else
+    REQUIRE(after_first.index_builds == 0);
+    REQUIRE(after_first.generation == 0);
+    REQUIRE(rgpot::teamsOpened() == teams_before);
+#endif
     return after_first;
   };
 
@@ -1574,8 +1581,14 @@ TEST_CASE("SuttonChenPot workspace invalidates when a new potential reuses a "
   INFO("heap address1=" << addr1 << " address2=" << addr2
                         << " reused=" << (addr1 == addr2));
   CHECK(pot->listReused());
+#if defined(_OPENMP)
   CHECK(heap_snap.generation != first_snap.generation);
   CHECK(heap_snap.index_builds == first_snap.index_builds + 1);
+#else
+  CHECK(heap_snap.generation == 0);
+  CHECK(heap_snap.index_builds == 0);
+  CHECK(rgpot::teamsOpened() == 0);
+#endif
   CHECK(count_sc_bit_diffs(got_heap, want) == 0);
   pot.reset();
 
@@ -1593,7 +1606,13 @@ TEST_CASE("SuttonChenPot workspace invalidates when a new potential reuses a "
   const auto got_inplace = run_full_sc_eval(*inplace, sys2, box);
   const auto opt_snap = rgpot::detail::suttonChenWorkspaceSnapshot();
   CHECK(inplace->listReused());
+#if defined(_OPENMP)
   CHECK(opt_snap.generation != opt_first.generation);
   CHECK(opt_snap.index_builds == opt_first.index_builds + 1);
+#else
+  CHECK(opt_snap.generation == 0);
+  CHECK(opt_snap.index_builds == 0);
+  CHECK(rgpot::teamsOpened() == 0);
+#endif
   CHECK(count_sc_bit_diffs(got_inplace, want) == 0);
 }

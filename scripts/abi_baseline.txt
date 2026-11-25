@@ -3,6 +3,7 @@ rgpot_external_potential_energy_forces
 rgpot_external_potential_free
 rgpot_gromacs_potential
 rgpot_lammps_potential
+rgpot_lammpc_potential
 rgpot_lj_arithmetic_gradient
 rgpot_lj_atom_energies
 rgpot_lj_curvature_pairs

@@ -1,1 +1,0 @@
-The two argument `rejectInputCall` and `guardInputCall` and the three argument `rejectForceCall` and `guardForceCall` stay exported from `librgpot` as wrappers over the new forms with `needsSpecies` true, so binaries built against the old signatures still load under `kCxxSoversion` 9. The `needsSpecies` parameter no longer has a default, and the C ABI in `rgpot.h` is unchanged.

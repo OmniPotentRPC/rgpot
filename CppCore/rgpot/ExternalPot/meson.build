@@ -25,6 +25,7 @@ endif
 external_pot = static_library(
     'external_pot',
     'ExternalPot.cc',
+    'detail/LoadedIdentity.cc',
     dependencies: external_pot_deps,
     cpp_args: external_pot_args,
     include_directories: _incdirs,
