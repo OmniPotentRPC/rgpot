@@ -1243,8 +1243,9 @@ if get_option('with_rust_core')
     if host_machine.system() == 'linux'
         test(
             'abi_core_symbols',
-            find_program('scripts/abi_symbols.sh'),
+            find_program('python3', 'python'),
             args: [
+                files('scripts/abi_symbols.py'),
                 '-p',
                 '^rgpot_',
                 _rust_target_dir / _rust_archive,

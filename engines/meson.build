@@ -786,15 +786,16 @@ if (
     endif
 endif
 
-abi_script = find_program('../scripts/abi_symbols.sh')
+abi_python = find_program('python3', 'python')
+abi_script = files('../scripts/abi_symbols.py')
 abi_baselines = files('../scripts/abi_baseline.txt')
 if has_fast_nlist
     abi_baselines += files('../scripts/abi_baseline_fast.txt')
 endif
 test(
     'abi_symbols',
-    abi_script,
-    args: [rgpot.full_path(), abi_baselines],
+    abi_python,
+    args: [abi_script, rgpot.full_path(), abi_baselines],
     timeout: 30,
 )
 # abi_symbols above reads only the kind of librgpot this build makes. A
@@ -821,24 +822,28 @@ if get_option('with_tests') and host_system != 'windows'
     ]
         test(
             'abi_symbols_fixture_' + _kind[0],
-            abi_script,
-            args: [_kind[1].full_path(), abi_fixture_baseline],
+            abi_python,
+            args: [abi_script, _kind[1].full_path(), abi_fixture_baseline],
             depends: _kind[1],
             timeout: 30,
         )
     endforeach
     test(
         'abi_symbols_fixture_shared_hidden',
-        abi_script,
-        args: [abi_fixture_so.full_path(), files('abi_fixture_hidden.txt')],
+        abi_python,
+        args: [
+            abi_script,
+            abi_fixture_so.full_path(),
+            files('abi_fixture_hidden.txt'),
+        ],
         depends: abi_fixture_so,
         timeout: 30,
         kwargs: _rt_kw['abi_symbols_fixture_shared_hidden'],
     )
     test(
         'abi_symbols_fixture_archive_missing',
-        abi_script,
-        args: [abi_fixture_a.full_path(), abi_baselines],
+        abi_python,
+        args: [abi_script, abi_fixture_a.full_path(), abi_baselines],
         depends: abi_fixture_a,
         timeout: 30,
         kwargs: _rt_kw['abi_symbols_fixture_archive_missing'],

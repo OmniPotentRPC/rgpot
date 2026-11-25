@@ -454,8 +454,8 @@ rgpot_add_test(CxxSoversion
 
 rgpot_test_enabled(abi_symbols _on)
 if(_on)
-  # The script has no execute bit. Meson runs it from its #! line.
-  set(_rgpot_abi_script sh "${RGPOT_TEST_ROOT}/scripts/abi_symbols.sh")
+  set(_rgpot_abi_script ${Python3_EXECUTABLE}
+      "${RGPOT_TEST_ROOT}/scripts/abi_symbols.py")
   # The neighbour C ABI is in rgpot_nlist, which a shared librgpot links
   # and a static one leaves beside it, so a static build checks the union
   # of the two archives. CMake builds no fast list, so the fast-list
@@ -473,7 +473,8 @@ endif()
 # A DLL has no hidden visibility, so the fixtures are built only off Windows.
 rgpot_test_enabled(abi_symbols_fixture_shared _on)
 if(_on)
-  set(_rgpot_abi_script sh "${RGPOT_TEST_ROOT}/scripts/abi_symbols.sh")
+  set(_rgpot_abi_script ${Python3_EXECUTABLE}
+      "${RGPOT_TEST_ROOT}/scripts/abi_symbols.py")
   add_library(rgpot_abi_fixture SHARED engines/abi_fixture.c)
   add_library(rgpot_abi_fixture_a STATIC engines/abi_fixture.c)
   add_library(rgpot_abi_fixture_lib STATIC engines/abi_fixture.c)
