@@ -72,7 +72,10 @@ fail() { echo "fake orca: $*" >&2; exit 3; }
 first=$(head -n 1 "$inp")
 last=$(tail -n 1 "$inp")
 [[ $first =~ ^!\ .*\ EnGrad ]] || fail "no EnGrad on the keyword line"
-grep -Eq '^%maxcore [0-9]+$' "$inp" || fail "no %maxcore line"
+case "${FAKE_ORCA_EXPECT_MAXCORE:-1}" in
+  1) grep -Eq '^%maxcore [0-9]+$' "$inp" || fail "no %maxcore line" ;;
+  0) if grep -q '^%maxcore' "$inp"; then fail "%maxcore was not expected"; fi ;;
+esac
 grep -Eq '^\* xyz -?[0-9]+ [0-9]+$' "$inp" || fail "no xyz header"
 [[ $last == "*" ]] || fail "the xyz block is not closed"
 
@@ -483,6 +486,24 @@ TEST_CASE("ORCAPot leaves out %pal for one process and sets charge and spin",
   REQUIRE_THAT(text, ContainsSubstring("! r2SCAN-3c EnGrad\n"));
   REQUIRE_THAT(text, !ContainsSubstring("%pal"));
   REQUIRE_THAT(text, ContainsSubstring("* xyz 1 2\n"));
+}
+
+TEST_CASE("ORCAPot leaves out %maxcore when maxcore_mb is 0", "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  EnvVar expect("FAKE_ORCA_EXPECT_MAXCORE", "0");
+  rgpot::ORCAConfig cfg = fake.config();
+  cfg.maxcore_mb = 0;
+  rgpot::ORCAPot pot(cfg);
+  const Result r = evaluate(pot, kWater, kWaterZ);
+  REQUIRE_THAT(r.energy,
+               WithinRel(kFakeEnergy * rgpot::units::HARTREE_TO_EV,
+                         kUnitTolerance));
+  const std::string text = fake.input(1);
+  REQUIRE(text.rfind("! PBE def2-SVP TightSCF EnGrad\n%pal nprocs 2 end\n", 0) ==
+          0);
+  REQUIRE_THAT(text, !ContainsSubstring("maxcore"));
+  REQUIRE(rgpot::ORCAConfig{}.maxcore_mb == 1024);
 }
 
 TEST_CASE("ORCAPot converts the energy and the gradient with units.hpp",
@@ -1091,7 +1112,7 @@ TEST_CASE("ORCAPot rejects a config that cannot run", "[orca]") {
   bad([](rgpot::ORCAConfig &c) { c.keywords = "TightSCF\n%pal nprocs 64 end"; });
   bad([](rgpot::ORCAConfig &c) { c.basis = "def2-SVP\r"; });
   bad([](rgpot::ORCAConfig &c) { c.nprocs = 0; });
-  bad([](rgpot::ORCAConfig &c) { c.maxcore_mb = 0; });
+  bad([](rgpot::ORCAConfig &c) { c.maxcore_mb = -1; });
   bad([](rgpot::ORCAConfig &c) { c.multiplicity = 0; });
   bad([](rgpot::ORCAConfig &c) { c.timeout_s = -0.1; });
   bad([](rgpot::ORCAConfig &c) {

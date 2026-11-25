@@ -78,7 +78,11 @@ struct ORCAConfig {
   int multiplicity = 1;
   /// Processes for `%pal nprocs`. Above 1 ORCA starts its own MPI ranks.
   int nprocs = 1;
-  /// `%maxcore`, memory per process in MB. 1024 is ORCA's own default.
+  /// `%maxcore`, memory per process in MB; 1024 is rgpot's choice. Zero
+  /// leaves `%maxcore` out of the input, so ORCA's own default applies:
+  /// 4096 MB in ORCA 6.1 (ORCA 6.1 manual, section 2.1.3,
+  /// https://www.faccts.de/docs/orca/6.1/manual/contents/essentialelements/input.html).
+  /// A negative value is rejected.
   int maxcore_mb = 1024;
   /// Start each call from the orbitals of the previous one.
   bool restart = true;
@@ -105,7 +109,8 @@ class ORCAPot : public Potential<ORCAPot> {
 public:
   /// Resolves the executable and creates the working directory.
   /// Throws std::invalid_argument for a config that cannot run (empty
-  /// method, a count below 1, a line break in a keyword field, a timeout_s
+  /// method, an nprocs or multiplicity below 1, a negative maxcore_mb, a
+  /// line break in a keyword field, a timeout_s
   /// that is negative or not finite) and ORCAError when no executable is
   /// found or the directory cannot be made.
   explicit ORCAPot(const ORCAConfig &config);

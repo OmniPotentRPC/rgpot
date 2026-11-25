@@ -508,8 +508,10 @@ ORCAPot::ORCAPot(const ORCAConfig &config)
   if (config.nprocs < 1) {
     throw std::invalid_argument("ORCAPot: nprocs must be at least 1");
   }
-  if (config.maxcore_mb < 1) {
-    throw std::invalid_argument("ORCAPot: maxcore_mb must be at least 1");
+  if (config.maxcore_mb < 0) {
+    throw std::invalid_argument(
+        "ORCAPot: maxcore_mb must be 0, to use ORCA's own default, or a "
+        "positive number of MB");
   }
   if (!std::isfinite(config.timeout_s) || config.timeout_s < 0.0) {
     throw std::invalid_argument(
