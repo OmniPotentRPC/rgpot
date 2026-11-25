@@ -689,14 +689,13 @@ if not get_option('with_rpc_client_only')
         ]
     endif
     # A loadable plugin cannot embed a static umbrella: that would give it a
-    # private Neighbours generation counter. Static builds that produce
-    # plugins therefore also build a shared umbrella for those plugins, while
-    # normal consumers continue to link the requested static library.
+    # private Neighbours generation counter. Every build of the umbrella also
+    # builds the engines/ plugins, so a static build also builds a shared
+    # umbrella for them, while normal consumers continue to link the
+    # requested static library.
     _needs_plugin_umbrella = (
         get_option('default_library') == 'static'
         and host_system != 'windows'
-        and (has_fortran
-        or _rpc_stack)
     )
     if _needs_plugin_umbrella
         _rgpot_both = both_libraries(
@@ -2993,41 +2992,38 @@ if get_option('with_tests')
                 cpp_args: _args,
                 link_language: 'cpp',
             )
-            _soversion_args = [
+            # engines/meson.build registers CxxSoversion once it has added
+            # its own plugins to these lists.
+            cxx_soversion_prog = python3_prog
+            cxx_soversion_args = [
                 files('tests/check_cxx_soversion.py'),
                 rgpot_cxx_soversion,
                 rgpot_plugin_umbrella.full_path(),
                 cxx_layout_stamp.full_path(),
             ]
-            _soversion_depends = [rgpot_plugin_umbrella, cxx_layout_stamp]
+            cxx_soversion_depends = [rgpot_plugin_umbrella, cxx_layout_stamp]
             if has_fortran and host_system != 'windows'
-                _soversion_args += [rgpot_cuh2.full_path()]
-                _soversion_depends += [rgpot_cuh2]
+                cxx_soversion_args += [rgpot_cuh2.full_path()]
+                cxx_soversion_depends += [rgpot_cuh2]
             endif
             if _rpc_stack and host_system != 'windows'
-                _soversion_args += [
+                cxx_soversion_args += [
                     classical_engine.full_path(),
                     composite_engine.full_path(),
                     mopac_engine.full_path(),
                     nwchem_engine.full_path(),
                 ]
-                _soversion_depends += [
+                cxx_soversion_depends += [
                     classical_engine,
                     composite_engine,
                     mopac_engine,
                     nwchem_engine,
                 ]
                 if has_skala
-                    _soversion_args += [skala_engine.full_path()]
-                    _soversion_depends += [skala_engine]
+                    cxx_soversion_args += [skala_engine.full_path()]
+                    cxx_soversion_depends += [skala_engine]
                 endif
             endif
-            test(
-                'CxxSoversion',
-                python3_prog,
-                args: _soversion_args + ['--exe-wrapper'] + exe_wrapper_args,
-                depends: _soversion_depends,
-            )
         endif
     endif
     if _mpi_dep.found() and not is_disabler(calculator_group_test_exe)

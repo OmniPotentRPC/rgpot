@@ -17,6 +17,9 @@ engines_here = meson.current_source_dir()
 dl_dep = cppc.find_library('dl', required: false)
 thread_dep = dependency('threads')
 engines_rgpot = declare_dependency(link_with: rgpot)
+# A loadable plugin links the shared umbrella, which a static build also
+# builds, so that it does not embed a private Neighbours generation counter.
+engines_rgpot_plugin = declare_dependency(link_with: rgpot_plugin_umbrella)
 # lj_eval and pot_spec build in-tree potentials, which are C++ classes. A
 # Windows DLL exports the C ABI (RGPOT_API) and only a few C++ members, and
 # its import library would define those beside the archives. So there
@@ -24,6 +27,7 @@ engines_rgpot = declare_dependency(link_with: rgpot)
 # made of in place of the DLL, and RGPOT_STATIC.
 engines_cxx_args = []
 engines_rgpot_cxx = engines_rgpot
+engines_rgpot_cxx_plugin = engines_rgpot_plugin
 if host_system == 'windows'
     engines_cxx_args = ['-DRGPOT_STATIC']
     engines_rgpot_cxx = declare_dependency(
@@ -31,6 +35,7 @@ if host_system == 'windows'
         dependencies: _deps_sans_core + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
         compile_args: engines_cxx_args,
     )
+    engines_rgpot_cxx_plugin = engines_rgpot_cxx
 endif
 python3_runner = find_program('python3', required: true)
 engine_exports_script = files('../scripts/check_engine_exports.py')
@@ -278,7 +283,7 @@ test(
 lj_engine = shared_library(
     'lj_engine',
     [files('lj_engine.cpp'), engine_abi_stamp_source],
-    dependencies: [lj_dep, engines_rgpot_cxx],
+    dependencies: [lj_dep, engines_rgpot_cxx_plugin],
     include_directories: rgpot_inc,
     cpp_args: rgpot_consumer_args + ['-DRGPOT_ENGINE_BUILD'],
     install: not meson.is_subproject(),
@@ -446,7 +451,7 @@ if lammps_opt.allowed() and python3_engines.found()
             pair_plugin = shared_library(
                 'pair_rgpot',
                 files('lammps/pair_rgpot.cpp'),
-                dependencies: [lj_dep, pot_spec_dep, engines_rgpot_cxx] + (
+                dependencies: [lj_dep, pot_spec_dep, engines_rgpot_cxx_plugin] + (
                     lammps_dep.found() ? [lammps_dep] : []
                 ),
                 include_directories: include_directories(
@@ -542,7 +547,7 @@ if plumed_opt.allowed()
         plumed_lib = shared_library(
             'RgpotPlumed',
             files('plumed/RgpotColvar.cpp'),
-            dependencies: plumed_link + [pot_spec_dep, engines_rgpot_cxx],
+            dependencies: plumed_link + [pot_spec_dep, engines_rgpot_cxx_plugin],
             include_directories: [engines_inc, rgpot_inc],
             cpp_args: rgpot_consumer_args,
             name_prefix: 'lib',
@@ -891,7 +896,7 @@ endif
 native_lj_engine = shared_library(
     'native_lj_engine',
     [files('native_lj_engine.cpp'), engine_abi_stamp_source],
-    dependencies: [lj_dep, engines_rgpot_cxx],
+    dependencies: [lj_dep, engines_rgpot_cxx_plugin],
     include_directories: rgpot_inc,
     cpp_args: rgpot_consumer_args + ['-DRGPOT_ENGINE_BUILD'],
     install: not meson.is_subproject(),
@@ -946,7 +951,7 @@ if openmm_opt.allowed() and python3_engines.found()
                     engine_abi_stamp_source,
                 ],
                 link_with: openmm_session_lib,
-                dependencies: [openmm_lib, engines_rgpot],
+                dependencies: [openmm_lib, engines_rgpot_plugin],
                 include_directories: [rgpot_inc, openmm_inc],
                 cpp_args: rgpot_consumer_args + ['-DRGPOT_ENGINE_BUILD'],
                 build_rpath: openmm_libdir,
@@ -1200,5 +1205,31 @@ if gromacs_unit_ready
             cpp_args: rgpot_consumer_args,
         ),
         timeout: 30,
+    )
+endif
+
+# CxxSoversion also checks the plugins here, which link librgpot, for a
+# private copy of the Neighbours generation counter.
+if is_variable('cxx_soversion_args')
+    if host_system != 'windows'
+        foreach _plugin_name : [
+            'lj_engine',
+            'native_lj_engine',
+            'openmm_engine',
+            'pair_plugin',
+            'plumed_lib',
+        ]
+            if is_variable(_plugin_name)
+                _plugin = get_variable(_plugin_name)
+                cxx_soversion_args += [_plugin.full_path()]
+                cxx_soversion_depends += [_plugin]
+            endif
+        endforeach
+    endif
+    test(
+        'CxxSoversion',
+        cxx_soversion_prog,
+        args: cxx_soversion_args + ['--exe-wrapper'] + exe_wrapper_args,
+        depends: cxx_soversion_depends,
     )
 endif
