@@ -44,7 +44,7 @@ typedef struct RgpotXtbConfig {
   int uhf;
 } RgpotXtbConfig;
 
-#define RGPOT_XTB_ABI_VERSION 1
+#define RGPOT_XTB_ABI_VERSION 2
 
 RGPOT_XTB_API int rgpot_xtb_abi_version(void);
 

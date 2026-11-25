@@ -1244,7 +1244,7 @@ engine-backed potentials]].
 Meson builds the library only with =-Dwith_xtb=true=.
 Positions and cells are in Angstrom, energies in eV and forces in eV/Angstrom.
 A cell is nine doubles in row-major order.
-=RGPOT_XTB_ABI_VERSION= is 1.
+=RGPOT_XTB_ABI_VERSION= is 2.
 The return codes of =rgpot_xtb_force= are not those of the engine table.
 
 =XTBDlopen= needs every function below.
@@ -1285,7 +1285,7 @@ int rgpot_xtb_abi_version(void);
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: =RGPOT_XTB_ABI_VERSION= (1).
+- Outputs :: =RGPOT_XTB_ABI_VERSION= (2).
 - Errors :: none.
 
 =XTBDlopen= refuses a library that returns another value.
@@ -1454,7 +1454,7 @@ int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
 =MetatomicPot=.
 Positions and cells are in Angstrom, energies in eV and forces in eV/Angstrom,
 unless the config names another =length_unit=.
-=RGPOT_MTA_ABI_VERSION= is 1.
+=RGPOT_MTA_ABI_VERSION= is 2.
 The return codes of =rgpot_mta_force= are not those of the engine table.
 
 *** =RgpotMtaPot=
@@ -1490,7 +1490,7 @@ int rgpot_mta_abi_version(void);
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: =RGPOT_MTA_ABI_VERSION= (1).
+- Outputs :: =RGPOT_MTA_ABI_VERSION= (2).
 - Errors :: none.
 
 =MetatomicDlopen= refuses a library that returns another value.
