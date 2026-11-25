@@ -353,6 +353,11 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                !(m_gap < m_warm_min_gap);
 
   if (composition_changed) {
+    // Until the new molecule exists the next call must build one, not
+    // update a molecule that is gone.
+    m_initialized = false;
+    m_numbers.clear();
+    m_previous.clear();
     if (m_mol) {
       xtb_delMolecule(&m_mol);
       m_mol = nullptr;
@@ -364,7 +369,9 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     m_mol = xtb_newMolecule(m_env, &intN, in.atmnrs, m_pos_bohr.data(), &charge,
                             &uhf, box_bohr, periodicity);
     if (!m_mol) {
-      m_last_flags = 0;
+      // The refusal leaves the environment in an error state that shifts
+      // the forces of the next single point.
+      discardAfterFailure();
       throw std::runtime_error("xTB Error: xtb_newMolecule failed");
     }
     loadParametrisation();

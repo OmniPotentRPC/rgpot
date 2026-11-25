@@ -710,6 +710,46 @@ TEST_CASE("XTBPot clears the flags when xtb_newMolecule fails",
   REQUIRE(pot.lastEvalFlags() == 0);
 }
 
+// A refused molecule leaves no molecule behind, so the next call must
+// build one even when its composition matches the call before the failure.
+template <class Make>
+static void check_recreate_after_failed_molecule(Make make) {
+  auto pot = make(rgpot::XTBConfig{});
+  AtomMatrix positions(3, 3);
+  std::vector<int> atmtypes;
+  std::array<std::array<double, 3>, 3> box{};
+  fill_water(positions, atmtypes, box);
+  auto [before, f_before, v_before] = (*pot)(positions, atmtypes, box);
+  (void)v_before;
+
+  AtomMatrix unknown(1, 3);
+  unknown(0, 0) = unknown(0, 1) = unknown(0, 2) = 0.0;
+  const std::vector<int> refused = {200};
+  REQUIRE_THROWS_AS((*pot)(unknown, refused, box), std::runtime_error);
+
+  auto [after, f_after, v_after] = (*pot)(positions, atmtypes, box);
+  (void)v_after;
+  REQUIRE(std::isfinite(after));
+  REQUIRE_THAT(after, WithinAbs(before, 1.0e-9));
+  for (size_t i = 0; i < 3; ++i)
+    for (size_t j = 0; j < 3; ++j)
+      REQUIRE_THAT(f_after(i, j), WithinAbs(f_before(i, j), 1.0e-9));
+}
+
+TEST_CASE("XTBPot builds a new molecule after xtb_newMolecule fails",
+          "[xtb][linked][capi]") {
+  check_recreate_after_failed_molecule([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBPot>(cfg);
+  });
+}
+
+TEST_CASE("XTBDlopen builds a new molecule after xtb_newMolecule fails",
+          "[xtb][dlopen][capi]") {
+  check_recreate_after_failed_molecule([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
+  });
+}
+
 TEST_CASE("XTBDlopen flags a rescued SCC and fails it with the rescue off",
           "[xtb][dlopen][scc]") {
   check_scc_rescue_flag([](const rgpot::XTBConfig &cfg) {
