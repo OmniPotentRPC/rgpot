@@ -34,6 +34,7 @@
 #include "rgpot/Potential.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -191,9 +192,7 @@ public:
   /// check is not run. Elsewhere, or when the kernel cannot run a
   /// descriptor, the child runs the path with execv and a swap in that
   /// window is caught only by the check after the run.
-  [[nodiscard]] const std::string &resolvedExecutablePath() const noexcept {
-    return m_real_executable;
-  }
+  [[nodiscard]] const std::string &resolvedExecutablePath() const noexcept;
 
   /// Directory holding the input, output and .gbw files of the instance.
   [[nodiscard]] const std::string &runDirectory() const noexcept {
@@ -212,14 +211,27 @@ public:
   static constexpr uint64_t kKernelVersion = 2;
 
 private:
+  struct State;
+  /// Holds the state that is not read by an inline member, in the place,
+  /// size and alignment of the std::vector<int> the class was added with,
+  /// so the members before it keep their offsets and sizeof(ORCAPot) is
+  /// unchanged.
+  struct StateSlot {
+    std::unique_ptr<State> state;
+    unsigned char reserved[sizeof(std::vector<int>) -
+                           sizeof(std::unique_ptr<State>)] = {};
+  };
+  static_assert(sizeof(StateSlot) == sizeof(std::vector<int>) &&
+                    alignof(StateSlot) == alignof(std::vector<int>),
+                "StateSlot must keep the layout of the std::vector<int> "
+                "member it replaces");
+
   ORCAConfig m_config;
   std::string m_executable;
-  std::string m_real_executable;
-  uint64_t m_executable_stamp = 0;
   std::string m_run_dir;
   mutable bool m_has_guess = false;
   mutable bool m_last_reused = false;
-  mutable std::vector<int> m_guess_numbers;
+  StateSlot m_slot;
 };
 
 } // namespace rgpot
