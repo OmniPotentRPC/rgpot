@@ -66,16 +66,20 @@ instead of returning NULL.
 The Rust crate holds its own evaluation of the table, in
 =rgpot_core::eam_table=, because =rgpot-core= links no C++ kernel and the handle
 must work in a build that has none.
-=EamTablePotential::open(path, format, periodic)= builds it and
-=EamTablePotential::force= returns the energy and the forces.
+=EamTablePotential::open(path, format, periodic)= and
+=EamTablePotential::from_bytes(bytes, format, periodic)= build it, =EamTable::cu_u3(path)=
+and
+=EamTablePotential::cu_u3(path, periodic)= load a user-supplied LAMMPS =Cu_u3.eam=
+table (=rgpot-core= does not ship or embed the GPL-2.0 LAMMPS file; the caller
+supplies it), and =EamTablePotential::force= returns the energy and the forces.
 It repeats the steps of the previous section, so the two implementations are
 checked against the same LAMMPS data rather than against each other.
-It differs from =EAMTablePot= in what it leaves out: no stress, no pair list and
-no per-atom terms.
-It visits every pair and takes the nearest image of the partner from rounded
-fractional coordinates, so a periodic call needs every face spacing above twice
-the cutoff, and the call fails with =RGPOT_INVALID_PARAMETER= for a smaller
-cell.
+It differs from =EAMTablePot= in what it leaves out: no stress and no per-atom
+terms.
+=EamTablePotential::with_skin= enables a Verlet pair list backed by =linkcell::SkinList= (with =list_reused=,
+=list_builds= and =list_reuses=), and a periodic call checks that every face
+spacing exceeds twice the cutoff, failing with =RGPOT_INVALID_PARAMETER= for a
+smaller cell.
 
 Python builds the C++ potential, not the Rust one:
 =rgpot.EAMTablePot(file, format)= is in [[file:python_api.org][the Python API]].

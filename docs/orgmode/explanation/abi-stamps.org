@@ -173,7 +173,7 @@ is not the hash.
 | 3.5.1   | 1, 0, 1         | 4                    |
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
-| next    | 1, 10, 1        | 9                    |
+| next    | 1, 14, 1        | 9                    |
 
 3.6.0 raised the minor for =rgpot_eindir_abi_compatible=; a caller built against
 minor 0 still matches it.
@@ -213,11 +213,14 @@ It raises the minor to 10 for =rgpot_rpc_client_select_orbitals=, which is an
 additive export behind =RGPOT_HAS_RPC=, so the layout revision stays at 1.
 The molecular-dynamics session entry points and their optional neighbour-query
 and neighbour-setter slots are symbols of the C++ library, not of the core C
-ABI, so this minor stays at 10.
+ABI, so they do not consume core C minor slots.
 The session operation table carries its byte size and the new slots follow
 =destroy=, so an older table still loads.
 The C++ layout revision stays 2 and =kCxxSoversion= stays 9, because the session
 vtable is not one of the covered potential types.
+Core C minor 14 belongs to the user-supplied =Cu_u3.eam= constructors and
+=linkcell::SkinList= Verlet-skin pair lists in =EamTablePotential=; no exported
+struct changes, so the layout revision stays at 1.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.

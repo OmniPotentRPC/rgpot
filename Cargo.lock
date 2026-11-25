@@ -491,6 +491,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
+name = "linkcell"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5ce6554b609a7a5d2b66c7def6198a3a7f5683fd0fdabb0a81d1c4625df9728"
+dependencies = [
+ "cc",
+ "minimage",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -526,6 +536,12 @@ name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+
+[[package]]
+name = "minimage"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d618b9714c2b6d2a72601fe8895134c44db19d5f0ba59958449d92257a0c9f4"
 
 [[package]]
 name = "mio"
@@ -739,6 +755,7 @@ dependencies = [
  "futures",
  "libc",
  "libloading",
+ "linkcell",
  "maryada",
  "ndarray",
  "tempfile",
