@@ -942,6 +942,10 @@ TEST_CASE("GuptaPot C entry point stores the reason of every failure",
              "invalid parameter: cfg is null");
   fails_with(&raw, -1, pos, &energy, forces,
              "invalid parameter: natoms is negative");
+  fails_with(&raw, 0, pos, &energy, forces,
+             "invalid parameter: nAtoms must be positive");
+  fails_with(&raw, 0, nullptr, &energy, nullptr,
+             "invalid parameter: nAtoms must be positive");
   fails_with(&raw, 2, pos, nullptr, forces,
              "invalid parameter: energy is null");
   fails_with(&raw, 2, nullptr, &energy, forces,
