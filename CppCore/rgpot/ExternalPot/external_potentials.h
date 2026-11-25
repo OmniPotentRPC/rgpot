@@ -56,10 +56,9 @@ RGPOT_API rgpot_external_potential *rgpot_lammps_potential(const char *engine_pa
  * only when neither is. Any other engine_path is the only library tried, and
  * err names it when it fails.
  */
-rgpot_external_potential *rgpot_lammpc_potential(const char *engine_path,
-                                                const void *config_capnp,
-                                                size_t config_capnp_size,
-                                                char *err, size_t err_len);
+RGPOT_API rgpot_external_potential *rgpot_lammpc_potential(
+    const char *engine_path, const void *config_capnp,
+    size_t config_capnp_size, char *err, size_t err_len);
 
 /*
  * The same potential. The constructor stores u0 in kJ/mol and the
