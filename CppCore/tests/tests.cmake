@@ -468,6 +468,12 @@ if(_on)
   rgpot_add_test(abi_symbols
     COMMAND ${_rgpot_abi_script} ${_rgpot_abi_lib}
             "${RGPOT_TEST_ROOT}/scripts/abi_baseline.txt")
+endif()
+
+# A DLL has no hidden visibility, so the fixtures are built only off Windows.
+rgpot_test_enabled(abi_symbols_fixture_shared _on)
+if(_on)
+  set(_rgpot_abi_script sh "${RGPOT_TEST_ROOT}/scripts/abi_symbols.sh")
   add_library(rgpot_abi_fixture SHARED engines/abi_fixture.c)
   add_library(rgpot_abi_fixture_a STATIC engines/abi_fixture.c)
   add_library(rgpot_abi_fixture_lib STATIC engines/abi_fixture.c)

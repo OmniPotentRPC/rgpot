@@ -1,10 +1,9 @@
 #!/bin/sh
 # Print the stable C symbols of a library, one per line.
 # Usage: abi_symbols.sh [-p PATTERN] [-l LIB]... LIB [BASELINE...]
-# The default names are the MD-session, neighbour and fast-list exports of
-# librgpot.
-# -p replaces the name pattern; the rgpot-core library is checked with
-# '^rgpot_' against abi_core_baseline.txt.
+# The default names are every rgpot_ export. abi_baseline.txt is every
+# function rgpot/rgpot_api.h marks, and those are always exported.
+# -p replaces the name pattern.
 # -l adds a library whose symbols count with those of LIB. A static
 # librgpot leaves the neighbour list in its own archive, and a consumer
 # links both, so the build passes that archive with -l and checks the
@@ -32,7 +31,7 @@
 set -eu
 LC_ALL=C
 export LC_ALL
-pattern='^rgpot_(md_session_|nlist_|fast_)'
+pattern='^rgpot_'
 found=$(mktemp)
 want=$(mktemp)
 symbols=$(mktemp)
@@ -41,13 +40,41 @@ detail_want=$(mktemp)
 typed=$(mktemp)
 shared=$(mktemp)
 trap 'rm -f "$found" "$want" "$symbols" "$detail" "$detail_want" "$typed" "$shared"' EXIT
-# Mach-O nm has no -D and prefixes C names with an underscore. A static
-# archive (lib*.a, or *.lib from an MSVC-style toolchain) has no dynamic
-# symbol table, so nm -D finds nothing in it; its defined external
-# symbols are read instead. A shared object keeps nm -D, so hidden
-# symbols stay out. The typed names of a shared object are kept apart as
-# well, for the detail check below.
+# A DLL exports what its export table lists, read with dumpbin (MSVC) or
+# objdump (binutils). The table has no symbol types, so the detail check
+# below does not read a DLL. Mach-O nm has no -D and prefixes C names
+# with an underscore. A static archive (lib*.a, or *.lib from an
+# MSVC-style toolchain) has no dynamic symbol table, so nm -D finds
+# nothing in it; its defined external symbols are read instead. A shared
+# object keeps nm -D, so hidden symbols stay out. The typed names of a
+# shared object are kept apart as well, for the detail check below.
+read_dll() {
+  if command -v dumpbin > /dev/null 2>&1; then
+    dumpbin -nologo -exports "$1" | tr -d '\r' |
+      awk 'NF >= 4 && $1 ~ /^[0-9]+$/ && $3 ~ /^[0-9A-Fa-f]+$/ {print $4}'
+    return
+  fi
+  for tool in x86_64-w64-mingw32-objdump objdump; do
+    if command -v "$tool" > /dev/null 2>&1; then
+      "$tool" -p "$1" | tr -d '\r' |
+        awk '/^\[Ordinal\/Name Pointer\] Table/ {t = 1; next}
+          t && NF == 0 {t = 0}
+          t {print $NF}'
+      return
+    fi
+  done
+  echo "no dumpbin or objdump to read $1" >&2
+  exit 2
+}
 read_lib() {
+  case $1 in
+    *.dll | *.DLL)
+      read_dll "$1" > "$found"
+      awk 'NF {print "T", $1}' "$found" > "$symbols"
+      cat "$symbols" >> "$typed"
+      return
+      ;;
+  esac
   if [ "$(uname -s)" = Darwin ]; then
     nm -gU "$1" | awk 'NF == 3 {sub(/^_/, "", $3); print $2, $3}'
   else

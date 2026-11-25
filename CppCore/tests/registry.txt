@@ -119,7 +119,7 @@ ExprLeptonSymbols | tests core posix | custom suite=expr |
 CxxLayoutTest | tests core | custom workdir=. |
 CxxLayoutVirtualCounts | tests core python | py CppCore/tests/check_virtual_counts.py |
 CxxSoversion | tests core python | custom |
-abi_symbols | core posix | custom |
+abi_symbols | core | custom |
 abi_symbols_fixture_shared | tests core posix | custom |
 abi_symbols_fixture_archive_a | tests core posix | custom |
 abi_symbols_fixture_archive_lib | tests core posix | custom |
