@@ -189,3 +189,50 @@ fn factory_with_options_validates_skin_and_constructs_handles() {
     assert!(energy.is_finite());
     assert_eq!(forces.len(), 6);
 }
+
+#[test]
+fn periodic_cell_under_twice_the_cutoff_sums_every_image() {
+    let path = data_dir().join("Cu_u3.eam");
+    let handle = eam_table_from_file(&path, EamTableFormat::Funcfl, true, 1.0).unwrap();
+    let a = 3.615;
+    let basis = [
+        [0.05, -0.03, 0.02],
+        [0.0, 0.5 * a, 0.5 * a],
+        [0.5 * a, 0.0, 0.5 * a],
+        [0.5 * a, 0.5 * a, 0.0],
+    ];
+    let lattice = |n: usize| {
+        let mut positions = Vec::new();
+        for i in 0..n {
+            for j in 0..n {
+                for k in 0..n {
+                    for site in &basis {
+                        positions.push(site[0] + i as f64 * a);
+                        positions.push(site[1] + j as f64 * a);
+                        positions.push(site[2] + k as f64 * a);
+                    }
+                }
+            }
+        }
+        let side = n as f64 * a;
+        let cell = [side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side];
+        (positions, cell)
+    };
+    let (small, small_cell) = lattice(1);
+    let (large, large_cell) = lattice(3);
+    let (small_energy, small_forces) = evaluate(&handle, &small, &[29; 4], small_cell);
+    let (large_energy, large_forces) = evaluate(&handle, &large, &[29; 108], large_cell);
+    assert!(
+        (large_energy / 27.0 - small_energy).abs() < 1.0e-9,
+        "{small_energy} against {}",
+        large_energy / 27.0
+    );
+    for (cell, chunk) in large_forces.chunks(12).enumerate() {
+        for (got, want) in chunk.iter().zip(&small_forces) {
+            assert!(
+                (got - want).abs() < 1.0e-9,
+                "cell {cell}: {got} against {want}"
+            );
+        }
+    }
+}

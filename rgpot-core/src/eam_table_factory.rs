@@ -2,6 +2,13 @@
 // Copyright 2023--present rgpot developers
 
 //! Safe Rust factory constructors for owned EAM table potentials.
+//!
+//! These build the C++ `EAMTablePot`, not the Rust
+//! [`EamTablePotential`](crate::eam_table::EamTablePotential). A periodic
+//! evaluation sums every image of each partner inside the cutoff. When
+//! every face spacing of the cell is above twice the cutoff that is at
+//! most one image per pair; a smaller cell is accepted and the sum takes
+//! all images, including those of an atom with itself.
 
 use std::path::Path;
 
@@ -14,7 +21,9 @@ use crate::potential::PotentialImpl;
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct EamTableFactoryOptions {
-    /// Keep the nearest image of each pair when evaluating.
+    /// Apply the cell as periodic boundaries and sum every image inside
+    /// the cutoff, so a cell under twice the cutoff is allowed. Without it
+    /// the cell is ignored.
     pub periodic: bool,
     /// Verlet skin for neighbour-list rebuilds.
     pub skin: f64,
@@ -30,7 +39,8 @@ impl Default for EamTableFactoryOptions {
 }
 
 impl EamTableFactoryOptions {
-    /// Set whether periodic boundary conditions are applied during evaluation.
+    /// Set whether the cell is applied as periodic boundaries, summing
+    /// every image inside the cutoff.
     #[must_use]
     pub fn with_periodic(mut self, periodic: bool) -> Self {
         self.periodic = periodic;

@@ -85,6 +85,9 @@ constructor as they are, =rhomax= included.
 A =Funcfl= table therefore gives the same energy and forces through either
 factory.
 Both factories accept periodic-boundary and neighbour-list skin options.
+A periodic evaluation sums every image of each partner inside the cutoff, so
+unlike the Rust potential it accepts a cell with a face spacing under twice the
+cutoff.
 The crate packages the required C++ source closure, so downstream Rust crates do
 not need a separate =librgpot= installation.
 
