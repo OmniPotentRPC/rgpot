@@ -9,6 +9,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 
 import numpy as np
 import pytest
@@ -161,6 +162,30 @@ def test_tersoff_negative_det_and_zero_volume_box(species: str) -> None:
     else:
         zero_res = pot.evaluate(pos, numbers, zero_ortho)
         assert zero_res["stress"] is None
+
+
+@pytest.mark.skipif(not rgpot.has_fortran_pots, reason="no TersoffPot in this build")
+def test_tersoff_concurrent_errors_keep_complete_messages() -> None:
+    workers = 16
+    iterations = 100
+    pos, numbers, _ = _silicon_cell()
+    zero_box = np.diag([10.0, 0.0, 10.0])
+    expected = (
+        "Tersoff potential failed (status 4): rgpot_neighbors: box must be "
+        "finite, and a periodic box must have positive volume"
+    )
+    ready = Barrier(workers)
+
+    def fail_together(_: int) -> None:
+        pot = rgpot.TersoffPot()
+        for _ in range(iterations):
+            ready.wait()
+            with pytest.raises(RuntimeError) as caught:
+                pot.evaluate(pos, numbers, zero_box)
+            assert str(caught.value) == expected
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(fail_together, range(workers)))
 
 
 @pytest.mark.thread_unsafe

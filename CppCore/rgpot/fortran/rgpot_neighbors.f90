@@ -21,9 +21,9 @@
 !! `real(wp) :: cell(3, 3)` dummy sees one cell vector per *column*.
 !! `vec(3, npairs)` is that same layout: column `p` is `r_j - r_i`.
 module rgpot_neighbors
-   use, intrinsic :: iso_c_binding, only: c_ptr, c_loc, c_f_pointer, c_null_ptr, &
-                                          c_null_char, c_char, c_int, c_double, &
-                                          c_size_t, c_int32_t, c_associated
+   use, intrinsic :: iso_c_binding, only: c_ptr, c_loc, c_null_ptr, c_int, &
+                                          c_double, c_size_t, c_int32_t, c_associated
+   use rgpot_error_text, only: error_text_t
    use rgpot_kinds, only: wp, ip, lp
    implicit none
    private
@@ -123,6 +123,7 @@ contains
       integer(ip) :: i, j, natoms
       integer(ip), allocatable :: fill(:), by_j(:), jstart(:)
       type(c_ptr) :: msg
+      type(error_text_t) :: error_text
 
       status = 0
       errmsg = ""
@@ -160,7 +161,9 @@ contains
       if (rc /= 0_c_int32_t) then
          status = int(rc)
          msg = rgpot_nlist_strerror(rc)
-         errmsg = "rgpot_neighbors: "//c_string(msg)
+         call error_text%append("rgpot_neighbors: ")
+         call error_text%append_c(msg)
+         call error_text%finish(errmsg)
          return
       end if
 
@@ -179,7 +182,9 @@ contains
          if (rc /= 0_c_int32_t) then
             status = int(rc)
             msg = rgpot_nlist_strerror(rc)
-            errmsg = "rgpot_neighbors: "//c_string(msg)
+            call error_text%append("rgpot_neighbors: ")
+            call error_text%append_c(msg)
+            call error_text%finish(errmsg)
             return
          end if
          np = int(needed)
@@ -278,26 +283,5 @@ contains
          running = running + held
       end do
    end subroutine prefix_sum
-
-   function c_string(ptr) result(text)
-      type(c_ptr), intent(in) :: ptr
-      character(len=:), allocatable :: text
-      character(kind=c_char), pointer :: raw(:)
-      integer :: n, k
-
-      if (.not. c_associated(ptr)) then
-         text = "unknown neighbour error"
-         return
-      end if
-      call c_f_pointer(ptr, raw, [4096])
-      n = 0
-      do while (raw(n + 1) /= c_null_char .and. n < 4096)
-         n = n + 1
-      end do
-      allocate (character(len=n) :: text)
-      do k = 1, n
-         text(k:k) = raw(k)
-      end do
-   end function c_string
 
 end module rgpot_neighbors

@@ -28,6 +28,7 @@
 !! Species come from atomic numbers rather than index ranges, so a caller
 !! may interleave Cu and H in any order.
 module rgpot_cuh2
+   use rgpot_error_text, only: error_text_t
    use rgpot_kinds, only: wp, ip
    use rgpot_neighbors, only: neighbor_table_t
    implicit none
@@ -631,6 +632,7 @@ contains
       character(len=:), allocatable, intent(out) :: errmsg
 
       integer(ip) :: natoms, nentries
+      type(error_text_t) :: error_text
 
       status = 0
       errmsg = ""
@@ -638,9 +640,12 @@ contains
 
       if (int(size(atomic_numbers), ip) /= natoms) then
          status = 1
-         errmsg = "rgpot_cuh2: atomic_numbers holds "// &
-                  count_text(int(size(atomic_numbers), ip))//" entries for "// &
-                  count_text(natoms)//" atoms"
+         call error_text%append("rgpot_cuh2: atomic_numbers holds ")
+         call error_text%append_int(int(size(atomic_numbers), ip))
+         call error_text%append(" entries for ")
+         call error_text%append_int(natoms)
+         call error_text%append(" atoms")
+         call error_text%finish(errmsg)
          return
       end if
 
@@ -672,6 +677,7 @@ contains
       character(len=:), allocatable, intent(out) :: errmsg
 
       integer(ip) :: i
+      type(error_text_t) :: error_text
 
       status = 0
       errmsg = ""
@@ -685,24 +691,16 @@ contains
             species(i) = sp_h
          case default
             status = 2
-            errmsg = "rgpot_cuh2: atom "//count_text(i)//" has atomic number "// &
-                     count_text(atomic_numbers(i))// &
-                     "; this potential covers Cu (29) and H (1) only"
+            call error_text%append("rgpot_cuh2: atom ")
+            call error_text%append_int(i)
+            call error_text%append(" has atomic number ")
+            call error_text%append_int(atomic_numbers(i))
+            call error_text%append("; this potential covers Cu (29) and H (1) only")
+            call error_text%finish(errmsg)
             return
          end select
       end do
    end subroutine classify
-
-   !> Decimal text of `number`, for error messages.
-   function count_text(number) result(text)
-      integer(ip), intent(in) :: number
-      character(len=:), allocatable :: text
-
-      character(len=12) :: buffer
-
-      write (buffer, '(i0)') number
-      text = trim(buffer)
-   end function count_text
 
    !> Electron density at atom `i`, summed over its neighbours.
    !!

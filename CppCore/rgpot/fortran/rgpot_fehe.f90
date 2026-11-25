@@ -31,6 +31,7 @@
 !! under `do concurrent`. Energy accrues to per-atom arrays and reduces
 !! afterwards.
 module rgpot_fehe
+   use rgpot_error_text, only: error_text_t
    use rgpot_kinds, only: wp, ip
    use rgpot_neighbors, only: neighbor_table_t
    implicit none
@@ -535,6 +536,7 @@ contains
 
       integer(ip) :: i
       character(len=64) :: detail
+      type(error_text_t) :: error_text
 
       status = 0
       errmsg = ""
@@ -548,9 +550,10 @@ contains
          case default
             write (detail, '(i0,a,i0)') atomic_numbers(i), " on atom ", i
             status = 2
-            errmsg = "rgpot_fehe: unsupported atomic number "// &
-                     trim(detail)//"; this potential covers iron (26) "// &
-                     "and helium (2) only"
+            call error_text%append("rgpot_fehe: unsupported atomic number ")
+            call error_text%append(detail(1:len_trim(detail)))
+            call error_text%append("; this potential covers iron (26) and helium (2) only")
+            call error_text%finish(errmsg)
             return
          end select
       end do
@@ -583,8 +586,7 @@ contains
 
       if (int(size(atomic_numbers), ip) /= natoms) then
          status = 1
-         errmsg = "rgpot_fehe: atomic_numbers and positions disagree on the "// &
-                  "atom count"
+         errmsg = "rgpot_fehe: atomic_numbers and positions disagree on the atom count"
          return
       end if
 
