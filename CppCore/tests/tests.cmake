@@ -697,6 +697,8 @@ set(_rgpot_mopacc_gate_env)
 # see CppCore/tests/mopacc_abi_gate_engine.c.
 foreach(_gate IN ITEMS
         ABI1:1:1:0:0:0:0
+        NO_C_ABI:0:2:1:1:1:0
+        C_ABI1:1:2:1:1:1:0
         ABI2_NO_LIB_ABI:2:0:1:1:1:0
         ABI2_LIB_ABI1:2:1:1:1:1:0
         ABI2_OLD_LAYOUT:2:2:0:1:1:0

@@ -4,7 +4,7 @@
 /*
  * One source, several fake libmopacc builds for the MOPACPot load gate:
  *
- *   GATE_C_ABI         value of mopacc_c_abi_version
+ *   GATE_C_ABI         value of mopacc_c_abi_version, 0 to omit the symbol
  *   GATE_LIB_ABI       value of mopacc_abi_version, 0 to omit the symbol
  *   GATE_NEW_LAYOUT    1 for the ABI 2 structs, 0 for the ABI 1 ones
  *   GATE_RESULT_SIZE   mopacc_result_size: 0 omitted, 1 sizeof(GateResult),
@@ -113,7 +113,9 @@ GATE_API GateResult mopacc_energy_gradient(
   return r;
 }
 
+#if GATE_C_ABI
 GATE_API int mopacc_c_abi_version(void) { return GATE_C_ABI; }
+#endif
 
 #if GATE_LIB_ABI
 GATE_API int mopacc_abi_version(void) { return GATE_LIB_ABI; }

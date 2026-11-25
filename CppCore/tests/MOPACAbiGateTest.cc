@@ -89,6 +89,19 @@ TEST_CASE("MOPACPot refuses an ABI 1 libmopacc before any call",
                   "incompatible mopacc C ABI: expected >= 2, found 1");
 }
 
+TEST_CASE("MOPACPot refuses a libmopacc without mopacc_c_abi_version",
+          "[mopac][abi][gate]") {
+  require_refused("RGPOT_MOPACC_GATE_NO_C_ABI",
+                  "incompatible mopacc C ABI: expected >= 2, found no "
+                  "mopacc_c_abi_version");
+}
+
+TEST_CASE("MOPACPot refuses C ABI 1 even with ABI 2 layouts and sizes",
+          "[mopac][abi][gate]") {
+  require_refused("RGPOT_MOPACC_GATE_C_ABI1",
+                  "incompatible mopacc C ABI: expected >= 2, found 1");
+}
+
 TEST_CASE("MOPACPot refuses ABI 2 without mopacc_abi_version",
           "[mopac][abi][gate]") {
   require_refused("RGPOT_MOPACC_GATE_ABI2_NO_LIB_ABI",
