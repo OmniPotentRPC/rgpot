@@ -166,6 +166,60 @@ double rgpot_xtb_warm_min_gap(const RgpotXtbPot *pot);
 int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
 ```
 
+## SCC rescue flag and switch
+
+An SCC that does not converge in `max_iterations` is retried with a smeared
+occupation at 1000, 3000 and 5000 K, then cooled back to the configured
+temperature from the smeared density. The call returns success, but the
+energy can belong to a different self-consistent state than a plain SCC
+reaches, so a caller that records energies (an anneal, a database) should
+know which ones came from the rescue.
+
+`XTBPot::lastEvalFlags()` and `XTBDlopen::lastEvalFlags()` return the
+`rgpot::eval_flags` bits (`rgpot/EvalFlags.hpp`) of the last successful call:
+`SccRescued` when the rescue produced it, `SccRetried` when a reused guess
+failed and xtb's own guess converged, 0 for a plain SCC and after a failure
+or `reset()`. `XTBConfig::scc_rescue = false`, or `setSccRescue(false)` on a
+live handle, turns the rescue off: such a call throws `SccNotConverged`
+instead, with the iteration budget and temperature in the message, and the
+first attempt gets the whole budget instead of 48 iterations. The rescue
+setting is part of `fusedSettings()`, so a result cache keeps rescued and
+strict answers apart. `XTBDlopen` refuses `scc_rescue = false` with an
+engine too old to switch the rescue off, rather than silently rescuing.
+
+The engine library exports these as optional symbols, probed with `dlsym`,
+so `RGPOT_XTB_ABI_VERSION` stays 1:
+
+<!-- rgpot-doc: fragment -->
+```c
+unsigned long long rgpot_xtb_last_eval_flags(const RgpotXtbPot *pot);
+void rgpot_xtb_set_scc_rescue(RgpotXtbPot *pot, int enabled);
+int rgpot_xtb_scc_rescue(const RgpotXtbPot *pot);
+const char *rgpot_xtb_source_revision(void);
+```
+
+The generic engine ABI carries the same through `rgpot_engine_last_eval_flags`,
+`rgpot_engine_set_scc_rescue` and `rgpot_engine_source_revision` (engine ABI
+minor 12, see the engine ABI reference), the Rust loader through
+`EnginePotential::force_flagged`, `last_eval_flags`, `set_scc_rescue` and
+`source_revision`, and Python through `rgpot.XTBDlopen`:
+
+<!-- rgpot-doc: syntax needs an engine library -->
+```python
+import rgpot
+
+pot = rgpot.XTBDlopen(scc_rescue=True)
+energy, forces, _ = pot(positions, numbers, cell)
+if pot.last_scc_rescued:
+    ...  # the energy came from the smeared-occupation rescue
+
+strict = rgpot.XTBDlopen(scc_rescue=False)
+try:
+    strict(positions, numbers, cell)
+except rgpot.SccNotConverged:
+    ...
+```
+
 `xtb_warm_bench` times that warm step against a cold guess on (H2O)16 and
 (H2O)20. It is built next to `xtb_backend_bench`. The comparison is serial:
 
