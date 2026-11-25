@@ -108,7 +108,9 @@ struct RgpotEnginePot {
     error.clear();
   }
 
-  /// Holds the locks the backend's reentrancy asks for.
+  /// Holds the locks the backend's reentrancy asks for. Take it only after
+  /// SoftGilRelease: a thread that blocks here holding the GIL would keep the
+  /// owner from taking the GIL back when its call returns.
   struct CallGuard {
     std::unique_lock<std::mutex> handle;
     std::unique_lock<std::mutex> process;
@@ -260,8 +262,8 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
     return fail(pot, 1, "invalid argument");
   }
   try {
-    RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    RgpotEnginePot::CallGuard guard(*pot);
     // Scratch copies: a host transform must never mutate caller buffers.
     std::vector<double> R(positions, positions + 3 * nAtoms);
     std::vector<double> cell(box, box + 9);
@@ -327,8 +329,8 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms, const double *positions,
                 "HVP output overlaps an input buffer");
   }
   try {
-    RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    RgpotEnginePot::CallGuard guard(*pot);
     const rgpot::ForceInput in{static_cast<size_t>(nAtoms), positions,
                                atomicNrs, box};
     pot->backend->pot->hessianVectorImpl(in, direction, hv_out);
@@ -391,8 +393,8 @@ int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long nSystems, long nAtoms,
                 "jet output overlaps an input buffer");
   }
   try {
-    RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    RgpotEnginePot::CallGuard guard(*pot);
     // A backend may write part of its buffer and then throw. Hold the jet
     // until the call returns, so jet_out and report stay byte-identical on
     // any failure.
@@ -426,8 +428,8 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
     return fail(pot, 1, "invalid argument (batch)");
   }
   try {
-    RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    RgpotEnginePot::CallGuard guard(*pot);
     const size_t B = static_cast<size_t>(nSystems);
     const size_t stride = static_cast<size_t>(nAtoms) * 3;
     std::vector<double> R(positions, positions + stride * B);
@@ -634,6 +636,7 @@ long rgpot_engine_last_components(const RgpotEnginePot *pot,
   if (!pot->backend->components) {
     return 0;
   }
+  SoftGilRelease no_gil;
   std::lock_guard<std::mutex> lock(const_cast<RgpotEnginePot *>(pot)->call_mutex);
   const auto &components = pot->backend->components();
   const long total = static_cast<long>(components.size());
@@ -669,6 +672,7 @@ size_t rgpot_engine_component_name(const RgpotEnginePot *pot, long index,
     copy_message("", buf, len);
     return 0;
   }
+  SoftGilRelease no_gil;
   std::lock_guard<std::mutex> lock(const_cast<RgpotEnginePot *>(pot)->call_mutex);
   const auto &components = pot->backend->components();
   if (static_cast<std::size_t>(index) >= components.size()) {
