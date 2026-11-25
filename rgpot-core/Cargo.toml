@@ -56,6 +56,11 @@ path = "tests/engine.rs"
 required-features = ["engine"]
 
 [[test]]
+name = "engine_hessian"
+path = "tests/engine_hessian.rs"
+required-features = ["engine"]
+
+[[test]]
 name = "profile"
 path = "tests/profile.rs"
 required-features = ["profile"]
