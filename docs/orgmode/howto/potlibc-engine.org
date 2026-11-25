@@ -124,11 +124,13 @@ A nonzero catalog atomic number must match exactly.
 
 Enable the generic loader, not a potlibc-specific feature.
 
+# [[[cog import rgpot_version as v; cog.outl("#+attr_rgpot: syntax"); cog.outl(v.readme_org("engine"))]]]
 #+attr_rgpot: syntax
 #+begin_src toml
 [dependencies]
 rgpot-core = { version = "3.8.0", features = ["engine"] }
 #+end_src
+# [[[end]]]
 
 =rgpot_core::engine::PotlibcConfig= is the typed create message.
 It is
