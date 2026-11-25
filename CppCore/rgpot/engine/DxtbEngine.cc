@@ -70,7 +70,7 @@ const char *backend_name() { return "dxtb"; }
 Created create(const void *config, std::size_t config_len) {
   Created out;
   try {
-    const Builtin builtin = read_builtin(config, config_len);
+    const Builtin builtin = read_builtin_identity(config, config_len);
     if (!builtin.name.empty() && builtin.name != "dxtb") {
       out.error =
           "rgpot_engine_create(dxtb): unknown potential '" + builtin.name + "'";

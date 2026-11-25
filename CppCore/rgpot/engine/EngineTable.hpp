@@ -33,15 +33,10 @@
 #include <vector>
 
 #include "rgpot/Potential.hpp"
+#include "rgpot/engine/EngineError.hpp"
 #include "rgpot/SumPot/SumPot.hpp"
 
 namespace rgpot::engine {
-
-/// Thrown by a setting hook for a value the backend cannot take; the adapter
-/// returns 3 with the reason in last_error.
-struct Unsupported : std::runtime_error {
-  using std::runtime_error::runtime_error;
-};
 
 /// What a backend hands the adapter at create.
 struct Backend {

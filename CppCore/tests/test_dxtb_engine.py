@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import ast
 import ctypes
 import json
 import os
 from pathlib import Path
 import re
 import shlex
+import subprocess
 import sys
 import time
 
@@ -71,6 +73,7 @@ class Engine:
         method: str = "gfn2",
         charge: float = 0.0,
         uhf: int = 0,
+        library: str = "",
     ):
         self.lib = ctypes.CDLL(path)
         self.lib.rgpot_engine_abi_version.restype = ctypes.c_int
@@ -125,6 +128,12 @@ class Engine:
             ctypes.c_int,
             ctypes.c_int,
         ]
+        self.lib.rgpot_engine_set_charge_spin.restype = ctypes.c_int
+        self.lib.rgpot_engine_set_charge_spin.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_int,
+        ]
         self.lib.rgpot_engine_last_error.restype = ctypes.c_size_t
         self.lib.rgpot_engine_last_error.argtypes = [
             ctypes.c_void_p,
@@ -133,6 +142,7 @@ class Engine:
         ]
         message = SCHEMA.BuiltinParams.new_message()
         message.name = name
+        message.library = library
         config = message.init("config")
         xtb = config.init("xtb")
         xtb.method = method
@@ -185,6 +195,9 @@ class Engine:
         return int(
             self.lib.rgpot_engine_set_num_threads(self.handle, intra_op, inter_op)
         )
+
+    def set_charge_spin(self, charge: int, spin: int) -> int:
+        return int(self.lib.rgpot_engine_set_charge_spin(self.handle, charge, spin))
 
     def last_error(self) -> str:
         size = int(self.lib.rgpot_engine_last_error(self.handle, None, 0))
@@ -674,3 +687,339 @@ exec(compile(source, "<dxtb-worker>", "exec"), {{"__name__": "__main__"}})
         assert all_events[-1]["inter"] == first_inter
     finally:
         engine.close()
+
+
+FAKE_WORKER = r'''
+import json
+import os
+import struct
+import sys
+
+LOG = os.environ["FAKE_DXTB_LOG"]
+REFUSE_UHF = int(os.environ.get("FAKE_DXTB_REFUSE_UHF", "-1"))
+HEADER = struct.Struct("<4sIIII")
+CONFIG = struct.Struct("<Iii3dii")
+inp = sys.stdin.buffer
+out = sys.stdout.buffer
+
+
+def log(**event):
+    with open(LOG, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event) + "\n")
+
+
+def reply(status, payload=b""):
+    out.write(HEADER.pack(b"DXTR", 1, status & 0xFFFFFFFF, 0, len(payload)))
+    out.write(payload)
+    out.flush()
+
+
+while True:
+    raw = inp.read(HEADER.size)
+    if len(raw) != HEADER.size:
+        break
+    _magic, _version, op, natoms, size = HEADER.unpack(raw)
+    payload = inp.read(size)
+    if op == 1:
+        method, uhf, maxiter, charge, accuracy, temperature, _intra, _inter = (
+            CONFIG.unpack(payload)
+        )
+        log(
+            event="configure",
+            method=method,
+            uhf=uhf,
+            maxiter=maxiter,
+            charge=charge,
+            accuracy=accuracy,
+            temperature=temperature,
+        )
+        if uhf == REFUSE_UHF:
+            reply(1, b"ValueError: fake worker refuses this spin")
+        else:
+            reply(0)
+    elif op == 5:
+        reply(0)
+        break
+    else:
+        reply(0)
+'''
+
+
+def fake_worker(tmp_path, name, refuse_uhf=-1):
+    """A python stand-in that logs every configuration the engine sends."""
+    log_path = tmp_path / f"{name}.jsonl"
+    driver_path = tmp_path / f"{name}_driver.py"
+    wrapper_path = tmp_path / f"{name}_python.sh"
+    driver_path.write_text(FAKE_WORKER)
+    real_python = os.environ.get("RGPOT_DXTB_PYTHON") or sys.executable
+    wrapper_path.write_text(
+        "#!/bin/sh\n"
+        f"FAKE_DXTB_LOG={shlex.quote(str(log_path))} "
+        f"FAKE_DXTB_REFUSE_UHF={refuse_uhf} "
+        f"exec {shlex.quote(real_python)} {shlex.quote(str(driver_path))} \"$@\"\n"
+    )
+    wrapper_path.chmod(0o755)
+    return wrapper_path, log_path
+
+
+def configure_events(log_path):
+    if not log_path.exists():
+        return []
+    return [
+        event
+        for event in (
+            json.loads(line)
+            for line in log_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+        if event["event"] == "configure"
+    ]
+
+
+def test_set_charge_spin_refuses_zero_spin_with_code_3():
+    _, method, numbers, positions = MOLECULES[0]
+    positions = np.asarray(positions)
+    ref_energy, ref_forces = direct_force(numbers, positions, method, charge=0.0, uhf=0)
+    engine = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", method)
+    try:
+        energy, forces = engine.force(numbers, positions)
+        np.testing.assert_allclose(energy, ref_energy, rtol=2e-13, atol=2e-12)
+
+        assert engine.set_charge_spin(0, 0) == 3
+        assert ">= 1" in engine.last_error()
+
+        # The refused call left the configured charge and spin in force.
+        again_energy, again_forces = engine.force(numbers, positions)
+        assert again_energy == energy
+        np.testing.assert_array_equal(again_forces, forces)
+        np.testing.assert_allclose(again_forces, ref_forces, rtol=2e-12, atol=2e-11)
+
+        # A valid change still reaches the worker and clears the error.
+        assert engine.set_charge_spin(1, 2) == 0
+        assert engine.last_error() == ""
+        cation_energy, _ = engine.force(numbers, positions)
+        ref_cation, _ = direct_force(numbers, positions, method, charge=1.0, uhf=1)
+        np.testing.assert_allclose(cation_energy, ref_cation, rtol=2e-13, atol=2e-12)
+    finally:
+        engine.close()
+
+
+def test_set_charge_spin_failure_leaves_the_configuration_unchanged(tmp_path, monkeypatch):
+    wrapper, log_path = fake_worker(tmp_path, "refusing", refuse_uhf=2)
+    monkeypatch.setenv("RGPOT_DXTB_PYTHON", str(wrapper))
+    engine = Engine(
+        os.environ["RGPOT_ENGINE_DXTB"], "dxtb", "gfn1", charge=2.0, uhf=0
+    )
+    try:
+        created = configure_events(log_path)
+        assert len(created) == 1
+        base = created[0]
+        assert (base["charge"], base["uhf"]) == (2.0, 0)
+
+        # A refused spin multiplicity is not sent to the worker at all.
+        assert engine.set_charge_spin(0, 0) == 3
+        assert len(configure_events(log_path)) == 1
+
+        # The worker refuses this configuration; its code and reason come back.
+        assert engine.set_charge_spin(1, 3) == 1
+        assert "refuses" in engine.last_error()
+        refused = configure_events(log_path)[1]
+        assert (refused["charge"], refused["uhf"]) == (1.0, 2)
+
+        # The next accepted change carries only the requested charge and spin.
+        assert engine.set_charge_spin(-1, 2) == 0
+        assert engine.last_error() == ""
+        accepted = configure_events(log_path)[2]
+        assert (accepted["charge"], accepted["uhf"]) == (-1.0, 1)
+        for key in ("method", "maxiter", "accuracy", "temperature"):
+            assert accepted[key] == base[key]
+    finally:
+        engine.close()
+
+
+def test_library_selects_python_before_the_environment(tmp_path, monkeypatch):
+    from_library, library_log = fake_worker(tmp_path, "library")
+    from_environment, environment_log = fake_worker(tmp_path, "environment")
+    monkeypatch.setenv("RGPOT_DXTB_PYTHON", str(from_environment))
+
+    engine = Engine(
+        os.environ["RGPOT_ENGINE_DXTB"],
+        "dxtb",
+        "gfn1",
+        library=str(from_library),
+    )
+    engine.close()
+    assert len(configure_events(library_log)) == 1
+    assert configure_events(environment_log) == []
+
+    engine = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", "gfn1")
+    engine.close()
+    assert len(configure_events(library_log)) == 1
+    assert len(configure_events(environment_log)) == 1
+
+
+def test_missing_library_is_an_error_not_a_fallback(monkeypatch):
+    monkeypatch.setenv(
+        "RGPOT_DXTB_PYTHON", os.environ.get("RGPOT_DXTB_PYTHON") or sys.executable
+    )
+    with pytest.raises(RuntimeError, match="dxtb worker exited"):
+        Engine(
+            os.environ["RGPOT_ENGINE_DXTB"],
+            "dxtb",
+            "gfn1",
+            library="/nonexistent/rgpot-dxtb-python",
+        )
+
+
+@pytest.mark.parametrize(
+    "spelled,method",
+    [
+        ("gfn1-xtb", "gfn1"),
+        ("GFN1-xTB", "gfn1"),
+        ("gfn2-xtb", "gfn2"),
+        ("gfn2", "gfn2"),
+    ],
+)
+def test_method_spellings_reach_the_worker(spelled, method):
+    numbers = [8, 1, 1]
+    positions = np.asarray(
+        [[0.0, 0.0, 0.1173], [0.0, 0.7572, -0.4692], [0.0, -0.7572, -0.4692]]
+    )
+    ref_energy, ref_forces = direct_force(numbers, positions, method, charge=0.0, uhf=0)
+    engine = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", spelled)
+    try:
+        energy, forces = engine.force(numbers, positions)
+        np.testing.assert_allclose(energy, ref_energy, rtol=2e-13, atol=2e-12)
+        np.testing.assert_allclose(forces, ref_forces, rtol=2e-12, atol=2e-11)
+    finally:
+        engine.close()
+
+
+def test_unknown_method_is_refused_at_creation():
+    with pytest.raises(RuntimeError, match="gfn1 or gfn2"):
+        Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", "gfn0")
+
+
+def socket_descriptors(pid_path="/proc/self/fd"):
+    found = []
+    for entry in sorted(os.listdir(pid_path), key=int):
+        try:
+            target = os.readlink(os.path.join(pid_path, entry))
+        except OSError:
+            continue
+        if target.startswith("socket:"):
+            found.append(entry)
+    return found
+
+
+def test_worker_sockets_do_not_leak_into_other_children():
+    engine = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", "gfn1")
+    try:
+        assert socket_descriptors(), "the engine holds one end of its worker socket"
+        listing = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import os; print(*[os.readlink('/proc/self/fd/' + e) for e in "
+                "os.listdir('/proc/self/fd') if os.path.exists('/proc/self/fd/' + e)])",
+            ],
+            close_fds=False,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "socket:" not in listing.stdout
+    finally:
+        engine.close()
+
+
+STDIO_CLOSED = r'''
+import ctypes
+import os
+import sys
+
+import numpy as np
+
+engine_path, params_path, result_path = sys.argv[1:4]
+lib = ctypes.CDLL(engine_path)
+lib.rgpot_engine_create.restype = ctypes.c_void_p
+lib.rgpot_engine_create.argtypes = [
+    ctypes.c_void_p, ctypes.c_size_t, ctypes.c_char_p, ctypes.c_size_t,
+]
+lib.rgpot_engine_destroy.argtypes = [ctypes.c_void_p]
+lib.rgpot_engine_force.restype = ctypes.c_int
+lib.rgpot_engine_force.argtypes = [
+    ctypes.c_void_p, ctypes.c_long,
+    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_int),
+    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double),
+    ctypes.c_void_p, ctypes.c_void_p,
+]
+params = open(params_path, "rb").read()
+storage = ctypes.create_string_buffer(params)
+error = ctypes.create_string_buffer(1024)
+z = np.asarray([1, 1], dtype=np.int32)
+x = np.asarray([0.0, 0.0, -0.37, 0.0, 0.0, 0.37], dtype=np.float64)
+forces = np.empty_like(x)
+energy = ctypes.c_double()
+box = np.diag([40.0, 40.0, 40.0]).astype(np.float64)
+result = open(result_path, "w")
+
+os.close(0)
+os.close(1)
+handle = lib.rgpot_engine_create(storage, len(params), error, len(error))
+held = os.readlink("/proc/self/fd/0") if handle else ""
+status = -1
+if handle:
+    status = lib.rgpot_engine_force(
+        handle, 2,
+        x.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        z.ctypes.data_as(ctypes.POINTER(ctypes.c_int)),
+        forces.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+        ctypes.byref(energy), None,
+        box.ctypes.data_as(ctypes.POINTER(ctypes.c_double)), None, None,
+    )
+    lib.rgpot_engine_destroy(handle)
+result.write(repr((bool(handle), error.value.decode(), held, status, energy.value)))
+result.close()
+os._exit(0)
+'''
+
+
+def test_worker_starts_when_stdin_and_stdout_are_closed(tmp_path):
+    message = SCHEMA.BuiltinParams.new_message()
+    message.name = "dxtb"
+    xtb = message.init("config").init("xtb")
+    xtb.method = "gfn1"
+    xtb.accuracy = 1.0
+    xtb.electronicTemperature = 300.0
+    xtb.maxIterations = 300
+    params_path = tmp_path / "params.bin"
+    params_path.write_bytes(message.to_bytes())
+    script_path = tmp_path / "stdio_closed.py"
+    script_path.write_text(STDIO_CLOSED)
+    result_path = tmp_path / "result.txt"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script_path),
+            os.environ["RGPOT_ENGINE_DXTB"],
+            str(params_path),
+            str(result_path),
+        ],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert completed.returncode == 0, completed.stderr
+    created, error, held, status, energy = ast.literal_eval(result_path.read_text())
+    assert created, error
+    # Descriptors 0 and 1 were free, so the engine's own socket took them.
+    assert held.startswith("socket:")
+    assert status == 0
+    ref_energy, _ = direct_force(
+        [1, 1], [[0.0, 0.0, -0.37], [0.0, 0.0, 0.37]], "gfn1", charge=0.0, uhf=0
+    )
+    np.testing.assert_allclose(energy, ref_energy, rtol=2e-13, atol=2e-12)

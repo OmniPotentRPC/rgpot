@@ -717,6 +717,10 @@ void getParams(::NWChemParams::Builder out) const;
 - Outputs :: the plain configuration used to start one persistent dxtb worker.
 - Errors :: invalid values return =RGPOT_ENGINE_ERR_INVALID= during engine
   creation; only GFN1 and GFN2 are accepted.
+  The engine reads =BuiltinParams.config.xtb.method= as =gfn1=, =gfn1-xtb=,
+  =gfn2= or =gfn2-xtb=, in any letter case, and refuses every other name.
+  =python= is tried first, then =RGPOT_DXTB_PYTHON=, then =python3=; an
+  executable that cannot start is an error, not a reason to try the next.
 
 *** =rgpot::DxtbPot=
 
@@ -751,8 +755,11 @@ void setChargeSpin(int charge, int multiplicity);
   =multiplicity - 1= as its unpaired-electron count.
 - Units :: charge is in elementary charges.
 - Outputs :: reconfigures the persistent worker and drops its calculator.
-- Errors :: =DxtbError= with =RGPOT_ENGINE_ERR_INVALID= for a multiplicity below
-  one, or the worker's typed failure code.
+- Errors :: =engine::Unsupported= for a multiplicity below one, which the engine
+  reports as return code 3 as the Skala and Metatomic engines do, or =DxtbError=
+  with the worker's typed failure code.
+  Neither leaves the charge and spin it holds changed: a refused or failed call
+  keeps the previous values.
 
 *** =rgpot::DxtbPot::setNumThreads=
 

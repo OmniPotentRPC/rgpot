@@ -34,7 +34,10 @@ struct Builtin {
   std::optional<rgpot::MullerBrownConfig> mullerBrown;
 };
 
-inline Builtin read_builtin(const void *config, std::size_t config_len) {
+/// Reads only `name` (lowercased) and `library`, leaving the config arm to a
+/// backend that interprets it with its own vocabulary.
+inline Builtin read_builtin_identity(const void *config,
+                                     std::size_t config_len) {
   const kj::ArrayPtr<const capnp::word> words(
       reinterpret_cast<const capnp::word *>(config),
       config_len / sizeof(capnp::word));
@@ -45,6 +48,16 @@ inline Builtin read_builtin(const void *config, std::size_t config_len) {
   std::transform(out.name.begin(), out.name.end(), out.name.begin(),
                  [](unsigned char c) { return std::tolower(c); });
   out.library = params.getLibrary().cStr();
+  return out;
+}
+
+inline Builtin read_builtin(const void *config, std::size_t config_len) {
+  const kj::ArrayPtr<const capnp::word> words(
+      reinterpret_cast<const capnp::word *>(config),
+      config_len / sizeof(capnp::word));
+  capnp::FlatArrayMessageReader reader(words);
+  const auto params = reader.getRoot<::BuiltinParams>();
+  Builtin out = read_builtin_identity(config, config_len);
   const auto native = params.getConfig();
   if (native.which() == ::PotentialConfig::XTB) {
     const auto source = native.getXtb();

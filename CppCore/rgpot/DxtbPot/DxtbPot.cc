@@ -4,12 +4,15 @@
 #include "rgpot/DxtbPot/DxtbPot.hpp"
 
 #include "rgpot/DxtbPot/DxtbWorkerSource.hpp"
+#include "rgpot/engine/EngineError.hpp"
 
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <limits>
+#include <string>
 #include <string_view>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -80,7 +83,7 @@ public:
   explicit Worker(const DxtbConfig &config) : config_(config) {
     start();
     try {
-      configure();
+      configure(config_);
     } catch (...) {
       stop(false);
       throw;
@@ -139,11 +142,14 @@ public:
 
   void setChargeSpin(int charge, int multiplicity) {
     if (multiplicity < 1) {
-      throw DxtbError(1, "spin multiplicity must be positive");
+      throw engine::Unsupported("dxtb spin multiplicity must be >= 1; got " +
+                                std::to_string(multiplicity));
     }
-    config_.charge = static_cast<double>(charge);
-    config_.uhf = multiplicity - 1;
-    configure();
+    DxtbConfig next = config_;
+    next.charge = static_cast<double>(charge);
+    next.uhf = multiplicity - 1;
+    configure(next);
+    config_ = next;
   }
 
   void setNumThreads(int intra_op, int inter_op) {
@@ -167,11 +173,41 @@ private:
     return static_cast<std::uint32_t>(in.nAtoms);
   }
 
-  void start() {
-    int sockets[2] = {-1, -1};
+  static void makeSocketPair(int sockets[2]) {
+#ifdef SOCK_CLOEXEC
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets) != 0) {
+      throw DxtbError(-1, systemMessage("socketpair"));
+    }
+#else
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0) {
       throw DxtbError(-1, systemMessage("socketpair"));
     }
+    for (int i = 0; i < 2; ++i) {
+      if (fcntl(sockets[i], F_SETFD, FD_CLOEXEC) != 0) {
+        const std::string message = systemMessage("fcntl(FD_CLOEXEC)");
+        close(sockets[0]);
+        close(sockets[1]);
+        throw DxtbError(-1, message);
+      }
+    }
+#endif
+  }
+
+  /// BuiltinParams.library, then RGPOT_DXTB_PYTHON, then the build default.
+  std::string pythonExecutable() const {
+    if (!config_.python.empty()) {
+      return config_.python;
+    }
+    const char *configured = std::getenv("RGPOT_DXTB_PYTHON");
+    if (configured && configured[0] != '\0') {
+      return configured;
+    }
+    return RGPOT_DXTB_PYTHON;
+  }
+
+  void start() {
+    int sockets[2] = {-1, -1};
+    makeSocketPair(sockets);
 #ifndef MSG_NOSIGNAL
     int enabled = 1;
     if (setsockopt(sockets[0], SOL_SOCKET, SO_NOSIGPIPE, &enabled,
@@ -181,6 +217,7 @@ private:
       throw DxtbError(-1, systemMessage("setsockopt(SO_NOSIGPIPE)"));
     }
 #endif
+    const std::string python = pythonExecutable();
     pid_ = fork();
     if (pid_ < 0) {
       const std::string message = systemMessage("fork");
@@ -194,30 +231,30 @@ private:
           dup2(sockets[1], STDOUT_FILENO) < 0) {
         _exit(126);
       }
-      close(sockets[1]);
-      const char *configured = std::getenv("RGPOT_DXTB_PYTHON");
-      const char *python = configured && configured[0] != '\0'
-                               ? configured
-                               : config_.python.c_str();
-      if (!python || python[0] == '\0') {
-        python = RGPOT_DXTB_PYTHON;
+      // dup2 onto itself keeps FD_CLOEXEC, so clear it on both descriptors.
+      if (fcntl(STDIN_FILENO, F_SETFD, 0) != 0 ||
+          fcntl(STDOUT_FILENO, F_SETFD, 0) != 0) {
+        _exit(126);
       }
-      execlp(python, python, "-u", "-c", detail::kDxtbWorkerSource,
-             static_cast<char *>(nullptr));
+      if (sockets[1] != STDIN_FILENO && sockets[1] != STDOUT_FILENO) {
+        close(sockets[1]);
+      }
+      execlp(python.c_str(), python.c_str(), "-u", "-c",
+             detail::kDxtbWorkerSource, static_cast<char *>(nullptr));
       _exit(127);
     }
     close(sockets[1]);
     fd_ = sockets[0];
   }
 
-  void configure() {
+  void configure(const DxtbConfig &config) {
     std::vector<unsigned char> payload;
-    appendU32(payload, config_.method == DxtbMethod::GFN1 ? 1u : 2u);
-    appendI32(payload, config_.uhf);
-    appendI32(payload, config_.max_iterations);
-    appendF64(payload, config_.charge);
-    appendF64(payload, config_.accuracy);
-    appendF64(payload, config_.electronic_temperature);
+    appendU32(payload, config.method == DxtbMethod::GFN1 ? 1u : 2u);
+    appendI32(payload, config.uhf);
+    appendI32(payload, config.max_iterations);
+    appendF64(payload, config.charge);
+    appendF64(payload, config.accuracy);
+    appendF64(payload, config.electronic_temperature);
     appendI32(payload, 0);
     appendI32(payload, 0);
     (void)request(kConfigure, 0, payload);
@@ -252,6 +289,9 @@ private:
       if (done < 0 && errno == EINTR) {
         continue;
       }
+      if (done < 0 && (errno == EPIPE || errno == ECONNRESET)) {
+        throw DxtbError(-1, "dxtb worker exited");
+      }
       if (done <= 0) {
         throw DxtbError(-1, systemMessage("write to dxtb worker"));
       }
@@ -266,7 +306,7 @@ private:
       if (done < 0 && errno == EINTR) {
         continue;
       }
-      if (done == 0) {
+      if (done == 0 || (done < 0 && errno == ECONNRESET)) {
         throw DxtbError(-1, "dxtb worker exited");
       }
       if (done < 0) {
