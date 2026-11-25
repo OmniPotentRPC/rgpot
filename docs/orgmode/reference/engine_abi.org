@@ -207,7 +207,7 @@ require the symbol for a plugin to load.
 - Units :: none.
 - Outputs :: three =unsigned short= fields:
   =abi_major= (=RGPOT_ENGINE_ABI_VERSION=, 1),
-  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 11) and
+  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 12) and
   =layout_revision= (=RGPOT_ENGINE_ABI_LAYOUT_REVISION=, 1).
 - Errors :: none.
 
@@ -238,6 +238,8 @@ Minor 7 adds =rgpot_engine_unload_policy=, =RGPOT_ENGINE_UNLOAD_RESIDENT= and
 Minor 11 adds
 =rgpot_engine_taylor_jet=, =RgpotEngineDerivativeReport= and the trailing =RgpotEngineCaps.jet_order=
 field.
+Minor 12 adds =rgpot_md_session_engine_create= for in-process molecular-dynamics
+session engines.
 The version does not cover the Cap'n Proto params schema, the tensor runtime the
 engine links, or the model.
 
