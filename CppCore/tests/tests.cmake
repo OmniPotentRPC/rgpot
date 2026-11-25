@@ -684,6 +684,35 @@ rgpot_add_test(MOPACPotTest COMMAND mopac_pot_test
 rgpot_add_test(MOPACPotEmptyVariable COMMAND mopac_pot_test "[empty-variable]"
                ENVIRONMENT ${_rgpot_mopacc_env} "MOPACC_LIBRARY=")
 
+# The ORCA frontend over a fake liborcac and the variants its handshake
+# must refuse.
+set(_rgpot_orcac_fakes
+    "orcac_fake_engine:RGPOT_ORCAC_ENGINE:"
+    "orcac_fake_c_abi_mismatch:ORCAC_FAKE_C_ABI_MISMATCH:ORCAC_FAKE_C_ABI=2"
+    "orcac_fake_abi_mismatch:ORCAC_FAKE_ABI_MISMATCH:ORCAC_FAKE_ABI=2"
+    "orcac_fake_small_config:ORCAC_FAKE_SMALL_CONFIG:ORCAC_FAKE_SMALL_CONFIG"
+    "orcac_fake_small_result:ORCAC_FAKE_SMALL_RESULT:ORCAC_FAKE_SMALL_RESULT"
+    "orcac_fake_no_compute:ORCAC_FAKE_NO_COMPUTE:ORCAC_FAKE_NO_COMPUTE")
+set(_rgpot_orcac_env)
+foreach(fake IN LISTS _rgpot_orcac_fakes)
+  string(REPLACE ":" ";" fake "${fake}")
+  list(GET fake 0 _lib)
+  list(GET fake 1 _var)
+  list(GET fake 2 _def)
+  add_library(${_lib} SHARED CppCore/tests/orcac_fake_engine.c)
+  target_include_directories(${_lib} PRIVATE CppCore/rgpot/ORCAPot)
+  if(_def)
+    target_compile_definitions(${_lib} PRIVATE ${_def})
+  endif()
+  list(APPEND _rgpot_orcac_env "${_var}=$<TARGET_FILE:${_lib}>")
+endforeach()
+rgpot_test_executable(orca_pot_test CppCore/tests/ORCAPotTest.cc)
+rgpot_add_test(ORCAPotTest COMMAND orca_pot_test
+               ENVIRONMENT ${_rgpot_orcac_env})
+rgpot_add_test(ORCAPotAbsentLibrary COMMAND orca_pot_test "[absent-library]"
+               ENVIRONMENT
+               "RGPOT_ORCAC_ENGINE=${CMAKE_CURRENT_BINARY_DIR}/liborcac-not-built.so")
+
 # Each frontend's C ABI against its no-op stub.
 set(_rgpot_abi_stubs mopac:MOPACPot)
 if(RGPOT_WITH_RPC)

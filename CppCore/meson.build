@@ -507,11 +507,6 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/MEAM')  # 'meam': Baskes MEAM and Lee-Baskes 2NN MEAM
     rgpotentials += [meam]
 
-    if has_orca_legacy
-        subdir('rgpot/ORCAPot')  # 'orca_legacy_pot': deprecated child-process runner
-        rgpotentials += [orca_legacy_pot]
-    endif
-
     subdir('rgpot/EMT')  # 'asap_emt'
     rgpotentials += [asap_emt]
 
@@ -548,6 +543,13 @@ if not get_option('with_rpc_client_only')
     # Pure dlopen consumer of split mopacc (no Cap'n Proto, no OpenMOPAC embed).
     subdir('rgpot/MOPACPot')  # 'mopacpot'
     rgpotentials += [mopacpot]
+
+    # Pure dlopen consumer of split orcac, and the deprecated runner.
+    subdir('rgpot/ORCAPot')  # 'orcapot', 'orca_legacy_pot'
+    rgpotentials += [orcapot]
+    if has_orca_legacy
+        rgpotentials += [orca_legacy_pot]
+    endif
 
     subdir('rgpot/ExternalPot')  # lammps / gromacs / openmm constructors
     rgpotentials += [external_pot]
@@ -2330,6 +2332,63 @@ if get_option('with_tests')
                 include_directories: include_directories('rgpot/MOPACPot'),
             ),
             kwargs: _rt_kw['test_mopac_abi'],
+        )
+        # The fake liborcac and the variants the handshake must refuse.
+        _orcac_fake_variants = {
+            'orcac_fake_engine': [],
+            'orcac_fake_c_abi_mismatch': ['-DORCAC_FAKE_C_ABI=2'],
+            'orcac_fake_abi_mismatch': ['-DORCAC_FAKE_ABI=2'],
+            'orcac_fake_small_config': ['-DORCAC_FAKE_SMALL_CONFIG'],
+            'orcac_fake_small_result': ['-DORCAC_FAKE_SMALL_RESULT'],
+            'orcac_fake_no_compute': ['-DORCAC_FAKE_NO_COMPUTE'],
+        }
+        _orcac_fakes = {}
+        foreach _name, _cargs : _orcac_fake_variants
+            _orcac_fakes += {
+                _name: shared_library(
+                    _name,
+                    sources: ['tests/orcac_fake_engine.c'],
+                    c_args: _cargs,
+                    include_directories: include_directories('rgpot/ORCAPot'),
+                    install: false,
+                ),
+            }
+        endforeach
+        orcac_fake_engine = _orcac_fakes['orcac_fake_engine']
+        orcac_fake_env = environment(
+            {
+                'RGPOT_ORCAC_ENGINE': orcac_fake_engine.full_path(),
+                'ORCAC_FAKE_C_ABI_MISMATCH': _orcac_fakes['orcac_fake_c_abi_mismatch'].full_path(),
+                'ORCAC_FAKE_ABI_MISMATCH': _orcac_fakes['orcac_fake_abi_mismatch'].full_path(),
+                'ORCAC_FAKE_SMALL_CONFIG': _orcac_fakes['orcac_fake_small_config'].full_path(),
+                'ORCAC_FAKE_SMALL_RESULT': _orcac_fakes['orcac_fake_small_result'].full_path(),
+                'ORCAC_FAKE_NO_COMPUTE': _orcac_fakes['orcac_fake_no_compute'].full_path(),
+            },
+        )
+        orca_pot_test = executable(
+            'orca_pot_test',
+            sources: ['tests/ORCAPotTest.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'ORCAPotTest',
+            orca_pot_test,
+            env: orcac_fake_env,
+            depends: _orcac_fakes.values(),
+            kwargs: _rt_kw['ORCAPotTest'],
+        )
+        test(
+            'ORCAPotAbsentLibrary',
+            orca_pot_test,
+            args: ['[absent-library]'],
+            env: {
+                'RGPOT_ORCAC_ENGINE': meson.current_build_dir() / 'liborcac-not-built.so',
+            },
+            kwargs: _rt_kw['ORCAPotAbsentLibrary'],
         )
     endif
 

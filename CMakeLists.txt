@@ -305,7 +305,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/MEAM/MEAMReader.cc
       CppCore/rgpot/MEAM/MEAMPot.cc)
   # The rest of Meson's librgpot: pots potserv does not serve, and the
-  # MOPAC, XTB and external-engine frontends, which load their engines at
+  # MOPAC, ORCA, XTB and external-engine frontends, which load their engines at
   # run time.
   set(_rgpot_emt_sources
       CppCore/rgpot/EMT/Asap/NeighborList.cpp
@@ -326,6 +326,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
        CppCore/rgpot/EAM/EAM.cpp
        CppCore/rgpot/EAM/EAMPot.cc
        CppCore/rgpot/MOPACPot/MOPACPot.cc
+       CppCore/rgpot/ORCAPot/ORCAGuards.cc
+       CppCore/rgpot/ORCAPot/ORCAPot.cc
        CppCore/rgpot/XTBPot/XTBDlopen.cc
        CppCore/rgpot/ExternalPot/ExternalPot.cc
        CppCore/rgpot/ExternalPot/detail/LoadedIdentity.cc
@@ -391,7 +393,6 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_WITH_ORCA_LEGACY)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/ORCAPot/ORCAFiles.cc
-         CppCore/rgpot/ORCAPot/ORCAGuards.cc
          CppCore/rgpot/ORCAPot/ORCALegacyPot.cc)
   endif()
 
