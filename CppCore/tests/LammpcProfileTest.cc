@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -94,6 +95,11 @@ std::string profile_message(const rgpot::abi::ProfileResult &result) {
 } // namespace
 
 TEST_CASE("ProfileLoader names the lammpc shared library", "[abi][lammpc]") {
+  if ((std::getenv("LAMMPC_LIBRARY") != nullptr &&
+       *std::getenv("LAMMPC_LIBRARY") != '\0') ||
+      (std::getenv("RGPOT_LAMMPC_ENGINE") != nullptr &&
+       *std::getenv("RGPOT_LAMMPC_ENGINE") != '\0'))
+    SKIP("a lammpc hint is set, so the default names are not candidates");
   const auto names = rgpot::abi::ProfileLoader::candidates("lammpc", "");
   const auto has = [&](const char *name) {
     return std::find(names.begin(), names.end(), name) != names.end();

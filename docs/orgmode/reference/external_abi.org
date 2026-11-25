@@ -128,8 +128,9 @@ rgpot_external_potential *rgpot_lammpc_potential(const char *engine_path,
   =Capabilities= with the profile handshake, and calls
   =lammpc_session_create_from_config=.
   A non-empty =engine_path= is the only library tried.
-  Otherwise the constructor tries =LAMMPC_LIBRARY=, then =RGPOT_LAMMPC_ENGINE=
-  when they are set, then =liblammpc.so=.
+  Otherwise the constructor tries =LAMMPC_LIBRARY=, then =RGPOT_LAMMPC_ENGINE=,
+  when either is set and not empty, and nothing after them.
+  With neither set it tries =liblammpc.so=.
 - Errors :: returns null and writes =err= when the config bytes are missing,
   not word-aligned, truncated, or not a =PotentialConfig= with the =lammps= arm,
   when no library opens, when its =Capabilities= fail the handshake (an

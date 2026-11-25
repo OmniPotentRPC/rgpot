@@ -65,7 +65,88 @@ std::vector<unsigned char> make_force_input(double cell_zz) {
   return flat_bytes(msg);
 }
 
+void set_env(const char *name, const char *value) {
+#ifdef _WIN32
+  _putenv_s(name, value != nullptr ? value : "");
+#else
+  if (value != nullptr)
+    setenv(name, value, 1);
+  else
+    unsetenv(name);
+#endif
+}
+
+// Sets the two cpmdc hint variables for one scope and restores them after.
+class CpmdcHints {
+public:
+  CpmdcHints(const char *library, const char *engine) {
+    for (int i = 0; i < 2; ++i) {
+      const char *old = std::getenv(kNames[i]);
+      had_[i] = old != nullptr;
+      if (had_[i])
+        old_[i] = old;
+    }
+    set_env(kNames[0], library);
+    set_env(kNames[1], engine);
+  }
+  ~CpmdcHints() {
+    for (int i = 0; i < 2; ++i)
+      set_env(kNames[i], had_[i] ? old_[i].c_str() : nullptr);
+  }
+  CpmdcHints(const CpmdcHints &) = delete;
+  CpmdcHints &operator=(const CpmdcHints &) = delete;
+
+private:
+  static constexpr const char *kNames[2] = {"CPMDC_LIBRARY",
+                                            "RGPOT_CPMDC_ENGINE"};
+  bool had_[2] = {false, false};
+  std::string old_[2];
+};
+
 } // namespace
+
+TEST_CASE("ProfileLoader tries an explicit path alone", "[abi][profile]") {
+  CpmdcHints hints("/env/libcpmdc.so", "/engine/libcpmdc.so");
+  const auto names =
+      rgpot::abi::ProfileLoader::candidates("cpmdc", "/opt/libcpmdc.so");
+  REQUIRE(names == std::vector<std::string>{"/opt/libcpmdc.so"});
+}
+
+TEST_CASE("ProfileLoader tries set hints without the default names",
+          "[abi][profile]") {
+  {
+    CpmdcHints hints("/env/libcpmdc.so", "/engine/libcpmdc.so");
+    REQUIRE(
+        rgpot::abi::ProfileLoader::candidates("cpmdc", "") ==
+        std::vector<std::string>{"/env/libcpmdc.so", "/engine/libcpmdc.so"});
+  }
+  {
+    CpmdcHints hints(nullptr, nullptr);
+    const auto names = rgpot::abi::ProfileLoader::candidates("cpmdc", "");
+    REQUIRE(names.front() == "libcpmdc.so");
+    REQUIRE(names.size() == 5);
+  }
+}
+
+TEST_CASE("ProfileLoader does not pass a failed hint to the default names",
+          "[abi][profile]") {
+  const std::string missing = "./libcpmdc_missing_for_test.so";
+  CpmdcHints hints(missing.c_str(), nullptr);
+  rgpot::abi::ProfileLoader loader;
+  std::string why;
+  try {
+    loader.load("cpmdc");
+  } catch (const std::runtime_error &ex) {
+    why = ex.what();
+  }
+  REQUIRE(why.rfind("libcpmdc not loaded; " + missing + ": ", 0) == 0);
+  REQUIRE(why.find("; libcpmdc.so:") == std::string::npos);
+  REQUIRE_FALSE(loader.loaded());
+
+  CpmdcHints good(fake_engine_path().c_str(), nullptr);
+  loader.load("cpmdc");
+  REQUIRE(loader.loaded());
+}
 
 TEST_CASE("ProfileLoader resolves the full minimum profile from one prefix",
           "[abi][profile]") {

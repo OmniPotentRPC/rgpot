@@ -49,9 +49,10 @@ rgpot_external_potential *rgpot_lammps_potential(const char *engine_path,
 
 /*
  * Lammpc-backed LAMMPS potential configured by a flat PotentialConfig
- * message containing the lammps arm. engine_path NULL or "" searches
- * LAMMPC_LIBRARY and RGPOT_LAMMPC_ENGINE before liblammpc.so. Any other
- * engine_path is the only library tried, and err names it when it fails.
+ * message containing the lammps arm. engine_path NULL or "" tries
+ * LAMMPC_LIBRARY and RGPOT_LAMMPC_ENGINE when either is set and liblammpc.so
+ * only when neither is. Any other engine_path is the only library tried, and
+ * err names it when it fails.
  */
 rgpot_external_potential *rgpot_lammpc_potential(const char *engine_path,
                                                 const void *config_capnp,

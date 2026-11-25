@@ -1482,7 +1482,7 @@ def rgpot_lammps_potential(u0: float = 1.0, cutoff: float = 8.0, psi: float = 1.
 @overload
 def rgpot_lammps_potential(config_bytes: bytes, engine_path: str = '') -> LammpsPot:
     """
-    Lammpc-backed LAMMPS backend. config_bytes is a flat PotentialConfig message with the lammps arm. engine_path empty searches LAMMPC_LIBRARY, RGPOT_LAMMPC_ENGINE and liblammpc.so; any other engine_path is the only library tried.
+    Lammpc-backed LAMMPS backend. config_bytes is a flat PotentialConfig message with the lammps arm. engine_path empty tries LAMMPC_LIBRARY and RGPOT_LAMMPC_ENGINE when either is set, else liblammpc.so; any other engine_path is the only library tried.
     """
 
 def rgpot_gromacs_potential(u0: float = 1.0, cutoff: float = 8.0, psi: float = 1.0, engine_path: str = '') -> GromacsPot:

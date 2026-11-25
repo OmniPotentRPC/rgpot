@@ -1725,9 +1725,10 @@ rgpot_lammpc_potential(const void *config_capnp, size_t config_capnp_size,
 
 - Inputs ::
   =config_capnp= and =config_capnp_size=, a flat =PotentialConfig= whose =lammps= arm is =LammpsParams=, and =engine_path=.
-  An empty =engine_path= searches =LAMMPC_LIBRARY=, =RGPOT_LAMMPC_ENGINE=,
-  =liblammpc.so=, =./liblammpc.so= and the macOS and Windows names.
   A non-empty =engine_path= is the only library tried.
+  An empty =engine_path= tries =LAMMPC_LIBRARY= and =RGPOT_LAMMPC_ENGINE= when
+  either is set and not empty, and nothing after them; with neither set it
+  searches =liblammpc.so=, =./liblammpc.so= and the macOS and Windows names.
 - Units :: those of =LammpsParams.unitsStyle=; =metal= is eV and Angstrom.
 - Outputs :: a new =LammpsPot= that keeps one lammpc session, owned by the
   returned =std::unique_ptr=.

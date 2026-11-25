@@ -439,9 +439,10 @@ rgpot_lammps_potential(config_bytes, engine_path='')
   =liblammps_engine.so= and =liblj_engine.so=, in that order.
   The lammpc one takes
   =config_bytes=, a flat =PotentialConfig= with the =lammps= arm, and =engine_path=.
-  An empty =engine_path= tries =LAMMPC_LIBRARY=, =RGPOT_LAMMPC_ENGINE= and
-  =liblammpc.so=.
   A non-empty =engine_path= is the only library tried.
+  An empty =engine_path= tries =LAMMPC_LIBRARY= and =RGPOT_LAMMPC_ENGINE= when
+  either is set and not empty, and nothing after them; with neither set it
+  tries =liblammpc.so=.
 - Units :: =u0= eV; =cutoff= and =psi= Angstrom.
   The lammpc overload uses the units of =LammpsParams.unitsStyle=.
 - Outputs :: a =rgpot.LammpsPot=.

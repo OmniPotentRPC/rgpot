@@ -1573,8 +1573,9 @@ NB_MODULE(_core, m) {
       nb::arg("engine_path") = "",
       "Lammpc-backed LAMMPS backend. config_bytes is a flat "
       "PotentialConfig message with the lammps arm. engine_path empty "
-      "searches LAMMPC_LIBRARY, RGPOT_LAMMPC_ENGINE and liblammpc.so; "
-      "any other engine_path is the only library tried.");
+      "tries LAMMPC_LIBRARY and RGPOT_LAMMPC_ENGINE when either is set, "
+      "else liblammpc.so; any other engine_path is the only library "
+      "tried.");
   m.def(
       "rgpot_gromacs_potential",
       [&](double u0, double cutoff, double psi,
