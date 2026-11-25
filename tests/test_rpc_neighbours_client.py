@@ -160,6 +160,10 @@ def test_neighbours_refuses_a_minor_2_server_before_the_call() -> None:
         calculator._loop.close()
     assert caught.value.required_minor == 3
     assert caught.value.server_minor == 2
+    assert caught.value.feature == "neighbours"
+    assert str(caught.value).startswith(
+        "Potential.neighbours requires RPC protocol minor 3"
+    )
     assert potential.neighbour_calls == 0
     assert "RPC failed" not in str(caught.value)
 

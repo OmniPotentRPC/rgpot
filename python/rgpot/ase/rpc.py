@@ -46,7 +46,9 @@ class ProtocolMinorMismatchError(RuntimeError):
 
     ``required_minor`` is the minor the request needs, ``server_minor`` the
     one the server advertised and ``client_minor`` the one this client
-    implements. ``feature`` names the request field that set the floor.
+    implements. ``feature`` names the request field or call that set the
+    floor, and ``subject`` is how the message names it, by default
+    ``ForceInput <feature>``.
     """
 
     def __init__(
@@ -55,13 +57,17 @@ class ProtocolMinorMismatchError(RuntimeError):
         required_minor: int,
         server_minor: int,
         client_minor: int,
+        *,
+        subject: str | None = None,
     ) -> None:
         self.feature = feature
+        if subject is None:
+            subject = f"ForceInput {feature}"
         self.required_minor = int(required_minor)
         self.server_minor = int(server_minor)
         self.client_minor = int(client_minor)
         super().__init__(
-            f"ForceInput {feature} requires RPC protocol minor "
+            f"{subject} requires RPC protocol minor "
             f"{self.required_minor}, but the server advertises "
             f"{self.server_minor} (the client implements "
             f"{self.client_minor})"
@@ -345,7 +351,7 @@ class RgpotRpcCalculator(Calculator):
         return super().get_property(name, atoms, allow_calculation)
 
     async def _check_server_protocol(
-        self, required_minor: int, feature: str
+        self, required_minor: int, feature: str, *, subject: str | None = None
     ) -> None:
         minor = getattr(self, "_server_protocol_minor", None)
         if minor is None:
@@ -362,7 +368,7 @@ class RgpotRpcCalculator(Calculator):
             self._server_protocol_minor = minor
         if minor < required_minor:
             raise ProtocolMinorMismatchError(
-                feature, required_minor, minor, PROTOCOL_MINOR
+                feature, required_minor, minor, PROTOCOL_MINOR, subject=subject
             )
 
     def select_orbitals(self, key: int) -> None:
@@ -384,7 +390,9 @@ class RgpotRpcCalculator(Calculator):
         vectors: bool,
         distances: bool,
     ) -> dict[str, np.ndarray]:
-        await self._check_server_protocol(NEIGHBORS_INTRODUCED_MINOR, "neighbours")
+        await self._check_server_protocol(
+            NEIGHBORS_INTRODUCED_MINOR, "neighbours", subject="Potential.neighbours"
+        )
         await self._refresh_capabilities_async()
         if not self._server_has_neighbors:
             raise RuntimeError(
