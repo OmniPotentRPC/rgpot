@@ -1,1 +1,1 @@
-Release contributor docs now match the enforced fragment and pull request checks.
+Release docs describe the fragment checks and which pull requests skip them.

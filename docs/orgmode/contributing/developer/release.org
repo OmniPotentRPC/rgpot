@@ -107,29 +107,41 @@ uvx towncrier create
 
 Types (see =towncrier.toml=): =breaking= (section Breaking, listed first),
 =security=, =removed=, =deprecated=, =added=, =dev=, =changed=, =fixed=, =misc=.
+=towncrier check= fails on a fragment of any other type, such as =style=.
+=scripts/check_news_fragments.py= does not check the type.
 Preview with =uvx towncrier build --draft= or =pixi r towncrier-draft=.
 
 A fragment holds only the text of the entry.
 The template =ci/release-notes.md= writes the bullet and the heading, so:
 
-- Do not start a fragment with a list marker, =-= or =*=.
-  The entry would render as a doubled bullet.
+- Do not start a fragment with a list marker.
   Continuation lines need no indent.
-- Do not put a copyright or SPDX line, or a comment block (=<!-- ... -->=), in a
-  fragment.
-  Neither belongs in the notes.
+- Do not put a copyright or SPDX line in a fragment.
+- Do not put a comment block (=<!-- ... -->=) in a fragment.
 
-The template drops both when it builds the notes, and
-=python scripts/check_news_fragments.py= (or =pixi r news-fragments-check=)
-fails on a fragment that carries either.
-Add =--fix= to rewrite the files.
+The checker is =python scripts/check_news_fragments.py= (or
+=pixi r news-fragments-check=).
+It fails when a fragment, after leading whitespace, starts with =-= or =*=.
+That marker must be followed by a space to count.
+It fails on a line starting with =copyright= or =(c)= and a space.
+It fails on a line starting with =©=, =spdx-=, =[//]:= or =<!--=.
+These prefixes match without regard to case.
+It fails on a fragment with no text.
+Add =--fix= to strip these from the files.
+The template strips the same lines and a leading marker from the notes.
 
-The orchestrator =towncrier= job runs on every pull request:
-=potctl ci towncrier-check --compare-with <base sha>= runs =towncrier check=.
-Neither the job nor =towncrier.toml= filters by path, so the check fails on a
-pull request that adds no fragment, whatever paths it changes.
-=docs/newsfragments/README.md= now reflects this: even pure =docs= / =ci= /
-=chore= changes still need a fragment to pass.
+The =pull_request= trigger in =.github/workflows/ci-orchestrator.yml= has
+=paths-ignore=: =docs/**=, =**/*.md=, =newsfragments/**= and =LICENSE=.
+The workflow skips a pull request whose files all match these patterns.
+Such a pull request runs neither the =towncrier= job nor the =prek= job.
+The =prek= job runs the fragment checker.
+Any other pull request runs the =towncrier= job, so it needs a fragment.
+This covers code, build files and CI files such as the workflows.
+The job runs =potctl ci towncrier-check --compare-with <base sha>=.
+That command runs =towncrier check=, which fails without a new fragment.
+=towncrier check= passes without one when the pull request changes
+=CHANGELOG.md=.
+Use the =dev= type when library, CLI and crate behaviour stay the same.
 
 ** Commit check
 

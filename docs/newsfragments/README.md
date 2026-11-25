@@ -12,24 +12,36 @@ for Sphinx) and removes the fragment files.
   `+slug.fixed.md` for internal/no-issue fixes.
 - Write for **users/integrators**, not implementers (implementation detail goes
   in the PR body or `dev` type only when relevant to contributors).
-- **Required on every pull request**. The `towncrier` job runs
-  `towncrier check` vs the PR base with no path filter, so a `docs` / `ci` /
-  `chore` / `style` change also needs a fragment (`dev` type when it does not
-  alter library/CLI/crate behaviour).
+- **Required on any pull request that runs the orchestrator workflow.** The
+  `CI (orchestrator)` workflow (`.github/workflows/ci-orchestrator.yml`) lists
+  `docs/**`, `**/*.md`, `newsfragments/**` and `LICENSE` under
+  `pull_request` `paths-ignore`. When every file a pull request changes
+  matches one of these patterns, the workflow does not run, so neither the
+  `towncrier` job nor the fragment check runs. A pull request that changes
+  any other file (code, build files, or CI files such as the workflows) runs
+  the `towncrier` job, which runs `towncrier check` against the pull request
+  base and fails when the pull request adds no fragment. `towncrier check`
+  passes without a fragment when the pull request changes `CHANGELOG.md`. Use
+  the `dev` type when the change does not alter library, CLI or crate
+  behaviour.
 
 ## Fragment text
 
 A fragment holds only the text of the entry. The template
 `ci/release-notes.md` writes the bullet and the heading, so:
 
-- Do not start a fragment with a list marker, `-` or `*`. The entry would
-  render as a doubled bullet. Continuation lines need no indent.
+- Do not start a fragment with a list marker. Continuation lines need no
+  indent.
 - Do not put a copyright or SPDX line, or a comment block (`<!-- ... -->`),
   in a fragment. Neither belongs in the notes.
 
-The template drops both when it builds the notes, and
 `python scripts/check_news_fragments.py` (or `pixi r news-fragments-check`)
-fails on a fragment that carries either. Add `--fix` to rewrite the files.
+fails on a fragment whose text, after leading whitespace, starts with `- ` or
+`* `, on a fragment with a line that starts with `copyright `, `(c) `, `©`,
+`spdx-` (ignoring case), `[//]:` or `<!--`, and on a fragment with no text. The
+`prek` job in the same workflow runs it. Add `--fix` to strip these from the
+files. The template strips the same lines and a leading marker when it builds
+the notes.
 
 Preview: `uvx towncrier build --draft` or `pixi r towncrier-draft` if defined.
 
@@ -50,6 +62,10 @@ Preview: `uvx towncrier build --draft` or `pixi r towncrier-draft` if defined.
 | `changed` | Changed |
 | `fixed` | Fixed |
 | `misc` | Miscellaneous |
+
+These are the types `towncrier.toml` defines. `towncrier check` fails on a
+fragment whose type is not in this list, such as `style`.
+`scripts/check_news_fragments.py` does not check the type.
 
 Examples:
 
