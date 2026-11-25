@@ -1301,6 +1301,88 @@ TEST_CASE("ORCAPot cache entries do not cross installations or spin states",
   run(triplet);
   REQUIRE(fake.calls() == 4);
 }
+
+namespace {
+
+rgpot::types::AtomMatrix atomMatrix(const std::vector<double> &pos) {
+  const std::size_t n = pos.size() / 3;
+  rgpot::types::AtomMatrix out = rgpot::types::AtomMatrix::Zero(n, 3);
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t k = 0; k < 3; ++k) {
+      out(i, k) = pos[3 * i + k];
+    }
+  }
+  return out;
+}
+
+std::vector<double> stretched(double dz) {
+  std::vector<double> pos = kWater;
+  pos[2] += dz;
+  return pos;
+}
+
+} // namespace
+
+TEST_CASE("ORCAPot with restart starts each call from the call before it "
+          "even with a result cache",
+          "[orca][cache]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::tests::TestTempDir db("rgpot-orca-cache");
+  rgpot::cache::PotentialCache cache((db.path() / "db").string());
+  const std::array<std::array<double, 3>, 3> open_box{};
+  const std::vector<double> a = stretched(0.0);
+  const std::vector<double> b = stretched(0.01);
+  const std::vector<double> c = stretched(0.02);
+
+  // Another instance with the same settings evaluates B first. Had its
+  // result been cached, the instance below would be served B without a
+  // run, and C would then start from the orbitals of A.
+  {
+    rgpot::ORCAPot earlier(fake.chained());
+    earlier.setCache(&cache);
+    (void)earlier(atomMatrix(b), kWaterZ, open_box);
+  }
+  REQUIRE(fake.calls() == 1);
+
+  rgpot::ORCAPot pot(fake.chained());
+  pot.setCache(&cache);
+  {
+    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
+    (void)pot(atomMatrix(a), kWaterZ, open_box);
+  }
+  REQUIRE(fake.calls() == 2);
+  {
+    EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "1");
+    (void)pot(atomMatrix(b), kWaterZ, open_box);
+    REQUIRE(fake.calls() == 3);
+    REQUIRE_THAT(fake.input(3), ContainsSubstring("0.127300000000"));
+    // The fake checks that the guess it reads is the .gbw of call 3, B.
+    (void)pot(atomMatrix(c), kWaterZ, open_box);
+  }
+  REQUIRE(fake.calls() == 4);
+  REQUIRE(pot.reusedWavefunction());
+  REQUIRE_THAT(fake.input(4), ContainsSubstring("0.137300000000"));
+  REQUIRE(slurp(fs::path(pot.runDirectory()) / "rgpot_orca_guess.gbw") ==
+          "gbw4\n");
+
+  // The same sequence through forceBatch runs every system too.
+  rgpot::ORCAPot batched(fake.chained());
+  batched.setCache(&cache);
+  std::vector<double> forces(9, 0.0);
+  rgpot::ForceInput in{3, b.data(), kWaterZ.data(), nullptr};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  batched.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
+  REQUIRE(fake.calls() == 5);
+
+  // Without restart the cache is used as before.
+  rgpot::ORCAPot plain(fake.config());
+  plain.setCache(&cache);
+  (void)plain(atomMatrix(b), kWaterZ, open_box);
+  (void)plain(atomMatrix(b), kWaterZ, open_box);
+  REQUIRE(fake.calls() == 6);
+}
 #endif
 
 TEST_CASE("ORCAPot instances keep separate working directories", "[orca]") {
