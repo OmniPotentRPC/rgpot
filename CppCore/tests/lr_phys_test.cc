@@ -298,6 +298,7 @@ void test_lists() {
 
   lists.update(pos.data(), n, box, true);
   check(lists.short_rebuilt() && lists.long_rebuilt(), "first list build rebuilds");
+  check(lists.long_changed(), "first list build changes the emitted long pairs");
   check(lists.short_pairs().size() < lists.long_pairs().size(), "long list is the larger cutoff");
   check_matches_brute(pos, box, "initial build matches brute force");
 
@@ -330,6 +331,7 @@ void test_lists() {
   }
   lists.update(pos.data(), n, box, true);
   check(!lists.short_rebuilt() && !lists.long_rebuilt(), "a small move stays inside the skin");
+  check(lists.long_changed(), "a small move refreshes the emitted long pairs");
   check_matches_brute(pos, box, "small move matches brute force");
 
   const double small_box[9] = {
@@ -347,6 +349,7 @@ void test_lists() {
   check(reuse_us < 1e6, "small cell change smoke time");
   check(!lists.short_rebuilt() && !lists.long_rebuilt(),
         "a small cell change stays inside the skin");
+  check(lists.long_changed(), "a small cell change refreshes the emitted long pairs");
   check_matches_brute(pos, small_box, "small cell change matches brute force");
 
   const auto t_steady = std::chrono::steady_clock::now();
@@ -357,6 +360,7 @@ void test_lists() {
   check(steady_us < 1e6, "steady repeat smoke time");
   check(!lists.short_rebuilt() && !lists.long_rebuilt(),
         "a steady repeat reuses the list");
+  check(!lists.long_changed(), "a steady repeat keeps the emitted long pairs");
   check_matches_brute(pos, small_box, "steady repeat matches brute force");
 
   const double large_box[9] = {

@@ -48,6 +48,7 @@ public:
   [[nodiscard]] const std::vector<Pair> &long_pairs() const noexcept;
   [[nodiscard]] bool short_rebuilt() const noexcept { return short_rebuilt_; }
   [[nodiscard]] bool long_rebuilt() const noexcept { return long_rebuilt_; }
+  [[nodiscard]] bool long_changed() const noexcept { return long_changed_; }
 
 private:
   struct Skin;
@@ -60,11 +61,13 @@ private:
   std::vector<Pair> long_;
   bool short_rebuilt_ = false;
   bool long_rebuilt_ = false;
+  bool long_changed_ = false;
   bool have_vacuum_ = false;
   double vacuum_[9]{};
 
   void fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
-            const double *box9, std::vector<Pair> *out, bool *rebuilt);
+            const double *box9, std::vector<Pair> *out, bool *rebuilt,
+            bool *changed = nullptr);
 };
 
 } // namespace rgpot::lr

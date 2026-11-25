@@ -67,7 +67,8 @@ const std::vector<Pair> &DualList::short_pairs() const noexcept {
 const std::vector<Pair> &DualList::long_pairs() const noexcept { return long_; }
 
 void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
-                    const double *box9, std::vector<Pair> *out, bool *rebuilt) {
+                    const double *box9, std::vector<Pair> *out, bool *rebuilt,
+                    bool *changed) {
   nlist::Query query;
   query.cutoff = cutoff;
   query.skin = skin_;
@@ -78,10 +79,16 @@ void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
   query.fields.distances = false;
   skin.builder.update(pos, n, box9, query);
   *rebuilt = !skin.builder.reused();
+  if (changed != nullptr) {
+    *changed = false;
+  }
   if (skin.emitted && skin.emitted_n == n &&
       std::memcmp(skin.emitted_box, box9, sizeof(skin.emitted_box)) == 0 &&
       (n == 0 || std::memcmp(skin.emitted_pos.data(), pos, 3 * n * sizeof(double)) == 0)) {
     return;
+  }
+  if (changed != nullptr) {
+    *changed = true;
   }
   const auto mark_emitted = [&]() {
     skin.emitted_pos.assign(pos, pos + 3 * n);
@@ -168,9 +175,11 @@ void DualList::update(const double *pos, std::size_t n, const double *box,
                       bool periodic) {
   short_rebuilt_ = false;
   long_rebuilt_ = false;
+  long_changed_ = false;
   // Dropping the skins on an empty or single molecular-atom call forces the
   // next non-trivial geometry to rebuild instead of reusing stale state.
   if (n == 0 || (n == 1 && (!periodic || box == nullptr))) {
+    long_changed_ = true;
     short_.clear();
     long_.clear();
     short_skin_.reset();
@@ -204,7 +213,8 @@ void DualList::update(const double *pos, std::size_t n, const double *box,
     long_skin_ = std::make_unique<Skin>();
   }
   fill(*short_skin_, short_cut_, pos, n, use, &short_, &short_rebuilt_);
-  fill(*long_skin_, long_cut_, pos, n, use, &long_, &long_rebuilt_);
+  fill(*long_skin_, long_cut_, pos, n, use, &long_, &long_rebuilt_,
+       &long_changed_);
 }
 
 } // namespace rgpot::lr

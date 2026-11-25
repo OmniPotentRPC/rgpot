@@ -621,9 +621,11 @@ void dump_forces(const std::string &kind, const std::string &path) {
   rgpot::ForceOut out{};
   out.F = f.data();
   rgpot::ForceInput in{s.z.size(), s.pos.data(), s.z.data(), s.box};
-  if (kind == "pme" || kind == "ewald") {
+  if (kind == "pme" || kind == "ewald" || kind == "dsf") {
     rgpot::lr::CoulombConfig cfg;
-    cfg.method = kind == "pme" ? rgpot::lr::CoulombMethod::SPME : rgpot::lr::CoulombMethod::Ewald;
+    cfg.method = kind == "pme"   ? rgpot::lr::CoulombMethod::SPME
+                 : kind == "dsf" ? rgpot::lr::CoulombMethod::DSF
+                                 : rgpot::lr::CoulombMethod::Ewald;
     cfg.cutoff = std::getenv("LR_CUT") != nullptr ? std::atof(std::getenv("LR_CUT")) : 8.0;
     cfg.kmax = 5;
     if (kind == "pme") {
@@ -636,13 +638,15 @@ void dump_forces(const std::string &kind, const std::string &path) {
         }
       }
       cfg.spline_order = std::getenv("LR_ORDER") != nullptr ? std::atoi(std::getenv("LR_ORDER")) : 5;
-    } else {
+    } else if (kind == "ewald") {
       cfg.alpha = 0.35;
       cfg.spline_order = 4;
+    } else {
+      cfg.alpha = 0.2;
     }
   cfg.short_cutoff = 3.0;
   cfg.skin = kind == "pme" ? 0.0 : 0.5;
-  cfg.periodic = true;
+  cfg.periodic = kind != "dsf";
   cfg.stress = false;
   rgpot::lr::CoulombPot pot(cfg, std::make_shared<rgpot::lr::FixedCharges>(s.q, 0.0));
     pot.forceImpl(in, &out);

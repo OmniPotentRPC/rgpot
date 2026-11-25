@@ -1,2 +1,1 @@
-<!-- Copyright 2023--present rgpot developers -->
 `XTBDlopen` and `MetatomicDlopen` now have `setThreadCount`, `clearThreadCount` and `threadCount`, so a host can treat them like the other potentials. Their engine C ABIs carry the resolved count across the shared-library boundary, including a surrounding `ThreadCount` scope. `setThreadCount` throws `std::invalid_argument` for a count below 1.

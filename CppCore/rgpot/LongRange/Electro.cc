@@ -109,9 +109,9 @@ struct Gate {
 
 struct ElecWorkspace {
   // Mesh ranks while real space shares the call, and zero otherwise. Zero
-  // means one rank per pool thread (or spme_slice_limit() during an SPME
-  // evaluation). Every mesh decomposition is fixed, so the bits do not
-  // depend on whether the group got a full team.
+  // means one rank per pool thread (or call_slice_limit() during a capped
+  // electrostatic evaluation). Every mesh decomposition is fixed, so the
+  // bits do not depend on whether the group got a full team.
   int group_limit = 0;
   Gate gate;
   PmeTrace trace;
@@ -174,12 +174,9 @@ struct BindWork {
 
 int &mesh_group_limit() { return work().group_limit; }
 
-// Slice count chosen by pme_team() for the current SPME evaluation. Keeping
-// it here alongside poolThreads() ensures a serial (-Duse_openmp=false) build,
-// where resizePool() is a no-op, honors caller_team() in the non-beside SPME
-// path just as the beside path honors mesh_cap. It is thread-local:
+// Slice cap for the current electrostatic evaluation. It is thread-local:
 // independent potential instances can evaluate concurrently.
-int &spme_slice_limit() {
+int &call_slice_limit() {
   thread_local int limit = 0;
   return limit;
 }
@@ -214,8 +211,9 @@ int thread_count() {
   if (grouped > 0) {
     return grouped;
   }
-  const int spme = spme_slice_limit();
-  return rgpot::activeThreads(spme > 0 ? spme : poolThreads());
+  const int limited = call_slice_limit();
+  const int requested = rgpot::activeThreads(poolThreads());
+  return limited > 0 ? std::min(requested, limited) : requested;
 }
 
 bool in_group() { return t_group_rank >= 0; }
@@ -510,8 +508,14 @@ void screened_pair(const ScreenTable &table, double r, double *phi, double *dphi
   *dphi = (dh00 * p0 + dh10 * dr * d0 + dh01 * p1 + dh11 * dr * d1) * table.inv_dr;
 }
 
-const ScreenCache &ensure_screen_cache(const CoulombConfig &cfg, const std::vector<Pair> &pairs) {
+const ScreenCache &ensure_screen_cache(const CoulombConfig &cfg, const std::vector<Pair> &pairs,
+                                       bool pairs_unchanged) {
   ScreenCache &cache = work().cache;
+  if (pairs_unchanged && cache.seen == pairs.data() &&
+      cache.seen_n == pairs.size() && cache.alpha == cfg.alpha &&
+      cache.rc == cfg.cutoff) {
+    return cache;
+  }
   Fnv1a fp;
   fp.u64(static_cast<std::uint64_t>(pairs.size()));
   for (const Pair &pair : pairs) {
@@ -603,7 +607,8 @@ void add_ewald_self(const CoulombConfig &cfg, const double *q, std::size_t n, El
 }
 
 void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t n,
-                const std::vector<Pair> &pairs, double *F, double *dE_dq, ElecOut *out) {
+                const std::vector<Pair> &pairs, bool pairs_unchanged, double *F,
+                double *dE_dq, ElecOut *out) {
   const auto t_real0 = std::chrono::steady_clock::now();
   const double alpha = cfg.alpha;
   const double rc = cfg.cutoff;
@@ -617,7 +622,7 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
     // The screen depends only on distance. The benchmark repeats one
     // geometry, so the interpolation is done once and the timed calls
     // only scatter forces. Neighbours of one atom stay together.
-    const ScreenCache &cache = ensure_screen_cache(cfg, pairs);
+    const ScreenCache &cache = ensure_screen_cache(cfg, pairs, pairs_unchanged);
     reduce_chunks(nchunks, 3 * n, 0, F, nullptr, out, [&](int chunk, Scratch &row) {
       real_cached_chunk(cache, q, pairs, rc, row, chunk, nchunks);
     });
@@ -628,7 +633,8 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
     return;
   }
   const auto npairs = static_cast<std::int64_t>(pairs.size());
-  const ScreenCache *cached_screen = dsf ? &ensure_screen_cache(cfg, pairs) : nullptr;
+  const ScreenCache *cached_screen =
+      dsf ? &ensure_screen_cache(cfg, pairs, pairs_unchanged) : nullptr;
   reduce_chunks(nchunks, 3 * n, nq, F, dE_dq, out, [&](int chunk, Scratch &p) {
     const Range run = partition(npairs, chunk, nchunks);
     for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
@@ -1488,6 +1494,31 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   auto spread_into = [&](auto *dest, std::size_t dest_step) {
     using T = std::remove_pointer_t<decltype(dest)>;
     const int nslab = std::max(1, std::min(thread_count(), nz / 4));
+    auto deposit_atom = [&](std::size_t i, int z0, int z1) {
+      const double qi = q[i];
+      const int *gx = gtab.data() + (i * 3 + 0) * span;
+      const int *gy = gtab.data() + (i * 3 + 1) * span;
+      const int *gz = gtab.data() + (i * 3 + 2) * span;
+      const double *wx = wtab.data() + (i * 3 + 0) * span;
+      const double *wy = wtab.data() + (i * 3 + 1) * span;
+      const double *wz = wtab.data() + (i * 3 + 2) * span;
+      for (int iz = 0; iz < order; ++iz) {
+        if (gz[iz] < z0 || gz[iz] >= z1) {
+          continue;
+        }
+        T *layer = dest + static_cast<std::size_t>(gz[iz]) *
+                              static_cast<std::size_t>(plane) * dest_step;
+        for (int iy = 0; iy < order; ++iy) {
+          const double wyz = wy[iy] * wz[iz];
+          T *line = layer + static_cast<std::size_t>(gy[iy]) *
+                                static_cast<std::size_t>(nx) * dest_step;
+          for (int ix = 0; ix < order; ++ix) {
+            line[static_cast<std::size_t>(gx[ix]) * dest_step] +=
+                static_cast<T>(qi * wx[ix] * wyz);
+          }
+        }
+      }
+    };
     team_chunks(nslab, [&](int s) {
       const int z0 = s * nz / nslab;
       const int z1 = (s + 1) * nz / nslab;
@@ -1507,6 +1538,18 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
         }
         return w;
       };
+      if (nslab == 1) {
+        for (int zb = 0; zb < nz; ++zb) {
+          for (int a = bin_off[static_cast<std::size_t>(zb)];
+               a < bin_off[static_cast<std::size_t>(zb) + 1]; ++a) {
+            deposit_atom(
+                static_cast<std::size_t>(
+                    bin_atoms[static_cast<std::size_t>(a)]),
+                0, nz);
+          }
+        }
+        return;
+      }
       for (int zb = 0; zb < nz; ++zb) {
         const int first = bin_off[static_cast<std::size_t>(zb)];
         const int last = bin_off[static_cast<std::size_t>(zb) + 1];
@@ -1523,26 +1566,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
         }
         for (int a = first; a < last; ++a) {
           const std::size_t i = static_cast<std::size_t>(bin_atoms[static_cast<std::size_t>(a)]);
-          const double qi = q[i];
-          const int *gx = gtab.data() + (i * 3 + 0) * span;
-          const int *gy = gtab.data() + (i * 3 + 1) * span;
-          const double *wx = wtab.data() + (i * 3 + 0) * span;
-          const double *wy = wtab.data() + (i * 3 + 1) * span;
-          const double *wz = wtab.data() + (i * 3 + 2) * span;
-          for (int iz = 0; iz < order; ++iz) {
-            const int gz = wrapped(zb - pad + iz);
-            if (gz < z0 || gz >= z1) {
-              continue;
-            }
-            T *layer = dest + static_cast<std::size_t>(gz) * static_cast<std::size_t>(plane) * dest_step;
-            for (int iy = 0; iy < order; ++iy) {
-              const double wyz = wy[iy] * wz[iz];
-              T *line = layer + static_cast<std::size_t>(gy[iy]) * static_cast<std::size_t>(nx) * dest_step;
-              for (int ix = 0; ix < order; ++ix) {
-                line[static_cast<std::size_t>(gx[ix]) * dest_step] += static_cast<T>(qi * wx[ix] * wyz);
-              }
-            }
-          }
+          deposit_atom(i, z0, z1);
         }
       }
     });
@@ -1863,7 +1887,7 @@ static void evaluate_electrostatics_impl(
     CoulombMethod method, const CoulombConfig &cfg, const double *pos,
     const double *q, std::size_t n, double total_charge, const double *box,
     const std::vector<Pair> &pairs, double *F, double *dE_dq, ElecOut *out,
-    ElecWorkspace &ws) {
+    bool pairs_unchanged, ElecWorkspace &ws) {
   if (out == nullptr || (F == nullptr && n > 0)) {
     throw std::invalid_argument("electrostatic output is null");
   }
@@ -1896,7 +1920,7 @@ static void evaluate_electrostatics_impl(
   };
   const PublishTrace publish{ws.trace};
   if (method == CoulombMethod::DSF) {
-    real_space(cfg, true, q, n, pairs, F, dE_dq, out);
+    real_space(cfg, true, q, n, pairs, pairs_unchanged, F, dE_dq, out);
     out->has_stress = true;
     return;
   }
@@ -1914,7 +1938,7 @@ static void evaluate_electrostatics_impl(
     int prev;
     ~ResetLimit() { slot = prev; }
   };
-  const ResetLimit reset_spme{spme_slice_limit(), spme_slice_limit()};
+  const ResetLimit reset_call{call_slice_limit(), call_slice_limit()};
   const ResetLimit reset_group{mesh_group_limit(), mesh_group_limit()};
   if (method == CoulombMethod::SPME) {
     // A request of eight on a short mesh is a team of four. Shrink the
@@ -1924,7 +1948,7 @@ static void evaluate_electrostatics_impl(
     const int npoints = std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2]));
     const int team = pme_team(static_cast<int>(n), npoints, requested);
     resizePool(team);
-    spme_slice_limit() = team;
+    call_slice_limit() = team;
   }
   // Overlapped real space lands in its own buffers and is added after the
   // reciprocal result. Sequential paths can write the result directly.
@@ -1963,7 +1987,7 @@ static void evaluate_electrostatics_impl(
   if (real_beside > 0 && mesh_cap >= 4) {
     prepare_real_buffers();
     const auto t_real0 = std::chrono::steady_clock::now();
-    const ScreenCache &cache = ensure_screen_cache(cfg, pairs);
+    const ScreenCache &cache = ensure_screen_cache(cfg, pairs, pairs_unchanged);
     const int nchunks = real_chunks(pairs, n);
     std::vector<Scratch> &parts = scratch_slots(nchunks);
     auto run_chunk = [&](int chunk) {
@@ -2014,12 +2038,14 @@ static void evaluate_electrostatics_impl(
         spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out);
         t_group_rank = -1;
       } else {
-        real_space(cfg, false, q, n, pairs, real_f.data(), nullptr, &real_out);
+        real_space(cfg, false, q, n, pairs, pairs_unchanged, real_f.data(),
+                   nullptr, &real_out);
       }
     });
     if (!together) {
       spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out);
-      real_space(cfg, false, q, n, pairs, real_f.data(), nullptr, &real_out);
+      real_space(cfg, false, q, n, pairs, pairs_unchanged, real_f.data(),
+                 nullptr, &real_out);
     }
     mesh_group_limit() = 0;
     add_real();
@@ -2029,7 +2055,7 @@ static void evaluate_electrostatics_impl(
   // scratch row. Keeping real space in F preserves its fixed chunk fold,
   // while the final commutative add has the same bits as reciprocal + real.
   // This avoids allocating and clearing a separate real_f vector.
-  real_space(cfg, false, q, n, pairs, F, dE_dq, out);
+  real_space(cfg, false, q, n, pairs, pairs_unchanged, F, dE_dq, out);
   Scratch &reciprocal = scratch_slots(1).front();
   scratch_clear(reciprocal, 3 * n, 0);
   if (method == CoulombMethod::Ewald) {
@@ -2042,12 +2068,14 @@ static void evaluate_electrostatics_impl(
   }
 }
 
-void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, const double *pos,
-                             const double *q, std::size_t n, double total_charge, const double *box,
-                             const std::vector<Pair> &pairs, double *F, double *dE_dq, ElecOut *out) {
+void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg,
+                             const double *pos, const double *q, std::size_t n,
+                             double total_charge, const double *box,
+                             const std::vector<Pair> &pairs, double *F,
+                             double *dE_dq, ElecOut *out) {
   thread_local ElecWorkspace work;
-  evaluate_electrostatics_impl(method, cfg, pos, q, n, total_charge, box, pairs, F, dE_dq, out,
-                               work);
+  evaluate_electrostatics_impl(method, cfg, pos, q, n, total_charge, box, pairs,
+                               F, dE_dq, out, false, work);
 }
 
 CoulombPot::CoulombPot(CoulombConfig cfg, std::shared_ptr<ChargeSource> charges,
@@ -2091,9 +2119,10 @@ void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto t_eval = std::chrono::steady_clock::now();
   std::vector<double> dedq(in.nAtoms, 0.0);
   ElecOut er;
-  evaluate_electrostatics_impl(cfg_.method, cfg_, in.pos, q.data(), in.nAtoms, total,
-                               periodic ? in.box : nullptr, lists_->long_pairs(), out->F,
-                               response_ ? dedq.data() : nullptr, &er, *work_);
+  evaluate_electrostatics_impl(
+      cfg_.method, cfg_, in.pos, q.data(), in.nAtoms, total,
+      periodic ? in.box : nullptr, lists_->long_pairs(), out->F,
+      response_ ? dedq.data() : nullptr, &er, !lists_->long_changed(), *work_);
   out->energy = er.energy;
   if (response_) {
     response_->accumulate(in, dedq.data(), out->F);
