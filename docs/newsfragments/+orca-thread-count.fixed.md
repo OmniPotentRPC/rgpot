@@ -1,0 +1,1 @@
+`ORCAPot` now binds the count set with `setThreadCount` on the potential while it evaluates, as every other engine does. A `ThreadCount` scope on the call still wins, and a potential with no count keeps the `OMP_NUM_THREADS` team. The ORCA process keeps the `nprocs` of its configuration.
