@@ -6,6 +6,7 @@
 // one-thread loop is the one a call runs today when nothing is set.
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -14,6 +15,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -210,6 +212,49 @@ TEST_CASE("the explicit thread count is opt-in and rejects a count below 1",
   CHECK(rgpot::explicitThreadCount() == 0);
   CHECK(rgpot::threadsRequested() == 1);
   setThreads("");
+}
+
+TEST_CASE("potential thread counts are synchronized across callers",
+          "[threads][invariant]") {
+  rgpot::LJPot pot(rgpot::LJConfig{});
+  std::atomic<int> invalid{0};
+  std::vector<std::thread> callers;
+  for (int worker = 0; worker < 8; ++worker) {
+    callers.emplace_back([&, worker] {
+      for (int i = 0; i < 2000; ++i) {
+        if ((i + worker) % 3 == 0) {
+          pot.clearThreadCount();
+        } else {
+          pot.setThreadCount((i + worker) % 2 == 0 ? 2 : 4);
+        }
+        const int observed = pot.threadCount();
+        if (observed != 0 && observed != 2 && observed != 4) {
+          invalid.fetch_add(1, std::memory_order_relaxed);
+        }
+      }
+    });
+  }
+  for (auto &caller : callers) {
+    caller.join();
+  }
+  CHECK(invalid.load(std::memory_order_relaxed) == 0);
+  pot.clearThreadCount();
+  CHECK(pot.threadCount() == 0);
+}
+
+TEST_CASE("destroying a potential erases its thread count",
+          "[threads][invariant]") {
+  alignas(rgpot::LJPot) unsigned char storage[sizeof(rgpot::LJPot)];
+  auto *first = std::construct_at(reinterpret_cast<rgpot::LJPot *>(storage),
+                                  rgpot::LJConfig{});
+  first->setThreadCount(4);
+  REQUIRE(first->threadCount() == 4);
+  std::destroy_at(first);
+
+  auto *second = std::construct_at(reinterpret_cast<rgpot::LJPot *>(storage),
+                                   rgpot::LJConfig{});
+  CHECK(second->threadCount() == 0);
+  std::destroy_at(second);
 }
 
 TEST_CASE("classical potentials match at 1, 2, 4 and 8 threads",

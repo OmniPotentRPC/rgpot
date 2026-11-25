@@ -16,13 +16,10 @@
 // forEachBatchSystem spreads the systems, and each system stays whole so a
 // larger one can still open its own team.
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <limits>
-#include <mutex>
-#include <unordered_map>
 #include <vector>
 
 #if defined(_OPENMP)
@@ -270,65 +267,19 @@ namespace detail {
 /// Threads to request for `wanted` slices or ranks under this thread's cap.
 [[nodiscard]] int teamFor(int wanted) noexcept;
 
-/// Per-potential opt-in count. Zero clears. Not a member of PotentialBase,
-/// so the layout stamp does not move. A relaxed load is the whole cost
-/// when no potential has opted in. The map lives here, inline, so a
-/// translation unit that destroys a potential does not need librgpot.
-/// Hidden: these are not part of the exported detail ABI.
+/// Per-potential opt-in count. Zero clears. Kept out of line so every
+/// dynamically linked caller and librgpot use the same synchronized map.
 #if defined(__GNUC__) || defined(__clang__)
-#define RGPOT_POT_THREADS_HIDDEN __attribute__((visibility("hidden")))
+#define RGPOT_POT_THREADS_API __attribute__((visibility("default")))
 #else
-#define RGPOT_POT_THREADS_HIDDEN
+#define RGPOT_POT_THREADS_API
 #endif
-struct PotThreads;
+RGPOT_POT_THREADS_API void notePotentialThreads(const void *key,
+                                                int count) noexcept;
+RGPOT_POT_THREADS_API
+[[nodiscard]] int lookupPotentialThreads(const void *key) noexcept;
 
-/// Null once the map has been destroyed, so a later potential destructor
-/// does not touch it. Namespace scope, so it outlives the function-local map.
-RGPOT_POT_THREADS_HIDDEN inline PotThreads *g_pot_threads = nullptr;
-
-struct RGPOT_POT_THREADS_HIDDEN PotThreads {
-  std::mutex mu;
-  std::unordered_map<const void *, int> counts;
-  std::atomic<int> live{0};
-  ~PotThreads() { g_pot_threads = nullptr; }
-  static PotThreads &get() {
-    static PotThreads pots;
-    g_pot_threads = &pots;
-    return pots;
-  }
-};
-
-RGPOT_POT_THREADS_HIDDEN inline void notePotentialThreads(const void *key,
-                                                          int count) noexcept {
-  PotThreads &pots = PotThreads::get();
-  std::lock_guard<std::mutex> lock(pots.mu);
-  const auto it = pots.counts.find(key);
-  if (count < 1) {
-    if (it != pots.counts.end()) {
-      pots.counts.erase(it);
-      pots.live.fetch_sub(1, std::memory_order_relaxed);
-    }
-    return;
-  }
-  if (it == pots.counts.end()) {
-    pots.counts.emplace(key, count);
-    pots.live.fetch_add(1, std::memory_order_relaxed);
-  } else {
-    it->second = count;
-  }
-}
-
-RGPOT_POT_THREADS_HIDDEN inline int lookupPotentialThreads(const void *key) noexcept {
-  PotThreads *pots = g_pot_threads;
-  if (pots == nullptr || pots->live.load(std::memory_order_relaxed) == 0) {
-    return 0;
-  }
-  std::lock_guard<std::mutex> lock(pots->mu);
-  const auto it = pots->counts.find(key);
-  return it == pots->counts.end() ? 0 : it->second;
-}
-
-#undef RGPOT_POT_THREADS_HIDDEN
+#undef RGPOT_POT_THREADS_API
 
 /// Counts a region for teamsOpened.
 void countTeam() noexcept;

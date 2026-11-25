@@ -1,10 +1,13 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
-#include "rgpot/Slices.hpp"
+#include "rgpot/Potential.hpp"
 
+#include <atomic>
 #include <cstdlib>
+#include <mutex>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace rgpot {
 namespace {
@@ -50,7 +53,22 @@ void pushExplicit(int count, unsigned char kind) {
   ++t_explicit_depth;
 }
 
+struct PotThreads {
+  std::mutex mutex;
+  std::unordered_map<const void *, int> counts;
+  std::atomic<std::size_t> live{0};
+};
+
+PotThreads &potentialThreads() {
+  // Potential destructors may run after other namespace-scope objects. Keep
+  // this registry alive until process exit so erasure is always safe.
+  static PotThreads *threads = new PotThreads;
+  return *threads;
+}
+
 } // namespace
+
+PotentialBase::~PotentialBase() { detail::notePotentialThreads(this, 0); }
 
 int threadsRequested() {
 #if defined(_OPENMP)
@@ -201,6 +219,31 @@ namespace detail {
 int teamFor(int wanted) noexcept {
   const int cap = t_team_cap;
   return cap > 0 && cap < wanted ? cap : wanted;
+}
+
+void notePotentialThreads(const void *key, int count) noexcept {
+  auto &threads = potentialThreads();
+  std::lock_guard<std::mutex> lock(threads.mutex);
+  if (count < 1) {
+    if (threads.counts.erase(key) != 0) {
+      threads.live.fetch_sub(1, std::memory_order_release);
+    }
+  } else {
+    const auto result = threads.counts.insert_or_assign(key, count);
+    if (result.second) {
+      threads.live.fetch_add(1, std::memory_order_release);
+    }
+  }
+}
+
+int lookupPotentialThreads(const void *key) noexcept {
+  auto &threads = potentialThreads();
+  if (threads.live.load(std::memory_order_acquire) == 0) {
+    return 0;
+  }
+  std::lock_guard<std::mutex> lock(threads.mutex);
+  const auto it = threads.counts.find(key);
+  return it == threads.counts.end() ? 0 : it->second;
 }
 
 void countTeam() noexcept { ++t_teams_opened; }

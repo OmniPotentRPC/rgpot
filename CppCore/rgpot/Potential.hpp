@@ -49,11 +49,7 @@ public:
   /**
    * @brief Virtual destructor.
    */
-  virtual ~PotentialBase() {
-    if (detail::g_pot_threads != nullptr) {
-      detail::notePotentialThreads(this, 0);
-    }
-  }
+  virtual ~PotentialBase();
 
   /**
    * @brief Main interface for potential and force calculation.

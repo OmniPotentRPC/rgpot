@@ -2394,13 +2394,20 @@ if get_option('with_tests')
             # declarations must not name DLL import thunks.
             case_args += ['-DRGPOT_MODEL_BUILD']
         endif
+        # The thread-count test is also the dynamic-link regression: its
+        # header calls must reach the same registry as forceImpl in librgpot.
+        if _rt[0] == 'ThreadInvariantTest' and get_option('default_library') != 'static'
+            _test_link = [rgpot]
+        else
+            _test_link = _linkto
+        endif
         _test_exe = executable(
             _rt[2][0],
             sources: ['tests/' + _rt[2][1]],
             dependencies: test_deps,
             include_directories: _incdirs + ['.'],
             cpp_args: case_args,
-            link_with: _linkto,
+            link_with: _test_link,
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
             export_dynamic: _export_dynamic,
