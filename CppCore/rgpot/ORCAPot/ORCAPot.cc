@@ -741,6 +741,17 @@ void ORCAPot::reset() {
 }
 
 void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  // Any call that does not finish keeps no orbitals for the next one.
+  struct GuessGuard {
+    bool &has_guess;
+    bool kept = false;
+    ~GuessGuard() {
+      if (!kept) {
+        has_guess = false;
+      }
+    }
+  } guard{m_has_guess};
+
   const std::size_t n = in.nAtoms;
   checkClusterBox(in.box, n, in.pos);
   const std::vector<int> numbers(in.atmnrs, in.atmnrs + n);
@@ -775,8 +786,23 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const std::string text =
       orca::renderInput(spec, n, in.pos, in.atmnrs);
 
+  // The file that runs is the one paramsKey fingerprints. It is checked
+  // before anything in the run directory is touched and again after the
+  // run, so a result is only returned, and cached, for that file.
+  const auto checkExecutable = [&](const char *when) {
+    if (!executableUnchanged(m_executable, m_real_executable,
+                             m_executable_stamp)) {
+      throw ORCAError("ORCAPot: the executable " + m_executable + " changed " +
+                      when + ": it no longer resolves to " +
+                      m_real_executable +
+                      " with the size, modification time and inode recorded "
+                      "when the instance was made; make a new ORCAPot to run "
+                      "the new file");
+    }
+  };
+  checkExecutable("since the instance was made");
+
   const auto fail = [&](const std::string &what) {
-    m_has_guess = false;
     return ORCAError("ORCAPot: " + what + "\n  input: " + input_path +
                      "\n  stderr tail:\n" +
                      orca::fileTail(stderr_path, kTailBytes) +
@@ -789,7 +815,6 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     std::error_code remove_ec;
     fs::remove(path, remove_ec);
     if (remove_ec && remove_ec != std::errc::no_such_file_or_directory) {
-      m_has_guess = false;
       throw ORCAError("ORCAPot: could not remove stale " + path + ": " +
                       remove_ec.message());
     }
@@ -805,22 +830,6 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     }
   }
 
-  // The file that runs is the one paramsKey fingerprints. It is checked
-  // before the run and again after it, so a result is only returned, and
-  // cached, for that file.
-  const auto checkExecutable = [&](const char *when) {
-    if (!executableUnchanged(m_executable, m_real_executable,
-                             m_executable_stamp)) {
-      m_has_guess = false;
-      throw ORCAError("ORCAPot: the executable " + m_executable + " changed " +
-                      when + ": it no longer resolves to " +
-                      m_real_executable +
-                      " with the size, modification time and inode recorded "
-                      "when the instance was made; make a new ORCAPot to run "
-                      "the new file");
-    }
-  };
-  checkExecutable("since the instance was made");
   const ChildStatus child =
       runChild(m_real_executable, std::string(kBase) + ".inp", m_run_dir,
                output_path, stderr_path, m_config.timeout_s);
@@ -891,6 +900,7 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     m_has_guess = true;
     m_guess_numbers = numbers;
   }
+  guard.kept = true;
 }
 
 } // namespace rgpot

@@ -1396,6 +1396,72 @@ TEST_CASE("ORCAPot refuses an executable replaced under the same name and "
   REQUIRE(fake.calls() == 1);
 }
 
+TEST_CASE("ORCAPot checks the executable before it touches the run directory",
+          "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  const fs::path other = fake.dir.path() / "other-bin" / "orca";
+  fs::create_directories(other.parent_path());
+  fs::copy_file(fake.orca, other);
+  const fs::path link = fake.dir.path() / "orca-link";
+  fs::create_symlink(fake.orca, link);
+  rgpot::ORCAConfig cfg = fake.chained();
+  cfg.executable = link.string();
+  rgpot::ORCAPot pot(cfg);
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 1);
+  const fs::path run(pot.runDirectory());
+  const std::string first_input = slurp(run / "rgpot_orca.inp");
+  REQUIRE(fs::exists(run / "rgpot_orca.engrad"));
+  REQUIRE(fs::exists(run / "rgpot_orca.gbw"));
+
+  std::vector<double> moved = kWater;
+  moved[2] += 0.05;
+  fs::remove(link);
+  fs::create_symlink(other, link);
+  REQUIRE_THROWS_MATCHES(
+      evaluate(pot, moved, kWaterZ), rgpot::ORCAError,
+      Catch::Matchers::MessageMatches(
+          ContainsSubstring("changed since the instance was made")));
+  REQUIRE(fake.calls() == 1);
+  // The refused call removed nothing and wrote no input.
+  REQUIRE(slurp(run / "rgpot_orca.inp") == first_input);
+  REQUIRE(fs::exists(run / "rgpot_orca.engrad"));
+  REQUIRE(fs::exists(run / "rgpot_orca.gbw"));
+
+  // It also dropped the stored orbitals, so the next call starts afresh.
+  fs::remove(link);
+  fs::create_symlink(fake.orca, link);
+  EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 2);
+  REQUIRE_FALSE(pot.reusedWavefunction());
+}
+
+TEST_CASE("ORCAPot drops the stored orbitals when the input cannot be written",
+          "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAPot pot(fake.chained());
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 1);
+  const fs::path input = fs::path(pot.runDirectory()) / "rgpot_orca.inp";
+
+  // A directory in place of the input file makes the write fail.
+  fs::remove(input);
+  fs::create_directory(input);
+  REQUIRE_THROWS_MATCHES(
+      evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
+      Catch::Matchers::MessageMatches(ContainsSubstring("could not write")));
+  REQUIRE(fake.calls() == 1);
+
+  fs::remove(input);
+  EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 2);
+  REQUIRE_FALSE(pot.reusedWavefunction());
+}
+
 #ifdef RGPOT_HAS_CACHE
 TEST_CASE("ORCAPot cache entries do not cross installations or spin states",
           "[orca][cache]") {

@@ -519,23 +519,24 @@ explicit ORCAPot(const ORCAConfig &config);
   size, modification time, device and inode of the file they lead to, and makes
   a directory of its own under
   =scratch_dir=; the destructor removes it unless =keep_files= is set.
-  Each call checks that the executable still resolves to that file with that
-  data and writes the input file =rgpot_orca.inp= there.
+  Each call first checks that the executable still resolves to that file with
+  that data, and only then removes the files of the last call and writes the
+  input file =rgpot_orca.inp= there.
   It closes extra file descriptors above 2 before =exec= and runs the resolved
   file with the argument =rgpot_orca.inp=.
   Its standard output goes to
   =rgpot_orca.out= and its standard error to =rgpot_orca.err=.
   The call then reads =rgpot_orca.engrad= in the C locale, as when writing
   coordinates.
-  An =.engrad= and a =.gbw= left by an earlier call are removed first, and any
-  removal failure other than a missing file throws =rgpot::ORCAError=.
+  The files removed are an =.engrad= and a =.gbw= left by an earlier call, and
+  any removal failure other than a missing file throws =rgpot::ORCAError=.
   With =restart= off, the default, every call starts from ORCA's own guess and
   no orbitals are kept.
   With =restart= on, the orbitals of a successful call are copied to
   =rgpot_orca_guess.gbw=, and the next call with the same atomic numbers reads
   them through =%moinp= and =! MORead=.
-  Even then, a call without a =.gbw=, after a failure, after =reset()=, or with
-  other atomic numbers starts from ORCA's own guess.
+  Even then, a call without a =.gbw=, after a call that threw for any reason,
+  after =reset()=, or with other atomic numbers starts from ORCA's own guess.
   With =restart= on, a result cache passed to =setCache= is not used.
 - Errors :: the constructor throws =std::invalid_argument= in the cases of
   =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or
