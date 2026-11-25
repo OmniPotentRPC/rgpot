@@ -125,10 +125,12 @@ public:
   /// Positions in Angstrom, energy in eV, forces in eV/Angstrom. ORCA has
   /// no periodic boundary conditions, so a box is only padding around the
   /// cluster and ORCA sees the atoms where they are. The box may be absent,
-  /// all zero, or a cell in which the atoms span at most half the width
-  /// along each cell vector, such as the cube of at least 100 Angstrom that
-  /// rgpot.ase pads a cluster into. A box in which the atoms would wrap
-  /// across a boundary, a singular box and a non-finite entry throw
+  /// all zero, or a cell in which every pair of atoms is its own nearest
+  /// periodic image: along every nonzero lattice vector, not only the box
+  /// vectors, the atoms span at most half its length. The cube of at least
+  /// 100 Angstrom that rgpot.ase pads a cluster into is such a cell. A box
+  /// with a translated image closer than the atom itself, a singular box,
+  /// a cell too skewed to check and a non-finite entry throw
   /// std::invalid_argument. A run that fails, including one that passes
   /// timeout_s, throws ORCAError.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;

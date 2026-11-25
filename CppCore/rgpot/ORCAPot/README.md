@@ -20,9 +20,10 @@ an unconverged SCF throws `ORCAError`. `paramsKey` hashes the executable path
 with symlinks resolved and its modification time, with the charge and
 multiplicity, so cached results do not cross ORCA installations or spin
 states. Each call starts from ORCA's own guess unless `ORCAConfig::restart` is
-set. A `maxcore_mb` of 0 leaves `%maxcore` out. A box is padding only: the
-atoms must span at most half the cell width along each cell vector, which the
-cube `rgpot.ase` builds for a cluster satisfies.
+set. A `maxcore_mb` of 0 leaves `%maxcore` out. A box is padding only: every
+pair of atoms must be its own nearest periodic image, checked over every
+lattice vector short enough to matter, which the cube `rgpot.ase` builds for a
+cluster satisfies.
 
 | File | Role |
 | --- | --- |
