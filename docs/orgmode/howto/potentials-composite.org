@@ -1131,7 +1131,7 @@ The second program compares =D3BJ= and =D4= of this class with =D3Pot= and
 =D4Pot= on the same molecule.
 It needs s-dftd3 and dftd4 to run.
 
-#+attr_rgpot: run requires=has_dftd3,has_dftd4 link=rgpot
+#+attr_rgpot: run requires=has_long_range,has_dftd3,has_dftd4 link=rgpot
 #+begin_src cpp
 #include <cstdio>
 
