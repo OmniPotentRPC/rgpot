@@ -78,7 +78,12 @@ started by its full path, so =ORCAPot= always runs an absolute path.
 The constructor resolves its symlinks, and every call runs that resolved file,
 which =ORCAPot::resolvedExecutablePath()= reports.
 Before and after each run the path is resolved again and the size, modification
-time, device and inode of the file are compared with those the constructor read.
+time, change time, device, inode and content hash of the file are compared with
+those the constructor read.
+The change time moves on every write, rename or change of attributes and its
+owner cannot set it back, so a binary rewritten in place at the same size, with
+its modification time restored, no longer matches; the content hash catches such
+a rewrite as well.
 The check before the run comes ahead of anything else in the run directory.
 When they differ there, as after a symlink is retargeted or the binary is
 replaced, the call throws =ORCAError= before it removes the files of the last
@@ -165,7 +170,7 @@ There is no switch to accept the gradient of an unconverged SCF.
 =paramsKey()= feeds the key of the rgpot result cache.
 It hashes =method=, =basis=, =keywords=, =charge=, =multiplicity=, =restart=,
 the executable path with symlinks resolved, and the size, modification time,
-device and inode of that file.
+change time, device, inode and content hash of that file.
 The constructor reads them once, so they stay fixed for the life of the
 instance.
 Each lookup resolves and reads the executable again, and once it no longer
@@ -311,7 +316,8 @@ The test then checks the unit conversion, the fresh guess by default, the
 restart, the fall-back to a fresh guess, the error paths (including a stale
 =.engrad= that cannot be removed, an input that cannot be written and an
 unconverged SCF), the check of the executable ahead of any change to the run
-directory, the cache key across paths, modification times, charges and
+directory, the cache key across paths, modification and change times, a binary
+rewritten in place at the same size and modification time, charges and
 multiplicities, symlink executables, a retargeted symlink and a replaced binary
 with and without the result cache, a restart sequence with a result cache,
 comma-decimal locales, the box that =rgpot.ase= builds for a cluster and the

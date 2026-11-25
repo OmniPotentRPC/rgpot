@@ -1309,6 +1309,99 @@ TEST_CASE("ORCAPot keys results on the executable modification time",
   REQUIRE(rgpot::ORCAPot(fake.config()).paramsKey() != before);
 }
 
+namespace {
+
+struct FileId {
+  off_t size = 0;
+  dev_t dev = 0;
+  ino_t ino = 0;
+};
+
+FileId fileId(const std::string &path) {
+  struct stat st {};
+  REQUIRE(::stat(path.c_str(), &st) == 0);
+  return {st.st_size, st.st_dev, st.st_ino};
+}
+
+void pause(long ms) {
+  timespec ts{};
+  ts.tv_sec = ms / 1000;
+  ts.tv_nsec = (ms % 1000) * 1'000'000L;
+  ::nanosleep(&ts, nullptr);
+}
+
+} // namespace
+
+TEST_CASE("ORCAPot refuses an executable rewritten in place at the same size "
+          "and modification time",
+          "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAPot pot(fake.config());
+  const uint64_t key = pot.paramsKey();
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 1);
+
+  const FileId before = fileId(fake.orca);
+  const auto written = fs::last_write_time(fake.orca);
+  // Another program of the same length, written over the same inode.
+  std::string text = kFakeOrca;
+  const std::string from = "fake orca: $*";
+  const auto at = text.find(from);
+  REQUIRE(at != std::string::npos);
+  text.replace(at, from.size(), "FAKE ORCA: $*");
+  pause(20);
+  {
+    FdGuard fd(::open(fake.orca.c_str(), O_WRONLY));
+    REQUIRE(fd.get() >= 0);
+    REQUIRE(::pwrite(fd.get(), text.data(), text.size(), 0) ==
+            static_cast<ssize_t>(text.size()));
+  }
+  fs::last_write_time(fake.orca, written);
+
+  const FileId after = fileId(fake.orca);
+  REQUIRE(after.size == before.size);
+  REQUIRE(after.dev == before.dev);
+  REQUIRE(after.ino == before.ino);
+  REQUIRE(fs::last_write_time(fake.orca) == written);
+  REQUIRE(slurp(fake.orca) == text);
+
+  REQUIRE(pot.paramsKey() != key);
+  REQUIRE_THROWS_MATCHES(
+      evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
+      Catch::Matchers::MessageMatches(
+          ContainsSubstring("changed since the instance was made") &&
+          ContainsSubstring("change time") &&
+          ContainsSubstring("content hash")));
+  REQUIRE(fake.calls() == 1);
+  // A new instance takes the rewritten file as its own.
+  rgpot::ORCAPot fresh(fake.config());
+  REQUIRE(fresh.paramsKey() != key);
+  evaluate(fresh, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 2);
+}
+
+TEST_CASE("ORCAPot keys results on the executable change time", "[orca]") {
+  Fake fake;
+  rgpot::ORCAPot pot(fake.config());
+  const uint64_t key = pot.paramsKey();
+  REQUIRE(rgpot::ORCAPot(fake.config()).paramsKey() == key);
+  const FileId before = fileId(fake.orca);
+  const auto written = fs::last_write_time(fake.orca);
+  const std::string text = slurp(fake.orca);
+
+  // Setting the same permissions moves only the change time.
+  pause(20);
+  fs::permissions(fake.orca, fs::status(fake.orca).permissions());
+  const FileId after = fileId(fake.orca);
+  REQUIRE(after.size == before.size);
+  REQUIRE(after.ino == before.ino);
+  REQUIRE(fs::last_write_time(fake.orca) == written);
+  REQUIRE(slurp(fake.orca) == text);
+  REQUIRE(pot.paramsKey() != key);
+  REQUIRE(rgpot::ORCAPot(fake.config()).paramsKey() != key);
+}
+
 TEST_CASE("ORCAPot runs the resolved executable and refuses a retargeted "
           "symlink",
           "[orca]") {

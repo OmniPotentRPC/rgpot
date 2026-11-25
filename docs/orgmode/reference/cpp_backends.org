@@ -516,8 +516,8 @@ explicit ORCAPot(const ORCAConfig &config);
 - Outputs :: a potential that runs one ORCA energy and gradient per force call.
   =caps()= reports =Reentrancy::PerInstance=, =periodic = false= and no stress.
   The constructor resolves the executable, follows its symlinks, records the
-  size, modification time, device and inode of the file they lead to, and makes
-  a directory of its own under
+  size, modification time, change time, device, inode and content hash of the
+  file they lead to, and makes a directory of its own under
   =scratch_dir=; the destructor removes it unless =keep_files= is set.
   Each call first checks that the executable still resolves to that file with
   that data, and only then removes the files of the last call and writes the
@@ -610,7 +610,8 @@ void reset();
 - Outputs :: =executablePath()= with symlinks resolved by the constructor: the
   file every call runs.
   A call throws =rgpot::ORCAError= once =executablePath()= resolves to another
-  file, or this file's size, modification time or inode has changed.
+  file, or the size, modification time, change time, device, inode or content
+  hash of this file has changed.
   A change seen before the run stops the call without running anything; one seen
   only after the run discards the result of the run that took place.
 - Errors :: none.
@@ -2030,8 +2031,8 @@ A member whose description differs between classes has one entry per class.
 - Units :: none.
 - Outputs :: a 64-bit FNV-1a hash of =method=, =basis=, =keywords=, =charge=,
   =multiplicity=, =restart=, the executable path with symlinks resolved, the
-  size, modification time, device and inode of that file, a kernel version, 2,
-  and whether the executable still matches them.
+  size, modification time, change time, device, inode and content hash of that
+  file, a kernel version, 2, and whether the executable still matches them.
   The constructor records the path and the file data; each call resolves and
   reads the executable again, and once it no longer matches, the key matches no
   entry an unchanged instance writes.
