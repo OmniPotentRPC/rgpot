@@ -129,8 +129,9 @@ compiles and installs; the vendored copy is the pinned upstream file. Older fiel
 unchanged. `NeighborRequest.mode = 2` asks for a stream: a chunk sets
 `NeighborList.more` and `next`, and the client repeats the call with
 `cursor` instead of receiving every pair in one message. `mode = 1` is
-one stored chunk. potserv does not implement `Potential.neighbours` and
-does not fill `PotentialResult.neighborList`.
+one stored chunk. `potserv` and `rgpot_rpc_server_start` answer `Potential.neighbours`
+from this neighbour layer, and `potserv` also fills `PotentialResult.neighborList`
+when `ForceInput.neighbors` is set.
 
 <!-- rgpot-doc: run link=rgpot -->
 ```cpp

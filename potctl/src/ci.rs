@@ -1245,6 +1245,7 @@ pub fn run_bridge_stress(
     std::thread::sleep(std::time::Duration::from_secs(sleep_secs));
     let ctest = Command::new("ctest")
         .args(["--test-dir", client_build_dir, "--output-on-failure"])
+        .env("RGPOT_REQUIRE_POTSERV", "1")
         .current_dir(root)
         .status();
     let _ = child.kill();
@@ -1341,6 +1342,8 @@ fn plan_rpc_integ(root: &Path, server_bin: &str) -> Result<RpcIntegPlan> {
             .into_owned(),
         "--server-bin".to_string(),
         potserv_s,
+        "--nwchem-smoke".to_string(),
+        "--cpmd-smoke".to_string(),
     ];
     let e2e_args = vec![
         "-m".to_string(),

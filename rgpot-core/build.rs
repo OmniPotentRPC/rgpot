@@ -152,6 +152,52 @@ fn main() {
 
     #[cfg(feature = "schema")]
     compile_capnp_schema(&crate_dir);
+
+    #[cfg(feature = "rpc")]
+    compile_nlist(&crate_dir);
+}
+
+#[cfg(feature = "rpc")]
+fn compile_nlist(crate_dir: &str) {
+    println!("cargo::rerun-if-env-changed=RGPOT_EXTERNAL_NLIST");
+    if env::var_os("RGPOT_EXTERNAL_NLIST").as_deref() == Some(std::ffi::OsStr::new("1")) {
+        return;
+    }
+    let monorepo = PathBuf::from(crate_dir).join("..").join("CppCore");
+    let bundled = PathBuf::from(crate_dir).join("native").join("CppCore");
+    let cpp_core = if monorepo.join("rgpot/nlist/NeighbourList.cc").is_file() {
+        monorepo
+    } else if bundled.join("rgpot/nlist/NeighbourList.cc").is_file() {
+        bundled
+    } else {
+        panic!(
+            "the rpc feature requires the bundled neighbour-list sources; \
+             reinstall rgpot-core from a complete package"
+        );
+    };
+    for file in [
+        "rgpot/Slices.cc",
+        "rgpot/nlist/NeighbourList.cc",
+        "rgpot/nlist/Neighbours.cc",
+        "rgpot/nlist/MinimumImage.cpp",
+        "rgpot/simd/exact_fma_hw.cc",
+        "rgpot/simd/exp.cc",
+    ] {
+        println!("cargo::rerun-if-changed={}", cpp_core.join(file).display());
+    }
+    let mut build = cc::Build::new();
+    build
+        .cpp(true)
+        .std("c++20")
+        .include(&cpp_core)
+        .file(cpp_core.join("rgpot/Slices.cc"))
+        .file(cpp_core.join("rgpot/nlist/NeighbourList.cc"))
+        .file(cpp_core.join("rgpot/nlist/Neighbours.cc"))
+        .file(cpp_core.join("rgpot/nlist/MinimumImage.cpp"))
+        .file(cpp_core.join("rgpot/simd/exact_fma_hw.cc"))
+        .file(cpp_core.join("rgpot/simd/exp.cc"))
+        .warnings(false);
+    build.compile("rgpot_core_nlist");
 }
 
 #[cfg(feature = "schema")]
@@ -180,15 +226,11 @@ fn compile_capnp_schema(crate_dir: &str) {
             monorepo,
         )
     } else {
-        // Neither found — generate stub so rpc/mod.rs include! doesn't fail.
-        let out_dir = env::var("OUT_DIR").unwrap();
-        let stub = PathBuf::from(&out_dir).join("Potentials_capnp.rs");
-        std::fs::write(
-            &stub,
-            "// Auto-generated stub: Potentials.capnp not found at build time.\n",
-        )
-        .expect("Failed to write Cap'n Proto stub");
-        return;
+        panic!(
+            "Potentials.capnp not found: expected bundled schema at {} or monorepo schema at {}; package must include schema/Potentials.capnp",
+            bundled.display(),
+            monorepo.display()
+        );
     };
 
     // The build-identity fields exist only in schema revisions that carry

@@ -18,7 +18,23 @@
 #include <kj/common.h>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
+
+struct NeighborReplyCache {
+  int32_t natoms = 0;
+  const double *pos = nullptr;
+  const int32_t *atmnrs = nullptr;
+  const double *box = nullptr;
+  PotNeighborsRequest request{};
+  std::vector<int32_t> first;
+  std::vector<int32_t> second;
+  std::vector<int32_t> shift;
+  std::vector<double> vector;
+  std::vector<double> distance;
+  std::vector<uint8_t> mask;
+};
 
 /**
  * @class PotClient
@@ -36,6 +52,7 @@ struct PotClient {
   bool server_checked = false;  //!< True once the server passed the handshake.
   bool has_orbital_key = false; //!< Whether following requests name a key.
   int64_t orbital_key = 0;      //!< Image or bead key sent with each request.
+  std::optional<NeighborReplyCache> neighbor_cache;
 
   /**
    * @brief Constructor for PotClient.
@@ -59,6 +76,107 @@ struct PotClient {
       client->last_error = "Unknown C++ exception";                            \
     return default_ret;                                                        \
   }
+
+namespace {
+
+template <typename T, typename Reader>
+void copyCapnpList(Reader source, std::vector<T> &destination) {
+  destination.resize(source.size());
+  for (unsigned i = 0; i < source.size(); ++i)
+    destination[i] = source[i];
+}
+
+bool sameNeighborRequest(const PotNeighborsRequest &left,
+                         const PotNeighborsRequest &right) {
+  return left.cutoff == right.cutoff && left.skin == right.skin &&
+         left.format == right.format && left.cut == right.cut &&
+         left.periodic[0] == right.periodic[0] &&
+         left.periodic[1] == right.periodic[1] &&
+         left.periodic[2] == right.periodic[2] && left.shifts == right.shifts &&
+         left.vectors == right.vectors && left.distances == right.distances;
+}
+
+bool matchesNeighborProbe(const NeighborReplyCache &cached, int32_t natoms,
+                          const double *pos, const int32_t *atmnrs,
+                          const double *box,
+                          const PotNeighborsRequest &request) {
+  return cached.natoms == natoms && cached.pos == pos &&
+         cached.atmnrs == atmnrs && cached.box == box &&
+         sameNeighborRequest(cached.request, request);
+}
+
+int32_t copyNeighborReply(PotClient *client, int32_t natoms,
+                          const PotNeighborsRequest &request,
+                          const NeighborReplyCache &reply, PotNeighborsOut *out,
+                          size_t *out_count, size_t *out_needed) {
+  const size_t total = reply.first.size();
+  if (reply.second.size() != total) {
+    client->last_error = "Server returned mismatched pair arrays";
+    return -2;
+  }
+  if (out_needed)
+    *out_needed = total;
+  if (!out || out->cap == 0)
+    return 0;
+  if (!out->first || !out->second || (request.shifts && !out->shift) ||
+      (request.vectors && !out->vector) ||
+      (request.distances && !out->distance)) {
+    client->last_error = "Required neighbour output pointer is null";
+    return 2;
+  }
+  const size_t nwrite = std::min(out->cap, total);
+  const size_t triple_total =
+      total > std::numeric_limits<size_t>::max() / 3 ? 0 : total * 3;
+  if ((request.shifts || request.vectors) && triple_total == 0 && total != 0) {
+    client->last_error = "Neighbour list length overflows size checks";
+    return -2;
+  }
+  if (request.shifts && reply.shift.size() < triple_total) {
+    client->last_error = "Server returned undersized neighbour shift column";
+    return -2;
+  }
+  if (request.vectors && reply.vector.size() < triple_total) {
+    client->last_error = "Server returned undersized neighbour vector column";
+    return -2;
+  }
+  if (request.distances && reply.distance.size() < total) {
+    client->last_error = "Server returned undersized neighbour distance column";
+    return -2;
+  }
+  if (out->mask && reply.mask.size() < total) {
+    client->last_error = "Server returned undersized neighbour mask column";
+    return -2;
+  }
+  for (size_t i = 0; i < nwrite; ++i) {
+    const int32_t center = reply.first[i];
+    const int32_t partner = reply.second[i];
+    if (center < 0 || partner < 0 || center >= natoms || partner >= natoms) {
+      client->last_error = "Server returned neighbour index out of bounds";
+      return -2;
+    }
+    out->first[i] = center;
+    out->second[i] = partner;
+    if (out->shift) {
+      out->shift[3 * i] = reply.shift[3 * i];
+      out->shift[3 * i + 1] = reply.shift[3 * i + 1];
+      out->shift[3 * i + 2] = reply.shift[3 * i + 2];
+    }
+    if (out->vector) {
+      out->vector[3 * i] = reply.vector[3 * i];
+      out->vector[3 * i + 1] = reply.vector[3 * i + 1];
+      out->vector[3 * i + 2] = reply.vector[3 * i + 2];
+    }
+    if (out->distance)
+      out->distance[i] = reply.distance[i];
+    if (out->mask)
+      out->mask[i] = reply.mask[i];
+  }
+  if (out_count)
+    *out_count = nwrite;
+  return nwrite < total ? 6 : 0;
+}
+
+} // namespace
 
 extern "C" {
 
@@ -218,10 +336,95 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
     }
 
     return 0;
-  }
-  catch (const kj::Exception &error) {
+  } catch (const kj::Exception &error) {
     client->last_error = error.getDescription().cStr();
     return -1;
+  }
+  CATCH_AND_REPORT(client, -1)
+}
+
+int32_t pot_neighbours(PotClient *client, int32_t natoms, const double *pos,
+                       const int32_t *atmnrs, const double *box,
+                       const PotNeighborsRequest *request, PotNeighborsOut *out,
+                       size_t *out_count, size_t *out_needed) {
+  if (out_count)
+    *out_count = 0;
+  if (out_needed)
+    *out_needed = 0;
+  if (!client || !request || natoms < 0 || (natoms > 0 && (!pos || !atmnrs)) ||
+      !box)
+    return -1;
+  client->last_error.clear();
+  if (out && out->cap > 0 && client->neighbor_cache) {
+    if (matchesNeighborProbe(*client->neighbor_cache, natoms, pos, atmnrs, box,
+                             *request)) {
+      auto cached = std::move(*client->neighbor_cache);
+      client->neighbor_cache.reset();
+      return copyNeighborReply(client, natoms, *request, cached, out, out_count,
+                               out_needed);
+    }
+    client->neighbor_cache.reset();
+  }
+
+  try {
+    auto &waitScope = *client->wait_scope;
+    if (!client->server_checked) {
+      const std::string why =
+          rgpot::abi::check_server(client->capability, waitScope);
+      if (!why.empty()) {
+        client->last_error = "server refused: " + why;
+        return -3;
+      }
+      client->server_checked = true;
+    }
+    auto req = client->capability.neighboursRequest();
+    auto fip = req.initFip();
+    fip.setPos(kj::arrayPtr(pos, static_cast<size_t>(natoms) * 3));
+    fip.setAtmnrs(kj::arrayPtr(atmnrs, static_cast<size_t>(natoms)));
+    fip.setBox(kj::arrayPtr(box, 9));
+
+    auto nreq = req.initRequest();
+    nreq.setCutoff(request->cutoff);
+    nreq.setSkin(request->skin);
+    nreq.setFormat(request->format);
+    nreq.setCut(request->cut);
+    auto pbc = nreq.initPeriodic(3);
+    for (unsigned k = 0; k < 3; ++k)
+      pbc.set(k, request->periodic[k] != 0);
+    nreq.setShifts(request->shifts != 0);
+    nreq.setVectors(request->vectors != 0);
+    nreq.setDistances(request->distances != 0);
+    nreq.setMode(1);
+
+    auto response = req.send().wait(waitScope);
+    auto list = response.getNeighbors();
+    if (list.getStatus() != 0) {
+      client->last_error = list.getMessage().cStr();
+      return list.getStatus();
+    }
+    NeighborReplyCache reply;
+    reply.natoms = natoms;
+    reply.pos = pos;
+    reply.atmnrs = atmnrs;
+    reply.box = box;
+    reply.request = *request;
+    const auto first = list.getFirst();
+    const auto second = list.getSecond();
+    const auto shift = list.getShift();
+    const auto vector = list.getVector();
+    const auto distance = list.getDistance();
+    const auto mask = list.getMask();
+    copyCapnpList(first, reply.first);
+    copyCapnpList(second, reply.second);
+    copyCapnpList(shift, reply.shift);
+    copyCapnpList(vector, reply.vector);
+    copyCapnpList(distance, reply.distance);
+    copyCapnpList(mask, reply.mask);
+    const int32_t status = copyNeighborReply(client, natoms, *request, reply,
+                                             out, out_count, out_needed);
+    if (status == 0 && (!out || out->cap == 0))
+      client->neighbor_cache = std::move(reply);
+    return status;
   }
   CATCH_AND_REPORT(client, -1)
 }

@@ -14,6 +14,7 @@ import asyncio
 import os
 import socket
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +33,7 @@ from rgpot.ase.claim import ConnectionClaim
 
 PROTOCOL_FAMILY = "rgpot.potentials"
 PROTOCOL_MAJOR = 1
-PROTOCOL_MINOR = 2
+PROTOCOL_MINOR = 3
 # The minor that introduced the orbital-key fields. It is a fixed number so a
 # later PROTOCOL_MINOR bump does not raise the floor for keyed requests.
 ORBITAL_KEY_INTRODUCED_MINOR = 2
@@ -129,6 +130,8 @@ class RgpotRpcCalculator(Calculator):
         self._closed = False
         self._pot: Any = None
         self._server_has_stress = False
+        self._client: Any = None
+        self._connection: Any = None
         self._loop.run_until_complete(self._kj.__aenter__())
         try:
             self._loop.run_until_complete(self._connect())
@@ -186,6 +189,8 @@ class RgpotRpcCalculator(Calculator):
                     self._closed = True
                     # Drop Python-side capability references before kj teardown.
                     self._pot = None
+                    self._client = None
+                    self._connection = None
                     if not self._loop.is_closed():
                         exit_coro: Any = None
                         try:
@@ -224,12 +229,22 @@ class RgpotRpcCalculator(Calculator):
 
     async def _connect(self) -> None:
         last_err: OSError | None = None
-        for _ in range(120):
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
+            if self._server_proc is not None and self._server_proc.poll() is not None:
+                out, err = self._server_proc.communicate()
+                msg = (err or out or b"").decode(errors="replace").strip()
+                raise RuntimeError(
+                    f"RgpotRpcCalculator: potserv exited with code "
+                    f"{self._server_proc.returncode}: {msg}"
+                )
             try:
                 connection = await _capnp().AsyncIoStream.create_connection(
                     host=self._host, port=self._port
                 )
                 client = _capnp().TwoPartyClient(connection)
+                self._connection = connection
+                self._client = client
                 self._pot = client.bootstrap().cast_as(self._schema.Potential)
                 await self._refresh_capabilities_async()
                 return
@@ -349,6 +364,118 @@ class RgpotRpcCalculator(Calculator):
     def select_orbitals(self, key: int) -> None:
         """Select the image or bead whose orbitals following calls use."""
         self._orbital_key = int(key)
+
+    async def _neighbours_async(
+        self,
+        positions: Any,
+        numbers: Any,
+        box: Any,
+        pbc: Any,
+        *,
+        cutoff: float,
+        skin: float,
+        full: bool,
+        strict: bool,
+        shifts: bool,
+        vectors: bool,
+        distances: bool,
+    ) -> dict[str, np.ndarray]:
+        fip = self._schema.ForceInput.new_message()
+        fip.pos = np.asarray(positions, dtype=float).ravel().tolist()
+        fip.atmnrs = [int(z) for z in numbers]
+        fip.box = np.asarray(box, dtype=float).ravel()[:9].tolist()
+        req = self._schema.NeighborRequest.new_message()
+        req.cutoff = float(cutoff)
+        req.skin = float(skin)
+        req.format = 1 if full else 0
+        req.cut = 0 if strict else 1
+        req.periodic = [bool(flag) for flag in pbc]
+        req.shifts = bool(shifts)
+        req.vectors = bool(vectors)
+        req.distances = bool(distances)
+        req.mode = 1
+        reply = (await self._pot.neighbours(fip, req)).neighbors
+        if int(reply.status) != 0:
+            raise ValueError(str(reply.message))
+        out: dict[str, np.ndarray] = {
+            "first": np.asarray(reply.first, dtype=np.int32),
+            "second": np.asarray(reply.second, dtype=np.int32),
+        }
+        if shifts:
+            out["shift"] = np.asarray(reply.shift, dtype=np.int32).reshape(-1, 3)
+        if vectors:
+            out["vector"] = np.asarray(reply.vector, dtype=np.float64).reshape(-1, 3)
+        if distances:
+            out["distance"] = np.asarray(reply.distance, dtype=np.float64)
+        return out
+
+    def neighbours(
+        self,
+        atoms: Any = None,
+        *,
+        cutoff: float | None = None,
+        skin: float = 0.0,
+        full: bool = False,
+        strict: bool = True,
+        shifts: bool = True,
+        vectors: bool = True,
+        distances: bool = True,
+    ) -> dict[str, np.ndarray]:
+        """Request the remote potential's neighbour list for ``atoms``."""
+        with self._claim:
+            frame = atoms if atoms is not None else self.atoms
+            if frame is None:
+                raise ValueError("neighbours requires an Atoms object")
+            pbc_arr = np.asarray(frame.pbc, dtype=bool).reshape(-1)
+            if pbc_arr.size == 1:
+                pbc_flags = [bool(pbc_arr[0])] * 3
+            elif pbc_arr.size == 3:
+                pbc_flags = [bool(x) for x in pbc_arr]
+            else:
+                raise ValueError(f"pbc must have 1 or 3 entries, got {int(pbc_arr.size)}")
+            cell = frame.cell
+            if cell.rank == 3:
+                box = np.asarray(cell.array, dtype=float)
+            else:
+                box = np.eye(3, dtype=float) * 100.0
+            effective_cutoff = self._resolve_cutoff(frame, pbc_flags, cutoff, skin)
+            return self._loop.run_until_complete(
+                self._neighbours_async(
+                    frame.get_positions(),
+                    frame.get_atomic_numbers(),
+                    box,
+                    pbc_flags,
+                    cutoff=effective_cutoff,
+                    skin=skin,
+                    full=full,
+                    strict=strict,
+                    shifts=shifts,
+                    vectors=vectors,
+                    distances=distances,
+                )
+            )
+
+    def _resolve_cutoff(
+        self, frame: Any, pbc_flags: list[bool], cutoff: float | None, skin: float
+    ) -> float:
+        if cutoff is not None and float(cutoff) > 0.0:
+            return float(cutoff)
+        if any(pbc_flags):
+            cell = np.asarray(frame.cell.array, dtype=float)
+            if cell.shape == (3, 3):
+                lengths = np.linalg.norm(cell, axis=1)
+                finite = lengths[np.isfinite(lengths)]
+                positive = finite[finite > 0.0]
+                if positive.size:
+                    return float(np.min(positive) * 0.5)
+            return max(1.0, float(skin))
+        positions = np.asarray(frame.get_positions(), dtype=float)
+        if positions.shape[0] < 2:
+            return max(1.0, float(skin))
+        deltas = positions[:, None, :] - positions[None, :, :]
+        distances = np.linalg.norm(deltas, axis=-1)
+        max_distance = float(np.nanmax(distances))
+        return max(max_distance + max(0.0, float(skin)), 1.0)
 
     def calculate(
         self,

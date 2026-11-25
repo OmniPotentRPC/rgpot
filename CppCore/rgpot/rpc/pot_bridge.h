@@ -75,6 +75,54 @@ POT_BRIDGE_API int32_t pot_calculate(PotClient *client, int32_t natoms, const do
                       double *out_energy, double *out_forces);
 
 /**
+ * @brief Request parameters for a remote neighbour-list query.
+ */
+typedef struct PotNeighborsRequest {
+  double cutoff;
+  double skin;
+  uint8_t format;
+  uint8_t cut;
+  int32_t periodic[3];
+  int32_t shifts;
+  int32_t vectors;
+  int32_t distances;
+} PotNeighborsRequest;
+
+/**
+ * @brief Caller-owned output arrays for a remote neighbour-list query.
+ */
+typedef struct PotNeighborsOut {
+  int32_t *first;
+  int32_t *second;
+  int32_t *shift;
+  double *vector;
+  double *distance;
+  uint8_t *mask;
+  size_t cap;
+} PotNeighborsOut;
+
+/**
+ * @brief Queries the remote potential's neighbour list for a configuration.
+ * @param client The opaque client handle.
+ * @param natoms Total number of atoms in the system.
+ * @param pos Array of flattened atomic coordinates.
+ * @param atmnrs Array of atomic numbers.
+ * @param box Simulation cell vectors in row-major order.
+ * @param request Neighbour query parameters.
+ * @param out Caller-allocated buffers, or @c NULL for a size probe.
+ * @param out_count Receives the number of pairs written.
+ * @param out_needed Receives the total number of pairs in the list.
+ * @return 0 on success, 6 when @a out->cap is shorter than @a *out_needed,
+ *         or another non-zero code on failure.
+ */
+POT_BRIDGE_API int32_t pot_neighbours(PotClient *client, int32_t natoms,
+                                      const double *pos, const int32_t *atmnrs,
+                                      const double *box,
+                                      const PotNeighborsRequest *request,
+                                      PotNeighborsOut *out, size_t *out_count,
+                                      size_t *out_needed);
+
+/**
  * @brief Retrieves the most recent error message.
  * @param client The opaque client handle.
  * @return String containing the error description.

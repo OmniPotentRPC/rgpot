@@ -405,17 +405,18 @@ positions it was given.
 
 ** Cap'n Proto messages
 
-=CppCore/rgpot/rpc/local/neighbour-chunk.diff= adds the query to the
+=CppCore/rgpot/rpc/local/neighbour-chunk.diff= and
+=CppCore/rgpot/rpc/local/neighbors-operation.diff= add the query to the
 =Potentials.capnp= that rgpot compiles and installs.
 The pinned potentials-schema file does not have it;
 =CppCore/rgpot/rpc/local/series= lists the rgpot-local diffs.
 The messages carry the columns of =rgpot_nlist_request= and =rgpot_nlist_soa=.
 Lengths are in the unit of the positions, =ForceInput.lengthUnit= on the wire.
 
-No rgpot server answers the query yet.
-=potserv= and =rgpot_rpc_server_start= do not implement =Potential.neighbours=,
-so a call fails with Cap'n Proto's unimplemented error.
-They ignore =ForceInput.neighbors= and never set =PotentialResult.neighborList=.
+=potserv= and =rgpot_rpc_server_start= implement =Potential.neighbours= and
+advertise =Capabilities.Operation.neighbors= at ordinal 11.
+=potserv= also populates =PotentialResult.neighborList= when
+=ForceInput.neighbors= is set.
 =CppCore/examples/nlist_stream.cc= sends =NeighborRequest= and =NeighborList= as
 framed messages over a socket and serves each chunk from a stored list.
 
@@ -424,6 +425,7 @@ framed messages over a socket and serves each chunk from a stored list.
 | =ForceInput.neighbors=         | =NeighborRequest= | The query to answer with the forces. A client that does not know it leaves it unset.         |
 | =PotentialResult.neighborList= | =NeighborList=    | The answer, present only when =ForceInput.neighbors= was set. A stream returns one chunk.    |
 | =Potential.neighbours=         | method            | Takes =fip :ForceInput= and =request :NeighborRequest= and returns one chunk as =neighbors=. |
+| =Capabilities.Operation.neighbors= | enumerant     | Advertised at ordinal 11 when the server answers =Potential.neighbours=.                     |
 
 | =NeighborRequest= field     | Type                   | Default | Meaning                                                                                                    |
 |-----------------------------+------------------------+---------+------------------------------------------------------------------------------------------------------------|

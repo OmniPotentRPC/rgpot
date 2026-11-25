@@ -146,19 +146,19 @@ in
 let nodownload_export =
   S.run_bash m%"
   set -euo pipefail
-  rm -rf /tmp/rgpot-src
-  mkdir -p /tmp/rgpot-src
-  git archive HEAD | tar -x -C /tmp/rgpot-src
+  rm -rf "$RUNNER_TEMP/rgpot-src"
+  mkdir -p "$RUNNER_TEMP/rgpot-src"
+  git archive HEAD | tar -x -C "$RUNNER_TEMP/rgpot-src"
   # A conda-forge source build sees exactly this: tracked files, no .git, no
   # checked-out wrap subprojects.
-  test ! -e /tmp/rgpot-src/.git
+  test ! -e "$RUNNER_TEMP/rgpot-src/.git"
 "%
   & { name = "Export tracked tree (git archive, no .git)" }
 in
 
 let nodownload_build_test =
   S.run_pixi m%"
-  cd /tmp/rgpot-src
+  cd "$RUNNER_TEMP/rgpot-src"
   meson setup bb \
     --wrap-mode=nodownload \
     -Dwith_tests=true \

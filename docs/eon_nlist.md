@@ -109,10 +109,10 @@ one stored chunk. `mode = 2` is a stream that honours `cursor` and
 `limit`: the client sends `cursor`, reads `next`, and repeats while
 `more` is true. The reply is a `NeighborList` with the columns above.
 
-potserv does not implement `Potential.neighbours`, and `calculate` does
-not fill `PotentialResult.neighborList`. `CppCore/examples/nlist_stream.cc`
-answers these messages between two processes over a socket, outside the
-`Potential` interface.
+`potserv` and `rgpot_rpc_server_start` implement `Potential.neighbours`, and
+`potserv` also fills `PotentialResult.neighborList` when `ForceInput.neighbors`
+is set. `CppCore/examples/nlist_stream.cc` answers these messages between two
+processes over a socket, outside the `Potential` interface.
 
 <!-- rgpot-doc: skip Cap'n Proto text form of one NeighborRequest; nothing here parses it -->
 ```text

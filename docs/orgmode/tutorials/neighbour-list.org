@@ -183,7 +183,7 @@ It does not run bindgen.
 
 The schema declares =Potential.neighbours=.
 It takes a =ForceInput= and a =NeighborRequest= and returns one =NeighborList=.
-=potserv= does not implement this method yet.
+=potserv= and =rgpot_rpc_server_start= implement this method.
 =mode= 1 (the default) returns one stored chunk.
 =mode= 2 is a stream that honours =cursor= and =limit=.
 =cursor= is the pair index this chunk starts at.

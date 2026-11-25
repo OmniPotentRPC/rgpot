@@ -29,7 +29,8 @@ def load_schema(server_bin):
     for candidate in candidates:
         if candidate.exists():
             print(f"Loading RPC schema: {candidate}")
-            return capnp.load(str(candidate))
+            parser = capnp.SchemaParser()
+            return parser.load(str(candidate))
     raise FileNotFoundError(
         f"could not find Potentials.capnp (checked {', '.join(str(c) for c in candidates)})"
     )
@@ -814,6 +815,209 @@ async def run_muller_brown_configure(port):
     return True
 
 
+def _local_neighbours(pos, box, cutoff, skin, full, loose, periodic, shifts=True, vectors=True, distances=True):
+    """Reference neighbour list using rgpot._core when available, else exact lattice walk."""
+    pos_arr = np.asarray(pos, dtype=np.float64).reshape(-1, 3)
+    box_arr = np.asarray(box, dtype=np.float64).reshape(3, 3)
+    if all(periodic) and not loose and skin == 0.0:
+        try:
+            import rgpot
+            quantities = "ij"
+            if shifts:
+                quantities += "S"
+            if vectors:
+                quantities += "D"
+            if distances:
+                quantities += "d"
+            out = rgpot.neighbor_list(pos_arr, box_arr, cutoff, quantities=quantities, full=full)
+            if not isinstance(out, tuple):
+                out = (out,)
+            idx = 2
+            res = {"first": np.asarray(out[0], dtype=np.int32), "second": np.asarray(out[1], dtype=np.int32)}
+            if shifts:
+                res["shift"] = np.asarray(out[idx], dtype=np.int32).reshape(-1, 3)
+                idx += 1
+            if vectors:
+                res["vector"] = np.asarray(out[idx], dtype=np.float64).reshape(-1, 3)
+                idx += 1
+            if distances:
+                res["distance"] = np.asarray(out[idx], dtype=np.float64)
+            return res
+        except ImportError:
+            pass
+    n = pos_arr.shape[0]
+    search = cutoff + skin if loose else cutoff
+    cut2 = cutoff * cutoff
+    reach2 = search * search
+    a, b, c = box_arr[0], box_arr[1], box_arr[2]
+    vol = abs(float(np.dot(a, np.cross(b, c))))
+    heights = [
+        vol / float(np.linalg.norm(np.cross(b, c))) if np.linalg.norm(np.cross(b, c)) > 0 else 0.0,
+        vol / float(np.linalg.norm(np.cross(c, a))) if np.linalg.norm(np.cross(c, a)) > 0 else 0.0,
+        vol / float(np.linalg.norm(np.cross(a, b))) if np.linalg.norm(np.cross(a, b)) > 0 else 0.0,
+    ]
+    nmax = [
+        int(math.ceil(search / h)) if p and h > 0 and search > 0 else 0
+        for p, h in zip(periodic, heights)
+    ]
+    first, second, shift_list, vec_list, dist_list = [], [], [], [], []
+    for i in range(n):
+        for j in range(n):
+            for sa in range(-nmax[0], nmax[0] + 1):
+                for sb in range(-nmax[1], nmax[1] + 1):
+                    for sc in range(-nmax[2], nmax[2] + 1):
+                        if not full:
+                            if i > j:
+                                continue
+                            if i == j:
+                                s_sum = sa + sb + sc
+                                if s_sum < 0 or (s_sum == 0 and (sc < 0 or (sc == 0 and sb < 0))) or (sa == 0 and sb == 0 and sc == 0):
+                                    continue
+                        vec = pos_arr[j] - pos_arr[i] + sa * a + sb * b + sc * c
+                        r2 = float(np.dot(vec, vec))
+                        if not (r2 > 0.0):
+                            continue
+                        if not loose:
+                            ok = r2 < cut2
+                        elif skin > 0.0:
+                            ok = r2 < reach2
+                        else:
+                            ok = r2 <= cut2
+                        if not ok:
+                            continue
+                        first.append(i)
+                        second.append(j)
+                        shift_list.append([sa, sb, sc])
+                        vec_list.append(vec)
+                        dist_list.append(math.sqrt(r2))
+    res = {
+        "first": np.asarray(first, dtype=np.int32),
+        "second": np.asarray(second, dtype=np.int32),
+        "shift": np.asarray(shift_list, dtype=np.int32).reshape(-1, 3),
+        "vector": np.asarray(vec_list, dtype=np.float64).reshape(-1, 3),
+        "distance": np.asarray(dist_list, dtype=np.float64),
+    }
+    return res
+
+
+def _compare_nlist(got_msg, ref, shifts=True, vectors=True, distances=True):
+    assert got_msg.status == 0, f"expected status 0, got {got_msg.status}: {got_msg.message}"
+    first = np.asarray(got_msg.first, dtype=np.int32)
+    second = np.asarray(got_msg.second, dtype=np.int32)
+    assert len(first) == len(ref["first"]), f"pair count {len(first)} != {len(ref['first'])}"
+    if shifts:
+        shift = np.asarray(got_msg.shift, dtype=np.int32).reshape(-1, 3)
+        got_keys = sorted(
+            (int(first[k]), int(second[k]), int(shift[k, 0]), int(shift[k, 1]), int(shift[k, 2]), k)
+            for k in range(len(first))
+        )
+        ref_keys = sorted(
+            (int(ref["first"][k]), int(ref["second"][k]), int(ref["shift"][k, 0]), int(ref["shift"][k, 1]), int(ref["shift"][k, 2]), k)
+            for k in range(len(ref["first"]))
+        )
+        assert [g[:5] for g in got_keys] == [r[:5] for r in ref_keys]
+        got_order = [g[5] for g in got_keys]
+        ref_order = [r[5] for r in ref_keys]
+    else:
+        assert len(got_msg.shift) == 0
+        got_order = list(np.lexsort((second, first)))
+        ref_order = list(np.lexsort((ref["second"], ref["first"])))
+        assert list(first[got_order]) == list(ref["first"][ref_order])
+        assert list(second[got_order]) == list(ref["second"][ref_order])
+    nlist_atol = float(np.finfo(np.float64).eps) * 16.0
+    if vectors:
+        vec = np.asarray(got_msg.vector, dtype=np.float64).reshape(-1, 3)
+        np.testing.assert_allclose(vec[got_order], ref["vector"][ref_order], rtol=0.0, atol=nlist_atol)
+    else:
+        assert len(got_msg.vector) == 0
+    if distances:
+        dist = np.asarray(got_msg.distance, dtype=np.float64)
+        np.testing.assert_allclose(dist[got_order], ref["distance"][ref_order], rtol=0.0, atol=nlist_atol)
+    else:
+        assert len(got_msg.distance) == 0
+
+
+async def run_neighbours_smoke(port, label, default_cutoff):
+    for _ in range(10):
+        try:
+            connection = await capnp.AsyncIoStream.create_connection(
+                host="localhost", port=port
+            )
+            break
+        except OSError:
+            await asyncio.sleep(0.5)
+    else:
+        print(f"{label} neighbours: failed to connect to server.")
+        return False
+
+    client = capnp.TwoPartyClient(connection)
+    pot = client.bootstrap().cast_as(pot_capnp.Potential)
+
+    geometries = [
+        (
+            "open_cluster",
+            [0.0, 0.0, 0.0, 1.3, 0.1, -0.2, -0.4, 1.5, 0.3, 0.8, 0.9, 1.4],
+            [20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0],
+            [False, False, False],
+            2.4,
+        ),
+        (
+            "cubic",
+            [0.2, 0.2, 0.2, 1.4, 0.3, 0.4, 3.8, 0.2, 0.1, 0.3, 3.7, 3.9],
+            [4.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 4.0],
+            [True, True, True],
+            2.2,
+        ),
+        (
+            "triclinic",
+            [0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7, 2.2, 2.1, 3.9],
+            [4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2],
+            [True, True, True],
+            3.2,
+        ),
+    ]
+
+    for geom_name, pos, box, pbc, cutoff in geometries:
+        for full in (False, True):
+            for skin, cut in ((0.0, 0), (0.3, 1)):
+                fip = pot_capnp.ForceInput.new_message()
+                fip.pos = pos
+                fip.atmnrs = [1] * (len(pos) // 3)
+                fip.box = box
+                req = pot_capnp.NeighborRequest.new_message()
+                req.cutoff = cutoff
+                req.skin = skin
+                req.format = 1 if full else 0
+                req.cut = cut
+                req.periodic = pbc
+                req.shifts = True
+                req.vectors = True
+                req.distances = True
+                req.mode = 1
+                reply = (await pot.neighbours(fip, req)).neighbors
+                ref = _local_neighbours(pos, box, cutoff, skin, full, cut == 1, pbc)
+                _compare_nlist(reply, ref)
+
+    # Also verify cutoff = 0 uses the potential's own locality cutoff when finite.
+    if default_cutoff > 0.0:
+        pos = [0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.8, 0.0]
+        box = [30.0, 0.0, 0.0, 0.0, 30.0, 0.0, 0.0, 0.0, 30.0]
+        fip = pot_capnp.ForceInput.new_message()
+        fip.pos = pos
+        fip.atmnrs = [1, 1, 1]
+        fip.box = box
+        req = pot_capnp.NeighborRequest.new_message()
+        req.cutoff = 0.0
+        req.format = 0
+        req.periodic = [False, False, False]
+        reply = (await pot.neighbours(fip, req)).neighbors
+        ref = _local_neighbours(pos, box, default_cutoff, 0.0, False, False, [False, False, False])
+        _compare_nlist(reply, ref)
+
+    print(f"{label} neighbours: open cluster, cubic and triclinic half/full shells match local nlist.")
+    return True
+
+
 async def run_model_surface_smoke(port, name):
     for _ in range(10):
         try:
@@ -1131,6 +1335,33 @@ def main():
         print("D4 configure passed.")
     else:
         print("D4 configure skipped: potserv built without dftd4.")
+
+    # Run the neighbour list RPC checks (open cluster, cubic, triclinic, half/full).
+    nlist_port = args.port + 14
+    for pot_name, cutoff in (("LJ", 15.0), ("Morse", 9.5)):
+        print(f"Starting {pot_name} server for neighbours: {args.server_bin} {nlist_port} {pot_name}")
+        nlist_proc = subprocess.Popen(
+            [args.server_bin, str(nlist_port), pot_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            nlist_ok = asyncio.run(capnp.run(run_neighbours_smoke(nlist_port, pot_name, cutoff)))
+        except BaseException as e:
+            print(f"{pot_name} neighbours exception: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            nlist_proc.kill()
+            out, err = nlist_proc.communicate(timeout=30)
+            print("Server stdout:", out.decode(errors="replace")[-4000:])
+            print("Server stderr:", err.decode(errors="replace")[-4000:])
+            nlist_ok = False
+        finally:
+            nlist_proc.kill()
+            nlist_proc.wait()
+        if not nlist_ok:
+            sys.exit(1)
+        print(f"{pot_name} neighbours passed.")
+        nlist_port += 1
 
     if args.nwchem_smoke:
         nw_port = args.port + 1

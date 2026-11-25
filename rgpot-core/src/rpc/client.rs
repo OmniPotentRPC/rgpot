@@ -24,11 +24,98 @@ use crate::rpc::schema::potential;
 use crate::tensor::{copy_f64_tensor, copy_i32_tensor, create_owned_f64_tensor};
 use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
+/// Query parameters for `Potential.neighbours`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NeighborQuery {
+    /// Pair cutoff in the length unit of `positions`.
+    pub cutoff: f64,
+    /// Verlet buffer in the length unit of `positions`.
+    pub skin: f64,
+    /// 0 half pairs, 1 full pairs, 2 cluster of four.
+    pub format: u8,
+    /// 0 strict, 1 loose.
+    pub cut: u8,
+    /// Per-axis periodicity flags.
+    pub periodic: [bool; 3],
+    /// Whether to return integer cell shifts.
+    pub shifts: bool,
+    /// Whether to return displacement vectors.
+    pub vectors: bool,
+    /// Whether to return scalar distances.
+    pub distances: bool,
+}
+
+impl Default for NeighborQuery {
+    fn default() -> Self {
+        Self {
+            cutoff: 0.0,
+            skin: 0.0,
+            format: 0,
+            cut: 0,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        }
+    }
+}
+
+/// Result returned by `Potential.neighbours`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NeighborReply {
+    /// Central atom indices.
+    pub first: Vec<i32>,
+    /// Partner atom indices.
+    pub second: Vec<i32>,
+    /// Integer cell shifts (`3 * len(first)` when requested).
+    pub shift: Vec<i32>,
+    /// Pair displacement vectors (`3 * len(first)` when requested).
+    pub vector: Vec<f64>,
+    /// Pair distances (`len(first)` when requested).
+    pub distance: Vec<f64>,
+    /// Interaction mask (`len(first)` bytes).
+    pub mask: Vec<u8>,
+}
+
+fn validate_neighbor_columns(
+    query: &NeighborQuery,
+    pair_count: usize,
+    shift_len: usize,
+    vector_len: usize,
+    distance_len: usize,
+    mask_len: usize,
+) -> Result<(), String> {
+    if query.shifts && shift_len < pair_count.saturating_mul(3) {
+        return Err(format!(
+            "neighbour shift column is undersized: got {shift_len}, expected at least {}",
+            pair_count * 3
+        ));
+    }
+    if query.vectors && vector_len < pair_count.saturating_mul(3) {
+        return Err(format!(
+            "neighbour vector column is undersized: got {vector_len}, expected at least {}",
+            pair_count * 3
+        ));
+    }
+    if query.distances && distance_len < pair_count {
+        return Err(format!(
+            "neighbour distance column is undersized: got {distance_len}, expected at least {pair_count}",
+        ));
+    }
+    if mask_len < pair_count {
+        return Err(format!(
+            "neighbour mask column is undersized: got {mask_len}, expected at least {pair_count}",
+        ));
+    }
+    Ok(())
+}
+
 /// RPC client that connects to a remote rgpot server.
 pub struct RpcClient {
     runtime: Runtime,
     addr: String,
     orbital_key: Option<i64>,
+    neighbor_cache: Option<(usize, NeighborQuery, NeighborReply)>,
 }
 
 impl RpcClient {
@@ -41,6 +128,7 @@ impl RpcClient {
             runtime,
             addr: format!("{host}:{port}"),
             orbital_key: None,
+            neighbor_cache: None,
         })
     }
 
@@ -70,6 +158,36 @@ impl RpcClient {
     ) -> Result<Vec<f64>, String> {
         let local = tokio::task::LocalSet::new();
         local.block_on(&self.runtime, self.calculate_hvp_async(input, direction))
+    }
+
+    /// Request the server's neighbour list for `input` and `query`.
+    pub fn neighbours(
+        &mut self,
+        input: &rgpot_force_input_t,
+        query: &NeighborQuery,
+    ) -> Result<NeighborReply, String> {
+        let local = tokio::task::LocalSet::new();
+        local.block_on(&self.runtime, self.neighbours_async(input, query))
+    }
+
+    /// Save a probed reply for the matching C API fill call.
+    pub(crate) fn cache_neighbours(
+        &mut self,
+        input: *const rgpot_force_input_t,
+        query: NeighborQuery,
+        reply: NeighborReply,
+    ) {
+        self.neighbor_cache = Some((input as usize, query, reply));
+    }
+
+    /// Consume a reply saved by a matching C API probe call.
+    pub(crate) fn take_cached_neighbours(
+        &mut self,
+        input: *const rgpot_force_input_t,
+        query: &NeighborQuery,
+    ) -> Option<NeighborReply> {
+        let cached = self.neighbor_cache.take()?;
+        (cached.0 == input as usize && cached.1 == *query).then_some(cached.2)
     }
 
     async fn calculate_async(
@@ -259,6 +377,130 @@ impl RpcClient {
             ));
         }
         Ok((0..product.len()).map(|i| product.get(i)).collect())
+    }
+
+    async fn neighbours_async(
+        &self,
+        input: &rgpot_force_input_t,
+        query: &NeighborQuery,
+    ) -> Result<NeighborReply, String> {
+        let n = unsafe { input.n_atoms() }
+            .ok_or_else(|| "cannot determine n_atoms from input tensors".to_string())?;
+        let (positions, atmnrs, box_data) = unsafe { extract_cpu_input(input, n)? };
+        let stream = tokio::net::TcpStream::connect(&self.addr)
+            .await
+            .map_err(|e| format!("connection failed: {e}"))?;
+        stream
+            .set_nodelay(true)
+            .map_err(|e| format!("set_nodelay failed: {e}"))?;
+        let (reader, writer) = tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+        let network = twoparty::VatNetwork::new(
+            futures::io::BufReader::new(reader),
+            futures::io::BufWriter::new(writer),
+            rpc_twoparty_capnp::Side::Client,
+            Default::default(),
+        );
+        let mut rpc_system = RpcSystem::new(Box::new(network), None);
+        let potential_client: potential::Client =
+            rpc_system.bootstrap(rpc_twoparty_capnp::Side::Server);
+        tokio::task::spawn_local(rpc_system);
+
+        crate::compat::check_server(&potential_client, &crate::compat::Expectation::default())
+            .await?;
+
+        let mut request = potential_client.neighbours_request();
+        {
+            let mut root = request.get();
+            let mut fip = root.reborrow().init_fip();
+            let mut pos_builder = fip.reborrow().init_pos(positions.len() as u32);
+            for (i, &value) in positions.iter().enumerate() {
+                pos_builder.set(i as u32, value);
+            }
+            let mut atom_builder = fip.reborrow().init_atmnrs(atmnrs.len() as u32);
+            for (i, &value) in atmnrs.iter().enumerate() {
+                atom_builder.set(i as u32, value);
+            }
+            let mut box_builder = fip.init_box(9);
+            for (i, &value) in box_data.iter().enumerate() {
+                box_builder.set(i as u32, value);
+            }
+            let mut nreq = root.init_request();
+            nreq.set_cutoff(query.cutoff);
+            nreq.set_skin(query.skin);
+            nreq.set_format(query.format);
+            nreq.set_cut(query.cut);
+            let mut pbc = nreq.reborrow().init_periodic(3);
+            for (i, &flag) in query.periodic.iter().enumerate() {
+                pbc.set(i as u32, flag);
+            }
+            nreq.set_shifts(query.shifts);
+            nreq.set_vectors(query.vectors);
+            nreq.set_distances(query.distances);
+            nreq.set_mode(1);
+        }
+        let response = request
+            .send()
+            .promise
+            .await
+            .map_err(|e: CapnpError| format!("RPC neighbours call failed: {e}"))?;
+        let list = response
+            .get()
+            .map_err(|e| format!("failed to read neighbours response: {e}"))?
+            .get_neighbors()
+            .map_err(|e| format!("failed to read neighbours list: {e}"))?;
+        let status = list.get_status();
+        if status != 0 {
+            let msg = list
+                .get_message()
+                .ok()
+                .and_then(|t| t.to_str().ok())
+                .filter(|s| !s.is_empty());
+            return Err(match msg {
+                Some(text) => format!("server neighbour error ({status}): {text}"),
+                None => format!("server neighbour error ({status})"),
+            });
+        }
+        let first = list
+            .get_first()
+            .map_err(|e| format!("failed to read first: {e}"))?;
+        let second = list
+            .get_second()
+            .map_err(|e| format!("failed to read second: {e}"))?;
+        if first.len() != second.len() {
+            return Err(format!(
+                "neighbour first/second size mismatch: {} vs {}",
+                first.len(),
+                second.len()
+            ));
+        }
+        let shift = list
+            .get_shift()
+            .map_err(|e| format!("failed to read shift: {e}"))?;
+        let vector = list
+            .get_vector()
+            .map_err(|e| format!("failed to read vector: {e}"))?;
+        let distance = list
+            .get_distance()
+            .map_err(|e| format!("failed to read distance: {e}"))?;
+        let mask = list
+            .get_mask()
+            .map_err(|e| format!("failed to read mask: {e}"))?;
+        validate_neighbor_columns(
+            query,
+            first.len() as usize,
+            shift.len() as usize,
+            vector.len() as usize,
+            distance.len() as usize,
+            mask.len() as usize,
+        )?;
+        Ok(NeighborReply {
+            first: (0..first.len()).map(|i| first.get(i)).collect(),
+            second: (0..second.len()).map(|i| second.get(i)).collect(),
+            shift: (0..shift.len()).map(|i| shift.get(i)).collect(),
+            vector: (0..vector.len()).map(|i| vector.get(i)).collect(),
+            distance: (0..distance.len()).map(|i| distance.get(i)).collect(),
+            mask: (0..mask.len()).map(|i| mask.get(i)).collect(),
+        })
     }
 }
 
@@ -481,5 +723,46 @@ mod tests {
         };
         let err = client.calculate(&guard.input, &mut output).unwrap_err();
         assert!(err.contains("connection failed"), "{err}");
+    }
+
+    fn query_with_all_columns() -> NeighborQuery {
+        NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 0,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        }
+    }
+
+    #[test]
+    fn neighbour_columns_reject_short_shift() {
+        let q = query_with_all_columns();
+        let err = validate_neighbor_columns(&q, 2, 5, 6, 2, 2).unwrap_err();
+        assert!(err.contains("shift column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_columns_reject_short_vector() {
+        let q = query_with_all_columns();
+        let err = validate_neighbor_columns(&q, 2, 6, 5, 2, 2).unwrap_err();
+        assert!(err.contains("vector column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_columns_reject_short_distance() {
+        let q = query_with_all_columns();
+        let err = validate_neighbor_columns(&q, 2, 6, 6, 1, 2).unwrap_err();
+        assert!(err.contains("distance column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_columns_reject_short_mask() {
+        let q = query_with_all_columns();
+        let err = validate_neighbor_columns(&q, 2, 6, 6, 2, 1).unwrap_err();
+        assert!(err.contains("mask column"), "{err}");
     }
 }

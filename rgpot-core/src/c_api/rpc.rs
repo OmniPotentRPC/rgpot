@@ -11,7 +11,7 @@
 use std::os::raw::c_char;
 
 #[cfg(feature = "rpc")]
-use crate::rpc::client::RpcClient;
+use crate::rpc::client::{NeighborQuery, RpcClient};
 #[cfg(feature = "rpc")]
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
 #[cfg(feature = "rpc")]
@@ -20,6 +20,85 @@ use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 /// Opaque RPC client handle.
 #[cfg(feature = "rpc")]
 pub type rgpot_rpc_client_t = RpcClient;
+
+/// Neighbour query parameters for `rgpot_rpc_neighbours`.
+#[cfg(feature = "rpc")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct rgpot_rpc_neighbors_request_t {
+    /// Pair cutoff in the length unit of `positions`.
+    pub cutoff: f64,
+    /// Verlet buffer in the length unit of `positions`.
+    pub skin: f64,
+    /// 0 half pairs, 1 full pairs, 2 cluster of four.
+    pub format: u8,
+    /// 0 strict, 1 loose.
+    pub cut: u8,
+    /// Per-axis periodicity flags (nonzero for periodic).
+    pub periodic: [i32; 3],
+    /// Nonzero to fill `shift`.
+    pub shifts: i32,
+    /// Nonzero to fill `vector`.
+    pub vectors: i32,
+    /// Nonzero to fill `distance`.
+    pub distances: i32,
+}
+
+/// Caller-owned buffers for `rgpot_rpc_neighbours`.
+#[cfg(feature = "rpc")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct rgpot_rpc_neighbors_out_t {
+    /// Central atom indices (`cap` entries).
+    pub first: *mut i32,
+    /// Partner atom indices (`cap` entries).
+    pub second: *mut i32,
+    /// Integer cell shifts (`3 * cap` entries when requested).
+    pub shift: *mut i32,
+    /// Pair displacement vectors (`3 * cap` entries when requested).
+    pub vector: *mut f64,
+    /// Pair distances (`cap` entries when requested).
+    pub distance: *mut f64,
+    /// Interaction mask (`cap` bytes, or NULL).
+    pub mask: *mut u8,
+    /// Capacity in pairs of each non-null buffer.
+    pub cap: usize,
+}
+
+#[cfg(feature = "rpc")]
+fn validate_neighbor_reply_for_c_api(
+    query: &NeighborQuery,
+    mask_requested: bool,
+    pair_count: usize,
+    shift_len: usize,
+    vector_len: usize,
+    distance_len: usize,
+    mask_len: usize,
+) -> Result<(), String> {
+    if query.shifts && shift_len < pair_count.saturating_mul(3) {
+        return Err(format!(
+            "server returned undersized shift column: got {shift_len}, expected at least {}",
+            pair_count * 3
+        ));
+    }
+    if query.vectors && vector_len < pair_count.saturating_mul(3) {
+        return Err(format!(
+            "server returned undersized vector column: got {vector_len}, expected at least {}",
+            pair_count * 3
+        ));
+    }
+    if query.distances && distance_len < pair_count {
+        return Err(format!(
+            "server returned undersized distance column: got {distance_len}, expected at least {pair_count}",
+        ));
+    }
+    if mask_requested && mask_len < pair_count {
+        return Err(format!(
+            "server returned undersized mask column: got {mask_len}, expected at least {pair_count}",
+        ));
+    }
+    Ok(())
+}
 
 /// Create a new RPC client connected to `host:port`.
 ///
@@ -169,6 +248,158 @@ pub unsafe extern "C" fn rgpot_rpc_client_select_orbitals(
             return rgpot_status_t::RGPOT_INVALID_PARAMETER;
         }
         unsafe { &mut *client }.select_orbitals(key);
+        rgpot_status_t::RGPOT_SUCCESS
+    }))
+}
+
+/// Request the remote potential's neighbour list for `input` and `request`.
+///
+/// `*count` receives the number of pairs written (at most `out->cap`), and
+/// `*needed` receives the full pair count. A NULL `out`, or `out->cap == 0`,
+/// probes the size and returns `RGPOT_SUCCESS` with `*count = 0`. When
+/// `out->cap` is positive and smaller than `*needed`, `out->cap` pairs are
+/// written and `RGPOT_BUFFER_SIZE_ERROR` is returned.
+///
+/// # Safety
+///
+/// `client` must be NULL or a live pointer from `rgpot_rpc_client_new`.
+/// `input` and `request` must be NULL or point to valid structs. `out`,
+/// `count` and `needed` must each be NULL or writable.
+#[cfg(feature = "rpc")]
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_rpc_neighbours(
+    client: *mut rgpot_rpc_client_t,
+    input: *const rgpot_force_input_t,
+    request: *const rgpot_rpc_neighbors_request_t,
+    out: *mut rgpot_rpc_neighbors_out_t,
+    count: *mut usize,
+    needed: *mut usize,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if !count.is_null() {
+            unsafe { *count = 0 };
+        }
+        if !needed.is_null() {
+            unsafe { *needed = 0 };
+        }
+        if client.is_null() || input.is_null() || request.is_null() {
+            set_last_error("rgpot_rpc_neighbours: NULL argument");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let req = unsafe { &*request };
+        let query = NeighborQuery {
+            cutoff: req.cutoff,
+            skin: req.skin,
+            format: req.format,
+            cut: req.cut,
+            periodic: [
+                req.periodic[0] != 0,
+                req.periodic[1] != 0,
+                req.periodic[2] != 0,
+            ],
+            shifts: req.shifts != 0,
+            vectors: req.vectors != 0,
+            distances: req.distances != 0,
+        };
+        if !out.is_null() {
+            let buffers = unsafe { &*out };
+            if buffers.cap > 0
+                && (buffers.first.is_null()
+                    || buffers.second.is_null()
+                    || (query.shifts && buffers.shift.is_null())
+                    || (query.vectors && buffers.vector.is_null())
+                    || (query.distances && buffers.distance.is_null())
+                    || (query.format == 2 && buffers.mask.is_null()))
+            {
+                set_last_error("rgpot_rpc_neighbours: required output buffer is NULL");
+                return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+            }
+        }
+        let inp = unsafe { &*input };
+        let client_ref = unsafe { &mut *client };
+        let probe = out.is_null() || unsafe { (*out).cap == 0 };
+        let reply = if probe {
+            match client_ref.neighbours(inp, &query) {
+                Ok(reply) => reply,
+                Err(error) => {
+                    set_last_error(&format!("rgpot_rpc_neighbours: {error}"));
+                    return rgpot_status_t::RGPOT_RPC_ERROR;
+                }
+            }
+        } else if let Some(reply) = client_ref.take_cached_neighbours(input, &query) {
+            reply
+        } else {
+            match client_ref.neighbours(inp, &query) {
+                Ok(reply) => reply,
+                Err(error) => {
+                    set_last_error(&format!("rgpot_rpc_neighbours: {error}"));
+                    return rgpot_status_t::RGPOT_RPC_ERROR;
+                }
+            }
+        };
+        let total = reply.first.len();
+        let mask_requested = if out.is_null() {
+            false
+        } else {
+            let buffers = unsafe { &*out };
+            !buffers.mask.is_null()
+        };
+        if let Err(error) = validate_neighbor_reply_for_c_api(
+            &query,
+            mask_requested,
+            total,
+            reply.shift.len(),
+            reply.vector.len(),
+            reply.distance.len(),
+            reply.mask.len(),
+        ) {
+            set_last_error(&format!("rgpot_rpc_neighbours: {error}"));
+            return rgpot_status_t::RGPOT_RPC_ERROR;
+        }
+        if !needed.is_null() {
+            unsafe { *needed = total };
+        }
+        if probe {
+            client_ref.cache_neighbours(input, query, reply);
+            return rgpot_status_t::RGPOT_SUCCESS;
+        }
+        let buffers = unsafe { &*out };
+        let nwrite = buffers.cap.min(total);
+        if nwrite > 0 {
+            unsafe {
+                std::ptr::copy_nonoverlapping(reply.first.as_ptr(), buffers.first, nwrite);
+                std::ptr::copy_nonoverlapping(reply.second.as_ptr(), buffers.second, nwrite);
+                if !buffers.shift.is_null() && reply.shift.len() >= nwrite * 3 {
+                    std::ptr::copy_nonoverlapping(reply.shift.as_ptr(), buffers.shift, nwrite * 3);
+                }
+                if !buffers.vector.is_null() && reply.vector.len() >= nwrite * 3 {
+                    std::ptr::copy_nonoverlapping(
+                        reply.vector.as_ptr(),
+                        buffers.vector,
+                        nwrite * 3,
+                    );
+                }
+                if !buffers.distance.is_null() && reply.distance.len() >= nwrite {
+                    std::ptr::copy_nonoverlapping(
+                        reply.distance.as_ptr(),
+                        buffers.distance,
+                        nwrite,
+                    );
+                }
+                if !buffers.mask.is_null() && reply.mask.len() >= nwrite {
+                    std::ptr::copy_nonoverlapping(reply.mask.as_ptr(), buffers.mask, nwrite);
+                }
+            }
+        }
+        if !count.is_null() {
+            unsafe { *count = nwrite };
+        }
+        if nwrite < total {
+            set_last_error(
+                "rgpot_rpc_neighbours: neighbour buffer is shorter than the list; needed holds the full count",
+            );
+            return rgpot_status_t::RGPOT_BUFFER_SIZE_ERROR;
+        }
         rgpot_status_t::RGPOT_SUCCESS
     }))
 }
@@ -619,6 +850,105 @@ mod tests {
         (port, join)
     }
 
+    struct NeighbourRoundTripPotential;
+
+    impl potential::Server for NeighbourRoundTripPotential {
+        fn get_capabilities(
+            &mut self,
+            _params: potential::GetCapabilitiesParams,
+            mut results: potential::GetCapabilitiesResults,
+        ) -> capnp::capability::Promise<(), CapnpError> {
+            crate::compat::describe_server(results.get().init_capabilities(), false);
+            capnp::capability::Promise::ok(())
+        }
+
+        fn neighbours(
+            &mut self,
+            params: potential::NeighboursParams,
+            mut results: potential::NeighboursResults,
+        ) -> capnp::capability::Promise<(), CapnpError> {
+            let params = match params.get() {
+                Ok(value) => value,
+                Err(error) => return capnp::capability::Promise::err(error),
+            };
+            let request = match params.get_request() {
+                Ok(value) => value,
+                Err(error) => return capnp::capability::Promise::err(error),
+            };
+            let periodic = match request.get_periodic() {
+                Ok(value) => value,
+                Err(error) => return capnp::capability::Promise::err(error),
+            };
+            if periodic.len() != 3 || periodic.get(0) || periodic.get(1) || periodic.get(2) {
+                return capnp::capability::Promise::err(CapnpError::failed(
+                    "expected non-periodic query".to_string(),
+                ));
+            }
+            if request.get_cutoff() != 0.0 {
+                return capnp::capability::Promise::err(CapnpError::failed(
+                    "expected default cutoff query".to_string(),
+                ));
+            }
+            let mut list = results.get().init_neighbors();
+            list.set_status(0);
+            list.set_message("ok");
+            list.set_more(false);
+            list.set_next(1);
+            let mut first = list.reborrow().init_first(1);
+            first.set(0, 0);
+            let mut second = list.reborrow().init_second(1);
+            second.set(0, 1);
+            let mut shift = list.reborrow().init_shift(3);
+            shift.set(0, 0);
+            shift.set(1, 0);
+            shift.set(2, 0);
+            let mut vector = list.reborrow().init_vector(3);
+            vector.set(0, 1.0);
+            vector.set(1, 0.0);
+            vector.set(2, 0.0);
+            let mut distance = list.reborrow().init_distance(1);
+            distance.set(0, 1.0);
+            let mut mask = list.reborrow().init_mask(1);
+            mask.set(0, 0);
+            capnp::capability::Promise::ok(())
+        }
+    }
+
+    fn start_neighbour_round_trip_server() -> (u16, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|e| panic!("{e}"));
+        let port = listener
+            .local_addr()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .port();
+        let join = thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new().unwrap_or_else(|e| panic!("{e}"));
+            runtime.block_on(async move {
+                listener
+                    .set_nonblocking(true)
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let tokio_listener =
+                    tokio::net::TcpListener::from_std(listener).unwrap_or_else(|e| panic!("{e}"));
+                let (stream, _) = tokio_listener
+                    .accept()
+                    .await
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let capability =
+                    capnp_rpc::new_client::<potential::Client, _>(NeighbourRoundTripPotential);
+                let (reader, writer) =
+                    tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+                let network = twoparty::VatNetwork::new(
+                    futures::io::BufReader::new(reader),
+                    futures::io::BufWriter::new(writer),
+                    rpc_twoparty_capnp::Side::Server,
+                    Default::default(),
+                );
+                let rpc_system = RpcSystem::new(Box::new(network), Some(capability.client));
+                let _ = rpc_system.await;
+            });
+        });
+        (port, join)
+    }
+
     #[test]
     fn calculate_reports_server_exceptions_as_rpc_error() {
         let (port, join) = start_failing_capnp_server();
@@ -632,5 +962,179 @@ mod tests {
         assert!(msg.contains("intentional server exception"), "{msg}");
         unsafe { rgpot_rpc_client_free(client) };
         let _ = join.join();
+    }
+
+    #[test]
+    fn neighbours_validates_null_and_round_trips_against_server() {
+        let mut req = rgpot_rpc_neighbors_request_t {
+            cutoff: 2.5,
+            skin: 0.0,
+            format: 0,
+            cut: 0,
+            periodic: [1, 1, 1],
+            shifts: 1,
+            vectors: 1,
+            distances: 1,
+        };
+        let mut count = 0usize;
+        let mut needed = 0usize;
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                &req,
+                std::ptr::null_mut(),
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(
+            status,
+            crate::status::rgpot_status_t::RGPOT_INVALID_PARAMETER
+        );
+        req.skin = 0.2;
+        req.cut = 1;
+        let query = crate::rpc::client::NeighborQuery {
+            cutoff: req.cutoff,
+            skin: req.skin,
+            format: req.format,
+            cut: req.cut,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        assert_eq!(query.cutoff, 2.5);
+    }
+
+    #[test]
+    fn neighbours_round_trip_reads_server_reply() {
+        let (port, join) = start_neighbour_round_trip_server();
+        let host = host_for();
+        let client = unsafe { rgpot_rpc_client_new(host.as_ptr(), port) };
+        let input = make_input(2);
+        let request = rgpot_rpc_neighbors_request_t {
+            cutoff: 0.0,
+            skin: 0.0,
+            format: 0,
+            cut: 1,
+            periodic: [0, 0, 0],
+            shifts: 1,
+            vectors: 1,
+            distances: 1,
+        };
+        let mut count = 0usize;
+        let mut needed = 0usize;
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                client,
+                &input.input,
+                &request,
+                std::ptr::null_mut(),
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(status, crate::status::rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(count, 0);
+        assert_eq!(needed, 1);
+        let mut first = vec![-1_i32; 4];
+        let mut second = vec![-1_i32; 4];
+        let mut shift = vec![99_i32; 12];
+        let mut vector = vec![99.0_f64; 12];
+        let mut distance = vec![99.0_f64; 4];
+        let mut out = rgpot_rpc_neighbors_out_t {
+            first: first.as_mut_ptr(),
+            second: second.as_mut_ptr(),
+            shift: shift.as_mut_ptr(),
+            vector: vector.as_mut_ptr(),
+            distance: distance.as_mut_ptr(),
+            mask: std::ptr::null_mut(),
+            cap: 4,
+        };
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                client,
+                &input.input,
+                &request,
+                &mut out,
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(status, crate::status::rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(count, 1);
+        assert_eq!(needed, 1);
+        assert_eq!(first[0], 0);
+        assert_eq!(second[0], 1);
+        assert_eq!(&shift[0..3], &[0, 0, 0]);
+        assert_eq!(&vector[0..3], &[1.0, 0.0, 0.0]);
+        assert_eq!(distance[0], 1.0);
+        unsafe { rgpot_rpc_client_free(client) };
+        let _ = join.join();
+    }
+
+    #[test]
+    fn neighbour_reply_validation_rejects_short_shift() {
+        let query = NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 0,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        let err = validate_neighbor_reply_for_c_api(&query, true, 2, 5, 6, 2, 2).unwrap_err();
+        assert!(err.contains("shift column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_reply_validation_rejects_short_vector() {
+        let query = NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 0,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        let err = validate_neighbor_reply_for_c_api(&query, true, 2, 6, 5, 2, 2).unwrap_err();
+        assert!(err.contains("vector column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_reply_validation_rejects_short_distance() {
+        let query = NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 0,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        let err = validate_neighbor_reply_for_c_api(&query, true, 2, 6, 6, 1, 2).unwrap_err();
+        assert!(err.contains("distance column"), "{err}");
+    }
+
+    #[test]
+    fn neighbour_reply_validation_rejects_short_mask() {
+        let query = NeighborQuery {
+            cutoff: 2.0,
+            skin: 0.2,
+            format: 2,
+            cut: 1,
+            periodic: [true, true, true],
+            shifts: true,
+            vectors: true,
+            distances: true,
+        };
+        let err = validate_neighbor_reply_for_c_api(&query, true, 2, 6, 6, 2, 1).unwrap_err();
+        assert!(err.contains("mask column"), "{err}");
     }
 }

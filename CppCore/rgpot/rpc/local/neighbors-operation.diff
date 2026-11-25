@@ -1,0 +1,12 @@
+# Copyright 2023--present rgpot developers
+diff --git a/Potentials.capnp b/Potentials.capnp
+--- a/Potentials.capnp
++++ b/Potentials.capnp
+@@ -103,6 +103,7 @@ struct Capabilities {
+     optimize       @8;
+     frequencies    @9;
+     hessianVector  @10;
++    neighbors      @11;
+   }
+ }
+ 

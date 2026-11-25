@@ -77,6 +77,8 @@ class MpiPefSession;
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
 #endif
+#include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/nlist/rgpot_nlist.h"
 #include "rgpot/rpc/CompositeConfigure.hpp"
 #include "rgpot/rpc/MorseConfigure.hpp"
 #include "rgpot/rpc/MullerBrownConfigure.hpp"
@@ -105,6 +107,264 @@ constexpr const char *kCollectiveBackends = "NWChem, CPMD or CP2K";
 constexpr const char *kCollectiveBackends = "NWChem or CPMD";
 #endif
 #endif
+
+namespace {
+
+constexpr std::uint32_t kDefaultStreamLimit = 4096;
+
+[[nodiscard]] double potentialCutoffAngstrom(const rgpot::PotentialBase &pot) noexcept {
+  if (const auto *lj = dynamic_cast<const rgpot::LJPot *>(&pot))
+    return lj->locality().cutoff;
+  if (const auto *cluster = dynamic_cast<const rgpot::LJClusterPot *>(&pot))
+    return cluster->config().cutoff > 0.0 ? cluster->config().cutoff : 0.0;
+  if (const auto *morse = dynamic_cast<const rgpot::MorsePot *>(&pot))
+    return morse->locality().cutoff;
+  if (const auto *zbl = dynamic_cast<const rgpot::ZBLPot *>(&pot))
+    return zbl->config().cut_global > 0.0 ? zbl->config().cut_global : 0.0;
+#ifdef RGPOT_HAS_FORTRAN_POTS
+  if (dynamic_cast<const rgpot::fortranpots::CuH2Pot *>(&pot) != nullptr)
+    return 6.1;
+  if (dynamic_cast<const rgpot::fortranpots::EAMAlPot *>(&pot) != nullptr)
+    return 7.1;
+  if (dynamic_cast<const rgpot::fortranpots::SWPot *>(&pot) != nullptr)
+    return 1.8 * 2.0951;
+  if (dynamic_cast<const rgpot::fortranpots::EDIPPot *>(&pot) != nullptr)
+    return 3.1213820;
+  if (dynamic_cast<const rgpot::fortranpots::LenoskyPot *>(&pot) != nullptr)
+    return 4.5;
+  if (dynamic_cast<const rgpot::fortranpots::TersoffPot *>(&pot) != nullptr)
+    return 3.0;
+  if (dynamic_cast<const rgpot::fortranpots::FeHePot *>(&pot) != nullptr)
+    return 5.4;
+#endif
+  return 0.0;
+}
+
+void setNeighborError(::NeighborList::Builder out, rgpot::nlist::Code code,
+                      const std::string &message) {
+  out.setStatus(static_cast<std::int32_t>(code));
+  out.setMessage(message);
+  out.setMore(false);
+  out.setNext(0);
+}
+
+void answerNeighborRequest(const rgpot::PotentialBase &pot,
+                           const ::ForceInput::Reader &fip,
+                           const ::NeighborRequest::Reader &request,
+                           ::NeighborList::Builder out) {
+  const auto mode = request.getMode();
+  if (mode != 1 && mode != 2) {
+    setNeighborError(out, rgpot::nlist::Code::Shape,
+                     "mode must be 1 (stored) or 2 (stream)");
+    return;
+  }
+  const auto format = request.getFormat();
+  if (format > 2) {
+    setNeighborError(out, rgpot::nlist::Code::Shape,
+                     "format must be 0 (half pairs), 1 (full pairs) or 2 (cluster of four)");
+    return;
+  }
+  const auto cut = request.getCut();
+  if (cut > 1) {
+    setNeighborError(out, rgpot::nlist::Code::Shape,
+                     "cut must be 0 (strict) or 1 (loose)");
+    return;
+  }
+  const auto periodic_list = request.getPeriodic();
+  if (periodic_list.size() != 0 && periodic_list.size() != 3) {
+    setNeighborError(out, rgpot::nlist::Code::Shape,
+                     "periodic must be empty or hold 3 flags");
+    return;
+  }
+
+  double len_to_angstrom = 1.0;
+  double angstrom_to_caller = 1.0;
+  try {
+    const std::string length_unit = fip.getLengthUnit().cStr();
+    len_to_angstrom = rgpot::units::unit_conversion_factor(length_unit, "angstrom");
+    angstrom_to_caller = rgpot::units::unit_conversion_factor("angstrom", length_unit);
+  } catch (const std::exception &err) {
+    setNeighborError(out, rgpot::nlist::Code::Cutoff, err.what());
+    return;
+  }
+
+  double cutoff = request.getCutoff();
+  const double skin = request.getSkin();
+  if (!std::isfinite(cutoff) || cutoff < 0.0 || !std::isfinite(skin) || skin < 0.0) {
+    setNeighborError(out, rgpot::nlist::Code::Cutoff,
+                     rgpot_nlist_strerror(RGPOT_NLIST_CUTOFF));
+    return;
+  }
+  if (cutoff == 0.0) {
+    const double fallback_a = potentialCutoffAngstrom(pot);
+    if (fallback_a > 0.0)
+      cutoff = fallback_a * angstrom_to_caller;
+  }
+
+  rgpot::nlist::Query query;
+  query.cutoff = cutoff;
+  query.skin = skin;
+  if (format == 2) {
+    query.shape = rgpot::nlist::Cluster4{};
+  } else {
+    query.shape = rgpot::nlist::Pairs{format == 1 ? rgpot::nlist::Shell::Full
+                                                  : rgpot::nlist::Shell::Half};
+  }
+  query.cut = cut == 0 ? rgpot::nlist::Cut::Strict : rgpot::nlist::Cut::Loose;
+  if (periodic_list.size() == 3) {
+    query.periodic = {periodic_list[0], periodic_list[1], periodic_list[2]};
+  } else if (!pot.caps().periodic) {
+    query.periodic = {false, false, false};
+  } else {
+    query.periodic = {true, true, true};
+  }
+  query.fields.shifts = request.getShifts();
+  query.fields.vectors = request.getVectors();
+  query.fields.distances = request.getDistances();
+
+  const auto pos_reader = fip.getPos();
+  if (pos_reader.size() % 3 != 0) {
+    setNeighborError(out, rgpot::nlist::Code::Shape,
+                     "positions length must be a multiple of 3");
+    return;
+  }
+  const std::size_t n_atoms = pos_reader.size() / 3;
+  const auto atm_reader = fip.getAtmnrs();
+  if (atm_reader.size() != 0 && atm_reader.size() != n_atoms) {
+    setNeighborError(out, rgpot::nlist::Code::Shape,
+                     "atomic numbers size mismatch");
+    return;
+  }
+  std::vector<double> positions(pos_reader.size());
+  for (std::size_t i = 0; i < pos_reader.size(); ++i) {
+    positions[i] = pos_reader[static_cast<unsigned>(i)];
+  }
+
+  rgpot::nlist::Table table;
+  std::vector<std::int32_t> system_col;
+  try {
+    const auto systems_reader = request.getSystems();
+    if (systems_reader.size() > 0) {
+      std::vector<std::int32_t> counts(systems_reader.size());
+      std::vector<double> boxes(systems_reader.size() * 9, 0.0);
+      std::size_t total_atoms = 0;
+      for (unsigned s = 0; s < systems_reader.size(); ++s) {
+        const auto sys_entry = systems_reader[s];
+        counts[s] = static_cast<std::int32_t>(sys_entry.getCount());
+        total_atoms += static_cast<std::size_t>(sys_entry.getCount());
+        const auto sys_box = sys_entry.getBox();
+        if (sys_box.size() != 9) {
+          setNeighborError(out, rgpot::nlist::Code::Box,
+                           "each system box must have 9 elements");
+          return;
+        }
+        for (unsigned k = 0; k < 9; ++k) {
+          boxes[static_cast<std::size_t>(s) * 9 + k] = sys_box[k];
+        }
+      }
+      if (total_atoms != n_atoms) {
+        setNeighborError(out, rgpot::nlist::Code::Shape,
+                         "systems counts do not sum to the number of positions");
+        return;
+      }
+      rgpot::nlist::Systems systems{positions.data(), counts.data(),
+                                    systems_reader.size(), boxes.data()};
+      rgpot::nlist::Batch batch;
+      rgpot::nlist::build(batch, systems, query);
+      table = std::move(batch.pairs);
+      system_col = std::move(batch.system);
+    } else {
+      const auto box_reader = fip.getBox();
+      if (box_reader.size() != 9) {
+        setNeighborError(out, rgpot::nlist::Code::Box,
+                         "box must have 9 elements");
+        return;
+      }
+      double box[9]{};
+      for (unsigned k = 0; k < 9; ++k) {
+        box[k] = box_reader[k];
+      }
+      rgpot::nlist::build(table, positions.data(), n_atoms, box, query);
+    }
+  } catch (const rgpot::nlist::Error &err) {
+    setNeighborError(out, err.code(), err.what());
+    return;
+  } catch (const std::bad_alloc &) {
+    setNeighborError(out, rgpot::nlist::Code::Nomem,
+                     rgpot_nlist_strerror(RGPOT_NLIST_NOMEM));
+    return;
+  } catch (const std::exception &err) {
+    setNeighborError(out, rgpot::nlist::Code::Shape, err.what());
+    return;
+  }
+
+  (void)len_to_angstrom;
+  const std::size_t total = table.size();
+  std::size_t start = 0;
+  std::size_t count = total;
+  bool more = false;
+  std::uint64_t next = total;
+  if (mode == 2) {
+    const std::uint64_t cursor = request.getCursor();
+    if (cursor > total) {
+      setNeighborError(out, rgpot::nlist::Code::Short,
+                       "cursor is past the end of the neighbour list");
+      return;
+    }
+    start = static_cast<std::size_t>(cursor);
+    const std::uint32_t raw_limit = request.getLimit();
+    const std::size_t limit = raw_limit == 0 ? kDefaultStreamLimit : raw_limit;
+    count = std::min(limit, total - start);
+    next = cursor + count;
+    more = next < total;
+  }
+
+  auto first_out = out.initFirst(static_cast<unsigned>(count));
+  auto second_out = out.initSecond(static_cast<unsigned>(count));
+  auto mask_out = out.initMask(static_cast<unsigned>(count));
+  for (std::size_t i = 0; i < count; ++i) {
+    const std::size_t src = start + i;
+    first_out.set(static_cast<unsigned>(i), table.first[src]);
+    second_out.set(static_cast<unsigned>(i), table.second[src]);
+    mask_out.set(static_cast<unsigned>(i), table.mask[src]);
+  }
+  if (query.fields.shifts) {
+    auto shift_out = out.initShift(static_cast<unsigned>(count * 3));
+    for (std::size_t i = 0; i < count; ++i) {
+      const std::size_t src = start + i;
+      shift_out.set(static_cast<unsigned>(3 * i), table.shift[3 * src]);
+      shift_out.set(static_cast<unsigned>(3 * i + 1), table.shift[3 * src + 1]);
+      shift_out.set(static_cast<unsigned>(3 * i + 2), table.shift[3 * src + 2]);
+    }
+  }
+  if (query.fields.vectors) {
+    auto vec_out = out.initVector(static_cast<unsigned>(count * 3));
+    for (std::size_t i = 0; i < count; ++i) {
+      const std::size_t src = start + i;
+      vec_out.set(static_cast<unsigned>(3 * i), table.vector[3 * src]);
+      vec_out.set(static_cast<unsigned>(3 * i + 1), table.vector[3 * src + 1]);
+      vec_out.set(static_cast<unsigned>(3 * i + 2), table.vector[3 * src + 2]);
+    }
+  }
+  if (query.fields.distances) {
+    auto dist_out = out.initDistance(static_cast<unsigned>(count));
+    for (std::size_t i = 0; i < count; ++i) {
+      dist_out.set(static_cast<unsigned>(i), table.distance[start + i]);
+    }
+  }
+  if (!system_col.empty()) {
+    auto sys_out = out.initSystem(static_cast<unsigned>(count));
+    for (std::size_t i = 0; i < count; ++i) {
+      sys_out.set(static_cast<unsigned>(i), system_col[start + i]);
+    }
+  }
+  out.setMore(more);
+  out.setNext(next);
+  out.setStatus(0);
+  out.setMessage("ok");
+}
+
+} // namespace
 
 /**
  * @class GenericPotImpl
@@ -318,6 +578,12 @@ private:
 
     KJ_REQUIRE(!requireStress || hasStress,
                "the selected potential returned no stress");
+
+    if (fip.hasNeighbors()) {
+      answerNeighborRequest(*m_potential, fip, fip.getNeighbors(),
+                            pres.initNeighborList());
+    }
+
     return kj::READY_NOW;
   }
 
@@ -333,7 +599,7 @@ public:
     caps.setAvailable(true);
     const bool hasHvp = m_potential->caps().analyticHvp;
     const bool hasStress = m_potential->caps().stress;
-    auto ops = caps.initOperations(2 + (hasHvp ? 1u : 0u) + (hasStress ? 1u : 0u));
+    auto ops = caps.initOperations(3 + (hasHvp ? 1u : 0u) + (hasStress ? 1u : 0u));
     unsigned int opIdx = 0;
     ops.set(opIdx++, ::Capabilities::Operation::ENERGY);
     ops.set(opIdx++, ::Capabilities::Operation::FORCES);
@@ -343,6 +609,7 @@ public:
     if (hasStress) {
       ops.set(opIdx++, ::Capabilities::Operation::STRESS);
     }
+    ops.set(opIdx++, ::Capabilities::Operation::NEIGHBORS);
     rgpot::abi::fill_compatibility(caps);
     return kj::READY_NOW;
   }
@@ -366,6 +633,13 @@ public:
 
   kj::Promise<void> calculateStress(CalculateStressContext context) override {
     return calculateImpl(kj::mv(context), true);
+  }
+
+  kj::Promise<void> neighbours(NeighboursContext context) override {
+    auto params = context.getParams();
+    answerNeighborRequest(*m_potential, params.getFip(), params.getRequest(),
+                          context.getResults().initNeighbors());
+    return kj::READY_NOW;
   }
 
   kj::Promise<void> calculateHvp(CalculateHvpContext context) override {
