@@ -1,3 +1,5 @@
+# MIT License
+# Copyright 2023--present rgpot developers
 """Tests for GuptaPot and the ASE calculator 'gupta' binding."""
 
 from __future__ import annotations
