@@ -497,8 +497,11 @@ explicit ORCAPot(const ORCAConfig &config);
   eV/Angstrom. ORCA takes Angstrom in a =* xyz= block, so the positions are written as they are. The =.engrad= energy in Hartree is multiplied by =units::HARTREE_TO_EV= and its Hartree/bohr
   gradient by =units::NEG_GRAD_TO_FORCE=.
   The box, in Angstrom, is padding only: absent, all zero, or a cell in which
-  the atoms span at most half the width along each cell vector, such as the cube
-  of at least 100 Angstrom that =rgpot.ase= pads a cluster into.
+  every pair of atoms is its own nearest periodic image, so that along every
+  nonzero lattice vector, cell vectors and their combinations alike, the atoms
+  span at most half its length.
+  The cube of at least 100 Angstrom that =rgpot.ase= pads a cluster into is such
+  a cell.
   The positions are passed to ORCA unchanged.
 - Outputs :: a potential that runs one ORCA energy and gradient per force call.
   =caps()= reports =Reentrancy::PerInstance=, =periodic = false= and no stress.
@@ -520,10 +523,11 @@ explicit ORCAPot(const ORCAConfig &config);
 - Errors :: the constructor throws =std::invalid_argument= in the cases of
   =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or the
   directory cannot be made.
-  A force call throws =std::invalid_argument= for a box in which the atoms would
-  wrap across a boundary, a singular box or a non-finite box entry (ORCA has no
-  periodic boundary conditions), for an atomic number outside 1 to 118, and for
-  a charge and multiplicity that the electron count cannot hold.
+  A force call throws =std::invalid_argument= for a box with a periodic image
+  closer than the atom itself, a singular box, a cell too skewed to check or a
+  non-finite box entry (ORCA has no periodic boundary conditions), for an atomic
+  number outside 1 to 118, and for a charge and multiplicity that the electron
+  count cannot hold.
   It throws =rgpot::ORCAError=, a
   =std::runtime_error=, when a stale =.engrad= or =.gbw= cannot be removed, the input cannot be written, ORCA cannot be started or is ended by a signal, the run passes =timeout_s=
   (the process group is then stopped and the child reaped), the output reports

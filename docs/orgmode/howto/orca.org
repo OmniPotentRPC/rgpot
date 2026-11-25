@@ -161,16 +161,21 @@ do not.
 
 ORCA has no periodic boundary conditions, so a box is only padding around the
 cluster, and the atoms go to ORCA where they are.
-A force call accepts no box, an all-zero box, or a cell in which the atoms span
-at most half the cell width along each cell vector.
-Then every pair of atoms is its own nearest image, and no atom would wrap away
-from the rest of the cluster.
+A force call accepts no box, an all-zero box, or a cell in which every pair of
+atoms is its own nearest periodic image.
+An image shifted by the lattice vector L is closer than the atom itself exactly
+when the atoms span more than half the length of L along it, so the check runs
+over the three cell vectors and every other nonzero lattice vector short
+enough to matter.
+In a skewed cell a combination such as =a1 - a2= can be far shorter than any
+cell vector, and a cluster whose fractional span is below one half along each
+cell vector can still have a closer image.
 =RgpotCalculator= in =rgpot.ase= pads a cluster into a cube of at least 100
 Angstrom and at least twice the cluster extent without moving the atoms, and
 that box passes even for a cluster that sits across the origin.
-A box in which the atoms would wrap throws =std::invalid_argument= naming the
-cell vector, the span and the width, as does a singular box or a non-finite
-entry.
+A box with a closer image throws =std::invalid_argument= naming the cell vector
+or lattice vector, the span and the length, as does a singular box, a cell too
+skewed to check or a non-finite entry.
 
 ** Units
 
@@ -236,9 +241,9 @@ A failed call also drops the stored orbitals.
 
 Input the caller got wrong throws
 =std::invalid_argument=: an empty method, a line break in a keyword field, an =nprocs= or =multiplicity= below 1, a negative =maxcore_mb=,
-a =timeout_s= that is negative or not finite, a box in which the atoms would
-wrap, an atomic number outside 1 to 118, and a charge and multiplicity that the
-electron count cannot hold.
+a =timeout_s= that is negative or not finite, a box with a periodic image closer
+than the atom itself, an atomic number outside 1 to 118, and a charge and
+multiplicity that the electron count cannot hold.
 
 ** Limits
 
@@ -273,7 +278,7 @@ restart, the fall-back to a fresh guess, the error paths (including a stale
 =.engrad= that cannot be removed and an unconverged SCF), the cache key across
 paths, modification times, charges and multiplicities, symlink executables,
 comma-decimal locales, the box that =rgpot.ase= builds for a cluster and the
-rejection of a box in which the atoms would wrap.
+rejection of a box with a closer image, including skewed cells.
 =tests/python/test_ase_orca_box.py= runs =RgpotCalculator= over a non-periodic
 stand-in that applies the same box rule, since =ORCAPot= has no Python class.
 One test case runs a real ORCA and is skipped, with the message "orca is not on

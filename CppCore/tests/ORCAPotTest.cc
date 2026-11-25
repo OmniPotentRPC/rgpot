@@ -720,6 +720,71 @@ TEST_CASE("ORCAPot accepts a padded triclinic box", "[orca]") {
   REQUIRE(fake.calls() == 1);
 }
 
+TEST_CASE("ORCAPot refuses a skewed box with a closer translated image",
+          "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAPot pot(fake.config());
+  const std::vector<int> h2_z = {1, 1};
+
+  // Fractional coordinates of the second atom relative to the first, and
+  // the distance to its nearest image over a few cells around it.
+  const auto fractional = [](const std::array<double, 9> &box,
+                             const std::vector<double> &pair) {
+    const double d[2] = {pair[3] - pair[0], pair[4] - pair[1]};
+    const double det = box[0] * box[4] - box[1] * box[3];
+    return std::array<double, 2>{(d[0] * box[4] - d[1] * box[3]) / det,
+                                 (box[0] * d[1] - box[1] * d[0]) / det};
+  };
+  const auto nearest = [](const std::array<double, 9> &box,
+                          const std::vector<double> &pair) {
+    double best = std::numeric_limits<double>::infinity();
+    for (int a = -3; a <= 3; ++a) {
+      for (int b = -3; b <= 3; ++b) {
+        const double x = pair[3] - pair[0] + a * box[0] + b * box[3];
+        const double y = pair[4] - pair[1] + a * box[1] + b * box[4];
+        best = std::min(best, std::hypot(x, y));
+      }
+    }
+    return best;
+  };
+  const auto refused = [&](const std::array<double, 9> &box,
+                           const std::vector<double> &pair,
+                           const char *phrase) {
+    // Each fractional span is below one half, so a check of the spans one
+    // box vector at a time would let these pass.
+    for (const double f : fractional(box, pair)) {
+      REQUIRE(std::abs(f) < 0.5);
+    }
+    const double direct = std::hypot(pair[3] - pair[0], pair[4] - pair[1]);
+    REQUIRE(nearest(box, pair) < direct - 0.1);
+    REQUIRE_THROWS_MATCHES(
+        evaluate(pot, pair, h2_z, box.data()), std::invalid_argument,
+        Catch::Matchers::MessageMatches(ContainsSubstring(phrase) &&
+                                        ContainsSubstring("would wrap")));
+  };
+
+  // 0.45 a1 + 0.45 a2 apart: 8.54 Angstrom directly, 3.3 Angstrom from
+  // the images shifted by -a1 and by -a2.
+  const std::array<double, 9> leaning = {10.0, 0.0, 0.0, 8.0, 6.0,
+                                         0.0,  0.0, 0.0, 100.0};
+  refused(leaning, {0.0, 0.0, 50.0, 8.1, 2.7, 50.0}, "box vector 1");
+
+  // 3 Angstrom apart along a1 at 0.3 a1, while a1 - a2 is only 2.24
+  // Angstrom long: the image shifted by a2 - a1 is 2.83 Angstrom away. No
+  // box vector on its own brings an image closer.
+  const std::array<double, 9> flat = {10.0, 0.0, 0.0, 9.0, 2.0,
+                                      0.0,  0.0, 0.0, 100.0};
+  refused(flat, {0.0, 0.0, 50.0, 3.0, 0.0, 50.0}, "lattice vector a1 - a2");
+  REQUIRE(fake.calls() == 0);
+
+  // The same pair in a cell where it is its own nearest image passes.
+  const std::array<double, 9> roomy = {40.0, 0.0, 0.0, 32.0, 24.0,
+                                       0.0,  0.0, 0.0, 100.0};
+  evaluate(pot, {0.0, 0.0, 50.0, 8.1, 2.7, 50.0}, h2_z, roomy.data());
+  REQUIRE(fake.calls() == 1);
+}
+
 TEST_CASE("ORCAPot refuses a box in which the atoms would wrap", "[orca]") {
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());

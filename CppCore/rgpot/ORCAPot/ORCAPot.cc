@@ -47,6 +47,9 @@ constexpr double kTermGraceSeconds = 2.0;
 // A process stuck in uninterruptible sleep can outlive SIGKILL. The wait
 // stops here and the caller is told, instead of blocking.
 constexpr double kReapGraceSeconds = 5.0;
+// Most lattice vectors the box check tries. A padded cluster box needs a
+// few dozen; only a cell skewed far past any padding reaches this.
+constexpr double kMaxImageVectors = 2.0e5;
 
 std::string runFile(const std::string &dir, const char *suffix) {
   return (fs::path(dir) / (std::string(kBase) + suffix)).string();
@@ -121,10 +124,13 @@ double dot(const double *u, const double *v) {
 }
 
 /// A box is taken as padding around an isolated cluster. It passes when it
-/// is absent or all zero, or when along each cell vector the atoms span at
-/// most half the cell width: every pair is then its own nearest image, and
-/// no atom would wrap away from the rest of the cluster in a periodic cell.
-/// The positions are not moved, so a cluster may sit across the origin.
+/// is absent or all zero, or when every pair of atoms is its own nearest
+/// periodic image. An image of atom j shifted by the lattice vector L is
+/// closer to atom i than j itself exactly when the pair displacement d has
+/// 2 d.L + |L|^2 < 0, so the rule is that along every nonzero L the atoms
+/// span at most |L| / 2. In a skewed cell the shortest such L need not be a
+/// box vector, so every L short enough to matter is tried. The positions
+/// are not moved, so a cluster may sit across the origin.
 void checkClusterBox(const double *box, std::size_t n, const double *pos) {
   if (box == nullptr) {
     return;
@@ -153,31 +159,106 @@ void checkClusterBox(const double *box, std::size_t n, const double *pos) {
         "for an isolated system, or a padded cell of three independent "
         "vectors");
   }
-  for (int k = 0; k < 3; ++k) {
-    const double length = std::sqrt(dot(normals[k], normals[k]));
-    const double width = volume / length;
+  const auto spanAlong = [&](const double *v) {
     double lo = 0.0;
     double hi = 0.0;
     for (std::size_t i = 0; i < n; ++i) {
-      const double along = dot(pos + 3 * i, normals[k]) / length;
+      const double along = dot(pos + 3 * i, v);
       lo = i == 0 ? along : std::min(lo, along);
       hi = i == 0 ? along : std::max(hi, along);
     }
-    const double extent = hi - lo;
+    return hi - lo;
+  };
+
+  // No pair is farther apart than the diagonal of the atoms' bounding box,
+  // and an image shifted by more than twice that cannot be the closer one.
+  // Coefficient k of a lattice vector is its projection on reciprocal
+  // vector k, so it is at most the vector's length over cell width k.
+  double reach2 = 0.0;
+  for (int axis = 0; axis < 3; ++axis) {
+    const double unit[3] = {axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0,
+                            axis == 2 ? 1.0 : 0.0};
+    const double span = spanAlong(unit);
+    reach2 += span * span;
+  }
+  const double reach = std::sqrt(reach2);
+  long bound[3];
+  double vectors = 1.0;
+  for (int k = 0; k < 3; ++k) {
+    const double width = volume / std::sqrt(dot(normals[k], normals[k]));
+    bound[k] = static_cast<long>(
+        std::floor(2.0 * reach / width * (1.0 + 1.0e-9)));
+    vectors *= 2.0 * static_cast<double>(bound[k]) + 1.0;
+  }
+  if (vectors > kMaxImageVectors) {
+    throw std::invalid_argument(
+        "ORCAPot: the box is too skewed, or too small for the cluster, to "
+        "check every periodic image; pass an all-zero box for an isolated "
+        "system, or pad the cluster into a less skewed cell");
+  }
+
+  const auto check = [&](long a, long b, long c) {
+    double v[3];
+    for (int j = 0; j < 3; ++j) {
+      v[j] = static_cast<double>(a) * rows[0][j] +
+             static_cast<double>(b) * rows[1][j] +
+             static_cast<double>(c) * rows[2][j];
+    }
+    const double length2 = dot(v, v);
+    const double span = spanAlong(v);
     // The slack keeps a box made exactly twice the extent, as rgpot.ase
     // makes for a cluster wider than 50 Angstrom, from failing on rounding.
-    if (2.0 * extent > width * (1.0 + 1.0e-12)) {
-      std::ostringstream text;
-      text.imbue(std::locale::classic());
-      text << "ORCAPot: the atoms span " << extent
-           << " Angstrom across box vector " << (k + 1)
-           << ", more than half the cell width of " << width
-           << " Angstrom, so they would wrap across a periodic boundary. "
-              "ORCA has no periodic boundary conditions: pass an all-zero "
-              "box for an isolated system, or pad the cluster into a box at "
-              "least twice its extent along each vector, as rgpot.ase does "
-              "with a cube of at least 100 Angstrom";
-      throw std::invalid_argument(text.str());
+    if (!(2.0 * span > length2 * (1.0 + 1.0e-12))) {
+      return;
+    }
+    const double length = std::sqrt(length2);
+    std::ostringstream text;
+    text.imbue(std::locale::classic());
+    text << "ORCAPot: the atoms span " << span / length << " Angstrom along ";
+    const long coef[3] = {a, b, c};
+    const int nonzero = (a != 0) + (b != 0) + (c != 0);
+    if (nonzero == 1 && std::abs(a + b + c) == 1) {
+      text << "box vector " << (a != 0 ? 1 : b != 0 ? 2 : 3);
+    } else {
+      text << "the lattice vector ";
+      bool first = true;
+      for (int j = 0; j < 3; ++j) {
+        if (coef[j] == 0) {
+          continue;
+        }
+        if (!first) {
+          text << (coef[j] < 0 ? " - " : " + ");
+        } else if (coef[j] < 0) {
+          text << '-';
+        }
+        if (std::abs(coef[j]) != 1) {
+          text << std::abs(coef[j]) << ' ';
+        }
+        text << 'a' << (j + 1);
+        first = false;
+      }
+      text << " (a1, a2 and a3 being the box vectors)";
+    }
+    text << ", more than half its length of " << length
+         << " Angstrom, so a periodic image is closer than the atom itself "
+            "and the atoms would wrap across a periodic boundary. ORCA has "
+            "no periodic boundary conditions: pass an all-zero box for an "
+            "isolated system, or pad the cluster into a box in which every "
+            "lattice vector is at least twice the extent of the atoms along "
+            "it, as rgpot.ase does with a cube of at least 100 Angstrom";
+    throw std::invalid_argument(text.str());
+  };
+
+  // The box vectors first, so an orthogonal box is reported by name.
+  check(1, 0, 0);
+  check(0, 1, 0);
+  check(0, 0, 1);
+  // L and -L give the same span, so half of the vectors are enough.
+  for (long a = 0; a <= bound[0]; ++a) {
+    for (long b = a == 0 ? 0 : -bound[1]; b <= bound[1]; ++b) {
+      for (long c = (a == 0 && b == 0) ? 1 : -bound[2]; c <= bound[2]; ++c) {
+        check(a, b, c);
+      }
     }
   }
 }
