@@ -931,6 +931,13 @@ if not get_option('with_rpc_client_only')
             args: [rgpot.full_path()],
             depends: [rgpot],
         )
+        # A procedure-local static is shared by every thread, so two
+        # instances failing at once would share it.
+        test(
+            'FortranStaticAudit',
+            find_program('../scripts/audit_fortran_statics.sh'),
+            args: [fortran_kernels, rgpot_sw_lib, rgpot_sw_capi_lib],
+        )
     endif
     # librgpot must not pull libmpi into a host: the MPI side is dlopen'd.
     if get_option('with_tests') and host_system == 'linux'

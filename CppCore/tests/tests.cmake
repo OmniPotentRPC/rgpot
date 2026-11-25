@@ -398,6 +398,12 @@ if(_on)
     COMMAND "${RGPOT_TEST_ROOT}/scripts/audit_fortran_symbols.sh"
             $<TARGET_FILE:rgpot>)
 endif()
+rgpot_test_enabled(FortranStaticAudit _on)
+if(_on)
+  rgpot_add_test(FortranStaticAudit
+    COMMAND "${RGPOT_TEST_ROOT}/scripts/audit_fortran_statics.sh"
+            $<TARGET_FILE:rgpot_fortran_kernels>)
+endif()
 rgpot_test_enabled(CoreLinksNoMpi _on)
 if(_on)
   rgpot_add_test(CoreLinksNoMpi
