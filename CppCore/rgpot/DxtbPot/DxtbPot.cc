@@ -313,33 +313,56 @@ private:
     const std::string python = dxtbPython(config_.python);
     const std::string source =
         std::string(detail::kDxtbRuntimeCheck) + detail::kDxtbWorkerSource;
-    pid_ = fork();
-    if (pid_ < 0) {
-      const std::string message = systemMessage("fork");
-      close(sockets[0]);
-      close(sockets[1]);
-      throw DxtbError(-1, message);
-    }
-    if (pid_ == 0) {
-      close(sockets[0]);
-      if (dup2(sockets[1], STDIN_FILENO) < 0 ||
-          dup2(sockets[1], STDOUT_FILENO) < 0) {
-        _exit(126);
-      }
-      // dup2 onto itself keeps FD_CLOEXEC, so clear it on both descriptors.
-      if (fcntl(STDIN_FILENO, F_SETFD, 0) != 0 ||
-          fcntl(STDOUT_FILENO, F_SETFD, 0) != 0) {
-        _exit(126);
-      }
-      if (sockets[1] != STDIN_FILENO && sockets[1] != STDOUT_FILENO) {
-        close(sockets[1]);
-      }
-      execlp(python.c_str(), python.c_str(), "-u", "-c", source.c_str(),
-             static_cast<char *>(nullptr));
-      _exit(127);
-    }
+    std::vector<char> program(python.begin(), python.end());
+    program.push_back('\0');
+    std::vector<char> script(source.begin(), source.end());
+    script.push_back('\0');
+    char unbuffered[] = "-u";
+    char flag[] = "-c";
+    char *argv[] = {program.data(), unbuffered, flag, script.data(), nullptr};
+    pid_t pid = -1;
+    const int spawned = spawnWorker(sockets[1], argv, &pid);
     close(sockets[1]);
+    if (spawned != 0) {
+      close(sockets[0]);
+      throw DxtbError(-1, "dxtb worker exited: cannot start " + python +
+                              ": " + std::strerror(spawned));
+    }
+    pid_ = pid;
     fd_ = sockets[0];
+  }
+
+  /// Start @p argv with @p child as its stdin and stdout. Returns 0 or an
+  /// errno value. A forked child of a multithreaded host may only call
+  /// async-signal-safe functions, so the descriptor setup runs as spawn file
+  /// actions instead of code after fork.
+  static int spawnWorker(int child, char *const argv[], pid_t *pid) {
+    // A dup2 action onto the same descriptor does not portably clear
+    // FD_CLOEXEC, so keep the child end clear of the standard streams.
+    int moved = -1;
+    if (child <= STDERR_FILENO) {
+      moved = fcntl(child, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+      if (moved < 0) {
+        return errno;
+      }
+      child = moved;
+    }
+    posix_spawn_file_actions_t actions;
+    int rc = posix_spawn_file_actions_init(&actions);
+    if (rc == 0) {
+      rc = posix_spawn_file_actions_adddup2(&actions, child, STDIN_FILENO);
+      if (rc == 0) {
+        rc = posix_spawn_file_actions_adddup2(&actions, child, STDOUT_FILENO);
+      }
+      if (rc == 0) {
+        rc = posix_spawnp(pid, argv[0], &actions, nullptr, argv, environ);
+      }
+      posix_spawn_file_actions_destroy(&actions);
+    }
+    if (moved >= 0) {
+      close(moved);
+    }
+    return rc;
   }
 
   void configure(const DxtbConfig &config) {

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import ctypes
+import errno
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 import capnp
@@ -1017,13 +1019,48 @@ def test_missing_library_is_an_error_not_a_fallback(monkeypatch):
     monkeypatch.setenv(
         "RGPOT_DXTB_PYTHON", os.environ.get("RGPOT_DXTB_PYTHON") or sys.executable
     )
-    with pytest.raises(RuntimeError, match="dxtb worker exited"):
+    with pytest.raises(RuntimeError, match="dxtb worker exited") as refused:
         Engine(
             os.environ["RGPOT_ENGINE_DXTB"],
             "dxtb",
             "gfn1",
             library="/nonexistent/rgpot-dxtb-python",
         )
+    # The launch failure names the executable and the system's reason.
+    assert "/nonexistent/rgpot-dxtb-python" in str(refused.value)
+    assert os.strerror(errno.ENOENT) in str(refused.value)
+
+
+def test_workers_start_from_concurrent_host_threads(tmp_path, monkeypatch):
+    wrapper, log_path = fake_worker(tmp_path, "threaded")
+    monkeypatch.setenv("RGPOT_DXTB_PYTHON", str(wrapper))
+    count = 8
+    barrier = threading.Barrier(count)
+    engines = [None] * count
+    errors = []
+
+    def create(slot):
+        try:
+            barrier.wait()
+            engines[slot] = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", "gfn1")
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=create, args=(i,)) for i in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=60)
+    try:
+        assert not any(thread.is_alive() for thread in threads)
+        assert errors == []
+        events = configure_events(log_path)
+        assert len(events) == count
+        assert len({event["pid"] for event in events}) == count
+    finally:
+        for engine in engines:
+            if engine is not None:
+                engine.close()
 
 
 def engine_available(path: str) -> int:
