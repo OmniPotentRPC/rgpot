@@ -2,6 +2,7 @@
 // MIT License — thin XTB frontend: dlopen libxtb_engine.so
 // No libxtb headers; safe for hosts built without -Dwith_xtb.
 #include "rgpot/ForceStructs.hpp"
+#include "rgpot/abi/EngineThreadCount.hpp"
 #include "rgpot/FusedSettings.hpp"
 #include "rgpot/XTBPot/XTBConfig.hpp"
 #include "rgpot/XTBPot/xtb_c_abi.h"
@@ -75,6 +76,16 @@ public:
   /// True when the last successful force reused the previous wavefunction.
   [[nodiscard]] bool reusedWavefunction() const;
 
+  /// Records a thread count the way @c PotentialBase::setThreadCount does
+  /// and throws std::invalid_argument when @p threads is below 1. The
+  /// engine ABI has no thread setter, so the count is not passed on and
+  /// evaluation does not change: the engine keeps the threads of its own
+  /// OpenMP and BLAS runtime. See @c abi/EngineThreadCount.hpp.
+  void setThreadCount(int threads) { m_threads.set(threads); }
+  void clearThreadCount() noexcept { m_threads.clear(); }
+  /// Zero when none was recorded.
+  [[nodiscard]] int threadCount() const noexcept { return m_threads.get(); }
+
   /// Convenience operator matching Potential interface shape.
   std::tuple<double, types::AtomMatrix, double>
   operator()(const types::AtomMatrix &positions,
@@ -82,6 +93,7 @@ public:
              const std::array<std::array<double, 3>, 3> &box) const;
 
 private:
+  abi::EngineThreadCount m_threads;
   XTBConfig m_config;
   void *m_lib{nullptr};
   RgpotXtbPot *m_pot{nullptr};

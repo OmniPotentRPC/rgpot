@@ -1127,6 +1127,49 @@ void setWarmMinGap(double ev);
 - Outputs :: =XTBPot::reusedWavefunction= of the engine's potential.
 - Errors :: =std::runtime_error= when the engine is not available.
 
+*** =rgpot::XTBDlopen::setThreadCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setThreadCount(int threads);
+#+end_src
+
+- Inputs :: =threads=, the thread count to record.
+- Units :: none.
+- Outputs :: none.
+  The engine C ABI has no call that takes a thread count, and the threads the
+  engine starts belong to its own runtime, which does not read the rgpot count,
+  so the count is not passed on: it is recorded for =threadCount= and nothing
+  about the evaluation changes.
+  The engine runs with the threads of its own OpenMP and BLAS runtimes, which a host sets
+  in the environment the engine starts in, for example with =OMP_NUM_THREADS=.
+  The frontend binds nothing on the calling thread.
+- Errors :: throws =std::invalid_argument= when =threads= is below 1.
+
+*** =rgpot::XTBDlopen::clearThreadCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void clearThreadCount() noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: none; drops the recorded count.
+- Errors :: none; the method is =noexcept=.
+
+*** =rgpot::XTBDlopen::threadCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] int threadCount() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the recorded count, or 0 when none was set.
+- Errors :: none; the method is =noexcept=.
+
 ** Metatomic
 
 The model container is metatomic: Bigi et al., J. Chem.
@@ -1326,6 +1369,49 @@ void forceImpl(const ForceInput &in, ForceOut *out) const;
   =out->has_stress= and =out->stress= are not written.
 - Errors :: =std::runtime_error= with the return code when =rgpot_mta_force=
   returns nonzero; the engine prints the reason on stderr.
+
+*** =rgpot::MetatomicDlopen::setThreadCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setThreadCount(int threads);
+#+end_src
+
+- Inputs :: =threads=, the thread count to record.
+- Units :: none.
+- Outputs :: none.
+  The engine C ABI has no call that takes a thread count, and the threads the
+  engine starts belong to its own runtime, which does not read the rgpot count,
+  so the count is not passed on: it is recorded for =threadCount= and nothing
+  about the evaluation changes.
+  The engine runs with the threads of its own torch and OpenMP runtimes, which a host sets
+  in the environment the engine starts in, for example with =OMP_NUM_THREADS=.
+  The frontend binds nothing on the calling thread.
+- Errors :: throws =std::invalid_argument= when =threads= is below 1.
+
+*** =rgpot::MetatomicDlopen::clearThreadCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void clearThreadCount() noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: none; drops the recorded count.
+- Errors :: none; the method is =noexcept=.
+
+*** =rgpot::MetatomicDlopen::threadCount=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] int threadCount() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the recorded count, or 0 when none was set.
+- Errors :: none; the method is =noexcept=.
 
 ** UMA
 

@@ -686,6 +686,9 @@ void setThreadCount(int threads);
   small systems, so the batch uses that many threads too.
   A =SumPot= binds its count for the whole call, and every term without a count
   of its own reads it.
+  =XTBDlopen= and =MetatomicDlopen= are not potentials; their same-named members
+  record the count and pass none on (see [[file:cpp_backends.org][C++
+  engine-backed potentials]]).
 - Errors :: throws =std::invalid_argument= when =threads= is below 1.
 
 *** =rgpot::PotentialBase::clearThreadCount=

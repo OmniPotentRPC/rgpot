@@ -1,6 +1,7 @@
 #pragma once
 // MIT License — thin Metatomic frontend: dlopen libmetatomic_engine.so
 #include "rgpot/ForceStructs.hpp"
+#include "rgpot/abi/EngineThreadCount.hpp"
 #include "rgpot/MetatomicPot/MetatomicConfig.hpp"
 #include "rgpot/MetatomicPot/metatomic_c_abi.h"
 
@@ -25,7 +26,18 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const;
 
+  /// Records a thread count the way @c PotentialBase::setThreadCount does
+  /// and throws std::invalid_argument when @p threads is below 1. The
+  /// engine ABI has no thread setter, so the count is not passed on and
+  /// evaluation does not change: the engine keeps the torch and OpenMP
+  /// threads of its own runtime. See @c abi/EngineThreadCount.hpp.
+  void setThreadCount(int threads) { m_threads.set(threads); }
+  void clearThreadCount() noexcept { m_threads.clear(); }
+  /// Zero when none was recorded.
+  [[nodiscard]] int threadCount() const noexcept { return m_threads.get(); }
+
 private:
+  abi::EngineThreadCount m_threads;
   void *m_lib{nullptr};
   RgpotMtaPot *m_pot{nullptr};
   using create_fn = RgpotMtaPot *(*)(const RgpotMtaConfig *, char *, size_t);
