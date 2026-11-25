@@ -9,25 +9,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
 #include <thread>
 #include <vector>
-
-#if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 33))
-#if !defined(__SANITIZE_ADDRESS__) && !defined(__SANITIZE_THREAD__)
-#if defined(__has_feature)
-#if !__has_feature(address_sanitizer) && !__has_feature(thread_sanitizer)
-#define RGPOT_HAS_MALLINFO2 1
-#include <malloc.h>
-#endif
-#else
-#define RGPOT_HAS_MALLINFO2 1
-#include <malloc.h>
-#endif
-#endif
-#endif
 
 #include <catch2/catch_all.hpp>
 
@@ -36,6 +23,104 @@
 #include "rgpot/KeptPotential.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+
+// Heap probe. rgpot_gupta takes its pair scratch from malloc, so the tests
+// that it stays off the heap, and releases what it takes, count the calls the
+// test thread makes to malloc, calloc, realloc and free. This file's own
+// definitions of those four replace the allocator's for the whole executable
+// and hand every request to the glibc entry points, which exist on every
+// glibc, the 2.17 era conda sysroot included. Nothing here reads mallinfo2,
+// so the count does not depend on which glibc builds the tests, and a thread
+// is counted on its own: tcache and arena bookkeeping that glibc keeps for a
+// new thread never passes through these functions.
+//
+// A sanitizer runtime brings its own malloc, and a non glibc host has no such
+// entry points, so the probe and the tests that use it are compiled out there.
+#if defined(__linux__) && defined(__GLIBC__)
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#elif defined(__has_feature)
+#if !__has_feature(address_sanitizer) && !__has_feature(thread_sanitizer) && \
+    !__has_feature(memory_sanitizer)
+#define RGPOT_HEAP_PROBE 1
+#endif
+#else
+#define RGPOT_HEAP_PROBE 1
+#endif
+#endif
+
+#ifdef RGPOT_HEAP_PROBE
+#include <malloc.h>
+
+extern "C" {
+void *__libc_malloc(std::size_t size);
+void *__libc_calloc(std::size_t count, std::size_t size);
+void *__libc_realloc(void *ptr, std::size_t size);
+void __libc_free(void *ptr);
+}
+
+namespace {
+
+/// What the calling thread has asked of the allocator since measure_heap
+/// armed it: requests, bytes still held, and the most bytes held at once.
+struct HeapWindow {
+  bool armed;
+  long calls;
+  long long live;
+  long long peak;
+};
+
+__thread HeapWindow t_heap;
+
+inline void heap_gain(void *ptr) noexcept {
+  ++t_heap.calls;
+  t_heap.live += static_cast<long long>(malloc_usable_size(ptr));
+  if (t_heap.live > t_heap.peak) {
+    t_heap.peak = t_heap.live;
+  }
+}
+
+} // namespace
+
+extern "C" {
+
+void *malloc(std::size_t size) noexcept {
+  void *ptr = __libc_malloc(size);
+  if (t_heap.armed && ptr != nullptr) {
+    heap_gain(ptr);
+  }
+  return ptr;
+}
+
+void *calloc(std::size_t count, std::size_t size) noexcept {
+  void *ptr = __libc_calloc(count, size);
+  if (t_heap.armed && ptr != nullptr) {
+    heap_gain(ptr);
+  }
+  return ptr;
+}
+
+void *realloc(void *ptr, std::size_t size) noexcept {
+  const long long held =
+      t_heap.armed && ptr != nullptr
+          ? static_cast<long long>(malloc_usable_size(ptr))
+          : 0;
+  void *next = __libc_realloc(ptr, size);
+  if (t_heap.armed && next != nullptr) {
+    t_heap.live -= held;
+    heap_gain(next);
+  }
+  return next;
+}
+
+void free(void *ptr) noexcept {
+  if (t_heap.armed && ptr != nullptr) {
+    t_heap.live -= static_cast<long long>(malloc_usable_size(ptr));
+  }
+  __libc_free(ptr);
+}
+
+} // extern "C"
+#endif
 
 using Catch::Matchers::WithinAbs;
 using rgpot::types::AtomMatrix;
@@ -47,6 +132,43 @@ constexpr int kVoigt[6][2] = {{0, 0}, {1, 1}, {2, 2}, {1, 2}, {0, 2}, {0, 1}};
 std::array<std::array<double, 3>, 3> cube(double length) {
   return {{{length, 0.0, 0.0}, {0.0, length, 0.0}, {0.0, 0.0, length}}};
 }
+
+/// Atoms on a cubic grid at 1.05 spacing, no two coincident.
+std::vector<double> lattice_cluster(std::size_t n) {
+  std::vector<double> pos(3 * n, 0.0);
+  for (std::size_t i = 0; i < n; ++i) {
+    pos[3 * i] = 1.05 * static_cast<double>(i % 12);
+    pos[3 * i + 1] = 1.05 * static_cast<double>((i / 12) % 12);
+    pos[3 * i + 2] = 1.05 * static_cast<double>(i / 144);
+  }
+  return pos;
+}
+
+#ifdef RGPOT_HEAP_PROBE
+/// Allocator traffic of the calling thread over one measure_heap call.
+struct HeapUse {
+  long calls = 0;
+  long long net = 0;
+  long long peak = 0;
+};
+
+/// Runs `work` with the probe armed. `work` must not use Catch2, which
+/// allocates; check the returned numbers afterwards.
+template <class Work> HeapUse measure_heap(Work &&work) {
+  t_heap = HeapWindow{true, 0, 0, 0};
+  work();
+  t_heap.armed = false;
+  return {t_heap.calls, t_heap.live, t_heap.peak};
+}
+
+bool probe_sees_malloc() {
+  const HeapUse use = measure_heap([] {
+    void *volatile block = std::malloc(256);
+    std::free(block);
+  });
+  return use.calls == 1 && use.net == 0 && use.peak >= 256;
+}
+#endif
 
 bool same_bits(double a, double b) {
   return std::memcmp(&a, &b, sizeof(double)) == 0;
@@ -269,18 +391,50 @@ TEST_CASE("GuptaPot degenerate pairs match all-pairs and neighbour paths",
     const std::vector<double> positions(6, 0.0);
     const StressEval all_pairs =
         eval_stress(rgpot::GuptaPot(base), positions, nullptr);
-    const StressEval neighbours =
-        eval_stress(rgpot::GuptaPot(bounded), positions, nullptr);
-    // The free cluster delegates to rgpot_gupta, which reports +infinity.
+    // The free cluster delegates to rgpot_gupta (+infinity) and poisons forces.
     REQUIRE(std::isinf(all_pairs.energy));
     REQUIRE(all_pairs.energy > 0.0);
     for (double force : all_pairs.forces) {
-      REQUIRE(force == 0.0);
+      REQUIRE(std::isnan(force));
     }
-    // The neighbour walk poisons the energy, as LJPot does.
-    REQUIRE(std::isnan(neighbours.energy));
-    for (double force : neighbours.forces) {
-      REQUIRE(force == 0.0);
+    // The neighbour walk poisons both energy and forces across all modes.
+    for (const auto mode : {rgpot::nlist::Mode::Auto,
+                            rgpot::nlist::Mode::Stored,
+                            rgpot::nlist::Mode::Stream}) {
+      INFO("mode " << static_cast<int>(mode));
+      rgpot::GuptaPot pot(bounded);
+      pot.setNeighbourMode(mode);
+      const StressEval neighbours = eval_stress(pot, positions, nullptr);
+      REQUIRE(std::isnan(neighbours.energy));
+      for (double force : neighbours.forces) {
+        REQUIRE(std::isnan(force));
+      }
+    }
+    // Periodic stress and per-atom evaluation also poison energy, forces,
+    // stress, per-atom energy, and per-atom virial.
+    rgpot::GuptaConfig per_cfg = bounded;
+    per_cfg.periodic = true;
+    per_cfg.stress = true;
+    const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+    const rgpot::GuptaPot per_pot(per_cfg);
+    std::vector<double> pa_forces(6, 0.0);
+    double pa_e[2] = {};
+    double pa_v[12] = {};
+    rgpot::ForceOut pa_out{};
+    pa_out.F = pa_forces.data();
+    per_pot.forcePerAtom(rgpot::ForceInput{2, positions.data(), nullptr, box},
+                         &pa_out, rgpot::PerAtomOut{pa_e, pa_v});
+    REQUIRE(std::isnan(pa_out.energy));
+    for (double force : pa_forces) {
+      REQUIRE(std::isnan(force));
+    }
+    for (double s : pa_out.stress) {
+      REQUIRE(std::isnan(s));
+    }
+    REQUIRE(std::isnan(pa_e[0]));
+    REQUIRE(std::isnan(pa_e[1]));
+    for (double v : pa_v) {
+      REQUIRE(std::isnan(v));
     }
   }
 
@@ -293,7 +447,13 @@ TEST_CASE("GuptaPot degenerate pairs match all-pairs and neighbour paths",
         eval_stress(rgpot::GuptaPot(bounded), positions, nullptr);
     REQUIRE(std::isinf(all_pairs.energy));
     REQUIRE(all_pairs.energy > 0.0);
+    for (double force : all_pairs.forces) {
+      REQUIRE(std::isnan(force));
+    }
     REQUIRE(std::isnan(neighbours.energy));
+    for (double force : neighbours.forces) {
+      REQUIRE(std::isnan(force));
+    }
   }
 
   SECTION("staged coincidence") {
@@ -315,12 +475,14 @@ TEST_CASE("GuptaPot degenerate pairs match all-pairs and neighbour paths",
     list.neighbours = neighs;
     double dens[2] = {};
     pot.densityStage(list, dens);
+    REQUIRE(std::isnan(dens[0]));
+    REQUIRE(std::isnan(dens[1]));
     double forces[6] = {};
     rgpot::StageTally tally;
     pot.forceStage(list, dens, forces, &tally);
     REQUIRE(std::isnan(tally.energy));
     for (double component : forces) {
-      REQUIRE(component == 0.0);
+      REQUIRE(std::isnan(component));
     }
   }
 }
@@ -707,7 +869,7 @@ TEST_CASE("GuptaPot C entry point matches GuptaPot and validates inputs",
                     std::invalid_argument);
 
   // Coincident atoms: the free cluster is +infinity from rgpot_gupta, and a
-  // cutoff poisons the energy the way LJPot does. Neither is a finite cusp.
+  // cutoff poisons the energy; both poison the forces with NaN.
   rgpot_gupta_config open = raw;
   open.cutoff = 0.0;
   open.periodic = 0;
@@ -718,11 +880,18 @@ TEST_CASE("GuptaPot C entry point matches GuptaPot and validates inputs",
                                     stacked_forces) == 0);
   REQUIRE(std::isinf(stacked_energy));
   REQUIRE(stacked_energy > 0.0);
+  for (double component : stacked_forces) {
+    REQUIRE(std::isnan(component));
+  }
   open.cutoff = 4.0;
   stacked_energy = 0.0;
+  std::fill(stacked_forces, stacked_forces + 6, 0.0);
   REQUIRE(rgpot_gupta_energy_forces(&open, 2, stacked, nullptr, &stacked_energy,
                                     stacked_forces) == 0);
   REQUIRE(std::isnan(stacked_energy));
+  for (double component : stacked_forces) {
+    REQUIRE(std::isnan(component));
+  }
 
   // Isolated atom beyond cutoff has rho_i = 0 and produces finite zero force.
   const rgpot::GuptaPot cut_pot({.cutoff = 2.5});
@@ -735,61 +904,121 @@ TEST_CASE("GuptaPot C entry point matches GuptaPot and validates inputs",
   REQUIRE(iso.forces[8] == 0.0);
 }
 
-TEST_CASE("rgpot_gupta bounds and releases pair scratch after a large call",
+#ifdef RGPOT_HEAP_PROBE
+TEST_CASE("rgpot_gupta thread-local buffers grow and hold steady at fixed N",
+          "[Gupta][heap]") {
+  REQUIRE(probe_sees_malloc());
+  const rgpot::GuptaConfig cfg{};
+  constexpr std::size_t small_n = 64;
+  constexpr std::size_t large_n = 1500;
+  const std::vector<double> small_pos = lattice_cluster(small_n);
+  const std::vector<double> large_pos = lattice_cluster(large_n);
+  const std::vector<unsigned char> small_slot(small_n, 0);
+  const std::vector<unsigned char> large_slot(large_n, 0);
+
+  struct Traffic {
+    HeapUse first_small;
+    HeapUse steady_small;
+    HeapUse grow_to_large;
+    HeapUse steady_large;
+  };
+  Traffic use{};
+  std::thread worker([&] {
+    std::vector<double> small_grad(3 * small_n, 0.0);
+    std::vector<double> large_grad(3 * large_n, 0.0);
+    double energy = 0.0;
+    auto call_small = [&] {
+      rgpot_gupta(small_pos.data(), small_n, small_slot.data(), 1, &cfg.A, &cfg.xi,
+                  &cfg.p, &cfg.q, &cfg.r0, &energy, small_grad.data());
+    };
+    auto call_large = [&] {
+      rgpot_gupta(large_pos.data(), large_n, large_slot.data(), 1, &cfg.A, &cfg.xi,
+                  &cfg.p, &cfg.q, &cfg.r0, &energy, large_grad.data());
+    };
+    use.first_small = measure_heap(call_small);
+    use.steady_small = measure_heap([&] {
+      call_small();
+      call_small();
+    });
+    use.grow_to_large = measure_heap(call_large);
+    use.steady_large = measure_heap([&] {
+      call_large();
+      call_large();
+      call_large();
+    });
+    REQUIRE(std::isfinite(energy));
+  });
+  worker.join();
+
+  REQUIRE(use.first_small.calls > 0);
+  REQUIRE(use.first_small.net > 0);
+  REQUIRE(use.steady_small.calls == 0);
+  REQUIRE(use.steady_small.net == 0);
+  REQUIRE(use.grow_to_large.calls > 0);
+  REQUIRE(use.grow_to_large.net > 0);
+  REQUIRE(use.steady_large.calls == 0);
+  REQUIRE(use.steady_large.net == 0);
+}
+
+TEST_CASE("rgpot_gupta stays correct after a shrink and regrow",
+          "[Gupta][heap]") {
+  REQUIRE(probe_sees_malloc());
+  const rgpot::GuptaConfig cfg{};
+  constexpr std::size_t large_n = 1500;
+  constexpr std::size_t small_n = 64;
+  const std::vector<double> large_pos = lattice_cluster(large_n);
+  const std::vector<double> small_pos = lattice_cluster(small_n);
+  const std::vector<unsigned char> large_slot(large_n, 0);
+  const std::vector<unsigned char> small_slot(small_n, 0);
+
+  std::vector<double> first_large_grad(3 * large_n, 0.0);
+  std::vector<double> regrown_large_grad(3 * large_n, 0.0);
+  std::vector<double> small_grad(3 * small_n, 0.0);
+  double first_large_energy = 0.0;
+  double regrown_large_energy = 0.0;
+  double small_energy = 0.0;
+
+  rgpot_gupta(large_pos.data(), large_n, large_slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p,
+              &cfg.q, &cfg.r0, &first_large_energy, first_large_grad.data());
+  rgpot_gupta(small_pos.data(), small_n, small_slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p,
+              &cfg.q, &cfg.r0, &small_energy, small_grad.data());
+  const HeapUse regrow_use = measure_heap([&] {
+    rgpot_gupta(large_pos.data(), large_n, large_slot.data(), 1, &cfg.A, &cfg.xi,
+                &cfg.p, &cfg.q, &cfg.r0, &regrown_large_energy,
+                regrown_large_grad.data());
+  });
+
+  REQUIRE(regrow_use.calls == 0);
+  REQUIRE(regrow_use.net == 0);
+  REQUIRE(same_bits(regrown_large_energy, first_large_energy));
+  REQUIRE(same_bits(regrown_large_grad, first_large_grad));
+
+  // GuptaPot delegation (cutoff <= 0) uses the same thread-local buffers.
+  const rgpot::GuptaPot direct(cfg);
+  std::vector<double> forces(3 * large_n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  const rgpot::ForceInput in{large_n, large_pos.data(), nullptr, nullptr};
+  direct.forceImpl(in, &out);
+  const HeapUse steady = measure_heap([&] { direct.forceImpl(in, &out); });
+  REQUIRE(steady.calls == 0);
+  REQUIRE(steady.net == 0);
+  REQUIRE(same_bits(out.energy, first_large_energy));
+}
+#endif
+
+TEST_CASE("rgpot_gupta large call matches the explicit wide cutoff",
           "[Gupta]") {
-  // 1500 atoms form 1,124,250 pairs, exceeding the 32 MiB pair-derivative
-  // buffer cap so both the recomputation path and buffer release are exercised.
   constexpr std::size_t n = 1500;
-  std::vector<double> pos(3 * n, 0.0);
-  for (std::size_t i = 0; i < n; ++i) {
-    const std::size_t ix = i % 12;
-    const std::size_t iy = (i / 12) % 12;
-    const std::size_t iz = i / 144;
-    pos[3 * i] = 1.05 * static_cast<double>(ix);
-    pos[3 * i + 1] = 1.05 * static_cast<double>(iy);
-    pos[3 * i + 2] = 1.05 * static_cast<double>(iz);
-  }
+  const std::vector<double> pos = lattice_cluster(n);
   const rgpot::GuptaConfig cfg{};
   const std::vector<unsigned char> slot(n, 0);
   std::vector<double> grad(3 * n, 0.0);
   double c_energy = 0.0;
-
-#ifdef RGPOT_HAS_MALLINFO2
-  const struct mallinfo2 before = mallinfo2();
-#endif
   rgpot_gupta(pos.data(), n, slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p, &cfg.q,
               &cfg.r0, &c_energy, grad.data());
-#ifdef RGPOT_HAS_MALLINFO2
-  const struct mallinfo2 after_c = mallinfo2();
-  REQUIRE(after_c.uordblks == before.uordblks);
-  REQUIRE(after_c.hblkhd == before.hblkhd);
-#endif
-
-  // A worker thread exit also leaves no pair scratch pinned.
-  double thread_energy = 0.0;
-  std::vector<double> thread_grad(3 * n, 0.0);
-  std::thread worker([&] {
-    rgpot_gupta(pos.data(), n, slot.data(), 1, &cfg.A, &cfg.xi, &cfg.p,
-                &cfg.q, &cfg.r0, &thread_energy, thread_grad.data());
-  });
-  worker.join();
-  REQUIRE(same_bits(thread_energy, c_energy));
-  REQUIRE(same_bits(thread_grad, grad));
-#ifdef RGPOT_HAS_MALLINFO2
-  const struct mallinfo2 after_thread = mallinfo2();
-  REQUIRE(after_thread.uordblks == before.uordblks);
-  REQUIRE(after_thread.hblkhd == before.hblkhd);
-#endif
-
-  // GuptaPot delegation (cutoff = 0) matches the explicit large-cutoff path
-  // and retains no O(N^2) pair buffer.
   const rgpot::GuptaPot direct(cfg);
   const StressEval open = eval_stress(direct, pos, nullptr);
-#ifdef RGPOT_HAS_MALLINFO2
-  const struct mallinfo2 after_pot = mallinfo2();
-  REQUIRE(after_pot.uordblks + after_pot.hblkhd <=
-          before.uordblks + before.hblkhd + 128 * 1024);
-#endif
   rgpot::GuptaConfig wide = cfg;
   wide.cutoff = 1.0e5;
   const StressEval ref = eval_stress(rgpot::GuptaPot(wide), pos, nullptr);
