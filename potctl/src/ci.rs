@@ -653,7 +653,7 @@ pub fn is_conventional_commit_subject(subj: &str) -> bool {
     let types = [
         "feat", "fix", "perf", "bench", "refactor", "docs", "test", "build", "ci", "chore",
         "style", "revert", "enh", "bug", "maint", "doc", "tst", "bld", "gen", "simd", "pot",
-        "python", "nlist",
+        "python", "nlist", "dev",
     ];
     for t in types {
         if s.starts_with(&format!("{t}(")) || s.starts_with(&format!("{t}:")) {
