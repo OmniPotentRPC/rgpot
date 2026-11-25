@@ -11,8 +11,8 @@
 
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
-#include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_CBE
 #include "rgpot/CBEPot/CBEPot.hpp"
@@ -44,9 +44,12 @@ Created create(const void *config, std::size_t config_len) {
           "BuiltinParams.config arm xtb does not match potential '" + n + "'");
     }
     if (n == "lj") {
-      pot = std::make_unique<LJPot>();
+      pot = builtin.lj ? std::make_unique<LJPot>(*builtin.lj)
+                       : std::make_unique<LJPot>();
     } else if (n == "ljcluster") {
-      pot = std::make_unique<LJClusterPot>();
+      pot = builtin.ljcluster
+                ? std::make_unique<LJClusterPot>(*builtin.ljcluster)
+                : std::make_unique<LJClusterPot>();
     } else if (n == "morse") {
       pot = std::make_unique<MorsePot>();
     } else if (n == "zbl") {
@@ -101,8 +104,8 @@ Created create(const void *config, std::size_t config_len) {
       pot = std::make_unique<fortranpots::WaterHPot>();
 #endif
     } else {
-      out.error = "rgpot_engine_create(classical): unknown potential '" + n +
-                  "'";
+      out.error =
+          "rgpot_engine_create(classical): unknown potential '" + n + "'";
       return out;
     }
     auto backend = std::make_unique<Backend>();

@@ -510,9 +510,9 @@ TEST_CASE("ZBL stream matches a direct pair sum on a short cutoff", "[nlist][str
   int pairs = 0;
   for (int i = 0; i < xyz.rows(); ++i) {
     for (int j = i + 1; j < xyz.rows(); ++j) {
-      const double dx = xyz(i, 0) - xyz(j, 0);
-      const double dy = xyz(i, 1) - xyz(j, 1);
-      const double dz = xyz(i, 2) - xyz(j, 2);
+      const double dx = xyz(i, 0) - xyz(j, 0) - (10 * a) * std::nearbyint((xyz(i, 0) - xyz(j, 0)) / (10 * a));
+      const double dy = xyz(i, 1) - xyz(j, 1) - (4 * a) * std::nearbyint((xyz(i, 1) - xyz(j, 1)) / (4 * a));
+      const double dz = xyz(i, 2) - xyz(j, 2) - (4 * a) * std::nearbyint((xyz(i, 2) - xyz(j, 2)) / (4 * a));
       if (dx * dx + dy * dy + dz * dz > cut2) {
         continue;
       }

@@ -51,6 +51,8 @@ public:
   [[nodiscard]] PotCaps caps() const noexcept override;
   [[nodiscard]] uint64_t paramsKey() const noexcept override;
   [[nodiscard]] const std::string &expression() const noexcept;
+  [[nodiscard]] std::size_t size() const noexcept;
+  [[nodiscard]] const PotentialBase *child(std::size_t i) const noexcept;
 
   /// Analytic @f$\partial f/\partial E_{\mathrm{name}}@f$ from the
   /// construct-time compiled derivative, evaluated at the last child

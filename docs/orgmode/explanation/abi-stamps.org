@@ -246,3 +246,8 @@ It also stamps =nlist::Builder= and =nlist::Walk=, which move their state behind
 a pointer so each is one pointer wide.
 It also adds a process-unique generation id on =Neighbours=.
 A program linked against soversion 8 does not load =librgpot.so.9=.
+
+Soversion 10 records =LJConfig= gaining =tail_correction= after =switch_width=.
+=LJConfig= grows from 32 to 40 bytes, and =LJPot=, which holds one, grows with
+it.
+A program linked against soversion 9 does not load =librgpot.so.10=.

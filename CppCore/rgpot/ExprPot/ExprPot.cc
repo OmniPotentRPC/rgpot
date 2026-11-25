@@ -105,9 +105,9 @@ ExprPot::ExprPot(std::string expression, std::vector<Term> terms)
     if (!term.second) {
       throw std::invalid_argument("ExprPot term '" + term.first + "' is null");
     }
-    m_impl->terms.push_back(
-        Impl::NamedChild{std::move(term.first), std::move(term.second), 0.0,
-                         Lepton::CompiledExpression{}});
+    m_impl->terms.push_back(Impl::NamedChild{std::move(term.first),
+                                             std::move(term.second), 0.0,
+                                             Lepton::CompiledExpression{}});
   }
 
   Lepton::ParsedExpression parsed;
@@ -141,8 +141,7 @@ ExprPot::ExprPot(std::string expression, std::vector<Term> terms)
 
   for (auto &term : m_impl->terms) {
     try {
-      term.dEnergy =
-          parsed.differentiate(term.name).createCompiledExpression();
+      term.dEnergy = parsed.differentiate(term.name).createCompiledExpression();
     } catch (const Lepton::Exception &ex) {
       throw std::invalid_argument(std::string("ExprPot differentiate('") +
                                   term.name + "') failed: " + ex.what());
@@ -165,8 +164,7 @@ ExprPot::ExprPot(std::string expression, std::vector<Term> terms)
     const PotCaps child = term.child->caps();
     caps.reentrancy = worseReentrancy(caps.reentrancy, child.reentrancy);
     caps.periodic = caps.periodic && child.periodic;
-    caps.perImageInstances =
-        caps.perImageInstances || child.perImageInstances;
+    caps.perImageInstances = caps.perImageInstances || child.perImageInstances;
   }
   m_impl->paramsKey = fp.h;
   m_impl->caps = caps;
@@ -237,6 +235,12 @@ uint64_t ExprPot::paramsKey() const noexcept { return m_impl->paramsKey; }
 
 const std::string &ExprPot::expression() const noexcept {
   return m_impl->expression;
+}
+
+std::size_t ExprPot::size() const noexcept { return m_impl->terms.size(); }
+
+const PotentialBase *ExprPot::child(std::size_t i) const noexcept {
+  return i < m_impl->terms.size() ? m_impl->terms[i].child.get() : nullptr;
 }
 
 double ExprPot::dEnergyDTerm(const std::string &name) const {

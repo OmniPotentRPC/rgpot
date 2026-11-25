@@ -62,33 +62,48 @@ With periodic boundaries, image flags unwrap each Cartesian position as
 =x + ix*a + iy*b + iz*c=.
 All three boundaries must be periodic or all three non-periodic; mixed
 boundaries raise =ValueError=.
-The potential protocol always receives the 3 by 3 cell.
+The potential protocol always receives a 3 by 3 cell.
+It is the box cell on a periodic box.
+With =boundary f f f= it is all zero for a potential that reports
+=cell_optional=, and the box cell otherwise (see below).
 A free-boundary potential may ignore it; a periodic potential such as =LJPot=
-folds pairs across the cell vectors, so it is refused with =boundary f f f= (see
-below).
+folds pairs across the cell vectors, so it is refused with =boundary f f f=.
 
 ** Free boundaries and periodic potentials
 
-With =boundary f f f= the cell is the box extent, which is not a periodic cell
-of the system.
+With =boundary f f f= the box extent is not a periodic cell of the system.
 A potential that applies periodic boundary conditions to the cell it is given
 would pair atoms through the box faces and return a wrong energy.
-The constructor therefore raises =ValueError= when all three LAMMPS boundaries
-are non-periodic and the potential is periodic.
-The message names the potential and points to =rgpot.LJClusterPot=.
+How the frontend avoids that follows the potential's =caps()= mapping:
+
+- =cell_optional= true: the potential takes a periodic cell and also evaluates
+  an open system when the cell is all zero.
+  It is evaluated with an all-zero cell on =boundary f f f=, which gives the
+  energy and forces of the isolated system.
+  The entry decides before =periodic=, which only says that periodic boundaries
+  are supported.
+  =rgpot.D2Pot= and =rgpot.D2CpmdPot= report it.
+- =periodic= true without =cell_optional=: the potential always applies periodic
+  boundaries to the cell.
+  The constructor raises =ValueError= when all three LAMMPS boundaries are
+  non-periodic.
+  The message names the potential, says that it does not report =cell_optional=,
+  and points to =rgpot.LJClusterPot=.
+  =LJPot= is such a potential.
+- =periodic= false, or no entry: the potential gets the box cell, which it may
+  ignore.
+  =LJClusterPot= reports =periodic= false.
+
+A potential with no =caps()= method, or whose mapping has neither entry, is not
+classified and is never refused.
 The check runs before any fix is created, so nothing is left registered in
 LAMMPS.
+Boxes that are periodic in all three directions are not checked, and every
+potential gets the box cell there.
 
-A potential counts as periodic when its =caps()= method returns a mapping whose
-=periodic= entry is true. rgpot potentials report this as =caps()["periodic"]=;
-=LJPot= reports true and =LJClusterPot= reports false.
-A potential with no =caps()= method, or whose mapping has no =periodic= entry,
-is not classified and is never refused.
-Boxes that are periodic in all three directions are not checked.
-
-=allow_periodic_on_free_box=True= turns the check off.
-The periodic potential is then evaluated on the box extents exactly as before,
-which is only meaningful when that cell is the intended periodic cell.
+=allow_periodic_on_free_box=True= turns the classification off.
+Every potential, including a cell-optional one, is then evaluated on the box
+extents, which is only meaningful when that cell is the intended periodic cell.
 
 The evaluation is in increasing atom-ID order.
 Returned forces are mapped back to each rank's local order.

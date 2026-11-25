@@ -55,8 +55,8 @@ struct Engine {
   RgpotEnginePot *(*create)(const void *, size_t, char *, size_t) = nullptr;
   void (*destroy)(RgpotEnginePot *) = nullptr;
   int (*force)(RgpotEnginePot *, long, const double *, const int *, double *,
-               double *, double *, const double *,
-               rgpot_engine_coord_transform, void *) = nullptr;
+               double *, double *, const double *, rgpot_engine_coord_transform,
+               void *) = nullptr;
   int (*hvp)(RgpotEnginePot *, long, const double *, const int *,
              const double *, double *, const double *) = nullptr;
   int (*force_batch)(RgpotEnginePot *, long, long, const double *, const int *,
@@ -406,9 +406,9 @@ TEST_CASE("classical engine LJPot analytic HVP rejects in-place aliasing",
   REQUIRE(pot != nullptr);
 
   const long n = 5;
-  const std::vector<double> direction = {
-      0.2, -0.3, 0.4, -0.1, 0.5, -0.2, 0.3, 0.1,
-      -0.4, 0.6, -0.5, 0.2, -0.3, 0.4, -0.1};
+  const std::vector<double> direction = {0.2,  -0.3, 0.4,  -0.1, 0.5,
+                                         -0.2, 0.3,  0.1,  -0.4, 0.6,
+                                         -0.5, 0.2,  -0.3, 0.4,  -0.1};
   std::vector<double> product(direction.size(), 0.0);
   REQUIRE(e.hvp(pot, n, kCluster.data(), kZ.data(), direction.data(),
                 product.data(), kBox.data()) == RGPOT_ENGINE_OK);
@@ -420,8 +420,7 @@ TEST_CASE("classical engine LJPot analytic HVP rejects in-place aliasing",
                              .atmnrs = kZ.data(),
                              .box = kBox.data()};
   direct.hessianVectorImpl(fi, direction.data(), ref_product.data());
-  const double tol =
-      64.0 * std::numeric_limits<double>::epsilon();
+  const double tol = 64.0 * std::numeric_limits<double>::epsilon();
   for (std::size_t k = 0; k < direction.size(); ++k) {
     REQUIRE(product[k] == Catch::Approx(ref_product[k]).margin(tol));
   }
@@ -764,13 +763,13 @@ TEST_CASE("classical engine LJPot reports coincident atoms as evaluation errors"
   double energy = 0.0;
 
   REQUIRE(e.force(pot, 2, coincident.data(), z.data(), forces.data(), &energy,
-                  nullptr, kBox.data(), nullptr, nullptr) ==
-          RGPOT_ENGINE_ERR_EVAL);
+                  nullptr, kBox.data(), nullptr,
+                  nullptr) == RGPOT_ENGINE_ERR_EVAL);
   REQUIRE(error_of(e, pot).find("coincident atoms") != std::string::npos);
 
   REQUIRE(e.force_batch(pot, 1, 2, coincident.data(), z.data(), forces.data(),
-                        &energy, nullptr, kBox.data(), nullptr, nullptr) ==
-          RGPOT_ENGINE_ERR_EVAL);
+                        &energy, nullptr, kBox.data(), nullptr,
+                        nullptr) == RGPOT_ENGINE_ERR_EVAL);
   REQUIRE(error_of(e, pot).find("coincident atoms") != std::string::npos);
 
   REQUIRE(e.hvp(pot, 2, coincident.data(), z.data(), direction.data(),
@@ -893,6 +892,59 @@ TEST_CASE("classical engine names its potentials", "[engine][classical]") {
   std::string error;
   REQUIRE(create(e, builtin_params("nonesuch"), &error) == nullptr);
   REQUIRE(error.find("nonesuch") != std::string::npos);
+
+  // BuiltinParams with PotentialConfig.lj threads tail_correction to LJPot and
+  // refuses unsupported combinations (ljcluster with tail_correction, or lj arm
+  // on a non-LJ potential).
+  {
+    capnp::MallocMessageBuilder msg_on;
+    auto p_on = msg_on.initRoot<::BuiltinParams>();
+    p_on.setName("lj");
+    auto lj_on = p_on.initConfig().initLj();
+    lj_on.setU0(0.8);
+    lj_on.setPsi(1.2);
+    lj_on.setCutoff(6.0);
+    lj_on.setTailCorrection(true);
+    auto bytes_on = capnp::messageToFlatArray(msg_on);
+    RgpotEnginePot *pot_on = create(e, bytes_on, &error);
+    INFO(error);
+    REQUIRE(pot_on != nullptr);
+
+    const long n = 5;
+    std::vector<double> f_eng(3 * n, 0.0), f_dir(3 * n, 0.0);
+    double e_eng = 0.0;
+    REQUIRE(e.force(pot_on, n, kCluster.data(), kZ.data(), f_eng.data(), &e_eng,
+                    nullptr, kBox.data(), nullptr, nullptr) == 0);
+    e.destroy(pot_on);
+
+    const rgpot::LJPot direct(rgpot::LJConfig{
+        .u0 = 0.8, .cutoff = 6.0, .psi = 1.2, .tail_correction = true});
+    rgpot::ForceOut out_dir{f_dir.data(), 0.0, 0.0, {}, 0};
+    direct.forceImpl(
+        {static_cast<std::size_t>(n), kCluster.data(), kZ.data(), kBox.data()},
+        &out_dir);
+    CHECK(e_eng == Catch::Approx(out_dir.energy).margin(1e-12));
+    CHECK(f_eng == f_dir);
+
+    capnp::MallocMessageBuilder msg_cluster_bad;
+    auto p_cluster = msg_cluster_bad.initRoot<::BuiltinParams>();
+    p_cluster.setName("ljcluster");
+    p_cluster.initConfig().initLj().setTailCorrection(true);
+    std::string cluster_err;
+    CHECK(create(e, capnp::messageToFlatArray(msg_cluster_bad), &cluster_err) ==
+          nullptr);
+    CHECK(cluster_err.find("tail_correction") != std::string::npos);
+
+    capnp::MallocMessageBuilder msg_morse_bad;
+    auto p_morse = msg_morse_bad.initRoot<::BuiltinParams>();
+    p_morse.setName("morse");
+    p_morse.initConfig().initLj().setTailCorrection(true);
+    std::string morse_err;
+    CHECK(create(e, capnp::messageToFlatArray(msg_morse_bad), &morse_err) ==
+          nullptr);
+    CHECK(morse_err.find("only valid for 'lj' or 'ljcluster'") !=
+          std::string::npos);
+  }
 
   // The Fortran kernels, when built, report one instance per thread.
   std::string probe;
@@ -1193,7 +1245,8 @@ TEST_CASE("mopac engine", "[engine][mopac]") {
 TEST_CASE("nwchem engine", "[engine][nwchem]") {
   capnp::MallocMessageBuilder msg;
   msg.initRoot<::NWChemParams>();
-  check_unavailable_engine("NWCHEM", "nwchem", capnp::messageToFlatArray(msg), 2);
+  check_unavailable_engine("NWCHEM", "nwchem", capnp::messageToFlatArray(msg),
+                           2);
 }
 
 TEST_CASE("cpmd engine keeps orbitals separate by caller key",
@@ -1332,8 +1385,8 @@ TEST_CASE("xtb engine matches the generic table contract", "[engine][xtb]") {
   REQUIRE(caps.stress == 1);
 
   // Water, Angstrom.
-  const double pos[9] = {0.0, 0.0, 0.1173, 0.0, 0.7572, -0.4692, 0.0, -0.7572,
-                         -0.4692};
+  const double pos[9] = {0.0,     0.0, 0.1173,  0.0,    0.7572,
+                         -0.4692, 0.0, -0.7572, -0.4692};
   const int z[3] = {8, 1, 1};
   const std::array<double, 9> box = {20, 0, 0, 0, 20, 0, 0, 0, 20};
   std::vector<double> forces(9, 0.0);
@@ -1386,7 +1439,8 @@ TEST_CASE("metatomic engine keeps its own table and adds the generic one",
   copy.setRoot(p.asReader());
   auto r = copy.getRoot<::MetatomicParams>();
   REQUIRE(r.getNSymmetryRotations() == 4);
-  REQUIRE(r.getTorchDeterminism() == ::MetatomicParams::TorchDeterminism::DETERMINISTIC);
+  REQUIRE(r.getTorchDeterminism() ==
+          ::MetatomicParams::TorchDeterminism::DETERMINISTIC);
   REQUIRE(r.getIntraopThreads() == 2);
 }
 
@@ -1421,8 +1475,8 @@ const std::array<double, 9> kNoCell = {};
 double pair_energy(const Engine &e, RgpotEnginePot *pot) {
   std::vector<double> forces(6, 0.0);
   double energy = 0.0;
-  const int rc = e.force(pot, 2, kPair, kPairZ, forces.data(), &energy,
-                         nullptr, kNoCell.data(), nullptr, nullptr);
+  const int rc = e.force(pot, 2, kPair, kPairZ, forces.data(), &energy, nullptr,
+                         kNoCell.data(), nullptr, nullptr);
   INFO(error_of(e, pot));
   REQUIRE(rc == 0);
   for (int k = 0; k < 6; ++k) {
@@ -1438,9 +1492,9 @@ std::array<double, 2> pair_batch_energies(const Engine &e,
   R.insert(R.end(), kPair, kPair + 6);
   std::vector<double> cells(18, 0.0), forces(12, 0.0);
   std::array<double, 2> energies = {0.0, 0.0};
-  const int rc = e.force_batch(pot, 2, 2, R.data(), kPairZ, forces.data(),
-                               energies.data(), nullptr, cells.data(), nullptr,
-                               nullptr);
+  const int rc =
+      e.force_batch(pot, 2, 2, R.data(), kPairZ, forces.data(), energies.data(),
+                    nullptr, cells.data(), nullptr, nullptr);
   INFO(error_of(e, pot));
   REQUIRE(rc == 0);
   return energies;
@@ -1578,8 +1632,8 @@ TEST_CASE("metatomic engine refuses a charge or spin its model does not read",
 
   // Declares neither, so the model sees neither and there is none to change.
   // The undeclared model reads its defaults, charge 0 and multiplicity 1.
-  for (const auto &[key, energy] : {std::pair{"MTA_PLAIN_PT", 2.5},
-                                    std::pair{"MTA_UNDECLARED_PT", 3.5}}) {
+  for (const auto &[key, energy] :
+       {std::pair{"MTA_PLAIN_PT", 2.5}, std::pair{"MTA_UNDECLARED_PT", 3.5}}) {
     INFO(key);
     RgpotEnginePot *pot = create(e, metatomic_params(mta_model(key)), &error);
     INFO(error);
@@ -1593,8 +1647,8 @@ TEST_CASE("metatomic engine refuses a charge or spin its model does not read",
 
   // Reads the charge only: the multiplicity must stay 1, and a refused
   // setting changes nothing.
-  RgpotEnginePot *pot = create(e, metatomic_params(mta_model("MTA_CHARGE_PT")),
-                               &error);
+  RgpotEnginePot *pot =
+      create(e, metatomic_params(mta_model("MTA_CHARGE_PT")), &error);
   REQUIRE(pot != nullptr);
   CHECK(e.set_charge_spin(pot, -1, 1) == 0);
   CHECK(pair_energy(e, pot) == Catch::Approx(-7.5));

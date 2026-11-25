@@ -65,6 +65,7 @@ pub mod fused;
 pub mod hessian;
 pub mod hvp;
 pub mod jet;
+pub mod lj;
 pub mod md_session;
 pub mod potential;
 pub mod status;

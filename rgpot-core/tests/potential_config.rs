@@ -134,6 +134,100 @@ fn muller_brown_lists_round_trip() {
     check(params.get_y0(), &y0);
 }
 
+#[test]
+fn lj_arm_round_trips_tail_correction_and_validates_config() {
+    use rgpot_core::lj::{LjConfig, LjConfigError};
+
+    let default_cfg = LjConfig::default();
+    assert_eq!(default_cfg.u0, 1.0);
+    assert_eq!(default_cfg.psi, 1.0);
+    assert_eq!(default_cfg.cutoff, 15.0);
+    assert_eq!(default_cfg.switch_width, 0.0);
+    assert!(!default_cfg.tail_correction);
+    assert_eq!(default_cfg.validate(), Ok(()));
+
+    let cfg = LjConfig::default()
+        .with_u0(0.85)
+        .with_psi(2.5)
+        .with_cutoff(9.0)
+        .with_tail_correction(true);
+    assert_eq!(cfg.validate(), Ok(()));
+
+    let mut message = Builder::new_default();
+    cfg.write_potential_config(message.init_root::<potential_config::Builder>())
+        .expect("write PotentialConfig.lj");
+    let encoded = serialize::write_message_to_words(&message);
+
+    let mut bytes = encoded.as_slice();
+    let reader = serialize::read_message_from_flat_slice(&mut bytes, ReaderOptions::new())
+        .expect("read PotentialConfig");
+    let root = reader
+        .get_root::<potential_config::Reader>()
+        .expect("PotentialConfig root");
+    let decoded = LjConfig::from_potential_config(root).expect("decode LjConfig");
+    assert_eq!(decoded.u0, 0.85);
+    assert_eq!(decoded.psi, 2.5);
+    assert_eq!(decoded.cutoff, 9.0);
+    assert_eq!(decoded.switch_width, 0.0);
+    assert!(decoded.tail_correction);
+
+    let switched = cfg.with_switch_width(1.5);
+    assert_eq!(switched.validate(), Ok(()));
+    let mut switched_message = Builder::new_default();
+    let switched_params = switched_message
+        .init_root::<potential_config::Builder>()
+        .init_lj();
+    assert_eq!(
+        switched.write_params(switched_params),
+        Err(LjConfigError::WireSwitchWidthUnsupported)
+    );
+    let mut untouched_message = Builder::new_default();
+    let untouched_root = untouched_message.init_root::<potential_config::Builder>();
+    assert_eq!(
+        switched.write_potential_config(untouched_root),
+        Err(LjConfigError::WireSwitchWidthUnsupported)
+    );
+    let untouched_reader = untouched_message
+        .get_root_as_reader::<potential_config::Reader>()
+        .expect("PotentialConfig reader");
+    assert!(matches!(
+        untouched_reader.which().expect("known arm"),
+        potential_config::Which::None(())
+    ));
+
+    // Rejects unsupported switch_width == cutoff when tail_correction is enabled.
+    let bad_window = LjConfig::default()
+        .with_cutoff(5.0)
+        .with_switch_width(5.0)
+        .with_tail_correction(true);
+    assert_eq!(
+        bad_window.validate(),
+        Err(LjConfigError::SwitchCoversWholeCutoff)
+    );
+    let mut bad_msg = Builder::new_default();
+    assert_eq!(
+        bad_window.write_potential_config(bad_msg.init_root::<potential_config::Builder>()),
+        Err(LjConfigError::SwitchCoversWholeCutoff)
+    );
+
+    // Rejects non-positive cutoff on decode.
+    let mut invalid_wire = Builder::new_default();
+    {
+        let mut lj = invalid_wire
+            .init_root::<potential_config::Builder>()
+            .init_lj();
+        lj.set_cutoff(0.0);
+        lj.set_tail_correction(true);
+    }
+    let root_bad = invalid_wire
+        .get_root_as_reader::<potential_config::Reader>()
+        .expect("reader");
+    assert_eq!(
+        LjConfig::from_potential_config(root_bad),
+        Err(LjConfigError::InvalidParameters)
+    );
+}
+
 /// potentials-schema's arm ordinals, shared with gpridge and every other
 /// consumer. A renumbered arm would decode as another backend on the wire.
 const CONFIG_ARMS: [(&str, u16); 17] = [

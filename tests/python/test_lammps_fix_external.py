@@ -682,6 +682,140 @@ def test_guard_leaves_periodic_boxes_alone():
     FixExternal(FakeLammps(periodic=(1, 1, 1)), rgpot.LJClusterPot(), "Ar Ar")
 
 
+ZBL_COEFFS = ((0.18175, 3.19980), (0.50986, 0.94229), (0.28022, 0.40290), (0.02817, 0.20162))
+COULOMB_EV_ANGSTROM = 14.399645
+
+
+class ZblLike:
+    """Two-body screened Coulomb repulsion that reports what ``ZBLPot`` reports.
+
+    An all-zero cell is an open system, as for ``rgpot::ZBLPot``.  Any other
+    cell applies the orthogonal minimum image, so a box extent handed to it as a
+    cell changes the energy.
+    """
+
+    def __init__(self, caps):
+        self._caps = caps
+        self.cells = []
+
+    def caps(self):
+        return self._caps
+
+    def evaluate(self, positions, numbers, cell):
+        self.cells.append(np.array(cell, dtype=float))
+        energy = 0.0
+        forces = np.zeros_like(positions)
+        periodic = bool(np.any(cell != 0.0))
+        diag = np.diag(cell)
+        for i in range(len(positions)):
+            for j in range(i + 1, len(positions)):
+                d = positions[i] - positions[j]
+                if periodic:
+                    d = d - diag * np.round(d / diag)
+                r = float(np.linalg.norm(d))
+                zi, zj = float(numbers[i]), float(numbers[j])
+                a = 0.46850 / (zi**0.23 + zj**0.23)
+                phi = sum(c * np.exp(-e * r / a) for c, e in ZBL_COEFFS)
+                dphi = sum(-c * e / a * np.exp(-e * r / a) for c, e in ZBL_COEFFS)
+                k = COULOMB_EV_ANGSTROM * zi * zj
+                energy += k * phi / r
+                dedr = k * (dphi / r - phi / r**2)
+                forces[i] -= dedr * d / r
+                forces[j] += dedr * d / r
+        return {"energy": energy, "forces": forces, "stress": None}
+
+
+ZBL_CAPS = {"periodic": True, "cell_optional": True}
+ZBL_POSITIONS = ((1.0, 2.0, 3.0), (6.0, 2.0, 3.0))
+
+
+def test_classification_reads_cell_optional_before_periodic():
+    from rgpot.lammps import _boundary_support
+
+    assert _boundary_support(ZblLike(ZBL_CAPS)) == "cell_optional"
+    assert _boundary_support(ZblLike({"cell_optional": True})) == "cell_optional"
+    assert (
+        _boundary_support(ZblLike({"periodic": False, "cell_optional": True}))
+        == "cell_optional"
+    )
+    assert _boundary_support(ZblLike({"periodic": True})) == "periodic"
+    assert (
+        _boundary_support(ZblLike({"periodic": True, "cell_optional": False}))
+        == "periodic"
+    )
+    assert _boundary_support(ZblLike({"periodic": False})) == "open"
+    assert _boundary_support(ZblLike({})) == "unclassified"
+    assert _boundary_support(ZblLike(None)) == "unclassified"
+    assert _boundary_support(RecordingPotential()) == "unclassified"
+
+
+def test_bound_kernels_report_cell_optional():
+    assert rgpot.D2Pot().caps()["cell_optional"] is True
+    assert rgpot.D2CpmdPot().caps()["cell_optional"] is True
+    for pot in (rgpot.LJPot(), rgpot.LJClusterPot(), rgpot.MorsePot()):
+        assert pot.caps()["cell_optional"] is False
+
+
+def test_cell_optional_potential_gets_an_open_cell_on_a_free_box():
+    pot = ZblLike(ZBL_CAPS)
+    lmp = FakeLammps(periodic=FREE_BOX, positions=ZBL_POSITIONS)
+    driver = FixExternal(lmp, pot, "H H")
+    forces = np.zeros((2, 3))
+    driver._step(2, lmp.tags, lmp.positions, forces)
+
+    assert len(pot.cells) == 1
+    np.testing.assert_array_equal(pot.cells[0], np.zeros((3, 3)))
+    direct = pot.evaluate(
+        lmp.positions, np.array([1, 1], dtype=np.int32), np.zeros((3, 3))
+    )
+    assert lmp.energy == pytest.approx(direct["energy"])
+    np.testing.assert_allclose(forces, direct["forces"])
+    np.testing.assert_array_equal(lmp.virial, np.zeros(6))
+
+    rows = box_rows([1.0, 2.0, 3.0], [10.0, 10.5, 12.4], 1.2, 0.9, -0.7)
+    periodic = pot.evaluate(lmp.positions, np.array([1, 1], dtype=np.int32), rows)
+    assert abs(periodic["energy"] - direct["energy"]) > 1e-9
+
+
+def test_cell_optional_potential_keeps_the_cell_on_a_periodic_box():
+    pot = ZblLike(ZBL_CAPS)
+    lmp = FakeLammps(periodic=(1, 1, 1), positions=ZBL_POSITIONS)
+    driver = FixExternal(lmp, pot, "H H", virial="none")
+    driver._step(2, lmp.tags, lmp.positions, np.zeros((2, 3)))
+    rows = box_rows([1.0, 2.0, 3.0], [10.0, 10.5, 12.4], 1.2, 0.9, -0.7)
+    np.testing.assert_allclose(pot.cells[-1], rows)
+
+
+def test_open_cell_stays_zero_in_other_unit_styles():
+    pot = ZblLike(ZBL_CAPS)
+    lmp = FakeLammps(units="real", periodic=FREE_BOX, positions=ZBL_POSITIONS)
+    driver = FixExternal(lmp, pot, "H H")
+    driver._step(2, lmp.tags, lmp.positions, np.zeros((2, 3)))
+    np.testing.assert_array_equal(pot.cells[0], np.zeros((3, 3)))
+
+
+def test_opt_out_hands_a_cell_optional_potential_the_box_extents():
+    pot = ZblLike(ZBL_CAPS)
+    lmp = FakeLammps(periodic=FREE_BOX, positions=ZBL_POSITIONS)
+    driver = FixExternal(lmp, pot, "H H", allow_periodic_on_free_box=True)
+    driver._step(2, lmp.tags, lmp.positions, np.zeros((2, 3)))
+    rows = box_rows([1.0, 2.0, 3.0], [10.0, 10.5, 12.4], 1.2, 0.9, -0.7)
+    np.testing.assert_allclose(pot.cells[0], rows)
+
+
+def test_strictly_periodic_potential_on_a_free_box_is_refused_with_the_reason():
+    for caps in ({"periodic": True}, {"periodic": True, "cell_optional": False}):
+        lmp = FakeLammps(periodic=FREE_BOX, positions=ZBL_POSITIONS)
+        with pytest.raises(ValueError) as info:
+            FixExternal(lmp, ZblLike(caps), "H H")
+        message = str(info.value)
+        assert "ZblLike is a periodic potential" in message
+        assert "cell_optional" in message
+        assert "allow_periodic_on_free_box" in message
+        assert lmp.commands == []
+        assert lmp.callback == {}
+
+
 def test_cluster_potential_on_free_box_matches_direct_evaluation():
     pot = rgpot.LJClusterPot(cutoff=8.0)
     lmp = FakeLammps(periodic=FREE_BOX)
@@ -785,12 +919,12 @@ FREE_BOX_INPUT = """
 """
 
 
-def _free_box_run(pot, **keywords):
+def _free_box_run(pot, element="Ar", **keywords):
     lammps = pytest.importorskip("lammps")
     lmp = lammps.lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
     try:
         lmp.commands_string(FREE_BOX_INPUT)
-        with FixExternal(lmp, pot, "Ar", **keywords) as driver:
+        with FixExternal(lmp, pot, element, **keywords) as driver:
             driver.run(0)
             pe = float(lmp.get_thermo("pe"))
             forces = np.array(lmp.gather_atoms("f", 1, 3), dtype=float).reshape(-1, 3)
@@ -821,6 +955,53 @@ def test_real_lammps_free_box_guard():
     assert pe == pytest.approx(wrapped["energy"])
     np.testing.assert_allclose(forces, wrapped["forces"], atol=1e-12, rtol=1e-12)
     assert pe != pytest.approx(direct["energy"], abs=1e-3)
+
+
+def test_real_lammps_cell_optional_potential_on_a_free_box():
+    """A cell-optional kernel runs an open cluster on ``boundary f f f``."""
+    pytest.importorskip("lammps")
+    positions = np.array([[1.0, 1.0, 1.0], [5.2, 1.0, 1.0]])
+    numbers = np.array([6, 6], dtype=np.int32)
+    pot = rgpot.D2Pot()
+    assert pot.caps()["cell_optional"] is True
+
+    open_cluster = pot.evaluate(positions, numbers, np.zeros((3, 3)))
+    pe, forces = _free_box_run(pot, element="C")
+    assert pe == pytest.approx(open_cluster["energy"])
+    np.testing.assert_allclose(forces, open_cluster["forces"], atol=1e-12, rtol=1e-12)
+
+    wrapped = pot.evaluate(positions, numbers, np.diag([6.0, 6.0, 6.0]))
+    assert abs(wrapped["energy"] - open_cluster["energy"]) > 1e-6
+    pe, forces = _free_box_run(pot, element="C", allow_periodic_on_free_box=True)
+    assert pe == pytest.approx(wrapped["energy"])
+    np.testing.assert_allclose(forces, wrapped["forces"], atol=1e-12, rtol=1e-12)
+
+
+def test_real_lammps_cell_optional_potential_on_a_periodic_box():
+    lammps = pytest.importorskip("lammps")
+    positions = np.array([[1.0, 1.0, 1.0], [5.2, 1.0, 1.0]])
+    numbers = np.array([6, 6], dtype=np.int32)
+    pot = rgpot.D2Pot()
+    cell = np.diag([6.0, 6.0, 6.0])
+    direct = pot.evaluate(positions, numbers, cell)
+    lmp = lammps.lammps(cmdargs=["-log", "none", "-screen", "none", "-nocite"])
+    try:
+        lmp.commands_string(FREE_BOX_INPUT.replace("boundary f f f", "boundary p p p"))
+        with FixExternal(lmp, pot, "C") as driver:
+            driver.run(0)
+            pe = float(lmp.get_thermo("pe"))
+            forces = np.array(lmp.gather_atoms("f", 1, 3), dtype=float).reshape(-1, 3)
+        assert pe == pytest.approx(direct["energy"])
+        np.testing.assert_allclose(forces, direct["forces"], atol=1e-12, rtol=1e-12)
+    finally:
+        lmp.close()
+
+
+def test_real_lammps_periodic_only_potential_on_a_free_box_is_refused():
+    pytest.importorskip("lammps")
+    assert rgpot.MorsePot().caps()["cell_optional"] is False
+    with pytest.raises(ValueError, match="cell_optional"):
+        _free_box_run(rgpot.MorsePot())
 
 
 def test_real_lammps_two_rank_mpi():

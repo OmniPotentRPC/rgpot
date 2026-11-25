@@ -141,6 +141,8 @@ struct ChildSpec {
   double psi = 0.0;
   bool has_switch_width = false;
   double switch_width = 0.0;
+  bool has_tail_correction = false;
+  bool tail_correction = false;
   bool has_De = false;
   double De = 0.0;
   bool has_a = false;
@@ -187,73 +189,68 @@ ChildSpec child_spec_from(const std::string &name, nb::handle spec) {
   out.kind = child_kind(spec);
   if (nb::isinstance<nb::dict>(spec)) {
     auto d = nb::cast<nb::dict>(spec);
-    if (d.contains("functional")) {
-      out.has_functional = true;
-      out.functional = nb::cast<std::string>(d["functional"]);
-    }
-    if (d.contains("s6")) {
-      out.has_s6 = true;
-      out.s6 = nb::cast<double>(d["s6"]);
-    }
-    if (d.contains("d")) {
-      out.has_d = true;
-      out.d = nb::cast<double>(d["d"]);
-    }
-    if (d.contains("sr")) {
-      out.has_sr = true;
-      out.sr = nb::cast<double>(d["sr"]);
-    }
-    if (d.contains("alpha")) {
-      out.has_alpha = true;
-      out.alpha = nb::cast<double>(d["alpha"]);
-    }
-    if (d.contains("vdweps")) {
-      out.has_vdweps = true;
-      out.vdweps = nb::cast<double>(d["vdweps"]);
-    }
-    if (d.contains("symmetry")) {
-      out.has_symmetry = true;
-      out.symmetry = nb::cast<int>(d["symmetry"]);
-    }
-    if (d.contains("atm")) {
-      out.atm = nb::cast<bool>(d["atm"]);
-    }
-    if (d.contains("damping")) {
-      out.damping = nb::cast<std::string>(d["damping"]);
-    }
-    if (d.contains("charge")) {
-      out.charge = nb::cast<double>(d["charge"]);
-    }
-    if (d.contains("periodic")) {
-      out.periodic = nb::cast<bool>(d["periodic"]);
-    }
-    if (d.contains("u0")) {
-      out.has_u0 = true;
-      out.u0 = nb::cast<double>(d["u0"]);
-    }
-    if (d.contains("cutoff")) {
-      out.has_cutoff = true;
-      out.cutoff = nb::cast<double>(d["cutoff"]);
-    }
-    if (d.contains("psi")) {
-      out.has_psi = true;
-      out.psi = nb::cast<double>(d["psi"]);
-    }
-    if (d.contains("switch_width")) {
-      out.has_switch_width = true;
-      out.switch_width = nb::cast<double>(d["switch_width"]);
-    }
-    if (d.contains("De")) {
-      out.has_De = true;
-      out.De = nb::cast<double>(d["De"]);
-    }
-    if (d.contains("a")) {
-      out.has_a = true;
-      out.a = nb::cast<double>(d["a"]);
-    }
-    if (d.contains("re")) {
-      out.has_re = true;
-      out.re = nb::cast<double>(d["re"]);
+    for (auto item : d) {
+      const std::string key = nb::cast<std::string>(item.first);
+      if (key == "kind" || key == "type" || key == "name" || key == "weight" ||
+          key == "enabled") {
+        continue;
+      } else if (key == "functional") {
+        out.has_functional = true;
+        out.functional = nb::cast<std::string>(item.second);
+      } else if (key == "s6") {
+        out.has_s6 = true;
+        out.s6 = nb::cast<double>(item.second);
+      } else if (key == "d") {
+        out.has_d = true;
+        out.d = nb::cast<double>(item.second);
+      } else if (key == "sr") {
+        out.has_sr = true;
+        out.sr = nb::cast<double>(item.second);
+      } else if (key == "alpha") {
+        out.has_alpha = true;
+        out.alpha = nb::cast<double>(item.second);
+      } else if (key == "vdweps") {
+        out.has_vdweps = true;
+        out.vdweps = nb::cast<double>(item.second);
+      } else if (key == "symmetry") {
+        out.has_symmetry = true;
+        out.symmetry = nb::cast<int>(item.second);
+      } else if (key == "atm") {
+        out.atm = nb::cast<bool>(item.second);
+      } else if (key == "damping") {
+        out.damping = nb::cast<std::string>(item.second);
+      } else if (key == "charge") {
+        out.charge = nb::cast<double>(item.second);
+      } else if (key == "periodic") {
+        out.periodic = nb::cast<bool>(item.second);
+      } else if (key == "u0") {
+        out.has_u0 = true;
+        out.u0 = nb::cast<double>(item.second);
+      } else if (key == "cutoff") {
+        out.has_cutoff = true;
+        out.cutoff = nb::cast<double>(item.second);
+      } else if (key == "psi") {
+        out.has_psi = true;
+        out.psi = nb::cast<double>(item.second);
+      } else if (key == "switch_width") {
+        out.has_switch_width = true;
+        out.switch_width = nb::cast<double>(item.second);
+      } else if (key == "tail_correction") {
+        out.has_tail_correction = true;
+        out.tail_correction = nb::cast<bool>(item.second);
+      } else if (key == "De") {
+        out.has_De = true;
+        out.De = nb::cast<double>(item.second);
+      } else if (key == "a") {
+        out.has_a = true;
+        out.a = nb::cast<double>(item.second);
+      } else if (key == "re") {
+        out.has_re = true;
+        out.re = nb::cast<double>(item.second);
+      } else {
+        throw std::invalid_argument("ExprPot: unknown child parameter '" + key +
+                                    "' for kind '" + out.kind + "'");
+      }
     }
   }
   return out;
@@ -272,6 +269,9 @@ rgpot::LJConfig lj_config_from(const ChildSpec &spec) {
   }
   if (spec.has_switch_width) {
     cfg.switch_width = spec.switch_width;
+  }
+  if (spec.has_tail_correction) {
+    cfg.tail_correction = spec.tail_correction;
   }
   return cfg;
 }
@@ -344,6 +344,10 @@ double child_cutoff(const ChildSpec &spec) {
 }
 
 std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
+  if (spec.kind != "lj" && spec.has_tail_correction) {
+    throw std::invalid_argument("ExprPot: child kind '" + spec.kind +
+                                "' does not support 'tail_correction'");
+  }
   if (spec.kind == "lj") {
     return std::make_unique<rgpot::LJPot>(lj_config_from(spec));
   }
@@ -354,8 +358,9 @@ std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
     return std::make_unique<rgpot::D2Pot>(d2_config_from(spec));
   }
   if (spec.kind == "d2cpmd") {
-    rgpot::D2CpmdConfig cfg = spec.has_functional ? rgpot::d2_cpmd_config_for(spec.functional)
-                                                  : rgpot::D2CpmdConfig{};
+    rgpot::D2CpmdConfig cfg = spec.has_functional
+                                  ? rgpot::d2_cpmd_config_for(spec.functional)
+                                  : rgpot::D2CpmdConfig{};
     if (spec.has_s6) {
       cfg.s6 = spec.s6;
     }
@@ -424,7 +429,8 @@ std::vector<SumSpec> sum_specs_from(const nb::list &terms) {
   return out;
 }
 
-std::unique_ptr<rgpot::SumPot> sum_from_specs(const std::vector<SumSpec> &specs) {
+std::unique_ptr<rgpot::SumPot>
+sum_from_specs(const std::vector<SumSpec> &specs) {
   auto sum = std::make_unique<rgpot::SumPot>();
   for (const SumSpec &spec : specs) {
     sum->add(spec.term,
@@ -443,6 +449,40 @@ double sum_cutoff(const std::vector<SumSpec> &specs) {
   return cutoff;
 }
 
+nb::dict tail_correction_config(const rgpot::PotentialBase &pot) {
+  nb::dict out;
+  if (const auto *lj = dynamic_cast<const rgpot::LJPot *>(&pot)) {
+    out["tail_correction"] = lj->config().tail_correction;
+    return out;
+  }
+#ifdef RGPOT_HAS_EXPR
+  if (const auto *expr = dynamic_cast<const rgpot::ExprPot *>(&pot)) {
+    nb::list children;
+    for (std::size_t i = 0; i < expr->size(); ++i) {
+      const rgpot::PotentialBase *child = expr->child(i);
+      if (child != nullptr) {
+        children.append(tail_correction_config(*child));
+      }
+    }
+    out["children"] = children;
+    return out;
+  }
+#endif
+  const auto *sum = dynamic_cast<const rgpot::SumPot *>(&pot);
+  if (sum == nullptr) {
+    return out;
+  }
+  nb::list children;
+  for (std::size_t i = 0; i < sum->size(); ++i) {
+    const rgpot::PotentialBase *child = sum->child(i);
+    if (sum->term(i).enabled && child != nullptr) {
+      children.append(tail_correction_config(*child));
+    }
+  }
+  out["children"] = children;
+  return out;
+}
+
 nb::list sum_components(const rgpot::SumPot &pot) {
   nb::list out;
   for (const rgpot::SumComponent &c : pot.lastComponents()) {
@@ -453,7 +493,8 @@ nb::list sum_components(const rgpot::SumPot &pot) {
     d["evaluated"] = c.evaluated;
     d["energy"] = c.energy;
     d["variance"] = c.variance;
-    d["forces"] = rgpot::pybind::vector_to_numpy(c.forces, {c.forces.size() / 3, 3});
+    d["forces"] =
+        rgpot::pybind::vector_to_numpy(c.forces, {c.forces.size() / 3, 3});
     if (c.has_stress) {
       d["stress"] = rgpot::pybind::stress_to_numpy(c.stress.data());
     } else {
@@ -743,9 +784,10 @@ NB_MODULE(_core, m) {
         return number;
       },
       nb::arg("symbol"), "Atomic number of an element symbol.");
-  m.def("unit_conversion_factor", &rgpot::units::unit_conversion_factor,
-        nb::arg("from_unit"), nb::arg("to_unit"),
-        "Multiplicative conversion factor between compatible unit expressions.");
+  m.def(
+      "unit_conversion_factor", &rgpot::units::unit_conversion_factor,
+      nb::arg("from_unit"), nb::arg("to_unit"),
+      "Multiplicative conversion factor between compatible unit expressions.");
 
   // F6 round trip. -0.0, NaN, and subnormals are copied unchanged.
   m.def(
@@ -826,12 +868,39 @@ NB_MODULE(_core, m) {
       .def("reset_counts", &rgpot::cache::PotentialCache::reset_counts);
 #endif
 
-  auto lj = bind_lj_like<rgpot::LJPot, rgpot::LJConfig>(
-      m, "LJPot",
+  auto lj = nb::class_<PotHolder<rgpot::LJPot>>(m, "LJPot");
+  lj.def(
+      "__init__",
+      [](PotHolder<rgpot::LJPot> *self, double u0, double cutoff, double psi,
+         double switch_width, bool tail_correction) {
+        new (self) PotHolder<rgpot::LJPot>([=] {
+          rgpot::LJConfig cfg;
+          cfg.u0 = u0;
+          cfg.cutoff = cutoff;
+          cfg.psi = psi;
+          cfg.switch_width = switch_width;
+          cfg.tail_correction = tail_correction;
+          return std::make_unique<rgpot::LJPot>(cfg);
+        });
+      },
+      nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
+      nb::arg("switch_width") = 0.0, nb::arg("tail_correction") = false,
       "Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff "
       "and psi are Angstrom. A positive switch_width (Angstrom) "
       "replaces the shift with the C^2 quintic switch over "
-      "[cutoff - switch_width, cutoff]; it must not exceed cutoff.");
+      "[cutoff - switch_width, cutoff]; it must not exceed cutoff. "
+      "tail_correction adds the continuum long-range correction on a "
+      "periodic cell and leaves the pair term unshifted.");
+  lj.def("config", [](const PotHolder<rgpot::LJPot> &self) {
+    const rgpot::LJConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["u0"] = cfg.u0;
+    out["cutoff"] = cfg.cutoff;
+    out["psi"] = cfg.psi;
+    out["switch_width"] = cfg.switch_width;
+    out["tail_correction"] = cfg.tail_correction;
+    return out;
+  });
 #ifdef RGPOT_HAS_CACHE
   lj.def(
       "set_cache",
@@ -890,8 +959,8 @@ NB_MODULE(_core, m) {
   auto d2_cls = nb::class_<PotHolder<rgpot::D2Pot>>(m, "D2Pot");
   d2_cls.def(
       "__init__",
-      [](PotHolder<rgpot::D2Pot> *self, double s6, double d, double sr, double cutoff,
-         std::optional<std::string> functional) {
+      [](PotHolder<rgpot::D2Pot> *self, double s6, double d, double sr,
+         double cutoff, std::optional<std::string> functional) {
         rgpot::D2Config cfg =
             functional ? rgpot::d2_config_for(*functional) : rgpot::D2Config{};
         if (!functional) {
@@ -904,7 +973,8 @@ NB_MODULE(_core, m) {
             [cfg] { return std::make_unique<rgpot::D2Pot>(cfg); });
       },
       nb::arg("s6") = 1.2, nb::arg("d") = 20.0, nb::arg("sr") = 1.1,
-      nb::arg("cutoff") = rgpot::D2Config{}.cutoff, nb::arg("functional") = nb::none(),
+      nb::arg("cutoff") = rgpot::D2Config{}.cutoff,
+      nb::arg("functional") = nb::none(),
       "Grimme's DFT-D2 (J. Comput. Chem. 27, 1787 (2006)) as a lattice sum "
       "over every periodic image within cutoff (Angstrom), in eV. The "
       "defaults are BLYP. A functional takes s6 and d from dftd3's D2 table "
@@ -923,10 +993,11 @@ NB_MODULE(_core, m) {
   auto d2cpmd_cls = nb::class_<PotHolder<rgpot::D2CpmdPot>>(m, "D2CpmdPot");
   d2cpmd_cls.def(
       "__init__",
-      [](PotHolder<rgpot::D2CpmdPot> *self, double s6, double alpha, double vdweps,
-         std::optional<std::string> functional, int symmetry) {
-        rgpot::D2CpmdConfig cfg =
-            functional ? rgpot::d2_cpmd_config_for(*functional) : rgpot::D2CpmdConfig{};
+      [](PotHolder<rgpot::D2CpmdPot> *self, double s6, double alpha,
+         double vdweps, std::optional<std::string> functional, int symmetry) {
+        rgpot::D2CpmdConfig cfg = functional
+                                      ? rgpot::d2_cpmd_config_for(*functional)
+                                      : rgpot::D2CpmdConfig{};
         if (!functional) {
           cfg.s6 = s6;
         }
@@ -936,8 +1007,10 @@ NB_MODULE(_core, m) {
         new (self) PotHolder<rgpot::D2CpmdPot>(
             [cfg] { return std::make_unique<rgpot::D2CpmdPot>(cfg); });
       },
-      nb::arg("s6") = rgpot::D2CpmdConfig{}.s6, nb::arg("alpha") = rgpot::D2CpmdConfig{}.alpha,
-      nb::arg("vdweps") = rgpot::D2CpmdConfig{}.vdweps, nb::arg("functional") = nb::none(),
+      nb::arg("s6") = rgpot::D2CpmdConfig{}.s6,
+      nb::arg("alpha") = rgpot::D2CpmdConfig{}.alpha,
+      nb::arg("vdweps") = rgpot::D2CpmdConfig{}.vdweps,
+      nb::arg("functional") = nb::none(),
       nb::arg("symmetry") = rgpot::D2CpmdConfig{}.symmetry,
       "OpenCPMD's built-in empirical D2 (EMPIRICAL CORRECTION, ALL DFT-D2) "
       "with its tables, damping, truncation and minimum image, in eV, to "
@@ -957,8 +1030,7 @@ NB_MODULE(_core, m) {
   rgpot::pybind::bind_calls(d2cpmd_cls);
 
 #ifdef RGPOT_HAS_EAM_TABLE
-  auto eam_table =
-      nb::class_<PotHolder<rgpot::EAMTablePot>>(m, "EAMTablePot");
+  auto eam_table = nb::class_<PotHolder<rgpot::EAMTablePot>>(m, "EAMTablePot");
   eam_table.def(
       "__init__",
       [](PotHolder<rgpot::EAMTablePot> *self, const std::string &file,
@@ -1217,10 +1289,15 @@ NB_MODULE(_core, m) {
       "radius (d2, d2cpmd, d3, d4) counts 0, and a sum of only those is 0.");
   sum.def(
       "components",
-      [](PotHolder<rgpot::SumPot> &self) { return sum_components(self.slot()); },
+      [](PotHolder<rgpot::SumPot> &self) {
+        return sum_components(self.slot());
+      },
       "Per-term record of this thread's last call: name, weight, enabled, "
       "evaluated, energy (eV, before the weight), forces (N, 3), variance and "
       "stress (3, 3, or None).");
+  sum.def("config", [](const PotHolder<rgpot::SumPot> &self) {
+    return tail_correction_config(self.primary());
+  });
   rgpot::pybind::bind_calls(sum);
 
 #ifdef RGPOT_HAS_EXPR
@@ -1244,10 +1321,13 @@ NB_MODULE(_core, m) {
       nb::arg("expression"), nb::arg("terms"),
       "expression is a Lepton string; terms maps names to 'lj'/'morse'/"
       "'d3'/'d4' or a dict with kind plus that kind's fields: u0, "
-      "cutoff, psi, switch_width (lj); De, a, re, cutoff, switch_width "
-      "(morse); the D3/D4 fields.");
+      "cutoff, psi, switch_width, tail_correction (lj); De, a, re, "
+      "cutoff, switch_width (morse); the D3/D4 fields.");
   expr.def_prop_ro("expression", [](const PotHolder<rgpot::ExprPot> &self) {
     return self.primary().expression();
+  });
+  expr.def("config", [](const PotHolder<rgpot::ExprPot> &self) {
+    return tail_correction_config(self.primary());
   });
   expr.def_prop_ro(
       "cutoff",
@@ -1554,8 +1634,8 @@ NB_MODULE(_core, m) {
                    make_cfg(u0, cutoff, psi, engine_path))
             .release();
       },
-      nb::rv_policy::take_ownership,
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::rv_policy::take_ownership, nb::arg("u0") = 1.0,
+      nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
       nb::arg("engine_path") = "",
       "Shifted 12-6 Lennard-Jones. The constructor dlopens an engine "
       "plugin, which stays the backend. engine_path empty searches "
@@ -1584,8 +1664,8 @@ NB_MODULE(_core, m) {
                    make_cfg(u0, cutoff, psi, engine_path))
             .release();
       },
-      nb::rv_policy::take_ownership,
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::rv_policy::take_ownership, nb::arg("u0") = 1.0,
+      nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
       nb::arg("engine_path") = "",
       "Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once. "
       "An empty engine_path evaluates in process. A path is a library "
@@ -1598,8 +1678,8 @@ NB_MODULE(_core, m) {
                    make_cfg(u0, cutoff, psi, engine_path))
             .release();
       },
-      nb::rv_policy::take_ownership,
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
+      nb::rv_policy::take_ownership, nb::arg("u0") = 1.0,
+      nb::arg("cutoff") = 8.0, nb::arg("psi") = 1.0,
       nb::arg("engine_path") = "",
       "Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once. "
       "An empty engine_path evaluates in process. A path is a library "

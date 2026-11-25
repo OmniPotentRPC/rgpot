@@ -185,8 +185,8 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// The molecular-dynamics session, including its optional
 /// neighbour-exchange callbacks, is a C++ session vtable on librgpot.
 /// Those symbols are not exports of librgpot_core, so this C minor
-/// stays 10. `kCxxSoversion` stays 9: the session vtable is not a
-/// covered potential type, and `kCxxLayoutRevision` stays 2.
+/// stays 10. The session vtable is not a covered potential type, so it
+/// moved neither `kCxxSoversion` nor `kCxxLayoutRevision`.
 /// No exported C struct of that header changed layout. The neighbour query
 /// is `RGPOT_NLIST_ABI` 4.
 /// The C API is exported from librgpot, so it has no shared library of
@@ -218,7 +218,10 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// It also stamps `nlist::Builder` and `nlist::Walk`. Each holds only a
 /// pointer to its state, so a change to that state is not a layout change.
 /// It also adds a process-unique generation id to `Neighbours`.
-inline constexpr std::uint32_t kCxxSoversion = 9;
+/// 10 records `LJConfig` gaining `tail_correction` after `switch_width`.
+/// `LJConfig` grows from 32 to 40 bytes, and `LJPot`, which holds one,
+/// grows with it.
+inline constexpr std::uint32_t kCxxSoversion = 10;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -231,7 +234,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0xae154cf52b093341ull},
+    {"linux-x86_64-libstdc++-lp64", 0x25f913f0ff9851b1ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -356,6 +359,7 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(LJConfig, cutoff));
   f.add(offsetof(LJConfig, psi));
   f.add(offsetof(LJConfig, switch_width));
+  f.add(offsetof(LJConfig, tail_correction));
   f.type<LJClusterConfig>();
   f.add(offsetof(LJClusterConfig, u0));
   f.add(offsetof(LJClusterConfig, cutoff));

@@ -19,7 +19,6 @@
 #include <vector>
 // clang-format on
 
-#include "rgpot/PairEval.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/nlist/PairSum.hpp"
@@ -87,6 +86,20 @@ double d2zbldr2(const ZblPairCoeffs &p, double r) {
 
   return p.zze * (sum_pp + 2.0 * sum_p * r_inv + 2.0 * sum * r_inv * r_inv) *
          r_inv;
+}
+
+inline void zbl_pair(const ZblPairCoeffs &coeff, double rInner,
+                     double rInnerSq, double r2, double &energy_pair,
+                     double &fscale) {
+  const double r = std::sqrt(r2);
+  energy_pair = e_zbl(coeff, r) + coeff.sw5;
+  double dEdr = dzbldr(coeff, r);
+  if (r2 > rInnerSq) {
+    const double t = r - rInner;
+    energy_pair += t * t * t * (coeff.sw3 + coeff.sw4 * t);
+    dEdr += t * t * (coeff.sw1 + coeff.sw2 * t);
+  }
+  fscale = -dEdr / r;
 }
 
 } // namespace
@@ -170,8 +183,9 @@ std::shared_ptr<const ZblTables> ZBLPot::tablesFor(const int *atomicNrs,
  * @class ZBLPot
  * @details
  *
- * Every pair within ``cut_global`` contributes. Periodicity is off, so
- * the walk does not fold a separation into the cell. The pair term runs
+ * Every pair within ``cut_global`` contributes. When a cell is given
+ * (non-null and not all zero), pairs fold through the shared neighbour
+ * layer; a null or zero cell uses free boundaries. The pair term runs
  * during the shared cell walk. A stream copies no pair index. A stored
  * list keeps candidates out to the cutoff plus one fifth of the cutoff.
  */
@@ -213,7 +227,30 @@ void ZBLPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atom
         static_cast<int>(std::distance(tables->z.begin(), it));
   }
 
-  const double *box_use = freeBoxOrCell(in.box);
+  static constexpr double free_box[9] = {1e6, 0.0, 0.0, 0.0, 1e6,
+                                         0.0, 0.0, 0.0, 1e6};
+  bool has_cell = false;
+  if (in.box != nullptr) {
+    for (int k = 0; k < 9; ++k) {
+      if (in.box[k] != 0.0) {
+        has_cell = true;
+        break;
+      }
+    }
+  }
+  if (has_cell) {
+    const bool sheared =
+        in.box[1] != 0.0 || in.box[2] != 0.0 || in.box[3] != 0.0 ||
+        in.box[5] != 0.0 || in.box[6] != 0.0 || in.box[7] != 0.0;
+    const bool diag_ok =
+        in.box[0] > 0.0 && in.box[4] > 0.0 && in.box[8] > 0.0 &&
+        std::isfinite(in.box[0]) && std::isfinite(in.box[4]) &&
+        std::isfinite(in.box[8]);
+    if (!sheared && !diag_ok) {
+      throw std::invalid_argument("periodic ZBL needs a real cell");
+    }
+  }
+  const double *box_use = has_cell ? in.box : free_box;
   // Auto stores below two million atoms. An explicit stream keeps the
   // pruned stencil in the shared cache.
   nlist::Mode mode = mode_;
@@ -221,9 +258,11 @@ void ZBLPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atom
     mode = nlist::Mode::Stored;
   }
   const double skin = mode == nlist::Mode::Stream ? 0.0 : neighbourSkin(cut_global);
-  const std::array<bool, 3> open{{false, false, false}};
+  const std::array<bool, 3> periodic =
+      has_cell ? std::array<bool, 3>{{true, true, true}}
+               : std::array<bool, 3>{{false, false, false}};
   nlist::updateCells(neighbours_, R, static_cast<std::size_t>(N), box_use, cut_global, skin,
-                     nlist::Image::Round, mode, open);
+                     nlist::Image::Round, mode, periodic);
   const double rInner = cut_inner;
   const double rInnerSq = cut_inner_sq;
   const int *types = typeIdx.data();
@@ -233,16 +272,7 @@ void ZBLPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atom
                   double &fscale) {
     const auto ti = static_cast<std::size_t>(types[i]);
     const auto tj = static_cast<std::size_t>(types[j]);
-    const ZblPairCoeffs &coeff = coeffs[ti * nTypes + tj];
-    const double r = std::sqrt(r2);
-    energy_pair = e_zbl(coeff, r) + coeff.sw5;
-    double dEdr = dzbldr(coeff, r);
-    if (r2 > rInnerSq) {
-      const double t = r - rInner;
-      energy_pair += t * t * t * (coeff.sw3 + coeff.sw4 * t);
-      dEdr += t * t * (coeff.sw1 + coeff.sw2 * t);
-    }
-    fscale = -dEdr / r;
+    zbl_pair(coeffs[ti * nTypes + tj], rInner, rInnerSq, r2, energy_pair, fscale);
   };
   double energy = 0.0;
   nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), teamThreshold(kTeamMinAtoms),
@@ -250,6 +280,42 @@ void ZBLPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atom
                   atoms);
   *U = energy;
   publishCauchyStress(out, strain, volume);
+}
+
+void ZBLPot::forceStage(const HalfList &list, const double *, double *forces,
+                        StageTally *tally) const {
+  if (cut_global <= 0.0 || list.nAtoms == 0 || list.nRows == 0) {
+    return;
+  }
+  const auto tables = tablesFor(list.atmnrs, static_cast<long>(list.nAtoms));
+  const std::size_t nTypes = tables->z.size();
+  const ZblPairCoeffs *coeffs = tables->pairs.data();
+  std::vector<int> typeIdx(list.nAtoms);
+  for (std::size_t k = 0; k < list.nAtoms; ++k) {
+    const auto it =
+        std::lower_bound(tables->z.begin(), tables->z.end(), list.atmnrs[k]);
+    typeIdx[k] = static_cast<int>(std::distance(tables->z.begin(), it));
+  }
+  const int *types = typeIdx.data();
+  const double rInner = cut_inner;
+  const double rInnerSq = cut_inner_sq;
+  const double cutoff2 = cut_global * cut_global;
+  staged::withTally(tally, [&](auto tallied) {
+    staged::forEachPair(
+        list, [&](int i, int j, double dx, double dy, double dz, double r2,
+                  bool both) {
+          if (!(r2 > 0.0) || r2 > cutoff2) {
+            return;
+          }
+          const auto ti = static_cast<std::size_t>(types[i]);
+          const auto tj = static_cast<std::size_t>(types[j]);
+          double pair_e = 0.0;
+          double fscale = 0.0;
+          zbl_pair(coeffs[ti * nTypes + tj], rInner, rInnerSq, r2, pair_e, fscale);
+          staged::addPair(tallied, forces, tally, i, j, both, pair_e, fscale,
+                          dx, dy, dz);
+        });
+  });
 }
 
 } // namespace rgpot

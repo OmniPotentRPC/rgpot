@@ -5,15 +5,15 @@
 * LAMMPS
 
 =pair_style rgpot= is a LAMMPS plugin that evaluates an rgpot potential and
-returns the energy, the forces and the global virial, and for LJ, Morse,
+returns the energy, the forces and the global virial, and for LJ, Morse, ZBL,
 SuttonChen and EAMTable the per-atom energy and virial.
 On several MPI ranks, a potential with a finite range and the staged evaluation
 of =rgpot/Staged.hpp= is evaluated by domain: each rank works on its own atoms,
 on the LAMMPS neighbour list.
 Other potentials see the whole periodic box on rank 0.
 It works under =fix nve=, =fix npt= and =fix box/relax= like a native style.
-=compute pe/atom= and =compute stress/atom= work with LJ, Morse, SuttonChen and
-EAMTable.
+=compute pe/atom= and =compute stress/atom= work with LJ, Morse, ZBL, SuttonChen
+and EAMTable.
 It can use Lennard-Jones through its own coefficients, a library that exports
 =rgpot_engine_force=, or any potential in :doc:`../reference/potential_names`.
 
@@ -172,13 +172,13 @@ between the ranks, and takes the forces in a second pass.
 The domain path runs every rgpot potential that has these two stages the same
 way (see the C++ interface under per-atom energy below).
 
-| Name                    | Range                                  | Densities per atom |
-|-------------------------+----------------------------------------+--------------------|
-| =LJ=, =u0 psi=, =Morse= | cutoff, pairwise, half list            |                  0 |
-| =SuttonChen=            | cutoff, if positive, half list         |                  1 |
-| =EAMTable=              | cutoff of the table, half list         |                  1 |
-| =SWSi1985=              | twice the cutoff, full list            |                  0 |
-| =TersoffSi=             | twice the silicon outer cutoff, full   |                  0 |
+| Name                           | Range                                  | Densities per atom |
+|--------------------------------+----------------------------------------+--------------------|
+| =LJ=, =u0 psi=, =Morse=, =ZBL= | cutoff, pairwise, half list            |                  0 |
+| =SuttonChen=                   | cutoff, if positive, half list         |                  1 |
+| =EAMTable=                     | cutoff of the table, half list         |                  1 |
+| =SWSi1985=                     | twice the cutoff, full list            |                  0 |
+| =TersoffSi=                    | twice the silicon outer cutoff, full   |                  0 |
 
 =init_one= returns =Locality::ghostReach()=.
 For a pair potential and a density potential that reach is one cutoff, and the
@@ -235,8 +235,8 @@ another order.
 - the run has more than one rank;
 - the potential is built by name or with =u0 psi=, not an engine;
 - it declares a finite range;
-- it has the density and force stages (=LJ=, =u0 psi=, =Morse=, =SuttonChen=,
-  =EAMTable=, =SWSi1985= and =TersoffSi= do);
+- it has the density and force stages (=LJ=, =u0 psi=, =Morse=, =ZBL=,
+  =SuttonChen=, =EAMTable=, =SWSi1985= and =TersoffSi= do);
 - the virial is not =virial fd=, which strains the whole box.
 
 =mode gather= always gathers.
@@ -352,11 +352,11 @@ The engine form, EMT and the other potentials without a stress take this path.
 =compute pe/atom=, =compute stress/atom= and =compute centroid/stress/atom= work
 with the potentials that split their energy and virial over the atoms:
 
-| Name                    | Per-atom energy                                           |
-|-------------------------+-----------------------------------------------------------|
-| =LJ=, =u0 psi=, =Morse= | half of each pair term                                    |
-| =SuttonChen=            | \(-\epsilon c \sqrt{\rho_i}\) plus half of each pair term |
-| =EAMTable=              | \(F_a(\rho_i)\) plus half of each \(\phi_{ab}\)           |
+| Name                           | Per-atom energy                                           |
+|--------------------------------+-----------------------------------------------------------|
+| =LJ=, =u0 psi=, =Morse=, =ZBL= | half of each pair term                                    |
+| =SuttonChen=                   | \(-\epsilon c \sqrt{\rho_i}\) plus half of each pair term |
+| =EAMTable=                     | \(F_a(\rho_i)\) plus half of each \(\phi_{ab}\)           |
 
 The per-atom virial of every pair, with the force on atom \(i\) equal to
 \(f\,\mathbf{d}\) for \(\mathbf{d} = \mathbf{r}_i - \mathbf{r}_j\), is
@@ -390,8 +390,8 @@ The concept =rgpot::PerAtomPotential= in =rgpot/PerAtom.hpp= tells whether a
 potential type has it.
 
 The range is the non-virtual member =Locality locality() const noexcept= of
-=LJPot=, =MorsePot=, =SuttonChenPot=, =EAMTablePot=, =StillingerWeberSi= and
-=TersoffSiC=, in =rgpot/Locality.hpp=.
+=LJPot=, =MorsePot=, =ZBLPot=, =SuttonChenPot=, =EAMTablePot=,
+=StillingerWeberSi= and =TersoffSiC=, in =rgpot/Locality.hpp=.
 =Locality::cutoff= is the range of a site energy in the potential's length unit,
 0 when there is none, and =Locality::pairwise= is set when every energy term is
 a function of one pair distance.
