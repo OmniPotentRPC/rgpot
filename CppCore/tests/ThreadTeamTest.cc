@@ -580,6 +580,7 @@ TEST_CASE("a call below its threshold takes one slice", "[threads][slices]") {
         std::min<int>(8, static_cast<int>(rgpot::kTeamMinAtoms)));
   CHECK(rgpot::teamSize(100, 100) == 8);
   CHECK(rgpot::teamSize(5, 0) == 5);
+  CHECK(rgpot::teamSize(2, 0) == 2);
   CHECK(rgpot::teamSize(100, 100, team) == 8);
 #else
   CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms) == 1);
@@ -587,6 +588,15 @@ TEST_CASE("a call below its threshold takes one slice", "[threads][slices]") {
   CHECK(rgpot::teamSize(100, 100, team) == 1);
 #endif
   CHECK(rgpot::teamSize(99, 100, team) == 1);
+  // A threshold of zero admits a call with no atoms or one atom, and it
+  // still takes one slice.
+  CHECK(rgpot::teamSize(0, 0) == 1);
+  CHECK(rgpot::teamSize(1, 0) == 1);
+  {
+    const rgpot::TeamThreshold any(0);
+    CHECK(rgpot::teamSize(0, rgpot::teamThreshold(100), team) == 1);
+    CHECK(rgpot::teamSize(1, rgpot::teamThreshold(100), team) == 1);
+  }
   setThreads("3");
   CHECK(rgpot::teamSize(199, 100, team) == 1);
 #if defined(_OPENMP)

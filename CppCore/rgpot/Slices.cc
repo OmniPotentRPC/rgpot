@@ -43,7 +43,9 @@ bool teamThresholdActive() noexcept { return t_threshold_set; }
 
 int teamSize(std::size_t n, std::size_t from, TeamFrom team) {
   const int nt = threadsRequested();
-  if (n < from || nt <= 1 || (!t_threshold_set && n < team.of(nt))) {
+  // A threshold of zero admits every n, and a call with no atoms or one
+  // atom still runs on one slice, never on none.
+  if (n < 2 || n < from || nt <= 1 || (!t_threshold_set && n < team.of(nt))) {
     return 1;
   }
   if (static_cast<std::size_t>(nt) > n) {
