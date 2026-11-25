@@ -222,6 +222,13 @@ def test_suite_covers_every_advertised_potential_type() -> None:
         assert mb._cutoff == 0.0
         assert mb._kernel_periodic is False
         covered_types.add(type(mb.potential).__name__)
+    # XTBDlopen needs an engine library; python/tests/test_xtb_scc_rescue.py
+    # evaluates it. Its molecule is open, so no cell is tiled.
+    engine = os.environ.get("RGPOT_XTB_ENGINE", "")
+    if engine:
+        xtb = RgpotCalculator(rgpot.XTBDlopen(engine_path=engine))
+        assert xtb._cutoff == 0.0
+    covered_types.add("XTBDlopen")
     assert factory_types == covered_types
 
 

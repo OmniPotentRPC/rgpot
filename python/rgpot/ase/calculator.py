@@ -95,7 +95,8 @@ _FACTORY_DEFAULTS = {
 # through ``cutoff``, ``native_cutoff`` or ``config()["cutoff"]``. A cell
 # narrower than twice the value is tiled for a minimum-image kernel. A 0.0
 # entry is a statement that no wider cell is needed: the kernel sums every
-# image itself (D2Pot, D4Pot), is not periodic (D3Pot, MullerBrownPot), has no
+# image itself (D2Pot, D4Pot), is not periodic (D3Pot, MullerBrownPot,
+# XTBDlopen, whose xtb molecule is open in all three directions), has no
 # cutoff (WaterHPot), is defined by a single minimum image (D2CpmdPot), or
 # hands the geometry to an engine that owns the neighbour search (IPIPot,
 # LammpsPot). A
@@ -120,6 +121,7 @@ _KERNEL_CUTOFF_ANGSTROM = {
     "D2CpmdPot": 0.0,
     "D3Pot": 0.0,
     "MullerBrownPot": 0.0,
+    "XTBDlopen": 0.0,
     "D4Pot": 0.0,
     "IPIPot": 0.0,
     "LammpsPot": 0.0,
