@@ -165,7 +165,7 @@ jobs:
           python3 -m venv "${RUNNER_TEMP}/stub"
           . "${RUNNER_TEMP}/stub/bin/activate"
           python -m pip install -U pip
-          whl=$(ls wheelhouse/*cp312*.whl | head -1)
+          whl=$(find wheelhouse -maxdepth 1 -name '*cp312*.whl' | sort | head -1)
           test -n "${whl}"
           python -m pip install 'nanobind==3.1.0' numpy "${whl}"
           python -m nanobind.stubgen -m rgpot._core -o /tmp/rgpot._core.pyi

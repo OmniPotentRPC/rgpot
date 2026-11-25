@@ -6,9 +6,50 @@
  */
 #include "rgpot/nlist/rgpot_nlist.h"
 
-#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+
+typedef void *(*thread_fn)(void *);
+
+#ifdef _WIN32
+#include <windows.h>
+
+typedef struct {
+  HANDLE handle;
+  thread_fn fn;
+  void *arg;
+} thread_t;
+
+static DWORD WINAPI thread_entry(LPVOID self) {
+  thread_t *t = self;
+  t->fn(t->arg);
+  return 0;
+}
+
+static int thread_start(thread_t *t, thread_fn fn, void *arg) {
+  t->fn = fn;
+  t->arg = arg;
+  t->handle = CreateThread(NULL, 0, thread_entry, t, 0, NULL);
+  return t->handle == NULL;
+}
+
+static void thread_join(thread_t *t) {
+  WaitForSingleObject(t->handle, INFINITE);
+  CloseHandle(t->handle);
+}
+#else
+#include <pthread.h>
+
+typedef struct {
+  pthread_t handle;
+} thread_t;
+
+static int thread_start(thread_t *t, thread_fn fn, void *arg) {
+  return pthread_create(&t->handle, NULL, fn, arg);
+}
+
+static void thread_join(thread_t *t) { pthread_join(t->handle, NULL); }
+#endif
 
 static void *read_accessors(void *arg) {
   int *bad = arg;
@@ -54,15 +95,15 @@ static void *build_one(void *arg) {
 
 int main(void) {
   int bad[4] = {0, 0, 0, 0};
-  pthread_t threads[4];
+  thread_t threads[4];
   for (int i = 0; i < 4; ++i) {
-    if (pthread_create(&threads[i], NULL, read_accessors, &bad[i]) != 0) {
-      fprintf(stderr, "pthread_create failed\n");
+    if (thread_start(&threads[i], read_accessors, &bad[i]) != 0) {
+      fprintf(stderr, "thread start failed\n");
       return 1;
     }
   }
   for (int i = 0; i < 4; ++i) {
-    pthread_join(threads[i], NULL);
+    thread_join(&threads[i]);
     if (bad[i]) {
       fprintf(stderr, "const accessor changed under threads\n");
       return 1;
@@ -75,14 +116,14 @@ int main(void) {
       {pair_a, 2, box, 2.0, 1, 0},
       {pair_b, 3, box, 2.0, 3, 0},
   };
-  pthread_t builders[2];
+  thread_t builders[2];
   for (int i = 0; i < 2; ++i) {
-    if (pthread_create(&builders[i], NULL, build_one, &jobs[i]) != 0) {
+    if (thread_start(&builders[i], build_one, &jobs[i]) != 0) {
       return 1;
     }
   }
   for (int i = 0; i < 2; ++i) {
-    pthread_join(builders[i], NULL);
+    thread_join(&builders[i]);
     if (jobs[i].bad) {
       fprintf(stderr, "concurrent build disagreed with the serial count\n");
       return 1;

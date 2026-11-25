@@ -20,11 +20,9 @@
 #include <cstdint>
 // clang-format on
 
-#if defined(_WIN32)
-#define RGPOT_PAIR_API __declspec(dllexport)
-#else
-#define RGPOT_PAIR_API __attribute__((visibility("default")))
-#endif
+#include "rgpot/rgpot_api.h"
+
+#define RGPOT_PAIR_API RGPOT_API
 
 extern "C" {
 

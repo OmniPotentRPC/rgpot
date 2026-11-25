@@ -9,8 +9,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from abi_symbols import pe_exports  # noqa: E402
+
 
 def exported_symbols(library: Path) -> set[str]:
+    with library.open("rb") as handle:
+        if handle.read(2) == b"MZ":
+            return set(pe_exports(library))
     if sys.platform == "darwin":
         command = ["nm", "-gU", str(library)]
         prefix = "_"

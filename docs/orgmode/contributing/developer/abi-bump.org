@@ -48,8 +48,17 @@ Then:
 In a Meson build with =with_rust_core= on Linux, the test =abi_core_symbols=
 fails when the Rust archive no longer exports a baseline name.
 =scripts/abi_baseline.txt= and =scripts/abi_baseline_fast.txt= are the same
-check for the neighbour-list and fast-list exports of =librgpot= (Meson test
-=abi_symbols=).
+check for the
+=RGPOT_API= and fast-list exports of =librgpot= (Meson test =abi_symbols=).
+Every public C function of =librgpot= is declared with
+=RGPOT_API= from =rgpot/rgpot_api.h=, and a new one is appended to
+=scripts/abi_baseline.txt=.
+On Linux and macOS =RGPOT_API= means default visibility.
+On Windows it is =dllexport= while =librgpot= is built
+(=RGPOT_BUILDING=), =dllimport= for a caller of the DLL, and empty for a caller of the static library (=RGPOT_STATIC=,
+set by the Meson dependency and the pkg-config file).
+=scripts/abi_symbols.py= checks the baselines against the ELF, Mach-O or archive
+symbol table, or the export table of a DLL.
 The neighbour-list C ABI has its own number, =RGPOT_NLIST_ABI= in
 =CppCore/rgpot/nlist/rgpot_nlist.h=.
 

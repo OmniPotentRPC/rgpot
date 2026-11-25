@@ -96,6 +96,7 @@ test(
     find_program('python3', 'python'),
     args: [
         files('../test_plugin_lifetime.py')[0],
+    ] + exe_wrapper_args + [
         plugin_lifetime.full_path(),
         plugin_fixture.full_path(),
     ],

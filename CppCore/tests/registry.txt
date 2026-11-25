@@ -44,6 +44,8 @@
 #   rust_core     meson-only features (meson options of the same name)
 #   so_exports    rgpot_so_exports is registered: Linux, the Rust core, the
 #                 full library, and not a static fast-list object
+#   fast_beside   a static MinGW build keeps the fast pair list archive
+#                 beside librgpot
 #   probe         an optional program or module the build looks for: the
 #                 test may be absent even when the rest of the gate holds
 #
@@ -91,6 +93,7 @@
 @metatomic CMake has no option for libtorch, metatomic or UMA.
 @skala CMake has no option for Skala.
 @rust_core CMake builds rgpot-core only for RGPOT_WITH_MDI, and none of these tests uses that build.
+@fast_nlist CMake does not build the fast pair list.
 
 # Header-only and role-independent tests.
 AotiPublicationTest | tests | custom |
@@ -102,7 +105,7 @@ MdProjectedLangevinTest | tests | unit md_projected_langevin_test MdProjectedLan
 CuH2test | tests fortran | unit cuh2_test CuH2PotTest.cc |
 RPCTest | tests rpc | unit test_rpc CapnpAdapterTest.cc |
 RPCClientTest | tests client | unit test_rpc_client BridgeStressTest.cc |
-test_list_parity | tests python | custom |
+test_list_parity | tests python | custom timeout=120 |
 test_list_parity_selftest | tests python | py CppCore/tests/check_test_registry.py selftest |
 check_test_registry_selftest | tests python | py CppCore/tests/test_check_test_registry.py |
 
@@ -120,13 +123,14 @@ ExprLeptonSymbols | tests core posix | custom suite=expr |
 CxxLayoutTest | tests core | custom workdir=. |
 CxxLayoutVirtualCounts | tests core python | py CppCore/tests/check_virtual_counts.py |
 CxxSoversion | tests core python | custom |
-abi_symbols | core posix | custom |
+abi_symbols | core | custom |
+abi_symbols_fast | core fast_beside | custom | @fast_nlist
 abi_symbols_fixture_shared | tests core posix | custom |
 abi_symbols_fixture_archive_a | tests core posix | custom |
 abi_symbols_fixture_archive_lib | tests core posix | custom |
 abi_symbols_fixture_shared_hidden | tests core posix | custom should_fail |
 abi_symbols_fixture_archive_missing | tests core posix | custom should_fail |
-capi_threads | core posix | custom timeout=60 |
+capi_threads | core | custom timeout=60 |
 capi_threads_tsan | tests core posix tsan | custom timeout=120 |
 
 # Potentials and the neighbour machinery.
@@ -407,18 +411,18 @@ rgpot_so_exports | so_exports | custom | @rust_core
 EAMTableCAbiTest | tests rust_core | custom | @rust_core
 EAMTableHandleTest | tests core rust_core | unit eam_table_handle_test EAMTableHandleTest.cc | @rust_core
 EngineTableTest | tests core rpc posix | custom workdir=. | @engine_plugins
-lj_eval | core posix | custom timeout=60 | @engines
-lj_engine | core posix | custom timeout=60 | @engines
+lj_eval | core | custom timeout=60 | @engines
+lj_engine | core | custom timeout=60 | @engines
 mdi_concrete_potentials | tests core posix python mdi pymdi | custom timeout=120 |
-coupled_well_engine | core posix | custom timeout=60 | @engines
-coupled_well_engine_exports | core posix | custom timeout=30 | @engines
+coupled_well_engine | core | custom timeout=60 | @engines
+coupled_well_engine_exports | core | custom timeout=30 | @engines
 potlibc_engine | core posix probe | custom timeout=120 | @engines
 potlibc_engine_exports | core posix probe | custom timeout=30 | @engines
-external_potentials | core posix | custom timeout=120 | @engines
+external_potentials | core | custom timeout=120 | @engines
 external_engine_refcount | tests core linux | custom timeout=120 |
 external_constructor_reentry | tests core linux | custom timeout=10 |
 external_close_unlocked | tests core linux | custom timeout=30 |
-engine_abi_stamps | core posix | custom | @engines
+engine_abi_stamps | core | custom | @engines
 engine_abi_stamp_rust_loader | core posix rustc probe | custom timeout=900 | @engines
 potlibc_engine_rust_loader | core posix rustc probe | custom timeout=900 | @engines
 ipi_driver_ase | core posix ipi probe | custom timeout=600 | @engines

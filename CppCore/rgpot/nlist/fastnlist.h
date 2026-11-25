@@ -9,6 +9,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "rgpot/rgpot_api.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -31,26 +33,26 @@ extern "C" {
 /// untouched; `out_ij` may be NULL for that probe. Success returns 0. A
 /// hard failure returns a negative code; `rgpot_fast_last_error` then
 /// points at a thread-local message. Both 0 and 1 clear that message.
-int rgpot_fast_pairs(const double *xyz, size_t n, const double *cell9,
-                     const int32_t *periodic, double list_cutoff,
-                     int32_t *out_ij, size_t cap, size_t *out_count);
+RGPOT_API int rgpot_fast_pairs(const double *xyz, size_t n, const double *cell9,
+                               const int32_t *periodic, double list_cutoff,
+                               int32_t *out_ij, size_t cap, size_t *out_count);
 
 /// Minimum-image wrap of `n` packed difference vectors. `cell9` is the
 /// same layout as `rgpot_fast_pairs`. Every axis folds. A singular cell
 /// returns -1. On a sheared cell this is the fractional wrap, which is the
 /// minimum image only for vectors shorter than half the smallest face
 /// width.
-int rgpot_fast_wrap(const double *cell9, const double *diffs, size_t n,
-                    double *out);
+RGPOT_API int rgpot_fast_wrap(const double *cell9, const double *diffs, size_t n,
+                              double *out);
 
 /// Same wrap, but an axis with `periodic[k] == 0` is left unchanged.
 /// The cell must be orthorhombic. Periodic widths must be positive.
-int rgpot_fast_wrap_axes(const double *cell9, const int32_t *periodic,
-                         const double *diffs, size_t n, double *out);
+RGPOT_API int rgpot_fast_wrap_axes(const double *cell9, const int32_t *periodic,
+                                   const double *diffs, size_t n, double *out);
 
 /// Thread-local message for the most recent negative return on this
 /// thread, or NULL when the last call returned 0 or 1. Do not free it.
-const char *rgpot_fast_last_error(void);
+RGPOT_API const char *rgpot_fast_last_error(void);
 
 #ifdef __cplusplus
 }

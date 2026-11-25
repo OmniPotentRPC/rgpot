@@ -384,7 +384,7 @@ jobs:
           export AR=lib
           # flang COFF objects request FortranRuntime.dynamic.lib via DEFAULTLIB.
           # Ensure MSVC link.exe can resolve it from the pixi env.
-          _libdir="$(pixi run -e devbld bash -lc 'printf %s "$CONDA_PREFIX/Library/lib"')"
+          _libdir="$(pixi run -e devbld printenv CONDA_PREFIX)/Library/lib"
           if [ -d "$_libdir" ]; then
             export LIB="${_libdir}${LIB:+;${LIB}}"
           fi
@@ -401,6 +401,78 @@ jobs:
             -Dpure_lib=false
           pixi run -e devbld meson compile -C bbdir
           pixi run -e devbld meson test -C bbdir --print-errorlogs
+
+  # --- Stage 2a': MinGW-w64 (GNU toolchain) Windows builds ---
+  # Cross build from Ubuntu with the tests under wine, then a native MSYS2
+  # MINGW64 build. Both use mingw-w64's C runtime, whose fma is not fused,
+  # and GNU ld for librgpot.dll.
+  build_mingw_wine:
+    name: meson / ubuntu-24.04 mingw-w64 cross [tests under wine]
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install mingw-w64, wine and the Rust windows-gnu target
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++-mingw-w64-x86-64-posix gfortran-mingw-w64-x86-64-posix \
+            wine wine64 cmake ninja-build pipx
+          pipx install 'meson>=1.5.2,<2'
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          rustup target add x86_64-pc-windows-gnu
+      - name: Build and test (tests under wine)
+        run: |
+          ci/gha/mingw_wine_build.sh build-mingw \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_xtensor=false \
+            -Dwith_eigen=true \
+            -Dwith_rpc=false \
+            -Dwith_fortran_pots=enabled \
+            -Dwith_fast_nlist=enabled \
+            -Dwith_cache=false \
+            -Dpure_lib=false
+
+  # Not in the CI gate until it has passed on a hosted runner.
+  build_msys2_mingw64:
+    name: meson / windows-latest MSYS2 MINGW64
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      # The image sets core.autocrlf=true; the .sh tests need LF endings.
+      - name: Keep LF line endings
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: MINGW64
+          update: true
+          install: git
+          pacboy: >-
+            gcc:p gcc-fortran:p meson:p ninja:p cmake:p pkgconf:p
+            catch:p eigen3:p rust:p python:p
+      - name: Build and test
+        run: |
+          set -euo pipefail
+          meson setup bbdir \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_xtensor=false \
+            -Dwith_eigen=true \
+            -Dwith_rpc=false \
+            -Dwith_fortran_pots=enabled \
+            -Dwith_cache=false \
+            -Dpure_lib=false
+          meson compile -C bbdir
+          meson test -C bbdir --print-errorlogs
 
   # --- Stage 2a'': offline source-build rehearsal (conda-forge parity) ---
   # Builds the `git archive` tree (tracked files, no .git, no checked-out wrap
@@ -1101,15 +1173,15 @@ jobs:
           git clone --depth 1 --filter=blob:none --sparse --branch stable_22Jul2025 \
             https://github.com/lammps/lammps.git "$GITHUB_WORKSPACE/lammps-src"
           git -C "$GITHUB_WORKSPACE/lammps-src" sparse-checkout set src cmake
-          pixi run -e engines bash -lc '
-            export CC="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc"
-            export CXX="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
-            cmake -S "$GITHUB_WORKSPACE/lammps-src/cmake" \
-              -B "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
-              -DBUILD_MPI=OFF -DBUILD_SHARED_LIBS=ON -DPKG_PLUGIN=ON \
-              -DCMAKE_BUILD_TYPE=Release -DBUILD_TOOLS=OFF
-            cmake --build "$GITHUB_WORKSPACE/lammps-src/build-lmp" -j "$(nproc)" --target lmp
-          '
+          prefix="$(pixi run -e engines printenv CONDA_PREFIX)"
+          pixi run -e engines cmake -S "$GITHUB_WORKSPACE/lammps-src/cmake" \
+            -B "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
+            -DCMAKE_C_COMPILER="$prefix/bin/x86_64-conda-linux-gnu-cc" \
+            -DCMAKE_CXX_COMPILER="$prefix/bin/x86_64-conda-linux-gnu-c++" \
+            -DBUILD_MPI=OFF -DBUILD_SHARED_LIBS=ON -DPKG_PLUGIN=ON \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TOOLS=OFF
+          pixi run -e engines cmake --build "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
+            -j "$(nproc)" --target lmp
       - name: Build rgpot and run the engine tests
         run: |
           set -euo pipefail
@@ -1150,6 +1222,7 @@ jobs:
       - ci-tools
       - build_and_test
       - build_windows_meson
+      - build_mingw_wine
       - nodownload_rehearsal
       - build_fast_nlist_off
       - cxx_layout_ubsan
@@ -1192,6 +1265,7 @@ jobs:
             "ci-tools:${{ needs.ci-tools.result }}" \
             "build_and_test:${{ needs.build_and_test.result }}" \
             "build_windows_meson:${{ needs.build_windows_meson.result }}" \
+            "build_mingw_wine:${{ needs.build_mingw_wine.result }}" \
             "nodownload_rehearsal:${{ needs.nodownload_rehearsal.result }}" \
             "build_fast_nlist_off:${{ needs.build_fast_nlist_off.result }}" \
             "cxx_layout_ubsan:${{ needs.cxx_layout_ubsan.result }}" \

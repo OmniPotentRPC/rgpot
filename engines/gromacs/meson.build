@@ -5,10 +5,9 @@
 gmx_dropin = shared_library(
     'rgpot_gromacs',
     files('rgpot_gromacs.cpp'),
-    dependencies: [pot_spec_dep, dl_dep],
-    link_with: rgpot,
+    dependencies: [pot_spec_dep, dl_dep, engines_rgpot_cxx],
     include_directories: [engines_inc, rgpot_inc],
-    cpp_args: _args + [
+    cpp_args: rgpot_consumer_args + [
         '-DRGPOT_GROMACS_VERSION="@0@"'.format(meson.project_version()),
     ],
     gnu_symbol_visibility: 'hidden',
@@ -21,10 +20,10 @@ endif
 gmx_dropin_bench = executable(
     'rgpot-gromacs-bench',
     files('bench_dropin.cpp'),
-    dependencies: [pot_spec_dep],
-    link_with: [rgpot, gmx_dropin],
+    dependencies: [pot_spec_dep, engines_rgpot_cxx],
+    link_with: gmx_dropin,
     include_directories: [engines_inc, rgpot_inc],
-    cpp_args: _args,
+    cpp_args: rgpot_consumer_args,
     install: false,
 )
 gmx_dropin_build_dir = meson.current_build_dir()

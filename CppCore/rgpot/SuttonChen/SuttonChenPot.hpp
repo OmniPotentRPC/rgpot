@@ -41,11 +41,9 @@
 #include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
-#if defined(_WIN32)
-#define RGPOT_SC_API __declspec(dllexport)
-#else
-#define RGPOT_SC_API __attribute__((visibility("default")))
-#endif
+#include "rgpot/rgpot_api.h"
+
+#define RGPOT_SC_API RGPOT_API
 
 extern "C" {
 

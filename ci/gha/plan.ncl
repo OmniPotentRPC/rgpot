@@ -81,6 +81,18 @@ let P = S.pins in
       role = "single MSVC meson leg (no potctl artifact, fortran off)",
     },
     {
+      id = "build_mingw_wine",
+      runs_on = P.ubuntu_mingw,
+      needs = ["prepare"],
+      role = "mingw-w64 cross build, tests under wine",
+    },
+    {
+      id = "build_msys2_mingw64",
+      runs_on = P.windows_msys2,
+      needs = ["prepare"],
+      role = "native MSYS2 MINGW64 build (not in the gate yet)",
+    },
+    {
       id = "nodownload_rehearsal",
       runs_on = P.ubuntu,
       needs = ["prepare"],
@@ -194,6 +206,7 @@ let P = S.pins in
         "ci-tools",
         "build_and_test",
         "build_windows_meson",
+        "build_mingw_wine",
         "nodownload_rehearsal",
         "build_fast_nlist_off",
         "cxx_layout_ubsan",

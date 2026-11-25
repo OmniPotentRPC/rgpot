@@ -62,6 +62,13 @@ else()
   endif()
 endif()
 
+# rgpot/rgpot_api.h exports the C ABI from a DLL when RGPOT_BUILDING is
+# set. Every target here defines it, as the meson build does for the
+# library archives and the tests.
+if(WIN32)
+  add_compile_definitions(RGPOT_BUILDING)
+endif()
+
 option(RGPOT_WITH_EAM_TABLE
        "EAM and Finnis-Sinclair potentials read from LAMMPS tables" OFF)
 option(RGPOT_WITH_ORCA
@@ -511,6 +518,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     set(RGPOT_CONFIG_FIND_OPENMP ON)
   endif()
   target_compile_definitions(rgpot PRIVATE RGPOT_MODEL_BUILD)
+  if(WIN32 AND _rgpot_type STREQUAL "STATIC_LIBRARY")
+    target_compile_definitions(rgpot INTERFACE
+      $<INSTALL_INTERFACE:RGPOT_STATIC>)
+  endif()
   if(RGPOT_WITH_HIGHWAY)
     target_link_libraries(rgpot PRIVATE hwy)
     target_compile_definitions(rgpot PRIVATE RGPOT_WITH_HIGHWAY)

@@ -466,7 +466,7 @@ def _c_statements(text: str) -> list[str]:
 
 def normalize_c(decl: str) -> str:
     decl = strip_c_comments(decl)
-    decl = re.sub(r"\bRGPOT_\w+_API\b", " ", decl)
+    decl = re.sub(r"\bRGPOT_(?:\w+_)?API\b", " ", decl)
     decl = re.sub(r"\b(struct|enum)\s+(?=\w+\s*[\*\w])", "", decl)
     decl = " ".join(decl.replace(";", " ").split())
     decl = re.sub(r"\s*([\*\(\),\[\]&])\s*", r"\1", decl)

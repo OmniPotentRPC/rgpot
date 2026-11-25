@@ -164,6 +164,16 @@ if get_option('with_cache') and not get_option('with_rpc_client_only')
     _rgpot_srcs += files('rgpot/PotentialCache.cc')
 endif
 
+# RGPOT_API (rgpot/rgpot_api.h) exports the C ABI from code built with
+# RGPOT_BUILDING: the library archives and the tests that link them.
+# A consumer gets these arguments without it, and imports from the DLL.
+rgpot_api_args = []
+if get_option('default_library') == 'static'
+    rgpot_api_args += ['-DRGPOT_STATIC']
+endif
+rgpot_consumer_args = _args + rgpot_api_args
+_args += ['-DRGPOT_BUILDING']
+
 # ELF soversion of librgpot. The single assignment is kCxxSoversion in
 # rgpot/abi/CxxLayout.hpp, next to the C++ layout stamp. A layout edit
 # that bumps the constant moves every build system's SONAME with it.
@@ -645,7 +655,7 @@ if not get_option('with_rpc_client_only')
         rgpot_deps += [ptlrpc_hdr_dep]
         _rpc_whole += [ptlrpc]
     endif
-    _rgpot_link_args = []
+    _rgpot_link_args = fastnlist_export_args
     if has_fortran
         _rgpot_link_args += _fortran_hide_args
     endif
@@ -683,6 +693,7 @@ if not get_option('with_rpc_client_only')
         version: meson.project_version(),
         soversion: rgpot_cxx_soversion,
         install: not meson.is_subproject(),
+        kwargs: fastnlist_umbrella_kwargs,
     )
 
     # 72 rgpot_* exports when the rust archive is linked normally, 126 when
@@ -891,7 +902,7 @@ if not get_option('with_rpc_client_only')
         link_with: rgpot,
         dependencies: _rgpot_consumer_deps + _rgpot_openmp_consumer,
         include_directories: _incdirs,
-        compile_args: _args,
+        compile_args: rgpot_consumer_args,
     )
     # The same list built from the dependencies taken before OpenMP joined
     # _deps, so nothing has to be told apart by name afterwards. A static
@@ -907,7 +918,7 @@ if not get_option('with_rpc_client_only')
         link_with: rgpot,
         dependencies: _rgpot_consumer_deps_no_openmp,
         include_directories: _incdirs,
-        compile_args: _args,
+        compile_args: rgpot_consumer_args,
     )
 
     # The Fortran kernels must stay invisible outside librgpot: an
@@ -2432,6 +2443,17 @@ if get_option('with_tests')
         if 'thread' in _sanitize
             _nlist_rust_env += {'TSAN_OPTIONS': _tsan_options}
         endif
+        if rust_target != ''
+            _nlist_rust_env += {
+                'RGPOT_RUST_TARGET': rust_target,
+                'CXX': rust_linker,
+            }
+        endif
+        if exe_wrapper_args.length() > 0
+            _nlist_rust_env += {
+                'RGPOT_EXE_WRAPPER': exe_wrapper_args[0].full_path(),
+            }
+        endif
         test(
             'nlist_rust',
             find_program('sh'),
@@ -2508,7 +2530,7 @@ if get_option('with_tests')
                 ),
                 args: [
                     'd6f5cbaa04ac49e6f02ee64c10eb83d44d951756556924dcc17966453dcd8b11',
-                ] + _isa_exes,
+                ] + exe_wrapper_args + ['--'] + _isa_exes,
             )
         endif
         test(
@@ -2551,6 +2573,7 @@ if get_option('with_tests')
             'rgpot_layout_fixture',
             sources: ['tests/layout_fixture.cc'],
             include_directories: _incdirs + ['.'],
+            dependencies: has_fmt ? [fmt_dep] : [],
             cpp_args: test_args,
             link_with: rgpot,
             gnu_symbol_visibility: 'hidden',
@@ -2565,7 +2588,7 @@ if get_option('with_tests')
             executable(
                 'cxx_layout_test',
                 sources: ['tests/CxxLayoutTest.cc'],
-                dependencies: [catch2_dep, _dl_dep],
+                dependencies: [catch2_dep, _dl_dep] + (has_fmt ? [fmt_dep] : []),
                 include_directories: _incdirs + ['.'],
                 cpp_args: test_args,
                 link_with: rgpot,
@@ -2840,6 +2863,7 @@ if get_option('with_tests')
                 'print_cxx_layout_stamp',
                 sources: ['tests/print_cxx_layout_stamp.cc'],
                 include_directories: _incdirs + ['.'],
+                dependencies: has_fmt ? [fmt_dep] : [],
                 cpp_args: _args,
                 link_language: 'cpp',
             )
@@ -2875,7 +2899,7 @@ if get_option('with_tests')
             test(
                 'CxxSoversion',
                 python3_prog,
-                args: _soversion_args,
+                args: _soversion_args + ['--exe-wrapper'] + exe_wrapper_args,
                 depends: _soversion_depends,
             )
         endif
@@ -3441,6 +3465,14 @@ if not meson.is_subproject()
             '-DRGPOT_HAS_CPMD_FRONTEND=TRUE',
         ]
     endif
+    if (
+        get_option('default_library') == 'static'
+        or get_option('with_rpc_client_only')
+    )
+        _pc_cflags += ['-DRGPOT_STATIC']
+    endif
+
+    _pc_libs += fastnlist_pc_libs
 
     pkg = import('pkgconfig')
     pkg.generate(
