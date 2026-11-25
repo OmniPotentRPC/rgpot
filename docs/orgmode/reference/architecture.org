@@ -103,10 +103,11 @@ copper set.
   potential.
 - =MOPACPot= (=PotType::MOPAC=, =CppCore/rgpot/MOPACPot/=) :: Frontend that
   loads the split =mopacc= engine at run time.
-- =ORCAPot= (=PotType::ORCA=, =CppCore/rgpot/ORCAPot/=, =-Dwith_orca=true=) ::
-  Frontend that runs the =orca= executable as a child process for each energy
-  and gradient and reads the =.engrad= file.
-  See =docs/orgmode/howto/orca.org=.
+- =ORCALegacyPot=
+  (=PotType::ORCA_LEGACY=, =CppCore/rgpot/ORCAPot/=, =-Dwith_orca_legacy=true=)
+  :: Deprecated frontend that runs the =orca= executable as a child process for
+  each energy and gradient and reads the =.engrad= file.
+  See =docs/orgmode/howto/orca-legacy.org=.
 - =LammpsPot=, =GromacsPot=, =OpenMMPot= :: Shifted Lennard-Jones in
   =CppCore/rgpot/ExternalPot/=, as =PotType::Lammps=, =PotType::Gromacs= and =PotType::OpenMM=; =GromacsPot= and =OpenMMPot= store nm and kJ/mol
   parameters.

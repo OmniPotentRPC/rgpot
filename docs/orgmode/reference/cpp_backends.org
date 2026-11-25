@@ -57,7 +57,7 @@ name.
 their engine libraries carry the C ABIs in
 [[file:engine_abi.org][Engine C ABI]].
 =IPIPot= opens a socket and waits for a driver.
-=ORCAPot= starts the =orca= program for every force and needs no library.
+=ORCALegacyPot= starts the =orca= program for every force and needs no library.
 
 None of the dlopen constructors throw when the library is missing.
 They record the reason, =available()= returns false, and the first force throws
@@ -438,10 +438,10 @@ int main() {
 }
 #+end_src
 
-** ORCA
+** ORCA child-process runner (deprecated)
 
-=ORCAPot= runs the =orca= executable as a child process and reads the energy and
-gradient from the =.engrad= file it writes.
+=ORCALegacyPot= runs the =orca= executable as a child process and reads the
+energy and gradient from the =.engrad= file it writes.
 ORCA is not linked or loaded.
 It is described in Neese, WIREs Computational Molecular Science 2, 73-78 (2012),
 [[https://doi.org/10.1002/wcms.81][doi:10.1002/wcms.81]], and in Neese,
@@ -451,13 +451,13 @@ Version 5 is Neese, WIREs Computational Molecular Science 12, e1606 (2022),
 [[https://doi.org/10.1002/wcms.1606][doi:10.1002/wcms.1606]], and version 6 is
 Neese, WIREs Computational Molecular Science 15, e70019 (2025),
 [[https://doi.org/10.1002/wcms.70019][doi:10.1002/wcms.70019]].
-The how-to is [[file:../howto/orca.org][ORCA single points]].
+The how-to is [[file:../howto/orca-legacy.org][ORCA through a child process]].
 The tests use a fake =orca= script that returns a Hartree energy of -1.25 and a
 gradient of 0.01 Hartree/bohr times the component number, and require the host
 energy and forces to equal those times the =units.hpp= factors.
 They do not pin an ORCA energy.
 
-*** =rgpot::ORCAConfig=
+*** =rgpot::ORCALegacyConfig=
 
 - Inputs :: =executable= (a path, or a bare name looked up on PATH; empty looks
   up =orca=), =method= (an ORCA method keyword, required), =basis= (a basis set
@@ -469,18 +469,18 @@ They do not pin an ORCA energy.
   =keep_files= (default false) and =timeout_s=.
   A =maxcore_mb= of 0 leaves =%maxcore= out so ORCA's own default applies, 4096
   MB in ORCA 6.1, and a negative one is refused.
-  The default =timeout_s= is =ORCAConfig::kDefaultTimeout=, 3600 seconds, and 0
-  waits with no limit.
+  The default =timeout_s= is =ORCALegacyConfig::kDefaultTimeout=, 3600 seconds,
+  and 0 waits with no limit.
 - Units ::
   =maxcore_mb= in MB per process; =charge= in elementary charges; =timeout_s= in
   seconds; the other fields have no unit.
-- Outputs :: a plain struct read by =rgpot::ORCAPot=.
+- Outputs :: a plain struct read by =rgpot::ORCALegacyPot=.
   =method=, =basis= and =keywords= become the =!= line, =nprocs= above 1 becomes
   =%pal nprocs=, a positive =maxcore_mb= becomes =%maxcore=, and =charge= and
   =multiplicity= go on the =* xyz= line.
   =restart= turns the =%moinp= and =MORead= reuse of the previous =.gbw= on and
-  off; off, every call starts from ORCA's own guess, and on, =rgpot::ORCAPot=
-  does not use a result cache it is given.
+  off; off, every call starts from ORCA's own guess, and on,
+  =rgpot::ORCALegacyPot= does not use a result cache it is given.
   The input always carries =%scf ConvForced true end= (section 2.6.1 of the ORCA
   6.1 manual).
   =timeout_s= is the time to wait for the =orca= process.
@@ -488,19 +488,20 @@ They do not pin an ORCA energy.
   Past the limit that group is sent SIGTERM and, if any process in the group is
   still alive two seconds later, SIGKILL even if the leader has exited, and the
   child is reaped.
-- Errors :: =rgpot::ORCAPot= throws =std::invalid_argument= for an empty method.
+- Errors :: =rgpot::ORCALegacyPot= throws =std::invalid_argument= for an empty
+  method.
   It does so too for a =multiplicity= or =nprocs= below 1, a negative
   =maxcore_mb=, a =timeout_s= that is negative or not finite, and a =method=,
   =basis= or =keywords= that holds a line break.
 
-*** =rgpot::ORCAPot=
+*** =rgpot::ORCALegacyPot=
 
 #+attr_rgpot: signature
 #+begin_src cpp
-explicit ORCAPot(const ORCAConfig &config);
+explicit ORCALegacyPot(const ORCALegacyConfig &config);
 #+end_src
 
-- Inputs :: =config=, an =rgpot::ORCAConfig=.
+- Inputs :: =config=, an =rgpot::ORCALegacyConfig=.
 - Units :: positions in Angstrom, energy in eV, forces in eV/Angstrom.
   ORCA takes Angstrom in a =* xyz= block, so the positions are written as they
   are.
@@ -542,8 +543,8 @@ explicit ORCAPot(const ORCAConfig &config);
   after =reset()=, or with other atomic numbers starts from ORCA's own guess.
   With =restart= on, a result cache passed to =setCache= is not used.
 - Errors :: the constructor throws =std::invalid_argument= in the cases of
-  =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or
-  read, or the directory cannot be made.
+  =rgpot::ORCALegacyConfig=, and =rgpot::ORCAError= when no executable is found
+  or read, or the directory cannot be made.
   A force call throws =std::invalid_argument= for a box with a periodic image
   closer than the atom itself, a singular box, a cell too skewed to check
   (including one whose bound on the lattice coefficients is not finite or out of
@@ -561,7 +562,7 @@ explicit ORCAPot(const ORCAConfig &config);
   The message holds the last 2048 bytes of the standard error and of the output
   file.
 
-*** =rgpot::ORCAPot::reset=
+*** =rgpot::ORCALegacyPot::reset=
 
 #+attr_rgpot: signature
 #+begin_src cpp
@@ -574,19 +575,19 @@ void reset();
   from ORCA's own guess.
 - Errors :: none.
 
-*** =rgpot::ORCAPot::config=
+*** =rgpot::ORCALegacyPot::config=
 
 #+attr_rgpot: signature
 #+begin_src cpp
-[[nodiscard]] const ORCAConfig &config() const noexcept;
+[[nodiscard]] const ORCALegacyConfig &config() const noexcept;
 #+end_src
 
 - Inputs :: none.
-- Units :: as =rgpot::ORCAConfig=.
+- Units :: as =rgpot::ORCALegacyConfig=.
 - Outputs :: the config the instance was built with.
 - Errors :: none.
 
-*** =rgpot::ORCAPot::executablePath=
+*** =rgpot::ORCALegacyPot::executablePath=
 
 #+attr_rgpot: signature
 #+begin_src cpp
@@ -601,7 +602,7 @@ void reset();
   Symlinks are not resolved here; see =resolvedExecutablePath=.
 - Errors :: none.
 
-*** =rgpot::ORCAPot::resolvedExecutablePath=
+*** =rgpot::ORCALegacyPot::resolvedExecutablePath=
 
 #+attr_rgpot: signature
 #+begin_src cpp
@@ -622,7 +623,7 @@ void reset();
   run.
 - Errors :: none.
 
-*** =rgpot::ORCAPot::runDirectory=
+*** =rgpot::ORCALegacyPot::runDirectory=
 
 #+attr_rgpot: signature
 #+begin_src cpp
@@ -636,7 +637,7 @@ void reset();
   Two instances never share one.
 - Errors :: none.
 
-*** =rgpot::ORCAPot::reusedWavefunction=
+*** =rgpot::ORCALegacyPot::reusedWavefunction=
 
 #+attr_rgpot: signature
 #+begin_src cpp
@@ -650,15 +651,15 @@ void reset();
   off.
 - Errors :: none.
 
-*** =rgpot::ORCAPot::probeAvailable=
+*** =rgpot::ORCALegacyPot::probeAvailable=
 
 #+attr_rgpot: signature
 #+begin_src cpp
 [[nodiscard]] static bool probeAvailable(const std::string &executable = {});
 #+end_src
 
-- Inputs :: =executable=, as in =rgpot::ORCAConfig= (empty looks up =orca= on
-  PATH).
+- Inputs :: =executable=, as in =rgpot::ORCALegacyConfig= (empty looks up =orca=
+  on PATH).
 - Units :: none.
 - Outputs :: true when that name resolves to an executable regular file
   (including through a symlink).
@@ -2262,7 +2263,7 @@ A member whose description differs between classes has one entry per class.
   Instances that differ in these values get different result-cache keys.
 - Errors :: none.
 
-*** =rgpot::ORCAPot::paramsKey=
+*** =rgpot::ORCALegacyPot::paramsKey=
 
 #+attr_rgpot: signature
 #+begin_src cpp

@@ -43,7 +43,7 @@ _rt_atoms = {
     'cache': get_option('with_cache'),
     'ipi': has_ipi and not get_option('with_rpc_client_only'),
     'eam_table': has_eam_table,
-    'orca': has_orca,
+    'orca_legacy': has_orca_legacy,
     'eigen': has_eigen,
     'xtensor': has_xtensor,
     'python': find_program('python3', required: false).found(),
@@ -504,9 +504,9 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/MEAM')  # 'meam': Baskes MEAM and Lee-Baskes 2NN MEAM
     rgpotentials += [meam]
 
-    if has_orca
-        subdir('rgpot/ORCAPot')  # 'orca_pot': child-process ORCA frontend
-        rgpotentials += [orca_pot]
+    if has_orca_legacy
+        subdir('rgpot/ORCAPot')  # 'orca_legacy_pot': deprecated child-process runner
+        rgpotentials += [orca_legacy_pot]
     endif
 
     subdir('rgpot/EMT')  # 'asap_emt'
@@ -3547,8 +3547,8 @@ if not meson.is_subproject()
         if has_eam_table
             _pc_cflags += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
         endif
-        if has_orca
-            _pc_cflags += ['-DRGPOT_HAS_ORCA=TRUE']
+        if has_orca_legacy
+            _pc_cflags += ['-DRGPOT_HAS_ORCA_LEGACY=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']

@@ -71,13 +71,22 @@ endif()
 
 option(RGPOT_WITH_EAM_TABLE
        "EAM and Finnis-Sinclair potentials read from LAMMPS tables" OFF)
-option(RGPOT_WITH_ORCA
-       "ORCAPot: ORCA energy and gradient through the orca executable run as a child process (POSIX)"
+option(RGPOT_WITH_ORCA_LEGACY
+       "ORCALegacyPot (deprecated): ORCA through the orca executable run as a child process (POSIX)"
        OFF)
-if(RGPOT_WITH_ORCA AND WIN32)
+if(DEFINED RGPOT_WITH_ORCA)
+  message(
+    DEPRECATION
+      "RGPOT_WITH_ORCA is deprecated; use RGPOT_WITH_ORCA_LEGACY. ORCAPot loads liborcac and needs no option"
+  )
+  set(RGPOT_WITH_ORCA_LEGACY
+      ${RGPOT_WITH_ORCA}
+      CACHE BOOL "" FORCE)
+endif()
+if(RGPOT_WITH_ORCA_LEGACY AND WIN32)
   message(
     FATAL_ERROR
-      "RGPOT_WITH_ORCA runs ORCA through fork and exec and cannot be enabled on Windows"
+      "RGPOT_WITH_ORCA_LEGACY runs ORCA through fork and exec and cannot be enabled on Windows"
   )
 endif()
 option(RGPOT_WITH_CBE "CH5 2008 surface of the linked potlibc library" OFF)
@@ -366,9 +375,9 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
          CppCore/rgpot/EAMTable/EAMTableImages.cc)
   endif()
 
-  if(RGPOT_WITH_ORCA)
+  if(RGPOT_WITH_ORCA_LEGACY)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/ORCAPot/ORCAFiles.cc
-         CppCore/rgpot/ORCAPot/ORCAPot.cc)
+         CppCore/rgpot/ORCAPot/ORCALegacyPot.cc)
   endif()
 
   if(RGPOT_BUILD_TESTS)
@@ -616,8 +625,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_EAM_TABLE)
   endif()
 
-  if(RGPOT_WITH_ORCA)
-    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_ORCA)
+  if(RGPOT_WITH_ORCA_LEGACY)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_ORCA_LEGACY)
   endif()
 
   if(RGPOT_WITH_RPC)

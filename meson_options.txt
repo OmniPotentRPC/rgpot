@@ -112,10 +112,17 @@ option(
     description: 'Fortran-backed potentials (CuH2; grows with the eOn migration). Independent of the RPC options.',
 )
 option(
+    'with_orca_legacy',
+    type: 'boolean',
+    value: false,
+    description: 'ORCALegacyPot (deprecated): ORCA energy and gradient through the orca executable run as a child process (POSIX). The executable is found at run time. ORCAPot loads liborcac and needs no option.',
+)
+option(
     'with_orca',
     type: 'boolean',
     value: false,
-    description: 'ORCAPot: ORCA energy and gradient through the orca executable run as a child process (POSIX). The executable is found at run time.',
+    deprecated: 'with_orca_legacy',
+    description: 'Deprecated name of with_orca_legacy.',
 )
 option(
     'with_cbe',

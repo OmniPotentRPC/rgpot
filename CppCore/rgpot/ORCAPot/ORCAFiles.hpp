@@ -6,7 +6,7 @@
  * @file ORCAFiles.hpp
  * @brief ORCA input text and .engrad parsing, with no process handling.
  *
- * Pure text functions so the input ORCAPot hands ORCA, and the reading of
+ * Pure text functions so the input ORCALegacyPot hands ORCA, and the reading of
  * what ORCA wrote back, can be checked without an ORCA installation.
  */
 
