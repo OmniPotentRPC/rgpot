@@ -262,7 +262,7 @@ check-header-drift = { cmd = "bash tools/check_header_drift.sh", description = "
 header-drift = { cmd = "bash scripts/check_header_drift.sh", description = "Fail when rgpot-core/include/rgpot.h differs from the header cbindgen regenerates" }
 doccheck = { cmd = "python docs/doccheck.py all", description = "Check reference entries, facts, code blocks, public item coverage and generated files in the docs against the source (add --build-dir DIR to run the examples)" }
 doc-inventory = { cmd = "python docs/inventory.py --missing", description = "Print the documentation coverage of every public item and list the gaps" }
-gen-llms = { cmd = "python scripts/gen_llms.py", description = "Regenerate llms.txt and llms-full.txt from the documentation sources" }
+gen-llms = { cmd = "python scripts/gen_llms.py", description = "Rebuild llms.txt and llms-full.txt from the documentation sources" }
 verify-dois = { cmd = "python scripts/verify_dois.py --online", description = "Resolve every DOI the docs cite at doi.org, Crossref and DataCite (needs the network); use scripts/verify_dois.py --update to refresh docs/dois.json" }
 towncrier-draft = { cmd = "uvx towncrier build --draft", description = "Preview release notes" }
 news-fragments-check = { cmd = "python scripts/check_news_fragments.py", description = "Fail when a news fragment carries a copyright line, a comment block or a leading list marker (add --fix to rewrite)" }

@@ -25434,7 +25434,7 @@ potctl release sync VERSION
 - Units :: none.
 - Outputs :: writes the version into `[workspace.package]` of the root
   `Cargo.toml`, the one hand-written copy.
-  `cog` then regenerates the other copies from it.
+  `cog` then rewrites the other copies from it.
 - Errors :: a string that is not a semantic version is refused, as is a
   `Cargo.toml` with no version under `[workspace.package]`.
 
