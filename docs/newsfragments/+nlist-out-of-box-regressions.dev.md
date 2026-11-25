@@ -1,1 +1,0 @@
-The neighbour-layer tests now cover orthorhombic periodic coordinates outside the primary box, verifying both Stream and Stored neighbour modes against the direct minimum-image reference on the boundary pair and randomized multi-wrap trials.

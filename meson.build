@@ -2,7 +2,7 @@ project(
     'rgpot',
     'cpp',
     # [[[cog import rgpot_version as v; cog.outl(f"    version: '{v.VERSION}',")]]]
-    version: '3.7.0',
+    version: '3.8.0',
     # [[[end]]]
     # array.slice(), used for registry command arguments.
     meson_version: '>=1.10',

@@ -1,1 +1,0 @@
-The in-process and RPC ASE calculators are discoverable as `rgpot` and `rgpot_rpc` through ASE's calculator registry, and installed wheels expose lazy ASE 3.29 calculator plugins without breaking ASE 3.23–3.28.

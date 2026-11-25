@@ -1,1 +1,0 @@
-Install `llvm` during free-threaded CPython bootstrap in `py-tsan.yml` and ensure `llvm-symbolizer` is on `PATH` so ThreadSanitizer symbolizes frames and applies upstream and Python 3.13 suppressions during parallel pytest runs.

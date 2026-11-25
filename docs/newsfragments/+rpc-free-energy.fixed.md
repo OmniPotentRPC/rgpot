@@ -1,1 +1,0 @@
-The `RgpotRpcCalculator` ASE calculator now lists `free_energy` in `implemented_properties`, so `get_potential_energy(force_consistent=True)` returns the energy instead of raising `PropertyNotImplementedError`.

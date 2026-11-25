@@ -1,1 +1,0 @@
-`librgpot` exports `rgpot_fast_pairs`, `rgpot_fast_wrap`, `rgpot_fast_wrap_axes` and `rgpot_fast_last_error` whenever the fast pair list is built. Before, a shared `librgpot` exported them only when the Fortran water-H kernel was built too, because nothing else in the library called them.
