@@ -50,6 +50,11 @@ def test_citation_cff_matches_the_release():
     assert f'date-released: "{v.release_date()}"\n' in text
 
 
+def test_codemeta_uses_the_2_0_context():
+    data = json.loads((ROOT / "codemeta.json").read_text(encoding="utf-8"))
+    assert data["@context"] == "https://doi.org/10.5063/schema/codemeta-2.0"
+
+
 def test_real_json_copies_are_in_step():
     assert v.stale_json() == []
 
