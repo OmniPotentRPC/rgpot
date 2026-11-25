@@ -235,6 +235,8 @@ __all__ = [
     "WaterHPot",
     "evaluate_lj",
     "neighbor_list",
+    "XTBDlopen",
+    "SccNotConverged",
     "evaluate_metatomic",
     "evaluate_metatomic_dlopen",
     "default_metatomic_engine_path",
