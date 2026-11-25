@@ -15,9 +15,18 @@ and, if any process in the group is still running, SIGKILL even if the leader
 has exited. The child is reaped and the call
 throws `ORCAError`.
 
+The input carries `%scf ConvForced true end`, and a call whose output reports
+an unconverged SCF throws `ORCAError`. `paramsKey` hashes the executable path
+with symlinks resolved and its modification time, with the charge and
+multiplicity, so cached results do not cross ORCA installations or spin
+states. Each call starts from ORCA's own guess unless `ORCAConfig::restart` is
+set. A `maxcore_mb` of 0 leaves `%maxcore` out. A box is padding only: the
+atoms must span at most half the cell width along each cell vector, which the
+cube `rgpot.ase` builds for a cluster satisfies.
+
 | File | Role |
 | --- | --- |
-| `ORCAPot.hpp`, `ORCAPot.cc` | the `Potential`, the child process and the restart |
+| `ORCAPot.hpp`, `ORCAPot.cc` | the `Potential`, the child process and the optional restart |
 | `ORCAFiles.hpp`, `ORCAFiles.cc` | input text and `.engrad` parsing, no processes |
 
 Units: ORCA works in Angstrom for `* xyz`, Hartree and Hartree/Bohr in the

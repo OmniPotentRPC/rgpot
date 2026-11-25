@@ -42,20 +42,28 @@ meson test -C bbdir ORCAPotTest
 =ORCAConfig= holds every choice.
 There is no default method or basis, and no ORCA path is built in.
 
-| Field          | Meaning                                                           |
-|----------------+-------------------------------------------------------------------|
-| =executable=   | A path to =orca=, or a bare name; empty looks up =orca= on =PATH= |
-| =method=       | The ORCA method keyword; required                                 |
-| =basis=        | The basis set keyword; empty for a composite method               |
-| =keywords=     | Further simple-input keywords, such as =TightSCF D4=              |
-| =charge=       | Total charge, default 0                                           |
-| =multiplicity= | Spin multiplicity 2S + 1, default 1                               |
-| =nprocs=       | Processes for =%pal=, default 1                                   |
-| =maxcore_mb=   | =%maxcore=, MB per process, default 1024 (ORCA's own default)     |
-| =restart=      | Reuse the previous orbitals, default true                         |
+| Field          | Meaning                                                            |
+|----------------+--------------------------------------------------------------------|
+| =executable=   | A path to =orca=, or a bare name; empty looks up =orca= on =PATH=  |
+| =method=       | The ORCA method keyword; required                                  |
+| =basis=        | The basis set keyword; empty for a composite method                |
+| =keywords=     | Further simple-input keywords, such as =TightSCF D4=               |
+| =charge=       | Total charge, default 0                                            |
+| =multiplicity= | Spin multiplicity 2S + 1, default 1                                |
+| =nprocs=       | Processes for =%pal=, default 1                                    |
+| =maxcore_mb=   | =%maxcore=, MB per process, default 1024; 0 leaves it out          |
+| =restart=      | Start from the previous orbitals, default false                    |
 | =scratch_dir=  | Where the working directory is made; empty uses the temp directory |
-| =keep_files=   | Keep the working directory after the instance is destroyed       |
-| =timeout_s=    | Seconds for one orca run; default 3600, and 0 waits with no limit |
+| =keep_files=   | Keep the working directory after the instance is destroyed         |
+| =timeout_s=    | Seconds for one orca run; default 3600, and 0 waits with no limit  |
+
+The default of =maxcore_mb=, 1024 MB, is rgpot's choice and not ORCA's.
+A =maxcore_mb= of 0 leaves =%maxcore= out of the input, so ORCA's own default
+applies.
+That default is 4096 MB in ORCA 6.1, per section 2.1.3 of the
+[[https://www.faccts.de/docs/orca/6.1/manual/contents/essentialelements/input.html][input chapter of the ORCA 6.1 manual]];
+earlier versions used less.
+A negative =maxcore_mb= throws =std::invalid_argument= from the constructor.
 
 The executable is the =executable= field when it is set, and otherwise the first
 =orca= in the directories of =PATH=.
@@ -112,12 +120,57 @@ The input of that call is:
 ! PBE def2-SVP TightSCF EnGrad
 %maxcore 2000
 %pal nprocs 4 end
+%scf ConvForced true end
 * xyz 0 1
 O  0.000000000000 0.000000000000 0.117300000000
 H  0.000000000000 0.757200000000 -0.469200000000
 H  0.000000000000 -0.757200000000 -0.469200000000
 *
 #+end_example
+
+** SCF convergence
+
+The input carries =%scf ConvForced true end=.
+Section 2.6.1 of the
+[[https://www.faccts.de/docs/orca/6.1/manual/contents/essentialelements/scf.html][SCF chapter of the ORCA 6.1 manual]]
+describes =ConvForced= as the switch that breaks the run when the SCF misses its
+convergence criteria.
+Without it, a gradient job that ends near SCF convergence goes on to the
+gradient.
+=ORCAPot= also reads the output of every call.
+A call whose output holds =SCF NOT CONVERGED= or =SCF not fully converged=, with
+case ignored, throws =ORCAError=, even when ORCA exited with status 0 and wrote
+an =.engrad=, so the gradient of an unconverged SCF is never returned.
+The check runs before the exit status is looked at, so the message names the SCF
+when =ConvForced= stopped the run.
+There is no switch to accept the gradient of an unconverged SCF.
+
+** Result-cache key
+
+=paramsKey()= feeds the key of the rgpot result cache.
+It hashes =method=, =basis=, =keywords=, =charge=, =multiplicity=, =restart=,
+the executable path with symlinks resolved, and the modification time of that
+file.
+The constructor reads the path and the time once, so they stay fixed for the
+life of the instance.
+A symlink and its target share cached results.
+Two installations, a binary replaced in place, two charges or two multiplicities
+do not.
+
+** Box
+
+ORCA has no periodic boundary conditions, so a box is only padding around the
+cluster, and the atoms go to ORCA where they are.
+A force call accepts no box, an all-zero box, or a cell in which the atoms span
+at most half the cell width along each cell vector.
+Then every pair of atoms is its own nearest image, and no atom would wrap away
+from the rest of the cluster.
+=RgpotCalculator= in =rgpot.ase= pads a cluster into a cube of at least 100
+Angstrom and at least twice the cluster extent without moving the atoms, and
+that box passes even for a cluster that sits across the origin.
+A box in which the atoms would wrap throws =std::invalid_argument= naming the
+cell vector, the span and the width, as does a singular box or a non-finite
+entry.
 
 ** Units
 
@@ -129,21 +182,21 @@ The variance is 0 and no stress is written.
 
 ** Restarting from the previous wavefunction
 
-With =restart= on, which is the default, the converged orbitals of one call
-start the next.
+Every call starts from ORCA's own guess unless =restart= is set, so the result
+of a call does not depend on the calls before it.
+With =restart= on, the converged orbitals of one call start the next.
 After a call, ORCA's =rgpot_orca.gbw= is copied to =rgpot_orca_guess.gbw=.
 The next input then carries =%moinp "rgpot_orca_guess.gbw"= and =MORead= on its
 =!= line.
 The copy has a name of its own because ORCA overwrites its own =.gbw=, and an
 input that names the file it is about to write would lose the guess.
 
-The call starts from ORCA's own guess instead when
+Even with =restart= on, the call starts from ORCA's own guess when
 
 - no =.gbw= exists, because ORCA wrote none or the copy was deleted,
 - the atomic numbers differ from those of the call that made the orbitals,
-- the previous call failed,
-- =reset()= was called, or
-- =restart= is false.
+- the previous call failed, or
+- =reset()= was called.
 
 =reusedWavefunction()= tells whether the last successful call read orbitals.
 A restart helps along a path of nearby geometries.
@@ -173,24 +226,25 @@ Extra file descriptors above 2 are closed before =exec=, and inputs and
 An error in the run throws =rgpot::ORCAError=, a =std::runtime_error=.
 That covers a stale =.engrad= or =.gbw= that cannot be removed, a missing
 executable, a process that cannot start, a run past =timeout_s=, a process
-killed by a signal, a non-zero exit status, a missing or malformed =.engrad=, an
-=.engrad= for other atoms, and an energy or gradient that is not finite.
+killed by a signal, an SCF that did not converge, a non-zero exit status, a
+missing or malformed =.engrad=, an =.engrad= for other atoms, and an energy or
+gradient that is not finite.
 The message names the input file and ends with the last 2048 bytes of the
 standard error and of the output file, where ORCA reports an SCF failure or an
 input mistake.
 A failed call also drops the stored orbitals.
 
 Input the caller got wrong throws
-=std::invalid_argument=: an empty method, a line break in a keyword field, a counter below 1, a =timeout_s=
-that is negative or not finite, an atomic number outside 1 to 118, and a charge
-and multiplicity that the electron count cannot hold.
+=std::invalid_argument=: an empty method, a line break in a keyword field, an =nprocs= or =multiplicity= below 1, a negative =maxcore_mb=,
+a =timeout_s= that is negative or not finite, a box in which the atoms would
+wrap, an atomic number outside 1 to 118, and a charge and multiplicity that the
+electron count cannot hold.
 
 ** Limits
 
 - ORCA has no periodic boundary conditions.
-  =caps().periodic= is false, and a force call with a box that has any non-zero
-  entry throws =std::invalid_argument=.
-  Pass no box, or an all-zero box, as for the other non-periodic potentials.
+  =caps().periodic= is false, and a box is taken only as padding, as described
+  under Box.
 - No stress is written.
 - The potential is per instance: =caps().reentrancy= is
   =Reentrancy::PerInstance=.
@@ -205,14 +259,22 @@ and multiplicity that the electron count cannot hold.
 CI has no ORCA.
 =ORCAPotTest= writes a small fake =orca= shell script into a temporary
 directory.
-The script checks the keyword line, =%maxcore=, the coordinates, closed extra
-file descriptors and the =MORead= and =%moinp= lines of the input it is given,
-keeps a copy of each input, writes an =.engrad= of known numbers and a =.gbw=
-that names the call, and can fail, sleep past =timeout_s= with a child that
-ignores SIGTERM (both when the leader stays alive and when the leader exits on
-SIGTERM), write nothing, write NaN, write a short file or kill itself.
-The test then checks the unit conversion, the restart, the fall-back to a fresh
-guess, the error paths (including a stale =.engrad= that cannot be removed),
-symlink executables, comma-decimal locales and the rejection of a periodic box.
+The script checks the keyword line, =%maxcore= or its absence,
+=%scf ConvForced=, the coordinates, closed extra file descriptors and the
+=MORead= and =%moinp= lines of the input it is given, keeps a copy of each
+input, writes an =.engrad= of known numbers and a =.gbw= that names the call,
+and can fail, sleep past =timeout_s= with a child that ignores SIGTERM (both
+when the leader stays alive and when the leader exits on SIGTERM), write
+nothing, write NaN, write a short file or kill itself.
+Four modes print SCF report lines in ORCA's wording; the script writes them, and
+they are not output of an ORCA run.
+The test then checks the unit conversion, the fresh guess by default, the
+restart, the fall-back to a fresh guess, the error paths (including a stale
+=.engrad= that cannot be removed and an unconverged SCF), the cache key across
+paths, modification times, charges and multiplicities, symlink executables,
+comma-decimal locales, the box that =rgpot.ase= builds for a cluster and the
+rejection of a box in which the atoms would wrap.
+=tests/python/test_ase_orca_box.py= runs =RgpotCalculator= over a non-periodic
+stand-in that applies the same box rule, since =ORCAPot= has no Python class.
 One test case runs a real ORCA and is skipped, with the message "orca is not on
 PATH", when =ORCAPot::probeAvailable()= is false.
