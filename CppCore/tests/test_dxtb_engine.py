@@ -395,6 +395,27 @@ def test_hvp_matches_dense_autograd(_name, method, numbers, positions):
         engine.close()
 
 
+@pytest.mark.parametrize("_name,method,numbers,positions", MOLECULES)
+def test_hvp_matches_central_differences_of_forces(_name, method, numbers, positions):
+    engine = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", method)
+    try:
+        positions = np.asarray(positions, dtype=np.float64)
+        direction = np.linspace(-0.7, 0.9, positions.size).reshape(positions.shape)
+        direction /= np.linalg.norm(direction)
+        product = engine.hvp(numbers, positions, direction)
+        step = 1.0e-4
+        _, plus = engine.force(numbers, positions + step * direction)
+        _, minus = engine.force(numbers, positions - step * direction)
+        differenced = -(plus - minus) / (2.0 * step)
+        # The step leaves an O(step**2) truncation error near 1e-7 of the
+        # product; agreement well inside that is all the check can show.
+        error = np.linalg.norm(product - differenced) / np.linalg.norm(product)
+        assert error < 1.0e-5, error
+        np.testing.assert_allclose(product, differenced, rtol=0.0, atol=1.0e-5)
+    finally:
+        engine.close()
+
+
 def test_hessian_products_are_symmetric():
     _, method, numbers, positions = MOLECULES[1]
     positions = np.asarray(positions)
