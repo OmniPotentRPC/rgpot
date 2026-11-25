@@ -17,6 +17,9 @@ it calls them.
 =scripts/abi_baseline_fast.txt= lists them. rustc writes no export directive
 into a static library, so on Windows the DLL exports them through a module
 definition file generated from that list.
+A static MinGW build installs the Rust archive as =librgpot_fastnlist.a= beside
+=librgpot.a=, and =rgpot.pc= names it before the system libraries it needs.
+Other static builds fold it into =librgpot.a=.
 CMake does not build it.
 
 The library does not convert units.
