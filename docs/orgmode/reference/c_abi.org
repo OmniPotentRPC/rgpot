@@ -1103,8 +1103,15 @@ enum rgpot_status_t rgpot_potential_set_hessian_callback(const struct rgpot_pote
 - Inputs :: =pot= a live handle; =callback= a =HessianCallback=, or NULL to
   clear the registered one.
 - Units :: none.
-- Outputs :: the callback is stored on the handle and called with the handle's
+- Outputs :: =callback= is stored on the handle and called with the handle's
   =user_data= by =RGPOT_HESSIAN_ANALYTIC= and =RGPOT_HESSIAN_EXACT=.
+  Replacing or clearing returns only after every call of the previous callback
+  that was already running has returned, and the previous callback is not
+  started again.
+  The caller may therefore release the old callback and its state as soon as
+  this function returns.
+  The callback must not call this function or any Hessian entry point of the
+  same handle, and no thread inside such an entry point may call this function.
 - Errors :: =RGPOT_INVALID_PARAMETER= with
   =rgpot_potential_set_hessian_callback: pot is NULL= for a NULL =pot=.
 
@@ -1125,8 +1132,31 @@ enum rgpot_status_t rgpot_potential_set_ad_hessian_callback(const struct rgpot_p
 - Outputs :: the callback is stored on the handle and called with the handle's
   =user_data= by =RGPOT_HESSIAN_AD=, and by =RGPOT_HESSIAN_EXACT= when no
   analytic Hessian callback is registered.
+  Replacing or clearing waits for in-flight calls of the previous callback to
+  finish, as for =rgpot_potential_set_hessian_callback=.
 - Errors :: =RGPOT_INVALID_PARAMETER= with
   =rgpot_potential_set_ad_hessian_callback: pot is NULL= for a NULL =pot=.
+
+*** =rgpot_potential_set_hessian_byte_budget=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_potential_set_hessian_byte_budget(const struct rgpot_potential_t *pot,
+                                                            const uint64_t *max_bytes);
+#+end_src
+
+- Inputs :: =pot= a live handle; =max_bytes= NULL to clear the budget, or a
+  pointer to the largest matrix, in bytes, that a request may require.
+- Units :: bytes.
+- Outputs :: the budget is stored; the pointer is read once and need not stay
+  alive.
+  There is no default: with no budget a request is refused only when its byte
+  count overflows.
+  A budget of zero refuses every matrix with a positive size.
+  =rgpot_potential_hessian= checks the budget before it reads the geometry or
+  invokes a callback.
+- Errors :: =RGPOT_INVALID_PARAMETER= with
+  =rgpot_potential_set_hessian_byte_budget: pot is NULL= for a NULL =pot=.
 
 *** =rgpot_potential_hessian=
 
@@ -1158,12 +1188,15 @@ enum rgpot_status_t rgpot_potential_hessian(const struct rgpot_potential_t *pot,
 - Errors :: =RGPOT_INVALID_PARAMETER=, with a message naming the problem and
   before any call, for: a NULL =pot=, =input=, =hessian_out= or =scheme_used=; a
   =scheme= outside 2 to 5; a NULL =positions= tensor, or one whose
-  =(3 * n_atoms)^2= doubles exceed =PTRDIFF_MAX= bytes; a refused peer; a
-  =positions=, =atomic_numbers= or =box_matrix= tensor that fails the checks of
-  =rgpot_potential_hvp=;
-  =hessian_out= overlapping the =positions=, =atomic_numbers= or
-  =box_matrix= data; a negative or non-finite =step=; =RGPOT_HESSIAN_ANALYTIC= with no Hessian callback registered, =RGPOT_HESSIAN_AD= with no dual-number Hessian callback registered, or =RGPOT_HESSIAN_EXACT=
-  with neither.
+  =(3 * n_atoms)^2= doubles exceed =PTRDIFF_MAX= bytes; a byte count that
+  exceeds the caller budget installed with
+  =rgpot_potential_set_hessian_byte_budget=; a refused peer; a =positions=, =atomic_numbers=
+  or
+  =box_matrix= tensor that fails the checks of =rgpot_potential_hvp=; =hessian_out=
+  overlapping the =positions=, =atomic_numbers= or =box_matrix= data; a negative
+  or non-finite =step=; =RGPOT_HESSIAN_ANALYTIC= with no Hessian callback
+  registered, =RGPOT_HESSIAN_AD= with no dual-number Hessian callback
+  registered, or =RGPOT_HESSIAN_EXACT= with neither.
   =RGPOT_INVALID_PARAMETER= for a non-finite callback output, a non-finite
   central difference (=central Hessian: non-finite value at element <i>=) or a
   force callback output that fails the checks of =PotentialCallback=.
