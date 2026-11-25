@@ -81,6 +81,8 @@ class Engine:
         max_iterations: int = 300,
         library: str = "",
     ):
+        # __del__ runs even when loading or creation raises.
+        self.handle = None
         self.lib = ctypes.CDLL(path)
         self.lib.rgpot_engine_abi_version.restype = ctypes.c_int
         self.lib.rgpot_engine_abi_version.argtypes = []
