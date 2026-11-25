@@ -41,6 +41,7 @@
 #   metatomic skala
 #   mdi           with_mdi / RGPOT_WITH_MDI
 #   pymdi         mdi is on and python can import mdi, the MDI driver
+#   dxtb          meson-only feature (meson option of the same name)
 #   rust_core     meson-only features (meson options of the same name)
 #   so_exports    rgpot_so_exports is registered: Linux, the Rust core, the
 #                 full library, and not a static fast-list object

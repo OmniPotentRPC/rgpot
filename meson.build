@@ -579,7 +579,9 @@ if has_dxtb
         error('with_dxtb=true requires POSIX process and socket APIs')
     endif
     if not rpc_enabled
-        error('with_dxtb=true needs with_rpc=true (BuiltinParams / Cap\'n Proto)')
+        error(
+            'with_dxtb=true needs with_rpc=true (BuiltinParams / Cap\'n Proto)',
+        )
     endif
     dxtb_python = find_program(get_option('dxtb_python'), required: true)
     _dxtb_probe = run_command(

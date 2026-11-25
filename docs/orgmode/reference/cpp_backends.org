@@ -709,10 +709,10 @@ void getParams(::NWChemParams::Builder out) const;
 
 *** =rgpot::DxtbConfig=
 
-- Inputs :: =method= (=DxtbMethod::GFN1= or =GFN2=; default =GFN2=),
-  =accuracy= (default 1.0), =electronic_temperature= (default 300.0),
-  =max_iterations= (default 250), =charge= (default 0.0), =uhf= (unpaired
-  electrons, default 0) and =python= (an optional Python executable).
+- Inputs :: =method= (=DxtbMethod::GFN1= or =GFN2=; default =GFN2=), =accuracy=
+  (default 1.0), =electronic_temperature= (default 300.0), =max_iterations=
+  (default 250), =charge= (default 0.0), =uhf= (unpaired electrons, default 0)
+  and =python= (an optional Python executable).
 - Units :: =electronic_temperature= is K and =charge= is in elementary charges.
 - Outputs :: the plain configuration used to start one persistent dxtb worker.
 - Errors :: invalid values return =RGPOT_ENGINE_ERR_INVALID= during engine
@@ -728,8 +728,8 @@ explicit DxtbPot(const DxtbConfig &config);
 - Inputs :: one =DxtbConfig=.
 - Units :: positions and directions are Angstrom; energies are eV; forces and
   Hessian-vector products are eV/Angstrom.
-- Outputs :: a non-periodic, per-instance potential whose
-  =caps().analyticHvp= is true.
+- Outputs :: a non-periodic, per-instance potential whose =caps().analyticHvp=
+  is true.
 - Errors :: throws =DxtbError= with the typed engine return code when worker
   startup, protocol, validation or evaluation fails.
 
