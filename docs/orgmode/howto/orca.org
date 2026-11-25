@@ -70,8 +70,16 @@ The executable is the =executable= field when it is set, and otherwise the first
 A bare name in =executable= is looked up the same way, and symlinks to
 executable regular files are accepted.
 ORCA starts its own MPI processes when =nprocs= is above 1, and it must then be
-started by its full path, so =ORCAPot= always runs the absolute path.
-=ORCAPot::executablePath()= reports it.
+started by its full path, so =ORCAPot= always runs an absolute path.
+=ORCAPot::executablePath()= reports the path as named or found on =PATH=.
+The constructor resolves its symlinks, and every call runs that resolved file,
+which =ORCAPot::resolvedExecutablePath()= reports.
+Before and after each run the path is resolved again and the size, modification
+time, device and inode of the file are compared with those the constructor
+read.
+When they differ, as after a symlink is retargeted or the binary is replaced,
+the call throws =ORCAError= without running anything, and a new =ORCAPot= is
+needed to run the new file.
 
 ** Time limit
 
@@ -149,10 +157,13 @@ There is no switch to accept the gradient of an unconverged SCF.
 
 =paramsKey()= feeds the key of the rgpot result cache.
 It hashes =method=, =basis=, =keywords=, =charge=, =multiplicity=, =restart=,
-the executable path with symlinks resolved, and the modification time of that
-file.
-The constructor reads the path and the time once, so they stay fixed for the
-life of the instance.
+the executable path with symlinks resolved, and the size, modification time,
+device and inode of that file.
+The constructor reads them once, so they stay fixed for the life of the
+instance.
+Each lookup resolves and reads the executable again, and once it no longer
+matches, the key matches no entry an unchanged instance writes, so no result of
+the old file is served for the new one.
 A symlink and its target share cached results.
 Two installations, a binary replaced in place, two charges or two multiplicities
 do not.
@@ -249,6 +260,8 @@ Input the caller got wrong throws
 a =timeout_s= that is negative or not finite, a box with a periodic image closer
 than the atom itself, an atomic number outside 1 to 118, and a charge and
 multiplicity that the electron count cannot hold.
+An executable that changed since the instance was made, or while it ran, throws
+=ORCAError=.
 
 ** Limits
 
@@ -272,16 +285,17 @@ directory.
 The script checks the keyword line, =%maxcore= or its absence,
 =%scf ConvForced=, the coordinates, closed extra file descriptors and the
 =MORead= and =%moinp= lines of the input it is given, keeps a copy of each
-input, writes an =.engrad= of known numbers and a =.gbw= that names the call,
-and can fail, sleep past =timeout_s= with a child that ignores SIGTERM (both
-when the leader stays alive and when the leader exits on SIGTERM), write
-nothing, write NaN, write a short file or kill itself.
+input and the path it was started as, writes an =.engrad= of known numbers and a
+=.gbw= that names the call, and can fail, sleep past =timeout_s= with a child
+that ignores SIGTERM (both when the leader stays alive and when the leader exits
+on SIGTERM), write nothing, write NaN, write a short file or kill itself.
 Four modes print SCF report lines in ORCA's wording; the script writes them, and
 they are not output of an ORCA run.
 The test then checks the unit conversion, the fresh guess by default, the
 restart, the fall-back to a fresh guess, the error paths (including a stale
 =.engrad= that cannot be removed and an unconverged SCF), the cache key across
 paths, modification times, charges and multiplicities, symlink executables, a
+retargeted symlink and a replaced binary with and without the result cache, a
 restart sequence with a result cache, comma-decimal locales, the box that
 =rgpot.ase= builds for a cluster and the rejection of a box with a closer
 image, including skewed cells.
