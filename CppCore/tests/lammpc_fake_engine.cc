@@ -8,8 +8,10 @@
 // is passed through. lammpc_fake_init_calls and lammpc_fake_finalize_calls
 // count how often its backend-global state was set up and finalized.
 //
-// Built with LAMMPC_FAKE_BRIDGE_ABI_MAJOR, it reports that eindir bridge ABI
-// major in its Capabilities, which a host with another major must refuse.
+// Two variants are built from this file. LAMMPC_FAKE_NO_STRESS declares no
+// stress operation and returns no stress. LAMMPC_FAKE_BRIDGE_ABI_MAJOR
+// reports that eindir bridge ABI major in its Capabilities, which a host
+// with another major must refuse.
 
 #include "rgpot/abi/Compat.hpp"
 #include "rgpot/rpc/Potentials.capnp.h"
@@ -46,7 +48,9 @@ struct LammpcFakeSession {
 
 namespace {
 
+#ifndef LAMMPC_FAKE_NO_STRESS
 constexpr double kStress[9] = {0.1, 0.2, 0.3, 0.2, 0.4, 0.5, 0.3, 0.5, 0.6};
+#endif
 
 std::string g_last_error;
 
@@ -159,9 +163,11 @@ std::vector<unsigned char> evaluate(const LammpcFakeSession &session,
         result.initForces(static_cast<unsigned int>(forces.size()));
     for (unsigned int i = 0; i < out_forces.size(); ++i)
       out_forces.set(i, forces[i]);
+#ifndef LAMMPC_FAKE_NO_STRESS
     auto stress = result.initStress(9);
     for (unsigned int i = 0; i < 9; ++i)
       stress.set(i, kStress[i]);
+#endif
     auto words = ::capnp::messageToFlatArray(msg);
     const auto bytes = words.asBytes();
     g_last_error.clear();
@@ -276,8 +282,12 @@ LAMMPC_FAKE_EXPORT int lammpc_capabilities_result(void *out, size_t capacity,
     caps.setBackendVersion(lammpc_version());
     caps.setAbiVersion(lammpc_abi_version());
     caps.setAvailable(true);
+#ifdef LAMMPC_FAKE_NO_STRESS
+    auto ops = caps.initOperations(2);
+#else
     auto ops = caps.initOperations(3);
     ops.set(2, ::Capabilities::Operation::STRESS);
+#endif
     ops.set(0, ::Capabilities::Operation::ENERGY);
     ops.set(1, ::Capabilities::Operation::FORCES);
     auto kinds = caps.initConfigKinds(1);

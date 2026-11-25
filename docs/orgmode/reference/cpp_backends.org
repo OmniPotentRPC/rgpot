@@ -1795,6 +1795,8 @@ LammpsPot(const void *config_capnp, size_t config_capnp_size,
   loaded plugin, or from =lammpc_session_calculate_result= when the config bytes
   are given.
   The plugin or the lammpc session stays the backend.
+  =caps().stress= is true only for a lammpc backend whose =Capabilities= list
+  the =stress= operation; its forces then set =has_stress= and the stress.
 - Errors ::
   =std::invalid_argument= when =u0=, =cutoff= or =psi= is not positive and finite; =std::runtime_error=
   when no library opens with =rgpot_engine_create=, =rgpot_engine_destroy= and
@@ -1805,7 +1807,8 @@ LammpsPot(const void *config_capnp, size_t config_capnp_size,
   unavailable, or refuses the session.
   A force throws
   =std::invalid_argument= for missing buffers and =std::runtime_error= when
-  =rgpot_engine_force= returns nonzero or the lammpc result is refused.
+  =rgpot_engine_force= returns nonzero, the lammpc result is refused, a stress
+  is not 9 values, or a backend that declares =stress= returns none.
 
 *** =rgpot::GromacsPot=
 

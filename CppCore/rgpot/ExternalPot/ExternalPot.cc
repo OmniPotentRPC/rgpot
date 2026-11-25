@@ -582,6 +582,19 @@ std::string profile_message(const rgpot::abi::ProfileResult &result) {
   const size_t n = strnlen(result.message, sizeof(result.message));
   return std::string(result.message, n);
 }
+
+bool declares_stress(const rgpot::abi::ProfileLoader &loader) {
+  const auto bytes = loader.capabilities();
+  std::vector<::capnp::word> storage(bytes.size() / sizeof(::capnp::word));
+  std::memcpy(storage.data(), bytes.data(), bytes.size());
+  ::capnp::FlatArrayMessageReader reader(
+      kj::arrayPtr(storage.data(), storage.size()));
+  for (const auto op : reader.getRoot<::Capabilities>().getOperations()) {
+    if (op == ::Capabilities::Operation::STRESS)
+      return true;
+  }
+  return false;
+}
 #endif
 
 // A lammpc backend keeps process-global state that finalize releases. Every
@@ -629,6 +642,7 @@ struct LammpsPot::Impl {
   std::vector<unsigned char> profile_config;
   void *profile_session = nullptr;
   bool profile_held = false;
+  bool profile_stress = false;
   mutable std::mutex mutex;
 
   // Safe to call twice: the failed constructor and the destructor both do.
@@ -677,6 +691,7 @@ LammpsPot::LammpsPot(const void *config_capnp, size_t config_capnp_size,
                           : "lammpc engine_path '" + engine_path + "'";
   try {
     rgpot::abi::checked_load(impl_->profile_loader, "lammpc", engine_path);
+    impl_->profile_stress = declares_stress(impl_->profile_loader);
   } catch (const std::exception &ex) {
     throw std::runtime_error(backend + ": " + ex.what());
   }
@@ -698,7 +713,8 @@ LammpsPot::LammpsPot(LammpsPot &&) noexcept = default;
 LammpsPot &LammpsPot::operator=(LammpsPot &&) noexcept = default;
 
 PotCaps LammpsPot::caps() const noexcept {
-  const bool stress = impl_ && impl_->mode == Impl::Mode::LammpcProfile;
+  const bool stress = impl_ && impl_->mode == Impl::Mode::LammpcProfile &&
+                      impl_->profile_stress;
   return {.reentrancy = Reentrancy::PerInstance,
           .periodic = true,
           .stress = stress};
@@ -757,7 +773,14 @@ void LammpsPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->F[i] = forces[i];
   out->has_stress = 0;
   const auto stress = potential_result.getStress();
-  if (stress.size() == 9) {
+  if (stress.size() != 0 && stress.size() != 9)
+    throw std::runtime_error("lammpc returned " +
+                             std::to_string(stress.size()) +
+                             " stress values, not 9");
+  if (impl_->profile_stress) {
+    if (stress.size() != 9)
+      throw std::runtime_error(
+          "lammpc declared the stress operation but returned no stress");
     for (unsigned int i = 0; i < 9; ++i)
       out->stress[i] = stress[i];
     out->has_stress = 1;

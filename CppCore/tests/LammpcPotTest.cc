@@ -4,8 +4,9 @@
 // LammpsPot over lammpc_fake_engine, which RGPOT_LAMMPC_ENGINE names. The
 // fake evaluates the unshifted lj/cut pair from PotentialConfig.lammps and
 // returns a fixed stress, so each value here is checked against the analytic
-// dimer and the fake's constants. RGPOT_LAMMPC_ABI2_ENGINE names the variant
-// reporting an incompatible eindir bridge ABI major.
+// dimer and the fake's constants. RGPOT_LAMMPC_NOSTRESS_ENGINE names the
+// variant without stress and RGPOT_LAMMPC_ABI2_ENGINE the one reporting an
+// incompatible eindir bridge ABI major.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -293,6 +294,28 @@ TEST_CASE("LammpsPot lammpc finalizes the backend on every teardown path",
     REQUIRE(init_calls() == inits + 1);
     REQUIRE(finalize_calls() == finals + 1);
   }
+}
+
+TEST_CASE("LammpsPot lammpc reports no stress when the engine declares none",
+          "[external][lammpc]") {
+  const auto config = lammps_config();
+  rgpot::LammpsPot pot(config.data(), config.size(),
+                       env_path("RGPOT_LAMMPC_NOSTRESS_ENGINE"));
+  REQUIRE_FALSE(pot.caps().stress);
+
+  Dimer d;
+  std::array<double, 6> forces{};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  out.has_stress = 1;
+  pot.forceImpl({.nAtoms = 2,
+                 .pos = d.pos.data(),
+                 .atmnrs = d.atmnrs.data(),
+                 .box = d.box.data()},
+                &out);
+  REQUIRE(out.has_stress == 0);
+  REQUIRE_THAT(out.energy, WithinAbs(lj_energy(kSeparation), 1e-12));
+  require_dimer_forces(forces.data());
 }
 
 TEST_CASE("LammpsPot lammpc refuses an engine with an incompatible ABI",

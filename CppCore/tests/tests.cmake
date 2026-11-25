@@ -745,18 +745,22 @@ rgpot_test_executable(profile_loader_test CppCore/tests/ProfileLoaderTest.cc)
 rgpot_add_test(ProfileLoaderTest COMMAND profile_loader_test
                ENVIRONMENT ${_rgpot_cpmdc_env})
 
-foreach(engine lammpc_fake_engine lammpc_fake_engine_abi2)
+foreach(engine lammpc_fake_engine lammpc_fake_engine_nostress
+               lammpc_fake_engine_abi2)
   add_library(${engine} SHARED CppCore/tests/lammpc_fake_engine.cc)
   target_compile_definitions(${engine} PRIVATE ${_rgpot_build_identity})
   target_link_libraries(${engine} PRIVATE ptlrpc)
   target_include_directories(${engine} PRIVATE CppCore include)
 endforeach()
+target_compile_definitions(lammpc_fake_engine_nostress
+                           PRIVATE LAMMPC_FAKE_NO_STRESS)
 target_compile_definitions(lammpc_fake_engine_abi2
                            PRIVATE LAMMPC_FAKE_BRIDGE_ABI_MAJOR=2)
 rgpot_test_executable(lammpc_pot_test CppCore/tests/LammpcPotTest.cc)
 rgpot_add_test(LammpcPotTest COMMAND lammpc_pot_test
   ENVIRONMENT
     "RGPOT_LAMMPC_ENGINE=$<TARGET_FILE:lammpc_fake_engine>"
+    "RGPOT_LAMMPC_NOSTRESS_ENGINE=$<TARGET_FILE:lammpc_fake_engine_nostress>"
     "RGPOT_LAMMPC_ABI2_ENGINE=$<TARGET_FILE:lammpc_fake_engine_abi2>")
 
 # CP2K over a fake engine, and over libcp2k through the shim.

@@ -2161,6 +2161,7 @@ if get_option('with_tests')
         )
         lammpc_fake_variants = {
             'lammpc_fake_engine': [],
+            'lammpc_fake_engine_nostress': ['-DLAMMPC_FAKE_NO_STRESS'],
             'lammpc_fake_engine_abi2': ['-DLAMMPC_FAKE_BRIDGE_ABI_MAJOR=2'],
         }
         lammpc_fake_libs = {}
@@ -2182,6 +2183,10 @@ if get_option('with_tests')
         lammpc_fake_env.set(
             'RGPOT_LAMMPC_ENGINE',
             lammpc_fake_libs['lammpc_fake_engine'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPC_NOSTRESS_ENGINE',
+            lammpc_fake_libs['lammpc_fake_engine_nostress'].full_path(),
         )
         lammpc_fake_env.set(
             'RGPOT_LAMMPC_ABI2_ENGINE',
