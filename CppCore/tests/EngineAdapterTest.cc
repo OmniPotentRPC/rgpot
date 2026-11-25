@@ -9,6 +9,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -56,6 +57,9 @@ struct Stub {
                           double *, long) = nullptr;
   size_t (*component_name)(const RgpotEnginePot *, long, char *,
                            size_t) = nullptr;
+  long (*last_eval_flags)(const RgpotEnginePot *, uint64_t *, long) = nullptr;
+  int (*set_scc_rescue)(RgpotEnginePot *, int) = nullptr;
+  const char *(*source_revision)() = nullptr;
   long long (*orbital_key)() = nullptr;
   int (*max_concurrent)() = nullptr;
   void (*reset)() = nullptr;
@@ -104,6 +108,12 @@ Stub &stub() {
         h, "rgpot_engine_last_components");
     out.component_name =
         sym<decltype(out.component_name)>(h, "rgpot_engine_component_name");
+    out.last_eval_flags =
+        sym<decltype(out.last_eval_flags)>(h, "rgpot_engine_last_eval_flags");
+    out.set_scc_rescue =
+        sym<decltype(out.set_scc_rescue)>(h, "rgpot_engine_set_scc_rescue");
+    out.source_revision =
+        sym<decltype(out.source_revision)>(h, "rgpot_engine_source_revision");
     out.orbital_key = sym<long long (*)()>(h, "stub_orbital_key");
     out.max_concurrent = sym<int (*)()>(h, "stub_max_concurrent");
     out.reset = sym<void (*)()>(h, "stub_reset");
@@ -424,6 +434,88 @@ TEST_CASE("charge, spin and thread settings reach the backend",
   REQUIRE(s.copy_orbitals(bare, 1, 2) == 3);
   REQUIRE(error_of(s, bare) == "backend has no orbital copy");
   s.destroy(bare);
+}
+
+std::vector<uint64_t> flags_of(Stub &s, const RgpotEnginePot *pot) {
+  const long n = s.last_eval_flags(pot, nullptr, 0);
+  REQUIRE(n >= 0);
+  std::vector<uint64_t> out(static_cast<size_t>(n), ~uint64_t{0});
+  REQUIRE(s.last_eval_flags(pot, out.data(), n) == n);
+  return out;
+}
+
+TEST_CASE("a rescued SCC is flagged per system and fails with the rescue off",
+          "[engine][adapter][scc]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 0);
+  REQUIRE(s.last_eval_flags(nullptr, nullptr, 0) == -1);
+  REQUIRE(flags_of(s, pot).empty());
+
+  const double pos[6] = {1, 0, 0, 0, 1, 0};
+  const std::vector<int> hard = {1000, 1};
+  double forces[6], energy = 0.0;
+  REQUIRE(s.force(pot, 2, pos, kZ.data(), forces, &energy, nullptr, kBox.data(),
+                  nullptr, nullptr) == 0);
+  REQUIRE(flags_of(s, pot) == std::vector<uint64_t>{0});
+  REQUIRE(s.force(pot, 2, pos, hard.data(), forces, &energy, nullptr,
+                  kBox.data(), nullptr, nullptr) == 0);
+  REQUIRE(flags_of(s, pot) ==
+          std::vector<uint64_t>{RGPOT_ENGINE_EVAL_SCC_RESCUED});
+
+  // A batch reads the flags of each system: the second one alone needs it.
+  const double two[12] = {1, 0, 0, 0, 1, 0, 2, 0, 0, 0, 2, 0};
+  std::vector<double> boxes;
+  for (int i = 0; i < 2; ++i) {
+    boxes.insert(boxes.end(), kBox.begin(), kBox.end());
+  }
+  double bforces[12], energies[2];
+  REQUIRE(s.force_batch(pot, 2, 2, two, hard.data(), bforces, energies, nullptr,
+                        boxes.data(), nullptr, nullptr) == 0);
+  REQUIRE(flags_of(s, pot) ==
+          std::vector<uint64_t>{RGPOT_ENGINE_EVAL_SCC_RESCUED,
+                                RGPOT_ENGINE_EVAL_SCC_RESCUED});
+  REQUIRE(energies[1] == Catch::Approx(4.0));
+
+  // A capacity smaller than the count copies a prefix and returns the total.
+  uint64_t first = 7;
+  REQUIRE(s.last_eval_flags(pot, &first, 1) == 2);
+  REQUIRE(first == RGPOT_ENGINE_EVAL_SCC_RESCUED);
+
+  REQUIRE(s.set_scc_rescue(pot, 0) == 0);
+  REQUIRE(s.force(pot, 2, pos, hard.data(), forces, &energy, nullptr,
+                  kBox.data(), nullptr, nullptr) == 2);
+  REQUIRE(error_of(s, pot).find("SCC rescue disabled") != std::string::npos);
+  REQUIRE(flags_of(s, pot).empty());
+  REQUIRE(s.force_batch(pot, 2, 2, two, hard.data(), bforces, energies, nullptr,
+                        boxes.data(), nullptr, nullptr) == 2);
+  REQUIRE(flags_of(s, pot).empty());
+  REQUIRE(s.force(pot, 2, pos, kZ.data(), forces, &energy, nullptr, kBox.data(),
+                  nullptr, nullptr) == 0);
+  REQUIRE(flags_of(s, pot) == std::vector<uint64_t>{0});
+
+  REQUIRE(s.set_scc_rescue(pot, 1) == 0);
+  REQUIRE(s.force(pot, 2, pos, hard.data(), forces, &energy, nullptr,
+                  kBox.data(), nullptr, nullptr) == 0);
+  REQUIRE(flags_of(s, pot) ==
+          std::vector<uint64_t>{RGPOT_ENGINE_EVAL_SCC_RESCUED});
+  REQUIRE(s.set_scc_rescue(nullptr, 0) == 1);
+  s.destroy(pot);
+}
+
+TEST_CASE("a backend without the SCC hooks reports no flags",
+          "[engine][adapter][scc]") {
+  Stub &s = stub();
+  RgpotEnginePot *bare = make(s, 0, 1);
+  REQUIRE(s.set_scc_rescue(bare, 0) == 3);
+  REQUIRE(error_of(s, bare) == "backend has no SCC rescue to switch");
+  const double pos[6] = {1, 0, 0, 0, 1, 0};
+  const std::vector<int> hard = {1000, 1};
+  double forces[6], energy = 0.0;
+  REQUIRE(s.force(bare, 2, pos, hard.data(), forces, &energy, nullptr,
+                  kBox.data(), nullptr, nullptr) == 0);
+  REQUIRE(flags_of(s, bare) == std::vector<uint64_t>{0});
+  s.destroy(bare);
+  REQUIRE(s.source_revision() != nullptr);
 }
 
 TEST_CASE("an orbital key reaches the backend that keeps one per call",

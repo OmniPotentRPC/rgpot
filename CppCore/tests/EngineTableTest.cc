@@ -154,6 +154,18 @@ kj::Array<capnp::word> xtb_params(const std::string &method) {
   return capnp::messageToFlatArray(msg);
 }
 
+kj::Array<capnp::word> xtb_hard_scc_params() {
+  capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::BuiltinParams>();
+  p.setName("xtb");
+  auto x = p.initConfig().initXtb();
+  x.setMethod("gfn2");
+  x.setAccuracy(0.01);
+  x.setElectronicTemperature(300.0);
+  x.setMaxIterations(500);
+  return capnp::messageToFlatArray(msg);
+}
+
 kj::Array<capnp::word> muller_brown_params(double first_amplitude) {
   capnp::MallocMessageBuilder msg;
   auto params = msg.initRoot<::BuiltinParams>();
@@ -1354,6 +1366,72 @@ TEST_CASE("xtb engine matches the generic table contract", "[engine][xtb]") {
                   box.data(), nullptr, nullptr) == 0);
   REQUIRE(gfn1_energy != energy);
   e.destroy(gfn1);
+}
+
+TEST_CASE("xtb engine flags a rescued SCC and fails it with the rescue off",
+          "[engine][xtb][scc]") {
+  Engine e;
+  if (!open_engine("XTB", e)) {
+    SKIP("no xtb engine in this build");
+  }
+  using LastFlags = long (*)(const RgpotEnginePot *, uint64_t *, long);
+  using SetRescue = int (*)(RgpotEnginePot *, int);
+  using Revision = const char *(*)();
+  auto last_flags = reinterpret_cast<LastFlags>(
+      dlsym(e.handle, "rgpot_engine_last_eval_flags"));
+  auto set_rescue = reinterpret_cast<SetRescue>(
+      dlsym(e.handle, "rgpot_engine_set_scc_rescue"));
+  auto revision = reinterpret_cast<Revision>(
+      dlsym(e.handle, "rgpot_engine_source_revision"));
+  REQUIRE(last_flags != nullptr);
+  REQUIRE(set_rescue != nullptr);
+  REQUIRE(revision != nullptr);
+  REQUIRE(std::string(revision()).size() > 0);
+
+  // A dissociated ammonia tetramer whose GFN2 SCC does not converge at
+  // 300 K in 500 iterations (CppCore/tests/XTBPotTest.cc).
+  const double pos[48] = {
+      -1.66532428, 0.54889027,  -2.03940010, 0.11165024,  2.04946110,
+      1.43904553,  -0.42884806, 2.72524649,  0.30972045,  1.43338889,
+      2.19082068,  0.90531718,  0.53411760,  1.59058476,  -4.48817656,
+      -0.62302497, 2.69900828,  -3.26741719, 1.34429373,  3.32407404,
+      -1.22950979, -0.35527480, 1.88804157,  -4.87298828, 1.47996713,
+      0.55484625,  3.71752121,  1.28956128,  -0.72444169, 2.95951158,
+      -0.20031872, 0.12475055,  3.35919321,  1.70295493,  -0.38386526,
+      4.03334277,  -2.71341888, -5.98849237, 1.22333256,  -1.72758892,
+      -6.21046903, 1.63826395,  -1.69113306, -6.08127583, -0.32892162,
+      -2.20633610, -6.61433582, 0.61469530};
+  const int z[16] = {7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1};
+  const std::array<double, 9> box = {60, 0, 0, 0, 60, 0, 0, 0, 60};
+  const double water[9] = {0.0,     0.0, 0.1173,  0.0,    0.7572,
+                           -0.4692, 0.0, -0.7572, -0.4692};
+  const int wz[3] = {8, 1, 1};
+  std::vector<double> forces(48, 0.0);
+  double energy = 0.0;
+  uint64_t flags = ~uint64_t{0};
+
+  RgpotEnginePot *pot = create(e, xtb_hard_scc_params());
+  REQUIRE(pot != nullptr);
+  REQUIRE(last_flags(pot, nullptr, 0) == 0);
+  REQUIRE(e.force(pot, 16, pos, z, forces.data(), &energy, nullptr, box.data(),
+                  nullptr, nullptr) == 0);
+  REQUIRE(std::isfinite(energy));
+  REQUIRE(last_flags(pot, &flags, 1) == 1);
+  REQUIRE((flags & RGPOT_ENGINE_EVAL_SCC_RESCUED) != 0);
+  REQUIRE(e.force(pot, 3, water, wz, forces.data(), &energy, nullptr,
+                  box.data(), nullptr, nullptr) == 0);
+  REQUIRE(last_flags(pot, &flags, 1) == 1);
+  REQUIRE(flags == 0);
+
+  REQUIRE(set_rescue(pot, 0) == 0);
+  REQUIRE(e.force(pot, 16, pos, z, forces.data(), &energy, nullptr, box.data(),
+                  nullptr, nullptr) == 2);
+  REQUIRE(error_of(e, pot).find("SCC rescue disabled") != std::string::npos);
+  REQUIRE(last_flags(pot, nullptr, 0) == 0);
+  REQUIRE(e.force(pot, 3, water, wz, forces.data(), &energy, nullptr,
+                  box.data(), nullptr, nullptr) == 0);
+  REQUIRE(set_rescue(pot, 1) == 0);
+  e.destroy(pot);
 }
 
 TEST_CASE("metatomic engine keeps its own table and adds the generic one",

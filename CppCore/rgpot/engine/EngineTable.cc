@@ -3,6 +3,7 @@
 
 #include "rgpot/engine_c_abi.h"
 
+#include "rgpot/EvalFlags.hpp"
 #include "rgpot/GradientJet.hpp"
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine/Sha256.hpp"
@@ -25,6 +26,14 @@
 #ifndef RGPOT_ENGINE_PROJECT_VERSION
 #define RGPOT_ENGINE_PROJECT_VERSION "unknown"
 #endif
+
+#ifndef RGPOT_BUILD_REVISION
+#define RGPOT_BUILD_REVISION ""
+#endif
+
+static_assert(RGPOT_ENGINE_EVAL_SCC_RESCUED == rgpot::eval_flags::SccRescued);
+static_assert(RGPOT_ENGINE_EVAL_SCC_RETRIED == rgpot::eval_flags::SccRetried);
+static_assert(RGPOT_ENGINE_EVAL_CACHED == rgpot::eval_flags::Cached);
 
 namespace {
 
@@ -98,6 +107,16 @@ struct RgpotEnginePot {
   mutable bool digest_done = false;
   mutable std::string digest;
 
+  /// Evaluation flags of each system of the last force call; empty when
+  /// it failed.
+  mutable std::mutex flags_mutex;
+  std::vector<uint64_t> last_flags;
+
+  void set_flags(std::vector<uint64_t> flags) {
+    std::lock_guard<std::mutex> lock(flags_mutex);
+    last_flags = std::move(flags);
+  }
+
   void set_error(const std::string &message) {
     std::lock_guard<std::mutex> lock(error_mutex);
     error = message;
@@ -126,6 +145,32 @@ namespace {
 
 const rgpot::GradientJet *gradient_jet(const RgpotEnginePot *pot) {
   return dynamic_cast<const rgpot::GradientJet *>(pot->backend->pot.get());
+}
+
+uint64_t computed_count(const RgpotEnginePot *pot) {
+#ifdef RGPOT_HAS_CACHE
+  if (pot->cache) {
+    return pot->cache->counts().computed;
+  }
+#endif
+  (void)pot;
+  return 0;
+}
+
+/// Flags of the system the backend just answered. A result the attached
+/// cache served did not run the backend, so its own flags are not this
+/// system's.
+uint64_t flags_of_last(const RgpotEnginePot *pot, uint64_t computed_before) {
+  if (!pot->backend->last_eval_flags) {
+    return 0;
+  }
+#ifdef RGPOT_HAS_CACHE
+  if (pot->cache && pot->cache->counts().computed == computed_before) {
+    return RGPOT_ENGINE_EVAL_CACHED;
+  }
+#endif
+  (void)computed_before;
+  return pot->backend->last_eval_flags();
 }
 
 int fail(RgpotEnginePot *pot, int code, const std::string &message) {
@@ -245,11 +290,15 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
                        void *transform_user) {
   if (!pot || !pot->backend || !positions || !atomicNrs || !forces ||
       !energy || !box || nAtoms <= 0) {
+    if (pot) {
+      pot->set_flags({});
+    }
     return fail(pot, 1, "invalid argument");
   }
   try {
     RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    pot->set_flags({});
     // Scratch copies: a host transform must never mutate caller buffers.
     std::vector<double> R(positions, positions + 3 * nAtoms);
     std::vector<double> cell(box, box + 9);
@@ -266,6 +315,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
     rgpot::ForceOut out{};
     out.F = Fbuf.data();
     const rgpot::ForceBatch batch{1, &in, &out};
+    const uint64_t computed = computed_count(pot);
     pot->backend->pot->forceBatch(batch);
     *energy = out.energy;
     if (variance) {
@@ -273,6 +323,7 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
     }
     std::memcpy(forces, Fbuf.data(), Fbuf.size() * sizeof(double));
     pot->last_atoms = nAtoms;
+    pot->set_flags({flags_of_last(pot, computed)});
     pot->clear_error();
     return 0;
   } catch (const std::exception &e) {
@@ -409,11 +460,15 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
                              void *transform_user) {
   if (!pot || !pot->backend || !positions || !atomicNrs || !forces ||
       !energies || !boxes || nSystems <= 0 || nAtoms <= 0) {
+    if (pot) {
+      pot->set_flags({});
+    }
     return fail(pot, 1, "invalid argument (batch)");
   }
   try {
     RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    pot->set_flags({});
     const size_t B = static_cast<size_t>(nSystems);
     const size_t stride = static_cast<size_t>(nAtoms) * 3;
     std::vector<double> R(positions, positions + stride * B);
@@ -438,8 +493,18 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
       out[i] = rgpot::ForceOut{};
       out[i].F = forces + i * stride;
     }
-    const rgpot::ForceBatch batch{B, in.data(), out.data()};
-    pot->backend->pot->forceBatch(batch);
+    std::vector<uint64_t> flags(B, 0);
+    if (pot->backend->last_eval_flags) {
+      for (size_t i = 0; i < B; ++i) {
+        const rgpot::ForceBatch one{1, &in[i], &out[i]};
+        const uint64_t computed = computed_count(pot);
+        pot->backend->pot->forceBatch(one);
+        flags[i] = flags_of_last(pot, computed);
+      }
+    } else {
+      const rgpot::ForceBatch batch{B, in.data(), out.data()};
+      pot->backend->pot->forceBatch(batch);
+    }
     for (size_t i = 0; i < B; ++i) {
       energies[i] = out[i].energy;
       if (variances) {
@@ -447,6 +512,7 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
       }
     }
     pot->last_atoms = nAtoms;
+    pot->set_flags(std::move(flags));
     pot->clear_error();
     return 0;
   } catch (const std::exception &e) {
@@ -563,6 +629,40 @@ int rgpot_engine_set_charge_spin(RgpotEnginePot *pot, int charge, int spin) {
     return fail(pot, 2, "unknown exception");
   }
 }
+
+int rgpot_engine_set_scc_rescue(RgpotEnginePot *pot, int enabled) {
+  if (!pot || !pot->backend) {
+    return 1;
+  }
+  if (!pot->backend->set_scc_rescue) {
+    return fail(pot, 3, "backend has no SCC rescue to switch");
+  }
+  try {
+    pot->backend->set_scc_rescue(enabled != 0);
+    pot->clear_error();
+    return 0;
+  } catch (const std::exception &e) {
+    return fail(pot, 2, e.what());
+  } catch (...) {
+    return fail(pot, 2, "unknown exception");
+  }
+}
+
+long rgpot_engine_last_eval_flags(const RgpotEnginePot *pot, uint64_t *flags,
+                                  long capacity) {
+  if (!pot) {
+    return -1;
+  }
+  std::lock_guard<std::mutex> lock(pot->flags_mutex);
+  const long total = static_cast<long>(pot->last_flags.size());
+  if (flags && capacity > 0) {
+    const long n = capacity < total ? capacity : total;
+    std::copy(pot->last_flags.begin(), pot->last_flags.begin() + n, flags);
+  }
+  return total;
+}
+
+const char *rgpot_engine_source_revision(void) { return RGPOT_BUILD_REVISION; }
 
 int rgpot_engine_select_orbitals(RgpotEnginePot *pot, long long key) {
   if (!pot || !pot->backend) {

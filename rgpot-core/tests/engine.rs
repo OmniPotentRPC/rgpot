@@ -12,11 +12,12 @@ use rgpot_core::engine::builtin_params;
 use rgpot_core::engine::{
     AcquireReason, CoordTransformFn, CoordinateTransform, CoupledWellConfig, DerivativeReport,
     EngineCallbacks, EngineCaps, EngineError, EngineEvaluation, EngineFailure, EnginePotential,
-    EngineRequest, EngineSession, EngineStatus, EngineSymbols, GradientJet, JetBatchRequest,
-    PotlibcConfig, RgpotEngineAbiStamp, RgpotEngineCaps, RgpotEngineComponent, RgpotEnginePot,
-    COUPLED_WELL_CONFIG_MAGIC, COUPLED_WELL_CONFIG_MIN_SIZE, COUPLED_WELL_CONFIG_V1_SIZE,
-    COUPLED_WELL_CONFIG_VERSION, COUPLED_WELL_CONFIG_VERSION_V1, ENGINE_ABI_LAYOUT_REVISION,
-    ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_INVALID, ENGINE_ERR_UNSUPPORTED,
+    EngineRequest, EngineSession, EngineStatus, EngineSymbols, EvalFlags, GradientJet,
+    JetBatchRequest, PotlibcConfig, RgpotEngineAbiStamp, RgpotEngineCaps, RgpotEngineComponent,
+    RgpotEnginePot, COUPLED_WELL_CONFIG_MAGIC, COUPLED_WELL_CONFIG_MIN_SIZE,
+    COUPLED_WELL_CONFIG_V1_SIZE, COUPLED_WELL_CONFIG_VERSION, COUPLED_WELL_CONFIG_VERSION_V1,
+    ENGINE_ABI_LAYOUT_REVISION, ENGINE_ABI_MINOR, ENGINE_ABI_VERSION, ENGINE_ERR_INVALID,
+    ENGINE_ERR_UNSUPPORTED, ENGINE_EVAL_CACHED, ENGINE_EVAL_SCC_RESCUED, ENGINE_EVAL_SCC_RETRIED,
     ENGINE_UNLOAD_POLICY_MINOR, POTLIBC_CONFIG_MAGIC, POTLIBC_CONFIG_MIN_SIZE,
     POTLIBC_CONFIG_V1_SIZE, POTLIBC_CONFIG_VERSION, POTLIBC_CONFIG_VERSION_V1,
     POTLIBC_SURFACE_ID_CAPACITY,
@@ -416,7 +417,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 11,
+            abi_minor: 12,
             layout_revision: 1,
         }
     );
@@ -1452,6 +1453,143 @@ fn cpmd_fixture_batch_preserves_single_call_bits_and_order() -> Result<(), CpmdF
     Ok(())
 }
 
+const SCC_RESCUED_ATOM: c_int = 1000;
+const SCC_RETRIED_ATOM: c_int = 1001;
+
+#[test]
+fn a_rescued_scc_is_flagged_and_fails_with_the_rescue_off() {
+    let path = build("harmonic_scc_flags", &[]);
+    let mut engine = load(&path);
+    assert_eq!(engine.source_revision().as_deref(), Some("fixture-rev"));
+    assert_eq!(
+        engine.last_eval_flags().expect("flags before force"),
+        vec![]
+    );
+
+    let positions = [0.5, -1.0, 2.0];
+    let plain = engine
+        .force_flagged(&EngineRequest {
+            positions: &positions,
+            atomic_numbers: &[1],
+            box_matrix: &CELL,
+        })
+        .expect("plain force");
+    assert_eq!(plain.1, Some(EvalFlags::NONE));
+
+    let hard = EngineRequest {
+        positions: &positions,
+        atomic_numbers: &[SCC_RESCUED_ATOM],
+        box_matrix: &CELL,
+    };
+    let (rescued, flags) = engine.force_flagged(&hard).expect("rescued force");
+    let flags = flags.expect("the engine reports flags");
+    assert!(flags.scc_rescued());
+    assert!(!flags.scc_retried());
+    assert_eq!(flags.bits(), ENGINE_EVAL_SCC_RESCUED);
+    assert_eq!(rescued.energy.to_bits(), plain.0.energy.to_bits());
+
+    let (_, retried) = engine
+        .force_flagged(&EngineRequest {
+            positions: &positions,
+            atomic_numbers: &[SCC_RETRIED_ATOM],
+            box_matrix: &CELL,
+        })
+        .expect("retried force");
+    assert_eq!(retried, Some(EvalFlags::SCC_RETRIED));
+    assert_eq!(EvalFlags::SCC_RETRIED.bits(), ENGINE_EVAL_SCC_RETRIED);
+    assert_eq!(EvalFlags::CACHED.bits(), ENGINE_EVAL_CACHED);
+
+    engine.set_scc_rescue(false).expect("rescue off");
+    match engine.force(&hard).unwrap_err() {
+        EngineError::Recoverable { message, .. } => {
+            assert!(message.contains("SCC rescue disabled"), "{message}");
+        }
+        other => panic!("expected a recoverable failure, got {other}"),
+    }
+    assert_eq!(
+        engine.last_eval_flags().expect("flags after failure"),
+        vec![]
+    );
+
+    let (_, still_plain) = engine
+        .force_flagged(&EngineRequest {
+            positions: &positions,
+            atomic_numbers: &[1],
+            box_matrix: &CELL,
+        })
+        .expect("a converging force with the rescue off");
+    assert_eq!(still_plain, Some(EvalFlags::NONE));
+
+    engine.set_scc_rescue(true).expect("rescue on");
+    let (_, again) = engine.force_flagged(&hard).expect("rescued again");
+    assert_eq!(again, Some(EvalFlags::SCC_RESCUED));
+}
+
+#[test]
+fn a_batch_reports_flags_per_system() {
+    let path = build("harmonic_scc_batch_flags", &[]);
+    let mut session = load_session(&path);
+    let positions = [0.5, -1.0, 2.0, 1.0, 0.0, -0.5, 0.25, 0.5, 0.75];
+    let mut boxes = CELL.to_vec();
+    boxes.extend_from_slice(&CELL);
+    boxes.extend_from_slice(&CELL);
+    session
+        .force_batch(&[SCC_RESCUED_ATOM], &positions, &boxes, None)
+        .expect("batch");
+    assert_eq!(
+        session.last_eval_flags().expect("batch flags"),
+        vec![EvalFlags::SCC_RESCUED; 3]
+    );
+    session
+        .force_batch(&[1], &positions, &boxes, None)
+        .expect("plain batch");
+    assert_eq!(
+        session.last_eval_flags().expect("plain batch flags"),
+        vec![EvalFlags::NONE; 3]
+    );
+    session.set_scc_rescue(false).expect("rescue off");
+    assert!(matches!(
+        session
+            .force_batch(&[SCC_RESCUED_ATOM], &positions, &boxes, None)
+            .unwrap_err(),
+        EngineError::Recoverable { .. }
+    ));
+    assert_eq!(
+        session.last_eval_flags().expect("flags after failure"),
+        vec![]
+    );
+    assert_eq!(session.source_revision().as_deref(), Some("fixture-rev"));
+}
+
+#[test]
+fn an_engine_without_flag_symbols_says_so() {
+    let path = build("harmonic_no_eval_flags", &["NO_EVAL_FLAGS"]);
+    let mut engine = load(&path);
+    assert_eq!(
+        engine.last_eval_flags().unwrap_err(),
+        EngineError::Unsupported {
+            operation: "rgpot_engine_last_eval_flags",
+            message: "symbol is not exported".into(),
+        }
+    );
+    assert_eq!(
+        engine.set_scc_rescue(false).unwrap_err(),
+        EngineError::Unsupported {
+            operation: "rgpot_engine_set_scc_rescue",
+            message: "symbol is not exported".into(),
+        }
+    );
+    assert_eq!(engine.source_revision(), None);
+    let (_, flags) = engine
+        .force_flagged(&EngineRequest {
+            positions: &[0.5, -1.0, 2.0],
+            atomic_numbers: &[SCC_RESCUED_ATOM],
+            box_matrix: &CELL,
+        })
+        .expect("force");
+    assert_eq!(flags, None);
+}
+
 #[test]
 fn batch_without_the_symbol_is_unsupported() {
     let path = build("harmonic_nobatch", &["NO_BATCH"]);
@@ -1787,7 +1925,7 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 
 #[test]
 fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 11);
+    assert_eq!(ENGINE_ABI_MINOR, 12);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -1875,12 +2013,30 @@ fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected(
         }]
     );
 
-    // A minor-11 plugin is the current minor and also exports the jet.
+    // A minor-11 plugin exports the jet but no evaluation flags.
     let minor11_path = build("harmonic_stamp_minor11", &["FIXTURE_ABI_MINOR=11"]);
-    let minor11 = load(&minor11_path);
-    assert_eq!(minor11.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    let mut minor11 = load(&minor11_path);
+    assert_eq!(
+        minor11.abi_stamp(),
+        RgpotEngineAbiStamp {
+            abi_minor: 11,
+            ..RgpotEngineAbiStamp::HOST
+        }
+    );
     assert!(minor11.symbols().taylor_jet.is_some());
     assert_eq!(minor11.caps().expect("caps").jet_order, 3);
+    assert!(minor11.symbols().last_eval_flags.is_none());
+    assert_eq!(minor11.source_revision(), None);
+    let (_, flags11) = minor11.force_flagged(&req).expect("force on minor-11");
+    assert_eq!(flags11, None);
+
+    // A minor-12 plugin is the current minor and reports evaluation flags.
+    let minor12_path = build("harmonic_stamp_minor12", &["FIXTURE_ABI_MINOR=12"]);
+    let minor12 = load(&minor12_path);
+    assert_eq!(minor12.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert!(minor12.symbols().last_eval_flags.is_some());
+    assert!(minor12.symbols().set_scc_rescue.is_some());
+    assert!(minor12.symbols().source_revision.is_some());
 
     // A plugin whose minor is newer than the host's is rejected.
     let newer_define = format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1);

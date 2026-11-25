@@ -71,9 +71,12 @@ Every library above except
 =rgpot_engine_caps=,
 =rgpot_engine_last_error=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=,
 =rgpot_engine_copy_orbitals=, =rgpot_engine_last_components=,
-=rgpot_engine_component_name=, =rgpot_engine_set_cache= and
-=rgpot_engine_cache_counts=.
+=rgpot_engine_component_name=, =rgpot_engine_set_cache=,
+=rgpot_engine_cache_counts=, =rgpot_engine_last_eval_flags=,
+=rgpot_engine_set_scc_rescue= and =rgpot_engine_source_revision=.
 Only =libcomposite_engine= has components; the others report none.
+Only =libxtb_engine= has an SCC rescue to switch and evaluation flags to
+report; the others report 0 for each system and answer code 3 to the switch.
 =libpotlibc_engine= and =libcoupled_well_engine= export the stamp,
 compatibility, name, version, caps, last-error, analytic-HVP and batch symbols;
 they omit the model digest, setting and component symbols.
@@ -207,7 +210,7 @@ require the symbol for a plugin to load.
 - Units :: none.
 - Outputs :: three =unsigned short= fields:
   =abi_major= (=RGPOT_ENGINE_ABI_VERSION=, 1),
-  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 11) and
+  =abi_minor= (=RGPOT_ENGINE_ABI_MINOR=, 12) and
   =layout_revision= (=RGPOT_ENGINE_ABI_LAYOUT_REVISION=, 1).
 - Errors :: none.
 
@@ -238,6 +241,8 @@ Minor 7 adds =rgpot_engine_unload_policy=, =RGPOT_ENGINE_UNLOAD_RESIDENT= and
 Minor 11 adds
 =rgpot_engine_taylor_jet=, =RgpotEngineDerivativeReport= and the trailing =RgpotEngineCaps.jet_order=
 field.
+Minor 12 adds =rgpot_engine_last_eval_flags=, =rgpot_engine_set_scc_rescue=,
+=rgpot_engine_source_revision= and the =RGPOT_ENGINE_EVAL_*= bits.
 The version does not cover the Cap'n Proto params schema, the tensor runtime the
 engine links, or the model.
 
@@ -945,6 +950,85 @@ finite differences.
 A host loads an engine of an earlier minor that has neither the symbol nor the
 trailing caps field, and gets that unsupported result only when it asks for the
 jet.
+
+** Evaluation flags and the SCC rescue
+
+A self-consistent backend can return success for an SCC that did not converge
+at the configured settings.
+The GFN-xTB backend retries such an SCC with a smeared occupation at 1000, 3000
+and 5000 K and then cools back to the configured temperature; the energy it
+returns can belong to another self-consistent state than a plain SCC reaches.
+=rgpot_engine_last_eval_flags= says which systems of the last call needed that,
+and =rgpot_engine_set_scc_rescue= turns the rescue off so that such an SCC fails
+the call instead.
+The defaults are unchanged: the rescue is on and a host that reads no flags sees
+the same answers as before minor 12.
+A cached answer carries =RGPOT_ENGINE_EVAL_CACHED= only, because the call ran
+no SCC.
+A backend with flags is evaluated one system at a time by
+=rgpot_engine_force_batch=, so each system gets its own flags.
+
+*** =rgpot_engine_last_eval_flags=
+
+#+attr_rgpot: signature
+#+begin_src c
+long rgpot_engine_last_eval_flags(const RgpotEnginePot *pot, uint64_t *flags,
+                                  long capacity);
+#+end_src
+
+- Inputs :: =pot=, a handle; =flags=, room for =capacity= values (may be null
+  with =capacity= 0 to query the count).
+- Units :: none.
+- Outputs :: the number of systems the last =rgpot_engine_force= (1) or
+  =rgpot_engine_force_batch= (=nSystems=) evaluated, whatever =capacity=; the
+  first =capacity= values are written in system order.
+  0 before the first call and after a failed one.
+  Each value is a set of bits: =RGPOT_ENGINE_EVAL_SCC_RESCUED= (=0x1=) when the
+  SCC converged only after the rescue, =RGPOT_ENGINE_EVAL_SCC_RETRIED= (=0x2=)
+  when the first attempt failed and a second one at the configured settings,
+  from the engine's own guess, converged, and =RGPOT_ENGINE_EVAL_CACHED= (=0x4=)
+  when the attached result cache served the answer.
+- Errors :: returns -1 for a null =pot=.
+
+Optional symbol, minor 12.
+A backend that tells nothing about its evaluations reports 0 for each system.
+
+*** =rgpot_engine_set_scc_rescue=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_engine_set_scc_rescue(RgpotEnginePot *pot, int enabled);
+#+end_src
+
+- Inputs :: =pot=, a handle; =enabled=, nonzero for the rescue (the default)
+  and 0 to switch it off.
+- Units :: none.
+- Outputs :: 0 on success.
+- Errors :: returns 1 for a null =pot=, 2 when the setting fails and 3 for a
+  backend without an SCC rescue; codes 2 and 3 record the reason in
+  =rgpot_engine_last_error=.
+
+Optional symbol, minor 12.
+With the rescue off an SCC that does not converge fails the evaluation with
+code 2 and a =rgpot_engine_last_error= that names the iteration budget and the
+temperature.
+The call must not run concurrently with a call on the same handle.
+
+*** =rgpot_engine_source_revision=
+
+#+attr_rgpot: signature
+#+begin_src c
+const char *rgpot_engine_source_revision(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the source revision the library was built from (a git short hash
+  or =RGPOT_SOURCE_REVISION=), or the empty string when the build had none to
+  record; static storage.
+- Errors :: none; the call cannot fail.
+
+Optional symbol, minor 12.
 
 ** Learning engines
 
@@ -1701,12 +1785,14 @@ a host that does call =dlclose= on them leaves them mapped.
 - =CoordTransformFn=, =AbiVersionFn=, =AvailableFn=, =AbiStampFn=, =CreateFn=,
   =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =TaylorJetFn=, =CapsFn=,
   =LastErrorFn=, =LastComponentsFn=, =ComponentNameFn=, =ModelStateFn=,
-  =SetCallbacksFn=, =HintFn=, =UnloadPolicyFn= :: =extern "C"= function-pointer
+  =SetCallbacksFn=, =HintFn=, =UnloadPolicyFn=, =LastEvalFlagsFn=,
+  =SetSccRescueFn=, =SourceRevisionFn= :: =extern "C"= function-pointer
   types matching the C declarations above.
 - =EngineSymbols= :: Resolved symbol table holding required
   (=abi_version=, =create=, =destroy=, =force=) and optional (=available=, =abi_stamp=,
   =force_batch=, =hvp=, =taylor_jet=, =caps=, =last_error=, =last_components=,
-  =component_name=, =model_state=, =set_callbacks=, =hint=) function pointers.
+  =component_name=, =model_state=, =set_callbacks=, =hint=, =last_eval_flags=,
+  =set_scc_rescue=, =source_revision=) function pointers.
   The struct is
   =#[non_exhaustive]=: build it with =EngineSymbols::new= for the four required symbols and one =with_*=
   method per optional symbol, such as =with_available= or =with_hint=.
@@ -1719,6 +1805,20 @@ a host that does call =dlclose= on them leaves them mapped.
   Angstrom).
 - =EngineEvaluation= :: Output containing =energy= (eV) and =forces=
   (eV/Angstrom, row-major =[n_atoms, 3]=).
+- =EvalFlags=, =ENGINE_EVAL_SCC_RESCUED=, =ENGINE_EVAL_SCC_RETRIED=,
+  =ENGINE_EVAL_CACHED=, =ENGINE_EVAL_FLAGS_MINOR= :: The bits of
+  =rgpot_engine_last_eval_flags= and a newtype over them with =scc_rescued()=,
+  =scc_retried()=, =cached()=, =is_plain()= and =contains()=.
+- =EnginePotential::last_eval_flags()=, =EnginePotential::force_flagged(&request)=,
+  =EnginePotential::set_scc_rescue(enabled)=, =EnginePotential::source_revision()= ::
+  =last_eval_flags= returns one =EvalFlags= per system of the last call, and
+  =EngineError::Unsupported= when the engine does not export the symbol.
+  =force_flagged= is =force= followed by that read, with =None= for an engine
+  without it.
+  =set_scc_rescue= maps code 3 and a missing symbol to =EngineError::Unsupported=;
+  with the rescue off a nonconverged SCC is =EngineError::Recoverable=.
+  =source_revision= is =None= without the symbol.
+  =EngineSession= forwards all four except =force_flagged=.
 - =EnginePotential::load(path, config)= /
   =EnginePotential::from_symbols(symbols, config)= :: =load= takes the resident
   registry entry for =path=, opening the file on first use.

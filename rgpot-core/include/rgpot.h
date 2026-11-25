@@ -100,7 +100,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * The ABI minor this loader advertises, `RGPOT_ENGINE_ABI_MINOR` of the header.
  */
-#define ENGINE_ABI_MINOR 11
+#define ENGINE_ABI_MINOR 12
 
 /**
  * The struct layout revision this loader expects,
@@ -133,6 +133,29 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
  * The first ABI minor that defines `rgpot_engine_unload_policy`.
  */
 #define ENGINE_UNLOAD_POLICY_MINOR 7
+
+/**
+ * The first ABI minor that defines `rgpot_engine_last_eval_flags`,
+ * `rgpot_engine_set_scc_rescue` and `rgpot_engine_source_revision`.
+ */
+#define ENGINE_EVAL_FLAGS_MINOR 12
+
+/**
+ * `RGPOT_ENGINE_EVAL_SCC_RESCUED`: the SCC converged only after the
+ * engine's smeared-occupation rescue.
+ */
+#define ENGINE_EVAL_SCC_RESCUED 1
+
+/**
+ * `RGPOT_ENGINE_EVAL_SCC_RETRIED`: the first SCC attempt failed and a
+ * second one from the engine's own guess converged.
+ */
+#define ENGINE_EVAL_SCC_RETRIED 2
+
+/**
+ * `RGPOT_ENGINE_EVAL_CACHED`: the attached result cache served the answer.
+ */
+#define ENGINE_EVAL_CACHED 4
 
 /**
  * Magic number of `RgpotCoupledWellConfigV1` and `RgpotCoupledWellConfigV2`.

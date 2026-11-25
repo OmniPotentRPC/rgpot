@@ -9,8 +9,11 @@
 // RGPOT_ENGINE_STUB_MODEL. Byte 3 is zero when the analytic Hessian-vector
 // product is off. Byte 4 is nonzero when byte 5 is an explicit spin: 0 is
 // a real value there, and it is not the same as leaving byte 4 clear. The
-// library exports how many calls were inside the backend at once.
+// library exports how many calls were inside the backend at once. With the
+// hooks on, atomic number 1000 stands for an SCC that converges only through
+// the rescue: flagged, or an evaluation failure with the rescue off.
 
+#include "rgpot/EvalFlags.hpp"
 #include "rgpot/GradientJet.hpp"
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine_c_abi.h"
@@ -18,6 +21,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <stdexcept>
 #include <thread>
@@ -54,8 +58,18 @@ public:
     while (now > seen && !g_max.compare_exchange_weak(seen, now)) {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    flags = 0;
     for (size_t s = 0; s < batch.nSystems; ++s) {
       const rgpot::ForceInput &in = batch.in[s];
+      if (std::find(in.atmnrs, in.atmnrs + in.nAtoms, 1000) !=
+          in.atmnrs + in.nAtoms) {
+        if (!rescue) {
+          --g_inside;
+          throw std::runtime_error(
+              "SCC did not converge (SCC rescue disabled)");
+        }
+        flags |= rgpot::eval_flags::SccRescued;
+      }
       double e = 0.0;
       for (size_t k = 0; k < 3 * in.nAtoms; ++k) {
         e += 0.5 * in.pos[k] * in.pos[k];
@@ -71,6 +85,9 @@ public:
                          double *product) const override {
     std::copy_n(direction, 3 * in.nAtoms, product);
   }
+
+  bool rescue = true;
+  std::uint64_t flags = 0;
 
 private:
   rgpot::Reentrancy reentrancy_;
@@ -124,11 +141,18 @@ Created create(const void *config, std::size_t config_len) {
   }
   Created out;
   auto backend = std::make_unique<Backend>();
+  StubPot *stub = nullptr;
   if (bytes[4] != 0) {
     backend->pot = std::make_unique<PartialJet>();
   } else {
-    backend->pot = std::make_unique<StubPot>(static_cast<Reentrancy>(bytes[0]),
-                                             bytes[3] != 0);
+    auto pot = std::make_unique<StubPot>(static_cast<Reentrancy>(bytes[0]),
+                                         bytes[3] != 0);
+    stub = pot.get();
+    backend->pot = std::move(pot);
+  }
+  if (bytes[1] == 0 && stub != nullptr) {
+    backend->set_scc_rescue = [stub](bool enabled) { stub->rescue = enabled; };
+    backend->last_eval_flags = [stub] { return stub->flags; };
   }
   if (bytes[1] == 0) {
     backend->set_charge_spin = [](int charge, int spin) {

@@ -25,8 +25,13 @@ Created create(const void *config, std::size_t config_len) {
           "'xtb'");
     }
     auto backend = std::make_unique<Backend>();
-    backend->pot =
-        std::make_unique<XTBPot>(builtin.xtb.value_or(XTBConfig{}));
+    auto pot = std::make_unique<XTBPot>(builtin.xtb.value_or(XTBConfig{}));
+    XTBPot *xtb = pot.get();
+    backend->set_scc_rescue = [xtb](bool enabled) {
+      xtb->setSccRescue(enabled);
+    };
+    backend->last_eval_flags = [xtb] { return xtb->lastEvalFlags(); };
+    backend->pot = std::move(pot);
     out.backend = std::move(backend);
   } catch (const std::exception &e) {
     out.error = e.what();

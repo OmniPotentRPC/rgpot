@@ -22,10 +22,11 @@
  *   handle is safe from any thread and calls on it are serialized.
  * - @c ProcessSerial: the adapter admits one call at a time in the process
  *   across all handles of the library.
- * Setting calls (threads, charge and spin) and destroy must not run
- * concurrently with a call on the same handle.
+ * Setting calls (threads, charge and spin, SCC rescue) and destroy must not
+ * run concurrently with a call on the same handle.
  */
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <stdexcept>
@@ -62,6 +63,12 @@ struct Backend {
   /// Empty when the backend is not a sum; otherwise the per-term record of
   /// its last force call (rgpot::SumPot::lastComponents).
   std::function<const std::vector<SumComponent> &()> components;
+  /// Empty when the backend has no SCC rescue to switch.
+  std::function<void(bool enabled)> set_scc_rescue;
+  /// Empty when the backend records no evaluation flags; otherwise the
+  /// rgpot::eval_flags bits of its last successful force. With the hook
+  /// set, force_batch evaluates one system at a time to read each one.
+  std::function<std::uint64_t()> last_eval_flags;
 };
 
 struct Created {

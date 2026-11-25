@@ -103,7 +103,7 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
  * minor 0, layout 1.
  */
 #define RGPOT_ENGINE_ABI_VERSION 1
-#define RGPOT_ENGINE_ABI_MINOR 11
+#define RGPOT_ENGINE_ABI_MINOR 12
 #define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
 
 #define RGPOT_ENGINE_OK 0
@@ -525,6 +525,60 @@ RGPOT_ENGINE_API long rgpot_engine_last_components(
 RGPOT_ENGINE_API size_t rgpot_engine_component_name(const RgpotEnginePot *pot,
                                                     long index, char *buf,
                                                     size_t len);
+
+/**
+ * Bits of rgpot_engine_last_eval_flags, minor 12. A set bit qualifies an
+ * evaluation that returned success; 0 is a plain evaluation.
+ *
+ * - RGPOT_ENGINE_EVAL_SCC_RESCUED: the SCC did not converge at the
+ *   configured settings and converged only after the engine's rescue (a
+ *   smeared occupation at a higher electronic temperature, then a single
+ *   point at the configured temperature from that density). The state it
+ *   reaches can lie far from the one a plain SCC reaches.
+ * - RGPOT_ENGINE_EVAL_SCC_RETRIED: the first SCC attempt did not converge
+ *   and a second attempt at the configured settings, from the engine's own
+ *   guess, did.
+ * - RGPOT_ENGINE_EVAL_CACHED: the attached result cache served the answer,
+ *   so the call evaluated nothing and the bits of the evaluation that
+ *   stored it are unknown.
+ */
+#define RGPOT_ENGINE_EVAL_SCC_RESCUED 0x1u
+#define RGPOT_ENGINE_EVAL_SCC_RETRIED 0x2u
+#define RGPOT_ENGINE_EVAL_CACHED 0x4u
+
+/**
+ * Evaluation flags of the last rgpot_engine_force or
+ * rgpot_engine_force_batch call on the handle, minor 12: one
+ * RGPOT_ENGINE_EVAL_* bit set per system, in system order. Writes up to
+ * capacity values into flags and returns the number of systems the last
+ * call evaluated (call with capacity 0 to size): 1 after force, nSystems
+ * after force_batch, 0 before the first call and after a failed one. -1 for
+ * a NULL pot. A backend that tells nothing about its evaluations reports
+ * 0 for each system. May run at any time.
+ */
+RGPOT_ENGINE_API long rgpot_engine_last_eval_flags(const RgpotEnginePot *pot,
+                                                   uint64_t *flags,
+                                                   long capacity);
+
+/**
+ * Turn the SCC rescue of the backend on (nonzero, the default of every
+ * engine in this repository) or off (0), minor 12. With it off, an SCC that
+ * does not converge fails the evaluation with RGPOT_ENGINE_ERR_EVAL and a
+ * last_error that says so, instead of returning a rescued answer. Returns 0
+ * on success, 1 for a NULL pot, 2 when the setting fails and 3 for a backend
+ * without an SCC rescue; codes 2 and 3 record the reason in last_error. Must
+ * not run concurrently with a call on the same handle.
+ */
+RGPOT_ENGINE_API int rgpot_engine_set_scc_rescue(RgpotEnginePot *pot,
+                                                 int enabled);
+
+/**
+ * Source revision the engine library was built from (a git short hash), or
+ * "" when the build had none to record, minor 12. Together with
+ * rgpot_engine_version it identifies the build. The pointer refers to
+ * static storage.
+ */
+RGPOT_ENGINE_API const char *rgpot_engine_source_revision(void);
 
 #define RGPOT_ENGINE_UNLOAD_RESIDENT 0
 #define RGPOT_ENGINE_UNLOAD_SAFE 1
