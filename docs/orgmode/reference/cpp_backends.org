@@ -524,6 +524,9 @@ explicit ORCAPot(const ORCAConfig &config);
   input file =rgpot_orca.inp= there.
   It closes extra file descriptors above 2 before =exec= and runs the resolved
   file with the argument =rgpot_orca.inp=.
+  On Linux, FreeBSD and NetBSD it runs the descriptor it checked with =fexecve=;
+  elsewhere, or when the kernel cannot run a descriptor, it falls back to
+  =execv= on the path.
   Its standard output goes to
   =rgpot_orca.out= and its standard error to =rgpot_orca.err=.
   The call then reads =rgpot_orca.engrad= in the C locale, as when writing
@@ -614,6 +617,9 @@ void reset();
   hash of this file has changed.
   A change seen before the run stops the call without running anything; one seen
   only after the run discards the result of the run that took place.
+  Where the call runs the checked descriptor, a file swapped in after the check
+  is not run; with the =execv= fallback such a swap is caught only after the
+  run.
 - Errors :: none.
 
 *** =rgpot::ORCAPot::runDirectory=

@@ -26,6 +26,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
@@ -68,6 +69,7 @@ echo "$n" > "$state/count"
 cp "$inp" "$state/call$n.inp"
 pwd > "$state/call$n.cwd"
 echo "$0" > "$state/call$n.argv0"
+readlink -f -- "$0" > "$state/call$n.exe" || true
 fail() { echo "fake orca: $*" >&2; exit 3; }
 
 first=$(head -n 1 "$inp")
@@ -1129,9 +1131,13 @@ TEST_CASE("ORCAPot closes extra non-CLOEXEC file descriptors before exec",
 
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  EnvVar forbidden("FAKE_ORCA_FORBIDDEN_FDS",
-                   std::to_string(write_end.get()) + " " +
-                       std::to_string(high_write.get()));
+  // Descriptor 3 of the child holds the executable itself, which the fake,
+  // a script, is read through.
+  std::string inherited = std::to_string(high_write.get());
+  if (write_end.get() != 3) {
+    inherited += " " + std::to_string(write_end.get());
+  }
+  EnvVar forbidden("FAKE_ORCA_FORBIDDEN_FDS", inherited);
   rgpot::ORCAPot pot(fake.config());
   evaluate(pot, kWater, kWaterZ);
   REQUIRE(fake.calls() == 1);
@@ -1428,9 +1434,17 @@ TEST_CASE("ORCAPot runs the resolved executable and refuses a retargeted "
   const uint64_t key = pot.paramsKey();
   evaluate(pot, kWater, kWaterZ);
   REQUIRE(fake.calls() == 1);
-  // The child is started on the resolved file, not on the symlink.
+  // The child runs the resolved file, not the symlink. On Linux it runs
+  // the descriptor it checked, so the script is read through /dev/fd.
+  REQUIRE(slurp(fake.state / "call1.exe") ==
+          pot.resolvedExecutablePath() + "\n");
+#if defined(__linux__)
+  REQUIRE_THAT(slurp(fake.state / "call1.argv0"),
+               Catch::Matchers::StartsWith("/dev/fd/"));
+#else
   REQUIRE(slurp(fake.state / "call1.argv0") ==
           pot.resolvedExecutablePath() + "\n");
+#endif
 
   fs::remove(link);
   fs::create_symlink(other, link);
@@ -1488,6 +1502,66 @@ TEST_CASE("ORCAPot refuses an executable replaced under the same name and "
       Catch::Matchers::MessageMatches(ContainsSubstring("changed")));
   REQUIRE(fake.calls() == 1);
 }
+
+#if defined(__linux__)
+TEST_CASE("ORCAPot runs the executable it checked when the path is swapped "
+          "before exec",
+          "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  // The program swapped in leaves a mark and runs nothing else.
+  const fs::path staged = fake.bin / "orca.swap";
+  {
+    std::ofstream script(staged, std::ios::binary);
+    script << "#!/usr/bin/env bash\n"
+           << "echo other > \"$FAKE_ORCA_STATE/ran_other\"\n";
+  }
+  fs::permissions(staged, fs::perms::owner_all);
+  rgpot::ORCAPot pot(fake.config());
+  const fs::path run(pot.runDirectory());
+  const fs::path out = run / "rgpot_orca.out";
+  const fs::path err = run / "rgpot_orca.err";
+  // The call opens and checks the executable, then opens the standard
+  // streams of the child. As FIFOs, each open waits for this thread, which
+  // swaps the file in between: after the check and before the exec.
+  REQUIRE(::mkfifo(out.c_str(), 0600) == 0);
+  REQUIRE(::mkfifo(err.c_str(), 0600) == 0);
+  bool swapped = false;
+  std::thread peer([&] {
+    const int out_fd = ::open(out.c_str(), O_RDONLY);
+    swapped = ::rename(staged.c_str(), fake.orca.c_str()) == 0;
+    const int err_fd = ::open(err.c_str(), O_RDONLY);
+    char buf[4096];
+    for (const int fd : {out_fd, err_fd}) {
+      while (fd >= 0 && ::read(fd, buf, sizeof(buf)) > 0) {
+      }
+      if (fd >= 0) {
+        ::close(fd);
+      }
+    }
+  });
+  const auto call = [&] { evaluate(pot, kWater, kWaterZ); };
+  std::string message;
+  try {
+    call();
+  } catch (const rgpot::ORCAError &e) {
+    message = e.what();
+  }
+  // Unblock the peer should the call have failed before its streams.
+  for (const fs::path &fifo : {out, err}) {
+    const int fd = ::open(fifo.c_str(), O_RDWR | O_NONBLOCK);
+    if (fd >= 0) {
+      ::close(fd);
+    }
+  }
+  peer.join();
+  REQUIRE(swapped);
+  REQUIRE_THAT(message, ContainsSubstring("changed while it ran"));
+  // The file that was checked ran, and the one swapped in did not.
+  REQUIRE(fake.calls() == 1);
+  REQUIRE_FALSE(fs::exists(fake.state / "ran_other"));
+}
+#endif
 
 TEST_CASE("ORCAPot checks the executable before it touches the run directory",
           "[orca]") {

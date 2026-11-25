@@ -23,7 +23,13 @@ cached results do not cross ORCA installations, rewritten binaries or spin
 states. Every call runs that resolved file and
 throws `ORCAError` once the executable has changed, as after a symlink is
 retargeted: without running it when the change is seen before the run, and
-without returning the result when it is seen only after. Each call starts from
+without returning the result when it is seen only after. On Linux, FreeBSD
+and NetBSD the call opens the file once, checks that open file and runs it
+through its descriptor with `fexecve`, so a file swapped in after the check is
+not run; a script is then read by its interpreter through `/dev/fd`. Elsewhere,
+or when the kernel cannot run a descriptor, the child falls back to `execv` on
+the path, and a swap between the check and the exec is caught only by the
+check after the run. Each call starts from
 ORCA's own guess unless `ORCAConfig::restart` is set; with restart on, a
 result cache is not used. A `maxcore_mb` of 0 leaves `%maxcore` out. A box is
 padding only: every pair of atoms must be its own nearest periodic image,
