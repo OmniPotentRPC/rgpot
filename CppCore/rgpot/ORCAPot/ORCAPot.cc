@@ -493,6 +493,19 @@ ORCAPot::ORCAPot(const ORCAConfig &config)
                     parent.string() + ": " + std::strerror(errno));
   }
   m_run_dir = pattern;
+
+  // A failure leaves the path as found and the time at zero; the key then
+  // still separates installations by path.
+  std::error_code real_ec;
+  const fs::path real = fs::canonical(m_executable, real_ec);
+  m_real_executable = real_ec ? m_executable : real.string();
+  const auto written = fs::last_write_time(m_real_executable, real_ec);
+  if (!real_ec) {
+    m_executable_mtime = static_cast<int64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            written.time_since_epoch())
+            .count());
+  }
 }
 
 ORCAPot::~ORCAPot() {
@@ -515,6 +528,8 @@ uint64_t ORCAPot::paramsKey() const noexcept {
   fp.i64(m_config.charge);
   fp.i64(m_config.multiplicity);
   fp.b8(m_config.restart);
+  fp.str(m_real_executable);
+  fp.i64(m_executable_mtime);
   return fp.h;
 }
 

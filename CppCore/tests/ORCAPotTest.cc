@@ -33,6 +33,9 @@
 #include "rgpot/ORCAPot/ORCAFiles.hpp"
 #include "rgpot/ORCAPot/ORCAPot.hpp"
 #include "rgpot/units.hpp"
+#ifdef RGPOT_HAS_CACHE
+#include "rgpot/PotentialCache.hpp"
+#endif
 
 #include <fcntl.h>
 #include <signal.h>
@@ -1017,6 +1020,92 @@ TEST_CASE("ORCAPot advertises a per-instance, open-boundary kernel", "[orca]") {
   longer.timeout_s = 10.0;
   REQUIRE(rgpot::ORCAPot(longer).paramsKey() == pot.paramsKey());
 }
+
+TEST_CASE("ORCAPot keys results on the executable, charge and spin", "[orca]") {
+  Fake fake;
+  const uint64_t key = rgpot::ORCAPot(fake.config()).paramsKey();
+  REQUIRE(rgpot::ORCAPot(fake.config()).paramsKey() == key);
+
+  // A copy elsewhere is another installation.
+  const fs::path other_bin = fake.dir.path() / "other-bin";
+  fs::create_directories(other_bin);
+  fs::copy_file(fake.orca, other_bin / "orca");
+  fs::last_write_time(other_bin / "orca", fs::last_write_time(fake.orca));
+  rgpot::ORCAConfig elsewhere = fake.config();
+  elsewhere.executable = (other_bin / "orca").string();
+  REQUIRE(rgpot::ORCAPot(elsewhere).paramsKey() != key);
+
+  // A symlink runs the same file, so it shares the key.
+  const fs::path link = fake.dir.path() / "orca-link";
+  fs::create_symlink(fake.orca, link);
+  rgpot::ORCAConfig linked = fake.config();
+  linked.executable = link.string();
+  rgpot::ORCAPot via_link(linked);
+  REQUIRE(via_link.executablePath() == link.string());
+  REQUIRE(via_link.paramsKey() == key);
+
+  rgpot::ORCAConfig cation = fake.config();
+  cation.charge = 1;
+  cation.multiplicity = 2;
+  REQUIRE(rgpot::ORCAPot(cation).paramsKey() != key);
+  rgpot::ORCAConfig triplet = fake.config();
+  triplet.multiplicity = 3;
+  REQUIRE(rgpot::ORCAPot(triplet).paramsKey() != key);
+  rgpot::ORCAConfig anion = fake.config();
+  anion.charge = -1;
+  anion.multiplicity = 2;
+  REQUIRE(rgpot::ORCAPot(anion).paramsKey() !=
+          rgpot::ORCAPot(cation).paramsKey());
+}
+
+TEST_CASE("ORCAPot keys results on the executable modification time",
+          "[orca]") {
+  Fake fake;
+  const uint64_t before = rgpot::ORCAPot(fake.config()).paramsKey();
+  fs::last_write_time(fake.orca,
+                      fs::last_write_time(fake.orca) + std::chrono::seconds(5));
+  REQUIRE(rgpot::ORCAPot(fake.config()).paramsKey() != before);
+}
+
+#ifdef RGPOT_HAS_CACHE
+TEST_CASE("ORCAPot cache entries do not cross installations or spin states",
+          "[orca][cache]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::tests::TestTempDir db("rgpot-orca-cache");
+  rgpot::cache::PotentialCache cache((db.path() / "db").string());
+  rgpot::types::AtomMatrix pos = rgpot::types::AtomMatrix::Zero(3, 3);
+  for (std::size_t i = 0; i < 3; ++i) {
+    for (std::size_t k = 0; k < 3; ++k) {
+      pos(i, k) = kWater[3 * i + k];
+    }
+  }
+  const std::array<std::array<double, 3>, 3> open_box{};
+  const auto run = [&](const rgpot::ORCAConfig &cfg) {
+    rgpot::ORCAPot pot(cfg);
+    pot.setCache(&cache);
+    (void)pot(pos, kWaterZ, open_box);
+  };
+
+  run(fake.config());
+  REQUIRE(fake.calls() == 1);
+  run(fake.config());
+  REQUIRE(fake.calls() == 1);
+  fs::last_write_time(fake.orca,
+                      fs::last_write_time(fake.orca) + std::chrono::seconds(5));
+  run(fake.config());
+  REQUIRE(fake.calls() == 2);
+  rgpot::ORCAConfig cation = fake.config();
+  cation.charge = 1;
+  cation.multiplicity = 2;
+  run(cation);
+  REQUIRE(fake.calls() == 3);
+  rgpot::ORCAConfig triplet = fake.config();
+  triplet.multiplicity = 3;
+  run(triplet);
+  REQUIRE(fake.calls() == 4);
+}
+#endif
 
 TEST_CASE("ORCAPot instances keep separate working directories", "[orca]") {
   Fake fake;
