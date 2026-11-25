@@ -23,10 +23,11 @@
  * so ORCA stops after an SCF that did not converge. A call whose output
  * reports such an SCF throws ORCAError even when ORCA wrote a gradient.
  *
- * Between calls the converged orbitals are carried forward: the .gbw of one
- * call is copied to a second name and handed to the next through `%moinp`
- * and `! MORead`. Without a .gbw, or after a failure or a change of
- * composition, the next call starts from ORCA's own guess.
+ * Each call starts from ORCA's own guess. With ORCAConfig::restart on, the
+ * converged orbitals are carried forward instead: the .gbw of one call is
+ * copied to a second name and handed to the next through `%moinp` and
+ * `! MORead`. Without a .gbw, or after a failure or a change of
+ * composition, the next call still starts from ORCA's own guess.
  */
 
 #include "rgpot/Potential.hpp"
@@ -84,8 +85,10 @@ struct ORCAConfig {
   /// https://www.faccts.de/docs/orca/6.1/manual/contents/essentialelements/input.html).
   /// A negative value is rejected.
   int maxcore_mb = 1024;
-  /// Start each call from the orbitals of the previous one.
-  bool restart = true;
+  /// Start each call from the orbitals of the previous one, through
+  /// `! MORead`. Off by default, so every call starts from ORCA's own guess
+  /// and its result does not depend on the calls before it.
+  bool restart = false;
   /// Directory under which the per-instance working directory is created.
   /// Empty uses the system temporary directory.
   std::string scratch_dir;

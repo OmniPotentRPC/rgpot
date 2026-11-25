@@ -384,6 +384,12 @@ struct Fake {
     c.scratch_dir = scratch.string();
     return c;
   }
+
+  rgpot::ORCAConfig chained() const {
+    rgpot::ORCAConfig c = config();
+    c.restart = true;
+    return c;
+  }
 };
 
 // Water, with exact decimals so the coordinate rows read back unchanged.
@@ -548,7 +554,7 @@ TEST_CASE("ORCAPot works through the Potential call operator", "[orca]") {
 TEST_CASE("ORCAPot reads the previous .gbw through MORead", "[orca]") {
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
+  rgpot::ORCAPot pot(fake.chained());
 
   {
     EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
@@ -575,13 +581,13 @@ TEST_CASE("ORCAPot reads the previous .gbw through MORead", "[orca]") {
           "gbw3\n");
 }
 
-TEST_CASE("ORCAPot with restart off never writes MORead", "[orca]") {
+TEST_CASE("ORCAPot starts every call from ORCA's guess by default",
+          "[orca]") {
+  REQUIRE_FALSE(rgpot::ORCAConfig{}.restart);
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());
   EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.restart = false;
-  rgpot::ORCAPot pot(cfg);
+  rgpot::ORCAPot pot(fake.config());
   evaluate(pot, kWater, kWaterZ);
   evaluate(pot, kWater, kWaterZ);
   REQUIRE(fake.calls() == 2);
@@ -592,7 +598,7 @@ TEST_CASE("ORCAPot with restart off never writes MORead", "[orca]") {
 TEST_CASE("ORCAPot starts afresh when no gbw exists", "[orca]") {
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
+  rgpot::ORCAPot pot(fake.chained());
 
   {
     EnvVar no_gbw("FAKE_ORCA_NO_GBW", "1");
@@ -619,7 +625,7 @@ TEST_CASE("ORCAPot drops the guess on reset, deletion and a new composition",
           "[orca]") {
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
+  rgpot::ORCAPot pot(fake.chained());
   const fs::path guess = fs::path(pot.runDirectory()) / "rgpot_orca_guess.gbw";
 
   evaluate(pot, kWater, kWaterZ);
@@ -771,7 +777,7 @@ TEST_CASE("ORCAPot rejects an impossible spin state", "[orca]") {
 TEST_CASE("ORCAPot reports a failed run with the tail of stderr", "[orca]") {
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAPot pot(fake.config());
+  rgpot::ORCAPot pot(fake.chained());
   evaluate(pot, kWater, kWaterZ);
 
   EnvVar mode("FAKE_ORCA_MODE", "fail");
@@ -878,9 +884,7 @@ TEST_CASE("ORCAPot never returns the gradient of an unconverged SCF",
           "[orca]") {
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());
-  rgpot::ORCAConfig cfg = fake.config();
-  cfg.restart = true;
-  rgpot::ORCAPot pot(cfg);
+  rgpot::ORCAPot pot(fake.chained());
   evaluate(pot, kWater, kWaterZ);
   REQUIRE(fs::exists(fs::path(pot.runDirectory()) / "rgpot_orca_guess.gbw"));
 
@@ -1344,6 +1348,7 @@ TEST_CASE("ORCAPot against a real ORCA", "[orca][real]") {
   cfg.basis = "def2-SVP";
   cfg.keywords = "TightSCF";
   cfg.scratch_dir = scratch.string();
+  cfg.restart = true;
   rgpot::ORCAPot pot(cfg);
 
   const Result first = evaluate(pot, kWater, kWaterZ);
