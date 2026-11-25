@@ -467,6 +467,42 @@ double time_ewald(const System &s, int threads, int nrep, std::ostream &log, std
   return energy;
 }
 
+double time_dsf(const System &s, int threads, int nrep, std::ostream &log,
+                std::ostream &echo, const std::string &ladder) {
+  set_threads(threads);
+  rgpot::lr::CoulombConfig cfg;
+  cfg.method = rgpot::lr::CoulombMethod::DSF;
+  cfg.cutoff = 8.0;
+  cfg.alpha = 0.2;
+  cfg.short_cutoff = 3.0;
+  cfg.skin = 0.5;
+  cfg.periodic = false;
+  rgpot::lr::CoulombPot pot(
+      cfg, std::make_shared<rgpot::lr::FixedCharges>(s.q, 0.0));
+  std::vector<double> f(s.pos.size());
+  auto eval = [&]() {
+    rgpot::ForceOut out{};
+    out.F = f.data();
+    rgpot::ForceInput in{s.pos.size() / 3, s.pos.data(), s.z.data(), s.box};
+    pot.forceImpl(in, &out);
+    return out.energy;
+  };
+  double warmup_us = 0.0;
+  const auto samples = repeat(nrep, eval, &warmup_us);
+  const double energy = eval();
+  report(log, ladder, "dsf", static_cast<int>(s.z.size()), threads_now(),
+         samples, warmup_us, energy);
+  report(echo, ladder, "dsf", static_cast<int>(s.z.size()), threads_now(),
+         samples, warmup_us, energy);
+  log << "point ladder=" << ladder << " method=dsf n=" << s.z.size()
+      << " threads=" << threads_now() << " active=" << active_threads
+      << " exit=0\n";
+  echo << "point ladder=" << ladder << " method=dsf n=" << s.z.size()
+       << " threads=" << threads_now() << " active=" << active_threads
+       << " exit=0\n";
+  return energy;
+}
+
 double time_pme(const System &s, int threads, int nrep, std::ostream &log, std::ostream &echo,
                 const std::string &ladder) {
   rgpot::lr::CoulombConfig cfg;
@@ -790,7 +826,10 @@ int main(int argc, char **argv) {
     }
     return std::strstr(methods, name) != nullptr;
   };
-  const int sizes[] = {128, 256, 512, 1024, 2048, 4096, 8192};
+  std::vector<int> sizes = {128, 256, 512, 1024, 2048, 4096, 8192};
+  if (const char *only_n = std::getenv("LR_N")) {
+    sizes.assign(1, std::atoi(only_n));
+  }
   if (ladder_on("strong"))
   for (int n : sizes) {
     if (n < nmin || n > nmax) {
@@ -806,6 +845,9 @@ int main(int argc, char **argv) {
       }
       if (wanted("ewald")) {
         time_ewald(sys, threads, nrep, log, std::cout, "strong");
+      }
+      if (wanted("dsf")) {
+        time_dsf(sys, threads, nrep, log, std::cout, "strong");
       }
       if (wanted("pme")) {
         unsetenv("LR_PME_TOL");

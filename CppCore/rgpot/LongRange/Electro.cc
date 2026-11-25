@@ -296,7 +296,11 @@ void reduce_chunks(int nchunks, std::size_t n3, std::size_t nq, double *F, doubl
     return;
   }
   std::vector<Scratch> &parts = scratch_slots(nchunks);
-  const int nblocks = rgpot::fixedChunks(n3, 4096);
+  // Give every team member a contiguous part of the output. The former
+  // 4096-value blocks exposed only two reducers for a 1728-atom system,
+  // leaving the rest of a four- or eight-thread team idle while those two
+  // walked every scratch row.
+  const int nblocks = std::min<int>(team, static_cast<int>(n3));
   team_slice_phases(2, [&](int phase, int slice, int nslices) {
     if (phase == 0) {
       for (int chunk = slice; chunk < nchunks; chunk += nslices) {
@@ -497,7 +501,7 @@ void real_cached_chunk(const double *q, const std::vector<Pair> &pairs, double r
 }
 
 int real_chunks(const std::vector<Pair> &pairs, std::size_t natoms) {
-  return sum_chunks(pairs.size(), std::max<std::size_t>(256, 12 * natoms));
+  return sum_chunks(pairs.size(), std::max<std::size_t>(256, 4 * natoms));
 }
 
 void add_ewald_self(const CoulombConfig &cfg, const double *q, std::size_t n, ElecOut *out) {
@@ -1059,7 +1063,9 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
   const auto t_fft_a = std::chrono::steady_clock::now();
   const int fft_forward_team = mesh_r2c(real.data(), spec.data(), nx, ny, nz);
   const auto t_fft_b = std::chrono::steady_clock::now();
-  g_pme_trace.fft_team = fft_forward_team;
+  if (group_leader()) {
+    g_pme_trace.fft_team = fft_forward_team;
+  }
   struct FloatFactor {
     int nx = 0;
     int ny = 0;
@@ -1136,7 +1142,9 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
   const auto t_kern_a = std::chrono::steady_clock::now();
   const float *scale = saved.scale.data();
   const float *efac = saved.efac.data();
-  g_pme_trace.kernel_team = knt;
+  if (group_leader()) {
+    g_pme_trace.kernel_team = knt;
+  }
   auto kernel_body = [&](int slice) {
     double local = 0.0;
     const std::size_t chunk = (nspec + static_cast<std::size_t>(knt) - 1) / static_cast<std::size_t>(knt);
@@ -1166,11 +1174,20 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
   const auto t_kern_b = std::chrono::steady_clock::now();
   const float inv = 1.0f / static_cast<float>(ntot);
   const auto t_ifft_a = std::chrono::steady_clock::now();
-  g_pme_trace.fft_team = std::max(g_pme_trace.fft_team, mesh_c2r(spec.data(), real.data(), nx, ny, nz, inv));
+  const int fft_inverse_team =
+      mesh_c2r(spec.data(), real.data(), nx, ny, nz, inv);
   const auto t_ifft_b = std::chrono::steady_clock::now();
-  g_pme_trace.fft_us = std::chrono::duration<double, std::micro>(t_fft_b - t_fft_a).count() +
-                       std::chrono::duration<double, std::micro>(t_ifft_b - t_ifft_a).count();
-  g_pme_trace.kernel_us = std::chrono::duration<double, std::micro>(t_kern_b - t_kern_a).count();
+  if (group_leader()) {
+    g_pme_trace.fft_team =
+        std::max(g_pme_trace.fft_team, fft_inverse_team);
+    g_pme_trace.fft_us =
+        std::chrono::duration<double, std::micro>(t_fft_b - t_fft_a).count() +
+        std::chrono::duration<double, std::micro>(t_ifft_b - t_ifft_a)
+            .count();
+    g_pme_trace.kernel_us =
+        std::chrono::duration<double, std::micro>(t_kern_b - t_kern_a)
+            .count();
+  }
   // Keep the real potential in the float buffer the gather reads.
   if (group_leader()) {
     g_charge_f.swap(real);
@@ -1449,11 +1466,13 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   }
   const auto t_reduce0 = std::chrono::steady_clock::now();
   const auto t_fft0 = std::chrono::steady_clock::now();
-  g_pme_trace.spread_us = std::chrono::duration<double, std::micro>(t_fft0 - t_spread0).count();
   if (group_leader()) {
+    g_pme_trace.spread_us =
+        std::chrono::duration<double, std::micro>(t_fft0 - t_spread0)
+            .count();
     g_pme_trace.spread_team = nthreads;
   }
-  if (trace) {
+  if (trace && group_leader()) {
     std::fprintf(stderr, "pme_reduce workers=%d deposit_us=%.3f reduce_us=%.3f\n", nthreads,
                  std::chrono::duration<double, std::micro>(t_reduce0 - t_spread0).count(),
                  std::chrono::duration<double, std::micro>(t_fft0 - t_reduce0).count());
@@ -1579,7 +1598,9 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
     fft3(phihat, nx, ny, nz, true, nthreads);
   }
   const auto t_force0 = std::chrono::steady_clock::now();
-  g_pme_trace.gather_us = 0;
+  if (group_leader()) {
+    g_pme_trace.gather_us = 0;
+  }
   auto gather_atom = [&](std::size_t i) {
     double pot = 0.0;
     double dQ[3] = {};
@@ -1670,10 +1691,13 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
       dE_dq[i] += dbg;
     }
   }
-  out->has_stress = true;
   const auto t_end = std::chrono::steady_clock::now();
-  g_pme_trace.gather_us = std::chrono::duration<double, std::micro>(t_end - t_force0).count();
-  if (trace) {
+  if (group_leader()) {
+    out->has_stress = true;
+    g_pme_trace.gather_us =
+        std::chrono::duration<double, std::micro>(t_end - t_force0).count();
+  }
+  if (trace && group_leader()) {
     auto us = [](auto a, auto b) {
       return std::chrono::duration<double, std::micro>(b - a).count();
     };

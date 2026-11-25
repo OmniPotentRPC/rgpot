@@ -43,6 +43,15 @@
 #include <omp.h>
 #endif
 
+#if defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define RGPOT_THREAD_SANITIZER 1
+#endif
+#endif
+#if defined(__SANITIZE_THREAD__)
+#define RGPOT_THREAD_SANITIZER 1
+#endif
+
 namespace {
 
 void setThreads(const char *value) {
@@ -551,6 +560,9 @@ TEST_CASE("SPME beside the mesh finishes under a potential thread count",
 
 TEST_CASE("eight threads still beat one thread on the large Lennard-Jones cell",
           "[threads][invariant][timing]") {
+#if defined(RGPOT_THREAD_SANITIZER)
+  SKIP("thread sanitizer instrumentation is not a performance measurement");
+#endif
   const double a_lj = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
   rgpot::LJConfig lj;
   lj.psi = 1.0;
