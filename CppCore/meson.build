@@ -2941,6 +2941,40 @@ if get_option('with_tests')
                 depends: engine_table_depends,
                 workdir: meson.source_root(),
             )
+            # makePotential over the classical engine (plugin arm) and an
+            # engine that echoes its configuration (orca arm).
+            config_echo_engine = shared_library(
+                'config_echo_engine',
+                sources: ['tests/config_echo_engine.c'],
+                include_directories: _incdirs,
+                c_args: ['-DRGPOT_ENGINE_BUILD'],
+                install: false,
+            )
+            potential_factory_env = environment()
+            potential_factory_env.set(
+                'RGPOT_FACTORY_CLASSICAL_ENGINE',
+                classical_engine.full_path(),
+            )
+            potential_factory_env.set(
+                'RGPOT_FACTORY_ECHO_ENGINE',
+                config_echo_engine.full_path(),
+            )
+            test(
+                'PotentialFactoryTest',
+                executable(
+                    'potential_factory_test',
+                    sources: ['tests/PotentialFactoryTest.cc'],
+                    dependencies: test_deps + [capnp_rpc_dep, ptlrpc_dep, _dl_dep],
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto,
+                    link_language: 'cpp',
+                    build_rpath: _metatomic_build_rpath,
+                ),
+                env: potential_factory_env,
+                depends: [classical_engine, config_echo_engine],
+                kwargs: _rt_kw['PotentialFactoryTest'],
+            )
         endif
         python3_prog = find_program('python3', required: false)
         if python3_prog.found()
