@@ -31,6 +31,11 @@
 
 #include "XtbHotClusters.hpp"
 
+#ifdef RGPOT_HAS_CACHE
+#include "TestTempDir.hpp"
+#include "rgpot/PotentialCache.hpp"
+#endif
+
 using rgpot::types::AtomMatrix;
 using Catch::Matchers::WithinAbs;
 
@@ -624,6 +629,58 @@ TEST_CASE("XTBPot flags a rescued SCC and fails it with the rescue off",
     REQUIRE(std::string(ex.what()).find("SCC rescue disabled; 500 iterations "
                                         "at 300 K") != std::string::npos);
   }
+}
+
+// A result cached with one setting must not answer for another, so each
+// setter that changes the answer changes the cache key.
+TEST_CASE("XTBPot settings change the result-cache key",
+          "[xtb][linked][scc][cache]") {
+  rgpot::XTBPot pot(ammonia_cfg());
+  const uint64_t key = pot.paramsKey();
+  REQUIRE(key == rgpot::XTBPot(ammonia_cfg()).paramsKey());
+  pot.setSccRescue(false);
+  REQUIRE(pot.paramsKey() != key);
+  pot.setSccRescue(true);
+  REQUIRE(pot.paramsKey() == key);
+  pot.setAccuracy(1.0);
+  REQUIRE(pot.paramsKey() != key);
+  pot.setAccuracy(0.01);
+  pot.setElectronicTemperature(600.0);
+  REQUIRE(pot.paramsKey() != key);
+  pot.setElectronicTemperature(300.0);
+  pot.setMaxIterations(250);
+  REQUIRE(pot.paramsKey() != key);
+  pot.setMaxIterations(500);
+  REQUIRE(pot.paramsKey() == key);
+
+#ifdef RGPOT_HAS_CACHE
+  const auto system = ammonia_tetramer();
+  rgpot::tests::TestTempDir directory("rgpot-xtb-rescue-cache");
+  {
+    rgpot::cache::PotentialCache cache((directory.path() / "results").string());
+    pot.setCache(&cache);
+    auto [rescued, f_rescued, v_rescued] =
+        pot(system.positions, system.atmtypes, system.box);
+    (void)f_rescued;
+    (void)v_rescued;
+    REQUIRE_THAT(rescued, WithinAbs(kAmmoniaRescued, 1.0e-3));
+    (void)pot(system.positions, system.atmtypes, system.box);
+    REQUIRE(cache.counts().computed == 1);
+    REQUIRE(cache.counts().served == 1);
+
+    // A stale hit would answer the rescued energy here.
+    pot.setSccRescue(false);
+    REQUIRE_THROWS_AS(pot(system.positions, system.atmtypes, system.box),
+                      rgpot::SccNotConverged);
+    REQUIRE(cache.counts().served == 1);
+
+    pot.setSccRescue(true);
+    (void)pot(system.positions, system.atmtypes, system.box);
+    REQUIRE(cache.counts().computed == 1);
+    REQUIRE(cache.counts().served == 2);
+    pot.setCache(nullptr);
+  }
+#endif
 }
 
 TEST_CASE("XTBDlopen flags a rescued SCC and fails it with the rescue off",

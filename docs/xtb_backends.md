@@ -183,8 +183,9 @@ or `reset()`. `XTBConfig::scc_rescue = false`, or `setSccRescue(false)` on a
 live handle, turns the rescue off: such a call throws `SccNotConverged`
 instead, with the iteration budget and temperature in the message, and the
 first attempt gets the whole budget instead of 48 iterations. The rescue
-setting is part of `fusedSettings()`, so a result cache keeps rescued and
-strict answers apart. `XTBDlopen` refuses `scc_rescue = false` with an
+setting is part of `fusedSettings()` and of `XTBPot::paramsKey()`, so the
+fused cache and the result cache keep rescued and strict answers apart,
+including after `setSccRescue` on a live handle. `XTBDlopen` refuses `scc_rescue = false` with an
 engine too old to switch the rescue off, rather than silently rescuing.
 
 The engine library exports these as optional symbols, probed with `dlsym`,

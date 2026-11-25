@@ -99,6 +99,11 @@ public:
    */
   [[nodiscard]] FusedSettingsSpec fusedSettings() const;
 
+  /// Hash of the method, charge, spin, accuracy, electronic temperature,
+  /// SCC iteration budget and SCC rescue switch, read when the call is
+  /// made, so a setter above also changes the result-cache key.
+  [[nodiscard]] uint64_t paramsKey() const noexcept override;
+
   /**
    * @throws SccNotConverged when the SCC does not converge, the rescue
    *         included when it is enabled.

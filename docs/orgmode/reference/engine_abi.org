@@ -1012,6 +1012,8 @@ Optional symbol, minor 12.
 With the rescue off an SCC that does not converge fails the evaluation with
 code 2 and a =rgpot_engine_last_error= that names the iteration budget and the
 temperature.
+The setting is part of the result-cache key of =libxtb_engine=, so a result
+cached under the other setting is not served.
 The call must not run concurrently with a call on the same handle.
 
 *** =rgpot_engine_source_revision=

@@ -1000,8 +1000,8 @@ void setSccRescue(bool enabled);
 
 - Inputs :: =enabled=, the new =XTBConfig::scc_rescue=.
 - Units :: none.
-- Outputs :: none; later forces use the setting, and =fusedSettings= follows
-  it.
+- Outputs :: none; later forces use the setting, and =fusedSettings= and
+  =paramsKey= follow it.
 - Errors :: none.
 
 *** =rgpot::XTBPot::sccRescue=
@@ -2124,6 +2124,23 @@ A member whose description differs between classes has one entry per class.
 - Outputs :: a 64-bit FNV-1a hash of =model_path=, =task_name=, =device=,
   =charge= and =spin=.
   Instances that differ in these values get different result-cache keys.
+- Errors :: none.
+
+*** =rgpot::XTBPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a hash of =method=, =charge=, =uhf=, =accuracy=,
+  =electronic_temperature=, =max_iterations= and =scc_rescue=, read at each
+  call.
+  A setter that changes one of them changes the result-cache key, so a result
+  cached with the SCC rescue on is not served after =setSccRescue(false)=.
+  =warm_move= and =warm_min_gap= choose the SCC guess and are left out.
 - Errors :: none.
 
 *** =rgpot::CP2KPot::setPotentialConfig=

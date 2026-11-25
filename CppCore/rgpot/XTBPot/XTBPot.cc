@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/XTBPot/XTBPot.hpp"
+#include "rgpot/ParamHash.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
@@ -302,6 +303,19 @@ FusedSettingsSpec XTBPot::fusedSettings() const {
   if (!m_config.scc_rescue)
     spec.engineBuild += "-scc-rescue-off";
   return spec;
+}
+
+uint64_t XTBPot::paramsKey() const noexcept {
+  Fnv1a h;
+  h.str("rgpot::XTBPot");
+  h.i64(static_cast<int64_t>(m_config.method));
+  h.f64(m_config.charge);
+  h.i64(m_config.uhf);
+  h.f64(m_config.accuracy);
+  h.f64(m_config.electronic_temperature);
+  h.i64(m_config.max_iterations);
+  h.b8(m_config.scc_rescue);
+  return h.h;
 }
 
 void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {

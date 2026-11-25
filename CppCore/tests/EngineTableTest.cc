@@ -1368,6 +1368,21 @@ TEST_CASE("xtb engine matches the generic table contract", "[engine][xtb]") {
   e.destroy(gfn1);
 }
 
+// A dissociated ammonia tetramer whose GFN2 SCC does not converge at
+// 300 K in 500 iterations (CppCore/tests/XTBPotTest.cc).
+const double kAmmoniaPos[48] = {
+    -1.66532428, 0.54889027,  -2.03940010, 0.11165024,  2.04946110,
+    1.43904553,  -0.42884806, 2.72524649,  0.30972045,  1.43338889,
+    2.19082068,  0.90531718,  0.53411760,  1.59058476,  -4.48817656,
+    -0.62302497, 2.69900828,  -3.26741719, 1.34429373,  3.32407404,
+    -1.22950979, -0.35527480, 1.88804157,  -4.87298828, 1.47996713,
+    0.55484625,  3.71752121,  1.28956128,  -0.72444169, 2.95951158,
+    -0.20031872, 0.12475055,  3.35919321,  1.70295493,  -0.38386526,
+    4.03334277,  -2.71341888, -5.98849237, 1.22333256,  -1.72758892,
+    -6.21046903, 1.63826395,  -1.69113306, -6.08127583, -0.32892162,
+    -2.20633610, -6.61433582, 0.61469530};
+const int kAmmoniaZ[16] = {7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1};
+
 TEST_CASE("xtb engine flags a rescued SCC and fails it with the rescue off",
           "[engine][xtb][scc]") {
   Engine e;
@@ -1388,20 +1403,8 @@ TEST_CASE("xtb engine flags a rescued SCC and fails it with the rescue off",
   REQUIRE(revision != nullptr);
   REQUIRE(std::string(revision()).size() > 0);
 
-  // A dissociated ammonia tetramer whose GFN2 SCC does not converge at
-  // 300 K in 500 iterations (CppCore/tests/XTBPotTest.cc).
-  const double pos[48] = {
-      -1.66532428, 0.54889027,  -2.03940010, 0.11165024,  2.04946110,
-      1.43904553,  -0.42884806, 2.72524649,  0.30972045,  1.43338889,
-      2.19082068,  0.90531718,  0.53411760,  1.59058476,  -4.48817656,
-      -0.62302497, 2.69900828,  -3.26741719, 1.34429373,  3.32407404,
-      -1.22950979, -0.35527480, 1.88804157,  -4.87298828, 1.47996713,
-      0.55484625,  3.71752121,  1.28956128,  -0.72444169, 2.95951158,
-      -0.20031872, 0.12475055,  3.35919321,  1.70295493,  -0.38386526,
-      4.03334277,  -2.71341888, -5.98849237, 1.22333256,  -1.72758892,
-      -6.21046903, 1.63826395,  -1.69113306, -6.08127583, -0.32892162,
-      -2.20633610, -6.61433582, 0.61469530};
-  const int z[16] = {7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1};
+  const double *pos = kAmmoniaPos;
+  const int *z = kAmmoniaZ;
   const std::array<double, 9> box = {60, 0, 0, 0, 60, 0, 0, 0, 60};
   const double water[9] = {0.0,     0.0, 0.1173,  0.0,    0.7572,
                            -0.4692, 0.0, -0.7572, -0.4692};
@@ -1432,6 +1435,66 @@ TEST_CASE("xtb engine flags a rescued SCC and fails it with the rescue off",
                   box.data(), nullptr, nullptr) == 0);
   REQUIRE(set_rescue(pot, 1) == 0);
   e.destroy(pot);
+}
+
+TEST_CASE("xtb result cache never serves across an SCC rescue switch",
+          "[engine][xtb][scc][cache]") {
+  Engine e;
+  if (!open_engine("XTB", e)) {
+    SKIP("no xtb engine in this build");
+  }
+#ifndef RGPOT_HAS_CACHE
+  SKIP("this build has no result cache");
+#else
+  auto set_rescue = sym<decltype(&rgpot_engine_set_scc_rescue)>(
+      e.handle, "rgpot_engine_set_scc_rescue");
+  auto last_flags = sym<decltype(&rgpot_engine_last_eval_flags)>(
+      e.handle, "rgpot_engine_last_eval_flags");
+  auto set_cache = sym<decltype(&rgpot_engine_set_cache)>(
+      e.handle, "rgpot_engine_set_cache");
+  auto cache_counts = sym<decltype(&rgpot_engine_cache_counts)>(
+      e.handle, "rgpot_engine_cache_counts");
+  const auto counts = [&](RgpotEnginePot *pot) {
+    uint64_t computed = 0;
+    uint64_t served = 0;
+    REQUIRE(cache_counts(pot, &computed, &served) == 0);
+    return std::pair{computed, served};
+  };
+  using Counts = std::pair<uint64_t, uint64_t>;
+  const std::array<double, 9> box = {60, 0, 0, 0, 60, 0, 0, 0, 60};
+  std::vector<double> forces(48, 0.0);
+  double energy = 0.0;
+  uint64_t flags = 0;
+  const auto ammonia = [&](RgpotEnginePot *pot) {
+    return e.force(pot, 16, kAmmoniaPos, kAmmoniaZ, forces.data(), &energy,
+                   nullptr, box.data(), nullptr, nullptr);
+  };
+
+  RgpotEnginePot *pot = create(e, xtb_hard_scc_params());
+  REQUIRE(pot != nullptr);
+  rgpot::tests::TestTempDir directory("rgpot-xtb-rescue-cache");
+  const std::string db = (directory.path() / "results").string();
+  REQUIRE(set_cache(pot, db.c_str()) == 0);
+
+  REQUIRE(ammonia(pot) == 0);
+  CHECK(counts(pot) == Counts{1, 0});
+  REQUIRE(ammonia(pot) == 0);
+  CHECK(counts(pot) == Counts{1, 1});
+  REQUIRE(last_flags(pot, &flags, 1) == 1);
+  CHECK(flags == RGPOT_ENGINE_EVAL_CACHED);
+
+  // A stale hit would answer the rescued energy here. With the rescue off
+  // the key is new, so the SCC runs and fails.
+  REQUIRE(set_rescue(pot, 0) == 0);
+  REQUIRE(ammonia(pot) == 2);
+  CHECK(error_of(e, pot).find("SCC rescue disabled") != std::string::npos);
+  CHECK(counts(pot) == Counts{1, 1});
+
+  REQUIRE(set_rescue(pot, 1) == 0);
+  REQUIRE(ammonia(pot) == 0);
+  CHECK(counts(pot) == Counts{1, 2});
+  e.destroy(pot);
+#endif
 }
 
 TEST_CASE("metatomic engine keeps its own table and adds the generic one",
