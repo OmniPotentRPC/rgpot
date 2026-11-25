@@ -66,7 +66,8 @@ dftd3, dftd4, ExprPot, XcKernel and CP2K have no engine library.
 
 Every library above except
 =libpotlibc_engine= and =libcoupled_well_engine= exports =rgpot_engine_force_batch=,
-=rgpot_engine_hvp=, =rgpot_engine_taylor_jet=, =rgpot_engine_abi_stamp=,
+=rgpot_engine_hvp=, =rgpot_engine_taylor_jet=, =rgpot_engine_hessian=,
+=rgpot_engine_abi_stamp=,
 =rgpot_engine_abi_compatible=, =rgpot_engine_name=, =rgpot_engine_version=, =rgpot_engine_model_digest=,
 =rgpot_engine_caps=,
 =rgpot_engine_last_error=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=,
@@ -498,7 +499,7 @@ When =tracked= is 0, =operations= and =scale= are 0.
 - Outputs :: =size= (bytes the engine wrote), =reentrancy=,
   =per_image_instances=, =batched=, =periodic=, =stress=,
   =group_collective=, =orbital_selection=, =orbital_copy=, =analytic_hvp= and
-  =jet_order=; the flags are 0 or 1.
+  =jet_order= and =analytic_hessian=; the flags are 0 or 1.
 - Errors :: none.
 
 The fields mirror rgpot's =PotCaps=.
@@ -514,6 +515,9 @@ returns it.
 =analytic_hvp= means =rgpot_engine_hvp= returns an exact directional product.
 =jet_order= is the highest order =rgpot_engine_taylor_jet= serves, 0 when the
 backend has no gradient jet.
+=analytic_hessian= means =rgpot_engine_hessian= returns that product on each
+unit direction, as one exact energy Hessian.
+It is not a finite difference.
 
 =reentrancy= decides how the table admits concurrent =rgpot_engine_force= and
 =rgpot_engine_force_batch= calls:
@@ -562,6 +566,7 @@ Optional symbol.
 Reading does not clear the message.
 A successful =rgpot_engine_force=,
 =rgpot_engine_force_batch=, =rgpot_engine_hvp=, =rgpot_engine_taylor_jet=,
+=rgpot_engine_hessian=,
 =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
 =rgpot_engine_select_orbitals= or =rgpot_engine_copy_orbitals= clears it.
 Under concurrent calls on one handle, a success in one call may clear a failure
@@ -945,6 +950,32 @@ finite differences.
 A host loads an engine of an earlier minor that has neither the symbol nor the
 trailing caps field, and gets that unsupported result only when it asks for the
 jet.
+
+*** =rgpot_engine_hessian=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
+                         const double *positions, const int *atomicNrs,
+                         double *hessian_out, const double *box);
+#+end_src
+
+- Inputs :: the potential and geometry as for =rgpot_engine_force=.
+  =hessian_out= must not overlap =positions=, =atomicNrs= or =box=.
+- Units :: positions and box in Angstrom; =hessian_out= is the energy Hessian in
+  eV/Angstrom squared, row-major, with =3 * nAtoms= rows.
+- Outputs :: =RGPOT_ENGINE_OK= and the exact energy Hessian in =hessian_out=.
+  Each column is =rgpot_engine_hvp= on one unit direction.
+- Errors :: returns
+  =RGPOT_ENGINE_ERR_INVALID= for a NULL pointer, an invalid atom count, an overflowing dimension, or an overlapping output; =RGPOT_ENGINE_ERR_UNSUPPORTED=
+  when the potential does not advertise
+  =analytic_hvp=; and =RGPOT_ENGINE_ERR_EVAL= when the implementation throws.
+  The reason is available from =rgpot_engine_last_error=.
+
+Optional symbol.
+Absence of the symbol or a false =analytic_hessian= is a hard unsupported
+result.
+The table does not call a numerical Hessian.
 
 ** Learning engines
 
@@ -1641,13 +1672,13 @@ a host that does call =dlclose= on them leaves them mapped.
   The engines also accept the version-1 layouts of 48 and 144 bytes when their
   =version= field is set to the =_V1= constant.
 - =CoordTransformFn=, =AbiVersionFn=, =AvailableFn=, =AbiStampFn=, =CreateFn=,
-  =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =TaylorJetFn=, =CapsFn=,
+  =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =TaylorJetFn=, =HessianFn=, =CapsFn=,
   =LastErrorFn=, =LastComponentsFn=, =ComponentNameFn=, =ModelStateFn=,
   =SetCallbacksFn=, =HintFn=, =UnloadPolicyFn= :: =extern "C"= function-pointer
   types matching the C declarations above.
 - =EngineSymbols= :: Resolved symbol table holding required
-  (=abi_version=, =create=, =destroy=, =force=) and optional (=available=, =abi_stamp=,
-  =force_batch=, =hvp=, =taylor_jet=, =caps=, =last_error=, =last_components=,
+  (=abi_version=, =available=, =create=, =destroy=, =force=) and optional (=abi_stamp=,
+  =force_batch=, =hvp=, =taylor_jet=, =hessian=, =caps=, =last_error=, =last_components=,
   =component_name=, =model_state=, =set_callbacks=, =hint=) function pointers.
   The struct is
   =#[non_exhaustive]=: build it with =EngineSymbols::new= for the four required symbols and one =with_*=
@@ -1725,11 +1756,11 @@ a host that does call =dlclose= on them leaves them mapped.
   =rgpot_engine_hint=.
   The message of a failed hint is the one the engine wrote to the error buffer,
   or one naming the code when it wrote none.
-- =EnginePotential::caps()= / =EnginePotential::hvp(&request, direction)= ::
-  Reads the size-prefixed engine capability structure and dispatches the exact
-  product.
+- =EnginePotential::caps()= / =EnginePotential::hvp(&request, direction)= /
+  =EnginePotential::hessian(&request)= :: Reads the size-prefixed engine
+  capability structure and dispatches the exact product or dense Hessian.
   A missing symbol, a false
-  =analytic_hvp= bit, or =RGPOT_ENGINE_ERR_UNSUPPORTED= returns
+  capability bit, or =RGPOT_ENGINE_ERR_UNSUPPORTED= returns
   =EngineError::Unsupported= (retaining the engine's last-error message) without
   a finite-difference fallback.
 - =EnginePotential::taylor_jet(&JetBatchRequest, order)= :: Dispatches =rgpot_engine_taylor_jet=
@@ -1756,6 +1787,8 @@ a host that does call =dlclose= on them leaves them mapped.
   caps struct ends before the field.
 - =EnginePotential::into_potential(self)= :: Converts the instance into a =PotentialImpl= callback handle, serializes calls to its engine instance, and registers an analytic callback on the underlying =rgpot_potential_t= only when both =rgpot_engine_caps= and =rgpot_engine_hvp= are exported and =analytic_hvp=
   is true.
+  It registers an analytic dense-Hessian callback when =rgpot_engine_hessian= is
+  exported and =analytic_hessian= is true.
 - =unsafe EnginePotential::unload(path)= :: Removes the registry entry of a
   plugin that declared itself unload-safe and calls =dlclose=, as described
   under the plugin lifetime above.
