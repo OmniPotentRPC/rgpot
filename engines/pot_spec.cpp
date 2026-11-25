@@ -5,6 +5,7 @@
 
 #include "rgpot/EAM/EAMPot.hpp"
 #include "rgpot/EMT/EMTPot.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
@@ -263,6 +264,18 @@ Built make(const std::string &key, Reader &r, double fallback) {
     c.stress = true;
     return ownCut<SuttonChenPot>(c);
   }
+  if (key == "gupta") {
+    GuptaConfig c;
+    c.A = r.real("a", c.A);
+    c.xi = r.real("xi", c.xi);
+    c.p = r.real("p", c.p);
+    c.q = r.real("q", c.q);
+    c.r0 = r.real("r0", c.r0);
+    c.cutoff = r.real("cutoff", fallback > 0.0 ? fallback : c.cutoff);
+    c.periodic = c.cutoff > 0.0;
+    c.stress = true;
+    return ownCut<GuptaPot>(c);
+  }
 #ifdef RGPOT_HAS_EAM_TABLE
   if (key == "eamtable") {
     EAMTableConfig c;
@@ -321,7 +334,7 @@ Built make(const std::string &key, Reader &r, double fallback) {
 } // namespace
 
 std::string names() {
-  std::string out = "LJ Morse SuttonChen";
+  std::string out = "LJ Morse SuttonChen Gupta";
 #ifdef RGPOT_POT_SPEC_HAS_CPMD
   out += " CPMD";
 #endif
