@@ -826,6 +826,51 @@ TEST_CASE("ORCAPot refuses a box in which the atoms would wrap", "[orca]") {
   REQUIRE(fake.calls() == 0);
 }
 
+TEST_CASE("ORCAPot refuses a box check whose image bound is not finite or "
+          "out of range",
+          "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAPot pot(fake.config());
+  const std::array<double, 9> cube = aseCube(100.0);
+  const auto refused = [&](const std::vector<double> &pos,
+                           const std::vector<int> &z,
+                           const std::array<double, 9> &box,
+                           const char *phrase) {
+    REQUIRE_THROWS_MATCHES(
+        evaluate(pot, pos, z, box.data()), std::invalid_argument,
+        Catch::Matchers::MessageMatches(ContainsSubstring(phrase)));
+  };
+
+  // A NaN or an infinite coordinate makes the reach of the atoms, and
+  // with it the bound on the lattice coefficients, NaN or infinite.
+  for (const double bad : {std::numeric_limits<double>::quiet_NaN(),
+                           std::numeric_limits<double>::infinity(),
+                           -std::numeric_limits<double>::infinity()}) {
+    std::vector<double> pos = kWater;
+    pos[4] = bad;
+    refused(pos, kWaterZ, cube, "position is not finite");
+  }
+
+  // Finite coordinates whose squared extent overflows to infinity.
+  const std::vector<int> h2_z = {1, 1};
+  const std::vector<double> far = {-1.0e200, 0.0, 0.0, 1.0e200, 0.0, 0.0};
+  refused(far, h2_z, cube, "too skewed");
+
+  // Independent box vectors with a cell width of 1e-200 Angstrom along a1:
+  // the bound is about 1e200, finite but far past the range of long.
+  const std::array<double, 9> sliver = {1.0e-200, 0.0, 0.0, 0.0, 100.0,
+                                        0.0,      0.0, 0.0, 100.0};
+  refused(kWater, kWaterZ, sliver, "too skewed");
+
+  // Bounds of about 320 along a1 and a2, each in range, whose product
+  // passes the limit on the vectors tried.
+  const std::array<double, 9> thin = {0.01, 0.0, 0.0, 0.0, 0.01,
+                                      0.0,  0.0, 0.0, 100.0};
+  refused(kWater, kWaterZ, thin, "too skewed");
+  REQUIRE(fake.calls() == 0);
+}
+
 TEST_CASE("ORCAPot rejects an impossible spin state", "[orca]") {
   Fake fake;
   EnvVar state("FAKE_ORCA_STATE", fake.state.string());

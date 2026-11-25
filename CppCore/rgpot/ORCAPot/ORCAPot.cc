@@ -189,6 +189,12 @@ void checkClusterBox(const double *box, std::size_t n, const double *pos) {
   if (open) {
     return;
   }
+  for (std::size_t k = 0; k < 3 * n; ++k) {
+    if (!std::isfinite(pos[k])) {
+      throw std::invalid_argument(
+          "ORCAPot: a position is not finite, so the box cannot be checked");
+    }
+  }
   const double *rows[3] = {box, box + 3, box + 6};
   double normals[3][3];
   for (int k = 0; k < 3; ++k) {
@@ -226,19 +232,28 @@ void checkClusterBox(const double *box, std::size_t n, const double *pos) {
     reach2 += span * span;
   }
   const double reach = std::sqrt(reach2);
+  const auto tooSkewed = [] {
+    return std::invalid_argument(
+        "ORCAPot: the box is too skewed, or too small for the cluster, to "
+        "check every periodic image; pass an all-zero box for an isolated "
+        "system, or pad the cluster into a less skewed cell");
+  };
   long bound[3];
   double vectors = 1.0;
   for (int k = 0; k < 3; ++k) {
     const double width = volume / std::sqrt(dot(normals[k], normals[k]));
-    bound[k] = static_cast<long>(
-        std::floor(2.0 * reach / width * (1.0 + 1.0e-9)));
-    vectors *= 2.0 * static_cast<double>(bound[k]) + 1.0;
+    const double coefficient =
+        std::floor(2.0 * reach / width * (1.0 + 1.0e-9));
+    // Converting a NaN, an infinity or a value past the range of long to
+    // long is undefined, so the range is checked on the double first.
+    if (!std::isfinite(coefficient) || !(coefficient <= kMaxImageVectors)) {
+      throw tooSkewed();
+    }
+    bound[k] = static_cast<long>(coefficient);
+    vectors *= 2.0 * coefficient + 1.0;
   }
   if (vectors > kMaxImageVectors) {
-    throw std::invalid_argument(
-        "ORCAPot: the box is too skewed, or too small for the cluster, to "
-        "check every periodic image; pass an all-zero box for an isolated "
-        "system, or pad the cluster into a less skewed cell");
+    throw tooSkewed();
   }
 
   const auto check = [&](long a, long b, long c) {
