@@ -32,6 +32,7 @@ struct InputSpec {
   int charge = 0;
   int multiplicity = 1;
   int nprocs = 1;
+  /// `%maxcore` in MB; 0 leaves the line out.
   int maxcore_mb = 0;
   /// Name of the .gbw ORCA reads its starting orbitals from, relative to
   /// the run directory. Empty starts from ORCA's own guess.
