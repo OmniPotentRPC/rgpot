@@ -15,6 +15,10 @@
 #include <string>
 #include <vector>
 
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
+
 #include <catch2/catch_all.hpp>
 
 #include "RestoreEnv.hpp"
@@ -356,4 +360,260 @@ TEST_CASE("batch spread stops at the in-system crossover", "[batch]") {
       },
       [&](std::size_t) {});
   REQUIRE(rgpot::teamsOpened() == mixedBefore);
+}
+
+TEST_CASE("two-thread batch spread propagates the team threshold", "[batch]") {
+  rgpot::test_support::RestoreEnv env("OMP_NUM_THREADS");
+  env.set("2");
+  std::vector<int> sizes(2, 0);
+  const auto before = rgpot::teamsOpened();
+  {
+    const rgpot::TeamThreshold no_inner_team(rgpot::kNoTeam);
+    rgpot::forEachBatchSystem(
+        sizes.size(),
+        [](std::size_t) {
+          return rgpot::StillingerWeberSi::kTeamMinAtoms;
+        },
+        [&](std::size_t i) {
+          const std::size_t floor = rgpot::teamThreshold(
+              rgpot::StillingerWeberSi::kTeamMinAtoms);
+          sizes[i] = rgpot::teamSize(
+              rgpot::StillingerWeberSi::kTeamMinAtoms, floor,
+              rgpot::StillingerWeberSi::kTeamFrom);
+        },
+        rgpot::StillingerWeberSi::kTeamMinAtoms,
+        rgpot::StillingerWeberSi::kTeamFrom);
+  }
+#if defined(_OPENMP)
+  REQUIRE(rgpot::threadsRequested() == 2);
+  REQUIRE(rgpot::teamsOpened() == before + 1);
+#else
+  REQUIRE(rgpot::threadsRequested() == 1);
+  REQUIRE(rgpot::teamsOpened() == before);
+#endif
+  for (int size : sizes) {
+    REQUIRE(size == 1);
+  }
+}
+
+// Systems between a class floor and the shared 8192-atom threshold.
+// A spread would put each worker on forRowTeam, which visits every pair
+// from both atoms, and the caller's teamsOpened would count one region
+// for the spread rather than one region per system.
+constexpr std::size_t kMidSystems = 4;
+constexpr std::size_t kMidAtoms = 48;
+const double kMidBox[9] = {80.0, 0.0, 0.0, 0.0, 80.0, 0.0, 0.0, 0.0, 80.0};
+
+std::vector<double> gridPositions(std::size_t systems, double spacing) {
+  std::vector<double> pos(systems * kMidAtoms * 3, 0.0);
+  for (std::size_t s = 0; s < systems; ++s) {
+    for (std::size_t a = 0; a < kMidAtoms; ++a) {
+      const std::size_t b = (s * kMidAtoms + a) * 3;
+      pos[b] = spacing * static_cast<double>(a % 4) + 0.02 * static_cast<double>(s);
+      pos[b + 1] = spacing * static_cast<double>((a / 4) % 4);
+      pos[b + 2] = spacing * static_cast<double>(a / 16);
+    }
+  }
+  return pos;
+}
+
+std::size_t halfPairs(const double *pos, double cutoff) {
+  rgpot::nlist::Neighbours cells;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = 0.0;
+  spec.image = rgpot::nlist::Image::Round;
+  spec.mode = rgpot::nlist::Mode::Stream;
+  cells.update(pos, kMidAtoms, kMidBox, spec);
+  std::size_t pairs = 0;
+  const double cut2 = cutoff * cutoff;
+  cells.forHalf(0, static_cast<std::int64_t>(kMidAtoms),
+                [&](std::int32_t i, std::int32_t j, double, double, double, double r2) {
+                  if (i < j && r2 > 0.0 && r2 <= cut2) {
+                    ++pairs;
+                  }
+                });
+  return pairs;
+}
+
+class ActiveLevels {
+public:
+  explicit ActiveLevels(int levels) {
+#if defined(_OPENMP)
+    previous_ = omp_get_max_active_levels();
+    omp_set_max_active_levels(levels);
+#else
+    (void)levels;
+#endif
+  }
+  ~ActiveLevels() {
+#if defined(_OPENMP)
+    omp_set_max_active_levels(previous_);
+#endif
+  }
+  ActiveLevels(const ActiveLevels &) = delete;
+  ActiveLevels &operator=(const ActiveLevels &) = delete;
+
+private:
+  int previous_ = 1;
+};
+
+struct MidEval {
+  std::vector<double> energy;
+  std::vector<double> force;
+  std::uint64_t teams = 0;
+};
+
+void requireMid(const MidEval &batch, const MidEval &serial, std::size_t half,
+                const char *label, int levels, bool pair_walk) {
+  if (pair_walk) {
+    WARN(label << " levels " << levels << " half_pairs " << half
+               << " directed_team_visits " << (2 * half * kMidSystems)
+               << " batch_teams " << batch.teams << " serial_teams " << serial.teams);
+  } else {
+    WARN(label << " levels " << levels << " half_pairs " << half << " batch_teams "
+               << batch.teams << " serial_teams " << serial.teams);
+  }
+  REQUIRE(half > 0);
+  requireBits(batch.energy, serial.energy);
+  requireBits(batch.force, serial.force);
+  // One in-system team per system. A spread of these sizes opens one
+  // region and then each worker takes the two-visit pair walk.
+#if defined(_OPENMP)
+  REQUIRE(serial.teams == kMidSystems);
+  REQUIRE(batch.teams == serial.teams);
+#else
+  REQUIRE(serial.teams == 0);
+  REQUIRE(batch.teams == 0);
+#endif
+}
+
+TEST_CASE("batches between the class floor and the shared threshold match serial",
+          "[batch]") {
+  REQUIRE(kMidAtoms > rgpot::LJPot::kTeamMinAtoms);
+  REQUIRE(kMidAtoms > rgpot::StillingerWeberSi::kTeamMinAtoms);
+  REQUIRE(kMidAtoms < rgpot::kTeamMinAtoms);
+
+  rgpot::test_support::RestoreEnv threads("OMP_NUM_THREADS");
+  threads.set("4");
+  rgpot::test_support::RestoreEnv levels_env("OMP_MAX_ACTIVE_LEVELS");
+#if defined(_OPENMP)
+  REQUIRE(rgpot::threadsRequested() == 4);
+  REQUIRE(rgpot::teamSize(kMidAtoms, rgpot::LJPot::kTeamMinAtoms, rgpot::LJPot::kTeamFrom) > 1);
+  REQUIRE(rgpot::teamSize(kMidAtoms, rgpot::StillingerWeberSi::kTeamMinAtoms,
+                          rgpot::StillingerWeberSi::kTeamFrom) > 1);
+  // The shared threshold would still spread this size.
+  REQUIRE(rgpot::teamSize(kMidAtoms, rgpot::kTeamMinAtoms) == 1);
+#else
+  REQUIRE(rgpot::threadsRequested() == 1);
+#endif
+
+  const std::vector<double> lj_pos = gridPositions(kMidSystems, 1.2);
+  const std::vector<double> sw_pos = gridPositions(kMidSystems, 2.2);
+  const std::size_t lj_half = halfPairs(lj_pos.data(), 15.0);
+  const std::size_t sw_half =
+      halfPairs(sw_pos.data(), rgpot::StillingerWeberSi::kCut * rgpot::StillingerWeberSi::kSigma);
+  std::vector<int> lj_species(kMidAtoms, 18);
+  std::vector<int> sw_species(kMidAtoms, 14);
+
+  for (const int levels : {1, 2}) {
+    levels_env.set(levels == 1 ? "1" : "2");
+    ActiveLevels active(levels);
+
+    auto lj_batch = [&]() {
+      std::vector<double> forces(kMidSystems * kMidAtoms * 3, 0.0);
+      std::vector<rgpot::ForceInput> inputs;
+      std::vector<rgpot::ForceOut> outputs(kMidSystems);
+      inputs.reserve(kMidSystems);
+      for (std::size_t s = 0; s < kMidSystems; ++s) {
+        inputs.push_back(rgpot::ForceInput{
+            .nAtoms = kMidAtoms,
+            .pos = lj_pos.data() + s * kMidAtoms * 3,
+            .atmnrs = lj_species.data(),
+            .box = kMidBox,
+        });
+        outputs[s] = rgpot::ForceOut{
+            .F = forces.data() + s * kMidAtoms * 3,
+            .energy = 0.0,
+            .variance = 0.0,
+            .stress = {},
+            .has_stress = 0,
+        };
+      }
+      rgpot::LJPot pot;
+      pot.setNeighbourMode(rgpot::nlist::Mode::Stream);
+      const auto before = rgpot::teamsOpened();
+      pot.forceBatch(rgpot::ForceBatch{
+          .nSystems = kMidSystems,
+          .in = inputs.data(),
+          .out = outputs.data(),
+      });
+      MidEval got;
+      got.teams = rgpot::teamsOpened() - before;
+      got.force = std::move(forces);
+      got.energy.resize(kMidSystems);
+      for (std::size_t s = 0; s < kMidSystems; ++s) {
+        got.energy[s] = outputs[s].energy;
+        REQUIRE(std::isfinite(got.energy[s]));
+      }
+      return got;
+    };
+    auto lj_serial = [&]() {
+      MidEval got;
+      got.energy.assign(kMidSystems, 0.0);
+      got.force.assign(kMidSystems * kMidAtoms * 3, 0.0);
+      const auto before = rgpot::teamsOpened();
+      for (std::size_t s = 0; s < kMidSystems; ++s) {
+        rgpot::LJPot pot;
+        pot.setNeighbourMode(rgpot::nlist::Mode::Stream);
+        rgpot::ForceOut out{
+            .F = got.force.data() + s * kMidAtoms * 3,
+            .energy = 0.0,
+            .variance = 0.0,
+            .stress = {},
+            .has_stress = 0,
+        };
+        pot.forceImpl(rgpot::ForceInput{.nAtoms = kMidAtoms,
+                                        .pos = lj_pos.data() + s * kMidAtoms * 3,
+                                        .atmnrs = lj_species.data(),
+                                        .box = kMidBox},
+                      &out);
+        got.energy[s] = out.energy;
+      }
+      got.teams = rgpot::teamsOpened() - before;
+      return got;
+    };
+    requireMid(lj_batch(), lj_serial(), lj_half, "LJ", levels, true);
+
+    auto sw_batch = [&]() {
+      rgpot::StillingerWeberSi pot;
+      pot.setNeighbourMode(rgpot::nlist::Mode::Stream);
+      MidEval got;
+      got.energy.assign(kMidSystems, 0.0);
+      got.force.assign(kMidSystems * kMidAtoms * 3, 0.0);
+      const auto before = rgpot::teamsOpened();
+      pot.energyAndGradientBatch(kMidSystems, sw_pos.data(), sw_species.data(), kMidBox,
+                                 kMidAtoms, got.energy.data(), got.force.data());
+      got.teams = rgpot::teamsOpened() - before;
+      for (double e : got.energy) {
+        REQUIRE(std::isfinite(e));
+      }
+      return got;
+    };
+    auto sw_serial = [&]() {
+      MidEval got;
+      got.energy.assign(kMidSystems, 0.0);
+      got.force.assign(kMidSystems * kMidAtoms * 3, 0.0);
+      const auto before = rgpot::teamsOpened();
+      for (std::size_t s = 0; s < kMidSystems; ++s) {
+        rgpot::StillingerWeberSi pot;
+        pot.setNeighbourMode(rgpot::nlist::Mode::Stream);
+        pot.energyAndGradient(sw_pos.data() + s * kMidAtoms * 3, sw_species.data(), kMidBox,
+                              kMidAtoms, &got.energy[s], got.force.data() + s * kMidAtoms * 3);
+      }
+      got.teams = rgpot::teamsOpened() - before;
+      return got;
+    };
+    requireMid(sw_batch(), sw_serial(), sw_half, "SW", levels, false);
+  }
 }

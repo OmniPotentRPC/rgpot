@@ -811,7 +811,7 @@ void Neighbours::buildStored(const double *xyz, std::size_t n,
   // candidates than atoms.
   constexpr std::uint64_t kMinParallelCandidates = 4096;
   const bool worth = bound >= kMinParallelCandidates && bound > n;
-  const int nt = worth ? teamSize(n) : 1;
+  const int nt = worth ? teamSize(n, kTeamMinAtoms) : 1;
   if (nt <= 1) {
     off_.assign(n + 1, 0);
     nbr_.clear();

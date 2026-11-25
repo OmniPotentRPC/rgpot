@@ -46,14 +46,17 @@ of one fifth of the cutoff, or none in =nlist::Mode::Stream=.
 With =cutoff = 0= the layer searches without a bound: it bins nothing, stores no
 list, and each pass takes the pairs straight from the coordinates, in the order
 of the one bin that a search wider than the cluster gives.
-A call on fewer than 8192 atoms (=rgpot::kTeamMinAtoms=) runs on the calling
+A call on fewer than =SuttonChenPot::kTeamMinAtoms= atoms runs on the calling
 thread whatever =OMP_NUM_THREADS= asks for, since starting a team costs more
 than such a call.
-From 8192 atoms up each atom keeps the energy and strain of its pairs with
+From there up each atom keeps the energy and strain of its pairs with
 higher-index partners, and the atoms are added in index order.
-On a stored neighbour list with at least 8192 atoms and at least 4096 candidate
-upper pairs, a team of =OMP_NUM_THREADS= threads runs one three-phase OpenMP
-region over an upper-pair index when =total_up <= term_limit= and
+When the call has at least the atoms =SuttonChenPot::kTeamFrom= asks of the
+=OMP_NUM_THREADS= threads, a team splits the atoms into as many runs.
+One thread walks each pair once, in the order of those rows.
+On a stored neighbour list, that team runs one three-phase OpenMP region over an
+upper-pair index when the candidate upper pairs are at least 4096
+(=kMinParallelHalfPairs=), =total_up <= term_limit= and
 =pairScratchFits(total_up, atoms, scratch_avail)= holds: phase 0 evaluates each
 upper pair once across work-balanced atom slices rounded to 8-atom boundaries,
 phase 1 accumulates per-atom densities and embedding weights in pair-index
@@ -75,7 +78,7 @@ When
 or =pairScratchFits= refuses the call falls back to the threaded two-pass row
 walk.
 Sparser stored lists stay on one thread, and streaming or unbounded walks still
-evaluate each atom's row on its owning slice.
+evaluate each atom's row on its owning slice when the team opens.
 The energy, the forces, the stress and the per-atom terms therefore keep the
 bits of one thread on any thread count, also when the runtime starts fewer
 threads.

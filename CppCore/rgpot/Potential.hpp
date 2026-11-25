@@ -285,13 +285,15 @@ public:
   /**
    * @brief Batched counterpart of @c forceImpl.
    *
-   * The default evaluates each system whole. A shared instance whose
-   * systems are all below @c kTeamMinAtoms spreads those systems across
-   * the thread team, because a single system of that size would not
-   * take the team itself. Any larger system, a potential that is not a
-   * shared instance, and a call that is already inside a team stay on
-   * the serial loop, so in-system threading is not nested and
-   * per-instance scratch is not shared. The bits match that loop.
+   * The default evaluates each system whole. A shared instance spreads
+   * its systems across the thread team when @c teamSize, with the
+   * @c kTeamMinAtoms and @c kTeamFrom of that potential, would leave
+   * every system on one thread. A potential without those counts uses
+   * the neighbour-list threshold. A system that would open a team, a
+   * potential that is not a shared instance, and a call that is already
+   * inside a team stay on the serial loop, so in-system threading is
+   * not nested and a spread worker does not open a team. The bits match
+   * that loop.
    * Override it where the kernel can do better than a loop of
    * @c forceImpl calls, one model forward pass over all systems, one
    * device transfer, one neighbour-list build across a shared topology,
@@ -315,7 +317,8 @@ public:
       return;
     }
     forEachBatchSystem(
-        batch.nSystems, [&](std::size_t i) { return batch.in[i].nAtoms; }, one);
+        batch.nSystems, [&](std::size_t i) { return batch.in[i].nAtoms; }, one,
+        batchFrom<Derived>(0), batchTeam<Derived>(0));
   }
 
   /**
@@ -430,6 +433,20 @@ public:
   }
 
 private:
+  /// Atom count `teamSize` uses for a batch of this potential. A class
+  /// that publishes `kTeamMinAtoms` and `kTeamFrom` uses those. Any other
+  /// class keeps the neighbour-list threshold.
+  template <typename T, typename = decltype(T::kTeamMinAtoms), typename = decltype(T::kTeamFrom)>
+  static constexpr std::size_t batchFrom(int) {
+    return T::kTeamMinAtoms;
+  }
+  template <typename T> static constexpr std::size_t batchFrom(...) { return kTeamMinAtoms; }
+  template <typename T, typename = decltype(T::kTeamFrom)>
+  static constexpr TeamFrom batchTeam(int) {
+    return T::kTeamFrom;
+  }
+  template <typename T> static constexpr TeamFrom batchTeam(...) { return {}; }
+
   /// Whether a call without a cell is an error for this kernel: it is
   /// periodic and does not declare @c kCellOptional.
   [[nodiscard]] bool needsCell() const noexcept {

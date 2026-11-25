@@ -2,8 +2,9 @@
 // Copyright 2023--present rgpot developers
 
 // The direct pair loop below is the energy and force evaluation this
-// neighbour list replaced. One thread must reproduce it bit for bit,
-// including the wrap into the cell and the order of the pair sums.
+// neighbour list replaced. A call below the potential's threshold must
+// reproduce it bit for bit, including the wrap into the cell and the order
+// of the pair sums.
 
 #include <algorithm>
 #include <array>
@@ -20,6 +21,7 @@
 #include "lsan_libomp.hpp"
 #include "rgpot/EAM/EAM.h"
 #include "rgpot/EAM/EAMPot.hpp"
+#include "rgpot/Slices.hpp"
 
 #include <catch2/catch_all.hpp>
 
@@ -311,6 +313,7 @@ std::vector<double> fcc(int nrep, double a, std::vector<int> &z, int atomic) {
 
 TEST_CASE("EAM matches the direct pair loop bit for bit", "[eam]") {
   setThreads("");
+  const rgpot::TeamThreshold direct_order(rgpot::kNoTeam);
   rgpot::EAMPot pot;
   std::vector<double> pos = {0.0, 0.0, 0.0, 2.5, 0.0, 0.0};
   std::vector<int> z = {13, 13};
@@ -354,6 +357,7 @@ TEST_CASE("EAM matches the direct pair loop bit for bit", "[eam]") {
 TEST_CASE("EAM keeps a short neighbour list and reuses it inside the skin",
           "[eam]") {
   setThreads("");
+  const rgpot::TeamThreshold direct_order(rgpot::kNoTeam);
   // 8^3 fcc cells. The search cells are about 8 Angstrom wide, so an
   // atom that starts near 2 Angstrom can move by 1 Angstrom and stay in
   // the same cell. A cell-crossing rule would not rebuild; the skin does.
@@ -391,17 +395,17 @@ TEST_CASE("EAM keeps a short neighbour list and reuses it inside the skin",
 }
 
 TEST_CASE("EAM gives the one-thread bits on any thread count", "[eam]") {
-  struct Crystal {
-    int nrep;
-    bool team; // OMP_NUM_THREADS=n gives n slices rather than one.
-  };
-  // 500 atoms stay on one thread. 8788 atoms reach rgpot::kTeamMinAtoms.
-  for (const Crystal c : {Crystal{5, false}, Crystal{13, true}}) {
+  // 32 atoms stay below EAM::kTeamMinAtoms on any thread count. 500 and
+  // 8788 atoms open no team of two and a team of three or more, as
+  // EAM::kTeamFrom gives.
+  for (const int nrep : {2, 5, 13}) {
     std::vector<int> z;
-    std::vector<double> pos = fcc(c.nrep, 4.05, z, 13);
+    std::vector<double> pos = fcc(nrep, 4.05, z, 13);
     pos[0] += 0.37;
     pos[4] -= 0.11;
-    const double length = c.nrep * 4.05;
+    const double length = nrep * 4.05;
+    const bool large = z.size() >= EAM::kTeamMinAtoms;
+    REQUIRE(large == (nrep > 2));
     setThreads("");
     rgpot::EAMPot serial;
     const Outcome one = evaluate(serial, pos, z, length);
@@ -413,7 +417,8 @@ TEST_CASE("EAM gives the one-thread bits on any thread count", "[eam]") {
       expectBits(evaluate(parallel, pos, z, length), one);
       expectBits(evaluate(parallel, pos, z, length), one);
 #if defined(_OPENMP)
-      REQUIRE(parallel.threadsUsed() == (c.team ? threads : 1));
+      const bool team = large && threads > 1 && z.size() >= EAM::kTeamFrom.of(threads);
+      REQUIRE(parallel.threadsUsed() == (team ? threads : 1));
 #else
       REQUIRE(parallel.threadsUsed() == 1);
 #endif

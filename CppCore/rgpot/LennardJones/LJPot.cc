@@ -202,7 +202,8 @@ void LJPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atoms
       [&](LjNeighbours &scratch) {
         updateScratchCells(scratch, in, cuttOffR, mode_);
         nlist::sumPairs(
-            scratch.cells, n_atoms, cutoff2, nlist::Overlap::Poison,
+            scratch.cells, n_atoms, teamThreshold(kTeamMinAtoms), kTeamFrom, cutoff2,
+            nlist::Overlap::Poison,
             [&params](std::int32_t, std::int32_t, double r2, double &pair_e,
                       double &fscale) { evalLjPair(r2, params, pair_e, fscale); },
             F, *U, strain, atoms);

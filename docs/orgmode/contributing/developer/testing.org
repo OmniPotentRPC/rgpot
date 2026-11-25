@@ -112,9 +112,14 @@ slice.
 =forEachSlice= and =forEachSlicePhase= run each slice once on the threads that
 start, several to a thread on a short team, and the caller adds the buffers in
 slice order, so the slice count fixes the bits and the team only the speed.
-A potential takes its slice count from =teamSize=, which is one below
-=kTeamMinAtoms= (8192) atoms, and adds its sums atom by atom in index order, so
-neither the slice count nor the team changes its bits.
+A potential takes its slice count from =teamSize(n, from, team)=, which is one
+below the atoms the =kTeamFrom= of its class asks of the thread count.
+The one-argument =teamSize(std::size_t)= overload is deprecated and remains
+exported as a compatibility wrapper forwarding to
+=teamSize(n, rgpot::kTeamMinAtoms, {})=.
+From =kTeamMinAtoms=, the least of those counts, it adds its sums atom by atom
+in index order on any thread count, so neither the slice count nor the team
+changes its bits.
 Ranks that wait for each other use =onFullTeam=, which runs them only when each
 has its own thread; otherwise it returns false and the caller does the same work
 through =forEachSlice=.
@@ -125,9 +130,12 @@ That check is =CppCore/tests/test_openmp_confined.py=.
 
 =ThreadTeamTest= requires the one-thread bits from every threaded potential at
 1, 2, 3 and 8 threads and under =rgpot::TeamCap= short teams, dynamic teams and
-nested regions, on a system below =kTeamMinAtoms= atoms and on one above it.
-Through =rgpot::teamsOpened= it checks that the small system opens no region and
-that the large one opens a region in the potential's own sums.
+nested regions, one atom below and at each atom count in each potential's
+=kTeamFrom=, and on a system above =rgpot::kTeamMinAtoms= atoms, whose neighbour
+build opens a team too.
+Through =rgpot::teamsOpened= it checks that a call opens a region in the
+potential's own sums exactly when it has at least the atoms =kTeamFrom= asks of
+its thread count.
 Neighbour tables must keep the bits of the full team under the same teams.
 The test suite runs it again under =OMP_THREAD_LIMIT=1= and
 =OMP_THREAD_LIMIT=2=, and the =thread_limit= CI job runs the whole suite at both
@@ -143,11 +151,16 @@ OMP_THREAD_LIMIT=2 meson test -C bbdir --print-errorlogs
 of 4 atoms, for =StillingerWeberSi=, =TersoffSiC= and =LJPot=, at 1, 2 and 4
 threads.
 The two and four thread calls each open one team.
-A batch that contains =kTeamMinAtoms= atoms opens none.
+A batch that contains =rgpot::kTeamMinAtoms= atoms opens none.
+Systems between a class floor and =rgpot::kTeamMinAtoms=, for =LJPot= and
+=StillingerWeberSi=, match serial single evaluations in energy and force bits at
+4 threads with =OMP_MAX_ACTIVE_LEVELS= of 1 and of 2.
+The batch opens one region per system, the same count as those evaluations, so a
+spread worker does not walk each pair from both atoms.
 
 =TersoffZblBuildTest= requires those bits from Tersoff and ZBL at 1, 2, 4 and 8
-threads, below and above =kTeamMinAtoms=, on a fresh list, a Verlet reuse and a
-rebuild.
+threads, below and above =rgpot::kTeamMinAtoms=, on a fresh list, a Verlet reuse
+and a rebuild.
 
 Under ThreadSanitizer, neither an uninstrumented =libgomp= nor a stock =libomp=
 annotates OpenMP barriers, so both report false races across sequential regions;

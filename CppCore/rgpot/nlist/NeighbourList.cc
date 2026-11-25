@@ -1160,7 +1160,7 @@ void search_frame(Table &table, const Frame &frame, std::size_t n, const double 
   }
   Neighbours cells;
   prepare_cells(cells, frame, n, box9, query);
-  const int nt = teamSize(n);
+  const int nt = teamSize(n, kTeamMinAtoms);
   if (!clustered(query)) {
     std::vector<Columns> parts(static_cast<std::size_t>(std::max(nt, 1)));
     const bool full = full_shell(query);

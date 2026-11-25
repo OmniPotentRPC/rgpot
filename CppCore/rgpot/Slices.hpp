@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <limits>
 #include <vector>
 
 #if defined(_OPENMP)
@@ -74,18 +75,58 @@ struct Range {
 /// threads matches the serial order. One without OpenMP.
 [[nodiscard]] int threadsRequested();
 
-/// Atoms below which a call runs on the calling thread alone. A region
-/// costs more than such a call: on 8 threads a neighbour search of 64
-/// atoms, and a Sutton-Chen call on 55 to 80 atoms, took several times
-/// their one-thread time.
+/// Atoms below which a call without a threshold of its own, such as a
+/// neighbour-list build, runs on the calling thread alone. A region costs
+/// more than such a call: on 8 threads a neighbour search of 64 atoms took
+/// several times its one-thread time. Each potential keeps its own
+/// thresholds as `kTeamFrom` in its class.
 #if !defined(RGPOT_TEAM_MIN_ATOMS)
 #define RGPOT_TEAM_MIN_ATOMS 8192
 #endif
 static_assert(RGPOT_TEAM_MIN_ATOMS > 0);
 inline constexpr std::size_t kTeamMinAtoms = RGPOT_TEAM_MIN_ATOMS;
 
-/// Slices for a call over `n` atoms: one below kTeamMinAtoms or when
-/// threadsRequested() is one, else threadsRequested(), at most `n`.
+/// An atom count no call reaches, for a team that never opens.
+inline constexpr std::size_t kNoTeam = std::numeric_limits<std::size_t>::max();
+
+/// Atoms from which a team of two threads opens, of three, and of four or
+/// more. The default opens each at the threshold of the call. A potential
+/// keeps its own as `kTeamFrom` and, on any thread count, sums atom by atom
+/// in index order from the least of them, its `kTeamMinAtoms`.
+struct TeamFrom {
+  std::size_t two = 0;
+  std::size_t three = 0;
+  std::size_t more = 0;
+
+  /// Atoms from which a team of `threads` opens.
+  [[nodiscard]] constexpr std::size_t of(int threads) const noexcept {
+    return threads <= 2 ? two : (threads == 3 ? three : more);
+  }
+
+  /// Atoms from which some team opens.
+  [[nodiscard]] constexpr std::size_t least() const noexcept {
+    const std::size_t fewer = two < three ? two : three;
+    return fewer < more ? fewer : more;
+  }
+};
+
+/// The threshold of a call whose own is `own`: that of the innermost
+/// TeamThreshold alive on this thread, else `own`.
+[[nodiscard]] std::size_t teamThreshold(std::size_t own) noexcept;
+
+/// Whether a TeamThreshold is alive on this thread.
+[[nodiscard]] bool teamThresholdActive() noexcept;
+
+/// Slices for a call over `n` atoms with threshold `from` and teams
+/// `team`: threadsRequested(), at most `n`, once `n` reaches `from` and the
+/// atoms `team` asks of that many threads, else one. While a TeamThreshold
+/// is alive any count above one opens from `from`.
+[[nodiscard]] int teamSize(std::size_t n, std::size_t from, TeamFrom team = {});
+
+/// Same as `teamSize(n, kTeamMinAtoms, {})`. Kept exported and deprecated
+/// so binaries built against the one-argument signature keep loading
+/// under `kCxxSoversion` 9.
+[[deprecated("Use teamSize(n, from, team) with explicit threshold and TeamFrom")]]
 [[nodiscard]] int teamSize(std::size_t n);
 
 /// Regions the calling thread has opened through the helpers below, a
@@ -113,6 +154,24 @@ public:
 
 private:
   int previous_;
+};
+
+/// While alive, a potential called on this thread takes `atoms` as its
+/// threshold in place of its own and opens a team on any thread count
+/// above one, so a benchmark can time every team on either side of its
+/// own threshold. The bits still do not depend on the thread count, but a
+/// call between the two thresholds sums in the other order and its energy
+/// can differ in the last bits.
+class TeamThreshold {
+public:
+  explicit TeamThreshold(std::size_t atoms) noexcept;
+  ~TeamThreshold();
+  TeamThreshold(const TeamThreshold &) = delete;
+  TeamThreshold &operator=(const TeamThreshold &) = delete;
+
+private:
+  std::size_t previous_;
+  bool had_previous_;
 };
 
 namespace detail {
@@ -376,11 +435,14 @@ template <typename Body>
 /// Evaluates `n` independent systems on the thread team.
 ///
 /// `atomsOf(i)` is the atom count of system `i`. `body(i)` evaluates
-/// that system. When every system is below `kTeamMinAtoms`, more than
-/// one thread is requested, and this call is not already inside a team,
-/// the systems are spread across `threadsRequested()` slices. A system
-/// at `kTeamMinAtoms` or above, or a batch that contains one, keeps the
-/// serial order so that system's own team is not nested. One system, or
+/// that system. `from` and `team` are the threshold and the teams a
+/// single evaluation passes to `teamSize`, and they default to the
+/// neighbour-list threshold. When `teamSize` would leave every system
+/// on one thread, more than one thread is requested, and this call is
+/// not already inside a team, the systems are spread across
+/// `threadsRequested()` slices. A system that would open its own team,
+/// or a batch that contains one, keeps the serial order, so that team
+/// is not nested and a spread worker does not open one. One system, or
 /// one requested thread, does the same.
 ///
 /// The split is the one `BatchEvaluator` uses for configurations, run
@@ -391,7 +453,8 @@ template <typename Body>
 /// loop. A slice that throws is caught, and the exception from the
 /// lowest numbered slice is rethrown after the team joins.
 template <typename AtomsOf, typename Body>
-void forEachBatchSystem(std::size_t n, AtomsOf &&atomsOf, Body &&body) {
+void forEachBatchSystem(std::size_t n, AtomsOf &&atomsOf, Body &&body,
+                        std::size_t from = kTeamMinAtoms, TeamFrom team = {}) {
   if (n == 0) {
     return;
   }
@@ -402,8 +465,12 @@ void forEachBatchSystem(std::size_t n, AtomsOf &&atomsOf, Body &&body) {
   }
 #endif
   if (spread) {
+    // The same rule as one evaluation of this potential. A system that
+    // would open a team stays whole, and a system that is spread then
+    // sees teamSize of one, so the worker does not open an inner team.
+    const std::size_t floor = teamThreshold(from);
     for (std::size_t i = 0; i < n; ++i) {
-      if (atomsOf(i) >= kTeamMinAtoms) {
+      if (teamSize(atomsOf(i), floor, team) > 1) {
         spread = false;
         break;
       }
@@ -419,16 +486,26 @@ void forEachBatchSystem(std::size_t n, AtomsOf &&atomsOf, Body &&body) {
   if (n < static_cast<std::size_t>(slices)) {
     slices = static_cast<int>(n);
   }
+  const bool threshold_active = teamThresholdActive();
+  const std::size_t threshold = teamThreshold(from);
   std::vector<std::exception_ptr> errors(static_cast<std::size_t>(slices));
   forEachSlice(slices, [&](int slice) {
-    try {
-      const Range range =
-          partition(static_cast<std::int64_t>(n), slice, slices);
-      for (std::int64_t i = range.begin; i < range.end; ++i) {
-        body(static_cast<std::size_t>(i));
+    auto run = [&] {
+      try {
+        const Range range =
+            partition(static_cast<std::int64_t>(n), slice, slices);
+        for (std::int64_t i = range.begin; i < range.end; ++i) {
+          body(static_cast<std::size_t>(i));
+        }
+      } catch (...) {
+        errors[static_cast<std::size_t>(slice)] = std::current_exception();
       }
-    } catch (...) {
-      errors[static_cast<std::size_t>(slice)] = std::current_exception();
+    };
+    if (threshold_active) {
+      const TeamThreshold worker_threshold(threshold);
+      run();
+    } else {
+      run();
     }
   });
   for (const std::exception_ptr &error : errors) {

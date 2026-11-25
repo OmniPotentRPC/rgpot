@@ -1295,8 +1295,9 @@ TEST_CASE("Sutton-Chen matches one-thread bits at 1, 2, 4 and 8 threads across V
           "[SuttonChen][threads]") {
   ScThreadGuard guard;
 
-  // Below kTeamMinAtoms: 6x6x6 fcc = 864 atoms stays on one thread across
-  // 1, 2, 4 and 8 threads and reuses the Verlet list inside half the skin.
+  // 864 atoms sit under the neighbour-list default of 8192 and over
+  // Sutton-Chen's own floor of 64. Two threads open no team. Four or more
+  // do, and the Verlet list is reused inside half the skin.
   {
     double box[9] = {};
     rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
@@ -1325,7 +1326,7 @@ TEST_CASE("Sutton-Chen matches one-thread bits at 1, 2, 4 and 8 threads across V
     REQUIRE(ref_pot.listReused());
 
     for (const char *th : {"1", "2", "4", "8"}) {
-      INFO("below kTeamMinAtoms OMP_NUM_THREADS=" << th);
+      INFO("own floor OMP_NUM_THREADS=" << th);
       setThreads(th);
       const auto before = rgpot::teamsOpened();
       rgpot::SuttonChenPot pot(cfg);
@@ -1337,7 +1338,18 @@ TEST_CASE("Sutton-Chen matches one-thread bits at 1, 2, 4 and 8 threads across V
       CHECK_FALSE(pot.listReused());
       CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, step2, box), ref2) == 0);
       CHECK(pot.listReused());
+      const int nth = std::atoi(th);
+      const bool team =
+          nth > 1 && step0.size() / 3 >= rgpot::SuttonChenPot::kTeamFrom.of(nth);
+#if defined(_OPENMP)
+      if (team) {
+        CHECK(rgpot::teamsOpened() > before);
+      } else {
+        CHECK(rgpot::teamsOpened() == before);
+      }
+#else
       CHECK(rgpot::teamsOpened() == before);
+#endif
     }
   }
 
@@ -1414,7 +1426,9 @@ TEST_CASE("Sutton-Chen matches one-thread bits at 1, 2, 4 and 8 threads across V
             CHECK(pot.listReused());
           }
 #if defined(_OPENMP)
-          if (std::string(th) != "1") {
+          const int nth = std::atoi(th);
+          const bool team = nth > 1 && n >= rgpot::SuttonChenPot::kTeamFrom.of(nth);
+          if (team) {
             CHECK(rgpot::teamsOpened() > before_reuse);
           } else {
             CHECK(rgpot::teamsOpened() == before_reuse);

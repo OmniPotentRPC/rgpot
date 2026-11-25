@@ -127,7 +127,6 @@ void agree(const char *label, const std::vector<double> &pos,
            const double *box) {
   const std::size_t n = pos.size() / 3;
   const std::vector<int> z(n, 14);
-  const bool large = n >= rgpot::kTeamMinAtoms;
   const auto inside = shifted(pos, kInside);
   const auto past = shifted(pos, kPast);
 
@@ -150,13 +149,22 @@ void agree(const char *label, const std::vector<double> &pos,
     pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
     const Snapshot got = evaluate(pot, pos, z, box);
     REQUIRE(apart(got, ref) == 0);
+    const int nth = std::atoi(th);
+    // The force walk follows the potential's own floor. The stored gather
+    // follows the neighbour-list default, so a large cell still opens one
+    // region when two threads are asked for and the force walk stays serial.
+    const bool force_team = nth > 1 && n >= Pot::kTeamFrom.of(nth);
+    const bool build_team = nth > 1 && n >= rgpot::kTeamMinAtoms;
 #if defined(_OPENMP)
-    if (std::string(th) == "1" || !large) {
-      REQUIRE(rgpot::teamsOpened() == before);
-    } else {
+    if (force_team || build_team) {
       REQUIRE(rgpot::teamsOpened() > before);
+    } else {
+      REQUIRE(rgpot::teamsOpened() == before);
     }
 #else
+    (void)nth;
+    (void)force_team;
+    (void)build_team;
     REQUIRE(rgpot::teamsOpened() == before);
 #endif
 
@@ -218,7 +226,8 @@ TEST_CASE("Tersoff and ZBL agree across thread counts",
           "[threads][nlist][tersoff][zbl]") {
   const RestoreThreads restore;
   const double a = 5.431;
-  // 512 atoms is below kTeamMinAtoms. 10648 is above it.
+  // 512 atoms sit under the neighbour-list default. 10648 sits over it.
+  // Each potential opens a team from its own kTeamFrom.
   for (const int side : {4, 11}) {
     const auto pos = diamond(side, a);
     const double length = side * a;

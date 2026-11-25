@@ -7,9 +7,9 @@
  * same bits on any number of threads.
  *
  * A centre i with bonds to partners j_0 < j_1 < ... adds pair terms on
- * (i, j_a) and triplet terms on (i, j_a, j_b). Below kTeamMinAtoms each
- * term goes straight into the totals through CentreDirect. From
- * kTeamMinAtoms up, sumCentres has each centre sum its terms into one force
+ * (i, j_a) and triplet terms on (i, j_a, j_b). Below the potential's
+ * threshold each term goes straight into the totals through CentreDirect.
+ * From there up, sumCentres has each centre sum its terms into one force
  * on itself, one on each partner, an energy and a strain (CentreTerms), and
  * adds the centres to the totals in index order: as they finish on one
  * thread, and from one ledger per slice on a team.
@@ -220,14 +220,15 @@ private:
  * Runs `centre(i, terms, scratch)` for every atom i below `n` and adds the
  * centres to `force`, `energy` and, when it is set, `strain`, in index
  * order. `centre` resets `terms` for i and then adds i's terms to it.
- * Each slice has its own `Scratch`. A team runs the centres in blocks, so
- * the ledgers stay a block long.
+ * Each slice has its own `Scratch`. `from` and `team` are those of
+ * teamSize. A team runs the centres in blocks, so the ledgers stay a block
+ * long.
  */
 template <typename Scratch, typename Centre>
-void sumCentres(std::size_t n, const Centre &centre, double *force, double &energy,
-                double *strain) {
+void sumCentres(std::size_t n, std::size_t from, TeamFrom team, const Centre &centre,
+                double *force, double &energy, double *strain) {
   const bool strained = strain != nullptr;
-  const int slices = teamSize(n);
+  const int slices = teamSize(n, from, team);
   if (slices == 1) {
     CentreTerms terms(strained);
     Scratch scratch{};

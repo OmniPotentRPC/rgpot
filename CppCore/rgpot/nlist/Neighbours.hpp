@@ -408,10 +408,43 @@ public:
     }
   }
 
+  /// The pairs of `forHalf` over every atom, each once, `j > i`, with the
+  /// vectors of `forHalf`, in the order in which the rows of `forRowTeam`
+  /// reach each atom. A stream on the tiles visits a pair from the atom
+  /// that comes first by cell and then by index, and negates the vector
+  /// when that atom is the higher one; elsewhere this is `forHalf`.
+  template <typename Fn>
+  void forRowHalf(Fn &&fn) const {
+    if (streaming_ && !allPairs() &&
+        fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
+                      const std::int32_t *head, std::size_t ncells, bool cell_shift,
+                      double search2, double L0, double L1, double L2, double i0, double i1,
+                      double i2, bool p0, bool p1, bool p2) {
+          if (head != nullptr) {
+            visitTilesFirst<true>(tile, neigh, nneigh, head, ncells, cell_shift, search2, L0, L1,
+                                  L2, i0, i1, i2, p0, p1, p2, fn);
+          } else {
+            visitTilesFirst<false>(tile, neigh, nneigh, head, ncells, cell_shift, search2, L0, L1,
+                                   L2, i0, i1, i2, p0, p1, p2, fn);
+          }
+        })) {
+      return;
+    }
+    forHalf(0, static_cast<std::int64_t>(n_), fn);
+  }
+
   /// The directed pairs, each atom's row walked by one of `nthreads`
   /// slices: `fn(slice, i, j, dx, dy, dz, r2)`. The atoms are split into
-  /// runs, one per slice, and each row is walked as `forDirected` walks it,
-  /// so the slice count changes only which thread walks a row. A stream
+  /// runs, one per slice, so the slice count changes only which thread
+  /// walks a row. A row takes its atom's partners in the order in which
+  /// `forRowHalf` reaches that atom, and a partner below the atom takes the
+  /// negated vector of `forRowHalf`, so a sum over a row has the bits of
+  /// the same sum over `forRowHalf`. On a stored list and in an unbounded
+  /// search that is the row of `forDirected`. A stream on the tiles takes
+  /// every atom of the stencil cells before its own, by cell, then the
+  /// atoms before it in its cell, then in stencil order the atoms after it
+  /// in its cell and every atom of the later cells; without tiles, the
+  /// partners below the atom in index order, then those above it. A stream
   /// builds its stencil once, and every slice walks the cells for its own
   /// run. Split by cell instead, the occupied cells of a cluster, or the
   /// one bin of an open box, can all fall to one slice.
@@ -420,7 +453,8 @@ public:
     if (nthreads < 1) {
       nthreads = 1;
     }
-    if (streaming_ && !allPairs() &&
+    const bool stream = streaming_ && !allPairs();
+    if (stream &&
         fastTiles([&](const auto &tile, const auto &neigh, const auto &nneigh,
                       const std::int32_t *head, std::size_t ncells, bool cell_shift,
                       double search2, double L0, double L1, double L2, double i0, double i1,
@@ -430,13 +464,13 @@ public:
             auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                               double r2) { fn(slice, i, j, dx, dy, dz, r2); };
             if (head != nullptr) {
-              visitTiles<true>(tile, neigh, nneigh, head, 0, ncells, range.begin,
-                               static_cast<std::size_t>(range.end), false, cell_shift, search2,
-                               L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+              visitTileRows<true>(tile, neigh, nneigh, head, ncells, range.begin,
+                                  static_cast<std::size_t>(range.end), cell_shift, search2, L0,
+                                  L1, L2, i0, i1, i2, p0, p1, p2, accept);
             } else {
-              visitTiles<false>(tile, neigh, nneigh, head, 0, ncells, range.begin,
-                                static_cast<std::size_t>(range.end), false, cell_shift, search2,
-                                L0, L1, L2, i0, i1, i2, p0, p1, p2, accept);
+              visitTileRows<false>(tile, neigh, nneigh, head, ncells, range.begin,
+                                   static_cast<std::size_t>(range.end), cell_shift, search2, L0,
+                                   L1, L2, i0, i1, i2, p0, p1, p2, accept);
             }
           });
         })) {
@@ -446,7 +480,11 @@ public:
       const auto range = partition(static_cast<std::int64_t>(n_), slice, nthreads);
       auto adapt = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
                        double r2) { fn(slice, i, j, dx, dy, dz, r2); };
-      forDirected(range.begin, range.end, adapt);
+      if (stream) {
+        walkScatteredRows(range.begin, range.end, adapt, search_ * search_);
+      } else {
+        forDirected(range.begin, range.end, adapt);
+      }
     });
   }
 
@@ -997,21 +1035,6 @@ private:
                   std::int64_t atom0, std::size_t atom1, bool half, bool cell_shift,
                   double search2, double L0, double L1, double L2, double i0, double i1,
                   double i2, bool p0, bool p1, bool p2, Fn &&fn) const {
-    auto round_axis = [](double delta, double inv, double length, bool periodic, int &shift) {
-      if (!periodic) {
-        shift = 0;
-        return delta;
-      }
-      const double t = delta * inv;
-      if (!(t > -1.0e15 && t < 1.0e15)) {
-        shift = 0;
-        return delta;
-      }
-      const double shifted = t + std::copysign(0.5, t);
-      const auto image = static_cast<long long>(shifted);
-      shift = static_cast<int>(image);
-      return delta - length * static_cast<double>(image);
-    };
     for (std::size_t c = c0; c < c1; ++c) {
       const auto a0 = cell_start_[c];
       const auto a1 = cell_start_[c + 1];
@@ -1069,12 +1092,211 @@ private:
               dy = (a.y - b.y) - src.sy;
               dz = (a.z - b.z) - src.sz;
             } else {
-              int sa = 0;
-              int sb = 0;
-              int sc = 0;
-              dx = round_axis(a.x - b.x, i0, L0, p0, sa);
-              dy = round_axis(a.y - b.y, i1, L1, p1, sb);
-              dz = round_axis(a.z - b.z, i2, L2, p2, sc);
+              dx = roundAxis(a.x - b.x, i0, L0, p0);
+              dy = roundAxis(a.y - b.y, i1, L1, p1);
+              dz = roundAxis(a.z - b.z, i2, L2, p2);
+            }
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 <= search2) {
+              fn(a.id, b.id, dx, dy, dz, r2);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /// The orthorhombic image of `delta` on one axis of `length`, with `inv`
+  /// its inverse. A free axis, or a separation too large to round, keeps
+  /// `delta`. Odd in `delta`, so the two visits of a pair see opposite
+  /// vectors.
+  static double roundAxis(double delta, double inv, double length, bool periodic) {
+    if (!periodic) {
+      return delta;
+    }
+    const double t = delta * inv;
+    if (!(t > -1.0e15 && t < 1.0e15)) {
+      return delta;
+    }
+    const double shifted = t + std::copysign(0.5, t);
+    const auto image = static_cast<long long>(shifted);
+    return delta - length * static_cast<double>(image);
+  }
+
+  /// The pairs of forRowHalf on the tiles. The cells come in order and the
+  /// atoms of a cell in order, and each atom takes the atoms after it in
+  /// its own cell and every atom of the later cells of its stencil, so a
+  /// pair is visited once, from the atom that comes first. Both visits of a
+  /// pair round the same coordinate difference, negated, so the higher
+  /// atom's vector negated is the lower atom's.
+  template <bool Compact, typename Tile, typename Nbor, typename Fn>
+  void visitTilesFirst(const std::vector<Tile> &tile, const std::vector<Nbor> &neigh,
+                       const std::vector<int> &nneigh, const std::int32_t *head,
+                       std::size_t ncells, bool cell_shift, double search2, double L0,
+                       double L1, double L2, double i0, double i1, double i2, bool p0, bool p1,
+                       bool p2, Fn &&fn) const {
+    for (std::size_t c = 0; c < ncells; ++c) {
+      const auto a0 = cell_start_[c];
+      const auto a1 = cell_start_[c + 1];
+      if (a0 == a1) {
+        continue;
+      }
+      const int nn = nneigh[c];
+      if constexpr (Compact) {
+        if (nn == 0) {
+          continue;
+        }
+      }
+      const Nbor *nb;
+      if constexpr (Compact) {
+        nb = neigh.data() + static_cast<std::size_t>(head[c]);
+      } else {
+        nb = neigh.data() + c * 27;
+      }
+      for (std::int32_t q = a0; q < a1; ++q) {
+        const Tile &a = tile[static_cast<std::size_t>(q)];
+        for (int k = 0; k < nn; ++k) {
+          const Nbor &src = nb[k];
+          const auto d = static_cast<std::size_t>(src.id);
+          if (d < c) {
+            continue;
+          }
+          const std::int32_t b1 = cell_start_[d + 1];
+          for (std::int32_t r = d == c ? q + 1 : cell_start_[d]; r < b1; ++r) {
+            const Tile &b = tile[static_cast<std::size_t>(r)];
+            double dx;
+            double dy;
+            double dz;
+            if (cell_shift) {
+              dx = (a.x - b.x) - src.sx;
+              dy = (a.y - b.y) - src.sy;
+              dz = (a.z - b.z) - src.sz;
+            } else {
+              dx = roundAxis(a.x - b.x, i0, L0, p0);
+              dy = roundAxis(a.y - b.y, i1, L1, p1);
+              dz = roundAxis(a.z - b.z, i2, L2, p2);
+            }
+            const double r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 <= search2) {
+              if (a.id < b.id) {
+                fn(a.id, b.id, dx, dy, dz, r2);
+              } else {
+                fn(b.id, a.id, -dx, -dy, -dz, r2);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /// The rows of forRowTeam on the tiles, for the atoms in `[atom0,
+  /// atom1)`. visitTilesFirst reaches an atom of cell c from every atom of
+  /// the stencil cells before c, by cell, then from the atoms before it in
+  /// c, then walks the atoms after it in c and every atom of the later
+  /// cells, in stencil order. A row takes them in that order, as runs of
+  /// tiles laid out once per cell: only the two runs of c move with the
+  /// atom.
+  template <bool Compact, typename Tile, typename Nbor, typename Fn>
+  void visitTileRows(const std::vector<Tile> &tile, const std::vector<Nbor> &neigh,
+                     const std::vector<int> &nneigh, const std::int32_t *head,
+                     std::size_t ncells, std::int64_t atom0, std::size_t atom1,
+                     bool cell_shift, double search2, double L0, double L1, double L2,
+                     double i0, double i1, double i2, bool p0, bool p1, bool p2,
+                     Fn &&fn) const {
+    struct Run {
+      const Nbor *src;
+      std::int32_t begin;
+      std::int32_t end;
+    };
+    for (std::size_t c = 0; c < ncells; ++c) {
+      const auto a0 = cell_start_[c];
+      const auto a1 = cell_start_[c + 1];
+      if (a0 == a1) {
+        continue;
+      }
+      const int nn = nneigh[c];
+      if constexpr (Compact) {
+        if (nn == 0) {
+          continue;
+        }
+      }
+      const Nbor *nb;
+      if constexpr (Compact) {
+        nb = neigh.data() + static_cast<std::size_t>(head[c]);
+      } else {
+        nb = neigh.data() + c * 27;
+      }
+      Run runs[28];
+      int nruns = 0;
+      // The runs of c, before and after the atom, when c is in its own
+      // stencil; a compact stencil leaves it out when it holds no pair.
+      int before = -1;
+      int after = -1;
+      bool laid = false;
+      for (std::int32_t q = a0; q < a1; ++q) {
+        const Tile &a = tile[static_cast<std::size_t>(q)];
+        if (a.id < atom0 || static_cast<std::size_t>(a.id) >= atom1) {
+          continue;
+        }
+        if (!laid) {
+          int by_cell[27];
+          int nlow = 0;
+          const Nbor *own = nullptr;
+          for (int k = 0; k < nn; ++k) {
+            const auto d = static_cast<std::size_t>(nb[k].id);
+            if (d == c) {
+              own = nb + k;
+            }
+            if (d >= c) {
+              continue;
+            }
+            int s = nlow++;
+            while (s > 0 && nb[by_cell[s - 1]].id > nb[k].id) {
+              by_cell[s] = by_cell[s - 1];
+              --s;
+            }
+            by_cell[s] = k;
+          }
+          for (int s = 0; s < nlow; ++s) {
+            const Nbor *src = nb + by_cell[s];
+            const auto d = static_cast<std::size_t>(src->id);
+            runs[nruns++] = Run{src, cell_start_[d], cell_start_[d + 1]};
+          }
+          if (own != nullptr) {
+            before = nruns;
+            runs[nruns++] = Run{own, a0, a0};
+          }
+          for (int k = 0; k < nn; ++k) {
+            const auto d = static_cast<std::size_t>(nb[k].id);
+            if (d == c) {
+              after = nruns;
+            }
+            if (d >= c) {
+              runs[nruns++] = Run{nb + k, cell_start_[d], cell_start_[d + 1]};
+            }
+          }
+          laid = true;
+        }
+        if (before >= 0) {
+          runs[before].end = q;
+          runs[after].begin = q + 1;
+        }
+        for (int u = 0; u < nruns; ++u) {
+          const Nbor &src = *runs[u].src;
+          for (std::int32_t r = runs[u].begin; r < runs[u].end; ++r) {
+            const Tile &b = tile[static_cast<std::size_t>(r)];
+            double dx;
+            double dy;
+            double dz;
+            if (cell_shift) {
+              dx = (a.x - b.x) - src.sx;
+              dy = (a.y - b.y) - src.sy;
+              dz = (a.z - b.z) - src.sz;
+            } else {
+              dx = roundAxis(a.x - b.x, i0, L0, p0);
+              dy = roundAxis(a.y - b.y, i1, L1, p1);
+              dz = roundAxis(a.z - b.z, i2, L2, p2);
             }
             const double r2 = dx * dx + dy * dy + dz * dz;
             if (r2 <= search2) {
@@ -1159,6 +1381,89 @@ private:
                 fn(static_cast<std::int32_t>(i), j, dx, dy, dz, r2);
               }
             }
+          }
+        }
+      }
+    }
+  }
+
+  /// The rows of forRowTeam without tiles, for the atoms in `[begin,
+  /// end)`. The half walk of walkCellsScattered takes the atoms in order,
+  /// so it reaches atom i from each partner below i in index order, with
+  /// the vector folded from that partner, and then walks the partners
+  /// above i. A row takes them in that order and negates the vectors from
+  /// below, so both visits agree where MinimumImage ties two images.
+  template <typename Fn>
+  void walkScatteredRows(std::int64_t begin, std::int64_t end, Fn &fn,
+                         double search2) const {
+    struct Lower {
+      std::int32_t j;
+      double dx;
+      double dy;
+      double dz;
+      double r2;
+    };
+    std::vector<Lower> below;
+    for (std::int64_t i = begin; i < end; ++i) {
+      const auto self = static_cast<std::int32_t>(i);
+      const int cell = cell_of_[static_cast<std::size_t>(i)];
+      const int iz = cell % nz_;
+      const int iy = (cell / nz_) % ny_;
+      const int ix = cell / (nz_ * ny_);
+      int seen[27];
+      int nseen = 0;
+      for (int ox = -1; ox <= 1; ++ox) {
+        for (int oy = -1; oy <= 1; ++oy) {
+          for (int oz = -1; oz <= 1; ++oz) {
+            const int id = cellId(ix + ox, iy + oy, iz + oz);
+            if (id < 0 || std::find(seen, seen + nseen, id) != seen + nseen) {
+              continue;
+            }
+            seen[nseen++] = id;
+          }
+        }
+      }
+      below.clear();
+      for (int s = 0; s < nseen; ++s) {
+        const auto c = static_cast<std::size_t>(seen[s]);
+        for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1]; ++q) {
+          const auto j = cell_atoms_[static_cast<std::size_t>(q)];
+          if (j >= self) {
+            break;
+          }
+          double dx = 0;
+          double dy = 0;
+          double dz = 0;
+          if (!foldPairWithin(j, self, search2, dx, dy, dz)) {
+            continue;
+          }
+          const double r2 = dx * dx + dy * dy + dz * dz;
+          if (r2 <= search2) {
+            below.push_back(Lower{j, -dx, -dy, -dz, r2});
+          }
+        }
+      }
+      std::sort(below.begin(), below.end(),
+                [](const Lower &x, const Lower &y) { return x.j < y.j; });
+      for (const Lower &p : below) {
+        fn(self, p.j, p.dx, p.dy, p.dz, p.r2);
+      }
+      for (int s = 0; s < nseen; ++s) {
+        const auto c = static_cast<std::size_t>(seen[s]);
+        for (std::int32_t q = cell_start_[c]; q < cell_start_[c + 1]; ++q) {
+          const auto j = cell_atoms_[static_cast<std::size_t>(q)];
+          if (j <= self) {
+            continue;
+          }
+          double dx = 0;
+          double dy = 0;
+          double dz = 0;
+          if (!foldPairWithin(self, j, search2, dx, dy, dz)) {
+            continue;
+          }
+          const double r2 = dx * dx + dy * dy + dz * dz;
+          if (r2 <= search2) {
+            fn(self, j, dx, dy, dz, r2);
           }
         }
       }

@@ -43,9 +43,9 @@ namespace rgpot {
 
 namespace {
 
-/// Stored upper-pair count below which a call stays on one thread even when
-/// in.nAtoms >= kTeamMinAtoms (dilute configurations where barrier latency
-/// exceeds the pair work).
+/// Stored upper-pair count below which a stored call walks its pairs on one
+/// thread even when teamSize gives it a team (dilute configurations where
+/// barrier latency exceeds the pair work). A stream does not consult it.
 constexpr std::size_t kMinParallelHalfPairs = 4096;
 
 /// Interior atom split indices in partitionAtomsByWork are rounded to the
@@ -118,6 +118,7 @@ void assignBuffer(std::vector<T> &vec, std::size_t count, const T &value) {
 
 struct MorseWorkspace {
   std::uint64_t generation = 0;
+  bool serial_half_walk = false;
 
   std::vector<std::int32_t> up_off;
   std::vector<std::int32_t> lo_off;
@@ -372,6 +373,7 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
   // team. The matching releaseWorkspaceTo is what keeps the retain cap.
   WorkspaceLease lease;
   MorseWorkspace &ws = *lease.ws;
+  ws.serial_half_walk = false;
 
   const auto N = static_cast<long>(in.nAtoms);
   double *F = out->F;
@@ -423,7 +425,8 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
     batch.count = 0;
   };
 
-  if (n_atoms < kTeamMinAtoms) {
+  const std::size_t from = teamThreshold(kTeamMinAtoms);
+  if (n_atoms < from) {
     releaseWorkspaceTo(ws, {});
     std::fill_n(F, 3 * n_atoms, 0.0);
     double energy = 0.0;
@@ -475,7 +478,7 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
     return;
   }
 
-  const int slices = teamSize(n_atoms);
+  const int slices = teamSize(n_atoms, from, kTeamFrom);
 
   if (!neighbours_.streaming()) {
     const std::size_t est_half_pairs = neighbours_.slots() / 2;
@@ -715,7 +718,8 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
   double *row_e = ws.row_e.data();
   double *row_s = ws.row_s.data();
 
-  if (!neighbours_.streaming() || (slices == 1 && neighbours_.allPairs())) {
+  if (!neighbours_.streaming() || slices == 1) {
+    ws.serial_half_walk = true;
     PairBatch batch;
     auto emit = [&](std::size_t k, double pair_e, double fscale) RGPOT_MORSE_LAMBDA_INLINE {
       const auto ii = batch.i[k];
@@ -739,25 +743,26 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
         tallyPair(*atoms, ai, static_cast<std::size_t>(jj), pair_e, fscale, dx, dy, dz);
       }
     };
-    neighbours_.forHalf(0, N,
-                        [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                            double r2) RGPOT_MORSE_LAMBDA_INLINE {
-                          if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
-                            return;
-                          }
-                          const std::size_t c = batch.count++;
-                          const double r = std::sqrt(r2);
-                          batch.arg[c] = -range * (r - req);
-                          batch.r[c] = r;
-                          batch.dx[c] = dx;
-                          batch.dy[c] = dy;
-                          batch.dz[c] = dz;
-                          batch.i[c] = i;
-                          batch.j_or_u[c] = j;
-                          if (batch.count == kPairBatch) {
-                            flushBatch(batch, emit);
-                          }
-                        });
+    // A team takes each atom's partners in the order of forRowHalf, so one
+    // slice walks that order too; forHalf on the tiles goes cell by tile.
+    neighbours_.forRowHalf([&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
+                               double r2) RGPOT_MORSE_LAMBDA_INLINE {
+      if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
+        return;
+      }
+      const std::size_t c = batch.count++;
+      const double r = std::sqrt(r2);
+      batch.arg[c] = -range * (r - req);
+      batch.r[c] = r;
+      batch.dx[c] = dx;
+      batch.dy[c] = dy;
+      batch.dz[c] = dz;
+      batch.i[c] = i;
+      batch.j_or_u[c] = j;
+      if (batch.count == kPairBatch) {
+        flushBatch(batch, emit);
+      }
+    });
     flushBatch(batch, emit);
   } else {
     std::vector<PairBatch> batches(static_cast<std::size_t>(slices));
@@ -980,6 +985,7 @@ MorseSplitSnapshot morseStoredSplitSnapshot() {
       .generation = ws.split_generation,
       .atoms = ws.split_atoms,
       .slices = ws.split_slices,
+      .serial_half_walk = ws.serial_half_walk,
       .total_up = ws.split_total_up,
       .total_inc = ws.split_total_inc,
       .up_off_cap = ws.up_off.capacity(),

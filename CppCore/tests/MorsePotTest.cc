@@ -13,6 +13,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -404,7 +405,10 @@ FullEval evalBruteForcePairs(const rgpot::MorseConfig &cfg, std::size_t n,
     res.forces[3 * aj] -= fx;
     res.forces[3 * aj + 1] -= fy;
     res.forces[3 * aj + 2] -= fz;
-    if (n < rgpot::kTeamMinAtoms) {
+    // Morse sums by rows from its own floor, which is below the
+    // neighbour-list default. The reference follows that floor so the
+    // energy and the stress keep the bits of the potential.
+    if (n < rgpot::MorsePot::kTeamMinAtoms) {
       energy += pair_e;
       rgpot::accumulatePairStrain(strain, fscale, p.dx, p.dy, p.dz);
     } else {
@@ -415,7 +419,7 @@ FullEval evalBruteForcePairs(const rgpot::MorseConfig &cfg, std::size_t n,
     rgpot::tallyPair(pa, ai, aj, pair_e, fscale, p.dx, p.dy, p.dz);
   }
 
-  if (n >= rgpot::kTeamMinAtoms) {
+  if (n >= rgpot::MorsePot::kTeamMinAtoms) {
     for (std::size_t a_idx = 0; a_idx < n; ++a_idx) {
       energy += row_e[a_idx];
       for (std::size_t c = 0; c < 6; ++c) {
@@ -491,9 +495,9 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
   const rgpot::MorseConfig cu_switched{
       .De = 1.0, .a = 4.0 / 2.55, .re = 2.55, .cutoff = 5.3, .switch_width = 0.8};
 
-  // Below kTeamMinAtoms (6x6x6 Cu vacancy = 863 atoms): stays on one thread
-  // with zero OpenMP regions opened and identical bits across thread settings,
-  // and matches the Neighbours allPairs() brute-force walk bit for bit.
+  // 863 atoms sit under the neighbour-list default of 8192 and over Morse's
+  // own floor of 24. Two threads open no team. Four or more do, and the
+  // bits stay those of one thread and of the Neighbours allPairs() walk.
   {
     const auto sys = fccVacancy(6, 2.55 * std::sqrt(2.0), 29);
     REQUIRE(sys.z.size() == 863);
@@ -533,7 +537,17 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
       CHECK(countBitDiffs(runFullEval(pot, sys.pos, sys.z, sys.box), ref1) == 0);
       CHECK(countBitDiffs(runFullEval(pot, step2, sys.z, sys.box), ref2) == 0);
       CHECK(pot.listReused());
+      const int nth = std::atoi(th);
+      const bool team = nth > 1 && sys.z.size() >= rgpot::MorsePot::kTeamFrom.of(nth);
+#if defined(_OPENMP)
+      if (team) {
+        CHECK(rgpot::teamsOpened() > before_teams);
+      } else {
+        CHECK(rgpot::teamsOpened() == before_teams);
+      }
+#else
       CHECK(rgpot::teamsOpened() == before_teams);
+#endif
     }
   }
 
@@ -588,6 +602,10 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
           bool first_reused = false;
           const auto got0 =
               runFullEval(pot, sys.pos, sys.z, sys.box, &first_reused);
+          if (mode == rgpot::nlist::Mode::Stream &&
+              (std::string(th) == "1" || std::string(th) == "2")) {
+            CHECK(rgpot::detail::morseStoredSplitSnapshot().serial_half_walk);
+          }
           if (mode == rgpot::nlist::Mode::Stored) {
             if (std::string(th) == "1") {
               CHECK_FALSE(first_reused);
@@ -604,11 +622,18 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
               CHECK(countBitDiffs(got0, stream_ref0) == 0);
             }
           }
-          if (std::string(th) != "1") {
+          const int nth = std::atoi(th);
+          const bool team =
+              nth > 1 && sys.z.size() >= rgpot::MorsePot::kTeamFrom.of(nth);
 #if defined(_OPENMP)
+          if (team) {
+            // forceImpl and forcePerAtom each open one region.
             CHECK(rgpot::teamsOpened() == teams_before + 2);
-#endif
+          } else {
+            // Two threads stay on the calling thread, so a reused list opens none.
+            CHECK(rgpot::teamsOpened() == teams_before);
           }
+#endif
         }
 
         // 2. Within-skin perturbation: Verlet list reuse across all thread
@@ -633,11 +658,18 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
               CHECK(countBitDiffs(got1, stream_ref1) == 0);
             }
           }
-          if (std::string(th) != "1") {
+          const int nth = std::atoi(th);
+          const bool team =
+              nth > 1 && sys.z.size() >= rgpot::MorsePot::kTeamFrom.of(nth);
 #if defined(_OPENMP)
+          if (team) {
+            // forceImpl and forcePerAtom each open one region.
             CHECK(rgpot::teamsOpened() == teams_before + 2);
-#endif
+          } else {
+            // Two threads stay on the calling thread, so a reused list opens none.
+            CHECK(rgpot::teamsOpened() == teams_before);
           }
+#endif
         }
 
         // 3. Past-skin perturbation: one rebuild on the first call, then
@@ -667,11 +699,18 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
               CHECK(countBitDiffs(got2, stream_ref2) == 0);
             }
           }
-          if (std::string(th) != "1") {
+          const int nth = std::atoi(th);
+          const bool team =
+              nth > 1 && sys.z.size() >= rgpot::MorsePot::kTeamFrom.of(nth);
 #if defined(_OPENMP)
+          if (team) {
+            // forceImpl and forcePerAtom each open one region.
             CHECK(rgpot::teamsOpened() == teams_before + 2);
-#endif
+          } else {
+            // Two threads stay on the calling thread, so a reused list opens none.
+            CHECK(rgpot::teamsOpened() == teams_before);
           }
+#endif
         }
         if (mode == rgpot::nlist::Mode::Stored) {
           rgpot::ForceOut probe{};
@@ -1504,4 +1543,83 @@ TEST_CASE("MorsePot workspace invalidates when a new potential reuses a "
     CHECK(countBitDiffs(runFullEval(*copy_slot, sys2.pos, sys2.z, sys2.box),
                         want) == 0);
   }
+}
+
+namespace {
+
+/// A periodic FCC box of 4 * side^3 atoms, each moved by up to 0.3 A on
+/// every axis and put in a fixed shuffled order, so the order of the atoms
+/// is not that of the cells they sit in.
+VacancyLattice shuffledFcc(int side, double lattice, std::uint32_t seed) {
+  static constexpr double kBasis[4][3] = {
+      {0.0, 0.0, 0.0}, {0.0, 0.5, 0.5}, {0.5, 0.0, 0.5}, {0.5, 0.5, 0.0}};
+  const double L = static_cast<double>(side) * lattice;
+  std::mt19937 gen(seed);
+  const auto unit = [&gen] {
+    return static_cast<double>(gen()) / static_cast<double>(std::mt19937::max());
+  };
+  std::vector<double> sites;
+  for (int ix = 0; ix < side; ++ix) {
+    for (int iy = 0; iy < side; ++iy) {
+      for (int iz = 0; iz < side; ++iz) {
+        for (const auto &b : kBasis) {
+          for (const double f : {ix + b[0], iy + b[1], iz + b[2]}) {
+            const double x = f * lattice + 0.3 * (2.0 * unit() - 1.0);
+            sites.push_back(x - L * std::floor(x / L));
+          }
+        }
+      }
+    }
+  }
+  const std::size_t n = sites.size() / 3;
+  std::vector<std::size_t> order(n);
+  for (std::size_t k = 0; k < n; ++k) {
+    order[k] = k;
+  }
+  for (std::size_t k = n; k > 1; --k) {
+    std::swap(order[k - 1], order[static_cast<std::size_t>(gen()) % k]);
+  }
+  VacancyLattice out;
+  out.box = {L, 0.0, 0.0, 0.0, L, 0.0, 0.0, 0.0, L};
+  for (std::size_t k = 0; k < n; ++k) {
+    for (std::size_t c = 0; c < 3; ++c) {
+      out.pos.push_back(sites[3 * order[k] + c]);
+    }
+    out.z.push_back(29);
+  }
+  return out;
+}
+
+} // namespace
+
+TEST_CASE("MorsePot stream forces keep their bits from 1 to 8 threads on a shuffled box",
+          "[MorsePot][stream][omp]") {
+  // One thread walks the half pairs and a team of eight the rows. With the
+  // atoms shuffled the two agree only if one thread takes each atom's
+  // partners in the order of its row.
+  ThreadGuard guard;
+  const auto sys = shuffledFcc(10, 2.55 * std::sqrt(2.0), 178);
+  REQUIRE(sys.z.size() == 4000);
+  const rgpot::MorseConfig cfg{.De = 0.3429, .a = 1.3588, .re = 2.866, .cutoff = 6.0};
+  rgpot::MorsePot pot(cfg);
+  pot.setNeighbourMode(rgpot::nlist::Mode::Stream);
+
+  ThreadGuard::set("1");
+  const auto one = runFullEval(pot, sys.pos, sys.z, sys.box);
+  CHECK(rgpot::detail::morseStoredSplitSnapshot().serial_half_walk);
+  ThreadGuard::set("8");
+  const auto teams_before = rgpot::teamsOpened();
+  const auto eight = runFullEval(pot, sys.pos, sys.z, sys.box);
+#if defined(_OPENMP)
+  CHECK(rgpot::teamsOpened() > teams_before);
+#else
+  CHECK(rgpot::teamsOpened() == teams_before);
+#endif
+
+  std::size_t force_diffs = 0;
+  for (std::size_t k = 0; k < one.forces.size(); ++k) {
+    force_diffs += f64Bits(one.forces[k]) == f64Bits(eight.forces[k]) ? 0 : 1;
+  }
+  CHECK(force_diffs == 0);
+  CHECK(countBitDiffs(one, eight) == 0);
 }

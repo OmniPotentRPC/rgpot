@@ -3470,3 +3470,193 @@ TEST_CASE("Neighbours is nothrow default-constructible and refuses generation "
     }
   }
 }
+
+namespace {
+
+/// Each atom's visits in the order forRowHalf makes them: a pair (i, j)
+/// visits i with its vector and j with the negated vector.
+std::vector<Visits> halfRows(const rgpot::nlist::Neighbours &cells, std::size_t n) {
+  std::vector<Visits> rows(n);
+  cells.forRowHalf(
+      [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+        into(rows[static_cast<std::size_t>(i)])(i, j, dx, dy, dz, r2);
+        into(rows[static_cast<std::size_t>(j)])(j, i, -dx, -dy, -dz, r2);
+      });
+  return rows;
+}
+
+/// The rows of forRowTeam on `nslices` slices.
+std::vector<Visits> teamRows(const rgpot::nlist::Neighbours &cells, std::size_t n,
+                             int nslices) {
+  std::vector<Visits> rows(n);
+  cells.forRowTeam(nslices, [&](int, std::int32_t i, std::int32_t j, double dx, double dy,
+                                double dz, double r2) {
+    into(rows[static_cast<std::size_t>(i)])(i, j, dx, dy, dz, r2);
+  });
+  return rows;
+}
+
+void checkRows(const char *name, const std::vector<double> &pos, const double box[9],
+               double cutoff, bool periodic, rgpot::nlist::Image image,
+               rgpot::nlist::Mode mode) {
+  INFO(name);
+  const std::size_t n = pos.size() / 3;
+  rgpot::nlist::Spec spec;
+  spec.cutoff = cutoff;
+  spec.skin = mode == rgpot::nlist::Mode::Stream ? 0.0 : 1.0;
+  spec.periodic = {periodic, periodic, periodic};
+  spec.image = image;
+  spec.mode = mode;
+  rgpot::nlist::Neighbours cells;
+  cells.update(pos.data(), n, box, spec);
+  REQUIRE(cells.streaming() == (mode == rgpot::nlist::Mode::Stream));
+  // forRowHalf takes the pairs of forHalf, each with its bits, in its own
+  // order.
+  Visits first;
+  cells.forRowHalf(into(first));
+  auto by_pair = halfVisits(cells, n);
+  std::sort(first.begin(), first.end());
+  std::sort(by_pair.begin(), by_pair.end());
+  REQUIRE(first == by_pair);
+  const auto half = halfRows(cells, n);
+  std::size_t visits = 0;
+  for (const auto &row : half) {
+    visits += row.size();
+  }
+  REQUIRE(visits > 10 * n);
+  for (const int nslices : {1, 3}) {
+    INFO(nslices << " slices");
+    REQUIRE(teamRows(cells, n, nslices) == half);
+  }
+}
+
+} // namespace
+
+TEST_CASE("a row walk takes each atom's partners in the order of forRowHalf",
+          "[nlist][stream][rows]") {
+  // One thread sums an atom's terms over forRowHalf, a team over the atom's
+  // row, and the bits agree only if both take the same terms in the same
+  // order. The streams reach each walk of the layer: the 27-cell
+  // tiles with cell shifts and with rounded images, the tiles of the cells
+  // that hold a pair, the one bin of an open box, and the scattered walk
+  // of a sheared cell and of MinimumImage.
+  setThreads("1");
+  const double a = 4.05;
+  const auto jittered = [](std::vector<double> pos, double side) {
+    for (std::size_t k = 0; k < pos.size(); ++k) {
+      pos[k] += 0.05 * std::sin(1.9 * static_cast<double>(k) + 0.4);
+    }
+    wrapInto(pos, side);
+    return pos;
+  };
+  using rgpot::nlist::Image;
+  using rgpot::nlist::Mode;
+  const double six = 6 * a;
+  const double six_box[9] = {six, 0, 0, 0, six, 0, 0, 0, six};
+  const auto block6 = jittered(fccBlock(6, 6, 6, a), six);
+  const double four = 4 * a;
+  const double four_box[9] = {four, 0, 0, 0, four, 0, 0, 0, four};
+  const auto block4 = jittered(fccBlock(4, 4, 4, a), four);
+  checkRows("tiles, cell shifts", block6, six_box, 4.0, true, Image::Round, Mode::Stream);
+  checkRows("tiles, rounded images", block4, four_box, 4.0, true, Image::Round, Mode::Stream);
+  checkRows("tiles of occupied cells", block6, six_box, 3.0, true, Image::Round,
+            Mode::Stream);
+  checkRows("tiles, half image", block6, six_box, 4.0, true, Image::Half, Mode::Stream);
+  checkRows("one bin of an open box", jitteredCluster(4, 3.9), kFreeBox, 5.0, false,
+            Image::Round, Mode::Stream);
+  checkRows("MinimumImage", block4, four_box, 4.0, true, Image::General, Mode::Stream);
+  const double side = 6 * 3.6;
+  const double sheared[9] = {side, 0, 0, 0.08 * side, side, 0, 0.04 * side, -0.06 * side, side};
+  const auto tilted = shearedFcc(6, 3.6, sheared);
+  checkRows("sheared stream", tilted, sheared, 5.0, true, Image::Round, Mode::Stream);
+  checkRows("sheared stored list", tilted, sheared, 5.0, true, Image::Round, Mode::Stored);
+  checkRows("stored list", block6, six_box, 4.0, true, Image::Round, Mode::Stored);
+  checkRows("unbounded search", jitteredCluster(3, 3.9), kFreeBox, kInf, false, Image::Round,
+            Mode::Stream);
+}
+
+namespace {
+
+/// The atoms of `pos`, each moved by up to `reach` on every axis, wrapped
+/// into [0, side) and put in a fixed shuffled order.
+std::vector<double> shuffledAcrossCells(const std::vector<double> &pos, double side,
+                                        double reach, std::uint32_t seed) {
+  const std::size_t n = pos.size() / 3;
+  std::mt19937 gen(seed);
+  const auto unit = [&gen] {
+    return static_cast<double>(gen()) / static_cast<double>(std::mt19937::max());
+  };
+  std::vector<double> moved = pos;
+  for (double &x : moved) {
+    x += reach * (2.0 * unit() - 1.0);
+  }
+  wrapInto(moved, side);
+  std::vector<std::size_t> order(n);
+  for (std::size_t k = 0; k < n; ++k) {
+    order[k] = k;
+  }
+  for (std::size_t k = n; k > 1; --k) {
+    std::swap(order[k - 1], order[static_cast<std::size_t>(gen()) % k]);
+  }
+  std::vector<double> out(3 * n);
+  for (std::size_t k = 0; k < n; ++k) {
+    for (std::size_t c = 0; c < 3; ++c) {
+      out[3 * k + c] = moved[3 * order[k] + c];
+    }
+  }
+  return out;
+}
+
+/// Each atom's visits in the order forHalf makes them, as in halfRows.
+std::vector<Visits> forHalfRows(const rgpot::nlist::Neighbours &cells, std::size_t n) {
+  std::vector<Visits> rows(n);
+  cells.forHalf(0, static_cast<std::int64_t>(n),
+                [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
+                  into(rows[static_cast<std::size_t>(i)])(i, j, dx, dy, dz, r2);
+                  into(rows[static_cast<std::size_t>(j)])(j, i, -dx, -dy, -dz, r2);
+                });
+  return rows;
+}
+
+} // namespace
+
+TEST_CASE("a row walk keeps the order of forRowHalf on shuffled atoms that cross cells",
+          "[nlist][stream][rows]") {
+  // A lattice in index order puts the atoms of a cell next to each other,
+  // so the order of the cells and that of the indices agree. Shuffled, and
+  // moved across the faces of their cells, they do not, and only then does
+  // the order of forHalf on the tiles part from that of the rows.
+  setThreads("1");
+  const double a = 4.05;
+  const double six = 6 * a;
+  const double six_box[9] = {six, 0, 0, 0, six, 0, 0, 0, six};
+  const auto block6 = shuffledAcrossCells(fccBlock(6, 6, 6, a), six, 0.3, 178);
+  const double four = 4 * a;
+  const double four_box[9] = {four, 0, 0, 0, four, 0, 0, 0, four};
+  const auto block4 = shuffledAcrossCells(fccBlock(4, 4, 4, a), four, 0.3, 179);
+  using rgpot::nlist::Image;
+  using rgpot::nlist::Mode;
+  checkRows("shuffled tiles, cell shifts", block6, six_box, 4.0, true, Image::Round,
+            Mode::Stream);
+  checkRows("shuffled tiles, rounded images", block4, four_box, 4.0, true, Image::Round,
+            Mode::Stream);
+  checkRows("shuffled tiles, half image", block6, six_box, 4.0, true, Image::Half,
+            Mode::Stream);
+  checkRows("shuffled MinimumImage", block4, four_box, 4.0, true, Image::General,
+            Mode::Stream);
+  checkRows("shuffled stored list", block6, six_box, 4.0, true, Image::Round, Mode::Stored);
+
+  // The case tells the two walks apart: forHalf on the same tiles gives
+  // some atom its partners in another order than its row.
+  rgpot::nlist::Spec spec;
+  spec.cutoff = 4.0;
+  spec.skin = 0.0;
+  spec.periodic = {true, true, true};
+  spec.image = Image::Round;
+  spec.mode = Mode::Stream;
+  rgpot::nlist::Neighbours cells;
+  const std::size_t n = block6.size() / 3;
+  cells.update(block6.data(), n, six_box, spec);
+  REQUIRE(cells.streaming());
+  CHECK(forHalfRows(cells, n) != teamRows(cells, n, 3));
+}
