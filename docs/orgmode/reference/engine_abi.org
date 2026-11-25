@@ -984,7 +984,11 @@ Optional symbol.
 Absence of the symbol, or neither =analytic_hessian= nor =analytic_hvp=, is a
 hard unsupported result.
 The table does not call a numerical Hessian.
-The Rust loader calls the symbol only when =analytic_hessian= is set.
+The Rust loader picks its source the same way.
+It calls the symbol when the symbol is exported and =analytic_hessian= is set.
+Otherwise it takes the columns from an exported =rgpot_engine_hvp= and
+=analytic_hvp=.
+Otherwise it returns =EngineError::Unsupported= naming each missing source.
 
 ** Learning engines
 
@@ -1769,9 +1773,12 @@ a host that does call =dlclose= on them leaves them mapped.
 - =EnginePotential::caps()= / =EnginePotential::hvp(&request, direction)= /
   =EnginePotential::hessian(&request)= :: Reads the size-prefixed engine
   capability structure and dispatches the exact product or dense Hessian.
+  =hessian= calls =rgpot_engine_hessian= when the dense hook is advertised.
+  Otherwise, when =hvp= is served, column =c= is =hvp= on the unit vector =e_c=.
   A missing symbol, a false capability bit, or =RGPOT_ENGINE_ERR_UNSUPPORTED=
   returns =EngineError::Unsupported= (retaining the engine's last-error message)
   without a finite-difference fallback.
+  When =hessian= has neither source, the message names why each is missing.
 - =EnginePotential::taylor_jet(&JetBatchRequest, order)= :: Dispatches =rgpot_engine_taylor_jet=
   for a uniform batch in one engine call and returns a =GradientJet=: =order()=,
   =n_systems()=, =derivative(k)= (every system, =k= in =1..=order=; block 0 is the Hessian-vector product), =system_derivative(k, s)=
@@ -1796,8 +1803,7 @@ a host that does call =dlclose= on them leaves them mapped.
   caps struct ends before the field.
 - =EnginePotential::into_potential(self)= :: Converts the instance into a =PotentialImpl= callback handle, serializes calls to its engine instance, and registers an analytic callback on the underlying =rgpot_potential_t= only when both =rgpot_engine_caps= and =rgpot_engine_hvp= are exported and =analytic_hvp=
   is true.
-  It registers an analytic dense-Hessian callback when =rgpot_engine_hessian= is
-  exported and =analytic_hessian= is true.
+  It registers an analytic dense-Hessian callback when =hessian= has a source.
 - =unsafe EnginePotential::unload(path)= :: Removes the registry entry of a
   plugin that declared itself unload-safe and calls =dlclose=, as described
   under the plugin lifetime above.
