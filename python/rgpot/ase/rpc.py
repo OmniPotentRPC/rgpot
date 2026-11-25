@@ -147,6 +147,16 @@ class RgpotRpcCalculator(Calculator):
             self.close()
             raise
 
+    @staticmethod
+    def _stop_server_proc(proc: subprocess.Popen[bytes]) -> None:
+        try:
+            proc.kill()
+            proc.wait()
+        finally:
+            for pipe in (proc.stdin, proc.stdout, proc.stderr):
+                if pipe is not None:
+                    pipe.close()
+
     @classmethod
     def spawn(
         cls,
@@ -169,36 +179,59 @@ class RgpotRpcCalculator(Calculator):
         chosen = port or _free_port()
         proc: subprocess.Popen[bytes] = subprocess.Popen(
             [str(server_bin), str(chosen), potential],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         try:
             return cls(host="localhost", port=chosen, server_proc=proc, **kwargs)
-        except Exception:
-            proc.kill()
-            proc.wait()
+        except BaseException:
+            cls._stop_server_proc(proc)
             raise
 
     def close(self) -> None:
         """Disconnect and stop a managed server, if any."""
         with self._claim:
-            if not self._closed:
-                self._closed = True
-                try:
-                    self._loop.run_until_complete(self._kj.__aexit__(None, None, None))
-                except Exception:  # noqa: BLE001, S110
-                    pass
-                self._loop.close()
-            if self._server_proc is not None:
-                self._server_proc.kill()
-                self._server_proc.wait()
-                self._server_proc = None
+            try:
+                if not self._closed:
+                    self._closed = True
+                    # Drop Python-side capability references before kj teardown.
+                    self._pot = None
+                    if not self._loop.is_closed():
+                        exit_coro: Any = None
+                        try:
+                            exit_coro = self._kj.__aexit__(None, None, None)
+                            self._loop.run_until_complete(exit_coro)
+                        except Exception:  # noqa: BLE001
+                            # If teardown fails after creating the coroutine
+                            # (for example because the loop closes), close the
+                            # coroutine to avoid "never awaited" warnings.
+                            if exit_coro is not None:
+                                exit_coro.close()
+                        except BaseException:
+                            if exit_coro is not None:
+                                exit_coro.close()
+                            raise
+                        finally:
+                            if not self._loop.is_closed():
+                                self._loop.close()
+            finally:
+                proc = self._server_proc
+                if proc is not None:
+                    self._server_proc = None
+                    self._stop_server_proc(proc)
 
     def __enter__(self) -> "RgpotRpcCalculator":
         return self
 
     def __exit__(self, *exc: object) -> None:
-        self.close()
+        if exc and exc[0] is not None:
+            try:
+                self.close()
+            except BaseException:  # noqa: BLE001, S110
+                pass
+        else:
+            self.close()
 
     async def _connect(self) -> None:
         last_err: OSError | None = None
