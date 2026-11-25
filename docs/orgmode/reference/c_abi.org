@@ -798,9 +798,8 @@ bits.
 
 - Inputs :: none; an enum passed as =int32_t=.
 - Units :: none.
-- Outputs :: =RGPOT_HVP_AUTO= (0): the analytic Hessian-vector callback when
-  one is registered, else forward; =rgpot_potential_hvp_resolved= reports which
-  ran.
+- Outputs :: =RGPOT_HVP_AUTO= (0): the analytic Hessian-vector callback when one
+  is registered, else forward; =rgpot_potential_hvp_resolved= reports which ran.
   =RGPOT_HVP_FORWARD= (1): =(F(x) - F(x + h u)) |v| / h= with =u = v / |v|=,
   =F(x)= from the cached centre.
   =RGPOT_HVP_CENTRAL= (2): =(F(x - h u) - F(x + h u)) |v| / (2 h)=, two force
