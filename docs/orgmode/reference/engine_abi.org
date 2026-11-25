@@ -519,9 +519,10 @@ returns it.
 =analytic_hvp= means =rgpot_engine_hvp= returns an exact directional product.
 =jet_order= is the highest order =rgpot_engine_taylor_jet= serves, 0 when the
 backend has no gradient jet.
-=analytic_hessian= means =rgpot_engine_hessian= returns that product on each
-unit direction, as one exact energy Hessian.
-It is not a finite difference.
+=analytic_hessian= means the backend has a closed-form dense Hessian, which =rgpot_engine_hessian=
+returns.
+It is independent of =analytic_hvp=: a backend may set either flag, both or
+neither.
 
 =reentrancy= decides how the table admits concurrent =rgpot_engine_force= and
 =rgpot_engine_force_batch= calls:
@@ -969,18 +970,21 @@ int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
 - Units :: positions and box in Angstrom; =hessian_out= is the energy Hessian in
   eV/Angstrom squared, row-major, with =3 * nAtoms= rows.
 - Outputs :: =RGPOT_ENGINE_OK= and the exact energy Hessian in =hessian_out=.
-  Each column is =rgpot_engine_hvp= on one unit direction.
+  A backend that advertises =analytic_hessian= writes it from its dense Hessian
+  in one call.
+  A backend that advertises only
+  =analytic_hvp= gets each column from =rgpot_engine_hvp= on one unit direction.
 - Errors :: returns
   =RGPOT_ENGINE_ERR_INVALID= for a NULL pointer, an invalid atom count, an overflowing dimension, or an overlapping output; =RGPOT_ENGINE_ERR_UNSUPPORTED=
-  when the potential does not advertise
-  =analytic_hessian=; and =RGPOT_ENGINE_ERR_EVAL= when the implementation
-  throws.
+  when the potential advertises neither =analytic_hessian= nor =analytic_hvp=;
+  and =RGPOT_ENGINE_ERR_EVAL= when the implementation throws.
   The reason is available from =rgpot_engine_last_error=.
 
 Optional symbol.
-Absence of the symbol or a false =analytic_hessian= is a hard unsupported
-result.
+Absence of the symbol, or neither =analytic_hessian= nor =analytic_hvp=, is a
+hard unsupported result.
 The table does not call a numerical Hessian.
+The Rust loader calls the symbol only when =analytic_hessian= is set.
 
 ** Learning engines
 
