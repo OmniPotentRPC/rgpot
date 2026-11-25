@@ -5,5 +5,4 @@ the check after the run. Each call checks the executable before it removes old
 output or writes the input, and a call that fails keeps no orbitals for the
 next one. A box whose image bound is not finite or out of range, and a box
 around a position that is not finite, are refused with `std::invalid_argument`
-before any conversion. `ORCAPot` keeps the size and member offsets it was added
-with, so the soversion stays 9.
+before any conversion.
