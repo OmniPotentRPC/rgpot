@@ -27,10 +27,11 @@ mopacc C ABI 1 and 2 export the same compute symbols, but ABI 2 grew
 `MopacCResult` (returned by value) and `MopacCParams`. Before any call
 that returns a `MopacCResult`, the loader requires:
 
-- `mopacc_c_abi_version() >= 2`, and `mopacc_abi_version() >= 2` when
-  exported;
+- `mopacc_c_abi_version()` and `mopacc_abi_version()` both exported and
+  `>= 2`;
 - `mopacc_result_size()` exported and equal to `sizeof(MopacCResult)`;
-- `mopacc_params_size()` equal to `sizeof(MopacCParams)` when exported.
+- `mopacc_params_size()` exported and equal to `sizeof(MopacCParams)`.
 
 Otherwise the engine stays unloaded and `forceImpl` throws a load error
-naming the expected and found values.
+naming the expected and found values. A nonzero status from
+`mopacc_set_params` also leaves the engine unloaded.

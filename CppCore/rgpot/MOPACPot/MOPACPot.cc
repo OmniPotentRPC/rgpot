@@ -117,13 +117,17 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
                    std::to_string(found);
     return false;
   }
-  if (b.lib_abi_version) {
-    if (const int found = b.lib_abi_version(); found < MOPACC_ABI_VERSION) {
-      b.load_error = "incompatible mopacc library ABI: expected >= " +
-                     std::to_string(MOPACC_ABI_VERSION) + ", found " +
-                     std::to_string(found);
-      return false;
-    }
+  if (!b.lib_abi_version) {
+    b.load_error = "incompatible mopacc library ABI: expected >= " +
+                   std::to_string(MOPACC_ABI_VERSION) +
+                   ", found no mopacc_abi_version";
+    return false;
+  }
+  if (const int found = b.lib_abi_version(); found < MOPACC_ABI_VERSION) {
+    b.load_error = "incompatible mopacc library ABI: expected >= " +
+                   std::to_string(MOPACC_ABI_VERSION) + ", found " +
+                   std::to_string(found);
+    return false;
   }
   if (!b.result_size) {
     b.load_error = "incompatible mopacc MopacCResult size: expected " +
@@ -137,13 +141,17 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
                                   sizeof(MopacCResult), found);
     return false;
   }
-  if (b.params_size) {
-    if (const std::size_t found = b.params_size();
-        found != sizeof(MopacCParams)) {
-      b.load_error = expected_found("incompatible mopacc MopacCParams size",
-                                    sizeof(MopacCParams), found);
-      return false;
-    }
+  if (!b.params_size) {
+    b.load_error = "incompatible mopacc MopacCParams size: expected " +
+                   std::to_string(sizeof(MopacCParams)) +
+                   ", found no mopacc_params_size";
+    return false;
+  }
+  if (const std::size_t found = b.params_size();
+      found != sizeof(MopacCParams)) {
+    b.load_error = expected_found("incompatible mopacc MopacCParams size",
+                                  sizeof(MopacCParams), found);
+    return false;
   }
   if (b.available && !b.available()) {
     b.load_error = "mopacc stub (libmopac not linked)";
@@ -185,9 +193,14 @@ MOPACPot::MOPACPot(const Config &cfg)
   impl_->params.epsilon = 1.0;
   impl_->params.solver = MOPACC_SOLVER_MOPAC;
   impl_->engine_path = cfg.engine_path;
-  if (try_load_engine(impl_->bundle, impl_->engine_path)) {
-    if (impl_->bundle.set_params)
-      (void)impl_->bundle.set_params(&impl_->params, sizeof(impl_->params));
+  EngineBundle &b = impl_->bundle;
+  if (try_load_engine(b, impl_->engine_path) && b.set_params) {
+    if (const int rc = b.set_params(&impl_->params, sizeof(impl_->params));
+        rc != 0) {
+      b.loaded = false;
+      b.load_error = "mopacc_set_params rejected MopacCParams: status " +
+                     std::to_string(rc);
+    }
   }
 }
 
