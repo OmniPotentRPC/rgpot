@@ -1338,10 +1338,10 @@ TEST_CASE("Sutton-Chen matches one-thread bits at 1, 2, 4 and 8 threads across V
       CHECK_FALSE(pot.listReused());
       CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, step2, box), ref2) == 0);
       CHECK(pot.listReused());
+#if defined(_OPENMP)
       const int nth = std::atoi(th);
       const bool team =
           nth > 1 && step0.size() / 3 >= rgpot::SuttonChenPot::kTeamFrom.of(nth);
-#if defined(_OPENMP)
       if (team) {
         CHECK(rgpot::teamsOpened() > before);
       } else {
@@ -1548,16 +1548,20 @@ TEST_CASE("SuttonChenPot workspace invalidates when a new potential reuses a "
   auto prime = [&](rgpot::SuttonChenPot &pot) {
     setThreads("4");
     pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+#if defined(_OPENMP)
     const auto teams_before = rgpot::teamsOpened();
+#endif
     pot.forceImpl(in1, &out);
     const auto after_first = rgpot::detail::suttonChenWorkspaceSnapshot();
 #if defined(_OPENMP)
     REQUIRE(after_first.index_builds >= 1);
     REQUIRE(after_first.generation != 0);
+    REQUIRE(rgpot::teamsOpened() > teams_before);
 #else
     REQUIRE(after_first.index_builds == 0);
     REQUIRE(after_first.generation == 0);
-    REQUIRE(rgpot::teamsOpened() == teams_before);
+    // countTeam is OpenMP-only, so serial builds keep the counter at zero.
+    REQUIRE(rgpot::teamsOpened() == 0);
 #endif
     return after_first;
   };
@@ -1565,7 +1569,11 @@ TEST_CASE("SuttonChenPot workspace invalidates when a new potential reuses a "
   setThreads("4");
   auto pot = std::make_unique<rgpot::SuttonChenPot>(cfg);
   const void *addr1 = pot.get();
+#if defined(_OPENMP)
   const auto first_snap = prime(*pot);
+#else
+  prime(*pot);
+#endif
   pot.reset();
 
   pot = std::make_unique<rgpot::SuttonChenPot>(cfg);
@@ -1595,7 +1603,11 @@ TEST_CASE("SuttonChenPot workspace invalidates when a new potential reuses a "
   std::optional<rgpot::SuttonChenPot> inplace;
   inplace.emplace(cfg);
   const void *opt_addr = &(*inplace);
+#if defined(_OPENMP)
   const auto opt_first = prime(*inplace);
+#else
+  prime(*inplace);
+#endif
   inplace.reset();
   inplace.emplace(cfg);
   REQUIRE(&(*inplace) == opt_addr);
