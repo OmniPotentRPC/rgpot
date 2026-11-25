@@ -135,9 +135,8 @@ public:
   /// with a translated image closer than the atom itself, a singular box,
   /// a cell too skewed to check and a non-finite entry throw
   /// std::invalid_argument. The resolved executable runs, and a call throws
-  /// ORCAError without running it once it has changed (see
-  /// resolvedExecutablePath()). A run that fails, including one that passes
-  /// timeout_s, throws ORCAError.
+  /// ORCAError once it has changed (see resolvedExecutablePath()). A run
+  /// that fails, including one that passes timeout_s, throws ORCAError.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /// One instance owns one working directory and one wavefunction, so
@@ -179,9 +178,11 @@ public:
   }
 
   /// The file the instance runs: executablePath() with symlinks resolved
-  /// by the constructor. A call throws ORCAError, without running anything,
-  /// once executablePath() resolves to another file or this file's size,
-  /// modification time or inode has changed.
+  /// by the constructor. A call throws ORCAError once executablePath()
+  /// resolves to another file or this file's size, modification time or
+  /// inode has changed. A change seen before the run stops the call without
+  /// running anything; one seen only after the run discards its result and
+  /// the orbitals it wrote.
   [[nodiscard]] const std::string &resolvedExecutablePath() const noexcept {
     return m_real_executable;
   }

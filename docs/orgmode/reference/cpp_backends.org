@@ -607,9 +607,10 @@ void reset();
 - Units :: none.
 - Outputs :: =executablePath()= with symlinks resolved by the constructor: the
   file every call runs.
-  A call throws =rgpot::ORCAError= without running anything once
-  =executablePath()= resolves to another file, or this file's size, modification
-  time or inode has changed.
+  A call throws =rgpot::ORCAError= once =executablePath()= resolves to another
+  file, or this file's size, modification time or inode has changed.
+  A change seen before the run stops the call without running anything; one seen
+  only after the run discards the result of the run that took place.
 - Errors :: none.
 
 *** =rgpot::ORCAPot::runDirectory=
