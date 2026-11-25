@@ -129,9 +129,11 @@ rgpot_external_potential *rgpot_lammpc_potential(const char *engine_path,
   A non-empty =engine_path= is the only library tried.
   Otherwise the constructor tries =LAMMPC_LIBRARY=, then =RGPOT_LAMMPC_ENGINE=
   when they are set, then =liblammpc.so=.
-- Errors :: returns null and writes =err= when the config bytes are missing or
-  not word-aligned, when no library opens, when the backend reports unavailable,
-  or when =lammpc_session_create_from_config= returns null.
+- Errors :: returns null and writes =err= when the config bytes are missing,
+  not word-aligned, truncated, or not a =PotentialConfig= with the =lammps= arm,
+  when no library opens, when the backend reports unavailable, or when
+  =lammpc_session_create_from_config= returns null.
+  A non-empty =engine_path= that does not open writes a message that names it.
 
 *** =rgpot_gromacs_potential=
 

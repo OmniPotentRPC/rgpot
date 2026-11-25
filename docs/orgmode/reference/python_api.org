@@ -441,6 +441,7 @@ rgpot_lammps_potential(config_bytes, engine_path='')
   =config_bytes=, a flat =PotentialConfig= with the =lammps= arm, and =engine_path=.
   An empty =engine_path= tries =LAMMPC_LIBRARY=, =RGPOT_LAMMPC_ENGINE= and
   =liblammpc.so=.
+  A non-empty =engine_path= is the only library tried.
 - Units :: =u0= eV; =cutoff= and =psi= Angstrom.
   The lammpc overload uses the units of =LammpsParams.unitsStyle=.
 - Outputs :: a =rgpot.LammpsPot=.
@@ -450,9 +451,11 @@ rgpot_lammps_potential(config_bytes, engine_path='')
   =ValueError=.
   No engine library that opens and exports =rgpot_engine_force= raises
   =RuntimeError= =engine library was not opened: ...=, listing each path tried.
-  The lammpc overload raises =ValueError= for missing or misaligned
-  =config_bytes=, and =RuntimeError= when =liblammpc= does not load, reports
+  The lammpc overload raises =ValueError= for =config_bytes= that are missing,
+  misaligned, truncated, or not a =PotentialConfig= with the =lammps= arm.
+  It raises =RuntimeError= when =liblammpc= does not load, reports
   unavailable, or refuses the session.
+  A non-empty =engine_path= that does not open raises =RuntimeError= naming it.
 
 *** =rgpot.rgpot_gromacs_potential=
 

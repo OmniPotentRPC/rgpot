@@ -532,6 +532,8 @@ void check_geometry(const ForceInput &in, const ForceOut *out) {
   }
 }
 
+constexpr size_t kCapnpWordBytes = 8;
+
 #if RGPOT_HAS_LAMMPC_PROFILE
 std::vector<::capnp::word> serialize_force_input(const ForceInput &in) {
   ::capnp::MallocMessageBuilder msg;
@@ -552,6 +554,22 @@ std::vector<::capnp::word> serialize_force_input(const ForceInput &in) {
   std::vector<::capnp::word> out(words.size());
   std::memcpy(out.data(), words.begin(), words.asBytes().size());
   return out;
+}
+
+void require_lammps_config(const std::vector<unsigned char> &bytes) {
+  try {
+    ::capnp::FlatArrayMessageReader reader(
+        kj::arrayPtr(reinterpret_cast<const ::capnp::word *>(bytes.data()),
+                     bytes.size() / sizeof(::capnp::word)));
+    if (reader.getRoot<::PotentialConfig>().which() !=
+        ::PotentialConfig::LAMMPS)
+      throw std::invalid_argument(
+          "lammpc config bytes are not a PotentialConfig with the lammps arm");
+  } catch (const kj::Exception &ex) {
+    throw std::invalid_argument(
+        std::string("lammpc config bytes are not a flat PotentialConfig: ") +
+        ex.getDescription().cStr());
+  }
 }
 
 std::string profile_message(const rgpot::abi::ProfileResult &result) {
@@ -635,23 +653,29 @@ LammpsPot::LammpsPot(const ExternalLjConfig &config)
 LammpsPot::LammpsPot(const void *config_capnp, size_t config_capnp_size,
                      const std::string &engine_path)
     : Potential(PotType::Lammps), impl_(std::make_unique<Impl>()), config_{} {
+  if (!config_capnp || config_capnp_size == 0)
+    throw std::invalid_argument("lammpc config bytes are required");
+  if (config_capnp_size % kCapnpWordBytes != 0)
+    throw std::invalid_argument("lammpc config bytes must be word-aligned");
 #if !RGPOT_HAS_LAMMPC_PROFILE
-  (void)config_capnp;
-  (void)config_capnp_size;
   (void)engine_path;
   throw std::runtime_error(
       "lammpc profile mode needs an RPC-capable build (Potentials.capnp.h)");
 #else
-  if (!config_capnp || config_capnp_size == 0)
-    throw std::invalid_argument("lammpc config bytes are required");
-  if (config_capnp_size % sizeof(::capnp::word) != 0)
-    throw std::invalid_argument("lammpc config bytes must be word-aligned");
   impl_->mode = Impl::Mode::LammpcProfile;
   impl_->profile_config.resize(config_capnp_size);
   std::memcpy(impl_->profile_config.data(), config_capnp, config_capnp_size);
-  impl_->profile_loader.load("lammpc", engine_path);
+  require_lammps_config(impl_->profile_config);
+  const std::string backend =
+      engine_path.empty() ? std::string("lammpc")
+                          : "lammpc engine_path '" + engine_path + "'";
+  try {
+    impl_->profile_loader.load("lammpc", engine_path);
+  } catch (const std::exception &ex) {
+    throw std::runtime_error(backend + ": " + ex.what());
+  }
   if (impl_->profile_loader.available() != 1)
-    throw std::runtime_error("lammpc backend reports unavailable");
+    throw std::runtime_error(backend + " reports unavailable");
   hold_profile(impl_->profile_loader.finalize);
   impl_->profile_held = true;
   impl_->profile_session = impl_->profile_loader.session_create_from_config(

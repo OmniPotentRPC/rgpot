@@ -64,6 +64,9 @@ public:
    * platform default names. */
   static std::vector<std::string>
   candidates(const std::string &prefix, const std::string &explicit_path) {
+    if (!explicit_path.empty()) {
+      return {explicit_path};
+    }
     std::string upper;
     for (char c : prefix)
       upper.push_back(static_cast<char>(
@@ -116,6 +119,10 @@ public:
     std::string open_error;
     if (!open_candidates(prefix, candidates(prefix, explicit_path),
                          &open_error)) {
+      if (!explicit_path.empty()) {
+        throw std::runtime_error("lib" + prefix + " not loaded from '" +
+                                 explicit_path + "': " + open_error);
+      }
       throw std::runtime_error("lib" + prefix + " not loaded: " + open_error);
     }
 

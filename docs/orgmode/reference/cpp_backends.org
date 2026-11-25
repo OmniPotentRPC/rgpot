@@ -1727,16 +1727,19 @@ rgpot_lammpc_potential(const void *config_capnp, size_t config_capnp_size,
   =config_capnp= and =config_capnp_size=, a flat =PotentialConfig= whose =lammps= arm is =LammpsParams=, and =engine_path=.
   An empty =engine_path= searches =LAMMPC_LIBRARY=, =RGPOT_LAMMPC_ENGINE=,
   =liblammpc.so=, =./liblammpc.so= and the macOS and Windows names.
+  A non-empty =engine_path= is the only library tried.
 - Units :: those of =LammpsParams.unitsStyle=; =metal= is eV and Angstrom.
 - Outputs :: a new =LammpsPot= that keeps one lammpc session, owned by the
   returned =std::unique_ptr=.
   Destroying it destroys the session.
   The last =LammpsPot= on a lammpc backend to go, or to have its session
   refused, calls =lammpc_finalize=.
-- Errors :: =std::invalid_argument= when the bytes are missing or not a multiple
-  of a Cap'n Proto word.
+- Errors :: =std::invalid_argument= when the bytes are missing, not a multiple
+  of a Cap'n Proto word, truncated, or not a =PotentialConfig= with the
+  =lammps= arm.
   =std::runtime_error= when the build has no Cap'n Proto headers, no =liblammpc= loads, the backend reports unavailable, or =lammpc_session_create_from_config=
   returns null.
+  A non-empty =engine_path= that does not open throws a message that names it.
 
 *** =rgpot::rgpot_gromacs_potential=
 
