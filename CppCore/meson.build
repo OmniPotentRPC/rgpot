@@ -2556,6 +2556,7 @@ if get_option('with_tests')
             'rgpot_layout_fixture',
             sources: ['tests/layout_fixture.cc'],
             include_directories: _incdirs + ['.'],
+            dependencies: has_fmt ? [fmt_dep] : [],
             cpp_args: test_args,
             link_with: rgpot,
             gnu_symbol_visibility: 'hidden',
@@ -2570,7 +2571,7 @@ if get_option('with_tests')
             executable(
                 'cxx_layout_test',
                 sources: ['tests/CxxLayoutTest.cc'],
-                dependencies: [catch2_dep, _dl_dep],
+                dependencies: [catch2_dep, _dl_dep] + (has_fmt ? [fmt_dep] : []),
                 include_directories: _incdirs + ['.'],
                 cpp_args: test_args,
                 link_with: rgpot,
@@ -2845,6 +2846,7 @@ if get_option('with_tests')
                 'print_cxx_layout_stamp',
                 sources: ['tests/print_cxx_layout_stamp.cc'],
                 include_directories: _incdirs + ['.'],
+                dependencies: has_fmt ? [fmt_dep] : [],
                 cpp_args: _args,
                 link_language: 'cpp',
             )
