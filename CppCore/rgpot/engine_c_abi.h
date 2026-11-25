@@ -29,7 +29,10 @@
  *   evaluation or the setting failed (the reason is in
  *   rgpot_engine_last_error), 3 the backend does not support the operation,
  *   -2 acquiring an engine or handle lock failed (leaving the handle
- *   unusable), and for force the host transform's own nonzero code.
+ *   unusable), and for force the host transform's own nonzero code. Any
+ *   negative code is fatal, including -1, which an engine backed by a worker
+ *   process returns when that worker exits or breaks its protocol; destroy
+ *   the handle instead of retrying it.
  *
  * Thread safety of a handle. Any thread may call force and force_batch on any
  * handle. What happens inside depends on the backend's capabilities
