@@ -197,7 +197,7 @@ mod tests {
     /// The dense Hessian, the dual-number callbacks, the resolved product,
     /// and the derivative capabilities and counts are additive, and the two
     /// new HVP scheme values extend an enum the product takes as an `int`,
-    /// so the minor moves to 8 and every earlier caller still matches.
+    /// so the minor moved to 8 and every earlier caller still matches.
     #[test]
     fn the_minor_counts_the_hessian_exports() {
         assert_eq!(RGPOT_ABI_VERSION_MAJOR, 1);
