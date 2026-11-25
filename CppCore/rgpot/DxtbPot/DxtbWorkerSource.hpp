@@ -62,6 +62,13 @@ calculator = None
 composition = None
 
 
+def set_torch_threads(intra, inter):
+    if inter > 0 and torch.get_num_interop_threads() != inter:
+        torch.set_num_interop_threads(inter)
+    if intra > 0 and torch.get_num_threads() != intra:
+        torch.set_num_threads(intra)
+
+
 def apply_config(payload):
     global config, calculator, composition
     layout = struct.Struct("<Iii3dii")
@@ -72,10 +79,7 @@ def apply_config(payload):
         raise InvalidError("method must be GFN1 or GFN2")
     if uhf < 0 or maxiter < 1 or accuracy <= 0.0 or temperature < 0.0:
         raise InvalidError("invalid dxtb configuration")
-    if intra > 0:
-        torch.set_num_threads(intra)
-    if inter > 0:
-        torch.set_num_interop_threads(inter)
+    set_torch_threads(intra, inter)
     config = (method, uhf, maxiter, charge, accuracy, temperature)
     calculator = None
     composition = None
@@ -192,10 +196,7 @@ while True:
             if len(payload) != 8:
                 raise ProtocolError("invalid thread payload")
             intra, inter = struct.unpack("<ii", payload)
-            if intra > 0:
-                torch.set_num_threads(intra)
-            if inter > 0:
-                torch.set_num_interop_threads(inter)
+            set_torch_threads(intra, inter)
             response(OK)
         else:
             raise ProtocolError("unknown operation")

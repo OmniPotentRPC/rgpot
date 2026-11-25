@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
+import sys
 import time
 
 import capnp
@@ -117,6 +119,18 @@ class Engine:
             ctypes.c_void_p,
             ctypes.POINTER(Caps),
         ]
+        self.lib.rgpot_engine_set_num_threads.restype = ctypes.c_int
+        self.lib.rgpot_engine_set_num_threads.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_int,
+        ]
+        self.lib.rgpot_engine_last_error.restype = ctypes.c_size_t
+        self.lib.rgpot_engine_last_error.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_char_p,
+            ctypes.c_size_t,
+        ]
         message = SCHEMA.BuiltinParams.new_message()
         message.name = name
         config = message.init("config")
@@ -166,6 +180,19 @@ class Engine:
 
     def engine_version(self) -> str:
         return self.lib.rgpot_engine_version().decode()
+
+    def set_num_threads(self, intra_op: int, inter_op: int) -> int:
+        return int(
+            self.lib.rgpot_engine_set_num_threads(self.handle, intra_op, inter_op)
+        )
+
+    def last_error(self) -> str:
+        size = int(self.lib.rgpot_engine_last_error(self.handle, None, 0))
+        if size == 0:
+            return ""
+        buf = ctypes.create_string_buffer(size + 1)
+        self.lib.rgpot_engine_last_error(self.handle, buf, len(buf))
+        return buf.value.decode()
 
     @staticmethod
     def _arrays(numbers, positions):
@@ -470,5 +497,180 @@ def test_abi_identity_and_stamp():
         assert engine.abi_compatible(AbiStamp(expected_major + 1, expected_minor, expected_layout)) == 0
         assert engine.abi_compatible(AbiStamp(expected_major, expected_minor, expected_layout + 1)) == 0
         assert engine.abi_compatible(None) == 0
+    finally:
+        engine.close()
+
+
+def test_set_num_threads_idempotent_and_restorable():
+    _, method, numbers, positions = MOLECULES[0]
+    positions = np.asarray(positions)
+    ref_energy, ref_forces = direct_force(numbers, positions, method, charge=0.0, uhf=0)
+    engine = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", method)
+    try:
+        assert engine.set_num_threads(0, 0) == 0
+        assert engine.set_num_threads(-1, -1) == 0
+        assert engine.set_num_threads(2, 1) == 0
+        assert engine.last_error() == ""
+        assert engine.set_num_threads(2, 1) == 0
+        assert engine.last_error() == ""
+
+        energy, forces = engine.force(numbers, positions)
+        np.testing.assert_allclose(energy, ref_energy, rtol=2e-13, atol=2e-12)
+        np.testing.assert_allclose(forces, ref_forces, rtol=2e-12, atol=2e-11)
+
+        assert engine.set_num_threads(2, 1) == 0
+        assert engine.last_error() == ""
+        assert engine.set_num_threads(3, -1) == 0
+        assert engine.last_error() == ""
+        assert engine.set_num_threads(2, -1) == 0
+        assert engine.last_error() == ""
+
+        # Changing the inter-op count once locked must be refused with code 2.
+        if engine.set_num_threads(-1, 2) == 0:
+            assert engine.set_num_threads(-1, 3) == 2
+        else:
+            assert engine.set_num_threads(-1, 2) == 2
+        assert engine.last_error() != ""
+
+        # Restoring the active counts succeeds and clears the error.
+        assert engine.set_num_threads(2, -1) == 0
+        assert engine.last_error() == ""
+        energy2, forces2 = engine.force(numbers, positions)
+        np.testing.assert_allclose(energy2, ref_energy, rtol=2e-13, atol=2e-12)
+        np.testing.assert_allclose(forces2, ref_forces, rtol=2e-12, atol=2e-11)
+    finally:
+        engine.close()
+
+
+def test_set_num_threads_worker_has_no_redundant_calls_or_reinit(tmp_path, monkeypatch):
+    log_path = tmp_path / "worker_calls.jsonl"
+    driver_path = tmp_path / "worker_driver.py"
+    wrapper_path = tmp_path / "worker_python.sh"
+    real_python = os.environ.get("RGPOT_DXTB_PYTHON") or sys.executable
+
+    driver_path.write_text(
+        f"""
+import json
+import sys
+import torch
+import dxtb
+
+LOG_PATH = {str(log_path)!r}
+
+def record(event, **extra):
+    payload = {{
+        "event": event,
+        "intra": int(torch.get_num_threads()),
+        "inter": int(torch.get_num_interop_threads()),
+    }}
+    payload.update(extra)
+    with open(LOG_PATH, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload) + "\\n")
+
+_orig_set_num_threads = torch.set_num_threads
+def _wrapped_set_num_threads(n):
+    _orig_set_num_threads(n)
+    record("set_num_threads", arg=int(n))
+
+_orig_set_num_interop_threads = torch.set_num_interop_threads
+def _wrapped_set_num_interop_threads(n):
+    _orig_set_num_interop_threads(n)
+    record("set_num_interop_threads", arg=int(n))
+
+_orig_calculator = dxtb.Calculator
+def _wrapped_calculator(*args, **kwargs):
+    calc = _orig_calculator(*args, **kwargs)
+    record("calculator_init")
+    return calc
+
+torch.set_num_threads = _wrapped_set_num_threads
+torch.set_num_interop_threads = _wrapped_set_num_interop_threads
+dxtb.Calculator = _wrapped_calculator
+
+record("startup")
+idx = sys.argv.index("-c")
+source = sys.argv[idx + 1]
+exec(compile(source, "<dxtb-worker>", "exec"), {{"__name__": "__main__"}})
+""".lstrip()
+    )
+    wrapper_path.write_text(
+        f"#!/bin/sh\nexec {shlex.quote(real_python)} {shlex.quote(str(driver_path))} \"$@\"\n"
+    )
+    wrapper_path.chmod(0o755)
+    monkeypatch.setenv("RGPOT_DXTB_PYTHON", str(wrapper_path))
+
+    def read_events():
+        return [
+            json.loads(line)
+            for line in log_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+    _, method, numbers, positions = MOLECULES[0]
+    positions = np.asarray(positions)
+    engine = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", method)
+    try:
+        events = read_events()
+        startup = [ev for ev in events if ev["event"] == "startup"]
+        assert len(startup) == 1
+        initial_intra = startup[0]["intra"]
+        initial_inter = startup[0]["inter"]
+
+        first_intra = 2 if initial_intra != 2 else 3
+        alt_intra = 3 if first_intra == 2 else 2
+        first_inter = 1 if initial_inter != 1 else 2
+        alt_inter = 2 if first_inter == 1 else 1
+
+        engine.force(numbers, positions)
+        engine.force(numbers, positions)
+        before_threads = read_events()
+        assert sum(1 for ev in before_threads if ev["event"] == "calculator_init") == 1
+
+        assert engine.set_num_threads(first_intra, first_inter) == 0
+        after_first = read_events()[len(before_threads):]
+        assert [(ev["event"], ev["arg"]) for ev in after_first] == [
+            ("set_num_interop_threads", first_inter),
+            ("set_num_threads", first_intra),
+        ]
+
+        # Calling with the same counts again must be a strict no-op.
+        mark = len(read_events())
+        assert engine.set_num_threads(first_intra, first_inter) == 0
+        assert read_events()[mark:] == []
+
+        # Change intra-op threads, verify no-op when repeated, then restore.
+        mark = len(read_events())
+        assert engine.set_num_threads(alt_intra, first_inter) == 0
+        assert [(ev["event"], ev["arg"]) for ev in read_events()[mark:]] == [
+            ("set_num_threads", alt_intra),
+        ]
+
+        mark = len(read_events())
+        assert engine.set_num_threads(alt_intra, -1) == 0
+        assert read_events()[mark:] == []
+
+        mark = len(read_events())
+        assert engine.set_num_threads(first_intra, first_inter) == 0
+        assert [(ev["event"], ev["arg"]) for ev in read_events()[mark:]] == [
+            ("set_num_threads", first_intra),
+        ]
+
+        # A refused inter-op change must fail without mutating intra-op threads.
+        mark = len(read_events())
+        assert engine.set_num_threads(alt_intra, alt_inter) == 2
+        assert engine.last_error() != ""
+        assert read_events()[mark:] == []
+
+        # Restoring/setting matching counts clears the error and still reuses calculator.
+        mark = len(read_events())
+        assert engine.set_num_threads(first_intra, first_inter) == 0
+        assert engine.last_error() == ""
+        assert read_events()[mark:] == []
+
+        engine.force(numbers, positions)
+        all_events = read_events()
+        assert sum(1 for ev in all_events if ev["event"] == "calculator_init") == 1
+        assert all_events[-1]["intra"] == first_intra
+        assert all_events[-1]["inter"] == first_inter
     finally:
         engine.close()
