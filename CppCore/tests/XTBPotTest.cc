@@ -683,6 +683,27 @@ TEST_CASE("XTBPot settings change the result-cache key",
 #endif
 }
 
+TEST_CASE("XTBPot clears the flags when xtb_newMolecule fails",
+          "[xtb][linked][scc]") {
+  const auto system = ammonia_tetramer();
+  rgpot::XTBPot pot(ammonia_cfg());
+  (void)pot(system.positions, system.atmtypes, system.box);
+  REQUIRE(pot.lastEvalFlags() == rgpot::eval_flags::SccRescued);
+
+  // xtb has no parameters for element 200, so the molecule is refused.
+  AtomMatrix positions(1, 3);
+  positions(0, 0) = positions(0, 1) = positions(0, 2) = 0.0;
+  const std::vector<int> atmtypes = {200};
+  try {
+    (void)pot(positions, atmtypes, system.box);
+    FAIL("an unknown element must throw");
+  } catch (const std::runtime_error &ex) {
+    REQUIRE(std::string(ex.what()).find("xtb_newMolecule") !=
+            std::string::npos);
+  }
+  REQUIRE(pot.lastEvalFlags() == 0);
+}
+
 TEST_CASE("XTBDlopen flags a rescued SCC and fails it with the rescue off",
           "[xtb][dlopen][scc]") {
   check_scc_rescue_flag([](const rgpot::XTBConfig &cfg) {

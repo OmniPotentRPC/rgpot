@@ -363,8 +363,10 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     int uhf = m_config.uhf;
     m_mol = xtb_newMolecule(m_env, &intN, in.atmnrs, m_pos_bohr.data(), &charge,
                             &uhf, box_bohr, periodicity);
-    if (!m_mol)
+    if (!m_mol) {
+      m_last_flags = 0;
       throw std::runtime_error("xTB Error: xtb_newMolecule failed");
+    }
     loadParametrisation();
     m_initialized = true;
   } else {
