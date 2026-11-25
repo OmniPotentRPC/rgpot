@@ -25,7 +25,8 @@ cigen = {features = ["cigen"]}
 version = { features = ["version"], no-default-feature = true }
 devbld = { features = ["rpc", "cache"] }
 docs = { features = ["docs"]}
-xtbbld = { features = ["xtb"] }
+xtbbld = { features = ["xtb"], solve-group = "xtb" }
+xtbcachebld = { features = ["xtb", "cache", "rpc"], solve-group = "xtb" }
 xckernel = { features = ["xckernel"] }
 xckerneltest = { features = ["xckernel", "xckerneltest"] }
 dftd3 = { features = ["dftd3"] }

@@ -1,7 +1,8 @@
 """CI collects and runs the xTB regression tests.
 
-The SCC rescue tests once sat outside every pytest path, so no CI job
-collected them.
+The SCC rescue tests and the store-backed xTB cache cases once sat where
+no CI job reached them: the first outside every pytest path, the second
+compiled only with the cache, which the xTB job turns off.
 """
 
 from __future__ import annotations
@@ -40,3 +41,27 @@ def test_scc_rescue_tests_sit_under_the_pytest_paths():
 def test_py_ci_runs_the_directory_of_the_scc_rescue_tests():
     job = _jobs("py-ci.yml")["rgpot-pytest"]
     assert re.search(r"-m pytest -q tests/python\b", job)
+
+
+def test_an_xtb_job_runs_the_cache_cases_with_the_cache_on():
+    legs = [
+        job
+        for job in _jobs("xtb.yml").values()
+        if "-Dwith_xtb=true" in job and "-Dwith_cache=true" in job
+    ]
+    assert len(legs) == 1
+    leg = legs[0]
+    assert "XTBtest EngineTableTest" in leg
+    assert "--test-args '[cache-db]'" in leg
+    env = re.search(r"environments: (\S+)", leg).group(1)
+    pixi = tomllib.loads((ROOT / "pixi.toml").read_text(encoding="utf-8"))
+    assert {"xtb", "cache"} <= set(pixi["environments"][env]["features"])
+
+
+def test_the_cache_cases_carry_the_tag_the_job_selects():
+    tests = ROOT / "CppCore" / "tests"
+    xtb = (tests / "XTBPotTest.cc").read_text(encoding="utf-8")
+    case = xtb.index('"[xtb][linked][scc][cache][cache-db]"')
+    assert xtb.rindex("#ifdef RGPOT_HAS_CACHE", 0, case) > xtb.rindex("#endif", 0, case)
+    engine = (tests / "EngineTableTest.cc").read_text(encoding="utf-8")
+    assert '"[engine][xtb][scc][cache][cache-db]"' in engine

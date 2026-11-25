@@ -29,6 +29,7 @@ Environments declared in =pixi.toml=:
 | =cigen= | CI workflow generation (Nickel) |
 | =version= | cogapp for the version copies; no default feature |
 | =xtbbld=, =tblitebld=, =tbbld= | xtb, tblite, or both |
+| =xtbcachebld= | =xtbbld= plus the =cache= and =rpc= features, solved with it |
 | =tblite06bld= | tblite 0.6, to compile =TBLitePot= against that API |
 | =metatomicbld= | torch, metatomic-torch, metatensor-torch and vesin from PyPI |
 | =umaenginebld= | =rpc=, =metatomic= and =xtb= features together |

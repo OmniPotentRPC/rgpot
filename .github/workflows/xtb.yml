@@ -81,3 +81,39 @@ jobs:
               )
           print("suite xtb:", ", ".join(sorted(names)))
           PY
+
+  # The job above builds without the result cache, and the cache jobs of
+  # the orchestrator build without xTB, so the store-backed xTB cases
+  # ([cache-db]) run only here. EngineTableTest needs the RPC stack.
+  # Catch2 exits nonzero when the filter matches no case, as in a build
+  # that compiles them out, and when every matched case skips.
+  xtb-linux-cache:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    name: xtb (linux, cache)
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: ${{ env.PIXi_VERSION }}
+          cache: true
+          environments: xtbcachebld
+          activate-environment: true
+
+      - name: Meson xtb cache cases
+        run: |
+          set -euo pipefail
+          meson setup bbdir-xtb-cache \
+            -Dwith_xtb=true \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_rpc=true \
+            -Dwith_cache=true \
+            --buildtype=debug
+          meson compile -C bbdir-xtb-cache
+          meson test -C bbdir-xtb-cache --print-errorlogs \
+            XTBtest EngineTableTest \
+            --test-args '[cache-db]'

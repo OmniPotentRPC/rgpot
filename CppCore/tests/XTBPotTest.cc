@@ -652,8 +652,14 @@ TEST_CASE("XTBPot settings change the result-cache key",
   REQUIRE(pot.paramsKey() != key);
   pot.setMaxIterations(500);
   REQUIRE(pot.paramsKey() == key);
+}
 
+// Compiled only with the cache. The cache-on xTB CI job selects [cache-db],
+// and Catch2 fails a filter that matches no case.
 #ifdef RGPOT_HAS_CACHE
+TEST_CASE("XTBPot result cache never serves across an SCC rescue switch",
+          "[xtb][linked][scc][cache][cache-db]") {
+  rgpot::XTBPot pot(ammonia_cfg());
   const auto system = ammonia_tetramer();
   rgpot::tests::TestTempDir directory("rgpot-xtb-rescue-cache");
   {
@@ -680,8 +686,8 @@ TEST_CASE("XTBPot settings change the result-cache key",
     REQUIRE(cache.counts().served == 2);
     pot.setCache(nullptr);
   }
-#endif
 }
+#endif
 
 TEST_CASE("XTBPot clears the flags when xtb_newMolecule fails",
           "[xtb][linked][scc]") {

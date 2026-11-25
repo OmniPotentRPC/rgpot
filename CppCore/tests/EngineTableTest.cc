@@ -1438,7 +1438,7 @@ TEST_CASE("xtb engine flags a rescued SCC and fails it with the rescue off",
 }
 
 TEST_CASE("xtb result cache never serves across an SCC rescue switch",
-          "[engine][xtb][scc][cache]") {
+          "[engine][xtb][scc][cache][cache-db]") {
   Engine e;
   if (!open_engine("XTB", e)) {
     SKIP("no xtb engine in this build");
