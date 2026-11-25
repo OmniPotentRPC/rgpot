@@ -1,0 +1,1 @@
+`scripts/run_coverage_fortran.sh` again enables branch coverage with `lcov_branch_coverage=1` on lcov 1.x and `branch_coverage=1` on 2.x, matching `scripts/run_coverage_cpp.sh`, so the Fortran Codecov upload on Ubuntu 22.04 keeps BRDA data instead of line hits only.

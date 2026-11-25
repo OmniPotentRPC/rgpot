@@ -186,7 +186,10 @@ took 2058 s pinned to 4 cores, which is what `ubuntu-22.04` provides, and that
 run included one shard at 341 s that took 50 s when the same binary was run
 again. 60% of 70 minutes is 2520 s, so the measured run is 49% of the job and
 another stall of that size still fits. 65 minutes would not. `coverage-fortran`
-runs the same script when `bbdir-cov` is absent, then extracts the Fortran kernels.
+runs the same script when `bbdir-cov` is absent, then extracts the Fortran
+kernels. `scripts/run_coverage_fortran.sh` passes `lcov_branch_coverage=1` on
+lcov 1.x (Ubuntu 22.04's 1.15) and `branch_coverage=1` on 2.x, like the C++
+capture script, so the Fortran Codecov upload keeps BRDA lines.
 Both jobs take the multiplier of 4 from `RGPOT_COV_TIMEOUT_MULTIPLIER` in the
 workflow `env`, so the Fortran fallback cannot run with a different limit.
 
