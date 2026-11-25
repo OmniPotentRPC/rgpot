@@ -896,6 +896,14 @@ while True:
         # A host that honoured the announced size would block here.
         inp.read(1)
         os._exit(0)
+    elif op == 2 and MODE in ("bad-magic", "bad-version"):
+        magic, version = (b"XXXX", 1) if MODE == "bad-magic" else (b"DXTR", 2)
+        out.write(HEADER.pack(magic, version, 0, 0, 0))
+        out.flush()
+        log(event="force", result=MODE)
+        # Stays alive until the host closes its end.
+        inp.read(1)
+        os._exit(0)
     else:
         reply(0)
 '''
@@ -1558,6 +1566,32 @@ def test_oversized_worker_reply_is_refused_without_reading_it(tmp_path, mode):
         assert "exceeds" in engine.last_error()
         assert _reaped(pid)
         # The worker is gone; later calls fail instead of reading stale bytes.
+        assert engine.force_status([8, 1, 1], positions) == -1
+        assert "exited" in engine.last_error()
+    finally:
+        engine.close()
+
+
+@pytest.mark.parametrize("mode", ["bad-magic", "bad-version"])
+def test_invalid_worker_reply_header_drops_the_worker(tmp_path, mode):
+    wrapper, log_path = fake_worker(tmp_path, mode, mode=mode)
+    engine = Engine(
+        os.environ["RGPOT_ENGINE_DXTB"],
+        "dxtb",
+        "gfn1",
+        library=str(wrapper),
+    )
+    positions = np.asarray(
+        [[0.0, 0.0, 0.1173], [0.0, 0.7572, -0.4692], [0.0, -0.7572, -0.4692]]
+    )
+    try:
+        (pid,) = [ev["pid"] for ev in configure_events(log_path)]
+        started = time.monotonic()
+        assert engine.force_status([8, 1, 1], positions) == -1
+        assert time.monotonic() - started < 30.0
+        assert "invalid response" in engine.last_error()
+        assert _reaped(pid)
+        # The stream is out of step; later calls fail without touching it.
         assert engine.force_status([8, 1, 1], positions) == -1
         assert "exited" in engine.last_error()
     finally:

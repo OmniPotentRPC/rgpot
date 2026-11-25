@@ -464,6 +464,9 @@ private:
       if (std::string_view(reinterpret_cast<const char *>(responseHeader.data()),
                            4) != "DXTR" ||
           readU32(responseHeader.data() + 4) != kProtocolVersion) {
+        // The stream is out of step, so the worker cannot serve another
+        // request.
+        stop(false);
         throw DxtbError(-1, "invalid response from dxtb worker");
       }
       const int status =
