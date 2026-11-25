@@ -25,6 +25,11 @@ evaluation or the setting failed (the reason is in =rgpot_engine_last_error=),
 and 3 when the backend does not support the operation.
 They return -2 (=RGPOT_ENGINE_ERR_LOCK=, minor 8) when acquiring an engine or
 handle lock fails.
+The dxtb engine returns -1 when its worker process is lost: the worker exited,
+or sent a malformed reply or one larger than its limit.
+That status is fatal; destroy the instance and create a new one.
+A worker that cannot be started fails creation with the reason in the error
+buffer.
 =rgpot_engine_force= and =rgpot_engine_force_batch= also return the nonzero code
 of the host's coordinate transform.
 
