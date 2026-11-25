@@ -389,12 +389,31 @@ The source in =CppCore/rgpot/MetatomicPot/MetatomicPot.cc= does this:
 - Forces are minus the autograd gradient of that energy with respect to the
   positions.
   No stress is written.
-- With =random_rotation= or =n_symmetry_rotations= above 0, the energy and
-  forces are averaged over rotated copies, and the variance is the RMS force
-  spread over the copies.
-  A model
-  =energy_uncertainty= output replaces that variance when =uncertainty_threshold=
-  is above 0.
+- With =n_symmetry_rotations= above 0, the model runs on that many rotated
+  copies of the geometry, rotated about the centroid, and the energy and forces
+  are averaged over them.
+  With =random_rotation= alone there is one rotated copy and no average.
+- The variance is the mean-square residual of the force.
+  It sums the squared difference between each copy's force and the returned
+  force over every copy, atom and Cartesian component, and divides by the number
+  of those terms.
+  Its unit is (eV/Angstrom)^2, and it is not the RMS spread, so take one square
+  root to get a force scale.
+  It is 0 when there is a single pass.
+  With =so3_probe_scatter= the unrotated copy gives the energy and forces, and
+  the residuals of the rotated copies are measured from that force.
+- With =uncertainty_threshold= above 0 and a per-atom =energy_uncertainty=
+  output in the model, the variance is instead =energy_uncertainty_mean=
+  squared.
+  Here =energy_uncertainty_mean= is the mean of that output over the atoms of
+  the first pass, in eV.
+  Its unit is eV^2, and one square root recovers the mean.
+  The threshold only switches the output on; its value is never compared with
+  anything.
+  A model without a per-atom =energy_uncertainty= output turns the switch off
+  and the force residual above is reported.
+- Two or more systems evaluated together without rotation in one model call
+  report a variance of 0.
 - =charge= and =spin= are attached as system data named =rgpot::charge=,
   =rgpot::spin_multiplicity= and =rgpot::spin= when the model lists them in =requested_inputs=.
   =attach_system_extras= attaches all three whatever the model lists.
