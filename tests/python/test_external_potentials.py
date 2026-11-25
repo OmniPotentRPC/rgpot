@@ -10,18 +10,17 @@ RGPOT_LAMMPC_ENGINE names, such as lammpc_fake_engine.
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import numpy as np
 import pytest
 
 import rgpot
+from rgpot._schema import load_potentials_schema
 
 
 DIMER = np.array([[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]])
 BOX = np.diag([20.0, 20.0, 20.0])
 KJ_PER_EV = 96.48533212331002
-SCHEMA = Path(__file__).resolve().parents[2] / "CppCore" / "rgpot" / "rpc" / "Potentials.capnp"
 LJ_EPS = 0.2
 LJ_SIGMA = 2.5
 LAMMPC_DIMER = np.array([[0.0, 0.0, 0.0], [3.0, 0.0, 0.0]])
@@ -82,8 +81,8 @@ def test_openmm_engine_dimer():
 
 
 def lammps_config_bytes() -> bytes:
-    capnp = pytest.importorskip("capnp")
-    schema = capnp.load(str(SCHEMA))
+    pytest.importorskip("capnp")
+    schema = load_potentials_schema()
     config = schema.PotentialConfig.new_message()
     lammps = config.init("lammps")
     lammps.pairStyle = "lj/cut 10.0"
@@ -158,3 +157,11 @@ def test_lammpc_explicit_missing_engine_names_the_path():
         rgpot.rgpot_lammps_potential(lammps_config_bytes(), engine_path=missing)
     skip_without_lammpc_profile(info.value)
     assert missing in str(info.value)
+
+
+def test_lammpc_schema_loader_matches_rpc_calculator():
+    pytest.importorskip("capnp")
+    pytest.importorskip("ase")
+    from rgpot.ase import rpc
+
+    assert rpc.load_potentials_schema() is load_potentials_schema()
