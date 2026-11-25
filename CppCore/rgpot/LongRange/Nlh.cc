@@ -60,6 +60,7 @@ NlhPot::NlhPot(NlhConfig cfg)
 }
 
 void NlhPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   const auto n = in.nAtoms;
   std::fill(out->F, out->F + 3 * n, 0.0);
   out->energy = 0.0;

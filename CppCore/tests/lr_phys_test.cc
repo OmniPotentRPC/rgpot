@@ -2185,7 +2185,10 @@ void test_capped_phase_team() {
   const rgpot::lr::PmeTrace tr = rgpot::lr::pme_trace();
   check(tr.spread_team == 4, "spread runs the capped team");
   check(tr.fft_team == 4, "the transform runs the capped team");
-  check(tr.kernel_team == 4, "the kernel runs the capped team");
+  // The kernel energy is one partial per fixed mesh chunk, not one per
+  // worker, so a 25-point axis is a single sum on every team.
+  check(tr.kernel_team == rgpot::lr::axis_chunks(25),
+        "the kernel partial count follows the mesh");
   check(tr.gather_team == 4, "gather runs the capped team");
   check(tr.real_team == 4, "real space runs on the spare threads");
   check(wide.energy == team4.energy && wide.f == team4.f,

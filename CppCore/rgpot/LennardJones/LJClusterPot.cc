@@ -40,6 +40,7 @@ namespace rgpot {
  * replaced by a 1e6 Angstrom cube.
  */
 void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   compute(in, out, nullptr);
 }
 

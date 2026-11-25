@@ -93,7 +93,7 @@ void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
   const nlist::View candidates = skin.builder.table().view();
   const std::size_t m = candidates.first.size();
   const double cut2 = cutoff * cutoff;
-  const int nt = std::max(poolThreads(), 1);
+  const int nt = rgpot::activeThreads(poolThreads());
   if (nt <= 1) {
     out->clear();
     out->reserve(m);

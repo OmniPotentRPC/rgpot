@@ -149,6 +149,7 @@ StillingerWeberSi::StillingerWeberSi() : Potential(PotType::SWSi1985) {
 }
 
 void StillingerWeberSi::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (out == nullptr) {
     throw std::invalid_argument("StillingerWeberSi: null ForceOut");
   }

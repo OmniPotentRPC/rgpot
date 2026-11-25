@@ -3,15 +3,17 @@
 
 #include "rgpot/LongRange/FastD3.hpp"
 
+#include "rgpot/LongRange/Compensate.hpp"
 #include "rgpot/LongRange/Pairs.hpp"
 #include "rgpot/LongRange/Team.hpp"
 #include "rgpot/Slices.hpp"
 #include "rgpot/units.hpp"
 
 #include <algorithm>
-#include <span>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -169,10 +171,14 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
   const double reach = std::max(cut2, std::max(cut3, cut_cn));
   // Every requested thread does pair work. Leaving threads idle made
   // the next thread count no faster than the previous one.
-  const int nt_build = poolThreads();
   const auto npairs = static_cast<std::int64_t>(pairs.size());
+  // Neighbour slots and energy partials are one per fixed pair chunk.
+  // The team only decides how many threads walk those chunks.
+  const int team = rgpot::activeThreads(poolThreads());
+  const int nt_build = rgpot::fixedChunks(
+      static_cast<std::size_t>(std::max<std::int64_t>(npairs, 1)), 2048);
   std::vector<int> deg(static_cast<std::size_t>(nt_build) * n, 0);
-  forEachSlice(nt_build, [&](int slice) {
+  forEachChunk(nt_build, team, [&](int slice) {
     int *mine = deg.data() + static_cast<std::size_t>(slice) * n;
     const Range run = partition(npairs, slice, nt_build);
     for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
@@ -195,7 +201,7 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
     off[i + 1] = cursor;
   }
   std::vector<Nb> nb(static_cast<std::size_t>(off[n]));
-  forEachSlice(nt_build, [&](int slice) {
+  forEachChunk(nt_build, team, [&](int slice) {
     int *slot = base.data() + static_cast<std::size_t>(slice) * n;
     const Range run = partition(npairs, slice, nt_build);
     for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
@@ -255,7 +261,7 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
   std::vector<std::vector<double>> f_th(static_cast<std::size_t>(nt), std::vector<double>(3 * n, 0.0));
   std::vector<std::vector<double>> sig_th(static_cast<std::size_t>(nt), std::vector<double>(9, 0.0));
 
-  forEachSlice(nt, [&](int slice) {
+  forEachChunk(nt, team, [&](int slice) {
     auto &dedcn = dedcn_th[static_cast<std::size_t>(slice)];
     auto &floc = f_th[static_cast<std::size_t>(slice)];
     auto &sig = sig_th[static_cast<std::size_t>(slice)];
@@ -436,12 +442,12 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
     ene_th[static_cast<std::size_t>(slice)] = ene;
   });
 
-  double ene = 0.0;
+  Neumaier ene;
   std::vector<double> dedcn(n, 0.0);
   const bool apply_cn_force = true;
   std::vector<double> grad(3 * n, 0.0);
   for (int t = 0; t < nt; ++t) {
-    ene += ene_th[static_cast<std::size_t>(t)];
+    ene.add(ene_th[static_cast<std::size_t>(t)]);
     for (std::size_t i = 0; i < n; ++i) {
       dedcn[i] += dedcn_th[static_cast<std::size_t>(t)][i];
     }
@@ -473,12 +479,18 @@ void d3bj_evaluate(const double *pos, const int *z, std::size_t n, const double 
     }
   }
   std::vector<double> sig(9, 0.0);
+  std::array<Neumaier, 9> sig_sum;
   for (int t = 0; t < nt; ++t) {
     for (int c = 0; c < 9; ++c) {
-      sig[static_cast<std::size_t>(c)] += sig_th[static_cast<std::size_t>(t)][static_cast<std::size_t>(c)];
+      sig_sum[static_cast<std::size_t>(c)].add(
+          sig_th[static_cast<std::size_t>(t)][static_cast<std::size_t>(c)]);
     }
   }
-  *energy = ene * kHartree;
+  for (int c = 0; c < 9; ++c) {
+    sig[static_cast<std::size_t>(c)] =
+        sig_sum[static_cast<std::size_t>(c)].total();
+  }
+  *energy = ene.total() * kHartree;
   if (F != nullptr) {
     for (std::size_t i = 0; i < grad.size(); ++i) {
       F[i] += grad[i] * units::NEG_GRAD_TO_FORCE;

@@ -131,8 +131,9 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
 
 #define RGPOT_FORTRAN_POT_IMPL(ClassName, Entry, Label)                        \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
+    const rgpot::ThreadBinding bind_threads{threadCount()};                    \
     ensure_fortran_params();                                                   \
-    const int status = Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms),       \
+    const int status = Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms),      \
                              in.pos, in.box, out->F, &out->energy);            \
     if (status != 0) {                                                         \
       raise(Label, status, m_ws.get());                                        \
@@ -147,6 +148,7 @@ RGPOT_FORTRAN_POT_IMPL(EAMAlPot, rgpot_eam_al_force_ws, "EAM-Al")
 #undef RGPOT_FORTRAN_POT_IMPL
 
 void SWPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   ensure_fortran_params();
   double strain[6] = {};
   const int status =
@@ -175,6 +177,7 @@ void SWPot::forceBatchImpl(const ForceBatch &batch) const {
 }
 
 void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   out->has_stress = 0;
   std::fill(out->stress, out->stress + 9, 0.0);
   if (in.nAtoms == 0) {
@@ -205,10 +208,10 @@ void TersoffPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
 #define RGPOT_FORTRAN_SPECIES_POT_IMPL(ClassName, Entry, Label)                \
   void ClassName::forceImpl(const ForceInput &in, ForceOut *out) const {       \
+    const rgpot::ThreadBinding bind_threads{threadCount()};                    \
     ensure_fortran_params();                                                   \
-    const int status =                                                         \
-        Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos, in.atmnrs,  \
-              in.box, out->F, &out->energy);                                   \
+    const int status = Entry(m_ws.get(), static_cast<int32_t>(in.nAtoms),      \
+                             in.pos, in.atmnrs, in.box, out->F, &out->energy); \
     if (status != 0) {                                                         \
       raise(Label, status, m_ws.get());                                        \
     }                                                                          \

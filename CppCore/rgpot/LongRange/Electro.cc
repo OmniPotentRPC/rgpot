@@ -87,10 +87,10 @@ void mesh_group_sync(int npart) {
 int thread_count() {
   const int grouped = mesh_group_limit();
   if (grouped > 0) {
-    return grouped;
+    return rgpot::activeThreads(grouped);
   }
   const int spme = spme_slice_limit();
-  return spme > 0 ? spme : poolThreads();
+  return rgpot::activeThreads(spme > 0 ? spme : poolThreads());
 }
 
 bool grouped() { return mesh_group_limit() > 0; }
@@ -986,7 +986,7 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
   };
   static FloatFactor saved;
   static std::vector<double> kernel_part;
-  const int knt = axis_workers(std::min(nx, std::min(ny, nz)), std::max(thread_count(), 1));
+  const int knt = axis_chunks(std::min(nx, std::min(ny, nz)));
   if (group_leader()) {
   kernel_part.assign(static_cast<std::size_t>(knt), 0.0);
   bool stale = saved.nx != nx || saved.ny != ny || saved.nz != nz || saved.alpha != alpha ||
@@ -1069,19 +1069,23 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
     }
     kernel_part[static_cast<std::size_t>(slice)] = local;
   };
-  if (knt <= 1) {
-    kernel_body(0);
+  // Same chunks on every team. Inside the mesh group each rank walks its
+  // stride of those chunks and still arrives once, as team_invoke did.
+  if (in_group()) {
+    const int stride = std::max(thread_count(), 1);
+    for (int slice = t_group_rank; slice < knt; slice += stride) {
+      kernel_body(slice);
+    }
+    group_arrive();
   } else {
-    team_invoke(std::max(thread_count(), knt), [&](int slice) {
-      if (slice < knt) {
-        kernel_body(slice);
-      }
-    });
+    forEachChunk(knt, thread_count(), kernel_body);
   }
   if (group_leader()) {
+    Neumaier folded;
     for (int t = 0; t < knt; ++t) {
-      energy += kernel_part[static_cast<std::size_t>(t)];
+      folded.add(kernel_part[static_cast<std::size_t>(t)]);
     }
+    energy = folded.total();
   }
   const auto t_kern_b = std::chrono::steady_clock::now();
   const float inv = 1.0f / static_cast<float>(ntot);
@@ -2014,6 +2018,7 @@ CoulombPot::CoulombPot(CoulombConfig cfg, std::shared_ptr<ChargeSource> charges,
 }
 
 void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   std::fill(out->F, out->F + 3 * in.nAtoms, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;

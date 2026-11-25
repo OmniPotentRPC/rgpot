@@ -80,6 +80,9 @@ It keeps a stored Verlet list or walks the cells without storing pairs.
 With `OMP_NUM_THREADS` unset, empty or below 1, the layer runs on one thread in
 the serial pair order.
 A fixed thread count repeats bit for bit.
+`rgpot::setThreadCount`, `rgpot::ThreadCount` and `PotentialBase::setThreadCount`
+are an opt-in override of that count. With none of them set, the default is
+unchanged.
 See `docs/neighbour_layer.md`.
 
 

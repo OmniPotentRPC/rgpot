@@ -130,6 +130,7 @@ bool MOPACPot::abiAvailable() {
 }
 
 void MOPACPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (!available()) {
     throw std::runtime_error(std::string("MOPAC engine (libmopacc) not loaded: ") +
                              (impl_ ? impl_->bundle.load_error : "no impl"));

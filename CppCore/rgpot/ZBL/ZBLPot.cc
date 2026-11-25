@@ -176,6 +176,7 @@ std::shared_ptr<const ZblTables> ZBLPot::tablesFor(const int *atomicNrs,
  * list keeps candidates out to the cutoff plus one fifth of the cutoff.
  */
 void ZBLPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   compute(in, out, nullptr);
 }
 

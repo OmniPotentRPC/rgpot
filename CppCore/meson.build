@@ -601,6 +601,7 @@ if not get_option('with_rpc_client_only')
     endif
 
     if has_long_range
+        _args += ['-DRGPOT_HAS_LONG_RANGE']
         subdir('rgpot/LongRange')  # 'lr_phys'
         rgpotentials += [lr_phys]
     endif

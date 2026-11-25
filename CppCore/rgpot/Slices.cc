@@ -4,6 +4,7 @@
 #include "rgpot/Slices.hpp"
 
 #include <cstdlib>
+#include <stdexcept>
 
 namespace rgpot {
 namespace {
@@ -13,10 +14,49 @@ thread_local std::uint64_t t_teams_opened = 0;
 thread_local bool t_threshold_set = false;
 thread_local std::size_t t_threshold = 0;
 
+// kind 1 is a call-scope ThreadCount, kind 2 a potential ThreadBinding.
+struct ExplicitFrame {
+  int count = 0;
+  unsigned char kind = 0;
+};
+
+constexpr int kExplicitDepth = 32;
+thread_local ExplicitFrame t_explicit[kExplicitDepth];
+thread_local int t_explicit_depth = 0;
+thread_local int t_sticky = 0;
+
+int resolvedExplicit() noexcept {
+  if (t_explicit_depth > 0) {
+    return t_explicit[t_explicit_depth - 1].count;
+  }
+  return t_sticky;
+}
+
+bool callScopeActive() noexcept {
+  for (int i = 0; i < t_explicit_depth; ++i) {
+    if (t_explicit[i].kind == 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void pushExplicit(int count, unsigned char kind) {
+  if (t_explicit_depth >= kExplicitDepth) {
+    throw std::logic_error("rgpot thread-count nest is deeper than 32");
+  }
+  t_explicit[t_explicit_depth].count = count;
+  t_explicit[t_explicit_depth].kind = kind;
+  ++t_explicit_depth;
+}
+
 } // namespace
 
 int threadsRequested() {
 #if defined(_OPENMP)
+  if (const int explicit_count = resolvedExplicit(); explicit_count > 0) {
+    return explicit_count;
+  }
   const char *env = std::getenv("OMP_NUM_THREADS");
   if (env == nullptr || env[0] == '\0') {
     return 1;
@@ -57,6 +97,57 @@ int teamSize(std::size_t n, std::size_t from, TeamFrom team) {
 int teamSize(std::size_t n) { return teamSize(n, kTeamMinAtoms, {}); }
 
 std::uint64_t teamsOpened() noexcept { return t_teams_opened; }
+
+int activeThreads(int fallback) noexcept {
+#if defined(_OPENMP)
+  if (const int explicit_count = resolvedExplicit(); explicit_count > 0) {
+    return explicit_count;
+  }
+  return fallback > 0 ? fallback : 1;
+#else
+  (void)fallback;
+  return 1;
+#endif
+}
+
+void setThreadCount(int threads) {
+  if (threads < 1) {
+    throw std::invalid_argument("rgpot thread count must be at least 1");
+  }
+  t_sticky = threads;
+}
+
+void clearThreadCount() noexcept { t_sticky = 0; }
+
+int explicitThreadCount() noexcept { return resolvedExplicit(); }
+
+ThreadCount::ThreadCount(int threads) : pushed_(false) {
+  if (threads < 1) {
+    throw std::invalid_argument("rgpot thread count must be at least 1");
+  }
+  pushExplicit(threads, 1);
+  pushed_ = true;
+}
+
+ThreadCount::~ThreadCount() {
+  if (pushed_ && t_explicit_depth > 0) {
+    --t_explicit_depth;
+  }
+}
+
+ThreadBinding::ThreadBinding(int threads) : pushed_(false) {
+  if (threads < 1 || callScopeActive()) {
+    return;
+  }
+  pushExplicit(threads, 2);
+  pushed_ = true;
+}
+
+ThreadBinding::~ThreadBinding() {
+  if (pushed_ && t_explicit_depth > 0) {
+    --t_explicit_depth;
+  }
+}
 
 int poolThreads() noexcept {
 #if defined(_OPENMP)

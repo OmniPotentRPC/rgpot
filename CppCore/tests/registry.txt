@@ -189,6 +189,9 @@ ThreadTeamTest_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] suit
 ThreadTeamTest_sw | tests core | rerun ThreadTeamTest_slices [sw] suite=threadteam timeout=480 coverage_serial |
 ThreadTeamTest_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] suite=threadteam timeout=480 coverage_serial |
 ThreadTeamTest_nlist | tests core | rerun ThreadTeamTest_slices [nlist] suite=threadteam timeout=480 coverage_serial |
+# Bit identity at 1, 2, 4 and 8 threads, including the opt-in thread API,
+# plus a check that 8 threads still beats 1 on the large cell.
+ThreadInvariantTest | tests core | unit thread_invariant_test ThreadInvariantTest.cc fp_contract=off timeout=180 serial |
 TersoffZblBuildTest | tests core | unit tersoff_zbl_build_test TersoffZblBuildTest.cc fp_contract=off timeout=180 |
 StreamParityTest | tests core | unit stream_parity_test StreamParityTest.cc fp_contract=off timeout=900 |
 ExternalPotFactoryFailureTest | tests core | unit external_pot_factory_failure_test ExternalPotFactoryFailureTest.cc |

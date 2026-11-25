@@ -49,7 +49,11 @@ public:
   /**
    * @brief Virtual destructor.
    */
-  virtual ~PotentialBase() = default;
+  virtual ~PotentialBase() {
+    if (detail::g_pot_threads != nullptr) {
+      detail::notePotentialThreads(this, 0);
+    }
+  }
 
   /**
    * @brief Main interface for potential and force calculation.
@@ -139,6 +143,24 @@ public:
    * whose numerics never changed.
    */
   [[nodiscard]] virtual uint64_t paramsKey() const noexcept { return 0; }
+
+  /// Opt-in thread count for this potential's evaluations. Throws
+  /// std::invalid_argument when `threads` is below 1. A `ThreadCount`
+  /// already on the calling thread wins. With nothing set, the call
+  /// keeps today's default (`OMP_NUM_THREADS`, or the long-range pool).
+  /// The count is not a member: the C++ layout stamp covers this object's
+  /// size, and an opt-in value must not move it.
+  void setThreadCount(int threads) {
+    if (threads < 1) {
+      throw std::invalid_argument("rgpot thread count must be at least 1");
+    }
+    detail::notePotentialThreads(this, threads);
+  }
+  void clearThreadCount() noexcept { detail::notePotentialThreads(this, 0); }
+  /// Zero when this potential has not opted in.
+  [[nodiscard]] int threadCount() const noexcept {
+    return detail::lookupPotentialThreads(this);
+  }
 
 #ifdef RGPOT_HAS_CACHE
   /**

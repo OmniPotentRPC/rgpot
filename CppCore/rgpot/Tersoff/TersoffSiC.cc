@@ -236,6 +236,7 @@ TersoffSiC::TersoffSiC() : Potential(PotType::TersoffSi) {
 }
 
 void TersoffSiC::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (out == nullptr) {
     throw std::invalid_argument("TersoffSiC: null ForceOut");
   }

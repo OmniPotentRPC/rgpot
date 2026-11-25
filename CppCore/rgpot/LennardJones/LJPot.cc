@@ -160,6 +160,7 @@ std::size_t LJPot::retainedPairs() const noexcept {
  *
  */
 void LJPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   compute(in, out, nullptr);
 }
 

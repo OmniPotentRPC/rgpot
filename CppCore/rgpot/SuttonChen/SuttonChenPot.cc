@@ -376,6 +376,7 @@ SuttonChenPot::SuttonChenPot(const SuttonChenConfig &c)
 }
 
 void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   compute(in, out, nullptr);
 }
 

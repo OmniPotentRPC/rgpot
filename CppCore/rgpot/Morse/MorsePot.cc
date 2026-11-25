@@ -345,6 +345,7 @@ bool pairScratchFits(std::size_t num_pairs, const PerAtomOut *atoms, std::uint64
  * and cell binning divides Cartesian coordinates by the diagonal lengths.
  */
 void MorsePot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   compute(in, out, nullptr);
 }
 

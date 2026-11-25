@@ -20,6 +20,24 @@ inline int &caller_team() {
   return n;
 }
 
+// Partials of a mesh reduction. The count follows the axis length, not
+// the team, so every thread count folds the same pieces in the same
+// order. A short axis is one partial: that is the serial sum, and the
+// worker ladder already keeps those axes on one worker below four threads.
+inline int axis_chunks(int npoints) noexcept {
+  if (npoints <= 32) {
+    return 1;
+  }
+  int cap = npoints / 8;
+  if (cap < 1) {
+    cap = 1;
+  }
+  if (cap > 16) {
+    cap = 16;
+  }
+  return cap;
+}
+
 inline int axis_workers(int npoints, int team) {
   if (team <= 1 || npoints <= 1) {
     return 1;

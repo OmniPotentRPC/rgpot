@@ -91,6 +91,7 @@ void TBLitePot::createCalculator() const {
 }
 
 void TBLitePot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
 

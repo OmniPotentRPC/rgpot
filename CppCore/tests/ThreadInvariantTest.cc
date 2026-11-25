@@ -1,0 +1,359 @@
+// MIT License
+// Copyright 2023--present rgpot developers
+//
+// Energy and forces are bit-identical at 1, 2, 4 and 8 threads, whether the
+// count comes from OMP_NUM_THREADS or from the opt-in thread API. The
+// one-thread loop is the one a call runs today when nothing is set.
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <catch2/catch_all.hpp>
+
+#include "rgpot/EAM/EAMPot.hpp"
+#include "rgpot/EMT/EMTPot.hpp"
+#include "rgpot/LennardJones/LJClusterPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/Slices.hpp"
+#include "rgpot/StillingerWeber/SWSi.hpp"
+#include "rgpot/SuttonChen/SuttonChenPot.hpp"
+#include "rgpot/Tersoff/TersoffSiC.hpp"
+#include "rgpot/ZBL/ZBLPot.hpp"
+
+#if defined(RGPOT_HAS_LONG_RANGE)
+#include "rgpot/LongRange/Dispersion.hpp"
+#endif
+
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
+
+namespace {
+
+void setThreads(const char *value) {
+#if defined(_WIN32)
+  _putenv_s("OMP_NUM_THREADS", value == nullptr ? "" : value);
+#else
+  if (value == nullptr || value[0] == '\0') {
+    unsetenv("OMP_NUM_THREADS");
+  } else {
+    setenv("OMP_NUM_THREADS", value, 1);
+  }
+#endif
+}
+
+std::uint64_t bits(double v) {
+  std::uint64_t out = 0;
+  std::memcpy(&out, &v, sizeof(out));
+  return out;
+}
+
+struct System {
+  std::vector<double> pos;
+  std::vector<int> z;
+  double length = 0;
+};
+
+System lattice(const std::vector<std::array<double, 3>> &basis, int n, double a,
+               int z) {
+  System s;
+  for (int ix = 0; ix < n; ++ix) {
+    for (int iy = 0; iy < n; ++iy) {
+      for (int iz = 0; iz < n; ++iz) {
+        for (const auto &p : basis) {
+          const double cell[3] = {ix + p[0], iy + p[1], iz + p[2]};
+          for (const double c : cell) {
+            const auto k = static_cast<double>(s.pos.size());
+            s.pos.push_back(c * a + 0.01 * a * std::sin(1.7 * k + 0.3));
+          }
+          s.z.push_back(z);
+        }
+      }
+    }
+  }
+  s.length = n * a;
+  return s;
+}
+
+System fcc(int n, double a, int z) {
+  return lattice({{0, 0, 0}, {0, 0.5, 0.5}, {0.5, 0, 0.5}, {0.5, 0.5, 0}}, n, a,
+                 z);
+}
+
+System diamond(int n, double a, int z) {
+  return lattice({{0, 0, 0},
+                  {0.5, 0.5, 0},
+                  {0.5, 0, 0.5},
+                  {0, 0.5, 0.5},
+                  {0.25, 0.25, 0.25},
+                  {0.75, 0.75, 0.25},
+                  {0.75, 0.25, 0.75},
+                  {0.25, 0.75, 0.75}},
+                 n, a, z);
+}
+
+struct Eval {
+  double energy = 0;
+  std::vector<double> force;
+};
+
+template <typename Pot> Eval run(Pot &pot, const System &s) {
+  const std::size_t n = s.z.size();
+  const double box[9] = {s.length, 0, 0, 0, s.length, 0, 0, 0, s.length};
+  Eval e;
+  e.force.assign(3 * n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = e.force.data();
+  pot.forceImpl(rgpot::ForceInput{n, s.pos.data(), s.z.data(), box}, &out);
+  e.energy = out.energy;
+  return e;
+}
+
+std::size_t forceApart(const Eval &a, const Eval &b) {
+  std::size_t apart = bits(a.energy) == bits(b.energy) ? 0 : 1;
+  const std::size_t n = std::min(a.force.size(), b.force.size());
+  apart += a.force.size() == b.force.size() ? 0 : 1;
+  for (std::size_t i = 0; i < n; ++i) {
+    apart += bits(a.force[i]) == bits(b.force[i]) ? 0 : 1;
+  }
+  return apart;
+}
+
+// Counts the suite actually runs. Eight is included: this host has eight
+// processors. A build without OpenMP still walks the loop, on one thread.
+const int kCounts[] = {1, 2, 4, 8};
+
+template <typename Make>
+void checkBits(const char *name, Make make, const System &s,
+               std::uint64_t pinned = 0) {
+  INFO(name << " on " << s.z.size() << " atoms");
+  REQUIRE(s.z.size() >= rgpot::kTeamMinAtoms);
+  setThreads("");
+  Eval serial = run(*make(), s);
+  if (pinned != 0) {
+    CHECK(bits(serial.energy) == pinned);
+  }
+  for (const int threads : kCounts) {
+    INFO("OMP_NUM_THREADS=" << threads);
+    setThreads(std::to_string(threads).c_str());
+    CHECK(forceApart(run(*make(), s), serial) == 0);
+    setThreads("");
+    INFO("ThreadCount(" << threads << ")");
+    rgpot::ThreadCount scope(threads);
+    CHECK(rgpot::threadsRequested() ==
+#if defined(_OPENMP)
+          threads
+#else
+          1
+#endif
+    );
+    CHECK(forceApart(run(*make(), s), serial) == 0);
+  }
+  setThreads("");
+  auto opted = make();
+  opted->setThreadCount(4);
+  CHECK(rgpot::threadsRequested() == 1);
+  const std::uint64_t before = rgpot::teamsOpened();
+  CHECK(forceApart(run(*opted, s), serial) == 0);
+#if defined(_OPENMP)
+  CHECK(rgpot::teamsOpened() > before);
+#endif
+  // A call scope wins over the potential. A fresh object: a second
+  // evaluation of the same EMT object is not bit-stable on develop.
+  {
+    auto scoped = make();
+    scoped->setThreadCount(4);
+    rgpot::ThreadCount one(1);
+    CHECK(rgpot::threadsRequested() == 1);
+    CHECK(forceApart(run(*scoped, s), serial) == 0);
+  }
+  setThreads("");
+}
+
+} // namespace
+
+TEST_CASE("the explicit thread count is opt-in and rejects a count below 1",
+          "[threads][invariant]") {
+  setThreads("");
+#if defined(_OPENMP)
+  omp_set_num_threads(4);
+  CHECK(rgpot::poolThreads() == 4);
+#endif
+  CHECK(rgpot::threadsRequested() == 1);
+  CHECK(rgpot::explicitThreadCount() == 0);
+  CHECK_THROWS_AS(rgpot::setThreadCount(0), std::invalid_argument);
+  CHECK_THROWS_AS(rgpot::ThreadCount(0), std::invalid_argument);
+  rgpot::setThreadCount(3);
+  CHECK(rgpot::explicitThreadCount() == 3);
+#if defined(_OPENMP)
+  CHECK(rgpot::threadsRequested() == 3);
+  CHECK(rgpot::activeThreads(8) == 3);
+#else
+  CHECK(rgpot::threadsRequested() == 1);
+  CHECK(rgpot::activeThreads(8) == 1);
+#endif
+  {
+    rgpot::ThreadCount inner(2);
+    CHECK(rgpot::explicitThreadCount() == 2);
+  }
+  CHECK(rgpot::explicitThreadCount() == 3);
+  rgpot::clearThreadCount();
+  CHECK(rgpot::explicitThreadCount() == 0);
+  CHECK(rgpot::threadsRequested() == 1);
+  setThreads("");
+}
+
+TEST_CASE("classical potentials match at 1, 2, 4 and 8 threads",
+          "[threads][invariant]") {
+  const double a_lj = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
+  rgpot::LJConfig lj;
+  lj.psi = 1.0;
+  lj.cutoff = 1.8;
+  const System lj_sys = fcc(13, a_lj, 18);
+  // Pinned from the unmodified develop build of this lattice.
+  checkBits(
+      "LJ",
+      [&] {
+        auto p = std::make_unique<rgpot::LJPot>(lj);
+        p->setNeighbourMode(rgpot::nlist::Mode::Stored);
+        return p;
+      },
+      lj_sys, 0xc0e8293f86540e63ull);
+
+  rgpot::LJClusterConfig cluster;
+  cluster.cutoff = lj.cutoff;
+  checkBits(
+      "LJ cluster",
+      [&] {
+        auto p = std::make_unique<rgpot::LJClusterPot>(cluster);
+        p->setNeighbourMode(rgpot::nlist::Mode::Stored);
+        return p;
+      },
+      lj_sys);
+
+  const System zbl_sys = fcc(13, 1.6, 14);
+  checkBits(
+      "ZBL",
+      [] {
+        auto p = std::make_unique<rgpot::ZBLPot>(rgpot::ZBLConfig{});
+        p->setNeighbourMode(rgpot::nlist::Mode::Stored);
+        return p;
+      },
+      zbl_sys, 0x413b05ac92c8a622ull);
+
+  checkBits(
+      "EAM",
+      [] {
+        auto p = std::make_unique<rgpot::EAMPot>();
+        p->setNeighbourMode(rgpot::nlist::Mode::Stored);
+        return p;
+      },
+      fcc(13, 4.05, 13), 0xc0d9eb38227bfc36ull);
+
+  rgpot::MorseConfig morse;
+  morse.cutoff = 4.5;
+  checkBits(
+      "Morse",
+      [&] {
+        auto p = std::make_unique<rgpot::MorsePot>(morse);
+        p->setNeighbourMode(rgpot::nlist::Mode::Stored);
+        return p;
+      },
+      fcc(13, 4.1, 29));
+
+  rgpot::SuttonChenConfig sc;
+  sc.periodic = true;
+  sc.cutoff = 1.5;
+  checkBits(
+      "Sutton-Chen",
+      [&] {
+        auto p = std::make_unique<rgpot::SuttonChenPot>(sc);
+        p->setNeighbourMode(rgpot::nlist::Mode::Stored);
+        return p;
+      },
+      fcc(13, std::sqrt(2.0), 78));
+
+  const System si = diamond(11, 5.431, 14);
+  checkBits(
+      "Stillinger-Weber",
+      [] {
+        auto p = std::make_unique<rgpot::StillingerWeberSi>();
+        p->setNeighbourMode(rgpot::nlist::Mode::Stored);
+        return p;
+      },
+      si);
+  checkBits(
+      "Tersoff",
+      [] {
+        auto p = std::make_unique<rgpot::TersoffSiC>();
+        p->setNeighbourMode(rgpot::nlist::Mode::Stored);
+        return p;
+      },
+      si);
+
+  checkBits(
+      "EMT", [] { return std::make_unique<rgpot::EMTPot>(); },
+      fcc(13, 4.05, 13));
+
+#if defined(RGPOT_HAS_LONG_RANGE)
+  rgpot::lr::DispersionConfig qdo;
+  qdo.kind = rgpot::lr::DispersionKind::QDO;
+  qdo.cutoff = 8.0;
+  qdo.periodic = true;
+  qdo.skin = 0.0;
+  checkBits(
+      "QDO", [&] { return std::make_unique<rgpot::lr::DispersionPot>(qdo); },
+      fcc(13, 3.5, 6));
+#endif
+}
+
+TEST_CASE("eight threads still beat one thread on the large Lennard-Jones cell",
+          "[threads][invariant][timing]") {
+  const double a_lj = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
+  rgpot::LJConfig lj;
+  lj.psi = 1.0;
+  // The shared pair walk finishes a nearest-neighbour cell faster than a
+  // team can start. This cutoff reaches several shells, so the arithmetic
+  // is the cost the team is there to share.
+  lj.cutoff = 4.5;
+  const System s = fcc(13, a_lj, 18);
+  const std::size_t n = s.z.size();
+  const double box[9] = {s.length, 0, 0, 0, s.length, 0, 0, 0, s.length};
+  std::vector<double> force(3 * n);
+  rgpot::ForceInput in{n, s.pos.data(), s.z.data(), box};
+  auto time_of = [&](int threads) {
+    setThreads(std::to_string(threads).c_str());
+    rgpot::LJPot pot(lj);
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    rgpot::ForceOut out{};
+    out.F = force.data();
+    pot.forceImpl(in, &out);
+    const auto t0 = std::chrono::steady_clock::now();
+    constexpr int kRep = 3;
+    for (int i = 0; i < kRep; ++i) {
+      std::fill(force.begin(), force.end(), 0.0);
+      pot.forceImpl(in, &out);
+    }
+    const double us = std::chrono::duration<double, std::micro>(
+                          std::chrono::steady_clock::now() - t0)
+                          .count() /
+                      kRep;
+    return us;
+  };
+  const double one = time_of(1);
+  const double eight = time_of(8);
+  setThreads("");
+  WARN("LJ 1-thread " << one << " us, 8-thread " << eight << " us, n=" << n);
+#if defined(_OPENMP)
+  CHECK(eight < one);
+#endif
+}

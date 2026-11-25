@@ -369,6 +369,7 @@ EAMTablePot::EAMTablePot(const EAMTable &table, bool periodic, bool stress, doub
 }
 
 void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   compute(in, out, nullptr);
 }
 
