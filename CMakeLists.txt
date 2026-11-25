@@ -377,6 +377,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
 
   if(RGPOT_WITH_ORCA_LEGACY)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/ORCAPot/ORCAFiles.cc
+         CppCore/rgpot/ORCAPot/ORCAGuards.cc
          CppCore/rgpot/ORCAPot/ORCALegacyPot.cc)
   endif()
 

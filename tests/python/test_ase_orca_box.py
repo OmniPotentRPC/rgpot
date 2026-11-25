@@ -6,7 +6,7 @@ ORCALegacyPot has no periodic boundary conditions and takes a box only as
 padding around a cluster. It accepts a box when every pair of atoms is its
 own nearest periodic image: along every nonzero lattice vector, not only the
 cell vectors, the atoms span at most half its length (``checkClusterBox``
-in CppCore/rgpot/ORCAPot/ORCALegacyPot.cc).
+in CppCore/rgpot/ORCAPot/ORCAGuards.cc).
 ORCALegacyPot has no Python binding, so a stand-in potential that is not
 periodic, like ORCALegacyPot, applies the same rule to every box the
 calculator gives it.

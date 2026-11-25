@@ -43,6 +43,7 @@ checked over every lattice vector short enough to matter, which the cube
 | --- | --- |
 | `ORCALegacyPot.hpp`, `ORCALegacyPot.cc` | the `Potential`, the child process and the optional restart |
 | `ORCAFiles.hpp`, `ORCAFiles.cc` | input text and `.engrad` parsing, no processes |
+| `ORCAGuards.hpp`, `ORCAGuards.cc` | the box rule and the executable stamp |
 | `ORCAError.hpp` | the exception both ORCA frontends throw |
 
 Units: ORCA works in Angstrom for `* xyz`, Hartree and Hartree/Bohr in the
