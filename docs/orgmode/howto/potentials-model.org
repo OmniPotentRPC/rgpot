@@ -19,7 +19,7 @@ that runs and the literature.
 
 A call takes the natural coordinates from the first =dimensions()= doubles of
 =ForceInput.pos= (Angstrom), returns the energy in eV, and writes the force
-(eV/Angstrom) as the negative gradient into the same entries of =F=. =evaluateCoordinates= returns the energy, the gradient and the product =H v= for a direction =v= in one call, which is how the examples read the curvature. None of these potentials has a Python class. None is a name of =rgpot-eval= or of =pair_coeff=, because the name list of =engines/pot_spec.cpp= does not contain them; see [[file:../reference/potential_names.org][Potential
+(eV/Angstrom) as the negative gradient into the same entries of =F=. =evaluateCoordinates= returns the energy, the gradient and the product =H v= for a direction =v= in one call, which is how the examples read the curvature. Only =MullerBrown= has a Python class (=rgpot.MullerBrownPot=); the other eight have none. None is a name of =rgpot-eval= or of =pair_coeff=, because the name list of =engines/pot_spec.cpp= does not contain them; see [[file:../reference/potential_names.org][Potential
 names and options]]. They are reachable from C++, from =potserv= (see
 [[file:../reference/cli.org][command line]]), from the classical engine (see
 [[file:../reference/engine_abi.org][Engine plugin ABI]]) and from the C model
@@ -146,7 +146,8 @@ Use it for a first test of a saddle-search or path method, because it is cheap,
 smooth and the stationary points are well known.
 
 - C++ :: =rgpot::MullerBrownPot= in =CppCore/rgpot/Models/ModelPots.hpp=.
-- Python :: none.
+- Python :: =rgpot.MullerBrownPot=, with optional =amplitude=, =a=, =b=, =c=,
+  =x0= and =y0= lists and an analytic Hessian-vector product.
 - =rgpot-eval=, =pair_coeff= :: none.
 - =potserv= :: =MullerBrown=.
 - Classical engine :: =name= =muller_brown=.
@@ -170,8 +171,12 @@ There is no cutoff or shift, and the coordinate count must be 2.
 
 *** Parameters
 
-The constants are in =muller= of =CppCore/rgpot/Models/ModelPots.cc=, in the
-arrays =amp=, =aa=, =bb=, =cc=, =x0= and =y0=; they are not configurable.
+The default constants live in =MullerBrownConfig= of
+=CppCore/rgpot/Models/MullerBrownConfig.hpp=, in the arrays =amplitude=, =a=, =b=, =c=, =x0= and =y0=, which =muller= in =CppCore/rgpot/Models/ModelPots.cc=
+evaluates.
+They can be overridden through =MullerBrownPot(MullerBrownConfig)= in C++ or
+=rgpot.MullerBrownPot= in Python; the zero-argument constructor uses the
+defaults below.
 
 | i | A_i (eV) | a_i  | b_i  | c_i   | x0_i (Angstrom) | y0_i (Angstrom) |
 |---+----------+------+------+-------+-----------------+-----------------|
