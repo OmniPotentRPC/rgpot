@@ -107,6 +107,7 @@ def test_lammpc_config_bytes_round_trip():
     except RuntimeError as error:
         skip_without_lammpc_profile(error)
         raise
+    assert b"\x00" in lammps_config_bytes()
     energy, forces, variance = pot(LAMMPC_DIMER, [29, 29], BOX)
     sr6 = (LJ_SIGMA / 3.0) ** 6
     assert energy == pytest.approx(4.0 * LJ_EPS * (sr6 * sr6 - sr6), abs=1e-12)
@@ -129,6 +130,26 @@ def test_lammpc_bad_config_bytes_raise_value_error(blob, match):
         skip_without_lammpc_profile(info.value)
     assert info.type is ValueError
     assert match in str(info.value)
+
+
+@pytest.mark.parametrize(
+    "blob",
+    [
+        pytest.param(bytes(16), id="leading-nul"),
+        pytest.param(b"abc\x00" + bytes(12), id="nul-inside-first-word"),
+    ],
+)
+def test_lammpc_config_bytes_keep_embedded_nuls(blob):
+    # Cut at the first NUL, these would be empty or misaligned instead.
+    with pytest.raises((ValueError, RuntimeError)) as info:
+        rgpot.rgpot_lammps_potential(blob)
+    if info.type is RuntimeError:
+        skip_without_lammpc_profile(info.value)
+    assert info.type is ValueError
+    message = str(info.value)
+    assert "PotentialConfig" in message
+    assert "required" not in message
+    assert "word-aligned" not in message
 
 
 def test_lammpc_explicit_missing_engine_names_the_path():
