@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import configparser
 import contextlib
 import io
 import os
@@ -61,20 +60,24 @@ UPSTREAM = textwrap.dedent(
     """
 )
 
-LOCAL_DIFF = textwrap.dedent(
+COMMON = textwrap.dedent(
     """\
-    diff --git a/Potentials.capnp b/Potentials.capnp
-    --- a/Potentials.capnp
-    +++ b/Potentials.capnp
-    @@ -3,6 +3,7 @@
-     struct ForceInput {
-       pos @0 :List(Float64);
-       lengthUnit @1 :Text = "angstrom";  # @brief ignored @7 in a comment
-    +  tag @2 :Text;
-     }
+    @0xd782940f9a21b301;
 
-     struct XTBParams {
+    struct OptBool {
+      union {
+        unset @0 :Void;
+        value @1 :Bool;
+      }
+    }
     """
+)
+
+# ForceInput.tag as rgpot shipped it before the pinned schema adopted it.
+TAG = "ForceInput @2 field tag :Text"
+WITH_TAG = UPSTREAM.replace(
+    '  lengthUnit @1 :Text = "angstrom";  # @brief ignored @7 in a comment\n',
+    '  lengthUnit @1 :Text = "angstrom";  # @brief ignored @7 in a comment\n  tag @2 :Text;\n',
 )
 
 
@@ -92,40 +95,30 @@ class LedgerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
-        self.upstream = self.root / "upstream.capnp"
-        self.write_tree(UPSTREAM, LOCAL_DIFF)
+        self.upstream = self.root / "pin" / L.SCHEMA_NAME
+        self.upstream.parent.mkdir()
+        pin = self.root / L.PIN
+        pin.parent.mkdir(parents=True, exist_ok=True)
+        pin.write_text(
+            "[rgconf]\nurl = https://example.invalid/rgconf.git\n"
+            f"revision = {'0' * 40}\nschema = schema/potential.capnp\ncommon = schema/common.capnp\n",
+            encoding="utf-8",
+        )
+        self.write_tree(UPSTREAM)
         self.assertEqual(self.run_tool("append", "--upstream", str(self.upstream)), 0)
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def write_tree(self, upstream: str, *diffs: str) -> None:
+    def write_tree(self, upstream: str, common: str = COMMON) -> None:
         self.upstream.write_text(upstream, encoding="utf-8")
-        names = [f"d{i}.diff" for i in range(len(diffs))]
-        for directory in L.SERIES_DIRS:
-            (self.root / directory).mkdir(parents=True, exist_ok=True)
-            for old in (self.root / directory).iterdir():
-                old.unlink()
-            for name, diff in zip(names, diffs):
-                (self.root / directory / name).write_text(diff, encoding="utf-8")
-            (self.root / directory / L.SERIES).write_text(
-                "# local series\n" + "".join(f"{n}\n" for n in names), encoding="utf-8"
-            )
-        wrap = self.root / L.WRAP
-        wrap.parent.mkdir(parents=True, exist_ok=True)
-        wrap.write_text(
-            f"[wrap-git]\nurl = https://example.invalid/schema.git\nrevision = {'0' * 40}\n",
-            encoding="utf-8",
-        )
-        self.set_vendored(upstream)
+        (self.upstream.parent / L.COMMON_NAME).write_text(common, encoding="utf-8")
+        self.set_vendored(upstream, common)
 
-    def effective(self) -> str:
-        return L.apply_series(self.vendored(), L.read_series(self.root / L.SERIES_DIRS[0]))
-
-    def set_vendored(self, text: str) -> None:
-        for rel in L.VENDORED:
+    def set_vendored(self, text: str, common: str = COMMON) -> None:
+        for rel, body in (*((r, text) for r in L.VENDORED), *((r, common) for r in L.VENDORED_COMMON)):
             (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
-            (self.root / rel).write_text(text, encoding="utf-8")
+            (self.root / rel).write_text(body, encoding="utf-8")
 
     def vendored(self) -> str:
         return (self.root / L.VENDORED[0]).read_text(encoding="utf-8")
@@ -147,12 +140,12 @@ class LedgerTest(unittest.TestCase):
 
     def test_seeded_ledger_passes(self) -> None:
         self.assertEqual(self.check(), 0, self.err.getvalue())
+        self.assertEqual(self.run_tool("check"), 0, self.err.getvalue())
         lines = self.ledger().read_text(encoding="utf-8")
         self.assertIn("PotentialConfig @2 arm xtb :XTBParams upstream\n", lines)
         self.assertIn("PotentialConfig @4 field extra.flag :Bool upstream\n", lines)
         self.assertIn("Kind @1 enumerant second - upstream\n", lines)
         self.assertIn("Potential @0 method calculate (fip:ForceInput)->(energy:Float64) upstream\n", lines)
-        self.assertIn("ForceInput @2 field tag :Text local\n", lines)
         self.assertNotIn("@7", lines)
 
     def test_renumbered_arm_in_vendored_copy(self) -> None:
@@ -170,244 +163,86 @@ class LedgerTest(unittest.TestCase):
         self.set_vendored(self.vendored().replace("de @0 :Float64", "de @0 :Float32"))
         self.assertRejected("has MorseParams @0 field de :Float32")
 
-    def test_diff_that_adds_an_upstream_slot(self) -> None:
-        # 68df95cd's shape: the pin lacks the arm, a diff adds it at a slot the
-        # ledger gives to another arm, and the vendored copies follow the diff.
-        older = UPSTREAM.replace("    xtb   @2 :XTBParams;\n", "    # xtb @2 :XTBParams;\n").replace(
-            "    morse @3 :MorseParams;\n", ""
-        )
-        morse_at_2 = textwrap.dedent(
-            """\
-            diff --git a/Potentials.capnp b/Potentials.capnp
-            --- a/Potentials.capnp
-            +++ b/Potentials.capnp
-            @@ -20,6 +20,7 @@
-               union {
-                 none  @0 :Void;
-                 # xtb @2 :XTBParams;
-            +    morse @2 :MorseParams;
-               }
-               common @1 :Text;
-               extra :group {
-            """
-        )
-        self.write_tree(older, LOCAL_DIFF, morse_at_2)
-        self.assertRejected(
-            "d1.diff adds PotentialConfig @2 arm morse :MorseParams, ledger has PotentialConfig @2 arm xtb"
-        )
-        err = self.err.getvalue()
-        self.assertIn("pinned upstream no longer declares PotentialConfig @3 arm morse", err)
-        self.assertIn("lacks PotentialConfig @2 arm xtb :XTBParams upstream", err)
-
-    def test_diff_that_removes_an_ordinal_line(self) -> None:
-        rewrite = textwrap.dedent(
-            """\
-            diff --git a/Potentials.capnp b/Potentials.capnp
-            --- a/Potentials.capnp
-            +++ b/Potentials.capnp
-            @@ -8,3 +8,3 @@
-             struct XTBParams {
-            -  method @0 :Text = "gfn2";
-            +  method @0 :Text = "gfn1";
-             }
-            """
-        )
-        self.write_tree(UPSTREAM, LOCAL_DIFF, rewrite)
-        self.assertRejected("d1.diff removes or rewrites an ordinal line: method @0")
-
-    def test_diff_that_adds_an_unledgered_ordinal(self) -> None:
-        extra = LOCAL_DIFF.replace("+  tag @2 :Text;\n", "+  tag @2 :Text;\n+  more @3 :Bool;\n").replace(
-            "@@ -3,6 +3,7 @@", "@@ -3,6 +3,8 @@"
-        )
-        self.write_tree(UPSTREAM, extra)
-        self.assertRejected("d0.diff adds ForceInput @3 field more :Bool, not a local ledger entry")
-
-    def test_diff_that_adds_an_ordinal_in_a_comment(self) -> None:
-        reserve = LOCAL_DIFF.replace(
-            "+  tag @2 :Text;\n", "+  tag @2 :Text;\n+  # spare @3 :Bool;\n"
-        ).replace("@@ -3,6 +3,7 @@", "@@ -3,6 +3,8 @@")
-        self.write_tree(UPSTREAM, reserve)
-        self.assertRejected("d0.diff adds an ordinal outside a declaration: # spare @3 :Bool;")
-
     def test_vendored_copy_diverges_from_the_pin(self) -> None:
-        self.set_vendored(self.vendored().replace('"gfn2"', '"gfn1"'))
-        self.assertRejected(L.DIVERGES)
-        self.assertEqual(self.run_tool("check"), 0, self.err.getvalue())
+        self.set_vendored(self.vendored() + "# a local edit\n")
+        self.assertRejected(f"{L.VENDORED[0]} {L.DIVERGES}")
 
-    def test_vendored_copy_carrying_a_local_field(self) -> None:
-        # eb357630's shape: the local field sits in the vendored copies, so a
-        # parent comparing them with its own checkout of the pin sees drift.
-        self.set_vendored(self.effective())
-        self.assertRejected(L.DIVERGES)
-        self.assertIn(
-            "carries local ForceInput @2 field tag :Text; it belongs in the local series", self.err.getvalue()
-        )
-        self.assertEqual(self.run_tool("check"), 1)
-        self.assertIn("carries local ForceInput @2 field tag", self.err.getvalue())
+    def test_vendored_common_diverges_from_the_pin(self) -> None:
+        self.set_vendored(self.vendored(), COMMON + "# a local edit\n")
+        self.assertRejected(f"{L.VENDORED_COMMON[0]} {L.DIVERGES}")
 
     def test_vendored_copies_differ(self) -> None:
-        (self.root / L.VENDORED[1]).write_text(self.vendored() + "# drift\n", encoding="utf-8")
+        (self.root / L.VENDORED[1]).write_text(self.vendored() + "\n", encoding="utf-8")
         self.assertEqual(self.run_tool("check"), 1)
         self.assertIn(f"{L.VENDORED[1]} differs from {L.VENDORED[0]}", self.err.getvalue())
+        self.set_vendored(self.vendored())
+        (self.root / L.VENDORED_COMMON[1]).write_text(COMMON + "\n", encoding="utf-8")
+        self.assertEqual(self.run_tool("check"), 1)
+        self.assertIn(f"{L.VENDORED_COMMON[1]} differs from {L.VENDORED_COMMON[0]}", self.err.getvalue())
 
-    def test_wrap_diff_files_are_refused(self) -> None:
-        wrap = self.root / L.WRAP
-        wrap.write_text(wrap.read_text(encoding="utf-8") + "diff_files = d0.diff\n", encoding="utf-8")
-        self.assertRejected("applies diff_files (d0.diff)")
+    def test_vendored_member_needs_the_ledger(self) -> None:
+        # Without a pin to compare with, the ledger still catches a member the
+        # copies declare and the ledger does not.
+        self.set_vendored(WITH_TAG)
+        self.assertEqual(self.run_tool("check"), 1)
+        self.assertIn(f"declares {TAG}, not in the ledger", self.err.getvalue())
 
-    def test_series_mirror_drift(self) -> None:
-        mirror = self.root / L.SERIES_DIRS[1] / "d0.diff"
-        mirror.write_text(mirror.read_text(encoding="utf-8").replace("tag", "tags"), encoding="utf-8")
-        self.assertRejected(f"{L.SERIES_DIRS[1] / 'd0.diff'} differs from {L.SERIES_DIRS[0] / 'd0.diff'}")
-        mirror.unlink()
-        self.assertRejected(f"{L.SERIES_DIRS[1] / 'd0.diff'} is missing")
-
-    def test_apply_writes_the_effective_schema(self) -> None:
-        out = self.root / "build" / L.SCHEMA_NAME
-        self.assertEqual(self.run_tool("apply", "--out", str(out)), 0, self.err.getvalue())
-        self.assertEqual(out.read_text(encoding="utf-8"), self.effective())
-        self.assertIn("  tag @2 :Text;\n", out.read_text(encoding="utf-8"))
-        self.assertNotIn("tag @2", self.vendored())
-        before = out.stat().st_mtime_ns
-        self.assertEqual(self.run_tool("apply", "--out", str(out)), 0)
-        self.assertEqual(out.stat().st_mtime_ns, before)
-
-    def test_local_field_lands_through_a_second_diff(self) -> None:
-        # The feat/uma-cache-dir shape: a new local field is a new diff at the
-        # end of the series plus one appended local ledger line; the vendored
-        # copies stay the pin.
-        cache = textwrap.dedent(
-            """\
-            diff --git a/Potentials.capnp b/Potentials.capnp
-            --- a/Potentials.capnp
-            +++ b/Potentials.capnp
-            @@ -11,4 +11,5 @@
-             struct MorseParams {
-               de @0 :Float64 = 0.7102;
-               re @1 :Float64 = 2.897;
-            +  cacheDir @2 :Text;
-             }
-            """
-        )
-        self.write_tree(UPSTREAM, LOCAL_DIFF, cache)
-        self.assertRejected("d1.diff adds MorseParams @2 field cacheDir :Text, not a local ledger entry")
+    def test_new_pinned_entry_needs_append(self) -> None:
+        self.write_tree(WITH_TAG)
+        self.assertRejected(f"pinned schema declares {TAG}, not in the ledger (run append)")
         self.assertEqual(self.run_tool("append", "--upstream", str(self.upstream)), 0)
-        self.assertTrue(
-            self.ledger().read_text(encoding="utf-8").endswith("MorseParams @2 field cacheDir :Text local\n")
-        )
+        self.assertTrue(self.ledger().read_text(encoding="utf-8").endswith(f"{TAG} upstream\n"))
         self.assertEqual(self.check(), 0, self.err.getvalue())
-        self.assertEqual(self.vendored(), UPSTREAM)
 
-    def test_new_upstream_entry_needs_append(self) -> None:
-        grown = UPSTREAM.replace(
-            "  re @1 :Float64 = 2.897;\n", "  re @1 :Float64 = 2.897;\n  a @2 :Float64;\n"
-        )
-        self.write_tree(grown, LOCAL_DIFF)
-        self.assertRejected("pinned upstream declares MorseParams @2 field a :Float64, not in the ledger")
+    def test_pin_drops_a_ledger_entry(self) -> None:
+        older = UPSTREAM.replace("    morse @3 :MorseParams;\n", "")
+        self.write_tree(older)
+        self.assertRejected("pinned schema no longer declares PotentialConfig @3 arm morse")
+
+    def test_unretired_local_entry(self) -> None:
+        text = self.ledger().read_text(encoding="utf-8")
+        self.ledger().write_text(text + f"{TAG} local\n", encoding="utf-8")
+        self.write_tree(WITH_TAG)
+        self.assertRejected(f"local {TAG} is not retired")
+
+    @unittest.skipIf(shutil.which("git") is None, "git is not installed")
+    def test_pin_adopting_a_local_field_retires_it(self) -> None:
+        # The move from potentials-schema plus the local series to rgconf:
+        # the ledger holds a local entry, the new pin declares it unchanged.
+        text = self.ledger().read_text(encoding="utf-8")
+        self.ledger().write_text(text + f"{TAG} local\n", encoding="utf-8")
+        _git(self.root, "init", "-q")
+        _git(self.root, "add", "-A")
+        _git(self.root, "commit", "-q", "-m", "base")
+
+        self.write_tree(WITH_TAG)
         self.assertEqual(self.run_tool("append", "--upstream", str(self.upstream)), 0)
-        self.assertEqual(self.check(), 0, self.err.getvalue())
-        self.assertTrue(
-            self.ledger().read_text(encoding="utf-8").endswith("MorseParams @2 field a :Float64 upstream\n")
-        )
+        lines = self.ledger().read_text(encoding="utf-8")
+        self.assertIn(f"{TAG} local\n", lines)
+        self.assertTrue(lines.endswith(f"{TAG} upstream\n"))
+        self.assertEqual(self.check("--base", "HEAD"), 0, self.err.getvalue())
 
-    def test_upstream_collides_with_a_local_entry(self) -> None:
-        taken = UPSTREAM.replace(
-            '  lengthUnit @1 :Text = "angstrom";  # @brief ignored @7 in a comment\n',
-            '  lengthUnit @1 :Text = "angstrom";  # @brief ignored @7 in a comment\n  charge @2 :Int32;\n',
-        )
-        self.upstream.write_text(taken, encoding="utf-8")
-        self.assertRejected(
-            "local ForceInput @2 field tag :Text collides with upstream ForceInput @2 field charge :Int32"
-        )
+        self.ledger().write_text(lines + f"{TAG} local\n", encoding="utf-8")
+        self.assertEqual(self.check(), 1)
+        self.assertIn("reuses the ordinal of", self.err.getvalue())
+
+    def test_append_refuses_to_rewrite(self) -> None:
+        self.write_tree(UPSTREAM.replace("de @0 :Float64", "de @0 :Float32"))
+        self.assertEqual(self.run_tool("append", "--upstream", str(self.upstream)), 1)
+        self.assertIn("append will not rewrite it", self.err.getvalue())
 
     def test_crlf_checkout_passes(self) -> None:
         # git with core.autocrlf=true checks every text file out with CRLF.
         files = [
-            *(self.root / rel for rel in L.VENDORED),
+            *(self.root / rel for rel in (*L.VENDORED, *L.VENDORED_COMMON)),
             self.ledger(),
-            self.root / L.WRAP,
+            self.root / L.PIN,
             self.upstream,
-            *(p for d in L.SERIES_DIRS for p in sorted((self.root / d).iterdir())),
         ]
         for path in files:
             path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
         self.assertIn(b"\r\n", (self.root / L.VENDORED[0]).read_bytes())
         self.assertEqual(self.check(), 0, self.err.getvalue())
-
-        patched = self.root / "checkout" / L.SCHEMA_NAME
-        patched.parent.mkdir()
-        patched.write_bytes((self.root / L.VENDORED[0]).read_bytes())
-        self.assertEqual(
-            self.run_tool("check", "--subproject-schema", str(patched)), 0, self.err.getvalue()
-        )
-
-    @unittest.skipIf(shutil.which("git") is None, "git is not installed")
-    def test_subproject_at_the_pin_is_read_as_utf8(self) -> None:
-        # meson's wrap-git checkout sits at the pinned revision, so the
-        # upstream text comes from git. A locale code page that is not UTF-8
-        # (cp1252 on Windows) must not change a non-ASCII comment in it.
-        upstream = UPSTREAM + "# Pinned upstream \u2014 edit it there.\n"
-        self.write_tree(upstream, LOCAL_DIFF)
-        sub = self.root / "subprojects" / "potentials-schema"
-        sub.mkdir(parents=True)
-        (sub / L.SCHEMA_NAME).write_text(upstream, encoding="utf-8")
-        _git(sub, "init", "-q")
-        _git(sub, "add", "-A")
-        _git(sub, "commit", "-q", "-m", "pin")
-        head = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=sub, check=True, stdout=subprocess.PIPE, encoding="utf-8"
-        ).stdout.strip()
-        wrap = self.root / L.WRAP
-        wrap.write_text(wrap.read_text(encoding="utf-8").replace("0" * 40, head), encoding="utf-8")
-        # A parent may patch its own checkout; the pinned git object still wins.
-        (sub / L.SCHEMA_NAME).write_text(self.effective(), encoding="utf-8")
-
-        env = {**os.environ, "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0", "LC_ALL": "C"}
-        done = subprocess.run(
-            [
-                sys.executable,
-                str(ROOT / "CppCore" / "rgpot" / "rpc" / "schema_ledger.py"),
-                "check",
-                "--root",
-                str(self.root),
-                "--subproject-schema",
-                str(sub / L.SCHEMA_NAME),
-            ],
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            encoding="utf-8",
-            errors="replace",
-        )
-        self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertIn("pinned upstream: git object", done.stdout)
-
-    @unittest.skipIf(shutil.which("git") is None, "git is not installed")
-    def test_upstream_adopting_a_local_field_retires_it(self) -> None:
-        _git(self.root, "init", "-q")
-        _git(self.root, "add", "-A")
-        _git(self.root, "commit", "-q", "-m", "base")
-        adopted = self.effective()
-
-        self.upstream.write_text(adopted, encoding="utf-8")
-        self.assertRejected("pinned upstream now declares local ForceInput @2 field tag :Text")
-
-        self.write_tree(adopted)
-        self.assertRejected("carries local ForceInput @2 field tag :Text")
-        self.assertEqual(self.run_tool("append", "--upstream", str(self.upstream)), 0)
-        lines = self.ledger().read_text(encoding="utf-8")
-        self.assertIn("ForceInput @2 field tag :Text local\n", lines)
-        self.assertTrue(lines.endswith("ForceInput @2 field tag :Text upstream\n"))
-        self.assertEqual(self.check("--base", "HEAD"), 0, self.err.getvalue())
-
-        self.ledger().write_text(lines + "ForceInput @2 field tag :Text local\n", encoding="utf-8")
-        self.assertEqual(self.check(), 1)
-        self.assertIn("reuses the ordinal of", self.err.getvalue())
-
-    def test_append_refuses_to_rewrite(self) -> None:
-        self.set_vendored(self.vendored().replace("de @0 :Float64", "de @0 :Float32"))
-        self.assertEqual(self.run_tool("append", "--upstream", str(self.upstream)), 1)
-        self.assertIn("append will not rewrite it", self.err.getvalue())
 
     @unittest.skipIf(shutil.which("git") is None, "git is not installed")
     def test_ledger_is_append_only_against_base(self) -> None:
@@ -456,41 +291,29 @@ class LedgerTest(unittest.TestCase):
         )
 
 
-def _pinned_upstream(tmp: Path) -> Path:
-    """The pinned Potentials.capnp: meson's checkout of the wrap, else a fetch."""
-    wrap = L.read_wrap(ROOT)
-    parser = configparser.ConfigParser()
-    parser.read(ROOT / L.WRAP, encoding="utf-8")
-    checkout = ROOT / "subprojects" / parser["wrap-git"]["directory"] / L.SCHEMA_NAME
-    if checkout.is_file():
-        text, _ = L.upstream_from_subproject(checkout, wrap)
-    else:
-        try:
-            text = L.fetch_upstream(wrap)
-        except (OSError, subprocess.CalledProcessError) as exc:
-            if os.environ.get("CI"):
-                raise
-            raise unittest.SkipTest(f"cannot fetch {wrap.url} at {wrap.revision}: {exc}") from exc
+def _pinned(tmp: Path) -> Path:
+    """The pinned rgconf potential.capnp, with common.capnp beside it."""
+    pin = L.read_pin(ROOT)
+    try:
+        schema, common = L.fetch_pinned(pin)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        if os.environ.get("CI"):
+            raise
+        raise unittest.SkipTest(f"cannot fetch {pin.url} at {pin.revision}: {exc}") from exc
+    (tmp / L.COMMON_NAME).write_text(common, encoding="utf-8", newline="\n")
     path = tmp / L.SCHEMA_NAME
-    path.write_text(text, encoding="utf-8", newline="\n")
+    path.write_text(schema, encoding="utf-8", newline="\n")
     return path
 
 
 class RepositoryTest(unittest.TestCase):
-    def test_vendored_copies_are_the_pinned_release(self) -> None:
-        # The comparison a parent project (gpridge) runs as
-        # schema-sync-canonical-rpc and schema-sync-canonical-core.
-        sync = ROOT / "CppCore" / "rgpot" / "rpc" / "schema_sync_check.py"
+    def test_vendored_copies_are_the_pinned_schema(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            pinned = _pinned_upstream(Path(tmp))
-            for rel in L.VENDORED:
-                done = subprocess.run(
-                    [sys.executable, str(sync), str(ROOT / rel), str(pinned)],
-                    capture_output=True,
-                    check=False,
-                    encoding="utf-8",
-                )
-                self.assertEqual(done.returncode, 0, f"{rel}: {done.stderr.strip()}")
+            pinned = _pinned(Path(tmp))
+            err = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                code = L.main(["check", "--root", str(ROOT), "--upstream", str(pinned)])
+            self.assertEqual(code, 0, err.getvalue())
 
     def test_vendored_copies_match_the_ledger(self) -> None:
         err = io.StringIO()
@@ -498,11 +321,22 @@ class RepositoryTest(unittest.TestCase):
             code = L.main(["check", "--root", str(ROOT)])
         self.assertEqual(code, 0, err.getvalue())
 
-    def test_upstream_owns_potential_config_six_and_ten(self) -> None:
-        ledger = L.parse_ledger((ROOT / L.LEDGER).read_text(encoding="utf-8"), "ledger")
+    def test_no_local_series_remains(self) -> None:
+        for directory in L.SCHEMA_DIRS:
+            self.assertFalse((ROOT / directory / "local").exists(), directory)
+        self.assertFalse((ROOT / "subprojects" / "potentials-schema.wrap").exists())
+
+    def test_potential_config_arms_keep_their_ordinals(self) -> None:
+        ledger = L.resolve_ledger(L.parse_ledger((ROOT / L.LEDGER).read_text(encoding="utf-8"), "ledger"))
         arms = {e.ordinal: (e.name, e.type, e.origin) for e in ledger if e.scope == "PotentialConfig"}
         self.assertEqual(arms[6], ("xtb", ":XTBParams", "upstream"))
         self.assertEqual(arms[10], ("morse", ":MorseParams", "upstream"))
+        # rgpot's own arms keep the ordinals it shipped them at; rgconf's
+        # arms follow them.
+        self.assertEqual(arms[18], ("composite", ":CompositeParams", "upstream"))
+        self.assertEqual(arms[21], ("mullerBrown", ":MullerBrownParams", "upstream"))
+        self.assertEqual(arms[30], ("plugin", ":PluginPotentialParams", "upstream"))
+        self.assertEqual(arms[31], ("orca", ":ORCAParams", "upstream"))
 
     def test_parser_reads_every_ordinal_line(self) -> None:
         # Each line that declares an ordinal outside a comment must be an entry.

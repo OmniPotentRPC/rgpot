@@ -17,7 +17,7 @@ Three checks, each a subcommand:
     with non-empty Inputs, Units, Outputs and Errors fields, and every
     signature written in an entry matches the source.  The entry of a
     ``*Config`` struct names each of its fields, and a reference page names
-    each field the rgpot-local schema diffs add.
+    each schema member rgpot added (the ledger's local entries).
 
 ``facts``
     Statements that can be read off the source: meson and CMake options and
@@ -696,6 +696,7 @@ CPP_TYPE_HEADERS = (
 )
 CPP_FUNCTION_HEADERS = (
     "CppCore/rgpot/ExternalPot/ExternalPot.hpp",
+    "CppCore/rgpot/PotentialFactory.hpp",
     "CppCore/rgpot/CalculatorGroup.hpp",
     "CppCore/rgpot/UmaPot/UmaConfig.hpp",
 )
@@ -1258,49 +1259,34 @@ def config_field_errors(root: Path, entries: list[Entry]) -> list[str]:
     return errors
 
 
-LOCAL_SCHEMA_SERIES = "CppCore/rgpot/rpc/local/series"
-_CAPNP_SCOPE = re.compile(r"^[ +]\s*(?:struct|interface)\s+(\w+)")
-_CAPNP_MEMBER = re.compile(r"^\+\s*(\w+)\s+@\d+\s*[:(]")
+SCHEMA_LEDGER = "CppCore/rgpot/rpc/Potentials.ordinals"
+_LEDGER_MEMBER = re.compile(r"^(\w+) @\d+ (?:field|arm|method) (\w+) \S+ local$")
 
 
-def local_schema_fields(root: Path = ROOT) -> list[tuple[str, str]]:
-    """(Struct.member, diff) for each field or method an rgpot-local diff adds."""
-    series = root / LOCAL_SCHEMA_SERIES
-    if not series.is_file():
+def local_schema_fields(root: Path = ROOT) -> list[str]:
+    """Struct.member for each field, arm or method rgpot added to the schema.
+
+    The ordinal ledger records them with origin local; rgconf's
+    potential.capnp has since adopted them at the same ordinals.
+    """
+    ledger = root / SCHEMA_LEDGER
+    if not ledger.is_file():
         return []
-    out = []
-    for name in series.read_text(encoding="utf-8").splitlines():
-        name = name.strip()
-        if not name or name.startswith("#"):
-            continue
-        scope = None
-        for line in (series.parent / name).read_text(encoding="utf-8").splitlines():
-            if line.startswith(("+++", "---")):
-                continue
-            hunk = re.match(r"^@@[^@]*@@\s*(?:struct|interface)\s+(\w+)", line)
-            if line.startswith("@@"):
-                scope = hunk.group(1) if hunk else None
-                continue
-            sm = _CAPNP_SCOPE.match(line)
-            if sm:
-                scope = sm.group(1)
-                continue
-            if re.match(r"^[ +]\}", line):
-                scope = None
-                continue
-            mm = _CAPNP_MEMBER.match(line)
-            if mm and scope:
-                out.append((f"{scope}.{mm.group(1)}", name))
+    out: list[str] = []
+    for line in ledger.read_text(encoding="utf-8").splitlines():
+        m = _LEDGER_MEMBER.match(line.strip())
+        if m and f"{m.group(1)}.{m.group(2)}" not in out:
+            out.append(f"{m.group(1)}.{m.group(2)}")
     return out
 
 
 def local_schema_errors(root: Path = ROOT, pages: list[Path] | None = None) -> list[str]:
-    """A reference page names each field the rgpot-local schema diffs add."""
+    """A reference page names each schema member rgpot added."""
     pages = pages if pages is not None else sorted((root / REFERENCE_DIR).rglob("*.org"))
     text = "\n".join(p.read_text(encoding="utf-8") for p in pages)
     return [
-        f"{LOCAL_SCHEMA_SERIES}: {diff} adds {member}, which no reference page names"
-        for member, diff in local_schema_fields(root)
+        f"{SCHEMA_LEDGER}: rgpot added {member}, which no reference page names"
+        for member in local_schema_fields(root)
         if not re.search(rf"(?<![\w.]){re.escape(member)}(?!\w)", text)
     ]
 

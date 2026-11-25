@@ -182,35 +182,16 @@ endif()
 
 # --- Build Targets ---
 
-# The compiled schema is the vendored copy (the pinned potentials-schema
-# file) with the rgpot-local series applied. capnp_generate_cpp needs the
-# file at configure time, so the series is applied here and a change to it
-# reconfigures. The neighbour tests read it without the RPC stack.
+# The compiled schema is the vendored rgconf potential.capnp and the
+# common.capnp it imports, as they are. The neighbour tests read it without
+# the RPC stack.
 if(RGPOT_WITH_RPC OR RGPOT_BUILD_TESTS)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
-  set(RGPOT_SCHEMA_SRC_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/schema")
-  set(RGPOT_EFFECTIVE_SCHEMA
-      "${RGPOT_SCHEMA_SRC_PREFIX}/CppCore/rgpot/rpc/Potentials.capnp")
-  set(_rgpot_schema_dir "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/rgpot/rpc")
-  file(STRINGS "${_rgpot_schema_dir}/local/series" _rgpot_series_lines)
-  set(_rgpot_schema_inputs "${_rgpot_schema_dir}/Potentials.capnp"
-                           "${_rgpot_schema_dir}/local/series")
-  foreach(_line IN LISTS _rgpot_series_lines)
-    string(STRIP "${_line}" _line)
-    if(_line AND NOT _line MATCHES "^#")
-      list(APPEND _rgpot_schema_inputs "${_rgpot_schema_dir}/local/${_line}")
-    endif()
-  endforeach()
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                                         ${_rgpot_schema_inputs})
-  execute_process(
-    COMMAND "${Python3_EXECUTABLE}" "${_rgpot_schema_dir}/schema_ledger.py"
-            apply --root "${CMAKE_CURRENT_SOURCE_DIR}"
-            --out "${RGPOT_EFFECTIVE_SCHEMA}"
-    RESULT_VARIABLE _rgpot_schema_result)
-  if(NOT _rgpot_schema_result EQUAL 0)
-    message(FATAL_ERROR "schema_ledger.py apply failed: ${_rgpot_schema_result}")
-  endif()
+  set(RGPOT_SCHEMA_SRC_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}")
+  set(RGPOT_POTENTIALS_SCHEMA
+      "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/rgpot/rpc/Potentials.capnp")
+  set(RGPOT_COMMON_SCHEMA
+      "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/rgpot/rpc/common.capnp")
 endif()
 
 if(RGPOT_WITH_RPC)
@@ -219,7 +200,8 @@ if(RGPOT_WITH_RPC)
 
   set(CAPNPC_SRC_PREFIX "${RGPOT_SCHEMA_SRC_PREFIX}")
   set(CAPNPC_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-  capnp_generate_cpp(CAPNP_SOURCES CAPNP_HEADERS "${RGPOT_EFFECTIVE_SCHEMA}")
+  capnp_generate_cpp(CAPNP_SOURCES CAPNP_HEADERS "${RGPOT_POTENTIALS_SCHEMA}"
+                     "${RGPOT_COMMON_SCHEMA}")
 
   # On Apple, static intermediate RPC libs avoid install_name / mixed
   # toolchain dylib issues when system clang links conda Cap'n Proto; the
@@ -317,6 +299,7 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
        CppCore/rgpot/EAM/EAM.cpp
        CppCore/rgpot/EAM/EAMPot.cc
        CppCore/rgpot/MOPACPot/MOPACPot.cc
+       CppCore/rgpot/ORCACPot/ORCACPot.cc
        CppCore/rgpot/XTBPot/XTBDlopen.cc
        CppCore/rgpot/ExternalPot/ExternalPot.cc
        CppCore/rgpot/ExternalPot/detail/LoadedIdentity.cc
@@ -334,9 +317,12 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   # NWChemPot / CPMDPot are pure dlopen consumers of the split nwchemc / cpmdc
   # engines (parity with meson). Cap'n Proto params live in the generated schema,
   # so the frontends are only compiled when RGPOT_WITH_RPC enables ptlrpc.
+  # makePotential (PotentialFactory.cc) reads PotentialConfig and builds
+  # engine-library arms through EnginePot, so both come with the RPC stack too.
   if(RGPOT_WITH_RPC)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/NWChemPot/NWChemPot.cc
-         CppCore/rgpot/CPMDPot/CPMDPot.cc)
+         CppCore/rgpot/CPMDPot/CPMDPot.cc CppCore/rgpot/EnginePot/EnginePot.cc
+         CppCore/rgpot/PotentialFactory.cc)
   endif()
   # CP2KPot dlopens the libcp2k shim. It is built only with the shim, so a
   # build without libcp2k compiles no CP2K code.
@@ -833,7 +819,8 @@ if(RGPOT_IS_TOP_LEVEL)
     # Install the bridge header in the correct directory structure
     install(FILES CppCore/rgpot/rpc/pot_bridge.h
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot/rpc)
-    install(FILES ${CAPNP_HEADERS} "${RGPOT_EFFECTIVE_SCHEMA}"
+    install(FILES ${CAPNP_HEADERS} "${RGPOT_POTENTIALS_SCHEMA}"
+                  "${RGPOT_COMMON_SCHEMA}"
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot/rpc)
   endif()
 

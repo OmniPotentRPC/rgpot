@@ -318,8 +318,6 @@ MOPACDlopenContract | tests core | py CppCore/tests/test_mopac_dlopen_contract.p
 # Schema contract. Registered with the RPC stack, with or without tests.
 schema-ordinal-ledger-vendored | rpc | py CppCore/rgpot/rpc/schema_ledger.py check --root @root@ suite=schema |
 schema-ordinal-ledger-selftest | rpc | py CppCore/tests/test_schema_ledger.py suite=schema |
-schema-sync-canonical-rpc | rpc probe | custom suite=schema | @meson
-schema-sync-canonical-core | rpc probe | custom suite=schema | @meson
 schema-ordinal-ledger | rpc probe | custom suite=schema | @meson
 
 # RPC, NWChem and CPMD frontends over fake engines.
@@ -415,6 +413,7 @@ rgpot_so_exports | so_exports | custom | @rust_core
 EAMTableCAbiTest | tests rust_core | custom | @rust_core
 EAMTableHandleTest | tests core rust_core | unit eam_table_handle_test EAMTableHandleTest.cc | @rust_core
 EngineTableTest | tests core rpc posix | custom workdir=. | @engine_plugins
+PotentialFactoryTest | tests core rpc posix | custom suite=factory workdir=. | @engine_plugins
 lj_eval | core | custom timeout=60 | @engines
 lj_engine | core | custom timeout=60 | @engines
 mdi_concrete_potentials | tests core posix python mdi pymdi | custom timeout=120 |

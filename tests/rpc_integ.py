@@ -10,7 +10,7 @@ from pathlib import Path
 import capnp
 import numpy as np
 
-# Load schema relative to this script unless a built effective schema is available.
+# Load the vendored schema relative to this script.
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 SOURCE_SCHEMA_PATH = Path(SCRIPT_DIR) / "../CppCore/rgpot/rpc/Potentials.capnp"
 pot_capnp = None
@@ -183,9 +183,9 @@ async def run_morse_configure(port):
 
 
 def effective_schema(server_bin):
-    """The schema potserv was built from: vendored plus the local diffs."""
-    path = os.path.join(os.path.dirname(server_bin), "rgpot", "rpc", "Potentials.capnp")
-    return capnp.SchemaParser().load(path)
+    """The schema potserv was built from: the vendored Potentials.capnp."""
+    del server_bin
+    return capnp.SchemaParser().load(str(SOURCE_SCHEMA_PATH.resolve()))
 
 
 async def run_composite_configure(port, schema):
@@ -871,7 +871,7 @@ def main():
         help="Also run CPMD configure() smoke on a separate server port",
     )
     args = parser.parse_args()
-    # Use the schema that potserv was built with, including local diffs.
+    # Use the schema that potserv was built with: the vendored Potentials.capnp.
     pot_capnp = effective_schema(args.server_bin)
 
     # 1. Start Server

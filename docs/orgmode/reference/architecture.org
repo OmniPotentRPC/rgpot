@@ -410,7 +410,7 @@ The C entry point is listed in [[file:c_abi.org][C ABI of rgpot-core]].
 | =CppCore/rgpot/=                       | C++ potentials, neighbour lists, the RPC server and helpers.                                         |
 | =CppCore/rgpot/fortran/=               | Fortran 2018 potential kernels and their C entry points.                                             |
 | =engines/=                             | Engine plugins and =pot_spec.hpp=, which builds a potential from a name and options.                 |
-| =subprojects/potentials-schema.wrap=   | Pinned canonical Cap'n Proto schema, plus the local =neighbour-chunk.diff=.                          |
-| =rgpot-core/schema/Potentials.capnp=   | Vendored schema copy; =build.rs= prefers it (works on crates.io).                                     |
-| =CppCore/rgpot/rpc/Potentials.capnp=   | Vendored schema copy used by Meson; =build.rs= falls back to it. Both copies must equal the pinned one. |
+| =CppCore/rgpot/rpc/schema.pin=         | The rgconf commit whose =potential.capnp= and =common.capnp= rgpot vendors.                           |
+| =rgpot-core/schema/Potentials.capnp=   | Vendored schema copy, with =common.capnp=; =build.rs= prefers it (works on crates.io).                |
+| =CppCore/rgpot/rpc/Potentials.capnp=   | Vendored schema copy, with =common.capnp=, used by Meson and CMake; =build.rs= falls back to it. Both copies must equal the pinned files. |
 | =CppCore/rgpot/rpc/Potentials.ordinals= | Append-only ledger of schema ordinals.                                                              |

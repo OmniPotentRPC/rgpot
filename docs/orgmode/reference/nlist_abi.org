@@ -405,10 +405,11 @@ positions it was given.
 
 ** Cap'n Proto messages
 
-=CppCore/rgpot/rpc/local/neighbour-chunk.diff= adds the query to the
-=Potentials.capnp= that rgpot compiles and installs.
-The pinned potentials-schema file does not have it;
-=CppCore/rgpot/rpc/local/series= lists the rgpot-local diffs.
+=Potentials.capnp= carries the query: =NeighborRequest=, =NeighborList=,
+=ForceInput.neighbors=, =PotentialResult.neighborList= and
+=Potential.neighbours=.
+rgpot added them first, through a local diff, and rgconf's schema adopted them
+at the same ordinals.
 The messages carry the columns of =rgpot_nlist_request= and =rgpot_nlist_soa=.
 Lengths are in the unit of the positions, =ForceInput.lengthUnit= on the wire.
 

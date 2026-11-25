@@ -330,21 +330,21 @@ foreach(test IN LISTS _rgpot_py)
     COMMAND Python3::Interpreter "${RGPOT_TEST_ROOT}/${_script}" ${_args})
 endforeach()
 
-# The neighbour C ABI over Cap'n Proto and from Rust. The neighbour
-# structs exist only in the effective schema, which CMakeLists.txt writes.
+# The neighbour C ABI over Cap'n Proto and from Rust, against the vendored
+# schema.
 rgpot_test_enabled(nlist_stream _on)
 if(_on)
   add_executable(nlist_stream CppCore/examples/nlist_stream.cc)
   target_link_libraries(nlist_stream PRIVATE ${_rgpot_nlist_link}
                                              CapnProto::capnp CapnProto::capnpc)
-  rgpot_add_test(nlist_stream COMMAND nlist_stream "${RGPOT_EFFECTIVE_SCHEMA}")
+  rgpot_add_test(nlist_stream COMMAND nlist_stream "${RGPOT_POTENTIALS_SCHEMA}")
 endif()
 rgpot_test_enabled(nlist_capnp_roundtrip _on)
 if(_on)
   rgpot_add_test(nlist_capnp_roundtrip
     COMMAND Python3::Interpreter
             "${RGPOT_TEST_ROOT}/CppCore/tests/test_nlist_capnp.py"
-            "${RGPOT_TEST_ROOT}" "${RGPOT_CAPNP_TOOL}" "${RGPOT_EFFECTIVE_SCHEMA}")
+            "${RGPOT_TEST_ROOT}" "${RGPOT_CAPNP_TOOL}" "${RGPOT_POTENTIALS_SCHEMA}")
 endif()
 rgpot_test_enabled(nlist_rust _on)
 if(_on)

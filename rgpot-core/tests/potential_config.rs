@@ -134,8 +134,9 @@ fn muller_brown_lists_round_trip() {
     check(params.get_y0(), &y0);
 }
 
-/// potentials-schema's arm ordinals, shared with gpridge and every other
-/// consumer. A renumbered arm would decode as another backend on the wire.
+/// The arm ordinals potentials-schema assigned, which rgconf keeps and
+/// gpridge and every other consumer share. A renumbered arm would decode as
+/// another backend on the wire.
 const CONFIG_ARMS: [(&str, u16); 17] = [
     ("none", 0),
     ("nwchem", 1),
@@ -156,12 +157,18 @@ const CONFIG_ARMS: [(&str, u16); 17] = [
     ("cp2k", 17),
 ];
 
-/// The arms rgpot adds in CppCore/rgpot/rpc/local, after the upstream ones.
-const LOCAL_ARMS: [(&str, u16); 4] = [
+/// The arms rgpot added before rgconf adopted them, at the same ordinals,
+/// then rgconf's own arms.
+const LATER_ARMS: [(&str, u16); 9] = [
     ("composite", 18),
     ("d2", 19),
     ("d2cpmd", 20),
     ("mullerBrown", 21),
+    ("gpr", 27),
+    ("potlib", 28),
+    ("external", 29),
+    ("plugin", 30),
+    ("orca", 31),
 ];
 
 #[test]
@@ -186,7 +193,7 @@ fn union_arms_keep_the_upstream_ordinals() {
     }
     let want: Vec<(String, u16)> = CONFIG_ARMS
         .iter()
-        .chain(LOCAL_ARMS.iter())
+        .chain(LATER_ARMS.iter())
         .map(|(name, ordinal)| ((*name).to_owned(), *ordinal))
         .collect();
     assert_eq!(seen, want);

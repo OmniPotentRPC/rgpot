@@ -55,7 +55,7 @@ let P = S.pins in
       id = "schema_ledger",
       runs_on = P.ubuntu,
       needs = ["prepare"],
-      role = "Potentials.ordinals vs unpatched pinned potentials-schema, wrap diffs, base ledger",
+      role = "Potentials.ordinals vs the pinned rgconf schema, both vendored copies, base ledger",
     },
     {
       id = "ci-tools",

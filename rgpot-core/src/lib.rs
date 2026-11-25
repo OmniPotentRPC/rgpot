@@ -87,6 +87,15 @@ pub mod Potentials_capnp {
 }
 
 #[cfg(feature = "schema")]
+#[allow(dead_code, non_snake_case, unused_parens, clippy::all)]
+/// Auto-generated bindings for `common.capnp`, which `Potentials.capnp`
+/// imports for the shared rgconf types (neighbour-list configuration and
+/// the presence wrappers of the patch structs).
+pub mod common_capnp {
+    include!(concat!(env!("OUT_DIR"), "/common_capnp.rs"));
+}
+
+#[cfg(feature = "schema")]
 pub mod compat;
 
 #[cfg(feature = "engine")]

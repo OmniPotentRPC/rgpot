@@ -315,8 +315,7 @@ in
     # Scope: the Fortran pot kernels are in-tree (CppCore/rgpot/fortran, vesin
     # vendored under third_party), so this job builds them from the archived
     # tree with no wrap involved. The wraps stay unexercised by construction:
-    # eigen (with_eigen), xxhash (with_cache), potentials-schema (with_rpc),
-    # fmt (pure_lib).
+    # eigen (with_eigen), xxhash (with_cache), fmt (pure_lib).
     nodownload_rehearsal = {
       name = "offline tarball build (nodownload / ubuntu)",
       "runs-on" = P.ubuntu,

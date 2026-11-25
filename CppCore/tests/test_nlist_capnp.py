@@ -11,7 +11,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -35,15 +34,7 @@ def main() -> int:
         raise SystemExit("capnp is required")
     if len(sys.argv) > 3:
         return check(capnp, Path(sys.argv[3]))
-    # The neighbour structs are rgpot-local, so they live in the effective
-    # schema (the vendored copy plus the local series), not the vendored copy.
-    sys.path.insert(0, str(root / "CppCore" / "rgpot" / "rpc"))
-    import schema_ledger
-
-    with tempfile.TemporaryDirectory() as tmp:
-        schema = Path(tmp) / "Potentials.capnp"
-        schema_ledger.main(["apply", "--root", str(root), "--out", str(schema)])
-        return check(capnp, schema)
+    return check(capnp, root / "CppCore" / "rgpot" / "rpc" / "Potentials.capnp")
 
 
 def check(capnp: str, schema: Path) -> int:

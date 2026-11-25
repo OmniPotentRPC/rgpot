@@ -77,7 +77,9 @@ enum class PotType {
   D2,           //!<  Grimme DFT-D2 lattice sum (rgpot::D2Pot).
   D2Cpmd,       //!<  CPMD's minimum-image empirical D2 (rgpot::D2CpmdPot).
   MEAM,         //!< Modified embedded-atom method (LAMMPS meam files).
-  ORCA          //!< ORCA energy and gradient through a child process.
+  ORCA,         //!< ORCA energy and gradient through a child process.
+  Engine,       //!< An engine library over the generic engine C ABI (EnginePot).
+  ORCAC         //!< ORCA through the split liborcac shim (ORCACPot).
 };
 
 } // namespace rgpot

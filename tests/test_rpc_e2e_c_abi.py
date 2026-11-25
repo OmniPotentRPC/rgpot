@@ -17,7 +17,6 @@ import asyncio
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -38,24 +37,8 @@ def _get_pot_capnp():
     cached = _SCHEMA_CACHE.get("pot_capnp")
     if cached is not None:
         return cached
-    tmpdir = tempfile.TemporaryDirectory()
-    schema_path = Path(tmpdir.name) / "Potentials.capnp"
-    subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "CppCore/rgpot/rpc/schema_ledger.py"),
-            "apply",
-            "--root",
-            str(ROOT),
-            "--schema",
-            str(ROOT / "CppCore/rgpot/rpc/Potentials.capnp"),
-            "--out",
-            str(schema_path),
-        ],
-        check=True,
-    )
+    schema_path = ROOT / "CppCore/rgpot/rpc/Potentials.capnp"
     loaded = capnp.SchemaParser().load(str(schema_path))
-    _SCHEMA_CACHE["tmpdir"] = tmpdir
     _SCHEMA_CACHE["pot_capnp"] = loaded
     return loaded
 

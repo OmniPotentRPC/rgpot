@@ -35,9 +35,9 @@ in-process =[RgpotPot]= configuration.
 and =scripts/rgpot_nwchem_vs_socket.sh= compare =RgpotPot= against eOn's
 =SocketNWChem= on a fixed deck class.
 4. **rgpot ergonomics** (this repo): typed
-   NWChem/CPMD arms and the metatomic outputs surface in =Potentials.capnp= (from the potentials-schema v1.12.0 pin), the schema-sync tests (Meson suite =schema=), and the in-process CPMD timing harness (=scripts/cpmd_inprocess_vs_subprocess_timing.sh=).
-=subprojects/potentials-schema.wrap= now pins potentials-schema at commit
-=190fee6=.
+   NWChem/CPMD arms and the metatomic outputs surface in =Potentials.capnp=, the schema ledger tests (Meson suite =schema=), and the in-process CPMD timing harness (=scripts/cpmd_inprocess_vs_subprocess_timing.sh=).
+=Potentials.capnp= is rgconf's =potential.capnp= at the commit
+=CppCore/rgpot/rpc/schema.pin= names.
 
 * Operator Cheatsheet (rgpot side)
 

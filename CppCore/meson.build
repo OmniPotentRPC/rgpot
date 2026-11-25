@@ -419,16 +419,13 @@ rgpot_halfshell = static_library(
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
 # (xtb/tblite/metatomic CI) must not require pkg-config 'capnp-rpc'.
 _rpc_stack = rpc_enabled or get_option('with_rpc_client_only')
-# Inputs of the effective schema (the vendored copy plus the rgpot-local
-# series in rgpot/rpc/local/series); every target that applies it depends
-# on them.
-rgpot_schema_inputs = files('rgpot/rpc/local/series')
-foreach _line : _fs.read('rgpot/rpc/local/series').split('\n')
-    _line = _line.strip()
-    if _line != '' and not _line.startswith('#')
-        rgpot_schema_inputs += files('rgpot/rpc/local' / _line)
-    endif
-endforeach
+# The vendored schema: rgconf's potential.capnp and the common.capnp it
+# imports, compiled, installed and served as they are (see rgpot/rpc/schema.pin).
+rgpot_schema_files = files(
+    'rgpot/rpc/Potentials.capnp',
+    'rgpot/rpc/common.capnp',
+)
+rgpot_schema = rgpot_schema_files[0]
 _metatomic_build_rpath = ''
 if _rpc_stack
     subdir('rgpot/rpc')
@@ -549,6 +546,10 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/MOPACPot')  # 'mopacpot'
     rgpotentials += [mopacpot]
 
+    # Pure dlopen consumer of the split orcac shim (liborcac).
+    subdir('rgpot/ORCACPot')  # 'orcacpot'
+    rgpotentials += [orcacpot]
+
     subdir('rgpot/ExternalPot')  # lammps / gromacs / openmm constructors
     rgpotentials += [external_pot]
 
@@ -638,6 +639,22 @@ if not get_option('with_rpc_client_only')
             subdir('rgpot/SkalaPot')
             rgpotentials += [skala]
         endif
+    endif
+
+    # makePotential: one entry point from a PotentialConfig to a potential.
+    # It reads the generated schema, so it ships with the RPC stack, and
+    # builds the engine-library arms through EnginePot.
+    if _rpc_stack
+        potential_factory = static_library(
+            'potential_factory',
+            files('rgpot/EnginePot/EnginePot.cc', 'rgpot/PotentialFactory.cc'),
+            dependencies: _deps + [ptlrpc_hdr_dep, external_pot_dl],
+            cpp_args: _args,
+            include_directories: _incdirs,
+            pic: true,
+            install: false,
+        )
+        rgpotentials += [potential_factory]
     endif
 
     _linkto += rgpotentials
@@ -2477,8 +2494,7 @@ if get_option('with_tests')
                 dependencies: [_capnp_dep, _capnpc_dep],
                 link_with: _nlist_link,
             ),
-            args: [rgpot_effective_schema.full_path()],
-            depends: rgpot_effective_schema,
+            args: [rgpot_schema.full_path()],
             kwargs: _rt_kw['nlist_stream'],
         )
         _capnp_tool = find_program('capnp', required: false)
@@ -2490,9 +2506,8 @@ if get_option('with_tests')
                     meson.current_source_dir() / 'tests' / 'test_nlist_capnp.py',
                     meson.project_source_root(),
                     _capnp_tool.full_path(),
-                    rgpot_effective_schema.full_path(),
+                    rgpot_schema.full_path(),
                 ],
-                depends: rgpot_effective_schema,
                 kwargs: _rt_kw['nlist_capnp_roundtrip'],
             )
         endif
@@ -2932,6 +2947,42 @@ if get_option('with_tests')
                 env: engine_table_env,
                 depends: engine_table_depends,
                 workdir: meson.source_root(),
+            )
+            # makePotential over the classical engine (plugin arm) and a
+            # stand-in liborcac (orca arm).
+            orcac_fake_engine = shared_library(
+                'orcac_fake_engine',
+                sources: ['tests/orcac_fake_engine.c'],
+                install: false,
+            )
+            potential_factory_env = environment()
+            potential_factory_env.set(
+                'RGPOT_FACTORY_CLASSICAL_ENGINE',
+                classical_engine.full_path(),
+            )
+            potential_factory_env.set(
+                'RGPOT_FACTORY_ORCAC_FAKE',
+                orcac_fake_engine.full_path(),
+            )
+            test(
+                'PotentialFactoryTest',
+                executable(
+                    'potential_factory_test',
+                    sources: ['tests/PotentialFactoryTest.cc'],
+                    dependencies: test_deps + [
+                        capnp_rpc_dep,
+                        ptlrpc_dep,
+                        _dl_dep,
+                    ],
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto,
+                    link_language: 'cpp',
+                    build_rpath: _metatomic_build_rpath,
+                ),
+                env: potential_factory_env,
+                depends: [classical_engine, orcac_fake_engine],
+                kwargs: _rt_kw['PotentialFactoryTest'],
             )
         endif
         python3_prog = find_program('python3', required: false)
@@ -3442,8 +3493,8 @@ if not meson.is_subproject()
     # relative to rgpot/. A glob is not such a path, so '*.cc' drops
     # nothing and PotHelpers.cc, EMT/EMTPot.cc and the other
     # implementation files are installed. Pass every implementation path
-    # literally. rpc/Potentials.capnp stays out because rpc/meson.build
-    # installs the effective schema in its place.
+    # literally. The rpc/*.capnp schema files stay out because
+    # rpc/meson.build installs them next to the generated headers.
     _install_py = find_program('python3', required: false)
     if not _install_py.found()
         error('installing headers needs python3 to list implementation sources')
@@ -3457,7 +3508,7 @@ if not meson.is_subproject()
     ).stdout().strip().split(
         '\n',
     )
-    _install_exclude = ['rpc/Potentials.capnp']
+    _install_exclude = ['rpc/Potentials.capnp', 'rpc/common.capnp']
     foreach _rel : _install_impl
         if _rel != ''
             _install_exclude += [_rel]
