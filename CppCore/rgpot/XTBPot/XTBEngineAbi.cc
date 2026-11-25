@@ -15,6 +15,13 @@
 #include <memory>
 #include <vector>
 
+#ifndef RGPOT_BUILD_REVISION
+#define RGPOT_BUILD_REVISION ""
+#endif
+
+static_assert(RGPOT_XTB_EVAL_SCC_RESCUED == rgpot::eval_flags::SccRescued);
+static_assert(RGPOT_XTB_EVAL_SCC_RETRIED == rgpot::eval_flags::SccRetried);
+
 struct RgpotXtbPot {
   std::unique_ptr<rgpot::XTBPot> pot;
 };
@@ -99,6 +106,25 @@ int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot) {
     return 0;
   return pot->pot->reusedWavefunction() ? 1 : 0;
 }
+
+unsigned long long rgpot_xtb_last_eval_flags(const RgpotXtbPot *pot) {
+  if (!pot || !pot->pot)
+    return 0;
+  return pot->pot->lastEvalFlags();
+}
+
+void rgpot_xtb_set_scc_rescue(RgpotXtbPot *pot, int enabled) {
+  if (pot && pot->pot)
+    pot->pot->setSccRescue(enabled != 0);
+}
+
+int rgpot_xtb_scc_rescue(const RgpotXtbPot *pot) {
+  if (!pot || !pot->pot)
+    return 0;
+  return pot->pot->sccRescue() ? 1 : 0;
+}
+
+const char *rgpot_xtb_source_revision(void) { return RGPOT_BUILD_REVISION; }
 
 int rgpot_xtb_force(RgpotXtbPot *pot, long nAtoms, const double *positions,
                     const int *atomicNrs, double *forces, double *energy,

@@ -769,7 +769,8 @@ doi:10.26434/chemrxiv.8326202.v1. GFN-FF is Spicher and Grimme, Angewandte Chemi
   default =GFN2xTB=), =accuracy= (default 1.0),
   =electronic_temperature= (default 300.0), =max_iterations= (default 250),
   =charge= (default 0.0), =uhf= (unpaired electrons, default 0),
-  =warm_move= (default 1.0), =warm_min_gap= (default 1.0).
+  =warm_move= (default 1.0), =warm_min_gap= (default 1.0),
+  =scc_rescue= (default true).
 - Units ::
   =electronic_temperature= in K; =charge= in elementary charges; =warm_move= in
   Angstrom; =warm_min_gap= in eV; the other fields have no unit.
@@ -779,6 +780,11 @@ doi:10.26434/chemrxiv.8326202.v1. GFN-FF is Spicher and Grimme, Angewandte Chemi
   A value xtb rejects fails the force with =std::runtime_error=.
   Zero or a negative =warm_move= disables wavefunction reuse.
   Zero or a negative =warm_min_gap= reuses the wavefunction at any gap.
+  =scc_rescue= true retries an SCC that does not converge with a smeared
+  occupation at 1000, 3000 and 5000 K and cools back to
+  =electronic_temperature=; the call then reports =eval_flags::SccRescued=.
+  False makes such a call throw =rgpot::SccNotConverged=, and the first
+  attempt gets all =max_iterations= instead of 48.
 
 *** =rgpot::XTBDlopenConfig=
 
@@ -985,6 +991,50 @@ void setMaxIterations(int iterations);
   False when that force fell back to xtb's own guess.
 - Errors :: none.
 
+*** =rgpot::XTBPot::setSccRescue=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setSccRescue(bool enabled);
+#+end_src
+
+- Inputs :: =enabled=, the new =XTBConfig::scc_rescue=.
+- Units :: none.
+- Outputs :: none; later forces use the setting, and =fusedSettings= follows
+  it.
+- Errors :: none.
+
+*** =rgpot::XTBPot::sccRescue=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool sccRescue() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the current =XTBConfig::scc_rescue=.
+- Errors :: none.
+
+*** =rgpot::XTBPot::lastEvalFlags=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::uint64_t lastEvalFlags() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the =rgpot::eval_flags= bits (=rgpot/EvalFlags.hpp=) of the last
+  successful force: =SccRescued= when the smeared-occupation rescue produced
+  it, =SccRetried= when a reused guess failed and xtb's own guess converged.
+  0 for a plain SCC, before the first force and after a failed force or
+  =reset=.
+  A call that an attached result cache answers runs no force and leaves the
+  bits alone; the engine table reports such a call as
+  =RGPOT_ENGINE_EVAL_CACHED=.
+- Errors :: none.
+
 *** =rgpot::XTBDlopen=
 
 #+attr_rgpot: signature
@@ -1003,7 +1053,8 @@ explicit XTBDlopen(const XTBConfig &xtb = XTBConfig{});
 - Errors :: =std::runtime_error= when a non-empty =engine_path= has no directory
   separator, when no candidate library opens, when the library lacks any
   =rgpot_xtb_*= symbol, when
-  =rgpot_xtb_abi_version= is not =RGPOT_XTB_ABI_VERSION=, and with the engine's
+  =rgpot_xtb_abi_version= is not =RGPOT_XTB_ABI_VERSION=, when =scc_rescue= is
+  false and the engine lacks =rgpot_xtb_set_scc_rescue=, and with the engine's
   message when =rgpot_xtb_create= fails.
 
 A library that opens but lacks a symbol ends the search; the next candidate is
@@ -1126,6 +1177,71 @@ void setWarmMinGap(double ev);
 - Units :: none.
 - Outputs :: =XTBPot::reusedWavefunction= of the engine's potential.
 - Errors :: =std::runtime_error= when the engine is not available.
+
+*** =rgpot::XTBDlopen::setSccRescue=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setSccRescue(bool enabled);
+#+end_src
+
+- Inputs :: =enabled=, as =XTBPot::setSccRescue=.
+- Units :: none.
+- Outputs :: none; the engine's potential uses the setting from the next force.
+- Errors :: =std::runtime_error= when the engine lacks
+  =rgpot_xtb_set_scc_rescue=.
+
+*** =rgpot::XTBDlopen::sccRescue=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool sccRescue() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =XTBPot::sccRescue= of the engine's potential; true for an engine
+  without =rgpot_xtb_scc_rescue=, which always rescues.
+- Errors :: none.
+
+*** =rgpot::XTBDlopen::lastEvalFlags=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::uint64_t lastEvalFlags() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =XTBPot::lastEvalFlags= of the engine's potential; 0 for an engine
+  without =rgpot_xtb_last_eval_flags=.
+- Errors :: none.
+
+*** =rgpot::XTBDlopen::reportsEvalFlags=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool reportsEvalFlags() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when the engine exports =rgpot_xtb_last_eval_flags=, so that a
+  0 from =lastEvalFlags= means a plain SCC.
+- Errors :: none.
+
+*** =rgpot::XTBDlopen::engineRevision=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::string engineRevision() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =rgpot_xtb_source_revision= of the engine, or the empty string
+  when the engine does not export it.
+- Errors :: none.
 
 ** Metatomic
 

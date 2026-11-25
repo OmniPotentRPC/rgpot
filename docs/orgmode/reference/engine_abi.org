@@ -1431,6 +1431,64 @@ int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
 - Outputs :: 1 when =XTBPot::reusedWavefunction= is true, else 0; 0 for NULL.
 - Errors :: none.
 
+The four entries below are optional: an engine built before them lacks them,
+and =XTBDlopen= probes them with =dlsym=, so =RGPOT_XTB_ABI_VERSION= stays 1.
+
+*** =rgpot_xtb_last_eval_flags=
+
+#+attr_rgpot: signature
+#+begin_src c
+unsigned long long rgpot_xtb_last_eval_flags(const RgpotXtbPot *pot);
+#+end_src
+
+- Inputs :: =pot=, a handle or NULL.
+- Units :: none.
+- Outputs :: the =XTBPot::lastEvalFlags= bits of the last successful force:
+  =RGPOT_XTB_EVAL_SCC_RESCUED= (=0x1=) and =RGPOT_XTB_EVAL_SCC_RETRIED= (=0x2=),
+  the values of the matching =RGPOT_ENGINE_EVAL_*= bits.
+  0 for a plain SCC, before the first force, after a failed force or
+  =rgpot_xtb_reset=, and for NULL.
+- Errors :: none.
+
+*** =rgpot_xtb_set_scc_rescue=
+
+#+attr_rgpot: signature
+#+begin_src c
+void rgpot_xtb_set_scc_rescue(RgpotXtbPot *pot, int enabled);
+#+end_src
+
+- Inputs :: =pot=, a handle or NULL; =enabled=, nonzero for the
+  smeared-occupation rescue (the default) and 0 to switch it off.
+- Units :: none.
+- Outputs :: none; with the rescue off, =rgpot_xtb_force= returns
+  =RGPOT_XTB_RC_SCC_NOT_CONVERGED= for an SCC that does not converge.
+- Errors :: none; NULL is ignored.
+
+*** =rgpot_xtb_scc_rescue=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_xtb_scc_rescue(const RgpotXtbPot *pot);
+#+end_src
+
+- Inputs :: =pot=, a handle or NULL.
+- Units :: none.
+- Outputs :: 1 when the rescue is on, 0 when it is off or for NULL.
+- Errors :: none.
+
+*** =rgpot_xtb_source_revision=
+
+#+attr_rgpot: signature
+#+begin_src c
+const char *rgpot_xtb_source_revision(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the source revision the engine was built from, or the empty
+  string; static storage.
+- Errors :: none.
+
 ** Metatomic table
 
 =CppCore/rgpot/MetatomicPot/metatomic_c_abi.h= declares the table that

@@ -94,6 +94,40 @@ RGPOT_XTB_API int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
 
 RGPOT_XTB_API int rgpot_xtb_available(void);
 
+/* ------------------------------------------------------------------ */
+/* Optional symbols. An engine built before they were added lacks     */
+/* them; a frontend probes them with dlsym and keeps working without. */
+/* ------------------------------------------------------------------ */
+
+/** Bits of rgpot_xtb_last_eval_flags; the values of
+ * RGPOT_ENGINE_EVAL_SCC_RESCUED and RGPOT_ENGINE_EVAL_SCC_RETRIED. */
+#define RGPOT_XTB_EVAL_SCC_RESCUED 0x1u
+#define RGPOT_XTB_EVAL_SCC_RETRIED 0x2u
+
+/**
+ * Flags of the last successful force: RGPOT_XTB_EVAL_SCC_RESCUED when the
+ * SCC converged only after the smeared-occupation rescue,
+ * RGPOT_XTB_EVAL_SCC_RETRIED when a reused guess failed and xtb's own
+ * guess converged. 0 for a plain SCC, before the first force, after
+ * rgpot_xtb_reset and for a NULL pot.
+ */
+RGPOT_XTB_API unsigned long long
+rgpot_xtb_last_eval_flags(const RgpotXtbPot *pot);
+
+/**
+ * Nonzero (the default) retries an SCC that does not converge with a
+ * smeared occupation and cools back to the configured temperature. Zero
+ * makes rgpot_xtb_force return RGPOT_XTB_RC_SCC_NOT_CONVERGED instead.
+ */
+RGPOT_XTB_API void rgpot_xtb_set_scc_rescue(RgpotXtbPot *pot, int enabled);
+
+/** 1 when the SCC rescue is on, 0 when it is off or pot is NULL. */
+RGPOT_XTB_API int rgpot_xtb_scc_rescue(const RgpotXtbPot *pot);
+
+/** Source revision the engine was built from (a git short hash), or "".
+ * The pointer refers to static storage. */
+RGPOT_XTB_API const char *rgpot_xtb_source_revision(void);
+
 #ifdef __cplusplus
 }
 #endif

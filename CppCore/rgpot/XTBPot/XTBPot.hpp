@@ -2,12 +2,14 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 
+#include <cstdint>
 #include <limits>
 #include <string>
 #include <vector>
 
 #include <xtb.h>
 
+#include "rgpot/EvalFlags.hpp"
 #include "rgpot/FusedSettings.hpp"
 #include "rgpot/Potential.hpp"
 #include "rgpot/XTBPot/XTBConfig.hpp"
@@ -63,6 +65,17 @@ public:
   /// True when the last successful force reused the previous wavefunction.
   [[nodiscard]] bool reusedWavefunction() const noexcept;
 
+  /// Turn the smeared-occupation rescue of a nonconverged SCC on or off.
+  /// Applied by the next force.
+  void setSccRescue(bool enabled);
+
+  [[nodiscard]] bool sccRescue() const noexcept;
+
+  /// @c eval_flags bits of the last successful force. Zero before the
+  /// first one and after @c reset(). A call that an attached result cache
+  /// answers runs no force and leaves the bits alone.
+  [[nodiscard]] std::uint64_t lastEvalFlags() const noexcept;
+
   /// Replace the numerical accuracy level. Applied by the next force.
   void setAccuracy(double accuracy);
 
@@ -78,7 +91,8 @@ public:
   /**
    * Settings that change the answer at a fixed geometry: charge, spin,
    * accuracy, electronic temperature, SCC iteration budget, and the method
-   * and libxtb API version as the engine build. @c PotentialHandle installs
+   * and libxtb API version as the engine build. A disabled SCC rescue is
+   * appended to the engine build. @c PotentialHandle installs
    * them as the key of its fused cache. After a setter above, call
    * @c PotentialHandle::sync_fused_settings so a failure stored at the
    * current positions is evaluated again.
@@ -87,7 +101,7 @@ public:
 
   /**
    * @throws SccNotConverged when the SCC does not converge, the rescue
-   *         included.
+   *         included when it is enabled.
    * @throws std::runtime_error for every other failure.
    */
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
@@ -108,6 +122,7 @@ private:
   mutable bool m_initialized = false;
   mutable bool m_has_wavefunction = false;
   mutable bool m_last_reused = false;
+  mutable std::uint64_t m_last_flags = 0;
   mutable double m_warm_move = 1.0;
   mutable double m_warm_min_gap = 1.0;
   //! HOMO-LUMO gap of the stored wavefunction, eV.

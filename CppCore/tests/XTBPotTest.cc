@@ -15,6 +15,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -484,10 +485,15 @@ TEST_CASE("XTBDlopen reuses the GFN2 wavefunction inside the move guard",
 }
 
 // A dissociated ammonia tetramer. One nitrogen has no hydrogen inside
-// 1.3 Å. GFN2 at 300 K does not converge the SCC; the gap is 0.29 eV.
-// The rescue smears the occupation and returns the cooled 300 K energy.
-TEST_CASE("XTBPot cools a nonconverged SCC back to the configured temperature",
-          "[xtb][linked][scc]") {
+// 1.3 Å. GFN2 at 300 K does not converge the SCC; the gap is 0.29 eV,
+// and 500 iterations are not enough either.
+struct AmmoniaTetramer {
+  AtomMatrix positions{16, 3};
+  std::vector<int> atmtypes;
+  std::array<std::array<double, 3>, 3> box{};
+};
+
+static AmmoniaTetramer ammonia_tetramer() {
   const int z[16] = {7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1};
   const double xyz[16][3] = {
       {-1.66532428, 0.54889027, -2.03940010},
@@ -507,25 +513,130 @@ TEST_CASE("XTBPot cools a nonconverged SCC back to the configured temperature",
       {-1.69113306, -6.08127583, -0.32892162},
       {-2.20633610, -6.61433582, 0.61469530},
   };
+  AmmoniaTetramer out;
+  out.atmtypes.assign(z, z + 16);
+  for (int i = 0; i < 16; ++i)
+    for (int j = 0; j < 3; ++j)
+      out.positions(i, j) = xyz[i][j];
+  out.box[0][0] = out.box[1][1] = out.box[2][2] = 60.0;
+  return out;
+}
+
+static rgpot::XTBConfig ammonia_cfg() {
   rgpot::XTBConfig cfg;
   cfg.method = rgpot::GFNMethod::GFN2xTB;
   cfg.accuracy = 0.01;
   cfg.electronic_temperature = 300.0;
   cfg.max_iterations = 500;
-  rgpot::XTBPot pot(cfg);
-  AtomMatrix positions(16, 3);
-  std::vector<int> atmtypes(z, z + 16);
-  for (int i = 0; i < 16; ++i)
-    for (int j = 0; j < 3; ++j)
-      positions(i, j) = xyz[i][j];
-  std::array<std::array<double, 3>, 3> box{};
-  box[0][0] = box[1][1] = box[2][2] = 60.0;
+  return cfg;
+}
 
-  auto [energy, forces, variance] = pot(positions, atmtypes, box);
+// Cooled 300 K result, not the 1000 K single point (−448.36 eV).
+static constexpr double kAmmoniaRescued = -447.8814;
+
+// The rescue smears the occupation and returns the cooled 300 K energy.
+TEST_CASE("XTBPot cools a nonconverged SCC back to the configured temperature",
+          "[xtb][linked][scc]") {
+  const auto system = ammonia_tetramer();
+  rgpot::XTBPot pot(ammonia_cfg());
+  auto [energy, forces, variance] =
+      pot(system.positions, system.atmtypes, system.box);
   (void)variance;
-  // Cooled 300 K result, not the 1000 K single point (−448.36 eV).
-  REQUIRE_THAT(energy, WithinAbs(-447.8814, 1.0e-3));
+  REQUIRE_THAT(energy, WithinAbs(kAmmoniaRescued, 1.0e-3));
   require_finite_forces(forces, 16);
+}
+
+// Each evaluation says whether the rescue produced it, and with the
+// rescue off the same geometry is a typed SCC failure.
+template <typename Factory> static void check_scc_rescue_flag(Factory make) {
+  const auto system = ammonia_tetramer();
+  AtomMatrix water(3, 3);
+  std::vector<int> water_z;
+  std::array<std::array<double, 3>, 3> water_box{};
+  fill_water(water, water_z, water_box);
+
+  auto pot = make(ammonia_cfg());
+  REQUIRE(pot->sccRescue());
+  REQUIRE(pot->lastEvalFlags() == 0);
+  auto [energy, forces, variance] =
+      (*pot)(system.positions, system.atmtypes, system.box);
+  (void)variance;
+  REQUIRE_THAT(energy, WithinAbs(kAmmoniaRescued, 1.0e-3));
+  require_finite_forces(forces, 16);
+  REQUIRE(pot->lastEvalFlags() == rgpot::eval_flags::SccRescued);
+
+  auto [e_water, f_water, v_water] = (*pot)(water, water_z, water_box);
+  (void)f_water;
+  (void)v_water;
+  REQUIRE(std::isfinite(e_water));
+  REQUIRE(pot->lastEvalFlags() == 0);
+
+  pot->setSccRescue(false);
+  REQUIRE_FALSE(pot->sccRescue());
+  REQUIRE_THROWS_AS((*pot)(system.positions, system.atmtypes, system.box),
+                    rgpot::SccNotConverged);
+  // A converging geometry is unaffected by the switch.
+  auto [e_again, f_again, v_again] = (*pot)(water, water_z, water_box);
+  (void)f_again;
+  (void)v_again;
+  REQUIRE_THAT(e_again, WithinAbs(e_water, 1.0e-8));
+  REQUIRE(pot->lastEvalFlags() == 0);
+
+  pot->setSccRescue(true);
+  auto [e_back, f_back, v_back] =
+      (*pot)(system.positions, system.atmtypes, system.box);
+  (void)f_back;
+  (void)v_back;
+  REQUIRE_THAT(e_back, WithinAbs(kAmmoniaRescued, 1.0e-3));
+  REQUIRE(pot->lastEvalFlags() == rgpot::eval_flags::SccRescued);
+  pot->reset();
+  REQUIRE(pot->lastEvalFlags() == 0);
+
+  rgpot::XTBConfig off = ammonia_cfg();
+  off.scc_rescue = false;
+  auto strict = make(off);
+  REQUIRE_FALSE(strict->sccRescue());
+  REQUIRE(strict->fusedSettings().engineBuild.ends_with("-scc-rescue-off"));
+  REQUIRE_FALSE(pot->fusedSettings().engineBuild.ends_with("-scc-rescue-off"));
+  try {
+    (void)(*strict)(system.positions, system.atmtypes, system.box);
+    FAIL("a nonconverged SCC with the rescue off must throw");
+  } catch (const rgpot::SccNotConverged &ex) {
+    UNSCOPED_INFO(ex.what());
+    REQUIRE(std::string(ex.what()).find("SCC") != std::string::npos);
+  }
+  REQUIRE(strict->lastEvalFlags() == 0);
+}
+
+TEST_CASE("XTBPot flags a rescued SCC and fails it with the rescue off",
+          "[xtb][linked][scc]") {
+  check_scc_rescue_flag([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBPot>(cfg);
+  });
+  rgpot::XTBConfig off = ammonia_cfg();
+  off.scc_rescue = false;
+  rgpot::XTBPot strict(off);
+  const auto system = ammonia_tetramer();
+  try {
+    (void)strict(system.positions, system.atmtypes, system.box);
+    FAIL("a nonconverged SCC with the rescue off must throw");
+  } catch (const rgpot::SccNotConverged &ex) {
+    REQUIRE(std::string(ex.what()).find("SCC rescue disabled; 500 iterations "
+                                        "at 300 K") != std::string::npos);
+  }
+}
+
+TEST_CASE("XTBDlopen flags a rescued SCC and fails it with the rescue off",
+          "[xtb][dlopen][scc]") {
+  check_scc_rescue_flag([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
+  });
+  rgpot::XTBDlopen pot(dlopen_cfg(rgpot::XTBConfig{}));
+  REQUIRE(pot.reportsEvalFlags());
+  const std::string revision = pot.engineRevision();
+  UNSCOPED_INFO("engine revision " << revision);
+  for (char c : revision)
+    REQUIRE(std::isalnum(static_cast<unsigned char>(c)));
 }
 
 // ---------------------------------------------------------------------------
