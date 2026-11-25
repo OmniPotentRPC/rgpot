@@ -216,6 +216,9 @@ def test_suite_covers_every_advertised_potential_type() -> None:
     if rgpot.has_ipi:
         # IPIPot needs a live driver and has its own test below.
         covered_types.add("IPIPot")
+    if hasattr(rgpot, "ORCAPot"):
+        # ORCAPot needs liborcac; test_orca.py runs it over a fake.
+        covered_types.add("ORCAPot")
     if hasattr(rgpot, "MullerBrownPot"):
         # A non-periodic surface: the cell-relaxation cases do not apply.
         mb = RgpotCalculator("mullerbrown")
