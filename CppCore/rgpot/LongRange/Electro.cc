@@ -183,10 +183,6 @@ int sum_chunks(std::size_t nitems, std::size_t block) {
 // the same lines on any team, so the transform does not follow the team.
 int mesh_slabs(int npoints) { return axis_workers(npoints, 16); }
 
-// z slabs of the charge spread. Each slab deposits its own atoms into a
-// private padded slab, and the planes fold the slabs in slab order.
-int spread_slabs(int nz) { return std::clamp(nz / 4, 1, 8); }
-
 struct Scratch {
   Neumaier energy;
   std::vector<double> f;
@@ -1191,7 +1187,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   if (group_leader()) {
     if (grid.size() != ntot) {
       grid.assign(ntot, std::complex<double>(0.0, 0.0));
-    } else {
+    } else if (cfg.stress) {
       std::fill(grid.begin(), grid.end(), std::complex<double>(0.0, 0.0));
     }
   }
@@ -1240,22 +1236,17 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
     g_charge_f.assign(ntot, 0.0f);
   }
   group_arrive();
-  // Fixed z slabs, each a padded private slab rather than a full private
-  // mesh. Each slab deposits the atoms whose stencil starts in it, and
-  // every plane folds the slabs in slab order, so the charge grid has the
-  // same bits on any team.
-  static std::vector<float> slabs_f;
-  static std::vector<double> slabs_d;
+  // The spread gives each thread a slab of z planes of the charge grid and
+  // every thread walks the atoms in the same order, depositing only into
+  // its own planes. A grid point then sums its atoms in bin order whatever
+  // the slab count, so the grid has the same bits on any team without a
+  // private grid, a fold or a second phase.
   static std::vector<int> zbase_s;
   static std::vector<int> bin_off;
   static std::vector<int> bin_atoms;
+  static std::vector<int> bin_cursor;
   const int pad = order - 1;
-  const int nslab = spread_slabs(nz);
-  const int slab_h = (nz + nslab - 1) / nslab + pad;
   const int plane = nx * ny;
-  const std::size_t slab_stride = static_cast<std::size_t>(slab_h) * static_cast<std::size_t>(plane);
-  auto z_lo = [nz, nslab](int s) { return s * nz / nslab; };
-  auto z_hi = [nz, nslab](int s) { return (s + 1) * nz / nslab; };
   static std::vector<double> seen_pos;
   static double seen_box[9];
   static int seen_grid[4];
@@ -1281,13 +1272,6 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
     team_tables_hit = tables_hit;
     if (zbase_s.size() != n) {
       zbase_s.assign(n, 0);
-    }
-    if (mesh_float_now) {
-      if (slabs_f.size() != static_cast<std::size_t>(nslab) * slab_stride) {
-        slabs_f.assign(static_cast<std::size_t>(nslab) * slab_stride, 0.0f);
-      }
-    } else if (slabs_d.size() != static_cast<std::size_t>(nslab) * slab_stride) {
-      slabs_d.assign(static_cast<std::size_t>(nslab) * slab_stride, 0.0);
     }
   }
   group_arrive();
@@ -1364,79 +1348,95 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
       seen_grid[2] = nz;
       seen_grid[3] = order;
     }
-    // Stable bins by z start, so a slab walks its atoms in a fixed order.
-    bin_off.assign(static_cast<std::size_t>(nz) + 1, 0);
-    bin_atoms.assign(n, 0);
-    for (std::size_t i = 0; i < n; ++i) {
-      bin_off[static_cast<std::size_t>(zbase[i]) + 1] += 1;
-    }
-    for (int z = 0; z < nz; ++z) {
-      bin_off[static_cast<std::size_t>(z) + 1] += bin_off[static_cast<std::size_t>(z)];
-    }
-    std::vector<int> cursor(bin_off.begin(), bin_off.end() - 1);
-    for (std::size_t i = 0; i < n; ++i) {
-      bin_atoms[static_cast<std::size_t>(cursor[static_cast<std::size_t>(zbase[i])]++)] = static_cast<int>(i);
+    // Stable bins by z start. The bins only follow the stencil starts, so a
+    // call on the positions of the last one keeps them.
+    if (!tables_hit || bin_atoms.size() != n || bin_off.size() != static_cast<std::size_t>(nz) + 1) {
+      bin_off.assign(static_cast<std::size_t>(nz) + 1, 0);
+      bin_atoms.assign(n, 0);
+      for (std::size_t i = 0; i < n; ++i) {
+        bin_off[static_cast<std::size_t>(zbase[i]) + 1] += 1;
+      }
+      for (int z = 0; z < nz; ++z) {
+        bin_off[static_cast<std::size_t>(z) + 1] += bin_off[static_cast<std::size_t>(z)];
+      }
+      bin_cursor.assign(bin_off.begin(), bin_off.end() - 1);
+      for (std::size_t i = 0; i < n; ++i) {
+        bin_atoms[static_cast<std::size_t>(bin_cursor[static_cast<std::size_t>(zbase[i])]++)] =
+            static_cast<int>(i);
+      }
     }
   }
   group_arrive();
-  auto spread_into = [&](auto *slab_base, auto *dest, std::size_t dest_step) {
-    using T = std::remove_pointer_t<decltype(slab_base)>;
+  // `dest` plane gz holds the grid at z = gz, with `dest_step` between the
+  // points of a plane. A plane is cleared and filled by the one slab that
+  // owns it. Bins are walked in order, atoms of a bin in index order, and
+  // a stencil plane is zbase - pad + iz, wrapped into [0, nz).
+  auto spread_into = [&](auto *dest, std::size_t dest_step) {
+    using T = std::remove_pointer_t<decltype(dest)>;
+    const int nslab = std::max(1, std::min(thread_count(), nz / 4));
     team_chunks(nslab, [&](int s) {
-      const int z0 = z_lo(s);
-      const int z1 = z_hi(s);
-      T *mine = slab_base + static_cast<std::size_t>(s) * slab_stride;
-      const int height = (z1 - z0) + pad;
-      std::fill(mine, mine + static_cast<std::size_t>(height) * static_cast<std::size_t>(plane), T(0));
-      for (int a = bin_off[static_cast<std::size_t>(z0)]; a < bin_off[static_cast<std::size_t>(z1)]; ++a) {
-        const std::size_t i = static_cast<std::size_t>(bin_atoms[static_cast<std::size_t>(a)]);
-        const double qi = q[i];
-        const int *gx = gtab.data() + (i * 3 + 0) * span;
-        const int *gy = gtab.data() + (i * 3 + 1) * span;
-        const double *wx = wtab.data() + (i * 3 + 0) * span;
-        const double *wy = wtab.data() + (i * 3 + 1) * span;
-        const double *wz = wtab.data() + (i * 3 + 2) * span;
-        // Raw plane zbase - pad + iz sits at local row zbase - z0 + iz.
-        const int row0 = zbase[i] - z0;
-        for (int iz = 0; iz < order; ++iz) {
-          T *layer = mine + static_cast<std::size_t>(row0 + iz) * static_cast<std::size_t>(plane);
-          for (int iy = 0; iy < order; ++iy) {
-            const double wyz = wy[iy] * wz[iz];
-            T *line = layer + static_cast<std::size_t>(gy[iy]) * static_cast<std::size_t>(nx);
-            for (int ix = 0; ix < order; ++ix) {
-              line[gx[ix]] += static_cast<T>(qi * wx[ix] * wyz);
-            }
+      const int z0 = s * nz / nslab;
+      const int z1 = (s + 1) * nz / nslab;
+      for (int gz = z0; gz < z1; ++gz) {
+        T *dst = dest + static_cast<std::size_t>(gz) * static_cast<std::size_t>(plane) * dest_step;
+        if (dest_step == 1) {
+          std::fill(dst, dst + plane, T(0));
+        } else {
+          for (int k = 0; k < plane; ++k) {
+            dst[static_cast<std::size_t>(k) * dest_step] = T(0);
           }
         }
       }
-    });
-    team_chunks(nz, [&](int gz) {
-      T *dst = dest + static_cast<std::size_t>(gz) * static_cast<std::size_t>(plane) * dest_step;
-      for (int k = 0; k < plane; ++k) {
-        dst[static_cast<std::size_t>(k) * dest_step] = T(0);
-      }
-      for (int s = 0; s < nslab; ++s) {
-        const int origin = z_lo(s) - pad;
-        const T *mine = slab_base + static_cast<std::size_t>(s) * slab_stride;
-        for (int raw = origin; raw < z_hi(s); ++raw) {
-          int wrapped = raw % nz;
-          if (wrapped < 0) {
-            wrapped += nz;
-          }
-          if (wrapped != gz) {
-            continue;
-          }
-          const T *src = mine + static_cast<std::size_t>(raw - origin) * static_cast<std::size_t>(plane);
-          for (int k = 0; k < plane; ++k) {
-            dst[static_cast<std::size_t>(k) * dest_step] += src[k];
+      auto wrapped = [nz](int w) {
+        while (w < 0) {
+          w += nz;
+        }
+        return w;
+      };
+      for (int zb = 0; zb < nz; ++zb) {
+        const int first = bin_off[static_cast<std::size_t>(zb)];
+        const int last = bin_off[static_cast<std::size_t>(zb) + 1];
+        if (first == last) {
+          continue;
+        }
+        bool touches = false;
+        for (int iz = 0; iz < order && !touches; ++iz) {
+          const int w = wrapped(zb - pad + iz);
+          touches = w >= z0 && w < z1;
+        }
+        if (!touches) {
+          continue;
+        }
+        for (int a = first; a < last; ++a) {
+          const std::size_t i = static_cast<std::size_t>(bin_atoms[static_cast<std::size_t>(a)]);
+          const double qi = q[i];
+          const int *gx = gtab.data() + (i * 3 + 0) * span;
+          const int *gy = gtab.data() + (i * 3 + 1) * span;
+          const double *wx = wtab.data() + (i * 3 + 0) * span;
+          const double *wy = wtab.data() + (i * 3 + 1) * span;
+          const double *wz = wtab.data() + (i * 3 + 2) * span;
+          for (int iz = 0; iz < order; ++iz) {
+            const int gz = wrapped(zb - pad + iz);
+            if (gz < z0 || gz >= z1) {
+              continue;
+            }
+            T *layer = dest + static_cast<std::size_t>(gz) * static_cast<std::size_t>(plane) * dest_step;
+            for (int iy = 0; iy < order; ++iy) {
+              const double wyz = wy[iy] * wz[iz];
+              T *line = layer + static_cast<std::size_t>(gy[iy]) * static_cast<std::size_t>(nx) * dest_step;
+              for (int ix = 0; ix < order; ++ix) {
+                line[static_cast<std::size_t>(gx[ix]) * dest_step] += static_cast<T>(qi * wx[ix] * wyz);
+              }
+            }
           }
         }
       }
     });
   };
   if (mesh_float_now) {
-    spread_into(slabs_f.data(), g_charge_f.data(), 1);
+    spread_into(g_charge_f.data(), 1);
   } else {
-    spread_into(slabs_d.data(), reinterpret_cast<double *>(grid.data()), 2);
+    spread_into(reinterpret_cast<double *>(grid.data()), 2);
   }
   const auto t_reduce0 = std::chrono::steady_clock::now();
   const auto t_fft0 = std::chrono::steady_clock::now();
