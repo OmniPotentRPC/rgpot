@@ -974,14 +974,15 @@ TEST_CASE("classical engine dense Hessian matches a finite difference of forces"
     INFO("largest deviation " << largest << " at scale " << scale);
     REQUIRE(largest < 1.0e-6 * scale);
 
-    // The matrix is the column-by-column analytic product.
+    // The dense hook and the product hook are separate code paths, so each
+    // unit-direction product must agree with its column to rounding.
     for (std::size_t j = 0; j < dim; ++j) {
       std::vector<double> direction(dim, 0.0), column(dim, 0.0);
       direction[j] = 1.0;
       REQUIRE(e.hvp(pot, n, kCluster.data(), kZ.data(), direction.data(),
                     column.data(), kBox.data()) == RGPOT_ENGINE_OK);
       for (std::size_t i = 0; i < dim; ++i) {
-        REQUIRE(dense[i * dim + j] == column[i]);
+        REQUIRE(std::abs(dense[i * dim + j] - column[i]) <= 1.0e-12 * scale);
       }
     }
 

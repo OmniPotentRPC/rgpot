@@ -259,8 +259,10 @@ RGPOT_ENGINE_API int rgpot_engine_taylor_jet(
  * hessian_out must not overlap positions, atomicNrs or box. Returns
  * RGPOT_ENGINE_OK (0) on success, RGPOT_ENGINE_ERR_INVALID (1) for invalid
  * or overlapping arguments, and RGPOT_ENGINE_ERR_UNSUPPORTED (3) when the
- * backend does not advertise analytic curvature. The matrix is the analytic
- * Hessian-vector product on each unit direction. It is not a finite difference.
+ * backend advertises neither analytic_hessian nor analytic_hvp. A backend
+ * with analytic_hessian writes the matrix from its dense Hessian; one with
+ * only analytic_hvp gets the analytic product on each unit direction as the
+ * columns. It is never a finite difference.
  */
 RGPOT_ENGINE_API int rgpot_engine_hessian(
     RgpotEnginePot *pot, long nAtoms, const double *positions,

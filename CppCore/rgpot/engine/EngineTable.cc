@@ -407,9 +407,10 @@ int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
   if (!pot || !pot->backend) {
     return RGPOT_ENGINE_ERR_INVALID;
   }
-  if (!pot->caps.analyticHessian) {
+  if (!pot->caps.analyticHessian && !pot->caps.analyticHvp) {
     return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
-                "potential has no analytic Hessian");
+                "potential has no analytic Hessian and no analytic "
+                "Hessian-vector product");
   }
   if (!positions || !atomicNrs || !hessian_out || !box || nAtoms <= 0 ||
       nAtoms > std::numeric_limits<long>::max() / 3) {
@@ -449,14 +450,19 @@ int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
     const rgpot::ForceInput in{static_cast<size_t>(nAtoms), positions, atomicNrs,
                                box};
     std::vector<double> matrix(n2, 0.0);
-    std::vector<double> direction(dim, 0.0);
-    std::vector<double> column(dim, 0.0);
-    for (size_t column_index = 0; column_index < dim; ++column_index) {
-      std::fill(direction.begin(), direction.end(), 0.0);
-      direction[column_index] = 1.0;
-      pot->backend->pot->hessianVectorImpl(in, direction.data(), column.data());
-      for (size_t row = 0; row < dim; ++row) {
-        matrix[row * dim + column_index] = column[row];
+    if (pot->caps.analyticHessian) {
+      pot->backend->pot->hessianImpl(in, matrix.data());
+    } else {
+      std::vector<double> direction(dim, 0.0);
+      std::vector<double> column(dim, 0.0);
+      for (size_t column_index = 0; column_index < dim; ++column_index) {
+        std::fill(direction.begin(), direction.end(), 0.0);
+        direction[column_index] = 1.0;
+        pot->backend->pot->hessianVectorImpl(in, direction.data(),
+                                             column.data());
+        for (size_t row = 0; row < dim; ++row) {
+          matrix[row * dim + column_index] = column[row];
+        }
       }
     }
     std::memcpy(hessian_out, matrix.data(), bytes);
