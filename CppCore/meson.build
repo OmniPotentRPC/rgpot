@@ -2347,19 +2347,30 @@ if get_option('with_tests')
         )
         mopacc_gate_env = environment()
         mopacc_gate_libs = []
+        # name, c abi, lib abi, new layout, result size, params size,
+        # set_params status; see tests/mopacc_abi_gate_engine.c.
         foreach gate : [
-            ['ABI1', '1', '0', '0'],
-            ['ABI2_WRONG_SIZE', '2', '0', '1'],
-            ['ABI2_NO_SIZE', '2', '1', '0'],
-            ['ABI2_OK', '2', '1', '1'],
+            ['ABI1', '1', '1', '0', '0', '0', '0'],
+            ['ABI2_NO_LIB_ABI', '2', '0', '1', '1', '1', '0'],
+            ['ABI2_LIB_ABI1', '2', '1', '1', '1', '1', '0'],
+            ['ABI2_OLD_LAYOUT', '2', '2', '0', '1', '1', '0'],
+            ['ABI2_NO_RESULT_SIZE', '2', '2', '1', '0', '1', '0'],
+            ['ABI2_BAD_RESULT_SIZE', '2', '2', '1', '2', '1', '0'],
+            ['ABI2_NO_PARAMS_SIZE', '2', '2', '1', '1', '0', '0'],
+            ['ABI2_BAD_PARAMS_SIZE', '2', '2', '1', '1', '2', '0'],
+            ['ABI2_SET_PARAMS_FAILS', '2', '2', '1', '1', '1', '7'],
+            ['ABI2_OK', '2', '2', '1', '1', '1', '0'],
         ]
             gate_lib = shared_library(
                 'mopacc_gate_' + gate[0].to_lower(),
                 sources: ['tests/mopacc_abi_gate_engine.c'],
                 c_args: [
                     '-DGATE_C_ABI=' + gate[1],
-                    '-DGATE_NEW_LAYOUT=' + gate[2],
-                    '-DGATE_SIZE_QUERIES=' + gate[3],
+                    '-DGATE_LIB_ABI=' + gate[2],
+                    '-DGATE_NEW_LAYOUT=' + gate[3],
+                    '-DGATE_RESULT_SIZE=' + gate[4],
+                    '-DGATE_PARAMS_SIZE=' + gate[5],
+                    '-DGATE_SET_PARAMS_STATUS=' + gate[6],
                 ],
                 install: false,
             )

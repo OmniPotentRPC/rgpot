@@ -85,9 +85,22 @@ TEST_CASE("MOPACPot refuses an ABI 1 libmopacc before any call",
                   "incompatible mopacc C ABI: expected >= 2, found 1");
 }
 
-TEST_CASE("MOPACPot refuses ABI 2 with a different MopacCResult size",
+TEST_CASE("MOPACPot refuses ABI 2 without mopacc_abi_version",
           "[mopac][abi][gate]") {
-  require_refused("RGPOT_MOPACC_GATE_ABI2_WRONG_SIZE",
+  require_refused("RGPOT_MOPACC_GATE_ABI2_NO_LIB_ABI",
+                  "incompatible mopacc library ABI: expected >= 2, found no "
+                  "mopacc_abi_version");
+}
+
+TEST_CASE("MOPACPot refuses ABI 2 whose library ABI is 1",
+          "[mopac][abi][gate]") {
+  require_refused("RGPOT_MOPACC_GATE_ABI2_LIB_ABI1",
+                  "incompatible mopacc library ABI: expected >= 2, found 1");
+}
+
+TEST_CASE("MOPACPot refuses ABI 2 reporting the ABI 1 MopacCResult size",
+          "[mopac][abi][gate]") {
+  require_refused("RGPOT_MOPACC_GATE_ABI2_OLD_LAYOUT",
                   "incompatible mopacc MopacCResult size: expected " +
                       std::to_string(sizeof(MopacCResult)) + ", found " +
                       std::to_string(sizeof(Abi1MopacCResult)));
@@ -95,10 +108,53 @@ TEST_CASE("MOPACPot refuses ABI 2 with a different MopacCResult size",
 
 TEST_CASE("MOPACPot refuses ABI 2 without mopacc_result_size",
           "[mopac][abi][gate]") {
-  require_refused("RGPOT_MOPACC_GATE_ABI2_NO_SIZE",
+  require_refused("RGPOT_MOPACC_GATE_ABI2_NO_RESULT_SIZE",
                   "incompatible mopacc MopacCResult size: expected " +
                       std::to_string(sizeof(MopacCResult)) +
                       ", found no mopacc_result_size");
+}
+
+TEST_CASE("MOPACPot refuses ABI 2 with a different MopacCResult size",
+          "[mopac][abi][gate]") {
+  require_refused("RGPOT_MOPACC_GATE_ABI2_BAD_RESULT_SIZE",
+                  "incompatible mopacc MopacCResult size: expected " +
+                      std::to_string(sizeof(MopacCResult)) + ", found " +
+                      std::to_string(sizeof(MopacCResult) + 8));
+}
+
+TEST_CASE("MOPACPot refuses ABI 2 without mopacc_params_size",
+          "[mopac][abi][gate]") {
+  require_refused("RGPOT_MOPACC_GATE_ABI2_NO_PARAMS_SIZE",
+                  "incompatible mopacc MopacCParams size: expected " +
+                      std::to_string(sizeof(MopacCParams)) +
+                      ", found no mopacc_params_size");
+}
+
+TEST_CASE("MOPACPot refuses ABI 2 with a different MopacCParams size",
+          "[mopac][abi][gate]") {
+  require_refused("RGPOT_MOPACC_GATE_ABI2_BAD_PARAMS_SIZE",
+                  "incompatible mopacc MopacCParams size: expected " +
+                      std::to_string(sizeof(MopacCParams)) + ", found " +
+                      std::to_string(sizeof(MopacCParams) + 8));
+}
+
+TEST_CASE("MOPACPot stays unloaded when mopacc_set_params fails",
+          "[mopac][abi][gate]") {
+  const std::string path =
+      engine_from_env("RGPOT_MOPACC_GATE_ABI2_SET_PARAMS_FAILS");
+  GateLib gate(path);
+  rgpot::MOPACPot::Config cfg;
+  cfg.engine_path = path;
+  rgpot::MOPACPot pot(cfg);
+  REQUIRE_FALSE(pot.available());
+  // mopacc_available and mopacc_set_params, nothing that computes.
+  const int calls_after_load = gate.calls();
+  REQUIRE(calls_after_load == 2);
+  const std::string what = force_error(pot);
+  INFO(what);
+  REQUIRE(what.find("mopacc_set_params rejected MopacCParams: status 7") !=
+          std::string::npos);
+  REQUIRE(gate.calls() == calls_after_load);
 }
 
 TEST_CASE("MOPACPot loads and computes against a matching ABI 2 libmopacc",
