@@ -3,10 +3,11 @@
 
 #include "rgpot/EAMTable/EAMTablePot.hpp"
 
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <mutex>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -47,6 +48,16 @@ rgpot::EAMTableFormat parse_format(int32_t format, const std::string &path) {
       "EAM table: cannot tell table format from file suffix");
 }
 
+std::vector<std::vector<double>> rows(const double *data, std::size_t count,
+                                      std::size_t len) {
+  std::vector<std::vector<double>> out;
+  out.reserve(count);
+  for (std::size_t k = 0; k < count; ++k) {
+    out.emplace_back(data + k * len, data + (k + 1) * len);
+  }
+  return out;
+}
+
 int32_t to_status(const std::exception &e) {
   set_error(e.what());
   return kInvalidParameter;
@@ -81,19 +92,36 @@ void *eam_bridge_cpp_new_from_file(const char *path, int32_t format,
   }
 }
 
-void *eam_bridge_cpp_new_from_text(const char *text, int32_t format,
-                                   bool periodic, double skin) {
+void *eam_bridge_cpp_new_from_table(std::size_t n_elements, const int32_t *z,
+                                    int32_t nrho, double drho, int32_t nr,
+                                    double dr, double cutoff, double rhomax,
+                                    const double *frho, const double *rhor,
+                                    const double *z2r, bool periodic,
+                                    double skin) {
   try {
-    if (text == nullptr) {
-      throw std::invalid_argument("EAM table: text is NULL");
+    if (z == nullptr || frho == nullptr || rhor == nullptr || z2r == nullptr) {
+      throw std::invalid_argument("EAM table: null table array");
     }
-    if (format == kAuto) {
+    if (n_elements == 0 || nrho < 1 || nr < 1) {
+      throw std::invalid_argument("EAM table: empty table");
+    }
+    if (!(rhomax > 0.0) || !std::isfinite(rhomax)) {
       throw std::invalid_argument(
-          "EAM table: AUTO format is invalid for in-memory text");
+          "EAM table: rhomax must be finite and positive");
     }
-    std::istringstream in(text);
-    const auto table =
-        rgpot::read_eam_table(in, parse_format(format, "table.eam.fs"));
+    const auto lrho = static_cast<std::size_t>(nrho);
+    const auto lr = static_cast<std::size_t>(nr);
+    rgpot::EAMTable table;
+    table.nrho = nrho;
+    table.drho = drho;
+    table.nr = nr;
+    table.dr = dr;
+    table.cutoff = cutoff;
+    table.rhomax = rhomax;
+    table.z.assign(z, z + n_elements);
+    table.frho = rows(frho, n_elements, lrho);
+    table.rhor = rows(rhor, n_elements * n_elements, lr);
+    table.z2r = rows(z2r, n_elements * (n_elements + 1) / 2, lr);
     return new rgpot::EAMTablePot(table, periodic, false, skin);
   } catch (const std::exception &e) {
     set_error(e.what());

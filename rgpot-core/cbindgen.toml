@@ -37,7 +37,7 @@ exclude = [
   "NM_PER_ANGSTROM",
   "AMU_A2_PS2_PER_EV",
   "eam_bridge_cpp_new_from_file",
-  "eam_bridge_cpp_new_from_text",
+  "eam_bridge_cpp_new_from_table",
   "eam_bridge_cpp_free",
   "eam_bridge_cpp_force",
   "eam_bridge_cpp_last_error",

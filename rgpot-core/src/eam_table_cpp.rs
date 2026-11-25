@@ -7,7 +7,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::path::Path;
 
-use crate::eam_table::{EamTable, EamTableError, EamTableFormat, RGPOT_EAM_TABLE_FINNIS_SINCLAIR};
+use crate::eam_table::{EamTable, EamTableError, EamTableFormat};
 use crate::error::RgpotError;
 use crate::potential::PotentialImpl;
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
@@ -21,9 +21,19 @@ unsafe extern "C" {
         periodic: bool,
         skin: f64,
     ) -> *mut c_void;
-    fn eam_bridge_cpp_new_from_text(
-        text: *const c_char,
-        format: c_int,
+    #[allow(clippy::too_many_arguments)]
+    fn eam_bridge_cpp_new_from_table(
+        n_elements: usize,
+        z: *const i32,
+        nrho: i32,
+        drho: f64,
+        nr: i32,
+        dr: f64,
+        cutoff: f64,
+        rhomax: f64,
+        frho: *const f64,
+        rhor: *const f64,
+        z2r: *const f64,
         periodic: bool,
         skin: f64,
     ) -> *mut c_void;
@@ -56,8 +66,41 @@ fn cpp_error(fallback: &str) -> RgpotError {
     RgpotError::EamTable(EamTableError::Invalid(message))
 }
 
-fn table_to_text(table: &EamTable) -> String {
-    table.to_finnis_sinclair_text()
+/// # Safety
+///
+/// The returned handle, when not NULL, is owned by the caller and freed with
+/// `eam_bridge_cpp_free`.
+unsafe fn new_from_table(
+    table: &EamTable,
+    periodic: bool,
+    skin: f64,
+) -> Result<*mut c_void, RgpotError> {
+    let flat = table.flat();
+    let count = |n: usize| {
+        i32::try_from(n).map_err(|_| {
+            RgpotError::EamTable(EamTableError::Invalid(format!(
+                "{n} grid points do not fit the C++ table"
+            )))
+        })
+    };
+    let (nrho, nr) = (count(flat.nrho)?, count(flat.nr)?);
+    Ok(unsafe {
+        eam_bridge_cpp_new_from_table(
+            flat.z.len(),
+            flat.z.as_ptr(),
+            nrho,
+            flat.drho,
+            nr,
+            flat.dr,
+            flat.cutoff,
+            flat.rhomax,
+            flat.frho.as_ptr(),
+            flat.rhor.as_ptr(),
+            flat.z2r.as_ptr(),
+            periodic,
+            skin,
+        )
+    })
 }
 
 struct CppEamTable {
@@ -92,17 +135,7 @@ pub(crate) fn cpp_potential_from_data(
     periodic: bool,
     skin: f64,
 ) -> Result<PotentialImpl, RgpotError> {
-    let text = CString::new(table_to_text(&table)).map_err(|_| {
-        RgpotError::EamTable(EamTableError::Invalid("table text has interior NUL".into()))
-    })?;
-    let handle = unsafe {
-        eam_bridge_cpp_new_from_text(
-            text.as_ptr(),
-            RGPOT_EAM_TABLE_FINNIS_SINCLAIR,
-            periodic,
-            skin,
-        )
-    };
+    let handle = unsafe { new_from_table(&table, periodic, skin)? };
     if handle.is_null() {
         return Err(cpp_error("EAM table: C++ constructor from data failed"));
     }
@@ -406,10 +439,7 @@ mod tests {
     #[test]
     fn cpp_force_rejects_a_null_cell() {
         let _lock = CPP_TEST_LOCK.lock().unwrap();
-        let text = CString::new(minimal_table().to_finnis_sinclair_text()).unwrap();
-        let handle = unsafe {
-            eam_bridge_cpp_new_from_text(text.as_ptr(), RGPOT_EAM_TABLE_FINNIS_SINCLAIR, false, 1.0)
-        };
+        let handle = unsafe { new_from_table(&minimal_table(), false, 1.0).unwrap() };
         assert!(!handle.is_null());
         let positions = [0.0_f64, 0.0, 0.0];
         let numbers = [29_i32];
@@ -484,6 +514,87 @@ mod tests {
         for (got, want) in forces.iter().zip(cpp_forces) {
             assert_eq!(got.to_bits(), want.to_bits());
         }
+    }
+
+    /// Eight points, so the C++ reader keeps seven and `rhomax` sits one
+    /// spacing past the last of them. The cluster puts one pair in the last
+    /// interval of the file grid and a density above the seventh point.
+    const FUNCFL_EIGHT: &str = concat!(
+        "funcfl with eight points\n",
+        "29 63.546 3.615 fcc\n",
+        "8 0.5 8 0.5 3.5\n",
+        "0.0 -1.0 -1.5 -1.8 -2.0 -2.1 -2.15 -2.18\n",
+        "3.0 2.4 1.8 1.3 0.9 0.5 0.2 0.0\n",
+        "2.0 1.6 1.2 0.9 0.6 0.35 0.15 0.0\n",
+    );
+
+    const FUNCFL_FIVE: &str = concat!(
+        "funcfl with five points\n",
+        "29 63.546 3.615 fcc\n",
+        "5 0.5 5 0.5 2.0\n",
+        "0.0 -1.0 -1.6 -1.9 -2.0\n",
+        "2.0 1.2 0.6 0.2 0.0\n",
+        "1.5 1.0 0.5 0.2 0.0\n",
+    );
+
+    fn funcfl_paths_agree(text: &str, name: &str, positions: &[f64]) {
+        let path = std::env::temp_dir().join(format!("rgpot-{}-{name}.eam", std::process::id()));
+        std::fs::write(&path, text).unwrap();
+        let z = vec![29; positions.len() / 3];
+        let cell = [0.0; 9];
+        let (file_energy, file_forces) = cpp_eval_file(
+            &path,
+            EamTableFormat::Funcfl,
+            false,
+            1.0,
+            positions,
+            &z,
+            &cell,
+        )
+        .unwrap();
+        let from_file = eam_table_from_file(&path, EamTableFormat::Funcfl, false, 1.0).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let table = EamTable::from_text(text, EamTableFormat::Funcfl).unwrap();
+        let from_data = eam_table_from_data(table.clone(), false, 1.0).unwrap();
+        let native = crate::eam_table::EamTablePotential::new(table, false)
+            .unwrap()
+            .into_potential();
+        assert!(file_energy.abs() > 1.0e-3, "{file_energy}");
+        for (label, handle) in [
+            ("file factory", &from_file),
+            ("data factory", &from_data),
+            ("rust", &native),
+        ] {
+            let (energy, forces) = evaluate(handle, positions, &z, cell);
+            assert!(
+                (energy - file_energy).abs() < 1.0e-9,
+                "{name} {label}: {energy} against {file_energy}"
+            );
+            for (got, want) in forces.iter().zip(&file_forces) {
+                assert!(
+                    (got - want).abs() < 1.0e-9,
+                    "{name} {label}: {got} against {want}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn funcfl_from_data_matches_the_cpp_file_reader() {
+        let _lock = CPP_TEST_LOCK.lock().unwrap();
+        funcfl_paths_agree(
+            FUNCFL_EIGHT,
+            "eight",
+            &[
+                0.0, 0.0, 0.0, 0.6, 0.0, 0.0, 0.0, 0.6, 0.0, 0.0, 0.0, 0.6, -0.6, 0.0, 0.0, 0.0,
+                -0.6, 0.0, 3.3, 0.0, 0.0,
+            ],
+        );
+        funcfl_paths_agree(
+            FUNCFL_FIVE,
+            "five",
+            &[0.0, 0.0, 0.0, 0.4, 0.0, 0.0, 0.0, 0.4, 0.0, 1.8, 0.0, 0.0],
+        );
     }
 
     #[test]

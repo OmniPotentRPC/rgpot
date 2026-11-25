@@ -240,34 +240,23 @@ impl EamTable {
         &self.z
     }
 
-    /// Lossless text encoding in Finnis-Sinclair layout.
-    pub(crate) fn to_finnis_sinclair_text(&self) -> String {
-        let mut out = String::new();
-        out.push_str("c\nc\nc\n");
-        out.push_str(&format!("{} elements\n", self.z.len()));
-        out.push_str(&format!(
-            "{} {} {} {} {}\n",
-            self.nrho, self.drho, self.nr, self.dr, self.cutoff
-        ));
-        let row = |data: &[f64]| -> String {
-            let mut line = String::new();
-            for value in data {
-                line.push_str(&format!("{value} "));
-            }
-            line.push('\n');
-            line
-        };
-        for b in 0..self.z.len() {
-            out.push_str(&format!("{} 1.0 1.0 fcc\n", self.z[b]));
-            out.push_str(&row(&self.frho[b]));
-            for a in 0..self.z.len() {
-                out.push_str(&row(&self.rhor[b * self.z.len() + a]));
-            }
+    /// The grid and the arrays laid end to end, in the order of the C++
+    /// `EAMTable`. A funcfl table keeps its `rhomax`, which sits one
+    /// spacing past its last point and so has no place in a setfl or
+    /// Finnis-Sinclair file.
+    pub(crate) fn flat(&self) -> FlatEamTable {
+        FlatEamTable {
+            nrho: self.nrho,
+            drho: self.drho,
+            nr: self.nr,
+            dr: self.dr,
+            cutoff: self.cutoff,
+            rhomax: self.rhomax,
+            z: self.z.clone(),
+            frho: self.frho.concat(),
+            rhor: self.rhor.concat(),
+            z2r: self.z2r.concat(),
         }
-        for pair in &self.z2r {
-            out.push_str(&row(pair));
-        }
-        out
     }
 
     fn parse(text: &str, layout: Layout) -> Result<Self, EamTableError> {
@@ -280,8 +269,8 @@ impl EamTable {
             let zr = input.block(grid.nr)?;
             let rho = input.block(grid.nr)?;
             let rhomax = (grid.nrho - 1) as f64 * grid.drho;
-            let nrho = grid.nrho;
-            let nr = grid.nr;
+            let nrho = (rhomax / grid.drho).round() as usize;
+            let nr = ((grid.nr - 1) as f64 * grid.dr / grid.dr).round() as usize;
             let mut z2 = resample(&zr, grid.dr, nr, grid.dr);
             for v in &mut z2 {
                 *v = HARTREE_BOHR * *v * *v;
@@ -350,6 +339,20 @@ impl EamTable {
             z2r,
         })
     }
+}
+
+/// [`EamTable::flat`].
+pub(crate) struct FlatEamTable {
+    pub(crate) nrho: usize,
+    pub(crate) drho: f64,
+    pub(crate) nr: usize,
+    pub(crate) dr: f64,
+    pub(crate) cutoff: f64,
+    pub(crate) rhomax: f64,
+    pub(crate) z: Vec<i32>,
+    pub(crate) frho: Vec<f64>,
+    pub(crate) rhor: Vec<f64>,
+    pub(crate) z2r: Vec<f64>,
 }
 
 struct Grid {
@@ -1082,7 +1085,7 @@ mod tests {
     }
 
     #[test]
-    fn minimal_funcfl_round_trip_preserves_both_grid_endpoints() {
+    fn minimal_funcfl_drops_the_last_point_and_keeps_rhomax() {
         let text = concat!(
             "minimal funcfl\n",
             "29 63.546 3.615 fcc\n",
@@ -1092,24 +1095,19 @@ mod tests {
             "0.0 0.0 0.0 0.0 0.0\n",
         );
         let table = EamTable::from_text(text, EamTableFormat::Funcfl).unwrap();
-        assert_eq!(table.nrho, 5);
-        assert_eq!(table.nr, 5);
+        assert_eq!(table.nrho, 4);
+        assert_eq!(table.nr, 4);
         assert_eq!(table.rhomax, 2.0);
-        assert_eq!(table.frho[0].len(), 5);
-        assert_eq!(table.rhor[0].len(), 5);
-        assert_eq!(table.z2r[0].len(), 5);
+        assert_eq!(table.frho[0], [0.0, 1.0, 2.0, 3.0]);
+        assert_eq!(table.rhor[0].len(), 4);
+        assert_eq!(table.z2r[0].len(), 4);
 
-        let round_trip = EamTable::from_text(
-            &table.to_finnis_sinclair_text(),
-            EamTableFormat::FinnisSinclair,
-        )
-        .unwrap();
-        assert_eq!(round_trip.nrho, 5);
-        assert_eq!(round_trip.nr, 5);
-        assert_eq!(round_trip.rhomax, 2.0);
-        assert_eq!(round_trip.frho[0], table.frho[0]);
-        assert_eq!(round_trip.rhor[0], table.rhor[0]);
-        assert_eq!(round_trip.z2r[0], table.z2r[0]);
+        let flat = table.flat();
+        assert_eq!((flat.nrho, flat.nr), (4, 4));
+        assert_eq!(flat.rhomax, 2.0);
+        assert_eq!(flat.frho, table.frho[0]);
+        assert_eq!(flat.rhor, table.rhor[0]);
+        assert_eq!(flat.z2r, table.z2r[0]);
     }
 
     fn handle_drop_count(ptr: *mut c_void) -> usize {
