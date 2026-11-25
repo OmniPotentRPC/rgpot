@@ -31,10 +31,9 @@
 
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::eindir::rgpot_potential_t;
-use crate::fused::lock;
 use crate::hvp::{checked_step, invalid, read_geometry, run_callback, HvpError};
 use crate::status::rgpot_status_t;
 use crate::tensor::{checked_f64_data, checked_i32_data};
@@ -45,7 +44,9 @@ use crate::types::rgpot_force_input_t;
 /// The callback receives the `user_data` of the potential handle, the
 /// geometry and room for `(3 * n_atoms)^2` doubles. It writes the Hessian,
 /// row-major, to `hessian_out` and returns `RGPOT_SUCCESS`, or an error
-/// status code.
+/// status code. It must not call back into this handle's Hessian entry
+/// points, and must not replace or clear the callback: the call holds the
+/// registration, and replacement waits for it to finish.
 pub type HessianCallback = unsafe extern "C" fn(
     user_data: *mut c_void,
     input: *const rgpot_force_input_t,
@@ -135,12 +136,29 @@ pub struct rgpot_derivative_counts_t {
 /// Per-handle dense-Hessian state, kept in the handle's opaque cache.
 #[derive(Default)]
 pub(crate) struct HessianState {
-    analytic: Mutex<Option<HessianCallback>>,
-    ad: Mutex<Option<HessianCallback>>,
+    /// An evaluation holds a read guard for the whole callback call.
+    /// Replacing or clearing the callback takes the write guard, so it
+    /// returns only after every in-flight call of the old callback has
+    /// finished, and no call of it can start afterwards.
+    analytic: RwLock<Option<HessianCallback>>,
+    ad: RwLock<Option<HessianCallback>>,
     by_central: AtomicU64,
     by_analytic: AtomicU64,
     by_ad: AtomicU64,
     force_calls: AtomicU64,
+}
+
+fn read_callback(
+    lock: &RwLock<Option<HessianCallback>>,
+) -> RwLockReadGuard<'_, Option<HessianCallback>> {
+    lock.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn write_callback(
+    lock: &RwLock<Option<HessianCallback>>,
+) -> RwLockWriteGuard<'_, Option<HessianCallback>> {
+    lock.write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// The scheme a request runs: `EXACT` resolved against the registered
@@ -171,14 +189,26 @@ fn resolve(
 impl rgpot_potential_t {
     /// Register `callback` as the analytic Hessian of this handle, or clear
     /// it with `None`. It is called with the handle's `user_data`.
+    ///
+    /// Returns only after every call of the previous callback that was
+    /// already running has returned; no call of it starts after this
+    /// returns. The caller may therefore release the old callback and its
+    /// `user_data` as soon as this returns.
+    ///
+    /// This waits on in-flight evaluations, so it must not be called from a
+    /// Hessian callback, or from any thread that is inside one of this
+    /// handle's Hessian entry points. Doing so deadlocks.
     pub fn set_hessian_callback(&self, callback: Option<HessianCallback>) {
-        *lock(&self.hessian_state().analytic) = callback;
+        *write_callback(&self.hessian_state().analytic) = callback;
     }
 
     /// Register `callback` as the dual-number Hessian of this handle, or
     /// clear it with `None`.
+    ///
+    /// Waits for in-flight calls of the previous dual-number callback to
+    /// finish, as [`Self::set_hessian_callback`] does.
     pub fn set_ad_hessian_callback(&self, callback: Option<HessianCallback>) {
-        *lock(&self.hessian_state().ad) = callback;
+        *write_callback(&self.hessian_state().ad) = callback;
     }
 
     /// Which derivative schemes this handle has, from the callbacks
@@ -190,8 +220,8 @@ impl rgpot_potential_t {
             hvp_analytic: hvp.has_analytic(),
             hvp_ad: hvp.has_ad(),
             hvp_fd: true,
-            hessian_analytic: lock(&hessian.analytic).is_some(),
-            hessian_ad: lock(&hessian.ad).is_some(),
+            hessian_analytic: read_callback(&hessian.analytic).is_some(),
+            hessian_ad: read_callback(&hessian.ad).is_some(),
             hessian_fd: true,
             hvp_forward_force_calls: 1,
             hvp_central_force_calls: 2,
@@ -268,31 +298,37 @@ impl rgpot_potential_t {
         let dim = geometry.positions.len();
         let h = checked_step(step)?;
         let state = self.hessian_state();
-        let analytic = *lock(&state.analytic);
-        let ad = *lock(&state.ad);
-        let scheme = resolve(scheme, analytic.is_some(), ad.is_some())?;
+        let analytic_guard = read_callback(&state.analytic);
+        let ad_guard = read_callback(&state.ad);
+        let scheme = resolve(scheme, analytic_guard.is_some(), ad_guard.is_some())?;
         let call = |callback: HessianCallback, out: *mut f64| unsafe {
             callback(self.pot_user_data, input, out)
         };
         match scheme {
             rgpot_hessian_scheme_t::RGPOT_HESSIAN_ANALYTIC => {
-                let callback = analytic.expect("resolved against it");
+                drop(ad_guard);
+                let callback = analytic_guard.expect("resolved against it");
                 run_callback("Hessian callback", "Hessian callback", hessian_out, |out| {
                     call(callback, out)
                 })?;
+                drop(analytic_guard);
                 state.by_analytic.fetch_add(1, Ordering::Relaxed);
             }
             rgpot_hessian_scheme_t::RGPOT_HESSIAN_AD => {
-                let callback = ad.expect("resolved against it");
+                drop(analytic_guard);
+                let callback = ad_guard.expect("resolved against it");
                 run_callback(
                     "dual-number Hessian callback",
                     "dual-number Hessian callback",
                     hessian_out,
                     |out| call(callback, out),
                 )?;
+                drop(ad_guard);
                 state.by_ad.fetch_add(1, Ordering::Relaxed);
             }
             rgpot_hessian_scheme_t::RGPOT_HESSIAN_CENTRAL => {
+                drop(analytic_guard);
+                drop(ad_guard);
                 let scale = 1.0 / (2.0 * h);
                 let mut x = geometry.positions.clone();
                 for c in 0..dim {

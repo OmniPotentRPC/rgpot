@@ -6,8 +6,8 @@
 //! cluster whose Hessian is known in closed form.
 
 use std::os::raw::c_void;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use dlpk::sys::DLManagedTensorVersioned;
 
@@ -21,7 +21,7 @@ use rgpot_core::c_api::hvp::{
     rgpot_potential_set_hvp_callback,
 };
 use rgpot_core::c_api::potential::{rgpot_potential_free, rgpot_potential_new};
-use rgpot_core::c_api::types::rgpot_force_input_create;
+use rgpot_core::c_api::types::{rgpot_force_input_create, rgpot_force_input_free};
 use rgpot_core::hessian::{
     rgpot_derivative_caps_t, rgpot_derivative_counts_t, rgpot_hessian_scheme_t,
 };
@@ -1144,4 +1144,194 @@ fn a_zero_direction_counts_under_its_resolved_scheme() {
     assert_eq!(handle.counts().hvp_ad, 1);
     assert_eq!(Handle::calls(&handle.morse.ad_calls), 0);
     assert_eq!(handle.force_calls(), 0);
+}
+
+struct Gate {
+    entered: AtomicBool,
+    release: AtomicBool,
+    finished: AtomicBool,
+}
+
+unsafe extern "C" fn idle_force(
+    _user_data: *mut c_void,
+    _input: *const rgpot_force_input_t,
+    _out: *mut rgpot_force_out_t,
+) -> rgpot_status_t {
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+unsafe extern "C" fn gated_hessian(
+    user_data: *mut c_void,
+    _input: *const rgpot_force_input_t,
+    hessian_out: *mut f64,
+) -> rgpot_status_t {
+    let gate = unsafe { &*(user_data as *const Gate) };
+    gate.entered.store(true, Ordering::Release);
+    while !gate.release.load(Ordering::Acquire) {
+        std::thread::yield_now();
+    }
+    for value in unsafe { std::slice::from_raw_parts_mut(hessian_out, 9) } {
+        *value = 1.0;
+    }
+    gate.finished.store(true, Ordering::Release);
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+unsafe extern "C" fn second_hessian(
+    _user_data: *mut c_void,
+    _input: *const rgpot_force_input_t,
+    hessian_out: *mut f64,
+) -> rgpot_status_t {
+    for value in unsafe { std::slice::from_raw_parts_mut(hessian_out, 9) } {
+        *value = 2.0;
+    }
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+type DenseCallback =
+    unsafe extern "C" fn(*mut c_void, *const rgpot_force_input_t, *mut f64) -> rgpot_status_t;
+
+fn retire_while_in_flight(
+    replacement: Option<DenseCallback>,
+) -> (*mut rgpot_potential_t, [f64; 9], bool) {
+    let gate = Arc::new(Gate {
+        entered: AtomicBool::new(false),
+        release: AtomicBool::new(false),
+        finished: AtomicBool::new(false),
+    });
+    let pot = unsafe {
+        rgpot_potential_new(
+            idle_force as PotentialCallback,
+            Arc::as_ptr(&gate) as *mut c_void,
+            None,
+        )
+    };
+    assert!(!pot.is_null());
+    unsafe { rgpot_potential_set_hessian_callback(pot, Some(gated_hessian)) };
+    let pot_addr = pot as usize;
+    let worker = std::thread::spawn(move || {
+        let mut pos = [0.1, 0.2, -0.3];
+        let mut z = [1i32];
+        let mut cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        let mut input = unsafe {
+            rgpot_force_input_create(1, pos.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr())
+        };
+        let mut matrix = [0.0; 9];
+        let mut used = RGPOT_HESSIAN_CENTRAL;
+        let status = unsafe {
+            rgpot_potential_hessian(
+                pot_addr as *mut rgpot_potential_t,
+                &input,
+                0.0,
+                RGPOT_HESSIAN_ANALYTIC as i32,
+                matrix.as_mut_ptr(),
+                &mut used,
+            )
+        };
+        unsafe { rgpot_force_input_free(&mut input) };
+        (status, matrix)
+    });
+    while !gate.entered.load(Ordering::Acquire) {
+        std::thread::yield_now();
+    }
+
+    let retiring = Arc::new(AtomicBool::new(false));
+    let returned = Arc::new(AtomicBool::new(false));
+    let retirer = {
+        let gate = Arc::clone(&gate);
+        let retiring = Arc::clone(&retiring);
+        let returned = Arc::clone(&returned);
+        std::thread::spawn(move || {
+            retiring.store(true, Ordering::Release);
+            let status = unsafe {
+                rgpot_potential_set_hessian_callback(
+                    pot_addr as *mut rgpot_potential_t,
+                    replacement,
+                )
+            };
+            assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+            let old_call_finished = gate.finished.load(Ordering::Acquire);
+            returned.store(true, Ordering::Release);
+            old_call_finished
+        })
+    };
+    while !retiring.load(Ordering::Acquire) {
+        std::thread::yield_now();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    assert!(
+        !returned.load(Ordering::Acquire),
+        "retiring the callback returned while the old callback was still running"
+    );
+
+    gate.release.store(true, Ordering::Release);
+    let (status, first_matrix) = worker.join().expect("hessian thread");
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    let old_call_finished = retirer.join().expect("retiring thread");
+    (pot, first_matrix, old_call_finished)
+}
+
+#[test]
+fn replacing_the_callback_waits_for_the_call_in_flight() {
+    let (pot, first_matrix, old_call_finished) = retire_while_in_flight(Some(second_hessian));
+    assert!(
+        old_call_finished,
+        "replacement returned before the old call ended"
+    );
+    assert_eq!(first_matrix, [1.0; 9]);
+    let mut pos = [0.1, 0.2, -0.3];
+    let mut z = [1i32];
+    let mut cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+    let mut input =
+        unsafe { rgpot_force_input_create(1, pos.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr()) };
+    let mut matrix = [0.0; 9];
+    let mut used = RGPOT_HESSIAN_CENTRAL;
+    let status = unsafe {
+        rgpot_potential_hessian(
+            pot,
+            &input,
+            0.0,
+            RGPOT_HESSIAN_ANALYTIC as i32,
+            matrix.as_mut_ptr(),
+            &mut used,
+        )
+    };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_eq!(matrix, [2.0; 9]);
+    unsafe {
+        rgpot_force_input_free(&mut input);
+        rgpot_potential_free(pot);
+    }
+}
+
+#[test]
+fn clearing_the_callback_waits_for_the_call_in_flight() {
+    let (pot, first_matrix, old_call_finished) = retire_while_in_flight(None);
+    assert!(
+        old_call_finished,
+        "clearing returned before the old call ended"
+    );
+    assert_eq!(first_matrix, [1.0; 9]);
+    let mut pos = [0.1, 0.2, -0.3];
+    let mut z = [1i32];
+    let mut cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+    let mut input =
+        unsafe { rgpot_force_input_create(1, pos.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr()) };
+    let mut matrix = [0.0; 9];
+    let mut used = RGPOT_HESSIAN_CENTRAL;
+    let status = unsafe {
+        rgpot_potential_hessian(
+            pot,
+            &input,
+            0.0,
+            RGPOT_HESSIAN_ANALYTIC as i32,
+            matrix.as_mut_ptr(),
+            &mut used,
+        )
+    };
+    assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+    unsafe {
+        rgpot_force_input_free(&mut input);
+        rgpot_potential_free(pot);
+    }
 }
