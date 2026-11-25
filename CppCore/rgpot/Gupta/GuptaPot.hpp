@@ -18,6 +18,10 @@
  * cutoff and no minimum-image folding, delegating to the C kernel
  * rgpot_gupta when no stress or per-atom output is requested. A positive
  * cutoff truncates pairs at that distance with no energy shift.
+ *
+ * Coincident atoms retain the finite r_ij = 0 pair and embedding energy.
+ * Their pair force is defined as zero because its direction is undefined and
+ * cancels by symmetry.
  */
 
 // clang-format off
