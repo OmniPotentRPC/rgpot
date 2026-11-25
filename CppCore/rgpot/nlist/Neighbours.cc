@@ -90,6 +90,17 @@ bool orthorhombicCell(const double box[9]) {
          box[8] >= 0.0;
 }
 
+/// Cartesian bins cannot place a NaN or infinite coordinate, so a geometry
+/// holding one walks every pair instead.
+bool coordinatesFinite(const double *xyz, std::size_t n) {
+  for (std::size_t k = 0; k < 3 * n; ++k) {
+    if (!std::isfinite(xyz[k])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 struct FractionalPlan {
   int axes[3]{1, 1, 1};
   double origin[3]{0.0, 0.0, 0.0};
@@ -936,11 +947,8 @@ void Neighbours::updateOrthorhombic(const double *xyz, std::size_t n,
       ref_.assign(xyz, xyz + 3 * n);
       return;
     }
-    for (std::size_t k = 0; k < 3 * n; ++k) {
-      if (!std::isfinite(xyz[k])) {
-        search_ = std::numeric_limits<double>::infinity();
-        break;
-      }
+    if (!coordinatesFinite(xyz, n)) {
+      search_ = std::numeric_limits<double>::infinity();
     }
     // Every pair is a candidate, so the walks need neither bins nor a list,
     // and the coordinates never invalidate the update. allPairs() reads
@@ -1085,6 +1093,12 @@ RGPOT_SKEW_SECTION void Neighbours::update(const double *xyz, std::size_t n,
   }
   const bool fractional_path =
       next_periodic[0] || next_periodic[1] || next_periodic[2];
+  // A fully open skewed cell bins Cartesian coordinates, so it takes the
+  // orthorhombic fallback; with a periodic axis the fractional plan throws.
+  if (!fractional_path && n >= 2 && next_search > 0.0 &&
+      !coordinatesFinite(xyz, n)) {
+    next_search = std::numeric_limits<double>::infinity();
+  }
   FractionalPlan plan;
   plan.cache_previous = same_general;
   if (fractional_path && n >= 2 && next_search > 0.0 &&

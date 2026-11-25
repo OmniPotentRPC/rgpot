@@ -3723,3 +3723,50 @@ TEST_CASE("a non-finite coordinate disables cell pruning across modes",
     REQUIRE_THROWS_AS(lj(xyz, types, cell), std::domain_error);
   }
 }
+
+TEST_CASE("a non-finite coordinate in an open skewed cell walks every pair",
+          "[nlist][nan]") {
+  setThreads("1");
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  const double box[9] = {1000.0, 0.0, 0.0, 100.0, 1000.0, 0.0, 0.0, 0.0, 1000.0};
+
+  for (const double bad : {nan, -inf}) {
+    for (const auto mode : {rgpot::nlist::Mode::Auto,
+                            rgpot::nlist::Mode::Stored,
+                            rgpot::nlist::Mode::Stream}) {
+      INFO("bad " << bad << " mode " << static_cast<int>(mode));
+      rgpot::nlist::Spec spec;
+      spec.cutoff = 6.0;
+      spec.skin = mode == rgpot::nlist::Mode::Stream ? 0.0 : 1.0;
+      spec.periodic = {false, false, false};
+      spec.image = rgpot::nlist::Image::General;
+      spec.mode = mode;
+      rgpot::nlist::Neighbours cells;
+      const std::vector<double> clean = {0.0, 0.0, 0.0, 500.0, 500.0, 500.0};
+      cells.update(clean.data(), 2, box, spec);
+      REQUIRE_FALSE(cells.allPairs());
+
+      // Binned, the bad atom sits in cell zero, far from its partner, and
+      // the pair never reaches the caller.
+      const std::vector<double> far = {bad, 0.0, 0.0, 500.0, 500.0, 500.0};
+      cells.update(far.data(), 2, box, spec);
+      REQUIRE_FALSE(cells.reused());
+      REQUIRE(cells.allPairs());
+      std::size_t half_count = 0;
+      cells.forHalf(0, 2,
+                    [&](std::int32_t i, std::int32_t j, double, double,
+                        double, double r2) {
+                      REQUIRE(i == 0);
+                      REQUIRE(j == 1);
+                      REQUIRE_FALSE(std::isfinite(r2));
+                      ++half_count;
+                    });
+      REQUIRE(half_count == 1);
+
+      cells.update(clean.data(), 2, box, spec);
+      REQUIRE_FALSE(cells.reused());
+      REQUIRE_FALSE(cells.allPairs());
+    }
+  }
+}

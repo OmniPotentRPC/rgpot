@@ -186,7 +186,8 @@ struct Spec {
 /// periodic axes and spanned on open axes. A singular or ill-conditioned
 /// cell, or a non-finite fractional coordinate, is an error instead of
 /// falling back to Cartesian binning. Orthorhombic cells and fully open
-/// skewed cells use Cartesian binning.
+/// skewed cells use Cartesian binning. A non-finite coordinate makes them
+/// walk every pair, and is an error in a skewed cell with a periodic axis.
 class Neighbours {
   struct SpecKey {
     double cutoff = 0;
@@ -1542,6 +1543,12 @@ static_assert(std::is_nothrow_default_constructible_v<Neighbours>);
 
 inline void Neighbours::fold(double &dx, double &dy, double &dz) const {
   if (use_general_) {
+    // A fully open cell has no image to pick, so the non-finite separation
+    // of the all-pairs fallback reaches the caller as it is.
+    if (!periodic_[0] && !periodic_[1] && !periodic_[2] &&
+        !(std::isfinite(dx) && std::isfinite(dy) && std::isfinite(dz))) {
+      return;
+    }
     general_.fold(dx, dy, dz);
     return;
   }
