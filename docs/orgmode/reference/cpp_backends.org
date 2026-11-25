@@ -606,6 +606,115 @@ void reset();
   A test that needs ORCA calls this and skips when it is false.
 - Errors :: none.
 
+** ORCA through liborcac
+
+=ORCACPot= (=CppCore/rgpot/ORCACPot/=) is the frontend of the split orcac shim
+(=liborcac=), on the pattern of =MOPACPot=: it dlopens the library and keeps one
+orcac session, which owns one working directory and one set of stored
+orbitals. =liborcac= writes the ORCA input, runs ORCA and reads the =.engrad=;
+see the rgpot integration guide in the orcac repository. It is in every =librgpot= and needs
+neither ORCA nor =liborcac= to build. =rgpot::makePotential= builds it for the
+=orca= arm. =ORCAPot= is the separate in-process frontend.
+
+*** =rgpot::ORCACConfig=
+
+- Inputs :: =message=, an unpacked flat Cap'n Proto message of the rgconf
+  schema; =potential_config=, true when =message= is a =PotentialConfig= with
+  the =orca= arm (=liborcac= then lowers its =common= overlay) and false when it
+  is =ORCAParams=; =engine_path=, the library to open.
+- Units :: as =ORCAParams= (=maxcoreMb= in MB, =timeoutS= in seconds).
+- Outputs :: a plain struct read by =rgpot::ORCACPot=.
+- Errors :: none; =liborcac= checks the message when the session is created.
+
+*** =rgpot::ORCACPot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+explicit ORCACPot(ORCACConfig config);
+#+end_src
+
+- Inputs :: =config=, an =rgpot::ORCACConfig=.
+  A non-empty =engine_path= is the only library tried. Otherwise the search is
+  =ORCAC_LIBRARY= and =RGPOT_ORCAC_ENGINE= when set, then =liborcac.so.1=
+  (Linux), =liborcac.so=, =./liborcac.so=, the =.dylib= names and =orcac.dll=.
+- Units :: positions in Angstrom, energy in eV, forces in eV/Angstrom.
+  =liborcac= returns Hartree and Hartree/Bohr forces, converted with
+  =units::HARTREE_TO_EV= and =units::HARTREE_BOHR_TO_EV_ANGSTROM=.
+  ORCA has no periodic cell, and the box is not used.
+- Outputs :: a potential that runs one ORCA energy and gradient per force call
+  through =orcac_session_energy_forces=. =caps()= reports
+  =Reentrancy::PerInstance= and =periodic = false=; calls on one instance are
+  serialised. The destructor destroys the session.
+- Errors :: the constructor does not throw when =liborcac= is missing, lacks
+  the session symbols, reports another =orcac_c_abi_version= than 1, or refuses
+  the session; it records the reason in =loadError()= and the first force throws
+  =std::runtime_error= with it. A force throws =std::invalid_argument= for no
+  atoms and =std::runtime_error= with =orcac_session_last_error= when the
+  evaluation fails.
+
+*** =rgpot::ORCACPot::available=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool available() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when =liborcac= loaded and the session was created.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::loadError=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &loadError() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: why =available()= is false, naming every library tried; empty when
+  it is true.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::libraryPath=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &libraryPath() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the candidate =liborcac= was opened from; empty when none opened.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::runDirectory=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::string runDirectory() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the session's working directory, from
+  =orcac_session_run_directory=; empty without a session.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a hash of the library path, the message kind and the message
+  bytes.
+- Errors :: none.
+
 ** Skala
 
 skala-1.1 is the exchange-correlation keyword this class writes into NWChem, not
@@ -1934,7 +2043,9 @@ makePotential(const void *bytes, std::size_t size);
   =LammpsPot=; =d3=, =d4=, =xtb=, =tblite=, =skala=, =cp2k= and =expr= build
   =D3Pot=, =D4Pot=, =XTBPot=, =TBLitePot=, =SkalaPot=, =CP2KPot= and =ExprPot=
   when the build has them.
-  =metatomic=, =uma=, =orca=, =plugin=, and =xtb= in a build without
+  =orca= builds an =rgpot::ORCACPot= from the whole =PotentialConfig=, so
+  =liborcac= lowers =common= itself.
+  =metatomic=, =uma=, =plugin=, and =xtb= in a build without
   =-Dwith_xtb=, return an =rgpot::EnginePot= over an engine library whose
   configuration message is the arm's params struct (=BuiltinParams= naming =xtb=
   for =libxtb_engine=, the =opaquePayload= bytes for =plugin=):
@@ -1944,7 +2055,6 @@ makePotential(const void *bytes, std::size_t size);
   | =metatomic= | =libmetatomic_engine=   | =enginePath= alone when set; else =RGPOT_METATOMIC_ENGINE=, =METATOMIC_ENGINE= |
   | =uma=       | =libuma_engine=         | =RGPOT_UMA_ENGINE=                                                           |
   | =xtb=       | =libxtb_engine=         | =RGPOT_XTB_ENGINE=, =XTB_ENGINE=                                             |
-  | =orca=      | =liborcac=              | =ORCAC_LIBRARY=, =RGPOT_ORCAC_ENGINE=                                        |
   | =plugin=    | =lib<pluginName>_engine= | =libraryPath= alone when set; else =RGPOT_<PLUGINNAME>_ENGINE=              |
 
   After the variables each search tries =lib<stem>.so=, =./lib<stem>.so=, the
@@ -2011,7 +2121,7 @@ EnginePot(const std::vector<std::string> &candidates, const void *config,
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: the label given to the constructor (=orcac=, =plugin <name>=).
+- Outputs :: the label given to the constructor (=uma=, =plugin <name>=).
 - Errors :: none.
 
 *** =rgpot::EnginePot::paramsKey=
