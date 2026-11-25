@@ -699,8 +699,10 @@ foreach(_gate IN ITEMS
         ABI1:1:1:0:0:0:0
         NO_C_ABI:0:2:1:1:1:0
         C_ABI1:1:2:1:1:1:0
+        ABI3:3:3:1:1:1:0
         ABI2_NO_LIB_ABI:2:0:1:1:1:0
         ABI2_LIB_ABI1:2:1:1:1:1:0
+        ABI2_LIB_ABI3:2:3:1:1:1:0
         ABI2_OLD_LAYOUT:2:2:0:1:1:0
         ABI2_NO_RESULT_SIZE:2:2:1:0:1:0
         ABI2_BAD_RESULT_SIZE:2:2:1:2:1:0
