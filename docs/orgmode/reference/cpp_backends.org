@@ -541,10 +541,11 @@ explicit ORCAPot(const ORCAConfig &config);
   =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or
   read, or the directory cannot be made.
   A force call throws =std::invalid_argument= for a box with a periodic image
-  closer than the atom itself, a singular box, a cell too skewed to check or a
-  non-finite box entry (ORCA has no periodic boundary conditions), for an atomic
-  number outside 1 to 118, and for a charge and multiplicity that the electron
-  count cannot hold.
+  closer than the atom itself, a singular box, a cell too skewed to check
+  (including one whose bound on the lattice coefficients is not finite or out of
+  range), a non-finite box entry or, with a box, a non-finite position (ORCA has
+  no periodic boundary conditions), for an atomic number outside 1 to 118, and
+  for a charge and multiplicity that the electron count cannot hold.
   It throws =rgpot::ORCAError=, a =std::runtime_error=, in the following cases.
   A stale =.engrad= or =.gbw= cannot be removed, the input cannot be written,
   the executable changed since the instance was made or while it ran, ORCA

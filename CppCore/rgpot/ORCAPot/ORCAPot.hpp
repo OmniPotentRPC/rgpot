@@ -133,10 +133,12 @@ public:
   /// vectors, the atoms span at most half its length. The cube of at least
   /// 100 Angstrom that rgpot.ase pads a cluster into is such a cell. A box
   /// with a translated image closer than the atom itself, a singular box,
-  /// a cell too skewed to check and a non-finite entry throw
-  /// std::invalid_argument. The resolved executable runs, and a call throws
-  /// ORCAError once it has changed (see resolvedExecutablePath()). A run
-  /// that fails, including one that passes timeout_s, throws ORCAError.
+  /// a cell too skewed to check (including one whose image bound is not
+  /// finite or out of range), a non-finite box entry and, with a box, a
+  /// non-finite position throw std::invalid_argument. The resolved
+  /// executable runs, and a call throws ORCAError once it has changed (see
+  /// resolvedExecutablePath()). A run that fails, including one that
+  /// passes timeout_s, throws ORCAError.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
   /// One instance owns one working directory and one wavefunction, so
