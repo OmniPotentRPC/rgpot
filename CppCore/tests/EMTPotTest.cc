@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -34,34 +35,65 @@ using Catch::Matchers::WithinAbs;
 
 namespace {
 
-constexpr std::size_t kTrackedBlockCapacity = 65536;
+constexpr std::size_t kTrackedBlockSlots = std::size_t{1} << 17;
+constexpr std::size_t kTrackedBlockMask = kTrackedBlockSlots - 1;
+// Linear probing stays short only while the table is at most half full.
+constexpr std::size_t kTrackedBlockCapacity = kTrackedBlockSlots / 2;
 
-std::atomic<void *> g_liveBlockPointers[kTrackedBlockCapacity]{};
+std::mutex g_trackedBlocksMutex;
+void *g_trackedBlocks[kTrackedBlockSlots]{};
+std::size_t g_trackedBlockCount = 0;
 std::atomic<long> g_liveBlocks{0};
 
+std::size_t homeSlot(const void *block) {
+  std::uint64_t bits = reinterpret_cast<std::uintptr_t>(block);
+  bits ^= bits >> 33;
+  bits *= 0xff51afd7ed558ccdULL;
+  bits ^= bits >> 33;
+  return static_cast<std::size_t>(bits) & kTrackedBlockMask;
+}
+
 void trackAllocation(void *block) {
-  for (auto &slot : g_liveBlockPointers) {
-    void *empty = nullptr;
-    if (slot.compare_exchange_strong(empty, block, std::memory_order_relaxed)) {
-      g_liveBlocks.fetch_add(1, std::memory_order_relaxed);
-      return;
-    }
+  const std::lock_guard<std::mutex> lock(g_trackedBlocksMutex);
+  if (g_trackedBlockCount == kTrackedBlockCapacity) {
+    std::abort();
   }
-  std::abort();
+  std::size_t slot = homeSlot(block);
+  while (g_trackedBlocks[slot] != nullptr) {
+    slot = (slot + 1) & kTrackedBlockMask;
+  }
+  g_trackedBlocks[slot] = block;
+  ++g_trackedBlockCount;
+  g_liveBlocks.fetch_add(1, std::memory_order_relaxed);
 }
 
 void trackDeallocation(void *block) {
   // Replacement delete can see allocations that replacement new did not,
   // notably across MinGW runtime module boundaries. Only a matched pointer
   // belongs in this test's live-block count.
-  for (auto &slot : g_liveBlockPointers) {
-    void *allocated = block;
-    if (slot.compare_exchange_strong(allocated, nullptr,
-                                     std::memory_order_relaxed)) {
-      g_liveBlocks.fetch_sub(1, std::memory_order_relaxed);
+  const std::lock_guard<std::mutex> lock(g_trackedBlocksMutex);
+  std::size_t hole = homeSlot(block);
+  while (g_trackedBlocks[hole] != block) {
+    if (g_trackedBlocks[hole] == nullptr) {
       return;
     }
+    hole = (hole + 1) & kTrackedBlockMask;
   }
+  // Backward-shift deletion: no tombstones, so a probe for an unmatched
+  // pointer still stops at the first empty slot.
+  for (std::size_t next = (hole + 1) & kTrackedBlockMask;
+       g_trackedBlocks[next] != nullptr;
+       next = (next + 1) & kTrackedBlockMask) {
+    const std::size_t home = homeSlot(g_trackedBlocks[next]);
+    if (((next - home) & kTrackedBlockMask) >=
+        ((next - hole) & kTrackedBlockMask)) {
+      g_trackedBlocks[hole] = g_trackedBlocks[next];
+      hole = next;
+    }
+  }
+  g_trackedBlocks[hole] = nullptr;
+  --g_trackedBlockCount;
+  g_liveBlocks.fetch_sub(1, std::memory_order_relaxed);
 }
 
 } // namespace
