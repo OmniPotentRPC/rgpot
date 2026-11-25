@@ -156,8 +156,9 @@ unsafe fn hvp_call(
 /// like the positions and must not overlap. `scheme` is a
 /// `rgpot_hvp_scheme_t` value:
 ///
-/// - `RGPOT_HVP_AUTO`: the analytic callback when one is registered,
-///   otherwise `RGPOT_HVP_FORWARD`.
+/// - `RGPOT_HVP_AUTO`: the analytic Hessian-vector callback when one is
+///   registered, otherwise the analytic dense-Hessian callback (multiplied
+///   by `direction`) when one is registered, otherwise `RGPOT_HVP_FORWARD`.
 /// - `RGPOT_HVP_FORWARD`: `(F(x) - F(x + h u)) |v| / h` with `u = v / |v|`.
 ///   `F(x)` comes from the handle's cached centre when the positions,
 ///   atomic numbers and cell carry the same bits as the last centre, so
@@ -219,7 +220,8 @@ pub unsafe extern "C" fn rgpot_potential_hvp(
 /// `rgpot_potential_hvp`, writing the scheme that computed the product to
 /// `scheme_used`.
 ///
-/// `RGPOT_HVP_AUTO` reports `RGPOT_HVP_ANALYTIC` or `RGPOT_HVP_FORWARD`,
+/// `RGPOT_HVP_AUTO` reports `RGPOT_HVP_ANALYTIC` (for either analytic path)
+/// or `RGPOT_HVP_FORWARD`,
 /// `RGPOT_HVP_EXACT` reports `RGPOT_HVP_ANALYTIC` or `RGPOT_HVP_AD`, and any
 /// other scheme reports itself. `scheme_used` is written only on success.
 ///

@@ -582,6 +582,41 @@ fn auto_reports_its_fallback_to_forward() {
 }
 
 #[test]
+fn auto_uses_the_dense_hessian_before_forward_differences() {
+    let mut system = System::octahedron();
+    let input = system.input();
+    let v = direction(system.dim());
+    let handle = Handle::new();
+    let want = multiply(&handle.morse.hessian(&system.pos), &v);
+    unsafe { rgpot_potential_set_hessian_callback(handle.pot, Some(analytic_hessian)) };
+
+    let (hv, used) = handle.try_hvp(&input, &v, RGPOT_HVP_AUTO as i32).unwrap();
+    assert_eq!(used, RGPOT_HVP_ANALYTIC);
+    assert_eq!(hv, want);
+    assert_eq!(handle.force_calls(), 0);
+    assert_eq!(Handle::calls(&handle.morse.analytic_calls), 1);
+    let counts = handle.counts();
+    assert_eq!(
+        (
+            counts.hvp_analytic,
+            counts.hvp_forward,
+            counts.hvp_central,
+            counts.hvp_ad
+        ),
+        (1, 0, 0, 0)
+    );
+    assert_eq!(
+        handle.hvp_counts(),
+        rgpot_hvp_counts_t {
+            products: 1,
+            force_calls: 0,
+            centre_reused: 0,
+            analytic: 1,
+        }
+    );
+}
+
+#[test]
 fn exact_and_ad_refuse_without_a_call() {
     let mut system = System::octahedron();
     let input = system.input();
@@ -1112,9 +1147,9 @@ fn reset_zeros_every_derivative_count() {
     assert_eq!(
         before,
         rgpot_derivative_counts_t {
-            hvp_forward: 1,
+            hvp_forward: 0,
             hvp_central: 0,
-            hvp_analytic: 0,
+            hvp_analytic: 1,
             hvp_ad: 1,
             hessian_central: 1,
             hessian_analytic: 1,
@@ -1125,11 +1160,12 @@ fn reset_zeros_every_derivative_count() {
     unsafe { rgpot_potential_reset_hvp_counts(handle.pot) };
     assert_eq!(handle.counts(), rgpot_derivative_counts_t::default());
     assert_eq!(handle.hvp_counts(), rgpot_hvp_counts_t::default());
-    // The centre survives the reset, as for the other counters.
+    // The reset keeps the centre, but this sequence has not created one:
+    // AUTO used the dense Hessian callback above.
     handle
         .try_hvp(&input, &v, RGPOT_HVP_FORWARD as i32)
         .unwrap();
-    assert_eq!(handle.hvp_counts().centre_reused, 1);
+    assert_eq!(handle.hvp_counts().centre_reused, 0);
 }
 
 #[test]
