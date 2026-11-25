@@ -147,10 +147,11 @@ entry says otherwise.
 
 *** =rgpot::cache::KeyHash=
 
-- Inputs :: a =size_t= hash.
+- Inputs :: a =uint64_t= hash, which is 64 bits on every platform.
 - Units :: none.
-- Outputs :: the numeric key of a configuration, with =slice()=, which returns
-  the raw bytes of the hash as a =rocksdb::Slice=.
+- Outputs :: the numeric key of a configuration, in the public member =hash=.
+  The cache stores it under a key of one version byte and the eight bytes of the
+  hash in little-endian order.
 - Errors :: none.
 
 *** =rgpot::cache::PotentialCache=
