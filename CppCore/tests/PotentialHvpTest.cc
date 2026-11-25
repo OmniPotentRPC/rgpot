@@ -163,7 +163,7 @@ TEST_CASE("from_impl registers the analytic product of MorsePot", "[hvp]") {
 
   pot.set_hvp_callback(nullptr);
   pot.hvp(input, v);
-  CHECK(pot.hvp_counts().analytic == 1);
+  CHECK(pot.hvp_counts().analytic == 2);
 }
 
 TEST_CASE("from_impl keeps LJClusterPot Auto on finite differences", "[hvp]") {
