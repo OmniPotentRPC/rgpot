@@ -183,7 +183,10 @@ int sum_chunks(std::size_t nitems, std::size_t block) {
 // the same lines on any team, so the transform does not follow the team.
 int mesh_slabs(int npoints) { return axis_workers(npoints, 16); }
 
-struct Scratch {
+// A row is written by one thread while its neighbours in the vector are
+// written by others, and the energy is updated for every pair, so each row
+// sits on its own cache lines.
+struct alignas(64) Scratch {
   Neumaier energy;
   std::vector<double> f;
   std::vector<double> dq;
@@ -267,20 +270,26 @@ void reduce_chunks(int nchunks, std::size_t n3, std::size_t nq, double *F, doubl
     std::vector<Scratch> &slot = scratch_slots(1);
     Scratch &row = slot.front();
     Neumaier energy;
+    scratch_clear(row, n3, nq);
     for (int chunk = 0; chunk < nchunks; ++chunk) {
-      scratch_clear(row, n3, nq);
       body(chunk, row);
+      double *fr = row.f.data();
       for (std::size_t i = 0; i < n3; ++i) {
-        F[i] += row.f[i];
+        F[i] += fr[i];
+        fr[i] = 0.0;
       }
       if (dE_dq != nullptr) {
+        double *qr = row.dq.data();
         for (std::size_t i = 0; i < nq; ++i) {
-          dE_dq[i] += row.dq[i];
+          dE_dq[i] += qr[i];
+          qr[i] = 0.0;
         }
       }
       energy.add(row.energy);
+      row.energy = Neumaier{};
       for (int k = 0; k < 6; ++k) {
         out->strain[k] += row.strain[k];
+        row.strain[k] = 0.0;
       }
     }
     out->energy += energy.total();
@@ -488,7 +497,7 @@ void real_cached_chunk(const double *q, const std::vector<Pair> &pairs, double r
 }
 
 int real_chunks(const std::vector<Pair> &pairs, std::size_t natoms) {
-  return sum_chunks(pairs.size(), std::max<std::size_t>(1024, 8 * natoms));
+  return sum_chunks(pairs.size(), std::max<std::size_t>(256, 12 * natoms));
 }
 
 void add_ewald_self(const CoulombConfig &cfg, const double *q, std::size_t n, ElecOut *out) {
