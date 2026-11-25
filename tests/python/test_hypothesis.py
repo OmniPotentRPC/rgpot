@@ -105,8 +105,8 @@ def test_two_atom_lj_evaluate_stays_finite_with_minimum_separation(
 
 
 def test_nan_energy_is_numerical_error() -> None:
-    # Coincident atoms make the LJ derivative non-finite. A NaN coordinate
-    # is dropped by the neighbour list and does not reach that check.
+    # Coincident atoms make the LJ derivative non-finite. A NaN
+    # separation is not outside the search, so it reaches that check.
     pot = rgpot.LJPot()
     positions = np.zeros((2, 3), dtype=np.float64)
     with pytest.raises(rgpot.NumericalError):
