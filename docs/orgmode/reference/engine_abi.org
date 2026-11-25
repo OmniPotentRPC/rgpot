@@ -969,7 +969,7 @@ int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
 - Errors :: returns
   =RGPOT_ENGINE_ERR_INVALID= for a NULL pointer, an invalid atom count, an overflowing dimension, or an overlapping output; =RGPOT_ENGINE_ERR_UNSUPPORTED=
   when the potential does not advertise
-  =analytic_hvp=; and =RGPOT_ENGINE_ERR_EVAL= when the implementation throws.
+  =analytic_hessian=; and =RGPOT_ENGINE_ERR_EVAL= when the implementation throws.
   The reason is available from =rgpot_engine_last_error=.
 
 Optional symbol.
@@ -1677,7 +1677,7 @@ a host that does call =dlclose= on them leaves them mapped.
   =SetCallbacksFn=, =HintFn=, =UnloadPolicyFn= :: =extern "C"= function-pointer
   types matching the C declarations above.
 - =EngineSymbols= :: Resolved symbol table holding required
-  (=abi_version=, =available=, =create=, =destroy=, =force=) and optional (=abi_stamp=,
+  (=abi_version=, =create=, =destroy=, =force=) and optional (=available=, =abi_stamp=,
   =force_batch=, =hvp=, =taylor_jet=, =hessian=, =caps=, =last_error=, =last_components=,
   =component_name=, =model_state=, =set_callbacks=, =hint=) function pointers.
   The struct is
