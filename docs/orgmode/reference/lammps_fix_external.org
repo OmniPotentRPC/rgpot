@@ -83,8 +83,8 @@ How the frontend avoids that follows the potential's =caps()= mapping:
   The entry decides before =periodic=, which only says that periodic boundaries
   are supported.
   =rgpot.D2Pot= and =rgpot.D2CpmdPot= report it.
-- =periodic= true without =cell_optional=: the potential always applies
-  periodic boundaries to the cell.
+- =periodic= true without =cell_optional=: the potential always applies periodic
+  boundaries to the cell.
   The constructor raises =ValueError= when all three LAMMPS boundaries are
   non-periodic.
   The message names the potential, says that it does not report =cell_optional=,

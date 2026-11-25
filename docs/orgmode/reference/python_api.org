@@ -1168,8 +1168,8 @@ caps()
   =per_image=, =batched=, =periodic=, =cell_optional=, =group_collective= and
   =stress= (booleans).
   =stress= true means =evaluate= returns a stress tensor.
-  =cell_optional= true means the kernel takes a periodic cell and also
-  evaluates an open system when the cell is all zero.
+  =cell_optional= true means the kernel takes a periodic cell and also evaluates
+  an open system when the cell is all zero.
   =D2Pot= and =D2CpmdPot= report it; the other classes report false.
 - Errors :: none.
 
