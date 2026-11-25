@@ -162,16 +162,19 @@ lj_lib = static_library(
     'rgpot_lj_eval',
     files('lj_eval.cpp'),
     include_directories: [engines_inc, rgpot_inc],
-    dependencies: dl_dep,
+    # LJPot.hpp reaches fmt through base_types.hpp unless pure_lib.
+    dependencies: [dl_dep] + (has_fmt ? [fmt_dep] : []),
     cpp_args: _args,
     pic: true,
 )
 lj_dep = declare_dependency(
     link_with: lj_lib,
     include_directories: [engines_inc, rgpot_inc],
+    dependencies: has_fmt ? [fmt_dep] : [],
 )
 
-pot_spec_deps = []
+# pot_spec.cpp reaches fmt through base_types.hpp unless pure_lib.
+pot_spec_deps = has_fmt ? [fmt_dep] : []
 pot_spec_args = _args
 if _rpc_stack
     pot_spec_deps += [ptlrpc_hdr_dep]
