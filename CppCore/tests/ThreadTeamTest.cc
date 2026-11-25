@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -510,23 +511,68 @@ TEST_CASE("onFullTeam runs every rank at once or none", "[threads][slices]") {
 #endif
 }
 
-TEST_CASE("a call below kTeamMinAtoms takes one slice", "[threads][slices]") {
+TEST_CASE("a call below its threshold takes one slice", "[threads][slices]") {
   STATIC_REQUIRE(rgpot::kTeamMinAtoms ==
                  static_cast<std::size_t>(RGPOT_TEAM_MIN_ATOMS));
   setThreads("8");
-  CHECK(rgpot::teamSize(0) == 1);
+  CHECK(rgpot::teamSize(0, rgpot::kTeamMinAtoms) == 1);
   if (55 < rgpot::kTeamMinAtoms) {
-    CHECK(rgpot::teamSize(55) == 1);
+    CHECK(rgpot::teamSize(55, rgpot::kTeamMinAtoms) == 1);
   }
-  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms - 1) == 1);
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms - 1, rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(99, 100) == 1);
 #if defined(_OPENMP)
-  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) ==
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms) ==
         std::min<int>(8, static_cast<int>(rgpot::kTeamMinAtoms)));
+  CHECK(rgpot::teamSize(100, 100) == 8);
+  CHECK(rgpot::teamSize(5, 0) == 5);
 #else
-  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(100, 100) == 1);
 #endif
   setThreads("");
-  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(100, 100) == 1);
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+  setThreads("8");
+  CHECK(rgpot::teamSize(0) == rgpot::teamSize(0, rgpot::kTeamMinAtoms));
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms - 1) ==
+        rgpot::teamSize(rgpot::kTeamMinAtoms - 1, rgpot::kTeamMinAtoms));
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) ==
+        rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms));
+  setThreads("");
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) ==
+        rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms));
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+  constexpr std::size_t kNever = std::numeric_limits<std::size_t>::max();
+  CHECK(rgpot::teamThreshold(100) == 100);
+  {
+    const rgpot::TeamThreshold outer(10);
+    CHECK(rgpot::teamThreshold(100) == 10);
+    {
+      const rgpot::TeamThreshold inner(kNever);
+      CHECK(rgpot::teamThreshold(100) == kNever);
+    }
+    CHECK(rgpot::teamThreshold(100) == 10);
+  }
+  CHECK(rgpot::teamThreshold(100) == 100);
 
   const std::uint64_t start = rgpot::teamsOpened();
   int runs = 0;

@@ -430,8 +430,9 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
                      mode_, periodic);
   const bool stream = neighbours_.streaming();
-  const bool rows = n_size >= kTeamMinAtoms;
-  const int nt = nlist::teamSize(n_size);
+  const std::size_t from = teamThreshold(kTeamMinAtoms);
+  const bool rows = n_size >= from;
+  const int nt = nlist::teamSize(n_size, from);
   const double a2 = lattice * lattice;
   const bool unit_a = a2 == 1.0;
   const double en = epsilon * static_cast<double>(n_exp);

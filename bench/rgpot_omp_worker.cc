@@ -832,7 +832,7 @@ int main(int argc, char **argv) {
 #endif
       std::size_t activation = 0;
       for (std::size_t n = 1; n <= 1048576; ++n) {
-        if (rgpot::teamSize(n) > 1) {
+        if (rgpot::teamSize(n, rgpot::kTeamMinAtoms) > 1) {
           activation = n;
           break;
         }

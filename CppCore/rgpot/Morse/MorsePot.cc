@@ -423,7 +423,8 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
     batch.count = 0;
   };
 
-  if (n_atoms < kTeamMinAtoms) {
+  const std::size_t from = teamThreshold(kTeamMinAtoms);
+  if (n_atoms < from) {
     releaseWorkspaceTo(ws, {});
     std::fill_n(F, 3 * n_atoms, 0.0);
     double energy = 0.0;
@@ -475,7 +476,7 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
     return;
   }
 
-  const int slices = teamSize(n_atoms);
+  const int slices = teamSize(n_atoms, from);
 
   if (!neighbours_.streaming()) {
     const std::size_t est_half_pairs = neighbours_.slots() / 2;

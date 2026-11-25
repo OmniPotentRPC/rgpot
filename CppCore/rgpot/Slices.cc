@@ -10,6 +10,8 @@ namespace {
 
 thread_local int t_team_cap = 0;
 thread_local std::uint64_t t_teams_opened = 0;
+thread_local bool t_threshold_set = false;
+thread_local std::size_t t_threshold = 0;
 
 } // namespace
 
@@ -33,9 +35,13 @@ int threadsRequested() {
 #endif
 }
 
-int teamSize(std::size_t n) {
+std::size_t teamThreshold(std::size_t own) noexcept {
+  return t_threshold_set ? t_threshold : own;
+}
+
+int teamSize(std::size_t n, std::size_t from) {
   const int nt = threadsRequested();
-  if (n < kTeamMinAtoms || nt <= 1) {
+  if (n < from || nt <= 1) {
     return 1;
   }
   if (static_cast<std::size_t>(nt) > n) {
@@ -43,6 +49,8 @@ int teamSize(std::size_t n) {
   }
   return nt;
 }
+
+int teamSize(std::size_t n) { return teamSize(n, kTeamMinAtoms); }
 
 std::uint64_t teamsOpened() noexcept { return t_teams_opened; }
 
@@ -81,6 +89,17 @@ TeamCap::TeamCap(int threads) noexcept : previous_(t_team_cap) {
 }
 
 TeamCap::~TeamCap() { t_team_cap = previous_; }
+
+TeamThreshold::TeamThreshold(std::size_t atoms) noexcept
+    : previous_(t_threshold), had_previous_(t_threshold_set) {
+  t_threshold = atoms;
+  t_threshold_set = true;
+}
+
+TeamThreshold::~TeamThreshold() {
+  t_threshold = previous_;
+  t_threshold_set = had_previous_;
+}
 
 namespace detail {
 

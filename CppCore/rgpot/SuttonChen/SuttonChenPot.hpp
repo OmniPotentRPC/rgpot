@@ -151,6 +151,10 @@ public:
   /// Stored Verlet list or a streaming cell walk.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// Atoms from which a call adds its terms atom by atom in index order
+  /// and, when `OMP_NUM_THREADS` asks for more than one, opens a team.
+  static constexpr std::size_t kTeamMinAtoms = rgpot::kTeamMinAtoms;
+
   /// True when the last force call kept the Verlet list.
   [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
 

@@ -118,8 +118,8 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
   auto term = [&params](std::int32_t, std::int32_t, double r2, double &pair_e, double &fscale) {
     evalLjPair(r2, params, pair_e, fscale);
   };
-  nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), cutoff2, nlist::Overlap::Skip, term,
-                  F, *U, nullptr, atoms);
+  nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), teamThreshold(kTeamMinAtoms),
+                  cutoff2, nlist::Overlap::Skip, term, F, *U, nullptr, atoms);
 }
 
 } // namespace rgpot

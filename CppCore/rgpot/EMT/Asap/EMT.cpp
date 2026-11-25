@@ -230,7 +230,8 @@ const Vec *EMT::GetCartesianForces() {
     double (*str)[6] = 0;
     if (stress.size())
       str = (double (*)[6]) & (stress[0]);
-    const int slices = rgpot::teamSize(static_cast<std::size_t>(nAtoms));
+    const int slices =
+        rgpot::teamSize(static_cast<std::size_t>(nAtoms), rgpot::kTeamMinAtoms);
     if (str == 0 &&
         nAtoms >= static_cast<int>(rgpot::kTeamMinAtoms)) {
       counters.forces = atoms->GetChangeCounter();

@@ -158,6 +158,10 @@ public:
 
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// Atoms from which a call adds its terms atom by atom in index order
+  /// and, when `OMP_NUM_THREADS` asks for more than one, opens a team.
+  static constexpr std::size_t kTeamMinAtoms = rgpot::kTeamMinAtoms;
+
   /// True when the last force call on this thread kept the Verlet list.
   /// The test is half the skin, the same predicate as `nlist::Builder::update`.
   [[nodiscard]] bool listReused() const noexcept;

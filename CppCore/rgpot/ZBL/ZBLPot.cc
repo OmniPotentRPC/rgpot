@@ -245,8 +245,8 @@ void ZBLPot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *atom
     fscale = -dEdr / r;
   };
   double energy = 0.0;
-  nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), cutoff2, nlist::Overlap::Skip, term,
-                  F, energy, strain, atoms);
+  nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), teamThreshold(kTeamMinAtoms),
+                  cutoff2, nlist::Overlap::Skip, term, F, energy, strain, atoms);
   *U = energy;
   publishCauchyStress(out, strain, volume);
 }
