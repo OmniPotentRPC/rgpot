@@ -29,6 +29,8 @@
 //! | [`taylor`] | Interval Taylor series that implement a jet |
 //! | [`ch5_2008`] | Exact Taylor jet of the CH5 2008 surface |
 //! | [`eam_table`] | Tabulated EAM potentials read from DYNAMO tables |
+//! | [`eam_table_factory`] | Safe Rust factory constructors for C++-backed EAM potentials |
+//! | [`error`] | Crate-level error enum for safe Rust entry points |
 //! | [`c_api`] | `extern "C"` entry points collected by cbindgen |
 //! | [`version`] | Loaded library version, to check against `rgpot.h` |
 //! | `engine` | Loader for the generic engine C ABI (`engine` feature) |
@@ -60,7 +62,10 @@
 pub mod c_api;
 pub mod ch5_2008;
 pub mod eam_table;
+pub(crate) mod eam_table_cpp;
+pub mod eam_table_factory;
 pub mod eindir;
+pub mod error;
 pub mod fused;
 pub mod hessian;
 pub mod hvp;
@@ -74,6 +79,8 @@ pub mod types;
 #[cfg(feature = "mdi")]
 pub mod units;
 pub mod version;
+
+pub use error::RgpotError;
 
 #[cfg(feature = "schema")]
 #[allow(dead_code, non_snake_case, unused_parens, clippy::all)]
