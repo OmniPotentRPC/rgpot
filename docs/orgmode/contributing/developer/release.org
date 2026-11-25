@@ -110,21 +110,26 @@ Types (see =towncrier.toml=): =breaking= (section Breaking, listed first),
 Preview with =uvx towncrier build --draft= or =pixi r towncrier-draft=.
 
 A fragment holds only the text of the entry.
-Do not start it with =- = or =* =, because the template =ci/release-notes.md=
-writes the bullet and a leading marker would render as a doubled bullet.
-Do not put a copyright or SPDX line, or a comment block, in a fragment, because
-it would reach the notes.
-The template drops both when it builds the notes.
+The template =ci/release-notes.md= writes the bullet and the heading, so:
+
+- Do not start a fragment with a list marker, =-= or =*=.
+  The entry would render as a doubled bullet.
+  Continuation lines need no indent.
+- Do not put a copyright or SPDX line, or a comment block (=<!-- ... -->=), in a
+  fragment.
+  Neither belongs in the notes.
+
+The template drops both when it builds the notes, and
 =python scripts/check_news_fragments.py= (or =pixi r news-fragments-check=)
-fails on a fragment that carries either, and =--fix= rewrites the files.
+fails on a fragment that carries either.
+Add =--fix= to rewrite the files.
 
 The orchestrator =towncrier= job runs on every pull request:
 =potctl ci towncrier-check --compare-with <base sha>= runs =towncrier check=.
 Neither the job nor =towncrier.toml= filters by path, so the check fails on a
 pull request that adds no fragment, whatever paths it changes.
-=docs/newsfragments/README.md= says pure =docs= / =ci= / =chore= changes may
-omit a fragment; with the current job, such a pull request still needs one to
-pass.
+=docs/newsfragments/README.md= now reflects this: even pure =docs= / =ci= /
+=chore= changes still need a fragment to pass.
 
 ** Commit check
 
