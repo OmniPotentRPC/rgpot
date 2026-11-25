@@ -185,7 +185,7 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// The molecular-dynamics session, including its optional
 /// neighbour-exchange callbacks, is a C++ session vtable on librgpot.
 /// Those symbols are not exports of librgpot_core, so this C minor
-/// stays 10. `kCxxSoversion` stays 9: the session vtable is not a
+/// stays 10. `kCxxSoversion` stayed 9 for it: the session vtable is not a
 /// covered potential type, and `kCxxLayoutRevision` stays 2.
 /// No exported C struct of that header changed layout. The neighbour query
 /// is `RGPOT_NLIST_ABI` 4.
@@ -218,7 +218,14 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// It also stamps `nlist::Builder` and `nlist::Walk`. Each holds only a
 /// pointer to its state, so a change to that state is not a layout change.
 /// It also adds a process-unique generation id to `Neighbours`.
-inline constexpr std::uint32_t kCxxSoversion = 9;
+/// 10 follows 3.8.0, which shipped 9. `ORCAPot` moved to liborcac: it
+/// now holds one pointer to its state, and `ORCAConfig` replaced restart
+/// with the guess policy and gained the library path, user blocks and the
+/// fresh retry. The child process runner that 3.8.0 shipped as `ORCAPot`
+/// is `ORCALegacyPot`.
+/// Neither ORCA class is a covered type, so the stamp inputs and every
+/// platform hash are those of 9, and the ledger repeats its fingerprint.
+inline constexpr std::uint32_t kCxxSoversion = 10;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
