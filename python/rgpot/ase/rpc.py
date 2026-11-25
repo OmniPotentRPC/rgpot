@@ -14,6 +14,7 @@ import asyncio
 import os
 import socket
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +32,7 @@ from rgpot.ase.claim import ConnectionClaim
 
 PROTOCOL_FAMILY = "rgpot.potentials"
 PROTOCOL_MAJOR = 1
-PROTOCOL_MINOR = 2
+PROTOCOL_MINOR = 3
 # The minor that introduced the orbital-key fields. It is a fixed number so a
 # later PROTOCOL_MINOR bump does not raise the floor for keyed requests.
 ORBITAL_KEY_INTRODUCED_MINOR = 2
@@ -189,8 +190,6 @@ class RgpotRpcCalculator(Calculator):
                 self._pot = None
                 self._client = None
                 self._connection = None
-                import gc
-                gc.collect()
                 try:
                     self._loop.run_until_complete(self._kj.__aexit__(None, None, None))
                 except Exception:  # noqa: BLE001, S110
@@ -209,7 +208,8 @@ class RgpotRpcCalculator(Calculator):
 
     async def _connect(self) -> None:
         last_err: OSError | None = None
-        for _ in range(120):
+        deadline = time.monotonic() + 30.0
+        while time.monotonic() < deadline:
             if self._server_proc is not None and self._server_proc.poll() is not None:
                 out, err = self._server_proc.communicate()
                 msg = (err or out or b"").decode(errors="replace").strip()
@@ -222,6 +222,8 @@ class RgpotRpcCalculator(Calculator):
                     host=self._host, port=self._port
                 )
                 client = _capnp().TwoPartyClient(connection)
+                self._connection = connection
+                self._client = client
                 self._pot = client.bootstrap().cast_as(self._schema.Potential)
                 await self._refresh_capabilities_async()
                 return
@@ -390,7 +392,7 @@ class RgpotRpcCalculator(Calculator):
         self,
         atoms: Any = None,
         *,
-        cutoff: float = 0.0,
+        cutoff: float | None = None,
         skin: float = 0.0,
         full: bool = False,
         strict: bool = True,
@@ -415,13 +417,14 @@ class RgpotRpcCalculator(Calculator):
                 box = np.asarray(cell.array, dtype=float)
             else:
                 box = np.eye(3, dtype=float) * 100.0
+            effective_cutoff = self._resolve_cutoff(frame, pbc_flags, cutoff, skin)
             return self._loop.run_until_complete(
                 self._neighbours_async(
                     frame.get_positions(),
                     frame.get_atomic_numbers(),
                     box,
                     pbc_flags,
-                    cutoff=cutoff,
+                    cutoff=effective_cutoff,
                     skin=skin,
                     full=full,
                     strict=strict,
@@ -430,6 +433,28 @@ class RgpotRpcCalculator(Calculator):
                     distances=distances,
                 )
             )
+
+    def _resolve_cutoff(
+        self, frame: Any, pbc_flags: list[bool], cutoff: float | None, skin: float
+    ) -> float:
+        if cutoff is not None and float(cutoff) > 0.0:
+            return float(cutoff)
+        if any(pbc_flags):
+            cell = np.asarray(frame.cell.array, dtype=float)
+            if cell.shape == (3, 3):
+                lengths = np.linalg.norm(cell, axis=1)
+                finite = lengths[np.isfinite(lengths)]
+                positive = finite[finite > 0.0]
+                if positive.size:
+                    return float(np.min(positive) * 0.5)
+            return max(1.0, float(skin))
+        positions = np.asarray(frame.get_positions(), dtype=float)
+        if positions.shape[0] < 2:
+            return max(1.0, float(skin))
+        deltas = positions[:, None, :] - positions[None, :, :]
+        distances = np.linalg.norm(deltas, axis=-1)
+        max_distance = float(np.nanmax(distances))
+        return max(max_distance + max(0.0, float(skin)), 1.0)
 
     def calculate(
         self,

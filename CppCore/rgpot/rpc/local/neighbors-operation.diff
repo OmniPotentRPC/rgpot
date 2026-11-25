@@ -1,3 +1,4 @@
+# Copyright 2023--present rgpot developers
 diff --git a/Potentials.capnp b/Potentials.capnp
 --- a/Potentials.capnp
 +++ b/Potentials.capnp

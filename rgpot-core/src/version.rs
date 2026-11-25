@@ -43,7 +43,9 @@ pub struct rgpot_abi_stamp_t {
 /// ABI major of this build.
 pub const RGPOT_ABI_VERSION_MAJOR: u16 = 1;
 /// ABI minor of this build.
-pub const RGPOT_ABI_VERSION_MINOR: u16 = 10;
+///
+/// Minor 13 adds the `rgpot_rpc_neighbours` export.
+pub const RGPOT_ABI_VERSION_MINOR: u16 = 13;
 /// Layout revision of this build.
 pub const RGPOT_ABI_LAYOUT_REVISION: u16 = 1;
 
@@ -222,17 +224,25 @@ mod tests {
     }
 
     /// `rgpot_rpc_client_select_orbitals` is additive behind `RGPOT_HAS_RPC`,
-    /// so the minor moves to 10 and every earlier caller still matches.
+    /// so the minor reached 10 for it and every earlier caller still matches.
     #[test]
     fn the_minor_counts_the_rpc_orbital_selection_export() {
+        assert!(rgpot_abi_stamp().abi_minor >= 10);
+        assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, 10, 1)) }, 1);
+    }
+
+    /// `rgpot_rpc_neighbours` is an additive C ABI export, so the minor is 13
+    /// and every earlier caller still matches.
+    #[test]
+    fn the_minor_counts_the_rpc_neighbours_export() {
         assert_eq!(RGPOT_ABI_VERSION_MAJOR, 1);
-        assert_eq!(RGPOT_ABI_VERSION_MINOR, 10);
-        assert_eq!(rgpot_abi_stamp().abi_minor, 10);
+        assert_eq!(RGPOT_ABI_VERSION_MINOR, 13);
+        assert_eq!(rgpot_abi_stamp().abi_minor, 13);
         assert_eq!(RGPOT_ABI_LAYOUT_REVISION, 1);
         for earlier in 0..RGPOT_ABI_VERSION_MINOR {
             assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, earlier, 1)) }, 1);
         }
-        assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, 11, 1)) }, 0);
+        assert_eq!(unsafe { rgpot_abi_compatible(&stamp(1, 14, 1)) }, 0);
     }
 
     fn stamp(major: u16, minor: u16, layout: u16) -> rgpot_abi_stamp_t {

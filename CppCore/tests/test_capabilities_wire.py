@@ -101,10 +101,15 @@ def main() -> int:
         root / "python" / "rgpot" / "ase" / "rpc.py",
         r"^PROTOCOL_MINOR\s*=\s*(\d+)\s*$",
     )
-    if len({cpp_minor, rust_minor, py_minor}) != 1:
+    header_minor = parse_u16(
+        root / "rgpot-core" / "include" / "rgpot.h",
+        r"^#define\s+PROTOCOL_MINOR\s+(\d+)\b",
+    )
+    if len({cpp_minor, rust_minor, py_minor, header_minor}) != 1:
         raise AssertionError(
             "protocol minor constants drifted: "
-            f"C++={cpp_minor}, Rust={rust_minor}, Python={py_minor}"
+            f"C++={cpp_minor}, Rust={rust_minor}, Python={py_minor}, "
+            f"rgpot.h={header_minor}"
         )
     orbital_cpp = parse_u16(
         root / "CppCore" / "rgpot" / "abi" / "Handshake.hpp",
@@ -150,14 +155,28 @@ def main() -> int:
     written_new = run(capnp, "encode", new, text=f"({base}, {BUILD})")
     seen_by_old = fields(run(capnp, "decode", old, data=written_new).decode())
     expected = fields(f"({base})")
-    for key in ("backendName", "protocolFamily", "protocolMajor", "bridgeFeatures", "schemaId"):
+    for key in (
+        "backendName",
+        "protocolFamily",
+        "protocolMajor",
+        "protocolMinor",
+        "bridgeFeatures",
+        "schemaId",
+    ):
         assert seen_by_old[key] == expected[key], (key, seen_by_old[key])
     assert "buildVersion" not in seen_by_old
 
     # Older message, read by the current definition.
     written_old = run(capnp, "encode", old, text=f"({base})")
     seen_by_new = fields(run(capnp, "decode", new, data=written_old).decode())
-    for key in ("backendName", "protocolFamily", "protocolMajor", "bridgeFeatures", "schemaId"):
+    for key in (
+        "backendName",
+        "protocolFamily",
+        "protocolMajor",
+        "protocolMinor",
+        "bridgeFeatures",
+        "schemaId",
+    ):
         assert seen_by_new[key] == expected[key], (key, seen_by_new[key])
     assert seen_by_new.get("buildVersion", '""') == '""', seen_by_new
     assert seen_by_new.get("buildRevision", '""') == '""', seen_by_new

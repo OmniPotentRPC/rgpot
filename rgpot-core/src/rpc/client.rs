@@ -115,6 +115,7 @@ pub struct RpcClient {
     runtime: Runtime,
     addr: String,
     orbital_key: Option<i64>,
+    neighbor_cache: Option<(usize, NeighborQuery, NeighborReply)>,
 }
 
 impl RpcClient {
@@ -127,6 +128,7 @@ impl RpcClient {
             runtime,
             addr: format!("{host}:{port}"),
             orbital_key: None,
+            neighbor_cache: None,
         })
     }
 
@@ -166,6 +168,26 @@ impl RpcClient {
     ) -> Result<NeighborReply, String> {
         let local = tokio::task::LocalSet::new();
         local.block_on(&self.runtime, self.neighbours_async(input, query))
+    }
+
+    /// Save a probed reply for the matching C API fill call.
+    pub(crate) fn cache_neighbours(
+        &mut self,
+        input: *const rgpot_force_input_t,
+        query: NeighborQuery,
+        reply: NeighborReply,
+    ) {
+        self.neighbor_cache = Some((input as usize, query, reply));
+    }
+
+    /// Consume a reply saved by a matching C API probe call.
+    pub(crate) fn take_cached_neighbours(
+        &mut self,
+        input: *const rgpot_force_input_t,
+        query: &NeighborQuery,
+    ) -> Option<NeighborReply> {
+        let cached = self.neighbor_cache.take()?;
+        (cached.0 == input as usize && cached.1 == *query).then_some(cached.2)
     }
 
     async fn calculate_async(

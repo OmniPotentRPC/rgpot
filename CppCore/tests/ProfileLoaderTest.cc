@@ -10,6 +10,7 @@
 #include <kj/array.h>
 
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -229,7 +230,19 @@ TEST_CASE("Capabilities handshake rejection matrix",
   strict.protocol_minor_min = 2;
   REQUIRE(verdict([](B c) { c.setProtocolMinor(1); }, strict)
               .find("protocol minor") != std::string::npos);
-  REQUIRE(verdict([](B c) { c.setProtocolMinor(2); }, strict).empty());
+  for (std::uint16_t minor = 2; minor <= rgpot::abi::kProtocolMinor; ++minor) {
+    INFO("backend minor " << minor);
+    REQUIRE(verdict([minor](B c) { c.setProtocolMinor(minor); }, strict)
+                .empty());
+  }
+  for (std::uint16_t want = 0; want <= rgpot::abi::kProtocolMinor; ++want) {
+    INFO("required minor " << want);
+    strict.protocol_minor_min = want;
+    REQUIRE(verdict([](B) {}, strict).empty());
+  }
+  strict.protocol_minor_min = rgpot::abi::kProtocolMinor + 1;
+  REQUIRE(verdict([](B) {}, strict).find("protocol minor") !=
+          std::string::npos);
   REQUIRE(rgpot::abi::force_input_expectation(false).protocol_minor_min == 0);
   REQUIRE(rgpot::abi::force_input_expectation(true).protocol_minor_min ==
           rgpot::abi::kOrbitalKeyIntroducedMinor);
