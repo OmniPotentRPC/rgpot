@@ -35,6 +35,7 @@
 #include "lsan_libomp.hpp"
 #include "rgpot/EAM/EAMPot.hpp"
 #include "rgpot/ForceStructs.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
@@ -791,6 +792,30 @@ TEST_CASE("open Sutton-Chen gives the one-thread bits on 8 threads",
   const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
   checkPotential("Sutton-Chen on every pair", every_pair,
                  cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {8});
+}
+
+// Gupta on a cutoff and Gupta on every pair are separate tags, as for
+// Sutton-Chen. The open cluster has only 55 atoms, so it is one tag and not
+// one per thread count.
+TEST_CASE("Gupta gives the one-thread bits on any team", "[threads][manybody][gupta]") {
+  rgpot::GuptaConfig gupta;
+  gupta.periodic = true;
+  gupta.stress = true;
+  for (const int side : {4, 13}) {
+    gupta.cutoff = side == 4 ? 3.0 : 1.5;
+    const auto pt = fcc(side, std::sqrt(2.0), 78);
+    checkPotential("stored Gupta", mode<rgpot::GuptaPot>(gupta, kStored), pt);
+    checkPotential("streamed Gupta", mode<rgpot::GuptaPot>(gupta, kStream), pt);
+  }
+}
+
+TEST_CASE("open Gupta gives the one-thread bits on a small cluster",
+          "[threads][manybody][guptaopen]") {
+  rgpot::GuptaConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::GuptaPot>(open); };
+  checkPotential("Gupta on every pair", every_pair, cluster(55, std::sqrt(2.0), 78));
 }
 
 TEST_CASE("Stillinger-Weber gives the one-thread bits on any team",
