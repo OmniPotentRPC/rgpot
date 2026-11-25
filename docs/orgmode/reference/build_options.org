@@ -60,6 +60,8 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_openmm= | feature | =auto= | OpenMM shifted Lennard-Jones comparison. |
 | =with_nblib= | feature | =auto= | GROMACS nblib MD session engine. |
 | =nblib_prefix= | string | =(empty)= | Prefix of GROMACS built with the installed nblib API. |
+| =nblib_source= | string | =(empty)= | GROMACS source tree of nblib_prefix, for the TPR session. |
+| =nblib_build= | string | =(empty)= | GROMACS build tree of nblib_prefix, for the TPR session. |
 | =with_plumed= | feature | =auto= | PLUMED RGPOT collective variable. |
 | =with_long_range= | boolean | =false= | Build the Ewald, PME, dispersion and NLH summands (=CppCore/rgpot/LongRange=). |
 | =with_cuda= | boolean | =false= | Compile the long-range CUDA path with nvcc and link cudart. Used only with =with_long_range=. |

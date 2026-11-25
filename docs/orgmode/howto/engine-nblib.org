@@ -182,7 +182,8 @@ A file that uses free-energy perturbation, pulling, AWH, walls, freeze groups, p
 
 The TPR session calls libgromacs directly and needs the headers of the trees that built =nblib_prefix=:
 
-#+begin_src shell
+#+attr_rgpot: skip needs the GROMACS source and build trees
+#+begin_src bash
 meson setup build -Dwith_nblib=enabled -Dnblib_prefix=$PREFIX \
   -Dnblib_source=$GROMACS_SOURCE -Dnblib_build=$GROMACS_BUILD
 #+end_src
