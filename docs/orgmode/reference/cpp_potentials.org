@@ -535,10 +535,10 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
 
 =rgpot::LJPot= and =rgpot::MorsePot= return their cutoff with =pairwise= set,
 and 0 when the cutoff is 0 or less.
-=rgpot::SuttonChenPot= and =rgpot::EAMTablePot= return their cutoff as a
-many-body range with =densities= 1.
-=rgpot::SuttonChenPot= returns 0 when its cutoff is 0 or less, since it then
-keeps every pair.
+=rgpot::GuptaPot=, =rgpot::SuttonChenPot= and =rgpot::EAMTablePot= return their
+cutoff as a many-body range with =densities= 1.
+=rgpot::GuptaPot= and =rgpot::SuttonChenPot= return 0 when their cutoff is 0 or
+less, since they then keep every pair.
 =rgpot::StillingerWeberSi= returns =kCut * kSigma= with =full= set and =reach= 2.
 =rgpot::TersoffSiC= returns the silicon outer cutoff, 3 Angstrom, with =full=
 set and =reach= 2.
