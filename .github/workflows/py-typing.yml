@@ -145,5 +145,6 @@ jobs:
           TYPECHECK_PATHS: ${{ inputs.typecheck-paths }}
         run: |
           set -euo pipefail
-          python -m mypy --strict ${TYPECHECK_PATHS}
-          pyright ${TYPECHECK_PATHS}
+          read -ra paths <<< "${TYPECHECK_PATHS}"
+          python -m mypy --strict "${paths[@]}"
+          pyright "${paths[@]}"
