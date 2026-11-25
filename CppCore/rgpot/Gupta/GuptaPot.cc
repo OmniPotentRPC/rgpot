@@ -270,7 +270,8 @@ void GuptaPot::compute(const ForceInput &in, ForceOut *out,
   double *weight = weight_.data();
   double total_e = rows ? 0.0 : epair;
   for (std::size_t i = 0; i < n_size; ++i) {
-    if (!(rho[i] > 0.0)) {
+    // Exact zero stays continuous. A NaN density is not empty.
+    if (rho[i] == 0.0) {
       continue;
     }
     const double root = std::sqrt(rho[i]);
@@ -411,16 +412,18 @@ void GuptaPot::forceStage(const HalfList &list, const double *densities,
   const double xi2 = cfg.xi * cfg.xi;
   std::vector<double> weight(list.nAtoms, 0.0);
   for (std::size_t i = 0; i < list.nAtoms; ++i) {
-    if (densities[i] > 0.0) {
-      weight[i] = 1.0 / std::sqrt(densities[i]);
+    if (densities[i] == 0.0) {
+      continue;
     }
+    weight[i] = 1.0 / std::sqrt(densities[i]);
   }
   if (tally != nullptr) {
     for (std::size_t k = 0; k < list.nRows; ++k) {
       const int i = list.rows[k];
-      if (densities[i] > 0.0) {
-        staged::addSite(*tally, i, -std::sqrt(densities[i]));
+      if (densities[i] == 0.0) {
+        continue;
       }
+      staged::addSite(*tally, i, -std::sqrt(densities[i]));
     }
   }
   staged::withTally(tally, [&](auto tallied) {
