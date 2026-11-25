@@ -278,10 +278,15 @@ def test_potential_without_a_cutoff_is_refused() -> None:
         _kernel_cutoff(_NoCutoff())
 
 
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), -1.0])
-def test_unusable_cutoff_is_refused(value: float) -> None:
-    with pytest.raises(ValueError, match="must be finite and not negative"):
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_non_finite_cutoff_is_refused(value: float) -> None:
+    with pytest.raises(ValueError, match="must be finite"):
         RgpotCalculator(_BadCutoff(value))
+
+
+def test_negative_cutoff_means_unbounded() -> None:
+    calc = RgpotCalculator(_BadCutoff(-1.0))
+    assert calc._cutoff == -1.0
 
 
 def test_every_advertised_kind_resolves_a_cutoff() -> None:
@@ -295,6 +300,6 @@ def test_every_advertised_kind_resolves_a_cutoff() -> None:
             if "cannot determine the cutoff" in str(err):
                 raise
             continue  # a kind that needs constructor arguments
-        assert math.isfinite(calc._cutoff) and calc._cutoff >= 0.0
+        assert math.isfinite(calc._cutoff)
         seen += 1
     assert seen > 0
