@@ -460,9 +460,8 @@ void setNeighbourMode(nlist::Mode mode) noexcept;
 #+end_src
 
 - Applies to :: rgpot::EAMPot, rgpot::EAMTablePot, rgpot::GuptaPot,
-  rgpot::LJClusterPot, rgpot::LJPot, rgpot::MorsePot,
-  rgpot::StillingerWeberSi, rgpot::SuttonChenPot, rgpot::TersoffSiC,
-  rgpot::ZBLPot
+  rgpot::LJClusterPot, rgpot::LJPot, rgpot::MorsePot, rgpot::StillingerWeberSi,
+  rgpot::SuttonChenPot, rgpot::TersoffSiC, rgpot::ZBLPot
 - Inputs :: =mode=: =nlist::Mode::Stored= keeps a Verlet list of candidate
   pairs, =nlist::Mode::Stream= walks the cells and stores no pairs,
   =nlist::Mode::Auto= (the default) stores when the index fits in the memory the
@@ -1270,8 +1269,9 @@ GuptaPot();
 explicit GuptaPot(const GuptaConfig &c);
 #+end_src
 
-Cleri-Rosato Gupta many-body potential (F. Cleri and V. Rosato, Phys. Rev. B
-48, 22 (1993), [[https://doi.org/10.1103/PhysRevB.48.22][doi:10.1103/PhysRevB.48.22]]):
+Cleri-Rosato Gupta many-body potential (F. Cleri and V. Rosato, Phys. Rev. B 48,
+22 (1993),
+[[https://doi.org/10.1103/PhysRevB.48.22][doi:10.1103/PhysRevB.48.22]]):
 
 #+attr_rgpot: skip the energy formula, not code
 #+begin_example
@@ -1290,8 +1290,8 @@ E = sum_i [ sum_{j != i} A * exp(-p * (r_ij / r_0 - 1))
   Non-periodic unbounded calls without stress or per-atom output delegate to
   =rgpot_gupta=.
   With =periodic= false the cell is not used to fold pairs.
-  With =stress= set the force call writes the Cauchy stress when the cell
-  volume is positive.
+  With =stress= set the force call writes the Cauchy stress when the cell volume
+  is positive.
 - Errors :: the errors of =rgpot::GuptaConfig=.
   The force call throws =std::invalid_argument= when =out= is null, when
   =nAtoms > 0= with a null position or force buffer, and when =periodic= is set
@@ -1320,9 +1320,9 @@ void setPairTermLimit(std::size_t pairs) noexcept;
   density-pass terms the force pass reads back.
 - Units :: none.
 - Outputs :: none.
-  A force call keeps =r=, =dphi/dr= and =dpsi/dr= for each pair the density
-  pass accepts, 24 bytes a pair, and computes pairs past the limit again with
-  the same bits.
+  A force call keeps =r=, =dphi/dr= and =dpsi/dr= for each pair the density pass
+  accepts, 24 bytes a pair, and computes pairs past the limit again with the
+  same bits.
   The default keeps 32 MiB of terms, and 0 keeps none.
 - Errors :: none.
 
