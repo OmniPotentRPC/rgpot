@@ -316,11 +316,25 @@ pub unsafe extern "C" fn rgpot_rpc_neighbours(
             }
         }
         let inp = unsafe { &*input };
-        let reply = match unsafe { &mut *client }.neighbours(inp, &query) {
-            Ok(reply) => reply,
-            Err(error) => {
-                set_last_error(&format!("rgpot_rpc_neighbours: {error}"));
-                return rgpot_status_t::RGPOT_RPC_ERROR;
+        let client_ref = unsafe { &mut *client };
+        let probe = out.is_null() || unsafe { (*out).cap == 0 };
+        let reply = if probe {
+            match client_ref.neighbours(inp, &query) {
+                Ok(reply) => reply,
+                Err(error) => {
+                    set_last_error(&format!("rgpot_rpc_neighbours: {error}"));
+                    return rgpot_status_t::RGPOT_RPC_ERROR;
+                }
+            }
+        } else if let Some(reply) = client_ref.take_cached_neighbours(input, &query) {
+            reply
+        } else {
+            match client_ref.neighbours(inp, &query) {
+                Ok(reply) => reply,
+                Err(error) => {
+                    set_last_error(&format!("rgpot_rpc_neighbours: {error}"));
+                    return rgpot_status_t::RGPOT_RPC_ERROR;
+                }
             }
         };
         let total = reply.first.len();
@@ -345,13 +359,11 @@ pub unsafe extern "C" fn rgpot_rpc_neighbours(
         if !needed.is_null() {
             unsafe { *needed = total };
         }
-        if out.is_null() {
+        if probe {
+            client_ref.cache_neighbours(input, query, reply);
             return rgpot_status_t::RGPOT_SUCCESS;
         }
         let buffers = unsafe { &*out };
-        if buffers.cap == 0 {
-            return rgpot_status_t::RGPOT_SUCCESS;
-        }
         let nwrite = buffers.cap.min(total);
         if nwrite > 0 {
             unsafe {
@@ -838,6 +850,105 @@ mod tests {
         (port, join)
     }
 
+    struct NeighbourRoundTripPotential;
+
+    impl potential::Server for NeighbourRoundTripPotential {
+        fn get_capabilities(
+            &mut self,
+            _params: potential::GetCapabilitiesParams,
+            mut results: potential::GetCapabilitiesResults,
+        ) -> capnp::capability::Promise<(), CapnpError> {
+            crate::compat::describe_server(results.get().init_capabilities(), false);
+            capnp::capability::Promise::ok(())
+        }
+
+        fn neighbours(
+            &mut self,
+            params: potential::NeighboursParams,
+            mut results: potential::NeighboursResults,
+        ) -> capnp::capability::Promise<(), CapnpError> {
+            let params = match params.get() {
+                Ok(value) => value,
+                Err(error) => return capnp::capability::Promise::err(error),
+            };
+            let request = match params.get_request() {
+                Ok(value) => value,
+                Err(error) => return capnp::capability::Promise::err(error),
+            };
+            let periodic = match request.get_periodic() {
+                Ok(value) => value,
+                Err(error) => return capnp::capability::Promise::err(error),
+            };
+            if periodic.len() != 3 || periodic.get(0) || periodic.get(1) || periodic.get(2) {
+                return capnp::capability::Promise::err(CapnpError::failed(
+                    "expected non-periodic query".to_string(),
+                ));
+            }
+            if request.get_cutoff() != 0.0 {
+                return capnp::capability::Promise::err(CapnpError::failed(
+                    "expected default cutoff query".to_string(),
+                ));
+            }
+            let mut list = results.get().init_neighbors();
+            list.set_status(0);
+            list.set_message("ok");
+            list.set_more(false);
+            list.set_next(1);
+            let mut first = list.reborrow().init_first(1);
+            first.set(0, 0);
+            let mut second = list.reborrow().init_second(1);
+            second.set(0, 1);
+            let mut shift = list.reborrow().init_shift(3);
+            shift.set(0, 0);
+            shift.set(1, 0);
+            shift.set(2, 0);
+            let mut vector = list.reborrow().init_vector(3);
+            vector.set(0, 1.0);
+            vector.set(1, 0.0);
+            vector.set(2, 0.0);
+            let mut distance = list.reborrow().init_distance(1);
+            distance.set(0, 1.0);
+            let mut mask = list.reborrow().init_mask(1);
+            mask.set(0, 0);
+            capnp::capability::Promise::ok(())
+        }
+    }
+
+    fn start_neighbour_round_trip_server() -> (u16, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|e| panic!("{e}"));
+        let port = listener
+            .local_addr()
+            .unwrap_or_else(|e| panic!("{e}"))
+            .port();
+        let join = thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new().unwrap_or_else(|e| panic!("{e}"));
+            runtime.block_on(async move {
+                listener
+                    .set_nonblocking(true)
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let tokio_listener =
+                    tokio::net::TcpListener::from_std(listener).unwrap_or_else(|e| panic!("{e}"));
+                let (stream, _) = tokio_listener
+                    .accept()
+                    .await
+                    .unwrap_or_else(|e| panic!("{e}"));
+                let capability =
+                    capnp_rpc::new_client::<potential::Client, _>(NeighbourRoundTripPotential);
+                let (reader, writer) =
+                    tokio_util::compat::TokioAsyncReadCompatExt::compat(stream).split();
+                let network = twoparty::VatNetwork::new(
+                    futures::io::BufReader::new(reader),
+                    futures::io::BufWriter::new(writer),
+                    rpc_twoparty_capnp::Side::Server,
+                    Default::default(),
+                );
+                let rpc_system = RpcSystem::new(Box::new(network), Some(capability.client));
+                let _ = rpc_system.await;
+            });
+        });
+        (port, join)
+    }
+
     #[test]
     fn calculate_reports_server_exceptions_as_rpc_error() {
         let (port, join) = start_failing_capnp_server();
@@ -894,6 +1005,73 @@ mod tests {
             distances: true,
         };
         assert_eq!(query.cutoff, 2.5);
+    }
+
+    #[test]
+    fn neighbours_round_trip_reads_server_reply() {
+        let (port, join) = start_neighbour_round_trip_server();
+        let host = host_for();
+        let client = unsafe { rgpot_rpc_client_new(host.as_ptr(), port) };
+        let input = make_input(2);
+        let request = rgpot_rpc_neighbors_request_t {
+            cutoff: 0.0,
+            skin: 0.0,
+            format: 0,
+            cut: 1,
+            periodic: [0, 0, 0],
+            shifts: 1,
+            vectors: 1,
+            distances: 1,
+        };
+        let mut count = 0usize;
+        let mut needed = 0usize;
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                client,
+                &input.input,
+                &request,
+                std::ptr::null_mut(),
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(status, crate::status::rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(count, 0);
+        assert_eq!(needed, 1);
+        let mut first = vec![-1_i32; 4];
+        let mut second = vec![-1_i32; 4];
+        let mut shift = vec![99_i32; 12];
+        let mut vector = vec![99.0_f64; 12];
+        let mut distance = vec![99.0_f64; 4];
+        let mut out = rgpot_rpc_neighbors_out_t {
+            first: first.as_mut_ptr(),
+            second: second.as_mut_ptr(),
+            shift: shift.as_mut_ptr(),
+            vector: vector.as_mut_ptr(),
+            distance: distance.as_mut_ptr(),
+            mask: std::ptr::null_mut(),
+            cap: 4,
+        };
+        let status = unsafe {
+            rgpot_rpc_neighbours(
+                client,
+                &input.input,
+                &request,
+                &mut out,
+                &mut count,
+                &mut needed,
+            )
+        };
+        assert_eq!(status, crate::status::rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(count, 1);
+        assert_eq!(needed, 1);
+        assert_eq!(first[0], 0);
+        assert_eq!(second[0], 1);
+        assert_eq!(&shift[0..3], &[0, 0, 0]);
+        assert_eq!(&vector[0..3], &[1.0, 0.0, 0.0]);
+        assert_eq!(distance[0], 1.0);
+        unsafe { rgpot_rpc_client_free(client) };
+        let _ = join.join();
     }
 
     #[test]

@@ -33,20 +33,20 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "rgpot/CalculatorGroup.hpp"
+#include "rgpot/D2Pot/D2CpmdPot.hpp"
+#include "rgpot/D2Pot/D2Pot.hpp"
+#include "rgpot/D4Pot/D4Config.hpp"
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/LongRange/SumPot.hpp"
+#include "rgpot/Models/ModelPots.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
-#include "rgpot/CalculatorGroup.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/SumPot/SumPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
-#include "rgpot/D2Pot/D2Pot.hpp"
-#include "rgpot/D2Pot/D2CpmdPot.hpp"
-#include "rgpot/D4Pot/D4Config.hpp"
-#include "rgpot/Models/ModelPots.hpp"
-#include "rgpot/LongRange/SumPot.hpp"
-#include "rgpot/SumPot/SumPot.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/pot_types.hpp"
@@ -125,8 +125,8 @@
 #endif
 
 #define RGPOT_CXX_PLATFORM_TAG                                                 \
-  RGPOT_CXX_OS_NAME "-" RGPOT_CXX_ARCH_NAME "-" RGPOT_CXX_STDLIB_NAME "-"      \
-      RGPOT_CXX_MODEL_NAME
+  RGPOT_CXX_OS_NAME "-" RGPOT_CXX_ARCH_NAME "-" RGPOT_CXX_STDLIB_NAME          \
+                    "-" RGPOT_CXX_MODEL_NAME
 
 // Listed platforms. Each branch matches one kCxxSoversionTable row.
 // The string is the row's tag. check_cxx_soversion.py requires the two
@@ -134,7 +134,7 @@
 // aarch64, macOS and Windows stay unlisted until a no-cache CI stamp
 // line for soversion 5 is copied in. Their soversion-4 hashes are the
 // layouts from before LJPot and MorsePot grew their neighbour members.
-#if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                    \
+#if defined(RGPOT_OS_LINUX) && defined(RGPOT_ARCH_X86_64) &&                   \
     defined(RGPOT_STDLIB_LIBSTDCXX) && defined(RGPOT_MODEL_LP64)
 #define RGPOT_CXX_PLATFORM_LISTED 1
 #define RGPOT_CXX_PLATFORM_LISTED_TAG "linux-x86_64-libstdc++-lp64"
@@ -174,18 +174,18 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// did not increase.
 ///
 /// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
-/// is major 1, minor 10, layout revision 1. Minor 1 added
+/// is major 1, minor 11, layout revision 1. Minor 1 added
 /// `rgpot_eindir_abi_compatible`, minor 2 the Hessian-vector functions,
 /// minor 3 the fused-cache settings and error kind, minor 4 the Taylor
 /// jet functions, minor 5 the engine and RPC Hessian-vector exports,
 /// minor 6 `rgpot_potential_new_eam_table` and minor 8 the dense Hessian,
 /// the dual-number callbacks and the derivative capabilities and counts.
-/// Minor 9 added `rgpot_mdi_server_start` and minor 10
-/// `rgpot_rpc_client_select_orbitals`.
+/// Minor 9 added `rgpot_mdi_server_start`, minor 10
+/// `rgpot_rpc_client_select_orbitals` and minor 11 `rgpot_rpc_neighbours`.
 /// The molecular-dynamics session, including its optional
 /// neighbour-exchange callbacks, is a C++ session vtable on librgpot.
-/// Those symbols are not exports of librgpot_core, so this C minor
-/// stays 10. `kCxxSoversion` stays 9: the session vtable is not a
+/// Those symbols are not exports of librgpot_core, so they do not move
+/// this C minor. `kCxxSoversion` stays 9: the session vtable is not a
 /// covered potential type, and `kCxxLayoutRevision` stays 2.
 /// No exported C struct of that header changed layout. The neighbour query
 /// is `RGPOT_NLIST_ABI` 4.
@@ -268,7 +268,8 @@ constexpr bool soversion_tags_unique() noexcept {
   return true;
 }
 
-static_assert(soversion_tags_unique(), "kCxxSoversionTable tags must be unique");
+static_assert(soversion_tags_unique(),
+              "kCxxSoversionTable tags must be unique");
 
 /// Virtual functions declared by @c PotentialBase, destructor included.
 /// The cache hook @c setCache adds one when @c RGPOT_HAS_CACHE is defined.

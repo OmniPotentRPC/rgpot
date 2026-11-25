@@ -62,8 +62,10 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 
 /**
  * ABI minor of this build.
+ *
+ * Minor 11 adds the `rgpot_rpc_neighbours` export.
  */
-#define RGPOT_ABI_VERSION_MINOR 10
+#define RGPOT_ABI_VERSION_MINOR 11
 
 /**
  * Layout revision of this build.
@@ -81,7 +83,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * Additive protocol revision.
  */
-#define PROTOCOL_MINOR 2
+#define PROTOCOL_MINOR 3
 #endif
 
 #if defined(RGPOT_HAS_SCHEMA)

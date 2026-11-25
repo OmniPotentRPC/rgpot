@@ -96,6 +96,21 @@ struct PotentialServer {
     callback: PotentialCallback,
     user_data: *mut c_void,
     potential: *const rgpot_potential_t,
+    neighbor_stream: Option<NeighborStream>,
+}
+
+#[derive(Default)]
+struct NeighborStream {
+    first: Vec<i32>,
+    second: Vec<i32>,
+    shift: Vec<i32>,
+    vector: Vec<f64>,
+    distance: Vec<f64>,
+    mask: Vec<u8>,
+    system: Vec<i32>,
+    shifts: bool,
+    vectors: bool,
+    distances: bool,
 }
 
 // Safety: the user_data pointer is only accessed through the callback
@@ -210,7 +225,8 @@ impl potential::Server for PotentialServer {
                     return capnp::capability::Promise::ok(());
                 }
             };
-            if let Err((code, msg)) = answer_neighbours(fip, neighbor_request, list_out.reborrow())
+            if let Err((code, msg)) =
+                answer_neighbours(fip, neighbor_request, list_out.reborrow(), None)
             {
                 list_out.set_status(code);
                 list_out.set_message(&msg);
@@ -297,7 +313,12 @@ impl potential::Server for PotentialServer {
         let fip = pry!(params.get_fip());
         let request = pry!(params.get_request());
         let mut out = results.get().init_neighbors();
-        if let Err((code, msg)) = answer_neighbours(fip, request, out.reborrow()) {
+        if let Err((code, msg)) = answer_neighbours(
+            fip,
+            request,
+            out.reborrow(),
+            Some(&mut self.neighbor_stream),
+        ) {
             out.set_status(code);
             out.set_message(&msg);
             out.set_more(false);
@@ -311,10 +332,24 @@ fn answer_neighbours(
     fip: crate::rpc::schema::force_input::Reader<'_>,
     request: crate::rpc::schema::neighbor_request::Reader<'_>,
     mut out: crate::rpc::schema::neighbor_list::Builder<'_>,
+    mut stream_slot: Option<&mut Option<NeighborStream>>,
 ) -> Result<(), (i32, String)> {
     let mode = request.get_mode();
     if mode != 1 && mode != 2 {
         return Err((5, "mode must be 1 (stored) or 2 (stream)".to_string()));
+    }
+    if mode == 2 && request.get_cursor() != 0 {
+        let Some(slot) = stream_slot.as_deref_mut() else {
+            return Err((6, "stream continuation has no server state".to_string()));
+        };
+        let Some(stream) = slot.take() else {
+            return Err((6, "stream continuation has no active stream".to_string()));
+        };
+        let more = write_neighbor_page(&stream, mode, request, out.reborrow())?;
+        if more {
+            *slot = Some(stream);
+        }
+        return Ok(());
     }
     let format = request.get_format();
     if format > 2 {
@@ -551,7 +586,37 @@ fn answer_neighbours(
         }
     }
 
-    let total = first.len();
+    let stream = NeighborStream {
+        first,
+        second,
+        shift,
+        vector,
+        distance,
+        mask,
+        system: system_col,
+        shifts: c_req.want_shifts != 0,
+        vectors: c_req.want_vectors != 0,
+        distances: c_req.want_distances != 0,
+    };
+    let more = write_neighbor_page(&stream, mode, request, out.reborrow())?;
+    if mode == 2 && more {
+        let Some(slot) = stream_slot else {
+            return Err((6, "stream request has no server state".to_string()));
+        };
+        *slot = Some(stream);
+    } else if let Some(slot) = stream_slot {
+        *slot = None;
+    }
+    Ok(())
+}
+
+fn write_neighbor_page(
+    stream: &NeighborStream,
+    mode: u8,
+    request: crate::rpc::schema::neighbor_request::Reader<'_>,
+    mut out: crate::rpc::schema::neighbor_list::Builder<'_>,
+) -> Result<bool, (i32, String)> {
+    let total = stream.first.len();
     let (start, count, more, next) = if mode == 2 {
         let cursor = request.get_cursor() as usize;
         if cursor > total {
@@ -575,51 +640,51 @@ fn answer_neighbours(
 
     let mut first_out = out.reborrow().init_first(count as u32);
     for i in 0..count {
-        first_out.set(i as u32, first[start + i]);
+        first_out.set(i as u32, stream.first[start + i]);
     }
     let mut second_out = out.reborrow().init_second(count as u32);
     for i in 0..count {
-        second_out.set(i as u32, second[start + i]);
+        second_out.set(i as u32, stream.second[start + i]);
     }
     let mut mask_out = out.reborrow().init_mask(count as u32);
     for i in 0..count {
-        mask_out.set(i as u32, mask[start + i]);
+        mask_out.set(i as u32, stream.mask[start + i]);
     }
-    if c_req.want_shifts != 0 {
+    if stream.shifts {
         let mut shift_out = out.reborrow().init_shift((count * 3) as u32);
         for i in 0..count {
             let src = start + i;
-            shift_out.set((3 * i) as u32, shift[3 * src]);
-            shift_out.set((3 * i + 1) as u32, shift[3 * src + 1]);
-            shift_out.set((3 * i + 2) as u32, shift[3 * src + 2]);
+            shift_out.set((3 * i) as u32, stream.shift[3 * src]);
+            shift_out.set((3 * i + 1) as u32, stream.shift[3 * src + 1]);
+            shift_out.set((3 * i + 2) as u32, stream.shift[3 * src + 2]);
         }
     }
-    if c_req.want_vectors != 0 {
+    if stream.vectors {
         let mut vec_out = out.reborrow().init_vector((count * 3) as u32);
         for i in 0..count {
             let src = start + i;
-            vec_out.set((3 * i) as u32, vector[3 * src]);
-            vec_out.set((3 * i + 1) as u32, vector[3 * src + 1]);
-            vec_out.set((3 * i + 2) as u32, vector[3 * src + 2]);
+            vec_out.set((3 * i) as u32, stream.vector[3 * src]);
+            vec_out.set((3 * i + 1) as u32, stream.vector[3 * src + 1]);
+            vec_out.set((3 * i + 2) as u32, stream.vector[3 * src + 2]);
         }
     }
-    if c_req.want_distances != 0 {
+    if stream.distances {
         let mut dist_out = out.reborrow().init_distance(count as u32);
         for i in 0..count {
-            dist_out.set(i as u32, distance[start + i]);
+            dist_out.set(i as u32, stream.distance[start + i]);
         }
     }
-    if !system_col.is_empty() {
+    if !stream.system.is_empty() {
         let mut sys_out = out.reborrow().init_system(count as u32);
         for i in 0..count {
-            sys_out.set(i as u32, system_col[start + i]);
+            sys_out.set(i as u32, stream.system[start + i]);
         }
     }
     out.set_more(more);
     out.set_next(next);
     out.set_status(0);
     out.set_message("ok");
-    Ok(())
+    Ok(more)
 }
 
 /// Start an RPC server listening on `host:port`, dispatching to `pot`.
@@ -697,6 +762,7 @@ pub unsafe extern "C" fn rgpot_rpc_server_start(
                     callback: pot_ref.callback,
                     user_data: pot_ref.pot_user_data,
                     potential: pot,
+                    neighbor_stream: None,
                 };
 
                 let potential_client = capnp_rpc::new_client::<potential::Client, _>(server_impl);
@@ -776,6 +842,7 @@ mod tests {
             callback: probe_callback,
             user_data: probe as *const Probe as *mut c_void,
             potential: std::ptr::null(),
+            neighbor_stream: None,
         });
         let mut request = client.calculate_request();
         {
@@ -829,6 +896,7 @@ mod tests {
             callback: probe_callback,
             user_data: &probe as *const Probe as *mut c_void,
             potential: pot,
+            neighbor_stream: None,
         });
         let direction = [0.2, -0.3, 0.4];
         let mut request = client.calculate_hvp_request();
@@ -899,6 +967,7 @@ mod tests {
             callback: probe_callback,
             user_data: &p as *const Probe as *mut c_void,
             potential: std::ptr::null(),
+            neighbor_stream: None,
         });
         let pos = [0.2, 0.3, 0.4, 3.6, 0.5, 0.2, 1.0, 3.8, 0.7, 2.2, 2.1, 3.9];
         let box9 = [4.0, 0.2, 0.1, 0.3, 4.5, -0.2, 0.05, 0.15, 4.2];
@@ -960,6 +1029,7 @@ mod tests {
             callback: probe_callback,
             user_data: &p as *const Probe as *mut c_void,
             potential: std::ptr::null(),
+            neighbor_stream: None,
         });
         let mut request = client.calculate_request();
         {

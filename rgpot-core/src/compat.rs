@@ -18,7 +18,7 @@ pub const PROTOCOL_FAMILY: &str = "rgpot.potentials";
 /// Wire-incompatible protocol revision.
 pub const PROTOCOL_MAJOR: u16 = 1;
 /// Additive protocol revision.
-pub const PROTOCOL_MINOR: u16 = 2;
+pub const PROTOCOL_MINOR: u16 = 3;
 /// Protocol minor that introduced the orbital-key ForceInput fields.
 /// It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
 pub const ORBITAL_KEY_INTRODUCED_MINOR: u16 = 2;
@@ -426,12 +426,15 @@ mod tests {
     #[test]
     fn protocol_minor_below_requirement_is_rejected() {
         let want = Expectation {
-            protocol_minor_min: 2,
+            protocol_minor_min: PROTOCOL_MINOR + 1,
             ..Expectation::default()
         };
         let err = verdict(|c| c.set_protocol_minor(1), &want).unwrap_err();
         assert!(err.contains("protocol minor"), "{err}");
-        assert_eq!(verdict(|c| c.set_protocol_minor(2), &want), Ok(()));
+        assert_eq!(
+            verdict(|c| c.set_protocol_minor(PROTOCOL_MINOR + 1), &want),
+            Ok(())
+        );
     }
 
     #[test]

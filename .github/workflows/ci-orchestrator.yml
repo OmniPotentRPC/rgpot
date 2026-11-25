@@ -844,6 +844,16 @@ jobs:
           activate-environment: devbld
       - name: Check shared Rust dependency versions
         run: python3 scripts/check_rust_dependency_versions.py
+      - name: Check rgpot-core package contents
+        shell: pixi run bash -e {0}
+        run: |
+          cargo package --locked -p rgpot-core --allow-dirty
+          cargo package --locked -p rgpot-core --allow-dirty --list > "$RUNNER_TEMP/rgpot-core.package.list"
+          grep -Fx "build.rs" "$RUNNER_TEMP/rgpot-core.package.list"
+          grep -Fx "native/CppCore/rgpot/nlist/NeighbourList.cc" "$RUNNER_TEMP/rgpot-core.package.list"
+          grep -Fx "schema/Potentials.capnp" "$RUNNER_TEMP/rgpot-core.package.list"
+          packages=(target/package/rgpot-core-*/)
+          cargo test --manifest-path "${packages[0]}Cargo.toml" --lib --features rpc --no-run
       - name: Install cargo-nextest
         uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2
         with:
