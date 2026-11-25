@@ -118,6 +118,7 @@ void assignBuffer(std::vector<T> &vec, std::size_t count, const T &value) {
 
 struct MorseWorkspace {
   std::uint64_t generation = 0;
+  bool serial_half_walk = false;
 
   std::vector<std::int32_t> up_off;
   std::vector<std::int32_t> lo_off;
@@ -372,6 +373,7 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
   // team. The matching releaseWorkspaceTo is what keeps the retain cap.
   WorkspaceLease lease;
   MorseWorkspace &ws = *lease.ws;
+  ws.serial_half_walk = false;
 
   const auto N = static_cast<long>(in.nAtoms);
   double *F = out->F;
@@ -476,7 +478,7 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
     return;
   }
 
-  const int slices = teamSize(n_atoms, from);
+  const int slices = teamSize(n_atoms, from, kTeamFrom);
 
   if (!neighbours_.streaming()) {
     const std::size_t est_half_pairs = neighbours_.slots() / 2;
@@ -716,7 +718,8 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
   double *row_e = ws.row_e.data();
   double *row_s = ws.row_s.data();
 
-  if (!neighbours_.streaming() || (slices == 1 && neighbours_.allPairs())) {
+  if (!neighbours_.streaming() || slices == 1) {
+    ws.serial_half_walk = true;
     PairBatch batch;
     auto emit = [&](std::size_t k, double pair_e, double fscale) RGPOT_MORSE_LAMBDA_INLINE {
       const auto ii = batch.i[k];
@@ -981,6 +984,7 @@ MorseSplitSnapshot morseStoredSplitSnapshot() {
       .generation = ws.split_generation,
       .atoms = ws.split_atoms,
       .slices = ws.split_slices,
+      .serial_half_walk = ws.serial_half_walk,
       .total_up = ws.split_total_up,
       .total_inc = ws.split_total_inc,
       .up_off_cap = ws.up_off.capacity(),

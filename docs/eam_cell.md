@@ -18,14 +18,14 @@ wrapped into the cell.
 
 The neighbour mode defaults to `Mode::Auto`, which stores the list when
 its index fits in memory and otherwise streams. `setNeighbourMode`
-selects a mode. With a stored list and one thread, the force loop visits
-each atom's partners in increasing index order. That is the same
-arithmetic, on the same pairs, as the direct double loop, and the energy
-and forces match that loop bit for bit. A streaming evaluation walks the
-cells twice, once for the density and once for the forces, and stores no
-pair list. It evaluates the pair terms from cubic Hermite tables
-(`CppCore/rgpot/EAM/StreamSpline.hpp`) instead of `std::exp`, so it is
-not bit-identical to the direct loop.
+selects a mode. With a stored list, below `EAM::kTeamMinAtoms` atoms, the
+force loop visits each atom's partners in increasing index order. That
+is the same arithmetic, on the same pairs, as the direct double loop,
+and the energy and forces match that loop bit for bit. A streaming
+evaluation walks the cells twice, once for the density and once for the
+forces, and stores no pair list. It evaluates the pair terms from cubic
+Hermite tables (`CppCore/rgpot/EAM/StreamSpline.hpp`) instead of
+`std::exp`, so it is not bit-identical to the direct loop.
 
 The stored list is the neighbours inside the cutoff plus the skin. On a
 bulk aluminium crystal that is a few dozen neighbours per atom, not one
@@ -35,28 +35,31 @@ slot per atom pair.
 
 `OMP_NUM_THREADS` is read on each call. When it is unset, empty, not a
 number or below 1, the call stays on one thread. A build without OpenMP
-always uses one thread, and so does a call on fewer than 8192 atoms
-(`rgpot::kTeamMinAtoms`), for which a team costs more than it saves.
+always uses one thread, and so does a call on fewer atoms than
+`EAM::kTeamFrom` asks of its thread count, for which a team costs more
+than it saves. In `Stream` mode a team evaluates each pair twice, so no
+team of two opens.
 
-From 8192 atoms up, the energy of each atom's row, the pair potential to
-higher-index partners and the atom's own embedding term, is summed on
-its own, and the rows are added in index order. With a stored list, a
-value above 1 splits the atoms into contiguous slices, one per requested
-thread. Each slice writes only the forces of its own atoms. The first
-pass computes the density, the row energy and the scale of each pair. A
-second pass, which starts once every slice has finished the first, sums
-the force on each atom from the stored scales, in the order of the
-one-thread loop. A streaming evaluation walks each atom's whole row on
+From `EAM::kTeamMinAtoms` atoms up, the energy of each atom's row, the
+pair potential to higher-index partners and the atom's own embedding
+term, is summed on its own, and the rows are added in index order. With
+a stored list, a team splits the atoms into contiguous slices, one per
+requested thread. Each slice writes only the forces of its own atoms.
+The first pass computes the density, the row energy and the scale of
+each pair. A second pass, which starts once every slice has finished the
+first, sums the force on each atom from the stored scales, in the order
+of the one-thread loop. A streaming team walks each atom's whole row on
 the slice that owns the atom, once for the density and once for the
-forces, on any thread count. The threads the runtime starts take every
-slice, also when there are fewer of them, as under `OMP_THREAD_LIMIT` or
-inside another OpenMP region.
+forces, and one thread walks each pair once in the order of those rows.
+The threads the runtime starts take every slice, also when there are
+fewer of them, as under `OMP_THREAD_LIMIT` or inside another OpenMP
+region.
 
 Every thread count therefore gives the bits of one thread.
-`EAMCellVerletTest` checks the one-thread bits against the direct loop,
-the skin rebuild, the list length, and the same bits on 1, 2, 3 and 8
-threads at 500 and 8788 atoms, all on a stored list. `ThreadTeamTest`
-checks both modes, also on short teams.
+`EAMCellVerletTest` checks the bits of a call below the threshold
+against the direct loop, the skin rebuild, the list length, and the
+same bits on 1, 2, 3 and 8 threads at 32, 500 and 8788 atoms, all on a
+stored list. `ThreadTeamTest` checks both modes, also on short teams.
 
 ## Timings
 

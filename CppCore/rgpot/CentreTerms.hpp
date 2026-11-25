@@ -220,14 +220,15 @@ private:
  * Runs `centre(i, terms, scratch)` for every atom i below `n` and adds the
  * centres to `force`, `energy` and, when it is set, `strain`, in index
  * order. `centre` resets `terms` for i and then adds i's terms to it.
- * Each slice has its own `Scratch`. `from` is the threshold of teamSize.
- * A team runs the centres in blocks, so the ledgers stay a block long.
+ * Each slice has its own `Scratch`. `from` and `team` are those of
+ * teamSize. A team runs the centres in blocks, so the ledgers stay a block
+ * long.
  */
 template <typename Scratch, typename Centre>
-void sumCentres(std::size_t n, std::size_t from, const Centre &centre, double *force,
-                double &energy, double *strain) {
+void sumCentres(std::size_t n, std::size_t from, TeamFrom team, const Centre &centre,
+                double *force, double &energy, double *strain) {
   const bool strained = strain != nullptr;
-  const int slices = teamSize(n, from);
+  const int slices = teamSize(n, from, team);
   if (slices == 1) {
     CentreTerms terms(strained);
     Scratch scratch{};

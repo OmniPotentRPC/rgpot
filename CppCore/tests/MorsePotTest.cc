@@ -588,6 +588,10 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
           bool first_reused = false;
           const auto got0 =
               runFullEval(pot, sys.pos, sys.z, sys.box, &first_reused);
+          if (mode == rgpot::nlist::Mode::Stream &&
+              (std::string(th) == "1" || std::string(th) == "2")) {
+            CHECK(rgpot::detail::morseStoredSplitSnapshot().serial_half_walk);
+          }
           if (mode == rgpot::nlist::Mode::Stored) {
             if (std::string(th) == "1") {
               CHECK_FALSE(first_reused);

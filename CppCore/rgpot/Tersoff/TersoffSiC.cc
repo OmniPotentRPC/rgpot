@@ -309,7 +309,8 @@ void TersoffSiC::energyAndGradientBatch(std::size_t n_config,
         evaluate(positions + c * stride, atomic_numbers, box, n_atoms,
                  energies + c, gradients + c * stride, -1.0, nullptr, nullptr,
                  cells);
-      });
+      },
+      kTeamMinAtoms, kTeamFrom);
 }
 
 void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
@@ -372,7 +373,7 @@ void TersoffSiC::evaluate(const double *positions, const int *atomic_numbers,
     return;
   }
   sumCentres<std::vector<Bond>>(
-      n_atoms, from,
+      n_atoms, from, kTeamFrom,
       [&](std::int32_t i, CentreTerms &terms, std::vector<Bond> &nb) {
         load(i, nb);
         terms.reset(i, nb);

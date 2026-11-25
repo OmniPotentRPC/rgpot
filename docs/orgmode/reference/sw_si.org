@@ -41,12 +41,14 @@ The cell is periodic in each direction.
 =energyAndGradient= writes the energy and dE/dx for one configuration.
 =energyAndGradientBatch= writes both for several configurations that share one
 cell and one species list, so a caller enters the library once per batch.
-Configurations below =rgpot::kTeamMinAtoms= atoms are spread across the threads
-=OMP_NUM_THREADS= requests, unless the call is already inside a team or only one
-thread is requested.
+A configuration is spread across the threads =OMP_NUM_THREADS= requests when
+=StillingerWeberSi= would not open a team for that atom count.
+=teamSize= decides, from =StillingerWeberSi::kTeamMinAtoms= and
+=StillingerWeberSi::kTeamFrom=, and a call already inside a team or with one
+thread requested does not spread.
 Each configuration is evaluated whole.
-A configuration of that many atoms or more, or a batch that contains one, stays
-on the calling thread.
+A configuration that would open a team, or a batch that contains one, stays on
+the calling thread.
 The bits match a one-thread batch and a fresh =energyAndGradient= of the same
 configuration.
 The Python method =energy_gradient= accepts positions of shape =(n_atoms, 3)= or

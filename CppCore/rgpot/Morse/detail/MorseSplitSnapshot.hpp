@@ -29,6 +29,7 @@ struct MorseSplitSnapshot {
   std::uint64_t generation = 0;
   std::size_t atoms = 0;
   int slices = 0;
+  bool serial_half_walk = false;
   std::size_t total_up = 0;
   std::size_t total_inc = 0;
   std::size_t up_off_cap = 0;

@@ -715,7 +715,7 @@ void EAM::evaluateStreamRows(long N, const int *atomicNrs, double *F, double *U)
 void EAM::evaluate(long N, const int *atomicNrs, double *F, double *U) {
   const auto n = static_cast<std::size_t>(N);
   const std::size_t from = rgpot::teamThreshold(kTeamMinAtoms);
-  const int nt = rgpot::teamSize(n, from);
+  const int nt = rgpot::teamSize(n, from, kTeamFrom);
   threads_used_ = nt;
   const bool rows = n >= from;
   if (neighbours_.streaming()) {

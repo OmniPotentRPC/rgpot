@@ -842,11 +842,13 @@ virtual void forceBatchImpl(const ForceBatch &batch) const;
   The default calls =forceImpl= once per system.
   A potential whose =caps().reentrancy= is =Reentrancy::SharedInstance=, and
   whose caps do not set =perImageInstances= or =groupCollective=, spreads those
-  systems across the threads =OMP_NUM_THREADS= requests when every system has
-  fewer than =rgpot::kTeamMinAtoms= atoms and the call is not already inside a
-  team.
-  One requested thread, one system, or any system at that atom count or above
-  keeps the serial loop, so a large system can take the team itself.
+  systems across the threads =OMP_NUM_THREADS= requests when =teamSize= would
+  leave every system on one thread.
+  The counts are the potential's =kTeamMinAtoms= and =kTeamFrom=, or
+  =rgpot::kTeamMinAtoms= when it publishes neither, and a call already inside a
+  team does not spread.
+  One requested thread, one system, or any system that would open a team keeps
+  the serial loop, so that system can take the team itself.
   Each system is evaluated whole, and the bits match that loop.
   Any other potential keeps the serial loop, so per-instance scratch is not
   shared.

@@ -203,7 +203,8 @@ void StillingerWeberSi::energyAndGradientBatch(
         nlist::Neighbours cells;
         evaluate(positions + c * stride, box, n_atoms, energies + c,
                  gradients + c * stride, -1.0, nullptr, nullptr, cells);
-      });
+      },
+      kTeamMinAtoms, kTeamFrom);
 }
 
 void StillingerWeberSi::evaluate(const double *positions, const double *box,
@@ -259,7 +260,7 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
     return;
   }
   sumCentres<std::vector<Bond>>(
-      n_atoms, from,
+      n_atoms, from, kTeamFrom,
       [&](std::int32_t i, CentreTerms &terms, std::vector<Bond> &nb) {
         load(i, nb);
         terms.reset(i, nb);

@@ -84,9 +84,13 @@ public:
   /// thread agrees with the old ordered walk to within 1e-12.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
-  /// Atoms from which a call adds its terms atom by atom in index order
-  /// and, when `OMP_NUM_THREADS` asks for more than one, opens a team.
-  static constexpr std::size_t kTeamMinAtoms = rgpot::kTeamMinAtoms;
+  /// Atoms from which a call adds its terms atom by atom in index order,
+  /// on any thread count: the least in kTeamFrom.
+  static constexpr std::size_t kTeamMinAtoms = 32;
+  /// Atoms from which a team of two threads opens, of three, and of four
+  /// or more: the smallest clusters from which each took at most nine
+  /// tenths of the one-thread time in thread_count_bench.
+  static constexpr TeamFrom kTeamFrom{112, 56, kTeamMinAtoms};
 
   /**
    * @brief Energy and dE/dx for one configuration.
@@ -119,10 +123,13 @@ public:
    * @param energies Length n_config.
    * @param gradients Length n_config * n_atoms * 3.
    *
-   * Configurations below @c kTeamMinAtoms are spread across the thread
-   * team. Each one is evaluated on one thread and on its own neighbour
-   * list. A larger configuration stays on the calling thread so its
-   * in-system team is not nested. The bits match that serial loop.
+   * A configuration is spread across the thread team when this potential
+   * would not open a team for it. @c teamSize decides, from
+   * @c kTeamMinAtoms and @c kTeamFrom. Each configuration is evaluated
+   * on one thread and on its own neighbour list. A configuration that
+   * would open a team stays on the calling thread, so that team is not
+   * nested and a spread worker does not open one. The bits match that
+   * serial loop.
    */
   void energyAndGradientBatch(std::size_t n_config, const double *positions,
                               const int *atomic_numbers, const double *box,

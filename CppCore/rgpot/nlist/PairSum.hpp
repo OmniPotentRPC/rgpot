@@ -11,10 +11,11 @@
  * keeps the energy and strain of the pairs to its partners above it, and
  * the totals add those rows in atom order. One thread walks the pairs of
  * forRowHalf, each pair once. A team walks the rows of forRowTeam by atom
- * range, and each atom adds the force of all its partners itself, in the
- * order in which forRowHalf reaches it. The vectors of forRowTeam make
- * every term the negation of the one-thread term, and the force adds the
- * rounded product, as the one-thread walk does.
+ * range, so it evaluates each pair from both atoms, and each atom adds the
+ * force of all its partners itself, in the order in which forRowHalf
+ * reaches it. The vectors of forRowTeam make every term the negation of
+ * the one-thread term, and the force adds the rounded product, as the
+ * one-thread walk does.
  */
 
 #include "rgpot/PerAtom.hpp"
@@ -96,7 +97,7 @@ void halfPairs(const Neighbours &cells, std::size_t n, double cutoff2, Overlap o
 
 /**
  * Adds the pairs of `cells` within `cutoff2` over `n` atoms, with the
- * threshold `from` of teamSize.
+ * threshold `from` and the teams `team` of teamSize.
  *
  * `term(i, j, r2, energy, fscale)` gives the pair energy and the force on
  * i along d = r_i - r_j as fscale * d, with the same bits for (j, i). The
@@ -106,9 +107,9 @@ void halfPairs(const Neighbours &cells, std::size_t n, double cutoff2, Overlap o
  * nothing; with Overlap::Poison it makes the energy NaN.
  */
 template <typename Term>
-void sumPairs(const Neighbours &cells, std::size_t n, std::size_t from, double cutoff2,
-              Overlap overlap, const Term &term, double *force, double &energy, double *strain,
-              const PerAtomOut *atoms) {
+void sumPairs(const Neighbours &cells, std::size_t n, std::size_t from, TeamFrom team,
+              double cutoff2, Overlap overlap, const Term &term, double *force, double &energy,
+              double *strain, const PerAtomOut *atoms) {
   if (n < from) {
     detail::halfPairs<false>(cells, n, cutoff2, overlap, term, force, &energy, strain, atoms);
     return;
@@ -117,7 +118,7 @@ void sumPairs(const Neighbours &cells, std::size_t n, std::size_t from, double c
   std::vector<double> row_strain(strain != nullptr ? 6 * n : 0, 0.0);
   double *row_e = rows.data();
   double *row_s = strain != nullptr ? row_strain.data() : nullptr;
-  const int slices = teamSize(n, from);
+  const int slices = teamSize(n, from, team);
   if (slices == 1) {
     detail::halfPairs<true>(cells, n, cutoff2, overlap, term, force, row_e, row_s, atoms);
   } else {

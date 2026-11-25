@@ -82,8 +82,9 @@ does not fill a GPU. `Table::device` is 0. The arrays are the contract a
 later device fill would write.
 
 `build` uses threads when `OMP_NUM_THREADS` is above 1 and there are at
-least 8192 atoms, the rule every potential call follows (`teamSize` in
-`CppCore/rgpot/Slices.hpp`). A pair list splits the cells into
+least 8192 atoms (`rgpot::kTeamMinAtoms` and `teamSize` in
+`CppCore/rgpot/Slices.hpp`); a potential call has a threshold of its own.
+A pair list splits the cells into
 contiguous ranges when the cell is unsheared and at least two search
 radii across every periodic axis. A sheared or narrower cell may need
 several images of a pair, so the pair list then splits the atoms and
@@ -244,14 +245,25 @@ A team walk with no bins gives each slice a contiguous range of atoms; with more
 Sutton-Chen with `cutoff <= 0` searches this way.
 The public `Query` still rejects a cutoff that is not finite.
 
-A potential call on fewer than 8192 atoms (`kTeamMinAtoms`) runs on the
-calling thread, whatever `OMP_NUM_THREADS` says, and keeps the serial
-pair order. `teamSize` in `CppCore/rgpot/Slices.hpp` gives the slice
+A potential call on fewer atoms than the `kTeamMinAtoms` of its class
+runs on the calling thread, whatever `OMP_NUM_THREADS` says, and keeps
+the serial pair order. From there up it opens a team when it has at
+least the atoms the `kTeamFrom` of its class asks of the
+`OMP_NUM_THREADS` threads, and otherwise runs the same sums on the
+calling thread. Both come from the crossovers in
+[Per-potential thresholds](#per-potential-thresholds).
+`teamSize(n, from, team)` in `CppCore/rgpot/Slices.hpp` gives the slice
 count of every call, and `teamsOpened` counts the regions a thread has
 opened, so a test can see that a small call opened none.
+The one-argument `teamSize(std::size_t)` overload is deprecated and
+remains exported as a compatibility wrapper forwarding to
+`teamSize(n, rgpot::kTeamMinAtoms, {})`.
 
-From 8192 atoms up a result has the bits of one thread on any
-`OMP_NUM_THREADS`. Each atom keeps the energy and strain of its pairs
+From the `kTeamMinAtoms` of its class up, the least of its `kTeamFrom`
+counts (24 atoms for Morse, 28 for Tersoff, 32 for SW, 40 for LJ and
+EAM, 48 for the LJ cluster, 64 for Sutton-Chen and 192 for ZBL), a
+result has the bits of one thread on any `OMP_NUM_THREADS`. Each atom
+keeps the energy and strain of its pairs
 with higher-index partners, and the atoms are added in index order. The
 pair potentials (`nlist::sumPairs` in `CppCore/rgpot/nlist/PairSum.hpp`),
 Sutton-Chen and EAM give each slice of a team a contiguous range of
@@ -267,12 +279,14 @@ stream on the tiles visits each pair from the atom that comes first by
 cell and then by index. A row there takes every atom of the stencil
 cells before its own, by cell, then the atoms before it in its cell,
 then, in stencil order, the atoms after it in its cell and every atom of
-the later cells. On a stored list with at least `kTeamMinAtoms` atoms and
-at least 4096 candidate upper pairs (`kMinParallelHalfPairs`), `MorsePot`
-evaluates each upper pair once in a two-phase OpenMP region
-(`forEachSlicePhase`), batching `simd::exp_fixed_n` and partitioning
-atoms by pair count on 8-atom boundaries before reducing forces in
-partner index order; sparser stored lists stay on one thread. Boundary
+the later cells. On a stored list that holds at least 4096 candidate
+upper pairs (`kMinParallelHalfPairs`), once `MorsePot::kTeamFrom` opens
+a team for the thread count, from 2048 atoms on three threads and from
+24 on four or more but never on two, `MorsePot` evaluates each upper
+pair once in a two-phase OpenMP region (`forEachSlicePhase`), batching
+`simd::exp_fixed_n` and partitioning atoms by pair count on 8-atom
+boundaries before reducing forces in partner index order; sparser
+stored lists, and calls that open no team, stay on one thread. Boundary
 words of the 1-bit active-pair mask are merged with `std::atomic_ref`
 (which on LLVM's C++ library requires `libc++` 19 or newer,
 `_LIBCPP_VERSION >= 190000`), falling back to `__atomic_fetch_or` on
@@ -314,7 +328,8 @@ distorted 216-atom diamond the largest absolute difference was
 use the same half-list. The old `PairListCache` and its private cell
 walk are gone.
 EMT now follows the same OpenMP threshold as this layer: below
-`kTeamMinAtoms` it stays on one thread, and from `kTeamMinAtoms` up it
+`rgpot::kTeamMinAtoms` (8192 atoms by default) it stays on one thread,
+and from `rgpot::kTeamMinAtoms` up it
 evaluates the Asap half list in two phases, one row-owner pass and one
 incoming-partner pass, so energies and forces are bit-identical at 1, 2,
 4 and 8 threads.
@@ -447,7 +462,10 @@ The neighbour mode is `Auto`, which stored the list at every size in the
 first table. A time is the median of five runs of at least 0.2 s, in
 microseconds per call. Both builds are the Meson release build of the
 pixi `devbld` environment with GCC 14.3.0, on the eight cores above under
-`taskset -c 0-7`. Before is 47c46f97.
+`taskset -c 0-7`. Before is 47c46f97 and after is 2703f77a, which had
+one threshold for every call;
+[Per-potential thresholds](#per-potential-thresholds) gives the
+thresholds that replaced it.
 
 | potential | atoms | 1 thread, before | 1 thread, after | 8 threads, before | 8 threads, after |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -500,9 +518,9 @@ pixi `devbld` environment with GCC 14.3.0, on the eight cores above under
 | Tersoff | 4000 | 2420 | 2371 | 818 | 2369 |
 | Tersoff | 10000 | 6174 | 6284 | 2032 | 1274 |
 
-Below 8192 atoms every call now runs on the calling thread, with the
-bits the old build gave on one thread, at most 1.2% slower (SW at 500
-atoms) and up to 19% faster (Sutton-Chen at 80 atoms). The old build
+Below 8192 atoms every call ran on the calling thread, with the bits
+the old build gave on one thread, at most 1.2% slower (SW at 500 atoms)
+and up to 19% faster (Sutton-Chen at 80 atoms). The old build
 started a team on any call. In this run, on 8 threads Sutton-Chen took
 2.7 to 3.9 times its one-thread time at every size, the LJ and Morse
 teams were slower than one thread at five of the six sizes, and the ZBL
@@ -512,18 +530,18 @@ at 55 and 80 atoms, while the new times stayed within 1.2% of the table.
 
 EAM, the LJ cluster, SW and Tersoff split their atoms into slices, and
 on 8 threads those teams beat one thread from 38 or 55 atoms up. Below
-8192 atoms they now run on one thread, up to 4.3 times slower than their
-old teams: SW at 4000 atoms takes 2006 µs per call, where its team took
-469 µs. That is the cost of one threshold for every call. The sums do not
-depend on it, so a lower threshold for these potentials would change
+8192 atoms they ran on one thread, up to 4.3 times slower than their
+old teams: SW at 4000 atoms took 2006 µs per call, where its team took
+469 µs. That was the cost of one threshold for every call. The sums do
+not depend on it, so a lower threshold for these potentials changes
 only their speed.
 
-At 10000 atoms 8 threads are 2.8 to 4.9 times faster than one, and
+At 10000 atoms 8 threads were 2.8 to 4.9 times faster than one, and
 faster than the old team for every potential but the LJ cluster, 18%
-slower: its team now evaluates each pair once from each end, where its
-old slices evaluated a pair once and added both forces to private
-buffers. One thread costs at most 4% more than before, for SW, whose
-centres now sum their terms before adding them.
+slower: its team evaluates each pair once from each end, where its old
+slices evaluated a pair once and added both forces to private buffers.
+One thread cost at most 4% more than before, for SW, whose centres sum
+their terms before adding them.
 
 On 8 threads the old build moved the energy on 10 to 16 of the 16 frames
 for every potential but ZBL, by up to 2.06e-4 epsilon for the reduced
@@ -543,8 +561,8 @@ At 100000 atoms:
 | SW | 55391 | 57159 | 12427 | 10341 |
 | Tersoff | 64455 | 64937 | 24281 | 10983 |
 
-But for the LJ cluster, one thread costs at most 3.2% more than before
-(SW), and 8 threads are 3.4 to 5.9 times faster than one: up to 5.2
+But for the LJ cluster, one thread cost at most 3.2% more than before
+(SW), and 8 threads were 3.4 to 5.9 times faster than one: up to 5.2
 times faster than the old team, and 1.2% slower for EAM. The LJ cluster
 takes no cell, so that measurement binned a box a million angstroms
 wide, which fell back to one bin. At that size its candidates did not
@@ -571,6 +589,177 @@ One thread on a stream was 1.39 to 1.64 times slower for EAM, Morse and
 LJ, which used to walk half pairs. SW and Tersoff gather each centre's
 bonds either way and stayed within 1%. On 8 threads none was slower than
 its old team.
+
+### Per-potential thresholds
+
+Each potential class keeps three atom counts as `kTeamFrom`: the atoms
+from which a team of two threads opens, a team of three, and a team of
+four or more (`rgpot::TeamFrom` in `CppCore/rgpot/Slices.hpp`), where
+`rgpot::kNoTeam` opens none. From the least of them, the `kTeamMinAtoms`
+of the class, a call adds its sums by rows on any thread count, so the
+counts choose whether a team opens and never change the bits.
+
+The counts are crossovers in `thread_count_bench` on the clusters above.
+`--team-from none` sums directly on one thread, as a call below
+`kTeamMinAtoms` does, and `--team-from 0` sums by rows and opens a team
+on any thread count above one. Every potential ran on 1, 2, 3, 4, 6 and
+8 threads at every 4 atoms from 16 to 32, every 8 to 64, and at 80, 96,
+112, 128, 160, 192, 256, 384, 512, 768 and 1024 atoms. All but
+Sutton-Chen also ran at 2048 and 4096 atoms on those six counts and at
+1536 to 16384 atoms on 1, 2, 4 and 8 threads, and on 1 to 4 threads LJ,
+Morse and EAM went on to 65536 atoms and the LJ cluster and ZBL to
+32768. Sutton-Chen, which has no cutoff, ran at 1536 to 8192 atoms on 1
+to 4 threads and at 1536 on 8. Each point is three or six passes, and a
+pass is the median of five runs of at least 0.2 s. A team wins at a size
+when the median of its pass medians is at most nine tenths of that of
+one thread and its slowest pass is faster than the fastest pass of one
+thread. The crossover is the smallest size from which a team wins at
+every larger size, and none means that it did not win at the largest.
+All 4266 team results had the bits of one thread with row sums.
+
+| potential | 2 threads | 3 threads | 4 threads | 6 threads | 8 threads | `kTeamFrom` |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Sutton-Chen | none | 2048 | 64 | 56 | 56 | none, 2048, 64 |
+| LJ | none | 768 | 32 | 32 | 40 | none, 768, 40 |
+| LJ cluster | none | 768 | 48 | 48 | 48 | none, 768, 48 |
+| Morse | none | 2048 | 24 | 24 | 24 | none, 2048, 24 |
+| ZBL | none | 768 | 192 | 160 | 112 | none, 768, 192 |
+| EAM | none | 384 | 40 | 40 | 40 | none, 384, 40 |
+| SW | 112 | 56 | 32 | 32 | 32 | 112, 56, 32 |
+| Tersoff | 80 | 28 | 28 | 40 | 28 | 80, 28, 28 |
+
+`kTeamFrom` takes the crossover of two threads, that of three, and the
+larger of those of four and eight; none is `kNoTeam`. Six threads crossed
+at or below that count for every potential but Tersoff, where one pass
+of three at 32 atoms was as slow as one thread while the median took
+0.68 of it. Teams of more than eight threads were not timed on these
+eight cores and take the count of four or more. Around that count, in
+microseconds per call, with the lowest and highest pass median:
+
+| potential | atoms | 1 thread | 4 threads | 8 threads |
+| --- | ---: | ---: | ---: | ---: |
+| Sutton-Chen | 56 | 14.8 (13.6–14.9) | 13.6 (12.9–13.9) | 12.7 (12.3–12.9) |
+| Sutton-Chen | 64 | 17.7 (17.6–18.6) | 15.5 (15.5–15.6) | 11.2 (11.2–11.9) |
+| LJ | 32 | 6.96 (6.75–7.75) | 5.86 (5.82–5.97) | 7.43 (6.85–7.56) |
+| LJ | 40 | 9.83 (9.81–10.5) | 8.09 (7.88–8.69) | 7.05 (6.99–7.30) |
+| LJ cluster | 40 | 4.73 (4.72–4.79) | 4.52 (4.27–4.53) | 4.96 (4.67–5.31) |
+| LJ cluster | 48 | 6.80 (6.68–6.94) | 5.33 (5.10–5.33) | 5.16 (5.02–6.10) |
+| Morse | 20 | 5.60 (5.58–5.66) | 5.52 (5.43–5.71) | 6.93 (6.58–7.03) |
+| Morse | 24 | 8.10 (8.03–8.80) | 6.95 (6.92–7.24) | 7.29 (7.04–7.29) |
+| ZBL | 160 | 12.4 (12.3–12.4) | 11.5 (11.4–11.7) | 9.75 (8.71–9.87) |
+| ZBL | 192 | 14.8 (14.7–16.1) | 13.3 (13.2–13.4) | 9.96 (9.89–12.1) |
+| EAM | 32 | 13.2 (13.1–14.0) | 13.1 (12.1–13.7) | 9.36 (8.63–13.7) |
+| EAM | 40 | 18.7 (18.6–21.1) | 15.5 (15.5–15.9) | 10.3 (10.2–11.6) |
+| SW | 28 | 7.58 (7.52–7.61) | 7.32 (7.14–7.71) | 7.19 (7.10–7.50) |
+| SW | 32 | 9.17 (9.13–9.25) | 8.09 (8.04–8.29) | 7.74 (7.36–7.74) |
+| Tersoff | 24 | 8.67 (8.62–9.56) | 7.96 (7.93–8.28) | 8.69 (8.45–10.5) |
+| Tersoff | 28 | 11.2 (11.2–11.2) | 8.44 (8.11–8.80) | 8.53 (8.40–8.55) |
+
+A team walks each atom's whole row, so on a team the pair potentials,
+Sutton-Chen and EAM evaluate each pair from both atoms, where one thread
+evaluates it once. Their teams of two won at no size: from 8192 atoms up
+a team of two took 1.03 to 1.21 times one thread for LJ, the LJ cluster
+and Morse, 1.14 for Sutton-Chen at 8192 atoms, 1.00 to 1.05 for ZBL and
+0.93 to 1.02 for EAM. Their teams of three won from 384 to 2048 atoms,
+and from 8192 atoms up took 0.65 to 0.69 of one thread for EAM, 0.70 to
+0.82 for LJ, the LJ cluster, Morse and ZBL, and 0.76 for Sutton-Chen at
+8192 atoms. SW and Tersoff evaluate each term of a centre once on any
+team, and their teams of two won from 112 and 80 atoms. Around the counts
+of two and three threads:
+
+| potential | threads | atoms | 1 thread | team |
+| --- | ---: | ---: | ---: | ---: |
+| Sutton-Chen | 3 | 1536 | 9900 (9750–10494) | 9402 (9237–9414) |
+| Sutton-Chen | 3 | 2048 | 19571 (19231–20489) | 16841 (16815–16910) |
+| LJ | 3 | 512 | 481 (474–488) | 436 (436–440) |
+| LJ | 3 | 768 | 769 (761–783) | 690 (690–693) |
+| LJ cluster | 3 | 512 | 219 (218–223) | 199 (198–202) |
+| LJ cluster | 3 | 768 | 354 (352–357) | 314 (314–316) |
+| Morse | 3 | 1024 | 2894 (2881–2937) | 2633 (2628–2633) |
+| Morse | 3 | 2048 | 6354 (6318–6836) | 5691 (5688–5734) |
+| ZBL | 3 | 512 | 42.2 (42.0–42.7) | 39.9 (39.7–40.1) |
+| ZBL | 3 | 768 | 65.6 (65.2–66.1) | 58.7 (58.3–58.7) |
+| EAM | 3 | 256 | 214 (213–218) | 191 (191–217) |
+| EAM | 3 | 384 | 343 (341–352) | 284 (283–299) |
+| SW | 2 | 96 | 31.8 (31.8–32.0) | 29.1 (29.0–29.6) |
+| SW | 2 | 112 | 39.2 (39.1–39.8) | 33.3 (33.1–33.3) |
+| SW | 3 | 48 | 13.9 (13.8–14.0) | 12.5 (12.1–12.8) |
+| SW | 3 | 56 | 16.6 (16.5–16.6) | 12.9 (12.9–14.5) |
+| Tersoff | 2 | 64 | 26.7 (26.4–27.8) | 25.3 (24.6–25.4) |
+| Tersoff | 2 | 80 | 37.8 (36.9–39.6) | 30.1 (29.9–31.8) |
+| Tersoff | 3 | 24 | 8.67 (8.62–9.56) | 8.41 (8.14–8.54) |
+| Tersoff | 3 | 28 | 11.2 (11.2–11.2) | 8.61 (8.47–9.37) |
+
+A single count per potential would open teams of two on LJ, the LJ
+cluster, Morse, ZBL and Sutton-Chen, which were no faster than one
+thread at any size. With `kNoTeam` as the count of two, two threads run
+EAM and ZBL on the calling thread too, where from 8192 atoms up a team
+of two took 0.92 to 1.00 of one thread with row sums for EAM and 0.95
+to 0.98 for ZBL.
+
+From `kTeamMinAtoms` up one thread sums by rows too, where 424629e5
+sums directly below 8192 atoms. Against the direct sums of one thread,
+at every size scanned from `kTeamMinAtoms` up, that took:
+
+| potential | `kTeamMinAtoms` | least | most |
+| --- | ---: | ---: | ---: |
+| Sutton-Chen | 64 | 0.980 | 1.051 |
+| LJ | 40 | 0.981 | 1.036 |
+| LJ cluster | 48 | 0.943 | 0.988 |
+| Morse | 24 | 1.006 | 1.047 |
+| ZBL | 192 | 1.031 | 1.080 |
+| EAM | 40 | 0.985 | 1.033 |
+| SW | 32 | 1.033 | 1.092 |
+| Tersoff | 28 | 1.017 | 1.055 |
+
+SW and Tersoff sum the terms of each centre before adding them, and the
+pair potentials, Sutton-Chen and EAM keep the energy and strain of each
+atom apart and add the atoms in index order, as a team does; the direct
+sums add each term to the totals as it comes.
+
+The counts hold for the parameters of the bench. `--cutoff` changes the
+partners per atom of LJ, the LJ cluster and Morse. The same scan on 1,
+3, 4 and 8 threads at 16 to 1024 and at 2048 atoms, in three passes, put
+the crossovers at the sizes below, with the pairs within the cutoff of
+the cluster without noise at the crossovers of four and eight threads.
+All 1260 team results had the bits of one thread with row sums.
+
+| potential | cutoff | 3 threads | 4 threads | 8 threads | pairs, 4 threads | pairs, 8 threads |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| LJ | 1.5 | 1024 | 80 | 48 | 339 | 181 |
+| LJ | 2.5 | 768 | 32 | 40 | 320 | 441 |
+| LJ | 4.0 | none | 48 | 48 | 1108 | 1108 |
+| LJ cluster | 1.5 | 512 | 192 | 192 | 894 | 894 |
+| LJ cluster | 2.5 | 768 | 48 | 48 | 568 | 568 |
+| LJ cluster | 4.0 | none | 40 | 56 | 780 | 1475 |
+| Morse | 4.5 | 512 | 56 | 32 | 311 | 151 |
+| Morse | 9.5 | 2048 | 24 | 24 | 276 | 276 |
+
+Within one potential the crossovers of four and eight threads spread by
+1.2 to 4.8 times in atoms and by 1.1 to 6.1 times in pairs, so a count
+of pairs, or of pairs times a cost per pair, fits them no better than a
+count of atoms. A count of atoms is also known before any walk, in a
+stream as well, and depends on the system alone, so the order of the
+sums does too, where a count of pairs would follow the coordinates of
+the last rebuild. The cost is at cutoffs short of the default, where a
+team can open early: at 1.5 sigma, a team of eight on the LJ cluster took
+1.13 to 2.79 times one thread at 48 to 112 atoms and a team of four 1.03
+to 1.47 times. Between their counts and their crossovers LJ at 1.5 sigma
+and Morse at 4.5 Å stayed within 0.90 to 1.11 times one thread. At 4.0
+sigma the teams of four and eight that opened below their crossovers
+took 0.67 to 0.77 of one thread in median, and the teams of three on LJ
+and the LJ cluster, which did not cross by 2048 atoms, took 0.90 to 0.92
+of one thread from their count of 768.
+
+In `Stream` mode the counts of four or more hold for every potential
+timed but the LJ cluster. One thread with direct sums against teams of
+four and eight, at 16 to 256 atoms in two passes, put the crossovers of
+EAM, Morse and Tersoff at 16 atoms, the smallest scanned, of LJ at 32,
+of SW at 24 and 32, and of ZBL at 128 and 96. The LJ cluster crossed at
+64: its teams of four and eight took 1.06 and 1.02 times one thread at
+48 atoms, the size scanned below, and 0.86 and 0.72 at 64. Sutton-Chen
+was not timed there. All 280 team results had the bits of one thread
+with row sums.
 
 ## Reproduce
 

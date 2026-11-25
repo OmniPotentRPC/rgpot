@@ -102,9 +102,14 @@ public:
   /// Stored list, streaming walk, or Auto (memory and the candidate bound).
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
-  /// Atoms from which a call adds its terms atom by atom in index order
-  /// and, when `OMP_NUM_THREADS` asks for more than one, opens a team.
-  static constexpr std::size_t kTeamMinAtoms = rgpot::kTeamMinAtoms;
+  /// Atoms from which a call adds its terms atom by atom in index order,
+  /// on any thread count: the least in kTeamFrom.
+  static constexpr std::size_t kTeamMinAtoms = 192;
+  /// Atoms from which a team of two threads opens, of three, and of four
+  /// or more: the smallest clusters from which each took at most nine
+  /// tenths of the one-thread time in thread_count_bench. A team evaluates
+  /// each pair twice, and no team of two did.
+  static constexpr TeamFrom kTeamFrom{kNoTeam, 768, kTeamMinAtoms};
 
   /// True when the last force call kept the Verlet list.
   [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }

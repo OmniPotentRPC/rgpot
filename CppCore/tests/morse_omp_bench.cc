@@ -3,7 +3,8 @@
 //
 // Smoke timing for MorsePot across OMP_NUM_THREADS = 1, 2, 4, 8, 16 on:
 //   1. 6x6x6 FCC Cu vacancy (863 atoms, Makri/Ortner/Kermode NEB parameters:
-//      De = 1.0, a = 4.0 / 2.55, re = 2.55, cutoff = 5.3, below kTeamMinAtoms)
+//      De = 1.0, a = 4.0 / 2.55, re = 2.55, cutoff = 5.3, above
+//      MorsePot::kTeamMinAtoms)
 //   2. 14x14x14 FCC Cu vacancy (10975 atoms, same parameters, stored list)
 //   3. 10000-atom Pt cluster in a vacuum-padded cell (default MorseConfig,
 //      stored list)
