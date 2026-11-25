@@ -42,7 +42,7 @@
  * the plane offset. With distance constraints present, the correction is
  * the projection on all constraint gradients J, v -= M^-1 J^T (J M^-1 J^T)^-1
  * J v, found with the conjugate gradient method, and lambda is the plane
- * entry of -(J M^-1 J^T)^-1 J M^-1 F. The positions are corrected by the
+ * entry of -(J M^-1 J^T)^-1 (J M^-1 F + Jdot v). The positions are corrected by the
  * SHAKE iteration with the gradients of the positions before the drift, and
  * the velocity takes the impulse of that correction (RATTLE), so without
  * friction the energy of a rigid group is conserved to second order.
@@ -191,6 +191,12 @@ struct LangevinResult {
   /// One entry per step when recorded: the Lagrange multiplier lambda of the
   /// plane, in force units of the caller's arrays. Empty without a plane.
   std::vector<double> constraintForce;
+  /// One entry per step when recorded: Z = 1 / [(J M^-1 J^T)^-1]_plane at the
+  /// end of the step, J the gradients of the plane and of the distances. The
+  /// ensemble on the plane carries the factor Z^(1/2), so a free energy along
+  /// the plane offset is that of the mean multiplier minus kT ln <Z^(-1/2)>.
+  /// Without distances Z is the constant n M^-1 n.
+  std::vector<double> constraintMetric;
   /// Forces at the final positions and the potential energy there.
   std::vector<double> forces;
   double potential = 0.0;
@@ -349,9 +355,10 @@ public:
     std::vector<double> previous(dim_, 0.0);
     std::vector<double> drifted(general ? dim_ : 0, 0.0);
     result.potential = forces(x, force.data());
-    double lambdaStart = hasPlane ? constraintForce(ctx, x, force) : 0.0;
+    double lambdaStart = hasPlane ? constraintForce(ctx, x, v, force) : 0.0;
     if (hasPlane && settings.recordConstraintForce) {
       result.constraintForce.reserve(settings.steps);
+      result.constraintMetric.reserve(settings.steps);
     }
 
     for (std::uint64_t step = 0; step < settings.steps; ++step) {
@@ -396,9 +403,10 @@ public:
         projectVelocity(ctx, x, v);
       }
       if (hasPlane) {
-        const double lambdaEnd = constraintForce(ctx, x, force);
+        const double lambdaEnd = constraintForce(ctx, x, v, force);
         if (settings.recordConstraintForce) {
           result.constraintForce.push_back(0.5 * (lambdaStart + lambdaEnd));
+          result.constraintMetric.push_back(constraintMetric(ctx, x));
         }
         lambdaStart = lambdaEnd;
       }
@@ -818,10 +826,12 @@ private:
     }
   }
 
-  /// lambda of the plane for the force at x.
+  /// lambda of the plane for the force at x and the velocity v on the
+  /// constraints. A distance is curved, so holding it needs the centripetal
+  /// force of v, and through the plane that force enters lambda.
   [[nodiscard]] double constraintForce(const Context &ctx, const double *x,
-                                       const std::vector<double> &force)
-      const {
+                                       const double *v,
+                                       const std::vector<double> &force) const {
     if (!ctx.general) {
       double along = 0.0;
       for (std::size_t k = 0; k < dim_; ++k) {
@@ -836,10 +846,30 @@ private:
     }
     std::vector<double> rows;
     applyJ(g, mapped.data(), dim_, rows);
+    std::size_t row = g.planeNormal != nullptr ? 1 : 0;
+    for (const Gradients::Pair &pair : g.pairs) {
+      for (std::size_t d = 0; d < 3; ++d) {
+        const double relative = v[3 * pair.first + d] - v[3 * pair.second + d];
+        rows[row] += relative * relative;
+      }
+      ++row;
+    }
     for (double &value : rows) {
       value = -value;
     }
     return solveGram(g, rows).front();
+  }
+
+  /// Z = 1 / [(J M^-1 J^T)^-1]_plane at x.
+  [[nodiscard]] double constraintMetric(const Context &ctx,
+                                        const double *x) const {
+    if (!ctx.general) {
+      return ctx.plane.weighted;
+    }
+    const Gradients g = gradients(ctx, x);
+    std::vector<double> unit(g.rows(), 0.0);
+    unit.front() = 1.0;
+    return 1.0 / solveGram(g, unit).front();
   }
 
   [[nodiscard]] Frame frameOf(const Context &ctx, const PreparedWall &wall,

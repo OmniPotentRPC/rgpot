@@ -672,3 +672,125 @@ TEST_CASE("a rigid rotor keeps its energy without friction",
   driver.run(settings, nullptr, {}, x.data(), v.data(), none);
   CHECK(kinetic() == Catch::Approx(start).epsilon(1.0e-4));
 }
+
+TEST_CASE("the multiplier and metric give the free energy of a coupled plane",
+          "[md][session]") {
+  // A rigid dumbbell in a harmonic well on both atoms, and a plane on one
+  // atom's x. The normal rotates the rod, so neither the multiplier alone nor
+  // the force along the normal is dA/dc. The reference is quadrature over the
+  // rod orientation and the other translations, with the rigid-rod measure.
+  const double m1 = 1.0;
+  const double m2 = 3.0;
+  const double length = 1.0;
+  const double k1 = 6.0;
+  const double k2 = 1.0;
+  const double shift = 1.5; // second atom's well along x
+  const ProjectedLangevin driver({m1, m1, m1, m2, m2, m2},
+                                 {rgpot::md::DistanceConstraint{0, 1, length}});
+  const ForceFunction wells = [&](const double *x, double *f) {
+    double energy = 0.0;
+    for (int d = 0; d < 3; ++d) {
+      const double a = x[d];
+      const double b = x[3 + d] - (d == 0 ? shift : 0.0);
+      f[d] = -k1 * a;
+      f[3 + d] = -k2 * b;
+      energy += 0.5 * k1 * a * a + 0.5 * k2 * b * b;
+    }
+    return energy;
+  };
+  // A(c): x1 = c, rod direction u uniform on the sphere, y1 and z1 Gaussian.
+  const auto freeEnergy = [&](double c) {
+    double sum = 0.0;
+    const int n = 4000;
+    for (int i = 0; i < n; ++i) {
+      const double ux = -1.0 + (i + 0.5) * 2.0 / n;
+      const double perp2 = 1.0 - ux * ux; // |u_perp|^2, azimuth integrates out
+      // y and z: 0.5 k1 r^2 + 0.5 k2 (r + l u_perp)^2, minimised over r
+      const double bound = 0.5 * k1 * k2 / (k1 + k2) * length * length * perp2;
+      const double bx = c + length * ux - shift;
+      sum += std::exp(-(0.5 * k1 * c * c + 0.5 * k2 * bx * bx + bound) / kT);
+    }
+    return -kT * std::log(sum / n);
+  };
+  const double lo = -0.5;
+  const double hi = 1.0;
+  const int planes = 7;
+  std::vector<double> mean(planes);
+  std::vector<double> metric(planes);
+  std::vector<double> raw(planes);
+  for (int p = 0; p < planes; ++p) {
+    const double c = lo + (hi - lo) * p / (planes - 1);
+    PlaneSpec plane;
+    plane.point = {c, 0.0, 0.0, 0.0, 0.0, 0.0};
+    plane.normal = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    std::vector<double> x{c, 0.0, 0.0, c + length, 0.0, 0.0};
+    std::vector<double> v(6, 0.0);
+    LangevinSettings settings;
+    settings.kT = kT;
+    settings.friction = 2.0;
+    settings.timeStep = 0.01;
+    settings.seed = 100 + static_cast<std::uint64_t>(p);
+    settings.steps = 2000;
+    driver.run(settings, &plane, {}, x.data(), v.data(), wells);
+    settings.seed += 1000;
+    settings.steps = 500000;
+    settings.recordConstraintForce = true;
+    const LangevinResult run =
+        driver.run(settings, &plane, {}, x.data(), v.data(), wells);
+    REQUIRE(run.constraintMetric.size() == run.constraintForce.size());
+    double force = 0.0;
+    double weight = 0.0;
+    for (std::size_t k = 0; k < run.constraintForce.size(); ++k) {
+      force += run.constraintForce[k];
+      weight += 1.0 / std::sqrt(run.constraintMetric[k]);
+    }
+    mean[p] = force / static_cast<double>(run.constraintForce.size());
+    metric[p] = weight / static_cast<double>(run.constraintForce.size());
+  }
+  // Simpson over the planes for the multiplier; the metric enters at the ends.
+  const double h = (hi - lo) / (planes - 1);
+  double integral = mean[0] + mean[planes - 1];
+  for (int p = 1; p < planes - 1; ++p) {
+    integral += (p % 2 == 1 ? 4.0 : 2.0) * mean[p];
+  }
+  integral *= h / 3.0;
+  const double corrected =
+      integral - kT * std::log(metric[planes - 1] / metric[0]);
+  const double exact = freeEnergy(hi) - freeEnergy(lo);
+  INFO("multiplier " << integral << " corrected " << corrected << " exact "
+                     << exact);
+  // One run scatters by about 0.025; dropping the centripetal term of the rod
+  // moves the result by more than 1.
+  CHECK(corrected == Catch::Approx(exact).margin(0.1));
+}
+
+TEST_CASE("the plane metric of a rod is its closed form", "[md][session]") {
+  const double m1 = 2.0;
+  const double m2 = 5.0;
+  const double length = 0.7;
+  const ProjectedLangevin driver({m1, m1, m1, m2, m2, m2},
+                                 {rgpot::md::DistanceConstraint{0, 1, length}});
+  const ForceFunction none = [](const double *, double *f) {
+    std::fill(f, f + 6, 0.0);
+    return 0.0;
+  };
+  for (const double ux : {0.0, 0.3, -0.8, 1.0}) {
+    const double uy = std::sqrt(1.0 - ux * ux);
+    PlaneSpec plane;
+    plane.point = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    plane.normal = {2.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    std::vector<double> x{0.0, 0.0, 0.0, length * ux, length * uy, 0.0};
+    std::vector<double> v(6, 0.0);
+    LangevinSettings settings;
+    settings.kT = kT;
+    settings.timeStep = 1.0e-9;
+    settings.steps = 1;
+    settings.recordConstraintForce = true;
+    const LangevinResult run =
+        driver.run(settings, &plane, {}, x.data(), v.data(), none);
+    REQUIRE(run.constraintMetric.size() == 1);
+    const double coupled = ux / m1;
+    const double expected = 1.0 / m1 - coupled * coupled / (1.0 / m1 + 1.0 / m2);
+    CHECK(run.constraintMetric[0] == Catch::Approx(expected).epsilon(1.0e-6));
+  }
+}
