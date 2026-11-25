@@ -51,6 +51,10 @@ use std::path::Path;
 use crate::potential::PotentialImpl;
 use crate::status::rgpot_status_t;
 use crate::tensor::create_owned_f64_tensor;
+#[cfg(test)]
+use std::collections::HashMap;
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
 
 /// Format code of the C ABI: choose from the suffix of the file name.
 /// `.eam.alloy` and `.setfl` are setfl, `.eam.fs` is Finnis-Sinclair and
@@ -236,6 +240,36 @@ impl EamTable {
         &self.z
     }
 
+    /// Lossless text encoding in Finnis-Sinclair layout.
+    pub(crate) fn to_finnis_sinclair_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str("c\nc\nc\n");
+        out.push_str(&format!("{} elements\n", self.z.len()));
+        out.push_str(&format!(
+            "{} {} {} {} {}\n",
+            self.nrho, self.drho, self.nr, self.dr, self.cutoff
+        ));
+        let row = |data: &[f64]| -> String {
+            let mut line = String::new();
+            for value in data {
+                line.push_str(&format!("{value} "));
+            }
+            line.push('\n');
+            line
+        };
+        for b in 0..self.z.len() {
+            out.push_str(&format!("{} 1.0 1.0 fcc\n", self.z[b]));
+            out.push_str(&row(&self.frho[b]));
+            for a in 0..self.z.len() {
+                out.push_str(&row(&self.rhor[b * self.z.len() + a]));
+            }
+        }
+        for pair in &self.z2r {
+            out.push_str(&row(pair));
+        }
+        out
+    }
+
     fn parse(text: &str, layout: Layout) -> Result<Self, EamTableError> {
         let mut input = Scanner::new(text);
         if layout == Layout::Funcfl {
@@ -246,8 +280,8 @@ impl EamTable {
             let zr = input.block(grid.nr)?;
             let rho = input.block(grid.nr)?;
             let rhomax = (grid.nrho - 1) as f64 * grid.drho;
-            let nrho = (rhomax / grid.drho).round() as usize;
-            let nr = ((grid.nr - 1) as f64 * grid.dr / grid.dr).round() as usize;
+            let nrho = grid.nrho;
+            let nr = grid.nr;
             let mut z2 = resample(&zr, grid.dr, nr, grid.dr);
             for v in &mut z2 {
                 *v = HARTREE_BOHR * *v * *v;
@@ -817,6 +851,13 @@ unsafe fn drop_boxed<T>(user_data: *mut c_void) {
 /// Frees the potential of [`EamTablePotential::into_potential`] and of
 /// `rgpot_potential_new_eam_table`.
 pub(crate) unsafe extern "C" fn drop_eam_table(user_data: *mut c_void) {
+    #[cfg(test)]
+    if !user_data.is_null() {
+        let seen = DROP_SEEN.get_or_init(|| Mutex::new(HashMap::new()));
+        let key = user_data as usize;
+        let mut map = seen.lock().expect("drop map lock");
+        *map.entry(key).or_insert(0) += 1;
+    }
     unsafe { drop_boxed::<EamTablePotential>(user_data) };
 }
 
@@ -875,8 +916,14 @@ pub(crate) unsafe extern "C" fn eam_table_callback(
 }
 
 #[cfg(test)]
+static DROP_SEEN: OnceLock<Mutex<HashMap<usize, usize>>> = OnceLock::new();
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::c_api::potential::rgpot_potential_calculate;
+    use crate::c_api::types::{rgpot_force_input_create, rgpot_force_input_free};
+    use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
     /// Two-element eam/fs table of constants: F_A = -rho, F_B = -2 rho, no
     /// pair term, rho_AA = 1, rho_BA = 3, rho_AB = 5, rho_BB = 7, with
@@ -1032,5 +1079,76 @@ mod tests {
         let pairs = pot.pairs(&across, &cell).unwrap();
         assert_eq!(pairs.len(), 1);
         assert!((pairs[0].r - 1.0).abs() < f64::EPSILON * 16.0);
+    }
+
+    #[test]
+    fn minimal_funcfl_round_trip_preserves_both_grid_endpoints() {
+        let text = concat!(
+            "minimal funcfl\n",
+            "29 63.546 3.615 fcc\n",
+            "5 0.5 5 0.25 1.0\n",
+            "0.0 1.0 2.0 3.0 4.0\n",
+            "1.0 1.0 1.0 1.0 1.0\n",
+            "0.0 0.0 0.0 0.0 0.0\n",
+        );
+        let table = EamTable::from_text(text, EamTableFormat::Funcfl).unwrap();
+        assert_eq!(table.nrho, 5);
+        assert_eq!(table.nr, 5);
+        assert_eq!(table.rhomax, 2.0);
+        assert_eq!(table.frho[0].len(), 5);
+        assert_eq!(table.rhor[0].len(), 5);
+        assert_eq!(table.z2r[0].len(), 5);
+
+        let round_trip = EamTable::from_text(
+            &table.to_finnis_sinclair_text(),
+            EamTableFormat::FinnisSinclair,
+        )
+        .unwrap();
+        assert_eq!(round_trip.nrho, 5);
+        assert_eq!(round_trip.nr, 5);
+        assert_eq!(round_trip.rhomax, 2.0);
+        assert_eq!(round_trip.frho[0], table.frho[0]);
+        assert_eq!(round_trip.rhor[0], table.rhor[0]);
+        assert_eq!(round_trip.z2r[0], table.z2r[0]);
+    }
+
+    fn handle_drop_count(ptr: *mut c_void) -> usize {
+        let seen = DROP_SEEN.get_or_init(|| Mutex::new(HashMap::new()));
+        seen.lock()
+            .expect("drop map lock")
+            .get(&(ptr as usize))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn into_potential_frees_user_data_once() {
+        let table = EamTable::from_text(&two_element_fs(), EamTableFormat::FinnisSinclair).unwrap();
+        let potential = EamTablePotential::new(table, false)
+            .unwrap()
+            .into_potential();
+        let user_data = potential.as_handle().pot_user_data;
+        let drops_before = handle_drop_count(user_data);
+
+        let mut pos = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0];
+        let mut z = [13_i32, 28_i32];
+        let mut cell = [0.0_f64; 9];
+        let mut input: rgpot_force_input_t = unsafe {
+            rgpot_force_input_create(2, pos.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr())
+        };
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let status =
+            unsafe { rgpot_potential_calculate(potential.as_handle(), &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        unsafe {
+            crate::tensor::rgpot_tensor_free(output.forces);
+            rgpot_force_input_free(&mut input);
+        }
+        drop(potential);
+        assert_eq!(handle_drop_count(user_data), drops_before + 1);
     }
 }

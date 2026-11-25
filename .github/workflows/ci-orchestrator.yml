@@ -99,6 +99,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Check rgpot-core CppCore vendor sync
+        run: scripts/check_rgpot_core_cppcore_sync.sh
       - name: Install environment
         uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
         with:

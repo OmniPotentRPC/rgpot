@@ -138,6 +138,7 @@ let P = S.pins in
           # Skip when package.publish = false (git deps not on crates.io yet).
           run = m%"
             set -euo pipefail
+            scripts/sync_rgpot_core_cppcore.sh
             if grep -qE '^publish\s*=\s*false' rgpot-core/Cargo.toml; then
               echo "rgpot-core has publish = false; skipping crates.io upload."
               echo "Re-enable publish and switch git deps to registry versions first."

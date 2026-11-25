@@ -1,3 +1,6 @@
+// MIT License
+// Copyright 2023--present rgpot developers
+
 // Included twice, once inside each EAM entry. RGPOT_EAM_HW is true or false.
   const double b0 = box[0];
   const double b1 = box[1];

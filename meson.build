@@ -1339,7 +1339,8 @@ if get_option('with_rust_core')
                 dl_dep,
                 meson.get_compiler('c').find_library('m', required: false),
             ],
-            link_language: 'c',
+            # rgpot-core's archive contains the packaged C++ EAM bridge.
+            link_language: 'cpp',
             build_by_default: true,
         )
         test(

@@ -131,6 +131,7 @@ jobs:
       name: Cargo publish (rgpot-core, locked only)
       run: |-
         set -euo pipefail
+        scripts/sync_rgpot_core_cppcore.sh
         if grep -qE '^publish\s*=\s*false' rgpot-core/Cargo.toml; then
           echo "rgpot-core has publish = false; skipping crates.io upload."
           echo "Re-enable publish and switch git deps to registry versions first."
