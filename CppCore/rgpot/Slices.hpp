@@ -125,7 +125,7 @@ struct TeamFrom {
 
 /// Same as `teamSize(n, kTeamMinAtoms, {})`. Kept exported and deprecated
 /// so binaries built against the one-argument signature keep loading
-/// under `kCxxSoversion` 9.
+/// under `kCxxSoversion` 10.
 [[deprecated("Use teamSize(n, from, team) with explicit threshold and TeamFrom")]]
 [[nodiscard]] int teamSize(std::size_t n);
 

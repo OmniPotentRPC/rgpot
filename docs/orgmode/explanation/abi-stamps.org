@@ -175,6 +175,7 @@ is not the hash.
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
 | 3.8.0   | 1, 10, 1        | 9                    |
+| next    | 1, 10, 1        | 10                   |
 
 3.6.0 raised the minor for =rgpot_eindir_abi_compatible=; a caller built against
 minor 0 still matches it.
@@ -219,6 +220,9 @@ The session operation table carries its byte size and the new slots follow
 =destroy=, so an older table still loads.
 The C++ layout revision stays 2 and =kCxxSoversion= stays 9, because the session
 vtable is not one of the covered potential types.
+The next release keeps the =rgpot.h= stamp at 1, 10, 1, because
+=rgpot_gupta_energy_forces= is a symbol of =librgpot= and not of the core C ABI,
+and takes soversion 10 for the Gupta types.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.
@@ -246,3 +250,10 @@ It also stamps =nlist::Builder= and =nlist::Walk=, which move their state behind
 a pointer so each is one pointer wide.
 It also adds a process-unique generation id on =Neighbours=.
 A program linked against soversion 8 does not load =librgpot.so.9=.
+
+Soversion 10 stamps =GuptaConfig=, =GuptaPot= and =PotType::Gupta=.
+=PotType::Gupta= follows =PotType::ORCAC= at the end of the enum, so no stamped
+value moves, but the hash covers the new types.
+Soversion 9 shipped in 3.8.0, so the change takes a new soversion and the ledger
+line of 9 stays as it shipped.
+A program linked against soversion 9 does not load =librgpot.so.10=.

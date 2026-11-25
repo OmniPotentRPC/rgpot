@@ -1,4 +1,4 @@
-Added `GuptaPot` (`PotType::Gupta`), wrapping the Cleri–Rosato Gupta potential
+Added `GuptaPot` (`PotType::Gupta`), wrapping the Cleri-Rosato Gupta potential
 across the C++ `Potential` interface (with periodic minimum-image support,
 Cauchy stress, per-atom energy/virial, staged evaluation, and
 `rgpot_gupta_energy_forces` C ABI), the `pot_spec` / classical engine /
