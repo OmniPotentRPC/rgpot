@@ -606,6 +606,52 @@ void reset();
   A test that needs ORCA calls this and skips when it is false.
 - Errors :: none.
 
+*** =rgpot::ORCAError=
+
+- Inputs :: a message; the class inherits the constructors of
+  =std::runtime_error=.
+- Units :: none.
+- Outputs :: the exception =rgpot::ORCAPot= throws when a run fails: no
+  executable, a working directory that cannot be made, a stale =.engrad= or
+  =.gbw= that cannot be removed, an input that cannot be written, a process that
+  cannot start, is ended by a signal, passes =timeout_s= or exits with a
+  non-zero status, and a missing, malformed or non-finite =.engrad=.
+  The message names the input file and ends with the last 2048 bytes of the
+  standard error and of the ORCA output file.
+  Input the caller got wrong throws =std::invalid_argument= instead.
+- Errors :: none.
+
+*** =rgpot::orca::Engrad=
+
+- Inputs :: none; a struct that =rgpot::orca::parseEngrad= fills from the text
+  of a =.engrad= file (=CppCore/rgpot/ORCAPot/ORCAFiles.hpp=).
+- Units :: ORCA's own:
+  =energy_hartree= in Hartree and =gradient_hartree_per_bohr= in Hartree/bohr.
+- Outputs :: =energy_hartree=, =gradient_hartree_per_bohr= (3 * =nAtoms= entries
+  of dE/dR, atom-major) and =atomic_numbers= (one per atom).
+  The Bohr coordinates of the file are read past and not kept.
+  The parser does not check that the numbers are finite; =rgpot::ORCAPot= does.
+- Errors :: none on the struct.
+  =parseEngrad= throws =std::runtime_error= naming the first value that does not
+  fit, including an atom count other than the one asked for.
+
+*** =rgpot::orca::InputSpec=
+
+- Inputs :: none; a struct that =rgpot::ORCAPot= fills from its
+  =rgpot::ORCAConfig= for =rgpot::orca::renderInput=.
+- Units :: =maxcore_mb= in MB per process; =charge= in elementary charges; the
+  other fields have no unit.
+- Outputs :: everything the input of one single point depends on: =method=,
+  =basis= and =keywords= (joined on the =!= line, followed by =EnGrad=),
+  =charge= and =multiplicity= (the =* xyz= line), =nprocs= (=%pal nprocs= above
+  1), =maxcore_mb= (=%maxcore=) and =moinp=, the =.gbw= the orbitals are read
+  from relative to the run directory.
+  A non-empty =moinp= adds =%moinp= and =MORead=; an empty one starts from
+  ORCA's own guess.
+- Errors :: none on the struct.
+  =renderInput= throws =std::invalid_argument= when =method=, =basis=,
+  =keywords= or =moinp= holds a line break, or an atomic number is outside 1 to 118.
+
 ** Skala
 
 skala-1.1 is the exchange-correlation keyword this class writes into NWChem, not

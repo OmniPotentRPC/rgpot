@@ -1,0 +1,1189 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Analytic model surfaces
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Analytic model surfaces
+
+The nine surfaces on this page are the analytic test potentials of rgpot.
+Eight are closed forms.
+The ninth, =CBE=, is the external H + CH4 surface behind a linked frontend.
+They are the surfaces a saddle search is usually tried on first, because the
+stationary points are known and every call can return an exact Hessian-vector
+product.
+The classes are listed on
+[[file:../reference/cpp_potentials.org][C++ potentials]], which also gives the
+units and the force convention.
+This page adds the functional form, where each parameter comes from, a program
+that runs and the literature.
+
+A call takes the natural coordinates from the first =dimensions()= doubles of
+=ForceInput.pos= (Angstrom), returns the energy in eV, and writes the force
+(eV/Angstrom) as the negative gradient into the same entries of =F=. =evaluateCoordinates= returns the energy, the gradient and the product =H v= for a direction =v= in one call, which is how the examples read the curvature. None of these potentials has a Python class. None is a name of =rgpot-eval= or of =pair_coeff=, because the name list of =engines/pot_spec.cpp= does not contain them; see [[file:../reference/potential_names.org][Potential
+names and options]]. They are reachable from C++, from =potserv= (see
+[[file:../reference/cli.org][command line]]), from the classical engine (see
+[[file:../reference/engine_abi.org][Engine plugin ABI]]) and from the C model
+API (see [[file:../reference/c_abi.org][C ABI]]).
+
+Among the papers by Goswami on saddle searches, only the tutorial review on
+Bayesian optimization names a surface listed here in its text: it runs the
+Muller-Brown surface and a LEPS surface for three hydrogen atoms.
+The sections of =MullerBrown= and =LepsHH2= cite it.
+No other section cites a paper by Goswami.
+
+** =Eckart= symmetric barrier
+
+=Eckart= is the one-dimensional barrier V(x) = v0 sech^2(x / width).
+Use it when a method needs a single coordinate with a smooth barrier of known
+height and curvature, for example to test a one-dimensional tunnelling or
+barrier-crossing code, or a minimum-mode search that has to find the one
+negative curvature.
+Only the first coordinate is read, so a one-atom carrier of three doubles is
+enough.
+
+- C++ :: =rgpot::EckartPot= in =CppCore/rgpot/Models/ModelPots.hpp=.
+- Python :: none.
+- =rgpot-eval=, =pair_coeff= :: none.
+- =potserv= :: =Eckart=, with the default =v0= and =width=.
+- Classical engine :: =name= =eckart=, default parameters.
+- C model API :: =RGPOT_BUILTIN_ECKART= with =rgpot_builtin_model_new=.
+
+*** Functional form
+
+The source in =CppCore/rgpot/Models/ModelPots.cc= evaluates, with z = x / width:
+
+- Energy :: V = v0 sech^2(z), in eV, with x and width in Angstrom.
+- Gradient :: dV/dx = -2 v0 sech^2(z) tanh(z) / width, in eV/Angstrom.
+- Hessian-vector product :: 2 v0 sech^2(z) (3 tanh^2(z) - 1) / width^2 times v,
+  in eV/Angstrom^2 times the direction.
+
+There is no cutoff, shift or species rule.
+The coordinate count must be 1 for =evaluateCoordinates=.
+A zero =width= throws =std::invalid_argument= when the model is evaluated.
+
+*** Parameters
+
+| Parameter | Default | Unit     |
+|-----------+---------+----------|
+| =v0=      | 1.0     | eV       |
+| =width=   | 1.0     | Angstrom |
+
+Both are arguments of =EckartPot= in =CppCore/rgpot/Models/ModelPots.hpp=; there
+is no configuration struct.
+=potserv= and the classical engine build the defaults.
+The example below passes =v0= 2.0 and =width= 1.5.
+
+*** Example
+
+The program prints the energy, gradient and curvature at four points, checks the
+energy against v0 sech^2(x / width), and makes one =forceImpl= call on a
+one-atom carrier.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/Models/ModelPots.hpp"
+
+int main() {
+  const double v0 = 2.0, width = 1.5;
+  const rgpot::EckartPot pot(v0, width);
+  const double dir[1] = {1.0};
+  std::printf("dimensions %zu\n", pot.dimensions());
+  for (const double x : {0.0, 0.75, 1.5, 3.0}) {
+    const auto r = pot.evaluateCoordinates({&x, 1}, {dir, 1});
+    const double sech = 1.0 / std::cosh(x / width);
+    std::printf("x %.2f  V %.6f  dV/dx %.6f  H %.6f  v0 sech^2 %.6f\n", x,
+                r.energy, r.gradient[0] + 0.0, r.product[0],
+                v0 * sech * sech);
+  }
+
+  const double pos[3] = {0.75, 0.0, 0.0};
+  double forces[3] = {};
+  const int z[1] = {1};
+  const double box[9] = {};
+  rgpot::ForceInput in{1, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("forceImpl at x 0.75: energy %.6f eV, F %.6f %.1f %.1f\n",
+              out.energy, forces[0], forces[1], forces[2]);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+dimensions 1
+x 0.00  V 2.000000  dV/dx 0.000000  H -1.777778  v0 sech^2 2.000000
+x 0.75  V 1.572895  dV/dx -0.969149  H -0.502408  v0 sech^2 1.572895
+x 1.50  V 0.839949  dV/dx -0.852933  H 0.552557  v0 sech^2 0.839949
+x 3.00  V 0.141302  dV/dx -0.181625  H 0.224581  v0 sech^2 0.141302
+forceImpl at x 0.75: energy 1.572895 eV, F 0.969149 0.0 0.0
+#+end_example
+
+
+The curvature at the top of the barrier is -2 v0 / width^2 = -1.777778, and it
+changes sign between x = 0.75 and x = 1.5.
+=forceImpl= returns the force 0.969149, the negative of the gradient at x =
+0.75.
+
+*** Literature
+
+- Eckart, Phys.
+  Rev. 35, 1303-1309 (1930), doi:10.1103/physrev.35.1303.
+  The paper solves the penetration of a potential barrier by electrons; the
+  sech^2 profile of the source is the symmetric Eckart barrier.
+- The source names no paper for =v0= and =width=: they are free parameters of
+  the code, not a published parameter set.
+
+** =MullerBrown= four-Gaussian surface
+
+=MullerBrown= is the two-dimensional surface of Müller and Brown: a sum of four
+Gaussians with three minima and two first-order saddle points.
+Use it for a first test of a saddle-search or path method, because it is cheap,
+smooth and the stationary points are well known.
+
+- C++ :: =rgpot::MullerBrownPot= in =CppCore/rgpot/Models/ModelPots.hpp=.
+- Python :: none.
+- =rgpot-eval=, =pair_coeff= :: none.
+- =potserv= :: =MullerBrown=.
+- Classical engine :: =name= =muller_brown=.
+- C model API :: =RGPOT_BUILTIN_MULLER_BROWN=.
+
+*** Functional form
+
+The kernel is a function of two coordinates (x, y).
+The source takes them as Angstrom and the energy as eV, which
+=CppCore/rgpot/Models/README.md= states for all non-LEPS models:
+
+- Energy :: V = sum over i = 1 to 4 of A_i exp(a_i dx^2 + b_i dx dy + c_i dy^2),
+  with dx = x - x0_i and dy = y - y0_i.
+- Gradient :: the sum of the terms times (2 a_i dx + b_i dy) for x and
+  (b_i dx + 2 c_i dy) for y.
+- Hessian-vector product :: the analytic second derivative of each term, applied
+  to the direction.
+
+The same kernel serves =ModifiedMullerBrown=, with a zero ripple here.
+There is no cutoff or shift, and the coordinate count must be 2.
+
+*** Parameters
+
+The constants are in =muller= of =CppCore/rgpot/Models/ModelPots.cc=, in the
+arrays =amp=, =aa=, =bb=, =cc=, =x0= and =y0=; they are not configurable.
+
+| i | A_i (eV) | a_i  | b_i  | c_i   | x0_i (Angstrom) | y0_i (Angstrom) |
+|---+----------+------+------+-------+-----------------+-----------------|
+| 1 | -200.0   | -1.0 | 0.0  | -10.0 | 1.0             | 0.0             |
+| 2 | -100.0   | -1.0 | 0.0  | -10.0 | 0.0             | 0.5             |
+| 3 | -170.0   | -6.5 | 11.0 | -6.5  | -0.5            | 1.5             |
+| 4 | 15.0     | 0.7  | 0.6  | 0.7   | -1.0            | 1.0             |
+
+The exponent constants a_i, b_i and c_i are in Angstrom^-2.
+The rows were not compared with the original table of Müller and Brown, which
+was not available.
+They agree with the secondary listing of Bonfanti and Kob, which gives the same
+four values of each constant.
+
+*** Example
+
+The program finds the five stationary points by Newton's method.
+It builds the 2 x 2 Hessian from two Hessian-vector products, one for each unit
+direction, and prints the two eigenvalues, so the minima (two positive
+eigenvalues) and the saddle points (one negative) can be told apart.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/Models/ModelPots.hpp"
+
+static void newton(const rgpot::MullerBrownPot &pot, double x[2]) {
+  const double ex[2] = {1.0, 0.0}, ey[2] = {0.0, 1.0};
+  for (int it = 0; it < 60; ++it) {
+    const auto a = pot.evaluateCoordinates({x, 2}, {ex, 2});
+    const auto b = pot.evaluateCoordinates({x, 2}, {ey, 2});
+    const double hxx = a.product[0], hxy = a.product[1], hyy = b.product[1];
+    const double det = hxx * hyy - hxy * hxy;
+    const double dx = (hyy * a.gradient[0] - hxy * a.gradient[1]) / det;
+    const double dy = (hxx * a.gradient[1] - hxy * a.gradient[0]) / det;
+    x[0] -= dx;
+    x[1] -= dy;
+    if (std::hypot(dx, dy) < 1e-12)
+      break;
+  }
+}
+
+int main() {
+  const rgpot::MullerBrownPot pot;
+  const double starts[5][2] = {{-0.55, 1.44}, {0.62, 0.03}, {-0.05, 0.47},
+                               {-0.8, 0.6},   {0.2, 0.3}};
+  const double zero[2] = {0.0, 0.0};
+  for (const auto &s : starts) {
+    double x[2] = {s[0], s[1]};
+    newton(pot, x);
+    const auto r = pot.evaluateCoordinates({x, 2}, {zero, 2});
+    const double ex[2] = {1.0, 0.0}, ey[2] = {0.0, 1.0};
+    const auto a = pot.evaluateCoordinates({x, 2}, {ex, 2});
+    const auto b = pot.evaluateCoordinates({x, 2}, {ey, 2});
+    const double tr = a.product[0] + b.product[1];
+    const double det =
+        a.product[0] * b.product[1] - a.product[1] * a.product[1];
+    const double disc = std::sqrt(tr * tr / 4.0 - det);
+    std::printf("(%.4f, %.4f)  V %.4f  eigenvalues %.3f %.3f\n", x[0], x[1],
+                r.energy, tr / 2.0 - disc, tr / 2.0 + disc);
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+(-0.5582, 1.4417)  V -146.6995  eigenvalues 410.531 4068.199
+(0.6235, 0.0280)  V -108.1667  eigenvalues 543.836 3005.396
+(-0.0500, 0.4667)  V -80.7678  eigenvalues 221.037 1479.197
+(-0.8220, 0.6243)  V -40.6648  eigenvalues -750.863 490.241
+(0.2125, 0.2930)  V -72.2489  eigenvalues -735.247 510.887
+#+end_example
+
+
+The three minima are at (-0.5582, 1.4417), (0.6235, 0.0280) and (-0.0500,
+0.4667).
+The two saddle points are at (-0.8220, 0.6243) and (0.2125, 0.2930), each with
+one negative eigenvalue.
+
+*** Literature
+
+- Goswami, ACS Phys.
+  Chem.
+  Au 6, 633-664 (2026), doi:10.1021/acsphyschemau.6c00038.
+  The tutorial review uses the Muller-Brown surface as a two-dimensional test
+  case for the Gaussian-process surrogate, the trust region and the
+  nudged-elastic-band figures, and cites Müller and Brown for it.
+- Müller and Brown, Theor.
+  Chim.
+  Acta 53, 75-93 (1979), doi:10.1007/bf00547608.
+  The paper defines the surface and its constants.
+- Bonfanti and Kob, J. Chem.
+  Phys. 147, 204104 (2017), doi:10.1063/1.5012271.
+  A secondary listing of the same four-term constants.
+
+** =ModifiedMullerBrown= rippled four-Gaussian surface
+
+=ModifiedMullerBrown= adds a periodic ripple to the Muller-Brown surface.
+The ripple puts many shallow minima and saddle points on top of the three
+basins.
+Use it as a rougher variant of =MullerBrown=.
+
+- C++ :: =rgpot::ModifiedMullerBrownPot= in
+  =CppCore/rgpot/Models/ModelPots.hpp=.
+- Python :: none.
+- =rgpot-eval=, =pair_coeff= :: none.
+- =potserv= :: =ModifiedMullerBrown=, with the default amplitude and wave
+  number.
+- Classical engine :: =name= =modified_muller_brown=, default parameters.
+- C model API :: =RGPOT_BUILTIN_MODIFIED_MULLER_BROWN=.
+
+*** Functional form
+
+The kernel is the one of =MullerBrown= plus a ripple term, with omega = 2 pi
+waveNumber:
+
+- Energy :: V = V_MB(x, y) + amplitude sin(omega x) sin(omega y), in eV with x
+  and y in Angstrom.
+- Gradient :: the Muller-Brown gradient plus amplitude omega cos(omega x)
+  sin(omega y) for x and amplitude omega sin(omega x) cos(omega y) for y.
+- Hessian-vector product :: the Muller-Brown product plus the ripple Hessian,
+  with diagonal entries -amplitude omega^2 sin(omega x) sin(omega y) and
+  off-diagonal entries amplitude omega^2 cos(omega x) cos(omega y).
+
+An amplitude of 0 gives the Muller-Brown surface exactly.
+The ripple period is 1 / waveNumber Angstrom in each direction.
+There is no cutoff, and the coordinate count must be 2.
+
+*** Parameters
+
+| Parameter    | Default | Unit            |
+|--------------+---------+-----------------|
+| =amplitude=  | 9.0     | eV              |
+| =waveNumber= | 5.0     | cycles/Angstrom |
+
+The constructor is declared in =CppCore/rgpot/Models/ModelPots.hpp= and there is
+no configuration struct.
+The four Muller-Brown rows are the ones of the =MullerBrown= section and are
+fixed in =CppCore/rgpot/Models/ModelPots.cc=.
+=potserv=, the classical engine and the C model API build the defaults.
+
+*** Example
+
+The program checks that amplitude 0 reproduces the plain surface, that the
+rippled value is the plain value plus the ripple, and counts the local minima of
+each surface on a grid of 0.01 Angstrom spacing over x in [-1.5, 1.2] and y in
+[-0.2, 2.0].
+A grid point counts when it is lower than its eight neighbours.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+#include <numbers>
+#include <vector>
+
+#include "rgpot/Models/ModelPots.hpp"
+
+static int gridMinima(const rgpot::AnalyticModelPot &pot) {
+  const int nx = 271, ny = 221;
+  const double zero[2] = {0.0, 0.0};
+  std::vector<double> v(nx * ny);
+  for (int i = 0; i < nx; ++i)
+    for (int j = 0; j < ny; ++j) {
+      const double x[2] = {-1.5 + 0.01 * i, -0.2 + 0.01 * j};
+      v[i * ny + j] = pot.evaluateCoordinates({x, 2}, {zero, 2}).energy;
+    }
+  int count = 0;
+  for (int i = 1; i < nx - 1; ++i)
+    for (int j = 1; j < ny - 1; ++j) {
+      bool lowest = true;
+      for (int di = -1; di <= 1; ++di)
+        for (int dj = -1; dj <= 1; ++dj)
+          if ((di || dj) && v[(i + di) * ny + j + dj] <= v[i * ny + j])
+            lowest = false;
+      count += lowest;
+    }
+  return count;
+}
+
+int main() {
+  const rgpot::MullerBrownPot plain;
+  const rgpot::ModifiedMullerBrownPot flat(0.0, 5.0);
+  const rgpot::ModifiedMullerBrownPot rippled;
+  const double x[2] = {-0.05, 0.47}, zero[2] = {0.0, 0.0};
+  const double v0 = plain.evaluateCoordinates({x, 2}, {zero, 2}).energy;
+  const double v1 = flat.evaluateCoordinates({x, 2}, {zero, 2}).energy;
+  const double v2 = rippled.evaluateCoordinates({x, 2}, {zero, 2}).energy;
+  const double w = 2.0 * std::numbers::pi * 5.0;
+  const double s = 9.0 * std::sin(w * x[0]) * std::sin(w * x[1]);
+  std::printf("V_MB %.6f  amplitude 0 %.6f\n", v0, v1);
+  std::printf("modified %.6f  V_MB + ripple %.6f\n", v2, v0 + s);
+  std::printf("grid minima, Muller-Brown: %d\n", gridMinima(plain));
+  std::printf("grid minima, modified (9, 5): %d\n", gridMinima(rippled));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+V_MB -80.759797  amplitude 0 -80.759797
+modified -88.040950  V_MB + ripple -88.040950
+grid minima, Muller-Brown: 3
+grid minima, modified (9, 5): 158
+#+end_example
+
+
+The plain surface has three minima on this grid, and the default ripple gives
+158 grid minima.
+
+*** Literature
+
+- The source names no paper for the ripple term or for the defaults 9.0 and 5.0,
+  so none is cited for them.
+- The "modified Muller-Brown" surface of Bonfanti and Kob, J. Chem.
+  Phys. 147, 204104 (2017), doi:10.1063/1.5012271, is a different modification:
+  it adds a localized term built from sin(xy) and a Gaussian, not a periodic
+  ripple.
+- The Muller-Brown part is the surface of Müller and Brown, Theor.
+  Chim.
+  Acta 53, 75-93 (1979), doi:10.1007/bf00547608.
+
+** =LepsHH2= H + H2
+
+=LepsHH2= is the three-atom LEPS surface for H + H2 with one Morse curve and one
+Sato parameter for all three pairs.
+It takes nine coordinates, atom by atom, so a search can move the atoms off a
+line.
+The reference page calls the form the London-Eyring-Polanyi-Sato surface.
+
+- C++ :: =rgpot::LepsPot= with =rgpot::LepsSystem::HH2= in
+  =CppCore/rgpot/Models/ModelPots.hpp=.
+- Python :: none.
+- =rgpot-eval=, =pair_coeff= :: none.
+- =potserv= :: =LEPS-HH2=.
+- Classical engine :: =name= =leps_hh2=.
+- C model API :: =RGPOT_BUILTIN_LEPS_HH2=.
+
+*** Functional form
+
+The source evaluates the published form in hartree and bohr and converts at the
+boundary.
+Each coordinate and each direction is divided by =units::BOHR_TO_ANGSTROM=
+(0.529177210903).
+The energy is multiplied by =units::HARTREE_TO_EV= (27.211386245988), and the
+gradient and the product by =units::HARTREE_TO_EV / units::BOHR_TO_ANGSTROM=.
+The three pairs are p = 0: atoms (0, 1), p = 1: atoms (1, 2) and p = 2: atoms
+(0, 2), each with a curve (De, re, exponent, S) and a distance r_p:
+
+- t_p = exp(-exponent (r_p - re)).
+- Singlet term es_p = De / (1 + S) (t_p^2 - 2 t_p).
+- Triplet term et_p = De / (1 - S) (t_p^2 + 2 t_p).
+- Coulomb term Q_p = (es_p + et_p) / 2.
+- Exchange term J_p = (es_p - et_p) / 2.
+- Energy E = Q_0 + Q_1 + Q_2 - sqrt(J_0^2 + J_1^2 + J_2^2 - J_0 J_1 - J_1 J_2
+  - J_2 J_0).
+
+A zero bond length throws =std::domain_error=, and so does a vanishing radicand,
+because the root is not differentiable there.
+There is no cutoff or switch, and the coordinate count must be 9.
+For =HH2= all three pairs use the same curve.
+An isolated diatom at its =re= has the energy of minus De / (1 + S) in this
+form.
+For the curve below that is -4.1937 eV, whereas De is 4.7473 eV.
+
+*** Parameters
+
+All values are hartree, bohr and bohr^-1 and are set in =curves= of
+=CppCore/rgpot/Models/ModelPots.cc=, not through a configuration struct.
+
+| Parameter          | Value (all three pairs) |
+|--------------------+-------------------------|
+| De (hartree)       | 0.17446                 |
+| re (bohr)          | 1.40083                 |
+| exponent (bohr^-1) | 1.027                   |
+| S                  | 0.132                   |
+
+The source names no paper for this parameter set.
+
+*** Example
+
+The program places an H atom 30 Angstrom from an H2 molecule at =re= to find the
+reactant energy, then refines the collinear saddle point by Newton's method in
+the two free bond coordinates, using Hessian-vector products for the Hessian.
+It prints the collinear Hessian eigenvalues at that point.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <array>
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/units.hpp"
+
+using Vec9 = std::array<double, 9>;
+
+static Vec9 line(double x1, double x2) {
+  Vec9 x{};
+  x[3] = x1;
+  x[6] = x2;
+  return x;
+}
+
+static double energy(const rgpot::LepsPot &pot, const Vec9 &x) {
+  const Vec9 zero{};
+  return pot.evaluateCoordinates({x.data(), 9}, {zero.data(), 9}).energy;
+}
+
+int main() {
+  const rgpot::LepsPot pot(rgpot::LepsSystem::HH2);
+  const double re = 1.40083 * rgpot::units::BOHR_TO_ANGSTROM;
+  const double reactants = energy(pot, line(30.0, 30.0 + re));
+  std::printf("H + H2 at 30 A: %.4f eV, H2 bond %.5f A\n", reactants, re);
+
+  double x1 = 0.93, x2 = 1.86;
+  for (int it = 0; it < 60; ++it) {
+    const Vec9 x = line(x1, x2);
+    Vec9 e1{}, e2{};
+    e1[3] = 1.0;
+    e2[6] = 1.0;
+    const auto a = pot.evaluateCoordinates({x.data(), 9}, {e1.data(), 9});
+    const auto b = pot.evaluateCoordinates({x.data(), 9}, {e2.data(), 9});
+    const double h11 = a.product[3], h12 = a.product[6], h22 = b.product[6];
+    const double det = h11 * h22 - h12 * h12;
+    const double d1 = (h22 * a.gradient[3] - h12 * a.gradient[6]) / det;
+    const double d2 = (h11 * a.gradient[6] - h12 * a.gradient[3]) / det;
+    x1 -= d1;
+    x2 -= d2;
+    if (std::hypot(d1, d2) < 1e-12)
+      break;
+  }
+
+  const Vec9 s = line(x1, x2);
+  Vec9 e1{}, e2{};
+  e1[3] = 1.0;
+  e2[6] = 1.0;
+  const auto a = pot.evaluateCoordinates({s.data(), 9}, {e1.data(), 9});
+  const auto b = pot.evaluateCoordinates({s.data(), 9}, {e2.data(), 9});
+  const double tr = a.product[3] + b.product[6];
+  const double det = a.product[3] * b.product[6] - a.product[6] * a.product[6];
+  const double half = std::sqrt(tr * tr / 4.0 - det);
+  std::printf("saddle: r01 %.5f A, r12 %.5f A, E %.4f eV\n", x1, x2 - x1,
+              energy(pot, s));
+  std::printf("barrier %.4f eV\n", energy(pot, s) - reactants);
+  std::printf("collinear Hessian eigenvalues %.3f %.3f eV/A^2\n",
+              tr / 2.0 - half, tr / 2.0 + half);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+H + H2 at 30 A: -4.1937 eV, H2 bond 0.74129 A
+saddle: r01 1.35395 A, r12 1.35395 A, E -1.0855 eV
+barrier 3.1082 eV
+collinear Hessian eigenvalues -41.488 1.663 eV/A^2
+#+end_example
+
+
+The saddle point has equal bond lengths of 1.35395 Angstrom and one negative
+collinear eigenvalue.
+It lies 3.1082 eV above the separated H + H2 energy in this form.
+Compare that value with the barrier of the system being modelled before using
+this preset as a quantitative H3 surface.
+
+*** Literature
+
+- Goswami, ACS Phys.
+  Chem.
+  Au 6, 633-664 (2026), doi:10.1021/acsphyschemau.6c00038.
+  The tutorial review uses a LEPS surface of three hydrogen atoms in nine
+  coordinates for its nudged-elastic-band, minimization and sampling examples.
+  The text lists no constants, so it is not confirmed that the set is this one.
+- Sato, J. Chem.
+  Phys. 23, 592-593 (1955), doi:10.1063/1.1742043.
+  The paper behind the Sato parameter, which the tutorial review cites for the
+  LEPS form.
+- The source names no paper for the =HH2= constants.
+
+** =LepsHCl2= H + Cl2
+
+=LepsHCl2= is the LEPS surface for H + Cl2 -> HCl + Cl, with a Morse curve for
+HCl and one for Cl2, each with its own Sato parameter.
+Use it as the exothermic atom-transfer example of the family.
+
+- C++ :: =rgpot::LepsPot= with =rgpot::LepsSystem::HCl2= in
+  =CppCore/rgpot/Models/ModelPots.hpp=.
+- Python :: none.
+- =rgpot-eval=, =pair_coeff= :: none.
+- =potserv= :: =LEPS-HCl2=.
+- Classical engine :: =name= =leps_hcl2=.
+- C model API :: =RGPOT_BUILTIN_LEPS_HCL2=.
+
+*** Functional form
+
+The form is the one of =LepsHH2= (see that section), with the curves
+
+- pair (0, 1) and pair (0, 2): the HCl curve,
+- pair (1, 2): the Cl2 curve.
+
+Atom 0 is the hydrogen and atoms 1 and 2 are the two chlorine atoms.
+Energies are converted from hartree and distances from bohr with the same
+factors as for =LepsHH2=.
+The Cl2 curve has a negative Sato parameter.
+
+*** Parameters
+
+All values are in hartree and bohr and are set in =curves= of
+=CppCore/rgpot/Models/ModelPots.cc=.
+The table is the one of =CppCore/rgpot/Models/README.md=, and the digits of the
+two files agree.
+
+| Parameter          | HCl, pairs (0, 1) (0, 2) | Cl2, pair (1, 2)    |
+|--------------------+--------------------------+---------------------|
+| De (hartree)       | 0.16963487116282344      | 0.09238779594959665 |
+| re (bohr)          | 2.4085504321417757       | 3.7565865631435686  |
+| exponent (bohr^-1) | 0.9886770766652772       | 1.0591804130726892  |
+| S                  | 0.067                    | -0.113              |
+
+With the conversion factors above these are De = 4.616 eV and re = 1.27455
+Angstrom for HCl, and De = 2.514 eV and re = 1.9879 Angstrom for Cl2.
+The source comment cites Connor, Mayne and Whitehead for the Morse curves and
+the Sato parameters.
+The registry record of that paper, J. Chem.
+Phys. 72, 6209 (1980), lists the authors Connor, Jakubetz, Manz and Whitehead.
+Its table could not be retrieved, so the constants are not compared with it.
+
+*** Example
+
+The program converts the two equilibrium distances of the table to Angstrom,
+computes the reactant energy (H at 30 Angstrom from Cl2) and the product energy
+(HCl with a Cl at 30 Angstrom), then refines the collinear H-Cl-Cl saddle point
+by Newton's method in the two free bond coordinates.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <array>
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/units.hpp"
+
+using Vec9 = std::array<double, 9>;
+
+static Vec9 line(double x1, double x2) {
+  Vec9 x{};
+  x[3] = x1;
+  x[6] = x2;
+  return x;
+}
+
+static double energy(const rgpot::LepsPot &pot, const Vec9 &x) {
+  const Vec9 zero{};
+  return pot.evaluateCoordinates({x.data(), 9}, {zero.data(), 9}).energy;
+}
+
+int main() {
+  const rgpot::LepsPot pot(rgpot::LepsSystem::HCl2);
+  const double bohr = rgpot::units::BOHR_TO_ANGSTROM;
+  const double r_react = 3.7565865631435686 * bohr;
+  const double r_prod = 2.4085504321417757 * bohr;
+  const double reactants = energy(pot, line(30.0, 30.0 + r_react));
+  const double products = energy(pot, line(r_prod, 30.0));
+  std::printf("H + Cl2 %.4f eV, HCl + Cl %.4f eV, reaction %.4f eV\n",
+              reactants, products, products - reactants);
+
+  double x1 = 1.6, x2 = 3.6;
+  for (int it = 0; it < 60; ++it) {
+    const Vec9 x = line(x1, x2);
+    Vec9 e1{}, e2{};
+    e1[3] = 1.0;
+    e2[6] = 1.0;
+    const auto a = pot.evaluateCoordinates({x.data(), 9}, {e1.data(), 9});
+    const auto b = pot.evaluateCoordinates({x.data(), 9}, {e2.data(), 9});
+    const double h11 = a.product[3], h12 = a.product[6], h22 = b.product[6];
+    const double det = h11 * h22 - h12 * h12;
+    const double d1 = (h22 * a.gradient[3] - h12 * a.gradient[6]) / det;
+    const double d2 = (h11 * a.gradient[6] - h12 * a.gradient[3]) / det;
+    x1 -= d1;
+    x2 -= d2;
+    if (std::hypot(d1, d2) < 1e-12)
+      break;
+  }
+
+  const Vec9 s = line(x1, x2);
+  Vec9 e1{}, e2{};
+  e1[3] = 1.0;
+  e2[6] = 1.0;
+  const auto a = pot.evaluateCoordinates({s.data(), 9}, {e1.data(), 9});
+  const auto b = pot.evaluateCoordinates({s.data(), 9}, {e2.data(), 9});
+  const double tr = a.product[3] + b.product[6];
+  const double det = a.product[3] * b.product[6] - a.product[6] * a.product[6];
+  const double half = std::sqrt(tr * tr / 4.0 - det);
+  std::printf("saddle: r(H-Cl) %.4f A, r(Cl-Cl) %.4f A, E %.4f eV\n", x1,
+              x2 - x1, energy(pot, s));
+  std::printf("barrier %.4f eV\n", energy(pot, s) - reactants);
+  std::printf("collinear Hessian eigenvalues %.3f %.3f eV/A^2\n",
+              tr / 2.0 - half, tr / 2.0 + half);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+H + Cl2 -2.8343 eV, HCl + Cl -4.3261 eV, reaction -1.4919 eV
+saddle: r(H-Cl) 1.9223 A, r(Cl-Cl) 2.1894 A, E -1.6633 eV
+barrier 1.1710 eV
+collinear Hessian eigenvalues -21.884 3.431 eV/A^2
+#+end_example
+
+
+The reaction energy of this surface is -1.4919 eV.
+The collinear saddle point has an H-Cl distance of 1.9223 Angstrom and a Cl-Cl
+distance of 2.1894 Angstrom.
+It lies 1.1710 eV above the reactants and has one negative eigenvalue.
+Compare that value with the barrier of the system being modelled before using
+this preset as a quantitative H + Cl2 surface.
+
+*** Literature
+
+- Sato, J. Chem.
+  Phys. 23, 592-593 (1955), doi:10.1063/1.1742043.
+  The paper behind the Sato parameter of the LEPS form.
+- Connor, Jakubetz, Manz and Whitehead, J. Chem.
+  Phys. 72, 6209-6226 (1980), doi:10.1063/1.439080.
+  The paper on the reaction X + Cl2 -> XCl + Cl (X = Mu, H, D) that the source
+  comment names for the Morse curves and Sato parameters.
+- No paper by Goswami is cited for this surface.
+
+** =LepsFH2= F + H2
+
+=LepsFH2= is the LEPS surface for F + H2 -> HF + H, with a Morse curve for HF
+and one for H2.
+Use it as the second exothermic atom-transfer example of the family.
+
+- C++ :: =rgpot::LepsPot= with =rgpot::LepsSystem::FH2= in
+  =CppCore/rgpot/Models/ModelPots.hpp=.
+- Python :: none.
+- =rgpot-eval=, =pair_coeff= :: none.
+- =potserv= :: =LEPS-FH2=.
+- Classical engine :: =name= =leps_fh2=.
+- C model API :: =RGPOT_BUILTIN_LEPS_FH2=.
+
+*** Functional form
+
+The form is the one of =LepsHH2= (see that section), with the curves
+
+- pair (0, 1) and pair (0, 2): the HF curve (named =fh= in the source),
+- pair (1, 2): the H2 curve.
+
+Atom 0 is the fluorine and atoms 1 and 2 are the two hydrogens.
+Energies are converted from hartree and distances from bohr with the same
+factors as for =LepsHH2=.
+
+*** Parameters
+
+All values are in hartree and bohr and are set in =curves= of
+=CppCore/rgpot/Models/ModelPots.cc=.
+
+| Parameter          | HF, pairs (0, 1) (0, 2) | H2, pair (1, 2) |
+|--------------------+-------------------------+-----------------|
+| De (hartree)       | 0.225138                | 0.17451914      |
+| re (bohr)          | 1.732879                | 1.4019877       |
+| exponent (bohr^-1) | 1.1742                  | 1.0277          |
+| S                  | 0.167                   | 0.106           |
+
+The H2 curve of =FH2= is not the one of =LepsHH2=: that one has De 0.17446, re
+1.40083, exponent 1.027 and S 0.132.
+The source names no paper for either set.
+
+*** Example
+
+The program computes the reactant energy (F at 30 Angstrom from H2 at its
+equilibrium distance) and the product energy (HF with an H at 30 Angstrom), then
+refines the collinear F-H-H saddle point by Newton's method in the two free bond
+coordinates.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <array>
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/units.hpp"
+
+using Vec9 = std::array<double, 9>;
+
+static Vec9 line(double x1, double x2) {
+  Vec9 x{};
+  x[3] = x1;
+  x[6] = x2;
+  return x;
+}
+
+static double energy(const rgpot::LepsPot &pot, const Vec9 &x) {
+  const Vec9 zero{};
+  return pot.evaluateCoordinates({x.data(), 9}, {zero.data(), 9}).energy;
+}
+
+int main() {
+  const rgpot::LepsPot pot(rgpot::LepsSystem::FH2);
+  const double bohr = rgpot::units::BOHR_TO_ANGSTROM;
+  const double r_react = 1.4019877 * bohr, r_prod = 1.732879 * bohr;
+  const double reactants = energy(pot, line(30.0, 30.0 + r_react));
+  const double products = energy(pot, line(r_prod, 30.0));
+  std::printf("F + H2 %.4f eV, HF + H %.4f eV, reaction %.4f eV\n",
+              reactants, products, products - reactants);
+
+  double x1 = 1.3, x2 = 2.1;
+  for (int it = 0; it < 60; ++it) {
+    const Vec9 x = line(x1, x2);
+    Vec9 e1{}, e2{};
+    e1[3] = 1.0;
+    e2[6] = 1.0;
+    const auto a = pot.evaluateCoordinates({x.data(), 9}, {e1.data(), 9});
+    const auto b = pot.evaluateCoordinates({x.data(), 9}, {e2.data(), 9});
+    const double h11 = a.product[3], h12 = a.product[6], h22 = b.product[6];
+    const double det = h11 * h22 - h12 * h12;
+    const double d1 = (h22 * a.gradient[3] - h12 * a.gradient[6]) / det;
+    const double d2 = (h11 * a.gradient[6] - h12 * a.gradient[3]) / det;
+    x1 -= d1;
+    x2 -= d2;
+    if (std::hypot(d1, d2) < 1e-12)
+      break;
+  }
+
+  const Vec9 s = line(x1, x2);
+  Vec9 e1{}, e2{};
+  e1[3] = 1.0;
+  e2[6] = 1.0;
+  const auto a = pot.evaluateCoordinates({s.data(), 9}, {e1.data(), 9});
+  const auto b = pot.evaluateCoordinates({s.data(), 9}, {e2.data(), 9});
+  const double tr = a.product[3] + b.product[6];
+  const double det = a.product[3] * b.product[6] - a.product[6] * a.product[6];
+  const double half = std::sqrt(tr * tr / 4.0 - det);
+  std::printf("saddle: r(F-H) %.4f A, r(H-H) %.4f A, E %.4f eV\n", x1,
+              x2 - x1, energy(pot, s));
+  std::printf("barrier %.4f eV\n", energy(pot, s) - reactants);
+  std::printf("collinear Hessian eigenvalues %.3f %.3f eV/A^2\n",
+              tr / 2.0 - half, tr / 2.0 + half);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+F + H2 -4.2938 eV, HF + H -5.2496 eV, reaction -0.9559 eV
+saddle: r(F-H) 1.5180 A, r(H-H) 1.2739 A, E -1.2454 eV
+barrier 3.0484 eV
+collinear Hessian eigenvalues -51.590 2.281 eV/A^2
+#+end_example
+
+
+The reaction energy of this surface is -0.9559 eV.
+The collinear saddle point has an F-H distance of 1.5180 Angstrom and an H-H
+distance of 1.2739 Angstrom, 3.0484 eV above the reactants.
+Compare that value with the barrier of the system being modelled before using
+this preset as a quantitative F + H2 surface.
+
+*** Literature
+
+- Sato, J. Chem.
+  Phys. 23, 592-593 (1955), doi:10.1063/1.1742043.
+  The paper behind the Sato parameter of the LEPS form.
+- The source names no paper for the =FH2= constants, so none is cited for them.
+- No paper by Goswami is cited for this surface.
+
+** =DoubleWell= quartic well with harmonic partners
+
+=DoubleWell= is a quartic double well along the first coordinate with harmonic
+springs on the other coordinates, in any number of dimensions.
+Use it to test a saddle search or a minimization in a space whose size you set,
+with one barrier, two minima and a known Hessian everywhere.
+The coupling parameter bends the transverse minima along the first coordinate,
+which makes the lowest Hessian mode at the wells not aligned with the axes.
+
+- C++ :: =rgpot::DoubleWellPot= in =CppCore/rgpot/Models/ModelPots.hpp=.
+- Python :: none.
+- =rgpot-eval=, =pair_coeff= :: none.
+- =potserv= :: =DoubleWell=, built with dimensions 2, =v0= 1.0, =x0= 2.0,
+  =omega= 1.0 and =coupling= 0.25 (in =CppCore/rgpot/rpc/server.cpp=).
+- Classical engine :: =name= =double_well=, built with dimensions 1, =v0= 1.0,
+  =x0= 5.0, =omega= 0.0 and =coupling= 0.0 (in
+  =CppCore/rgpot/engine/ClassicalEngine.cc=).
+- C model API :: =rgpot_builtin_double_well_new= with the five parameters.
+
+*** Functional form
+
+With u = x[0] / x0, and the coordinates x[0] to x[n-1] in Angstrom:
+
+- Energy :: V = v0 (u^2 - 1)^2 + sum over i >= 1 of (omega^2 / 2) (x[i] -
+  coupling x[0])^2, in eV.
+- Gradient :: 4 v0 u (u^2 - 1) / x0 - omega^2 coupling sum over i >= 1 of (x[i] -
+  coupling x[0]) for the first coordinate, and omega^2 (x[i] - coupling x[0])
+  for the others.
+- Hessian-vector product :: the exact derivative of that gradient: the first
+  entry is 4 v0 (3 u^2 - 1) / x0^2 times v[0] minus omega^2 coupling times the
+  sum of (v[i] - coupling v[0]), and entry i is omega^2 (v[i] - coupling v[0]).
+
+The minima are at x[0] = +-x0 with x[i] = coupling x[0], at energy 0, and the
+barrier at x[0] = 0 has height v0.
+Zero dimensions or a zero =x0= throws =std::invalid_argument=, and so does a
+coordinate count that differs from =dimensions=.
+
+*** Parameters
+
+| Parameter    | Value in the example | Unit              |
+|--------------+----------------------+-------------------|
+| =dimensions= | 3                    | none              |
+| =v0=         | 1.0                  | eV                |
+| =x0=         | 2.0                  | Angstrom          |
+| =omega=      | 1.0                  | sqrt(eV)/Angstrom |
+| =coupling=   | 0.25                 | none              |
+
+All five are arguments of =DoubleWellPot= in
+=CppCore/rgpot/Models/ModelPots.hpp=; there is no default and no configuration
+struct.
+=omega= enters as omega^2, the transverse force constant in eV/Angstrom^2.
+The numbers of =potserv= and of the classical engine are in the list above.
+
+*** Example
+
+The program builds a three-dimensional well, evaluates the two minima, the
+barrier top and a point on the barrier axis, then reads one column of the
+Hessian at a minimum and compares it with the closed form.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/Models/ModelPots.hpp"
+
+int main() {
+  const double v0 = 1.0, x0 = 2.0, omega = 1.0, c = 0.25;
+  const rgpot::DoubleWellPot pot(3, v0, x0, omega, c);
+  const std::vector<double> zero(3, 0.0), ex = {1.0, 0.0, 0.0};
+  const std::vector<std::vector<double>> points = {
+      {0.0, 0.0, 0.0}, {2.0, 0.5, 0.5}, {-2.0, -0.5, -0.5}, {2.0, 0.0, 0.0}};
+  for (const auto &x : points) {
+    const auto r = pot.evaluateCoordinates(x, zero);
+    const double gmax = std::max({std::fabs(r.gradient[0]),
+                                  std::fabs(r.gradient[1]),
+                                  std::fabs(r.gradient[2])});
+    std::printf("x (%5.2f, %5.2f, %5.2f)  V %.6f  max|grad| %.4f\n", x[0],
+                x[1], x[2], r.energy, gmax);
+  }
+  const auto h = pot.evaluateCoordinates(points[1], ex);
+  std::printf("H e_x at the well: %.4f %.4f %.4f\n", h.product[0],
+              h.product[1], h.product[2]);
+  std::printf("8 v0/x0^2 + 2 omega^2 c^2 = %.4f, -omega^2 c = %.4f\n",
+              8.0 * v0 / (x0 * x0) + 2.0 * omega * omega * c * c,
+              -omega * omega * c);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+x ( 0.00,  0.00,  0.00)  V 1.000000  max|grad| 0.0000
+x ( 2.00,  0.50,  0.50)  V 0.000000  max|grad| 0.0000
+x (-2.00, -0.50, -0.50)  V 0.000000  max|grad| 0.0000
+x ( 2.00,  0.00,  0.00)  V 0.250000  max|grad| 0.5000
+H e_x at the well: 2.1250 -0.2500 -0.2500
+8 v0/x0^2 + 2 omega^2 c^2 = 2.1250, -omega^2 c = -0.2500
+#+end_example
+
+
+The two minima have energy 0 and zero gradient, the barrier top has energy v0 =
+1, and the column of the Hessian at the minimum is the one the formula predicts.
+
+*** Literature
+
+- The source names no paper for this model or for its parameters: it is a
+  generic form of the code, so none is cited.
+- No paper by Goswami is cited for this surface.
+
+** =CoupledProtonWell= bent two-dimensional well
+
+=CoupledProtonWell= is a two-dimensional double well whose valley follows the
+parabola y = x^2 / x0.
+Use it for a saddle search where the reaction coordinate is curved, so the
+lowest Hessian mode at the minima is tilted against the axes while the saddle
+point at the origin has axis-aligned modes.
+
+- C++ :: =rgpot::CoupledProtonWellPot= in =CppCore/rgpot/Models/ModelPots.hpp=.
+- Python :: none.
+- =rgpot-eval=, =pair_coeff= :: none.
+- =potserv= :: =CoupledProtonWell=, built with =v0= 1.0, =x0= 5.0 and =spring= 8
+  / 25 (in =CppCore/rgpot/rpc/server.cpp=).
+- Classical engine :: =name= =coupled_proton_well=, built with =v0= 1.0, =x0=
+  5.0 and =spring= 0.32 (in =CppCore/rgpot/engine/ClassicalEngine.cc=).
+- C model API :: =rgpot_builtin_coupled_proton_well_new=.
+
+*** Functional form
+
+With u = x / x0, the coordinates (x, y) in Angstrom and the energy in eV:
+
+- Energy :: V = v0 (u^2 - 1)^2 + (spring / 2) (y - x^2 / x0)^2.
+- Gradient :: dV/dx = 4 v0 u (u^2 - 1) / x0 - 2 spring (y - x^2 / x0) x / x0 and
+  dV/dy = spring (y - x^2 / x0).
+- Hessian-vector product :: the exact second derivatives, with Hxx = 4 v0 (3 u^2 - 1)
+  / x0^2 + spring ((2 x / x0)^2 - 2 (y - x^2 / x0) / x0), Hxy = -2 spring x / x0
+  and Hyy = spring.
+
+Along the valley y = x^2 / x0 the energy is v0 (u^2 - 1)^2.
+The minima are at (+-x0, x0) with energy 0, and the saddle point at (0, 0) has
+height v0 and Hessian diag(-4 v0 / x0^2, spring).
+A zero =x0= or a coordinate count other than 2 throws =std::invalid_argument=.
+
+*** Parameters
+
+| Parameter | Value in the example | Unit          |
+|-----------+----------------------+---------------|
+| =v0=      | 1.0                  | eV            |
+| =x0=      | 5.0                  | Angstrom      |
+| =spring=  | 8 / 25 = 0.32        | eV/Angstrom^2 |
+
+All three are arguments of =CoupledProtonWellPot= in
+=CppCore/rgpot/Models/ModelPots.hpp=; there is no default and no configuration
+struct.
+The values above are those of =potserv= and of the classical engine.
+
+*** Example
+
+The program evaluates the energy, the gradient size and the Hessian (from two
+Hessian-vector products) at the saddle point, on the valley floor and at both
+minima, then checks the energy along y = x^2 / x0 against v0 (u^2 - 1)^2.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/Models/ModelPots.hpp"
+
+int main() {
+  const double v0 = 1.0, x0 = 5.0, spring = 8.0 / 25.0;
+  const rgpot::CoupledProtonWellPot pot(v0, x0, spring);
+  const double ex[2] = {1.0, 0.0}, ey[2] = {0.0, 1.0}, zero[2] = {0.0, 0.0};
+  const double points[4][2] = {{0.0, 0.0}, {2.5, 1.25}, {5.0, 5.0},
+                               {-5.0, 5.0}};
+  for (const auto &p : points) {
+    const auto r = pot.evaluateCoordinates({p, 2}, {zero, 2});
+    const auto a = pot.evaluateCoordinates({p, 2}, {ex, 2});
+    const auto b = pot.evaluateCoordinates({p, 2}, {ey, 2});
+    std::printf("(%5.2f, %5.2f)  V %.6f  max|grad| %.4f  "
+                "H [%.4f %.4f; %.4f %.4f]\n",
+                p[0], p[1], r.energy,
+                std::max(std::fabs(r.gradient[0]), std::fabs(r.gradient[1])),
+                a.product[0], a.product[1], b.product[0] + 0.0, b.product[1]);
+  }
+  for (const double x : {0.0, 1.0, 2.5, 5.0}) {
+    const double p[2] = {x, x * x / x0};
+    const auto r = pot.evaluateCoordinates({p, 2}, {zero, 2});
+    std::printf("on y = x^2/x0, x %.1f: V %.6f, v0 (u^2-1)^2 %.6f\n", x,
+                r.energy, v0 * std::pow(x * x / (x0 * x0) - 1.0, 2));
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+( 0.00,  0.00)  V 1.000000  max|grad| 0.0000  H [-0.1600 0.0000; 0.0000 0.3200]
+( 2.50,  1.25)  V 0.562500  max|grad| 0.3000  H [0.2800 -0.3200; -0.3200 0.3200]
+( 5.00,  5.00)  V 0.000000  max|grad| 0.0000  H [1.6000 -0.6400; -0.6400 0.3200]
+(-5.00,  5.00)  V 0.000000  max|grad| 0.0000  H [1.6000 0.6400; 0.6400 0.3200]
+on y = x^2/x0, x 0.0: V 1.000000, v0 (u^2-1)^2 1.000000
+on y = x^2/x0, x 1.0: V 0.921600, v0 (u^2-1)^2 0.921600
+on y = x^2/x0, x 2.5: V 0.562500, v0 (u^2-1)^2 0.562500
+on y = x^2/x0, x 5.0: V 0.000000, v0 (u^2-1)^2 0.000000
+#+end_example
+
+
+The saddle point at the origin has the Hessian diag(-0.16, 0.32) and energy 1,
+the minima at (5, 5) and (-5, 5) have energy 0, and the off-diagonal entries of
+their Hessians are +-0.64.
+
+*** Literature
+
+- The source names no paper for this model or for its parameters, so none is
+  cited.
+- No paper by Goswami is cited for this surface.
+
+** =CBE= H + CH4 from the external cbe-pes library
+
+=CBE= is the full-dimensional surface of the H + CH4 hydrogen abstraction
+reaction, six atoms and 18 coordinates.
+It is not an analytic form in rgpot: =rgpot::CBEPot= calls the external
+=cbe-pes= library through its C interface for the energy, the gradient and the
+Hessian-vector product, so the class is built only with the library.
+Use it for a saddle search on a real six-atom reaction with an analytic
+Hessian-vector product.
+
+- C++ :: =rgpot::CBEPot= in =CppCore/rgpot/CBEPot/CBEPot.hpp=, built only with
+  =with_cbe=.
+- Python :: none.
+- =rgpot-eval=, =pair_coeff= :: none.
+- =potserv= :: =CBE=, offered only in a build with =RGPOT_HAS_CBE=.
+- Classical engine :: =name= =cbe=, only in a build with =RGPOT_HAS_CBE=.
+- C model API :: =RGPOT_BUILTIN_CBE=, which throws a runtime error without the
+  library.
+
+*** Functional form
+
+The functional form lives in the external library, not in rgpot.
+=CppCore/rgpot/CBEPot/CBEPot.cc= converts and forwards:
+
+- Positions are divided by =units::BOHR_TO_ANGSTROM= before the call.
+- The energy is multiplied by =units::HARTREE_TO_EV=.
+- The force and the Hessian-vector product are multiplied by
+  =units::HARTREE_TO_EV / units::BOHR_TO_ANGSTROM=, and the direction is divided
+  by =units::BOHR_TO_ANGSTROM=.
+
+A call with an atom count other than 6 throws
+=std::invalid_argument=, and a failure status of the library throws =std::runtime_error=.
+The class reports =Reentrancy::ProcessSerial=, takes a process-wide mutex around
+each library call, and calls =cbe_initialize= once.
+There is no cutoff, and the potential is not periodic.
+The repository's test of the surface builds the atoms in this order: the carbon,
+the four hydrogen atoms of CH4, then the attacking hydrogen.
+The order of the library is its own, so check it against the documentation of
+the library you install.
+
+*** Parameters
+
+rgpot has no parameters for this surface: the fitted constants live in the
+external library.
+The values rgpot sets are these:
+
+| Quantity           | Value           | Unit              |
+|--------------------+-----------------+-------------------|
+| atoms              | 6               | none              |
+| =BOHR_TO_ANGSTROM= | 0.529177210903  | Angstrom per bohr |
+| =HARTREE_TO_EV=    | 27.211386245988 | eV per hartree    |
+
+The atom count is checked in
+=CppCore/rgpot/CBEPot/CBEPot.cc= and the two factors are in =CppCore/rgpot/units.hpp=.
+
+The fitted constants of the surface are in the library and in the paper cited
+below, so none is copied here.
+
+*** Example
+
+The program evaluates the energy and force at the geometry of the repository
+test, with the attacking hydrogen 2.5 Angstrom from the carbon, and one
+Hessian-vector product along the attacking hydrogen.
+It needs the library, so it is compile-only on a build without it.
+Install the =cbe-pes= library so that =pkg-config= finds =cbe= and the header
+=cbe.h= is on the include path, then configure rgpot with
+=-Dwith_cbe=enabled= (meson) or =-DRGPOT_WITH_CBE=ON= (CMake).
+The repository does not vendor the library and names no download location; the
+generator of the reference data in =rgpot-core/tests/data/ch5_2008/generate.py=
+says that the library is built from =ch52008.f=, the CH5 surface file of the
+i-PI drivers, in a batch form.
+
+#+attr_rgpot: compile link=rgpot requires=has_cbe
+#+begin_src cpp
+#include <array>
+#include <cstdio>
+
+#include "rgpot/CBEPot/CBEPot.hpp"
+
+int main() {
+  const rgpot::CBEPot pot;
+  const std::array<double, 18> pos{0.0,    0.0,    0.0,    0.629,  0.629,
+                                   0.629,  -0.629, -0.629, 0.629,  -0.629,
+                                   0.629,  -0.629, 0.629,  -0.629, -0.629,
+                                   2.5,    0.0,    0.0};
+  const int z[6] = {6, 1, 1, 1, 1, 1};
+  const double box[9] = {};
+  std::array<double, 18> force{}, direction{}, product{};
+  direction[15] = 1.0;
+  const rgpot::ForceInput in{6, pos.data(), z, box};
+  rgpot::ForceOut out{};
+  out.F = force.data();
+  pot.forceImpl(in, &out);
+  pot.hessianVectorImpl(in, direction.data(), product.data());
+  std::printf("energy %.6f eV\n", out.energy);
+  std::printf("force on the attacking H, x: %.6f eV/Angstrom\n", force[15]);
+  std::printf("H e_x on the attacking H, x: %.6f eV/Angstrom^2\n",
+              product[15]);
+  return 0;
+}
+#+end_src
+
+
+With the library installed, the block runs and prints the energy in eV, the
+force on the attacking hydrogen in
+eV/Angstrom and the matching entry of =H v= in eV/Angstrom^2 times the
+direction.
+No output is shown here because the library was not available.
+
+*** Literature
+
+- Jordan and Gilbert, J. Chem.
+  Phys. 102, 5669-5682 (1995), doi:10.1063/1.469298.
+  The abstract of Corchado, Bravo and Espinosa-Garcia says that their surface is
+  based on an analytical expression proposed by Jordan and Gilbert in this
+  paper, which is the functional form.
+- Corchado, Bravo and Espinosa-Garcia, J. Chem.
+  Phys. 130, 184314 (2009), doi:10.1063/1.3132223.
+  The new analytical surface for H + CH4 with parameters fitted to ab initio
+  data, the CH4 + H surface that =rgpot-core/src/ch5_2008.rs= names.
+- No paper by Goswami is cited for this surface.

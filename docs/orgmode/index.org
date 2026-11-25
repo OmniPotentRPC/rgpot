@@ -99,6 +99,13 @@ meson compile -C bbdir && meson test -C bbdir
    howto/coupled-well-engine
    howto/eindir-anneal
    howto/eon-rgpot
+   howto/potentials-pair
+   howto/potentials-metals
+   howto/potentials-silicon
+   howto/potentials-water
+   howto/potentials-model
+   howto/potentials-quantum
+   howto/potentials-composite
    howto/sutton-chen-stress
    howto/cpu-scaling
 
@@ -118,7 +125,9 @@ meson compile -C bbdir && meson test -C bbdir
    reference/cpp_api
    reference/cpp_potentials
    reference/cpp_backends
+   reference/cpp_support
    reference/ipi_driver
+   reference/cli
    reference/build_options
    reference/potential_config
    reference/sw_si
@@ -128,6 +137,8 @@ meson compile -C bbdir && meson test -C bbdir
    reference/nlist_abi
    reference/fast_nlist
    reference/engine_abi
+   reference/quantum_abi
+   reference/capnp_schema
    reference/gromacs_dropin
    reference/plugin_abi
    reference/external_abi

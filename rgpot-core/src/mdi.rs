@@ -91,6 +91,7 @@ impl MdiEngineConfig {
     }
 }
 
+/// A failure while loading, configuring, or serving through the MDI library.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct MdiError(String);
