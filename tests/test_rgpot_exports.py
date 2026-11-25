@@ -39,6 +39,16 @@ def test_baselines_are_the_public_archive_set():
     assert len(core | fast) == 54
 
 
+def test_abi_baseline_tracks_external_potential_exports():
+    baseline = _baseline("abi_baseline.txt")
+    assert {
+        "rgpot_lammps_potential",
+        "rgpot_lammpc_potential",
+        "rgpot_gromacs_potential",
+        "rgpot_openmm_potential",
+    } <= baseline
+
+
 def test_whole_archive_exports_the_public_set():
     extra = exports.BUNDLE_EXPORTS - exports.CORE_ONLY_EXPORTS
     wanted = {f"rgpot_abi_{index}" for index in range(extra)}
