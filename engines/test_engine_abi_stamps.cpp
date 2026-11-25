@@ -2,10 +2,12 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/engine_c_abi.h"
+#include "rgpot/plugin/DynLib.hpp"
 
 #include <cstddef>
 #include <cstdio>
-#include <dlfcn.h>
+
+namespace dynlib = rgpot::plugin::dynlib;
 
 static_assert(RGPOT_ENGINE_ABI_VERSION == 1);
 static_assert(RGPOT_ENGINE_ABI_MINOR == 11);
@@ -25,17 +27,16 @@ int main(int argc, char **argv) {
 
   bool failed = false;
   for (int i = 1; i < argc; ++i) {
-    void *handle = dlopen(argv[i], RTLD_NOW | RTLD_LOCAL);
+    dynlib::Handle handle = dynlib::open(argv[i]);
     if (handle == nullptr) {
-      std::fprintf(stderr, "%s: dlopen: %s\n", argv[i], dlerror());
+      std::fprintf(stderr, "%s: loading: %s\n", argv[i],
+                   dynlib::error().c_str());
       failed = true;
       continue;
     }
 
-    dlerror();
-    void *symbol = dlsym(handle, "rgpot_engine_abi_stamp");
-    const char *error = dlerror();
-    if (error != nullptr || symbol == nullptr) {
+    void *symbol = dynlib::sym(handle, "rgpot_engine_abi_stamp");
+    if (symbol == nullptr) {
       std::fprintf(stderr, "%s: missing rgpot_engine_abi_stamp\n", argv[i]);
       failed = true;
     } else {
@@ -52,7 +53,7 @@ int main(int argc, char **argv) {
         failed = true;
       }
     }
-    dlclose(handle);
+    dynlib::close(handle);
   }
   return failed ? 1 : 0;
 }

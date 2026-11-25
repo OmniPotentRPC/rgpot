@@ -7,12 +7,14 @@
 
 #include "lj_eval.hpp"
 #include "rgpot/engine_c_abi.h"
+#include "rgpot/plugin/DynLib.hpp"
 
 #include <cstdio>
 #include <cstring>
-#include <dlfcn.h>
 
 namespace {
+
+namespace dynlib = rgpot::plugin::dynlib;
 
 using CreateFn = RgpotEnginePot *(*)(const void *, size_t, char *, size_t);
 using ForceFn = int (*)(RgpotEnginePot *, long, const double *, const int *, double *, double *,
@@ -23,15 +25,15 @@ using DestroyFn = void (*)(RgpotEnginePot *);
 // A failed force call leaves a message. rgpot_engine_last_error
 // NUL-terminates every buffer it is given, including one of a single byte.
 int check_last_error(const char *library) {
-  void *lib = dlopen(library, RTLD_NOW | RTLD_LOCAL);
+  dynlib::Handle lib = dynlib::open(library);
   if (lib == nullptr) {
-    std::fprintf(stderr, "dlopen: %s\n", dlerror());
+    std::fprintf(stderr, "loading %s: %s\n", library, dynlib::error().c_str());
     return 1;
   }
-  auto create = reinterpret_cast<CreateFn>(dlsym(lib, "rgpot_engine_create"));
-  auto force = reinterpret_cast<ForceFn>(dlsym(lib, "rgpot_engine_force"));
-  auto last_error = reinterpret_cast<LastErrorFn>(dlsym(lib, "rgpot_engine_last_error"));
-  auto destroy = reinterpret_cast<DestroyFn>(dlsym(lib, "rgpot_engine_destroy"));
+  auto create = dynlib::loadSym<CreateFn>(lib, "rgpot_engine_create");
+  auto force = dynlib::loadSym<ForceFn>(lib, "rgpot_engine_force");
+  auto last_error = dynlib::loadSym<LastErrorFn>(lib, "rgpot_engine_last_error");
+  auto destroy = dynlib::loadSym<DestroyFn>(lib, "rgpot_engine_destroy");
   if (create == nullptr || force == nullptr || last_error == nullptr || destroy == nullptr) {
     std::fprintf(stderr, "missing rgpot_engine_* symbol\n");
     return 1;
