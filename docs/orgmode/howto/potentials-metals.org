@@ -20,8 +20,10 @@ The class contracts are in
 in [[file:../reference/python_api.org][Python API]].
 
 Lengths are Angstrom, energies are eV and forces are eV/Angstrom.
-All six read the cell as periodic in every direction.
-None of the kernels writes a stress except =EAMTable=, and only when asked.
+All seven read the cell as periodic in every direction (by default for
+=EAMTable= and =MEAM=, which also support open boundaries).
+None of the kernels writes a stress except =EAMTable= and =MEAM=, and only when
+asked.
 
 | Name       | C++ class                      | Python           |
 |------------+--------------------------------+------------------|
