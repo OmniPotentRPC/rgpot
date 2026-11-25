@@ -2513,7 +2513,7 @@ if get_option('with_tests')
                 ),
                 args: [
                     'd6f5cbaa04ac49e6f02ee64c10eb83d44d951756556924dcc17966453dcd8b11',
-                ] + _isa_exes,
+                ] + exe_wrapper_args + ['--'] + _isa_exes,
             )
         endif
         test(
