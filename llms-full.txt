@@ -6269,8 +6269,10 @@ The class contracts are in
 in [Python API](https://rgpot.rgoswami.me/reference/python_api.html).
 
 Lengths are Angstrom, energies are eV and forces are eV/Angstrom.
-All six read the cell as periodic in every direction.
-None of the kernels writes a stress except `EAMTable`, and only when asked.
+All seven read the cell as periodic in every direction (by default for
+`EAMTable` and `MEAM`, which also support open boundaries).
+None of the kernels writes a stress except `EAMTable` and `MEAM`, and only when
+asked.
 
 | Name       | C++ class                      | Python           |
 |------------|--------------------------------|------------------|
@@ -9357,7 +9359,7 @@ that runs and the literature.
 
 A call takes the natural coordinates from the first `dimensions()` doubles of
 `ForceInput.pos` (Angstrom), returns the energy in eV, and writes the force
-(eV/Angstrom) as the negative gradient into the same entries of `F=. =evaluateCoordinates` returns the energy, the gradient and the product `H v` for a direction `v= in one call, which is how the examples read the curvature. None of these potentials has a Python class. None is a name of =rgpot-eval` or of `pair_coeff`, because the name list of `engines/pot_spec.cpp` does not contain them; see [[file:../reference/potential_names.org][Potential
+(eV/Angstrom) as the negative gradient into the same entries of `F=. =evaluateCoordinates` returns the energy, the gradient and the product `H v` for a direction `v= in one call, which is how the examples read the curvature. Only =MullerBrown` has a Python class (`rgpot.MullerBrownPot`); the other eight have none. None is a name of `rgpot-eval` or of `pair_coeff`, because the name list of `engines/pot_spec.cpp` does not contain them; see [[file:../reference/potential_names.org][Potential
 names and options]]. They are reachable from C++, from `potserv` (see
 [command line](https://rgpot.rgoswami.me/reference/cli.html)), from the classical engine (see
 [Engine plugin ABI](https://rgpot.rgoswami.me/reference/engine_abi.html)) and from the C model
@@ -9481,7 +9483,8 @@ Use it for a first test of a saddle-search or path method, because it is cheap,
 smooth and the stationary points are well known.
 
 - C++ :: `rgpot::MullerBrownPot` in `CppCore/rgpot/Models/ModelPots.hpp`.
-- Python :: none.
+- Python :: `rgpot.MullerBrownPot`, with optional `amplitude`, `a=, =b`, `c`,
+  `x0` and `y0` lists and an analytic Hessian-vector product.
 - `rgpot-eval`, `pair_coeff` :: none.
 - `potserv` :: `MullerBrown`.
 - Classical engine :: `name` `muller_brown`.
@@ -9505,8 +9508,12 @@ There is no cutoff or shift, and the coordinate count must be 2.
 
 #### Parameters
 
-The constants are in `muller` of `CppCore/rgpot/Models/ModelPots.cc`, in the
-arrays `amp`, `aa`, `bb`, `cc`, `x0` and `y0`; they are not configurable.
+The default constants live in `MullerBrownConfig` of
+`CppCore/rgpot/Models/MullerBrownConfig.hpp`, in the arrays `amplitude`, `a=, =b`, `c=, =x0` and `y0`, which `muller` in `CppCore/rgpot/Models/ModelPots.cc`
+evaluates.
+They can be overridden through `MullerBrownPot(MullerBrownConfig)` in C++ or
+`rgpot.MullerBrownPot` in Python; the zero-argument constructor uses the
+defaults below.
 
 | i | A_i (eV) | a_i  | b_i  | c_i   | x0_i (Angstrom) | y0_i (Angstrom) |
 |---|----------|------|------|-------|-----------------|-----------------|
@@ -10550,7 +10557,7 @@ A force is minus the gradient, so a gradient in Hartree/bohr is multiplied by
 | `XTB`         | `XTBPot`      | libxtb                     | `-Dwith_xtb=true`     |
 | `TBLite`      | `TBLitePot`   | libtblite                  | `-Dwith_tblite=true`  |
 | `Metatomic`   | `MetatomicPot` | libtorch, metatomic model | `-Dwith_metatomic=true` |
-| `Uma`         | `UmaPot`      | libtorch, UMA `.pt2`       | `-Dwith_metatomic=true` |
+| `Uma`         | `UmaPot`      | libtorch, UMA `.pt2`       | `-Dwith_uma=true` or `-Dwith_metatomic=true` |
 | `NWChem`      | `NWChemPot`   | `libnwchemc`               | `-Dwith_rpc=true`     |
 | `Skala`       | `SkalaPot`    | `libnwchemc` with Skala    | `-Dwith_skala=true`   |
 | `CPMD`        | `CPMDPot`     | `libcpmdc`                 | `-Dwith_rpc=true`     |
@@ -10559,8 +10566,10 @@ A force is minus the gradient, so a gradient in Hartree/bohr is multiplied by
 | `ORCA`        | `ORCAPot`     | the `orca` executable      | `-Dwith_orca=true`    |
 
 The defaults in `meson_options.txt` are false for `with_xtb`,
-`with_tblite`, `with_metatomic`, `with_skala`, `with_orca` and
-`with_rpc`, and `disabled` for `with_cp2k`.
+`with_tblite`, `with_metatomic`, `with_uma`, `with_skala`,
+`with_orca` and `with_rpc`, and `disabled` for `with_cp2k`.
+`with_uma` builds `UmaPot` and the UMA plugin against torch alone without the metatensor and metatomic packages, while `with_metatomic`
+enables both.
 `with_skala` and `with_cp2k` also need `with_rpc`.
 `MOPACPot` is always built and opens `libmopacc` at run time.
 
@@ -11104,8 +11113,9 @@ then `.rgpot-cache` in the working directory.
 
 #### Example
 
-Building `UmaPot` needs libtorch and vesin, as for `Metatomic`, with the same
-option.
+Building `UmaPot` needs libtorch and vesin, via
+`-Dwith_uma=true` (torch alone) or `-Dwith_metatomic=true` (with the metatensor
+and metatomic packages).
 Exporting a package needs the `umaexport` environment and a UMA checkpoint, as
 in [Export a UMA model with dynamic shapes](https://rgpot.rgoswami.me/howto/uma-export.html).
 
@@ -11119,7 +11129,7 @@ The program evaluates a hydrogen cyanide molecule with a package exported for
 the `omol` task, charge 0 and spin multiplicity 1.
 The package must have been exported for this composition.
 It needs libtorch to build the class, so it compiles here only in a build with
-`with_metatomic` on.
+`with_uma` or `with_metatomic` on.
 
 ```cpp
 #include <cstdio>
@@ -15068,7 +15078,7 @@ See [Tabulated EAM and Finnis-Sinclair potentials](https://rgpot.rgoswami.me/ref
 See [Modified embedded-atom method](https://rgpot.rgoswami.me/reference/meam.html).
 
 - `TIP4PPot`, `SPCEPot`, `TIP4PPtPot` (`-Dwith_water=true`) :: Flexible TIP4P,
-  SPC/E and SPC/E on platinum, in `CppCore/rgpot/Water/`.
+  SPC/E and TIP4P on platinum, in `CppCore/rgpot/Water/`.
 
 - `XTBPot` (`-Dwith_xtb=true`) :: GFN tight-binding methods (GFN-FF, GFN0-xTB,
   GFN1-xTB, GFN2-xTB) via the [xtb](https://github.com/grimme-lab/xtb) C API.
@@ -25276,15 +25286,19 @@ It is 1 when the connection or an evaluation fails.
 Source: docs/orgmode/reference/cli.org
 URL: https://rgpot.rgoswami.me/reference/cli.html
 
-The build installs five programs for users, and the repository carries one
-project tool, `potctl`.
+The build installs up to six programs (`potserv`,
+`potserv_mpi`, `nwchem_mpi_force_host`, `rgpot-lj`, `rgpot-ipi-driver` and
+`rgpot-mdi`) when their build options are enabled, and the repository carries
+one project tool, `potctl`.
 Each entry lists the arguments, the units on the wire or on the pipe, and how
 the program fails.
 
 ### Potential programs
 
-`potserv`, `potserv_mpi`, `rgpot-lj` and `rgpot-ipi-driver` are installed unless
-rgpot is built as a Meson subproject.
+`potserv`, `potserv_mpi`, `nwchem_mpi_force_host`, `rgpot-lj`,
+`rgpot-ipi-driver` and `rgpot-mdi` are installed unless rgpot is built as a
+Meson subproject, each gated by its build options (`rgpot-mdi` is described in
+`docs/mdi.md` and `nwchem_mpi_force_host` in `CppCore/tools/nwchem_mpi_force_host.cc`).
 `rgpot-eval` is built for the tests and the how-to pages and is not installed.
 
 #### `potserv`
@@ -25295,7 +25309,7 @@ potserv <port> <PotentialType>
 
 - Inputs :: `port`, the TCP port to listen on, and `PotentialType`, the backend
   name.
-  `LJ`, `LJCluster`, `Morse`, `ZBL`, `Eckart`, `MullerBrown`,
+  `LJ`, `LJCluster`, `Morse`, `SWSi`, `ZBL`, `Eckart`, `MullerBrown`,
   `ModifiedMullerBrown`, `LEPS-HH2`, `LEPS-HCl2`, `LEPS-FH2`, `DoubleWell`,
   `CoupledProtonWell`, `Composite`, `D2`, `D2Cpmd`,
   `NWChem[:basis[:theory[:xc]]]` and `CPMD` are always offered.
@@ -25383,10 +25397,12 @@ rgpot-ipi-driver --pot "Name [key value ...]" (--species LIST | --species-from F
   server order.
   Socket options follow
   `i-pi-py_driver`: `-u, --unix`, `-a, --address` (default `localhost`), `-p, --port` (default 12345, ignored with `-u`) and `-S, --sockets-prefix` (default `/tmp/ipi_`).
-  Other options are `--cutoff A`, `--stress-step H`, `--timeout S` (0 waits
-  forever), `--connect-timeout S` (default 30), `--no-extras` (send an empty
-  extra string instead of JSON), `-v, --verbose`, `--list` (print the names of
-  this build and exit) and `-h, --help`.
+  Other options are `--cutoff A`, `--preserve-open-cell` (pass a singular cell
+  to the potential unchanged instead of padding it with a finite open box),
+  `--stress-step H`, `--timeout S` (0 waits forever), `--connect-timeout S`
+  (default 30), `--no-extras` (send an empty extra string instead of JSON),
+  `-v, --verbose`, `--list` (print the names of this build and exit) and
+  `-h, --help`.
 - Units :: `--cutoff` is in Angstrom: the cutoff of a potential whose spec names
   none, and the range used to tile thin periodic cells and pad open boxes.
   `--stress-step` is the strain step of a central-difference virial for a
@@ -30750,14 +30766,16 @@ The four ABIs keep their own prefixes: `nwchemc_`, `cpmdc_`,
 The generic engine table of [Engine plugin ABI](https://rgpot.rgoswami.me/reference/engine_abi.html) is a
 separate interface with its own units.
 
-Every engine library ships with a stub that the repository builds: the stub
-exports the same symbols, reports `*_available` as 0, fails every evaluation and
-returns the version string `nwchemc-stub/1.0.0`, `cpmdc-stub/0.1.0` or
-`mopacc-stub/1.0.0`.
-A frontend that finds only the stub reports that the embed is not available.
+The NWChem, CPMD and MOPAC engine libraries each ship with a stub that the
+repository builds: the stub exports the same symbols, reports `*_available` as
+0, fails every evaluation and returns the version string
+`nwchemc-stub/1.0.0`, `cpmdc-stub/0.1.0` or `mopacc-stub/1.0.0`.
+CP2K has no stub: instead, the repository builds the shim
+`libcp2kc_rgpot` against `libcp2k` when `-Dwith_cp2k=enabled`.
+A frontend that finds only a stub reports that the embed is not available.
 The behaviour of a real engine beyond what the headers state is documented by
-its own project; this page states what the headers promise and what the stubs
-do.
+its own project; this page states what the headers promise, what the stubs do
+and what the CP2K shim provides.
 
 Units at these ABIs are not the units of `librgpot`.
 Geometry is in Angstrom (Bohr for CP2K), energy in Hartree and gradients in
