@@ -57,6 +57,7 @@ name.
 their engine libraries carry the C ABIs in
 [[file:engine_abi.org][Engine C ABI]].
 =IPIPot= opens a socket and waits for a driver.
+=ORCAPot= starts the =orca= program for every force and needs no library.
 
 None of the dlopen constructors throw when the library is missing.
 They record the reason, =available()= returns false, and the first force throws
@@ -436,6 +437,174 @@ int main() {
   return 0;
 }
 #+end_src
+
+** ORCA
+
+=ORCAPot= runs the =orca= executable as a child process and reads the energy and
+gradient from the =.engrad= file it writes.
+ORCA is not linked or loaded.
+It is described in Neese, WIREs Computational Molecular Science 2, 73-78 (2012),
+doi:10.1002/wcms.81, and in Neese, Wennmohs, Becker and Riplinger, J. Chem. Phys. 152, 224108 (2020), doi:10.1063/5.0004608.
+Version 5 is Neese, WIREs Computational Molecular Science 12, e1606 (2022),
+doi:10.1002/wcms.1606, and version 6 is Neese, WIREs Computational Molecular Science 15, e70019 (2025), doi:10.1002/wcms.70019.
+The how-to is [[file:../howto/orca.org][ORCA single points]].
+The tests use a fake =orca= script that returns a Hartree energy of -1.25 and a
+gradient of 0.01 Hartree/bohr times the component number, and require the host
+energy and forces to equal those times the =units.hpp= factors.
+They do not pin an ORCA energy.
+
+*** =rgpot::ORCAConfig=
+
+- Inputs :: =executable= (a path, or a bare name looked up on PATH; empty looks
+  up =orca=), =method= (an ORCA method keyword, required), =basis= (a basis set
+  keyword, empty for a composite method), =keywords= (further simple-input
+  keywords, empty for none), =charge= (default 0), =multiplicity= (default 1),
+  =nprocs= (default 1),
+  =maxcore_mb= (default 1024), =restart= (default true), =scratch_dir= (empty
+  for the system temporary directory),
+  =keep_files= (default false) and =timeout_s= (default
+  =ORCAConfig::kDefaultTimeout=, 3600 seconds; 0 waits with no limit).
+- Units ::
+  =maxcore_mb= in MB per process; =charge= in elementary charges; =timeout_s= in
+  seconds; the other fields have no unit.
+- Outputs :: a plain struct read by =rgpot::ORCAPot=.
+  =method=, =basis= and =keywords= become the =!= line, =nprocs= above 1 becomes
+  =%pal nprocs=, =maxcore_mb= becomes =%maxcore=, and =charge= and
+  =multiplicity= go on the =* xyz= line.
+  =restart= turns the =%moinp= and =MORead= reuse of the previous =.gbw= on and
+  off.
+  =timeout_s= is the time to wait for the =orca= process.
+  The process is the leader of a new process group.
+  Past the limit that group is sent SIGTERM and, if any process in the group is
+  still alive two seconds later, SIGKILL even if the leader has exited, and the
+  child is reaped.
+- Errors :: =rgpot::ORCAPot= throws
+  =std::invalid_argument= for an empty =method=, for =multiplicity=, =nprocs= or =maxcore_mb=
+  below 1, for a =timeout_s= that is negative or not finite, and for a =method=,
+  =basis= or =keywords= that holds a line break.
+
+*** =rgpot::ORCAPot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+explicit ORCAPot(const ORCAConfig &config);
+#+end_src
+
+- Inputs :: =config=, an =rgpot::ORCAConfig=.
+- Units :: positions in Angstrom, energy in eV, forces in
+  eV/Angstrom. ORCA takes Angstrom in a =* xyz= block, so the positions are written as they are. The =.engrad= energy in Hartree is multiplied by =units::HARTREE_TO_EV= and its Hartree/bohr
+  gradient by =units::NEG_GRAD_TO_FORCE=.
+  The box must be absent or all zero, in Angstrom.
+- Outputs :: a potential that runs one ORCA energy and gradient per force call.
+  =caps()= reports =Reentrancy::PerInstance=, =periodic = false= and no stress.
+  The constructor resolves the executable and makes a directory of its own under
+  =scratch_dir=; the destructor removes it unless =keep_files= is set.
+  Each call writes
+  =rgpot_orca.inp= there, closes extra file descriptors above 2 before =exec=, runs =orca rgpot_orca.inp=
+  with the standard output in
+  =rgpot_orca.out= and the standard error in =rgpot_orca.err=, and reads
+  =rgpot_orca.engrad= in the C locale (as when writing coordinates).
+  An =.engrad= and a =.gbw= left by an earlier call are removed first, and any
+  removal failure other than a missing file throws =rgpot::ORCAError=.
+  The orbitals of a successful call are copied to =rgpot_orca_guess.gbw=, and
+  the next call with the same atomic numbers reads them through =%moinp= and
+  =! MORead=.
+  A call without a =.gbw=, after a failure, after =reset()=, or with other
+  atomic numbers starts from ORCA's own guess.
+- Errors :: the constructor throws =std::invalid_argument= in the cases of
+  =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or the
+  directory cannot be made.
+  A force call throws =std::invalid_argument= for a box with a non-zero entry
+  (ORCA has no periodic boundary conditions), for an atomic number outside 1 to
+  118, and for a charge and multiplicity that the electron count cannot hold.
+  It throws =rgpot::ORCAError=, a
+  =std::runtime_error=, when a stale =.engrad= or =.gbw= cannot be removed, the input cannot be written, ORCA cannot be started or is ended by a signal, the run passes =timeout_s=
+  (the process group is then stopped and the child reaped), ORCA exits with a
+  non-zero status, no =.engrad= appears, the =.engrad= is malformed or lists
+  other atoms, or the energy or a gradient component is not finite.
+  The message holds the last 2048 bytes of the standard error and of the output
+  file.
+
+*** =rgpot::ORCAPot::reset=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void reset();
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: none; the stored =.gbw= copy is removed, so the next force starts
+  from ORCA's own guess.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::config=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const ORCAConfig &config() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: as =rgpot::ORCAConfig=.
+- Outputs :: the config the instance was built with.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::executablePath=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &executablePath() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the absolute path of the executable the instance runs.
+  A name with a directory part is made absolute; a bare name is the first
+  executable of that name in the directories of =PATH=.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::runDirectory=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &runDirectory() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the directory that holds the input, the output files and the =.gbw=
+  files of the instance.
+  Two instances never share one.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::reusedWavefunction=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool reusedWavefunction() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when the last successful force read the orbitals of the call
+  before it.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::probeAvailable=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] static bool probeAvailable(const std::string &executable = {});
+#+end_src
+
+- Inputs :: =executable=, as in =rgpot::ORCAConfig= (empty looks up =orca= on
+  PATH).
+- Units :: none.
+- Outputs :: true when that name resolves to an executable regular file
+  (including through a symlink).
+  A test that needs ORCA calls this and skips when it is false.
+- Errors :: none.
 
 ** Skala
 
@@ -1733,6 +1902,21 @@ A member whose description differs between classes has one entry per class.
 - Units :: none.
 - Outputs :: a 64-bit FNV-1a hash of =address= and =timeout_s=.
   Instances that differ in these values get different result-cache keys.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a hash of =method=, =basis=, =keywords=, =charge=,
+  =multiplicity=, =restart= and a kernel version.
+  =executable=, =nprocs=, =maxcore_mb=, =scratch_dir=,
+  =keep_files= and =timeout_s= do not change the result and are left out.
 - Errors :: none.
 
 *** =rgpot::SkalaPot::paramsKey=

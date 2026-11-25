@@ -95,6 +95,18 @@ if has_eam_table
     _args += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
 endif
 
+# ORCAPot runs the orca executable as a child process. POSIX only; off unless
+# asked for. The executable is looked up at run time, never at configure time.
+has_orca = get_option('with_orca')
+if has_orca
+    if host_system == 'windows'
+        error(
+            'with_orca runs ORCA through fork and exec and cannot be enabled on Windows',
+        )
+    endif
+    _args += ['-DRGPOT_HAS_ORCA=TRUE']
+endif
+
 potlibc_dep = dependency('potlibc', required: get_option('with_cbe'))
 has_cbe = potlibc_dep.found()
 if has_cbe

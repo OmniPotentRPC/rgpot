@@ -112,6 +112,12 @@ option(
     description: 'Fortran-backed potentials (CuH2; grows with the eOn migration). Independent of the RPC options.',
 )
 option(
+    'with_orca',
+    type: 'boolean',
+    value: false,
+    description: 'ORCAPot: ORCA energy and gradient through the orca executable run as a child process (POSIX). The executable is found at run time.',
+)
+option(
     'with_cbe',
     type: 'feature',
     value: 'disabled',

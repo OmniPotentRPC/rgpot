@@ -76,7 +76,8 @@ enum class PotType {
   CBE,          //!< CH5 2008 surface of the linked potlibc.
   D2,           //!<  Grimme DFT-D2 lattice sum (rgpot::D2Pot).
   D2Cpmd,       //!<  CPMD's minimum-image empirical D2 (rgpot::D2CpmdPot).
-  MEAM          //!< Modified embedded-atom method (LAMMPS meam files).
+  MEAM,         //!< Modified embedded-atom method (LAMMPS meam files).
+  ORCA          //!< ORCA energy and gradient through a child process.
 };
 
 } // namespace rgpot
