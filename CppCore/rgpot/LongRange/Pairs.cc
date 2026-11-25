@@ -7,6 +7,7 @@
 #include "rgpot/nlist/NeighbourList.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <stdexcept>
@@ -15,6 +16,9 @@
 namespace rgpot::lr {
 
 namespace {
+
+// Never reset, so an id a reader kept cannot match a later emission.
+std::atomic<std::uint64_t> g_emissions{0};
 
 void vacuum_box(const double *pos, std::size_t n, double reach, double *box9) {
   double lo[3] = {pos[0], pos[1], pos[2]};
@@ -43,6 +47,7 @@ struct DualList::Skin {
   double emitted_box[9]{};
   std::size_t emitted_n = 0;
   bool emitted = false;
+  std::uint64_t emission = 0;
 };
 
 DualList::DualList(double short_cut, double long_cut, double skin)
@@ -66,6 +71,10 @@ const std::vector<Pair> &DualList::short_pairs() const noexcept {
 
 const std::vector<Pair> &DualList::long_pairs() const noexcept { return long_; }
 
+std::uint64_t DualList::long_emission() const noexcept {
+  return long_skin_ ? long_skin_->emission : 0;
+}
+
 void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
                     const double *box9, std::vector<Pair> *out, bool *rebuilt) {
   nlist::Query query;
@@ -83,17 +92,19 @@ void DualList::fill(Skin &skin, double cutoff, const double *pos, std::size_t n,
       (n == 0 || std::memcmp(skin.emitted_pos.data(), pos, 3 * n * sizeof(double)) == 0)) {
     return;
   }
+  skin.emission = 0;
   const auto mark_emitted = [&]() {
     skin.emitted_pos.assign(pos, pos + 3 * n);
     std::memcpy(skin.emitted_box, box9, sizeof(skin.emitted_box));
     skin.emitted_n = n;
     skin.emitted = true;
+    skin.emission = g_emissions.fetch_add(1, std::memory_order_relaxed) + 1;
   };
 
   const nlist::View candidates = skin.builder.table().view();
   const std::size_t m = candidates.first.size();
   const double cut2 = cutoff * cutoff;
-  const int nt = std::max(poolThreads(), 1);
+  const int nt = rgpot::activeThreads(poolThreads());
   if (nt <= 1) {
     out->clear();
     out->reserve(m);

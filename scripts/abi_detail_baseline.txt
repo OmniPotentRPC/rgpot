@@ -1,4 +1,6 @@
 rgpot::detail::countTeam
+rgpot::detail::lookupPotentialThreads
+rgpot::detail::notePotentialThreads
 rgpot::detail::teamFor
 rgpot::ipi::detail::Deadline::after
 rgpot::ipi::detail::Deadline::expired

@@ -402,6 +402,7 @@ void UmaPot::setChargeSpin(int charge, int spin) {
 }
 
 void UmaPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (in.nAtoms == 0)
     throw std::runtime_error("UmaPot: nAtoms == 0");
   {

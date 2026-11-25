@@ -46,6 +46,10 @@
 #                 full library, and not a static fast-list object
 #   fast_beside   a static MinGW build keeps the fast pair list archive
 #                 beside librgpot
+#   thread_registry
+#                 a test can reach the C++ thread-count registry: not a
+#                 shared library on Windows, where rgpot.dll does not export
+#                 it
 #   probe         an optional program or module the build looks for: the
 #                 test may be absent even when the rest of the gate holds
 #
@@ -125,6 +129,8 @@ ExprLeptonSymbols | tests core posix | custom suite=expr |
 CxxLayoutTest | tests core | custom workdir=. |
 CxxLayoutVirtualCounts | tests core python | py CppCore/tests/check_virtual_counts.py |
 CxxSoversion | tests core python | custom |
+# Installed classes outside the stamp that keep their develop layout.
+InstalledLayoutTest | tests core | unit installed_layout_test InstalledLayoutTest.cc |
 abi_symbols | core | custom |
 abi_symbols_fast | core fast_beside | custom | @fast_nlist
 abi_symbols_fixture_shared | tests core posix | custom |
@@ -191,6 +197,12 @@ ThreadTeamTest_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton8] suit
 ThreadTeamTest_sw | tests core | rerun ThreadTeamTest_slices [sw] suite=threadteam timeout=480 coverage_serial |
 ThreadTeamTest_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] suite=threadteam timeout=480 coverage_serial |
 ThreadTeamTest_nlist | tests core | rerun ThreadTeamTest_slices [nlist] suite=threadteam timeout=480 coverage_serial |
+# Bit identity at 1, 2, 4 and 8 threads, including the opt-in thread API.
+ThreadInvariantTest | tests core thread_registry | unit thread_invariant_test ThreadInvariantTest.cc fp_contract=off timeout=180 serial |
+# The count of an object reaches the batch fan-out of a shared-instance
+# potential, the terms of a SumPot, the MEAM and D2 kernels and the Hessian
+# hooks: the team an OpenMP region has, not the return code.
+ThreadReachTest | tests core | unit thread_reach_test ThreadReachTest.cc timeout=120 |
 TersoffZblBuildTest | tests core | unit tersoff_zbl_build_test TersoffZblBuildTest.cc fp_contract=off timeout=180 |
 StreamParityTest | tests core | unit stream_parity_test StreamParityTest.cc fp_contract=off timeout=900 |
 ExternalPotFactoryFailureTest | tests core | unit external_pot_factory_failure_test ExternalPotFactoryFailureTest.cc |
@@ -264,6 +276,7 @@ ThreadTeamTest_limit2_sutton8 | tests core | rerun ThreadTeamTest_slices [sutton
 ThreadTeamTest_limit2_sw | tests core | rerun ThreadTeamTest_slices [sw] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
 ThreadTeamTest_limit2_tersoff | tests core | rerun ThreadTeamTest_slices [tersoff] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
 ThreadTeamTest_limit2_nlist | tests core | rerun ThreadTeamTest_slices [nlist] env=OMP_THREAD_LIMIT=2 suite=threadteam timeout=480 coverage_serial |
+ThreadInvariantTest_limit1 | tests core thread_registry | rerun ThreadInvariantTest env=OMP_THREAD_LIMIT=1 timeout=180 serial |
 openmp_confined | tests python | py CppCore/tests/test_openmp_confined.py @root@ |
 nlist_export_macro | tests python | py CppCore/tests/test_nlist_export_macro.py @root@ |
 omp_crossover_v3_provenance | tests python | py bench/test_omp_crossover_v3_provenance.py --repo @root@ --json @root@ --json-relative bench/results/rgpot_omp_crossover_v3_results.json --report bench/results/rgpot_omp_crossover_v3d_report.md |
@@ -271,6 +284,7 @@ omp_crossover_v3_provenance_cases | tests python | py bench/test_omp_crossover_v
 omp_crossover_v3_report | tests python | py bench/test_omp_crossover_v3_report.py --repo @root@ --harness bench/run_omp_crossover_v3.py --json bench/results/rgpot_omp_crossover_v3_results.json --report bench/results/rgpot_omp_crossover_v3_report.md --analysis-report bench/results/rgpot_omp_crossover_v3d_report.md --clarified-report bench/results/rgpot_omp_crossover_v3e_report.md |
 omp_crossover_v3_analysis | tests python | py bench/test_omp_crossover_v3_analysis.py timeout=120 |
 omp_crossover_v3_verification | tests python | py bench/test_omp_crossover_v3_verification.py |
+lr_ladder_parsers | tests python | py tools/lr_physics/test_ladder_parsers.py |
 MinImageIsaVariants | tests core isa_variants | custom |
 ExactFmaEq | tests core | custom |
 ExpFixedEq | tests core | custom |
@@ -387,6 +401,8 @@ WaterPotTest | tests core water | unit water_pot_test WaterPotTest.cc | @water
 TBLitetest | tests tblite | unit tblite_test TBLitePotTest.cc env=OMP_NUM_THREADS=1 | @tblite
 D3test | tests dftd3 | unit d3_test D3PotTest.cc | @dftd
 D4test | tests dftd4 | unit d4_test D4PotTest.cc | @dftd
+D3test_limit1 | tests dftd3 | rerun D3test env=OMP_THREAD_LIMIT=1 | @dftd
+D4test_limit1 | tests dftd4 | rerun D4test env=OMP_THREAD_LIMIT=1 | @dftd
 D4BlypTest | tests dftd4 | unit d4_blyp_test D4BlypTest.cc env=OMP_NUM_THREADS=1 | @dftd
 DftdGoldens | tests dftd3,dftd4 | custom suite=dftd workdir=. | @dftd
 XcKernelGoldens | tests xckernel | custom suite=xckernel workdir=. | @xckernel

@@ -50,6 +50,7 @@ CBEPot::CBEPot() : Potential(PotType::CBE) {
 CBEPot::~CBEPot() = default;
 
 void CBEPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (in.nAtoms != kAtoms)
     throw std::invalid_argument("CBE requires six atoms");
   std::array<double, kCoordinates> x{}, force{};

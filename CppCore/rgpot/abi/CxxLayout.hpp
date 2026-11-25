@@ -294,7 +294,9 @@ namespace detail {
 /// conversion to be valid.
 struct LayoutProbe final : Potential<LayoutProbe> {
   LayoutProbe() : Potential(PotType::UNKNOWN) {}
-  void forceImpl(const ForceInput &, ForceOut *) const override {}
+  void forceImpl(const ForceInput &, ForceOut *) const override {
+    const rgpot::ThreadBinding bind_threads{threadCount()};
+  }
 };
 
 struct Fold {

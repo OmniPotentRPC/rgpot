@@ -262,7 +262,7 @@ void mat_inv(const double *box, double inv[9], double *vol);
 double bspline4(double x);
 
 void fft3_lines(std::vector<std::complex<double>> &g, int ng, bool inverse) {
-  int team = poolThreads();
+  int team = rgpot::activeThreads(poolThreads());
   // Column assembly of the dense charge system runs one serial transform
   // per thread. The outer parallel loop is the team.
   if (g_fft_team > 0) {
@@ -559,24 +559,27 @@ struct Operator {
 
   void apply(const double *q, double *y) const {
     std::fill(y, y + n, 0.0);
-    const int nt = poolThreads();
+    const int team = rgpot::activeThreads(poolThreads());
+    const int nt = rgpot::fixedChunks(n == 0 ? 1 : n, 32);
     const auto rows = static_cast<std::int64_t>(n);
-    forEachSlice(nt, [&](int slice) {
+    forEachChunk(nt, team, [&](int slice) {
       const Range run = partition(rows, slice, nt);
       for (auto i = static_cast<std::size_t>(run.begin); i < static_cast<std::size_t>(run.end); ++i) {
         y[i] = diag[i] * q[i];
       }
     });
     // Pair kernel. Writes to both ends, so each slice keeps a private vector.
-    if (acc_buf.size() != static_cast<std::size_t>(nt) * n) {
-      acc_buf.assign(static_cast<std::size_t>(nt) * n, 0.0);
+    const int slots = team <= 1 ? 1 : nt;
+    if (acc_buf.size() != static_cast<std::size_t>(slots) * n) {
+      acc_buf.assign(static_cast<std::size_t>(slots) * n, 0.0);
     } else {
       std::fill(acc_buf.begin(), acc_buf.end(), 0.0);
     }
     double *acc = acc_buf.data();
     prepare_ker();
-    forEachSlice(nt, [&](int slice) {
-      double *loc = acc + static_cast<std::size_t>(slice) * n;
+    forEachChunk(nt, team, [&](int slice) {
+      double *loc =
+          acc + (team <= 1 ? 0 : static_cast<std::size_t>(slice) * n);
       const Range run = partition(rows, slice, nt);
       for (auto i = static_cast<std::size_t>(run.begin); i < static_cast<std::size_t>(run.end); ++i) {
         const std::size_t begin = static_cast<std::size_t>(real->off[i]);
@@ -593,11 +596,19 @@ struct Operator {
           }
         }
       }
+      if (team <= 1) {
+        for (std::size_t i = 0; i < n; ++i) {
+          y[i] += loc[i];
+          loc[i] = 0.0;
+        }
+      }
     });
-    for (int t = 0; t < nt; ++t) {
-      const double *loc = acc + static_cast<std::size_t>(t) * n;
-      for (std::size_t i = 0; i < n; ++i) {
-        y[i] += loc[i];
+    if (team > 1) {
+      for (int t = 0; t < nt; ++t) {
+        const double *loc = acc + static_cast<std::size_t>(t) * n;
+        for (std::size_t i = 0; i < n; ++i) {
+          y[i] += loc[i];
+        }
       }
     }
     add_reciprocal(q, y);
@@ -619,7 +630,7 @@ struct Operator {
     }
     fact.assign(n * n, 0.0);
     const int cols = static_cast<int>(n);
-    const int nt = poolThreads();
+    const int nt = rgpot::activeThreads(poolThreads());
     forEachSlice(nt, [&](int slice) {
       g_fft_team = 1;
       const Range run = partition(cols, slice, nt);
@@ -1166,17 +1177,20 @@ void d4_evaluate(const double *pos, const int *z, std::size_t n, const double *b
   std::vector<double> grad(3 * n, 0.0);
   std::vector<double> dedcn(n, 0.0);
   std::vector<double> dedq(n, 0.0);
-  const int pair_nt = poolThreads();
+  const int pair_team = rgpot::activeThreads(poolThreads());
+  const int pair_nt = rgpot::fixedChunks(n == 0 ? 1 : n, 32);
+  const int pair_slots = pair_team <= 1 ? 1 : pair_nt;
   const auto natoms = static_cast<std::int64_t>(n);
-  std::vector<std::vector<double>> pair_g(static_cast<std::size_t>(pair_nt), std::vector<double>(3 * n, 0.0));
-  std::vector<std::vector<double>> pair_c(static_cast<std::size_t>(pair_nt), std::vector<double>(n, 0.0));
-  std::vector<std::vector<double>> pair_q(static_cast<std::size_t>(pair_nt), std::vector<double>(n, 0.0));
-  std::vector<double> pair_e(static_cast<std::size_t>(pair_nt), 0.0);
-  forEachSlice(pair_nt, [&](int slice) {
-    double *const G = pair_g[static_cast<std::size_t>(slice)].data();
-    double *const C = pair_c[static_cast<std::size_t>(slice)].data();
-    double *const Q = pair_q[static_cast<std::size_t>(slice)].data();
-    double &eadd = pair_e[static_cast<std::size_t>(slice)];
+  std::vector<std::vector<double>> pair_g(static_cast<std::size_t>(pair_slots), std::vector<double>(3 * n, 0.0));
+  std::vector<std::vector<double>> pair_c(static_cast<std::size_t>(pair_slots), std::vector<double>(n, 0.0));
+  std::vector<std::vector<double>> pair_q(static_cast<std::size_t>(pair_slots), std::vector<double>(n, 0.0));
+  std::vector<double> pair_e(static_cast<std::size_t>(pair_slots), 0.0);
+  forEachChunk(pair_nt, pair_team, [&](int slice) {
+    const std::size_t slot = pair_team <= 1 ? 0 : static_cast<std::size_t>(slice);
+    double *const G = pair_g[slot].data();
+    double *const C = pair_c[slot].data();
+    double *const Q = pair_q[slot].data();
+    double &eadd = pair_e[slot];
     const Range run = partition(natoms, slice, pair_nt);
     for (auto i = static_cast<std::size_t>(run.begin); i < static_cast<std::size_t>(run.end); ++i) {
       for (const Nb &a : sh.of(i)) {
@@ -1221,24 +1235,42 @@ void d4_evaluate(const double *pos, const int *z, std::size_t n, const double *b
         }
       }
     }
+    if (pair_team <= 1) {
+      ene += eadd;
+      eadd = 0.0;
+      for (std::size_t k = 0; k < grad.size(); ++k) {
+        grad[k] += G[k];
+        G[k] = 0.0;
+      }
+      for (std::size_t k = 0; k < n; ++k) {
+        dedcn[k] += C[k];
+        dedq[k] += Q[k];
+        C[k] = 0.0;
+        Q[k] = 0.0;
+      }
+    }
   });
-  for (int t = 0; t < pair_nt; ++t) {
-    ene += pair_e[static_cast<std::size_t>(t)];
-    const auto &lg = pair_g[static_cast<std::size_t>(t)];
-    const auto &lc = pair_c[static_cast<std::size_t>(t)];
-    const auto &lq = pair_q[static_cast<std::size_t>(t)];
-    for (std::size_t k = 0; k < grad.size(); ++k) grad[k] += lg[k];
-    for (std::size_t k = 0; k < n; ++k) { dedcn[k] += lc[k]; dedq[k] += lq[k]; }
+  if (pair_team > 1) {
+    for (int t = 0; t < pair_nt; ++t) {
+      ene += pair_e[static_cast<std::size_t>(t)];
+      const auto &lg = pair_g[static_cast<std::size_t>(t)];
+      const auto &lc = pair_c[static_cast<std::size_t>(t)];
+      const auto &lq = pair_q[static_cast<std::size_t>(t)];
+      for (std::size_t k = 0; k < grad.size(); ++k) grad[k] += lg[k];
+      for (std::size_t k = 0; k < n; ++k) { dedcn[k] += lc[k]; dedq[k] += lq[k]; }
+    }
   }
   if (param.s9 != 0.0) {
-    const int atm_nt = poolThreads();
-    std::vector<std::vector<double>> atm_g(static_cast<std::size_t>(atm_nt), std::vector<double>(3 * n, 0.0));
-    std::vector<std::vector<double>> atm_c(static_cast<std::size_t>(atm_nt), std::vector<double>(n, 0.0));
-    std::vector<double> atm_e(static_cast<std::size_t>(atm_nt), 0.0);
-    forEachSlice(atm_nt, [&](int slice) {
-      double *const G = atm_g[static_cast<std::size_t>(slice)].data();
-      double *const C = atm_c[static_cast<std::size_t>(slice)].data();
-      double &eadd = atm_e[static_cast<std::size_t>(slice)];
+    const int atm_nt = rgpot::fixedChunks(n == 0 ? 1 : n, 32);
+    const int atm_slots = pair_team <= 1 ? 1 : atm_nt;
+    std::vector<std::vector<double>> atm_g(static_cast<std::size_t>(atm_slots), std::vector<double>(3 * n, 0.0));
+    std::vector<std::vector<double>> atm_c(static_cast<std::size_t>(atm_slots), std::vector<double>(n, 0.0));
+    std::vector<double> atm_e(static_cast<std::size_t>(atm_slots), 0.0);
+    forEachChunk(atm_nt, pair_team, [&](int slice) {
+      const std::size_t slot = pair_team <= 1 ? 0 : static_cast<std::size_t>(slice);
+      double *const G = atm_g[slot].data();
+      double *const C = atm_c[slot].data();
+      double &eadd = atm_e[slot];
       const Range run = partition(natoms, slice, atm_nt);
       for (auto i = static_cast<std::size_t>(run.begin); i < static_cast<std::size_t>(run.end); ++i) {
         for (const Nb &a : sh.of(i)) {
@@ -1340,13 +1372,27 @@ void d4_evaluate(const double *pos, const int *z, std::size_t n, const double *b
           }
         }
       }
+      if (pair_team <= 1) {
+        ene += eadd;
+        eadd = 0.0;
+        for (std::size_t k = 0; k < grad.size(); ++k) {
+          grad[k] += G[k];
+          G[k] = 0.0;
+        }
+        for (std::size_t k = 0; k < n; ++k) {
+          dedcn[k] += C[k];
+          C[k] = 0.0;
+        }
+      }
     });
-    for (int t = 0; t < atm_nt; ++t) {
-      ene += atm_e[static_cast<std::size_t>(t)];
-      const auto &lg = atm_g[static_cast<std::size_t>(t)];
-      const auto &lc = atm_c[static_cast<std::size_t>(t)];
-      for (std::size_t k = 0; k < grad.size(); ++k) grad[k] += lg[k];
-      for (std::size_t k = 0; k < n; ++k) dedcn[k] += lc[k];
+    if (pair_team > 1) {
+      for (int t = 0; t < atm_nt; ++t) {
+        ene += atm_e[static_cast<std::size_t>(t)];
+        const auto &lg = atm_g[static_cast<std::size_t>(t)];
+        const auto &lc = atm_c[static_cast<std::size_t>(t)];
+        for (std::size_t k = 0; k < grad.size(); ++k) grad[k] += lg[k];
+        for (std::size_t k = 0; k < n; ++k) dedcn[k] += lc[k];
+      }
     }
   }
   cn_force(sh, z, n, cut_cn * to_b, true, false, cn_disp, dedcn, grad.data());

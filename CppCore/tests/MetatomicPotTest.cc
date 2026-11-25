@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -542,6 +543,7 @@ TEST_CASE("Strict MetatomicPot SO3 n=4 CUDA matched forces when available",
 
 #include "rgpot/MetatomicPot/MetatomicDlopen.hpp"
 #include "rgpot/MetatomicPot/metatomic_c_abi.h"
+#include "rgpot/Slices.hpp"
 #include <dlfcn.h>
 
 TEST_CASE("MetatomicDlopen loads engine and matches linked pot energy",
@@ -571,6 +573,53 @@ TEST_CASE("MetatomicDlopen loads engine and matches linked pot energy",
   REQUIRE(std::isfinite(o1.energy));
   REQUIRE(std::isfinite(o2.energy));
   REQUIRE(o1.energy == Catch::Approx(o2.energy).margin(1e-5));
+}
+
+TEST_CASE("MetatomicDlopen forwards a thread count to its engine",
+          "[metatomic][dlopen][threads]") {
+  const char *eng = std::getenv("RGPOT_METATOMIC_ENGINE");
+  if (!eng || !*eng) {
+    SKIP("RGPOT_METATOMIC_ENGINE unset; no engine to load");
+  }
+  rgpot::MetatomicConfig cfg;
+  cfg.model_path = "CppCore/tests/data/lj38/lennard-jones.pt";
+  cfg.device = "cpu";
+  cfg.engine_path = eng;
+  rgpot::MetatomicDlopen plugin(cfg);
+
+  double pos[6] = {0, 0, 0, 1.5, 0, 0};
+  int z[2] = {1, 1};
+  double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  const rgpot::ForceInput in{2, pos, z, box};
+  auto evaluate = [&](double *forces, double *energy) {
+    rgpot::ForceOut out{forces, 0, 0};
+    plugin.forceImpl(in, &out);
+    *energy = out.energy;
+  };
+  double f0[6]{}, e0 = 0.0;
+  evaluate(f0, &e0);
+  REQUIRE(std::isfinite(e0));
+  REQUIRE(plugin.threadCount() == 0);
+
+  REQUIRE_THROWS_AS(plugin.setThreadCount(0), std::invalid_argument);
+  REQUIRE_THROWS_AS(plugin.setThreadCount(-3), std::invalid_argument);
+  REQUIRE(plugin.threadCount() == 0);
+
+  // The engine receives the count through its C ABI. The deterministic
+  // one-system result stays unchanged, and the host binding is call-scoped.
+  for (const int threads : {1, 4}) {
+    plugin.setThreadCount(threads);
+    REQUIRE(plugin.threadCount() == threads);
+    double f[6]{}, e = 0.0;
+    evaluate(f, &e);
+    REQUIRE(rgpot::explicitThreadCount() == 0);
+    REQUIRE(e == Catch::Approx(e0).margin(1e-9));
+    for (int k = 0; k < 6; ++k) {
+      REQUIRE(f[k] == Catch::Approx(f0[k]).margin(1e-9));
+    }
+  }
+  plugin.clearThreadCount();
+  REQUIRE(plugin.threadCount() == 0);
 }
 
 #ifdef RGPOT_HAS_CACHE

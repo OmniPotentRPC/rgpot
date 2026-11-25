@@ -75,6 +75,7 @@
 #include "rgpot/FusedCache.hpp"
 #include "rgpot/PotHelpers.hpp"
 #include "rgpot/FusedSettings.hpp"
+#include "rgpot/Slices.hpp"
 
 namespace rgpot {
 
@@ -203,6 +204,20 @@ template <typename Pot>
 concept AdHessianKernel = requires(const Pot &pot, const ForceInput &in,
                                    double *h) { pot.hessianAdImpl(in, h); };
 
+/// The thread count @a pot opted into, or 0 for a kernel without one. A
+/// Hessian hook is not a @c forceImpl, so it does not bind that count
+/// itself; the dispatcher binds it around the hook.
+template <typename Pot>
+[[nodiscard]] int kernelThreads(const Pot &pot) noexcept {
+  if constexpr (requires {
+                  { pot.threadCount() } -> std::convertible_to<int>;
+                }) {
+    return pot.threadCount();
+  } else {
+    return 0;
+  }
+}
+
 /// The derivative capabilities @a pot advertises. A kernel without a
 /// @c caps() bit has only the finite differences.
 template <typename Pot>
@@ -306,6 +321,7 @@ public:
     if (scheme == HvpScheme::Analytic) {
       if constexpr (AnalyticHessianVectorKernel<Pot>) {
         guardInputCall(in, kernelNeedsCell(pot));
+        const ThreadBinding bind_threads{kernelThreads(pot)};
         std::as_const(pot).hessianVectorImpl(in, v, hv);
         requireFinite(hv, dim, "hessianVectorImpl");
         analytic_.fetch_add(1, std::memory_order_relaxed);
@@ -316,6 +332,7 @@ public:
       }
     } else if (scheme == HvpScheme::Ad) {
       if constexpr (AdHessianVectorKernel<Pot>) {
+        const ThreadBinding bind_threads{kernelThreads(pot)};
         std::as_const(pot).hessianVectorAdImpl(in, v, hv);
         requireFinite(hv, dim, "hessianVectorAdImpl");
       } else {
@@ -392,6 +409,7 @@ public:
     scheme = resolve(derivativeCaps(pot), scheme);
     if (scheme == HessianScheme::Analytic) {
       if constexpr (AnalyticHessianKernel<Pot>) {
+        const ThreadBinding bind_threads{kernelThreads(pot)};
         std::as_const(pot).hessianImpl(in, h);
         requireFinite(h, dim * dim, "hessianImpl");
       } else {
@@ -402,6 +420,7 @@ public:
       hessianAnalytic_.fetch_add(1, std::memory_order_relaxed);
     } else if (scheme == HessianScheme::Ad) {
       if constexpr (AdHessianKernel<Pot>) {
+        const ThreadBinding bind_threads{kernelThreads(pot)};
         std::as_const(pot).hessianAdImpl(in, h);
         requireFinite(h, dim * dim, "hessianAdImpl");
       } else {

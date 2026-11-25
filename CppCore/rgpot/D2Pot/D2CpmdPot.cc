@@ -417,6 +417,7 @@ D2CpmdPot::D2CpmdPot(D2CpmdConfig cfg) : Potential(PotType::D2Cpmd), cfg_(cfg) {
 }
 
 void D2CpmdPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   using units::HARTREE_TO_EV;
   const double force_scale = HARTREE_TO_EV / kCpmdBohr;
   const double stress_scale =

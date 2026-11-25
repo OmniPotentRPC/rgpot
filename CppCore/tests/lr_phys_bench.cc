@@ -283,6 +283,9 @@ const std::string &binary_sha() {
   return value;
 }
 
+#if __has_include("lr_build_info.h")
+#include "lr_build_info.h"
+#endif
 #ifndef RGPOT_GIT_HEAD
 #define RGPOT_GIT_HEAD "unknown"
 #endif
@@ -376,7 +379,7 @@ void report(std::ostream &out, const std::string &ladder, const std::string &nam
   char warm[64];
   std::snprintf(warm, sizeof(warm), "%.17g", warmup_us);
   out << "warmup_us=" << warm << '\n';
-  out << ladder << ' ' << name << " n=" << n << " threads=" << threads
+  out << ladder << ' ' << name << " n=" << n << " threads=" << threads << " active=" << active_threads
       << " repeats=" << samples.size() << " median_us=" << med << " iqr7_us=" << iqr
       << " energy_eV=" << energy << ' ' << load << '\n';
   out << "samples_us";
@@ -464,6 +467,42 @@ double time_ewald(const System &s, int threads, int nrep, std::ostream &log, std
       << " active=" << active_threads << " exit=0\n";
   echo << "point ladder=" << ladder << " method=ewald n=" << s.z.size() << " threads=" << threads_now()
        << " active=" << active_threads << " exit=0\n";
+  return energy;
+}
+
+double time_dsf(const System &s, int threads, int nrep, std::ostream &log,
+                std::ostream &echo, const std::string &ladder) {
+  set_threads(threads);
+  rgpot::lr::CoulombConfig cfg;
+  cfg.method = rgpot::lr::CoulombMethod::DSF;
+  cfg.cutoff = 8.0;
+  cfg.alpha = 0.2;
+  cfg.short_cutoff = 3.0;
+  cfg.skin = 0.5;
+  cfg.periodic = false;
+  rgpot::lr::CoulombPot pot(
+      cfg, std::make_shared<rgpot::lr::FixedCharges>(s.q, 0.0));
+  std::vector<double> f(s.pos.size());
+  auto eval = [&]() {
+    rgpot::ForceOut out{};
+    out.F = f.data();
+    rgpot::ForceInput in{s.pos.size() / 3, s.pos.data(), s.z.data(), s.box};
+    pot.forceImpl(in, &out);
+    return out.energy;
+  };
+  double warmup_us = 0.0;
+  const auto samples = repeat(nrep, eval, &warmup_us);
+  const double energy = eval();
+  report(log, ladder, "dsf", static_cast<int>(s.z.size()), threads_now(),
+         samples, warmup_us, energy);
+  report(echo, ladder, "dsf", static_cast<int>(s.z.size()), threads_now(),
+         samples, warmup_us, energy);
+  log << "point ladder=" << ladder << " method=dsf n=" << s.z.size()
+      << " threads=" << threads_now() << " active=" << active_threads
+      << " exit=0\n";
+  echo << "point ladder=" << ladder << " method=dsf n=" << s.z.size()
+       << " threads=" << threads_now() << " active=" << active_threads
+       << " exit=0\n";
   return energy;
 }
 
@@ -585,9 +624,11 @@ void dump_forces(const std::string &kind, const std::string &path) {
   rgpot::ForceOut out{};
   out.F = f.data();
   rgpot::ForceInput in{s.z.size(), s.pos.data(), s.z.data(), s.box};
-  if (kind == "pme" || kind == "ewald") {
+  if (kind == "pme" || kind == "ewald" || kind == "dsf") {
     rgpot::lr::CoulombConfig cfg;
-    cfg.method = kind == "pme" ? rgpot::lr::CoulombMethod::SPME : rgpot::lr::CoulombMethod::Ewald;
+    cfg.method = kind == "pme"   ? rgpot::lr::CoulombMethod::SPME
+                 : kind == "dsf" ? rgpot::lr::CoulombMethod::DSF
+                                 : rgpot::lr::CoulombMethod::Ewald;
     cfg.cutoff = std::getenv("LR_CUT") != nullptr ? std::atof(std::getenv("LR_CUT")) : 8.0;
     cfg.kmax = 5;
     if (kind == "pme") {
@@ -600,13 +641,15 @@ void dump_forces(const std::string &kind, const std::string &path) {
         }
       }
       cfg.spline_order = std::getenv("LR_ORDER") != nullptr ? std::atoi(std::getenv("LR_ORDER")) : 5;
-    } else {
+    } else if (kind == "ewald") {
       cfg.alpha = 0.35;
       cfg.spline_order = 4;
+    } else {
+      cfg.alpha = 0.2;
     }
   cfg.short_cutoff = 3.0;
   cfg.skin = kind == "pme" ? 0.0 : 0.5;
-  cfg.periodic = true;
+  cfg.periodic = kind != "dsf";
   cfg.stress = false;
   rgpot::lr::CoulombPot pot(cfg, std::make_shared<rgpot::lr::FixedCharges>(s.q, 0.0));
     pot.forceImpl(in, &out);
@@ -790,7 +833,10 @@ int main(int argc, char **argv) {
     }
     return std::strstr(methods, name) != nullptr;
   };
-  const int sizes[] = {128, 256, 512, 1024, 2048, 4096, 8192};
+  std::vector<int> sizes = {128, 256, 512, 1024, 2048, 4096, 8192};
+  if (const char *only_n = std::getenv("LR_N")) {
+    sizes.assign(1, std::atoi(only_n));
+  }
   if (ladder_on("strong"))
   for (int n : sizes) {
     if (n < nmin || n > nmax) {
@@ -806,6 +852,9 @@ int main(int argc, char **argv) {
       }
       if (wanted("ewald")) {
         time_ewald(sys, threads, nrep, log, std::cout, "strong");
+      }
+      if (wanted("dsf")) {
+        time_dsf(sys, threads, nrep, log, std::cout, "strong");
       }
       if (wanted("pme")) {
         unsetenv("LR_PME_TOL");

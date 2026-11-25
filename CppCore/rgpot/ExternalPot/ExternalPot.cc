@@ -741,6 +741,7 @@ PotCaps LammpsPot::caps() const noexcept {
 }
 
 void LammpsPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   check_geometry(in, out);
   std::lock_guard<std::mutex> lock(impl_->mutex);
   if (impl_->mode == Impl::Mode::LegacyLJ) {
@@ -887,6 +888,7 @@ PotCaps GromacsPot::caps() const noexcept {
 }
 
 void GromacsPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   check_geometry(in, out);
   std::lock_guard<std::mutex> lock(impl_->state.mutex);
   if (impl_->state.use_native) {
@@ -923,6 +925,7 @@ PotCaps OpenMMPot::caps() const noexcept {
 }
 
 void OpenMMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   check_geometry(in, out);
   std::lock_guard<std::mutex> lock(impl_->state.mutex);
   if (impl_->state.use_native) {

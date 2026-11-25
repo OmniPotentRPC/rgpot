@@ -20,7 +20,9 @@ def _medians(path):
                 key, val = token.split("=", 1)
                 fields[key] = val
         if "n" in fields and "threads" in fields and "median_us" in fields:
-            rows.append((kind, method, fields["n"], fields["threads"], fields["median_us"]))
+            rows.append(
+                (kind, method, fields["n"], fields["threads"], fields.get("active", ""), fields["median_us"])
+            )
     return rows
 
 
@@ -38,12 +40,12 @@ def main():
     )
     print(log, end="" if log.endswith("\n") else "\n")
     if tip_log is not None and base_log is not None and tip_log.is_file() and base_log.is_file():
-        base_rows = {(a, b, c, d): e for a, b, c, d, e in _medians(base_log)}
-        print("kind method n threads tip_us base_us")
-        for kind, method, n, threads, tip_us in _medians(tip_log):
+        base_rows = {(a, b, c, d): f for a, b, c, d, _, f in _medians(base_log)}
+        print("kind method n threads active tip_us base_us")
+        for kind, method, n, threads, active, tip_us in _medians(tip_log):
             key = (kind, method, n, threads)
             base_us = base_rows.get(key, "missing")
-            print(f"{kind} {method} {n} {threads} {tip_us} {base_us}")
+            print(f"{kind} {method} {n} {threads} {active or '-'} {tip_us} {base_us}")
     print("exit_code=0")
 
 

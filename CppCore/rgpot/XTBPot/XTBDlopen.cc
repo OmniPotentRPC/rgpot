@@ -1,17 +1,60 @@
 // MIT License — dlopen frontend for libxtb_engine.so
 #include "rgpot/XTBPot/XTBDlopen.hpp"
+#include "rgpot/Slices.hpp"
 #include "rgpot/abi/DynLib.hpp"
 #include "rgpot/abi/EngineDlopen.hpp"
 
 #include <array>
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace rgpot {
 
 namespace {
+
+using set_threads_fn = int (*)(RgpotXtbPot *, int);
+
+// Thread state of each XTBDlopen, kept outside the object so the installed
+// class layout stays as it was. An entry lives from a successful
+// constructor to the destructor.
+struct ThreadSlot {
+  set_threads_fn set = nullptr;
+  int threads = 0;
+};
+
+struct ThreadSlots {
+  std::mutex mutex;
+  std::unordered_map<const XTBDlopen *, ThreadSlot> slots;
+};
+
+ThreadSlots &thread_slots() {
+  // Destructors may run during static teardown, so the map is never freed.
+  static auto *slots = new ThreadSlots;
+  return *slots;
+}
+
+ThreadSlot slot_of(const XTBDlopen *pot) noexcept {
+  auto &s = thread_slots();
+  std::lock_guard<std::mutex> lock(s.mutex);
+  const auto it = s.slots.find(pot);
+  return it == s.slots.end() ? ThreadSlot{} : it->second;
+}
+
+void store_slot(const XTBDlopen *pot, ThreadSlot slot) {
+  auto &s = thread_slots();
+  std::lock_guard<std::mutex> lock(s.mutex);
+  s.slots.insert_or_assign(pot, slot);
+}
+
+void drop_slot(const XTBDlopen *pot) noexcept {
+  auto &s = thread_slots();
+  std::lock_guard<std::mutex> lock(s.mutex);
+  s.slots.erase(pot);
+}
 
 int method_to_c(GFNMethod m) {
   switch (m) {
@@ -70,6 +113,8 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   auto abi_fn = lib.sym_optional<int (*)(void)>("rgpot_xtb_abi_version");
   m_create = lib.sym_optional<create_fn>("rgpot_xtb_create");
   m_destroy = lib.sym_optional<destroy_fn>("rgpot_xtb_destroy");
+  auto set_threads =
+      lib.sym_optional<set_threads_fn>("rgpot_xtb_set_thread_count");
   m_force = lib.sym_optional<force_fn>("rgpot_xtb_force");
   m_reset = lib.sym_optional<reset_fn>("rgpot_xtb_reset");
   m_set_warm = lib.sym_optional<set_warm_fn>("rgpot_xtb_set_warm_move");
@@ -77,9 +122,9 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   m_set_min_gap = lib.sym_optional<set_warm_fn>("rgpot_xtb_set_warm_min_gap");
   m_min_gap = lib.sym_optional<warm_move_fn>("rgpot_xtb_warm_min_gap");
   m_reused = lib.sym_optional<reused_fn>("rgpot_xtb_reused_wavefunction");
-  if (!abi_fn || !m_create || !m_destroy || !m_force || !m_reset ||
-      !m_set_warm || !m_warm_move || !m_set_min_gap || !m_min_gap ||
-      !m_reused) {
+  if (!abi_fn || !m_create || !m_destroy || !set_threads || !m_force ||
+      !m_reset || !m_set_warm || !m_warm_move || !m_set_min_gap ||
+      !m_min_gap || !m_reused) {
     // The opened library is the one we selected. Do not resume the
     // candidate list: an explicit path (or the first discovery hit) that
     // lacks the ABI must not silently load a different engine.
@@ -97,8 +142,10 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   cfg.max_iterations = config.xtb.max_iterations;
   cfg.charge = config.xtb.charge;
   cfg.uhf = config.xtb.uhf;
+  store_slot(this, ThreadSlot{set_threads, 0});
   m_pot = m_create(&cfg, err, sizeof err);
   if (!m_pot) {
+    drop_slot(this);
     throw std::runtime_error(std::string("XTBDlopen: create failed: ") + err);
   }
   m_set_warm(m_pot, config.xtb.warm_move);
@@ -106,6 +153,29 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   m_lib = lib.native_handle();
   lib.release();
 }
+
+void XTBDlopen::setThreadCount(int threads) {
+  if (threads < 1) {
+    throw std::invalid_argument("rgpot thread count must be at least 1");
+  }
+  ThreadSlot slot = slot_of(this);
+  if (!slot.set || !m_pot || slot.set(m_pot, threads) != RGPOT_XTB_RC_OK) {
+    throw std::runtime_error("XTBDlopen: failed to set thread count");
+  }
+  slot.threads = threads;
+  store_slot(this, slot);
+}
+
+void XTBDlopen::clearThreadCount() {
+  ThreadSlot slot = slot_of(this);
+  if (!slot.set || !m_pot || slot.set(m_pot, 0) != RGPOT_XTB_RC_OK) {
+    throw std::runtime_error("XTBDlopen: failed to clear thread count");
+  }
+  slot.threads = 0;
+  store_slot(this, slot);
+}
+
+int XTBDlopen::threadCount() const noexcept { return slot_of(this).threads; }
 
 void XTBDlopen::reset() {
   if (!m_reset || !m_pot)
@@ -144,6 +214,7 @@ bool XTBDlopen::reusedWavefunction() const {
 }
 
 XTBDlopen::~XTBDlopen() {
+  drop_slot(this);
   if (m_pot && m_destroy)
     m_destroy(m_pot);
   m_pot = nullptr;
@@ -169,6 +240,10 @@ FusedSettingsSpec XTBDlopen::fusedSettings() const {
 void XTBDlopen::forceImpl(const ForceInput &in, ForceOut *out) const {
   if (!m_force || !m_pot)
     throw std::runtime_error("XTBDlopen: engine not available");
+  const ThreadSlot slot = slot_of(this);
+  const ThreadBinding bind_threads{slot.threads};
+  if (!slot.set || slot.set(m_pot, explicitThreadCount()) != RGPOT_XTB_RC_OK)
+    throw std::runtime_error("XTBDlopen: failed to forward thread count");
   double var = 0.0;
   int rc = m_force(m_pot, static_cast<long>(in.nAtoms), in.pos, in.atmnrs,
                    out->F, &out->energy, &var, in.box);

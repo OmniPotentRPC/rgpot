@@ -337,6 +337,7 @@ bool NWChemPot::abiAvailable() {
 }
 
 void NWChemPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (!available()) {
     throw std::runtime_error(
         std::string("NWChem engine (libnwchemc) not loaded: ") +

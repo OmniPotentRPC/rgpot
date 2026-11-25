@@ -16,6 +16,7 @@
 #include "rgpot/units.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -24,8 +25,12 @@
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <numbers>
 #include <stdexcept>
+#include <memory>
+#include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include <pthread.h>
@@ -35,27 +40,225 @@ namespace rgpot::lr {
 
 namespace {
 
-PmeTrace g_pme_trace;
-std::vector<float> g_charge_f;
-
 constexpr double kKe = units::HARTREE_TO_EV * units::BOHR_TO_ANGSTROM;
 constexpr double kPi = std::numbers::pi;
 
-// Mesh slices while real space shares the call. Zero means one slice per
-// pool thread (or spme_slice_limit() during an SPME evaluation). The mesh
-// then keeps the group's decompositions, so its bits do not depend on
-// whether the group got a full team.
-int &mesh_group_limit() {
-  static int limit = 0;
-  return limit;
+// A row is written by one thread while its neighbours in the vector are
+// written by others, and the energy is updated for every pair, so each row
+// sits on its own cache lines.
+struct alignas(64) Scratch {
+  Neumaier energy;
+  std::vector<double> f;
+  std::vector<double> dq;
+  double strain[6]{};
+};
+
+struct ScreenTable {
+  double alpha = 0.0;
+  double rc = 0.0;
+  double inv_dr = 0.0;
+  std::vector<double> phi;
+  std::vector<double> dphi;
+};
+
+// The screen of every pair, in pairs sorted by their first atom. Real space
+// on its own and real space beside the mesh both read it, so the two walk
+// the same pairs in the same order.
+struct ScreenCache {
+  const Pair *seen = nullptr;
+  std::size_t seen_n = 0;
+  std::uint64_t geometry = 0;
+  double alpha = 0.0;
+  double rc = 0.0;
+  std::vector<int> ord;
+  std::vector<double> phi;
+  std::vector<double> dphi;
+};
+
+// The wave sum runs in two phases of one region. The first walks fixed
+// chunks of waves and keeps each wave's structure factor, with one energy
+// and strain partial per chunk. The second gives every atom its own force
+// and charge response, summed over the waves in wave order. An atom is
+// owned by one thread, so no force row is shared and nothing is folded
+// across threads: the bits do not follow the team.
+struct alignas(64) WaveSum {
+  Neumaier energy;
+  double strain[6]{};
+};
+
+struct FloatFactor {
+  int nx = 0;
+  int ny = 0;
+  int nz = 0;
+  double alpha = 0.0;
+  double pref = 0.0;
+  double H[9]{};
+  std::vector<float> scale;
+  std::vector<float> efac;
+};
+
+struct KernelLocal {
+  Neumaier rec;
+  double strain[6]{};
+  char pad[64];
+};
+
+// The energy and strain terms of the reciprocal sum, in the order it adds
+// them. Real space beside the mesh finishes after the transform, so its
+// caller holds these and adds them after real space, as a sequential call
+// does; a charged cell would otherwise sum the same terms in another order.
+struct RecTerms {
+  bool float_mesh = true;
+  double mesh = 0.0;
+  double rec = 0.0;
+  std::vector<std::array<double, 6>> strain_parts;
+  double background = 0.0;
+};
+
+void add_rec_terms(const RecTerms &t, ElecOut *out) {
+  if (t.float_mesh) {
+    out->energy += t.mesh;
+  }
+  for (const std::array<double, 6> &part : t.strain_parts) {
+    for (int k = 0; k < 6; ++k) {
+      out->strain[k] += part[static_cast<std::size_t>(k)];
+    }
+  }
+  if (!t.float_mesh) {
+    out->energy += t.rec;
+  }
+  out->energy += t.background;
+  out->strain[0] += -t.background;
+  out->strain[1] += -t.background;
+  out->strain[2] += -t.background;
 }
 
-// Slice count chosen by pme_team() for the current SPME evaluation. Keeping
-// it here alongside poolThreads() ensures a serial (-Duse_openmp=false) build,
-// where resizePool() is a no-op, honors caller_team() in the non-beside SPME
-// path just as the beside path honors mesh_cap.
-int &spme_slice_limit() {
-  static int limit = 0;
+struct Gate {
+  std::atomic<int> count{0};
+  std::atomic<int> generation{0};
+};
+
+} // namespace
+
+// Mesh, wave and reduction buffers of one caller. They are kept between
+// calls and only grow, so a warm call allocates nothing. One CoulombPot
+// owns one. Two evaluations may not share one at the same time.
+struct ElecWorkspace {
+  // Mesh ranks while real space shares the call, and zero otherwise. Zero
+  // means one rank per pool thread (or call_slice_limit() during a capped
+  // electrostatic evaluation). Every mesh decomposition is fixed, so the
+  // bits do not depend on whether the group got a full team.
+  int group_limit = 0;
+  Gate gate;
+  PmeTrace trace;
+  std::vector<Scratch> parts;
+  ScreenTable screen;
+  ScreenCache cache;
+  std::vector<double> real_f;
+  std::vector<double> real_dq;
+  std::vector<double> ewald_s;
+  std::vector<int> mx, my, mz;
+  int waves_for = -1;
+  std::vector<double> wave;
+  std::vector<WaveSum> sums;
+  std::vector<float> charge_f;
+  std::vector<float> mesh_real;
+  std::vector<std::complex<float>> mesh_spec;
+  FloatFactor factor;
+  std::vector<double> kernel_part;
+  std::vector<std::complex<double>> grid;
+  std::vector<double> bmx, bmy, bmz;
+  std::vector<int> gtab;
+  std::vector<double> wtab;
+  std::vector<double> dtab;
+  std::vector<int> zbase;
+  std::vector<int> bin_off;
+  std::vector<int> bin_atoms;
+  std::vector<int> bin_cursor;
+  std::vector<double> seen_pos;
+  double seen_box[9]{};
+  int seen_grid[4]{};
+  bool tables_hit = false;
+  std::vector<std::complex<double>> phihat;
+  std::vector<KernelLocal> local;
+  // DualList::long_emission of the pairs the last finished call used.
+  std::uint64_t seen_pairs = 0;
+};
+
+namespace {
+
+std::mutex g_trace_mutex;
+PmeTrace g_pme_trace;
+
+// The workspace of each CoulombPot, keyed by the instance. It lives outside
+// the object so the installed class layout stays as it was. The
+// constructor puts a fresh one in place and the destructor removes it.
+struct PotWorkspaces {
+  std::mutex mutex;
+  std::unordered_map<const CoulombPot *, std::unique_ptr<ElecWorkspace>> map;
+};
+
+PotWorkspaces &pot_workspaces() {
+  // Destructors may run during static teardown, so the map is never freed.
+  static auto *spaces = new PotWorkspaces;
+  return *spaces;
+}
+
+void renew_workspace(const CoulombPot *pot) {
+  auto fresh = std::make_unique<ElecWorkspace>();
+  auto &spaces = pot_workspaces();
+  std::lock_guard<std::mutex> lock(spaces.mutex);
+  spaces.map.insert_or_assign(pot, std::move(fresh));
+}
+
+// A copy made by the implicit copy constructor gets its own on first use.
+ElecWorkspace &workspace_of(const CoulombPot *pot) {
+  auto &spaces = pot_workspaces();
+  std::lock_guard<std::mutex> lock(spaces.mutex);
+  auto &slot = spaces.map[pot];
+  if (!slot) {
+    slot = std::make_unique<ElecWorkspace>();
+  }
+  return *slot;
+}
+
+void drop_workspace(const CoulombPot *pot) noexcept {
+  std::unique_ptr<ElecWorkspace> gone;
+  auto &spaces = pot_workspaces();
+  std::lock_guard<std::mutex> lock(spaces.mutex);
+  const auto it = spaces.map.find(pot);
+  if (it != spaces.map.end()) {
+    gone = std::move(it->second);
+    spaces.map.erase(it);
+  }
+}
+
+// The buffers of the evaluation this thread is running, or of the mesh
+// group it is a rank of. Pool workers outside a group see none and are
+// handed what they touch.
+thread_local ElecWorkspace *t_work = nullptr;
+
+ElecWorkspace &work() {
+  if (t_work == nullptr) {
+    std::abort();
+  }
+  return *t_work;
+}
+
+struct BindWork {
+  ElecWorkspace *previous;
+  explicit BindWork(ElecWorkspace *w) : previous(t_work) { t_work = w; }
+  ~BindWork() { t_work = previous; }
+  BindWork(const BindWork &) = delete;
+  BindWork &operator=(const BindWork &) = delete;
+};
+
+int &mesh_group_limit() { return work().group_limit; }
+
+// Slice cap for the current electrostatic evaluation. It is thread-local:
+// independent potential instances can evaluate concurrently.
+int &call_slice_limit() {
+  thread_local int limit = 0;
   return limit;
 }
 
@@ -69,11 +272,7 @@ void mesh_group_sync(int npart) {
   if (npart <= 1) {
     return;
   }
-  struct Gate {
-    std::atomic<int> count{0};
-    std::atomic<int> generation{0};
-  };
-  static Gate gate;
+  Gate &gate = work().gate;
   const int gen = gate.generation.load(std::memory_order_acquire);
   if (gate.count.fetch_add(1, std::memory_order_acq_rel) + 1 == npart) {
     gate.count.store(0, std::memory_order_relaxed);
@@ -84,16 +283,31 @@ void mesh_group_sync(int npart) {
   }
 }
 
+// Inside the mesh group this is the group size on every rank. The explicit
+// count is thread-local: rank 0 runs on the caller and sees its binding,
+// the other ranks do not, and a rank that counted differently would wait
+// at mesh_group_sync for arrivals that never come.
 int thread_count() {
-  const int grouped = mesh_group_limit();
+  const int grouped = t_work != nullptr ? t_work->group_limit : 0;
   if (grouped > 0) {
     return grouped;
   }
-  const int spme = spme_slice_limit();
-  return spme > 0 ? spme : poolThreads();
+  const int limited = call_slice_limit();
+  const int requested = rgpot::activeThreads(poolThreads());
+  return limited > 0 ? std::min(requested, limited) : requested;
 }
 
-bool grouped() { return mesh_group_limit() > 0; }
+// The team a call asks for before the mesh caps it. An explicit count
+// wins, and so does the caller's own team: a call made inside it stays on
+// one thread. Otherwise a ladder that shrank the pool to the mesh team
+// still asks for the request it recorded in caller_team().
+int requested_team(bool in_caller_team) {
+  const int own = thread_count();
+  if (in_caller_team || rgpot::explicitThreadCount() > 0) {
+    return own;
+  }
+  return std::max(caller_team(), own);
+}
 
 bool in_group() { return t_group_rank >= 0; }
 
@@ -105,73 +319,122 @@ void group_arrive() {
   }
 }
 
-// One mesh phase over `nslices` slices. Inside the group each rank runs
-// its own slices and then waits at the gate for the others.
+// Fixed chunks over the current team. The chunk count never follows the
+// team, so a chunk does the same arithmetic whoever runs it. A region is
+// always the whole team, never a shorter one: a smaller region next to a
+// larger pool leaves the spare workers spinning on places the next region
+// hands to its own threads.
 template <class Fn>
-void team_invoke(int nslices, Fn &&fn) {
+void team_chunks(int nchunks, Fn &&fn) {
   if (in_group()) {
-    for (int slice = t_group_rank; slice < nslices; slice += thread_count()) {
-      fn(slice);
+    for (int chunk = t_group_rank; chunk < nchunks; chunk += thread_count()) {
+      fn(chunk);
     }
     group_arrive();
     return;
   }
-  forEachSlice(nslices, fn);
+  const int team = std::max(thread_count(), 1);
+  if (team <= 1 || nchunks <= 1) {
+    for (int chunk = 0; chunk < nchunks; ++chunk) {
+      fn(chunk);
+    }
+    return;
+  }
+  forEachSlice(team, [&](int slice) {
+    for (int chunk = slice; chunk < nchunks; chunk += team) {
+      fn(chunk);
+    }
+  });
+}
+
+// `fn(phase, slice, nslices)` for every phase, in one region. A phase ends
+// on every slice before the next starts. The caller walks its own items
+// with the slice and the slice count.
+template <class Fn>
+void team_slice_phases(int nphases, Fn &&fn) {
+  const int team = std::max(thread_count(), 1);
+  if (team <= 1) {
+    for (int phase = 0; phase < nphases; ++phase) {
+      fn(phase, 0, 1);
+    }
+    return;
+  }
+  forEachSlicePhase(nphases, team, [&](int phase, int slice) { fn(phase, slice, team); });
 }
 
 template <class Fn>
-void team_phases(int nphases, int nslices, Fn &&fn) {
+void team_chunk_phases(int nphases, int nchunks, Fn &&fn) {
   if (in_group()) {
     for (int phase = 0; phase < nphases; ++phase) {
-      for (int slice = t_group_rank; slice < nslices; slice += thread_count()) {
-        fn(phase, slice);
+      for (int chunk = t_group_rank; chunk < nchunks; chunk += thread_count()) {
+        fn(phase, chunk);
       }
       group_arrive();
     }
     return;
   }
-  forEachSlicePhase(nphases, nslices, fn);
+  if (nchunks == 1) {
+    for (int phase = 0; phase < nphases; ++phase) {
+      fn(phase, 0);
+    }
+    return;
+  }
+  team_slice_phases(nphases, [&](int phase, int slice, int nslices) {
+    for (int chunk = slice; chunk < nchunks; chunk += nslices) {
+      fn(phase, chunk);
+    }
+  });
 }
 
-struct Scratch {
-  Neumaier energy;
-  std::vector<double> f;
-  std::vector<double> dq;
-  double strain[6]{};
-};
+// Partials of a real-space sum. The count follows the pair count and the
+// atom count only: a chunk is worth about eight pairs per atom, which keeps
+// the clear and fold of its force row near one percent of its pair loop,
+// so a one-thread call that walks the chunks in turn pays almost nothing
+// for them. Each chunk keeps a full force row, so the cap bounds that
+// memory.
+int sum_chunks(std::size_t nitems, std::size_t block) {
+  return std::min(rgpot::fixedChunks(nitems, block), 32);
+}
 
-// One buffer for the whole process. The ladder is a single caller, and
-// keeping the storage removes allocator jitter from the timed samples.
-std::vector<Scratch> &scratch_store() {
-  static std::vector<Scratch> parts;
+// Slabs of one transform axis, one per mesh worker. pocketfft transforms
+// every line of a slab on its own, so the cut moves no bits, and a fixed
+// count that the team does not divide would leave one worker the extra
+// slab on every phase.
+int mesh_slabs(int npoints) { return axis_workers(npoints, std::max(thread_count(), 1)); }
+
+// Rows are kept between calls and only grow, so a call allocates nothing
+// once the largest system has been seen.
+std::vector<Scratch> &scratch_slots(int need) {
+  std::vector<Scratch> &parts = work().parts;
+  if (static_cast<int>(parts.size()) < need) {
+    parts.resize(static_cast<std::size_t>(need));
+  }
   return parts;
 }
 
-std::vector<Scratch> &scratch_for(int nt, std::size_t n3, std::size_t nq = 0) {
-  std::vector<Scratch> &parts = scratch_store();
-  if (static_cast<int>(parts.size()) != nt) {
-    parts.assign(static_cast<std::size_t>(nt), Scratch{});
+void scratch_clear(Scratch &p, std::size_t n3, std::size_t nq) {
+  if (p.f.size() != n3) {
+    p.f.assign(n3, 0.0);
+  } else {
+    std::fill(p.f.begin(), p.f.end(), 0.0);
   }
-  for (auto &p : parts) {
-    if (p.f.size() != n3) {
-      p.f.assign(n3, 0.0);
-    } else {
-      std::fill(p.f.begin(), p.f.end(), 0.0);
-    }
+  if (p.dq.size() != nq) {
     p.dq.assign(nq, 0.0);
-    p.energy = Neumaier{};
-    std::fill(std::begin(p.strain), std::end(p.strain), 0.0);
+  } else {
+    std::fill(p.dq.begin(), p.dq.end(), 0.0);
   }
-  return parts;
+  p.energy = Neumaier{};
+  std::fill(std::begin(p.strain), std::end(p.strain), 0.0);
 }
 
-void add_scratch(const std::vector<Scratch> &parts, double *F, ElecOut *out) {
+// Folds the rows of `nparts` chunks into the output in chunk order. Every
+// element sees the rows in that order, so splitting the elements over a
+// team, or folding each row as soon as its chunk ends, keeps the bits.
+void fold_energy_strain(const std::vector<Scratch> &parts, int nparts, ElecOut *out) {
   Neumaier energy;
-  for (const auto &p : parts) {
+  for (int c = 0; c < nparts; ++c) {
+    const Scratch &p = parts[static_cast<std::size_t>(c)];
     energy.add(p.energy);
-    for (std::size_t i = 0; i < p.f.size(); ++i) {
-      F[i] += p.f[i];
-    }
     for (int k = 0; k < 6; ++k) {
       out->strain[k] += p.strain[k];
     }
@@ -179,12 +442,88 @@ void add_scratch(const std::vector<Scratch> &parts, double *F, ElecOut *out) {
   out->energy += energy.total();
 }
 
-void add_charge_scratch(const std::vector<Scratch> &parts, double *dE_dq) {
-  for (const auto &p : parts) {
-    for (std::size_t i = 0; i < p.dq.size(); ++i) {
-      dE_dq[i] += p.dq[i];
+void fold_rows(const std::vector<Scratch> &parts, int nparts, int block, int nblocks, double *F,
+               double *dE_dq) {
+  const std::size_t n3 = parts.front().f.size();
+  const std::size_t nq = dE_dq != nullptr ? parts.front().dq.size() : 0;
+  const Range run = partition(static_cast<std::int64_t>(n3), block, nblocks);
+  for (int c = 0; c < nparts; ++c) {
+    const double *row = parts[static_cast<std::size_t>(c)].f.data();
+    for (auto i = static_cast<std::size_t>(run.begin); i < static_cast<std::size_t>(run.end); ++i) {
+      F[i] += row[i];
     }
   }
+  if (nq != 0) {
+    const Range qrun = partition(static_cast<std::int64_t>(nq), block, nblocks);
+    for (int c = 0; c < nparts; ++c) {
+      const double *row = parts[static_cast<std::size_t>(c)].dq.data();
+      for (auto i = static_cast<std::size_t>(qrun.begin); i < static_cast<std::size_t>(qrun.end); ++i) {
+        dE_dq[i] += row[i];
+      }
+    }
+  }
+}
+
+// Runs `body(chunk, row)` over the fixed chunks and folds the rows into
+// F, dE_dq and the energy and strain in chunk order. One thread walks the
+// chunks through a single row, clearing and folding it after each chunk:
+// the same additions in the same order, with no row per chunk. A team
+// opens one region. Its first phase fills one row per chunk, each cleared
+// by the thread that fills it, and its second phase folds the rows over
+// blocks of the force vector.
+template <class Body>
+void reduce_chunks(int nchunks, std::size_t n3, std::size_t nq, double *F, double *dE_dq, ElecOut *out,
+                   Body &&body) {
+  const int team = in_group() ? 1 : std::max(thread_count(), 1);
+  if (team <= 1 || nchunks <= 1) {
+    std::vector<Scratch> &slot = scratch_slots(1);
+    Scratch &row = slot.front();
+    Neumaier energy;
+    scratch_clear(row, n3, nq);
+    for (int chunk = 0; chunk < nchunks; ++chunk) {
+      body(chunk, row);
+      double *fr = row.f.data();
+      for (std::size_t i = 0; i < n3; ++i) {
+        F[i] += fr[i];
+        fr[i] = 0.0;
+      }
+      if (dE_dq != nullptr) {
+        double *qr = row.dq.data();
+        for (std::size_t i = 0; i < nq; ++i) {
+          dE_dq[i] += qr[i];
+          qr[i] = 0.0;
+        }
+      }
+      energy.add(row.energy);
+      row.energy = Neumaier{};
+      for (int k = 0; k < 6; ++k) {
+        out->strain[k] += row.strain[k];
+        row.strain[k] = 0.0;
+      }
+    }
+    out->energy += energy.total();
+    return;
+  }
+  std::vector<Scratch> &parts = scratch_slots(nchunks);
+  // Give every team member a contiguous part of the output. The former
+  // 4096-value blocks exposed only two reducers for a 1728-atom system,
+  // leaving the rest of a four- or eight-thread team idle while those two
+  // walked every scratch row.
+  const int nblocks = std::min<int>(team, static_cast<int>(n3));
+  team_slice_phases(2, [&](int phase, int slice, int nslices) {
+    if (phase == 0) {
+      for (int chunk = slice; chunk < nchunks; chunk += nslices) {
+        Scratch &row = parts[static_cast<std::size_t>(chunk)];
+        scratch_clear(row, n3, nq);
+        body(chunk, row);
+      }
+      return;
+    }
+    for (int block = slice; block < nblocks; block += nslices) {
+      fold_rows(parts, nchunks, block, nblocks, F, dE_dq);
+    }
+  });
+  fold_energy_strain(parts, nchunks, out);
 }
 
 void require_charges(const double *q, std::size_t n, double total) {
@@ -217,16 +556,8 @@ double derfc_over_r(double alpha, double r) {
   return -std::erfc(ar) / (r * r) - (2.0 * alpha / std::sqrt(kPi)) * e / r;
 }
 
-struct ScreenTable {
-  double alpha = 0.0;
-  double rc = 0.0;
-  double inv_dr = 0.0;
-  std::vector<double> phi;
-  std::vector<double> dphi;
-};
-
 ScreenTable &screen_table(double alpha, double rc) {
-  static ScreenTable table;
+  ScreenTable &table = work().screen;
   if (table.alpha == alpha && table.rc == rc && !table.phi.empty()) {
     return table;
   }
@@ -278,26 +609,23 @@ void screened_pair(const ScreenTable &table, double r, double *phi, double *dphi
   *dphi = (dh00 * p0 + dh10 * dr * d0 + dh01 * p1 + dh11 * dr * d1) * table.inv_dr;
 }
 
-struct BesideCache {
-  const Pair *seen = nullptr;
-  std::size_t seen_n = 0;
-  double alpha = 0.0;
-  double rc = 0.0;
-  std::vector<int> ord;
-  std::vector<double> phi;
-  std::vector<double> dphi;
-};
-
-BesideCache &beside_cache() {
-  static BesideCache cache;
-  return cache;
-}
-
-void ensure_beside_cache(const CoulombConfig &cfg, const std::vector<Pair> &pairs) {
-  BesideCache &cache = beside_cache();
-  if (cache.seen == pairs.data() && cache.seen_n == pairs.size() && cache.alpha == cfg.alpha &&
+const ScreenCache &ensure_screen_cache(const CoulombConfig &cfg, const std::vector<Pair> &pairs,
+                                       bool pairs_unchanged) {
+  ScreenCache &cache = work().cache;
+  if (pairs_unchanged && cache.seen == pairs.data() &&
+      cache.seen_n == pairs.size() && cache.alpha == cfg.alpha &&
       cache.rc == cfg.cutoff) {
-    return;
+    return cache;
+  }
+  Fnv1a fp;
+  fp.u64(static_cast<std::uint64_t>(pairs.size()));
+  for (const Pair &pair : pairs) {
+    fp.i64(pair.i);
+    fp.f64(pair.r);
+  }
+  if (cache.seen == pairs.data() && cache.seen_n == pairs.size() && cache.alpha == cfg.alpha &&
+      cache.rc == cfg.cutoff && cache.geometry == fp.h) {
+    return cache;
   }
   const ScreenTable &screen = screen_table(cfg.alpha, cfg.cutoff);
   cache.ord.resize(pairs.size());
@@ -312,17 +640,17 @@ void ensure_beside_cache(const CoulombConfig &cfg, const std::vector<Pair> &pair
   });
   cache.seen = pairs.data();
   cache.seen_n = pairs.size();
+  cache.geometry = fp.h;
   cache.alpha = cfg.alpha;
   cache.rc = cfg.cutoff;
+  return cache;
 }
 
-// One rank of the real-space team that runs beside the mesh. The caller
-// owns the scratch slot and adds the self term once after the join.
-void real_beside_rank(const CoulombConfig &cfg, const double *q, const std::vector<Pair> &pairs,
-                      Scratch &slot, int rank, int ranks) {
-  const auto t0 = std::chrono::steady_clock::now();
-  const BesideCache &cache = beside_cache();
-  const Range run = partition(static_cast<std::int64_t>(cache.ord.size()), rank, ranks);
+// One fixed chunk of the screened pairs in screen order. The caller owns
+// the scratch slot and adds the self term once after every chunk is in.
+void real_cached_chunk(const ScreenCache &cache, const double *q, const std::vector<Pair> &pairs,
+                       double rc, Scratch &slot, int chunk, int nchunks) {
+  const Range run = partition(static_cast<std::int64_t>(cache.ord.size()), chunk, nchunks);
   const auto begin = static_cast<std::size_t>(run.begin);
   const auto end = static_cast<std::size_t>(run.end);
   double energy = 0.0;
@@ -337,7 +665,6 @@ void real_beside_rank(const CoulombConfig &cfg, const double *q, const std::vect
       slot.f[3 * cur + 2] += az;
     }
   };
-  const double rc = cfg.cutoff;
   for (std::size_t t = begin; t < end; ++t) {
     const Pair &pr = pairs[static_cast<std::size_t>(cache.ord[t])];
     if (!(pr.r > 0.0) || pr.r >= rc) {
@@ -367,112 +694,50 @@ void real_beside_rank(const CoulombConfig &cfg, const double *q, const std::vect
   }
   flush();
   slot.energy.add(energy);
-  if (rank == 0) {
-    g_pme_trace.real_us =
-        std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
-    g_pme_trace.real_team = ranks;
+}
+
+int real_chunks(const std::vector<Pair> &pairs, std::size_t natoms) {
+  return sum_chunks(pairs.size(), std::max<std::size_t>(256, 4 * natoms));
+}
+
+void add_ewald_self(const CoulombConfig &cfg, const double *q, std::size_t n, ElecOut *out) {
+  const double self = -kKe * cfg.alpha / std::sqrt(kPi);
+  for (std::size_t i = 0; i < n; ++i) {
+    out->energy += self * q[i] * q[i];
   }
 }
 
 void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t n,
-                const std::vector<Pair> &pairs, double *F, double *dE_dq, ElecOut *out) {
+                const std::vector<Pair> &pairs, bool pairs_unchanged, double *F,
+                double *dE_dq, ElecOut *out) {
   const auto t_real0 = std::chrono::steady_clock::now();
   const double alpha = cfg.alpha;
   const double rc = cfg.cutoff;
   const double e_shift = dsf ? erfc_over_r(alpha, rc) : 0.0;
   const double bare_prime_rc = dsf ? derfc_over_r(alpha, rc) : 0.0;
   const ScreenTable &screen = screen_table(alpha, rc);
-  const int nt = thread_count();
-  std::vector<Scratch> &parts = scratch_for(nt, 3 * n, dE_dq != nullptr ? n : 0);
+  const int nchunks = real_chunks(pairs, n);
+  const std::size_t nq = dE_dq != nullptr ? n : 0;
+  PmeTrace &trace = work().trace;
   if (!dsf && !cfg.stress && dE_dq == nullptr) {
     // The screen depends only on distance. The benchmark repeats one
     // geometry, so the interpolation is done once and the timed calls
     // only scatter forces. Neighbours of one atom stay together.
-    static const Pair *seen = nullptr;
-    static std::size_t seen_n = 0;
-    static double seen_alpha = 0.0;
-    static double seen_rc = 0.0;
-    static std::vector<int> ord;
-    static std::vector<double> cached_phi;
-    static std::vector<double> cached_dphi;
-    if (seen != pairs.data() || seen_n != pairs.size() || seen_alpha != alpha || seen_rc != rc) {
-      ord.resize(pairs.size());
-      cached_phi.resize(pairs.size());
-      cached_dphi.resize(pairs.size());
-      for (std::size_t t = 0; t < pairs.size(); ++t) {
-        ord[t] = static_cast<int>(t);
-        screened_pair(screen, pairs[t].r, &cached_phi[t], &cached_dphi[t]);
-      }
-      std::sort(ord.begin(), ord.end(), [&](int a, int b) {
-        return pairs[static_cast<std::size_t>(a)].i < pairs[static_cast<std::size_t>(b)].i;
-      });
-      seen = pairs.data();
-      seen_n = pairs.size();
-      seen_alpha = alpha;
-      seen_rc = rc;
-    }
-    const auto nord = static_cast<std::int64_t>(ord.size());
-    forEachSlice(nt, [&](int slice) {
-      auto &p = parts[static_cast<std::size_t>(slice)];
-      double energy = 0.0;
-      int cur = -1;
-      double ax = 0.0;
-      double ay = 0.0;
-      double az = 0.0;
-      auto flush = [&]() {
-        if (cur >= 0) {
-          p.f[3 * cur] += ax;
-          p.f[3 * cur + 1] += ay;
-          p.f[3 * cur + 2] += az;
-        }
-      };
-      const Range run = partition(nord, slice, nt);
-      for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
-        const Pair &pr = pairs[static_cast<std::size_t>(ord[t])];
-        if (!(pr.r > 0.0) || pr.r >= rc) {
-          continue;
-        }
-        if (pr.i != cur) {
-          flush();
-          cur = pr.i;
-          ax = 0.0;
-          ay = 0.0;
-          az = 0.0;
-        }
-        const std::size_t slot = static_cast<std::size_t>(ord[t]);
-        const double phi = cached_phi[slot];
-        const double dphi = cached_dphi[slot];
-        const double qq = q[pr.i] * q[pr.j];
-        energy += kKe * qq * phi;
-        const double dedr = kKe * qq * dphi;
-        const double invr = 1.0 / pr.r;
-        const double fx = dedr * pr.x * invr;
-        const double fy = dedr * pr.y * invr;
-        const double fz = dedr * pr.z * invr;
-        ax += fx;
-        ay += fy;
-        az += fz;
-        p.f[3 * pr.j] -= fx;
-        p.f[3 * pr.j + 1] -= fy;
-        p.f[3 * pr.j + 2] -= fz;
-      }
-      flush();
-      p.energy.add(energy);
+    const ScreenCache &cache = ensure_screen_cache(cfg, pairs, pairs_unchanged);
+    reduce_chunks(nchunks, 3 * n, 0, F, nullptr, out, [&](int chunk, Scratch &row) {
+      real_cached_chunk(cache, q, pairs, rc, row, chunk, nchunks);
     });
-    add_scratch(parts, F, out);
-    const double self = -kKe * alpha / std::sqrt(kPi);
-    for (std::size_t i = 0; i < n; ++i) {
-      out->energy += self * q[i] * q[i];
-    }
-    g_pme_trace.real_us =
+    add_ewald_self(cfg, q, n, out);
+    trace.real_us =
         std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t_real0).count();
-    g_pme_trace.real_team = nt;
+    trace.real_team = std::min(thread_count(), nchunks);
     return;
   }
   const auto npairs = static_cast<std::int64_t>(pairs.size());
-  forEachSlice(nt, [&](int slice) {
-    auto &p = parts[static_cast<std::size_t>(slice)];
-    const Range run = partition(npairs, slice, nt);
+  const ScreenCache *cached_screen =
+      dsf ? &ensure_screen_cache(cfg, pairs, pairs_unchanged) : nullptr;
+  reduce_chunks(nchunks, 3 * n, nq, F, dE_dq, out, [&](int chunk, Scratch &p) {
+    const Range run = partition(npairs, chunk, nchunks);
     for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
       const Pair &pr = pairs[t];
       if (!(pr.r > 0.0) || pr.r >= rc) {
@@ -480,7 +745,12 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
       }
       double phi_bare = 0.0;
       double dphi_bare = 0.0;
-      screened_pair(screen, pr.r, &phi_bare, &dphi_bare);
+      if (cached_screen != nullptr) {
+        phi_bare = cached_screen->phi[t];
+        dphi_bare = cached_screen->dphi[t];
+      } else {
+        screened_pair(screen, pr.r, &phi_bare, &dphi_bare);
+      }
       double phi = phi_bare;
       double dphi = dphi_bare;
       if (dsf) {
@@ -511,10 +781,6 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
       }
     }
   });
-  add_scratch(parts, F, out);
-  if (dE_dq != nullptr) {
-    add_charge_scratch(parts, dE_dq);
-  }
   if (dsf) {
     const double self = -(e_shift + 2.0 * alpha / std::sqrt(kPi));
     for (std::size_t i = 0; i < n; ++i) {
@@ -532,8 +798,8 @@ void real_space(const CoulombConfig &cfg, bool dsf, const double *q, std::size_t
       }
     }
   }
-  g_pme_trace.real_us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t_real0).count();
-  g_pme_trace.real_team = nt;
+  trace.real_us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t_real0).count();
+  trace.real_team = std::min(thread_count(), nchunks);
 }
 
 void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const double *pos,
@@ -542,9 +808,8 @@ void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doub
   const double alpha = cfg.alpha;
   const double pref = kKe * (2.0 * kPi) / cell.volume;
   const int mmax = cfg.kmax;
-  const int nt = thread_count();
-  std::vector<Scratch> &parts = scratch_for(nt, 3 * n, dE_dq != nullptr ? n : 0);
-  static std::vector<double> s;
+  ElecWorkspace &ws = work();
+  std::vector<double> &s = ws.ewald_s;
   s.resize(3 * n);
   for (std::size_t i = 0; i < n; ++i) {
     double r[3] = {pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]};
@@ -554,91 +819,138 @@ void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doub
     s[3 * i + 1] = fs[1];
     s[3 * i + 2] = fs[2];
   }
-  const int nshell = (2 * mmax + 1) * (2 * mmax + 1) * (2 * mmax + 1) - 1;
-  std::vector<int> mx, my, mz;
-  mx.reserve(static_cast<std::size_t>(nshell));
-  my.reserve(static_cast<std::size_t>(nshell));
-  mz.reserve(static_cast<std::size_t>(nshell));
-  for (int iz = -mmax; iz <= mmax; ++iz) {
-    for (int iy = -mmax; iy <= mmax; ++iy) {
-      for (int ix = -mmax; ix <= mmax; ++ix) {
-        if (ix == 0 && iy == 0 && iz == 0) {
-          continue;
-        }
-        mx.push_back(ix);
-        my.push_back(iy);
-        mz.push_back(iz);
-      }
-    }
-  }
-  const auto nwave = static_cast<std::int64_t>(mx.size());
-  forEachSlice(nt, [&](int slice) {
-    auto &p = parts[static_cast<std::size_t>(slice)];
-    const Range run = partition(nwave, slice, nt);
-    for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
-      const double m0 = mx[t];
-      const double m1 = my[t];
-      const double m2 = mz[t];
-      double kv[3];
-      for (int c = 0; c < 3; ++c) {
-        kv[c] = 2.0 * kPi *
-                (m0 * cell.recip[0][c] + m1 * cell.recip[1][c] + m2 * cell.recip[2][c]);
-      }
-      const double k2 = kv[0] * kv[0] + kv[1] * kv[1] + kv[2] * kv[2];
-      if (!(k2 > 0.0)) {
-        continue;
-      }
-      const double f = std::exp(-k2 / (4.0 * alpha * alpha)) / k2;
-      double C = 0.0;
-      double D = 0.0;
-      for (std::size_t i = 0; i < n; ++i) {
-        const double theta =
-            2.0 * kPi * (m0 * s[3 * i] + m1 * s[3 * i + 1] + m2 * s[3 * i + 2]);
-        C += q[i] * std::cos(theta);
-        D += q[i] * std::sin(theta);
-      }
-      const double s2 = C * C + D * D;
-      p.energy.add(pref * f * s2);
-      const double common = pref * f;
-      for (std::size_t i = 0; i < n; ++i) {
-        const double theta =
-            2.0 * kPi * (m0 * s[3 * i] + m1 * s[3 * i + 1] + m2 * s[3 * i + 2]);
-        const double ct = std::cos(theta);
-        const double st = std::sin(theta);
-        const double g = 2.0 * q[i] * (D * ct - C * st);
-        p.f[3 * i] += -common * g * kv[0];
-        p.f[3 * i + 1] += -common * g * kv[1];
-        p.f[3 * i + 2] += -common * g * kv[2];
-        if (dE_dq != nullptr) {
-          p.dq[i] += common * 2.0 * (C * ct + D * st);
-        }
-      }
-      // Strain derivative at fixed fractional coordinates. |S| is invariant.
-      const double inv4a = 1.0 / (4.0 * alpha * alpha);
-      for (int b = 0; b < 3; ++b) {
-        for (int c = 0; c < 3; ++c) {
-          const double dfac = -((b == c) ? 1.0 : 0.0) +
-                              2.0 * (inv4a + 1.0 / k2) * kv[b] * kv[c];
-          const double dE = s2 * common * f * 0.0 + s2 * pref * f * dfac / 1.0;
-          // d(pref * f)/d eps_bc * |S|^2, and pref's 1/V piece is -pref * delta.
-          // dfac already holds -delta + 2 (1/(4 a^2) + 1/k^2) k_b k_c,
-          // and d(pref f)/deps = pref * f * dfac.
-          (void)dE;
-          const int voigt = b == 0 && c == 0   ? 0
-                            : b == 1 && c == 1 ? 1
-                            : b == 2 && c == 2 ? 2
-                            : (b == 1 && c == 2) || (b == 2 && c == 1) ? 3
-                            : (b == 0 && c == 2) || (b == 2 && c == 0) ? 4
-                                                                        : 5;
-          if (b > c) {
+  std::vector<int> &mx = ws.mx;
+  std::vector<int> &my = ws.my;
+  std::vector<int> &mz = ws.mz;
+  int &waves_for = ws.waves_for;
+  if (waves_for != mmax) {
+    mx.clear();
+    my.clear();
+    mz.clear();
+    for (int iz = -mmax; iz <= mmax; ++iz) {
+      for (int iy = -mmax; iy <= mmax; ++iy) {
+        for (int ix = -mmax; ix <= mmax; ++ix) {
+          if (ix == 0 && iy == 0 && iz == 0) {
             continue;
           }
-          p.strain[voigt] += s2 * pref * f * dfac;
+          mx.push_back(ix);
+          my.push_back(iy);
+          mz.push_back(iz);
         }
+      }
+    }
+    waves_for = mmax;
+  }
+  const auto nwave = static_cast<std::int64_t>(mx.size());
+  const int nchunks = sum_chunks(mx.size(), 16);
+  // Per wave: kv (3), the weight pref * f, and the structure factor C, D.
+  std::vector<double> &wave = ws.wave;
+  std::vector<WaveSum> &sums = ws.sums;
+  wave.resize(static_cast<std::size_t>(6 * nwave));
+  sums.assign(static_cast<std::size_t>(nchunks), WaveSum{});
+  const double inv4a = 1.0 / (4.0 * alpha * alpha);
+  team_slice_phases(2, [&](int phase, int slice, int nslices) {
+    if (phase == 0) {
+      for (int chunk = slice; chunk < nchunks; chunk += nslices) {
+        WaveSum p;
+        const Range run = partition(nwave, chunk, nchunks);
+        for (auto t = static_cast<std::size_t>(run.begin); t < static_cast<std::size_t>(run.end); ++t) {
+          double *w = wave.data() + 6 * t;
+          const double m0 = mx[t];
+          const double m1 = my[t];
+          const double m2 = mz[t];
+          double kv[3];
+          for (int c = 0; c < 3; ++c) {
+            kv[c] = 2.0 * kPi *
+                    (m0 * cell.recip[0][c] + m1 * cell.recip[1][c] + m2 * cell.recip[2][c]);
+          }
+          const double k2 = kv[0] * kv[0] + kv[1] * kv[1] + kv[2] * kv[2];
+          w[0] = kv[0];
+          w[1] = kv[1];
+          w[2] = kv[2];
+          if (!(k2 > 0.0)) {
+            w[3] = 0.0;
+            w[4] = 0.0;
+            w[5] = 0.0;
+            continue;
+          }
+          const double f = std::exp(-k2 / (4.0 * alpha * alpha)) / k2;
+          double C = 0.0;
+          double D = 0.0;
+          for (std::size_t i = 0; i < n; ++i) {
+            const double theta =
+                2.0 * kPi * (m0 * s[3 * i] + m1 * s[3 * i + 1] + m2 * s[3 * i + 2]);
+            C += q[i] * std::cos(theta);
+            D += q[i] * std::sin(theta);
+          }
+          const double s2 = C * C + D * D;
+          p.energy.add(pref * f * s2);
+          w[3] = pref * f;
+          w[4] = C;
+          w[5] = D;
+          // Strain derivative at fixed fractional coordinates. |S| is invariant.
+          // d(pref * f)/deps = pref * f * dfac, and pref's 1/V piece is -pref * delta.
+          for (int b = 0; b < 3; ++b) {
+            for (int c = b; c < 3; ++c) {
+              const double dfac = -((b == c) ? 1.0 : 0.0) +
+                                  2.0 * (inv4a + 1.0 / k2) * kv[b] * kv[c];
+              const int voigt = b == 0 && c == 0   ? 0
+                                : b == 1 && c == 1 ? 1
+                                : b == 2 && c == 2 ? 2
+                                : (b == 1 && c == 2) ? 3
+                                : (b == 0 && c == 2) ? 4
+                                                     : 5;
+              p.strain[voigt] += s2 * pref * f * dfac;
+            }
+          }
+        }
+        sums[static_cast<std::size_t>(chunk)] = p;
+      }
+      return;
+    }
+    const Range atoms = partition(static_cast<std::int64_t>(n), slice, nslices);
+    for (auto i = static_cast<std::size_t>(atoms.begin); i < static_cast<std::size_t>(atoms.end); ++i) {
+      double fx = 0.0;
+      double fy = 0.0;
+      double fz = 0.0;
+      double dq = 0.0;
+      const double qi = q[i];
+      const double s0 = s[3 * i];
+      const double s1 = s[3 * i + 1];
+      const double s2 = s[3 * i + 2];
+      for (std::size_t t = 0; t < static_cast<std::size_t>(nwave); ++t) {
+        const double *w = wave.data() + 6 * t;
+        const double common = w[3];
+        if (common == 0.0) {
+          continue;
+        }
+        const double theta = 2.0 * kPi * (mx[t] * s0 + my[t] * s1 + mz[t] * s2);
+        const double ct = std::cos(theta);
+        const double st = std::sin(theta);
+        const double g = 2.0 * qi * (w[5] * ct - w[4] * st);
+        fx += -common * g * w[0];
+        fy += -common * g * w[1];
+        fz += -common * g * w[2];
+        if (dE_dq != nullptr) {
+          dq += common * 2.0 * (w[4] * ct + w[5] * st);
+        }
+      }
+      F[3 * i] += fx;
+      F[3 * i + 1] += fy;
+      F[3 * i + 2] += fz;
+      if (dE_dq != nullptr) {
+        dE_dq[i] += dq;
       }
     }
   });
-  add_scratch(parts, F, out);
+  Neumaier energy;
+  for (const WaveSum &p : sums) {
+    energy.add(p.energy);
+    for (int k = 0; k < 6; ++k) {
+      out->strain[k] += p.strain[k];
+    }
+  }
+  out->energy += energy.total();
   const double ebg = -kKe * kPi * total * total / (2.0 * cell.volume * alpha * alpha);
   out->energy += ebg;
   // E_bg = C / V, dE/d eps_bb = -E_bg.
@@ -646,7 +958,6 @@ void ewald_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doub
   out->strain[1] += -ebg;
   out->strain[2] += -ebg;
   if (dE_dq != nullptr) {
-    add_charge_scratch(parts, dE_dq);
     const double dbg = -kKe * kPi * total / (cell.volume * alpha * alpha);
     for (std::size_t i = 0; i < n; ++i) {
       dE_dq[i] += dbg;
@@ -805,18 +1116,13 @@ void c2c_slab(std::complex<T> *data, int n0, int n1, int n2, int axis, bool forw
 }
 
 void fft3(std::vector<std::complex<double>> &g, int nx, int ny, int nz, bool inverse, int team) {
-  const int cap = axis_workers(std::min(nx, std::min(ny, nz)), std::max(team, 1));
+  (void)team;
+  const int cap = mesh_slabs(std::min(nx, std::min(ny, nz)));
   const double inv = inverse ? 1.0 / static_cast<double>(static_cast<std::size_t>(nx) * ny * nz) : 1.0;
   auto stage = [&](int axis, int tid, double scale) {
     c2c_slab(g.data(), nz, ny, nx, axis, !inverse, scale, tid, cap);
   };
-  if (cap <= 1) {
-    stage(2, 0, 1.0);
-    stage(1, 0, 1.0);
-    stage(0, 0, inv);
-    return;
-  }
-  team_phases(3, cap, [&](int phase, int slice) { stage(2 - phase, slice, phase == 2 ? inv : 1.0); });
+  team_chunk_phases(3, cap, [&](int phase, int slice) { stage(2 - phase, slice, phase == 2 ? inv : 1.0); });
 }
 
 // Phase 0 transforms the x and y axes of z slab `slice`. Phase 1
@@ -857,29 +1163,19 @@ void mesh_xy_z(float *real, std::complex<float> *spec, int nx, int ny, int nz, b
   }
 }
 
-// The transforms open the live pool, one slice per worker, and the slices
-// past the axis cap are empty. A smaller region leaves spare workers in an
-// active wait. Both return the number of slices that did work.
+// The transforms cut each axis into one slab per mesh worker. Both return
+// the number of workers that had a slab.
 int mesh_r2c(float *real, std::complex<float> *spec, int nx, int ny, int nz) {
   const int team = std::max(thread_count(), 1);
-  const int cap = axis_workers(std::min(nx, std::min(ny, nz)), team);
+  const int cap = mesh_slabs(std::min(nx, std::min(ny, nz)));
   auto work = [&](int phase, int slice) { mesh_xy_z(real, spec, nx, ny, nz, true, 1.0f, phase, slice, cap); };
-  if (cap <= 1) {
-    work(0, 0);
-    work(1, 0);
-    return 1;
-  }
-  team_phases(2, team, [&](int phase, int slice) {
-    if (slice < cap) {
-      work(phase, slice);
-    }
-  });
-  return cap;
+  team_chunk_phases(2, cap, work);
+  return std::min(team, cap);
 }
 
 int mesh_c2r(const std::complex<float> *spec, float *real, int nx, int ny, int nz, float inv) {
   const int team = std::max(thread_count(), 1);
-  const int cap = axis_workers(std::min(nx, std::min(ny, nz)), team);
+  const int cap = mesh_slabs(std::min(nx, std::min(ny, nz)));
   // Inverse along z first, then the real axes, matching a single c2r.
   auto work = [&](int phase, int slice) {
     const int nkx = nx / 2 + 1;
@@ -912,17 +1208,8 @@ int mesh_c2r(const std::complex<float> *spec, float *real, int nx, int ny, int n
       pocketfft::c2r(shape, sspec, sreal, xy, false, sbase, rbase, inv, 1);
     }
   };
-  if (cap <= 1) {
-    work(0, 0);
-    work(1, 0);
-    return 1;
-  }
-  team_phases(2, team, [&](int phase, int slice) {
-    if (slice < cap) {
-      work(phase, slice);
-    }
-  });
-  return cap;
+  team_chunk_phases(2, cap, work);
+  return std::min(team, cap);
 }
 
 void bmod_axis(int order, int n, std::vector<double> *mod) {
@@ -951,8 +1238,11 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
   const int nkx = nx / 2 + 1;
   const std::size_t nspec = static_cast<std::size_t>(nz) * static_cast<std::size_t>(ny) *
                             static_cast<std::size_t>(nkx);
-  static std::vector<float> real;
-  static std::vector<std::complex<float>> spec;
+  ElecWorkspace &ws = work();
+  std::vector<float> &charge_f = ws.charge_f;
+  std::vector<float> &real = ws.mesh_real;
+  std::vector<std::complex<float>> &spec = ws.mesh_spec;
+  PmeTrace &timing = ws.trace;
   if (group_leader()) {
     if (real.size() != ntot) {
       real.assign(ntot, 0.0f);
@@ -960,8 +1250,8 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
     if (spec.size() != nspec) {
       spec.assign(nspec, std::complex<float>(0.0f, 0.0f));
     }
-    if (g_charge_f.size() == ntot) {
-      real.swap(g_charge_f);
+    if (charge_f.size() == ntot) {
+      real.swap(charge_f);
     } else {
       for (std::size_t i = 0; i < ntot; ++i) {
         real[i] = static_cast<float>(charged[i].real());
@@ -973,20 +1263,12 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
   const auto t_fft_a = std::chrono::steady_clock::now();
   const int fft_forward_team = mesh_r2c(real.data(), spec.data(), nx, ny, nz);
   const auto t_fft_b = std::chrono::steady_clock::now();
-  g_pme_trace.fft_team = fft_forward_team;
-  struct FloatFactor {
-    int nx = 0;
-    int ny = 0;
-    int nz = 0;
-    double alpha = 0.0;
-    double pref = 0.0;
-    double H[9]{};
-    std::vector<float> scale;
-    std::vector<float> efac;
-  };
-  static FloatFactor saved;
-  static std::vector<double> kernel_part;
-  const int knt = axis_workers(std::min(nx, std::min(ny, nz)), std::max(thread_count(), 1));
+  if (group_leader()) {
+    timing.fft_team = fft_forward_team;
+  }
+  FloatFactor &saved = ws.factor;
+  std::vector<double> &kernel_part = ws.kernel_part;
+  const int knt = axis_chunks(std::min(nx, std::min(ny, nz)));
   if (group_leader()) {
   kernel_part.assign(static_cast<std::size_t>(knt), 0.0);
   bool stale = saved.nx != nx || saved.ny != ny || saved.nz != nz || saved.alpha != alpha ||
@@ -1050,7 +1332,9 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
   const auto t_kern_a = std::chrono::steady_clock::now();
   const float *scale = saved.scale.data();
   const float *efac = saved.efac.data();
-  g_pme_trace.kernel_team = knt;
+  if (group_leader()) {
+    timing.kernel_team = knt;
+  }
   auto kernel_body = [&](int slice) {
     double local = 0.0;
     const std::size_t chunk = (nspec + static_cast<std::size_t>(knt) - 1) / static_cast<std::size_t>(knt);
@@ -1069,31 +1353,34 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
     }
     kernel_part[static_cast<std::size_t>(slice)] = local;
   };
-  if (knt <= 1) {
-    kernel_body(0);
-  } else {
-    team_invoke(std::max(thread_count(), knt), [&](int slice) {
-      if (slice < knt) {
-        kernel_body(slice);
-      }
-    });
-  }
+  team_chunks(knt, kernel_body);
   if (group_leader()) {
+    Neumaier folded;
     for (int t = 0; t < knt; ++t) {
-      energy += kernel_part[static_cast<std::size_t>(t)];
+      folded.add(kernel_part[static_cast<std::size_t>(t)]);
     }
+    energy = folded.total();
   }
   const auto t_kern_b = std::chrono::steady_clock::now();
   const float inv = 1.0f / static_cast<float>(ntot);
   const auto t_ifft_a = std::chrono::steady_clock::now();
-  g_pme_trace.fft_team = std::max(g_pme_trace.fft_team, mesh_c2r(spec.data(), real.data(), nx, ny, nz, inv));
+  const int fft_inverse_team =
+      mesh_c2r(spec.data(), real.data(), nx, ny, nz, inv);
   const auto t_ifft_b = std::chrono::steady_clock::now();
-  g_pme_trace.fft_us = std::chrono::duration<double, std::micro>(t_fft_b - t_fft_a).count() +
-                       std::chrono::duration<double, std::micro>(t_ifft_b - t_ifft_a).count();
-  g_pme_trace.kernel_us = std::chrono::duration<double, std::micro>(t_kern_b - t_kern_a).count();
+  if (group_leader()) {
+    timing.fft_team =
+        std::max(timing.fft_team, fft_inverse_team);
+    timing.fft_us =
+        std::chrono::duration<double, std::micro>(t_fft_b - t_fft_a).count() +
+        std::chrono::duration<double, std::micro>(t_ifft_b - t_ifft_a)
+            .count();
+    timing.kernel_us =
+        std::chrono::duration<double, std::micro>(t_kern_b - t_kern_a)
+            .count();
+  }
   // Keep the real potential in the float buffer the gather reads.
   if (group_leader()) {
-    g_charge_f.swap(real);
+    charge_f.swap(real);
   }
   group_arrive();
   return group_leader() ? energy : 0.0;
@@ -1101,7 +1388,7 @@ double float_reciprocal(std::vector<std::complex<double>> &charged,
 
 void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const double *pos,
                      const double *q, std::size_t n, double total, double *F, double *dE_dq,
-                     ElecOut *out) {
+                     ElecOut *out, RecTerms *held = nullptr) {
   if (cfg.spline_order < 3 || cfg.spline_order > 16) {
     throw std::invalid_argument("SPME spline order must be at least 3");
   }
@@ -1112,11 +1399,14 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   const double alpha = cfg.alpha;
   const std::size_t ntot = static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny) *
                            static_cast<std::size_t>(nz);
-  static std::vector<std::complex<double>> grid;
+  ElecWorkspace &ws = work();
+  std::vector<float> &charge_f = ws.charge_f;
+  PmeTrace &timing = ws.trace;
+  std::vector<std::complex<double>> &grid = ws.grid;
   if (group_leader()) {
     if (grid.size() != ntot) {
       grid.assign(ntot, std::complex<double>(0.0, 0.0));
-    } else {
+    } else if (cfg.stress) {
       std::fill(grid.begin(), grid.end(), std::complex<double>(0.0, 0.0));
     }
   }
@@ -1124,7 +1414,9 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   auto index = [nx, ny](int x, int y, int z) {
     return static_cast<std::size_t>(x + nx * (y + ny * z));
   };
-  static std::vector<double> bmx_s, bmy_s, bmz_s;
+  std::vector<double> &bmx_s = ws.bmx;
+  std::vector<double> &bmy_s = ws.bmy;
+  std::vector<double> &bmz_s = ws.bmz;
   if (group_leader()) {
     bmod_axis(order, nx, &bmx_s);
     bmod_axis(order, ny, &bmy_s);
@@ -1136,9 +1428,9 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   std::vector<double> &bmz = bmz_s;
 
   const std::size_t span = static_cast<std::size_t>(order);
-  static std::vector<int> gtab_s;
-  static std::vector<double> wtab_s;
-  static std::vector<double> dtab_s;
+  std::vector<int> &gtab_s = ws.gtab;
+  std::vector<double> &wtab_s = ws.wtab;
+  std::vector<double> &dtab_s = ws.dtab;
   if (group_leader()) {
     const std::size_t need = 3 * n * span;
     if (gtab_s.size() != need) {
@@ -1154,48 +1446,37 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   auto slot = [span](std::size_t atom, int axis, int knot) {
     return (atom * 3 + static_cast<std::size_t>(axis)) * span + static_cast<std::size_t>(knot);
   };
-  // Each thread deposits into its own charge grid. Atomic adds on the
-  // shared grid serialize the spread and make two threads slower than one.
   const int nthreads = thread_count();
   const bool trace = std::getenv("LR_PME_PROFILE") != nullptr;
   const bool mesh_float_now = !cfg.stress;
   if (!mesh_float_now) {
-    if (!g_charge_f.empty()) {
-      g_charge_f.clear();
+    if (group_leader() && !charge_f.empty()) {
+      charge_f.clear();
     }
-  } else if (group_leader() && g_charge_f.size() != ntot) {
-    g_charge_f.assign(ntot, 0.0f);
-  } else if (group_leader() && nthreads <= 1) {
-    std::fill(g_charge_f.begin(), g_charge_f.end(), 0.0f);
+  } else if (group_leader() && charge_f.size() != ntot) {
+    charge_f.assign(ntot, 0.0f);
   }
   group_arrive();
-  // One padded z slab per thread, not a full private mesh. A full copy
-  // at eight threads is larger than the cache and slower than the deposit.
-  static std::vector<float> slabs;
-  static std::vector<int> bin_off;
-  static std::vector<int> bin_atoms;
+  // The spread gives each thread a slab of z planes of the charge grid and
+  // every thread walks the atoms in the same order, depositing only into
+  // its own planes. A grid point then sums its atoms in bin order whatever
+  // the slab count, so the grid has the same bits on any team without a
+  // private grid, a fold or a second phase.
+  std::vector<int> &zbase_s = ws.zbase;
+  std::vector<int> &bin_off = ws.bin_off;
+  std::vector<int> &bin_atoms = ws.bin_atoms;
+  std::vector<int> &bin_cursor = ws.bin_cursor;
   const int pad = order - 1;
-  const int slab_h = (nz + std::max(nthreads, 1) - 1) / std::max(nthreads, 1) + pad;
-  const std::size_t slab_stride = static_cast<std::size_t>(slab_h) * static_cast<std::size_t>(nx) *
-                                  static_cast<std::size_t>(ny);
-  float *slab_base = nullptr;
-  if (nthreads > 1 && mesh_float_now) {
-    const std::size_t need = static_cast<std::size_t>(nthreads) * slab_stride;
-    if (group_leader() && slabs.size() != need) {
-      slabs.assign(need, 0.0f);
-    }
-    group_arrive();
-    slab_base = slabs.data();
-  }
-  static std::vector<double> seen_pos;
-  static double seen_box[9];
-  static int seen_grid[4];
-  // The lead thread rewrites the key on a miss, and the two branches below
-  // pass a different number of group gates. The team takes one decision.
-  static bool team_tables_hit = false;
+  const int plane = nx * ny;
+  std::vector<double> &seen_pos = ws.seen_pos;
+  double *seen_box = ws.seen_box;
+  int *seen_grid = ws.seen_grid;
+  // The lead thread rewrites the key on a miss, and the team must take one
+  // decision about the gates below.
+  bool &team_tables_hit = ws.tables_hit;
   bool tables_hit = false;
   if (group_leader()) {
-    if (mesh_float_now && gtab.size() == 3 * n * span && seen_pos.size() == 3 * n &&
+    if (mesh_float_now && gtab.size() == 3 * n * span && zbase_s.size() == n && seen_pos.size() == 3 * n &&
         seen_grid[0] == nx && seen_grid[1] == ny && seen_grid[2] == nz && seen_grid[3] == order) {
       bool box_same = true;
       for (int r = 0; r < 3 && box_same; ++r) {
@@ -1210,72 +1491,41 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
       }
     }
     team_tables_hit = tables_hit;
+    if (zbase_s.size() != n) {
+      zbase_s.assign(n, 0);
+    }
   }
-  if (in_group()) {
-    group_arrive();
-    tables_hit = team_tables_hit;
-  }
+  group_arrive();
+  tables_hit = team_tables_hit;
+  std::vector<int> &zbase = zbase_s;
   const auto t_spread0 = std::chrono::steady_clock::now();
-  auto remember_tables = [&]() {
-    seen_pos.assign(pos, pos + 3 * n);
-    for (int r = 0; r < 3; ++r) {
-      for (int c = 0; c < 3; ++c) {
-        seen_box[3 * r + c] = cell.H[r][c];
-      }
-    }
-    seen_grid[0] = nx;
-    seen_grid[1] = ny;
-    seen_grid[2] = nz;
-    seen_grid[3] = order;
-  };
-  auto scatter_cached = [&](std::size_t i, float *dest) {
-    const double qi = q[i];
-    const int *gx = gtab.data() + (i * 3 + 0) * span;
-    const int *gy = gtab.data() + (i * 3 + 1) * span;
-    const int *gz = gtab.data() + (i * 3 + 2) * span;
-    const double *wx = wtab.data() + (i * 3 + 0) * span;
-    const double *wy = wtab.data() + (i * 3 + 1) * span;
-    const double *wz = wtab.data() + (i * 3 + 2) * span;
-    const int ord = order;
-    float *grid_f = dest != nullptr ? dest : g_charge_f.data();
-    for (int iz = 0; iz < ord; ++iz) {
-      for (int iy = 0; iy < ord; ++iy) {
-        const double wyz = wy[iy] * wz[iz];
-        const int base = nx * (gy[iy] + ny * gz[iz]);
-        for (int ix = 0; ix < ord; ++ix) {
-          const float add = static_cast<float>(qi * wx[ix] * wyz);
-          grid_f[static_cast<std::size_t>(base + gx[ix])] += add;
-        }
-      }
-    }
-  };
-  double *real_grid = reinterpret_cast<double *>(grid.data());
-  auto deposit = [&](std::size_t i) {
+  // Stencil of one atom. The z start is kept in [0, nz) so its raw planes
+  // run from zbase - pad to zbase.
+  auto fill_tables = [&](std::size_t i) {
     double r[3] = {pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]};
     double fs[3];
     cell.fractional(r, fs);
     const double nd[3] = {static_cast<double>(nx), static_cast<double>(ny), static_cast<double>(nz)};
     const int naxis[3] = {nx, ny, nz};
-    int gax[3][16];
-    double wax[3][16];
-    double dax[3][16];
-    const int ord = order;
     for (int c = 0; c < 3; ++c) {
       const double u = (fs[c] - std::floor(fs[c])) * nd[c];
       const double base = std::floor(u);
       const int k0 = static_cast<int>(base) - order + 1;
+      if (c == 2) {
+        int zb = static_cast<int>(base) % nz;
+        if (zb < 0) {
+          zb += nz;
+        }
+        zbase[i] = zb;
+      }
       if (order == 5) {
         double wv[5], dv[5];
         weights_order5(u - base, wv, dv);
         for (int j = 0; j < 5; ++j) {
-          const int g = k0 + j;
-          int w = g % naxis[c];
+          int w = (k0 + j) % naxis[c];
           if (w < 0) {
             w += naxis[c];
           }
-          gax[c][j] = w;
-          wax[c][j] = wv[j];
-          dax[c][j] = dv[j];
           const std::size_t at = slot(i, c, j);
           gtab[at] = w;
           wtab[at] = wv[j];
@@ -1283,261 +1533,159 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
         }
         continue;
       }
-      for (int j = 0; j < ord; ++j) {
+      for (int j = 0; j < order; ++j) {
         const int g = k0 + j;
         int w = g % naxis[c];
         if (w < 0) {
           w += naxis[c];
         }
         const double arg = u - static_cast<double>(g);
-        gax[c][j] = w;
-        wax[c][j] = bspline(order, arg);
-        dax[c][j] = bspline_derivative(order, arg);
         const std::size_t at = slot(i, c, j);
         gtab[at] = w;
-        wtab[at] = wax[c][j];
-        dtab[at] = dax[c][j];
-      }
-    }
-    const double qi = q[i];
-    for (int iz = 0; iz < ord; ++iz) {
-      for (int iy = 0; iy < ord; ++iy) {
-        const double wyz = wax[1][iy] * wax[2][iz];
-        for (int ix = 0; ix < ord; ++ix) {
-          const double add = qi * wax[0][ix] * wyz;
-          if (!g_charge_f.empty()) {
-            const std::size_t at = index(gax[0][ix], gax[1][iy], gax[2][iz]);
-            g_charge_f[at] += static_cast<float>(add);
-          } else {
-            const std::size_t at = 2 * index(gax[0][ix], gax[1][iy], gax[2][iz]);
-            real_grid[at] += add;
-          }
-        }
+        wtab[at] = bspline(order, arg);
+        dtab[at] = bspline_derivative(order, arg);
       }
     }
   };
-  if (tables_hit) {
-    // The cached stencil is a scatter of a few hundred microseconds.
-    // A private copy of the mesh is slower than doing it on one thread.
-    // The whole capped team enters so the region is that team and not a
-    // second, larger pool waiting outside.
-    if (nthreads <= 1) {
+  if (!tables_hit) {
+    const int nfill = rgpot::fixedChunks(n, 64);
+    team_chunks(nfill, [&](int chunk) {
+      const Range run = partition(static_cast<std::int64_t>(n), chunk, nfill);
+      for (auto i = static_cast<std::size_t>(run.begin); i < static_cast<std::size_t>(run.end); ++i) {
+        fill_tables(i);
+      }
+    });
+  }
+  if (group_leader()) {
+    if (!tables_hit) {
+      seen_pos.assign(pos, pos + 3 * n);
+      for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) {
+          seen_box[3 * r + c] = cell.H[r][c];
+        }
+      }
+      seen_grid[0] = nx;
+      seen_grid[1] = ny;
+      seen_grid[2] = nz;
+      seen_grid[3] = order;
+    }
+    // Stable bins by z start. The bins only follow the stencil starts, so a
+    // call on the positions of the last one keeps them.
+    if (!tables_hit || bin_atoms.size() != n || bin_off.size() != static_cast<std::size_t>(nz) + 1) {
+      bin_off.assign(static_cast<std::size_t>(nz) + 1, 0);
+      bin_atoms.assign(n, 0);
       for (std::size_t i = 0; i < n; ++i) {
-        scatter_cached(i, nullptr);
+        bin_off[static_cast<std::size_t>(zbase[i]) + 1] += 1;
       }
-    } else if (grouped()) {
-      // Each mesh slice owns a private charge grid, then the planes are
-      // summed in slice order. The spare threads are in real space, so
-      // the slices are only the mesh cap.
-      static std::vector<std::vector<float>> spread_part;
-      if (group_leader() && spread_part.size() != static_cast<std::size_t>(nthreads)) {
-        spread_part.resize(static_cast<std::size_t>(nthreads));
+      for (int z = 0; z < nz; ++z) {
+        bin_off[static_cast<std::size_t>(z) + 1] += bin_off[static_cast<std::size_t>(z)];
       }
-      group_arrive();
-      team_invoke(nthreads, [&](int slice) {
-        auto &mine = spread_part[static_cast<std::size_t>(slice)];
-        if (mine.size() != ntot) {
-          mine.assign(ntot, 0.0f);
+      bin_cursor.assign(bin_off.begin(), bin_off.end() - 1);
+      for (std::size_t i = 0; i < n; ++i) {
+        bin_atoms[static_cast<std::size_t>(bin_cursor[static_cast<std::size_t>(zbase[i])]++)] =
+            static_cast<int>(i);
+      }
+    }
+  }
+  group_arrive();
+  // `dest` plane gz holds the grid at z = gz, with `dest_step` between the
+  // points of a plane. A plane is cleared and filled by the one slab that
+  // owns it. Bins are walked in order, atoms of a bin in index order, and
+  // a stencil plane is zbase - pad + iz, wrapped into [0, nz).
+  auto spread_into = [&](auto *dest, std::size_t dest_step) {
+    using T = std::remove_pointer_t<decltype(dest)>;
+    const int nslab = std::max(1, std::min(thread_count(), nz / 4));
+    auto deposit_atom = [&](std::size_t i, int z0, int z1) {
+      const double qi = q[i];
+      const int *gx = gtab.data() + (i * 3 + 0) * span;
+      const int *gy = gtab.data() + (i * 3 + 1) * span;
+      const int *gz = gtab.data() + (i * 3 + 2) * span;
+      const double *wx = wtab.data() + (i * 3 + 0) * span;
+      const double *wy = wtab.data() + (i * 3 + 1) * span;
+      const double *wz = wtab.data() + (i * 3 + 2) * span;
+      for (int iz = 0; iz < order; ++iz) {
+        if (gz[iz] < z0 || gz[iz] >= z1) {
+          continue;
+        }
+        T *layer = dest + static_cast<std::size_t>(gz[iz]) *
+                              static_cast<std::size_t>(plane) * dest_step;
+        for (int iy = 0; iy < order; ++iy) {
+          const double wyz = wy[iy] * wz[iz];
+          T *line = layer + static_cast<std::size_t>(gy[iy]) *
+                                static_cast<std::size_t>(nx) * dest_step;
+          for (int ix = 0; ix < order; ++ix) {
+            line[static_cast<std::size_t>(gx[ix]) * dest_step] +=
+                static_cast<T>(qi * wx[ix] * wyz);
+          }
+        }
+      }
+    };
+    team_chunks(nslab, [&](int s) {
+      const int z0 = s * nz / nslab;
+      const int z1 = (s + 1) * nz / nslab;
+      for (int gz = z0; gz < z1; ++gz) {
+        T *dst = dest + static_cast<std::size_t>(gz) * static_cast<std::size_t>(plane) * dest_step;
+        if (dest_step == 1) {
+          std::fill(dst, dst + plane, T(0));
         } else {
-          std::fill(mine.begin(), mine.end(), 0.0f);
-        }
-        for (auto i = static_cast<std::size_t>(slice); i < n; i += static_cast<std::size_t>(nthreads)) {
-          scatter_cached(i, mine.data());
-        }
-      });
-      const int plane = nx * ny;
-      team_invoke(nthreads, [&](int slice) {
-        const int z0 = slice * nz / nthreads;
-        const int z1 = (slice + 1) * nz / nthreads;
-        for (int z = z0; z < z1; ++z) {
-          float *dst = g_charge_f.data() + static_cast<std::size_t>(z) * static_cast<std::size_t>(plane);
-          std::fill(dst, dst + plane, 0.0f);
-          for (int t = 0; t < nthreads; ++t) {
-            const float *src = spread_part[static_cast<std::size_t>(t)].data() +
-                               static_cast<std::size_t>(z) * static_cast<std::size_t>(plane);
-            for (int k = 0; k < plane; ++k) {
-              dst[k] += src[k];
-            }
+          for (int k = 0; k < plane; ++k) {
+            dst[static_cast<std::size_t>(k) * dest_step] = T(0);
           }
         }
-      });
-    } else {
-      team_invoke(nthreads, [&](int slice) {
-        if (slice == 0) {
-          std::fill(g_charge_f.begin(), g_charge_f.end(), 0.0f);
-          for (std::size_t i = 0; i < n; ++i) {
-            scatter_cached(i, nullptr);
-          }
+      }
+      auto wrapped = [nz](int w) {
+        while (w < 0) {
+          w += nz;
         }
-      });
-    }
-  } else if (nthreads <= 1 || slab_base == nullptr || grouped()) {
-    // Spare real-space threads share this region. A private slab per mesh
-    // thread on the first call corrupts the heap, so that spread stays on
-    // the lead thread. Later calls use the cached scatter above.
-    if (group_leader()) {
-      for (std::size_t i = 0; i < n; ++i) {
-        deposit(i);
-      }
-      remember_tables();
-    }
-    group_arrive();
-  } else {
-    auto z_lo = [nz, nthreads](int slice) { return slice * nz / nthreads; };
-    auto z_hi = [nz, nthreads](int slice) { return (slice + 1) * nz / nthreads; };
-    if (group_leader()) {
-    bin_off.assign(static_cast<std::size_t>(nz) + 1, 0);
-    bin_atoms.assign(n, 0);
-    for (std::size_t i = 0; i < n; ++i) {
-      double r[3] = {pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]};
-      double fs[3];
-      cell.fractional(r, fs);
-      const double uz = (fs[2] - std::floor(fs[2])) * static_cast<double>(nz);
-      int center = static_cast<int>(std::floor(uz));
-      if (center >= nz) {
-        center = nz - 1;
-      }
-      if (center < 0) {
-        center = 0;
-      }
-      bin_off[static_cast<std::size_t>(center) + 1] += 1;
-    }
-    for (int z = 0; z < nz; ++z) {
-      bin_off[static_cast<std::size_t>(z) + 1] += bin_off[static_cast<std::size_t>(z)];
-    }
-    std::vector<int> cursor(bin_off.begin(), bin_off.end() - 1);
-    for (std::size_t i = 0; i < n; ++i) {
-      double r[3] = {pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]};
-      double fs[3];
-      cell.fractional(r, fs);
-      const double uz = (fs[2] - std::floor(fs[2])) * static_cast<double>(nz);
-      int center = static_cast<int>(std::floor(uz));
-      if (center >= nz) {
-        center = nz - 1;
-      }
-      if (center < 0) {
-        center = 0;
-      }
-      bin_atoms[static_cast<std::size_t>(cursor[static_cast<std::size_t>(center)]++)] = static_cast<int>(i);
-    }
-    }
-    group_arrive();
-    team_invoke(nthreads, [&](int slice) {
-      const int z0 = z_lo(slice);
-      const int z1 = z_hi(slice);
-      const int origin = z0 - pad;
-      float *mine = slab_base + static_cast<std::size_t>(slice) * slab_stride;
-      const int height = (z1 - z0) + pad;
-      std::fill(mine, mine + static_cast<std::size_t>(height) * static_cast<std::size_t>(nx * ny), 0.0f);
-      auto splat = [&](int gx, int gy, int gz_raw, float add) {
-        const int local = gz_raw - origin;
-        mine[(static_cast<std::size_t>(local) * static_cast<std::size_t>(ny) + static_cast<std::size_t>(gy)) *
-                 static_cast<std::size_t>(nx) +
-             static_cast<std::size_t>(gx)] += add;
+        return w;
       };
-      for (int z = z0; z < z1; ++z) {
-        for (int a = bin_off[static_cast<std::size_t>(z)]; a < bin_off[static_cast<std::size_t>(z) + 1]; ++a) {
+      if (nslab == 1) {
+        for (int zb = 0; zb < nz; ++zb) {
+          for (int a = bin_off[static_cast<std::size_t>(zb)];
+               a < bin_off[static_cast<std::size_t>(zb) + 1]; ++a) {
+            deposit_atom(
+                static_cast<std::size_t>(
+                    bin_atoms[static_cast<std::size_t>(a)]),
+                0, nz);
+          }
+        }
+        return;
+      }
+      for (int zb = 0; zb < nz; ++zb) {
+        const int first = bin_off[static_cast<std::size_t>(zb)];
+        const int last = bin_off[static_cast<std::size_t>(zb) + 1];
+        if (first == last) {
+          continue;
+        }
+        bool touches = false;
+        for (int iz = 0; iz < order && !touches; ++iz) {
+          const int w = wrapped(zb - pad + iz);
+          touches = w >= z0 && w < z1;
+        }
+        if (!touches) {
+          continue;
+        }
+        for (int a = first; a < last; ++a) {
           const std::size_t i = static_cast<std::size_t>(bin_atoms[static_cast<std::size_t>(a)]);
-          double r[3] = {pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]};
-          double fs[3];
-          cell.fractional(r, fs);
-          const double ndd[3] = {static_cast<double>(nx), static_cast<double>(ny), static_cast<double>(nz)};
-          const int naxis[3] = {nx, ny, nz};
-          int gax[3][16];
-          int rawz[16];
-          double wax[3][16];
-          double dax[3][16];
-          for (int c = 0; c < 3; ++c) {
-            const double u = (fs[c] - std::floor(fs[c])) * ndd[c];
-            const double base = std::floor(u);
-            const int k0 = static_cast<int>(base) - order + 1;
-            if (order == 5) {
-              double wv[5], dv[5];
-              weights_order5(u - base, wv, dv);
-              for (int j = 0; j < 5; ++j) {
-                const int g = k0 + j;
-                int w = g % naxis[c];
-                if (w < 0) {
-                  w += naxis[c];
-                }
-                gax[c][j] = w;
-                if (c == 2) {
-                  rawz[j] = g;
-                }
-                wax[c][j] = wv[j];
-                dax[c][j] = dv[j];
-                const std::size_t at = slot(i, c, j);
-                gtab[at] = w;
-                wtab[at] = wv[j];
-                dtab[at] = dv[j];
-              }
-            } else {
-              for (int j = 0; j < order; ++j) {
-                const int g = k0 + j;
-                int w = g % naxis[c];
-                if (w < 0) {
-                  w += naxis[c];
-                }
-                gax[c][j] = w;
-                if (c == 2) {
-                  rawz[j] = g;
-                }
-                const double arg = u - static_cast<double>(g);
-                wax[c][j] = bspline(order, arg);
-                dax[c][j] = bspline_derivative(order, arg);
-                const std::size_t at = slot(i, c, j);
-                gtab[at] = w;
-                wtab[at] = wax[c][j];
-                dtab[at] = dax[c][j];
-              }
-            }
-          }
-          const float qi = static_cast<float>(q[i]);
-          for (int iz = 0; iz < order; ++iz) {
-            for (int iy = 0; iy < order; ++iy) {
-              const float wyz = static_cast<float>(wax[1][iy] * wax[2][iz]);
-              for (int ix = 0; ix < order; ++ix) {
-                splat(gax[0][ix], gax[1][iy], rawz[iz], qi * static_cast<float>(wax[0][ix]) * wyz);
-              }
-            }
-          }
+          deposit_atom(i, z0, z1);
         }
       }
     });
-    team_invoke(nthreads, [&](int slice) {
-    for (int gz = slice; gz < nz; gz += nthreads) {
-      float *dst = g_charge_f.data() + static_cast<std::size_t>(gz) * static_cast<std::size_t>(ny) *
-                                            static_cast<std::size_t>(nx);
-      const int plane = nx * ny;
-      std::fill(dst, dst + plane, 0.0f);
-      for (int t = 0; t < nthreads; ++t) {
-        const int z0 = z_lo(t);
-        const int z1 = z_hi(t);
-        const int origin = z0 - pad;
-        const float *mine = slab_base + static_cast<std::size_t>(t) * slab_stride;
-        auto add_raw = [&](int raw) {
-          if (raw < origin || raw >= z1) {
-            return;
-          }
-          const float *src = mine + static_cast<std::size_t>(raw - origin) * static_cast<std::size_t>(plane);
-          for (int i = 0; i < plane; ++i) {
-            dst[i] += src[i];
-          }
-        };
-        add_raw(gz);
-        add_raw(gz - nz);
-      }
-    }
-    });
-    remember_tables();
+  };
+  if (mesh_float_now) {
+    spread_into(charge_f.data(), 1);
+  } else {
+    spread_into(reinterpret_cast<double *>(grid.data()), 2);
   }
   const auto t_reduce0 = std::chrono::steady_clock::now();
   const auto t_fft0 = std::chrono::steady_clock::now();
-  g_pme_trace.spread_us = std::chrono::duration<double, std::micro>(t_fft0 - t_spread0).count();
   if (group_leader()) {
-    g_pme_trace.spread_team = nthreads;
+    timing.spread_us =
+        std::chrono::duration<double, std::micro>(t_fft0 - t_spread0)
+            .count();
+    timing.spread_team = nthreads;
   }
-  if (trace) {
+  if (trace && group_leader()) {
     std::fprintf(stderr, "pme_reduce workers=%d deposit_us=%.3f reduce_us=%.3f\n", nthreads,
                  std::chrono::duration<double, std::micro>(t_reduce0 - t_spread0).count(),
                  std::chrono::duration<double, std::micro>(t_fft0 - t_reduce0).count());
@@ -1547,7 +1695,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
     fft3(grid, nx, ny, nz, false, nthreads);
   }
   const auto t_kern0 = std::chrono::steady_clock::now();
-  static std::vector<std::complex<double>> phihat;
+  std::vector<std::complex<double>> &phihat = ws.phihat;
   if (!mesh_float && group_leader()) {
     if (phihat.size() != ntot) {
       phihat.assign(ntot, std::complex<double>(0.0, 0.0));
@@ -1558,17 +1706,17 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
   if (!mesh_float) {
     group_arrive();
   }
-  struct KernelLocal {
-    Neumaier rec;
-    double strain[6]{};
-    char pad[64];
-  };
-  std::vector<KernelLocal> local(static_cast<std::size_t>(nthreads));
+  // One partial per z plane, folded in plane order.
+  std::vector<KernelLocal> &local = ws.local;
+  if (group_leader()) {
+    local.assign(mesh_float ? 0 : static_cast<std::size_t>(nz), KernelLocal{});
+  }
+  group_arrive();
   const double pref = kKe / (2.0 * kPi * cell.volume);
-  auto apply_stress = [&](int tid) {
-    Neumaier &rec = local[static_cast<std::size_t>(tid)].rec;
-    double *st = local[static_cast<std::size_t>(tid)].strain;
-    for (int iz = tid; iz < nz; iz += nthreads) {
+  auto apply_stress = [&](int plane_z) {
+    Neumaier &rec = local[static_cast<std::size_t>(plane_z)].rec;
+    double *st = local[static_cast<std::size_t>(plane_z)].strain;
+    const int iz = plane_z;
     for (int iy = 0; iy < ny; ++iy) {
       for (int ix = 0; ix < nx; ++ix) {
         const int sx = ix <= nx / 2 ? ix : ix - nx;
@@ -1622,56 +1770,47 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
         }
       }
     }
-  }
   };
-  auto run_kernel = [&](auto &&body) {
-    if (nthreads <= 1) {
-      body(0);
-      return;
-    }
-    team_invoke(nthreads, body);
-  };
+  RecTerms terms;
+  terms.float_mesh = mesh_float;
   if (mesh_float) {
-    const double mesh_e =
+    terms.mesh =
         float_reciprocal(grid, phihat, nx, ny, nz, bmx, bmy, bmz, cell, alpha, pref, nthreads);
-    if (group_leader()) {
-      out->energy += mesh_e;
-    }
   } else {
     // Stress is the only double-precision mesh. The charge-only path uses
     // the float kernel above, so there is no second consumer of a factor table.
-    run_kernel(apply_stress);
-  }
-  if (group_leader()) {
-    Neumaier rec;
-    for (const KernelLocal &part : local) {
-      rec.add(part.rec);
-      for (int k = 0; k < 6; ++k) {
-        out->strain[k] += part.strain[k];
-      }
-    }
-    if (!mesh_float) {
-      out->energy += rec.total();
-    }
+    team_chunks(nz, apply_stress);
   }
   const double ebg = -kKe * kPi * total * total / (2.0 * cell.volume * alpha * alpha);
   if (group_leader()) {
-    out->energy += ebg;
-    out->strain[0] += -ebg;
-    out->strain[1] += -ebg;
-    out->strain[2] += -ebg;
+    Neumaier rec;
+    terms.strain_parts.reserve(local.size());
+    for (const KernelLocal &part : local) {
+      rec.add(part.rec);
+      terms.strain_parts.push_back({part.strain[0], part.strain[1], part.strain[2],
+                                    part.strain[3], part.strain[4], part.strain[5]});
+    }
+    terms.rec = rec.total();
+    terms.background = ebg;
+    if (held != nullptr) {
+      *held = std::move(terms);
+    } else {
+      add_rec_terms(terms, out);
+    }
   }
   const auto t_gather0 = std::chrono::steady_clock::now();
   if (!mesh_float) {
     fft3(phihat, nx, ny, nz, true, nthreads);
   }
   const auto t_force0 = std::chrono::steady_clock::now();
-  g_pme_trace.gather_us = 0;
+  if (group_leader()) {
+    timing.gather_us = 0;
+  }
   auto gather_atom = [&](std::size_t i) {
     double pot = 0.0;
     double dQ[3] = {};
-    if (order == 5 && !g_charge_f.empty()) {
-      const float *phi = g_charge_f.data();
+    if (order == 5 && !charge_f.empty()) {
+      const float *phi = charge_f.data();
       const int *gx = gtab.data() + (i * 3 + 0) * 5;
       const int *gy = gtab.data() + (i * 3 + 1) * 5;
       const int *gz = gtab.data() + (i * 3 + 2) * 5;
@@ -1715,7 +1854,7 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
           const double wy = wtab[slot(i, 1, iy)];
           const double wz = wtab[slot(i, 2, iz)];
           const std::size_t cell_at = index(gtab[slot(i, 0, ix)], gtab[slot(i, 1, iy)], gtab[slot(i, 2, iz)]);
-          const double ph = g_charge_f.empty() ? phihat[cell_at].real() : static_cast<double>(g_charge_f[cell_at]);
+          const double ph = charge_f.empty() ? phihat[cell_at].real() : static_cast<double>(charge_f[cell_at]);
           pot += wx * wy * wz * ph;
           const double qw = q[i];
           dQ[0] += qw * dtab[slot(i, 0, ix)] * wy * wz * ph;
@@ -1740,28 +1879,16 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
       F[3 * i + a] += -dE;
     }
   };
+  // Each atom gathers on its own, so any split of the atoms keeps the bits.
   const int gather_cap = atom_workers(static_cast<int>(n), nthreads);
-  if (gather_cap <= 1) {
-    if (group_leader()) {
-      for (std::size_t i = 0; i < n; ++i) {
-        gather_atom(i);
-      }
+  team_chunks(gather_cap, [&](int slice) {
+    const Range run = partition(static_cast<std::int64_t>(n), slice, gather_cap);
+    for (auto i = static_cast<std::size_t>(run.begin); i < static_cast<std::size_t>(run.end); ++i) {
+      gather_atom(i);
     }
-  } else {
-    team_invoke(std::max(nthreads, gather_cap), [&](int slice) {
-      if (slice < gather_cap) {
-        const std::size_t chunk =
-            (n + static_cast<std::size_t>(gather_cap) - 1) / static_cast<std::size_t>(gather_cap);
-        const std::size_t begin = static_cast<std::size_t>(slice) * chunk;
-        const std::size_t end = std::min(n, begin + chunk);
-        for (std::size_t i = begin; i < end; ++i) {
-          gather_atom(i);
-        }
-      }
-    });
-  }
+  });
   if (group_leader()) {
-    g_pme_trace.gather_team = std::max(gather_cap, 1);
+    timing.gather_team = std::max(gather_cap, 1);
   }
   if (dE_dq != nullptr) {
     const double dbg = -kKe * kPi * total / (cell.volume * alpha * alpha);
@@ -1769,10 +1896,13 @@ void spme_reciprocal(const CoulombConfig &cfg, const CellGeom &cell, const doubl
       dE_dq[i] += dbg;
     }
   }
-  out->has_stress = true;
   const auto t_end = std::chrono::steady_clock::now();
-  g_pme_trace.gather_us = std::chrono::duration<double, std::micro>(t_end - t_force0).count();
-  if (trace) {
+  if (group_leader()) {
+    out->has_stress = true;
+    timing.gather_us =
+        std::chrono::duration<double, std::micro>(t_end - t_force0).count();
+  }
+  if (trace && group_leader()) {
     auto us = [](auto a, auto b) {
       return std::chrono::duration<double, std::micro>(b - a).count();
     };
@@ -1851,9 +1981,11 @@ void so3lr_erf_pair(double qi, double qj, double r, double sigma, double cuton, 
   *dEdr = qq * dblend;
 }
 
-void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, const double *pos,
-                             const double *q, std::size_t n, double total_charge, const double *box,
-                             const std::vector<Pair> &pairs, double *F, double *dE_dq, ElecOut *out) {
+static void evaluate_electrostatics_impl(
+    CoulombMethod method, const CoulombConfig &cfg, const double *pos,
+    const double *q, std::size_t n, double total_charge, const double *box,
+    const std::vector<Pair> &pairs, double *F, double *dE_dq, ElecOut *out,
+    bool pairs_unchanged, ElecWorkspace &ws) {
   if (out == nullptr || (F == nullptr && n > 0)) {
     throw std::invalid_argument("electrostatic output is null");
   }
@@ -1876,8 +2008,17 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
       throw std::invalid_argument("a position is not finite");
     }
   }
+  const BindWork bind{&ws};
+  struct PublishTrace {
+    const PmeTrace &trace;
+    ~PublishTrace() {
+      const std::lock_guard<std::mutex> lock(g_trace_mutex);
+      g_pme_trace = trace;
+    }
+  };
+  const PublishTrace publish{ws.trace};
   if (method == CoulombMethod::DSF) {
-    real_space(cfg, true, q, n, pairs, F, dE_dq, out);
+    real_space(cfg, true, q, n, pairs, pairs_unchanged, F, dE_dq, out);
     out->has_stress = true;
     return;
   }
@@ -1885,26 +2026,66 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
     throw std::invalid_argument("Ewald kmax must be at least 1");
   }
   const CellGeom cell = cell_from_box(box);
+  // Inside a region the caller opened, its team holds the threads. The call
+  // runs on its own thread and leaves that team's pool alone.
+  const bool in_caller_team = rgpot::inCallerTeam();
+  struct ResetPool {
+    bool active;
+    int previous;
+    ~ResetPool() {
+      if (active) {
+        resizePool(previous);
+      }
+    }
+  };
+  const ResetPool reset_pool{!in_caller_team, poolThreads()};
   struct ResetLimit {
     int &slot;
     int prev;
     ~ResetLimit() { slot = prev; }
   };
-  const ResetLimit reset_spme{spme_slice_limit(), spme_slice_limit()};
+  const ResetLimit reset_call{call_slice_limit(), call_slice_limit()};
   const ResetLimit reset_group{mesh_group_limit(), mesh_group_limit()};
   if (method == CoulombMethod::SPME) {
     // A request of eight on a short mesh is a team of four. Shrink the
     // pool before any phase so the spare workers are not created and do
     // not sit in an active wait outside a smaller region.
-    const int requested = std::max(caller_team(), thread_count());
+    const int requested = requested_team(in_caller_team);
     const int npoints = std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2]));
     const int team = pme_team(static_cast<int>(n), npoints, requested);
-    resizePool(team);
-    spme_slice_limit() = team;
+    if (!in_caller_team) {
+      resizePool(team);
+    }
+    call_slice_limit() = team;
   }
+  // Overlapped real space lands in its own buffers. The reciprocal energy
+  // and strain terms are held and added after it, in the order a sequential
+  // call adds them. Sequential paths can write the result directly.
+  std::vector<double> &real_f = ws.real_f;
+  std::vector<double> &real_dq = ws.real_dq;
+  ElecOut real_out{};
+  RecTerms rec_terms;
+  auto prepare_real_buffers = [&]() {
+    real_f.assign(3 * n, 0.0);
+    real_dq.assign(dE_dq != nullptr ? n : 0, 0.0);
+    real_out = ElecOut{};
+  };
+  auto add_real = [&]() {
+    for (std::size_t i = 0; i < real_f.size(); ++i) {
+      F[i] += real_f[i];
+    }
+    for (std::size_t i = 0; i < real_dq.size(); ++i) {
+      dE_dq[i] += real_dq[i];
+    }
+    out->energy += real_out.energy;
+    for (int k = 0; k < 6; ++k) {
+      out->strain[k] += real_out.strain[k];
+    }
+    add_rec_terms(rec_terms, out);
+  };
   // Two threads on a short mesh: one thread in the transform does not
   // beat one thread, so the second thread runs real space beside it.
-  const int asked = std::max(caller_team(), thread_count());
+  const int asked = requested_team(in_caller_team);
   const int mesh_cap = axis_workers(std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2])), asked);
   const int real_beside =
       method == CoulombMethod::SPME && !cfg.stress && dE_dq == nullptr
@@ -1912,43 +2093,46 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
                                 std::min(cfg.grid[0], std::min(cfg.grid[1], cfg.grid[2])), asked)
           : 0;
   // Spare threads hide real space behind the reciprocal pipeline. The
-  // mesh team is the axis cap. The threads past it own real space. On a
-  // shorter team the same slices run one phase at a time.
+  // mesh team is the axis cap. The threads past it walk the real-space
+  // chunks. On a shorter team the same chunks run one phase at a time.
   if (real_beside > 0 && mesh_cap >= 4) {
-    ensure_beside_cache(cfg, pairs);
-    std::vector<double> extra(3 * n, 0.0);
-    ElecOut local{};
-    std::vector<Scratch> &parts = scratch_for(real_beside, 3 * n);
+    prepare_real_buffers();
+    const auto t_real0 = std::chrono::steady_clock::now();
+    const ScreenCache &cache = ensure_screen_cache(cfg, pairs, pairs_unchanged);
+    const int nchunks = real_chunks(pairs, n);
+    std::vector<Scratch> &parts = scratch_slots(nchunks);
+    auto run_chunk = [&](int chunk) {
+      Scratch &row = parts[static_cast<std::size_t>(chunk)];
+      scratch_clear(row, 3 * n, 0);
+      real_cached_chunk(cache, q, pairs, cfg.cutoff, row, chunk, nchunks);
+    };
     mesh_group_limit() = mesh_cap;
     const bool together = onFullTeam(mesh_cap + real_beside, [&](int rank) {
+      const BindWork rank_bind{&ws};
       if (rank < mesh_cap) {
         t_group_rank = rank;
-        spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out);
+        spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out, &rec_terms);
         t_group_rank = -1;
       } else {
-        real_beside_rank(cfg, q, pairs, parts[static_cast<std::size_t>(rank - mesh_cap)], rank - mesh_cap,
-                         real_beside);
+        for (int chunk = rank - mesh_cap; chunk < nchunks; chunk += real_beside) {
+          run_chunk(chunk);
+        }
       }
     });
     if (!together) {
-      spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out);
-      forEachSlice(real_beside, [&](int rank) {
-        real_beside_rank(cfg, q, pairs, parts[static_cast<std::size_t>(rank)], rank, real_beside);
-      });
+      spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out, &rec_terms);
+      for (int chunk = 0; chunk < nchunks; ++chunk) {
+        run_chunk(chunk);
+      }
     }
     mesh_group_limit() = 0;
-    add_scratch(parts, extra.data(), &local);
-    const double self = -kKe * cfg.alpha / std::sqrt(kPi);
-    for (std::size_t i = 0; i < n; ++i) {
-      local.energy += self * q[i] * q[i];
-    }
-    for (std::size_t i = 0; i < extra.size(); ++i) {
-      F[i] += extra[i];
-    }
-    out->energy += local.energy;
-    for (int k = 0; k < 6; ++k) {
-      out->strain[k] += local.strain[k];
-    }
+    fold_rows(parts, nchunks, 0, 1, real_f.data(), nullptr);
+    fold_energy_strain(parts, nchunks, &real_out);
+    add_ewald_self(cfg, q, n, &real_out);
+    ws.trace.real_us =
+        std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t_real0).count();
+    ws.trace.real_team = real_beside;
+    add_real();
     return;
   }
   // Two threads do not speed a short transform, so the second thread runs
@@ -1956,38 +2140,53 @@ void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg, con
   const bool beside_pair = method == CoulombMethod::SPME && thread_count() == 2 && mesh_cap == 1 &&
                            !cfg.stress && dE_dq == nullptr;
   if (beside_pair) {
-    std::vector<double> extra(3 * n, 0.0);
-    ElecOut local{};
+    prepare_real_buffers();
     mesh_group_limit() = 1;
     const bool together = onFullTeam(2, [&](int rank) {
+      const BindWork rank_bind{&ws};
       if (rank == 0) {
         t_group_rank = 0;
-        spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out);
+        spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out, &rec_terms);
         t_group_rank = -1;
       } else {
-        real_space(cfg, false, q, n, pairs, extra.data(), nullptr, &local);
+        real_space(cfg, false, q, n, pairs, pairs_unchanged, real_f.data(),
+                   nullptr, &real_out);
       }
     });
     if (!together) {
-      spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out);
-      real_space(cfg, false, q, n, pairs, extra.data(), nullptr, &local);
+      spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out, &rec_terms);
+      real_space(cfg, false, q, n, pairs, pairs_unchanged, real_f.data(),
+                 nullptr, &real_out);
     }
     mesh_group_limit() = 0;
-    for (std::size_t i = 0; i < extra.size(); ++i) {
-      F[i] += extra[i];
-    }
-    out->energy += local.energy;
-    for (int k = 0; k < 6; ++k) {
-      out->strain[k] += local.strain[k];
-    }
+    add_real();
     return;
   }
-  real_space(cfg, false, q, n, pairs, F, dE_dq, out);
+  // Without overlap the reciprocal force can reuse the first persistent
+  // scratch row. Keeping real space in F preserves its fixed chunk fold,
+  // while the final commutative add has the same bits as reciprocal + real.
+  // This avoids allocating and clearing a separate real_f vector.
+  real_space(cfg, false, q, n, pairs, pairs_unchanged, F, dE_dq, out);
+  Scratch &reciprocal = scratch_slots(1).front();
+  scratch_clear(reciprocal, 3 * n, 0);
   if (method == CoulombMethod::Ewald) {
-    ewald_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out);
+    ewald_reciprocal(cfg, cell, pos, q, n, total_charge, reciprocal.f.data(), dE_dq, out);
   } else {
-    spme_reciprocal(cfg, cell, pos, q, n, total_charge, F, dE_dq, out);
+    spme_reciprocal(cfg, cell, pos, q, n, total_charge, reciprocal.f.data(), dE_dq, out);
   }
+  for (std::size_t i = 0; i < 3 * n; ++i) {
+    F[i] += reciprocal.f[i];
+  }
+}
+
+void evaluate_electrostatics(CoulombMethod method, const CoulombConfig &cfg,
+                             const double *pos, const double *q, std::size_t n,
+                             double total_charge, const double *box,
+                             const std::vector<Pair> &pairs, double *F,
+                             double *dE_dq, ElecOut *out) {
+  thread_local ElecWorkspace work;
+  evaluate_electrostatics_impl(method, cfg, pos, q, n, total_charge, box, pairs,
+                               F, dE_dq, out, false, work);
 }
 
 CoulombPot::CoulombPot(CoulombConfig cfg, std::shared_ptr<ChargeSource> charges,
@@ -2011,9 +2210,13 @@ CoulombPot::CoulombPot(CoulombConfig cfg, std::shared_ptr<ChargeSource> charges,
   fp.f64(cfg_.skin);
   fp.u64(cfg_.periodic ? 1 : 0);
   params_ = fp.h;
+  renew_workspace(this);
 }
 
+CoulombPot::~CoulombPot() { drop_workspace(this); }
+
 void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   std::fill(out->F, out->F + 3 * in.nAtoms, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;
@@ -2027,9 +2230,15 @@ void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const auto t_eval = std::chrono::steady_clock::now();
   std::vector<double> dedq(in.nAtoms, 0.0);
   ElecOut er;
-  evaluate_electrostatics(cfg_.method, cfg_, in.pos, q.data(), in.nAtoms, total,
-                          periodic ? in.box : nullptr, lists_->long_pairs(), out->F,
-                          response_ ? dedq.data() : nullptr, &er);
+  ElecWorkspace &ws = workspace_of(this);
+  const std::uint64_t emission = lists_->long_emission();
+  const bool pairs_unchanged = emission != 0 && emission == ws.seen_pairs;
+  ws.seen_pairs = 0;
+  evaluate_electrostatics_impl(
+      cfg_.method, cfg_, in.pos, q.data(), in.nAtoms, total,
+      periodic ? in.box : nullptr, lists_->long_pairs(), out->F,
+      response_ ? dedq.data() : nullptr, &er, pairs_unchanged, ws);
+  ws.seen_pairs = emission;
   out->energy = er.energy;
   if (response_) {
     response_->accumulate(in, dedq.data(), out->F);
@@ -2047,6 +2256,9 @@ void CoulombPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
 }
 
-PmeTrace pme_trace() { return g_pme_trace; }
+PmeTrace pme_trace() {
+  const std::lock_guard<std::mutex> lock(g_trace_mutex);
+  return g_pme_trace;
+}
 
 } // namespace rgpot::lr

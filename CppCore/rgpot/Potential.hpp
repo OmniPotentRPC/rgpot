@@ -30,6 +30,7 @@
 #include "rgpot/Slices.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/pot_types.hpp"
+#include "rgpot/rgpot_api.h"
 #include "rgpot/types/AtomMatrix.hpp"
 
 namespace rgpot {
@@ -49,7 +50,7 @@ public:
   /**
    * @brief Virtual destructor.
    */
-  virtual ~PotentialBase() = default;
+  RGPOT_API virtual ~PotentialBase();
 
   /**
    * @brief Main interface for potential and force calculation.
@@ -139,6 +140,24 @@ public:
    * whose numerics never changed.
    */
   [[nodiscard]] virtual uint64_t paramsKey() const noexcept { return 0; }
+
+  /// Opt-in thread count for this potential's evaluations. Throws
+  /// std::invalid_argument when `threads` is below 1. A `ThreadCount`
+  /// already on the calling thread wins. With nothing set, the call
+  /// keeps today's default (`OMP_NUM_THREADS`, or the long-range pool).
+  /// The count is not a member: the C++ layout stamp covers this object's
+  /// size, and an opt-in value must not move it.
+  void setThreadCount(int threads) {
+    if (threads < 1) {
+      throw std::invalid_argument("rgpot thread count must be at least 1");
+    }
+    detail::notePotentialThreads(this, threads);
+  }
+  void clearThreadCount() noexcept { detail::notePotentialThreads(this, 0); }
+  /// Zero when this potential has not opted in.
+  [[nodiscard]] int threadCount() const noexcept {
+    return detail::lookupPotentialThreads(this);
+  }
 
 #ifdef RGPOT_HAS_CACHE
   /**
@@ -303,8 +322,14 @@ public:
    * and treat the systems as independent: no ordering, no shared state,
    * and no assumption that they have equal atom counts. Each
    * @c batch.out[i] arrives zeroed, as for @c forceImpl.
+   *
+   * The spread reads the thread count on the calling thread, before any
+   * @c forceImpl has bound this potential's own, so the default binds it
+   * here: a potential with @c setThreadCount spreads its systems over that
+   * many threads, and one without keeps the @c OMP_NUM_THREADS team.
    */
   virtual void forceBatchImpl(const ForceBatch &batch) const {
+    const rgpot::ThreadBinding bind_threads{threadCount()};
     auto one = [&](std::size_t i) {
       static_cast<const Derived *>(this)->forceImpl(batch.in[i], &batch.out[i]);
     };
@@ -331,6 +356,7 @@ public:
    * not moved sends only the rest to the kernel.
    */
   void forceBatch(const ForceBatch &batch) override {
+    const rgpot::ThreadBinding bind_threads{threadCount()};
     if (batch.nSystems == 0) {
       return;
     }

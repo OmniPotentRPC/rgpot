@@ -198,6 +198,16 @@ def parse(path: Path) -> tuple[dict[str, Entry], list[str]]:
             target = entries.get(entry.args[0])
             if target is None or target.kind != "unit":
                 errors.append(f"{where}: rerun names no unit entry")
+            else:
+                # A rerun whose gate can hold while its target's fails names
+                # an executable the build did not make.
+                own = {frozenset(clause) for clause in entry.gate}
+                missing = [c for c in target.gate if frozenset(c) not in own]
+                if missing:
+                    text = " ".join(",".join(c) for c in missing)
+                    errors.append(
+                        f"{where}: rerun gate lacks '{text}' from {target.name}"
+                    )
         if entry.name.startswith("ThreadTeamTest") and entry.suite != "threadteam":
             errors.append(
                 f"{where}: a ThreadTeamTest shard belongs to suite threadteam"

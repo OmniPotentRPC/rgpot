@@ -1244,7 +1244,7 @@ engine-backed potentials]].
 Meson builds the library only with =-Dwith_xtb=true=.
 Positions and cells are in Angstrom, energies in eV and forces in eV/Angstrom.
 A cell is nine doubles in row-major order.
-=RGPOT_XTB_ABI_VERSION= is 1.
+=RGPOT_XTB_ABI_VERSION= is 2.
 The return codes of =rgpot_xtb_force= are not those of the engine table.
 
 =XTBDlopen= needs every function below.
@@ -1285,7 +1285,7 @@ int rgpot_xtb_abi_version(void);
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: =RGPOT_XTB_ABI_VERSION= (1).
+- Outputs :: =RGPOT_XTB_ABI_VERSION= (2).
 - Errors :: none.
 
 =XTBDlopen= refuses a library that returns another value.
@@ -1328,6 +1328,20 @@ void rgpot_xtb_destroy(RgpotXtbPot *pot);
 - Units :: none.
 - Outputs :: none; the handle and its =XTBPot= are freed.
 - Errors :: none; NULL is accepted.
+
+*** =rgpot_xtb_set_thread_count=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_xtb_set_thread_count(RgpotXtbPot *pot, int threads);
+#+end_src
+
+- Inputs :: =pot= and a positive worker count, or zero to clear the count.
+- Units :: none.
+- Outputs :: =RGPOT_XTB_RC_OK= after forwarding the count to the linked
+  =XTBPot=.
+- Errors :: =RGPOT_XTB_RC_INVALID_ARGUMENT= for a null handle or a negative
+  count.
 
 *** =rgpot_xtb_force=
 
@@ -1440,7 +1454,7 @@ int rgpot_xtb_reused_wavefunction(const RgpotXtbPot *pot);
 =MetatomicPot=.
 Positions and cells are in Angstrom, energies in eV and forces in eV/Angstrom,
 unless the config names another =length_unit=.
-=RGPOT_MTA_ABI_VERSION= is 1.
+=RGPOT_MTA_ABI_VERSION= is 2.
 The return codes of =rgpot_mta_force= are not those of the engine table.
 
 *** =RgpotMtaPot=
@@ -1476,7 +1490,7 @@ int rgpot_mta_abi_version(void);
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: =RGPOT_MTA_ABI_VERSION= (1).
+- Outputs :: =RGPOT_MTA_ABI_VERSION= (2).
 - Errors :: none.
 
 =MetatomicDlopen= refuses a library that returns another value.
@@ -1524,6 +1538,18 @@ void rgpot_mta_destroy(RgpotMtaPot *pot);
 - Units :: none.
 - Outputs :: none; the handle and its =MetatomicPot= are freed.
 - Errors :: none; NULL is accepted.
+
+*** =rgpot_mta_set_thread_count=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_mta_set_thread_count(RgpotMtaPot *pot, int threads);
+#+end_src
+
+- Inputs :: =pot= and a positive worker count, or zero to clear the count.
+- Units :: none.
+- Outputs :: 0 after forwarding the count to the linked =MetatomicPot=.
+- Errors :: 1 for a null handle or a negative count.
 
 *** =rgpot_mta_force=
 

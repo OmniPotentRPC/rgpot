@@ -64,6 +64,7 @@ public:
   uint64_t paramsKey() const noexcept override { return m_key; }
 
   void forceImpl(const ForceInput &input, ForceOut *output) const override {
+    const rgpot::ThreadBinding bind_threads{threadCount()};
     if (!output || !input.box || input.nAtoms > std::numeric_limits<size_t>::max() / 3 ||
         (input.nAtoms && (!input.pos || !input.atmnrs || !output->F)))
       throw std::invalid_argument("invalid plugin force buffers");

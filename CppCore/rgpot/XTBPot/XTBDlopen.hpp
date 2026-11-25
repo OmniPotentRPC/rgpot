@@ -47,6 +47,14 @@ public:
 
   [[nodiscard]] bool available() const noexcept { return m_pot != nullptr; }
 
+  /// Thread count the engine handle runs with, forwarded on every call.
+  /// Throws std::invalid_argument below 1. A @c rgpot::ThreadCount on the
+  /// calling thread wins over it.
+  void setThreadCount(int threads);
+  void clearThreadCount();
+  /// Zero when no count is set.
+  [[nodiscard]] int threadCount() const noexcept;
+
   /**
    * @throws SccNotConverged when the engine reports
    *         @c RGPOT_XTB_RC_SCC_NOT_CONVERGED.

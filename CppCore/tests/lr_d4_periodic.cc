@@ -13,6 +13,9 @@
 #include <string>
 #include <vector>
 
+#if __has_include("lr_build_info.h")
+#include "lr_build_info.h"
+#endif
 #ifndef RGPOT_GIT_HEAD
 #define RGPOT_GIT_HEAD "unknown"
 #endif

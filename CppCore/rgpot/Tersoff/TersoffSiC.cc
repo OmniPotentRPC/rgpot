@@ -236,6 +236,7 @@ TersoffSiC::TersoffSiC() : Potential(PotType::TersoffSi) {
 }
 
 void TersoffSiC::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (out == nullptr) {
     throw std::invalid_argument("TersoffSiC: null ForceOut");
   }
@@ -275,6 +276,7 @@ void TersoffSiC::energyAndGradient(const double *positions,
                                    std::size_t n_atoms, double *energy,
                                    double *gradient,
                                    nlist::NeighborList *neighbors) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (energy == nullptr ||
       (n_atoms > 0 && (positions == nullptr || atomic_numbers == nullptr ||
                        box == nullptr || gradient == nullptr))) {
@@ -290,6 +292,7 @@ void TersoffSiC::energyAndGradientBatch(std::size_t n_config,
                                         const double *box, std::size_t n_atoms,
                                         double *energies,
                                         double *gradients) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   if (n_config == 0) {
     return;
   }

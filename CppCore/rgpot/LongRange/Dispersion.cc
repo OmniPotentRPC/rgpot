@@ -463,20 +463,27 @@ public:
       alpha[i] = alpha_tab[z - 1] * hi;
       c6[i] = c6_tab[z - 1] * ratio;
     }
-    const int nt = poolThreads();
-    std::vector<Neumaier> enes(static_cast<std::size_t>(nt));
-    std::vector<std::vector<double>> forces(static_cast<std::size_t>(nt));
-    std::vector<std::array<double, 6>> strains(static_cast<std::size_t>(nt));
+    // Partials are one per fixed pair chunk, not one per thread, and the
+    // fold below is in chunk order. A one-thread call walks the same chunks.
+    const int team = rgpot::activeThreads(poolThreads());
+    const int chunks = rgpot::fixedChunks(std::max<std::size_t>(pairs.size(), 1), 1024);
+    const int slots = team <= 1 ? 1 : chunks;
+    std::vector<Neumaier> enes(static_cast<std::size_t>(slots));
+    std::vector<std::vector<double>> forces(static_cast<std::size_t>(slots));
+    std::vector<std::array<double, 6>> strains(static_cast<std::size_t>(slots));
     if (F != nullptr) {
       for (auto &buf : forces) {
         buf.assign(3 * in.nAtoms, 0.0);
       }
     }
-    forEachSlice(nt, [&](int slice) {
-      auto &ene = enes[static_cast<std::size_t>(slice)];
-      auto &floc = forces[static_cast<std::size_t>(slice)];
-      auto &sloc = strains[static_cast<std::size_t>(slice)];
-      const Range run = partition(static_cast<std::int64_t>(pairs.size()), slice, nt);
+    Neumaier serial_ene;
+    std::fill(strain, strain + 6, 0.0);
+    forEachChunk(chunks, team, [&](int slice) {
+      const std::size_t slot = team <= 1 ? 0 : static_cast<std::size_t>(slice);
+      auto &ene = enes[slot];
+      auto &floc = forces[slot];
+      auto &sloc = strains[slot];
+      const Range run = partition(static_cast<std::int64_t>(pairs.size()), slice, chunks);
       for (auto ti = static_cast<std::size_t>(run.begin); ti < static_cast<std::size_t>(run.end); ++ti) {
       const Pair &pr = pairs[ti];
       const double R = pr.r / kBohr;
@@ -549,12 +556,30 @@ public:
         accumulatePairStrain(sloc.data(), -dedr_A * invr, -pr.x, -pr.y, -pr.z);
       }
       }
+      if (team <= 1) {
+        serial_ene.add(ene);
+        ene = Neumaier{};
+        for (int k = 0; k < 6; ++k) {
+          strain[k] += sloc[k];
+          sloc[k] = 0.0;
+        }
+        if (F != nullptr) {
+          for (std::size_t i = 0; i < floc.size(); ++i) {
+            F[i] += floc[i];
+            floc[i] = 0.0;
+          }
+        }
+      }
     });
+    if (team <= 1) {
+      *energy = serial_ene.total();
+      *has_stress = 1;
+      return;
+    }
     Neumaier ene;
     for (const auto &part : enes) {
       ene.add(part);
     }
-    std::fill(strain, strain + 6, 0.0);
     for (const auto &sloc : strains) {
       for (int k = 0; k < 6; ++k) {
         strain[k] += sloc[k];
@@ -801,6 +826,7 @@ DispersionPot::DispersionPot(DispersionConfig cfg, std::shared_ptr<RatioSource> 
 }
 
 void DispersionPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   std::fill(out->F, out->F + 3 * in.nAtoms, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;

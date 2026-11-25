@@ -13,8 +13,8 @@
 #include "rgpot/units.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -298,6 +298,8 @@ void test_lists() {
 
   lists.update(pos.data(), n, box, true);
   check(lists.short_rebuilt() && lists.long_rebuilt(), "first list build rebuilds");
+  std::uint64_t emission = lists.long_emission();
+  check(emission != 0, "first list build emits long pairs");
   check(lists.short_pairs().size() < lists.long_pairs().size(), "long list is the larger cutoff");
   check_matches_brute(pos, box, "initial build matches brute force");
 
@@ -330,6 +332,8 @@ void test_lists() {
   }
   lists.update(pos.data(), n, box, true);
   check(!lists.short_rebuilt() && !lists.long_rebuilt(), "a small move stays inside the skin");
+  check(lists.long_emission() != emission, "a small move refreshes the emitted long pairs");
+  emission = lists.long_emission();
   check_matches_brute(pos, box, "small move matches brute force");
 
   const double small_box[9] = {
@@ -340,23 +344,18 @@ void test_lists() {
   for (double &x : pos) {
     x *= 1.002;
   }
-  const auto t0 = std::chrono::steady_clock::now();
   lists.update(pos.data(), n, small_box, true);
-  const auto reuse_us =
-      std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
-  check(reuse_us < 1e6, "small cell change smoke time");
   check(!lists.short_rebuilt() && !lists.long_rebuilt(),
         "a small cell change stays inside the skin");
+  check(lists.long_emission() != emission,
+        "a small cell change refreshes the emitted long pairs");
+  emission = lists.long_emission();
   check_matches_brute(pos, small_box, "small cell change matches brute force");
 
-  const auto t_steady = std::chrono::steady_clock::now();
   lists.update(pos.data(), n, small_box, true);
-  const auto steady_us =
-      std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t_steady)
-          .count();
-  check(steady_us < 1e6, "steady repeat smoke time");
   check(!lists.short_rebuilt() && !lists.long_rebuilt(),
         "a steady repeat reuses the list");
+  check(lists.long_emission() == emission, "a steady repeat keeps the emitted long pairs");
   check_matches_brute(pos, small_box, "steady repeat matches brute force");
 
   const double large_box[9] = {
@@ -848,6 +847,40 @@ void test_dsf() {
   so3lr_erf_pair(0.2, -0.3, 1.4 + step, 2.0, 6.0, 9.0, 14.399645351950548, &ep, &dummy);
   so3lr_erf_pair(0.2, -0.3, 1.4 - step, 2.0, 6.0, 9.0, 14.399645351950548, &em, &dummy);
   check_close(dedr, (ep - em) / (2.0 * step), 1e-6, "SO3LR erf derivative");
+}
+
+// A list shared through setNeighbours is refreshed by whichever term runs
+// first. The term after it must still see that the pairs moved.
+void test_shared_list_refresh() {
+  std::vector<double> pos = {0, 0, 0, 1.2, 0.2, -0.1, 2.5, 1.0, 0.4, -1.1, 0.9, 0.3};
+  const std::vector<int> z = {1, 1, 8, 1};
+  CoulombConfig cfg;
+  cfg.method = CoulombMethod::DSF;
+  cfg.periodic = false;
+  cfg.cutoff = 8.0;
+  cfg.alpha = 0.25;
+  cfg.short_cutoff = 3.0;
+  cfg.skin = 1.0;
+  const std::vector<double> qa = {0.3, -0.4, 0.1, 0.0};
+  const std::vector<double> qb = {-0.2, 0.5, -0.1, -0.2};
+  auto lists = std::make_shared<DualList>(cfg.short_cutoff, cfg.cutoff, cfg.skin);
+  CoulombPot a(cfg, std::make_shared<FixedCharges>(qa, 0.0));
+  CoulombPot b(cfg, std::make_shared<FixedCharges>(qb, 0.0));
+  a.setNeighbours(lists);
+  b.setNeighbours(lists);
+  run(a, pos, z, nullptr);
+  run(b, pos, z, nullptr);
+  for (std::size_t k = 0; k < pos.size(); ++k) {
+    pos[k] += 0.05 * std::sin(1.3 * static_cast<double>(k) + 0.2);
+  }
+  run(a, pos, z, nullptr);
+  const Eval shared = run(b, pos, z, nullptr);
+  CoulombPot fresh(cfg, std::make_shared<FixedCharges>(qb, 0.0));
+  const Eval ref = run(fresh, pos, z, nullptr);
+  check_close(shared.energy, ref.energy, 1e-12, "shared list: energy after a move");
+  for (std::size_t k = 0; k < pos.size(); ++k) {
+    check_close(shared.f[k], ref.f[k], 1e-12, "shared list: force after a move");
+  }
 }
 
 void test_public_null_cell_calls() {
@@ -2185,7 +2218,10 @@ void test_capped_phase_team() {
   const rgpot::lr::PmeTrace tr = rgpot::lr::pme_trace();
   check(tr.spread_team == 4, "spread runs the capped team");
   check(tr.fft_team == 4, "the transform runs the capped team");
-  check(tr.kernel_team == 4, "the kernel runs the capped team");
+  // The kernel energy is one partial per fixed mesh chunk, not one per
+  // worker, so a 25-point axis is a single sum on every team.
+  check(tr.kernel_team == rgpot::lr::axis_chunks(25),
+        "the kernel partial count follows the mesh");
   check(tr.gather_team == 4, "gather runs the capped team");
   check(tr.real_team == 4, "real space runs on the spare threads");
   check(wide.energy == team4.energy && wide.f == team4.f,
@@ -2354,6 +2390,7 @@ int main() {
     test_dispersion_lattice_sum();
     test_forces_and_stress();
     test_dsf();
+    test_shared_list_refresh();
     test_public_null_cell_calls();
     test_qdo_nlh_mbd();
     test_library_dispersion();

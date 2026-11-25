@@ -47,6 +47,7 @@ void EAMPot::setNeighbourMode(nlist::Mode mode) noexcept {
 }
 
 void EAMPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   double energy = 0.0;
   double variance = 0.0;
   m_impl->kernel.force(static_cast<long>(in.nAtoms), in.pos, in.atmnrs, out->F,

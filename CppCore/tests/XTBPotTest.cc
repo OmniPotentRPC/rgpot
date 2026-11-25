@@ -20,10 +20,12 @@
 #include <exception>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "rgpot/Slices.hpp"
 #include "rgpot/XTBPot/XTBDlopen.hpp"
 #include "rgpot/XTBPot/XTBPot.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
@@ -303,6 +305,52 @@ TEST_CASE("XTBDlopen serial multi-instance via recreate",
     REQUIRE_THAT(e, WithinAbs(e_ref, 1e-8));
     require_finite_forces(f, 3);
   }
+}
+
+TEST_CASE("XTBDlopen forwards a thread count to its engine",
+          "[xtb][dlopen][threads]") {
+  AtomMatrix positions(3, 3);
+  std::vector<int> atmtypes;
+  std::array<std::array<double, 3>, 3> box{};
+  fill_water(positions, atmtypes, box);
+
+  std::unique_ptr<rgpot::XTBDlopen> dl;
+  try {
+    dl = std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(rgpot::XTBConfig{}));
+  } catch (const std::runtime_error &ex) {
+    if (std::string(ex.what()).find("not found") != std::string::npos) {
+      SKIP("no xtb engine to load: " << ex.what());
+    }
+    throw;
+  }
+  // Each evaluation starts from a fresh SCC, so a warm-start difference in
+  // the engine cannot stand in for an effect of the thread count.
+  dl->reset();
+  auto [e0, f0, v0] = (*dl)(positions, atmtypes, box);
+  (void)v0;
+  REQUIRE(std::isfinite(e0));
+  CHECK(dl->threadCount() == 0);
+
+  CHECK_THROWS_AS(dl->setThreadCount(0), std::invalid_argument);
+  CHECK_THROWS_AS(dl->setThreadCount(-3), std::invalid_argument);
+  CHECK(dl->threadCount() == 0);
+
+  // The engine receives the count through its C ABI. The deterministic
+  // one-system result stays unchanged, and the host binding is call-scoped.
+  for (const int threads : {1, 4}) {
+    dl->setThreadCount(threads);
+    CHECK(dl->threadCount() == threads);
+    dl->reset();
+    auto [e, f, v] = (*dl)(positions, atmtypes, box);
+    (void)v;
+    CHECK(rgpot::explicitThreadCount() == 0);
+    CHECK_THAT(e, WithinAbs(e0, 1e-9));
+    for (size_t i = 0; i < 3; ++i)
+      for (size_t j = 0; j < 3; ++j)
+        CHECK_THAT(f(i, j), WithinAbs(f0(i, j), 1e-9));
+  }
+  dl->clearThreadCount();
+  CHECK(dl->threadCount() == 0);
 }
 
 // A reused SCC wavefunction has to land on the same GFN2 energy and forces

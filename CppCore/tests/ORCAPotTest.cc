@@ -20,6 +20,7 @@
 #include <fstream>
 #include <limits>
 #include <locale>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -30,6 +31,7 @@
 #include "TestTempDir.hpp"
 #include "rgpot/ORCAPot/ORCAFiles.hpp"
 #include "rgpot/ORCAPot/ORCAPot.hpp"
+#include "rgpot/Slices.hpp"
 #include "rgpot/units.hpp"
 
 #include <fcntl.h>
@@ -1037,6 +1039,28 @@ TEST_CASE("ORCAPot input and engrad ignore a comma-decimal C locale",
       "1\n-2,5\n0,1\n0,2\n0,3\n1 0,0 0,0 0,0\n";
   REQUIRE_THROWS_AS(rgpot::orca::parseEngrad(comma_engrad, 1),
                     std::runtime_error);
+}
+
+// The nest holds 32 bindings, so with 32 on the stack a potential that has
+// opted in cannot take a 33rd. ORCAPot binds before it starts the engine,
+// so the call throws std::logic_error and the fake is never run.
+TEST_CASE("ORCAPot binds its thread count for the call", "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAPot pot(fake.config());
+  std::vector<std::unique_ptr<rgpot::ThreadBinding>> full;
+  for (int i = 0; i < 32; ++i) {
+    full.push_back(std::make_unique<rgpot::ThreadBinding>(2));
+  }
+  pot.clearThreadCount();
+  CHECK_NOTHROW(evaluate(pot, kWater, kWaterZ));
+  CHECK(fake.calls() == 1);
+  pot.setThreadCount(3);
+  CHECK_THROWS_AS(evaluate(pot, kWater, kWaterZ), std::logic_error);
+  CHECK(fake.calls() == 1);
+  pot.clearThreadCount();
+  full.clear();
+  CHECK(rgpot::explicitThreadCount() == 0);
 }
 
 TEST_CASE("ORCAPot against a real ORCA", "[orca][real]") {

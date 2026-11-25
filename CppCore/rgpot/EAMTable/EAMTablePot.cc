@@ -369,11 +369,13 @@ EAMTablePot::EAMTablePot(const EAMTable &table, bool periodic, bool stress, doub
 }
 
 void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   compute(in, out, nullptr);
 }
 
 void EAMTablePot::forcePerAtom(const ForceInput &in, ForceOut *out,
                                const PerAtomOut &atoms) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   guardForceCall(in, out, kernelNeedsCell(*this));
   clearPerAtom(atoms, in.nAtoms);
   compute(in, out, &atoms);

@@ -89,6 +89,7 @@ uint64_t D4Pot::paramsKey() const noexcept {
 }
 
 void D4Pot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  const rgpot::ThreadBinding bind_threads{threadCount()};
   int intN = static_cast<int>(in.nAtoms);
   const size_t n3 = 3 * in.nAtoms;
   const bool p = m_config.periodic;

@@ -147,6 +147,46 @@ class CheckTestRegistryIntermixedArgsTests(unittest.TestCase):
             self.assertIn("test check_test_registry_selftest\n", written)
 
 
+class RerunGateTests(unittest.TestCase):
+    def test_rerun_must_carry_its_target_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = Path(tmp) / "registry.txt"
+            registry.write_text(
+                "A | tests core thread_registry | unit a ThreadInvariantTest.cc |\n"
+                "A_again | tests core | rerun A |\n",
+                encoding="utf-8",
+            )
+            _, errors = ctr.parse(registry)
+        self.assertEqual(len(errors), 1, msg=errors)
+        self.assertIn("rerun gate lacks 'thread_registry' from A", errors[0])
+
+    def test_windows_shared_drops_both_thread_invariant_entries(self) -> None:
+        entries, errors = ctr.parse(REGISTRY)
+        self.assertEqual(errors, [])
+        atoms = {a for e in entries.values() for c in e.gate for a in c} - {ctr.PROBE}
+        names = ("ThreadInvariantTest", "ThreadInvariantTest_limit1")
+        on = {atom: True for atom in atoms}
+        windows_shared = dict(on, thread_registry=False, posix=False, linux=False)
+        for name in names:
+            self.assertTrue(entries[name].holds(on, probe=False), name)
+            self.assertFalse(entries[name].holds(windows_shared, probe=False), name)
+        self.assertTrue(entries["ThreadReachTest"].holds(windows_shared, probe=False))
+
+    def test_both_builds_derive_the_atom_from_the_library_type(self) -> None:
+        meson = (ROOT / "CppCore" / "meson.build").read_text(encoding="utf-8")
+        cmake = (ROOT / "CppCore" / "tests" / "tests.cmake").read_text(encoding="utf-8")
+        self.assertRegex(
+            meson,
+            r"'thread_registry': not \(\s*host_machine\.system\(\) == 'windows'"
+            r"\s*and get_option\('default_library'\) != 'static'\s*\)",
+        )
+        self.assertIn(
+            "rgpot_test_set_feature(thread_registry NOT (WIN32 AND BUILD_SHARED_LIBS))",
+            cmake,
+        )
+        self.assertNotRegex(meson, r"_rt\[0\] == 'ThreadInvariantTest'\s*and host_machine")
+
+
 if __name__ == "__main__":
     os.chdir(ROOT)
     unittest.main()

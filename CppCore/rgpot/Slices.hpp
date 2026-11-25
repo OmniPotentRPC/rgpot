@@ -70,9 +70,14 @@ struct Range {
   return {(n * s) / ns, (n * (s + 1)) / ns};
 }
 
-/// Slice count from OMP_NUM_THREADS, read on every call. Unset, empty, or
-/// a non-positive value is one slice, so a call that does not ask for
-/// threads matches the serial order. One without OpenMP.
+/// Slice count for a call. An explicit count set by `ThreadCount`,
+/// `ThreadBinding` or `setThreadCount` wins. Otherwise this is
+/// OMP_NUM_THREADS, read on every call: unset, empty, or non-positive is
+/// one slice, so a call that does not ask for threads matches the serial
+/// order. One without OpenMP, even when an explicit count is set: a build
+/// without OpenMP has no team, and honouring the count would take the
+/// multi-slice serial path and move the bits. `explicitThreadCount` still
+/// reports the request.
 [[nodiscard]] int threadsRequested();
 
 /// Atoms below which a call without a threshold of its own, such as a
@@ -136,8 +141,99 @@ struct TeamFrom {
 
 /// The team a region without a thread count would ask for, from
 /// omp_set_num_threads or the first OMP_NUM_THREADS entry. One without
-/// OpenMP. The runtime may still start fewer.
+/// OpenMP. The runtime may still start fewer. Long-range calls use this
+/// when the caller has not set an explicit count, which is today's
+/// default: every core, not the one slice of an unset OMP_NUM_THREADS.
 [[nodiscard]] int poolThreads() noexcept;
+
+/// Explicit count when one is set, otherwise `fallback` (at least one).
+/// One without OpenMP, for the same reason as `threadsRequested`. One
+/// inside a parallel region the caller opened: the caller's team already
+/// holds the threads, so a call made on one of them walks its chunks on
+/// that thread instead of opening a nested team.
+[[nodiscard]] int activeThreads(int fallback) noexcept;
+
+/// True on a thread of an active parallel region the caller opened. False
+/// without OpenMP, and in a region the runtime ran on one thread.
+[[nodiscard]] bool inCallerTeam() noexcept;
+
+/// How many fixed chunks cover `n` items. The count depends on `n` and
+/// `block`, never on the team: one chunk for a single item, otherwise
+/// ceil(n / block), and never more than 64. A reduction that accumulates
+/// one partial per chunk and folds those partials in chunk order has the
+/// same bits on any team that walks the same chunks.
+[[nodiscard]] inline int fixedChunks(std::size_t n,
+                                     std::size_t block = 256) noexcept {
+  if (n <= 1) {
+    return 1;
+  }
+  if (block < 1) {
+    block = 1;
+  }
+  std::size_t chunks = (n + block - 1) / block;
+  constexpr std::size_t kCap = 64;
+  if (chunks > kCap) {
+    chunks = kCap;
+  }
+  if (chunks > static_cast<std::size_t>(0x7fffffff)) {
+    chunks = static_cast<std::size_t>(0x7fffffff);
+  }
+  return static_cast<int>(chunks);
+}
+
+/// Chunks a row or cell team uses. One thread, or a single item, keeps
+/// one chunk, so the serial loop is the one it runs today. More than one
+/// thread uses `fixedChunks`, which does not follow the thread count.
+[[nodiscard]] inline int teamChunks(std::size_t nitems, int nthreads) noexcept {
+  if (nthreads <= 1 || nitems <= 1) {
+    return 1;
+  }
+  return fixedChunks(nitems);
+}
+
+/// Sets the sticky explicit count for this thread. Throws
+/// std::invalid_argument when `threads` is below 1. There is no clamp.
+/// `clearThreadCount` removes it. A `ThreadCount` or a potential
+/// `ThreadBinding` on the stack wins over the sticky value for as long
+/// as it is alive.
+void setThreadCount(int threads);
+void clearThreadCount() noexcept;
+
+/// The explicit count that would apply now: the innermost `ThreadCount`
+/// or `ThreadBinding`, else the sticky value, else 0. This reports the
+/// request even without OpenMP, where `threadsRequested` stays 1.
+[[nodiscard]] int explicitThreadCount() noexcept;
+
+/// While alive, this thread's explicit count is `threads`, above the
+/// sticky value and above any potential binding. Throws
+/// std::invalid_argument when `threads` is below 1, and std::logic_error
+/// when more than 32 counts are nested.
+class ThreadCount {
+public:
+  explicit ThreadCount(int threads);
+  ~ThreadCount();
+  ThreadCount(const ThreadCount &) = delete;
+  ThreadCount &operator=(const ThreadCount &) = delete;
+
+private:
+  bool pushed_ = false;
+};
+
+/// While alive, and when `threads` is at least 1, this thread's explicit
+/// count is `threads` unless a `ThreadCount` is already on the stack
+/// (the call scope wins and is not overridden). Zero or less binds
+/// nothing, which is a potential that has not opted in. Throws
+/// std::logic_error when more than 32 counts are nested.
+class ThreadBinding {
+public:
+  explicit ThreadBinding(int threads);
+  ~ThreadBinding();
+  ThreadBinding(const ThreadBinding &) = delete;
+  ThreadBinding &operator=(const ThreadBinding &) = delete;
+
+private:
+  bool pushed_ = false;
+};
 
 /// Sets the team `poolThreads` reports and fixes it against dynamic
 /// adjustment. Shrinking it first lets the idle workers go.
@@ -177,6 +273,21 @@ private:
 namespace detail {
 /// Threads to request for `wanted` slices or ranks under this thread's cap.
 [[nodiscard]] int teamFor(int wanted) noexcept;
+
+/// Per-potential opt-in count. Zero clears. Kept out of line so every
+/// dynamically linked caller and librgpot use the same synchronized map.
+#if defined(__GNUC__) || defined(__clang__)
+#define RGPOT_POT_THREADS_API __attribute__((visibility("default")))
+#else
+#define RGPOT_POT_THREADS_API
+#endif
+RGPOT_POT_THREADS_API void notePotentialThreads(const void *key,
+                                                int count) noexcept;
+[[nodiscard]] RGPOT_POT_THREADS_API int
+lookupPotentialThreads(const void *key) noexcept;
+
+#undef RGPOT_POT_THREADS_API
+
 /// Counts a region for teamsOpened.
 void countTeam() noexcept;
 
@@ -275,6 +386,71 @@ template <typename Body> void forEachSlice(int nslices, Body &&body) {
 #endif
   for (int slice = 0; slice < nslices; ++slice) {
     body(slice);
+  }
+}
+
+/// Runs `body(chunk)` once for every chunk in `[0, nchunks)`. The team
+/// asked for is `team_request` after this thread's cap, and never more
+/// than `nchunks`. A request of one walks the chunks on the calling
+/// thread, so a one-thread caller does not start a region. The runtime
+/// may start fewer threads than requested; each thread then takes a
+/// stride of the chunks. Partials indexed by chunk, folded in chunk
+/// order, do not depend on how many threads the runtime started.
+template <typename Body>
+void forEachChunk(int nchunks, int team_request, Body &&body) {
+  if (nchunks < 1) {
+    return;
+  }
+#if defined(_OPENMP)
+  int request = 1;
+  if (nchunks > 1 && team_request > 1) {
+    const int capped = team_request < nchunks ? team_request : nchunks;
+    request = detail::teamFor(capped);
+  }
+  if (request > 1) {
+    detail::countTeam();
+#if defined(RGPOT_GOMP_TSAN)
+    detail::gompParallel(request, [&] {
+      const int team = omp_get_num_threads();
+      for (int chunk = omp_get_thread_num(); chunk < nchunks; chunk += team) {
+        body(chunk);
+      }
+    });
+#else
+#if defined(RGPOT_TSAN_ACTIVE)
+    static std::atomic<std::uint64_t> tsan_fork_epoch{0};
+    auto tsan_join =
+        std::make_unique<std::atomic<int>[]>(static_cast<std::size_t>(request));
+#endif
+#pragma omp parallel num_threads(request)
+    {
+#if defined(RGPOT_TSAN_ACTIVE)
+#pragma omp master
+      tsan_fork_epoch.fetch_add(1, std::memory_order_acq_rel);
+#pragma omp barrier
+      (void)tsan_fork_epoch.load(std::memory_order_acquire);
+#endif
+      const int team = omp_get_num_threads();
+      for (int chunk = omp_get_thread_num(); chunk < nchunks; chunk += team) {
+        body(chunk);
+      }
+#if defined(RGPOT_TSAN_ACTIVE)
+      tsan_join[static_cast<std::size_t>(omp_get_thread_num())].store(
+          1, std::memory_order_release);
+#endif
+    }
+#if defined(RGPOT_TSAN_ACTIVE)
+    for (int thread = 0; thread < request; ++thread) {
+      (void)tsan_join[static_cast<std::size_t>(thread)].load(
+          std::memory_order_acquire);
+    }
+#endif
+#endif
+    return;
+  }
+#endif
+  for (int chunk = 0; chunk < nchunks; ++chunk) {
+    body(chunk);
   }
 }
 

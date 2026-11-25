@@ -61,6 +61,13 @@ struct SumComponent {
  * A child that throws stops the call: the exception reaches the caller
  * unchanged, after the failure is logged with the child's name.
  *
+ * @c setThreadCount on the sum binds that count on the calling thread for
+ * the whole call, so every child reads it as the explicit count. A child
+ * with a count of its own keeps it, a @c rgpot::ThreadCount already on the
+ * stack wins over both, and a sum with no count leaves each child at its
+ * own default. The count is not copied into the children: clearing it on
+ * the sum takes it away from all of them at once.
+ *
  * Setting @c RGPOT_SUM_LOG in the environment writes one line per child
  * and call to stderr; @c setLogSink replaces that destination.
  */
