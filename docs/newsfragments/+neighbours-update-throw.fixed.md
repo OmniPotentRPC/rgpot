@@ -1,5 +1,3 @@
-<!-- Copyright 2023--present rgpot developers -->
-
 A `Neighbours::update` that rejects a cell or a coordinate, or finds the
 generation counter exhausted, throws before anything changes, so a built
 object keeps its list and generation and a default-constructed object stays

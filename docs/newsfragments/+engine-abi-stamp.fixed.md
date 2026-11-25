@@ -1,5 +1,3 @@
-<!-- Copyright 2023--present rgpot developers -->
-
 Every engine plugin built from this repository now exports
 `rgpot_engine_abi_stamp`, which reports the engine ABI major, minor and layout
 revision. The stamp is defined once, in `CppCore/rgpot/engine/EngineAbiStamp.cc`,

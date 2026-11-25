@@ -1,5 +1,3 @@
-<!-- Copyright 2023--present rgpot developers -->
-
 `meson setup -Dwith_rust_core=true` now works in a clean build directory. The
 Rust library is built by a target that ninja runs before anything links it, so
 setup no longer needs a prior cargo run. With the fast pair list on,

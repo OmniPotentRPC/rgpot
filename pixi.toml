@@ -262,6 +262,7 @@ check-header-drift = { cmd = "bash tools/check_header_drift.sh", description = "
 header-drift = { cmd = "bash scripts/check_header_drift.sh", description = "Fail when rgpot-core/include/rgpot.h differs from the header cbindgen regenerates" }
 doccheck = { cmd = "python docs/doccheck.py all", description = "Check reference entries, facts and code blocks in the docs against the source (add --build-dir DIR to run the examples)" }
 towncrier-draft = { cmd = "uvx towncrier build --draft", description = "Preview release notes" }
+news-fragments-check = { cmd = "python scripts/check_news_fragments.py", description = "Fail when a news fragment carries a copyright line, a comment block or a leading list marker (add --fix to rewrite)" }
 towncrier-build = { cmd = "uvx towncrier build", description = "Build release notes into CHANGELOG.md" }
 
 # Prose / link hygiene (mirrors orchestrator docs_snapper / docs_lychee jobs).
