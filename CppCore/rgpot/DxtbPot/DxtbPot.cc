@@ -7,7 +7,10 @@
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/engine/EngineError.hpp"
 
+#include <algorithm>
 #include <cerrno>
+#include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -16,8 +19,10 @@
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -35,6 +40,9 @@ constexpr std::uint32_t kHvp = 3;
 constexpr std::uint32_t kThreads = 4;
 constexpr std::uint32_t kShutdown = 5;
 constexpr std::size_t kHeaderSize = 20;
+/// How long shutdown waits for the worker to acknowledge, close its end and
+/// exit before the host kills it.
+constexpr std::chrono::milliseconds kShutdownGrace{3000};
 
 void appendU32(std::vector<unsigned char> &out, std::uint32_t value) {
   for (int shift = 0; shift < 32; shift += 8) {
@@ -85,6 +93,21 @@ bool peerClosedErrno(int err) {
   return err == EPIPE || err == ECONNRESET;
 }
 
+void setSocketTimeout(int fd, std::chrono::milliseconds timeout) {
+  const auto ms = std::max<std::chrono::milliseconds::rep>(timeout.count(), 1);
+  timeval tv{};
+  tv.tv_sec = static_cast<decltype(tv.tv_sec)>(ms / 1000);
+  tv.tv_usec = static_cast<decltype(tv.tv_usec)>((ms % 1000) * 1000);
+  (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  (void)setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
+std::chrono::milliseconds
+remaining(std::chrono::steady_clock::time_point deadline) {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+      deadline - std::chrono::steady_clock::now());
+}
+
 uint64_t paramsKeyFor(const DxtbConfig &config, uint64_t kernelVersion) {
   Fnv1a hash;
   hash.str("rgpot::DxtbPot");
@@ -118,8 +141,10 @@ public:
   Worker &operator=(const Worker &) = delete;
 
   void stop(bool graceful) noexcept {
+    const auto deadline = std::chrono::steady_clock::now() + kShutdownGrace;
     if (fd_ >= 0) {
       if (graceful) {
+        setSocketTimeout(fd_, kShutdownGrace);
         try {
           // A peer that vanishes while this request is written or read has
           // already closed. That is the end of shutdown, not a failed call.
@@ -130,7 +155,8 @@ public:
         // worker's last write into EPIPE.
         ::shutdown(fd_, SHUT_WR);
         unsigned char extra[256];
-        while (true) {
+        while (remaining(deadline).count() > 0) {
+          setSocketTimeout(fd_, remaining(deadline));
           const ssize_t n = ::recv(fd_, extra, sizeof(extra), 0);
           if (n < 0 && errno == EINTR) {
             continue;
@@ -144,9 +170,7 @@ public:
       fd_ = -1;
     }
     if (pid_ > 0) {
-      int status = 0;
-      while (waitpid(pid_, &status, 0) < 0 && errno == EINTR) {
-      }
+      reap(deadline);
     }
     pid_ = -1;
   }
@@ -200,6 +224,25 @@ private:
   DxtbConfig config_;
   int fd_ = -1;
   pid_t pid_ = -1;
+
+  /// Wait for the worker until @p deadline, then kill it. A worker that
+  /// ignores shutdown must not hang the host's destructor.
+  void reap(std::chrono::steady_clock::time_point deadline) noexcept {
+    int status = 0;
+    while (true) {
+      const pid_t done = waitpid(pid_, &status, WNOHANG);
+      if (done == pid_ || (done < 0 && errno != EINTR)) {
+        return;
+      }
+      if (remaining(deadline).count() <= 0) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    (void)kill(pid_, SIGKILL);
+    while (waitpid(pid_, &status, 0) < 0 && errno == EINTR) {
+    }
+  }
 
   static std::uint32_t checkedAtoms(const ForceInput &in) {
     if (in.nAtoms == 0 ||

@@ -763,6 +763,7 @@ exec(compile(source, "<dxtb-worker>", "exec"), {{"__name__": "__main__"}})
 FAKE_WORKER = r'''
 import json
 import os
+import signal
 import struct
 import sys
 import time
@@ -787,7 +788,20 @@ def reply(status, payload=b""):
     out.flush()
 
 
+def hang():
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    while True:
+        time.sleep(60)
+
+
 def shutdown():
+    if MODE == "hang-shutdown":
+        log(event="shutdown", result="hang")
+        hang()
+    if MODE == "linger":
+        reply(0)
+        log(event="shutdown", result="linger")
+        hang()
     if MODE == "drop":
         log(event="shutdown", result="drop")
         os._exit(0)
@@ -833,6 +847,7 @@ while True:
         )
         log(
             event="configure",
+            pid=os.getpid(),
             method=method,
             uhf=uhf,
             maxiter=maxiter,
@@ -1184,3 +1199,30 @@ def test_shutdown_treats_a_closed_peer_as_clean_and_a_live_drop_as_an_error(tmp_
         finally:
             engine.close()
         assert not any(ev.get("result") == "broken-pipe" for ev in _events(log_path))
+
+
+def _reaped(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    return False
+
+
+@pytest.mark.parametrize("mode", ["hang-shutdown", "linger"])
+def test_shutdown_kills_a_worker_that_does_not_exit(tmp_path, mode):
+    """A worker that never acknowledges, or never exits, cannot hang destroy."""
+    wrapper, log_path = fake_worker(tmp_path, mode, mode=mode)
+    engine = Engine(
+        os.environ["RGPOT_ENGINE_DXTB"],
+        "dxtb",
+        "gfn1",
+        library=str(wrapper),
+    )
+    (pid,) = [ev["pid"] for ev in configure_events(log_path)]
+    started = time.monotonic()
+    engine.close()
+    elapsed = time.monotonic() - started
+    assert elapsed < 30.0, elapsed
+    assert any(ev.get("event") == "shutdown" for ev in _events(log_path))
+    assert _reaped(pid)
