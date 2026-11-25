@@ -62,8 +62,10 @@ pub fn force_input_expectation(uses_orbital_key: bool) -> Expectation {
 
 /// Expectation for `Potential.neighbours`: minor 3 and the neighbors operation.
 pub fn neighbours_expectation() -> Expectation {
-    let mut want = Expectation::default();
-    want.protocol_minor_min = NEIGHBORS_INTRODUCED_MINOR;
+    let mut want = Expectation {
+        protocol_minor_min: NEIGHBORS_INTRODUCED_MINOR,
+        ..Default::default()
+    };
     want.required_operations.push(Operation::Neighbors);
     want
 }

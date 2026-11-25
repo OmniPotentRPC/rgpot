@@ -1113,7 +1113,7 @@ mod tests {
                 Ok(value) => value,
                 Err(error) => return capnp::capability::Promise::err(error),
             };
-            let marker = if pos.len() == 0 { 0.0 } else { pos.get(0) };
+            let marker = if pos.is_empty() { 0.0 } else { pos.get(0) };
             let mut list = results.get().init_neighbors();
             list.set_status(0);
             list.set_message("ok");
