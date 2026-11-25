@@ -97,7 +97,9 @@ std::string renderInput(const InputSpec &spec, std::size_t n_atoms,
   text += '\n';
   std::ostringstream out;
   out.imbue(std::locale::classic());
-  out << "%maxcore " << spec.maxcore_mb << '\n';
+  if (spec.maxcore_mb > 0) {
+    out << "%maxcore " << spec.maxcore_mb << '\n';
+  }
   if (spec.nprocs > 1) {
     out << "%pal nprocs " << spec.nprocs << " end\n";
   }
