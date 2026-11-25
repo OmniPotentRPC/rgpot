@@ -17,7 +17,7 @@ import pytest
 rgpot = pytest.importorskip("rgpot")
 
 ENGINE = os.environ.get("RGPOT_XTB_ENGINE", "")
-pytestmark = pytest.mark.skipif(not ENGINE, reason="RGPOT_XTB_ENGINE is not set")
+needs_engine = pytest.mark.skipif(not ENGINE, reason="RGPOT_XTB_ENGINE is not set")
 
 # A dissociated ammonia tetramer whose GFN2 SCC does not converge at 300 K,
 # even in 500 iterations; the same geometry as CppCore/tests/XTBPotTest.cc.
@@ -61,6 +61,7 @@ def make(scc_rescue=True):
     )
 
 
+@needs_engine
 def test_rescued_scc_is_flagged():
     pot = make()
     assert pot.reports_eval_flags
@@ -76,6 +77,7 @@ def test_rescued_scc_is_flagged():
     assert pot.last_eval_flags == 0
 
 
+@needs_engine
 def test_rescue_off_raises_scc_not_converged():
     pot = make(scc_rescue=False)
     assert not pot.scc_rescue
@@ -90,10 +92,23 @@ def test_rescue_off_raises_scc_not_converged():
     assert pot.last_scc_rescued
 
 
+def revision_is_valid(revision):
+    # A build outside a git checkout without RGPOT_SOURCE_REVISION stamps
+    # no revision; engine_revision is then empty.
+    return isinstance(revision, str) and (revision == "" or revision.isalnum())
+
+
+@pytest.mark.parametrize(
+    ("revision", "valid"),
+    [("", True), ("0123456789ab", True), ("0123 4567", False), (None, False)],
+)
+def test_revision_rule(revision, valid):
+    assert revision_is_valid(revision) is valid
+
+
+@needs_engine
 def test_engine_names_its_revision():
-    revision = make().engine_revision
-    assert isinstance(revision, str)
-    assert revision.isalnum()
+    assert revision_is_valid(make().engine_revision)
 
 
 def share_one_handle(rounds=20):
@@ -123,6 +138,7 @@ def share_one_handle(rounds=20):
         raise errors[0]
 
 
+@needs_engine
 def test_two_threads_share_one_handle():
     # A thread that waited for the handle while holding the GIL used to
     # deadlock the call that needed the GIL back. A hung interpreter cannot
