@@ -649,7 +649,7 @@ if not get_option('with_rpc_client_only')
         rgpot_deps += [ptlrpc_hdr_dep]
         _rpc_whole += [ptlrpc]
     endif
-    _rgpot_link_args = []
+    _rgpot_link_args = fastnlist_export_args
     if has_fortran
         _rgpot_link_args += _fortran_hide_args
     endif
@@ -687,6 +687,7 @@ if not get_option('with_rpc_client_only')
         version: meson.project_version(),
         soversion: rgpot_cxx_soversion,
         install: not meson.is_subproject(),
+        kwargs: fastnlist_umbrella_kwargs,
     )
 
     # 72 rgpot_* exports when the rust archive is linked normally, 126 when
