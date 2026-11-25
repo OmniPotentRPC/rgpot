@@ -27,7 +27,8 @@
  * converged orbitals are carried forward instead: the .gbw of one call is
  * copied to a second name and handed to the next through `%moinp` and
  * `! MORead`. Without a .gbw, or after a failure or a change of
- * composition, the next call still starts from ORCA's own guess.
+ * composition, the next call still starts from ORCA's own guess. With
+ * restart on, the result cache is not used (see setCache).
  */
 
 #include "rgpot/Potential.hpp"
@@ -87,7 +88,8 @@ struct ORCAConfig {
   int maxcore_mb = 1024;
   /// Start each call from the orbitals of the previous one, through
   /// `! MORead`. Off by default, so every call starts from ORCA's own guess
-  /// and its result does not depend on the calls before it.
+  /// and its result does not depend on the calls before it. With restart
+  /// on, ORCAPot does not use a result cache it is given.
   bool restart = false;
   /// Directory under which the per-instance working directory is created.
   /// Empty uses the system temporary directory.
@@ -149,6 +151,16 @@ public:
   /// ORCA installation, or by the same one after it was replaced, is
   /// never served.
   [[nodiscard]] uint64_t paramsKey() const noexcept override;
+
+#ifdef RGPOT_HAS_CACHE
+  /// With ORCAConfig::restart on, the result cache is not used: a call it
+  /// served would run no ORCA and leave the orbitals of an earlier call as
+  /// the guess of the next one, so that call would depend on which calls
+  /// happened to be cached. Without restart the cache is used as given.
+  void setCache(rgpot::cache::PotentialCache *c) override {
+    Potential<ORCAPot>::setCache(m_config.restart ? nullptr : c);
+  }
+#endif
 
   /// Forget the stored orbitals. The next call starts from ORCA's guess.
   void reset();

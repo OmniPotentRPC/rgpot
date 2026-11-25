@@ -157,6 +157,11 @@ A symlink and its target share cached results.
 Two installations, a binary replaced in place, two charges or two multiplicities
 do not.
 
+With =restart= on, =ORCAPot= does not use a result cache it is given.
+A call served from the cache runs no ORCA and leaves the orbitals of an earlier
+call in place, so the next call would start from a guess that depends on which
+geometries happened to be cached.
+
 ** Box
 
 ORCA has no periodic boundary conditions, so a box is only padding around the
@@ -276,9 +281,10 @@ they are not output of an ORCA run.
 The test then checks the unit conversion, the fresh guess by default, the
 restart, the fall-back to a fresh guess, the error paths (including a stale
 =.engrad= that cannot be removed and an unconverged SCF), the cache key across
-paths, modification times, charges and multiplicities, symlink executables,
-comma-decimal locales, the box that =rgpot.ase= builds for a cluster and the
-rejection of a box with a closer image, including skewed cells.
+paths, modification times, charges and multiplicities, symlink executables, a
+restart sequence with a result cache, comma-decimal locales, the box that
+=rgpot.ase= builds for a cluster and the rejection of a box with a closer
+image, including skewed cells.
 =tests/python/test_ase_orca_box.py= runs =RgpotCalculator= over a non-periodic
 stand-in that applies the same box rule, since =ORCAPot= has no Python class.
 One test case runs a real ORCA and is skipped, with the message "orca is not on

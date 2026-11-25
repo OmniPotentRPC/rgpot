@@ -472,7 +472,8 @@ They do not pin an ORCA energy.
   =%pal nprocs=, a positive =maxcore_mb= becomes =%maxcore=, and =charge= and
   =multiplicity= go on the =* xyz= line.
   =restart= turns the =%moinp= and =MORead= reuse of the previous =.gbw= on and
-  off; off, every call starts from ORCA's own guess.
+  off; off, every call starts from ORCA's own guess, and on, =rgpot::ORCAPot=
+  does not use a result cache it is given.
   The input always carries =%scf ConvForced true end= (section 2.6.1 of the ORCA
   6.1 manual).
   =timeout_s= is the time to wait for the =orca= process.
@@ -520,6 +521,7 @@ explicit ORCAPot(const ORCAConfig &config);
   =! MORead=.
   A call without a =.gbw=, after a failure, after =reset()=, or with other
   atomic numbers starts from ORCA's own guess.
+  With =restart= on, a result cache passed to =setCache= is not used.
 - Errors :: the constructor throws =std::invalid_argument= in the cases of
   =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or the
   directory cannot be made.
