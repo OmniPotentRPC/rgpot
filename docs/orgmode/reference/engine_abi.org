@@ -66,8 +66,8 @@ dftd3, dftd4, ExprPot, XcKernel and CP2K have no engine library.
 
 Every library above except
 =libpotlibc_engine= and =libcoupled_well_engine= exports =rgpot_engine_force_batch=,
-=rgpot_engine_hvp=, =rgpot_engine_taylor_jet=, =rgpot_engine_hessian=,
-=rgpot_engine_abi_stamp=,
+=rgpot_engine_hvp=,
+=rgpot_engine_taylor_jet=, =rgpot_engine_hessian=, =rgpot_engine_abi_stamp=,
 =rgpot_engine_abi_compatible=, =rgpot_engine_name=, =rgpot_engine_version=, =rgpot_engine_model_digest=,
 =rgpot_engine_caps=,
 =rgpot_engine_last_error=, =rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=, =rgpot_engine_select_orbitals=,
@@ -566,8 +566,8 @@ Optional symbol.
 Reading does not clear the message.
 A successful =rgpot_engine_force=,
 =rgpot_engine_force_batch=, =rgpot_engine_hvp=, =rgpot_engine_taylor_jet=,
-=rgpot_engine_hessian=,
-=rgpot_engine_set_num_threads=, =rgpot_engine_set_charge_spin=,
+=rgpot_engine_hessian=, =rgpot_engine_set_num_threads=,
+=rgpot_engine_set_charge_spin=,
 =rgpot_engine_select_orbitals= or =rgpot_engine_copy_orbitals= clears it.
 Under concurrent calls on one handle, a success in one call may clear a failure
 message written by another before the reader observes it.
@@ -969,7 +969,8 @@ int rgpot_engine_hessian(RgpotEnginePot *pot, long nAtoms,
 - Errors :: returns
   =RGPOT_ENGINE_ERR_INVALID= for a NULL pointer, an invalid atom count, an overflowing dimension, or an overlapping output; =RGPOT_ENGINE_ERR_UNSUPPORTED=
   when the potential does not advertise
-  =analytic_hessian=; and =RGPOT_ENGINE_ERR_EVAL= when the implementation throws.
+  =analytic_hessian=; and =RGPOT_ENGINE_ERR_EVAL= when the implementation
+  throws.
   The reason is available from =rgpot_engine_last_error=.
 
 Optional symbol.
@@ -1672,14 +1673,15 @@ a host that does call =dlclose= on them leaves them mapped.
   The engines also accept the version-1 layouts of 48 and 144 bytes when their
   =version= field is set to the =_V1= constant.
 - =CoordTransformFn=, =AbiVersionFn=, =AvailableFn=, =AbiStampFn=, =CreateFn=,
-  =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =TaylorJetFn=, =HessianFn=, =CapsFn=,
-  =LastErrorFn=, =LastComponentsFn=, =ComponentNameFn=, =ModelStateFn=,
-  =SetCallbacksFn=, =HintFn=, =UnloadPolicyFn= :: =extern "C"= function-pointer
-  types matching the C declarations above.
+  =DestroyFn=, =ForceFn=, =ForceBatchFn=, =HvpFn=, =TaylorJetFn=, =HessianFn=,
+  =CapsFn=, =LastErrorFn=, =LastComponentsFn=, =ComponentNameFn=,
+  =ModelStateFn=, =SetCallbacksFn=, =HintFn=, =UnloadPolicyFn= :: =extern "C"=
+  function-pointer types matching the C declarations above.
 - =EngineSymbols= :: Resolved symbol table holding required
   (=abi_version=, =create=, =destroy=, =force=) and optional (=available=, =abi_stamp=,
-  =force_batch=, =hvp=, =taylor_jet=, =hessian=, =caps=, =last_error=, =last_components=,
-  =component_name=, =model_state=, =set_callbacks=, =hint=) function pointers.
+  =force_batch=, =hvp=, =taylor_jet=, =hessian=, =caps=,
+  =last_error=, =last_components=, =component_name=, =model_state=,
+  =set_callbacks=, =hint=) function pointers.
   The struct is
   =#[non_exhaustive]=: build it with =EngineSymbols::new= for the four required symbols and one =with_*=
   method per optional symbol, such as =with_available= or =with_hint=.
@@ -1759,10 +1761,9 @@ a host that does call =dlclose= on them leaves them mapped.
 - =EnginePotential::caps()= / =EnginePotential::hvp(&request, direction)= /
   =EnginePotential::hessian(&request)= :: Reads the size-prefixed engine
   capability structure and dispatches the exact product or dense Hessian.
-  A missing symbol, a false
-  capability bit, or =RGPOT_ENGINE_ERR_UNSUPPORTED= returns
-  =EngineError::Unsupported= (retaining the engine's last-error message) without
-  a finite-difference fallback.
+  A missing symbol, a false capability bit, or =RGPOT_ENGINE_ERR_UNSUPPORTED=
+  returns =EngineError::Unsupported= (retaining the engine's last-error message)
+  without a finite-difference fallback.
 - =EnginePotential::taylor_jet(&JetBatchRequest, order)= :: Dispatches =rgpot_engine_taylor_jet=
   for a uniform batch in one engine call and returns a =GradientJet=: =order()=,
   =n_systems()=, =derivative(k)= (every system, =k= in =1..=order=; block 0 is the Hessian-vector product), =system_derivative(k, s)=
