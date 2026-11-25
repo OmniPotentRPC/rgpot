@@ -723,6 +723,62 @@ TEST_CASE("XTBDlopen flags a rescued SCC and fails it with the rescue off",
     REQUIRE(std::isalnum(static_cast<unsigned char>(c)));
 }
 
+// The wavefunction of equilibrium water is a worse guess for water with
+// both bonds doubled than xtb's own guess: GFN2 at accuracy 1 converges
+// from xtb's guess within 10 iterations but not from the carried-over one
+// (the window is 8 to 11 with xtb 6.7.1). The fresh retry converges, so
+// the call succeeds with SccRetried and the energy of a fresh start.
+template <typename Factory> static void check_scc_retry_flag(Factory make) {
+  AtomMatrix water(3, 3);
+  std::vector<int> water_z;
+  std::array<std::array<double, 3>, 3> box{};
+  fill_water(water, water_z, box);
+  AtomMatrix stretched = water;
+  for (size_t i = 1; i < 3; ++i)
+    for (size_t j = 0; j < 3; ++j)
+      stretched(i, j) = water(0, j) + 2.0 * (water(i, j) - water(0, j));
+
+  rgpot::XTBConfig cfg;
+  cfg.accuracy = 1.0;
+  cfg.electronic_temperature = 300.0;
+  cfg.max_iterations = 10;
+  cfg.warm_move = 100.0;
+  cfg.warm_min_gap = 0.0;
+
+  auto fresh = make(cfg);
+  auto [e_fresh, f_fresh, v_fresh] = (*fresh)(stretched, water_z, box);
+  (void)v_fresh;
+  REQUIRE(fresh->lastEvalFlags() == 0);
+
+  auto pot = make(cfg);
+  (void)(*pot)(water, water_z, box);
+  REQUIRE(pot->lastEvalFlags() == 0);
+  auto [energy, forces, variance] = (*pot)(stretched, water_z, box);
+  (void)variance;
+  REQUIRE(pot->lastEvalFlags() == rgpot::eval_flags::SccRetried);
+  REQUIRE_FALSE(pot->reusedWavefunction());
+  REQUIRE_THAT(energy, WithinAbs(e_fresh, 1.0e-9));
+  require_close_forces(forces, f_fresh, 1.0e-9);
+
+  // The flag belongs to that call only.
+  (void)(*pot)(stretched, water_z, box);
+  REQUIRE(pot->lastEvalFlags() == 0);
+}
+
+TEST_CASE("XTBPot flags an SCC that converged only from a fresh guess",
+          "[xtb][linked][scc][warm]") {
+  check_scc_retry_flag([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBPot>(cfg);
+  });
+}
+
+TEST_CASE("XTBDlopen flags an SCC that converged only from a fresh guess",
+          "[xtb][dlopen][scc][warm]") {
+  check_scc_retry_flag([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Hot clusters: a session's energy must not depend on its call history
 // ---------------------------------------------------------------------------
