@@ -608,6 +608,41 @@ if(_on)
                 "RGPOT_ENGINE_STUB_MODEL=${CMAKE_CURRENT_BINARY_DIR}/engine_stub_model.bin")
 endif()
 
+rgpot_test_enabled(md_session_abi_capacity _on)
+if(_on)
+  add_library(md_session_fake_engine SHARED
+              CppCore/tests/md_session_fake_engine.c)
+  target_include_directories(md_session_fake_engine PRIVATE
+                             "${RGPOT_TEST_ROOT}/CppCore")
+  add_library(md_session_resident_engine SHARED
+              CppCore/tests/md_session_fake_engine.c)
+  target_include_directories(md_session_resident_engine PRIVATE
+                             "${RGPOT_TEST_ROOT}/CppCore")
+  target_compile_definitions(md_session_resident_engine PRIVATE
+                             FIXTURE_UNLOAD_POLICY=RGPOT_ENGINE_UNLOAD_RESIDENT)
+  add_library(md_session_unload_safe_engine SHARED
+              CppCore/tests/md_session_fake_engine.c)
+  target_include_directories(md_session_unload_safe_engine PRIVATE
+                             "${RGPOT_TEST_ROOT}/CppCore")
+  target_compile_definitions(md_session_unload_safe_engine PRIVATE
+                             FIXTURE_UNLOAD_POLICY=RGPOT_ENGINE_UNLOAD_SAFE)
+  add_executable(md_session_abi_capacity
+                 CppCore/tests/md_session_abi_capacity.cpp)
+  target_include_directories(md_session_abi_capacity PRIVATE
+                             "${RGPOT_TEST_ROOT}/CppCore"
+                             "${RGPOT_TEST_ROOT}/include")
+  target_compile_definitions(md_session_abi_capacity PRIVATE
+                             ${_rgpot_test_definitions})
+  target_compile_features(md_session_abi_capacity PRIVATE cxx_std_20)
+  target_link_libraries(md_session_abi_capacity PRIVATE
+                        ${_rgpot_test_libs} ${CMAKE_DL_LIBS})
+  rgpot_add_test(md_session_abi_capacity
+    COMMAND md_session_abi_capacity
+            $<TARGET_FILE:md_session_fake_engine>
+            $<TARGET_FILE:md_session_resident_engine>
+            $<TARGET_FILE:md_session_unload_safe_engine>)
+endif()
+
 rgpot_test_enabled(external_engine_refcount _on)
 if(_on)
   add_library(external_refcount_engine SHARED

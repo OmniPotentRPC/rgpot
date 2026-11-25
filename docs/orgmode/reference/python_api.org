@@ -1897,3 +1897,253 @@ fields_from_density(chi, dchi, density, lapl_chi=None, hess_chi=None)
 - Errors :: =density= not =(nbf, nbf)= raises =ValueError=; the shape errors of
   =contract= apply to the other arrays.
   =chi= or =density= of the wrong dtype or order raises =TypeError=.
+
+*** =rgpot.MdSession=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.MdSession(engine, spec='', engine_path='', options='')
+#+end_src
+
+- Inputs :: =engine= is the backend key (for example ="openmm"=) used when
+  =engine_path= is empty to resolve =RGPOT_<ENGINE>_ENGINE=, =<ENGINE>_ENGINE=,
+  or =lib<engine>_engine.so=.
+  =spec= is the serialized system specification as =bytes= or =str=.
+  =engine_path= overrides the plugin path when non-empty.
+  =options= passes backend options (for example ="Reference"= or ="CPU"=).
+  Also supports Python context-manager usage
+  (=with rgpot.MdSession(...) as s:=).
+- Units :: positions, box vectors and planes in Angstrom, velocities in
+  Angstrom/ps, forces in eV/Angstrom, energies and =k_t= in eV, time steps in
+  ps, friction in 1/ps, and masses in amu.
+- Outputs :: an in-process molecular-dynamics session backed by the loaded
+  engine plugin.
+- Errors :: a missing library, unknown symbol, or failed engine creation raises
+  =RuntimeError=.
+
+*** =rgpot.MdSession.n_atoms=
+
+- Inputs :: none; a read-only property.
+- Units :: dimensionless atom count.
+- Outputs :: integer atom count of the session.
+- Errors :: calling after =close()= raises =RuntimeError=.
+
+*** =rgpot.MdSession.close=
+
+#+attr_rgpot: signature
+#+begin_src python
+close()
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =None=; destroys the underlying C session handle and releases
+  non-resident engine resources.
+  Calling =close()= more than once is a no-op.
+- Errors :: concurrent access from another thread raises =RuntimeError=.
+
+*** =rgpot.MdSession.masses=
+
+#+attr_rgpot: signature
+#+begin_src python
+masses()
+#+end_src
+
+- Inputs :: none.
+- Units :: amu.
+- Outputs :: a new float64 C-contiguous NumPy array of shape =(n_atoms,)=.
+- Errors :: a closed session or engine failure raises =RuntimeError=.
+
+*** =rgpot.MdSession.set_periodic_box=
+
+#+attr_rgpot: signature
+#+begin_src python
+set_periodic_box(box)
+#+end_src
+
+- Inputs :: =box=, a float64 C-contiguous array of shape =(3, 3)= with one cell
+  vector per row.
+- Units :: Angstrom.
+- Outputs :: =None=.
+- Errors :: wrong dtype or contiguity raises =TypeError=; wrong shape raises
+  =ValueError=; an engine without periodic box support or closed session raises
+  =RuntimeError=.
+
+*** =rgpot.MdSession.periodic_box=
+
+#+attr_rgpot: signature
+#+begin_src python
+periodic_box()
+#+end_src
+
+- Inputs :: none.
+- Units :: Angstrom.
+- Outputs :: a new float64 C-contiguous NumPy array of shape =(3, 3)=.
+- Errors :: an engine without periodic box support or closed session raises
+  =RuntimeError=.
+
+*** =rgpot.MdSession.set_positions=
+
+#+attr_rgpot: signature
+#+begin_src python
+set_positions(positions)
+#+end_src
+
+- Inputs :: =positions=, a float64 C-contiguous array of shape =(n_atoms, 3)=.
+- Units :: Angstrom.
+- Outputs :: =None=.
+- Errors :: wrong dtype or contiguity raises =TypeError=; wrong shape raises
+  =ValueError=; a closed session or engine rejection raises =RuntimeError=.
+
+*** =rgpot.MdSession.set_velocities=
+
+#+attr_rgpot: signature
+#+begin_src python
+set_velocities(velocities)
+#+end_src
+
+- Inputs :: =velocities=, a float64 C-contiguous array of shape =(n_atoms, 3)=.
+- Units :: Angstrom/ps.
+- Outputs :: =None=.
+- Errors :: wrong dtype or contiguity raises =TypeError=; wrong shape raises
+  =ValueError=; a closed session or engine rejection raises =RuntimeError=.
+
+*** =rgpot.MdSession.initialize=
+
+#+attr_rgpot: signature
+#+begin_src python
+initialize()
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =None=; evaluates initial forces once box and positions are set.
+- Errors :: an engine without =initialize= or a closed session raises
+  =RuntimeError=.
+
+*** =rgpot.MdSession.step_langevin=
+
+#+attr_rgpot: signature
+#+begin_src python
+step_langevin(k_t, friction, time_step, plane_point, plane_normal, steps=1, seed=1, wall_points=None, wall_normals=None)
+#+end_src
+
+- Inputs :: =k_t=, =friction=, =time_step=, =plane_point= =(n_atoms, 3)=,
+  =plane_normal= =(n_atoms, 3)=, integer =steps=, integer =seed=, and optional
+  =wall_points= and =wall_normals=, either both =None= or both float64
+  C-contiguous arrays of shape =(n_walls, n_atoms, 3)=.
+- Units :: =k_t= in eV, =friction= in 1/ps, =time_step= in ps,
+  =plane_point= and =wall_points= in Angstrom, normals dimensionless.
+- Outputs :: integer count of planar-wall reflections during the call.
+- Errors :: wrong dtype or order raises =TypeError=; mismatched shapes or
+  providing only one wall array raises =ValueError=; closed session or engine
+  failure raises =RuntimeError=.
+
+*** =rgpot.MdSession.run_langevin=
+
+#+attr_rgpot: signature
+#+begin_src python
+run_langevin(k_t=0.02585, friction=1.0, time_step=0.001, steps=1, seed=1, plane_point=None, plane_normal=None, wall_points=None, wall_normals=None, wall_mode='reflect', record_constraint_force=False)
+#+end_src
+
+- Inputs :: =k_t=, =friction=, =time_step=, =steps=, =seed=; optional paired
+  =plane_point= and =plane_normal= =(n_atoms, 3)=; optional paired =wall_points=
+  and =wall_normals= =(n_walls, n_atoms, 3)=; =wall_mode= (=reflect= or
+  =reject=); and =record_constraint_force=.
+- Units :: =k_t= in eV, =friction= in 1/ps, =time_step= in ps, coordinates in
+  Angstrom, and recorded constraint force multipliers in eV/Angstrom.
+- Outputs :: a dict with =wall_hits= (int) and =constraint_force= (a 1D float64
+  array of length =steps= when a plane is set and =record_constraint_force= is
+  true, otherwise =None=).
+- Errors :: wrong dtype or order raises =TypeError=; invalid =wall_mode=,
+  unpaired plane or wall arrays, or wrong shapes raise =ValueError=; closed
+  session or engine failure raises =RuntimeError=.
+
+*** =rgpot.MdSession.step_nve=
+
+#+attr_rgpot: signature
+#+begin_src python
+step_nve(time_step, steps=1)
+#+end_src
+
+- Inputs :: =time_step= in ps and integer =steps=.
+- Units :: =time_step= in ps.
+- Outputs :: =None=.
+- Errors :: closed session or engine failure raises =RuntimeError=.
+
+*** =rgpot.MdSession.reseed_velocities=
+
+#+attr_rgpot: signature
+#+begin_src python
+reseed_velocities(k_t, seed=1, plane_normal=None)
+#+end_src
+
+- Inputs :: =k_t= in eV, integer =seed=, and optional =plane_normal=
+  =(n_atoms, 3)= to project out velocity along the hyperplane normal.
+- Units :: =k_t= in eV; velocities are updated in Angstrom/ps.
+- Outputs :: =None=.
+- Errors :: wrong dtype or order raises =TypeError=; wrong =plane_normal= shape
+  raises =ValueError=; closed session or engine failure raises =RuntimeError=.
+
+*** =rgpot.MdSession.state=
+
+#+attr_rgpot: signature
+#+begin_src python
+state()
+#+end_src
+
+- Inputs :: none.
+- Units :: positions in Angstrom, velocities in
+  Angstrom/ps, forces in eV/Angstrom, energies in eV.
+- Outputs :: a dict with keys =positions=, =velocities=, =forces= (each float64
+  =(n_atoms, 3)=), =potential_energy= (float), and =kinetic_energy= (float).
+- Errors :: closed session or engine failure raises =RuntimeError=.
+
+*** =rgpot.MdSession.positions=
+
+#+attr_rgpot: signature
+#+begin_src python
+positions()
+#+end_src
+
+- Inputs :: none.
+- Units :: Angstrom.
+- Outputs :: a new float64 C-contiguous NumPy array of shape =(n_atoms, 3)=.
+- Errors :: closed session or engine failure raises =RuntimeError=.
+
+*** =rgpot.MdSession.velocities=
+
+#+attr_rgpot: signature
+#+begin_src python
+velocities()
+#+end_src
+
+- Inputs :: none.
+- Units :: Angstrom/ps.
+- Outputs :: a new float64 C-contiguous NumPy array of shape =(n_atoms, 3)=.
+- Errors :: closed session or engine failure raises =RuntimeError=.
+
+*** =rgpot.MdSession.forces=
+
+#+attr_rgpot: signature
+#+begin_src python
+forces()
+#+end_src
+
+- Inputs :: none.
+- Units :: forces in eV/Angstrom, potential energy in eV.
+- Outputs :: a tuple
+  =(forces, potential_energy)= where =forces= has shape =(n_atoms, 3)=.
+- Errors :: closed session or engine failure raises =RuntimeError=.
+
+*** =rgpot.MdSession.energy=
+
+#+attr_rgpot: signature
+#+begin_src python
+energy()
+#+end_src
+
+- Inputs :: none.
+- Units :: eV.
+- Outputs :: a tuple =(potential_energy, kinetic_energy)=.
+- Errors :: closed session or engine failure raises =RuntimeError=.

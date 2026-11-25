@@ -17,7 +17,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <dlfcn.h>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -283,6 +285,311 @@ void check_short_vtable() {
           "a vtable without destroy was accepted");
 }
 
+void check_ops_capacity(const char *library) {
+  OpenMM::System system;
+  system.addParticle(12.0);
+  const std::string xml = xml_of(system);
+
+  void *handle = dlopen(library, RTLD_NOW | RTLD_LOCAL);
+  require(handle != nullptr, "dlopen failed in check_ops_capacity");
+  struct DlCloser {
+    void *h;
+    ~DlCloser() {
+      if (h != nullptr) {
+        dlclose(h);
+      }
+    }
+  } closer{handle};
+
+  auto create_fn = reinterpret_cast<rgpot_md_session_engine_create_fn>(
+      dlsym(handle, "rgpot_md_session_engine_create"));
+  require(create_fn != nullptr, "missing rgpot_md_session_engine_create");
+
+  char error[512] = {};
+
+  // Capacity smaller than required callbacks (including 0) is refused without
+  // writing past struct_size or leaking a context.
+  for (const size_t tiny_cap :
+       {size_t{0}, RGPOT_MD_OPS_END(destroy) - 1}) {
+    std::vector<unsigned char> buf(sizeof(rgpot_md_session_ops) + 64, 0xA5);
+    auto *ops = reinterpret_cast<rgpot_md_session_ops *>(buf.data());
+    std::memcpy(&ops->struct_size, &tiny_cap, sizeof(tiny_cap));
+    void *ctx = nullptr;
+    size_t n_atoms = 0;
+    require(create_fn(xml.data(), xml.size(), "Reference", ops, &ctx, &n_atoms,
+                      error, sizeof(error)) != 0,
+            "too-small capacity was accepted");
+    require(ctx == nullptr, "refused tiny capacity returned non-null ctx");
+    for (size_t i = sizeof(ops->struct_size); i < buf.size(); ++i) {
+      require(buf[i] == 0xA5, "refused call wrote into ops buffer");
+    }
+  }
+
+  // Older/smaller host capacity ending at destroy: guard bytes stay intact.
+  {
+    const size_t small_cap = RGPOT_MD_OPS_END(destroy);
+    std::vector<unsigned char> buf(sizeof(rgpot_md_session_ops) + 64, 0xA5);
+    std::memset(buf.data(), 0, small_cap);
+    auto *ops = reinterpret_cast<rgpot_md_session_ops *>(buf.data());
+    ops->struct_size = small_cap;
+    void *ctx = nullptr;
+    size_t n_atoms = 0;
+    require(create_fn(xml.data(), xml.size(), "Reference", ops, &ctx, &n_atoms,
+                      error, sizeof(error)) == 0,
+            std::string("small capacity failed: ") + error);
+    require(ctx != nullptr && n_atoms == 1, "small capacity bad ctx/n_atoms");
+    require(ops->struct_size == small_cap,
+            "engine did not report filled size == small_cap");
+    for (size_t i = small_cap; i < buf.size(); ++i) {
+      require(buf[i] == 0xA5, "engine overran truncated ops struct");
+    }
+    rgpot_md_session *session =
+        rgpot_md_session_from_ops(ctx, ops, n_atoms, error, sizeof(error));
+    require(session != nullptr, std::string("from_ops small_cap: ") + error);
+    Owned owned{session};
+    double mass = 0.0;
+    require(rgpot_md_session_get_masses(owned.session, &mass, 1, error,
+                                        sizeof(error)) == 0 &&
+                near(mass, 12.0, 1.0e-12),
+            "small_cap get_masses");
+    const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+    require(rgpot_md_session_set_periodic_box(owned.session, box, error,
+                                              sizeof(error)) != 0,
+            "small_cap unexpectedly supported set_periodic_box");
+  }
+
+  // Unaligned mid-optional capacity: partial optional slot stays zero and
+  // guard bytes at and after capacity stay intact.
+  {
+    const size_t mid_cap = RGPOT_MD_OPS_END(set_periodic_box) + 1;
+    std::vector<unsigned char> buf(sizeof(rgpot_md_session_ops) + 64, 0xA5);
+    std::memset(buf.data(), 0, mid_cap);
+    auto *ops = reinterpret_cast<rgpot_md_session_ops *>(buf.data());
+    ops->struct_size = mid_cap;
+    void *ctx = nullptr;
+    size_t n_atoms = 0;
+    require(create_fn(xml.data(), xml.size(), "Reference", ops, &ctx, &n_atoms,
+                      error, sizeof(error)) == 0,
+            std::string("mid capacity failed: ") + error);
+    require(ops->struct_size == mid_cap,
+            "engine did not report filled size == mid_cap");
+    for (size_t i = RGPOT_MD_OPS_END(set_periodic_box); i < mid_cap; ++i) {
+      require(buf[i] == 0, "partial optional slot byte was non-zero");
+    }
+    for (size_t i = mid_cap; i < buf.size(); ++i) {
+      require(buf[i] == 0xA5, "engine overran mid-capacity ops struct");
+    }
+    rgpot_md_session *session =
+        rgpot_md_session_from_ops(ctx, ops, n_atoms, error, sizeof(error));
+    require(session != nullptr, std::string("from_ops mid_cap: ") + error);
+    Owned owned{session};
+    const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+    require(rgpot_md_session_set_periodic_box(owned.session, box, error,
+                                              sizeof(error)) == 0,
+            "mid_cap set_periodic_box failed");
+    double back[9] = {};
+    require(rgpot_md_session_get_periodic_box(owned.session, back, error,
+                                              sizeof(error)) != 0,
+            "mid_cap unexpectedly supported get_periodic_box");
+  }
+
+  // Larger host capacity: engine fills only sizeof(rgpot_md_session_ops),
+  // reports that filled size, and leaves trailing host bytes untouched.
+  {
+    struct LargerOps {
+      rgpot_md_session_ops base;
+      void (*future_cb)(void *);
+      unsigned char tail_guard[32];
+    };
+    LargerOps larger{};
+    std::memset(&larger, 0xA5, sizeof(larger));
+    std::memset(&larger.base, 0, sizeof(larger.base));
+    larger.base.struct_size = sizeof(larger);
+    void *ctx = nullptr;
+    size_t n_atoms = 0;
+    require(create_fn(xml.data(), xml.size(), "Reference", &larger.base, &ctx,
+                      &n_atoms, error, sizeof(error)) == 0,
+            std::string("larger capacity failed: ") + error);
+    require(larger.base.struct_size == sizeof(rgpot_md_session_ops),
+            "engine did not report min(capacity, sizeof(ops))");
+    require(RGPOT_MD_OPS_HAS(&larger.base, run_langevin),
+            "larger host missing run_langevin");
+    const auto *tail = reinterpret_cast<const unsigned char *>(&larger) +
+                       sizeof(rgpot_md_session_ops);
+    for (size_t i = 0; i < sizeof(larger) - sizeof(rgpot_md_session_ops); ++i) {
+      require(tail[i] == 0xA5, "engine wrote past sizeof(rgpot_md_session_ops)");
+    }
+    rgpot_md_session *session = rgpot_md_session_from_ops(
+        ctx, &larger.base, n_atoms, error, sizeof(error));
+    require(session != nullptr, std::string("from_ops larger: ") + error);
+    Owned owned{session};
+    double back[9] = {};
+    require(rgpot_md_session_get_periodic_box(owned.session, back, error,
+                                              sizeof(error)) == 0,
+            "larger host get_periodic_box failed");
+  }
+}
+
+void check_run_langevin_vtable_validation(const char *library) {
+  void *handle = dlopen(library, RTLD_NOW | RTLD_LOCAL);
+  require(handle != nullptr, "dlopen openmm engine failed");
+  auto create_fn = reinterpret_cast<rgpot_md_session_engine_create_fn>(
+      dlsym(handle, "rgpot_md_session_engine_create"));
+  require(create_fn != nullptr, "missing rgpot_md_session_engine_create");
+
+  OpenMM::System system;
+  system.addParticle(12.0);
+  const std::string xml = xml_of(system);
+  rgpot_md_session_ops ops{};
+  ops.struct_size = sizeof(ops);
+  void *ctx = nullptr;
+  size_t n_atoms = 0;
+  char error[512] = {};
+  require(create_fn(xml.data(), xml.size(), "Reference", &ops, &ctx, &n_atoms,
+                    error, sizeof(error)) == 0,
+          std::string("create for run_langevin validation: ") + error);
+  struct CtxGuard {
+    rgpot_md_session_ops *ops;
+    void *ctx;
+    ~CtxGuard() {
+      if (ctx != nullptr && ops != nullptr && ops->destroy != nullptr) {
+        ops->destroy(ctx);
+      }
+    }
+  } guard{&ops, ctx};
+  require(ops.run_langevin != nullptr, "openmm ops missing run_langevin");
+
+  const double pos[3] = {0.0, 0.0, 0.0};
+  const double vel[3] = {0.0, 0.0, 0.0};
+  require(ops.set_positions(ctx, pos, 3, error, sizeof(error)) == 0, error);
+  require(ops.set_velocities(ctx, vel, 3, error, sizeof(error)) == 0, error);
+
+  const double plane_pt[3] = {0.0, 0.0, 0.0};
+  const double plane_n[3] = {1.0, 0.0, 0.0};
+  const double wall_pt[3] = {1.0, 0.0, 0.0};
+  const double wall_n[3] = {-1.0, 0.0, 0.0};
+
+  auto make_req = [&]() {
+    rgpot_md_langevin_request req{};
+    req.struct_size = sizeof(req);
+    req.kT = 0.02585;
+    req.friction = 1.0;
+    req.time_step = 0.001;
+    req.steps = 3;
+    req.seed = 7;
+    req.n3 = 3;
+    req.wall_mode = RGPOT_MD_WALL_REFLECT;
+    return req;
+  };
+  auto make_res = [&]() {
+    rgpot_md_langevin_result res{};
+    res.struct_size = sizeof(res);
+    return res;
+  };
+  auto expect_reject = [&](const char *label, void *call_ctx,
+                           const rgpot_md_langevin_request *req,
+                           rgpot_md_langevin_result *res) {
+    char err[256] = {};
+    const int status = ops.run_langevin(call_ctx, req, res, err, sizeof(err));
+    require(status != 0, std::string(label) + ": expected non-zero error");
+    require(err[0] != '\0', std::string(label) + ": expected error message");
+  };
+
+  {
+    auto req = make_req();
+    auto res = make_res();
+    expect_reject("null ctx", nullptr, &req, &res);
+    expect_reject("null request", ctx, nullptr, &res);
+    expect_reject("null result", ctx, &req, nullptr);
+  }
+  {
+    auto req = make_req();
+    auto res = make_res();
+    req.struct_size = sizeof(req) - 1;
+    expect_reject("short request struct_size", ctx, &req, &res);
+  }
+  {
+    auto req = make_req();
+    auto res = make_res();
+    res.struct_size = sizeof(res) - 1;
+    expect_reject("short result struct_size", ctx, &req, &res);
+  }
+  {
+    auto req = make_req();
+    auto res = make_res();
+    req.n3 = 6;
+    expect_reject("wrong n3", ctx, &req, &res);
+  }
+  {
+    auto req = make_req();
+    auto res = make_res();
+    req.wall_mode = 99;
+    expect_reject("invalid wall_mode", ctx, &req, &res);
+  }
+  {
+    auto req = make_req();
+    auto res = make_res();
+    req.plane_point = plane_pt;
+    req.plane_normal = nullptr;
+    expect_reject("plane_point without plane_normal", ctx, &req, &res);
+    req.plane_point = nullptr;
+    req.plane_normal = plane_n;
+    expect_reject("plane_normal without plane_point", ctx, &req, &res);
+  }
+  {
+    auto req = make_req();
+    auto res = make_res();
+    req.n_walls = 1;
+    req.wall_points = nullptr;
+    req.wall_normals = wall_n;
+    expect_reject("null wall_points with n_walls=1", ctx, &req, &res);
+    req.wall_points = wall_pt;
+    req.wall_normals = nullptr;
+    expect_reject("null wall_normals with n_walls=1", ctx, &req, &res);
+    req.wall_normals = wall_n;
+    req.n_walls = std::numeric_limits<size_t>::max();
+    expect_reject("n_walls overflow", ctx, &req, &res);
+  }
+  {
+    auto req = make_req();
+    auto res = make_res();
+    double cf[2] = {};
+    req.plane_point = plane_pt;
+    req.plane_normal = plane_n;
+    res.constraint_force = cf;
+    res.constraint_force_len = 2;
+    expect_reject("short constraint_force_len", ctx, &req, &res);
+    res.constraint_force = nullptr;
+    res.constraint_force_len = 2;
+    expect_reject("null constraint_force with non-zero len", ctx, &req, &res);
+  }
+  {
+    auto req = make_req();
+    auto res = make_res();
+    req.kT = 0.0;
+    expect_reject("zero kT", ctx, &req, &res);
+    req.kT = 0.02585;
+    req.friction = -1.0;
+    expect_reject("negative friction", ctx, &req, &res);
+    req.friction = 1.0;
+    req.time_step = 0.0;
+    expect_reject("zero time_step", ctx, &req, &res);
+  }
+  {
+    auto req = make_req();
+    auto res = make_res();
+    double cf[3] = {};
+    req.plane_point = plane_pt;
+    req.plane_normal = plane_n;
+    res.constraint_force = cf;
+    res.constraint_force_len = 3;
+    std::snprintf(error, sizeof(error), "stale");
+    require(ops.run_langevin(ctx, &req, &res, error, sizeof(error)) == 0,
+            std::string("valid vtable run_langevin: ") + error);
+    require(error[0] == '\0', "valid call did not clear err buffer");
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -291,6 +598,8 @@ int main(int argc, char **argv) {
     check_box_in_angstrom(argv[1]);
     check_constraint_force(argv[1]);
     check_short_vtable();
+    check_ops_capacity(argv[1]);
+    check_run_langevin_vtable_validation(argv[1]);
     std::cout << "OpenMM session ABI checks passed\n";
     return EXIT_SUCCESS;
   } catch (const std::exception &failure) {

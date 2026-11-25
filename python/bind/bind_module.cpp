@@ -24,6 +24,7 @@
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/tuple.h>
+#include <nanobind/stl/variant.h>
 #include <nanobind/stl/vector.h>
 
 #include "rgbind/rgbind.hpp"
@@ -555,6 +556,422 @@ buffer_to_numpy(const double *src, size_t rows, size_t cols) {
       buf, [](void *p) noexcept { delete[] static_cast<double *>(p); });
   return nb::ndarray<nb::numpy, double, nb::c_contig>(buf, {rows, cols}, owner);
 }
+
+nb::ndarray<nb::numpy, double, nb::c_contig>
+buffer_to_numpy_1d(const double *src, size_t n) {
+  double *buf = new double[n == 0 ? 1 : n];
+  if (n != 0 && src != nullptr) {
+    std::memcpy(buf, src, n * sizeof(double));
+  }
+  nb::capsule owner(
+      buf, [](void *p) noexcept { delete[] static_cast<double *>(p); });
+  return nb::ndarray<nb::numpy, double, nb::c_contig>(buf, {n}, owner);
+}
+
+class PyMdSession {
+public:
+  PyMdSession(const std::string &engine, const std::string &spec_bytes,
+              const std::string &engine_path, const std::string &options) {
+    char err[512] = {};
+    {
+      nb::gil_scoped_release release;
+      session_ = rgpot_md_session_create(
+          engine.empty() ? nullptr : engine.c_str(),
+          engine_path.empty() ? nullptr : engine_path.c_str(),
+          spec_bytes.empty() ? nullptr : spec_bytes.data(), spec_bytes.size(),
+          options.empty() ? nullptr : options.c_str(), err, sizeof(err));
+    }
+    if (session_ == nullptr) {
+      throw std::runtime_error(err[0] != '\0'
+                                   ? err
+                                   : "failed to create MD session");
+    }
+    n_atoms_ = rgpot_md_session_n_atoms(session_);
+  }
+
+  PyMdSession(const PyMdSession &) = delete;
+  PyMdSession &operator=(const PyMdSession &) = delete;
+
+  ~PyMdSession() {
+    if (session_ != nullptr) {
+      rgpot_md_session_destroy(session_);
+      session_ = nullptr;
+    }
+  }
+
+  size_t n_atoms() const {
+    require_open();
+    return n_atoms_;
+  }
+
+  void close() {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    if (session_ != nullptr) {
+      rgpot_md_session *handle = session_;
+      session_ = nullptr;
+      nb::gil_scoped_release release;
+      rgpot_md_session_destroy(handle);
+    }
+  }
+
+  nb::ndarray<nb::numpy, double, nb::c_contig> masses() {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    std::vector<double> out(n_atoms_);
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_get_masses(s, out.data(), out.size(), err,
+                                       sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_get_masses failed");
+    return buffer_to_numpy_1d(out.data(), out.size());
+  }
+
+  void set_periodic_box(const F64 &box) {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    rgbind::check_f64_2d(box, 3, 3, "box");
+    std::array<double, 9> copy{};
+    std::memcpy(copy.data(), box.data(), sizeof(copy));
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_set_periodic_box(s, copy.data(), err, sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_set_periodic_box failed");
+  }
+
+  nb::ndarray<nb::numpy, double, nb::c_contig> periodic_box() {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    std::array<double, 9> box{};
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_get_periodic_box(s, box.data(), err, sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_get_periodic_box failed");
+    return buffer_to_numpy(box.data(), 3, 3);
+  }
+
+  void set_positions(const F64 &positions) {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    rgbind::check_f64_2d(positions, n_atoms_, 3, "positions");
+    std::vector<double> copy(positions.data(),
+                             positions.data() + positions.size());
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_set_positions(s, copy.data(), copy.size(), err,
+                                          sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_set_positions failed");
+  }
+
+  void set_velocities(const F64 &velocities) {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    rgbind::check_f64_2d(velocities, n_atoms_, 3, "velocities");
+    std::vector<double> copy(velocities.data(),
+                             velocities.data() + velocities.size());
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_set_velocities(s, copy.data(), copy.size(), err,
+                                           sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_set_velocities failed");
+  }
+
+  void initialize() {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_initialize(s, err, sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_initialize failed");
+  }
+
+  uint64_t step_langevin(double k_t, double friction, double time_step,
+                         const F64 &plane_point, const F64 &plane_normal,
+                         size_t steps, uint64_t seed, nb::handle wall_points,
+                         nb::handle wall_normals) {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    rgbind::check_f64_2d(plane_point, n_atoms_, 3, "plane_point");
+    rgbind::check_f64_2d(plane_normal, n_atoms_, 3, "plane_normal");
+    std::vector<double> pp(plane_point.data(),
+                           plane_point.data() + plane_point.size());
+    std::vector<double> pn(plane_normal.data(),
+                           plane_normal.data() + plane_normal.size());
+    std::vector<double> wp;
+    std::vector<double> wn;
+    size_t n_walls = 0;
+    read_walls(wall_points, wall_normals, wp, wn, n_walls);
+    uint64_t wall_hits = 0;
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_step_langevin(
+          s, k_t, friction, time_step, pp.data(), pn.data(),
+          n_walls > 0 ? wp.data() : nullptr, n_walls > 0 ? wn.data() : nullptr,
+          n_walls, n_atoms_ * 3, steps, seed, &wall_hits, err, sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_step_langevin failed");
+    return wall_hits;
+  }
+
+  nb::dict run_langevin(double k_t, double friction, double time_step,
+                        size_t steps, uint64_t seed, nb::handle plane_point,
+                        nb::handle plane_normal, nb::handle wall_points,
+                        nb::handle wall_normals, const std::string &wall_mode,
+                        bool record_constraint_force) {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    int mode = RGPOT_MD_WALL_REFLECT;
+    if (wall_mode == "reflect") {
+      mode = RGPOT_MD_WALL_REFLECT;
+    } else if (wall_mode == "reject") {
+      mode = RGPOT_MD_WALL_REJECT;
+    } else {
+      throw std::invalid_argument(
+          "wall_mode must be 'reflect' or 'reject'");
+    }
+    const bool has_pp = !plane_point.is_none();
+    const bool has_pn = !plane_normal.is_none();
+    if (has_pp != has_pn) {
+      throw std::invalid_argument(
+          "plane_point and plane_normal must both be set or both be None");
+    }
+    std::vector<double> pp;
+    std::vector<double> pn;
+    if (has_pp) {
+      auto pp_arr = nb::cast<F64>(plane_point, false);
+      auto pn_arr = nb::cast<F64>(plane_normal, false);
+      rgbind::check_f64_2d(pp_arr, n_atoms_, 3, "plane_point");
+      rgbind::check_f64_2d(pn_arr, n_atoms_, 3, "plane_normal");
+      pp.assign(pp_arr.data(), pp_arr.data() + pp_arr.size());
+      pn.assign(pn_arr.data(), pn_arr.data() + pn_arr.size());
+    }
+    std::vector<double> wp;
+    std::vector<double> wn;
+    size_t n_walls = 0;
+    read_walls(wall_points, wall_normals, wp, wn, n_walls);
+
+    const bool want_cf = has_pp && record_constraint_force;
+    std::vector<double> cf(want_cf ? steps : 0, 0.0);
+
+    rgpot_md_langevin_request req{};
+    req.struct_size = sizeof(req);
+    req.kT = k_t;
+    req.friction = friction;
+    req.time_step = time_step;
+    req.steps = steps;
+    req.seed = seed;
+    req.n3 = n_atoms_ * 3;
+    req.plane_point = has_pp ? pp.data() : nullptr;
+    req.plane_normal = has_pp ? pn.data() : nullptr;
+    req.n_walls = n_walls;
+    req.wall_points = n_walls > 0 ? wp.data() : nullptr;
+    req.wall_normals = n_walls > 0 ? wn.data() : nullptr;
+    req.wall_mode = mode;
+
+    rgpot_md_langevin_result res{};
+    res.struct_size = sizeof(res);
+    res.constraint_force = want_cf ? cf.data() : nullptr;
+    res.constraint_force_len = want_cf ? cf.size() : 0;
+
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_run_langevin(s, &req, &res, err, sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_run_langevin failed");
+
+    nb::dict out;
+    out["wall_hits"] = res.wall_hits;
+    if (want_cf) {
+      out["constraint_force"] = buffer_to_numpy_1d(cf.data(), cf.size());
+    } else {
+      out["constraint_force"] = nb::none();
+    }
+    return out;
+  }
+
+  void step_nve(double time_step, size_t steps) {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_step_nve(s, time_step, steps, err, sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_step_nve failed");
+  }
+
+  void reseed_velocities(double k_t, uint64_t seed, nb::handle plane_normal) {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    std::vector<double> pn;
+    if (!plane_normal.is_none()) {
+      auto arr = nb::cast<F64>(plane_normal, false);
+      rgbind::check_f64_2d(arr, n_atoms_, 3, "plane_normal");
+      pn.assign(arr.data(), arr.data() + arr.size());
+    }
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_reseed_velocities(
+          s, k_t, seed, pn.empty() ? nullptr : pn.data(), n_atoms_ * 3, err,
+          sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_reseed_velocities failed");
+  }
+
+  nb::dict state() {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    const size_t n3 = n_atoms_ * 3;
+    std::vector<double> pos(n3);
+    std::vector<double> vel(n3);
+    std::vector<double> frc(n3);
+    double pe = 0.0;
+    double ke = 0.0;
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_get_state(s, pos.data(), vel.data(), frc.data(), n3,
+                                      &pe, &ke, err, sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_get_state failed");
+    nb::dict out;
+    out["positions"] = buffer_to_numpy(pos.data(), n_atoms_, 3);
+    out["velocities"] = buffer_to_numpy(vel.data(), n_atoms_, 3);
+    out["forces"] = buffer_to_numpy(frc.data(), n_atoms_, 3);
+    out["potential_energy"] = pe;
+    out["kinetic_energy"] = ke;
+    return out;
+  }
+
+  nb::ndarray<nb::numpy, double, nb::c_contig> positions() {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    std::vector<double> pos(n_atoms_ * 3);
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_get_positions(s, pos.data(), pos.size(), err,
+                                          sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_get_positions failed");
+    return buffer_to_numpy(pos.data(), n_atoms_, 3);
+  }
+
+  nb::ndarray<nb::numpy, double, nb::c_contig> velocities() {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    std::vector<double> vel(n_atoms_ * 3);
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_get_velocities(s, vel.data(), vel.size(), err,
+                                           sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_get_velocities failed");
+    return buffer_to_numpy(vel.data(), n_atoms_, 3);
+  }
+
+  nb::tuple forces() {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    std::vector<double> frc(n_atoms_ * 3);
+    double pe = 0.0;
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_get_forces(s, frc.data(), frc.size(), &pe, err,
+                                       sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_get_forces failed");
+    return nb::make_tuple(buffer_to_numpy(frc.data(), n_atoms_, 3), pe);
+  }
+
+  nb::tuple energy() {
+    rgbind::Claim claim(busy_.flag(), "MdSession");
+    rgpot_md_session *s = require_open();
+    double pe = 0.0;
+    double ke = 0.0;
+    char err[512] = {};
+    int rc = 0;
+    {
+      nb::gil_scoped_release release;
+      rc = rgpot_md_session_get_energy(s, &pe, &ke, err, sizeof(err));
+    }
+    check_status(rc, err, "rgpot_md_session_get_energy failed");
+    return nb::make_tuple(pe, ke);
+  }
+
+private:
+  rgpot_md_session *require_open() const {
+    if (session_ == nullptr) {
+      throw std::runtime_error("MdSession is closed");
+    }
+    return session_;
+  }
+
+  static void check_status(int rc, const char *err, const char *fallback) {
+    if (rc != 0) {
+      throw std::runtime_error(err != nullptr && err[0] != '\0' ? err
+                                                                : fallback);
+    }
+  }
+
+  void read_walls(nb::handle wall_points, nb::handle wall_normals,
+                  std::vector<double> &wp_out, std::vector<double> &wn_out,
+                  size_t &n_walls) const {
+    const bool has_wp = !wall_points.is_none();
+    const bool has_wn = !wall_normals.is_none();
+    if (has_wp != has_wn) {
+      throw std::invalid_argument(
+          "wall_points and wall_normals must both be set or both be None");
+    }
+    if (!has_wp) {
+      n_walls = 0;
+      return;
+    }
+    auto wp_arr = nb::cast<F64>(wall_points, false);
+    auto wn_arr = nb::cast<F64>(wall_normals, false);
+    rgbind::check_f64_rank(wp_arr, 3, "wall_points");
+    rgbind::check_f64_rank(wn_arr, 3, "wall_normals");
+    n_walls = static_cast<size_t>(wp_arr.shape(0));
+    rgbind::check_f64_3d(wp_arr, n_walls, n_atoms_, 3, "wall_points");
+    rgbind::check_f64_3d(wn_arr, n_walls, n_atoms_, 3, "wall_normals");
+    wp_out.assign(wp_arr.data(), wp_arr.data() + wp_arr.size());
+    wn_out.assign(wn_arr.data(), wn_arr.data() + wn_arr.size());
+  }
+
+  rgpot_md_session *session_ = nullptr;
+  size_t n_atoms_ = 0;
+  rgbind::Busy busy_;
+};
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
 template <typename Pot>
@@ -1605,4 +2022,82 @@ NB_MODULE(_core, m) {
       "An empty engine_path evaluates in process. A path is a library "
       "whose rgpot_md_native_force uses those units, such as "
       "libopenmm_engine.so.");
+
+  nb::class_<PyMdSession>(m, "MdSession")
+      .def(
+          "__init__",
+          [](PyMdSession *self, const std::string &engine,
+             const std::variant<nb::bytes, std::string> &spec,
+             const std::string &engine_path, const std::string &options) {
+            std::string spec_bytes;
+            if (const auto *b = std::get_if<nb::bytes>(&spec)) {
+              spec_bytes.assign(b->c_str(), b->size());
+            } else {
+              spec_bytes = std::get<std::string>(spec);
+            }
+            new (self) PyMdSession(engine, spec_bytes, engine_path, options);
+          },
+          nb::arg("engine"), nb::arg("spec") = "",
+          nb::arg("engine_path") = "", nb::arg("options") = "",
+          "In-process molecular-dynamics session backed by an engine plugin.")
+      .def_prop_ro("n_atoms", &PyMdSession::n_atoms,
+                   "Number of atoms in the session.")
+      .def("close", &PyMdSession::close,
+           "Destroy the underlying engine session immediately.")
+      .def(
+          "__enter__", [](PyMdSession &self) -> PyMdSession & { return self; },
+          nb::rv_policy::reference_internal)
+      .def("__exit__",
+           [](PyMdSession &self, nb::args) { self.close(); })
+      .def("masses", &PyMdSession::masses,
+           "Atomic masses in amu, shape (n_atoms,).")
+      .def("set_periodic_box", &PyMdSession::set_periodic_box,
+           nb::arg("box").noconvert(),
+           "Set periodic box vectors, shape (3, 3), in Angstrom.")
+      .def("periodic_box", &PyMdSession::periodic_box,
+           "Periodic box vectors, shape (3, 3), in Angstrom.")
+      .def("set_positions", &PyMdSession::set_positions,
+           nb::arg("positions").noconvert(),
+           "Set atomic positions, shape (n_atoms, 3), in Angstrom.")
+      .def("set_velocities", &PyMdSession::set_velocities,
+           nb::arg("velocities").noconvert(),
+           "Set atomic velocities, shape (n_atoms, 3), in Angstrom/ps.")
+      .def("initialize", &PyMdSession::initialize,
+           "Evaluate initial forces once box and positions are set.")
+      .def("step_langevin", &PyMdSession::step_langevin, nb::arg("k_t"),
+           nb::arg("friction"), nb::arg("time_step"),
+           nb::arg("plane_point").noconvert(),
+           nb::arg("plane_normal").noconvert(), nb::arg("steps") = 1,
+           nb::arg("seed") = 1, nb::arg("wall_points") = nb::none(),
+           nb::arg("wall_normals") = nb::none(),
+           "Advance constrained Langevin dynamics and return wall hits.")
+      .def("run_langevin", &PyMdSession::run_langevin,
+           nb::arg("k_t") = 0.02585, nb::arg("friction") = 1.0,
+           nb::arg("time_step") = 0.001, nb::arg("steps") = 1,
+           nb::arg("seed") = 1, nb::arg("plane_point") = nb::none(),
+           nb::arg("plane_normal") = nb::none(),
+           nb::arg("wall_points") = nb::none(),
+           nb::arg("wall_normals") = nb::none(),
+           nb::arg("wall_mode") = "reflect",
+           nb::arg("record_constraint_force") = false,
+           "Run Langevin dynamics and return wall_hits and optional "
+           "constraint_force.")
+      .def("step_nve", &PyMdSession::step_nve, nb::arg("time_step"),
+           nb::arg("steps") = 1,
+           "Advance NVE dynamics by steps of time_step ps.")
+      .def("reseed_velocities", &PyMdSession::reseed_velocities,
+           nb::arg("k_t"), nb::arg("seed") = 1,
+           nb::arg("plane_normal") = nb::none(),
+           "Draw Maxwell-Boltzmann velocities at k_t eV.")
+      .def("state", &PyMdSession::state,
+           "Return positions, velocities, forces, potential_energy, and "
+           "kinetic_energy.")
+      .def("positions", &PyMdSession::positions,
+           "Current atomic positions, shape (n_atoms, 3), in Angstrom.")
+      .def("velocities", &PyMdSession::velocities,
+           "Current atomic velocities, shape (n_atoms, 3), in Angstrom/ps.")
+      .def("forces", &PyMdSession::forces,
+           "Return (forces, potential_energy) in eV/Angstrom and eV.")
+      .def("energy", &PyMdSession::energy,
+           "Return (potential_energy, kinetic_energy) in eV.");
 }

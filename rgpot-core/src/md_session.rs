@@ -860,7 +860,8 @@ pub type MdStepLangevinFn = unsafe extern "C" fn(
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct MdSessionOps {
-    /// Byte size of this struct (`std::mem::size_of::<MdSessionOps>()`).
+    /// Host capacity (`std::mem::size_of::<MdSessionOps>()`) on input to
+    /// `rgpot_md_session_engine_create`, and filled byte size on output.
     pub struct_size: usize,
     /// Set flat positions in Angstrom.
     pub set_positions: unsafe extern "C" fn(
@@ -990,14 +991,80 @@ const REQUIRED_OPS: [(&str, usize); 7] = [
 const REQUIRED_OPS_SIZE: usize = std::mem::offset_of!(MdSessionOps, destroy)
     + std::mem::size_of::<unsafe extern "C" fn(*mut c_void)>();
 
+#[cfg(feature = "engine")]
+struct EngineLibraryHandle {
+    library: std::mem::ManuallyDrop<libloading::Library>,
+    _pin: Option<std::mem::ManuallyDrop<libloading::Library>>,
+    can_unload: bool,
+}
+
+#[cfg(feature = "engine")]
+unsafe fn is_unload_safe(library: &libloading::Library) -> bool {
+    use crate::engine::{
+        AbiStampFn, AbiVersionFn, RgpotEngineAbiStamp, UnloadPolicyFn, ENGINE_ABI_VERSION,
+        ENGINE_UNLOAD_POLICY_MINOR, ENGINE_UNLOAD_SAFE,
+    };
+
+    let version_fn = match unsafe { library.get::<AbiVersionFn>(b"rgpot_engine_abi_version\0") } {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let stamp_fn = match unsafe { library.get::<AbiStampFn>(b"rgpot_engine_abi_stamp\0") } {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let policy_fn = match unsafe { library.get::<UnloadPolicyFn>(b"rgpot_engine_unload_policy\0") }
+    {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    if unsafe { version_fn() } != ENGINE_ABI_VERSION {
+        return false;
+    }
+    let stamp = unsafe { stamp_fn() };
+    if !stamp.serves(RgpotEngineAbiStamp::HOST) || stamp.abi_minor < ENGINE_UNLOAD_POLICY_MINOR {
+        return false;
+    }
+    unsafe { policy_fn() == ENGINE_UNLOAD_SAFE }
+}
+
+#[cfg(all(feature = "engine", unix))]
+unsafe fn pin_resident_library(
+    path: &std::path::Path,
+    anchor: *const c_void,
+) -> Result<Option<std::mem::ManuallyDrop<libloading::Library>>, libloading::Error> {
+    use libloading::os::unix::{Library as UnixLibrary, RTLD_LAZY, RTLD_LOCAL};
+    use std::os::unix::ffi::OsStrExt;
+
+    let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
+    let dladdr_ok = !anchor.is_null() && unsafe { libc::dladdr(anchor, &mut info) } != 0;
+    let pin_path = if dladdr_ok && !info.dli_fname.is_null() {
+        let bytes = unsafe { CStr::from_ptr(info.dli_fname) }.to_bytes();
+        std::path::Path::new(std::ffi::OsStr::from_bytes(bytes)).to_path_buf()
+    } else {
+        path.to_path_buf()
+    };
+    let flags = RTLD_LAZY | RTLD_LOCAL | libc::RTLD_NOLOAD | libc::RTLD_NODELETE;
+    unsafe { UnixLibrary::open(Some(&pin_path), flags) }
+        .map(|pin| Some(std::mem::ManuallyDrop::new(libloading::Library::from(pin))))
+}
+
+#[cfg(all(feature = "engine", not(unix)))]
+unsafe fn pin_resident_library(
+    _path: &std::path::Path,
+    _anchor: *const c_void,
+) -> Result<Option<std::mem::ManuallyDrop<libloading::Library>>, libloading::Error> {
+    Ok(None)
+}
+
 /// Rust owner for an engine-agnostic C ABI MD session vtable.
 pub struct CAbiMdSession {
     ctx: NonNull<c_void>,
     ops: MdSessionOps,
     n_atoms: usize,
     n3: usize,
-    #[cfg(feature = "profile")]
-    _library: Option<libloading::Library>,
+    #[cfg(feature = "engine")]
+    _library: Option<EngineLibraryHandle>,
 }
 
 impl CAbiMdSession {
@@ -1022,7 +1089,10 @@ impl CAbiMdSession {
         let mut ops = ops;
         // A vtable built against an older header ends before the optional
         // callbacks; whatever the struct holds there is not a callback.
-        let size = ops.struct_size;
+        // Clamp to our own size so an oversized struct_size cannot read past
+        // our fields.
+        let size = ops.struct_size.min(std::mem::size_of::<MdSessionOps>());
+        ops.struct_size = size;
         let holds = |offset: usize, slot: usize| offset + slot <= size;
         if !holds(
             std::mem::offset_of!(MdSessionOps, set_periodic_box),
@@ -1071,7 +1141,7 @@ impl CAbiMdSession {
             ops,
             n_atoms,
             n3,
-            #[cfg(feature = "profile")]
+            #[cfg(feature = "engine")]
             _library: None,
         })
     }
@@ -1135,11 +1205,16 @@ impl CAbiMdSession {
 
     /// Dynamically load an MD engine plugin exporting `rgpot_md_session_engine_create`.
     ///
+    /// Zeroes `MdSessionOps` and passes `size_of::<MdSessionOps>()` in
+    /// `struct_size` as the byte capacity before calling the engine; the engine
+    /// fills at most `min(capacity, sizeof(engine ops))` bytes and sets
+    /// `struct_size` to the filled size.
+    ///
     /// # Safety
     ///
     /// `engine_path` must point to a valid rgpot MD session plugin implementing
     /// `rgpot_md_session_engine_create_fn` and `rgpot_md_session_ops`.
-    #[cfg(feature = "profile")]
+    #[cfg(feature = "engine")]
     pub unsafe fn open_engine(
         engine_path: &std::path::Path,
         spec: &[u8],
@@ -1174,6 +1249,11 @@ impl CAbiMdSession {
             None => std::ptr::null(),
         };
         let mut ops = std::mem::MaybeUninit::<MdSessionOps>::zeroed();
+        // SAFETY: `ops` is allocated on the stack and `struct_size` is an aligned `usize` field.
+        unsafe {
+            std::ptr::addr_of_mut!((*ops.as_mut_ptr()).struct_size)
+                .write(std::mem::size_of::<MdSessionOps>());
+        }
         let mut ctx: *mut c_void = std::ptr::null_mut();
         let mut n_atoms: usize = 0;
         let mut error = [0 as c_char; 1024];
@@ -1197,14 +1277,43 @@ impl CAbiMdSession {
             return Err(MdSessionError::new(error_message(&error)));
         }
         let mut session = unsafe { Self::from_engine_ops(ctx, ops, n_atoms) }?;
-        session._library = Some(library);
+        let can_unload = unsafe { is_unload_safe(&library) };
+        let pin = if can_unload {
+            None
+        } else {
+            let create_ptr = (*create) as *const () as *const c_void;
+            unsafe { pin_resident_library(engine_path, create_ptr) }.map_err(|err| {
+                MdSessionError::new(format!("failed to pin resident MD engine: {err}"))
+            })?
+        };
+        session._library = Some(EngineLibraryHandle {
+            library: std::mem::ManuallyDrop::new(library),
+            _pin: pin,
+            can_unload,
+        });
         Ok(session)
     }
+
+    #[cfg(feature = "engine")]
+    fn release_library(&mut self) {
+        if let Some(mut owned) = self._library.take() {
+            if owned.can_unload {
+                // SAFETY: `self.ops.destroy` has already returned and the
+                // engine declared itself `RGPOT_ENGINE_UNLOAD_SAFE` with a
+                // compatible ABI stamp at or above `ENGINE_UNLOAD_POLICY_MINOR`.
+                unsafe { std::mem::ManuallyDrop::drop(&mut owned.library) };
+            }
+        }
+    }
+
+    #[cfg(not(feature = "engine"))]
+    fn release_library(&mut self) {}
 }
 
 impl Drop for CAbiMdSession {
     fn drop(&mut self) {
         unsafe { (self.ops.destroy)(self.ctx.as_ptr()) };
+        self.release_library();
     }
 }
 
@@ -2462,5 +2571,70 @@ mod tests {
         unsafe {
             assert_eq!((&*ctx).velocities, expected);
         }
+    }
+
+    #[test]
+    fn a_larger_host_struct_size_is_clamped_and_still_works() {
+        let destroyed = Arc::new(AtomicBool::new(false));
+        let mut ops = mock_ops();
+        ops.set_periodic_box = Some(mock_set_periodic_box);
+        ops.get_periodic_box = Some(mock_get_periodic_box);
+        ops.run_langevin = Some(mock_run_langevin);
+        ops.struct_size = std::mem::size_of::<MdSessionOps>() + 64;
+
+        let ctx = mock_ctx(&destroyed);
+        let mut session = unsafe {
+            CAbiMdSession::from_engine_ops(ctx.cast(), std::mem::MaybeUninit::new(ops), 2)
+        }
+        .expect("larger struct_size is accepted and clamped");
+        assert_eq!(session.ops.struct_size, std::mem::size_of::<MdSessionOps>());
+        let cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        session.set_periodic_box(&cell).unwrap();
+        assert_eq!(session.periodic_box().unwrap(), cell);
+        drop(session);
+        assert!(destroyed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_smaller_capacity_copy_keeps_guard_bytes_intact() {
+        #[repr(C)]
+        struct GuardedBuffer {
+            _align: [MdSessionOps; 0],
+            bytes: [u8; std::mem::size_of::<MdSessionOps>() + 32],
+        }
+        let mut buf = GuardedBuffer {
+            _align: [],
+            bytes: [0xA5; std::mem::size_of::<MdSessionOps>() + 32],
+        };
+        let cap = REQUIRED_OPS_SIZE;
+        buf.bytes[..cap].fill(0);
+        let src = mock_ops();
+        let filled = cap.min(std::mem::size_of::<MdSessionOps>());
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                (&src as *const MdSessionOps).cast::<u8>(),
+                buf.bytes.as_mut_ptr(),
+                filled,
+            );
+            buf.bytes.as_mut_ptr().cast::<usize>().write(filled);
+        }
+        assert!(buf.bytes[cap..].iter().all(|&b| b == 0xA5));
+
+        let mut ops = std::mem::MaybeUninit::<MdSessionOps>::zeroed();
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                buf.bytes.as_ptr(),
+                ops.as_mut_ptr().cast::<u8>(),
+                filled,
+            );
+        }
+        let destroyed = Arc::new(AtomicBool::new(false));
+        let ctx = mock_ctx(&destroyed);
+        let mut session = unsafe { CAbiMdSession::from_engine_ops(ctx.cast(), ops, 2) }
+            .expect("truncated capacity vtable is adopted");
+        assert_eq!(session.ops.struct_size, REQUIRED_OPS_SIZE);
+        assert!(session.set_periodic_box(&[0.0; 9]).is_err());
+        drop(session);
+        assert!(destroyed.load(Ordering::SeqCst));
     }
 }

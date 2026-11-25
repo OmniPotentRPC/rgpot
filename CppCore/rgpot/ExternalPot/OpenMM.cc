@@ -522,11 +522,54 @@ int c_initialize(void *ctx, char *err, size_t err_len) {
 int c_run_langevin(void *ctx, const rgpot_md_langevin_request *request,
                    rgpot_md_langevin_result *result, char *err,
                    size_t err_len) {
+  if (err != nullptr && err_len > 0) {
+    err[0] = '\0';
+  }
   try {
+    if (ctx == nullptr || request == nullptr || result == nullptr) {
+      throw std::invalid_argument(
+          "MD Langevin ctx, request, or result pointer is null");
+    }
+    if (request->struct_size < sizeof(rgpot_md_langevin_request)) {
+      throw std::invalid_argument(
+          "MD Langevin request struct_size is too small");
+    }
+    if (result->struct_size < sizeof(rgpot_md_langevin_result)) {
+      throw std::invalid_argument(
+          "MD Langevin result struct_size is too small");
+    }
+    if (request->wall_mode != RGPOT_MD_WALL_REFLECT &&
+        request->wall_mode != RGPOT_MD_WALL_REJECT) {
+      throw std::invalid_argument("MD Langevin wall_mode is invalid");
+    }
+    if ((request->plane_point == nullptr) !=
+        (request->plane_normal == nullptr)) {
+      throw std::invalid_argument(
+          "MD Langevin plane point and normal must both be set or both null");
+    }
+    if (request->n_walls > 0 &&
+        (request->wall_points == nullptr || request->wall_normals == nullptr)) {
+      throw std::invalid_argument("MD Langevin wall buffer is null");
+    }
+    if (result->constraint_force == nullptr &&
+        result->constraint_force_len > 0) {
+      throw std::invalid_argument(
+          "MD Langevin constraint_force buffer is null");
+    }
     auto *session = static_cast<OpenMMSession *>(ctx);
     const size_t n3 = request->n3;
     if (n3 != 3 * session->numParticles()) {
       throw std::invalid_argument("MD Langevin vector length differs from 3*N");
+    }
+    if (request->n_walls > 0 &&
+        request->n_walls > std::numeric_limits<size_t>::max() / n3) {
+      throw std::invalid_argument("MD Langevin wall buffer size overflows");
+    }
+    if (request->plane_point != nullptr &&
+        result->constraint_force != nullptr &&
+        result->constraint_force_len < request->steps) {
+      throw std::invalid_argument(
+          "MD Langevin constraint_force buffer is shorter than steps");
     }
     std::vector<OpenMM::Vec3> p_point;
     std::vector<OpenMM::Vec3> p_normal;
@@ -713,11 +756,19 @@ void c_destroy(void *ctx) { delete static_cast<OpenMMSession *>(ctx); }
 int openmm_md_session_init(const char *system_xml, const char *platform,
                            rgpot_md_session_ops *ops, void **ctx,
                            size_t *n_atoms, char *err, size_t err_len) {
+  if (err != nullptr && err_len > 0) {
+    err[0] = '\0';
+  }
   try {
     if (system_xml == nullptr || ops == nullptr || ctx == nullptr ||
         n_atoms == nullptr) {
       throw std::invalid_argument(
           "OpenMM MD session needs XML and output pointers");
+    }
+    const size_t capacity = ops->struct_size;
+    if (capacity < RGPOT_MD_OPS_END(destroy)) {
+      throw std::invalid_argument(
+          "OpenMM MD session ops struct_size capacity is too small");
     }
     std::istringstream xml(system_xml);
     auto system = std::unique_ptr<OpenMM::System>(
@@ -728,20 +779,36 @@ int openmm_md_session_init(const char *system_xml, const char *platform,
     }
     auto session = std::make_unique<OpenMMSession>(std::move(system), config);
     *n_atoms = session->numParticles();
-    ops->struct_size = sizeof(rgpot_md_session_ops);
-    ops->set_positions = c_set_positions;
-    ops->set_velocities = c_set_velocities;
-    ops->step_langevin = c_step_langevin;
-    ops->step_nve = c_step_nve;
-    ops->get_state = c_get_state;
-    ops->get_masses = c_get_masses;
-    ops->destroy = c_destroy;
-    ops->set_periodic_box = c_set_periodic_box;
-    ops->get_periodic_box = c_get_periodic_box;
-    ops->initialize = c_initialize;
-    ops->run_langevin = c_run_langevin;
-    ops->get_neighbors = c_get_neighbors;
-    ops->set_neighbors = c_set_neighbors;
+    const size_t filled = std::min(capacity, sizeof(rgpot_md_session_ops));
+    rgpot_md_session_ops full;
+    std::memset(&full, 0, sizeof(full));
+    full.struct_size = filled;
+    full.set_positions = c_set_positions;
+    full.set_velocities = c_set_velocities;
+    full.step_langevin = c_step_langevin;
+    full.step_nve = c_step_nve;
+    full.get_state = c_get_state;
+    full.get_masses = c_get_masses;
+    full.destroy = c_destroy;
+    if (filled >= RGPOT_MD_OPS_END(set_periodic_box)) {
+      full.set_periodic_box = c_set_periodic_box;
+    }
+    if (filled >= RGPOT_MD_OPS_END(get_periodic_box)) {
+      full.get_periodic_box = c_get_periodic_box;
+    }
+    if (filled >= RGPOT_MD_OPS_END(initialize)) {
+      full.initialize = c_initialize;
+    }
+    if (filled >= RGPOT_MD_OPS_END(run_langevin)) {
+      full.run_langevin = c_run_langevin;
+    }
+    if (filled >= RGPOT_MD_OPS_END(get_neighbors)) {
+      full.get_neighbors = c_get_neighbors;
+    }
+    if (filled >= RGPOT_MD_OPS_END(set_neighbors)) {
+      full.set_neighbors = c_set_neighbors;
+    }
+    std::memcpy(ops, &full, filled);
     *ctx = session.release();
     return 0;
   } catch (const std::exception &ex) {

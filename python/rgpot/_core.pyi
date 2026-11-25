@@ -1494,3 +1494,67 @@ def rgpot_openmm_potential(u0: float = 1.0, cutoff: float = 8.0, psi: float = 1.
     """
     Shifted 12-6 Lennard-Jones. Nanometres and kJ/mol are stored once. An empty engine_path evaluates in process. A path is a library whose rgpot_md_native_force uses those units, such as libopenmm_engine.so.
     """
+
+class MdSession:
+    def __init__(self, engine: str, spec: bytes | str = '', engine_path: str = '', options: str = '') -> None:
+        """In-process molecular-dynamics session backed by an engine plugin."""
+
+    @property
+    def n_atoms(self) -> int:
+        """Number of atoms in the session."""
+
+    def close(self) -> None:
+        """Destroy the underlying engine session immediately."""
+
+    def __enter__(self) -> MdSession: ...
+
+    def __exit__(self, *args) -> None: ...
+
+    def masses(self) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """Atomic masses in amu, shape (n_atoms,)."""
+
+    def set_periodic_box(self, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> None:
+        """Set periodic box vectors, shape (3, 3), in Angstrom."""
+
+    def periodic_box(self) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """Periodic box vectors, shape (3, 3), in Angstrom."""
+
+    def set_positions(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> None:
+        """Set atomic positions, shape (n_atoms, 3), in Angstrom."""
+
+    def set_velocities(self, velocities: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> None:
+        """Set atomic velocities, shape (n_atoms, 3), in Angstrom/ps."""
+
+    def initialize(self) -> None:
+        """Evaluate initial forces once box and positions are set."""
+
+    def step_langevin(self, k_t: float, friction: float, time_step: float, plane_point: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], plane_normal: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], steps: int = 1, seed: int = 1, wall_points: object | None = None, wall_normals: object | None = None) -> int:
+        """Advance constrained Langevin dynamics and return wall hits."""
+
+    def run_langevin(self, k_t: float = 0.02585, friction: float = 1.0, time_step: float = 0.001, steps: int = 1, seed: int = 1, plane_point: object | None = None, plane_normal: object | None = None, wall_points: object | None = None, wall_normals: object | None = None, wall_mode: str = 'reflect', record_constraint_force: bool = False) -> dict:
+        """
+        Run Langevin dynamics and return wall_hits and optional constraint_force.
+        """
+
+    def step_nve(self, time_step: float, steps: int = 1) -> None:
+        """Advance NVE dynamics by steps of time_step ps."""
+
+    def reseed_velocities(self, k_t: float, seed: int = 1, plane_normal: object | None = None) -> None:
+        """Draw Maxwell-Boltzmann velocities at k_t eV."""
+
+    def state(self) -> dict:
+        """
+        Return positions, velocities, forces, potential_energy, and kinetic_energy.
+        """
+
+    def positions(self) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """Current atomic positions, shape (n_atoms, 3), in Angstrom."""
+
+    def velocities(self) -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """Current atomic velocities, shape (n_atoms, 3), in Angstrom/ps."""
+
+    def forces(self) -> tuple:
+        """Return (forces, potential_energy) in eV/Angstrom and eV."""
+
+    def energy(self) -> tuple:
+        """Return (potential_energy, kinetic_energy) in eV."""

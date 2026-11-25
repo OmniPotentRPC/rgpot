@@ -416,7 +416,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 11,
+            abi_minor: 12,
             layout_revision: 1,
         }
     );
@@ -1787,7 +1787,7 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 
 #[test]
 fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 11);
+    assert_eq!(ENGINE_ABI_MINOR, 12);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -1875,12 +1875,25 @@ fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected(
         }]
     );
 
-    // A minor-11 plugin is the current minor and also exports the jet.
+    // A minor-11 plugin predates the MD session entry and still exports the jet.
     let minor11_path = build("harmonic_stamp_minor11", &["FIXTURE_ABI_MINOR=11"]);
     let minor11 = load(&minor11_path);
-    assert_eq!(minor11.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert_eq!(
+        minor11.abi_stamp(),
+        RgpotEngineAbiStamp {
+            abi_minor: 11,
+            ..RgpotEngineAbiStamp::HOST
+        }
+    );
     assert!(minor11.symbols().taylor_jet.is_some());
     assert_eq!(minor11.caps().expect("caps").jet_order, 3);
+
+    // A minor-12 plugin is the current minor and also exports the jet.
+    let minor12_path = build("harmonic_stamp_minor12", &["FIXTURE_ABI_MINOR=12"]);
+    let minor12 = load(&minor12_path);
+    assert_eq!(minor12.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert!(minor12.symbols().taylor_jet.is_some());
+    assert_eq!(minor12.caps().expect("caps").jet_order, 3);
 
     // A plugin whose minor is newer than the host's is rejected.
     let newer_define = format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1);
@@ -5770,4 +5783,339 @@ fn builtin_params_is_a_flat_capnp_message_naming_the_backend() {
         params.get_name().expect("name").to_str().expect("utf8"),
         "cbe"
     );
+}
+
+mod md_session_capacity_tests {
+    use std::ffi::{c_char, c_void, CString};
+    use std::path::{Path, PathBuf};
+
+    use rgpot_core::md_session::{CAbiMdSession, MdSession, MdSessionOps};
+
+    fn build_capacity_engine_variant(name: &str, defines: &[&str]) -> PathBuf {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/md_session_capacity_engine.c");
+        let suffix = if cfg!(target_os = "macos") {
+            "dylib"
+        } else {
+            "so"
+        };
+        let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("lib{name}.{suffix}"));
+        let target = env!("RGPOT_BUILD_TARGET");
+        let mut build = cc::Build::new();
+        build.target(target).host(target).opt_level(0);
+        for def in defines {
+            if let Some((key, val)) = def.split_once('=') {
+                build.define(key, Some(val));
+            } else {
+                build.define(def, None);
+            }
+        }
+        let compiler = build
+            .try_get_compiler()
+            .expect("C compiler for capacity fixture");
+        let mut command = compiler.to_command();
+        if cfg!(target_os = "macos") {
+            command.arg("-dynamiclib");
+        } else {
+            command.args(["-shared", "-fPIC"]);
+        }
+        command.arg("-o").arg(&out).arg(&source);
+        let status = command.status().expect("compile capacity fixture");
+        assert!(
+            status.success(),
+            "capacity fixture compile failed: {status}"
+        );
+        out
+    }
+
+    fn build_capacity_engine() -> PathBuf {
+        build_capacity_engine_variant("md_session_capacity_engine", &[])
+    }
+
+    #[test]
+    fn open_engine_passes_capacity_and_handles_older_newer_and_oversized_engines() {
+        let lib_path = build_capacity_engine();
+        let host_size = std::mem::size_of::<MdSessionOps>();
+        let required_size = std::mem::offset_of!(MdSessionOps, destroy)
+            + std::mem::size_of::<unsafe extern "C" fn(*mut c_void)>();
+
+        // Current engine: sees host capacity and fills all callbacks.
+        let mut current = unsafe { CAbiMdSession::open_engine(&lib_path, &[], Some("current")) }
+            .expect("open current engine");
+        let masses = current.masses().unwrap();
+        assert_eq!(masses[0], host_size as f64);
+        assert_eq!(masses[1], host_size as f64);
+        let cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        current.set_periodic_box(&cell).unwrap();
+        assert_eq!(current.periodic_box().unwrap(), cell);
+
+        // Older engine: fills only up to destroy, optional ops report unsupported.
+        let mut older = unsafe { CAbiMdSession::open_engine(&lib_path, &[], Some("older")) }
+            .expect("open older engine");
+        let masses = older.masses().unwrap();
+        assert_eq!(masses[0], host_size as f64);
+        assert_eq!(masses[1], required_size as f64);
+        assert!(older.set_periodic_box(&cell).is_err());
+
+        // Newer engine: larger vtable writes only min(capacity, newer_size) = host_size.
+        let mut newer = unsafe { CAbiMdSession::open_engine(&lib_path, &[], Some("newer")) }
+            .expect("open newer engine");
+        let masses = newer.masses().unwrap();
+        assert_eq!(masses[0], host_size as f64);
+        assert_eq!(masses[1], host_size as f64);
+        newer.set_periodic_box(&cell).unwrap();
+
+        // Oversized reported struct_size is clamped by from_ops without failing.
+        let mut oversized =
+            unsafe { CAbiMdSession::open_engine(&lib_path, &[], Some("oversized")) }
+                .expect("open oversized engine");
+        oversized.set_periodic_box(&cell).unwrap();
+    }
+
+    #[test]
+    fn direct_engine_calls_respect_smaller_and_larger_host_capacities() {
+        type CreateFn = unsafe extern "C" fn(
+            spec: *const c_void,
+            spec_len: usize,
+            options: *const c_char,
+            ops: *mut MdSessionOps,
+            ctx: *mut *mut c_void,
+            n_atoms: *mut usize,
+            err: *mut c_char,
+            err_len: usize,
+        ) -> i32;
+
+        let lib_path = build_capacity_engine();
+        let library = unsafe { libloading::Library::new(&lib_path) }.expect("load fixture");
+        let create = unsafe { library.get::<CreateFn>(b"rgpot_md_session_engine_create\0") }
+            .expect("resolve create");
+
+        let required_size = std::mem::offset_of!(MdSessionOps, destroy)
+            + std::mem::size_of::<unsafe extern "C" fn(*mut c_void)>();
+        let mid_size = std::mem::offset_of!(MdSessionOps, set_periodic_box)
+            + std::mem::size_of::<
+                Option<unsafe extern "C" fn(*mut c_void, *const f64, *mut c_char, usize) -> i32>,
+            >()
+            + 1;
+
+        let newer_opt = CString::new("newer").unwrap();
+        let current_opt = CString::new("current").unwrap();
+
+        #[repr(C)]
+        struct AlignedOpsBuffer {
+            _align: [MdSessionOps; 0],
+            bytes: [u8; std::mem::size_of::<MdSessionOps>() + 64],
+        }
+
+        // Capacity smaller than destroy (0 and required_size - 1) is refused cleanly.
+        for tiny_cap in [0usize, required_size - 1] {
+            let mut buf = AlignedOpsBuffer {
+                _align: [],
+                bytes: [0xA5u8; std::mem::size_of::<MdSessionOps>() + 64],
+            };
+            unsafe {
+                buf.bytes.as_mut_ptr().cast::<usize>().write(tiny_cap);
+            }
+            let mut ctx: *mut c_void = std::ptr::null_mut();
+            let mut n_atoms: usize = 0;
+            let mut err = [0 as c_char; 512];
+            let status = unsafe {
+                create(
+                    std::ptr::null(),
+                    0,
+                    newer_opt.as_ptr(),
+                    buf.bytes.as_mut_ptr().cast::<MdSessionOps>(),
+                    &mut ctx,
+                    &mut n_atoms,
+                    err.as_mut_ptr(),
+                    err.len(),
+                )
+            };
+            assert_ne!(status, 0);
+            assert!(ctx.is_null());
+            assert!(buf.bytes[std::mem::size_of::<usize>()..]
+                .iter()
+                .all(|&b| b == 0xA5));
+        }
+
+        // Smaller host capacity against "newer" engine: guard bytes stay intact.
+        for cap in [required_size, mid_size] {
+            let mut buf = AlignedOpsBuffer {
+                _align: [],
+                bytes: [0xA5u8; std::mem::size_of::<MdSessionOps>() + 64],
+            };
+            buf.bytes[..cap].fill(0);
+            unsafe {
+                buf.bytes.as_mut_ptr().cast::<usize>().write(cap);
+            }
+            let mut ctx: *mut c_void = std::ptr::null_mut();
+            let mut n_atoms: usize = 0;
+            let mut err = [0 as c_char; 512];
+            let status = unsafe {
+                create(
+                    std::ptr::null(),
+                    0,
+                    newer_opt.as_ptr(),
+                    buf.bytes.as_mut_ptr().cast::<MdSessionOps>(),
+                    &mut ctx,
+                    &mut n_atoms,
+                    err.as_mut_ptr(),
+                    err.len(),
+                )
+            };
+            assert_eq!(status, 0);
+            let reported = unsafe { buf.bytes.as_ptr().cast::<usize>().read() };
+            assert_eq!(reported, cap);
+            assert!(buf.bytes[cap..].iter().all(|&b| b == 0xA5));
+
+            let mut ops = std::mem::MaybeUninit::<MdSessionOps>::zeroed();
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    buf.bytes.as_ptr(),
+                    ops.as_mut_ptr().cast::<u8>(),
+                    cap,
+                );
+            }
+            let session = unsafe { CAbiMdSession::from_engine_ops(ctx, ops, n_atoms) }
+                .expect("adopt truncated ops");
+            let masses = session.masses().unwrap();
+            assert_eq!(masses[0], cap as f64);
+            assert_eq!(masses[1], cap as f64);
+        }
+
+        // Larger host capacity against "current" and "newer" engines.
+        #[repr(C)]
+        struct LargerHostOps {
+            base: MdSessionOps,
+            future_cb: Option<unsafe extern "C" fn(*mut c_void)>,
+            future_tag: u64,
+            guard: [u8; 32],
+        }
+
+        {
+            let mut host = std::mem::MaybeUninit::<LargerHostOps>::uninit();
+            let base_len = std::mem::size_of::<MdSessionOps>();
+            unsafe {
+                host.as_mut_ptr().write_bytes(0xA5, 1);
+                host.as_mut_ptr().cast::<u8>().write_bytes(0, base_len);
+                std::ptr::addr_of_mut!((*host.as_mut_ptr()).base.struct_size)
+                    .write(std::mem::size_of::<LargerHostOps>());
+            }
+            let mut ctx: *mut c_void = std::ptr::null_mut();
+            let mut n_atoms: usize = 0;
+            let mut err = [0 as c_char; 512];
+            let status = unsafe {
+                create(
+                    std::ptr::null(),
+                    0,
+                    current_opt.as_ptr(),
+                    std::ptr::addr_of_mut!((*host.as_mut_ptr()).base),
+                    &mut ctx,
+                    &mut n_atoms,
+                    err.as_mut_ptr(),
+                    err.len(),
+                )
+            };
+            assert_eq!(status, 0);
+            let tail = unsafe {
+                std::slice::from_raw_parts(
+                    host.as_ptr().cast::<u8>().add(base_len),
+                    std::mem::size_of::<LargerHostOps>() - base_len,
+                )
+            };
+            assert!(tail.iter().all(|&b| b == 0xA5));
+            let base = unsafe { std::ptr::addr_of!((*host.as_ptr()).base).read() };
+            assert_eq!(base.struct_size, base_len);
+            let mut session = unsafe {
+                CAbiMdSession::from_engine_ops(ctx, std::mem::MaybeUninit::new(base), n_atoms)
+            }
+            .expect("larger host works with current engine");
+            let cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+            session.set_periodic_box(&cell).unwrap();
+        }
+
+        {
+            let mut host = std::mem::MaybeUninit::<LargerHostOps>::uninit();
+            let newer_end =
+                std::mem::offset_of!(LargerHostOps, future_tag) + std::mem::size_of::<u64>();
+            unsafe {
+                host.as_mut_ptr().write_bytes(0xA5, 1);
+                host.as_mut_ptr().cast::<u8>().write_bytes(0, newer_end);
+                std::ptr::addr_of_mut!((*host.as_mut_ptr()).base.struct_size)
+                    .write(std::mem::size_of::<LargerHostOps>());
+            }
+            let mut ctx: *mut c_void = std::ptr::null_mut();
+            let mut n_atoms: usize = 0;
+            let mut err = [0 as c_char; 512];
+            let status = unsafe {
+                create(
+                    std::ptr::null(),
+                    0,
+                    newer_opt.as_ptr(),
+                    std::ptr::addr_of_mut!((*host.as_mut_ptr()).base),
+                    &mut ctx,
+                    &mut n_atoms,
+                    err.as_mut_ptr(),
+                    err.len(),
+                )
+            };
+            assert_eq!(status, 0);
+            let host = unsafe { host.assume_init() };
+            assert_eq!(host.base.struct_size, newer_end);
+            assert!(host.future_cb.is_some());
+            assert_eq!(host.future_tag, 0x1234_5678_9abc_def0);
+            assert!(host.guard.iter().all(|&b| b == 0xA5));
+            let session = unsafe {
+                CAbiMdSession::from_engine_ops(ctx, std::mem::MaybeUninit::new(host.base), n_atoms)
+            }
+            .expect("larger host works with newer engine");
+            assert_eq!(session.dof(), 6);
+        }
+    }
+
+    #[test]
+    fn open_engine_honours_unload_policy_on_drop() {
+        let no_policy = build_capacity_engine_variant("md_session_no_policy", &[]);
+        let resident = build_capacity_engine_variant(
+            "md_session_resident_policy",
+            &["FIXTURE_UNLOAD_POLICY=0"],
+        );
+        let older_minor = build_capacity_engine_variant(
+            "md_session_older_minor",
+            &["FIXTURE_UNLOAD_POLICY=1", "FIXTURE_ABI_MINOR=6"],
+        );
+        let no_stamp = build_capacity_engine_variant(
+            "md_session_no_stamp",
+            &["FIXTURE_UNLOAD_POLICY=1", "FIXTURE_NO_STAMP"],
+        );
+        let unload_safe = build_capacity_engine_variant(
+            "md_session_unload_safe",
+            &["FIXTURE_UNLOAD_POLICY=1", "FIXTURE_ABI_MINOR=7"],
+        );
+
+        for (name, path) in [
+            ("no_policy", &no_policy),
+            ("resident", &resident),
+            ("older_minor", &older_minor),
+            ("no_stamp", &no_stamp),
+        ] {
+            let session = unsafe { CAbiMdSession::open_engine(path, &[], Some("current")) }
+                .unwrap_or_else(|err| panic!("open {name}: {err}"));
+            assert!(super::library_is_mapped(path));
+            drop(session);
+            assert!(
+                super::library_is_mapped(path),
+                "{name} MD engine was unmapped on drop despite resident policy"
+            );
+        }
+
+        let session = unsafe { CAbiMdSession::open_engine(&unload_safe, &[], Some("current")) }
+            .expect("open unload_safe");
+        assert!(super::library_is_mapped(&unload_safe));
+        drop(session);
+        assert!(
+            !super::library_is_mapped(&unload_safe),
+            "unload-safe MD engine stayed mapped after drop"
+        );
+    }
 }

@@ -2747,6 +2747,48 @@ if get_option('with_tests')
                 depends: [engine_stub],
                 kwargs: _rt_kw['EngineAdapterTest'],
             )
+            md_session_fake_engine = shared_library(
+                'md_session_fake_engine',
+                sources: ['tests/md_session_fake_engine.c'],
+                include_directories: _incdirs,
+                install: false,
+            )
+            md_session_resident_engine = shared_library(
+                'md_session_resident_engine',
+                sources: ['tests/md_session_fake_engine.c'],
+                include_directories: _incdirs,
+                c_args: ['-DFIXTURE_UNLOAD_POLICY=RGPOT_ENGINE_UNLOAD_RESIDENT'],
+                install: false,
+            )
+            md_session_unload_safe_engine = shared_library(
+                'md_session_unload_safe_engine',
+                sources: ['tests/md_session_fake_engine.c'],
+                include_directories: _incdirs,
+                c_args: ['-DFIXTURE_UNLOAD_POLICY=RGPOT_ENGINE_UNLOAD_SAFE'],
+                install: false,
+            )
+            test(
+                'md_session_abi_capacity',
+                executable(
+                    'md_session_abi_capacity',
+                    sources: ['tests/md_session_abi_capacity.cpp'],
+                    dependencies: [rgpot_dep, _dl_dep],
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_language: 'cpp',
+                ),
+                args: [
+                    md_session_fake_engine.full_path(),
+                    md_session_resident_engine.full_path(),
+                    md_session_unload_safe_engine.full_path(),
+                ],
+                depends: [
+                    md_session_fake_engine,
+                    md_session_resident_engine,
+                    md_session_unload_safe_engine,
+                ],
+                kwargs: _rt_kw['md_session_abi_capacity'],
+            )
         endif
         if host_system == 'linux'
             external_refcount_engine = shared_library(
