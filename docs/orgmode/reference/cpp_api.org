@@ -682,6 +682,8 @@ void setThreadCount(int threads);
   A =rgpot::ThreadCount= already on the calling thread wins over it.
   With nothing set, the call keeps the default: =OMP_NUM_THREADS= for
   =threadsRequested=, and the OpenMP pool for a long-range team.
+  The default =forceBatchImpl= binds the count before it spreads a batch of
+  small systems, so the batch uses that many threads too.
 - Errors :: throws =std::invalid_argument= when =threads= is below 1.
 
 *** =rgpot::PotentialBase::clearThreadCount=

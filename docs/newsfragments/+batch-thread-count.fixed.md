@@ -1,0 +1,2 @@
+<!-- Copyright 2023--present rgpot developers -->
+A batch of small systems now spreads over the count set with `setThreadCount` on the potential. The default `forceBatchImpl` read the team size on the calling thread before any `forceImpl` had bound the potential's own count, so a shared-instance potential ran such a batch on one thread whenever `OMP_NUM_THREADS` was unset, whatever `setThreadCount` said. It now binds the count first: the potential's count sets the team, a `ThreadCount` on the call still wins, and a potential with no count keeps the `OMP_NUM_THREADS` team.

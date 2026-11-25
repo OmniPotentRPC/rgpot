@@ -321,8 +321,14 @@ public:
    * and treat the systems as independent: no ordering, no shared state,
    * and no assumption that they have equal atom counts. Each
    * @c batch.out[i] arrives zeroed, as for @c forceImpl.
+   *
+   * The spread reads the thread count on the calling thread, before any
+   * @c forceImpl has bound this potential's own, so the default binds it
+   * here: a potential with @c setThreadCount spreads its systems over that
+   * many threads, and one without keeps the @c OMP_NUM_THREADS team.
    */
   virtual void forceBatchImpl(const ForceBatch &batch) const {
+    const rgpot::ThreadBinding bind_threads{threadCount()};
     auto one = [&](std::size_t i) {
       static_cast<const Derived *>(this)->forceImpl(batch.in[i], &batch.out[i]);
     };
