@@ -5,15 +5,19 @@
 
 * Command-line programs
 
-The build installs five programs for users, and the repository carries one
-project tool, =potctl=.
+The build installs up to six programs (=potserv=,
+=potserv_mpi=, =nwchem_mpi_force_host=, =rgpot-lj=, =rgpot-ipi-driver= and
+=rgpot-mdi=) when their build options are enabled, and the repository carries
+one project tool, =potctl=.
 Each entry lists the arguments, the units on the wire or on the pipe, and how
 the program fails.
 
 ** Potential programs
 
-=potserv=, =potserv_mpi=, =rgpot-lj= and =rgpot-ipi-driver= are installed unless
-rgpot is built as a Meson subproject.
+=potserv=, =potserv_mpi=, =nwchem_mpi_force_host=, =rgpot-lj=,
+=rgpot-ipi-driver= and =rgpot-mdi= are installed unless rgpot is built as a
+Meson subproject, each gated by its build options (=rgpot-mdi= is described in
+=docs/mdi.md= and =nwchem_mpi_force_host= in =CppCore/tools/nwchem_mpi_force_host.cc=).
 =rgpot-eval= is built for the tests and the how-to pages and is not installed.
 
 *** =potserv=
@@ -25,7 +29,7 @@ potserv <port> <PotentialType>
 
 - Inputs :: =port=, the TCP port to listen on, and =PotentialType=, the backend
   name.
-  =LJ=, =LJCluster=, =Morse=, =ZBL=, =Eckart=, =MullerBrown=,
+  =LJ=, =LJCluster=, =Morse=, =SWSi=, =ZBL=, =Eckart=, =MullerBrown=,
   =ModifiedMullerBrown=, =LEPS-HH2=, =LEPS-HCl2=, =LEPS-FH2=, =DoubleWell=,
   =CoupledProtonWell=, =Composite=, =D2=, =D2Cpmd=,
   =NWChem[:basis[:theory[:xc]]]= and =CPMD= are always offered.
@@ -117,10 +121,12 @@ rgpot-ipi-driver --pot "Name [key value ...]" (--species LIST | --species-from F
   server order.
   Socket options follow
   =i-pi-py_driver=: =-u, --unix=, =-a, --address= (default =localhost=), =-p, --port= (default 12345, ignored with =-u=) and =-S, --sockets-prefix= (default =/tmp/ipi_=).
-  Other options are =--cutoff A=, =--stress-step H=, =--timeout S= (0 waits
-  forever), =--connect-timeout S= (default 30), =--no-extras= (send an empty
-  extra string instead of JSON), =-v, --verbose=, =--list= (print the names of
-  this build and exit) and =-h, --help=.
+  Other options are =--cutoff A=, =--preserve-open-cell= (pass a singular cell
+  to the potential unchanged instead of padding it with a finite open box),
+  =--stress-step H=, =--timeout S= (0 waits forever), =--connect-timeout S=
+  (default 30), =--no-extras= (send an empty extra string instead of JSON),
+  =-v, --verbose=, =--list= (print the names of this build and exit) and
+  =-h, --help=.
 - Units :: =--cutoff= is in Angstrom: the cutoff of a potential whose spec names
   none, and the range used to tile thin periodic cells and pad open boxes.
   =--stress-step= is the strain step of a central-difference virial for a
