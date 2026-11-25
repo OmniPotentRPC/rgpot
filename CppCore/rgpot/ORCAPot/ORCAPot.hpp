@@ -185,7 +185,12 @@ public:
   /// resolves to another file or the size, modification time, change time,
   /// device, inode or content hash of this file has changed. A change seen
   /// before the run stops the call without running anything; one seen only
-  /// after the run discards its result and the orbitals it wrote.
+  /// after the run discards its result and the orbitals it wrote. On Linux,
+  /// FreeBSD and NetBSD the call checks an open descriptor of the file and
+  /// runs that descriptor with fexecve, so a file swapped in after the
+  /// check is not run. Elsewhere, or when the kernel cannot run a
+  /// descriptor, the child runs the path with execv and a swap in that
+  /// window is caught only by the check after the run.
   [[nodiscard]] const std::string &resolvedExecutablePath() const noexcept {
     return m_real_executable;
   }

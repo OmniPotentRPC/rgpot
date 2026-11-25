@@ -92,6 +92,15 @@ When they differ only after the run, ORCA has already run: the call throws
 =ORCAError= instead of returning or caching the result, and the orbitals of that
 run are not kept.
 Either way, a new =ORCAPot= is needed to run the new file.
+On Linux, FreeBSD and NetBSD the call opens the file once, checks that open
+file, and runs it through its descriptor with =fexecve=.
+A file swapped in after the check is then never run.
+A script is read by its interpreter through =/dev/fd=, so it sees =$0= as a path
+there.
+Elsewhere, as on macOS, or when the kernel cannot run a descriptor, the child
+falls back to =execv= on the path.
+A swap between the check and the exec is then caught only by the check after the
+run.
 
 ** Time limit
 
@@ -319,10 +328,11 @@ unconverged SCF), the check of the executable ahead of any change to the run
 directory, the cache key across paths, modification and change times, a binary
 rewritten in place at the same size and modification time, charges and
 multiplicities, symlink executables, a retargeted symlink and a replaced binary
-with and without the result cache, a restart sequence with a result cache,
-comma-decimal locales, the box that =rgpot.ase= builds for a cluster and the
-rejection of a box with a closer image, including skewed cells, and of a box
-whose image bound is not finite or out of range.
+with and without the result cache, a file swapped in after the check and before
+the exec on Linux, a restart sequence with a result cache, comma-decimal
+locales, the box that =rgpot.ase= builds for a cluster and the rejection of a
+box with a closer image, including skewed cells, and of a box whose image bound
+is not finite or out of range.
 =tests/python/test_ase_orca_box.py= runs =RgpotCalculator= over a non-periodic
 stand-in that applies the same box rule, since =ORCAPot= has no Python class.
 One test case runs a real ORCA and is skipped, with the message "orca is not on

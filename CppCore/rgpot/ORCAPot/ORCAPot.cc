@@ -32,6 +32,16 @@
 #include <time.h>
 #include <unistd.h>
 
+// fexecve runs the file behind an open descriptor, so the file that was
+// checked is the file that runs. macOS has none.
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__)
+#define RGPOT_ORCA_HAS_FEXECVE 1
+#else
+#define RGPOT_ORCA_HAS_FEXECVE 0
+#endif
+
+extern char **environ;
+
 namespace rgpot {
 
 namespace fs = std::filesystem;
@@ -402,6 +412,51 @@ int openAbove(int fd) {
   return moved;
 }
 
+/// Opens the file @p executable resolves to, and returns the descriptor
+/// when the path still resolves to @p real and the open file still has
+/// @p stamp, or -1 otherwise. The descriptor is above 2 and close-on-exec.
+int openUnchangedExecutable(const std::string &executable,
+                            const std::string &real, uint64_t stamp) noexcept {
+  try {
+    std::error_code ec;
+    const fs::path resolved = fs::canonical(executable, ec);
+    if (ec || resolved.string() != real) {
+      return -1;
+    }
+  } catch (...) {
+    return -1;
+  }
+  int fd;
+  do {
+    fd = ::open(real.c_str(), O_RDONLY | O_CLOEXEC | O_NOCTTY);
+  } while (fd < 0 && errno == EINTR);
+  if (fd < 0) {
+    return -1;
+  }
+  fd = openAbove(fd);
+  if (fd < 0) {
+    return -1;
+  }
+  uint64_t now = 0;
+  if (!stampOpenFile(fd, &now) || now != stamp) {
+    ::close(fd);
+    return -1;
+  }
+  return fd;
+}
+
+/// True when the file open on @p fd starts with `#!`. The interpreter of
+/// such a script opens it again through /dev/fd, so its descriptor has to
+/// stay open across exec.
+bool isScript(int fd) noexcept {
+  char head[2] = {0, 0};
+  ssize_t got;
+  do {
+    got = ::pread(fd, head, sizeof(head), 0);
+  } while (got < 0 && errno == EINTR);
+  return got == 2 && head[0] == '#' && head[1] == '!';
+}
+
 struct ChildStatus {
   bool exited = false;
   int exit_code = 0;
@@ -550,22 +605,23 @@ WaitKind waitGroup(pid_t pid, int *wait_status, double budget,
   }
 }
 
-void closeExtraFds(long max_fd) noexcept {
+/// Closes every descriptor from @p first up.
+void closeFdsFrom(int first, long max_fd) noexcept {
 #if (defined(__GLIBC__) &&                                                     \
      (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34)) &&         \
      defined(_GNU_SOURCE)) ||                                                \
     (defined(__FreeBSD__) && __FreeBSD__ >= 13)
-  if (::close_range(3U, ~0U, 0U) == 0) {
+  if (::close_range(static_cast<unsigned>(first), ~0U, 0U) == 0) {
     return;
   }
 #endif
 #if defined(__linux__) && defined(SYS_close_range)
-  if (::syscall(SYS_close_range, 3U, ~0U, 0U) == 0) {
+  if (::syscall(SYS_close_range, static_cast<unsigned>(first), ~0U, 0U) == 0) {
     return;
   }
 #endif
   const long limit = max_fd > 0 ? std::min(max_fd, 1048576L) : 1024L;
-  for (int fd = 3; fd < static_cast<int>(limit); ++fd) {
+  for (int fd = first; fd < static_cast<int>(limit); ++fd) {
     ::close(fd);
   }
 }
@@ -592,15 +648,24 @@ std::string timeoutText(double timeout_s, bool sent_kill) {
   return text.str();
 }
 
-/// Runs `executable input` in @p cwd with the standard streams on files. The
-/// child is the leader of a new process group. Only async-signal-safe calls
-/// run between fork and exec, so a threaded caller is safe. @p timeout_s is
-/// the wait in seconds; 0 waits without a limit. Past the limit the group is
-/// sent SIGTERM and then, if it is still alive, SIGKILL, and the child is
-/// reaped.
-ChildStatus runChild(const std::string &executable, const std::string &input,
-                     const std::string &cwd, const std::string &out_path,
-                     const std::string &err_path, double timeout_s) {
+/// Runs the file open on @p exec_fd with the arguments `executable input`
+/// in @p cwd with the standard streams on files. The descriptor becomes 3 in
+/// the child, every other one above 2 is closed, and the child runs it with
+/// fexecve, so the file run is the one opened even if @p executable names
+/// another file by then. It stays open across exec only for a @p script.
+/// Where fexecve is missing (macOS), or fails with ENOSYS because the kernel
+/// has no execveat and /proc is not mounted, the child falls back to execv
+/// of @p executable; the file is then found by name again, and only the
+/// check after the run sees a file swapped in between. The child is the
+/// leader of a new process group. Only async-signal-safe calls run between
+/// fork and exec, so a threaded caller is safe. @p timeout_s is the wait in
+/// seconds; 0 waits without a limit. Past the limit the group is sent
+/// SIGTERM and then, if it is still alive, SIGKILL, and the child is reaped.
+ChildStatus runChild(int exec_fd, bool script, const std::string &executable,
+                     const std::string &input, const std::string &cwd,
+                     const std::string &out_path, const std::string &err_path,
+                     double timeout_s) {
+  constexpr int kExecFd = 3;
   ChildStatus status;
   const int in_fd = openAbove(::open("/dev/null", O_RDONLY | O_CLOEXEC));
   const int out_fd = openAbove(::open(
@@ -632,7 +697,19 @@ ChildStatus runChild(const std::string &executable, const std::string &input,
         ::dup2(err_fd, 2) < 0 || ::chdir(cwd.c_str()) != 0) {
       ::_exit(126);
     }
-    closeExtraFds(max_fd);
+    if (exec_fd != kExecFd && ::dup2(exec_fd, kExecFd) < 0) {
+      ::_exit(126);
+    }
+    if (::fcntl(kExecFd, F_SETFD, script ? 0 : FD_CLOEXEC) < 0) {
+      ::_exit(126);
+    }
+    closeFdsFrom(kExecFd + 1, max_fd);
+#if RGPOT_ORCA_HAS_FEXECVE
+    ::fexecve(kExecFd, argv, environ);
+    if (errno != ENOSYS) {
+      ::_exit(127);
+    }
+#endif
     ::execv(executable.c_str(), argv);
     ::_exit(127);
   }
@@ -843,22 +920,30 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   const std::string text =
       orca::renderInput(spec, n, in.pos, in.atmnrs);
 
-  // The file that runs is the one paramsKey fingerprints. It is checked
-  // before anything in the run directory is touched and again after the
-  // run, so a result is only returned, and cached, for that file.
-  const auto checkExecutable = [&](const char *when) {
-    if (!executableUnchanged(m_executable, m_real_executable,
-                             m_executable_stamp)) {
-      throw ORCAError("ORCAPot: the executable " + m_executable + " changed " +
-                      when + ": it no longer resolves to " +
-                      m_real_executable +
-                      " with the size, modification time, change time, "
-                      "device, inode and content hash recorded when the "
-                      "instance was made; make a new ORCAPot to run the new "
-                      "file");
-    }
+  // The file that runs is the one paramsKey fingerprints. It is opened and
+  // checked before anything in the run directory is touched, the child runs
+  // that open file, and both the open file and the path are checked again
+  // after the run, so a result is only returned, and cached, for that file.
+  const auto changed = [&](const char *when) {
+    return ORCAError("ORCAPot: the executable " + m_executable + " changed " +
+                     when + ": it no longer resolves to " + m_real_executable +
+                     " with the size, modification time, change time, "
+                     "device, inode and content hash recorded when the "
+                     "instance was made; make a new ORCAPot to run the new "
+                     "file");
   };
-  checkExecutable("since the instance was made");
+  struct Descriptor {
+    int fd;
+    ~Descriptor() {
+      if (fd >= 0) {
+        ::close(fd);
+      }
+    }
+  } executable{openUnchangedExecutable(m_executable, m_real_executable,
+                                       m_executable_stamp)};
+  if (executable.fd < 0) {
+    throw changed("since the instance was made");
+  }
 
   const auto fail = [&](const std::string &what) {
     return ORCAError("ORCAPot: " + what + "\n  input: " + input_path +
@@ -888,10 +973,16 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     }
   }
 
-  const ChildStatus child =
-      runChild(m_real_executable, std::string(kBase) + ".inp", m_run_dir,
-               output_path, stderr_path, m_config.timeout_s);
-  checkExecutable("while it ran");
+  const ChildStatus child = runChild(
+      executable.fd, isScript(executable.fd), m_real_executable,
+      std::string(kBase) + ".inp", m_run_dir, output_path, stderr_path,
+      m_config.timeout_s);
+  uint64_t after = 0;
+  if (!stampOpenFile(executable.fd, &after) || after != m_executable_stamp ||
+      !executableUnchanged(m_executable, m_real_executable,
+                           m_executable_stamp)) {
+    throw changed("while it ran");
+  }
   if (!child.problem.empty()) {
     throw fail(child.problem);
   }
