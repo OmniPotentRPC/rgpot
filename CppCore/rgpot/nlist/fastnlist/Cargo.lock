@@ -20,8 +20,9 @@ checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
 name = "linkcell"
-version = "0.4.3"
-source = "git+https://github.com/d-SEAMS/linkcell?rev=adc7eedc28582a7b5876a4cda56d3ca7a670bd6f#adc7eedc28582a7b5876a4cda56d3ca7a670bd6f"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5ce6554b609a7a5d2b66c7def6198a3a7f5683fd0fdabb0a81d1c4625df9728"
 dependencies = [
  "cc",
  "minimage",

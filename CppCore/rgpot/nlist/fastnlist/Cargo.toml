@@ -16,7 +16,7 @@ name = "rgpot_fastnlist"
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-linkcell = { version = "0.4.3", git = "https://github.com/d-SEAMS/linkcell", rev = "adc7eedc28582a7b5876a4cda56d3ca7a670bd6f", default-features = false }
+linkcell = { version = "=0.5.0", default-features = false }
 minimage = { version = "=0.2.3", default-features = false }
 
 [profile.release]
