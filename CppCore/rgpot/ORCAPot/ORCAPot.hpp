@@ -151,12 +151,13 @@ public:
 
   /// Hash of method, basis, keywords, charge, multiplicity, restart, and
   /// the executable path with symlinks resolved and the size, modification
-  /// time, device and inode of that file, all read by the constructor.
-  /// Each call resolves and reads the executable again; once it no longer
-  /// matches, as when a symlink is retargeted or the file is replaced, the
-  /// key matches no entry an unchanged instance writes. A result-cache
-  /// entry made by another ORCA installation, or by the same one after it
-  /// was replaced, is never served.
+  /// time, change time, device, inode and content hash of that file, all
+  /// read by the constructor. Each call resolves and reads the executable
+  /// again; once it no longer matches, as when a symlink is retargeted or
+  /// the file is replaced or rewritten in place, the key matches no entry
+  /// an unchanged instance writes. A result-cache entry made by another ORCA
+  /// installation, or by the same one after it was replaced, is never
+  /// served.
   [[nodiscard]] uint64_t paramsKey() const noexcept override;
 
 #ifdef RGPOT_HAS_CACHE
@@ -181,10 +182,10 @@ public:
 
   /// The file the instance runs: executablePath() with symlinks resolved
   /// by the constructor. A call throws ORCAError once executablePath()
-  /// resolves to another file or this file's size, modification time or
-  /// inode has changed. A change seen before the run stops the call without
-  /// running anything; one seen only after the run discards its result and
-  /// the orbitals it wrote.
+  /// resolves to another file or the size, modification time, change time,
+  /// device, inode or content hash of this file has changed. A change seen
+  /// before the run stops the call without running anything; one seen only
+  /// after the run discards its result and the orbitals it wrote.
   [[nodiscard]] const std::string &resolvedExecutablePath() const noexcept {
     return m_real_executable;
   }

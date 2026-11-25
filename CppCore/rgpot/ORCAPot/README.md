@@ -17,9 +17,10 @@ throws `ORCAError`.
 
 The input carries `%scf ConvForced true end`, and a call whose output reports
 an unconverged SCF throws `ORCAError`. `paramsKey` hashes the executable path
-with symlinks resolved and the size, modification time, device and inode of
-that file, with the charge and multiplicity, so cached results do not cross
-ORCA installations or spin states. Every call runs that resolved file and
+with symlinks resolved and the size, modification time, change time, device,
+inode and content hash of that file, with the charge and multiplicity, so
+cached results do not cross ORCA installations, rewritten binaries or spin
+states. Every call runs that resolved file and
 throws `ORCAError` once the executable has changed, as after a symlink is
 retargeted: without running it when the change is seen before the run, and
 without returning the result when it is seen only after. Each call starts from

@@ -8,6 +8,7 @@
 #include "rgpot/units.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
@@ -113,9 +114,70 @@ std::string findExecutable(const std::string &requested) {
   return {};
 }
 
+struct timespec modificationTime(const struct stat &st) noexcept {
+#if defined(__APPLE__)
+  return st.st_mtimespec;
+#else
+  return st.st_mtim;
+#endif
+}
+
+struct timespec changeTime(const struct stat &st) noexcept {
+#if defined(__APPLE__)
+  return st.st_ctimespec;
+#else
+  return st.st_ctim;
+#endif
+}
+
+/// Stamps the regular file open on @p fd with its size, modification time,
+/// change time, device, inode and content hash into @p stamp. The
+/// change time moves on every write, rename or attribute change and cannot
+/// be set back by the owner, so a rewrite that restores the size and the
+/// modification time still changes the stamp. False when the file cannot be
+/// read.
+bool stampOpenFile(int fd, uint64_t *stamp) noexcept {
+  struct stat st {};
+  if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+    return false;
+  }
+  Fnv1a content;
+  std::array<unsigned char, 16384> chunk;
+  uint64_t total = 0;
+  for (;;) {
+    const ssize_t got = ::pread(fd, chunk.data(), chunk.size(),
+                                static_cast<off_t>(total));
+    if (got < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return false;
+    }
+    if (got == 0) {
+      break;
+    }
+    content.bytes(chunk.data(), static_cast<std::size_t>(got));
+    total += static_cast<uint64_t>(got);
+  }
+  const struct timespec modified = modificationTime(st);
+  const struct timespec changed = changeTime(st);
+  Fnv1a fp;
+  fp.u64(static_cast<uint64_t>(st.st_size));
+  fp.i64(static_cast<int64_t>(modified.tv_sec));
+  fp.i64(static_cast<int64_t>(modified.tv_nsec));
+  fp.i64(static_cast<int64_t>(changed.tv_sec));
+  fp.i64(static_cast<int64_t>(changed.tv_nsec));
+  fp.u64(static_cast<uint64_t>(st.st_dev));
+  fp.u64(static_cast<uint64_t>(st.st_ino));
+  fp.u64(total);
+  fp.u64(content.h);
+  *stamp = fp.h;
+  return true;
+}
+
 /// Resolves @p executable with symlinks followed into @p real, and stamps
-/// the file it names with its size, modification time, device and inode
-/// into @p stamp. False when the file cannot be resolved or read.
+/// the file it names with stampOpenFile into @p stamp. False when the file
+/// cannot be resolved, opened or read.
 bool identifyExecutable(const std::string &executable, std::string *real,
                         uint64_t *stamp) noexcept {
   try {
@@ -124,24 +186,19 @@ bool identifyExecutable(const std::string &executable, std::string *real,
     if (ec) {
       return false;
     }
-    struct stat st {};
-    if (::stat(resolved.c_str(), &st) != 0) {
+    int fd;
+    do {
+      fd = ::open(resolved.c_str(), O_RDONLY | O_CLOEXEC | O_NOCTTY);
+    } while (fd < 0 && errno == EINTR);
+    if (fd < 0) {
       return false;
     }
-    const auto written = fs::last_write_time(resolved, ec);
-    if (ec) {
+    const bool stamped = stampOpenFile(fd, stamp);
+    ::close(fd);
+    if (!stamped) {
       return false;
     }
-    Fnv1a fp;
-    fp.u64(static_cast<uint64_t>(st.st_size));
-    fp.i64(static_cast<int64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            written.time_since_epoch())
-            .count()));
-    fp.u64(static_cast<uint64_t>(st.st_dev));
-    fp.u64(static_cast<uint64_t>(st.st_ino));
     *real = resolved.string();
-    *stamp = fp.h;
     return true;
   } catch (...) {
     return false;
@@ -795,9 +852,10 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
       throw ORCAError("ORCAPot: the executable " + m_executable + " changed " +
                       when + ": it no longer resolves to " +
                       m_real_executable +
-                      " with the size, modification time and inode recorded "
-                      "when the instance was made; make a new ORCAPot to run "
-                      "the new file");
+                      " with the size, modification time, change time, "
+                      "device, inode and content hash recorded when the "
+                      "instance was made; make a new ORCAPot to run the new "
+                      "file");
     }
   };
   checkExecutable("since the instance was made");
