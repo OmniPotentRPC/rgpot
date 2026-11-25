@@ -1564,7 +1564,7 @@ NB_MODULE(_core, m) {
   m.def(
       "rgpot_lammps_potential",
       [&](nb::bytes config_bytes, const std::string &engine_path) {
-        const std::string blob = nb::cast<std::string>(config_bytes);
+        const std::string blob(config_bytes.c_str(), config_bytes.size());
         return rgpot::rgpot_lammpc_potential(blob.data(), blob.size(),
                                              engine_path)
             .release();
@@ -1573,7 +1573,8 @@ NB_MODULE(_core, m) {
       nb::arg("engine_path") = "",
       "Lammpc-backed LAMMPS backend. config_bytes is a flat "
       "PotentialConfig message with the lammps arm. engine_path empty "
-      "searches LAMMPC_LIBRARY, RGPOT_LAMMPC_ENGINE and liblammpc.so.");
+      "searches LAMMPC_LIBRARY, RGPOT_LAMMPC_ENGINE and liblammpc.so; "
+      "any other engine_path is the only library tried.");
   m.def(
       "rgpot_gromacs_potential",
       [&](double u0, double cutoff, double psi,
