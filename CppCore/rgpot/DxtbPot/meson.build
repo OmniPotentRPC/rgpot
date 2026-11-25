@@ -5,6 +5,7 @@ dxtb_engine = library(
         'DxtbPot.cc',
         '../engine/DxtbEngine.cc',
         '../engine/EngineTable.cc',
+        engine_abi_stamp_source,
     ],
     dependencies: _deps_sans_core + [
         capnp_rpc_dep,

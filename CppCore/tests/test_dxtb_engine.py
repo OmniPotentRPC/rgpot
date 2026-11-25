@@ -7,6 +7,7 @@ import ctypes
 import json
 import os
 from pathlib import Path
+import re
 import time
 
 import capnp
@@ -20,6 +21,14 @@ HARTREE_TO_EV = 27.211386245988
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = capnp.load(str(ROOT / "CppCore/rgpot/rpc/Potentials.capnp"))
 BOX = np.diag([40.0, 40.0, 40.0]).astype(np.float64)
+
+
+class AbiStamp(ctypes.Structure):
+    _fields_ = [
+        ("abi_major", ctypes.c_ushort),
+        ("abi_minor", ctypes.c_ushort),
+        ("layout_revision", ctypes.c_ushort),
+    ]
 
 
 class Caps(ctypes.Structure):
@@ -37,6 +46,21 @@ class Caps(ctypes.Structure):
     ]
 
 
+def expected_abi_stamp() -> tuple[int, int, int]:
+    header = (ROOT / "CppCore/rgpot/engine_c_abi.h").read_text()
+
+    def macro(name: str) -> int:
+        match = re.search(rf"^#define\s+{name}\s+(\d+)\b", header, re.MULTILINE)
+        assert match is not None, f"{name} missing from engine_c_abi.h"
+        return int(match.group(1))
+
+    return (
+        macro("RGPOT_ENGINE_ABI_VERSION"),
+        macro("RGPOT_ENGINE_ABI_MINOR"),
+        macro("RGPOT_ENGINE_ABI_LAYOUT_REVISION"),
+    )
+
+
 class Engine:
     def __init__(
         self,
@@ -47,6 +71,16 @@ class Engine:
         uhf: int = 0,
     ):
         self.lib = ctypes.CDLL(path)
+        self.lib.rgpot_engine_abi_version.restype = ctypes.c_int
+        self.lib.rgpot_engine_abi_version.argtypes = []
+        self.lib.rgpot_engine_abi_stamp.restype = AbiStamp
+        self.lib.rgpot_engine_abi_stamp.argtypes = []
+        self.lib.rgpot_engine_abi_compatible.restype = ctypes.c_int
+        self.lib.rgpot_engine_abi_compatible.argtypes = [ctypes.POINTER(AbiStamp)]
+        self.lib.rgpot_engine_name.restype = ctypes.c_char_p
+        self.lib.rgpot_engine_name.argtypes = []
+        self.lib.rgpot_engine_version.restype = ctypes.c_char_p
+        self.lib.rgpot_engine_version.argtypes = []
         self.lib.rgpot_engine_create.restype = ctypes.c_void_p
         self.lib.rgpot_engine_create.argtypes = [
             ctypes.c_void_p,
@@ -115,6 +149,23 @@ class Engine:
         caps.size = ctypes.sizeof(caps)
         assert self.lib.rgpot_engine_caps(self.handle, ctypes.byref(caps)) == 0
         return caps
+
+    def abi_version(self) -> int:
+        return int(self.lib.rgpot_engine_abi_version())
+
+    def abi_stamp(self) -> AbiStamp:
+        return self.lib.rgpot_engine_abi_stamp()
+
+    def abi_compatible(self, host: AbiStamp | None) -> int:
+        if host is None:
+            return int(self.lib.rgpot_engine_abi_compatible(None))
+        return int(self.lib.rgpot_engine_abi_compatible(ctypes.byref(host)))
+
+    def engine_name(self) -> str:
+        return self.lib.rgpot_engine_name().decode()
+
+    def engine_version(self) -> str:
+        return self.lib.rgpot_engine_version().decode()
 
     @staticmethod
     def _arrays(numbers, positions):
@@ -395,5 +446,29 @@ def test_hvp_force_cost_report():
         )
         assert force_seconds > 0.0
         assert hvp_seconds > 0.0
+    finally:
+        engine.close()
+
+
+def test_abi_identity_and_stamp():
+    expected_major, expected_minor, expected_layout = expected_abi_stamp()
+    engine = Engine(os.environ["RGPOT_ENGINE_DXTB"], "dxtb", "gfn2")
+    try:
+        assert engine.abi_version() == expected_major
+        assert engine.engine_name() == "dxtb"
+        assert engine.engine_version().startswith("dxtb/")
+        stamp = engine.abi_stamp()
+        assert (stamp.abi_major, stamp.abi_minor, stamp.layout_revision) == (
+            expected_major,
+            expected_minor,
+            expected_layout,
+        )
+        assert stamp.abi_minor > 0
+        assert engine.abi_compatible(AbiStamp(expected_major, expected_minor, expected_layout)) == 1
+        assert engine.abi_compatible(AbiStamp(expected_major, expected_minor + 1, expected_layout)) == 1
+        assert engine.abi_compatible(AbiStamp(expected_major, expected_minor - 1, expected_layout)) == 0
+        assert engine.abi_compatible(AbiStamp(expected_major + 1, expected_minor, expected_layout)) == 0
+        assert engine.abi_compatible(AbiStamp(expected_major, expected_minor, expected_layout + 1)) == 0
+        assert engine.abi_compatible(None) == 0
     finally:
         engine.close()
