@@ -67,6 +67,7 @@ n=$((n + 1))
 echo "$n" > "$state/count"
 cp "$inp" "$state/call$n.inp"
 pwd > "$state/call$n.cwd"
+echo "$0" > "$state/call$n.argv0"
 fail() { echo "fake orca: $*" >&2; exit 3; }
 
 first=$(head -n 1 "$inp")
@@ -1263,6 +1264,93 @@ TEST_CASE("ORCAPot keys results on the executable modification time",
   REQUIRE(rgpot::ORCAPot(fake.config()).paramsKey() != before);
 }
 
+TEST_CASE("ORCAPot runs the resolved executable and refuses a retargeted "
+          "symlink",
+          "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  // A second installation that leaves a mark and then behaves as the first.
+  const fs::path other = fake.dir.path() / "other-bin" / "orca";
+  fs::create_directories(other.parent_path());
+  {
+    std::ofstream script(other, std::ios::binary);
+    script << "#!/usr/bin/env bash\n"
+           << "echo other > \"$FAKE_ORCA_STATE/ran_other\"\n"
+           << "exec \"" << fake.orca << "\" \"$@\"\n";
+  }
+  fs::permissions(other, fs::perms::owner_all);
+  const fs::path link = fake.dir.path() / "orca-link";
+  fs::create_symlink(fake.orca, link);
+
+  rgpot::ORCAConfig cfg = fake.config();
+  cfg.executable = link.string();
+  rgpot::ORCAPot pot(cfg);
+  REQUIRE(pot.executablePath() == link.string());
+  REQUIRE(pot.resolvedExecutablePath() == fs::canonical(fake.orca).string());
+  const uint64_t key = pot.paramsKey();
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 1);
+  // The child is started on the resolved file, not on the symlink.
+  REQUIRE(slurp(fake.state / "call1.argv0") ==
+          pot.resolvedExecutablePath() + "\n");
+
+  fs::remove(link);
+  fs::create_symlink(other, link);
+  REQUIRE(pot.paramsKey() != key);
+  REQUIRE_THROWS_MATCHES(
+      evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
+      Catch::Matchers::MessageMatches(
+          ContainsSubstring("changed since the instance was made")));
+  REQUIRE(fake.calls() == 1);
+  REQUIRE_FALSE(fs::exists(fake.state / "ran_other"));
+
+  // Pointing the link back restores the key and the runs.
+  fs::remove(link);
+  fs::create_symlink(fake.orca, link);
+  REQUIRE(pot.paramsKey() == key);
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 2);
+
+  // A new instance follows the link to the other installation.
+  fs::remove(link);
+  fs::create_symlink(other, link);
+  rgpot::ORCAPot moved(cfg);
+  REQUIRE(moved.resolvedExecutablePath() == fs::canonical(other).string());
+  REQUIRE(moved.paramsKey() != key);
+  evaluate(moved, kWater, kWaterZ);
+  REQUIRE(fs::exists(fake.state / "ran_other"));
+  REQUIRE(fake.calls() == 3);
+}
+
+TEST_CASE("ORCAPot refuses an executable replaced under the same name and "
+          "time",
+          "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAPot pot(fake.config());
+  const uint64_t key = pot.paramsKey();
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 1);
+
+  // A new file renamed over the old one, with the old modification time.
+  const auto written = fs::last_write_time(fake.orca);
+  const fs::path staged = fake.bin / "orca.new";
+  {
+    std::ofstream script(staged, std::ios::binary);
+    script << kFakeOrca << "# replaced\n";
+  }
+  fs::permissions(staged, fs::perms::owner_all);
+  fs::last_write_time(staged, written);
+  fs::rename(staged, fake.orca);
+  REQUIRE(fs::last_write_time(fake.orca) == written);
+
+  REQUIRE(pot.paramsKey() != key);
+  REQUIRE_THROWS_MATCHES(
+      evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
+      Catch::Matchers::MessageMatches(ContainsSubstring("changed")));
+  REQUIRE(fake.calls() == 1);
+}
+
 #ifdef RGPOT_HAS_CACHE
 TEST_CASE("ORCAPot cache entries do not cross installations or spin states",
           "[orca][cache]") {
@@ -1382,6 +1470,39 @@ TEST_CASE("ORCAPot with restart starts each call from the call before it "
   (void)plain(atomMatrix(b), kWaterZ, open_box);
   (void)plain(atomMatrix(b), kWaterZ, open_box);
   REQUIRE(fake.calls() == 6);
+}
+
+TEST_CASE("ORCAPot serves no cached result after its symlink is retargeted",
+          "[orca][cache]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::tests::TestTempDir db("rgpot-orca-cache");
+  rgpot::cache::PotentialCache cache((db.path() / "db").string());
+  const std::array<std::array<double, 3>, 3> open_box{};
+  const fs::path other = fake.dir.path() / "other-bin" / "orca";
+  fs::create_directories(other.parent_path());
+  fs::copy_file(fake.orca, other);
+  const fs::path link = fake.dir.path() / "orca-link";
+  fs::create_symlink(fake.orca, link);
+
+  rgpot::ORCAConfig cfg = fake.config();
+  cfg.executable = link.string();
+  rgpot::ORCAPot pot(cfg);
+  pot.setCache(&cache);
+  (void)pot(atomMatrix(kWater), kWaterZ, open_box);
+  (void)pot(atomMatrix(kWater), kWaterZ, open_box);
+  REQUIRE(fake.calls() == 1);
+
+  fs::remove(link);
+  fs::create_symlink(other, link);
+  REQUIRE_THROWS_AS(pot(atomMatrix(kWater), kWaterZ, open_box),
+                    rgpot::ORCAError);
+  REQUIRE(fake.calls() == 1);
+
+  fs::remove(link);
+  fs::create_symlink(fake.orca, link);
+  (void)pot(atomMatrix(kWater), kWaterZ, open_box);
+  REQUIRE(fake.calls() == 1);
 }
 #endif
 

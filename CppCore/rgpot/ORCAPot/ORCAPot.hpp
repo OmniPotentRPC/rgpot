@@ -41,7 +41,8 @@
 namespace rgpot {
 
 /// A failure of the ORCA run itself: a stale .engrad or .gbw could not be
-/// removed, the input could not be written, the process could not be started,
+/// removed, the input could not be written, the executable changed since
+/// the instance was made or while it ran, the process could not be started,
 /// ran past ORCAConfig::timeout_s, ended with a non-zero status or a signal,
 /// reported an SCF that did not converge, left no .engrad file, or wrote one
 /// that is malformed or holds a non-finite number. The message carries the
@@ -133,7 +134,9 @@ public:
   /// 100 Angstrom that rgpot.ase pads a cluster into is such a cell. A box
   /// with a translated image closer than the atom itself, a singular box,
   /// a cell too skewed to check and a non-finite entry throw
-  /// std::invalid_argument. A run that fails, including one that passes
+  /// std::invalid_argument. The resolved executable runs, and a call throws
+  /// ORCAError without running it once it has changed (see
+  /// resolvedExecutablePath()). A run that fails, including one that passes
   /// timeout_s, throws ORCAError.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
@@ -146,10 +149,13 @@ public:
   }
 
   /// Hash of method, basis, keywords, charge, multiplicity, restart, and
-  /// the executable path with symlinks resolved and its modification time,
-  /// both read by the constructor. A result-cache entry made by another
-  /// ORCA installation, or by the same one after it was replaced, is
-  /// never served.
+  /// the executable path with symlinks resolved and the size, modification
+  /// time, device and inode of that file, all read by the constructor.
+  /// Each call resolves and reads the executable again; once it no longer
+  /// matches, as when a symlink is retargeted or the file is replaced, the
+  /// key matches no entry an unchanged instance writes. A result-cache
+  /// entry made by another ORCA installation, or by the same one after it
+  /// was replaced, is never served.
   [[nodiscard]] uint64_t paramsKey() const noexcept override;
 
 #ifdef RGPOT_HAS_CACHE
@@ -167,9 +173,17 @@ public:
 
   [[nodiscard]] const ORCAConfig &config() const noexcept { return m_config; }
 
-  /// Absolute path of the executable the instance runs.
+  /// Absolute path of the executable as named, or as found on PATH.
   [[nodiscard]] const std::string &executablePath() const noexcept {
     return m_executable;
+  }
+
+  /// The file the instance runs: executablePath() with symlinks resolved
+  /// by the constructor. A call throws ORCAError, without running anything,
+  /// once executablePath() resolves to another file or this file's size,
+  /// modification time or inode has changed.
+  [[nodiscard]] const std::string &resolvedExecutablePath() const noexcept {
+    return m_real_executable;
   }
 
   /// Directory holding the input, output and .gbw files of the instance.
@@ -192,7 +206,7 @@ private:
   ORCAConfig m_config;
   std::string m_executable;
   std::string m_real_executable;
-  int64_t m_executable_mtime = 0;
+  uint64_t m_executable_stamp = 0;
   std::string m_run_dir;
   mutable bool m_has_guess = false;
   mutable bool m_last_reused = false;

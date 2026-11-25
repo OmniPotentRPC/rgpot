@@ -113,6 +113,50 @@ std::string findExecutable(const std::string &requested) {
   return {};
 }
 
+/// Resolves @p executable with symlinks followed into @p real, and stamps
+/// the file it names with its size, modification time, device and inode
+/// into @p stamp. False when the file cannot be resolved or read.
+bool identifyExecutable(const std::string &executable, std::string *real,
+                        uint64_t *stamp) noexcept {
+  try {
+    std::error_code ec;
+    const fs::path resolved = fs::canonical(executable, ec);
+    if (ec) {
+      return false;
+    }
+    struct stat st {};
+    if (::stat(resolved.c_str(), &st) != 0) {
+      return false;
+    }
+    const auto written = fs::last_write_time(resolved, ec);
+    if (ec) {
+      return false;
+    }
+    Fnv1a fp;
+    fp.u64(static_cast<uint64_t>(st.st_size));
+    fp.i64(static_cast<int64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            written.time_since_epoch())
+            .count()));
+    fp.u64(static_cast<uint64_t>(st.st_dev));
+    fp.u64(static_cast<uint64_t>(st.st_ino));
+    *real = resolved.string();
+    *stamp = fp.h;
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+/// True while @p executable still resolves to @p real with @p stamp.
+bool executableUnchanged(const std::string &executable,
+                         const std::string &real, uint64_t stamp) noexcept {
+  std::string now_real;
+  uint64_t now_stamp = 0;
+  return identifyExecutable(executable, &now_real, &now_stamp) &&
+         now_real == real && now_stamp == stamp;
+}
+
 void cross(const double *u, const double *v, double *w) {
   w[0] = u[1] * v[2] - u[2] * v[1];
   w[1] = u[2] * v[0] - u[0] * v[2];
@@ -636,17 +680,12 @@ ORCAPot::ORCAPot(const ORCAConfig &config)
   }
   m_run_dir = pattern;
 
-  // A failure leaves the path as found and the time at zero; the key then
-  // still separates installations by path.
-  std::error_code real_ec;
-  const fs::path real = fs::canonical(m_executable, real_ec);
-  m_real_executable = real_ec ? m_executable : real.string();
-  const auto written = fs::last_write_time(m_real_executable, real_ec);
-  if (!real_ec) {
-    m_executable_mtime = static_cast<int64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-            written.time_since_epoch())
-            .count());
+  if (!identifyExecutable(m_executable, &m_real_executable,
+                          &m_executable_stamp)) {
+    std::error_code ignored;
+    fs::remove_all(m_run_dir, ignored);
+    throw ORCAError("ORCAPot: could not resolve and read the executable " +
+                    m_executable);
   }
 }
 
@@ -671,7 +710,11 @@ uint64_t ORCAPot::paramsKey() const noexcept {
   fp.i64(m_config.multiplicity);
   fp.b8(m_config.restart);
   fp.str(m_real_executable);
-  fp.i64(m_executable_mtime);
+  fp.u64(m_executable_stamp);
+  // Once the executable has changed, the key matches no entry an unchanged
+  // instance writes, so no result of the old file is served for the new.
+  fp.b8(!executableUnchanged(m_executable, m_real_executable,
+                             m_executable_stamp));
   return fp.h;
 }
 
@@ -747,9 +790,26 @@ void ORCAPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     }
   }
 
+  // The file that runs is the one paramsKey fingerprints. It is checked
+  // before the run and again after it, so a result is only returned, and
+  // cached, for that file.
+  const auto checkExecutable = [&](const char *when) {
+    if (!executableUnchanged(m_executable, m_real_executable,
+                             m_executable_stamp)) {
+      m_has_guess = false;
+      throw ORCAError("ORCAPot: the executable " + m_executable + " changed " +
+                      when + ": it no longer resolves to " +
+                      m_real_executable +
+                      " with the size, modification time and inode recorded "
+                      "when the instance was made; make a new ORCAPot to run "
+                      "the new file");
+    }
+  };
+  checkExecutable("since the instance was made");
   const ChildStatus child =
-      runChild(m_executable, std::string(kBase) + ".inp", m_run_dir,
+      runChild(m_real_executable, std::string(kBase) + ".inp", m_run_dir,
                output_path, stderr_path, m_config.timeout_s);
+  checkExecutable("while it ran");
   if (!child.problem.empty()) {
     throw fail(child.problem);
   }

@@ -17,13 +17,16 @@ throws `ORCAError`.
 
 The input carries `%scf ConvForced true end`, and a call whose output reports
 an unconverged SCF throws `ORCAError`. `paramsKey` hashes the executable path
-with symlinks resolved and its modification time, with the charge and
-multiplicity, so cached results do not cross ORCA installations or spin
-states. Each call starts from ORCA's own guess unless `ORCAConfig::restart` is
-set; with restart on, a result cache is not used. A `maxcore_mb` of 0 leaves
-`%maxcore` out. A box is padding only: every pair of atoms must be its own
-nearest periodic image, checked over every lattice vector short enough to
-matter, which the cube `rgpot.ase` builds for a cluster satisfies.
+with symlinks resolved and the size, modification time, device and inode of
+that file, with the charge and multiplicity, so cached results do not cross
+ORCA installations or spin states. Every call runs that resolved file and
+throws `ORCAError` without running it once the executable has changed, as
+after a symlink is retargeted. Each call starts from ORCA's own guess unless
+`ORCAConfig::restart` is set; with restart on, a result cache is not used. A
+`maxcore_mb` of 0 leaves `%maxcore` out. A box is padding only: every pair of
+atoms must be its own nearest periodic image, checked over every lattice
+vector short enough to matter, which the cube `rgpot.ase` builds for a cluster
+satisfies.
 
 | File | Role |
 | --- | --- |
