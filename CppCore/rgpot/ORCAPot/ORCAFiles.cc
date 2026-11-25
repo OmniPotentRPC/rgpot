@@ -101,6 +101,7 @@ std::string renderInput(const InputSpec &spec, std::size_t n_atoms,
   if (spec.nprocs > 1) {
     out << "%pal nprocs " << spec.nprocs << " end\n";
   }
+  out << "%scf ConvForced true end\n";
   if (!spec.moinp.empty()) {
     out << "%moinp \"" << spec.moinp << "\"\n";
   }

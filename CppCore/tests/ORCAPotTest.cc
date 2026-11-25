@@ -7,8 +7,10 @@
 // MORead and %moinp lines), keeps a copy of every input, and writes a known
 // .engrad file and a .gbw whose text names the call. One mode sleeps in its
 // own process group with a child that ignores SIGTERM, so a timeout has to
-// kill the group; another exits with a non-zero status. The tests that need
-// a real ORCA skip when `orca` is not on PATH.
+// kill the group; another exits with a non-zero status. Four modes print
+// synthetic SCF report lines modelled on ORCA's wording; they are written
+// by the script, not taken from an ORCA run. The tests that need a real
+// ORCA skip when `orca` is not on PATH.
 
 #include <array>
 #include <cerrno>
@@ -85,6 +87,9 @@ case "${FAKE_ORCA_EXPECT_MOREAD:-any}" in
   1) [[ $moread == 1 ]] || fail "MORead was expected" ;;
   0) [[ $moread == 0 ]] || fail "MORead was not expected" ;;
 esac
+case "${FAKE_ORCA_EXPECT_CONVFORCED:-any}" in
+  1) grep -qx '%scf ConvForced true end' "$inp" || fail "no %scf ConvForced line" ;;
+esac
 
 if [[ -n ${FAKE_ORCA_EXPECT_XYZ:-} ]]; then
   awk 'NR == FNR { el[NR] = $1; for (k = 1; k <= 3; k++) v[NR, k] = $(k + 1); n = NR; next }
@@ -149,6 +154,20 @@ case "$mode" in
     exit 0 ;;
   killed) kill -9 $$ ;;
   noengrad) exit 0 ;;
+  scf_forced_stop)
+    echo "fake orca: synthetic output"
+    echo "SCF NOT CONVERGED AFTER 125 CYCLES"
+    exit 1 ;;
+  scf_failed_engrad)
+    echo "fake orca: synthetic output"
+    echo "SCF NOT CONVERGED AFTER 125 CYCLES" ;;
+  scf_near)
+    echo "fake orca: synthetic output"
+    echo "FINAL SINGLE POINT ENERGY -1.250000000000 (SCF not fully converged!)" ;;
+  scf_converged)
+    echo "fake orca: synthetic output"
+    echo "SCF CONVERGED AFTER  14 CYCLES"
+    echo "FINAL SINGLE POINT ENERGY -1.250000000000" ;;
 esac
 
 if [[ -z ${FAKE_ORCA_NO_GBW:-} ]]; then echo "gbw$n" > "$base.gbw"; fi
@@ -408,6 +427,7 @@ TEST_CASE("ORCAPot input carries the method, resources and geometry", "[orca]") 
           "! PBE def2-SVP TightSCF EnGrad\n"
           "%maxcore 2000\n"
           "%pal nprocs 2 end\n"
+          "%scf ConvForced true end\n"
           "* xyz 0 1\n"
           "O  0.000000000000 0.000000000000 0.117300000000\n"
           "H  0.000000000000 0.757200000000 -0.469200000000\n"
@@ -712,6 +732,65 @@ TEST_CASE("ORCAPot rejects a NaN energy, a short or a mismatched engrad",
         evaluate(pot, kWater, kWaterZ), rgpot::ORCAError,
         Catch::Matchers::MessageMatches(ContainsSubstring("atomic numbers")));
   }
+}
+
+TEST_CASE("ORCAPot asks ORCA to stop on an unconverged SCF", "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  EnvVar expect("FAKE_ORCA_EXPECT_CONVFORCED", "1");
+  rgpot::ORCAPot pot(fake.config());
+  evaluate(pot, kWater, kWaterZ);
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fake.calls() == 2);
+}
+
+TEST_CASE("ORCAPot never returns the gradient of an unconverged SCF",
+          "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  rgpot::ORCAConfig cfg = fake.config();
+  cfg.restart = true;
+  rgpot::ORCAPot pot(cfg);
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE(fs::exists(fs::path(pot.runDirectory()) / "rgpot_orca_guess.gbw"));
+
+  // The forced stop exits non-zero; the other two write a full .engrad.
+  for (const char *mode : {"scf_forced_stop", "scf_failed_engrad", "scf_near"}) {
+    INFO(mode);
+    EnvVar scf("FAKE_ORCA_MODE", mode);
+    std::vector<double> forces(kWater.size(), 7.0);
+    rgpot::ForceOut out{};
+    out.F = forces.data();
+    out.energy = 7.0;
+    REQUIRE_THROWS_MATCHES(
+        pot.forceImpl(rgpot::ForceInput{kWaterZ.size(), kWater.data(),
+                                        kWaterZ.data(), nullptr},
+                      &out),
+        rgpot::ORCAError,
+        Catch::Matchers::MessageMatches(
+            ContainsSubstring("SCF did not converge")));
+    REQUIRE(out.energy == 7.0);
+    for (const double f : forces) {
+      REQUIRE(f == 7.0);
+    }
+  }
+
+  // The failed SCF drops the stored orbitals.
+  EnvVar ok("FAKE_ORCA_MODE", "ok");
+  EnvVar expect("FAKE_ORCA_EXPECT_MOREAD", "0");
+  evaluate(pot, kWater, kWaterZ);
+  REQUIRE_FALSE(pot.reusedWavefunction());
+}
+
+TEST_CASE("ORCAPot takes a converged SCF report as converged", "[orca]") {
+  Fake fake;
+  EnvVar state("FAKE_ORCA_STATE", fake.state.string());
+  EnvVar mode("FAKE_ORCA_MODE", "scf_converged");
+  rgpot::ORCAPot pot(fake.config());
+  const Result r = evaluate(pot, kWater, kWaterZ);
+  REQUIRE_THAT(r.energy,
+               WithinRel(kFakeEnergy * rgpot::units::HARTREE_TO_EV,
+                         kUnitTolerance));
 }
 
 TEST_CASE("ORCAPot stops a sleeping process group when the timeout passes",
