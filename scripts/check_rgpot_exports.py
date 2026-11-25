@@ -9,10 +9,10 @@ entry points and one is rgpot_lammpc_potential.
 
 With the fast pair list on, the archive is librgpot_bundle.a and the
 umbrella links it with --whole-archive (or -force_load on Darwin). That
-archive defines 54 rgpot_* symbols: the public C ABI in
+archive defines 55 rgpot_* symbols: the public C ABI in
 scripts/abi_core_baseline.txt plus the four fast-list entry points in
 scripts/abi_baseline_fast.txt. None of those names are internal, so the
-shared library exports them too, 127 in all.
+shared library exports them too, 128 in all.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from pathlib import Path
 # Measured with `nm -D --defined-only` on the default umbrella
 # (thread_limit, and the same pots with the fast pair list off).
 CORE_ONLY_EXPORTS = 73
-BUNDLE_EXPORTS = 127
+BUNDLE_EXPORTS = 128
 
 
 def rgpot_names(nm_text: str) -> set[str]:
