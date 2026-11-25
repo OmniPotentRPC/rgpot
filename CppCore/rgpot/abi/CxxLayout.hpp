@@ -174,7 +174,7 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// did not increase.
 ///
 /// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
-/// is major 1, minor 10, layout revision 1. Minor 1 added
+/// is major 1, minor 11, layout revision 1. Minor 1 added
 /// `rgpot_eindir_abi_compatible`, minor 2 the Hessian-vector functions,
 /// minor 3 the fused-cache settings and error kind, minor 4 the Taylor
 /// jet functions, minor 5 the engine and RPC Hessian-vector exports,
@@ -184,8 +184,10 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 /// `rgpot_rpc_client_select_orbitals`.
 /// The molecular-dynamics session, including its optional
 /// neighbour-exchange callbacks, is a C++ session vtable on librgpot.
-/// Those symbols are not exports of librgpot_core, so this C minor
-/// stays 10. `kCxxSoversion` stays 9: the session vtable is not a
+/// Those symbols are not exports of librgpot_core, so they left this C
+/// minor at 10. Minor 11 adds
+/// `rgpot_potential_set_hessian_byte_budget`.
+/// `kCxxSoversion` stays 9: the session vtable is not a
 /// covered potential type, and `kCxxLayoutRevision` stays 2.
 /// No exported C struct of that header changed layout. The neighbour query
 /// is `RGPOT_NLIST_ABI` 4.

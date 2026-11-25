@@ -84,7 +84,7 @@ pub const ENGINE_ERR_LOCK: c_int = -2;
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
 /// The ABI minor this loader advertises, `RGPOT_ENGINE_ABI_MINOR` of the header.
-pub const ENGINE_ABI_MINOR: u16 = 11;
+pub const ENGINE_ABI_MINOR: u16 = 12;
 /// The struct layout revision this loader expects, `RGPOT_ENGINE_ABI_LAYOUT_REVISION` of the header.
 pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 /// Engine code meaning an argument is invalid.
@@ -2117,6 +2117,9 @@ impl EnginePotential {
         let jet_end =
             std::mem::offset_of!(RgpotEngineCaps, jet_order) + std::mem::size_of::<c_int>();
         let served_jet = if written >= jet_end { raw.jet_order } else { 0 };
+        let hessian_end =
+            std::mem::offset_of!(RgpotEngineCaps, analytic_hessian) + std::mem::size_of::<c_int>();
+        let analytic_hessian = written >= hessian_end && raw.analytic_hessian != 0;
         let jet_order = usize::try_from(served_jet).map_err(|_| {
             EngineError::Invalid(format!(
                 "the engine reports a negative jet order {served_jet}"
@@ -2131,7 +2134,7 @@ impl EnginePotential {
             group_collective: raw.group_collective != 0,
             analytic_hvp: raw.analytic_hvp != 0,
             jet_order,
-            analytic_hessian: raw.analytic_hessian != 0,
+            analytic_hessian,
         };
         Ok(*self.caps.get_or_init(|| caps))
     }

@@ -219,7 +219,7 @@ class PlantedFactMistakes(unittest.TestCase):
     def test_engine_table_exports_against_the_adapter(self):
         page = (ROOT / doccheck.ENGINE_ABI_PAGE).read_text(encoding="utf-8")
         self.assertEqual(doccheck.engine_table_export_errors(ROOT), [])
-        planted = page.replace("=rgpot_engine_hvp=, ", "", 1)
+        planted = page.replace("=rgpot_engine_hvp=,", "", 1)
         self.assertNotEqual(page, planted)
         errors = "\n".join(doccheck.engine_table_export_errors(ROOT, _page(planted)))
         self.assertIn("export rgpot_engine_hvp is not in the library export list", errors)

@@ -41,12 +41,12 @@ points.
 The archive still holds the whole C ABI, and the Meson test =abi_core_symbols=
 checks the archive rather than the shared library.
 With the fast pair list on, the archive is =librgpot_bundle.a=.
-It defines 54 =rgpot_*= symbols: the same C ABI, plus the four fast-list entry
+It defines 55 =rgpot_*= symbols: the same C ABI, plus the four fast-list entry
 points.
 Every one of those names is public
 (=scripts/abi_core_baseline.txt= and =scripts/abi_baseline_fast.txt=).
 The umbrella links this archive with =--whole-archive=, or with
-=-force_load= on Darwin, so those 54 symbols are exported as well and the shared library exports 126 =rgpot_*=
+=-force_load= on Darwin, so those 55 symbols are exported as well and the shared library exports 127 =rgpot_*=
 symbols.
 A process that also loads a separate rgpot-core shared library then has two
 definitions of those names.
@@ -88,6 +88,11 @@ host's.
 Minor 8 adds the negative code =RGPOT_ENGINE_ERR_LOCK= (-2) for a failed engine
 or handle lock.
 It exports no new symbol and changes no struct, so the layout revision stays at 1.
+Minors 9 and 10 are reserved.
+Minor 11 adds =rgpot_engine_taylor_jet= and the trailing
+=RgpotEngineCaps.jet_order= field.
+Minor 12 adds =rgpot_engine_hessian= and the trailing
+=RgpotEngineCaps.analytic_hessian= field.
 The meson test =engine_abi_stamps= opens every standalone engine plugin of the
 build, =libpotlibc_engine= included when =with_potlibc= is enabled, and compares
 its stamp with the header.
@@ -173,7 +178,7 @@ is not the hash.
 | 3.5.1   | 1, 0, 1         | 4                    |
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
-| next    | 1, 10, 1        | 9                    |
+| next    | 1, 11, 1        | 9                    |
 
 3.6.0 raised the minor for =rgpot_eindir_abi_compatible=; a caller built against
 minor 0 still matches it.
@@ -213,11 +218,14 @@ It raises the minor to 10 for =rgpot_rpc_client_select_orbitals=, which is an
 additive export behind =RGPOT_HAS_RPC=, so the layout revision stays at 1.
 The molecular-dynamics session entry points and their optional neighbour-query
 and neighbour-setter slots are symbols of the C++ library, not of the core C
-ABI, so this minor stays at 10.
+ABI, so they left this minor at 10.
 The session operation table carries its byte size and the new slots follow
 =destroy=, so an older table still loads.
 The C++ layout revision stays 2 and =kCxxSoversion= stays 9, because the session
 vtable is not one of the covered potential types.
+It raises the minor to 11 for =rgpot_potential_set_hessian_byte_budget=.
+The budget lives behind =fused_cache=, so no existing struct changes and the
+layout revision stays at 1.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.

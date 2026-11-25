@@ -520,7 +520,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   filled.periodic = 1;
 #if !defined(NO_HVP) && !defined(NO_HVP_CAP)
   filled.analytic_hvp = 1;
-#ifndef SHORT_CAPS
+#if !defined(SHORT_CAPS) && (FIXTURE_ABI_MINOR >= 12)
   filled.analytic_hessian = 1;
 #endif
 #endif
@@ -531,6 +531,11 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 #endif
 #endif
   room = out->size < sizeof filled ? out->size : sizeof filled;
+#if FIXTURE_ABI_MINOR < 12
+  if (room > offsetof(RgpotEngineCaps, analytic_hessian)) {
+    room = (unsigned)offsetof(RgpotEngineCaps, analytic_hessian);
+  }
+#endif
 #ifdef FIXTURE_CAPS_MINOR4
   /* A minor-4 engine's caps struct ends before jet_order. */
   if (room > offsetof(RgpotEngineCaps, jet_order)) {
@@ -541,6 +546,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 #ifdef FIXTURE_CAPS_DIRTY_TAIL
   /* Bytes past the size the engine reports are not part of the answer. */
   out->jet_order = FIXTURE_JET_ORDER;
+  out->analytic_hessian = 1;
 #endif
   out->size = room;
   return 0;
