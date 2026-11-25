@@ -1,1 +1,0 @@
-The release-notes template now drops copyright lines and comment blocks from fragments and writes the bullet itself, so a fragment that starts with `- ` no longer renders as a doubled bullet. Existing fragments are rewritten to match, and `scripts/check_news_fragments.py` (`pixi r news-fragments-check`) checks the rule.

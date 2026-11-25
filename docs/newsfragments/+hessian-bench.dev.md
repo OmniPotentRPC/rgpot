@@ -1,1 +1,0 @@
-`hessian_bench`, a meson benchmark, times the LJPot dense Hessian (analytic, dual-number, central) and Hessian-vector product (analytic, dual-number, central, forward at a new and at the cached centre) on free clusters through `rgpot::HessianVectorCache`, with each result's error against the analytic Hessian and the break-even `k*` of each pair.

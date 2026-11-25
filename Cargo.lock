@@ -727,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "rgpot-core"
-version = "3.7.0"
+version = "3.8.0"
 dependencies = [
  "capnp",
  "capnp-rpc",
@@ -748,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "rgpot-pair"
-version = "3.7.0"
+version = "3.8.0"
 dependencies = [
  "cc",
 ]
