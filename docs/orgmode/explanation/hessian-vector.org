@@ -94,8 +94,8 @@ advertises in =caps()=: =hessianVectorImpl= for =analyticHvp=,
 
 ** The scheme that ran
 
-=RGPOT_HVP_AUTO= takes the analytic product when there is one and forward
-differences otherwise.
+=RGPOT_HVP_AUTO= takes the analytic Hessian-vector callback when one is
+registered and forward differences otherwise.
 That fallback is kept, but it is never silent:
 =rgpot_potential_hvp_resolved= writes the scheme that ran, =rgpot::PotentialHandle::hvp= and the Python =hvp_resolved=
 return it, and =rgpot_potential_derivative_counts= counts every product under

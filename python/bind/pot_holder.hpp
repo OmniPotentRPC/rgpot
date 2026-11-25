@@ -674,8 +674,9 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
       "products at one geometry cost k + 1 force calls; 'central' costs 2 "
       "a product and is second order in step; 'analytic' uses the "
       "kernel's own product and 'ad' its dual-number product; 'exact' is "
-      "analytic, else ad, and never differences; 'auto' is analytic where "
-      "the kernel has one, otherwise forward. hvp_resolved() also returns "
+      "analytic, else ad, and never differences; 'auto' is analytic only "
+      "where the kernel has an analytic Hessian-vector callback, otherwise "
+      "forward. hvp_resolved() also returns "
       "the scheme that ran. step 0 is 1e-3 Angstrom. The kernel runs with "
       "the interpreter released.");
   cls.def(
@@ -691,8 +692,8 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
       nb::arg("box").noconvert(), nb::arg("direction").noconvert(),
       nb::arg("step") = 0.0, nb::arg("scheme") = "auto",
       "hvp() as (product, scheme): scheme is the one that ran, so 'auto' "
-      "reports 'analytic' or 'forward' and 'exact' reports 'analytic' or "
-      "'ad'.");
+      "reports 'analytic' only with an analytic Hessian-vector callback, else "
+      "'forward', and 'exact' reports 'analytic' or 'ad'.");
   cls.def(
       "hessian",
       [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,

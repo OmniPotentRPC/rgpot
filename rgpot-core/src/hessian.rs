@@ -300,39 +300,6 @@ impl rgpot_potential_t {
         }
     }
 
-    /// Whether an analytic dense-Hessian callback is registered.
-    pub(crate) fn has_hessian_callback(&self) -> bool {
-        read_callback(&self.hessian_state().analytic).is_some()
-    }
-
-    /// `H direction` through the analytic dense-Hessian callback.
-    ///
-    /// Returns `Ok(false)` when the callback is not registered.
-    pub(crate) unsafe fn hessian_vector_from_hessian_callback(
-        &self,
-        input: &rgpot_force_input_t,
-        direction: &[f64],
-        hv_out: &mut [f64],
-    ) -> Result<bool, HvpError> {
-        let state = self.hessian_state();
-        let analytic_guard = read_callback(&state.analytic);
-        let Some(callback) = *analytic_guard else {
-            return Ok(false);
-        };
-        let dim = direction.len();
-        let mut hessian = vec![0.0; dim * dim];
-        run_callback(
-            "Hessian callback",
-            "Hessian callback",
-            &mut hessian,
-            |out| unsafe { callback(self.pot_user_data, input, out) },
-        )?;
-        for (row, out) in hessian.chunks_exact(dim).zip(hv_out.iter_mut()) {
-            *out = row.iter().zip(direction).map(|(h, v)| h * v).sum();
-        }
-        Ok(true)
-    }
-
     /// Write the dense Hessian at the geometry of `input` to `hessian_out`
     /// and return the scheme that computed it: `EXACT` resolves to
     /// `ANALYTIC` or `AD`, and any other scheme to itself.
