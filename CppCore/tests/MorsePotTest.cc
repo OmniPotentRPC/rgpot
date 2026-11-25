@@ -404,7 +404,10 @@ FullEval evalBruteForcePairs(const rgpot::MorseConfig &cfg, std::size_t n,
     res.forces[3 * aj] -= fx;
     res.forces[3 * aj + 1] -= fy;
     res.forces[3 * aj + 2] -= fz;
-    if (n < rgpot::kTeamMinAtoms) {
+    // Morse sums by rows from its own floor, which is below the
+    // neighbour-list default. The reference follows that floor so the
+    // energy and the stress keep the bits of the potential.
+    if (n < rgpot::MorsePot::kTeamMinAtoms) {
       energy += pair_e;
       rgpot::accumulatePairStrain(strain, fscale, p.dx, p.dy, p.dz);
     } else {
@@ -415,7 +418,7 @@ FullEval evalBruteForcePairs(const rgpot::MorseConfig &cfg, std::size_t n,
     rgpot::tallyPair(pa, ai, aj, pair_e, fscale, p.dx, p.dy, p.dz);
   }
 
-  if (n >= rgpot::kTeamMinAtoms) {
+  if (n >= rgpot::MorsePot::kTeamMinAtoms) {
     for (std::size_t a_idx = 0; a_idx < n; ++a_idx) {
       energy += row_e[a_idx];
       for (std::size_t c = 0; c < 6; ++c) {
@@ -491,9 +494,9 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
   const rgpot::MorseConfig cu_switched{
       .De = 1.0, .a = 4.0 / 2.55, .re = 2.55, .cutoff = 5.3, .switch_width = 0.8};
 
-  // Below kTeamMinAtoms (6x6x6 Cu vacancy = 863 atoms): stays on one thread
-  // with zero OpenMP regions opened and identical bits across thread settings,
-  // and matches the Neighbours allPairs() brute-force walk bit for bit.
+  // 863 atoms sit under the neighbour-list default of 8192 and over Morse's
+  // own floor of 24. Two threads open no team. Four or more do, and the
+  // bits stay those of one thread and of the Neighbours allPairs() walk.
   {
     const auto sys = fccVacancy(6, 2.55 * std::sqrt(2.0), 29);
     REQUIRE(sys.z.size() == 863);
@@ -533,7 +536,17 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
       CHECK(countBitDiffs(runFullEval(pot, sys.pos, sys.z, sys.box), ref1) == 0);
       CHECK(countBitDiffs(runFullEval(pot, step2, sys.z, sys.box), ref2) == 0);
       CHECK(pot.listReused());
+      const int nth = std::atoi(th);
+      const bool team = nth > 1 && sys.z.size() >= rgpot::MorsePot::kTeamFrom.of(nth);
+#if defined(_OPENMP)
+      if (team) {
+        CHECK(rgpot::teamsOpened() > before_teams);
+      } else {
+        CHECK(rgpot::teamsOpened() == before_teams);
+      }
+#else
       CHECK(rgpot::teamsOpened() == before_teams);
+#endif
     }
   }
 
@@ -608,11 +621,18 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
               CHECK(countBitDiffs(got0, stream_ref0) == 0);
             }
           }
-          if (std::string(th) != "1") {
+          const int nth = std::atoi(th);
+          const bool team =
+              nth > 1 && sys.z.size() >= rgpot::MorsePot::kTeamFrom.of(nth);
 #if defined(_OPENMP)
+          if (team) {
+            // forceImpl and forcePerAtom each open one region.
             CHECK(rgpot::teamsOpened() == teams_before + 2);
-#endif
+          } else {
+            // Two threads stay on the calling thread, so a reused list opens none.
+            CHECK(rgpot::teamsOpened() == teams_before);
           }
+#endif
         }
 
         // 2. Within-skin perturbation: Verlet list reuse across all thread
@@ -637,11 +657,18 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
               CHECK(countBitDiffs(got1, stream_ref1) == 0);
             }
           }
-          if (std::string(th) != "1") {
+          const int nth = std::atoi(th);
+          const bool team =
+              nth > 1 && sys.z.size() >= rgpot::MorsePot::kTeamFrom.of(nth);
 #if defined(_OPENMP)
+          if (team) {
+            // forceImpl and forcePerAtom each open one region.
             CHECK(rgpot::teamsOpened() == teams_before + 2);
-#endif
+          } else {
+            // Two threads stay on the calling thread, so a reused list opens none.
+            CHECK(rgpot::teamsOpened() == teams_before);
           }
+#endif
         }
 
         // 3. Past-skin perturbation: one rebuild on the first call, then
@@ -671,11 +698,18 @@ TEST_CASE("MorsePot OpenMP threaded and serial paths agree across build, Verlet 
               CHECK(countBitDiffs(got2, stream_ref2) == 0);
             }
           }
-          if (std::string(th) != "1") {
+          const int nth = std::atoi(th);
+          const bool team =
+              nth > 1 && sys.z.size() >= rgpot::MorsePot::kTeamFrom.of(nth);
 #if defined(_OPENMP)
+          if (team) {
+            // forceImpl and forcePerAtom each open one region.
             CHECK(rgpot::teamsOpened() == teams_before + 2);
-#endif
+          } else {
+            // Two threads stay on the calling thread, so a reused list opens none.
+            CHECK(rgpot::teamsOpened() == teams_before);
           }
+#endif
         }
         if (mode == rgpot::nlist::Mode::Stored) {
           rgpot::ForceOut probe{};

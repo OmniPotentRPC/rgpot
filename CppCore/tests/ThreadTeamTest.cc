@@ -330,7 +330,13 @@ void checkPotential(const char *name, Make make, const System &s, Depth depth = 
     }
     const std::uint64_t built = rgpot::teamsOpened();
     CHECK(bitsApart(evaluate(*pot, s, split), serial) == 0);
-    CHECK((rgpot::teamsOpened() > built) == team);
+    // Stored Morse and Sutton-Chen leave a list with fewer than 4096 half
+    // pairs on the calling thread. Every other call opens a team exactly
+    // when its own kTeamFrom says so.
+    const bool pair_gated = std::strncmp(name, "stored Morse", 12) == 0 ||
+                            std::strncmp(name, "stored Sutton-Chen", 18) == 0;
+    const bool sparse_stored = pair_gated && n * (n - 1) / 2 < 4096;
+    CHECK((rgpot::teamsOpened() > built) == (team && !sparse_stored));
   }
   if (depth == Depth::Full) {
     setThreads("8");
