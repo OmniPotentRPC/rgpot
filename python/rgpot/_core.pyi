@@ -258,6 +258,77 @@ class MorsePot:
         Products and Hessians by the scheme that ran, and the force calls of central Hessians, so far. reset_hvp_counts() zeros them.
         """
 
+class GuptaPot:
+    def __init__(self, A: float = 0.1477, xi: float = 0.89, p: float = 9.689, q: float = 4.602, r0: float = 1.0, cutoff: float = 0.0, periodic: bool = False, stress: bool = False) -> None:
+        """
+        Cleri-Rosato Gupta many-body potential. Defaults are the Cleri-Rosato Zn parameters (A, xi in eV; p, q dimensionless) with r0 = 1.0 in reduced length units. r0 and cutoff share the coordinate length unit; a non-positive cutoff keeps every pair; periodic=True requires cutoff > 0.
+        """
+
+    def config(self) -> dict: ...
+
+    def caps(self) -> dict: ...
+
+    def __call__(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple: ...
+
+    def evaluate(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+        """
+        Energy, forces, variance, and stress when the kernel writes it. The kernel runs with the interpreter released.
+        """
+
+    def evaluate_per_atom(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> dict:
+        """
+        evaluate() with per-atom energies and virials. The kernel runs with the interpreter released.
+        """
+
+    def evaluate_batch(self, positions: list, atom_types: list, box: list, n_threads: int = 0) -> list:
+        """
+        One detached BatchEvaluator call. results[i] matches a serial call on inputs[i], bit for bit. n_threads 0 uses the hardware concurrency.
+        """
+
+    def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
+        """
+        Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product and 'ad' its dual-number product; 'exact' is analytic, else ad, and never differences; 'auto' is analytic where the kernel has one, otherwise forward. hvp_resolved() also returns the scheme that ran. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hvp_resolved(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> tuple:
+        """
+        hvp() as (product, scheme): scheme is the one that ran, so 'auto' reports 'analytic' or 'forward' and 'exact' reports 'analytic' or 'ad'.
+        """
+
+    def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], scheme: str, step: float = 0.0) -> tuple:
+        """
+        (hessian, scheme): the dense Hessian, shape (3N, 3N), coordinate 3 i + k for axis k of atom i, and the scheme that ran. scheme has no default: 'analytic' and 'ad' use the kernel's closed-form and dual-number Hessians, 'exact' is analytic, else ad, and each is refused when the kernel lacks it; 'central' differences the forces with 6N calls. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        """
+
+    def hvp_centre(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)]) -> tuple:
+        """
+        (energy, forces, variance) at the geometry, from the centre that hvp() reuses. A search that needs the centre forces asks here so the forward products that follow make one force call each.
+        """
+
+    def invalidate_hvp(self) -> None:
+        """Drop the centre hvp() reuses."""
+
+    def hvp_counts(self) -> dict:
+        """
+        Products, force calls, centre reuses and analytic products of hvp() and hvp_centre() so far.
+        """
+
+    def reset_hvp_counts(self) -> None:
+        """Zero hvp_counts(). The centre stays."""
+
+    def has_analytic_hvp(self) -> bool:
+        """Whether hvp(scheme='auto') uses the kernel's own product."""
+
+    def derivative_caps(self) -> dict:
+        """
+        Which analytic, dual-number and finite-difference schemes hvp() and hessian() have here, with the force calls of the differenced ones.
+        """
+
+    def derivative_counts(self) -> dict:
+        """
+        Products and Hessians by the scheme that ran, and the force calls of central Hessians, so far. reset_hvp_counts() zeros them.
+        """
+
 class D2Pot:
     def __init__(self, s6: float = 1.2, d: float = 20.0, sr: float = 1.1, cutoff: float = 150.0, functional: str | None = None) -> None:
         """
