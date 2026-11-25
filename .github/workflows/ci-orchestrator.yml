@@ -1196,12 +1196,22 @@ jobs:
           pixi run -e engines meson test -C build --print-errorlogs \
             lj_eval lj_engine capi_threads abi_symbols \
             lammps_lj plumed_driver plumed_debug_forces plumed_box_derivatives \
-            plumed_units plumed_api gromacs_mdrun openmm_lj NullForceAbiTest \
-            BuiltinPluginTest openmm_session openmm_abi \
+            plumed_units plumed_api gromacs_mdrun \
+            openmm_lj openmm_session openmm_analytic openmm_abi \
+            openmm_review_equipartition openmm_review_mean-force \
+            openmm_review_wall-energy openmm_review_metric-seed \
+            openmm_review_seed-chunking openmm_review_wall-multi-bounce \
+            openmm_review_off-plane-force openmm_review_openmm-constraints \
+            NullForceAbiTest BuiltinPluginTest \
             | tee build/engine-tests.txt
           for name in lj_eval lj_engine lammps_lj plumed_driver plumed_debug_forces \
-            plumed_box_derivatives plumed_units plumed_api gromacs_mdrun openmm_lj \
-            NullForceAbiTest BuiltinPluginTest openmm_session openmm_abi; do
+            plumed_box_derivatives plumed_units plumed_api gromacs_mdrun \
+            openmm_lj openmm_session openmm_analytic openmm_abi \
+            openmm_review_equipartition openmm_review_mean-force \
+            openmm_review_wall-energy openmm_review_metric-seed \
+            openmm_review_seed-chunking openmm_review_wall-multi-bounce \
+            openmm_review_off-plane-force openmm_review_openmm-constraints \
+            NullForceAbiTest BuiltinPluginTest; do
             if ! grep -E "${name}[[:space:]]+OK" build/engine-tests.txt >/dev/null; then
               echo "${name} did not pass" >&2
               exit 1
