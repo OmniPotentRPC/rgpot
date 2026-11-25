@@ -888,9 +888,6 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
 - Inputs :: the potential and geometry as for =rgpot_engine_force=, plus
   =direction= with =3 * nAtoms= Cartesian entries; =direction= and =hv_out= must
   not overlap.
-  The coordinate order is atom-major =(x0,y0,z0,x1,y1,z1,...)=.
-  This is the Saddle-coordinate order used by the rgsaddle/rgpot ABI; no
-  component or mass-weighting permutation is applied.
 - Units :: positions, box and direction in Angstrom; =hv_out= is the energy
   Hessian (eV/Angstrom squared) times that direction, hence eV/Angstrom.
 - Outputs :: =RGPOT_ENGINE_OK= and the exact energy-Hessian product in =hv_out=.
