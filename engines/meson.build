@@ -16,16 +16,21 @@ project_root = meson.project_source_root()
 engines_here = meson.current_source_dir()
 dl_dep = cppc.find_library('dl', required: false)
 thread_dep = dependency('threads')
-# A Windows DLL exports only what is marked dllexport, and librgpot marks
-# nothing but its version. On Windows the engines link the objects the
-# umbrella is made of, as the CppCore tests do.
+engines_rgpot = declare_dependency(link_with: rgpot)
+# lj_eval and pot_spec build in-tree potentials, which are C++ classes. A
+# Windows DLL exports the C ABI (RGPOT_API) and only a few C++ members, and
+# its import library would define those beside the archives. So there
+# they and every target that links them take the archives librgpot is
+# made of in place of the DLL, and RGPOT_STATIC.
+engines_cxx_args = []
+engines_rgpot_cxx = engines_rgpot
 if host_system == 'windows'
-    engines_rgpot = declare_dependency(
-        link_with: _linkto,
-        dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
+    engines_cxx_args = ['-DRGPOT_STATIC']
+    engines_rgpot_cxx = declare_dependency(
+        link_with: [rgpot_core] + _linkto,
+        dependencies: _deps_sans_core + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
+        compile_args: engines_cxx_args,
     )
-else
-    engines_rgpot = declare_dependency(link_with: rgpot)
 endif
 python3_runner = find_program('python3', required: true)
 engine_exports_script = files('../scripts/check_engine_exports.py')
@@ -47,7 +52,7 @@ coupled_well_engine = shared_library(
     'coupled_well_engine',
     files('coupled_well_engine.cpp'),
     include_directories: [engines_inc, rgpot_inc],
-    cpp_args: _args + [
+    cpp_args: rgpot_consumer_args + [
         '-DRGPOT_ENGINE_BUILD',
         '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(meson.project_version()),
         '-fvisibility-inlines-hidden',
@@ -164,7 +169,7 @@ lj_lib = static_library(
     include_directories: [engines_inc, rgpot_inc],
     # LJPot.hpp reaches fmt through base_types.hpp unless pure_lib.
     dependencies: [dl_dep] + (has_fmt ? [fmt_dep] : []),
-    cpp_args: _args,
+    cpp_args: rgpot_consumer_args + engines_cxx_args,
     pic: true,
 )
 lj_dep = declare_dependency(
@@ -175,7 +180,7 @@ lj_dep = declare_dependency(
 
 # pot_spec.cpp reaches fmt through base_types.hpp unless pure_lib.
 pot_spec_deps = has_fmt ? [fmt_dep] : []
-pot_spec_args = _args
+pot_spec_args = rgpot_consumer_args + engines_cxx_args
 if _rpc_stack
     pot_spec_deps += [ptlrpc_hdr_dep]
     pot_spec_args += ['-DRGPOT_POT_SPEC_HAS_CPMD=1']
@@ -203,17 +208,17 @@ if mdi_enabled
             rgpot_rust_lib,
             thread_dep,
             dl_dep,
-            engines_rgpot,
+            engines_rgpot_cxx,
         ],
-        cpp_args: _args,
+        cpp_args: rgpot_consumer_args,
         install: not meson.is_subproject(),
     )
 endif
 rgpot_eval = executable(
     'rgpot-eval',
     files('rgpot_eval.cpp'),
-    dependencies: [pot_spec_dep, engines_rgpot],
-    cpp_args: _args,
+    dependencies: [pot_spec_dep, engines_rgpot_cxx],
+    cpp_args: rgpot_consumer_args,
 )
 if mdi_enabled and get_option('with_tests')
     if has_pymdi
@@ -237,16 +242,16 @@ if has_ipi
     rgpot_ipi_driver = executable(
         'rgpot-ipi-driver',
         files('rgpot_ipi_driver.cpp'),
-        dependencies: [pot_spec_dep, engines_rgpot],
-        cpp_args: _args,
+        dependencies: [pot_spec_dep, engines_rgpot_cxx],
+        cpp_args: rgpot_consumer_args,
         install: not meson.is_subproject(),
     )
     # Not a meson test: the timings in docs/orgmode/howto/ipi.org come from it.
     executable(
         'rgpot-ipi-bench',
         files('ipi/bench_ipi_driver.cpp'),
-        dependencies: [pot_spec_dep, thread_dep, engines_rgpot],
-        cpp_args: _args,
+        dependencies: [pot_spec_dep, thread_dep, engines_rgpot_cxx],
+        cpp_args: rgpot_consumer_args,
         install: false,
     )
 endif
@@ -254,9 +259,9 @@ endif
 rgpot_lj = executable(
     'rgpot-lj',
     files('rgpot_lj.cpp'),
-    dependencies: [lj_dep, engines_rgpot],
+    dependencies: [lj_dep, engines_rgpot_cxx],
     include_directories: rgpot_inc,
-    cpp_args: _args,
+    cpp_args: rgpot_consumer_args,
     install: not meson.is_subproject(),
 )
 test(
@@ -264,8 +269,8 @@ test(
     executable(
         'test_lj_eval',
         files('test_lj_eval.cpp'),
-        dependencies: [lj_dep, engines_rgpot],
-        cpp_args: _args,
+        dependencies: [lj_dep, engines_rgpot_cxx],
+        cpp_args: rgpot_consumer_args,
     ),
     timeout: 60,
 )
@@ -273,9 +278,9 @@ test(
 lj_engine = shared_library(
     'lj_engine',
     [files('lj_engine.cpp'), engine_abi_stamp_source],
-    dependencies: [lj_dep, engines_rgpot],
+    dependencies: [lj_dep, engines_rgpot_cxx],
     include_directories: rgpot_inc,
-    cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+    cpp_args: rgpot_consumer_args + ['-DRGPOT_ENGINE_BUILD'],
     install: not meson.is_subproject(),
 )
 standalone_engine_plugins = [lj_engine]
@@ -287,8 +292,8 @@ test(
     executable(
         'test_engine',
         files('test_engine.cpp'),
-        dependencies: [lj_dep, engines_rgpot],
-        cpp_args: _args,
+        dependencies: [lj_dep, engines_rgpot_cxx],
+        cpp_args: rgpot_consumer_args,
     ),
     args: [lj_engine.full_path()],
     timeout: 60,
@@ -298,6 +303,7 @@ capi_threads = executable(
     'capi_threads',
     files('capi_threads.c'),
     include_directories: rgpot_inc,
+    c_args: rgpot_api_args,
     dependencies: [thread_dep, engines_rgpot],
     link_language: 'cpp',
 )
@@ -318,7 +324,7 @@ if (
         'capi_threads_tsan',
         files('capi_threads.c'),
         include_directories: rgpot_inc,
-        c_args: ['-fsanitize=thread'],
+        c_args: rgpot_api_args + ['-fsanitize=thread'],
         link_args: ['-fsanitize=thread'],
         dependencies: [thread_dep, engines_rgpot],
         link_language: 'cpp',
@@ -440,7 +446,7 @@ if lammps_opt.allowed() and python3_engines.found()
             pair_plugin = shared_library(
                 'pair_rgpot',
                 files('lammps/pair_rgpot.cpp'),
-                dependencies: [lj_dep, pot_spec_dep, engines_rgpot] + (
+                dependencies: [lj_dep, pot_spec_dep, engines_rgpot_cxx] + (
                     lammps_dep.found() ? [lammps_dep] : []
                 ),
                 include_directories: include_directories(
@@ -448,7 +454,7 @@ if lammps_opt.allowed() and python3_engines.found()
                 ),
                 # The MPI C++ bindings of Open MPI 4 would leave
                 # MPI::Win::Free undefined; LAMMPS skips them too.
-                cpp_args: _args + [
+                cpp_args: rgpot_consumer_args + [
                     '-DLAMMPS_SMALLBIG',
                     '-DOMPI_SKIP_MPICXX',
                     '-DMPICH_SKIP_MPICXX',
@@ -536,9 +542,9 @@ if plumed_opt.allowed()
         plumed_lib = shared_library(
             'RgpotPlumed',
             files('plumed/RgpotColvar.cpp'),
-            dependencies: plumed_link + [pot_spec_dep, engines_rgpot],
+            dependencies: plumed_link + [pot_spec_dep, engines_rgpot_cxx],
             include_directories: [engines_inc, rgpot_inc],
-            cpp_args: _args,
+            cpp_args: rgpot_consumer_args,
             name_prefix: 'lib',
             install: not meson.is_subproject(),
         )
@@ -871,18 +877,18 @@ endif
 native_lj_engine = shared_library(
     'native_lj_engine',
     [files('native_lj_engine.cpp'), engine_abi_stamp_source],
-    dependencies: [lj_dep, engines_rgpot],
+    dependencies: [lj_dep, engines_rgpot_cxx],
     include_directories: rgpot_inc,
-    cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+    cpp_args: rgpot_consumer_args + ['-DRGPOT_ENGINE_BUILD'],
     install: not meson.is_subproject(),
 )
 standalone_engine_plugins += native_lj_engine
 external_pot_test = executable(
     'test_external_potentials',
     files('test_external_potentials.cpp'),
-    dependencies: [lj_dep, engines_rgpot],
+    dependencies: [lj_dep, engines_rgpot_cxx],
     include_directories: rgpot_inc,
-    cpp_args: _args,
+    cpp_args: rgpot_consumer_args,
 )
 external_env = environment()
 if openmm_opt.allowed() and python3_engines.found()
@@ -915,7 +921,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 files('../CppCore/rgpot/ExternalPot/OpenMM.cc'),
                 dependencies: [openmm_lib],
                 include_directories: [rgpot_inc, openmm_inc],
-                cpp_args: _args,
+                cpp_args: rgpot_consumer_args,
                 pic: true,
                 install: false,
             )
@@ -928,7 +934,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 link_with: openmm_session_lib,
                 dependencies: [openmm_lib, engines_rgpot],
                 include_directories: [rgpot_inc, openmm_inc],
-                cpp_args: _args + ['-DRGPOT_ENGINE_BUILD'],
+                cpp_args: rgpot_consumer_args + ['-DRGPOT_ENGINE_BUILD'],
                 build_rpath: openmm_libdir,
                 install_rpath: openmm_libdir,
                 install: not meson.is_subproject(),
@@ -947,7 +953,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 link_with: openmm_session_lib,
                 dependencies: [openmm_lib, engines_rgpot],
                 include_directories: [rgpot_inc, openmm_inc],
-                cpp_args: _args,
+                cpp_args: rgpot_consumer_args,
                 build_rpath: openmm_libdir,
             )
             test(
@@ -962,7 +968,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 link_with: openmm_session_lib,
                 dependencies: [openmm_lib, engines_rgpot],
                 include_directories: [rgpot_inc, openmm_inc],
-                cpp_args: _args,
+                cpp_args: rgpot_consumer_args,
                 build_rpath: openmm_libdir,
             )
             openmm_analytic_test = executable(
@@ -974,7 +980,7 @@ if openmm_opt.allowed() and python3_engines.found()
                     openmm_inc,
                     include_directories('..'),
                 ],
-                cpp_args: _args,
+                cpp_args: rgpot_consumer_args,
                 build_rpath: openmm_libdir,
             )
             test(
@@ -989,7 +995,7 @@ if openmm_opt.allowed() and python3_engines.found()
                 files('openmm/test_openmm_abi.cpp'),
                 dependencies: [openmm_lib, engines_rgpot],
                 include_directories: [rgpot_inc, openmm_inc],
-                cpp_args: _args,
+                cpp_args: rgpot_consumer_args,
                 build_rpath: openmm_libdir,
             )
             test(
@@ -1038,7 +1044,7 @@ test(
         files('test_engine_abi_stamps.cpp'),
         include_directories: rgpot_inc,
         dependencies: dl_dep,
-        cpp_args: _args,
+        cpp_args: rgpot_consumer_args,
     ),
     args: standalone_engine_paths,
     depends: standalone_engine_plugins,
@@ -1177,7 +1183,7 @@ if gromacs_unit_ready
             files('test_gromacs_units.cpp'),
             include_directories: gromacs_unit_inc,
             dependencies: gromacs_unit_deps,
-            cpp_args: _args,
+            cpp_args: rgpot_consumer_args,
         ),
         timeout: 30,
     )
