@@ -66,6 +66,7 @@ doc  = { changelog_title = "Documentation" }
 tst  = { changelog_title = "Tests" }
 bld  = { changelog_title = "Buildsystem" }
 gen  = { changelog_title = "Generated" }
+dev  = { changelog_title = "Developer" }
 # Cosmo potctl spike commit on feat/direct-metatomic-export (before promotion to feat/ci).
 experiment = { changelog_title = "Experiments" }
 # Subjects already in the history this release carries.

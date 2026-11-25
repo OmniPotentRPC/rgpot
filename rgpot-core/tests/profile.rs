@@ -11,7 +11,7 @@ fn candidates_are_prefix_parameterized() {
     let cpmd = library_candidates("cpmdc", None);
 
     assert_eq!(nwchem, ["/opt/lib/libnwchemc.so"]);
-    assert!(!cpmd.is_empty());
+    assert!(cpmd.iter().any(|path| path == "libcpmdc.so"));
     assert!(!cpmd.iter().any(|path| path.contains("nwchem")));
 }
 
