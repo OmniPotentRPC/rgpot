@@ -2321,6 +2321,30 @@ if get_option('with_tests')
             depends: mopacc_fake_engine,
             kwargs: _rt_kw['MOPACPotEmptyVariable'],
         )
+        mopacc_upstream_stub = shared_library(
+            'mopacc_upstream_stub',
+            sources: ['tests/mopacc_upstream_stub.c'],
+            install: false,
+        )
+        mopacc_upstream_env = environment(
+            {'RGPOT_MOPACC_ENGINE': mopacc_upstream_stub.full_path()},
+        )
+        mopac_upstream_abi_test = executable(
+            'mopac_upstream_abi_test',
+            sources: ['tests/MOPACUpstreamAbiTest.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'MOPACUpstreamAbiTest',
+            mopac_upstream_abi_test,
+            env: mopacc_upstream_env,
+            depends: mopacc_upstream_stub,
+            kwargs: _rt_kw['MOPACUpstreamAbiTest'],
+        )
         test(
             'test_mopac_abi',
             executable(

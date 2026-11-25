@@ -684,6 +684,14 @@ rgpot_add_test(MOPACPotTest COMMAND mopac_pot_test
 rgpot_add_test(MOPACPotEmptyVariable COMMAND mopac_pot_test "[empty-variable]"
                ENVIRONMENT ${_rgpot_mopacc_env} "MOPACC_LIBRARY=")
 
+add_library(mopacc_upstream_stub SHARED CppCore/tests/mopacc_upstream_stub.c)
+rgpot_test_executable(mopac_upstream_abi_test
+                      CppCore/tests/MOPACUpstreamAbiTest.cc)
+set(_rgpot_mopacc_upstream_env
+    "RGPOT_MOPACC_ENGINE=$<TARGET_FILE:mopacc_upstream_stub>")
+rgpot_add_test(MOPACUpstreamAbiTest COMMAND mopac_upstream_abi_test
+               ENVIRONMENT ${_rgpot_mopacc_upstream_env})
+
 # Each frontend's C ABI against its no-op stub.
 set(_rgpot_abi_stubs mopac:MOPACPot)
 if(RGPOT_WITH_RPC)
