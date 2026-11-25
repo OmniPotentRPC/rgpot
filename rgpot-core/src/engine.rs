@@ -256,8 +256,6 @@ pub const POTLIBC_CONFIG_MIN_SIZE: u32 = 152;
 /// Capacity of the potlibc surface identifier, including its terminator.
 pub const POTLIBC_SURFACE_ID_CAPACITY: usize = 128;
 
-const COUPLED_WELL_CONFIG_BYTES: usize = 56;
-const POTLIBC_CONFIG_BYTES: usize = 152;
 const _: () = assert!(COUPLED_WELL_CONFIG_V1_SIZE == 48);
 const _: () = assert!(COUPLED_WELL_CONFIG_VERSION_V1 == 1);
 const _: () = assert!(COUPLED_WELL_CONFIG_VERSION == 2);
@@ -303,7 +301,7 @@ pub struct PotlibcConfig {
     pub surface_id: [u8; POTLIBC_SURFACE_ID_CAPACITY],
 }
 
-const _: () = assert!(std::mem::size_of::<PotlibcConfig>() == POTLIBC_CONFIG_BYTES);
+const _: () = assert!(std::mem::size_of::<PotlibcConfig>() == POTLIBC_CONFIG_MIN_SIZE as usize);
 const _: () = assert!(std::mem::offset_of!(PotlibcConfig, magic) == 0);
 const _: () = assert!(std::mem::offset_of!(PotlibcConfig, size) == 4);
 const _: () = assert!(std::mem::offset_of!(PotlibcConfig, version) == 8);
@@ -474,7 +472,8 @@ pub struct CoupledWellConfig {
     pub coupling: f64,
 }
 
-const _: () = assert!(std::mem::size_of::<CoupledWellConfig>() == COUPLED_WELL_CONFIG_BYTES);
+const _: () =
+    assert!(std::mem::size_of::<CoupledWellConfig>() == COUPLED_WELL_CONFIG_MIN_SIZE as usize);
 const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, magic) == 0);
 const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, size) == 4);
 const _: () = assert!(std::mem::offset_of!(CoupledWellConfig, version) == 8);
