@@ -18,6 +18,11 @@
  * The energy is converted from Hartree to eV and the gradient from
  * Hartree/Bohr to forces in eV/Angstrom with the constants of units.hpp.
  *
+ * The input carries `%scf ConvForced true end` (ORCA 6.1 manual, section
+ * 2.6.1, https://www.faccts.de/docs/orca/6.1/manual/contents/essentialelements/scf.html),
+ * so ORCA stops after an SCF that did not converge. A call whose output
+ * reports such an SCF throws ORCAError even when ORCA wrote a gradient.
+ *
  * Between calls the converged orbitals are carried forward: the .gbw of one
  * call is copied to a second name and handed to the next through `%moinp`
  * and `! MORead`. Without a .gbw, or after a failure or a change of
@@ -36,7 +41,8 @@ namespace rgpot {
 /// A failure of the ORCA run itself: a stale .engrad or .gbw could not be
 /// removed, the input could not be written, the process could not be started,
 /// ran past ORCAConfig::timeout_s, ended with a non-zero status or a signal,
-/// left no .engrad file, or wrote one that is malformed or holds a non-finite
+/// reported an SCF that did not converge, left no .engrad file, or wrote one
+/// that is malformed or holds a non-finite
 /// number. The message carries the tail of ORCA's stderr and of its output
 /// file. Input a caller got wrong (a periodic cell, an unknown atomic number,
 /// an impossible spin, a timeout that is negative or not finite) throws
@@ -148,7 +154,7 @@ public:
   /// `orca` on PATH).
   [[nodiscard]] static bool probeAvailable(const std::string &executable = {});
 
-  static constexpr uint64_t kKernelVersion = 1;
+  static constexpr uint64_t kKernelVersion = 2;
 
 private:
   ORCAConfig m_config;
