@@ -2021,10 +2021,11 @@ calculate_many(frames, properties=("energy", "forces"), *, attach=False, threads
 rgpot.ase.RgpotRpcCalculator(host="localhost", port=12345, *, server_proc=None, orbital_key=None, **kwargs)
 #+end_src
 
-- Inputs :: =host= and =port= of a running =potserv=; =server_proc=, an optional
-  managed process this calculator stops on =close= (prefer =spawn=);
-  =orbital_key=, the optional image or bead key sent with each calculation;
-  other keywords are ASE calculator arguments.
+- Inputs :: =host= and =port= of a running =potserv=.
+  =server_proc= is an optional managed process this calculator stops on =close=
+  (prefer =spawn=).
+  =orbital_key= is the optional image or bead key sent with each calculation.
+  Other keywords are ASE calculator arguments.
 - Units :: the =ForceInput= defaults, Angstrom and eV, which are ASE's units.
   A =Atoms= without a full cell is sent in a 100 Angstrom cubic box.
 - Outputs :: a calculator whose
@@ -2063,8 +2064,8 @@ select_orbitals(key)
 - Units :: none.
 - Outputs :: nothing; the key is sent with each later =ForceInput=.
   =atoms.info["rgpot_orbital_key"]= overrides it for that calculation.
-- Errors :: conversion of a value that is not integer-like raises =TypeError=
-  or =ValueError=.
+- Errors :: conversion of a value that is not integer-like raises =TypeError= or
+  =ValueError=.
 
 *** =rgpot.ase.RgpotRpcCalculator.calculate=
 
