@@ -121,8 +121,8 @@ The template =ci/release-notes.md= writes the bullet and the heading, so:
 
 The checker is =python scripts/check_news_fragments.py= (or
 =pixi r news-fragments-check=).
-It fails when a fragment, after leading whitespace, starts with =-= or =*=.
-That marker must be followed by a space to count.
+It fails when a fragment starts with a dash or an asterisk and a space.
+Leading whitespace before that marker does not change this.
 It fails on a line starting with =copyright= or =(c)= and a space.
 It fails on a line starting with =©=, =spdx-=, =[//]:= or =<!--=.
 These prefixes match without regard to case.
@@ -130,8 +130,19 @@ It fails on a fragment with no text.
 Add =--fix= to strip these from the files.
 The template strips the same lines and a leading marker from the notes.
 
-The =pull_request= trigger in =.github/workflows/ci-orchestrator.yml= has
-=paths-ignore=: =docs/**=, =**/*.md=, =newsfragments/**= and =LICENSE=.
+The =pull_request= trigger in =.github/workflows/ci-orchestrator.yml= reads:
+
+#+attr_rgpot: syntax excerpt of the orchestrator workflow trigger
+#+begin_src yaml
+pull_request:
+  branches: [main, develop]
+  paths-ignore:
+    - docs/**
+    - '**/*.md'
+    - newsfragments/**
+    - LICENSE
+#+end_src
+
 The workflow skips a pull request whose files all match these patterns.
 Such a pull request runs neither the =towncrier= job nor the =prek= job.
 The =prek= job runs the fragment checker.
