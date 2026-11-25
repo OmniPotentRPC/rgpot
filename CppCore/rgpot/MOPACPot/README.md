@@ -20,3 +20,17 @@ app
 | `RGPOT_MOPACC_ENGINE` | same |
 
 ABI units: Hartree, Hartree/Bohr. Frontend: eV, eV/Å.
+
+## Load check
+
+mopacc C ABI 1 and 2 export the same compute symbols, but ABI 2 grew
+`MopacCResult` (returned by value) and `MopacCParams`. Before any call
+that returns a `MopacCResult`, the loader requires:
+
+- `mopacc_c_abi_version() >= 2`, and `mopacc_abi_version() >= 2` when
+  exported;
+- `mopacc_result_size()` exported and equal to `sizeof(MopacCResult)`;
+- `mopacc_params_size()` equal to `sizeof(MopacCParams)` when exported.
+
+Otherwise the engine stays unloaded and `forceImpl` throws a load error
+naming the expected and found values.
