@@ -339,6 +339,16 @@ jobs:
         name: RPC Integration Test
         shell: pixi run -e rpctest bash -e {0}
         run: potctl ci rpc-integ --server-bin bbdir/CppCore/potserv
+      - if: matrix.rpc == 'true' && matrix.cache == 'false' && matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
+        name: Static umbrella with RPC plugins
+        shell: pixi run -e devbld bash -e {0}
+        run: |
+          meson setup bbdir-static-rpc \
+            --default-library=static \
+            -Dwith_rpc=true \
+            -Dwith_tests=true
+          meson compile -C bbdir-static-rpc
+          meson test -C bbdir-static-rpc CxxSoversion --print-errorlogs
 
   # --- Stage 2a': single Windows leg (explicit job, not a matrix axis) ---
   # Kept out of build_and_test on purpose: adding windows-latest to the
