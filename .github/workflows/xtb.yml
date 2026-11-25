@@ -1,6 +1,7 @@
 # Linux XTB build. with_xtb defaults to false and the wheels pass
 # -Dwith_xtb=false, so XTBDlopenTest and XTBtest do not run there.
-# This job builds them and fails when the suite fails.
+# This job builds them and fails when the suite fails. It also runs the
+# SCC rescue pytest cases, which need the engine it builds.
 
 name: XTB
 
@@ -35,7 +36,7 @@ env:
 jobs:
   xtb-linux:
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     name: xtb (linux)
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -49,10 +50,22 @@ jobs:
           environments: xtbbld
           activate-environment: true
 
+      # The pixi Python has no pip and none of the binding build or test
+      # packages, and meson looks for nanobind at setup.
+      - name: Python binding packages
+        run: |
+          set -euo pipefail
+          python3 -m ensurepip
+          python3 -m pip install 'nanobind==3.1.0' numpy pytest pytest-timeout
+
       - name: Meson test suite xtb
         run: |
           set -euo pipefail
           meson setup bbdir-xtb \
+            --prefix "${PWD}/xtb-prefix" \
+            -Dpython.platlibdir="${PWD}/xtb-site" \
+            -Dpython.purelibdir="${PWD}/xtb-site" \
+            -Dwith_python=true \
             -Dwith_xtb=true \
             -Dwith_tests=true \
             -Dwith_examples=false \
@@ -81,6 +94,21 @@ jobs:
               )
           print("suite xtb:", ", ".join(sorted(names)))
           PY
+
+      # Every other pytest job builds without xTB, so the SCC rescue tests
+      # skip there. The module imports first because a failed import
+      # would skip them here too.
+      - name: SCC rescue tests
+        run: |
+          set -euo pipefail
+          meson install -C bbdir-xtb --skip-subprojects
+          export PYTHONPATH="${PWD}/xtb-site"
+          export RGPOT_XTB_ENGINE="${PWD}/bbdir-xtb/CppCore/rgpot/XTBPot/libxtb_engine.so"
+          export OMP_NUM_THREADS=1
+          test -f "${RGPOT_XTB_ENGINE}"
+          python3 -c 'import rgpot'
+          python3 -m pytest -q tests/python/test_xtb_scc_rescue.py \
+            --timeout=180 -o faulthandler_timeout=120
 
   # The job above builds without the result cache, and the cache jobs of
   # the orchestrator build without xTB, so the store-backed xTB cases

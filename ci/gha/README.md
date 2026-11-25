@@ -109,7 +109,7 @@ Until `orchestrator.ncl` exists, edit the orchestrator directly but **prefer add
 | `cosmo-potctl.yml` | Nickel `cosmo_potctl.ncl` | path-filtered cosmo potctl |
 | `isa-audit.yml` | Hand-maintained reusable workflow | `workflow_call` from a build job |
 | `isa-audit-selftest.yml` | Hand-maintained | push to main and ci/** when the audit files change, and pull request; calls `isa-audit.yml` |
-| `xtb.yml` | Hand-maintained | Linux `-Dwith_xtb=true`, `meson test --suite xtb` on every PR; a second job adds `-Dwith_cache=true` and runs the `[cache-db]` cases |
+| `xtb.yml` | Hand-maintained | Linux `-Dwith_xtb=true`, `meson test --suite xtb` and the SCC rescue pytest cases on every PR; a second job adds `-Dwith_cache=true` and runs the `[cache-db]` cases |
 
 **Removed** (folded into orchestrator): `build.yml`, `potentials.yml`, `prek.yml`,
 `docs_quality.yml`, `towncrier.yml`, `cosmo-potctl-spike.yml`.

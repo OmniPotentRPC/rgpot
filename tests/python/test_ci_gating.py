@@ -65,3 +65,17 @@ def test_the_cache_cases_carry_the_tag_the_job_selects():
     assert xtb.rindex("#ifdef RGPOT_HAS_CACHE", 0, case) > xtb.rindex("#endif", 0, case)
     engine = (tests / "EngineTableTest.cc").read_text(encoding="utf-8")
     assert '"[engine][xtb][scc][cache][cache-db]"' in engine
+
+
+def test_an_xtb_job_runs_the_scc_rescue_tests_with_an_engine():
+    legs = [
+        job
+        for job in _jobs("xtb.yml").values()
+        if "tests/python/test_xtb_scc_rescue.py" in job
+    ]
+    assert len(legs) == 1
+    leg = legs[0]
+    assert "-Dwith_xtb=true" in leg
+    assert "-Dwith_python=true" in leg
+    assert re.search(r"export RGPOT_XTB_ENGINE=\S*libxtb_engine", leg)
+    assert "python3 -c 'import rgpot'" in leg
