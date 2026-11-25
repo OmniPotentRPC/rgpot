@@ -161,7 +161,7 @@ typedef struct rgpot_md_langevin_request {
  * set. Entry k is the Lagrange multiplier lambda of step k in eV/Angstrom: the
  * constraint force on the system is lambda n for the unit normal n, and
  * lambda = -(n . M^-1 F) / (n . M^-1 n) averaged over the two force kicks of
- * the step. Its mean over the constrained ensemble is dF/dc for the plane
+ * the step, or its counterpart with the distance constraints of the engine. Its mean over the constrained ensemble is dF/dc for the plane
  * offset c = n . p. Nothing is written without a plane.
  */
 typedef struct rgpot_md_langevin_result {
@@ -169,7 +169,20 @@ typedef struct rgpot_md_langevin_result {
   uint64_t wall_hits;
   double *constraint_force;
   size_t constraint_force_len;
+  /* Since a caller whose struct_size reaches it: null or constraint_metric_len
+   * doubles, at least the number of steps when the plane is set. Entry k is
+   * Z = 1 / [(J M^-1 J^T)^-1]_plane at the end of step k in 1/amu, with J the
+   * gradients of the plane normal and of the engine's distance constraints.
+   * The plane ensemble carries Z^(1/2): the free energy along the plane offset
+   * is the integral of the mean multiplier minus kT ln <Z^(-1/2)>. Written
+   * only together with constraint_force. An engine that predates it leaves it
+   * untouched. */
+  double *constraint_metric;
+  size_t constraint_metric_len;
 } rgpot_md_langevin_result;
+
+/* True when result carries the metric buffer and asks for it. */
+#define RGPOT_MD_RESULT_HAS_METRIC(result) ((result)->struct_size >= offsetof(rgpot_md_langevin_result, constraint_metric_len) + sizeof(size_t) && (result)->constraint_metric != NULL)
 
 typedef struct rgpot_md_session_ops {
   size_t struct_size;

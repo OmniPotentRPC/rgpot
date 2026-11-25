@@ -9,6 +9,7 @@
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/ExternalPot/md_units.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -161,6 +162,10 @@ int run_langevin(void *context, const rgpot_md_langevin_request *request,
     if (record) {
       for (size_t step = 0; step < run.constraintForce.size(); ++step) {
         result->constraint_force[step] = run.constraintForce[step] * kEvAPerKjNm;
+      }
+      if (RGPOT_MD_RESULT_HAS_METRIC(result)) {
+        std::copy(run.constraintMetric.begin(), run.constraintMetric.end(),
+                  result->constraint_metric);
       }
     }
   });

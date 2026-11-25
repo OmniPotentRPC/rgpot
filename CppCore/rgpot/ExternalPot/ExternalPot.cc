@@ -1485,7 +1485,9 @@ int rgpot_md_session_run_langevin(rgpot_md_session *session,
                                   "and result");
     }
     if (request->struct_size < sizeof(rgpot_md_langevin_request) ||
-        result->struct_size < sizeof(rgpot_md_langevin_result)) {
+        result->struct_size <
+            offsetof(rgpot_md_langevin_result, constraint_force_len) +
+                sizeof(size_t)) {
       throw std::invalid_argument(
           "MD run_langevin request or result struct_size is too small");
     }
@@ -1522,6 +1524,11 @@ int rgpot_md_session_run_langevin(rgpot_md_session *session,
         result->constraint_force_len < request->steps) {
       throw std::invalid_argument(
           "MD Langevin constraint_force buffer is shorter than steps");
+    }
+    if (has_plane && RGPOT_MD_RESULT_HAS_METRIC(result) &&
+        result->constraint_metric_len < request->steps) {
+      throw std::invalid_argument(
+          "MD Langevin constraint_metric buffer is shorter than steps");
     }
     if (!RGPOT_MD_OPS_HAS(&session->ops, run_langevin)) {
       throw std::runtime_error("MD engine does not support run_langevin");

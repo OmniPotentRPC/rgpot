@@ -54,6 +54,7 @@ struct OpenMMLangevinResult {
    * over the 3N coordinates, the mean of the two force kicks of the step.
    */
   std::vector<double> constraint_force;
+  std::vector<double> constraint_metric; //!< Z per step, 1/amu
 };
 
 /** A state returned by an OpenMM session in OpenMM native units. */

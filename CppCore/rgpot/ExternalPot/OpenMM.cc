@@ -311,6 +311,7 @@ OpenMMLangevinResult OpenMMSession::runLangevin(
   impl_->context->setVelocities(state);
   out.wall_hits = result.wallHits;
   out.constraint_force = std::move(result.constraintForce);
+  out.constraint_metric = std::move(result.constraintMetric);
   return out;
 }
 
@@ -553,6 +554,10 @@ int c_run_langevin(void *ctx, const rgpot_md_langevin_request *request,
     if (record) {
       for (size_t k = 0; k < run.constraint_force.size(); ++k) {
         result->constraint_force[k] = run.constraint_force[k] * md::kEvAPerKjNm;
+      }
+      if (RGPOT_MD_RESULT_HAS_METRIC(result)) {
+        std::copy(run.constraint_metric.begin(), run.constraint_metric.end(),
+                  result->constraint_metric);
       }
     }
     return 0;
