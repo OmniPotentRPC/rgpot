@@ -12,6 +12,9 @@ in its =Cargo.toml=.
 That is the default, =-Dwith_fast_nlist=auto=.
 The build then defines =RGPOT_HAS_FAST_NLIST= and links the archive into
 =librgpot=.
+A shared =librgpot= exports the four functions whether or not a potential inside
+it calls them.
+=scripts/abi_baseline_fast.txt= lists them.
 CMake does not build it.
 
 The library does not convert units.
