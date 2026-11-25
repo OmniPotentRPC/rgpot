@@ -4,11 +4,12 @@
 
 /**
  * @file ORCAGuards.hpp
- * @brief Checks an ORCA frontend makes before ORCA runs.
+ * @brief Checks both ORCA frontends make before ORCA runs.
  *
- * The box rule for an isolated cluster and the fingerprint of the orca
- * executable, kept apart from ORCALegacyPot so that every frontend
- * accepts the same boxes and pins the file it runs the same way.
+ * ORCAPot, over liborcac, and ORCALegacyPot, over a child process, share
+ * the box rule for an isolated cluster and the fingerprint of the orca
+ * executable, so the two accept the same boxes and pin the file they run
+ * the same way.
  */
 
 #include <cstddef>
@@ -22,12 +23,16 @@ namespace rgpot::orca {
 /// time moves on every write, rename or attribute change and cannot be set
 /// back by the owner, so a rewrite that restores the size and the
 /// modification time still changes the stamp. False when the file cannot
-/// be read.
+/// be read. POSIX only.
+#ifndef _WIN32
 bool stampOpenFile(int fd, uint64_t *stamp) noexcept;
+#endif
 
 /// Resolves @p executable with symlinks followed into @p real, and stamps
-/// the file it names with stampOpenFile into @p stamp. False when the file
-/// cannot be resolved, opened or read.
+/// the file it names with stampOpenFile into @p stamp. On Windows, where
+/// neither ORCA frontend runs ORCA, the stamp holds only the size,
+/// modification time, device and inode. False when the file cannot be
+/// resolved, opened or read.
 bool identifyExecutable(const std::string &executable, std::string *real,
                         uint64_t *stamp) noexcept;
 

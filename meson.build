@@ -117,6 +117,11 @@ if has_orca_legacy
     endif
     _args += ['-DRGPOT_HAS_ORCA_LEGACY=TRUE']
 endif
+# RGPOT_HAS_ORCA still names ORCAPot, which builds with every librgpot that
+# carries potentials.
+if not get_option('with_rpc_client_only')
+    _args += ['-DRGPOT_HAS_ORCA=TRUE']
+endif
 
 potlibc_dep = dependency('potlibc', required: get_option('with_cbe'))
 has_cbe = potlibc_dep.found()

@@ -1,15 +1,14 @@
 # MIT License
 # Copyright 2023--present rgpot developers
-"""The box RgpotCalculator hands a cluster passes ORCALegacyPot's box rule.
+"""The box RgpotCalculator hands a cluster passes the ORCA box rule.
 
-ORCALegacyPot has no periodic boundary conditions and takes a box only as
-padding around a cluster. It accepts a box when every pair of atoms is its
-own nearest periodic image: along every nonzero lattice vector, not only the
-cell vectors, the atoms span at most half its length (``checkClusterBox``
-in CppCore/rgpot/ORCAPot/ORCAGuards.cc).
+ORCALegacyPot and ORCAPot have no periodic boundary conditions and take a
+box only as padding around a cluster. Both accept a box when every pair of
+atoms is its own nearest periodic image: along every nonzero lattice
+vector, not only the cell vectors, the atoms span at most half its length
+(``checkClusterBox`` in CppCore/rgpot/ORCAPot/ORCAGuards.cc).
 ORCALegacyPot has no Python binding, so a stand-in potential that is not
-periodic, like ORCALegacyPot, applies the same rule to every box the
-calculator gives it.
+periodic applies the same rule to every box the calculator gives it.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ WATER = [
 
 
 def orca_box_accepts(positions: np.ndarray, box: np.ndarray) -> bool:
-    """ORCALegacyPot's rule: all zero, or every pair its own nearest image.
+    """The ORCA rule: all zero, or every pair its own nearest image.
 
     A lattice vector longer than twice the diagonal of the atoms' bounding
     box cannot bring an image closer, which bounds coefficient k by that

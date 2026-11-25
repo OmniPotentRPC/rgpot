@@ -316,7 +316,10 @@ test_mopac_abi | tests core | custom suite=mopac |
 MOPACDlopenContract | tests core | py CppCore/tests/test_mopac_dlopen_contract.py @root@ suite=mopac |
 
 # ORCA frontend over a fake liborcac.
+ORCAPotTest | tests core | custom suite=orca workdir=. |
+ORCAPotAbsentLibrary | tests core | custom suite=orca workdir=. |
 ORCACHeaderPin | tests core | py CppCore/tests/test_orcac_header_pin.py @root@ suite=orca |
+ORCADlopenContract | tests core | py CppCore/tests/test_orca_dlopen_contract.py @root@ suite=orca |
 
 # Schema contract. Registered with the RPC stack, with or without tests.
 schema-ordinal-ledger-vendored | rpc | py CppCore/rgpot/rpc/schema_ledger.py check --root @root@ suite=schema |

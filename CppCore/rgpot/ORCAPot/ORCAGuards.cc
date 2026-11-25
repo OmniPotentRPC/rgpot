@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -16,11 +17,13 @@
 #include <stdexcept>
 #include <system_error>
 
-#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#ifndef _WIN32
+#include <fcntl.h>
 #include <time.h>
 #include <unistd.h>
+#endif
 
 namespace rgpot::orca {
 
@@ -32,6 +35,7 @@ namespace {
 // few dozen; only a cell skewed far past any padding reaches this.
 constexpr double kMaxImageVectors = 2.0e5;
 
+#ifndef _WIN32
 struct timespec modificationTime(const struct stat &st) noexcept {
 #if defined(__APPLE__)
   return st.st_mtimespec;
@@ -47,6 +51,7 @@ struct timespec changeTime(const struct stat &st) noexcept {
   return st.st_ctim;
 #endif
 }
+#endif
 
 void cross(const double *u, const double *v, double *w) {
   w[0] = u[1] * v[2] - u[2] * v[1];
@@ -60,6 +65,7 @@ double dot(const double *u, const double *v) {
 
 } // namespace
 
+#ifndef _WIN32
 bool stampOpenFile(int fd, uint64_t *stamp) noexcept {
   struct stat st {};
   if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
@@ -99,6 +105,8 @@ bool stampOpenFile(int fd, uint64_t *stamp) noexcept {
   return true;
 }
 
+#endif
+
 bool identifyExecutable(const std::string &executable, std::string *real,
                         uint64_t *stamp) noexcept {
   try {
@@ -107,6 +115,25 @@ bool identifyExecutable(const std::string &executable, std::string *real,
     if (ec) {
       return false;
     }
+#ifdef _WIN32
+    struct _stat64 st{};
+    if (::_wstat64(resolved.c_str(), &st) != 0) {
+      return false;
+    }
+    const auto written = fs::last_write_time(resolved, ec);
+    if (ec) {
+      return false;
+    }
+    Fnv1a fp;
+    fp.u64(static_cast<uint64_t>(st.st_size));
+    fp.i64(static_cast<int64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            written.time_since_epoch())
+            .count()));
+    fp.u64(static_cast<uint64_t>(st.st_dev));
+    fp.u64(static_cast<uint64_t>(st.st_ino));
+    *stamp = fp.h;
+#else
     int fd;
     do {
       fd = ::open(resolved.c_str(), O_RDONLY | O_CLOEXEC | O_NOCTTY);
@@ -119,6 +146,7 @@ bool identifyExecutable(const std::string &executable, std::string *real,
     if (!stamped) {
       return false;
     }
+#endif
     *real = resolved.string();
     return true;
   } catch (...) {
