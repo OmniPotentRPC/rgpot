@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
-## [3.8.0] - 2026-11-25
+## [3.8.0] - 2026-11-26
 
 [3.8.0]: https://github.com/OmniPotentRPC/rgpot/tree/v3.8.0
+
+### Breaking
+
+- `Potentials.capnp` is now rgconf's `potential.capnp`, vendored byte for byte at the commit `CppCore/rgpot/rpc/schema.pin` names, with the `common.capnp` it imports beside it in both `CppCore/rgpot/rpc` and `rgpot-core/schema`. The `potentials-schema` wrap and the local diff series are gone: rgconf declares every member rgpot compiled from them at the same ordinal, so rgpot's own ordinals are unchanged and a message an earlier rgpot wrote decodes the same. The generated `Potentials.capnp.h` now includes `common.capnp.h`, which meson and CMake generate and install next to it in `include/rgpot/rpc`; a consumer that compiles the schema itself needs `common.capnp` beside `Potentials.capnp`, and `rgpot-core` gains a `common_capnp` module. The schema adds rgconf's `gpr` (27), `potlib` (28), `external` (29), `plugin` (30) and `orca` (31) arms, `PotentialSpec.orca` (7), `ORCAParams`, and the shared `PotentialConfig` fields `commonPatch` to `emtRasmussenParameters` (22 to 26). rgconf renumbered its own members to make room: its `gpr`, `potlib`, `external` and `plugin` arms moved from 18 to 21 to 27 to 30, and its `ForceInput` `hessianDisplacement`, `wantStress` and `wantHessianVector` from 10 to 12 to 12 to 14. A peer built against rgconf 0.1.0's numbering does not interoperate with this schema for those members; peers built against earlier rgpot or potentials-schema numbering do.
 
 ### Added
 
@@ -66,6 +70,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and no engine plugin. The evaluation matches LAMMPS `pair_style eam` on
   `Cu_u3.eam` for a copper cell with a vacancy to 3e-12 eV and 3e-14 eV per
   Angstrom.
+- Added a GROMACS nblib engine for the generic MD session ABI, built with
+  =-Dwith_nblib=enabled=. nblib supplies the forces of a topology given as text;
+  Langevin dynamics on a hyperplane, planar walls, the constraint force per step
+  and the seeded random stream are the driver the OpenMM engine runs, so both
+  engines answer the same calls with the same noise. =nblib_prefix= names a
+  GROMACS install, and =engines/nblib/build_gromacs.sh= builds the pinned release
+  with the nblib API.
 - Added optional MD-session neighbour exchange slots to `rgpot_md_session_ops`
   using the shared `rgpot_nlist_request` / `rgpot_nlist_soa` shape, with clear
   unsupported status reporting. In Rust, `MdSession::get_neighbors` and
@@ -143,6 +154,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The generic engine C ABI adds rgpot_engine_select_orbitals and rgpot_engine_copy_orbitals, bumps RGPOT_ENGINE_ABI_MINOR to 3, and reports orbital capabilities through RgpotEngineCaps.
 - The generic engine C ABI adds the optional `rgpot_engine_unload_policy` export with `RGPOT_ENGINE_UNLOAD_RESIDENT` and `RGPOT_ENGINE_UNLOAD_SAFE`. This is an additive change to the engine ABI, so `RGPOT_ENGINE_ABI_MINOR` and `ENGINE_ABI_MINOR` are now 7. No existing layout or call changes, a host of minor 7 still loads plugins of minor 0 to 6, and a host older than minor 7 refuses a plugin that reports minor 7. A plugin of minor 7 or later that returns `RGPOT_ENGINE_UNLOAD_SAFE` can be unloaded with the new `unsafe` `EnginePotential::unload(path)` once no instance uses it, and the unload closes the library after it releases the registry lock. Every other plugin stays loaded, and `unload` refuses it with `EngineError::Unsupported`. The C++ library soversion stays 9.
 - The in-process and RPC ASE calculators are discoverable as `rgpot` and `rgpot_rpc` through ASE's calculator registry, and installed wheels expose lazy ASE 3.29 calculator plugins without breaking ASE 3.23–3.28.
+- The nblib session engine opens a GROMACS run input file. The spec `tpr PATH`
+  evaluates the nbnxm, PME, listed and position-restraint forces of the file in
+  its triclinic cell, spreads the forces of virtual sites, exposes the massive
+  atoms, and holds the SETTLE and LINCS distances in every run. Features of the
+  file it does not evaluate are refused by name. Build with `-Dnblib_source` and
+  `-Dnblib_build` naming the GROMACS trees of `nblib_prefix`.
 - `CBEPot` now evaluates the CH5 2008 surface through potlibc's `ch52008` instead
   of the external cbe-pes library, and serves the engine gradient jet to order 3
   through `potlibc_gradient_jet`, in one call for a whole batch, with the
@@ -230,6 +247,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hooks of a potential from its `caps()` bits, and `derivative_caps` and
   `derivative_counts` report what the handle can do and has done.
 - `rgpot::SumPot` is a weighted sum of child potentials with a name, a weight (sign allowed) and an on/off switch per term, a per-term record of energies, forces and stress, and logging through `RGPOT_SUM_LOG` or a sink. It is configurable through the new `PotentialConfig.composite` arm (`potserv <port> Composite`), `libcomposite_engine` and `rgpot.SumPot` in Python; `rgpot::lr::SumPot` now builds on it.
+- `rgpot::makePotential` (`rgpot/PotentialFactory.hpp`) builds the potential a `PotentialConfig` names, from a reader or from the flat-array bytes, and returns it as `std::unique_ptr<rgpot::PotentialBase>`. The in-process arms use the backends compiled into the build. The `orca` arm builds the new `rgpot::ORCACPot`, a frontend of the split orcac shim on the pattern of `MOPACPot`: it dlopens `liborcac` (`ORCAC_LIBRARY`, `RGPOT_ORCAC_ENGINE`, then `liborcac.so.1` and `liborcac.so`), checks that it exports the thirteen functions of orcac C ABI 1 and reports ABI 1, and creates one session from an `OrcaCConfig` lowered from `ORCAParams`. The `metatomic`, `uma` and `plugin` arms, and `xtb` in a build without `-Dwith_xtb`, load an engine library over the generic engine C ABI as an `rgpot::EnginePot`; `plugin` opens `libraryPath`, or `lib<pluginName>_engine` through `RGPOT_<PLUGINNAME>_ENGINE`, with `opaquePayload` as the configuration. An arm the build cannot construct throws `std::invalid_argument` naming the arm and the option that enables it.
 - `rgpot::nlist::Builder::frames()` counts the times an update folded the positions into the cell. Each accepted update folds once, whether it keeps the table or searches again, so `frames()` equals the number of accepted updates and `builds()` the number of searches among them. The state stays behind the builder's pointer, so the layout of `Builder` and the soversion of `librgpot` do not change.
 - `rgpot_ch5_2008_taylor_jet` (`rgpot_core::ch5_2008::Ch52008` in Rust) is the exact Taylor jet of the CH5 2008 surface of Corchado, Bravo and Espinosa-Garcia, in Bohr and Hartree, for registration with `rgpot_potential_set_taylor_jet` on a handle that evaluates that surface.
   Its saturation guards, the `rch < 3.8` switch and the handedness swap are decided on enclosures; an undecided one is `RGPOT_JET_BRANCH`.
@@ -238,6 +256,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Taylor::exp` now runs through that recurrence and returns the same enclosures as before.
 - `rgpot_core::taylor` carries truncated Taylor series with outward-rounded interval coefficients (`maryada`): sums, products, quotients, `sqrt`, `exp`, `tanh`, `acos` and integer powers, with branch tests decided on enclosures.
   A potential whose energy is an explicit formula evaluates it on `Taylor::line` coordinates to implement `TaylorJet`; a quotient, root or arc cosine at the edge of its domain is `JetError::Domain`, and an undecided comparison is `JetError::Branch`.
+- `rgpot_md_langevin_result` ends with `constraint_metric`, the plane metric of
+  every step, and `MdLangevinOutcome::constraint_metric` returns it. Callers and
+  engines built against the shorter struct keep working.
 - librgpot now exports unmangled C calculator-group entry points rgpot_mpi_host_abi_version, rgpot_mpi_bind_calculators, and rgpot_mpi_share_bytes for hosts that dlopen symbols.
 
 ### Developer
@@ -252,6 +273,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolution across `CP2KPot`, `CPMDPot`, `MOPACPot`, `NWChemPot`,
   `XTBDlopen`, and `MetatomicDlopen`, sharing Cap'n Proto serialization and
   communicator-adopter registration helpers in `CppCore/rgpot/abi/`.
+- Conventional commit checks accept the `dev` type. `potctl ci cog-check`
+  now matches commit types case-insensitively, as cog does, so `BLD:`
+  subjects pass.
 - Deduplicated `energy_gradient`, LJ-like bindings, and GROMACS/OpenMM
   wrappers in `python/bind/bind_module.cpp`, and extracted shared geometry,
   cell, and OpenMP thread-count fixtures into `CppCore/tests/TestFixtures.hpp`.
@@ -271,10 +295,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - NWChem configuration message tests now distinguish a loaded engine refusal from a missing engine.
 - Refines the Tersoff stress tests by clarifying the thread-setting check
   as a determinism smoke test and deduplicating Voigt index constants.
+- Release docs describe the fragment checks and which pull requests skip them.
 - Rust sources now pass the repository formatting and clippy checks.
+- Sutton-Chen workspace tests now assert serial behavior when OpenMP is disabled.
 - The C++ coverage build enables `-fprofile-update=atomic` for concurrent OpenMP gcov counters, and the capture script disables synthetic exception-unwind branches under lcov 2 so capture and extract run without error suppressions.
+- The EMT leak-accounting test now pairs each counted deallocation with its
+  allocation, so it stays valid when MinGW routes a delete across runtime modules.
+  The pairing uses a hashed pointer table, so the test keeps its earlier runtime.
 - The EMT reference now states which failures keep the cached kernel and which drop it. A call that fails before the kernel runs, and a non-finite energy or force, keep a kernel from an earlier successful call. An Asap failure and any other exception raised by the kernel drop it.
 - The Fortran coverage job uses the same test timeout multiplier as the C++ coverage job. NeighbourLayerTest gets one extra multiple of its registry timeout in that build, because four multiples left it about forty seconds inside an eight minute limit.
+- The FortranStaticAudit test fails when a Fortran kernel archive holds
+  procedure-local static data, which every thread would share. gfortran
+  emits such a static for the hidden length of a deferred-length function
+  result inside a concatenation, even under -frecursive. That static
+  truncated Tersoff error messages and corrupted the heap when several
+  free-threaded Python callers failed at once. New native and Python tests
+  run the Tersoff stress path from many threads at once, interleaved with
+  simultaneous zero-volume failures, and require results identical to one
+  thread.
 - The Gupta and reduced pair reference now records the `!(re > 0.0)` Morse checks and the error conditions of each C entry point.
 - The Gupta, reduced-pair and Sutton-Chen C entry points now have reference entries, so the documented signatures stay aligned with the headers.
 - The LeakSanitizer lane runs `llvm-symbolizer` through `tools/lsan/llvm-symbolizer`, which clears `LD_LIBRARY_PATH` so the system binary does not load pixi's libraries. The libomp suppression matches function names, so a symbolizer that cannot start left libomp's 128-byte allocation reported as a bare `libomp.so` offset. `tools/check_lsan_libomp.sh` now fails if frames are not symbolized, and leaks 137 bytes from `main` and 53 bytes from inside an OpenMP region on purpose; it requires LeakSanitizer to report those two and no libomp allocation.
@@ -284,6 +322,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The Python typing job installs mpi4py, which ships its own type hints, so `rgpot.lammps` is checked by mypy and pyright against the real package.
 - The `engine_abi_stamps` test now opens `libpotlibc_engine` when `with_potlibc` is enabled, and the new `potlibc_engine_rust_loader` test loads it with `EnginePotential::load`, evaluates a surface, and drives the lock-failure build to check that `EngineError::Lock` latches the handle.
 - The engine ABI reference wraps the shared export list and the Rust symbol table on semantic lines.
+- The engine config size checks compare against the public minimum message sizes,
+  so the lint run with warnings denied passes at the minimum supported Rust
+  version with the engine feature on.
 - The engine loader tests now check that a refused load destroys every engine instance it created and creates none when it is refused before creation. The cases are an engine that reports itself unavailable, another ABI major, a newer minor, another layout revision, and a lock or fatal code from `rgpot_engine_caps`. The failed-first-load test also reopens the unavailable, newer minor and caps failure cases.
 - The manual index includes the design notes and the documentation style guide. `doccheck` fails when an org page or a pinned citation drops out of the manual.
 - The neighbour-layer tests now cover orthorhombic periodic coordinates outside the primary box, verifying both Stream and Stored neighbour modes against the direct minimum-image reference on the boundary pair and randomized multi-wrap trials.
@@ -302,6 +343,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rgpot_builtin_muller_brown_new` and `rgpot_muller_brown_config_default`, and
   one is `rgpot_lammpc_potential`.
 - The wheel workflow installs each repaired wheel with its `ase` extra and runs `tests/test_ase_plugin_wheel.py`, which skips itself on ASE releases without the plugin API.
+- Tighten Sutton-Chen serial-path tests so OpenMP-only counters are asserted
+  only where they can change and serial builds stay warning-clean.
 - Workflows run on pushes to main and develop and on pull requests, so a branch with an open pull request starts each workflow once. A newer push to a pull request cancels its older run.
 - `EMTPot` keeps its installed class layout. The cached Asap kernel lives behind the existing cell pointer, so the C++ soversion and the layout stamp stay as they are.
 - `NWChemPotMessageAbiTest` now counts `nwchemc_set_params` calls through `nwchemc_fake_engine` and pins `NWChemPot::setPotentialConfig` across initial parameter refusal, repeated refusal, applied parameters, `none`, and unhandled configuration arms.
@@ -314,6 +357,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RGPOT_PROJECT` or from pytest's rootdir when that directory is the
   checkout, and they skip only when no checkout is present. A file missing
   from a checkout that is present fails the test.
+- `schema_ledger.py` pins `Potentials.ordinals` to the rgconf commit in `CppCore/rgpot/rpc/schema.pin`: `check --fetch` compares both vendored copies of `Potentials.capnp` and `common.capnp` with it, and `append` retired the former local entries by recording them again as upstream. The `apply` command, the series checks and the `schema-sync-canonical-*` meson tests are gone.
 - `tools/check_header_drift.sh`, run by the `rust_tests` job and by `pixi r check-header-drift`, fails when `rgpot-core/include/rgpot.h` differs from the cbindgen output. The `gen-header` build now reruns when the Rust source changes, and the header carries the `# Safety` notes of the RPC client functions.
 
 ### Changed
@@ -477,6 +521,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   OpenMM plugins, and the test stub all add that file. A loader such as
   `EnginePotential` in `rgpot-core` can now read the ABI minor and layout revision
   of these plugins directly instead of assuming minor 0.
+- Exported rgpot_lammpc_potential from the shared library and added it to
+  the ABI baseline checks so hidden-visibility and Windows builds keep the
+  constructor in the public C surface.
 - Fixed building the Python extension when `with_python` is enabled: the
   `has_analytic_hvp()` query no longer calls a non-const thread-slot accessor
   on a const handle (the same `primary().caps()` path as `caps()`).
@@ -488,10 +535,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Force and energy calls now reject a missing coordinate, species or force buffer, a missing cell on a periodic potential that needs one (a molecular dispersion sum such as D2 still takes none), and a system with no atoms. A system with no atoms is reported on its own, including when the force buffer is also absent.
 - Fortran-backed potentials now preserve complete error messages when separate instances fail concurrently.
 - Generic and external engine initializers may load another engine without deadlocking the process. Engine handles enter the resident registry only after their initializer, required-symbol checks, ABI validation and first successful construction complete.
+- Langevin and energy-conserving steps with distance constraints add the impulse
+  of the position constraint to the velocity. The driver projected the velocity
+  onto the new tangent space alone, which removed kinetic energy from every
+  rotating rigid group, so a free rigid rotor lost energy.
 - Listed `d2cpmd-symmetry.diff` (`D2CpmdParams.symmetry`) among the local schema diffs in `docs/orgmode/reference/potential_config.org`.
 - Listed `libcomposite_engine`, its Windows exclusion, and `RGPOT_ENGINE_COMPOSITE` in `docs/orgmode/howto/engine-plugins.org`.
 - MEAMPot now rejects a null force buffer when the system has atoms, with a clear error before it writes any result.
 - MEAMPot now rejects a null output pointer with a clear error before it writes any result.
+- MOPACPot now refuses a libmopacc whose C ABI or library ABI is not exactly
+  2, one that lacks mopacc_c_abi_version, mopacc_abi_version,
+  mopacc_result_size or mopacc_params_size, or one whose reported MopacCResult
+  or MopacCParams size does not match its own, before calling into the engine.
+  The load error names the expected and found values. A nonzero status from
+  mopacc_set_params also leaves the engine unloaded.
 - Meson registers the `ipi_driver_ase` test only when the `python3` that runs it can import pytest, numpy and ASE, so a build whose Python lacks numpy, such as an offline `--wrap-mode=nodownload` build, no longer fails the test with `ModuleNotFoundError`.
 - Moved the vendored vesin lockstep test into the Python CI test path and aligned potctl/CI vesin wheel constraints with the vendored 0.6 series.
 - On MinGW, `simd::exact_fma`, `mul_add`, `fma_quick` and `fma_array` return the bits of a hardware fused multiply-add for every input. They handed zeros, subnormal results and inputs with extreme exponents to the C library's `fma`, and mingw-w64's `fma` is not fused, so those results could be off in the last bit or return the default NaN instead of the input NaN. A MinGW build now uses a correctly rounded software fma there. In an unoptimized build the hardware bodies of the LJ, Morse and EAM kernels and of `exp` also called mingw-w64's `fma`, because nothing was inlined into their `target("fma")` functions; they now use the instruction, or the same software fma when the copy stays out of line. `exp_hw_n` and the EAM hardware body are flattened like the other hardware bodies. `FmaExactTest` and `ExactFmaEq` compare against the instruction on MinGW instead of mingw-w64's `fma`, and `ExactFmaEq` checks the software fma against the instruction on every x86-64 GCC or Clang build running on a CPU with FMA.
@@ -517,6 +574,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ForceInput.neighbors` needs no minor above 0, and requests without an orbital key stay valid against a minor-1 server.
 - Remote RPC failures now return error statuses instead of aborting: closed peers, truncated replies, callback-side server exceptions, and NULL RPC tensor data are all reported through the C ABI and Python RPC calculator as ordinary call failures.
 - Rust C-ABI EAM table tests keep their borrowed periodic cell storage alive across evaluation.
+- Sync the vendored mopacc C ABI header in MOPACPot with upstream mopacc,
+  adding missing fields to MopacCParams and MopacCResult to prevent stack
+  corruption on by-value result returns. Assert struct sizes and field
+  offsets at compile time, and add an upstream-layout canary test.
 - Taylor jet callbacks now reject non-finite directions, interval operations
   handle empty inputs consistently, and the API reference lists the complete
   Taylor jet error and entry point sets.
@@ -545,6 +606,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the extension can load the library from a wheel.
 - The Rust engine loader rejects a non-finite cell and a negative jet scale with `EngineError::Invalid`.
 - The `RgpotRpcCalculator` ASE calculator now lists `free_energy` in `implemented_properties`, so `get_potential_energy(force_consistent=True)` returns the energy instead of raising `PropertyNotImplementedError`.
+- The `orca` arm of `rgpot::makePotential` now loads a `liborcac` built from orcac main, which exports the frozen C ABI 1 (`orcac_config_init`, `orcac_create`, `orcac_energy_gradient` and the rest of the thirteen functions in `include/orcac.h`). Before, `rgpot::ORCACPot` looked for session functions such a library does not export, so `available()` was false. `rgpot::ORCACConfig` now holds the `OrcaCConfig` fields (method, basis, keywords, blocks, executable, scratch directory, charge, multiplicity, processes, memory, timeout and restart), the arm lowers `ORCAParams` onto them without reading `common`, `keepFiles` is refused, and the force is the negative of the gradient `liborcac` returns. `ORCACPot::runDirectory` is replaced by `ORCACPot::engineVersion`. rgpot builds against a vendored `orcac.h` pinned to that orcac commit. The build option `-Dorcac_main=enabled` builds `liborcac` at the pinned commit and runs the arm against it.
 - The `rgpot-pair` C kernels now build with GCC 4.8, the compiler in the
   manylinux2014 aarch64 cross image. The build asks for `-std=gnu99` where the
   compiler is not MSVC, and the Gupta buffers use `__thread` on GCC and Clang.
@@ -567,6 +629,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The generated C header `rgpot-core/include/rgpot.h` now declares `ENGINE_ERR_INVALID`, the engine code for an invalid argument, next to `ENGINE_ERR_UNSUPPORTED`, so C hosts can name the code that the Rust loader returns.
 - The installed CMake package of a static rgpot built with OpenMP now finds OpenMP itself. `find_package(rgpot)` used to fail at generate time because `rgpot_nlist` named `OpenMP::OpenMP_CXX` and nothing defined it. A consumer links the runtime library and is not compiled or linked with `-fopenmp`.
 - The lazy ASE 3.29 calculator plugins keep the module ASE binds when `rgpot.ase.__ase_plugins__` is first read, including when several threads read that attribute at once.
+- The plane multiplier of `ProjectedLangevin` includes the centripetal force that
+  holds rotating distance constraints, and the run records the metric
+  `Z = 1 / [(J M^-1 J^T)^-1]_plane` of every step. The free energy along the plane
+  offset is the integral of the mean multiplier minus `kT ln <Z^(-1/2)>`. A plane
+  normal that translates rigid groups as a whole is unaffected.
 - The two argument `rejectInputCall` and `guardInputCall` and the three argument `rejectForceCall` and `guardForceCall` stay exported from `librgpot` as wrappers over the new forms with `needsSpecies` true, so binaries built against the old signatures still load under `kCxxSoversion` 9. The `needsSpecies` parameter no longer has a default, and the C ABI in `rgpot.h` is unchanged.
 - The variance that `ExprPot` returns now scales each child variance by the square of its weight, as `SumPot` does, where it used the weight itself. The two agree only for a weight of one, and a negative weight no longer gives a negative variance.
 - UMA tasks, including `omol`, accept explicit spin `0` without rewriting it to `1`. `rgpot::validate_uma_spin_for_task` in `rgpot/UmaPot/UmaConfig.hpp` now enforces `[0, 100]` for every UMA task, with only negative spins and spins above `100` rejected. The same bounds are enforced in `UmaPot` and `libuma_engine`, while `rgpot_engine_set_charge_spin` still reports unsupported values through `rgpot_engine_last_error`. Also tightened drop-in behavior so `librgpot_gromacs` keeps an explicit engine spin when the qmi `MULTIPLICITY` is the grompp default `1`, including when `CHARGE` is not `0`. The setter takes charge and spin together, so the drop-in reads that spin back out of the engine `CONFIG` and applies the qmi charge with it. Only a non-default `MULTIPLICITY` replaces the spin. A config that leaves spin at its default falls back to the qmi charge and multiplicity, and the default pair `CHARGE 0 / MULTIPLICITY 1` is still left on the engine config. Metatomic and Skala reject spin values below `1`, and `librgpot_gromacs` refuses an engine `CONFIG` whose spin is below the minimum of its engine (`0` for UMA, `1` for metatomic, Skala and NWChem) instead of forwarding it.
@@ -698,6 +765,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rgpot_engine_taylor_jet` keeps the caller's jet and derivative report unchanged when the evaluation fails.
 - `scripts/export_uma_aoti.py` now compiles each `.pt2` archive inside an isolated `TORCHINDUCTOR_CACHE_DIR`, preventing concurrent exports of identical AOTInductor graphs from overwriting each other's embedded package metadata.
 - `scripts/run_coverage_fortran.sh` again enables branch coverage with `lcov_branch_coverage=1` on lcov 1.x and `branch_coverage=1` on 2.x, matching `scripts/run_coverage_cpp.sh`, so the Fortran Codecov upload on Ubuntu 22.04 keeps BRDA data instead of line hits only.
+- lammpc and LAMMPS engine loading errors now omit an empty engine path prefix,
+  so wrapped failures read `lammpc: ...` instead of `lammpc: : ...`.
 
 ### Miscellaneous
 
