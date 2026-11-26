@@ -1,0 +1,730 @@
+{
+  "10.1002/andp.19213690304": {
+    "registry": "crossref",
+    "title": "Die Berechnung optischer und elektrostatischer Gitterpotentiale",
+    "first_author": "Ewald",
+    "year": 1921,
+    "container": "Annalen der Physik"
+  },
+  "10.1002/anie.202004239": {
+    "registry": "crossref",
+    "title": "Robust Atomistic Modeling of Materials, Organometallic, and Biochemical Systems",
+    "first_author": "Spicher",
+    "year": 2020,
+    "container": "Angewandte Chemie International Edition"
+  },
+  "10.1002/cphc.202500730": {
+    "registry": "crossref",
+    "title": "Adaptive Pruning for Increased Robustness and Reduced Computational Overhead in Gaussian Process Accelerated Saddle Point Searches",
+    "first_author": "Goswami",
+    "year": 2026,
+    "container": "ChemPhysChem"
+  },
+  "10.1002/jcc.20425": {
+    "registry": "crossref",
+    "title": "RM1: A reparameterization of AM1 for H, C, N, O, P, S, F, Cl, Br, and I",
+    "first_author": "Rocha",
+    "year": 2006,
+    "container": "Journal of Computational Chemistry"
+  },
+  "10.1002/jcc.20495": {
+    "registry": "crossref",
+    "title": "Semiempirical GGA‐type density functional constructed with a long‐range dispersion correction",
+    "first_author": "Grimme",
+    "year": 2006,
+    "container": "Journal of Computational Chemistry"
+  },
+  "10.1002/jcc.21759": {
+    "registry": "crossref",
+    "title": "Effect of the damping function in dispersion corrected density functional theory",
+    "first_author": "Grimme",
+    "year": 2011,
+    "container": "Journal of Computational Chemistry"
+  },
+  "10.1002/spe.3075": {
+    "registry": "crossref",
+    "title": "EESSI: A cross‐platform ready‐to‐use optimised scientific software stack",
+    "first_author": "Dröge",
+    "year": 2022,
+    "container": "Software: Practice and Experience"
+  },
+  "10.1002/wcms.1493": {
+    "registry": "crossref",
+    "title": "Extended tight‐binding quantum chemistry methods",
+    "first_author": "Bannwarth",
+    "year": 2020,
+    "container": "WIREs Computational Molecular Science"
+  },
+  "10.1002/wcms.1606": {
+    "registry": "crossref",
+    "title": "Software update: The ORCA program system—Version 5.0",
+    "first_author": "Neese",
+    "year": 2022,
+    "container": "WIREs Computational Molecular Science"
+  },
+  "10.1002/wcms.70019": {
+    "registry": "crossref",
+    "title": "Software Update: The ORCA Program System—Version 6.0",
+    "first_author": "Neese",
+    "year": 2025,
+    "container": "WIREs Computational Molecular Science"
+  },
+  "10.1002/wcms.81": {
+    "registry": "crossref",
+    "title": "The ORCA program system",
+    "first_author": "Neese",
+    "year": 2011,
+    "container": "WIREs Computational Molecular Science"
+  },
+  "10.1007/bf00547608": {
+    "registry": "crossref",
+    "title": "Location of saddle points and minimum energy paths by a constrained simplex optimization procedure",
+    "first_author": "M�ller",
+    "year": 1979,
+    "container": "Theoretica Chimica Acta"
+  },
+  "10.1007/BF00547608": {
+    "registry": "crossref",
+    "title": "Location of saddle points and minimum energy paths by a constrained simplex optimization procedure",
+    "first_author": "M�ller",
+    "year": 1979,
+    "container": "Theoretica Chimica Acta"
+  },
+  "10.1007/s00214-005-0655-y": {
+    "registry": "crossref",
+    "title": "Pseudopotentials for H to Kr optimized for gradient-corrected exchange-correlation functionals",
+    "first_author": "Krack",
+    "year": 2005,
+    "container": "Theoretical Chemistry Accounts"
+  },
+  "10.1007/s00894-007-0233-4": {
+    "registry": "crossref",
+    "title": "Optimization of parameters for semiempirical methods V: Modification of NDDO approximations and application to 70 elements",
+    "first_author": "Stewart",
+    "year": 2007,
+    "container": "Journal of Molecular Modeling"
+  },
+  "10.1007/s00894-012-1667-x": {
+    "registry": "crossref",
+    "title": "Optimization of parameters for semiempirical methods VI: more modifications to the NDDO approximations and re-optimization of parameters",
+    "first_author": "Stewart",
+    "year": 2012,
+    "container": "Journal of Molecular Modeling"
+  },
+  "10.1016/0022-2852(76)90328-3": {
+    "registry": "crossref",
+    "title": "Improved potential functions for bent AB2 molecules: Water and ozone",
+    "first_author": "Carney",
+    "year": 1976,
+    "container": "Journal of Molecular Spectroscopy"
+  },
+  "10.1016/0039-6028(78)90429-6": {
+    "registry": "crossref",
+    "title": "Diffusion of single adatoms of platinum, iridium and gold on platinum surfaces",
+    "first_author": "Bassett",
+    "year": 1978,
+    "container": "Surface Science"
+  },
+  "10.1016/0039-6028(96)00816-3": {
+    "registry": "crossref",
+    "title": "A semi-empirical effective medium theory for metals and alloys",
+    "first_author": "Jacobsen",
+    "year": 1996,
+    "container": "Surface Science"
+  },
+  "10.1016/j.chemphys.2004.04.024": {
+    "registry": "crossref",
+    "title": "Derivation and evaluation of a flexible SPC model for liquid water",
+    "first_author": "Amira",
+    "year": 2004,
+    "container": "Chemical Physics"
+  },
+  "10.1016/j.cpc.2004.12.014": {
+    "registry": "crossref",
+    "title": "Quickstep: Fast and accurate density functional calculations using a mixed Gaussian and plane waves approach",
+    "first_author": "VandeVondele",
+    "year": 2005,
+    "container": "Computer Physics Communications"
+  },
+  "10.1016/j.cpc.2010.04.018": {
+    "registry": "crossref",
+    "title": "NWChem: A comprehensive and scalable open-source solution for large scale molecular simulations",
+    "first_author": "Valiev",
+    "year": 2010,
+    "container": "Computer Physics Communications"
+  },
+  "10.1016/j.cpc.2013.06.003": {
+    "registry": "crossref",
+    "title": "A flexible algorithm for calculating pair interactions on SIMD architectures",
+    "first_author": "Páll",
+    "year": 2013,
+    "container": "Computer Physics Communications"
+  },
+  "10.1016/j.cpc.2013.10.027": {
+    "registry": "crossref",
+    "title": "i-PI: A Python interface for ab initio path integral molecular dynamics simulations",
+    "first_author": "Ceriotti",
+    "year": 2014,
+    "container": "Computer Physics Communications"
+  },
+  "10.1016/j.cpc.2018.09.020": {
+    "registry": "crossref",
+    "title": "i-PI 2.0: A universal force engine for advanced molecular simulations",
+    "first_author": "Kapil",
+    "year": 2019,
+    "container": "Computer Physics Communications"
+  },
+  "10.1016/j.cpc.2021.108171": {
+    "registry": "crossref",
+    "title": "LAMMPS - a flexible simulation tool for particle-based materials modeling at the atomic, meso, and continuum scales",
+    "first_author": "Thompson",
+    "year": 2022,
+    "container": "Computer Physics Communications"
+  },
+  "10.1016/j.softx.2015.06.001": {
+    "registry": "crossref",
+    "title": "GROMACS: High performance molecular simulations through multi-level parallelism from laptops to supercomputers",
+    "first_author": "Abraham",
+    "year": 2015,
+    "container": "SoftwareX"
+  },
+  "10.1021/acs.jctc.5c00866": {
+    "registry": "crossref",
+    "title": "Efficient Implementation of Gaussian Process Regression Accelerated Saddle Point Searches with Application to Molecular Reactions",
+    "first_author": "Goswami",
+    "year": 2025,
+    "container": "Journal of Chemical Theory and Computation"
+  },
+  "10.1021/acs.jctc.7b00118": {
+    "registry": "crossref",
+    "title": "A Robust and Accurate Tight-Binding Quantum Chemical Method for Structures, Vibrational Frequencies, and Noncovalent Interactions of Large Molecular Systems Parametrized for All spd-Block Elements ( Z = 1–86)",
+    "first_author": "Grimme",
+    "year": 2017,
+    "container": "Journal of Chemical Theory and Computation"
+  },
+  "10.1021/acs.jctc.8b01176": {
+    "registry": "crossref",
+    "title": "GFN2-xTB─An Accurate and Broadly Parametrized Self-Consistent Tight-Binding Quantum Chemical Method with Multipole Electrostatics and Density-Dependent Dispersion Contributions",
+    "first_author": "Bannwarth",
+    "year": 2019,
+    "container": "Journal of Chemical Theory and Computation"
+  },
+  "10.1021/acsphyschemau.6c00038": {
+    "registry": "crossref",
+    "title": "A Tutorial Review of Bayesian Optimization with Gaussian Processes to Accelerate Stationary Point Searches",
+    "first_author": "Goswami",
+    "year": 2026,
+    "container": "ACS Physical Chemistry Au"
+  },
+  "10.1021/ct5008718": {
+    "registry": "crossref",
+    "title": "Benchmarks for Characterization of Minima, Transition States, and Pathways in Atomic, Molecular, and Condensed Matter Systems",
+    "first_author": "Chill",
+    "year": 2014,
+    "container": "Journal of Chemical Theory and Computation"
+  },
+  "10.1021/j100308a038": {
+    "registry": "crossref",
+    "title": "The missing term in effective pair potentials",
+    "first_author": "Berendsen",
+    "year": 1987,
+    "container": "The Journal of Physical Chemistry"
+  },
+  "10.1021/ja00299a024": {
+    "registry": "crossref",
+    "title": "Development and use of quantum mechanical molecular models. 76. AM1: a new general purpose quantum mechanical molecular model",
+    "first_author": "Dewar",
+    "year": 1985,
+    "container": "Journal of the American Chemical Society"
+  },
+  "10.1021/jacs.5c09558": {
+    "registry": "crossref",
+    "title": "Molecular Simulations with a Pretrained Neural Network and Universal Pairwise Force Fields",
+    "first_author": "Kabylda",
+    "year": 2025,
+    "container": "Journal of the American Chemical Society"
+  },
+  "10.1021/jp970984n": {
+    "registry": "crossref",
+    "title": "Global Optimization by Basin-Hopping and the Lowest Energy Structures of Lennard-Jones Clusters Containing up to 110 Atoms",
+    "first_author": "Wales",
+    "year": 1997,
+    "container": "The Journal of Physical Chemistry A"
+  },
+  "10.1039/a709249k": {
+    "registry": "crossref",
+    "title": "Global minima for transition metal clusters described by Sutton–Chen potentials",
+    "first_author": "Doye",
+    "year": 1998,
+    "container": "New Journal of Chemistry"
+  },
+  "10.1039/b508541a": {
+    "registry": "crossref",
+    "title": "Balanced basis sets of split valence, triple zeta valence and quadruple zeta valence quality for H to Rn: Design and assessment of accuracy",
+    "first_author": "Weigend",
+    "year": 2005,
+    "container": "Physical Chemistry Chemical Physics"
+  },
+  "10.1039/c7sc00601b": {
+    "registry": "crossref",
+    "title": "Quantum chemical calculation of electron ionization mass spectra for general organic and inorganic molecules",
+    "first_author": "Ásgeirsson",
+    "year": 2017,
+    "container": "Chemical Science"
+  },
+  "10.1039/d0cp00502a": {
+    "registry": "crossref",
+    "title": "Extension and evaluation of the D4 London-dispersion model for periodic systems",
+    "first_author": "Caldeweyher",
+    "year": 2020,
+    "container": "Physical Chemistry Chemical Physics"
+  },
+  "10.1063/1.1723844": {
+    "registry": "crossref",
+    "title": "Interaction of the van der Waals Type Between Three Atoms",
+    "first_author": "Axilrod",
+    "year": 1943,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.1742043": {
+    "registry": "crossref",
+    "title": "On a New Method of Drawing the Potential Energy Surface",
+    "first_author": "Sato",
+    "year": 1955,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.2121687": {
+    "registry": "crossref",
+    "title": "A general purpose model for the condensed phases of water: TIP4P/2005",
+    "first_author": "Abascal",
+    "year": 2005,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.2162901": {
+    "registry": "crossref",
+    "title": "Molecular-dynamics study of photodissociation of water in crystalline and amorphous ices",
+    "first_author": "Andersson",
+    "year": 2006,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.2206581": {
+    "registry": "crossref",
+    "title": "Is the Ewald summation still necessary? Pairwise alternatives to the accepted standard for long-range electrostatics",
+    "first_author": "Fennell",
+    "year": 2006,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.2770708": {
+    "registry": "crossref",
+    "title": "Gaussian basis sets for accurate calculations on molecular systems in gas and condensed phases",
+    "first_author": "VandeVondele",
+    "year": 2007,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.2841941": {
+    "registry": "crossref",
+    "title": "Optimization methods for finding minimum energy paths",
+    "first_author": "Sheppard",
+    "year": 2008,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.3132223": {
+    "registry": "crossref",
+    "title": "The hydrogen abstraction reaction H+CH4. I. New analytical potential energy surface based on fitting to ab initio calculations",
+    "first_author": "Corchado",
+    "year": 2009,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.3245303": {
+    "registry": "crossref",
+    "title": "General formulation of pressure and stress tensor for arbitrary many-body interaction potentials under periodic boundary conditions",
+    "first_author": "Thompson",
+    "year": 2009,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.3382344": {
+    "registry": "crossref",
+    "title": "A consistent and accurate ab initio parametrization of density functional dispersion correction (DFT-D) for the 94 elements H-Pu",
+    "first_author": "Grimme",
+    "year": 2010,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.439080": {
+    "registry": "crossref",
+    "title": "The reaction X+Cl2→XCl+Cl (X=Mu,H,D). I. A new inversion procedure for obtaining energy surfaces from experimental detailed and total rate coefficient data",
+    "first_author": "Connor",
+    "year": 1980,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.445869": {
+    "registry": "crossref",
+    "title": "Comparison of simple potential functions for simulating liquid water",
+    "first_author": "Jorgensen",
+    "year": 1983,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.467012": {
+    "registry": "crossref",
+    "title": "Interaction of water with metal surfaces",
+    "first_author": "Zhu",
+    "year": 1994,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.469298": {
+    "registry": "crossref",
+    "title": "Classical trajectory studies of the reaction CH4+H→CH3+H2",
+    "first_author": "Jordan",
+    "year": 1995,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.470117": {
+    "registry": "crossref",
+    "title": "A smooth particle mesh Ewald method",
+    "first_author": "Essmann",
+    "year": 1995,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.4865104": {
+    "registry": "crossref",
+    "title": "Long-range correlation energy calculated from coupled atomic response functions",
+    "first_author": "Ambrosetti",
+    "year": 2014,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.4993215": {
+    "registry": "crossref",
+    "title": "Extension of the D3 dispersion coefficient model",
+    "first_author": "Caldeweyher",
+    "year": 2017,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.5012271": {
+    "registry": "crossref",
+    "title": "Methods to locate saddle points in complex landscapes",
+    "first_author": "Bonfanti",
+    "year": 2017,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/1.5090222": {
+    "registry": "crossref",
+    "title": "A generally applicable atomic-charge dependent London dispersion correction",
+    "first_author": "Caldeweyher",
+    "year": 2019,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/5.0004608": {
+    "registry": "crossref",
+    "title": "The ORCA quantum chemistry program package",
+    "first_author": "Neese",
+    "year": 2020,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/5.0004997": {
+    "registry": "crossref",
+    "title": "NWChem: Past, present, and future",
+    "first_author": "Aprà",
+    "year": 2020,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/5.0007045": {
+    "registry": "crossref",
+    "title": "CP2K: An electronic structure and molecular dynamics software package - Quickstep: Efficient and accurate electronic structure calculations",
+    "first_author": "Kühne",
+    "year": 2020,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/5.0215869": {
+    "registry": "crossref",
+    "title": "i-PI 3.0: A flexible and efficient framework for advanced atomistic simulations",
+    "first_author": "Litman",
+    "year": 2024,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/5.0283639": {
+    "registry": "crossref",
+    "title": "Bayesian hierarchical models for quantitative estimates for performance metrics applied to saddle search algorithms",
+    "first_author": "Goswami",
+    "year": 2025,
+    "container": "AIP Advances"
+  },
+  "10.1063/5.0304911": {
+    "registry": "crossref",
+    "title": "metatensor and metatomic : Foundational libraries for interoperable atomistic machine learning",
+    "first_author": "Bigi",
+    "year": 2026,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1063/5.0358101": {
+    "registry": "crossref",
+    "title": "Automatic generation of exchange–correlation response kernels",
+    "first_author": "Lehtola",
+    "year": 2026,
+    "container": "The Journal of Chemical Physics"
+  },
+  "10.1080/00268978700101941": {
+    "registry": "crossref",
+    "title": "A new determination of the ground state interatomic potential for He2",
+    "first_author": "Aziz",
+    "year": 1987,
+    "container": "Molecular Physics"
+  },
+  "10.1080/01418618408244210": {
+    "registry": "crossref",
+    "title": "A simple empirical N-body potential for transition metals",
+    "first_author": "Finnis",
+    "year": 1984,
+    "container": "Philosophical Magazine A"
+  },
+  "10.1080/09500839008206493": {
+    "registry": "crossref",
+    "title": "Long-range Finnis–Sinclair potentials",
+    "first_author": "Sutton",
+    "year": 1990,
+    "container": "Philosophical Magazine Letters"
+  },
+  "10.1088/0953-8984/16/27/003": {
+    "registry": "crossref",
+    "title": "Development of an interatomic potential for phosphorus impurities in -iron",
+    "first_author": "Ackland",
+    "year": 2004,
+    "container": "Journal of Physics: Condensed Matter"
+  },
+  "10.1088/0965-0393/8/6/305": {
+    "registry": "crossref",
+    "title": "Highly optimized empirical potential model of silicon",
+    "first_author": "Lenosky",
+    "year": 2000,
+    "container": "Modelling and Simulation in Materials Science and Engineering"
+  },
+  "10.1088/1361-648X/aa680e": {
+    "registry": "crossref",
+    "title": "The atomic simulation environment—a Python library for working with atoms",
+    "first_author": "Hjorth Larsen",
+    "year": 2017,
+    "container": "Journal of Physics: Condensed Matter"
+  },
+  "10.1098/rspa.1924.0082": {
+    "registry": "crossref",
+    "title": "On the determination of molecular fields. —II. From the equation of state of a gas",
+    "first_author": "Jones",
+    "year": 1924,
+    "container": "Proceedings of the Royal Society of London. Series A, Containing Papers of a Mathematical and Physical Character"
+  },
+  "10.1103/PhysRev.34.57": {
+    "registry": "crossref",
+    "title": "Diatomic Molecules According to the Wave Mechanics. II. Vibrational Levels",
+    "first_author": "Morse",
+    "year": 1929,
+    "container": "Physical Review"
+  },
+  "10.1103/physrev.35.1303": {
+    "registry": "crossref",
+    "title": "The Penetration of a Potential Barrier by Electrons",
+    "first_author": "Eckart",
+    "year": 1930,
+    "container": "Physical Review"
+  },
+  "10.1103/PhysRevA.38.3098": {
+    "registry": "crossref",
+    "title": "Density-functional exchange-energy approximation with correct asymptotic behavior",
+    "first_author": "Becke",
+    "year": 1988,
+    "container": "Physical Review A"
+  },
+  "10.1103/PhysRevB.23.6265": {
+    "registry": "crossref",
+    "title": "Lattice relaxation at a metal surface",
+    "first_author": "Gupta",
+    "year": 1981,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.29.6443": {
+    "registry": "crossref",
+    "title": "Embedded-atom method: Derivation and application to impurities, surfaces, and other defects in metals",
+    "first_author": "Daw",
+    "year": 1984,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.31.5262": {
+    "registry": "crossref",
+    "title": "Computer simulation of local order in condensed phases of silicon",
+    "first_author": "Stillinger",
+    "year": 1985,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.33.7983": {
+    "registry": "crossref",
+    "title": "Embedded-atom-method functions for the fcc metals Cu, Ag, Au, Ni, Pd, Pt, and their alloys",
+    "first_author": "Foiles",
+    "year": 1986,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.37.785": {
+    "registry": "crossref",
+    "title": "Development of the Colle-Salvetti correlation-energy formula into a functional of the electron density",
+    "first_author": "Lee",
+    "year": 1988,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.38.9902": {
+    "registry": "crossref",
+    "title": "Empirical interatomic potential for silicon with improved elastic properties",
+    "first_author": "Tersoff",
+    "year": 1988,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.39.5566": {
+    "registry": "crossref",
+    "title": "Modeling solid-state chemistry: Interatomic potentials for multicomponent systems",
+    "first_author": "Tersoff",
+    "year": 1989,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.41.3248.2": {
+    "registry": "crossref",
+    "title": "Erratum: Modeling solid-state chemistry: Interatomic potentials for multicomponent systems",
+    "first_author": "Tersoff",
+    "year": 1990,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.46.2727": {
+    "registry": "crossref",
+    "title": "Modified embedded-atom potentials for cubic materials and impurities",
+    "first_author": "Baskes",
+    "year": 1992,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.48.22": {
+    "registry": "crossref",
+    "title": "Tight-binding potentials for transition metals and alloys",
+    "first_author": "Cleri",
+    "year": 1993,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.54.1703": {
+    "registry": "crossref",
+    "title": "Separable dual-space Gaussian pseudopotentials",
+    "first_author": "Goedecker",
+    "year": 1996,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.56.8542": {
+    "registry": "crossref",
+    "title": "Environment-dependent interatomic potential for bulk silicon",
+    "first_author": "Bazant",
+    "year": 1997,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.58.2539": {
+    "registry": "crossref",
+    "title": "Interatomic potential for silicon defects and disordered phases",
+    "first_author": "Justo",
+    "year": 1998,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevB.62.8564": {
+    "registry": "crossref",
+    "title": "Second nearest-neighbor modified embedded-atom-method potential",
+    "first_author": "Lee",
+    "year": 2000,
+    "container": "Physical Review B"
+  },
+  "10.1103/PhysRevLett.102.073005": {
+    "registry": "crossref",
+    "title": "Accurate Molecular Van Der Waals Interactions from Ground-State Electron Density and Free-Atom Reference Data",
+    "first_author": "Tkatchenko",
+    "year": 2009,
+    "container": "Physical Review Letters"
+  },
+  "10.1103/PhysRevLett.108.236402": {
+    "registry": "crossref",
+    "title": "Accurate and Efficient Method for Many-Body van der Waals Interactions",
+    "first_author": "Tkatchenko",
+    "year": 2012,
+    "container": "Physical Review Letters"
+  },
+  "10.1103/PhysRevLett.55.2471": {
+    "registry": "crossref",
+    "title": "Unified Approach for Molecular Dynamics and Density-Functional Theory",
+    "first_author": "Car",
+    "year": 1985,
+    "container": "Physical Review Letters"
+  },
+  "10.1103/PhysRevLett.74.1586": {
+    "registry": "crossref",
+    "title": "Ab InitioCalculations for Helium: A Standard for Transport Property Measurements",
+    "first_author": "Aziz",
+    "year": 1995,
+    "container": "Physical Review Letters"
+  },
+  "10.1103/PhysRevLett.77.3865": {
+    "registry": "crossref",
+    "title": "Generalized Gradient Approximation Made Simple",
+    "first_author": "Perdew",
+    "year": 1996,
+    "container": "Physical Review Letters"
+  },
+  "10.1371/journal.pcbi.1005659": {
+    "registry": "crossref",
+    "title": "OpenMM 7: Rapid development of high performance algorithms for molecular dynamics",
+    "first_author": "Eastman",
+    "year": 2017,
+    "container": "PLOS Computational Biology"
+  },
+  "10.1557/PROC-82-175": {
+    "registry": "crossref",
+    "title": "Accurate Interatomic Potentials for Ni, Al and Ni3Al",
+    "first_author": "Voter",
+    "year": 1986,
+    "container": "MRS Proceedings"
+  },
+  "10.26434/chemrxiv.8326202.v1": {
+    "registry": "crossref",
+    "title": "A Robust Non-Self-Consistent Tight-Binding Quantum Chemistry Method for large Molecules",
+    "first_author": "Pracht",
+    "year": 2019,
+    "container": ""
+  },
+  "10.3389/fchem.2026.1807063": {
+    "registry": "crossref",
+    "title": "Enhanced climbing image nudged elastic band method with Hessian eigenmode alignment",
+    "first_author": "Goswami",
+    "year": 2026,
+    "container": "Frontiers in Chemistry"
+  },
+  "10.48550/arXiv.2506.14665": {
+    "registry": "datacite",
+    "title": "Accurate and scalable exchange-correlation with deep learning",
+    "first_author": "Luise",
+    "year": 2025,
+    "container": "arXiv"
+  },
+  "10.48550/arXiv.2611.06237": {
+    "registry": "datacite",
+    "title": "SO3LR Tauri: Generally Applicable Force Fields for Reactive (Bio)Molecular Simulations Covering the Periodic Table",
+    "first_author": "Kabylda",
+    "year": 2026,
+    "container": "arXiv"
+  },
+  "10.48550/arXiv.cond-mat/9709114": {
+    "registry": "datacite",
+    "title": "Thermal and Mechanical Properties of some FCC Transition Metals and their Binary Alloys",
+    "first_author": "Cagin",
+    "year": 1997,
+    "container": "arXiv"
+  },
+  "10.52202/085713-4310": {
+    "registry": "crossref",
+    "title": "UMA: A Family of Universal Models for Atoms",
+    "first_author": "Wood",
+    "year": 2025,
+    "container": "Advances in Neural Information Processing Systems 38"
+  },
+  "10.5281/zenodo.18529495": {
+    "registry": "datacite",
+    "title": "TheochemUI/eOn: v3.6.0",
+    "first_author": "Rohit Goswami",
+    "year": 2026,
+    "container": "Zenodo"
+  }
+}

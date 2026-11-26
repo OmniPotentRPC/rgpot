@@ -1,0 +1,855 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Water potentials
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Water potentials
+
+This page covers four water surfaces: =WaterH=, =TIP4P=, =SPCE= and =TIP4PPt=.
+=TIP4P=, =SPCE= and =TIP4PPt= are the eOn water kernels (the file headers in
+=CppCore/rgpot/Water/WaterPots.hpp= name the eOn water tree as their origin).
+They need a build with =-Dwith_water=true=.
+=WaterH= is a different kind of potential: it is the Fortran kernel for one
+hydrogen atom moving in the field of water molecules, and it needs the Fortran
+potentials.
+The class signatures and the argument checks are in the
+[[file:../reference/cpp_potentials.org][C++ potentials]] reference.
+This page adds the functional forms read from the kernels, the parameters with
+their origin, a program for each potential and the literature.
+
+All four report energy in eV and forces in eV/Angstrom, and take positions in
+Angstrom.
+None of them writes a stress.
+The three flexible water kernels use only the diagonal of the cell, as an
+orthorhombic periodic box.
+
+** =WaterH= hydrogen atom in water
+
+*** What it is and how to reach it
+
+=WaterH= evaluates the interaction of one extra hydrogen atom with every atom of
+a set of whole water molecules.
+Use it for an H atom approaching or moving through water, for example H atom
+reactions in a water cluster.
+The kernel carries only the H-water term.
+The comments in =CppCore/rgpot/fortran/rgpot_water_h.f90= say that the
+water-water electrostatics, the oxygen Lennard-Jones term and the intramolecular
+terms belong to the water potential, so this class does not evaluate any
+water-water energy.
+The =PotType= comment calls it "TIP4P water with an interacting hydrogen atom",
+but the kernel itself contains no TIP4P term.
+
+- C++ :: =rgpot::fortranpots::WaterHPot=, declared in
+  =CppCore/rgpot/fortran/FortranPots.hpp=.
+  The constructor takes no arguments, and the parameters are fixed in the
+  Fortran type =water_h_params_t=.
+- Python :: =rgpot.WaterHPot=.
+- Engine ABI :: the name =waterh= of the classical engine (see the
+  [[file:../reference/engine_abi.org][engine ABI]] page).
+- =rgpot-eval=, =pair_coeff= and =potserv= :: none.
+  =docs/orgmode/reference/potential_names.org= does not list it, and neither =engines/pot_spec.cpp=
+  nor =CppCore/rgpot/rpc/server.cpp= names it.
+
+Atoms are hydrogen (1) and oxygen (8) only.
+The lone H must be the last atom, and the composition must be whole waters plus
+that H, so the number of H atoms is twice the number of O atoms plus one.
+The order of the other atoms does not matter for this term.
+
+*** Functional form
+
+Let =r= be the distance from the lone H to one other atom, taken at the nearest
+periodic image of that atom.
+A cell that cannot be inverted (for example a zero cell) switches the image
+search off, and the vectors are used as they stand.
+There is no cutoff.
+Every oxygen is one leg and every water hydrogen is one leg, and the energy is
+the sum of the legs, converted from kJ/mol to eV.
+
+- Oxygen leg: =E_O(r) = -D(r, rm_HO) C6_HO / r^6 + A_HO exp(-B_HO r)
+  + De (exp(-2 beta (r - r_eq)) - 2 exp(-beta (r - r_eq)))=.
+- Hydrogen leg: =E_H(r) = -D(r, rm_HH) C6_HH / r^6 + A_HH exp(-B_HH r)=.
+- Damping: =D(r, rm) = 1= for =r >= 1.28 rm=, and
+  =D(r, rm) = exp(-(1.28 rm / r - 1)^2)= below that radius.
+  The factor 1.28 is =damp_scale=.
+- Total:
+  =E = (1 / 96.485336) * (sum of E_O over oxygens + sum of E_H over water hydrogens)=
+  in eV, with the leg energies in kJ/mol.
+- Forces: each water atom takes the force of its own leg, and the lone H takes
+  the negated sum.
+
+No term couples two distances, so how the sites are grouped into molecules does
+not change the energy.
+A leg shorter than 1e-8 Angstrom stops the call with an error.
+
+*** Parameters
+
+All values are the defaults of
+=water_h_params_t= in =CppCore/rgpot/fortran/rgpot_water_h.f90=.
+There is no C++ config struct for this class.
+The source holds the published parameters in kJ/mol and Angstrom, and
+=energy_scale= converts the result.
+
+| Field        | Value    | Unit                  | Role                    |
+|--------------+----------+-----------------------+-------------------------|
+| =rm_ho=      | 4.04741  | Angstrom              | damping radius, H to O  |
+| =rm_hh=      | 2.19954  | Angstrom              | damping radius, H to H  |
+| =c6_ho=      | 2216.76  | kJ/mol Angstrom^6     | dispersion, H to O      |
+| =c6_hh=      | 30.2562  | kJ/mol Angstrom^6     | dispersion, H to H      |
+| =a_ho=       | 4158.88  | kJ/mol                | Born-Mayer, H to O      |
+| =b_ho=       | 2.63805  | 1/Angstrom            | Born-Mayer decay, H to O|
+| =a_hh=       | 5563.57  | kJ/mol                | Born-Mayer, H to H      |
+| =b_hh=       | 4.27352  | 1/Angstrom            | Born-Mayer decay, H to H|
+| =de=         | 287.598  | kJ/mol                | Morse depth, O leg      |
+| =beta=       | 4.73771  | 1/Angstrom            | Morse range, O leg      |
+| =r_eq=       | 0.816286 | Angstrom              | Morse minimum, O leg    |
+| =damp_scale= | 1.28     | none                  | damping onset factor    |
+| =energy_scale= | 1/96.485336 | eV per kJ/mol     | unit conversion         |
+
+The source says these are the published set, carried over from the legacy
+=BLOCK DATA= of the eOn kernel.
+The page does not restate the paper's table, because the paper's tables were not
+read while writing it.
+
+*** Example
+
+The program puts a water molecule (O-H 0.9572 Angstrom, H-O-H 104.52 degrees,
+the geometry that =CppCore/rgpot/fortran/test_water_h.f90= uses) at the origin
+with its hydrogens along +z.
+The lone H sits on the oxygen side, on the z axis, at four distances.
+It also adds up the legs by hand with the values of the table, and the two
+energies agree.
+
+#+attr_rgpot: run link=rgpot requires=has_fortran_pots
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/fortran/FortranPots.hpp"
+
+namespace {
+
+double dispersion(double c6, double rm, double r) {
+  const double r_damp = 1.28 * rm;
+  const double damp =
+      r >= r_damp ? 1.0 : std::exp(-std::pow(r_damp / r - 1.0, 2.0));
+  return -damp * c6 / std::pow(r, 6.0);
+}
+
+double oxygen_leg(double r) {
+  const double x = r - 0.816286;
+  const double morse =
+      287.598 * (std::exp(-2.0 * 4.73771 * x) - 2.0 * std::exp(-4.73771 * x));
+  return dispersion(2216.76, 4.04741, r) + 4158.88 * std::exp(-2.63805 * r) +
+         morse;
+}
+
+double hydrogen_leg(double r) {
+  return dispersion(30.2562, 2.19954, r) + 5563.57 * std::exp(-4.27352 * r);
+}
+
+} // namespace
+
+int main() {
+  rgpot::fortranpots::WaterHPot pot;
+  const double half = 0.5 * 104.52 * 3.14159265358979323846 / 180.0;
+  const double hx = 0.9572 * std::sin(half);
+  const double hz = 0.9572 * std::cos(half);
+  const int z[4] = {1, 1, 8, 1};
+  const double box[9] = {30.0, 0, 0, 0, 30.0, 0, 0, 0, 30.0};
+  for (const double d : {2.0, 2.5, 3.0, 4.0}) {
+    const double pos[12] = {hx, 0.0, hz, -hx, 0.0, hz, 0.0, 0.0, 0.0,
+                            0.0, 0.0, -d};
+    double f[12] = {};
+    rgpot::ForceInput in{4, pos, z, box};
+    rgpot::ForceOut out{};
+    out.F = f;
+    pot.forceImpl(in, &out);
+    const double r_h = std::sqrt(hx * hx + (hz + d) * (hz + d));
+    const double by_hand =
+        (oxygen_leg(d) + 2.0 * hydrogen_leg(r_h)) / 96.485336;
+    std::printf("d %.1f  energy %.8f eV  by hand %.8f eV  Fz on lone H %.6f\n",
+                d, out.energy, by_hand, f[11]);
+  }
+  return 0;
+}
+#+end_src
+
+It prints:
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+d 2.0  energy 0.16942952 eV  by hand 0.16942952 eV  Fz on lone H -0.511424
+d 2.5  energy 0.02660980 eV  by hand 0.02660980 eV  Fz on lone H -0.126691
+d 3.0  energy -0.00325681 eV  by hand -0.00325681 eV  Fz on lone H -0.018707
+d 4.0  energy -0.00407819 eV  by hand -0.00407819 eV  Fz on lone H 0.003843
+#+end_example
+
+The force on the lone H is in eV/Angstrom.
+A negative z force at =d= of 2.0 pushes the lone H away from the water, along
+-z.
+
+The call needs a build with the Fortran potentials.
+Without them the block is skipped.
+
+*** Literature
+
+- Andersson, Al-Halabi, Kroes and van Dishoeck, J. Chem.
+  Phys. 124, 064715 (2006), doi:10.1063/1.2162901.
+  The source names this paper as the origin of the potH-H2O surface.
+  Its abstract describes photodissociation of water in ice with a potential
+  model, and this page does not check which of the numbers above it tabulates.
+- No separate paper is cited for the =damp_scale= factor or for the per-leg
+  split: the source states them as part of the published surface.
+
+** =TIP4P= flexible TIP4P water
+
+*** What it is and how to reach it
+
+=TIP4P= is the rigid-water TIP4P intermolecular model (oxygen Lennard-Jones plus
+three charge sites) made flexible with the Carney-Curtiss-Langhoff (CCL)
+intramolecular term, so molecules need no constraints.
+Use it for water clusters and periodic water in an orthorhombic box when a
+flexible molecule is wanted.
+
+- C++ :: =rgpot::TIP4PPot= and =rgpot::WaterConfig=, declared in
+  =CppCore/rgpot/Water/WaterPots.hpp=.
+  Reference entries are in the
+  [[file:../reference/cpp_potentials.org][C++ potentials]] page.
+- Python :: none; =python/rgpot= exposes no water class besides =WaterHPot=.
+- Engine ABI :: the name =tip4p= of the classical engine
+  ([[file:../reference/engine_abi.org][engine ABI]]), with default parameters.
+- =rgpot-eval=, =pair_coeff= and =potserv= :: none.
+  The names in
+  =docs/orgmode/reference/potential_names.org= do not include it, and neither =engines/pot_spec.cpp=
+  nor =CppCore/rgpot/rpc/server.cpp= names it.
+
+Atoms are ordered as every molecule's two hydrogens first (H1, H2 of molecule 1,
+then of molecule 2, and so on), followed by one oxygen per molecule.
+The atom count must be a multiple of 3, and atomic numbers are not read.
+
+*** Functional form
+
+The energy is a sum over molecules of an intramolecular term and a sum over
+molecule pairs of Coulomb and Lennard-Jones terms.
+Lengths are in Angstrom, angles in radians, charges in units of the elementary
+charge, energies in eV.
+
+- Intramolecular term: the CCL quartic below, with
+  =r_e= 0.9572 Angstrom and =theta_e= 104.52 degrees.
+- M site: the negative charge sits on a massless site
+  =N = w_O O + w_H H1 + w_H H2= with =w_H = r_OM / (2 r_e cos(theta_e / 2))= and =w_O = 1 - 2 w_H=.
+  The weights are computed once from the equilibrium values, so the M site
+  follows the actual atoms of a distorted molecule.
+  Its force is spread back onto O, H1 and H2 with the same weights.
+- Charges: =+q= on each hydrogen and =-2q= on the M site, none on the oxygen.
+  Each charge pair gives =14.399644532010862 * q_a * q_b / r= in eV, with that
+  constant in eV Angstrom per squared charge.
+  The nine pairs of two molecules are H-H with =q^2=, H-M with =-2 q^2= and M-M
+  with =4 q^2=.
+- Lennard-Jones: between oxygens only, =4 eps ((sigma / r)^12 - (sigma / r)^6)=.
+- Cutoff: pairs are found from the distance between molecule centres, the
+  centroid of the M site and the two hydrogens.
+  The Coulomb sum of two molecules is taken in full when that distance is at
+  most =cutoff - switching_width=, is multiplied by a switch between that and
+  =cutoff=, and is dropped beyond =cutoff=.
+  The Lennard-Jones term has its own test on the oxygen-oxygen distance with the
+  same limits.
+- Switch: =S(x) = (2 x - 3) x^2 + 1= with
+  =x = (r - (cutoff - switching_width)) / switching_width=, so =S= falls from 1
+  to 0.
+  The switched energy is =S= times the full pair energy, and the force includes
+  the term from the slope of =S=.
+- Periodicity: the minimum image in each direction, from the diagonal of the
+  cell.
+
+**** The CCL intramolecular term
+
+With =r1= and =r2= the two O-H distances and =theta= the H-O-H angle, the
+variables are =p_i = (r_i - r_e) / r_i= and =dt = theta - theta_e=.
+The molecule energy is =r_e^2= times the sum of the 18 terms below, each with
+its coefficient.
+The quadratic, cubic and quartic groups are the first four, next six and last
+eight rows.
+The source labels the coefficients eV/Angstrom^2, so each product with =r_e^2=
+in Angstrom^2 is an energy in eV.
+The term =(p1 + p2) dt^3= has no coefficient; the source records it as zero.
+
+| Source name         | Term                 | Value                  |
+|---------------------+----------------------+------------------------|
+| =ro_2_=             | (p1^2 + p2^2) / 2    | 52.7657211406036524    |
+| =ro1_ro2_=          | p1 p2                | -0.630392457440379528  |
+| =ro_theta_=         | (p1 + p2) dt         | 1.42805736893424595    |
+| =theta_2_=          | dt^2 / 2             | 4.74791626113759158    |
+| =ro_3_=             | p1^3 + p2^3          | -6.3463668388651282    |
+| =ro_ro1_ro2_=       | (p1 + p2) p1 p2      | 0.125454340540115145   |
+| =ro_2_theta_=       | (p1^2 + p2^2) dt     | 2.68884228381500501    |
+| =ro1_ro2_theta_=    | p1 p2 dt             | -2.509086810802303     |
+| =ro_theta_2_=       | (p1 + p2) dt^2       | -0.733377363853906838  |
+| =thetat_3_=         | dt^3                 | -0.995520761997431114  |
+| =ro_4_=             | p1^4 + p2^4          | -6.668428728012886     |
+| =ro1_ro2_ro_2_=     | p1 p2 (p1^2 + p2^2)  | -3.84601814133427622   |
+| =ro1_2_ro2_2_=      | p1^2 p2^2            | 1.69581812560941692    |
+| =ro_3_theta_=       | (p1^3 + p2^3) dt     | 3.94962719869576429    |
+| =ro_ro1_ro2_theta_= | (p1 + p2) p1 p2 dt   | -2.509086810802303     |
+| =ro_2_theta_2_=     | (p1^2 + p2^2) dt^2   | -2.93350945541562735   |
+| =ro1_ro2_theta_2_=  | p1 p2 dt^2           | 1.90366039128035425    |
+| =theta_4_=          | dt^4                 | -0.0198480001451525438 |
+
+All 18 values are in =CppCore/rgpot/Water/ccl.cpp=, and every term vanishes at
+the equilibrium geometry, so a molecule at =r_e= and =theta_e= has zero
+intramolecular energy.
+The same file keeps the table as erg/Angstrom^2 values in a branch the build
+does not use; the first value there is 84.54e-12, which is 52.7657 eV.
+
+*** Parameters
+
+The names in the last column are constants in
+=CppCore/rgpot/Water/tip4p_ccl.cpp=, except where a file is named in the row.
+The Coulomb constant is =ONE_OVER_4_PI_EPSILON0= in
+=CppCore/rgpot/Water/potential_base.cpp=.
+The cutoff and the switching width are the fields of =rgpot::WaterConfig=.
+
+| Parameter          | Value              | Unit            | Name or file     |
+|--------------------+--------------------+-----------------+------------------|
+| O-H length =r_e=   | 0.9572             | Angstrom        | =re_=            |
+| H-O-H =theta_e=    | 104.52             | degree          | =thetae_=        |
+| =theta_e=, ccl.cpp | 1.82421813418447321 | radian | =thetaEq_= |
+| H charge =q=       | 0.520              | e               | =charge_=        |
+| O to M site        | 0.150              | Angstrom        | =ron_=           |
+| LJ sigma           | 3.154              | Angstrom        | =sigma_=         |
+| LJ epsilon         | 78.0               | K               | =epsilon_=       |
+| Coulomb constant   | 14.399644532010862 | eV Angstrom/e^2 | see below |
+| Cutoff             | 8.5                | Angstrom        | =WaterConfig= |
+| Switching width    | 1.0                | Angstrom        | =WaterConfig= |
+| CCL coefficients   | 18 values above    | eV/Angstrom^2   | =ccl.cpp=        |
+
+The Lennard-Jones well depth is kept in Kelvin times Boltzmann's constant, with
+=k_B = 1.3806505e-23= J/K and an elementary charge of =1.60217653e-19= C from =CppCore/rgpot/Water/tip4p_unit_system.hpp=;
+the product is 0.0067215 eV (computed).
+The cutoff and the width are the values the eOn wrappers pass, as the comments
+in =WaterPots.hpp= say.
+
+The parameter set against the rigid model:
+
+- The geometry, the charge and the M-site offset are what the source comment
+  calls the original TIP4P version.
+  The source takes the equilibrium length and angle from the CCL values, which
+  it sets to the same numbers.
+- The Lennard-Jones sigma and well depth are written in the source as 3.154
+  Angstrom and 78.0 K, that is, as rounded numbers.
+  This page does not compare them digit by digit with the coefficients in the
+  paper, because the paper's table was not read while writing it.
+- The molecules are flexible through the CCL term, which is not part of the
+  rigid TIP4P model.
+- The source comments cite Abascal and Vega for the parameters.
+  That paper is the TIP4P/2005 paper, and the comment adds that the parameters
+  are those of the original TIP4P.
+  The numbers in the kernel are the ones the comment describes, not a re-fitted
+  set.
+- A class comment in =tip4p_ccl.cpp= says quadratic restraints on the O-H and
+  H-H distances were added.
+  The code calls the CCL term (=Ccl::intramolecular=) and does not call the
+  restraint functions of =potential_base.cpp= for this class.
+
+*** Example
+
+The program builds one molecule at the TIP4P geometry and a dimer.
+The donor oxygen is at the origin with one O-H bond along +x.
+The acceptor oxygen is 2.9 Angstrom along +x, its bisector points along +x and
+its plane is perpendicular to the donor plane.
+This arrangement is made up for the example, with geometry from the source
+constants; it is not a relaxed structure, and the printed energies describe that
+arrangement only.
+
+#+attr_rgpot: run link=rgpot requires=has_water
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/Water/WaterPots.hpp"
+
+namespace {
+
+struct Molecule {
+  double h1[3], h2[3], o[3];
+};
+
+void dimer(double r_oh, double theta, double r_oo, Molecule *a, Molecule *b) {
+  *a = {{r_oh, 0.0, 0.0},
+        {r_oh * std::cos(theta), r_oh * std::sin(theta), 0.0},
+        {0.0, 0.0, 0.0}};
+  const double c = r_oh * std::cos(theta / 2.0);
+  const double s = r_oh * std::sin(theta / 2.0);
+  *b = {{r_oo + c, 0.0, s}, {r_oo + c, 0.0, -s}, {r_oo, 0.0, 0.0}};
+}
+
+// Atom order is every H pair first, then every oxygen.
+double energy(const rgpot::TIP4PPot &pot, const std::vector<Molecule> &mols) {
+  const std::size_t n = mols.size();
+  std::vector<double> pos(9 * n);
+  std::vector<int> z(3 * n, 1);
+  for (std::size_t i = 0; i < n; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      pos[6 * i + k] = mols[i].h1[k];
+      pos[6 * i + 3 + k] = mols[i].h2[k];
+      pos[6 * n + 3 * i + k] = mols[i].o[k];
+    }
+    z[2 * n + i] = 8;
+  }
+  const double box[9] = {40.0, 0, 0, 0, 40.0, 0, 0, 0, 40.0};
+  std::vector<double> forces(pos.size());
+  rgpot::ForceInput in{3 * n, pos.data(), z.data(), box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  pot.forceImpl(in, &out);
+  return out.energy;
+}
+
+} // namespace
+
+int main() {
+  const double pi = 3.14159265358979323846;
+  const rgpot::TIP4PPot pot;
+  Molecule a, b;
+  dimer(0.9572, 104.52 * pi / 180.0, 2.9, &a, &b);
+  const double e_a = energy(pot, {a});
+  const double e_b = energy(pot, {b});
+  const double e_ab = energy(pot, {a, b});
+  std::printf("monomer at the TIP4P geometry: %.6f eV\n", e_a);
+  std::printf("dimer, O-O 2.9 Angstrom: %.6f eV\n", e_ab);
+  std::printf("dimer minus two monomers: %.6f eV\n", e_ab - e_a - e_b);
+  return 0;
+}
+#+end_src
+
+It prints:
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+monomer at the TIP4P geometry: 0.000000 eV
+dimer, O-O 2.9 Angstrom: -0.245420 eV
+dimer minus two monomers: -0.245420 eV
+#+end_example
+
+The monomer energy is zero because the CCL term vanishes at the equilibrium
+geometry and there is no other intramolecular term.
+Without =-Dwith_water=true= the block is skipped.
+
+*** Literature
+
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+  This is the software record of the eOn client whose water tree these kernels
+  come from; its release notes mention the TIP4P kernel, the CCL equilibrium O-H
+  length and angle, and the =-Dwith_water= option.
+- Jorgensen, Chandrasekhar, Madura, Impey and Klein, J. Chem.
+  Phys. 79, 926 (1983), doi:10.1063/1.445869.
+  This defines the TIP4P model (functional form and rigid parameters).
+- Carney, Curtiss and Langhoff, J. Mol.
+  Spectrosc. 61, 371 (1976), doi:10.1016/0022-2852(76)90328-3.
+  The source names Table II of this paper as the origin of the CCL functions and
+  coefficients.
+- Abascal and Vega, J. Chem.
+  Phys. 123, 234505 (2005),
+  doi:10.1063/1.2121687. Named in the source comment for the TIP4P parameters; the paper is about TIP4P/2005.
+
+** =SPCE= flexible SPC/E water
+
+*** What it is and how to reach it
+
+=SPCE= is the
+SPC/E water model (a Lennard-Jones oxygen and point charges on all three atoms) joined to the same CCL intramolecular term as =TIP4P=, so the molecules are flexible. Use it for the same systems as =TIP4P= when SPC/E
+intermolecular behaviour is wanted.
+
+- C++ :: =rgpot::SPCEPot= and =rgpot::WaterConfig=, declared in
+  =CppCore/rgpot/Water/WaterPots.hpp=; see the [[file:../reference/cpp_potentials.org][C++
+  potentials]] reference.
+- Python :: none.
+- Engine ABI :: the name =spce= of the classical engine
+  ([[file:../reference/engine_abi.org][engine ABI]]), with default parameters.
+- =rgpot-eval=,
+  =pair_coeff= and =potserv= :: none; they are not in =docs/orgmode/reference/potential_names.org=,
+  =engines/pot_spec.cpp= or =CppCore/rgpot/rpc/server.cpp=.
+
+The atom order, the cell and the argument checks are those of =TIP4P=.
+
+*** Functional form
+
+Lengths are in Angstrom, energies in eV.
+The kernel is =CppCore/rgpot/Water/spce_ccl.cpp=.
+
+- Charges: =+q= on each hydrogen and =-2q= on the oxygen.
+  Each of the nine charge pairs of two molecules gives
+  =14.399644532010862 * q_a * q_b / r= in eV.
+- Lennard-Jones: oxygen to oxygen, =4 eps ((sigma / r)^12 - (sigma / r)^6)=.
+- Cutoff and switch: as in =TIP4P=, with the molecule centre now the centroid of
+  O, H1 and H2.
+- Intramolecular term: the CCL quartic of the =TIP4P= section with the
+  coefficients of its table, but with different variables.
+  With =r_SPC= the SPC/E O-H length and =theta_SPC= its angle,
+  =p_i = (r_i - r_SPC) / (r_i - r_SPC + r_e)= and
+  =dt = theta - theta_SPC=, where =r_e= 0.9572 Angstrom is the CCL length that
+  still multiplies the sum (the energy is =r_e^2= times the terms).
+  A molecule at =r_SPC= and =theta_SPC= has zero from this term.
+- Polarisation energy: a constant is added for every molecule, 0.0541015 eV.
+  It is part of the energy even for a single isolated molecule.
+
+*** Parameters
+
+| Parameter           | Value       | Unit            | Name or file       |
+|---------------------+-------------+-----------------+--------------------|
+| O-H length =r_SPC=  | 1.0         | Angstrom        | =roh_=             |
+| H-O-H =theta_SPC=   | 1.91063     | radian          | =theta_=           |
+| H charge =q=        | 0.4238      | e               | =charge_=          |
+| LJ sigma            | 3.16556     | Angstrom        | =sigma_=           |
+| LJ epsilon          | 0.00673853  | eV              | =epsilon_=         |
+| r^-12 coefficient   | 27291.6     | eV Angstrom^12  | =A_=               |
+| r^-6 coefficient    | 27.1223     | eV Angstrom^6   | =B_=               |
+| Polarisation energy | 0.0541015   | eV per molecule | =polarisationEnergy_= |
+| CCL length =r_e=    | 0.9572      | Angstrom        | =reEq_=, ccl.cpp   |
+| CCL coefficients    | 18 values   | eV/Angstrom^2   | =ccl.cpp=          |
+| Cutoff              | 8.5         | Angstrom        | =WaterConfig= field |
+| Switching width     | 1.0         | Angstrom        | =WaterConfig= field |
+
+The names in the last column are constants in
+=CppCore/rgpot/Water/spce_ccl.cpp=, except where a file is named.
+The cutoff and the switching width are the fields of =rgpot::WaterConfig=.
+The 18 CCL coefficients are the table in the =TIP4P= section.
+The comments next to the two coefficients in the source say Angstrom^-1; they
+are the =r^-12= and =r^-6= coefficients, and =4 eps sigma^12= with the table
+values is 27291.8 eV Angstrom^12 (computed).
+The source writes the original
+SPC/E numbers, in a branch the build does not use, as =(0.3428 nm)^12= and =(0.37122 nm)^6= times kJ/mol,
+and notes that its =A= and =B= are inverted compared with the original
+publication.
+Evaluating those expressions gives sigma 3.16556 Angstrom and eps 0.00673853 eV
+(computed), which are the values the build uses.
+The polarisation energy is 5.22 kJ/mol in the unused branch, and 5.22 kJ/mol
+divided by 96.485336 kJ/mol per eV is 0.0541015 eV (computed).
+
+The parameter set against the rigid model:
+
+- The geometry, the charge and the Lennard-Jones numbers are the SPC/E ones of
+  Berendsen, Grigera and Straatsma, as the source states.
+- The molecules are flexible through the CCL term, whose variables are shifted
+  to the SPC/E geometry following the rules the source attributes to Amira,
+  Spangberg and Hermansson.
+- The angle is the rounded 1.91063 radian, not the exact tetrahedral angle.
+- The constant per molecule is the source's =polarisationEnergy_=.
+  It makes the energy of one relaxed molecule 0.0541 eV, not zero, which is why
+  the monomer below is not at zero.
+
+*** Example
+
+The program evaluates one
+SPC/E molecule at its geometry and the same made-up dimer arrangement as in the =TIP4P= example, with the SPC/E
+bond length and angle.
+It is an illustration, not a relaxed structure.
+
+#+attr_rgpot: run link=rgpot requires=has_water
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/Water/WaterPots.hpp"
+
+namespace {
+
+struct Molecule {
+  double h1[3], h2[3], o[3];
+};
+
+void dimer(double r_oh, double theta, double r_oo, Molecule *a, Molecule *b) {
+  *a = {{r_oh, 0.0, 0.0},
+        {r_oh * std::cos(theta), r_oh * std::sin(theta), 0.0},
+        {0.0, 0.0, 0.0}};
+  const double c = r_oh * std::cos(theta / 2.0);
+  const double s = r_oh * std::sin(theta / 2.0);
+  *b = {{r_oo + c, 0.0, s}, {r_oo + c, 0.0, -s}, {r_oo, 0.0, 0.0}};
+}
+
+double energy(const rgpot::SPCEPot &pot, const std::vector<Molecule> &mols) {
+  const std::size_t n = mols.size();
+  std::vector<double> pos(9 * n);
+  std::vector<int> z(3 * n, 1);
+  for (std::size_t i = 0; i < n; ++i) {
+    for (int k = 0; k < 3; ++k) {
+      pos[6 * i + k] = mols[i].h1[k];
+      pos[6 * i + 3 + k] = mols[i].h2[k];
+      pos[6 * n + 3 * i + k] = mols[i].o[k];
+    }
+    z[2 * n + i] = 8;
+  }
+  const double box[9] = {40.0, 0, 0, 0, 40.0, 0, 0, 0, 40.0};
+  std::vector<double> forces(pos.size());
+  rgpot::ForceInput in{3 * n, pos.data(), z.data(), box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  pot.forceImpl(in, &out);
+  return out.energy;
+}
+
+} // namespace
+
+int main() {
+  const rgpot::SPCEPot pot;
+  Molecule a, b;
+  dimer(1.0, 1.91063, 2.9, &a, &b);
+  const double e_a = energy(pot, {a});
+  const double e_ab = energy(pot, {a, b});
+  std::printf("monomer at the SPC/E geometry: %.6f eV\n", e_a);
+  std::printf("dimer, O-O 2.9 Angstrom: %.6f eV\n", e_ab);
+  std::printf("dimer minus two monomers: %.6f eV\n", e_ab - 2.0 * e_a);
+  return 0;
+}
+#+end_src
+
+It prints:
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+monomer at the SPC/E geometry: 0.054101 eV
+dimer, O-O 2.9 Angstrom: -0.174351 eV
+dimer minus two monomers: -0.282554 eV
+#+end_example
+
+The monomer value is the polarisation constant, since the CCL term is zero at
+the geometry.
+Without =-Dwith_water=true= the block is skipped.
+
+*** Literature
+
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+  This is the software record of the eOn client whose water tree holds this
+  kernel (the =-Dwith_water= option is in its release notes).
+- Berendsen, Grigera and Straatsma, J. Phys.
+  Chem. 91, 6269 (1987), doi:10.1021/j100308a038. This defines SPC/E and its
+  Lennard-Jones and charge parameters.
+- Amira, Spangberg and Hermansson, Chem.
+  Phys. 303, 327 (2004),
+  doi:10.1016/j.chemphys.2004.04.024. The source names this paper for the rules that merge SPC/E
+  with the CCL term (the flexible SPC model).
+- Carney, Curtiss and Langhoff, J. Mol.
+  Spectrosc. 61, 371 (1976), doi:10.1016/0022-2852(76)90328-3.
+  The CCL intramolecular functions and coefficients, Table II per the source.
+
+** =TIP4PPt= water on platinum
+
+*** What it is and how to reach it
+
+=TIP4PPt= is flexible water above platinum atoms, with the Zhu-Philpott
+water-metal interaction.
+Use it for water on a platinum surface when the platinum positions are given as
+atoms and their mutual interaction is treated elsewhere.
+Despite the name, the water in this kernel is the
+SPC/E plus CCL water of the =SPCE= section, not the TIP4P water: =ZhuPhilpott= in =CppCore/rgpot/Water/zhu_philpott.hpp=
+derives from =SpceCcl=.
+
+- C++ :: =rgpot::TIP4PPtPot= and =rgpot::WaterConfig=, declared in
+  =CppCore/rgpot/Water/WaterPots.hpp=; see the [[file:../reference/cpp_potentials.org][C++
+  potentials]] reference.
+- Python :: none.
+- Engine ABI :: the name
+  =tip4p_pt= of the classical engine ([[file:../reference/engine_abi.org][engine
+  ABI]]), with default parameters.
+- =rgpot-eval=,
+  =pair_coeff= and =potserv= :: none; they are not in =docs/orgmode/reference/potential_names.org=,
+  =engines/pot_spec.cpp= or =CppCore/rgpot/rpc/server.cpp=.
+
+Atoms are ordered as every molecule's two hydrogens, then one oxygen per
+molecule, then the platinum atoms.
+The leading run of atomic number 1, read two atoms at a time, sets the number of
+molecules, and the atoms after the water atoms are platinum.
+Atomic numbers of the platinum atoms are not otherwise read.
+The forces returned include the force on each platinum atom.
+
+*** Functional form
+
+Lengths are in Angstrom, energies in eV.
+
+- Water-water: the =SPCE= kernel (SPC/E charges and Lennard-Jones, CCL
+  intramolecular term) with the same cutoff and switch.
+  The Coulomb pair energies use a relative permittivity of 1.
+  The constant polarisation energy of =SPCE= is not added by this class.
+- Platinum-water, for each platinum atom and each oxygen or hydrogen within the
+  cutoff, with =rho^2 = dx^2 + dy^2=, =z = dz= and =r^2 = rho^2 + z^2= for the
+  vector from the platinum atom to the water atom: =E = 4 eps [(sigma^2 /
+  (alpha^2 rho^2 + z^2))^6 - (sigma^2 / (rho^2 / alpha^2
+  + z^2))^3] - 4 eps C10 (sigma / r)^10=.
+The oxygen uses =eps_OPt=, =sigma_OPt= and
+=C10_O=, and each hydrogen uses =eps_HPt=, =sigma_HPt= and =C10_H=.
+The pair energy is multiplied by the switch of =TIP4P= between
+=cutoff - switching_width= and =cutoff=, using the platinum-atom distance.
+- Image charges: a perfect-metal mirror plane at =z = 0=.
+  The source says it should coincide with the highest platinum layer.
+  Each molecule interacts with its own mirror image and with the images of the
+  other molecules through the same charge pairs as water-water, with the charge
+  product divided by a relative permittivity of -2, and the same cutoff and
+  switch on the centre distance.
+  The source explains the -2 as the effective value for a perfect metal.
+- Not included: no platinum-platinum term.
+  Platinum atoms act as fixed sources of the water-platinum term and receive its
+  force.
+- Periodicity: the minimum image in all three directions with the diagonal of
+  the cell, so the cell must be tall enough along z that no water atom wraps
+  toward its mirror image.
+
+*** Parameters
+
+The water-water parameters are those of the =SPCE= table, except for the
+polarisation energy, which is not used here.
+The water-platinum parameters are the =Standard= set, in
+=CppCore/rgpot/Water/zhu_philpott_parameters.cpp=, which =TIP4PPtPot= uses.
+
+| Parameter       | Value                  | Unit     | Field of =Standard= |
+|-----------------+------------------------+----------+---------------------|
+| O sigma         | 2.86                   | Angstrom | =sigmaO_=           |
+| O epsilon       | 0.0023734176137013181  | eV       | =epsilonO_=         |
+| H sigma         | 2.56                   | Angstrom | =sigmaH_=           |
+| H epsilon       | 0.00087578073518673099 | eV       | =epsilonH_=         |
+| O C10           | 1.28                   | none     | =C10_O_=            |
+| H C10           | 1.2                    | none     | =C10_H_=            |
+| alpha           | 0.8                    | none     | =alpha_=            |
+| Pt-O sigma      | 2.7735458150747108     | Angstrom | =sigmaOPt_=         |
+| Pt-O epsilon    | 0.03387330127291549    | eV       | =epsilonOPt_=       |
+| Pt-H sigma      | 2.730249677569295      | Angstrom | =sigmaHPt_=         |
+| Pt-H epsilon    | 0.016217645873043762   | eV       | =epsilonHPt_=       |
+
+The platinum Lennard-Jones constants and the water cutoff are set elsewhere.
+
+| Parameter       | Value               | Unit     | Where it is set        |
+|-----------------+---------------------+----------+------------------------|
+| Pt sigma        | 2.54                | Angstrom | =SIGMA_PT=             |
+| Pt epsilon      | 0.68165797577788501 | eV       | =EPSILON_PT=           |
+| Cutoff          | 8.5                 | Angstrom | =WaterConfig= field    |
+| Switching width | 1.0                 | Angstrom | =WaterConfig= field    |
+
+=SIGMA_PT= and =EPSILON_PT= are in =CppCore/rgpot/Water/potential_base.cpp=.
+
+The four mixed values (=sigmaOPt_= and so on) carry the comment "Calculated
+using Smith and Kong mixing rules".
+Applying =smithKongSigma= and =smithKongEpsilon= from
+=CppCore/rgpot/Water/potential_base.cpp= to the platinum row and to the oxygen
+row or the hydrogen row of the table reproduces the four stored values
+(computed).
+The =sigmaO_=, =epsilonO_=, =sigmaH_= and =epsilonH_= values are inputs of that
+mixing and are not read by the kernel in any other way.
+The platinum sigma and epsilon are the constants of =PotentialBase=, which the
+source attributes to Kittel's Introduction to Solid State Physics; they are used
+here only as the mixing input.
+
+The parameter set against the original model:
+
+- The source calls the =Standard= set the parameterisation published by Zhu and
+  Philpott, and gives a binding energy of 0.50 eV for one molecule on a (100)
+  surface for it.
+  Whether each number above is tabulated in that paper was not checked, because
+  the paper's tables were not read while writing this page.
+- The kernel also defines an =Iceland= set, in which the platinum-water epsilon
+  values are weakened (=epsilonHPt_= 0.0097305875238262573 and =epsilonOPt_=
+  0.020323980763749295) to match a density functional binding energy of 0.3 eV
+  on a (100) surface, per the source comment.
+  =TIP4PPtPot= instantiates the =Standard= set only, so the =Iceland= values are
+  not reachable through this class.
+- The water is SPC/E with the CCL term, which differs from the TIP4P of the
+  class name.
+
+*** Example
+
+The program puts one water molecule with its oxygen 3.0 Angstrom above a single
+platinum atom at the origin, with the SPC/E bond length and angle, hydrogens
+pointing away from the surface.
+A single atom is not a surface; the program prints the energy, the part left
+when the platinum is removed (the image charges), the difference, the force on
+the platinum atom, and the energy of a molecule far from the plane.
+The cell is 40 Angstrom wide and 100 Angstrom tall.
+
+#+attr_rgpot: run link=rgpot requires=has_water
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/Water/WaterPots.hpp"
+
+namespace {
+
+struct Result {
+  double energy;
+  std::vector<double> forces;
+};
+
+// Atoms are H, H, O and then Pt. The water plane is xz.
+Result evaluate(double z_o, int n_pt) {
+  const double half = 0.5 * 1.91063;
+  const double hx = std::sin(half), hz = std::cos(half);
+  std::vector<double> pos = {hx,  0.0, z_o + hz, -hx, 0.0,
+                             z_o + hz, 0.0, 0.0, z_o};
+  std::vector<int> z = {1, 1, 8};
+  if (n_pt == 1) {
+    pos.insert(pos.end(), {0.0, 0.0, 0.0});
+    z.push_back(78);
+  }
+  const double box[9] = {40.0, 0, 0, 0, 40.0, 0, 0, 0, 100.0};
+  std::vector<double> f(pos.size());
+  rgpot::TIP4PPtPot pot;
+  rgpot::ForceInput in{z.size(), pos.data(), z.data(), box};
+  rgpot::ForceOut out{};
+  out.F = f.data();
+  pot.forceImpl(in, &out);
+  return {out.energy, f};
+}
+
+} // namespace
+
+int main() {
+  const Result with_pt = evaluate(3.0, 1);
+  const Result image_only = evaluate(3.0, 0);
+  const Result far = evaluate(20.0, 0);
+  std::printf("water 3.0 A over one Pt atom: %.6f eV\n", with_pt.energy);
+  std::printf("same water, Pt removed (image charges only): %.6f eV\n",
+              image_only.energy);
+  std::printf("Pt term: %.6f eV\n", with_pt.energy - image_only.energy);
+  std::printf("force on Pt, z: %.6f eV/Angstrom\n", with_pt.forces[11]);
+  std::printf("water 20 A above the plane: %.6f eV\n", far.energy);
+  return 0;
+}
+#+end_src
+
+It prints:
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+water 3.0 A over one Pt atom: -0.150234 eV
+same water, Pt removed (image charges only): -0.015131 eV
+Pt term: -0.135104 eV
+force on Pt, z: 0.261064 eV/Angstrom
+water 20 A above the plane: 0.000000 eV
+#+end_example
+
+The last line shows that a molecule beyond the cutoff from the mirror image and
+from every platinum atom has zero energy, with no per-molecule constant.
+A positive force on the platinum atom points up toward the water.
+Without =-Dwith_water=true= the block is skipped.
+
+*** Literature
+
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+  This is the software record of the eOn client whose water tree
+  (=Water_Pt= in the file headers) holds this kernel; its release notes mention the =-Dwith_water=
+  option.
+- Zhu and Philpott, J. Chem.
+  Phys. 100, 6961 (1994), doi:10.1063/1.467012.
+  This defines the water-metal potential (anisotropic 12-6 terms, isotropic
+  short-range terms and an image potential, per its abstract) and, per the
+  source, the =Standard= parameters.
+- Berendsen, Grigera and Straatsma, J. Phys.
+  Chem. 91, 6269 (1987), doi:10.1021/j100308a038. The SPC/E water-water
+  parameters.
+- Amira, Spangberg and Hermansson, Chem.
+  Phys. 303, 327 (2004), doi:10.1016/j.chemphys.2004.04.024.
+  The flexible SPC rules the source uses for the water.
+- Carney, Curtiss and Langhoff, J. Mol.
+  Spectrosc. 61, 371 (1976), doi:10.1016/0022-2852(76)90328-3.
+  The CCL intramolecular functions and coefficients.

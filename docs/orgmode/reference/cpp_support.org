@@ -1,0 +1,1442 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: C++ support types
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* C++ support types
+
+=meson.build= installs every header under =CppCore/rgpot=, so each type declared
+there at namespace scope is part of the C++ surface.
+This page covers the value types, handles, enums and helper classes that the
+potential classes of [[file:cpp_potentials.org][C++ potentials]] and
+[[file:cpp_backends.org][C++ engine-backed potentials]] take or return.
+Nested types are described with the type that holds them.
+The UMA loader keeps its archive and executable-stack helpers in
+=aoti_unpack.hpp= and =aoti_execstack.hpp=; they implement =UmaPot= and are not
+a supported interface.
+
+Lengths are in Angstrom, energies in eV and forces in eV/Angstrom unless an
+entry says otherwise.
+
+** Batches and handles
+
+*** =rgpot::types::AtomMatrix=
+
+- Inputs :: =AtomMatrix(rows, cols)=, =AtomMatrix()=, or a nested initializer
+  list; =AtomMatrix::Zero(rows, cols)= builds a zero matrix.
+- Units :: none; the units are those of the data stored.
+- Outputs :: a row-major matrix of doubles.
+  =operator()(row, col)= reads or writes an element, =rows()=, =cols()= and
+  =size()= give the extents, and the raw data pointer is available for mutation
+  and for reading.
+  Positions and forces cross the =PotentialBase::operator()= interface as
+  =n x 3= matrices.
+- Errors :: none declared; an index outside the matrix is the caller's error.
+
+*** =rgpot::BatchInput=
+
+- Inputs :: none; a struct.
+- Units :: Angstrom for =positions= and =box=.
+- Outputs :: one configuration: =positions= (an =AtomMatrix=), =atomic_numbers=
+  and =box=, a 3 by 3 array with one cell vector per row.
+- Errors :: none.
+
+*** =rgpot::BatchResult=
+
+- Inputs :: none; a struct.
+- Units :: eV, eV/Angstrom and eV^2.
+- Outputs :: =energy=, =forces= (an =AtomMatrix=) and =variance= of one
+  configuration.
+- Errors :: none.
+
+*** =rgpot::BatchEvaluator=
+
+- Inputs :: a =PotentialFactory= (a =std::function= that returns a
+  =std::unique_ptr<PotentialBase>=) and =n_threads=, where 0 selects the
+  hardware concurrency, at least 1.
+  =evaluate(inputs)= takes a vector of =BatchInput=.
+- Units :: those of the potential.
+- Outputs :: an evaluator that owns one potential per worker, built by calling
+  the factory once per worker.
+  =evaluate= splits the inputs into contiguous ranges, one per worker, and
+  returns a vector of =BatchResult= in which element =i= answers input =i=.
+  The potentials share nothing, so no potential has to be reentrant across
+  threads.
+  =n_threads()= reports the worker count.
+- Errors :: an empty factory or a factory that returns a null potential throws
+  =std::invalid_argument= from the constructor.
+  A worker that throws stops its range, and =evaluate= rethrows the exception of
+  the lowest-numbered failing worker after every worker has joined.
+
+*** =rgpot::DynLib=
+
+- Inputs :: an optional library path.
+- Units :: none.
+- Outputs :: a move-only handle on a shared library.
+  =open(path)=, =close()= and =valid()= manage it, and =sym<T>(name)= and
+  =sym_optional<T>(name)= resolve a symbol.
+  The =MOPACPot= and =NWChemPot= directories each carry one; the class is the
+  same on both.
+- Errors :: =open= and =sym= throw
+  =std::runtime_error= when the library or a required symbol is missing; =sym_optional=
+  returns a null pointer.
+
+*** =rgpot::MEAMLattice=
+
+- Inputs :: one of the reference-structure enumerators from =FCC= through =SC=.
+- Units :: none.
+- Outputs :: the lattice used to build a MEAM element or mixed pair.
+  =meam_lattice_from_name= parses the library spelling, and =meam_coordination=
+  returns its first-neighbour count.
+- Errors :: the parser returns false for an unknown or disallowed lattice.
+
+*** =rgpot::MEAMElement=
+
+- Inputs :: one MEAM library record: its name, reference lattice, atomic number,
+  mass, decay lengths, lattice constant, cohesive energy, embedding constant,
+  angular weights, density scale and =ibar= selector.
+- Units :: Angstrom for lengths, eV for energy and g/mol for mass.
+- Outputs :: the immutable element record consumed by =rgpot::MEAMParameters=.
+- Errors :: validation occurs when the parameter or model object is built.
+
+*** =rgpot::MEAMParameters=
+
+- Inputs :: a nonempty vector of =rgpot::MEAMElement= records.
+  =set= applies a parameter-file key to zero, one, two or three zero-based
+  element indices, according to the key.
+- Units :: eV and Angstrom.
+- Outputs :: the element table and all scalar, pair and triple parameters used
+  to build a model.
+- Errors :: the constructor and =set= throw =std::invalid_argument= for an
+  invalid lattice, density, index count, index or key value.
+
+*** =rgpot::MEAMModel=
+
+- Inputs :: a completed =rgpot::MEAMParameters= value.
+- Units :: eV and Angstrom.
+- Outputs :: immutable mixed parameters, reference densities and cubic pair
+  tables.
+  Its accessors expose the radial cutoff, screening radius, element records,
+  pair values and angular-density functions.
+- Errors :: construction throws =std::invalid_argument= when a table cannot be
+  built, including an unsupported =ibar=, a second-neighbour C11 pair or a
+  nonpositive cutoff width.
+
+*** =rgpot::Fnv1a=
+
+- Inputs :: bytes, doubles, integers, booleans or strings fed through =bytes=,
+  =f64=, =i64=, =u64=, =b8= and =str=.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a state in =h=, starting at 0xcbf29ce484222325 with
+  prime 0x100000001b3.
+  A double is hashed by its bit pattern and a string by its length and then its
+  bytes.
+  Potentials fingerprint their configuration field by field into
+  =PotentialBase::paramsKey()= with it, so cached results never cross parameter
+  sets; a struct is never hashed by its bytes because of padding.
+- Errors :: none.
+
+*** =rgpot::cache::EvalCounts=
+
+- Inputs :: none; a struct returned by =PotentialCache::counts=.
+- Units :: none.
+- Outputs :: =computed=, the results the kernel produced while the cache was
+  attached, and =served=, the results answered from the cache without running
+  the kernel.
+- Errors :: none.
+
+*** =rgpot::cache::KeyHash=
+
+- Inputs :: a =uint64_t= hash, which is 64 bits on every platform.
+- Units :: none.
+- Outputs :: the numeric key of a configuration, in the public member =hash=.
+  The cache stores it under a key of one version byte and the eight bytes of the
+  hash in little-endian order.
+- Errors :: none.
+
+*** =rgpot::cache::PotentialCache=
+
+- Inputs ::
+  =PotentialCache(db_path, create_if_missing = true)= opens a RocksDB database; the default constructor holds none, and =set_db=
+  adopts an open one.
+- Units :: none; the stored energy, forces, variance and stress are in the units
+  of the potential that produced them.
+- Outputs :: a result cache.
+  =add_serialized= stores a configuration, =deserialize_hit= reads one back, and
+  =counts()= and =reset_counts()= read and zero the computed and served
+  counters, which are atomic.
+  Records keep the energy and force prefix and append versioned variance and
+  stress metadata; energy-and-force-only records stay readable.
+  The database mutex covers the database handle only.
+- Errors :: see =rgpot.PotentialCache= for a database that cannot be opened.
+  Available only when the library is built with RocksDB (=rgpot.has_cache=).
+
+** Hessian-vector products
+
+*** =rgpot::HvpScheme=
+
+- Inputs :: none; an enum whose values match =rgpot_hvp_scheme_t=.
+- Units :: none.
+- Outputs :: =Auto= (0; analytic when the potential has it, otherwise
+  =Forward=), =Forward= (1; one displaced force call against the cached centre),
+  =Central= (2; two displaced force calls, one on each side) and =Analytic= (3;
+  the potential's =hessianVectorImpl=).
+- Errors :: =Analytic= is refused for a potential without =hessianVectorImpl=.
+
+*** =rgpot::HvpCentre=
+
+- Inputs :: none; a struct.
+- Units :: eV, eV^2 and eV/Angstrom.
+- Outputs :: =energy=, =variance= and =forces=, 3 * =nAtoms= doubles in
+  row-major order, at a centre geometry.
+- Errors :: none.
+
+*** =rgpot::HvpCounts=
+
+- Inputs :: none; a struct whose fields match =rgpot_hvp_counts_t=.
+- Units :: none.
+- Outputs :: =products= (products answered), =forceCalls= (force evaluations
+  made), =centreReused= (requests served from the cached centre) and =analytic=
+  (products taken from =hessianVectorImpl=).
+- Errors :: none.
+
+*** =rgpot::HessianVectorCache=
+
+- Inputs :: none to construct; a non-copyable object.
+  =centre(pot, in)= takes a potential and a =ForceInput=.
+  =apply(pot, in, v, hv, step = 0.0, scheme = HvpScheme::Auto)= takes a
+  direction =v= and an output =hv=, each 3 * =in.nAtoms= doubles that must not
+  overlap.
+- Units :: Angstrom for =step=, which is the displacement along the direction; 0
+  selects =kHvpDefaultStep= (1.0e-3).
+  The product has units eV/Angstrom^2 times the direction.
+- Outputs :: =centre= returns the energy and forces at =in=, served from the
+  cached centre when positions, species and cell carry the same bits, and
+  otherwise from one force call that becomes the centre.
+  =apply= writes the product H v to =hv=; a zero direction gives a zero product
+  without a call.
+  =counts()= returns an =HvpCounts=, =resetCounts()= zeroes it while the centre
+  stays, and =invalidate()= drops the centre, which a caller must do when the
+  potential changes while the geometry does not.
+  The cache may be shared between threads; the lock covers the cached centre,
+  not the force calls.
+- Errors ::
+  =std::invalid_argument= for a malformed request and =std::domain_error= when
+  the kernel returns a non-finite value.
+
+*** =rgpot::DerivativeReport=
+
+- Inputs :: none; a struct returned by =GradientJet::gradientJet=.
+- Units :: =operations= is a count; =scale= is in the units of the returned jet,
+  eV/Angstrom for a direction in Angstrom.
+- Outputs :: =tracked=, =operations= and =scale=.
+  When =tracked= is true, =operations= times the machine epsilon times =scale=
+  is a first-order estimate of the roundoff of the returned derivatives, not a
+  rigorous bound.
+  For a batch =operations= is the sum and =scale= the largest value over the
+  systems.
+  The engine table copies it into =RgpotEngineDerivativeReport= and writes zero
+  =operations= and =scale= when =tracked= is false; =rgpot_core::engine= reads
+  it back as =DerivativeReport= with an unsigned =operations=.
+- Errors :: none.
+
+*** =rgpot::GradientJet=
+
+- Inputs :: an abstract interface that a potential derives next to
+  =Potential<Derived>=, declared in =rgpot/GradientJet.hpp=.
+  =gradientJet(systems, nAtoms, positions, atomicNrs, boxes, directions, order, jet)=
+  takes =systems= systems that share =nAtoms= atoms and =atomicNrs=, with
+  =positions= and =directions= of =systems * 3 * nAtoms= values, =boxes= of
+  =systems * 9= values and an =order= from 1 to =maxJetOrder()=; the buffers
+  must not overlap.
+- Units :: positions, directions and cells in Angstrom; every block of =jet= is
+  eV/Angstrom.
+- Outputs :: =maxJetOrder()= returns the highest order the potential serves, at
+  least 1.
+  =gradientJet= writes =order * systems * 3 * nAtoms= values to =jet=, laid out
+  =[order][system][3 * nAtoms]=: block =k - 1= of a system is the =k=-th
+  derivative with respect to =t= of the gradient of the energy at
+  =positions + t * direction=, at =t = 0=.
+  Order 1 is the Hessian-vector product.
+  It returns a =DerivativeReport= for the whole call.
+  The engine table finds the interface with =dynamic_cast=.
+  =PotentialBase= and its layout stamp therefore do not change.
+  The table serves =rgpot_engine_taylor_jet= through the interface.
+  It reports =maxJetOrder()= as =RgpotEngineCaps.jet_order=, which is 0 for a
+  potential without the interface.
+  =rgpot::CBEPot= implements it.
+- Errors :: =maxJetOrder= is =noexcept=.
+  =gradientJet= may throw; the engine table holds the jet in a scratch buffer
+  and returns =RGPOT_ENGINE_ERR_EVAL= with the message, leaving the caller's jet
+  and report untouched.
+  The engine table refuses an order above =maxJetOrder()= with
+  =RGPOT_ENGINE_ERR_UNSUPPORTED= before it calls the potential.
+
+** Fused engine calls and kept potentials
+
+*** =rgpot::FusedSource=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Computed= when an answer came from the engine and =Stored= when it
+  came from the stored entry.
+- Errors :: none.
+
+*** =rgpot::FusedSettingsSpec=
+
+- Inputs :: none; a struct whose fields match =rgpot_fused_settings_t=.
+- Units :: as the field names say.
+- Outputs :: the engine settings that change the answer at a fixed geometry:
+  =periodic= (bit i set means periodic along cell vector i), =spin= (the number
+  of unpaired electrons), =sccMaxIterations=, =charge= (elementary charges),
+  =accuracy=, =electronicTemperature= (Kelvin), =warmMove= (Angstrom, the
+  wavefunction-reuse displacement), =warmMinGap= (eV, the reuse gap threshold),
+  =sccMixer= and =engineBuild=.
+- Errors :: none.
+
+*** =rgpot::FusedFingerprint=
+
+- Inputs :: none; a struct that compares equal field by field.
+- Units :: floating-point fields are stored by bit pattern as 64-bit integers.
+- Outputs :: everything but the positions that decides the answer of an engine
+  call: the optional =atomicNumbers= and =cell= (nine bit patterns), =periodic=,
+  =charge=, =spin=, =accuracy=, =electronicTemperature=, =warmMove=,
+  =warmMinGap=, =sccMaxIterations=, =sccMixer=, =engineBuild= and =epoch=.
+- Errors :: none.
+
+*** =rgpot::FusedKey=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: the positions by bit pattern plus the =FusedFingerprint=.
+  Equality is exact.
+- Errors :: none.
+
+*** =rgpot::SccNotConverged=
+
+- Inputs :: the message string.
+- Units :: none.
+- Outputs :: an exception derived from =std::runtime_error= that reports a
+  self-consistent field which did not converge.
+- Errors :: none.
+
+*** =rgpot::KeptKey=
+
+- Inputs :: =f64(v)=, =i64(v)= and =ptr(v)= append an eight-byte field;
+  =atoms(n, species)= sets the atom count and the species pointer, which may be
+  null for a call without species and is read, not copied, until the key is
+  kept.
+- Units :: none.
+- Outputs :: what a kept potential was built for.
+  The key holds up to 16 eight-byte fields (=kBytes= is 128).
+  A key that outgrows it never matches, so every call builds.
+  The key compares bits: 0.0 and -0.0 differ and a NaN matches itself.
+- Errors :: none; the methods are =noexcept=.
+
+*** =rgpot::KeptCounts=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: =builds= and =reuses= of the potential type on one thread.
+- Errors :: none.
+
+** Locality, staging and parallel slices
+
+*** =rgpot::Locality=
+
+- Inputs :: none; a struct returned by a potential's =locality()= member.
+- Units :: =cutoff= is in the length unit of the potential.
+- Outputs :: =cutoff= (the range of a site energy; 0 declares no finite range),
+  =pairwise= (every energy term is a function of one pair distance) and
+  =densities= (values per atom that the density stage sums; 0 without
+  densities).
+  =finite()= is true for a positive cutoff, and =forceRange()= is =cutoff= for a
+  pairwise potential and twice that otherwise: the distance within which the
+  atoms set the force on one atom.
+- Errors :: none.
+
+*** =rgpot::PerAtomOut=
+
+- Inputs :: none; a struct of two pointers.
+- Units :: eV for energy; the virial is in energy units.
+- Outputs :: =energy=, =nAtoms= entries that sum to =ForceOut::energy=, and
+  =virial=, 6 * =nAtoms= entries (xx, yy, zz, yz, xz, xy per atom).
+  A null pointer skips that quantity.
+- Errors :: none.
+
+*** =rgpot::HalfList=
+
+- Inputs :: none; a struct that a host fills.
+- Units :: =pos= is in the host's length unit.
+- Outputs :: a host's half neighbour list over its own atoms and their copies.
+  Atoms =[0, nOwned)= are owned and =[nOwned, nAtoms)= are copies.
+  =pos= holds 3 * =nAtoms= coordinates and =atmnrs= one atomic number per atom.
+  Row =k= belongs to owned atom =rows[k]=, whose neighbours are
+  =neighbours[i][0 .. count[i])=, the layout of a LAMMPS =NeighList=.
+  =indexMask= clears bits a host sets in an entry besides the index, and
+  =newton= selects the case in which only one of two hosts that hold an owned
+  and copy pair lists it, and the stages write the copy's share for the host to
+  add to its owner.
+  Entries beyond the cutoff are skipped, so a list built with a skin works.
+- Errors :: none.
+
+*** =rgpot::StageTally=
+
+- Inputs :: none; a struct that =forceStage= fills.
+- Units :: eV for energy; the virial is in energy units.
+- Outputs :: the host's share of the energy and of the virial W = -V sigma in
+  Voigt order (xx, yy, zz, yz, xz, xy), plus a =PerAtomOut=.
+  The share is all of a pair that only this host lists, half of a pair both
+  hosts list, and the site energy of each owned atom.
+  A copy's per-atom entries are written only with =HalfList::newton=.
+- Errors :: none.
+
+*** =rgpot::Range=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: the items =[begin, end)= as two =std::int64_t= values.
+  =partition(n, slice, nslices)= returns the contiguous run for a slice; the
+  runs cover =n= without overlap, in slice order, and an out-of-range slice is
+  empty.
+- Errors :: none.
+
+*** =rgpot::TeamCap=
+
+- Inputs :: =TeamCap(threads)=.
+- Units :: none.
+- Outputs :: a scope guard.
+  While it is alive, OpenMP regions this thread opens through =Slices.hpp= start
+  at most =threads= threads; zero or less lifts the cap.
+  Slices and results do not change.
+  The previous cap returns on destruction, and the guard is not copyable.
+- Errors :: none; the constructor is =noexcept=.
+
+*** =rgpot::TeamFrom=
+
+- Inputs :: none; a struct of three atom counts, =two=, =three= and =more=, each
+  0 by default.
+- Units :: atoms.
+- Outputs :: the atom counts from which a team of two threads, of three, and of
+  four or more opens.
+  =of(threads)= returns =two= for two threads or fewer, =three= for three and
+  =more= above that, and =least()= the smallest of the three.
+  =teamSize(n, from, team)= and =forEachBatchSystem= take one; the default opens
+  every team at =from=.
+  A potential keeps its own as =kTeamFrom= in its class, and on any thread count
+  sums atom by atom in index order from =least()=, its =kTeamMinAtoms=, so its
+  bits do not depend on the thread count.
+- Errors :: none; the members are =constexpr= and =noexcept=.
+
+*** =rgpot::TeamThreshold=
+
+- Inputs :: =TeamThreshold(atoms)=.
+- Units :: atoms.
+- Outputs :: a scope guard.
+  While it is alive, a potential called on this thread takes =atoms= as its
+  threshold in place of its own and opens a team on any thread count above one,
+  so a benchmark can time every team on either side of its own threshold.
+  =teamThreshold(own)= returns the threshold of the innermost guard alive on
+  this thread, else =own=, and =teamThresholdActive()= reports whether one is
+  alive.
+  The bits still do not depend on the thread count, but a call between the two
+  thresholds sums in the other order and its energy can differ in the last bits.
+  The previous threshold returns on destruction, and the guard is not copyable.
+- Errors :: none; the constructor is =noexcept=.
+
+*** =rgpot::QuinticSwitch=
+
+- Inputs :: =QuinticSwitch::endingAt(cutoff, width)= builds the switch over the
+  last =width= Angstrom below =cutoff=; the fields are =r_on= and =inv_width=.
+- Units :: Angstrom.
+- Outputs :: the C^2 switch S(t) = 1 - 10 t^3 + 15 t^4 - 6 t^5 with t = (r -
+  r_on) / (cutoff - r_on) clamped to [0, 1].
+  =operator()(r)= returns =Value{s, dsdr}=, and =d2sdr2(r)= returns -60 t (1 -
+  t) (1 - 2t) / w^2, where w is the width.
+  Below =r_on= the switch is exactly 1, and at the cutoff it and its first two
+  derivatives vanish.
+- Errors :: =endingAt= throws =std::invalid_argument= unless 0 < width <=
+  cutoff.
+
+*** =rgpot::CentreDirect=
+
+- Inputs :: =CentreDirect(i, force, energy, strain)=, with =strain= null when no
+  strain is wanted.
+- Units :: those of the potential.
+- Outputs :: the terms of centre =i=, added to the totals as they come:
+  =energy(e)=, =pair(a, j, sx, sy, sz)=, =triplet(a, j, b, k, scale, g1x, ...)=,
+  =pairStrain= and =bondStrain=.
+  =strained()= reports whether a strain accumulator exists.
+- Errors :: none.
+
+*** =rgpot::CentreTerms=
+
+- Inputs :: =CentreTerms(strained)=; =reset(i, bonds)= starts centre =i= with
+  one row per bond in the order of =bonds=, whose entries carry the partner in
+  =.j=.
+- Units :: those of the potential.
+- Outputs :: the same calls as =CentreDirect=, summed per atom, so the
+  contribution of one centre can be added to the totals in a fixed order with
+  =addTo(force, energy, strain)=.
+- Errors :: none.
+
+*** =rgpot::CentreLedger=
+
+- Inputs :: =keep(terms)= takes a finished =CentreTerms=.
+- Units :: those of the potential.
+- Outputs :: the finished centres of one slice, in the order they finished.
+  =addTo(force, energy, strain)= adds each centre into the totals as
+  =CentreTerms::addTo= would, and =clear()= empties the ledger.
+- Errors :: none.
+
+** Potential parameter types
+
+*** =rgpot::D3Damping=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =BJ=, rational Becke-Johnson damping, and =Zero=, zero damping.
+- Errors :: none.
+
+*** =rgpot::EAMTableFormat=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Funcfl= (LAMMPS =eam=, one element), =Setfl=
+  (=eam/alloy=) and =FinnisSinclair= (=eam/fs=), the three file layouts of
+  [[file:eam_table.org][Tabulated EAM]].
+- Errors :: none.
+
+*** =rgpot::EAMTable=
+
+- Inputs :: none; a struct of tabulated functions after the LAMMPS file2array
+  step.
+- Units :: =drho= is in the density unit of the file, =dr=, =cutoff= in
+  Angstrom, and energies in eV.
+- Outputs :: =nrho=, =drho=, =nr=, =dr=, =cutoff=, =rhomax=, the atomic numbers
+  =z= and the arrays =frho= (F_a, one per element), =rhor= (rho_ab at index
+  =b * n + a=, the density element b puts at an a site) and =z2r= (r phi_ab at
+  index =a (a + 1) / 2 + b= for a >= b).
+  Entry =m= of an array sits at =m * dr= or =m * drho=.
+- Errors :: none.
+
+*** =rgpot::eam::Spline1D=
+
+- Inputs :: none; a struct.
+- Units :: =origin= and =h= are in the argument unit of the table.
+- Outputs :: a uniform cubic Hermite table: =origin=, =h=, =inv_h=, =nseg= and
+  the coefficient vector =c=; =eval(r)= evaluates it.
+  The nodes sit close enough to keep a pair within 1e-12 relative of the
+  analytic exponential it replaces.
+- Errors :: none.
+
+*** =rgpot::eam::ElementSpline=
+
+- Inputs :: none; a struct.
+- Units :: Angstrom for distances, eV for energies.
+- Outputs :: one element's splines: =rho= (density), =fscale= (density force),
+  =phi= (pair energy) and =fcomp= (pair force), with =Z=, =cutoff2=, a pointer
+  =embed= to the embedding table, the grid constants =kOrigin= (0.05) and
+  =kStep= (5e-5), and the methods =density=, =densityForce=, =pairEnergy= and
+  =pairForce=.
+- Errors :: none.
+
+*** =rgpot::SuttonChenScales=
+
+- Inputs :: none; a struct returned by =sutton_chen_scales(cfg)=.
+- Units :: =nearest_neighbor= in Angstrom and =well_depth= in eV.
+- Outputs :: the bulk nearest-neighbour distance and the positive cohesive well
+  depth of the fcc crystal for a =SuttonChenConfig=.
+- Errors :: none.
+
+*** =rgpot::ZblPairCoeffs=
+
+- Inputs :: none; a struct for one ordered pair of species.
+- Units :: =zze= in eV Angstrom; the others are dimensionless coefficients.
+- Outputs :: the screening exponents =d1= to =d4= scaled by the pair radius,
+  =zze= (Z_i Z_j e^2), the quadratic and cubic switching coefficients of the
+  force (=sw1=, =sw2=), the cubic and quartic coefficients of the energy (=sw3=,
+  =sw4=) and the constant energy offset at the cutoff (=sw5=).
+- Errors :: none.
+
+*** =rgpot::ZblTables=
+
+- Inputs :: none; a struct.
+- Units :: see =ZblPairCoeffs=.
+- Outputs :: the sorted unique atomic numbers =z= and the coefficients =pairs=,
+  a =z.size()= by =z.size()= row-major table of =ZblPairCoeffs=.
+- Errors :: none.
+
+*** =rgpot::GFNMethod=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =GFNFF=, =GFN0xTB=, =GFN1xTB= and =GFN2xTB=, the methods of
+  =XTBPot=.
+- Errors :: none.
+
+*** =rgpot::TBLiteMethod=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =GFN1=, =GFN2= and =IPEA1=, the methods of =TBLitePot=.
+- Errors :: none.
+
+*** =rgpot::TorchDeterminismPolicy=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Fast= (0; leave process-global LibTorch state alone) and =Strict=
+  (1; apply deterministic algorithms, the math attention backend, no TF32 and
+  deterministic cuDNN).
+  The flags are process-global.
+- Errors :: none.
+
+*** =rgpot::CP2KScfError=
+
+- Inputs :: the message string.
+- Units :: none.
+- Outputs :: an exception derived from =std::runtime_error=, thrown when the SCF
+  did not converge.
+  The shim agrees on the outcome over the calculator's communicator, so every
+  rank of the calculator throws it for the same call and no rank aborts the
+  world.
+  A caller may reject the geometry and continue.
+- Errors :: none.
+
+*** =rgpot::UmaContract=
+
+- Inputs :: none; a struct built from the metadata JSON embedded in a =.pt2=
+  package.
+- Units :: none.
+- Outputs :: optional fields =task_name=, =charge=, =spin=, =z_set=, =counts=
+  (atomic number to atom count), =natoms=, =natoms_min=, =natoms_max=,
+  =nedges_min=, =nedges_max= and =z_max=, plus the declared shapes =pos_decl=
+  and =edge_decl= (each with =known=, a list of =Axis= values and the original
+  =text=).
+  Every field is optional: a key the exporter did not write is not checked.
+  A dynamic package declares =pos_shape= =natoms,3= and =edge_index_shape=
+  =2,nedges=.
+  The static function =fixedEdgesFromShapes= returns the second extent of
+  =edge_index= from the exporter's =shapes= dictionary, or nothing for a missing
+  or non-fixed entry.
+- Errors :: none.
+
+*** =rgpot::UmaContractError=
+
+- Inputs :: =field=, =package=, =actual= and a location string.
+- Units :: none.
+- Outputs :: a =std::runtime_error= for a charge, spin, task or composition that
+  disagrees with what the package was exported for.
+  =field()= is the metadata key (=charge=, =spin=, =task_name=, =z_set=,
+  =counts= or =natoms=), =package()= the embedded value and =actual()= the value
+  the config or the input carries.
+- Errors :: none.
+
+*** =rgpot::UmaShapeError=
+
+- Inputs :: =field=, =actual= and =package=.
+- Units :: none.
+- Outputs :: a =std::runtime_error= for positions or an edge list that are not
+  the shape the package was compiled for.
+  The message names both shapes and contains =shape is=.
+  =field()=, =actual()= and =package()= return the parts.
+- Errors :: none.
+
+*** =rgpot::XcGrid=
+
+- Inputs :: none; a struct.
+- Units :: none; the arrays carry the units of the host.
+- Outputs :: =npts= and =nbf=, and row-major arrays =chi= (nbf * npts), =dchi=
+  (3 * nbf * npts), =lapl_chi= (nbf * npts, or null) and =hess_chi= (6 * nbf *
+  npts, or null).
+- Errors :: none.
+
+*** =rgpot::XcMo=
+
+- Inputs :: none; a struct.
+- Units :: =e_ia= is in the energy unit of the host.
+- Outputs :: occupied and virtual MO blocks for TDA and RPA: =nao=, =nocc=,
+  =nvir=, =Co= (=nao= by =nocc=), =Cv= (=nao= by =nvir=) and
+  =e_ia= (=nocc= by =nvir=, with =e_ia[i, a] = e_vir[a] - e_occ[i]=), all
+  row-major.
+- Errors :: none.
+
+*** =rgpot::XcFields=
+
+- Inputs :: none; a struct returned by =XcKernel::fieldsFromDensity=.
+- Units :: none.
+- Outputs :: the vectors =rho=, =sigma=, =tau= and =lapl=, each =npts= long, and
+  =grad_rho=, 3 * =npts= with xyz packed.
+- Errors :: none.
+
+*** =rgpot::XcKernel=
+
+- Inputs :: =XcKernel(name)=, a contraction name from =XcKernel::catalog()=, for
+  example =xck_gga_r_o2=.
+- Units :: none.
+- Outputs :: an in-process exchange-correlation contraction kernel over the
+  =libxckernel= C ABI.
+  It is not a geometry potential and has no =PotentialConfig= arm: the operands
+  are collocation values, named Libxc derivative arrays and fields, and the
+  results are AO matrices.
+  =contract(grid, scal, out)= assembles the scalar operands in the order of
+  =scalNames()= and accumulates into =out= (=nbf * nbf=, added to).
+  The static members =fieldsFromDensity=, =transitionDm=, =rpaTransitionDm=,
+  =projectOv=, =tdaSigma= and =rpaSigma= build fields and sigma vectors from the
+  MO blocks, and =applyFxc=, =tdaSigma= and =rpaSigma= take a ground-state
+  operand map and a host Coulomb matrix.
+  The C kernels are reentrant on distinct output buffers, and distinct instances
+  may run concurrently.
+- Errors :: =contract= returns 2 for an incomplete grid and otherwise the C ABI
+  code, 0 on success.
+  Laplacian kernels need =lapl_chi=.
+  =catalog()= is empty without =-Dwith_xckernel=.
+
+*** =rgpot::fortranpots::FortranWorkspace=
+
+- Inputs :: none to construct.
+- Units :: none.
+- Outputs :: the owner of one Fortran workspace handle, available through
+  =get()=.
+  A copy gets a workspace of its own, so a cloned potential never shares a
+  neighbour table.
+  The object is not movable.
+- Errors :: none.
+
+** Long-range summands
+
+*** =rgpot::lr::Pair=
+
+- Inputs :: none; a struct.
+- Units :: Angstrom.
+- Outputs :: one neighbour pair with atom indices =i= and =j=, the vector
+  =(x, y, z)= equal to r_j + S H - r_i for the lattice shift S and cell H, and
+  its length =r=.
+- Errors :: none.
+
+*** =rgpot::lr::DualList=
+
+- Inputs :: =DualList(short_cut, long_cut, skin)=;
+  =update(pos, n, box, periodic)= takes a row-major box of nine values.
+- Units :: Angstrom.
+- Outputs :: two pair lists at two cutoffs, =short_pairs()= and =long_pairs()=,
+  each rebuilt only when an atom has moved past the skin.
+  =short_rebuilt()= and =long_rebuilt()= report whether the last update rebuilt
+  them.
+  A null =box= or =periodic = false= builds a vacuum cell large enough that no
+  periodic image lies inside the long cutoff.
+  The object is not copyable.
+- Errors :: none declared.
+
+*** =rgpot::lr::CellGeom=
+
+- Inputs :: none; a struct with a =fractional(r, s)= method.
+- Units :: Angstrom and Angstrom^-1.
+- Outputs :: the cell matrix =H=, its inverse =inv=, the reciprocal vectors
+  =recip= (rows b_i with b_i . a_j = delta_ij and no factor 2 pi) and the
+  =volume=.
+  =fractional= computes s = r H^-1, and the physical wave vector is k = 2 pi
+  sum_i m_i recip[i].
+- Errors :: none.
+
+*** =rgpot::lr::Neumaier=
+
+- Inputs :: values added with =add(x)= or another accumulator.
+- Units :: those of the summands.
+- Outputs :: a compensated sum, =total()= being =sum + c=.
+- Errors :: none.
+
+*** =rgpot::lr::CoulombMethod=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Ewald= (tinfoil boundary; orthorhombic and triclinic cells),
+  =SPME= (smooth particle-mesh Ewald with the same split and a B-spline order
+  from 3 to 16) and =DSF= (Fennell-Gezelter damped shifted force, gas phase).
+- Errors :: none.
+
+*** =rgpot::lr::ChargeSource=
+
+- Inputs :: =load(in, q, total)= takes a =ForceInput=.
+- Units :: elementary charges.
+- Outputs :: an abstract provider of one charge per atom in =q= and the net
+  charge in =total=, which is the G=0 background charge and must match the sum
+  of the per-atom charges.
+- Errors :: set by the implementation.
+
+*** =rgpot::lr::FixedCharges=
+
+- Inputs :: =FixedCharges(q, total)=.
+- Units :: elementary charges.
+- Outputs :: a =ChargeSource= that returns the charges it was given.
+- Errors :: none declared.
+
+*** =rgpot::lr::FnCharges=
+
+- Inputs :: =FnCharges(fn, user)=, where =fn= has the signature
+  =void (const ForceInput &, double *, double *, void *)=.
+- Units :: elementary charges.
+- Outputs :: a =ChargeSource= that calls =fn= with the user pointer.
+- Errors :: set by the function.
+
+*** =rgpot::lr::ChargeResponse=
+
+- Inputs :: =accumulate(in, dE_dq, force)=.
+- Units :: =dE_dq= is the derivative of the energy with respect to each charge.
+- Outputs :: an abstract hook for the chain rule of charges that depend on
+  coordinates: =dE_dq[i]= is the partial of the electrostatic energy at fixed
+  positions, and =accumulate= adds the resulting force.
+- Errors :: set by the implementation.
+
+*** =rgpot::lr::ElecOut=
+
+- Inputs :: none; a struct.
+- Units :: eV; =strain= is the derivative of the energy with respect to the
+  strain, in Voigt order xx, yy, zz, yz, xz, xy.
+- Outputs :: =energy=, =strain= and =has_stress=.
+- Errors :: none.
+
+*** =rgpot::lr::PmeTrace=
+
+- Inputs :: none; a struct.
+- Units :: microseconds for the =_us= fields; the =_team= fields are thread
+  counts.
+- Outputs :: the time spent in the spread, FFT, kernel, gather and real-space
+  stages of a particle-mesh Ewald call and the team size each used.
+- Errors :: none.
+
+*** =rgpot::lr::CudaCoulombIn=
+
+- Inputs :: none; a struct for the CUDA Coulomb path.
+- Units :: Angstrom.
+- Outputs :: =method= (0 Ewald, 1 PME), the positions =pos=, charges =q=, the
+  count =n=, the net charge =total=, the =box=, the pair arrays
+  (=pair_i=, =pair_j=, =pair_x=, =pair_y=, =pair_z=, =pair_r=) with =npair=, and
+  the parameters =alpha= (0.3), =cutoff= (9.0), =kmax= (4), =grid= (16) and
+  =order= (4).
+- Errors :: none.
+
+*** =rgpot::lr::DispersionKind=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =D3BJ=, =D4=, =MBD= and =QDO=.
+- Errors :: none.
+
+*** =rgpot::lr::D3BjParam=
+
+- Inputs :: none; a struct.
+- Units :: none are stated; the values are the defaults of the damping.
+- Outputs :: the Becke-Johnson damping parameters =s6= (1.0), =s8= (0.7875),
+  =s9= (1.0), =a1= (0.4289), =a2= (4.4407) and =alp= (14.0).
+- Errors :: none.
+
+*** =rgpot::lr::D4BjParam=
+
+- Inputs :: none; a struct.
+- Units :: none are stated; the values are the defaults of the damping.
+- Outputs :: =s6= (1.0), =s8= (0.95948085), =s9= (1.0), =a1= (0.38574991), =a2=
+  (4.80688534) and =alp= (16.0).
+- Errors :: none.
+
+*** =rgpot::lr::RatioSource=
+
+- Inputs :: =load(in, h, c6)=.
+- Units :: dimensionless ratios.
+- Outputs :: an abstract provider of per-atom ratios =h= and, optionally,
+  dispersion coefficients =c6=.
+- Errors :: set by the implementation.
+
+*** =rgpot::lr::UnitRatios=
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a =RatioSource= whose ratios are all 1.
+- Errors :: none.
+
+*** =rgpot::lr::FixedRatios=
+
+- Inputs :: =FixedRatios(h, c6)=.
+- Units :: dimensionless.
+- Outputs :: a =RatioSource= that returns the vectors it was given.
+- Errors :: none declared.
+
+*** =rgpot::lr::RatioResponse=
+
+- Inputs :: =jacobians(in, dh, dc6)=.
+- Units :: none.
+- Outputs :: an abstract hook that returns the Jacobians of the ratios with
+  respect to the geometry.
+- Errors :: set by the implementation.
+
+*** =rgpot::lr::DispersionModel=
+
+- Inputs :: =evaluate(in, pairs, h, c6, cfg, energy, F, strain, has_stress)=.
+- Units :: eV, eV/Angstrom.
+- Outputs :: an abstract dispersion summand with =name()= and =kind()=.
+  =evaluate= adds the energy and forces for a pair list and writes the strain
+  derivative.
+- Errors :: set by the implementation.
+
+** Neighbour lists
+
+The C ABI of these types is in [[file:nlist_abi.org][Neighbour-list C ABI]].
+
+*** =rgpot::nlist::Code=
+
+- Inputs :: none; an enum shared with the C ABI.
+- Units :: none.
+- Outputs :: =Ok= (0, never thrown), =Abi= (1), =Null= (2), =Cutoff= (3), =Box=
+  (4), =Shape= (5), =Short= (6), =Nomem= (7) and =Skin= (8), matching the
+  =RGPOT_NLIST_*= values.
+- Errors :: none.
+
+*** =rgpot::nlist::Error=
+
+- Inputs :: a =Code= and a message.
+- Units :: none.
+- Outputs :: a =std::runtime_error= for a rejected query; =code()= is the C ABI
+  value and =what()= a sentence the caller can show.
+  Builders throw it and leave a previous table in place.
+- Errors :: none.
+
+*** =rgpot::nlist::Shell=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Half= keeps one direction of each pair, with the same image rule
+  vesin uses for a self image; =Full= keeps both directions.
+- Errors :: none.
+
+*** =rgpot::nlist::Pairs=
+
+- Inputs :: none; a struct with a =shell= field (default =Half=).
+- Units :: none.
+- Outputs :: the shape of one pair per interaction.
+- Errors :: none.
+
+*** =rgpot::nlist::Cluster4=
+
+- Inputs :: none; an empty struct.
+- Units :: none.
+- Outputs :: the shape of four consecutive central atoms, one partner and a
+  4-bit mask.
+  The interactions are the full set; there is no half cluster, so the type has
+  no shell.
+- Errors :: none.
+
+*** =rgpot::nlist::Cut=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Strict= keeps pairs with distance strictly below the cutoff;
+  =Loose= keeps pairs out to cutoff + skin, which a Verlet rebuild needs.
+- Errors :: none.
+
+*** =rgpot::nlist::Fields=
+
+- Inputs :: none; a struct of three booleans, all true by default.
+- Units :: none.
+- Outputs :: =shifts=, =vectors= and =distances=, the arrays a table or chunk
+  carries; an unset field is left empty rather than filled with zeros.
+- Errors :: none.
+
+*** =rgpot::nlist::Query=
+
+- Inputs :: none; a struct.
+- Units :: =cutoff= and =skin= in Angstrom.
+- Outputs :: =cutoff=, =skin=, =shape= (a =Pairs= or =Cluster4=, default
+  =Pairs{}=), =cut= (default =Strict=), =periodic= (all true) and =fields=.
+  =build= and =Builder= store the pairs and =Walk= streams them; there is no
+  setting that stores nothing.
+- Errors :: =Error= with code =Cutoff=, =Shape=, =Skin= or =Box= when the query
+  is rejected.
+
+*** =rgpot::nlist::View=
+
+- Inputs :: none; a struct of spans.
+- Units :: =vector= and =distance= in Angstrom.
+- Outputs :: a non-owning view of a structure-of-arrays table: =first=,
+  =second=, =shift= (empty or three per pair), =vector= (empty or three per
+  pair), =distance= and =mask= (one byte per pair; 0xff for a pair list, bits 0
+  to 3 for a cluster of four).
+  The spans are invalidated by the next rebuild of the table that owns them.
+- Errors :: none.
+
+*** =rgpot::nlist::Table=
+
+- Inputs :: none; a struct.
+- Units :: as =View=.
+- Outputs :: the owning arrays =first=, =second=, =shift=, =vector=, =distance=
+  and =mask=, the =device= (0 for host memory) and =stored=.
+  =size()= is the pair count, =view()= returns a =View= and
+  =column_major_vectors()= the vectors as a Fortran =(3, npairs)= array over the
+  same memory.
+- Errors :: none.
+
+*** =rgpot::nlist::Systems=
+
+- Inputs :: none; a struct of pointers.
+- Units :: Angstrom.
+- Outputs :: several systems that do not interact: =positions=, the
+  concatenation of every system; =count=, the atoms of each; =systems=, their
+  number; and =box9=, nine lattice values per system.
+  A count of 0 is an empty system.
+- Errors :: none.
+
+*** =rgpot::nlist::Batch=
+
+- Inputs :: none; a struct.
+- Units :: as =Table=.
+- Outputs :: the pairs of a =Systems= build: =pairs=, a =Table= whose =first=
+  and =second= index the concatenated positions, and =system=, which names the
+  system that owns each pair.
+- Errors :: none.
+
+*** =rgpot::nlist::Builder=
+
+- Inputs :: =update(positions, n, box9, query)=.
+- Units :: Angstrom.
+- Outputs :: a stored list with a skin rebuild.
+  A later update keeps the table while every atom has moved by at most half the
+  skin and the cell and the query are unchanged; skin 0 rebuilds unless the
+  coordinates match.
+  =table()=, =builds()= and =reused()= report the table, the rebuild count and
+  whether the last update kept the table.
+  One thread uses a builder; two builders may update at the same time.
+- Errors :: =Error= when the geometry is rejected; the previous table stays.
+
+*** =rgpot::nlist::Buffers=
+
+- Inputs :: none; a struct of spans.
+- Units :: as =View=.
+- Outputs :: caller-owned buffers for one chunk.
+  =first= and =second= have the same length, the most pairs this pull writes;
+  =shift= and =vector= are empty or three times that length; =distance= and
+  =mask= follow the request.
+- Errors :: none.
+
+*** =rgpot::nlist::Walk=
+
+- Inputs :: =Walk(positions, n, box9, query)=, which borrows =positions= and
+  =box9= until it is destroyed; =pull(dest, done)= takes a =Buffers=.
+- Units :: Angstrom.
+- Outputs :: a stream of pairs for one central atom, or one cluster of four, at
+  a time into caller storage, without a list of the whole system.
+  =pull= returns the number of pairs written and sets =done= when the geometry
+  is exhausted.
+  One thread uses a walk.
+- Errors :: a requested field whose span is too short throws =Error= and does
+  not advance.
+
+*** =rgpot::nlist::Image=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: how the minimum image is formed: =Round= is the orthorhombic
+  truncation used by the pair kernels, =Half= is one correction about the
+  half-box after coordinates have been wrapped, and =General= uses
+  =MinimumImage= for a non-orthogonal cell or a periodic side shorter than the
+  search.
+- Errors :: none.
+
+*** =rgpot::nlist::Mode=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Stored= keeps a Verlet list of candidate pairs; =Stream= walks the
+  cells and stores nothing beyond the atoms and the bins; =Auto= stores when the
+  candidate index fits in the memory the operating system reports as available
+  and streams otherwise.
+- Errors :: none.
+
+*** =rgpot::nlist::Spec=
+
+- Inputs :: none; a struct.
+- Units :: =cutoff= and =skin= in Angstrom.
+- Outputs :: =cutoff=, =skin=, =periodic= (all true), =image= (default =Round=)
+  and =mode= (default =Auto=).
+- Errors :: none.
+
+*** =rgpot::nlist::MinimumImage=
+
+- Inputs :: =MinimumImage(cell, periodic)=, a row-major cell of nine values and
+  three periodic flags.
+- Units :: Angstrom.
+- Outputs :: the nearest periodic image d - n H. =fold(dx, dy, dz)= folds a
+  displacement in place, and =foldWithin(dx, dy, dz, within2)= returns false
+  when every image is longer than the squared length =within2=.
+  A cell whose condition estimate would spend more than half the double
+  significand is Minkowski-reduced, and a basis that is still ill-conditioned
+  searches the 27 images with coefficients in -1, 0 and 1.
+  The static =searches()= counts the folds on the calling thread that searched
+  over images.
+- Errors :: a singular or non-finite cell, or an index that does not fit in an
+  =int64=, throws.
+
+*** =rgpot::nlist::Neighbours=
+
+- Inputs :: =update(xyz, n, box9, spec)=.
+- Units :: Angstrom.
+- Outputs :: candidate pairs around one configuration.
+  A stored list is reused while every atom has moved by at most half the skin
+  and the cell, the count and the spec are unchanged; skin 0 reuses it only when
+  the coordinates and the cell match.
+  An infinite cutoff or skin makes every pair a candidate, bins nothing and
+  stores nothing.
+  =forDirected=, =forHalf=, =forCellTeam= and the per-atom walks visit the
+  pairs, =mode()=, =streaming()=, =allPairs()=, =reused()=, =builds()= and
+  =slots()= report the state, and =offsets()= and =neighbours()= expose the
+  stored index.
+  Candidates lie inside the cutoff plus the skin; the caller drops the rest.
+- Errors :: see =MinimumImage= for a rejected cell.
+
+*** =rgpot::nlist::NeighborList=
+
+- Inputs :: =skin=, the extra search distance in Angstrom.
+- Units :: Angstrom.
+- Outputs :: a reusable pair list for =orderedPairs=.
+  A null list passed to =orderedPairs= rebuilds every call.
+  The stored pairs (=lo=, =hi= and the folded =dx=, =dy=, =dz=) are reused while
+  every atom has moved by at most skin/2 and the cell is unchanged; skin 0
+  reuses the list only when the coordinates match.
+  =use_stored= is true when =dx=, =dy= and =dz= match the current coordinates,
+  and =clear()= drops the list.
+- Errors :: none.
+
+*** =rgpot::nlist::Overlap=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: what a pair of atoms on one point does: =Skip= ignores it and
+  =Poison= makes the energy NaN.
+- Errors :: none.
+
+** Engine table, handshake and plugins
+
+*** =rgpot::engine::Unsupported=
+
+- Inputs :: the message string.
+- Units :: none.
+- Outputs :: a =std::runtime_error= that a setting hook throws for a value the
+  backend cannot take.
+  The adapter returns 3 with the reason in =last_error=.
+- Errors :: none.
+
+*** =rgpot::engine::Backend=
+
+- Inputs :: none; a struct a backend hands the adapter at create.
+- Units :: none.
+- Outputs :: the potential =pot=, the
+  =model_path= whose SHA-256 identifies the loaded model (empty without a model file), and the optional hooks =set_charge_spin(charge, spin)=, =set_num_threads(intra_op, inter_op)=, =select_orbitals(key)=
+  and =copy_orbitals(from_key, to_key)=.
+  An empty hook means the backend does not support that setting.
+- Errors :: =set_charge_spin= throws =Unsupported=, before changing anything,
+  for a value it cannot take.
+
+*** =rgpot::engine::Created=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: =backend=, a pointer, and =error=, the reason when =backend= is
+  null.
+- Errors :: none.
+
+*** =rgpot::engine::Builtin=
+
+- Inputs :: none; a struct read from the =BuiltinParams= arm of the engine
+  configuration.
+- Units :: none.
+- Outputs :: =name=, lowercased, and =library=, an optional explicit engine
+  library path.
+- Errors :: none.
+
+*** =rgpot::engine::Sha256=
+
+- Inputs :: data fed through =update(data, size)=; =reset()= restarts.
+- Units :: none.
+- Outputs :: a SHA-256 digest.
+  =hex_digest()= returns the lowercase hexadecimal digest and resets the object, and the static =of_file(path)=
+  digests a whole file.
+- Errors :: =of_file= returns an empty string when the file cannot be read.
+
+*** =rgpot::abi::CxxSoversionEntry=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: one recorded no-cache layout hash: =tag=, a platform tag of the
+  form =os-arch-stdlib-datamodel=, and =hash=.
+  =kCxxSoversionTable= lists one entry for each platform that CI builds.
+  How to update it is in the developer guide
+  [[file:../contributing/developer/abi-bump.org][ABI bump rules]].
+- Errors :: none.
+
+*** =rgpot::abi::Expectation=
+
+- Inputs :: none; a struct with defaults.
+- Units :: none.
+- Outputs :: what the host requires of a backend: the protocol =family= (default
+  =rgpot.potentials=) and
+  =protocol_major= (1) with =protocol_minor_min=, the =schema_id=, the bridge
+  =bridge_abi_major=, =bridge_abi_minor_max=, =bridge_layout=, the DLPack
+  =dlpack_major= and =dlpack_minor_max=, =bridge_features= (0x3, gradient and
+  batch) and =required_operations= (default energy and forces).
+- Errors :: none.
+
+*** =rgpot::abi::ProfileResult=
+
+- Inputs :: none; a struct.
+- Units :: =energy_h= is in Hartree.
+- Outputs :: =ok=, =energy_h= and =message=, 512 bytes.
+  The layout equals that of every backend result (=NWChemCResult=, =CPMDCResult=
+  and the others), which makes the prefix-generic function pointers of
+  =ProfileLoader= well defined.
+- Errors :: none.
+
+*** =rgpot::abi::ProfileLoader=
+
+- Inputs ::
+  =load(prefix, explicit_path = "")=; the static =candidates(prefix, explicit_path)=
+  lists the library paths tried.
+- Units :: those of the profile functions.
+- Outputs :: a loader that opens the first loadable candidate and resolves the
+  full minimum profile into the public function pointers
+  =abi_version=, =version=, =last_error=, =available=, =finalize=, =configure=,
+  =session_create_from_config=, =session_configure=,
+  =session_destroy=, =session_calculate_result=, =calculate_result_from_config=,
+  =potential_result_size_for_force_input= and =capabilities_result=.
+  =loaded()=, =prefix()= and =capabilities()= (the flat =Capabilities= message
+  bytes) report the state.
+- Errors :: =load= throws =std::runtime_error= naming every missing symbol, so a
+  non-conforming build fails at load time instead of at dispatch.
+
+*** =rgpot::plugin::LoadedPlugin=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: =handle=, the descriptor pointer =desc=, the library =path= and a
+  =library= reference that keeps the mapping alive.
+- Errors :: none.
+
+*** =rgpot::plugin::PluginRegistry=
+
+- Inputs :: =PluginRegistry::instance()= returns the process-wide registry; the
+  object is not copyable.
+- Units :: none.
+- Outputs :: =discover()= loads descriptors from the directories named by
+  =RGPOT_PLUGIN_PATH=,
+  =load_plugin(path)= loads one library, =register_builtin(desc)= adds a
+  descriptor of static lifetime,
+  =list_plugins()= returns the names, =find(name)= returns the entry (valid across later registrations) and =retain_library(desc)=
+  keeps a registered library mapped for a live instance.
+- Errors :: =load_plugin= returns false for an invalid library or an existing
+  plugin name.
+
+*** =rgpot::DerivativeCaps=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: derivative capability flags reported by Hessian-vector helpers.
+- Errors :: none.
+
+*** =rgpot::DerivativeCounts=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: counters of derivative evaluations and cache reuse.
+- Errors :: none.
+
+*** =rgpot::HessianScheme=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: the Hessian construction strategy (finite-difference or analytic
+  paths).
+- Errors :: none.
+
+*** =rgpot::SumComponent=
+
+- Inputs :: none; a struct.
+- Units :: eV and eV^2.
+- Outputs :: one term record from =SumPot=: name, enabled flag, weight, energy
+  contribution and variance contribution.
+- Errors :: none.
+
+*** =rgpot::SumTerm=
+
+- Inputs :: none; a struct.
+- Units :: none on metadata; child potentials use standard rgpot units.
+- Outputs :: one configured child term in =SumPot=.
+- Errors :: none.
+
+*** =rgpot::abi::BytesView=
+
+- Inputs :: a pointer and size.
+- Units :: none.
+- Outputs :: a non-owning byte span for ABI helpers.
+- Errors :: none.
+
+*** =rgpot::abi::CandidateOptions=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: loader options that rank or filter engine candidates.
+- Errors :: none.
+
+*** =rgpot::abi::PinnedEngine=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs :: one engine candidate pinned by the loader policy.
+- Errors :: none.
+
+*** =rgpot::ad::Derivatives2=
+
+- Inputs :: none; a dual-number carrier.
+- Units :: value and derivative units follow the expression it carries.
+- Outputs :: value, gradient and Hessian entries for analytic model derivatives.
+- Errors :: none.
+
+*** =rgpot::pair_hessian::Block=
+
+- Inputs :: none; a struct.
+- Units :: eV/Angstrom^2 on Hessian entries.
+- Outputs :: one dense block in the pair Hessian assembly.
+- Errors :: none.
+
+** Projected Langevin dynamics
+
+=rgpot/MDSession/ProjectedLangevin.hpp= holds the BAOAB driver that every MD
+session engine shares, in the namespace =rgpot::md=.
+The driver knows no units: its arrays have one entry per coordinate, three per
+atom in atom-major order, =kT= is in mass times velocity squared of those
+arrays, the friction in inverse time and the time step in time.
+=rgpot::OpenMMSession= calls it in OpenMM native units.
+
+*** =rgpot::md::SplitMix64=
+
+- Inputs :: =SplitMix64(seed)= with a 64-bit seed.
+- Units :: none.
+- Outputs :: a generator whose stream is a pure function of the seed on every
+  platform.
+  =nextU64()= returns the next 64-bit word, =nextUniform()= a double in the open
+  interval (0, 1) from its top 53 bits, and =nextNormal()= a standard normal
+  from the Box-Muller pair, whose spare value is part of the state.
+- Errors :: none; every member is =noexcept=.
+
+*** =rgpot::md::SeededStream=
+
+- Inputs :: none to construct.
+  =forSeed(seed)= takes the seed of the stream wanted.
+- Units :: none.
+- Outputs :: =forSeed= returns the live =SplitMix64= when =seed= is the seed of
+  the previous call, with its state and spare as that call left them, and
+  otherwise starts the stream of =seed= from its beginning.
+  A run split in chunks with one seed therefore draws the same numbers as one
+  long run.
+  =reset()= ends the live stream, so the same seed after a new state replays the
+  same noise.
+- Errors :: none.
+
+*** =rgpot::md::WallMode=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Reflect= mirrors a drift that ends outside a wall back inside and
+  reflects the velocity in the mass-weighted metric, as often as needed;
+  =Reject= undoes the drift and reflects the velocity.
+  Both keep the velocity on the constraint manifold.
+- Errors :: none.
+
+*** =rgpot::md::WallSpec=
+
+- Inputs :: none; a struct of =point= and =normal=, one entry per coordinate
+  each.
+- Units :: the length unit of the positions for =point=; =normal= need not be
+  unit length.
+- Outputs :: one planar hard wall =normal . (x - point) <= 0= over all
+  coordinates.
+- Errors :: =ProjectedLangevin::run= throws =std::invalid_argument= when either
+  vector has the wrong length or a non-finite entry, or the normal is zero.
+
+*** =rgpot::md::PlaneSpec=
+
+- Inputs :: none; a struct of =point= and =normal=, one entry per coordinate
+  each.
+- Units :: the length unit of the positions for =point=; =normal= need not be
+  unit length.
+- Outputs :: the hyperplane =normal . (x - point) = 0= that the dynamics stays
+  on.
+  The driver normalises the normal and corrects positions with =x -= M^-1 n
+  sigma / (n M^-1 n)= and velocities with =v -= M^-1 n (n . v) / (n M^-1 n)=.
+- Errors :: =ProjectedLangevin::run= throws =std::invalid_argument= when either
+  vector has the wrong length or a non-finite entry, the normal is zero, or it
+  acts on no massive coordinate.
+
+*** =rgpot::md::DistanceConstraint=
+
+- Inputs :: none; a struct of the atom indices =first= and =second= and the
+  =length= between them.
+  Atom =a= owns the coordinates =3a=, =3a + 1= and =3a + 2=.
+- Units :: the length unit of the positions.
+- Outputs :: one fixed distance that holds in every step, through the SHAKE
+  iteration on the positions and a conjugate gradient projection of the
+  velocities on all constraint gradients.
+- Errors :: the =ProjectedLangevin= constructor throws =std::invalid_argument=
+  for an index past the last atom, two equal atoms or a length that is not
+  positive and finite.
+
+*** =rgpot::md::LangevinSettings=
+
+- Inputs :: none; a struct of =kT=, =friction=, =timeStep=, =steps=, =seed=,
+  =wallMode= (default =WallMode::Reflect=) and =recordConstraintForce= (default
+  false).
+- Units :: =kT= in mass times velocity squared of the arrays, =friction= in
+  inverse time and =timeStep= in time.
+- Outputs :: the controls of one =ProjectedLangevin::run=.
+  =seed= starts the stream of the overload of =run= that takes no generator, and
+  =recordConstraintForce= asks for one plane multiplier per step in
+  =LangevinResult=.
+- Errors :: =run= throws =std::invalid_argument= unless =kT= and =timeStep= are
+  positive and finite and =friction= is finite and not negative.
+
+*** =rgpot::md::LangevinResult=
+
+- Inputs :: none; a struct returned by =ProjectedLangevin::run=.
+- Units :: the force and energy units of the caller's force function.
+- Outputs :: =wallHits=, the wall reflections of the run; =constraintForce=, one
+  entry per step when recorded and a plane is set, the mean of the plane
+  multipliers =lambda = -(n . M^-1 F) / (n M^-1 n)= of the two force kicks of
+  the step; =forces=, the forces at the final positions, and =potential=, the
+  energy there.
+  A run of zero steps returns it empty.
+- Errors :: none.
+
+*** =rgpot::md::ProjectedLangevin=
+
+- Inputs :: =ProjectedLangevin(masses, distances = {})= with one mass per
+  coordinate, where zero marks a coordinate that does not move, and the
+  =DistanceConstraint= list that holds in every run.
+  =run(settings, plane, walls, x, v, forces, rng)= takes a =LangevinSettings=, a
+  =PlaneSpec= pointer that may be null, a vector of =WallSpec=, the positions
+  and velocities, updated in place, a =ForceFunction= that returns the energy
+  and writes the forces, and a =SplitMix64=; the overload without =rng= starts
+  one from =settings.seed=.
+- Units :: those of the caller's arrays; the driver converts none.
+- Outputs :: =run= first moves the state onto the constraints, evaluates the
+  force there and integrates =settings.steps= steps of
+  =B(dt/2) A(dt/2) O(dt) A(dt/2) B(dt/2)=, with the walls applied after each
+  half drift.
+  It returns a =LangevinResult=.
+  =dimension()= returns the coordinate count.
+  The object holds no state between runs, so the stream lives in the caller's
+  generator.
+- Errors :: the constructor throws =std::invalid_argument= for a negative or
+  non-finite mass, no massive coordinate, distance constraints on a coordinate
+  count that is not a multiple of three, or a malformed constraint.
+  =run= throws =std::invalid_argument= for bad settings, plane or walls.
+  It throws the same for positions that start outside a wall.
+  It throws =std::runtime_error= when the constraints are degenerate, the
+  constraint solve or the position iteration does not converge, or the walls
+  cannot return the state inside.
