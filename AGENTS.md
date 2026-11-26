@@ -147,7 +147,7 @@ In short:
   `RGPOT_ABI_LAYOUT_REVISION` in `rgpot-core/src/version.rs`: major for a
   change an old caller cannot survive, minor for an addition, layout revision
   for a struct change.
-  Regenerate the header, and append each new exported function to
+  Rebuild the header, and append each new exported function to
   `scripts/abi_core_baseline.txt` (the list only grows).
 - `CppCore/rgpot/rpc/Potentials.capnp` and `rgpot-core/schema/Potentials.capnp`
   are the pinned upstream file byte for byte.
@@ -158,7 +158,7 @@ In short:
 
 One release version lives in `[workspace.package]` of the root `Cargo.toml`.
 `potctl release sync VERSION` writes it, `pixi r -e version release-cog`
-regenerates the other copies, and `potctl release assert` checks them.
+rewrites the other copies, and `potctl release assert` checks them.
 Do not edit a version string in `meson.build`, `CMakeLists.txt`,
 `pyproject.toml`, `towncrier.toml` or `pixi.toml` by hand.
 
