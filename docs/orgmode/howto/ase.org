@@ -53,6 +53,11 @@ calculator's own =numerical_stress= and =stress_step= and ASE's =label=,
 =directory=, =restart=, =ignore_bad_restart_file= and =atoms=.
 A name the constructor does not take raises =ValueError= and lists the names it
 does take.
+=numerical_stress= and =stress_step= are calculator parameters, defaulting to
+off and =1e-6=.
+=set= changes them and does not pass them to the potential.
+=todict= keeps a value that differs from the default, so a rebuilt calculator
+uses the same stress method.
 
 #+begin_src python
 RgpotCalculator("morse", De=0.3429, a=1.3588, re=2.866, cutoff=7.7)
@@ -116,6 +121,8 @@ Voigt order (xx, yy, zz, yz, xz, xy) with the ASE sign, \(\sigma = V^{-1}
 A pair term goes half to each atom in =energies=.
 =stresses= is the per-atom virial over the cell volume, the convention of ASE's
 =LennardJones=; it sums to =stress=.
+Both exist only when the cell has three nonzero lattice vectors.
+A shorter cell raises =PropertyNotImplementedError= and keeps the energy.
 Per-atom values are computed only when asked for, so the first
 =get_potential_energies()= after =get_potential_energy()= costs one more kernel
 call.
@@ -151,7 +158,11 @@ with the same energy as the infinite system:
 
 Stress is the virial over the caller's cell volume, which is the cell
 =calculate_numerical_stress= strains.
-A cluster or slab with no volume keeps the padded box's stress.
+That stress is defined when the cell has three nonzero lattice vectors,
+periodic or not.
+A cell with fewer nonzero vectors raises =PropertyNotImplementedError= for
+=stress= and =stresses=, as ASE's =LennardJones= and =EMT= do.
+Energy and forces are unchanged.
 
 The cutoff is the =native_cutoff()= of a GROMACS or OpenMM engine, the =cutoff=
 property of =EAMTablePot=, =ExprPot= and =SumPot=, or =config()["cutoff"]=.
@@ -182,6 +193,11 @@ magnetic moments recomputes; anything else returns the stored results.
 One kernel call fills energy, forces and stress together, so
 =get_potential_energy()=, =get_forces()= and =get_stress()= on unchanged atoms
 cost one call.
+=calculate= with no properties list fills every implemented property.
+=get_property= still asks for one name, so an energy request does not run a
+numerical stress or a per-atom evaluation.
+An empty =system_changes= list replaces =results=.
+A key this call did not produce does not remain.
 
 ** Copies, pickling and parameters
 
@@ -200,6 +216,8 @@ socket; construct a new calculator with the same address.
 =calc.set(u0=...)= rebuilds the potential with the new parameter and resets the
 results.
 =calc.todict()= holds the class name under =potential= and the parameters.
+=ase.db= stores the calculator name =rgpot=, the name passed to
+=register_calculator=.
 
 NEB images may each carry their own calculator, or share one with
 =NEB(..., allow_shared_calculator=True)=.
@@ -242,6 +260,9 @@ The rgpot column includes that cost.
 The default properties are energy and forces.
 Pass =attach=True= to store a =SinglePointCalculator= on each structure.
 The inputs are not modified.
+Stress follows =calculate=.
+A cell with fewer than three nonzero lattice vectors omits it, and a request
+for stress or stresses raises =PropertyNotImplementedError=.
 
 ** Conformance checks
 

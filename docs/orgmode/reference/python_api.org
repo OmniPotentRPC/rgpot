@@ -1972,7 +1972,7 @@ set(**kwargs)
 
 #+attr_rgpot: signature
 #+begin_src python
-calculate(atoms=None, properties=("energy",), system_changes=all_changes)
+calculate(atoms=None, properties=None, system_changes=all_changes)
 #+end_src
 
 - Inputs :: the =Atoms=, the requested properties and the ASE change flags.
