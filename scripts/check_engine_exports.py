@@ -12,6 +12,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from abi_symbols import pe_exports  # noqa: E402
 
+# libgcov defines these in a coverage shared library. They are not the
+# engine ABI. Drop them only when a __gcov_ symbol shows the link was
+# built for coverage, so a normal build still reports a stray name.
+_GCOV_EXACT = frozenset({"mangle_path", "gcov_write"})
+
+
+def is_gcov_runtime(symbol: str) -> bool:
+    return symbol.startswith("__gcov_") or symbol in _GCOV_EXACT
+
+
+def unexpected_symbols(exported: set[str], expected: set[str]) -> list[str]:
+    extra = exported - expected
+    if any(symbol.startswith("__gcov_") for symbol in exported):
+        extra = {symbol for symbol in extra if not is_gcov_runtime(symbol)}
+    return sorted(extra)
+
 
 def exported_symbols(library: Path) -> set[str]:
     with library.open("rb") as handle:
@@ -65,7 +81,7 @@ def main() -> int:
     failed = False
     for library in args.libraries:
         exported = exported_symbols(library)
-        unexpected = sorted(exported - expected)
+        unexpected = unexpected_symbols(exported, expected)
         missing = sorted(expected - exported)
         if missing:
             failed = True
