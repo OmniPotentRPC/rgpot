@@ -2496,6 +2496,12 @@ if get_option('with_tests')
             # declarations must not name DLL import thunks.
             case_args += ['-DRGPOT_MODEL_BUILD']
         endif
+        if _rt[0] == 'MdProjectedLangevinTest' and get_option('b_coverage')
+            # Instrumentation stretches the long sampling runs onto the
+            # registry timeout. The test keeps the same checks and takes
+            # fewer steps when this macro is set.
+            case_args += ['-DRGPOT_COVERAGE']
+        endif
         _test_exe = executable(
             _rt[2][0],
             sources: ['tests/' + _rt[2][1]],
