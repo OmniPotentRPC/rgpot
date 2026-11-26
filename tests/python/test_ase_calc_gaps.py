@@ -91,3 +91,36 @@ def test_numerical_stress_parameters_round_trip_through_set_and_todict() -> None
     assert "stress" not in plain.implemented_properties
 
 
+def test_omitted_properties_match_ase_lj_and_energy_stays_cheap() -> None:
+    """A bare calculate fills every implemented property. get_energy does not."""
+    counter = _CallCount(rgpot.LJPot(**LJ))
+    watched = _argon()
+    watched.calc = RgpotCalculator(counter)
+    watched.get_potential_energy()
+    assert counter.evaluate_calls == 1
+    assert counter.per_atom_calls == 0
+
+    ours = _argon()
+    ref = ours.copy()
+    ours.calc = RgpotCalculator("lj", **LJ)
+    ref.calc = LennardJones(
+        epsilon=LJ["u0"], sigma=LJ["psi"], rc=LJ["cutoff"], smooth=False
+    )
+    ours.calc.calculate(ours)
+    ref.calc.calculate(ref)
+    for key in ("energy", "free_energy", "forces", "energies", "stress", "stresses"):
+        assert key in ref.calc.results
+        assert key in ours.calc.results
+        np.testing.assert_allclose(
+            ours.calc.results[key], ref.calc.results[key], atol=ATOL, rtol=0.0
+        )
+
+    # The list get_property passes is one name, so numerical stress stays idle.
+    emt_count = _CallCount(rgpot.EMTPot())
+    copper = bulk("Cu", "fcc", a=3.61, cubic=True)
+    copper.calc = RgpotCalculator(emt_count, numerical_stress=True)
+    copper.get_potential_energy()
+    assert emt_count.evaluate_calls == 1
+    assert emt_count.per_atom_calls == 0
+
+

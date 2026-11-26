@@ -718,15 +718,22 @@ class RgpotCalculator(Calculator):
     def calculate(
         self,
         atoms: Atoms | None = None,
-        properties: Sequence[str] = ("energy",),
+        properties: Sequence[str] | None = None,
         system_changes: Any = all_changes,
     ) -> None:
         """Fill ``self.results``. ``free_energy`` equals ``energy``.
+
+        A missing ``properties`` list means every implemented property,
+        as in ASE's Lennard-Jones calculator. ``get_property`` still
+        passes only the name it was asked for, so an energy request does
+        not add per-atom or numerical stress work.
 
         ``stress`` and ``stresses`` are omitted when the cell has fewer
         than three nonzero lattice vectors. Requesting either then raises
         ``PropertyNotImplementedError``.
         """
+        if properties is None:
+            properties = list(self.implemented_properties)
         Calculator.calculate(self, atoms, properties, system_changes)
         if system_changes:
             self.results = {}
