@@ -1478,9 +1478,9 @@ int main() {
 terms in the sum: 3
 Coulomb    -15.909851 eV
 dispersion -0.067983 eV
-NLH        0.513246 eV
-sum of the three  -15.464588 eV
-SumPot energy     -15.464588 eV
+NLH        0.759529 eV
+sum of the three  -15.218305 eV
+SumPot energy     -15.218305 eV
 SumPot stress reported: yes
 #+end_example
 
