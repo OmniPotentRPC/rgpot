@@ -1527,9 +1527,10 @@ The class entries are under "ORCA through liborcac" in
 
 The energy is the one ORCA reports for the session.
 =liborcac= writes the input, runs ORCA and reads the =.engrad=.
-In =CppCore/rgpot/ORCACPot/ORCACPot.cc= the Hartree energy is multiplied by
-=units::HARTREE_TO_EV=, and each Hartree/Bohr gradient component is multiplied
-by the negative of =units::HARTREE_BOHR_TO_EV_ANGSTROM=.
+In
+=CppCore/rgpot/ORCACPot/ORCACPot.cc= the Hartree energy is multiplied by =units::HARTREE_TO_EV=, and each Hartree/Bohr
+gradient component is multiplied by the negative of
+=units::HARTREE_BOHR_TO_EV_ANGSTROM=.
 ORCA has no periodic cell.
 The box is unused, =caps()= reports =Reentrancy::PerInstance= and
 =periodic = false=, and the call writes no stress.
@@ -1538,12 +1539,12 @@ The box is unused, =caps()= reports =Reentrancy::PerInstance= and
 
 The C++ config is =ORCACConfig=, filled by the =orca= arm from =ORCAParams=.
 =orcac_config_init= sets the C defaults that fit in the caller's
-=struct_size=: multiplicity 1, nprocs 1, maxcore_mb 0, timeout_s 0 and
-=ORCAC_GUESS_FRESH=.
-A null =method= is ="HF"= and a null =basis= is ="STO-3G"=, from the comments
-on =OrcaCConfig= in =orcac.h=.
-There is no runnable example on this page: a force needs =liborcac= and an
-ORCA executable, and this tree does not ship a numerical ORCA result.
+=struct_size=: multiplicity 1, nprocs 1, maxcore_mb 0,
+timeout_s 0 and =ORCAC_GUESS_FRESH=.
+A null =method= is ="HF"= and a null =basis= is ="STO-3G"=, from the comments on
+=OrcaCConfig= in =orcac.h=.
+There is no runnable example on this page: a force needs =liborcac= and an ORCA
+executable, and this tree does not ship a numerical ORCA result.
 
 *** Literature
 
@@ -1556,8 +1557,8 @@ No further paper is cited here.
 
 =EnginePot= (=CppCore/rgpot/EnginePot/EnginePot.hpp=) is =PotType::Engine=.
 It opens the first candidate library that exports =rgpot_engine_create=,
-=rgpot_engine_destroy= and =rgpot_engine_force=, and creates one engine
-instance from the configuration bytes the caller passes.
+=rgpot_engine_destroy= and =rgpot_engine_force=, and creates one engine instance
+from the configuration bytes the caller passes.
 =rgpot::makePotential= returns it for the =metatomic=, =uma= and =plugin= arms,
 and for =xtb= in a build without =-Dwith_xtb=.
 The search order for each arm is in the =makePotential= entry of
@@ -1570,9 +1571,9 @@ The library stays mapped for the life of the process.
 There is no formula in rgpot.
 =rgpot_engine_force= supplies the energy and forces.
 The =makePotential= entry states those units as Angstrom, eV and eV/Angstrom.
-The constructor throws =std::runtime_error= when no candidate opens, the
-library reports itself unavailable or another ABI major, or
-=rgpot_engine_create= fails.
+The constructor throws
+=std::runtime_error= when no candidate opens, the library reports itself unavailable or another ABI major, or =rgpot_engine_create=
+fails.
 The message names every path tried.
 
 *** Parameters
@@ -1582,8 +1583,8 @@ not fields of this class.
 For the in-tree engines that message is a word-aligned Cap'n Proto flat array
 whose root is the backend's params struct.
 =label= is the name used in messages.
-There is no single geometry on this page: the energy belongs to the library
-the caller opened.
+There is no single geometry on this page: the energy belongs to the library the
+caller opened.
 
 *** Literature
 

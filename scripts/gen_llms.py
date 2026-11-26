@@ -15,7 +15,9 @@ produces identical bytes.
 Usage::
 
     python scripts/gen_llms.py            # write llms.txt and llms-full.txt
-    python scripts/gen_llms.py --check    # fail when either file is stale
+    python scripts/gen_llms.py --check    # fail when a file is stale, the full
+                                          # text has a broken backtick, or an
+                                          # inline code span changed
 
 The module uses the standard library only.
 """
@@ -135,8 +137,21 @@ _BEGIN = re.compile(r"^#\+begin_(\w+)\s*(.*)$", re.I)
 _END = re.compile(r"^#\+end_(\w+)\s*$", re.I)
 _HEADING = re.compile(r"^(\*+)\s+(.*)$")
 _LINK = re.compile(r"\[\[([^\]]+)\](?:\[([^\]]+)\])?\]")
-_VERBATIM = re.compile(r"(?<![\w=~])([=~])([^\s=~](?:.*?[^\s=~])?)\1(?![\w=~])")
 _DOC_ROLE = re.compile(r":doc:`(?:[^`<]*<([^>]+)>|([^`]+))`")
+# Org verbatim (=) and code (~). An opening marker is preceded by whitespace,
+# the start of the line, or one of -({}'"/+, and followed by a non-whitespace
+# character. The closing marker is preceded by a non-whitespace character and
+# followed by whitespace, the end of the line, or punctuation, including
+# /+*. A doubled marker after whitespace (== or ~~) is text, not a closer.
+# The first legal closer wins. The character after an opener is always text,
+# so =*name=, =+INF= and =/= stay one span. \( \), $$ and backtick spans are
+# copied unchanged.
+_OPEN_PRE = frozenset("-({}'\"/+")
+_CLOSE_POST = frozenset("-.,:!?;'\"/*+") | frozenset(")}\\[")
+_MATH_SPAN = re.compile(r"\\\(.*?\\\)|\$\$.*?\$\$", re.DOTALL)
+_INLINE_CODE = re.compile(r"``[^\n]*?``|`[^\n]*?`")
+_MATH_EQ = "\x01"
+_MATH_TILDE = "\x02"
 
 
 def _title(text: str, fallback: str) -> str:
@@ -162,18 +177,118 @@ def _link_target(target: str, page_key: str) -> str:
     return target
 
 
-def _inline(line: str, page_key: str) -> str:
+def _shield_math(text: str) -> str:
+    """Hide = and ~ inside \\( \\) and $$ so later markup leaves them.
+
+    Bytes inside a backtick span stay as they are, including when that span
+    sits in the math.
+    """
+    ranges = _code_ranges(text)
+
+    def repl(match: re.Match) -> str:
+        base = match.start()
+        chars = list(match.group(0))
+        for offset, char in enumerate(chars):
+            if _code_end(ranges, base + offset) is not None:
+                continue
+            if char == "=":
+                chars[offset] = _MATH_EQ
+            elif char == "~":
+                chars[offset] = _MATH_TILDE
+        return "".join(chars)
+
+    return _MATH_SPAN.sub(repl, text)
+
+
+def _restore_math(text: str) -> str:
+    return text.replace(_MATH_EQ, "=").replace(_MATH_TILDE, "~")
+
+
+def _code_ranges(line: str) -> list[tuple[int, int]]:
+    return [(match.start(), match.end()) for match in _INLINE_CODE.finditer(line)]
+
+
+def _code_end(ranges: list[tuple[int, int]], index: int) -> int | None:
+    for start, end in ranges:
+        if start > index:
+            return None
+        if start <= index < end:
+            return end
+    return None
+
+
+def _doubled_marker(line: str, cursor: int) -> bool:
+    """True when cursor is the second of == or ~~ after whitespace.
+
+    The first of that pair was skipped because whitespace precedes it.
+    The pair is text inside the span (an equality), not a closer.
+    """
+    return cursor >= 2 and line[cursor - 1] == line[cursor] and line[cursor - 2].isspace()
+
+
+def _marker_close(line: str, index: int, ranges: list[tuple[int, int]]) -> int | None:
+    marker = line[index]
+    if index + 1 >= len(line) or line[index + 1].isspace():
+        return None
+    cursor = index + 2
+    while cursor < len(line):
+        if _code_end(ranges, cursor) is not None:
+            cursor += 1
+            continue
+        if line[cursor] != marker or line[cursor - 1].isspace() or _doubled_marker(line, cursor):
+            cursor += 1
+            continue
+        if cursor + 1 == len(line) or line[cursor + 1].isspace() or line[cursor + 1] in _CLOSE_POST:
+            return cursor
+        cursor += 1
+    return None
+
+
+def _verbatim(line: str) -> str:
+    """Convert = and ~ outside backtick spans. Those spans are copied.
+
+    A backtick span may sit inside = or ~. Its bytes stay as they are, and
+    the closer is the next legal marker outside it.
+    """
+    ranges = _code_ranges(line)
+    out: list[str] = []
+    index = 0
+    while index < len(line):
+        end = _code_end(ranges, index)
+        if end is not None:
+            out.append(line[index:end])
+            index = end
+            continue
+        char = line[index]
+        preceded = index == 0 or line[index - 1].isspace() or line[index - 1] in _OPEN_PRE
+        if char in "=~" and preceded:
+            close = _marker_close(line, index, ranges)
+            if close is not None:
+                out.append("`" + line[index + 1 : close] + "`")
+                index = close + 1
+                continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def _inline(line: str, page_key: str, *, restore_math: bool = True) -> str:
     def link(m: re.Match) -> str:
         target = _link_target(m.group(1), page_key)
         text = m.group(2) or target
         return f"[{text}]({target})"
 
+    line = _shield_math(line)
     line = _LINK.sub(link, line)
     line = _DOC_ROLE.sub(lambda m: "`" + (m.group(1) or m.group(2)).strip() + "`", line)
-    return _VERBATIM.sub(lambda m: "`" + m.group(2) + "`", line)
+    line = _verbatim(line)
+    if restore_math:
+        line = _restore_math(line)
+    return line
 
 
 def org_to_markdown(text: str, page_key: str) -> str:
+    text = _shield_math(text)
     out: list[str] = []
     block: str | None = None
     skip_export = False
@@ -212,15 +327,16 @@ def org_to_markdown(text: str, page_key: str) -> str:
             continue
         heading = _HEADING.match(line)
         if heading:
-            out.append("#" * (len(heading.group(1)) + 1) + " " + _inline(heading.group(2), page_key))
+            title = _inline(heading.group(2), page_key, restore_math=False)
+            out.append("#" * (len(heading.group(1)) + 1) + " " + title)
             continue
         if line.startswith("|-"):
             out.append(re.sub(r"\+", "|", line))
             continue
-        out.append(_inline(line, page_key).rstrip())
+        out.append(_inline(line, page_key, restore_math=False).rstrip())
     body = "\n".join(out)
     body = re.sub(r"\n{3,}", "\n\n", body).strip("\n")
-    return body
+    return _restore_math(body)
 
 
 def _first_paragraph(markdown: str) -> str:
@@ -343,21 +459,151 @@ def generate(root: Path = ROOT) -> dict[str, str]:
     return {"llms.txt": render_llms(pages, root), "llms-full.txt": render_full(pages, root)}
 
 
+def markup_errors(text: str, name: str = "llms-full.txt") -> list[str]:
+    """Backticks inside \\( \\), or an odd number of backticks on a prose line.
+
+    Lines of a fenced block, including the fence itself, are not checked.
+    """
+    problems: list[str] = []
+    kept: list[tuple[int, str]] = []
+    fenced = False
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if line.startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if line.count("`") % 2:
+            problems.append(f"{name}:{lineno}: unbalanced backticks")
+        kept.append((lineno, line))
+    if not kept:
+        return problems
+    blob = "\n".join(line for _, line in kept)
+    offsets: list[tuple[int, int]] = []
+    cursor = 0
+    for lineno, line in kept:
+        offsets.append((cursor, lineno))
+        cursor += len(line) + 1
+
+    def line_at(offset: int) -> int:
+        found = offsets[0][1]
+        for start, lineno in offsets:
+            if start <= offset:
+                found = lineno
+            else:
+                break
+        return found
+
+    for match in re.finditer(r"\\\(.*?\\\)", blob, re.DOTALL):
+        if "`" in match.group(0):
+            where = line_at(match.start())
+            problems.append(f"{name}:{where}: backtick inside inline math")
+    return problems
+
+
+def _backtick_spans(line: str) -> list[str]:
+    spans = []
+    for match in _INLINE_CODE.finditer(line):
+        span = match.group(0)
+        if span.strip("`"):
+            spans.append(span)
+    return spans
+
+
+def _lines_with_inline_code(text: str, org: bool):
+    """Lines whose inline code is copied into the plain text.
+
+    Export blocks and keyword lines are omitted. Fenced Markdown lines are
+    omitted. Source and example blocks are included because they are copied.
+    """
+    if not org:
+        fenced = False
+        for lineno, line in enumerate(text.split("\n"), 1):
+            if line.startswith("```"):
+                fenced = not fenced
+                continue
+            if not fenced:
+                yield lineno, line
+        return
+    block: str | None = None
+    skip_export = False
+    for lineno, line in enumerate(text.split("\n"), 1):
+        begin = _BEGIN.match(line)
+        end = _END.match(line)
+        if skip_export:
+            if end and end.group(1).lower() == "export":
+                skip_export = False
+            continue
+        if block is not None:
+            if end and end.group(1).lower() == block:
+                block = None
+            else:
+                yield lineno, line
+            continue
+        if begin:
+            kind = begin.group(1).lower()
+            if kind == "export":
+                skip_export = True
+            else:
+                block = kind
+            continue
+        if _KEYWORD.match(line):
+            continue
+        yield lineno, line
+
+
+def inline_code_errors(root: Path = ROOT, full: str | None = None) -> list[str]:
+    """Inline code spans in the sources that the plain text does not contain.
+
+    Each ``...`` and `...` span outside an export block must appear
+    unchanged. Org = and ~ markup is not itself a backtick span; the
+    builder turns that into Markdown code.
+    """
+    if full is None:
+        full = generate(root)["llms-full.txt"]
+    problems = []
+    for _caption, _key, path in collect(root):
+        for lineno, line in _lines_with_inline_code(_read(path), path.suffix == ".org"):
+            for span in _backtick_spans(line):
+                if span not in full:
+                    rel = path.relative_to(root).as_posix()
+                    shown = span if len(span) <= 80 else span[:77] + "..."
+                    problems.append(f"{rel}:{lineno}: inline code changed: {shown}")
+    return problems
+
+
 def stale(root: Path = ROOT) -> list[str]:
-    """One message for each generated file that differs from the sources."""
+    """One message for each generated file that differs from the sources.
+
+    ``llms-full.txt`` is also rejected when a backtick sits inside inline
+    math, a prose line has an unbalanced backtick, or an inline code span
+    from the sources is missing. A file that still matches an older builder
+    is checked on its own, so a stale copy cannot hide a broken span.
+    """
     problems = []
     for name, text in generate(root).items():
         path = root / name
-        if not path.is_file():
+        disk = path.read_text(encoding="utf-8") if path.is_file() else None
+        if disk is None:
             problems.append(f"{name} is missing; run python scripts/gen_llms.py")
-        elif path.read_text(encoding="utf-8") != text:
+        elif disk != text:
             problems.append(f"{name} is stale; run python scripts/gen_llms.py")
+        if name != "llms-full.txt":
+            continue
+        problems.extend(markup_errors(text, name))
+        problems.extend(inline_code_errors(root, text))
+        if disk is not None and disk != text:
+            problems.extend(markup_errors(disk, f"{name} on disk"))
     return problems
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--check", action="store_true", help="fail when a generated file is stale")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="fail when a generated file is stale, llms-full.txt has a broken backtick, or inline code changed",
+    )
     parser.add_argument("--root", type=Path, default=ROOT)
     args = parser.parse_args(argv)
     if args.check:

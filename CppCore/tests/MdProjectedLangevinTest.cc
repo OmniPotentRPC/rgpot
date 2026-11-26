@@ -13,6 +13,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <numeric>
 #include <stdexcept>
 #include <tuple>
@@ -92,6 +94,27 @@ double kinetic(const std::vector<double> &masses, const double *v) {
     sum += 0.5 * masses[k] * v[k] * v[k];
   }
   return sum;
+}
+
+// The free-energy trajectory is half a million steps on each of seven
+// planes. Instrumented, that sits on the registry timeout, which is 30s
+// and which the coverage job multiplies by four. Release finishes in a
+// few seconds. A coverage build, or RGPOT_COVERAGE in the environment,
+// keeps the same margin and takes fewer of those steps.
+bool coverageSampling() {
+#if defined(RGPOT_COVERAGE)
+  return true;
+#else
+  const char *flag = std::getenv("RGPOT_COVERAGE");
+  return flag != nullptr && flag[0] != '\0' && std::strcmp(flag, "0") != 0;
+#endif
+}
+
+std::uint64_t trajectory(std::uint64_t full, unsigned cut = 4) {
+  if (!coverageSampling() || cut < 2)
+    return full;
+  const std::uint64_t shorter = full / cut;
+  return shorter == 0 ? full : shorter;
 }
 
 } // namespace
@@ -733,7 +756,7 @@ TEST_CASE("the multiplier and metric give the free energy of a coupled plane",
     settings.steps = 2000;
     driver.run(settings, &plane, {}, x.data(), v.data(), wells);
     settings.seed += 1000;
-    settings.steps = 500000;
+    settings.steps = trajectory(500000);
     settings.recordConstraintForce = true;
     const LangevinResult run =
         driver.run(settings, &plane, {}, x.data(), v.data(), wells);

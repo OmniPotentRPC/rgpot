@@ -307,19 +307,19 @@ explicit MOPACPot(const Config &cfg);
   A force throws =std::runtime_error= when the engine is not loaded, =nAtoms= is
   zero, a buffer is null, or the engine reports failure.
 
-The library must export =mopacc_energy_gradient=, =mopacc_c_abi_version=,
-=mopacc_abi_version=, =mopacc_result_size= and =mopacc_params_size=.
+The library must export =mopacc_energy_gradient=,
+=mopacc_c_abi_version=, =mopacc_abi_version=, =mopacc_result_size= and =mopacc_params_size=.
 Both versions must equal 2 (=RGPOT_MOPACC_C_ABI_VERSION= and
 =MOPACC_ABI_VERSION=), =mopacc_result_size= must equal =sizeof(MopacCResult)=,
 and =mopacc_params_size= must equal =sizeof(MopacCParams)=.
 A later ABI may change the layout without changing the sizes, so a library
 reporting version 3 is refused even when its sizes match.
-These checks run before any call that returns a =MopacCResult=; a library
-that fails one stays unloaded, and the load error names the missing symbol or
-the expected and found values.
+These checks run before any call that returns a =MopacCResult=; a library that
+fails one stays unloaded, and the load error names the missing symbol or the
+expected and found values.
 When the library exports =mopacc_available=, that must be nonzero.
-The constructor passes the params once through =mopacc_set_params= when
-present; a nonzero status leaves the engine unloaded.
+The constructor passes the params once through =mopacc_set_params= when present;
+a nonzero status leaves the engine unloaded.
 
 *** =rgpot::MOPACPot::available=
 
@@ -2186,12 +2186,13 @@ int main() {
 ** Construction from a PotentialConfig
 
 =rgpot::makePotential= (=CppCore/rgpot/PotentialFactory.hpp=) is the one entry
-point from a =PotentialConfig= to a potential. It is in every =librgpot= built
-with the Cap'n Proto stack. A consumer includes =rgpot/PotentialFactory.hpp=
-with the directory that holds the generated =rgpot/rpc/Potentials.capnp.h= and
-=rgpot/rpc/common.capnp.h= on its include path (the installation's
-include directory, or =CppCore= of a meson build tree): the schema
-imports =common.capnp=, so =Potentials.capnp.h= includes =common.capnp.h=.
+point from a =PotentialConfig= to a potential.
+It is in every =librgpot= built with the Cap'n Proto stack.
+A consumer includes
+=rgpot/PotentialFactory.hpp= with the directory that holds the generated =rgpot/rpc/Potentials.capnp.h= and =rgpot/rpc/common.capnp.h=
+on its include path (the installation's include directory, or =CppCore= of a
+meson build tree): the schema imports =common.capnp=, so =Potentials.capnp.h=
+includes =common.capnp.h=.
 
 *** =rgpot::makePotential=
 
@@ -2203,11 +2204,11 @@ makePotential(const ::PotentialConfig::Reader &config);
 makePotential(const void *bytes, std::size_t size);
 #+end_src
 
-- Inputs :: a =PotentialConfig= reader, or the flat-array bytes of one
-  (=size= a non-zero multiple of 8). Only the union arm is read; the shared
-  fields (=common=, =commonPatch=, =neighborList=, =rpcEndpoint=,
-  =logPotentialCalls=, =emtRasmussenParameters=) are not, as no
-  =setPotentialConfig= method reads them either.
+- Inputs :: a =PotentialConfig= reader, or the flat-array bytes of one (=size= a
+  non-zero multiple of 8).
+  Only the union arm is read; the shared fields (=common=, =commonPatch=,
+  =neighborList=, =rpcEndpoint=, =logPotentialCalls=, =emtRasmussenParameters=)
+  are not, as no =setPotentialConfig= method reads them either.
 - Units :: those of the potential returned.
 - Outputs :: the potential the arm configures, owned by the returned pointer.
   =lj=, =morse= (with =switchWidth=), =zbl=, =d2=, =d2cpmd=, =mullerBrown= and
@@ -2219,9 +2220,8 @@ makePotential(const void *bytes, std::size_t size);
   =orca= builds an =rgpot::ORCACPot= from =ORCAParams= alone, lowered onto the
   =OrcaCConfig= of =liborcac= C ABI 1.
   =metatomic=, =uma=, =plugin=, and =xtb= in a build without
-  =-Dwith_xtb=, return an =rgpot::EnginePot= over an engine library whose
-  configuration message is the arm's params struct (=BuiltinParams= naming =xtb=
-  for =libxtb_engine=, the =opaquePayload= bytes for =plugin=):
+  =-Dwith_xtb=, return an =rgpot::EnginePot= over an engine library whose configuration message is the arm's params struct (=BuiltinParams= naming =xtb= for =libxtb_engine=,
+  the =opaquePayload= bytes for =plugin=):
 
   | Arm         | Library                 | Search order                                                                 |
   |-------------+-------------------------+------------------------------------------------------------------------------|
@@ -2230,19 +2230,18 @@ makePotential(const void *bytes, std::size_t size);
   | =xtb=       | =libxtb_engine=         | =RGPOT_XTB_ENGINE=, =XTB_ENGINE=                                             |
   | =plugin=    | =lib<pluginName>_engine= | =libraryPath= alone when set; else =RGPOT_<PLUGINNAME>_ENGINE=              |
 
-  After the variables each search tries =lib<stem>.so=, =./lib<stem>.so=, the
-  =.dylib= names and =<stem>.dll=, then the directories of
-  =EON_POTENTIALS_PATH= and =RGPOT_ENGINE_PATH=.
-- Errors :: =std::invalid_argument= for bytes that are not a =PotentialConfig=
-  message, for the =none=, =gpr=, =potlib= and =external= arms (rgpot has no
-  backend for them), for =d3=, =d4=, =tblite=, =skala=, =cp2k= and =expr= in a
-  build without =-Dwith_dftd3=, =-Dwith_dftd4=, =-Dwith_tblite=,
-  =-Dwith_skala=, =-Dwith_cp2k= or =-Dwith_expr= (the message names the
-  option), for a =mopac= arm that sets =epsilon=, =solver=, =extraKeywords= or
-  =cell= (=MOPACPot= takes none of them), for an =xtb=, =tblite= or =d3= method
-  or damping it does not know, for a =plugin= arm with neither =pluginName= nor
-  =libraryPath=, and for an arm newer than the compiled schema. The
-  constructors of the potentials throw as their entries say, and
+After the variables each search tries =lib<stem>.so=, =./lib<stem>.so=, the
+=.dylib= names and =<stem>.dll=, then the directories of =EON_POTENTIALS_PATH=
+and =RGPOT_ENGINE_PATH=.
+- Errors ::
+  =std::invalid_argument= for bytes that are not a =PotentialConfig= message, for the =none=, =gpr=, =potlib= and =external= arms (rgpot has no backend for them), for =d3=, =d4=, =tblite=, =skala=, =cp2k= and =expr= in a build without =-Dwith_dftd3=,
+  =-Dwith_dftd4=, =-Dwith_tblite=, =-Dwith_skala=, =-Dwith_cp2k= or
+  =-Dwith_expr= (the message names the option), for a =mopac= arm that sets
+  =epsilon=, =solver=, =extraKeywords= or =cell= (=MOPACPot= takes none of
+  them), for an =xtb=, =tblite= or =d3= method or damping it does not know, for
+  a =plugin= arm with neither =pluginName= nor =libraryPath=, and for an arm
+  newer than the compiled schema.
+  The constructors of the potentials throw as their entries say, and
   =rgpot::EnginePot= throws =std::runtime_error= as below.
 
 *** =rgpot::EnginePot=
@@ -2254,24 +2253,25 @@ EnginePot(const std::vector<std::string> &candidates, const void *config,
 #+end_src
 
 - Inputs :: =candidates=, library paths tried in order; =config= and
-  =config_len=, the configuration message handed to =rgpot_engine_create=
-  (for the in-tree engines a word-aligned Cap'n Proto flat array whose root is
-  the backend's params struct); =label=, the name used in messages.
+  =config_len=, the configuration message handed to =rgpot_engine_create= (for
+  the in-tree engines a word-aligned Cap'n Proto flat array whose root is the
+  backend's params struct); =label=, the name used in messages.
 - Units :: positions in Angstrom, energy in eV and forces in eV/Angstrom, the
   units of =rgpot_engine_force=.
 - Outputs :: one engine instance, destroyed with the potential, from the first
-  candidate that opens and exports =rgpot_engine_create=,
-  =rgpot_engine_destroy= and =rgpot_engine_force=. =caps()= reports
-  =Reentrancy::PerInstance=, and calls on one instance are serialised. The
-  library stays mapped for the life of the process. =getType()= is
-  =PotType::Engine=.
-- Errors :: =std::runtime_error= when no candidate opens or exports the three
-  symbols (the message names every path tried), when the library's
-  =rgpot_engine_abi_version= is not =RGPOT_ENGINE_ABI_VERSION=, when its
-  =rgpot_engine_available= returns 0, or when =rgpot_engine_create= fails (the
-  message carries the engine's reason). A force call throws
-  =std::runtime_error= with the code =rgpot_engine_force= returned and the
-  engine's =rgpot_engine_last_error=.
+  candidate that opens and exports =rgpot_engine_create=, =rgpot_engine_destroy=
+  and =rgpot_engine_force=.
+  =caps()= reports =Reentrancy::PerInstance=, and calls on one instance are
+  serialised.
+  The library stays mapped for the life of the process.
+  =getType()= is =PotType::Engine=.
+- Errors ::
+  =std::runtime_error= when no candidate opens or exports the three symbols (the message names every path tried), when the library's =rgpot_engine_abi_version=
+  is not
+  =RGPOT_ENGINE_ABI_VERSION=, when its =rgpot_engine_available= returns 0, or when =rgpot_engine_create=
+  fails (the message carries the engine's reason).
+  A force call throws
+  =std::runtime_error= with the code =rgpot_engine_force= returned and the engine's =rgpot_engine_last_error=.
 
 *** =rgpot::EnginePot::libraryPath=
 

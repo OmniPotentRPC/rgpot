@@ -1016,8 +1016,9 @@ for pot in sc lj ljcluster morse zbl eam sw tersoff; do
 done
 ```
 
-`--sizes 100000` gives the second table, and `--mode stream --sizes
-10000` the third. Each line also counts, against the first thread count,
+`--sizes 100000` gives the second table, and
+`--mode stream --sizes 10000` the third.
+Each line also counts, against the first thread count,
 the frames whose energy bits differ and the force components whose bits
 differ, and hashes the bits of every energy and force, so two builds can
 be compared.

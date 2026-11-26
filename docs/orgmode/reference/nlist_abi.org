@@ -407,9 +407,8 @@ positions it was given.
 
 =Potentials.capnp= carries the query: =NeighborRequest=, =NeighborList=,
 =ForceInput.neighbors=, =PotentialResult.neighborList= and
-=Potential.neighbours=.
-rgpot added them first, through a local diff, and rgconf's schema adopted them
-at the same ordinals.
+=Potential.neighbours=. rgpot added them first, through a local diff, and
+rgconf's schema adopted them at the same ordinals.
 The messages carry the columns of =rgpot_nlist_request= and =rgpot_nlist_soa=.
 Lengths are in the unit of the positions, =ForceInput.lengthUnit= on the wire.
 

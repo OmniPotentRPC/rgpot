@@ -20,6 +20,14 @@
 #ifndef _WIN32
 #include <sys/wait.h>
 #include <unistd.h>
+#else
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 #endif
 
 #include <catch2/catch_all.hpp>
@@ -218,6 +226,53 @@ fs::path write_package(const fs::path &dir, const std::string &name,
 std::vector<uint8_t> read_file(const fs::path &path) {
   std::ifstream in(path, std::ios::binary);
   return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+// Wine reports two paths of one directory as distinct, and a trailing
+// separator from GetTempPath makes that worse. Canonical paths agree.
+bool same_path(const fs::path &a, const fs::path &b) {
+  std::error_code ec;
+  if (fs::equivalent(a, b, ec))
+    return true;
+  auto key = [](const fs::path &path) {
+    std::error_code local;
+    fs::path out = fs::weakly_canonical(path, local);
+    if (local)
+      out = fs::absolute(path, local).lexically_normal();
+    std::string text = out.generic_string();
+    while (text.size() > 1 && text.back() == '/')
+      text.pop_back();
+#ifdef _WIN32
+    for (char &ch : text)
+      if (ch >= 'A' && ch <= 'Z')
+        ch = static_cast<char>(ch - 'A' + 'a');
+#endif
+    return text;
+  };
+  return key(a) == key(b);
+}
+
+// Wine's ntdll exports wine_get_version. A native ntdll does not.
+// WINEPREFIX and WINELOADERNOEXEC are not evidence of Wine.
+bool running_under_wine() {
+#ifndef _WIN32
+  return false;
+#else
+  const HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+  return ntdll && GetProcAddress(ntdll, "wine_get_version");
+#endif
+}
+
+// Setting a directory's modification time is denied under wine. Reading
+// it still works, which is what the sweep does. False leaves the
+// directory young, so the sweep must keep it. Real Windows can set it.
+bool age_directory(const fs::path &dir) {
+  std::error_code ec;
+  fs::last_write_time(dir,
+                      fs::file_time_type::clock::now() - unpack::kLeftoverAge -
+                          std::chrono::minutes(5),
+                      ec);
+  return !ec;
 }
 
 std::set<std::string> listing(const fs::path &dir) {
@@ -554,20 +609,39 @@ TEST_CASE("stale build directories older than an hour are swept",
   const auto new_tmp = aoti / ("." + sha + ".model.tmp-running");
   fs::create_directories(old_tmp / "pkg");
   fs::create_directories(new_tmp / "pkg");
-  fs::last_write_time(old_tmp, fs::file_time_type::clock::now() -
-                                   unpack::kLeftoverAge -
-                                   std::chrono::minutes(5));
+  // A native clock that will not move is a failure. Wine may refuse
+  // the clock; only then are the deletion checks skipped, and the
+  // case keeps running. A young directory always stays.
+  const bool aged = age_directory(old_tmp);
+  if (!aged) {
+    if (running_under_wine())
+      WARN("wine refused to age a directory; "
+           "stale-directory deletion checks skipped");
+    else
+      REQUIRE(aged);
+  }
   unpack::unpack(pkg, root);
-  REQUIRE_FALSE(fs::exists(old_tmp));
+  if (aged)
+    REQUIRE_FALSE(fs::exists(old_tmp));
+  else
+    REQUIRE(fs::exists(old_tmp));
   REQUIRE(fs::exists(new_tmp));
 
   // A reused unpack sweeps too.
   fs::create_directories(old_tmp / "pkg");
-  fs::last_write_time(old_tmp, fs::file_time_type::clock::now() -
-                                   unpack::kLeftoverAge -
-                                   std::chrono::minutes(5));
+  const bool aged_again = age_directory(old_tmp);
+  if (!aged_again) {
+    if (running_under_wine())
+      WARN("wine refused to age a directory; "
+           "stale-directory deletion checks skipped");
+    else
+      REQUIRE(aged_again);
+  }
   REQUIRE(unpack::unpack(pkg, root).reused);
-  REQUIRE_FALSE(fs::exists(old_tmp));
+  if (aged_again)
+    REQUIRE_FALSE(fs::exists(old_tmp));
+  else
+    REQUIRE(fs::exists(old_tmp));
   REQUIRE(fs::exists(new_tmp));
 }
 
@@ -577,7 +651,7 @@ TEST_CASE("RGPOT_CACHE_DIR unpacks without touching the temporary directory",
   EnvGuard xdg("XDG_CACHE_HOME");
   Scratch s;
   const PrivateTemp temp(s.path / "tmp");
-  REQUIRE(fs::equivalent(fs::temp_directory_path(), temp.path));
+  REQUIRE(same_path(fs::temp_directory_path(), temp.path));
   const auto tmp_before = listing(temp.path);
   const auto data = zip(fake_members("w0"));
   const auto pkg = write_package(s.path, "fake.pt2", data);

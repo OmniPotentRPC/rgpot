@@ -24,11 +24,11 @@ When neither exists, it writes an empty stub module instead.
 
 ** How do I repin the schema?
 
-The schema is rgconf's =crates/rgconf-core/schema/potential.capnp=. Both
-vendored copies (=CppCore/rgpot/rpc/Potentials.capnp= and
-=rgpot-core/schema/Potentials.capnp=) are that file at the commit
-=CppCore/rgpot/rpc/schema.pin= names, byte for byte, each with rgconf's
-=common.capnp= beside it, because =potential.capnp= imports it.
+The schema is rgconf's =crates/rgconf-core/schema/potential.capnp=.
+Both vendored copies
+(=CppCore/rgpot/rpc/Potentials.capnp= and =rgpot-core/schema/Potentials.capnp=) are that file at the commit =CppCore/rgpot/rpc/schema.pin=
+names, byte for byte, each with rgconf's =common.capnp= beside it, because
+=potential.capnp= imports it.
 Change =revision= in =schema.pin= and copy both rgconf files over both copies.
 Then append the new ordinals to =CppCore/rgpot/rpc/Potentials.ordinals=:
 
@@ -51,11 +51,10 @@ The meson =schema= suite runs it without the network.
 
 ** How do I add a schema field?
 
-Add it to rgconf's =potential.capnp= first, then repin.
-rgpot carries no local schema members any more: the fields it used to add
-through a local diff series are in rgconf at the ordinals rgpot gave them,
-and the ledger records each of them as =local= followed by the line that
-retired it, now =upstream=.
+Add it to rgconf's =potential.capnp= first, then repin. rgpot carries no local
+schema members any more: the fields it used to add through a local diff series
+are in rgconf at the ordinals rgpot gave them, and the ledger records each of
+them as =local= followed by the line that retired it, now =upstream=.
 
 ** Why is the crate README in org-mode?
 

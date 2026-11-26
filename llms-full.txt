@@ -1034,7 +1034,7 @@ energy, forces, variance = pot(pos, types, box)
 ```
 
 An `ExprPot` child given as a dict takes the same keys: `u0`, `cutoff`, `psi`
-and `switch_width` for `"lj"`, and `De`, `a=, =re`, `cutoff` and `switch_width`
+and `switch_width` for `"lj"`, and `De`, `a`, `re`, `cutoff` and `switch_width`
 for `"morse"`.
 A key the dict leaves out keeps its default.
 
@@ -1117,7 +1117,7 @@ molecular dynamics, `ase.mep.NEB`, `ase.vibrations`, and
 
 The first argument is an rgpot potential object or a kind string.
 A kind string names any potential class of the build: the class name in any
-case, with or without the `Pot` suffix, with `_=, =-`, `.` and spaces ignored.
+case, with or without the `Pot` suffix, with `_`, `-`, `.` and spaces ignored.
 `lj`, `LJPot`, `morse`, `ljcluster`, `eam_al`, `sw`, `stillingerwebersi`,
 `tersoffsic`, `gromacs`, `openmm`, `ipi`, `expr` and `lennard-jones` all resolve
 when their build features are present.
@@ -1154,7 +1154,7 @@ parameterised for their own elements.
 | rgpot                                                             | ASE                                                                   |
 |-------------------------------------------------------------------|-----------------------------------------------------------------------|
 | `RgpotCalculator("lj", u0=e, psi=s, cutoff=rc)`                   | `LennardJones(epsilon=e, sigma=s, rc=rc, smooth=False)`               |
-| `RgpotCalculator("morse", De=e, a=r/r0, re=r0, cutoff=c2*r0, switch_width`(c2-c1)*r0)= | `MorsePotential(epsilon=e, rho0=r, r0=r0, rcut1=c1, rcut2=c2)` |
+| `RgpotCalculator("morse", De=e, a=r/r0, re=r0, cutoff=c2*r0, switch_width=(c2-c1)*r0)` | `MorsePotential(epsilon=e, rho0=r, r0=r0, rcut1=c1, rcut2=c2)` |
 | `RgpotCalculator("eam_al")`                                       | `EAM` with the closed form of `tests/python/eam_al_reference.py`      |
 
 With those arguments LJ and Morse agree with ASE to better than 1e-13 relative
@@ -2549,13 +2549,13 @@ Source: docs/orgmode/howto/engine-nblib.org
 URL: https://rgpot.rgoswami.me/howto/engine-nblib.html
 
 GROMACS ships a small C++ library, nblib, that builds a topology and evaluates
-its nonbonded and listed forces without running `mdrun`.
-rgpot can load it in process.
-The optional backend builds as `libnblib_engine` with
-`-Dwith_nblib=enabled`. It provides an engine-generic MD session whose forces
-come from nblib. Langevin dynamics, the hyperplane, the walls, the constraint
-force and the random stream are the driver OpenMM runs, so the two engines
-differ only in their forces.
+its nonbonded and listed forces without running `mdrun`. rgpot can load it in
+process.
+The optional backend builds as `libnblib_engine` with `-Dwith_nblib=enabled`.
+It provides an engine-generic MD session whose forces come from nblib.
+Langevin dynamics, the hyperplane, the walls, the constraint force and the
+random stream are the driver OpenMM runs, so the two engines differ only in
+their forces.
 
 GROMACS is linked into `libnblib_engine` only.
 `librgpot` loads that library with `dlopen`, so a program that links rgpot does
@@ -2579,11 +2579,11 @@ meson compile -C build
 `nblib_prefix` is the GROMACS install prefix.
 The library found there is `libnblib_gmx`.
 
-The meson tests are `nblib_session` (argon forces and energy against the
-shifted 12-6 closed form and the rgpot Lennard-Jones, the box round trip, and
-the typed neighbour status), `nblib_analytic` (the harmonic chain below),
-`md_engine_agreement` and `md_engine_analytic` (nblib against OpenMM). The
-last two need the OpenMM engine as well.
+The meson tests are
+`nblib_session` (argon forces and energy against the shifted 12-6 closed form and the rgpot Lennard-Jones, the box round trip, and the typed neighbour status), `nblib_analytic`
+(the harmonic chain below), `md_engine_agreement` and `md_engine_analytic`
+(nblib against OpenMM).
+The last two need the OpenMM engine as well.
 
 ### Topology text
 
@@ -2628,12 +2628,11 @@ end
 
 ### MD session
 
-The session uses the canonical `rgpot_md_session_*` C ABI in
-`CppCore/rgpot/ExternalPot/external_potentials.h`. nblib and OpenMM export the
-same vtable ABI from separate engine libraries. Use
-`rgpot_md_session_create("nblib", ..., topology, ..., ...)`; its loader uses
-the generic engine environment-variable lookup before its default library
-name.
+The session uses the canonical
+`rgpot_md_session_*` C ABI in `CppCore/rgpot/ExternalPot/external_potentials.h`.
+nblib and OpenMM export the same vtable ABI from separate engine libraries.
+Use `rgpot_md_session_create("nblib", ..., topology, ..., ...)`; its loader uses
+the generic engine environment-variable lookup before its default library name.
 
 | Call | Purpose |
 |------|---------|
@@ -2656,10 +2655,11 @@ step is the velocity Verlet map and `set_velocities` with \(-v\) reverses a
 trajectory.
 
 `run_langevin` restricts the dynamics to the plane \(n\cdot(x-p)=0\) with the
-projected BAOAB scheme of `rgpot/MDSession/ProjectedLangevin.hpp`. The step
-reports \(\lambda=-(n^T M^{-1}F)/(n^T M^{-1}n)\), whose mean on the plane is
-\(dF/dc\). A drift that ends outside a wall \(n_w\cdot x\le o_w\) is reflected in
-the mass-weighted metric, which conserves the kinetic energy, or rejected.
+projected BAOAB scheme of `rgpot/MDSession/ProjectedLangevin.hpp`.
+The step reports \(\lambda=-(n^T
+M^{-1}F)/(n^T M^{-1}n)\), whose mean on the plane is \(dF/dc\).
+A drift that ends outside a wall \(n_w\cdot x\le o_w\) is reflected in the
+mass-weighted metric, which conserves the kinetic energy, or rejected.
 The seed names a stream: the same seed continues it, a new seed starts one, and
 setting the positions or the velocities ends it, so the same seed after a new
 state replays.
@@ -2667,14 +2667,15 @@ state replays.
 #### Neighbour lists and walls
 
 The OpenMM session serves `rgpot_md_session_get_neighbors` from the rgpot
-neighbour builder. nblib has no neighbour callbacks: it builds its own pair
-list inside the force calculator and does not expose it, and it has no wall
-map, so a caller cannot pass the same neighbour list or wall set to both
-engines through a callback. The session therefore reports
-`RGPOT_MD_NLIST_UNSUPPORTED` for `get_neighbors` and `set_neighbors`, with a
-message that names the slot; `nblib_session` asserts that status. The planar
-walls of `run_langevin` are the shared mechanism and are the same on both
-engines, because they travel in the request and not in a callback.
+neighbour builder. nblib has no neighbour callbacks: it builds its own pair list
+inside the force calculator and does not expose it, and it has no wall map, so a
+caller cannot pass the same neighbour list or wall set to both engines through a
+callback.
+The session therefore reports `RGPOT_MD_NLIST_UNSUPPORTED` for `get_neighbors`
+and `set_neighbors`, with a message that names the slot; `nblib_session` asserts
+that status.
+The planar walls of `run_langevin` are the shared mechanism and are the same on
+both engines, because they travel in the request and not in a callback.
 
 ### nblib behaviours the backend works around
 
@@ -2682,12 +2683,12 @@ engines, because they travel in the request and not in a callback.
   constraints.
   Water is therefore flexible: a bond and an angle replace SETTLE.
 - The nonbonded Lennard-Jones is potential-shifted and the Coulomb cut-off is
-  reaction field with \(\epsilon_{rf}=1\).
-  `grompp` warns that \(\epsilon_{rf}=\epsilon_r\); the reference test passes
-  `-maxwarn 1` for that warning only.
+  reaction field with
+  \(\epsilon_{rf}=1\). `grompp` warns that \(\epsilon_{rf}=\epsilon_r\); the
+  reference test passes `-maxwarn 1` for that warning only.
 - The CPU nonbonded calculator adds the energies of each call to those of the
-  last; the library takes the difference, and recreates the calculator every
-  256 calls so the running sum stays small.
+  last; the library takes the difference, and recreates the calculator every 256
+  calls so the running sum stays small.
 - The improper-dihedral forces of nblib have the wrong sign.
   The library puts impropers in a separate calculator and subtracts its forces.
 - The listed virial assumes whole molecules; the library unwraps each molecule
@@ -2699,30 +2700,37 @@ engines, because they travel in the request and not in a callback.
 closed form to a few thousand ulp, the Lennard-Jones evaluator of rgpot, and
 reads the box back.
 `nblib_analytic` and `md_engine_analytic` run a chain of three atoms with
-harmonic bonds of rest length zero on a hyperplane. The kinetic energy
-\(4kT\), the potential energy \(5kT/2+c^2/2s\) and the mean constraint force
-\(dF/dc=c/s\) are known in closed form; each sampled mean, with its
-batch-means standard error, must lie within five standard errors of the closed
-form, and the OpenMM and nblib means must agree within their pooled error.
+harmonic bonds of rest length zero on a hyperplane.
+The kinetic energy \(4kT\), the potential energy \(5kT/2+c^2/2s\) and the mean
+constraint force \(dF/dc=c/s\) are known in closed form; each sampled mean, with
+its batch-means standard error, must lie within five standard errors of the
+closed form, and the OpenMM and nblib means must agree within their pooled
+error.
 `md_engine_agreement` compares argon energies and forces between the engines,
-including a periodic image and a reseed, and a harmonic dimer's temperature
-and mean constraint force.
+including a periodic image and a reseed, and a harmonic dimer's temperature and
+mean constraint force.
 
 ## Run a GROMACS run input file
 
 A spec of one line, `tpr PATH`, opens a TPR instead of a topology text.
-The session evaluates the forces of the file in process: nbnxm, PME, listed terms and position restraints, in its triclinic cell.
-Virtual sites are built from the atoms that carry mass and their forces are spread back, so the session exposes the massive atoms in TPR order.
+The session evaluates the forces of the file in process: nbnxm, PME, listed
+terms and position restraints, in its triclinic cell.
+Virtual sites are built from the atoms that carry mass and their forces are
+spread back, so the session exposes the massive atoms in TPR order.
 The SETTLE and LINCS distances of the file hold in every run.
 
 The option string `threads=N` sets the OpenMP threads.
-The thermostat, the time step and the integrator come from each call and not from the file.
+The thermostat, the time step and the integrator come from each call and not
+from the file.
 The cell is fixed to the cell of the file.
 Positions must keep the atoms of one constrained group in one periodic image.
 
-A file that uses free-energy perturbation, pulling, AWH, walls, freeze groups, pressure coupling, LJ-PME, an Ewald surface term, shells or NMR restraints is refused with a message naming the feature.
+A file that uses free-energy perturbation, pulling, AWH, walls, freeze groups,
+pressure coupling, LJ-PME, an Ewald surface term, shells or NMR restraints is
+refused with a message naming the feature.
 
-The TPR session calls libgromacs directly and needs the headers of the trees that built `nblib_prefix`:
+The TPR session calls libgromacs directly and needs the headers of the trees
+that built `nblib_prefix`:
 
 ```bash
 meson setup build -Dwith_nblib=enabled -Dnblib_prefix=$PREFIX \
@@ -3476,7 +3484,7 @@ The same sum is reachable from C++, from Python, through `PotentialConfig` on
 | `rgpot::D2CpmdPot` | `d2cpmd` | OpenCPMD's built-in empirical D2, minimum image, to subtract from runs that had it on |
 | `rgpot::D4Pot` | `d4` | Grimme's D4 through dftd4, molecular or periodic with `periodic` set; needs `-Dwith_dftd4=true` |
 
-`D2Pot` takes BLYP's `s6`, `d= and =sr` by default, from the paper and the dftd3
+`D2Pot` takes BLYP's `s6`, `d` and `sr` by default, from the paper and the dftd3
 program; a functional name takes another set from dftd3's table.
 Its default 150 Angstrom cutoff converges the lattice sum to sqrt(eps) Ha per
 atom; [the C++ reference](https://rgpot.rgoswami.me/reference/cpp_potentials.html) lists the
@@ -5380,18 +5388,18 @@ names in [Potential names](https://rgpot.rgoswami.me/reference/potential_names.h
 
 #### Functional form
 
-With `r= the pair distance, the kernel in =CppCore/rgpot/LennardJones/LJPot.cc`
+With `r` the pair distance, the kernel in `CppCore/rgpot/LennardJones/LJPot.cc`
 computes, for every pair with `r` up to the cutoff:
 
 - the bare pair energy `v(r) = 4 u0 [(psi/r)^12 - (psi/r)^6]`, evaluated as
   `4 u0 a (a - 1)` with `a = (psi^2 / r^2)^3`;
 - with `switch_width` 0, the pair energy `v(r) - v(cutoff)`, so the energy is
   zero at the cutoff and the force jumps there;
-- with `switch_width` `w= above 0, the pair energy =v(r) S(t)` and no shift,
+- with `switch_width` `w` above 0, the pair energy `v(r) S(t)` and no shift,
   where `t = clamp((r - (cutoff - w)) / w, 0, 1)` and
   `S(t) = 1 - 10 t^3 + 15 t^4 - 6 t^5` (the C^2 quintic of
   `CppCore/rgpot/PairSwitch.hpp`);
-- the force on atom `i= along =d = r_i - r_j` is `fscale * d` with
+- the force on atom `i` along `d = r_i - r_j` is `fscale * d` with
   `fscale = 24 u0 a (2 a - 1) / r^2`; with the switch on, `fscale` is that value
   times `S(t)` minus `v(r) S'(r) / r`, where `S'` is the derivative of `S` with
   respect to `r`.
@@ -5663,7 +5671,7 @@ Lennard-Jones.
 In C++ it is `rgpot::MorsePot`, built from `rgpot::MorseConfig` (header
 `CppCore/rgpot/Morse/MorsePot.hpp`).
 In Python it is `rgpot.MorsePot(De, a, re, cutoff, switch_width)`.
-`pair_coeff * * Morse`, the PLUMED action and `rgpot-eval Morse` take the options `de`, `a=, =re`, `cutoff` and `switch_width`,
+`pair_coeff * * Morse`, the PLUMED action and `rgpot-eval Morse` take the options `de`, `a`, `re`, `cutoff` and `switch_width`,
 with 9.5 Angstrom as the cutoff when the host has none.
 `potserv <port> Morse` loads the platinum defaults.
 The class is documented in
@@ -5694,7 +5702,7 @@ Atomic numbers are not read.
 | Parameter      | Value  | Unit       | Where it is set                  |
 |----------------|--------|------------|----------------------------------|
 | `De`           | 0.7102 | eV         | `MorseConfig::De`, option `de`   |
-| `a=            | 1.6047 | 1/Angstrom | =MorseConfig::a`, option `a`     |
+| `a`            | 1.6047 | 1/Angstrom | `MorseConfig::a`, option `a`     |
 | `re`           | 2.8970 | Angstrom   | `MorseConfig::re`, option `re`   |
 | `cutoff`       |    9.5 | Angstrom   | `MorseConfig::cutoff`            |
 | `switch_width` |    0.0 | Angstrom   | `MorseConfig::switch_width`      |
@@ -5848,15 +5856,15 @@ source and differ from the published values in the last digits.
 |------------------|----------------------|-------------|------------------|
 | `cut_inner`      | 2.0                  | Angstrom    | `ZBLConfig`      |
 | `cut_global`     | 2.5                  | Angstrom    | `ZBLConfig`      |
-| weight 1 (`c=)   | 0.18175              | none        | =kC4`            |
+| weight 1 (`c`)   | 0.18175              | none        | `kC4`            |
 | weight 2         | 0.50986              | none        | `kC3`            |
 | weight 3         | 0.28022              | none        | `kC2`            |
 | weight 4         | 0.02817              | none        | `kC1`            |
-| exponent 1 (`d=) | 3.19980              | none        | =kD1`            |
+| exponent 1 (`d`) | 3.19980              | none        | `kD1`            |
 | exponent 2       | 0.94229              | none        | `kD2`            |
 | exponent 3       | 0.40290              | none        | `kD3`            |
 | exponent 4       | 0.20162              | none        | `kD4`            |
-| power of `Z=     | 0.23                 | none        | =kPZBL`          |
+| power of `Z`     | 0.23                 | none        | `kPZBL`          |
 | length prefactor | 0.46850              | Angstrom    | `kA0`            |
 | `e2`             | 14.399645            | eV Angstrom | `kQQR2E`         |
 
@@ -5961,7 +5969,7 @@ In C++ it is `rgpot::SuttonChenPot`, built from `rgpot::SuttonChenConfig`
 There is also a C entry point, `rgpot_sutton_chen_energy_forces`.
 Python has no class for it and `potserv` has no type for it.
 `pair_coeff * * SuttonChen`, the PLUMED action and `rgpot-eval SuttonChen` take
-`preset` (`platinum` or `gold`), `epsilon`, `c=, =a`, `n=, =m` and `cutoff`, and
+`preset` (`platinum` or `gold`), `epsilon`, `c`, `a`, `n`, `m` and `cutoff`, and
 build it periodic with the stress on.
 The convention, the stress, the thread rules and the checks are in the
 [Sutton-Chen reference](https://rgpot.rgoswami.me/reference/sutton_chen.html) and are not
@@ -5979,7 +5987,7 @@ From the header of `CppCore/rgpot/SuttonChen/SuttonChenPot.cc` and the kernel:
 - only pairs with
   `r_ij` up to `cutoff` enter, in the density and the pair term, with no energy shift; an atom with `rho_i`
   not above 0 has no embedding term;
-- the force on atom `i= along =d = r_i - r_j` is `fscale * d` with
+- the force on atom `i` along `d = r_i - r_j` is `fscale * d` with
   `fscale = -(dE/dr) / r`, including the embedding weight
   `epsilon c / (2 sqrt(rho))` of both atoms;
 - `epsilon` sets the energy unit and `a` the length unit, so a reduced result is
@@ -6006,16 +6014,16 @@ The rows are the fields of `rgpot::SuttonChenConfig`, in that order.
 
 The defaults are in `CppCore/rgpot/SuttonChen/SuttonChenPot.hpp`.
 The two rows are the functions `sutton_chen_platinum()` and `sutton_chen_gold()`
-in `CppCore/rgpot/SuttonChen/SuttonChenScales.cc`, which set `c=, =n` and `m` to
+in `CppCore/rgpot/SuttonChen/SuttonChenScales.cc`, which set `c`, `n` and `m` to
 the table values and take only `epsilon` and `a` from the row.
 The
 `pair_coeff` and `rgpot-eval` route sets `periodic` and `stress` true (`engines/pot_spec.cpp`).
 
 The numbers agree with the literature.
 Table I of Çağın, Dereli, Uludoğan and Tomak (arXiv:cond-mat/9709114) lists, as
-`a=, =D` (in units of 1e-2 eV), `c=, =m`, `n`: Pt 3.92, 1.98330, 34.408, 8, 10
+`a`, `D` (in units of 1e-2 eV), `c`, `m`, `n`: Pt 3.92, 1.98330, 34.408, 8, 10
 and Au 4.08, 1.27930, 34.408, 8, 10.
-Doye and Wales write that for Au and Pt `n= is 10, =m` is 8 and `c` is 34.408,
+Doye and Wales write that for Au and Pt `n` is 10, `m` is 8 and `c` is 34.408,
 that their tables are in reduced units with `epsilon` and `a` equal to 1, and
 that the energy is rescaled by `epsilon` and the coordinates by `a`.
 The first line of the deposited point file read by the example below carries the
@@ -6527,7 +6535,7 @@ with `phi -> phi - 2 g rho` leaves the energy unchanged, and that scaling `rho`
 by a constant while rescaling `F` does too.
 The Fortran kernels evaluate it in gather form (see
 [Fortran kernels](https://rgpot.rgoswami.me/explanation/fortran-kernels.html)): densities first,
-then `F= and =F'` for every atom, then the force.
+then `F` and `F'` for every atom, then the force.
 
 ### `CuH2` copper and hydrogen
 
@@ -6557,7 +6565,7 @@ of a neighbour picks the density it gives.
 
 - Pair term, once per pair with `r < rcut`, for the pairs `cucu`, `hcu` and
   `hh`: `da * e^(-alpha_a r) + db * e^(-alpha_b r) - phicut`, in eV.
-- Density an atom of species `s= gives at distance =r`:
+- Density an atom of species `s` gives at distance `r`:
   `rho_s(r) = scale_s * r^neta_s * g_s(r) - rhocut_s` with `g_s(r) = e^(-beta_a_s r) + gamma_s * e^(-beta_b_s r)`.
   For copper `neta` is 6 and `gamma` is 512.
   For hydrogen `neta` and `gamma` are 0, so the density is
@@ -6567,7 +6575,7 @@ of a neighbour picks the density it gives.
   in eV.
   There is no constant term, so an isolated atom has no embedding energy.
 - Total: `E = sum_{i<j} phi(r_ij) + sum_i F_{Z_i}(rho_i)`, with
-  `rho_i` the sum over neighbours `j= of the density of the species of =j` at `r_ij`.
+  `rho_i` the sum over neighbours `j` of the density of the species of `j` at `r_ij`.
 - Shifts: `phicut` and `rhocut` are the pair energy and the density at `rcut`
   before the shift.
   Subtracting them makes both vanish at the cutoff, and a pair at `r >` rcut= is
@@ -6765,7 +6773,7 @@ For the cell-list aluminium of the same family with a shorter cutoff, see
 #### Functional form
 
 The kernel is `CppCore/rgpot/fortran/rgpot_eam_al.f90`.
-With `s= for =density_scale`, `g= for =g_transform` and
+With `s` for `density_scale`, `g` for `g_transform` and
 `c_k` for `embed_coeff(k)`:
 
 - Density: `rho(r) = s * (h(r) - h(rcut))` with
@@ -6773,7 +6781,7 @@ With `s= for =density_scale`, `g= for =g_transform` and
   Here `beta_a` and `beta_b` are `density_decay_a` and `density_decay_b`.
 - Pair term, in eV: `phi(r) = p(r) - p(rcut) - 2 g rho(r)` with
   `p(r) = A e^(-a r) + B e^(-b r)`.
-  Here `A=, =a`, `B= and =b` are `pair_amp_a`, `pair_decay_a`, `pair_amp_b` and
+  Here `A`, `a`, `B` and `b` are `pair_amp_a`, `pair_decay_a`, `pair_amp_b` and
   `pair_decay_b`.
 - Embedding: `F(rho) = g rho + sum_{k=1..8} c_k rho^k`, in eV.
 - Total: `E = sum_{i<j} phi(r_ij) + sum_i F(rho_i)`.
@@ -6986,7 +6994,7 @@ Distances are in Angstrom and energies in eV.
   `sband_amp * r^3 * e^(-2 sband_decay r)`.
 - Embedding, for a density at or above 1e-35 and zero below:
   `F_d(rho) = -sqrt(rho) + fe_emb_quadratic * rho^2 + fe_emb_quartic * rho^4` and `F_s(rho) = a sqrt(rho) + b rho^2 + c rho^4`,
-  with `a=, =b` and `c= the =sband_emb_sqrt`, `sband_emb_quadratic` and
+  with `a`, `b` and `c` the `sband_emb_sqrt`, `sband_emb_quadratic` and
   `sband_emb_quartic` entries.
   The s-band function is the same for both species.
 
@@ -7228,7 +7236,7 @@ The kernel is the Asap code under `CppCore/rgpot/EMT/Asap`, in `EMT.cpp`,
 `EMTParameterProvider.h` and the two parameter providers.
 Lengths are in Angstrom; the provider tables below give the lengths in bohr and
 the code converts them with 0.5291772.
-With `beta = 1.809` and, for each atom `i= of element =e` with neighbours `j`:
+With `beta = 1.809` and, for each atom `i` of element `e` with neighbours `j`:
 
 - Fermi weight: `w(r) = 1 / (1 + exp(slope * (r - rc)))`.
   The cutoff is `rc = (beta * s0 / 2) * (sqrt(3) + sqrt(4))`, with `s0` the
@@ -7237,8 +7245,8 @@ With `beta = 1.809` and, for each atom `i= of element =e` with neighbours `j`:
   `r1 = rc * 2 * sqrt(4) / (sqrt(3) + sqrt(4))`.
   The weight is 1/10000 at `r1`, and the neighbour list reaches
   `1.04500185048 * rc`.
-- Density sums over the neighbours `j= of atom =i`, with `chi = n0_b / n0_a` for
-  a neighbour of element `b= and an atom of element =a`:
+- Density sums over the neighbours `j` of atom `i`, with `chi = n0_b / n0_a` for
+  a neighbour of element `b` and an atom of element `a`:
   `sigma1 = sum_j chi * w(r_ij) * exp(-eta2 * (r_ij - beta * s0_e))` and
   `sigma2 = sum_j w(r_ij) * exp(-(kappa / beta) * (r_ij - beta * s0_e))`.
   `sigma1` is floored at 1e-9.
@@ -7252,7 +7260,7 @@ With `beta = 1.809` and, for each atom `i= of element =e` with neighbours `j`:
   lattice constant has an energy near zero.
 - The factors `gamma1` and `gamma2` come from the first three fcc shells (12, 6
   and 24 neighbours at
-  `d_k = sqrt(k) * beta * s0`) with the weight `w=, normalised by the nearest-neighbour term: =gamma1 = sum_k w_k * pop_k * e^(-eta2 d_k) / (12 * e^(-beta s0 eta2))` and `gamma2 = sum_k w_k * pop_k * e^(-(kappa / beta) d_k) / (12 * e^(-kappa s0))`.
+  `d_k = sqrt(k) * beta * s0`) with the weight `w`, normalised by the nearest-neighbour term: `gamma1 = sum_k w_k * pop_k * e^(-eta2 d_k) / (12 * e^(-beta s0 eta2))` and `gamma2 = sum_k w_k * pop_k * e^(-(kappa / beta) d_k) / (12 * e^(-kappa s0))`.
 
 #### Parameters
 
@@ -7454,7 +7462,7 @@ There is no stress.
 #### Functional form
 
 The kernel is `CppCore/rgpot/EAM/EAM.cpp`.
-For a pair at distance `r= with =r <` r_cut=:
+For a pair at distance `r` with `r <` r_cut=:
 
 - Density: `rho(r) = r^6 * (e^(-beta1 r) + 512 e^(-2 beta2 r))`.
 - Pair term: `phi(r) = Dm * ((1 - e^(-alpha (r - Rm)))^2 - 1)`, in eV, once per
@@ -7942,7 +7950,7 @@ With `rho = r / sigma` and `alpha` the reduced cutoff:
 - Pair term, once per pair with `r < alpha * sigma`:
   `epsilon * A * (beta * rho^(-p) - 1) * exp(1 / (rho - alpha))`.
 - Three-body term, for each centre atom `i` and each unordered pair of its
-  neighbours `j= and =k` inside the cutoff:
+  neighbours `j` and `k` inside the cutoff:
   `epsilon * lambda * w_ij * w_ik * (cos(theta_jik) + 1/3)^2`, with `w_ij = exp(gamma / (rho_ij - alpha))`.
 - The cutoff is `alpha * sigma` = 3.77118 Angstrom.
   Both terms go smoothly to zero there.
@@ -7978,7 +7986,7 @@ A caller of `SWPot` has no way to change them.
 
 The epsilon is the product `2.16826 * 1.06767385`, two literals copied from
 eOn's `SWFortran.f90`; the source says the factor 1.06767385 is untraced.
-The rows from `sigma` to `p= other than =epsilon` are the 1985 values (see
+The rows from `sigma` to `p` other than `epsilon` are the 1985 values (see
 `SWSi1985`); lambda is 21 and is not rescaled.
 `s0` and `a0` belong to the optional binary term and are not used by default.
 
@@ -8239,7 +8247,7 @@ The energy is `E = sum_i E_i` with
 - Angular function: `h = lam * (1 - exp(-x^2) + (delta / qo) * x^2)` with
   `x = (cos(theta) + tau(Z)) * sqrt(qo) * exp(-mu * Z / 2)`, and
   `tau(Z) = u1 + u2 * (u3 * exp(-u4 * Z) - exp(-2 * u4 * Z))`.
-- The cutoff is the larger of `a= and =b`, 3.1213820 Angstrom.
+- The cutoff is the larger of `a` and `b`, 3.1213820 Angstrom.
   A triplet whose two ends are one atom reached through two periodic images is
   dropped, so the force is the exact gradient of the reported energy.
 - The call throws `std::runtime_error` when the smallest perpendicular width of
@@ -8251,7 +8259,7 @@ The energy is `E = sum_i E_i` with
 The values are the defaults of `edip_params_t` in
 `CppCore/rgpot/fortran/rgpot_edip.f90`, copied from the eOn kernel (Bazant's
 routine as adapted by Goedecker).
-The kernel splits the paper's `A= and =B` into `cap_a`, `cap_b` and `palp`; see
+The kernel splits the paper's `A` and `B` into `cap_a`, `cap_b` and `palp`; see
 below the table.
 A caller of `EDIPPot` has no way to change them.
 
@@ -8279,7 +8287,7 @@ A caller of `EDIPPot` has no way to change them.
 
 The set is Table I of Justo and coauthors (1998), with the four `u` values from
 the text after their Eq. (10).
-Their table prints `A= = 7.9821730 eV, =B` = 1.5075463 Angstrom and `eta` =
+Their table prints `A` = 7.9821730 eV, `B` = 1.5075463 Angstrom and `eta` =
 0.2523244.
 The kernel's `delta / qo` is 78.7590539 / 312.1341346 = 0.252324, and its
 `cap_a * palp` is 7.98217305 eV.
@@ -8288,7 +8296,7 @@ The pair term `cap_a * (cap_b)^rh` is 13.1088543 eV Angstrom^rh against
 With `cap_a * palp` equal to `A`, the kernel's pair term is the paper's to the
 digits the paper prints.
 The paper uses one length `a` for the coordination cutoff, the pair cutoff and
-the three-body cutoff; the kernel keeps `b= for the first and =a` for the other
+the three-body cutoff; the kernel keeps `b` for the first and `a` for the other
 two, and both are 3.1213820.
 
 #### Example
@@ -8402,10 +8410,10 @@ For each atom `i`:
 - Density:
   `dens_i = sum_j rho(r_ij) + sum_(j<k) f(r_ij) * f(r_ik) * g(cos(theta_jik))`.
 - Energy: `E_i = sum_j phi(r_ij) / 2 + U(dens_i)`, and `E = sum_i E_i`.
-- `phi`, `rho`, `f=, =U` and `g` are cubic splines on uniform knots.
+- `phi`, `rho`, `f`, `U` and `g` are cubic splines on uniform knots.
   Outside the knot range each is continued linearly with the end slope.
 - The neighbour cutoff is `lenosky_params_t%cutoff`, 4.5 Angstrom.
-  `rho` and `f= end at 3.5 Angstrom with a last knot value of 0.0, and =phi`
+  `rho` and `f` end at 3.5 Angstrom with a last knot value of 0.0, and `phi`
   ends at 4.5 Angstrom with a last knot value of 0.0.
 - The force call does not write a stress and leaves `has_stress` as set.
 
@@ -8556,7 +8564,7 @@ The kernels are
 For silicon alone:
 
 - Energy: `E = 1/2 * sum_i sum_j fc(r_ij) * (fR(r_ij) + b_ij * fA(r_ij))`, with
-  `j= running over the atoms other than =i`.
+  `j` running over the atoms other than `i`.
 - Repulsion and attraction: `fR(r) = A * exp(-lambda1 * r)` and
   `fA(r) = -B * exp(-lambda2 * r)`.
 - Cutoff taper: `fc(r) = 1` for `r <` R=,
@@ -8564,7 +8572,7 @@ For silicon alone:
   `fc(r) = 0` for `r >` S=.
 - Bond order: `b_ij = chi * (1 + (beta * zeta_ij)^n)^(-1 / (2 * n))`, where
   `zeta_ij = sum_k fc(r_ik) * g(cos(theta_jik))` runs over the atoms `k` other
-  than `i= and =j`.
+  than `i` and `j`.
 - Angular function: `g(c) = 1 + C^2 / d^2 - C^2 / (d^2 + (h - c)^2)`, where `C`
   is the parameter `c` below.
 - The coordination factor `exp(lambda3^m (r_ij - r_ik)^m)` is identically 1
@@ -8579,8 +8587,8 @@ For silicon alone:
 #### Parameters
 
 `kSi` in
-`CppCore/rgpot/Tersoff/TersoffSiC.cc` (fields `big_a`, `big_b`, `lambda1`, `lambda2`, `beta`, `n=, =c`, `d=, =h`, `rin`, `rout`, `gamma`) and the defaults of `tersoff_params_t` in `CppCore/rgpot/fortran/rgpot_tersoff.f90`
-(fields `a=, =b`, `lambda1`, `lambda2`, `beta`, `n=, =c`, `d=, =h`, `r=, =s`,
+`CppCore/rgpot/Tersoff/TersoffSiC.cc` (fields `big_a`, `big_b`, `lambda1`, `lambda2`, `beta`, `n`, `c`, `d`, `h`, `rin`, `rout`, `gamma`) and the defaults of `tersoff_params_t` in `CppCore/rgpot/fortran/rgpot_tersoff.f90`
+(fields `a`, `b`, `lambda1`, `lambda2`, `beta`, `n`, `c`, `d`, `h`, `r`, `s`,
 `chi`) hold the same numbers:
 
 | Parameter            | Symbol  | Value              | Unit          |
@@ -8600,7 +8608,7 @@ For silicon alone:
 The Fortran comment names this set "Tersoff's Si(C)", the parameterization of
 the 1988 paper below, but its numbers are the silicon column the C++ kernel
 documents as the 1989 set.
-The LAMMPS file `SiCGe.tersoff` lists Si(C) with `d= 16.218, =h` -0.59826 and
+The LAMMPS file `SiCGe.tersoff` lists Si(C) with `d` 16.218, `h` -0.59826 and
 `beta` 1.0999e-6, and the 1989 silicon entry (its Si(D)) with the values in the
 table, so the rgpot numbers are the 1989 ones.
 `chi` for the silicon-carbon cross term is 0.9776 in the C++ class.
@@ -9017,7 +9025,7 @@ The cutoff and the switching width are the fields of `rgpot::WaterConfig`.
 | O-H length `r_e`   | 0.9572             | Angstrom        | `re_`            |
 | H-O-H `theta_e`    | 104.52             | degree          | `thetae_`        |
 | `theta_e`, ccl.cpp | 1.82421813418447321 | radian | `thetaEq_` |
-| H charge `q=       | 0.520              | e               | =charge_`        |
+| H charge `q`       | 0.520              | e               | `charge_`        |
 | O to M site        | 0.150              | Angstrom        | `ron_`           |
 | LJ sigma           | 3.154              | Angstrom        | `sigma_`         |
 | LJ epsilon         | 78.0               | K               | `epsilon_`       |
@@ -9201,7 +9209,7 @@ The kernel is `CppCore/rgpot/Water/spce_ccl.cpp`.
 |---------------------|-------------|-----------------|--------------------|
 | O-H length `r_SPC`  | 1.0         | Angstrom        | `roh_`             |
 | H-O-H `theta_SPC`   | 1.91063     | radian          | `theta_`           |
-| H charge `q=        | 0.4238      | e               | =charge_`          |
+| H charge `q`        | 0.4238      | e               | `charge_`          |
 | LJ sigma            | 3.16556     | Angstrom        | `sigma_`           |
 | LJ epsilon          | 0.00673853  | eV              | `epsilon_`         |
 | r^-12 coefficient   | 27291.6     | eV Angstrom^12  | `A_`               |
@@ -9221,7 +9229,7 @@ are the `r^-12` and `r^-6` coefficients, and `4 eps sigma^12` with the table
 values is 27291.8 eV Angstrom^12 (computed).
 The source writes the original
 SPC/E numbers, in a branch the build does not use, as `(0.3428 nm)^12` and `(0.37122 nm)^6` times kJ/mol,
-and notes that its `A= and =B` are inverted compared with the original
+and notes that its `A` and `B` are inverted compared with the original
 publication.
 Evaluating those expressions gives sigma 3.16556 Angstrom and eps 0.00673853 eV
 (computed), which are the values the build uses.
@@ -9572,7 +9580,7 @@ that runs and the literature.
 
 A call takes the natural coordinates from the first `dimensions()` doubles of
 `ForceInput.pos` (Angstrom), returns the energy in eV, and writes the force
-(eV/Angstrom) as the negative gradient into the same entries of `F=. =evaluateCoordinates` returns the energy, the gradient and the product `H v` for a direction `v= in one call, which is how the examples read the curvature. Only =MullerBrown` has a Python class (`rgpot.MullerBrownPot`); the other eight have none. None is a name of `rgpot-eval` or of `pair_coeff`, because the name list of `engines/pot_spec.cpp` does not contain them; see [[file:../reference/potential_names.org][Potential
+(eV/Angstrom) as the negative gradient into the same entries of `F`. `evaluateCoordinates` returns the energy, the gradient and the product `H v` for a direction `v` in one call, which is how the examples read the curvature. Only `MullerBrown` has a Python class (`rgpot.MullerBrownPot`); the other eight have none. None is a name of `rgpot-eval` or of `pair_coeff`, because the name list of `engines/pot_spec.cpp` does not contain them; see [[file:../reference/potential_names.org][Potential
 names and options]]. They are reachable from C++, from `potserv` (see
 [command line](https://rgpot.rgoswami.me/reference/cli.html)), from the classical engine (see
 [Engine plugin ABI](https://rgpot.rgoswami.me/reference/engine_abi.html)) and from the C model
@@ -9696,7 +9704,7 @@ Use it for a first test of a saddle-search or path method, because it is cheap,
 smooth and the stationary points are well known.
 
 - C++ :: `rgpot::MullerBrownPot` in `CppCore/rgpot/Models/ModelPots.hpp`.
-- Python :: `rgpot.MullerBrownPot`, with optional `amplitude`, `a=, =b`, `c`,
+- Python :: `rgpot.MullerBrownPot`, with optional `amplitude`, `a`, `b`, `c`,
   `x0` and `y0` lists and an analytic Hessian-vector product.
 - `rgpot-eval`, `pair_coeff` :: none.
 - `potserv` :: `MullerBrown`.
@@ -9722,7 +9730,7 @@ There is no cutoff or shift, and the coordinate count must be 2.
 #### Parameters
 
 The default constants live in `MullerBrownConfig` of
-`CppCore/rgpot/Models/MullerBrownConfig.hpp`, in the arrays `amplitude`, `a=, =b`, `c=, =x0` and `y0`, which `muller` in `CppCore/rgpot/Models/ModelPots.cc`
+`CppCore/rgpot/Models/MullerBrownConfig.hpp`, in the arrays `amplitude`, `a`, `b`, `c`, `x0` and `y0`, which `muller` in `CppCore/rgpot/Models/ModelPots.cc`
 evaluates.
 They can be overridden through `MullerBrownPot(MullerBrownConfig)` in C++ or
 `rgpot.MullerBrownPot` in Python; the zero-argument constructor uses the
@@ -12223,9 +12231,10 @@ The class entries are under "ORCA through liborcac" in
 
 The energy is the one ORCA reports for the session.
 `liborcac` writes the input, runs ORCA and reads the `.engrad`.
-In `CppCore/rgpot/ORCACPot/ORCACPot.cc` the Hartree energy is multiplied by
-`units::HARTREE_TO_EV`, and each Hartree/Bohr gradient component is multiplied
-by the negative of `units::HARTREE_BOHR_TO_EV_ANGSTROM`.
+In
+`CppCore/rgpot/ORCACPot/ORCACPot.cc` the Hartree energy is multiplied by `units::HARTREE_TO_EV`, and each Hartree/Bohr
+gradient component is multiplied by the negative of
+`units::HARTREE_BOHR_TO_EV_ANGSTROM`.
 ORCA has no periodic cell.
 The box is unused, `caps()` reports `Reentrancy::PerInstance` and
 `periodic = false`, and the call writes no stress.
@@ -12234,12 +12243,12 @@ The box is unused, `caps()` reports `Reentrancy::PerInstance` and
 
 The C++ config is `ORCACConfig`, filled by the `orca` arm from `ORCAParams`.
 `orcac_config_init` sets the C defaults that fit in the caller's
-`struct_size`: multiplicity 1, nprocs 1, maxcore_mb 0, timeout_s 0 and
-`ORCAC_GUESS_FRESH`.
-A null `method` is `"HF"` and a null `basis` is `"STO-3G"`, from the comments
-on `OrcaCConfig` in `orcac.h`.
-There is no runnable example on this page: a force needs `liborcac` and an
-ORCA executable, and this tree does not ship a numerical ORCA result.
+`struct_size`: multiplicity 1, nprocs 1, maxcore_mb 0,
+timeout_s 0 and `ORCAC_GUESS_FRESH`.
+A null `method` is `"HF"` and a null `basis` is `"STO-3G"`, from the comments on
+`OrcaCConfig` in `orcac.h`.
+There is no runnable example on this page: a force needs `liborcac` and an ORCA
+executable, and this tree does not ship a numerical ORCA result.
 
 #### Literature
 
@@ -12252,8 +12261,8 @@ No further paper is cited here.
 
 `EnginePot` (`CppCore/rgpot/EnginePot/EnginePot.hpp`) is `PotType::Engine`.
 It opens the first candidate library that exports `rgpot_engine_create`,
-`rgpot_engine_destroy` and `rgpot_engine_force`, and creates one engine
-instance from the configuration bytes the caller passes.
+`rgpot_engine_destroy` and `rgpot_engine_force`, and creates one engine instance
+from the configuration bytes the caller passes.
 `rgpot::makePotential` returns it for the `metatomic`, `uma` and `plugin` arms,
 and for `xtb` in a build without `-Dwith_xtb`.
 The search order for each arm is in the `makePotential` entry of
@@ -12266,9 +12275,9 @@ The library stays mapped for the life of the process.
 There is no formula in rgpot.
 `rgpot_engine_force` supplies the energy and forces.
 The `makePotential` entry states those units as Angstrom, eV and eV/Angstrom.
-The constructor throws `std::runtime_error` when no candidate opens, the
-library reports itself unavailable or another ABI major, or
-`rgpot_engine_create` fails.
+The constructor throws
+`std::runtime_error` when no candidate opens, the library reports itself unavailable or another ABI major, or `rgpot_engine_create`
+fails.
 The message names every path tried.
 
 #### Parameters
@@ -12278,8 +12287,8 @@ not fields of this class.
 For the in-tree engines that message is a word-aligned Cap'n Proto flat array
 whose root is the backend's params struct.
 `label` is the name used in messages.
-There is no single geometry on this page: the energy belongs to the library
-the caller opened.
+There is no single geometry on this page: the energy belongs to the library the
+caller opened.
 
 #### Literature
 
@@ -12372,7 +12381,7 @@ Distances are in bohr and the dispersion energy is negative.
   `E2 = - sum_{i<j} C6_ij (s6 / (r^6 + R0^6) + s8 Q_ij / (r^8 + R0^8))`.
 - `Q_ij = 3 r4r2_i r4r2_j` and `R0 = a1 sqrt(Q_ij) + a2`.
   `r4r2_i = sqrt(0.5 t_Z sqrt(Z))` where `t_Z` is the tabulated ratio of
-  expectation values of `r^4` and `r^2` for element `Z= (=kD3R4OverR2` in
+  expectation values of `r^4` and `r^2` for element `Z` (`kD3R4OverR2` in
   `CppCore/rgpot/LongRange/D3Tables.inc`).
 - Reference weighting:
   `C6_ij = sum_{ab} w_a(CN_i) w_b(CN_j) C6ref(Z_i a, Z_j b)`, with
@@ -12740,7 +12749,7 @@ A dispersion correction is the same pattern with a library child:
 `ExprPot("method + d3", terms)`, where `d3` is a `D3Pot` and `method` any other
 `PotentialBase`.
 The Lennard-Jones and Morse parameters above are the defaults of `LJConfig`
-(with the values shown) and `MorseConfig` (`De` 0.7102, `a= 1.6047, =re` 2.8970,
+(with the values shown) and `MorseConfig` (`De` 0.7102, `a` 1.6047, `re` 2.8970,
 `cutoff` 9.5).
 
 #### Literature
@@ -12946,7 +12955,7 @@ The code is in `CppCore/rgpot/LongRange/Electro.cc`.
 - `E_recip = (2 pi ke / V) sum_{m nonzero}`
   `exp(-k^2 / (4 alpha^2)) / k^2 |S(k)|^2` with `S(k) = sum_i q_i exp(i k.r_i)`
   and `k = 2 pi m.b`, where `b` are the reciprocal vectors and each component of
-  the integer vector `m= runs over =-kmax` to `kmax`.
+  the integer vector `m` runs over `-kmax` to `kmax`.
 - `E_self = - ke alpha / sqrt(pi) sum_i q_i^2`.
 - `E_bg = - ke pi Q^2 / (2 V alpha^2)` for the net charge `Q`.
 - `SPME` has the same real-space, self and background terms.
@@ -13237,13 +13246,13 @@ When the source gives no `C6` ratio, `c_i = h_i^2`.
   The polarizability at each of 16 imaginary frequencies is screened with a
   Gaussian-smeared dipole tensor damped by the Fermi function
   `f = 1 / (1 + exp(-a (r / (beta (R_i + R_j)) - 1)))` with `beta`
-  `mbd_beta` and `a= =mbd_a`.
+  `mbd_beta` and `a` `mbd_a`.
   The screened values give `alpha`, `C6`, `R_vdw` and
   `omega = 4 C6 / (3 alpha^2)` per atom.
   The energy is
   `E = 1/2 sum sqrt(lambda) - 3/2 sum omega_i`, with `lambda` the eigenvalues of the matrix with `omega_i^2`
   on the diagonal and `omega_i omega_j sqrt(alpha_i alpha_j) T_ij` off the
-  diagonal (`T= the bare dipole tensor times =f`).
+  diagonal (`T` the bare dipole tensor times `f`).
   A gas-phase system uses all pairs, ignoring the list.
   Forces are central differences of the energy with a step of 1e-5 Angstrom, and
   no stress is written.
@@ -13518,11 +13527,11 @@ the table lookup and `ke` as for `LrCoulomb`:
 
 - `E_pair = w(r) * ke * Z_i Z_j / r * phi(r)`.
 - `phi(r) = sum_{k=1..3} a_k exp(-b_k r)`, with `a_k` and
-  `b_k` taken from the table row of the element pair (`r= in Angstrom, =b_k` in
+  `b_k` taken from the table row of the element pair (`r` in Angstrom, `b_k` in
   1/Angstrom).
 - `w(r) = s(1 - c) / (s(1 - c) + s(c))` with `c = r / switch_off` and
   `s(x) = exp(-1/x)` for `x > 0` (and 0 otherwise).
-  `w= is 1 at =r = 0`, falls smoothly, and is 0 for `r >` switch_off=.
+  `w` is 1 at `r = 0`, falls smoothly, and is 0 for `r >` switch_off=.
 - Forces are the analytic derivative, and the Cauchy stress is written when the
   cell volume is positive.
 
@@ -13933,7 +13942,7 @@ That is the throughput ratio.
   Fourteen is the smallest repeat with at least 10^4 atoms.
   That is the size of the bulk cell in `tests/python/test_scaling.py`.
 - Sites move by normal deviates of standard deviation 0.015 Angstrom.
-  Cell `i= uses the seed =1000 + i`.
+  Cell `i` uses the seed `1000 + i`.
   Both choices follow the Pt7 frames of `test_scaling.py`.
   A perfect lattice would give zero forces and a weak comparison.
 - Each worker gets 8 cells.
@@ -14578,7 +14587,7 @@ A potential handle answers `H v` itself and keeps the forces of that centre.
 | `RGPOT_HVP_AD`       | 0                              | rounding of the duals |
 
 The forward scheme reuses the forces of the centre.
-`k= forward products at one centre therefore cost =k + 1` force calls instead of
+`k` forward products at one centre therefore cost `k + 1` force calls instead of
 `2k`.
 No finite difference makes one call per product at `O(h^2)`.
 The forward error is `(h/2) T(u, u) |v|`, with `T` the third derivative of the
@@ -14587,7 +14596,7 @@ central scheme makes.
 A search that needs second-order products at no extra force call registers an
 analytic product.
 
-`h= is the displacement along the unit direction =u`, in the units of the
+`h` is the displacement along the unit direction `u`, in the units of the
 positions, and the difference is scaled back by `|v|`.
 The forward product is therefore positively homogeneous in `v` but not odd: the
 `O(h)` term keeps its sign when `v` changes sign.
@@ -15243,7 +15252,7 @@ Configurable via `LJConfig` (`u0`, `cutoff`, `psi`, `switch_width`).
 Configurable via `LJClusterConfig` (`u0`, `cutoff`, `psi`, `switch_width`).
 - `MorsePot` (`PotType::Morse`) :: Pairwise Morse with a shifted cutoff,
   platinum parameters by default.
-Configurable via `MorseConfig` (`De`, `a=, =re`, `cutoff`, `switch_width`).
+Configurable via `MorseConfig` (`De`, `a`, `re`, `cutoff`, `switch_width`).
 
 With `switch_width` at 0 (the default) these three shift each pair energy to
 zero at the cutoff, and the force jumps there.
@@ -15697,7 +15706,7 @@ The checks run in this order and raise these exceptions:
   for example `positions: expected shape (N, 3), got (2, 2)`.
 - `box` that is not `(3, 3)` raises `ValueError`
   `box: expected shape (3, 3), got ...`.
-- `atom_types` whose length is not `N= raises =ValueError` `atom_types: expected shape (N,), got (M,)`.
+- `atom_types` whose length is not `N` raises `ValueError` `atom_types: expected shape (N,), got (M,)`.
 - `atom_types` that is not a sequence of integers (floats, booleans) or an
   int32/int64 array raises `TypeError`.
 - An atomic number outside the int32 range raises `ValueError`.
@@ -15924,17 +15933,17 @@ neighbor_list(positions, cell, cutoff, quantities='ijd', full=False, offsets=Fal
 - Inputs :: `positions` `(natoms, 3)` and `cell` `(3, 3)`, float64 C-contiguous,
   the cell periodic in all three directions.
   `cutoff` is the pair cutoff.
-  `quantities` is a string of the letters `i=, =j`, `d=, =D` and `S`, and sets
+  `quantities` is a string of the letters `i`, `j`, `d`, `D` and `S`, and sets
   which arrays come back and in which order.
   `full=False` lists each pair once; `full=True` lists both `(i, j)` and
   `(j, i)`.
-  `offsets=True` sorts the pairs by `i=, then =j`, and appends a row pointer.
-- Units :: positions, cell, cutoff, `d= and =D` in Angstrom; `i=, =j`, `S` and
+  `offsets=True` sorts the pairs by `i`, then `j`, and appends a row pointer.
+- Units :: positions, cell, cutoff, `d` and `D` in Angstrom; `i`, `j`, `S` and
   the row pointer are counts.
 - Outputs :: one array when a single array is requested, otherwise a tuple in
   the order of `quantities`, with the row pointer last.
-  `i= and =j` are int32 of shape `(npairs,)`; `d` is the float64 distance,
-  `(npairs,)`; `D= is =r_j - r_i`, float64 `(npairs, 3)`; `S` is the int32 cell
+  `i` and `j` are int32 of shape `(npairs,)`; `d` is the float64 distance,
+  `(npairs,)`; `D` is `r_j - r_i`, float64 `(npairs, 3)`; `S` is the int32 cell
   shift, `(npairs, 3)`.
   The row pointer is int32 of length `natoms + 1`.
   A cutoff longer than the cell lists periodic images, including an atom with
@@ -16185,12 +16194,12 @@ rgpot.LJClusterPot(u0=1.0, cutoff=15.0, psi=1.0, switch_width=0.0)
 rgpot.MorsePot(De=0.7102, a=1.6047, re=2.897, cutoff=9.5, switch_width=0.0)
 ```
 
-- Inputs :: `De` is the well depth, `a= the range parameter, =re` the
+- Inputs :: `De` is the well depth, `a` the range parameter, `re` the
   equilibrium distance, `cutoff` the pair cutoff.
   The defaults are the platinum parameters.
   `switch_width` works as for `rgpot.LJPot`.
   Atom types are not used by the kernel.
-- Units :: `De` eV; `a= 1/Angstrom; =re`, `cutoff` and `switch_width` Angstrom.
+- Units :: `De` eV; `a` 1/Angstrom; `re`, `cutoff` and `switch_width` Angstrom.
 - Outputs :: a periodic shifted Morse pair potential on an orthogonal or sheared
   cell (on a diagonal cell only axes with a positive diagonal entry wrap, and
   each distinct atom pair contributes at most one minimum image).
@@ -16280,9 +16289,9 @@ rgpot.MullerBrownPot(amplitude=[-200, -100, -170, 15], a=[-1, -1, -6.5, 0.7], b=
 - Inputs :: each parameter is four finite numbers or an empty sequence.
   The [Muller-Brown arm](https://rgpot.rgoswami.me/reference/potential_config.html) has the rule.
   Positions need at least one atom; only its x and y coordinates are active.
-  Defaults are `amplitude`(-200, -100, -170, 15)`, =a`(-1, -1, -6.5, 0.7)=,
-  `b=(0, 0, 11, 0.6)`, `c=(-10, -10, -6.5, 0.7)`, `x0`(1, 0, -0.5, -1)= and
-  `y0`(0, 0.5, 1.5, 1)=.
+  Defaults are `amplitude=(-200, -100, -170, 15)`, `a=(-1, -1, -6.5, 0.7)`,
+  `b=(0, 0, 11, 0.6)`, `c=(-10, -10, -6.5, 0.7)`, `x0=(1, 0, -0.5, -1)` and
+  `y0=(0, 0.5, 1.5, 1)`.
 - Units :: reduced surface coordinates and energies.
   The generic rgpot interface carries them as Angstrom and eV.
 - Outputs :: the standard Muller-Brown surface.
@@ -16561,8 +16570,8 @@ rgpot.ExprPot(expression, terms)
   `"d2cpmd"`, `"d3"` or `"d4"`, or to a dict with a `"kind"` key (or `"type"`)
   plus that kind's fields.
   The fields are `u0`, `cutoff`, `psi`,
-  `switch_width` for `"lj"`; `De`, `a=, =re`, `cutoff`, `switch_width` for
-  `"morse"`; `s6`, `d=, =sr`, `cutoff`, `functional` for `"d2"`, where a
+  `switch_width` for `"lj"`; `De`, `a`, `re`, `cutoff`, `switch_width` for
+  `"morse"`; `s6`, `d`, `sr`, `cutoff`, `functional` for `"d2"`, where a
   `functional` sets `s6` and `d` first and the other keys then override them;
   `s6`, `alpha`, `vdweps`, `functional`, `symmetry` for `"d2cpmd"`, in the same
   way; `functional`, `damping`, `atm` for `"d3"`; `functional`, `charge`, `atm`,
@@ -16717,7 +16726,7 @@ __call__(positions, atom_types, box)
   rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.StillingerWeberSi,
   rgpot.TersoffSiC, rgpot.IPIPot, rgpot.LammpsPot, rgpot.GromacsPot,
   rgpot.OpenMMPot, rgpot.EMTPot
-- Inputs :: `positions` `(N, 3)`, `atom_types` (`N= integers) and =box`
+- Inputs :: `positions` `(N, 3)`, `atom_types` (`N` integers) and `box`
   `(3, 3)`, as in the conventions.
 - Units :: positions and box in Angstrom; energy eV; forces eV/Angstrom;
   variance eV^2.
@@ -16761,11 +16770,11 @@ config()
   Angstrom for the lengths.
 - Outputs :: a dict of the constructor parameters.
   `LJPot` and `LJClusterPot` give `u0`, `cutoff`, `psi`,
-  `switch_width`; `MorsePot` gives `De`, `a=, =re`, `cutoff`, `switch_width`;
-  `D2Pot` gives `s6`, `d=, =sr`, `cutoff` and `D2CpmdPot` gives `s6`, `alpha`,
+  `switch_width`; `MorsePot` gives `De`, `a`, `re`, `cutoff`, `switch_width`;
+  `D2Pot` gives `s6`, `d`, `sr`, `cutoff` and `D2CpmdPot` gives `s6`, `alpha`,
   `vdweps`, `symmetry`, after any functional was applied; `D4Pot` gives
   `functional`, `charge`, `atm`, `periodic`.
-  `MullerBrownPot` gives `amplitude`, `a=, =b`, `c=, =x0` and `y0`.
+  `MullerBrownPot` gives `amplitude`, `a`, `b`, `c`, `x0` and `y0`.
   `EMTPot` gives `rasmussen`.
 - Errors :: none.
 
@@ -16868,7 +16877,7 @@ evaluate_batch(positions, atom_types, box, n_threads=0)
 - Units :: as `evaluate`.
 - Outputs :: a list with one dict per configuration, with keys `energy`,
   `forces` and `variance` (no `stress`).
-  Entry `i= equals a serial call on configuration =i`, bit for bit.
+  Entry `i` equals a serial call on configuration `i`, bit for bit.
   Empty lists return an empty list.
 - Errors :: lists of different lengths raise `ValueError`
   `evaluate_batch: positions, atom_types, and box lengths differ`.
@@ -16940,7 +16949,7 @@ hvp(positions, atom_types, box, direction, step=0.0, scheme='auto')
 
 The centre is keyed on the bits of the positions, atomic numbers and cell.
 Another geometry is a new centre, and `invalidate_hvp()` drops it.
-A Lanczos loop of `k= forward products at one geometry costs =k + 1` force
+A Lanczos loop of `k` forward products at one geometry costs `k + 1` force
 calls.
 The products follow `rgpot_potential_hvp`; see the
 [C ABI reference](https://rgpot.rgoswami.me/reference/c_abi.html) for the error terms of each scheme.
@@ -17011,7 +17020,7 @@ hessian(positions, atom_types, box, scheme, step=0.0)
   `step` is that displacement; 0 means 1e-3 Angstrom.
 - Units :: positions, box and `step` in Angstrom; the Hessian in eV/Angstrom^2.
 - Outputs :: a tuple `(hessian, scheme)`: a new float64 array of shape
-  `(3N, 3N)`, row and column `3 i + k` for axis `k= of atom =i`, and the name of
+  `(3N, 3N)`, row and column `3 i + k` for axis `k` of atom `i`, and the name of
   the scheme that computed it, `"exact"` reporting `"analytic"` or `"ad"`.
   `"central"` makes `6 N` force calls, which bypass the centre of `hvp` and are
   counted in `derivative_counts()`, and returns a symmetric matrix.
@@ -17728,7 +17737,7 @@ rgpot.ase.available_kinds()
 - Outputs :: the sorted list of kind strings `RgpotCalculator` accepts in this
   build.
   Each potential class that is callable is reachable by its lower-case name with
-  or without the `Pot` suffix, ignoring `_=, =-`, `.` and spaces, and
+  or without the `Pot` suffix, ignoring `_`, `-`, `.` and spaces, and
   `lennardjones` names `LJPot`.
 - Errors :: none.
 
@@ -18537,7 +18546,7 @@ virtual void hessianImpl(const ForceInput &, double *) const;
 - Units :: the energy Hessian, eV/Angstrom^2 when the coordinates are in
   Angstrom.
 - Outputs :: `hessian` receives the dense `3 * in.nAtoms` by `3 * in.nAtoms`
-  matrix, row-major, with coordinate `3 * i + k` for axis `k= of atom =i`.
+  matrix, row-major, with coordinate `3 * i + k` for axis `k` of atom `i`.
   It is written symmetric.
 - Errors :: the base throws `std::runtime_error`.
   Potentials whose `caps().analyticHessian` is true override this method.
@@ -18702,10 +18711,10 @@ void forceBatch(const ForceBatch &batch) override;
 void setCache(rgpot::cache::PotentialCache *c) override;
 ```
 
-- Inputs :: `c=, a =rgpot::cache::PotentialCache` pointer, or `nullptr` to stop
+- Inputs :: `c`, a `rgpot::cache::PotentialCache` pointer, or `nullptr` to stop
   caching.
 - Units :: none.
-- Outputs :: none; stores `c= for =operator()` and `forceBatch`.
+- Outputs :: none; stores `c` for `operator()` and `forceBatch`.
   The caller keeps ownership.
 - Errors :: none.
 
@@ -18727,11 +18736,11 @@ Declared only when `RGPOT_HAS_CACHE` is defined.
 
 #### `rgpot::ForceOut`
 
-- Inputs :: `F= (=double *`), a caller-owned buffer with room for 3*n doubles.
+- Inputs :: `F` (`double *`), a caller-owned buffer with room for 3*n doubles.
 - Units :: `F` in the force unit of the potential
   (eV/Angstrom for the built-in potentials); `energy` in its energy unit (eV); `stress` in energy per length cubed (eV/Angstrom^3);
   `variance` as the potential reports it.
-- Outputs :: `F=, 3*n forces row-major like the positions; =energy` (`double`);
+- Outputs :: `F`, 3*n forces row-major like the positions; `energy` (`double`);
   `variance` (`double`), 0 when unused; `stress` (`double[9]`), the Cauchy
   stress row-major xx xy xz yx yy yz zx zy zz; `has_stress` (`int`), 0 when the
   potential did not compute stress.
@@ -19170,7 +19179,7 @@ exact Hessian-vector product.
 
 #### `rgpot::MullerBrownConfig`
 
-- Inputs :: six four-entry arrays: `amplitude`, `a=, =b`, `c=, =x0` and `y0`.
+- Inputs :: six four-entry arrays: `amplitude`, `a`, `b`, `c`, `x0` and `y0`.
   They default to the published parameters.
 - Units :: reduced energy and coordinate units.
   The rgpot boundary carries them as eV and Angstrom.
@@ -19395,7 +19404,7 @@ DerivativeReport gradientJet(std::size_t systems, std::size_t nAtoms,
 A force call takes a `rgpot::ForceInput`: `nAtoms`, `pos` (3 * nAtoms doubles, x
 y z per atom, Angstrom), `atmnrs` (one atomic number per atom) and `box` (nine
 doubles, one cell vector per row, Angstrom).
-It writes a `rgpot::ForceOut`: `F= (3 * nAtoms doubles, same layout as =pos`,
+It writes a `rgpot::ForceOut`: `F` (3 * nAtoms doubles, same layout as `pos`,
 eV/Angstrom), `energy` (eV), `variance`, and `stress` with `has_stress`. `stress` is the Cauchy stress in eV/Angstrom^3,
 nine entries row-major. A potential that writes it sets `has_stress` to 1, and
 to 0 when the cell volume is not positive.
@@ -19455,11 +19464,11 @@ class.
 
 #### `rgpot::MorseConfig`
 
-- Inputs :: `De` (well depth, default 0.7102), `a= (range, default 1.6047), =re`
+- Inputs :: `De` (well depth, default 0.7102), `a` (range, default 1.6047), `re`
   (equilibrium distance, default 2.8970), `cutoff` (default 9.5), `switch_width`
   (default 0.0).
   The defaults are the platinum set of the header.
-- Units :: `De` in eV, `a= in 1/Angstrom, =re`, `cutoff` and `switch_width` in
+- Units :: `De` in eV, `a` in 1/Angstrom, `re`, `cutoff` and `switch_width` in
   Angstrom.
 - Outputs :: the parameters of `rgpot::MorsePot`.
 - Errors :: the constructor throws `std::invalid_argument` when `switch_width`
@@ -19476,16 +19485,16 @@ class.
 
 #### `rgpot::SuttonChenConfig`
 
-- Inputs :: `epsilon` (default 1.0), `c= (default 34.408), =a` (default 1.0),
-  `n= (repulsive exponent, default 10), =m` (density exponent, default 8),
+- Inputs :: `epsilon` (default 1.0), `c` (default 34.408), `a` (default 1.0),
+  `n` (repulsive exponent, default 10), `m` (density exponent, default 8),
   `cutoff` (default 40.0; 0 or less keeps every pair), `periodic` (minimum
   image, default false), `stress` (write the stress, default false).
   The defaults are the reduced platinum and gold 10-8 potential.
-- Units :: `epsilon` sets the energy unit and `a= the length unit; =cutoff` is
-  in the coordinate unit; `c=, =n` and `m` are dimensionless.
+- Units :: `epsilon` sets the energy unit and `a` the length unit; `cutoff` is
+  in the coordinate unit; `c`, `n` and `m` are dimensionless.
 - Outputs :: the parameters of `rgpot::SuttonChenPot`.
-- Errors :: the constructor throws `std::invalid_argument` when `n= or =m` is
-  below 1, when `a= is not positive, when =epsilon`, `c= or =cutoff` is not
+- Errors :: the constructor throws `std::invalid_argument` when `n` or `m` is
+  below 1, when `a` is not positive, when `epsilon`, `c` or `cutoff` is not
   finite, and when `periodic` is set with a `cutoff` that is not positive.
 
 #### `rgpot::EAMCellConfig`
@@ -19743,7 +19752,7 @@ void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) 
 - Inputs :: none.
 - Units :: `cutoff` in the length unit of the potential: Angstrom for
   `rgpot::LJPot`, `rgpot::MorsePot`, `rgpot::StillingerWeberSi` and
-  `rgpot::TersoffSiC`, the unit of `a= for =rgpot::SuttonChenPot` and the unit
+  `rgpot::TersoffSiC`, the unit of `a` for `rgpot::SuttonChenPot` and the unit
   of the table for `rgpot::EAMTablePot`.
 - Outputs :: a `rgpot::Locality` from `CppCore/rgpot/Locality.hpp`.
   `cutoff` is the range of each site energy, `pairwise` is true when every
@@ -20122,7 +20131,7 @@ explicit MorsePot(const MorseConfig &c);
 Parameter source: the form is Morse, Phys.
 Rev. 34, 57 (1929),
 doi:10.1103/PhysRev.34.57. The defaults and the 9.5 Angstrom cutoff are the platinum set of Sheppard, Terrell and Henkelman, J. Chem. Phys. 128, 134106 (2008), doi:10.1063/1.2841941:
-`De` 0.7102 eV, `a= 1.6047 per Angstrom, =re` 2.8970 Angstrom.
+`De` 0.7102 eV, `a` 1.6047 per Angstrom, `re` 2.8970 Angstrom.
 Reference value: the unshifted well is -0.7102 eV.
 The shifted kernel at `re` is -0.710164462003 eV.
 
@@ -20805,12 +20814,12 @@ explicit D2Pot(D2Config cfg = {});
 
 Two free functions in `rgpot/D2Pot/D2Pot.hpp` expose the parameters.
 `rgpot::d2_config_for(functional)` returns a `rgpot::D2Config` with the `s6` and
-`d= dftd3 uses for a =-func` name (`b-lyp`, `b-p`, `b97-d`, `revpbe`, `pbe`,
+`d` dftd3 uses for a `-func` name (`b-lyp`, `b-p`, `b97-d`, `revpbe`, `pbe`,
 `tpss`, `b3-lyp`, `pbe0`, `pw6b95`, `tpss0`, `b2-plyp`, `b2gp-plyp`, `dsd-blyp`,
 or the aliases `blyp`, `bp86` and `b3lyp`, in any case) and the default `sr` and
 `cutoff`; any other name throws `std::invalid_argument`.
 `rgpot::d2_c6(z)` and `rgpot::d2_r0(z)` return the tabulated C6 (J nm^6 mol^-1)
-and R0 (Angstrom) of atomic number `z= and throw =std::invalid_argument` outside
+and R0 (Angstrom) of atomic number `z` and throw `std::invalid_argument` outside
 1 to 86.
 
 ### CPMD's empirical D2
@@ -21787,19 +21796,19 @@ explicit MOPACPot(const Config &cfg);
   A force throws `std::runtime_error` when the engine is not loaded, `nAtoms` is
   zero, a buffer is null, or the engine reports failure.
 
-The library must export `mopacc_energy_gradient`, `mopacc_c_abi_version`,
-`mopacc_abi_version`, `mopacc_result_size` and `mopacc_params_size`.
+The library must export `mopacc_energy_gradient`,
+`mopacc_c_abi_version`, `mopacc_abi_version`, `mopacc_result_size` and `mopacc_params_size`.
 Both versions must equal 2 (`RGPOT_MOPACC_C_ABI_VERSION` and
 `MOPACC_ABI_VERSION`), `mopacc_result_size` must equal `sizeof(MopacCResult)`,
 and `mopacc_params_size` must equal `sizeof(MopacCParams)`.
 A later ABI may change the layout without changing the sizes, so a library
 reporting version 3 is refused even when its sizes match.
-These checks run before any call that returns a `MopacCResult`; a library
-that fails one stays unloaded, and the load error names the missing symbol or
-the expected and found values.
+These checks run before any call that returns a `MopacCResult`; a library that
+fails one stays unloaded, and the load error names the missing symbol or the
+expected and found values.
 When the library exports `mopacc_available`, that must be nonzero.
-The constructor passes the params once through `mopacc_set_params` when
-present; a nonzero status leaves the engine unloaded.
+The constructor passes the params once through `mopacc_set_params` when present;
+a nonzero status leaves the engine unloaded.
 
 #### `rgpot::MOPACPot::available`
 
@@ -21949,7 +21958,7 @@ They do not pin an ORCA energy.
   `maxcore_mb` in MB per process; `charge` in elementary charges; `timeout_s` in
   seconds; the other fields have no unit.
 - Outputs :: a plain struct read by `rgpot::ORCAPot`.
-  `method`, `basis` and `keywords` become the `!= line, =nprocs` above 1 becomes
+  `method`, `basis` and `keywords` become the `!` line, `nprocs` above 1 becomes
   `%pal nprocs`, `maxcore_mb` becomes `%maxcore`, and `charge` and
   `multiplicity` go on the `* xyz` line.
   `restart` turns the `%moinp` and `MORead` reuse of the previous `.gbw` on and
@@ -22116,7 +22125,7 @@ void reset();
 - Units :: `maxcore_mb` in MB per process; `charge` in elementary charges; the
   other fields have no unit.
 - Outputs :: everything the input of one single point depends on: `method`,
-  `basis` and `keywords` (joined on the `!= line, followed by =EnGrad`),
+  `basis` and `keywords` (joined on the `!` line, followed by `EnGrad`),
   `charge` and `multiplicity` (the `* xyz` line), `nprocs` (`%pal nprocs` above
   1), `maxcore_mb` (`%maxcore`) and `moinp`, the `.gbw` the orbitals are read
   from relative to the run directory.
@@ -22166,8 +22175,8 @@ shared fields of `PotentialConfig`, such as `common`, are not read. orcac takes
 the method as one token, so the first word of `ORCAParams.method` is the method
 and the others join `keywords` (`UKS PBE0` gives the method `UKS` and the
 keyword `PBE0`, the same `!` line for ORCA).
-`ORCAParams.keywords` on one line that does not start with `%= stays =keywords`,
-without a leading `!=; otherwise each line that starts with =!` joins `keywords`
+`ORCAParams.keywords` on one line that does not start with `%` stays `keywords`,
+without a leading `!`; otherwise each line that starts with `!` joins `keywords`
 and the other lines are `blocks`.
 `keepFiles` is refused with `std::invalid_argument`, since ABI 1 always removes
 the run directory.
@@ -23176,7 +23185,7 @@ That is a unit conversion, not a path-integral energy.
   wait for the driver to connect.
 - Outputs :: a plain struct read by `IPIPot`.
 - Errors :: `IPIPot` throws
-  `std::invalid_argument` for an address without a `unix:` or `tcp:` prefix, an empty UNIX address, a UNIX name containing `/=, a UNIX path too long for the socket address, a missing or out-of-range port, or a =timeout_s`
+  `std::invalid_argument` for an address without a `unix:` or `tcp:` prefix, an empty UNIX address, a UNIX name containing `/`, a UNIX path too long for the socket address, a missing or out-of-range port, or a `timeout_s`
   that is negative or not finite.
   It throws `std::runtime_error` when the host does not resolve or the socket
   cannot be bound or listened on.
@@ -23587,12 +23596,13 @@ int main() {
 ### Construction from a PotentialConfig
 
 `rgpot::makePotential` (`CppCore/rgpot/PotentialFactory.hpp`) is the one entry
-point from a `PotentialConfig` to a potential. It is in every `librgpot` built
-with the Cap'n Proto stack. A consumer includes `rgpot/PotentialFactory.hpp`
-with the directory that holds the generated `rgpot/rpc/Potentials.capnp.h` and
-`rgpot/rpc/common.capnp.h` on its include path (the installation's
-include directory, or `CppCore` of a meson build tree): the schema
-imports `common.capnp`, so `Potentials.capnp.h` includes `common.capnp.h`.
+point from a `PotentialConfig` to a potential.
+It is in every `librgpot` built with the Cap'n Proto stack.
+A consumer includes
+`rgpot/PotentialFactory.hpp` with the directory that holds the generated `rgpot/rpc/Potentials.capnp.h` and `rgpot/rpc/common.capnp.h`
+on its include path (the installation's include directory, or `CppCore` of a
+meson build tree): the schema imports `common.capnp`, so `Potentials.capnp.h`
+includes `common.capnp.h`.
 
 #### `rgpot::makePotential`
 
@@ -23603,11 +23613,11 @@ makePotential(const ::PotentialConfig::Reader &config);
 makePotential(const void *bytes, std::size_t size);
 ```
 
-- Inputs :: a `PotentialConfig` reader, or the flat-array bytes of one
-  (`size` a non-zero multiple of 8). Only the union arm is read; the shared
-  fields (`common`, `commonPatch`, `neighborList`, `rpcEndpoint`,
-  `logPotentialCalls`, `emtRasmussenParameters`) are not, as no
-  `setPotentialConfig` method reads them either.
+- Inputs :: a `PotentialConfig` reader, or the flat-array bytes of one (`size` a
+  non-zero multiple of 8).
+  Only the union arm is read; the shared fields (`common`, `commonPatch`,
+  `neighborList`, `rpcEndpoint`, `logPotentialCalls`, `emtRasmussenParameters`)
+  are not, as no `setPotentialConfig` method reads them either.
 - Units :: those of the potential returned.
 - Outputs :: the potential the arm configures, owned by the returned pointer.
   `lj`, `morse` (with `switchWidth`), `zbl`, `d2`, `d2cpmd`, `mullerBrown` and
@@ -23619,9 +23629,8 @@ makePotential(const void *bytes, std::size_t size);
   `orca` builds an `rgpot::ORCACPot` from `ORCAParams` alone, lowered onto the
   `OrcaCConfig` of `liborcac` C ABI 1.
   `metatomic`, `uma`, `plugin`, and `xtb` in a build without
-  `-Dwith_xtb`, return an `rgpot::EnginePot` over an engine library whose
-  configuration message is the arm's params struct (`BuiltinParams` naming `xtb`
-  for `libxtb_engine`, the `opaquePayload` bytes for `plugin`):
+  `-Dwith_xtb`, return an `rgpot::EnginePot` over an engine library whose configuration message is the arm's params struct (`BuiltinParams` naming `xtb` for `libxtb_engine`,
+  the `opaquePayload` bytes for `plugin`):
 
   | Arm         | Library                 | Search order                                                                 |
   |-------------+-------------------------+------------------------------------------------------------------------------|
@@ -23630,19 +23639,18 @@ makePotential(const void *bytes, std::size_t size);
   | `xtb`       | `libxtb_engine`         | `RGPOT_XTB_ENGINE`, `XTB_ENGINE`                                             |
   | `plugin`    | `lib<pluginName>_engine` | `libraryPath` alone when set; else `RGPOT_<PLUGINNAME>_ENGINE`              |
 
-  After the variables each search tries `lib<stem>.so`, `./lib<stem>.so`, the
-  `.dylib` names and `<stem>.dll`, then the directories of
-  `EON_POTENTIALS_PATH` and `RGPOT_ENGINE_PATH`.
-- Errors :: `std::invalid_argument` for bytes that are not a `PotentialConfig`
-  message, for the `none`, `gpr`, `potlib` and `external` arms (rgpot has no
-  backend for them), for `d3`, `d4`, `tblite`, `skala`, `cp2k` and `expr` in a
-  build without `-Dwith_dftd3`, `-Dwith_dftd4`, `-Dwith_tblite`,
-  `-Dwith_skala`, `-Dwith_cp2k` or `-Dwith_expr` (the message names the
-  option), for a `mopac` arm that sets `epsilon`, `solver`, `extraKeywords` or
-  `cell` (`MOPACPot` takes none of them), for an `xtb`, `tblite` or `d3` method
-  or damping it does not know, for a `plugin` arm with neither `pluginName` nor
-  `libraryPath`, and for an arm newer than the compiled schema. The
-  constructors of the potentials throw as their entries say, and
+After the variables each search tries `lib<stem>.so`, `./lib<stem>.so`, the
+`.dylib` names and `<stem>.dll`, then the directories of `EON_POTENTIALS_PATH`
+and `RGPOT_ENGINE_PATH`.
+- Errors ::
+  `std::invalid_argument` for bytes that are not a `PotentialConfig` message, for the `none`, `gpr`, `potlib` and `external` arms (rgpot has no backend for them), for `d3`, `d4`, `tblite`, `skala`, `cp2k` and `expr` in a build without `-Dwith_dftd3`,
+  `-Dwith_dftd4`, `-Dwith_tblite`, `-Dwith_skala`, `-Dwith_cp2k` or
+  `-Dwith_expr` (the message names the option), for a `mopac` arm that sets
+  `epsilon`, `solver`, `extraKeywords` or `cell` (`MOPACPot` takes none of
+  them), for an `xtb`, `tblite` or `d3` method or damping it does not know, for
+  a `plugin` arm with neither `pluginName` nor `libraryPath`, and for an arm
+  newer than the compiled schema.
+  The constructors of the potentials throw as their entries say, and
   `rgpot::EnginePot` throws `std::runtime_error` as below.
 
 #### `rgpot::EnginePot`
@@ -23653,24 +23661,25 @@ EnginePot(const std::vector<std::string> &candidates, const void *config,
 ```
 
 - Inputs :: `candidates`, library paths tried in order; `config` and
-  `config_len`, the configuration message handed to `rgpot_engine_create`
-  (for the in-tree engines a word-aligned Cap'n Proto flat array whose root is
-  the backend's params struct); `label`, the name used in messages.
+  `config_len`, the configuration message handed to `rgpot_engine_create` (for
+  the in-tree engines a word-aligned Cap'n Proto flat array whose root is the
+  backend's params struct); `label`, the name used in messages.
 - Units :: positions in Angstrom, energy in eV and forces in eV/Angstrom, the
   units of `rgpot_engine_force`.
 - Outputs :: one engine instance, destroyed with the potential, from the first
-  candidate that opens and exports `rgpot_engine_create`,
-  `rgpot_engine_destroy` and `rgpot_engine_force`. `caps()` reports
-  `Reentrancy::PerInstance`, and calls on one instance are serialised. The
-  library stays mapped for the life of the process. `getType()` is
-  `PotType::Engine`.
-- Errors :: `std::runtime_error` when no candidate opens or exports the three
-  symbols (the message names every path tried), when the library's
-  `rgpot_engine_abi_version` is not `RGPOT_ENGINE_ABI_VERSION`, when its
-  `rgpot_engine_available` returns 0, or when `rgpot_engine_create` fails (the
-  message carries the engine's reason). A force call throws
-  `std::runtime_error` with the code `rgpot_engine_force` returned and the
-  engine's `rgpot_engine_last_error`.
+  candidate that opens and exports `rgpot_engine_create`, `rgpot_engine_destroy`
+  and `rgpot_engine_force`.
+  `caps()` reports `Reentrancy::PerInstance`, and calls on one instance are
+  serialised.
+  The library stays mapped for the life of the process.
+  `getType()` is `PotType::Engine`.
+- Errors ::
+  `std::runtime_error` when no candidate opens or exports the three symbols (the message names every path tried), when the library's `rgpot_engine_abi_version`
+  is not
+  `RGPOT_ENGINE_ABI_VERSION`, when its `rgpot_engine_available` returns 0, or when `rgpot_engine_create`
+  fails (the message carries the engine's reason).
+  A force call throws
+  `std::runtime_error` with the code `rgpot_engine_force` returned and the engine's `rgpot_engine_last_error`.
 
 #### `rgpot::EnginePot::libraryPath`
 
@@ -24175,7 +24184,7 @@ entry says otherwise.
 - Outputs :: an evaluator that owns one potential per worker, built by calling
   the factory once per worker.
   `evaluate` splits the inputs into contiguous ranges, one per worker, and
-  returns a vector of `BatchResult` in which element `i= answers input =i`.
+  returns a vector of `BatchResult` in which element `i` answers input `i`.
   The potentials share nothing, so no potential has to be reentrant across
   threads.
   `n_threads()` reports the worker count.
@@ -24321,7 +24330,7 @@ entry says otherwise.
 - Inputs :: none to construct; a non-copyable object.
   `centre(pot, in)` takes a potential and a `ForceInput`.
   `apply(pot, in, v, hv, step = 0.0, scheme = HvpScheme::Auto)` takes a
-  direction `v= and an output =hv`, each 3 * `in.nAtoms` doubles that must not
+  direction `v` and an output `hv`, each 3 * `in.nAtoms` doubles that must not
   overlap.
 - Units :: Angstrom for `step`, which is the displacement along the direction; 0
   selects `kHvpDefaultStep` (1.0e-3).
@@ -24487,7 +24496,7 @@ entry says otherwise.
 - Outputs :: a host's half neighbour list over its own atoms and their copies.
   Atoms `[0, nOwned)` are owned and `[nOwned, nAtoms)` are copies.
   `pos` holds 3 * `nAtoms` coordinates and `atmnrs` one atomic number per atom.
-  Row `k= belongs to owned atom =rows[k]`, whose neighbours are
+  Row `k` belongs to owned atom `rows[k]`, whose neighbours are
   `neighbours[i][0 .. count[i])`, the layout of a LAMMPS `NeighList`.
   `indexMask` clears bits a host sets in an entry besides the index, and
   `newton` selects the case in which only one of two hosts that hold an owned
@@ -24630,18 +24639,18 @@ entry says otherwise.
 - Units :: `drho` is in the density unit of the file, `dr`, `cutoff` in
   Angstrom, and energies in eV.
 - Outputs :: `nrho`, `drho`, `nr`, `dr`, `cutoff`, `rhomax`, the atomic numbers
-  `z= and the arrays =frho` (F_a, one per element), `rhor` (rho_ab at index
+  `z` and the arrays `frho` (F_a, one per element), `rhor` (rho_ab at index
   `b * n + a`, the density element b puts at an a site) and `z2r` (r phi_ab at
   index `a (a + 1) / 2 + b` for a >= b).
-  Entry `m= of an array sits at =m * dr` or `m * drho`.
+  Entry `m` of an array sits at `m * dr` or `m * drho`.
 - Errors :: none.
 
 #### `rgpot::eam::Spline1D`
 
 - Inputs :: none; a struct.
 - Units :: `origin` and `h` are in the argument unit of the table.
-- Outputs :: a uniform cubic Hermite table: `origin`, `h=, =inv_h`, `nseg` and
-  the coefficient vector `c=; =eval(r)` evaluates it.
+- Outputs :: a uniform cubic Hermite table: `origin`, `h`, `inv_h`, `nseg` and
+  the coefficient vector `c`; `eval(r)` evaluates it.
   The nodes sit close enough to keep a pair within 1e-12 relative of the
   analytic exponential it replaces.
 - Errors :: none.
@@ -24651,7 +24660,7 @@ entry says otherwise.
 - Inputs :: none; a struct.
 - Units :: Angstrom for distances, eV for energies.
 - Outputs :: one element's splines: `rho` (density), `fscale` (density force),
-  `phi` (pair energy) and `fcomp` (pair force), with `Z=, =cutoff2`, a pointer
+  `phi` (pair energy) and `fcomp` (pair force), with `Z`, `cutoff2`, a pointer
   `embed` to the embedding table, the grid constants `kOrigin` (0.05) and
   `kStep` (5e-5), and the methods `density`, `densityForce`, `pairEnergy` and
   `pairForce`.
@@ -24679,7 +24688,7 @@ entry says otherwise.
 
 - Inputs :: none; a struct.
 - Units :: see `ZblPairCoeffs`.
-- Outputs :: the sorted unique atomic numbers `z= and the coefficients =pairs`,
+- Outputs :: the sorted unique atomic numbers `z` and the coefficients `pairs`,
   a `z.size()` by `z.size()` row-major table of `ZblPairCoeffs`.
 - Errors :: none.
 
@@ -24826,7 +24835,7 @@ entry says otherwise.
 
 - Inputs :: none; a struct.
 - Units :: Angstrom.
-- Outputs :: one neighbour pair with atom indices `i= and =j`, the vector
+- Outputs :: one neighbour pair with atom indices `i` and `j`, the vector
   `(x, y, z)` equal to r_j + S H - r_i for the lattice shift S and cell H, and
   its length `r`.
 - Errors :: none.
@@ -24849,7 +24858,7 @@ entry says otherwise.
 
 - Inputs :: none; a struct with a `fractional(r, s)` method.
 - Units :: Angstrom and Angstrom^-1.
-- Outputs :: the cell matrix `H=, its inverse =inv`, the reciprocal vectors
+- Outputs :: the cell matrix `H`, its inverse `inv`, the reciprocal vectors
   `recip` (rows b_i with b_i . a_j = delta_ij and no factor 2 pi) and the
   `volume`.
   `fractional` computes s = r H^-1, and the physical wave vector is k = 2 pi
@@ -24927,7 +24936,7 @@ entry says otherwise.
 - Inputs :: none; a struct for the CUDA Coulomb path.
 - Units :: Angstrom.
 - Outputs :: `method` (0 Ewald, 1 PME), the positions `pos`, charges `q`, the
-  count `n=, the net charge =total`, the `box`, the pair arrays
+  count `n`, the net charge `total`, the `box`, the pair arrays
   (`pair_i`, `pair_j`, `pair_x`, `pair_y`, `pair_z`, `pair_r`) with `npair`, and
   the parameters `alpha` (0.3), `cutoff` (9.0), `kmax` (4), `grid` (16) and
   `order` (4).
@@ -25494,7 +25503,7 @@ arrays, the friction in inverse time and the time step in time.
 
 - Inputs :: none; a struct of the atom indices `first` and `second` and the
   `length` between them.
-  Atom `a= owns the coordinates =3a`, `3a + 1` and `3a + 2`.
+  Atom `a` owns the coordinates `3a`, `3a + 1` and `3a + 2`.
 - Units :: the length unit of the positions.
 - Outputs :: one fixed distance that holds in every step, through the SHAKE
   iteration on the positions and a conjugate gradient projection of the
@@ -26090,7 +26099,7 @@ potctl ci meson-test --rpc true|false --cache true|false [--build-dir DIR] [--no
 ```
 
 - Inputs :: `--rpc` and `--cache`, the feature switches of a matrix leg, each
-  `true`, `false`, `1=, =0`, `yes`, `no`, `on` or `off`; `--build-dir` (default
+  `true`, `false`, `1`, `0`, `yes`, `no`, `on` or `off`; `--build-dir` (default
   `bbdir`); `--no-darwin`, which skips the macOS plan.
   The environment variables `POTCTL_MESON_EXTRA` (extra setup arguments) and
   `POTCTL_WITH_MPI=enabled` (turns MPI on) are read.
@@ -26324,7 +26333,7 @@ Both tables list every option the build files declare.
 
 ### Meson
 
-Pass an option to `meson setup` as `-D<option>`<value>=.
+Pass an option to `meson setup` as `-D<option>=<value>`.
 A `feature` option takes `enabled`, `disabled` or `auto`.
 
 | Option | Type | Default | Description |
@@ -26414,19 +26423,19 @@ This page lists the arms of the Cap'n Proto `PotentialConfig` union and what
 ### rgpot user parameters (`PotentialConfig`) over RPC
 
 Backend options for a live `Potential` go in `PotentialConfig`
-(`CppCore/rgpot/rpc/Potentials.capnp`, rgpot's copy of rgconf's
-`potential.capnp` at the commit `CppCore/rgpot/rpc/schema.pin` names).
+(`CppCore/rgpot/rpc/Potentials.capnp`, rgpot's copy of rgconf's `potential.capnp` at the commit `CppCore/rgpot/rpc/schema.pin`
+names).
 It is a union whose arms and ordinals are `none` @0, `nwchem` @1, `cpmd` @2,
 `metatomic` @4, `lammps` @5, `xtb` @6, `tblite` @7, `uma` @8, `lj` @9, `morse`
 @10, `zbl` @11, `d3` @12, `d4` @13, `mopac` @14, `skala` @15, `expr` @16, `cp2k`
 @17, `composite` @18, `d2` @19, `d2cpmd` @20, `mullerBrown` @21, `gpr` @27,
-`potlib` @28, `external` @29, `plugin` @30 and `orca` @31.
-rgpot added `composite`, `d2`, `d2cpmd` and `mullerBrown`, `D4Params.periodic`
-and `D2CpmdParams.symmetry` before rgconf adopted them at the same ordinals;
-`gpr`, `potlib`, `external`, `plugin` and `orca` are rgconf's.
+`potlib` @28, `external` @29, `plugin` @30 and `orca` @31. rgpot added
+`composite`, `d2`, `d2cpmd` and `mullerBrown`, `D4Params.periodic` and
+`D2CpmdParams.symmetry` before rgconf adopted them at the same ordinals; `gpr`,
+`potlib`, `external`, `plugin` and `orca` are rgconf's.
 Outside the union, `common` @3 is a `CommonMethodSpec` overlay, and rgconf's
-`commonPatch` @22, `neighborList` @23, `rpcEndpoint` @24,
-`logPotentialCalls` @25 and `emtRasmussenParameters` @26 follow it.
+`commonPatch` @22, `neighborList` @23, `rpcEndpoint` @24, `logPotentialCalls`
+@25 and `emtRasmussenParameters` @26 follow it.
 `rgpot::makePotential` builds the potential an arm names (see
 [C++ engine-backed potentials](https://rgpot.rgoswami.me/reference/cpp_backends.html)).
 Geometry stays on `ForceInput`; `configure(config)` applies method and backend
@@ -26455,7 +26464,7 @@ For BLYP, set `theory="dft"` and `scfType="blyp"`.
 ### Morse arm (`PotentialConfig.morse` / `MorseParams`)
 
 With `potserv <port> Morse`, pass `configure` with the `morse` arm set.
-`MorseParams` carries `de`, `a=, =re` and `cutoff`, with the platinum defaults
+`MorseParams` carries `de`, `a`, `re` and `cutoff`, with the platinum defaults
 of `MorseConfig` (0.7102 eV, 1.6047 1/Angstrom, 2.897 Angstrom, 9.5 Angstrom).
 The server rebuilds its `MorsePot` from those values and keeps its switch width,
 so the next `calculate` uses them.
@@ -26466,7 +26475,7 @@ width gets `ok=false` and leaves the pot as it was.
 ### Muller-Brown arm (`PotentialConfig.mullerBrown` / `MullerBrownParams`)
 
 With `potserv <port> MullerBrown`, the `mullerBrown` arm rebuilds the surface.
-The six list fields are `amplitude`, `a=, =b`, `c=, =x0` and `y0`.
+The six list fields are `amplitude`, `a`, `b`, `c`, `x0` and `y0`.
 Their schema names are `MullerBrownParams.amplitude`, `MullerBrownParams.a`,
 `MullerBrownParams.b`, `MullerBrownParams.c`, `MullerBrownParams.x0` and
 `MullerBrownParams.y0`.
@@ -27028,7 +27037,7 @@ The library keeps one calculator split per process.
   be split as asked.
   `ranks` is the number of ranks per calculator, `rank_in_group` this rank's
   rank in its calculator, and `world_size` the size of `MPI_COMM_WORLD`.
-  World rank `r= is in calculator =r / ranks` with rank `r % ranks`.
+  World rank `r` is in calculator `r / ranks` with rank `r % ranks`.
 - Errors :: none.
 
 It mirrors `rgpot::CalculatorGroup`.
@@ -27055,7 +27064,7 @@ It mirrors `rgpot::CalculatorGroup`.
   when `abort_requested` returns nonzero, else `MPI_Finalize` when `bind` called
   `MPI_Init`.
   With
-  `RGPOT_MPI_FINALIZE_TRACE` set to `1= the handler prints =rgpot MPI_Finalize`
+  `RGPOT_MPI_FINALIZE_TRACE` set to `1` the handler prints `rgpot MPI_Finalize`
   to standard error before it finalizes.
   `agree(flags, n)` replaces `flags[0..n)` with their logical AND over the
   calculator's communicator and returns 1; it returns 0 and leaves `flags`
@@ -27890,7 +27899,7 @@ key make one callback.
 - Inputs :: none; a struct filled by `rgpot_fused_settings_default`.
 - Units :: `charge` in elementary charges, `electronic_temperature` in kelvin.
 - Outputs ::
-  `struct_size`, `periodic` (bit `i= set when the cell is periodic along vector =i`), `spin` (unpaired electrons), `scc_max_iterations`, `charge`, `accuracy`, `electronic_temperature`,
+  `struct_size`, `periodic` (bit `i` set when the cell is periodic along vector `i`), `spin` (unpaired electrons), `scc_max_iterations`, `charge`, `accuracy`, `electronic_temperature`,
   `scc_mixer` and `engine_build` (NUL-terminated strings or NULL).
   `engine_build` names the engine build or version.
 - Errors :: none.
@@ -28027,7 +28036,7 @@ enum rgpot_status_t rgpot_potential_hvp(const struct rgpot_potential_t *pot,
 ```
 
 - Inputs :: `pot` a live handle; `input` the geometry; `direction` with
-  `3 * n_atoms` finite doubles laid out like the positions; `step` the displacement `h= along =direction / |direction|`, 0 for `RGPOT_HVP_DEFAULT_STEP`;
+  `3 * n_atoms` finite doubles laid out like the positions; `step` the displacement `h` along `direction / |direction|`, 0 for `RGPOT_HVP_DEFAULT_STEP`;
   `scheme` a `rgpot_hvp_scheme_t` value; `hv_out` with room for `3 * n_atoms`
   doubles, not overlapping `direction`.
 - Units :: `step` in the length unit of the positions; `hv_out` in energy per
@@ -28193,7 +28202,7 @@ rgpot_status_t products(const rgpot_potential_t *pot,
 
 The Hessian is the `3 * n_atoms` square matrix of second derivatives of the
 energy with respect to the positions, row-major, with coordinate `3 i + k` for
-axis `k= of atom =i`.
+axis `k` of atom `i`.
 A request names its scheme and there is no automatic one, so a Hessian is never
 differenced unless the caller asks for `RGPOT_HESSIAN_CENTRAL`.
 The callbacks live behind the `fused_cache` pointer of the handle, beside the
@@ -28427,8 +28436,8 @@ typedef enum rgpot_status_t (*rgpot_taylor_jet_fn)(void *user_data,
   `user_data` of the handle; the geometry; `direction` with `3 * n_atoms`
   doubles; `order`; `lower` and `upper` with room for `order + 1` doubles each,
   which do not overlap.
-- Units :: coefficient `k= in energy times (unit of =direction` / length) to the
-  power `k=; energy when =direction` is a displacement.
+- Units :: coefficient `k` in energy times (unit of `direction` / length) to the
+  power `k`; energy when `direction` is a displacement.
 - Outputs :: the callback writes `order + 1` lower and `order + 1` upper bounds
   and returns
   `RGPOT_SUCCESS`, or returns `RGPOT_NO_JET`, `RGPOT_JET_BRANCH`, `RGPOT_JET_DOMAIN` or another error status after setting `rgpot_last_error`.
@@ -28549,7 +28558,7 @@ rgpot_builtin_model *rgpot_builtin_model_new(rgpot_builtin_kind kind);
 
 #### `rgpot_muller_brown_config`
 
-- Inputs :: six arrays of four doubles: `amplitude`, `a=, =b`, `c=, =x0` and
+- Inputs :: six arrays of four doubles: `amplitude`, `a`, `b`, `c`, `x0` and
   `y0`.
 - Units :: reduced Muller-Brown energy and coordinate units, carried as eV and
   Angstrom by this API.
@@ -28955,7 +28964,7 @@ Positions, `cutoff`, `skin`, pair vectors and distances share one length unit,
 the one the caller uses.
 `box9` is nine doubles, the lattice vectors as rows:
 `ax ay az bx by bz cx cy cz`.
-The pair vector of `(i, j)` at integer shift `S= is =r_j - r_i + S H`, with `H`
+The pair vector of `(i, j)` at integer shift `S` is `r_j - r_i + S H`, with `H`
 the rows of `box9` and `r` the positions as passed.
 The periodic components are folded into the cell first, and the search runs on
 the folded coordinates.
@@ -29037,7 +29046,7 @@ A cluster list stores every neighbour, so it needs `shell` 1.
   and each requested column for every pair they write.
   `mask` is 0xff for a pair list.
   For a cluster list `first` is the lowest index of four consecutive atoms,
-  `second` the partner, and bit `k= of =mask` is set when atom `first + k` has
+  `second` the partner, and bit `k` of `mask` is set when atom `first + k` has
   that partner at that shift.
   The vector and distance of a cluster row belong to the lowest atom whose bit
   is set.
@@ -29334,9 +29343,8 @@ positions it was given.
 
 `Potentials.capnp` carries the query: `NeighborRequest`, `NeighborList`,
 `ForceInput.neighbors`, `PotentialResult.neighborList` and
-`Potential.neighbours`.
-rgpot added them first, through a local diff, and rgconf's schema adopted them
-at the same ordinals.
+`Potential.neighbours`. rgpot added them first, through a local diff, and
+rgconf's schema adopted them at the same ordinals.
 The messages carry the columns of `rgpot_nlist_request` and `rgpot_nlist_soa`.
 Lengths are in the unit of the positions, `ForceInput.lengthUnit` on the wire.
 
@@ -30520,7 +30528,7 @@ int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long nSystems, long nAtoms,
   is eV/Angstrom, a force, because the Angstrom of the line parameter is
   absorbed by the direction.
 - Outputs :: `RGPOT_ENGINE_OK` and, in block `k - 1` of system `s`, the exact
-  `k=-th derivative with respect to =t` of the energy gradient at
+  `k`-th derivative with respect to `t` of the energy gradient at
   `positions_s + t * directions_s`, at `t = 0`.
   These are derivatives, not Taylor coefficients, and not the interval
   enclosures of the energy jet of `rgpot_jet_*`.
@@ -31200,11 +31208,11 @@ a host that does call `dlclose` on them leaves them mapped.
 
 - `ENGINE_ERR_LOCK` :: Rust constant for `RGPOT_ENGINE_ERR_LOCK` (-2).
 - `ENGINE_ABI_VERSION`, `ENGINE_ABI_MINOR`,
-  `ENGINE_ABI_LAYOUT_REVISION` :: Host ABI identity (`1=, =11`, `1=) matching =RGPOT_ENGINE_ABI_VERSION`,
+  `ENGINE_ABI_LAYOUT_REVISION` :: Host ABI identity (`1`, `11`, `1`) matching `RGPOT_ENGINE_ABI_VERSION`,
   `RGPOT_ENGINE_ABI_MINOR` and `RGPOT_ENGINE_ABI_LAYOUT_REVISION`.
 - `ENGINE_UNLOAD_RESIDENT`, `ENGINE_UNLOAD_SAFE`,
   `ENGINE_UNLOAD_POLICY_MINOR` :: `RGPOT_ENGINE_UNLOAD_RESIDENT` (`0`),
-  `RGPOT_ENGINE_UNLOAD_SAFE` (`1=), and the first minor (=7`) that defines `rgpot_engine_unload_policy`.
+  `RGPOT_ENGINE_UNLOAD_SAFE` (`1`), and the first minor (`7`) that defines `rgpot_engine_unload_policy`.
 - `RgpotEngineAbiStamp` :: Compatibility stamp (`abi_major`, `abi_minor`,
   `layout_revision`) with `RgpotEngineAbiStamp::HOST` and `serves(host)` accepting any plugin of the same major and layout revision whose minor is at most `host.abi_minor`
   (rejecting plugins with a newer minor than the host's).
@@ -31318,7 +31326,7 @@ a host that does call `dlclose` on them leaves them mapped.
   a finite-difference fallback.
 - `EnginePotential::taylor_jet(&JetBatchRequest, order)` :: Dispatches `rgpot_engine_taylor_jet`
   for a uniform batch in one engine call and returns a `GradientJet`: `order()`,
-  `n_systems()`, `derivative(k)` (every system, `k= in =1..=order`; block 0 is the Hessian-vector product), `system_derivative(k, s)`
+  `n_systems()`, `derivative(k)` (every system, `k` in `1..=order`; block 0 is the Hessian-vector product), `system_derivative(k, s)`
   and `report()`, a `DerivativeReport` (`operations` summed, `scale` the
   largest) or `None` when the engine does not count operations.
   `JetBatchRequest` holds `atomic_numbers`, `positions`, `directions` and
@@ -31786,8 +31794,8 @@ The header is `CppCore/rgpot/MOPACPot/mopac_c_abi.h`; it must stay in lockstep
 with `mopacc.h` of the `mopacc` project.
 Options are the packed struct `MopacCParams`, not Cap'n Proto.
 The version macros `RGPOT_MOPACC_C_ABI_VERSION` and `MOPACC_ABI_VERSION` are 2.
-ABI 2 added `epsilon` and `solver` on `MopacCParams`, and `dipole_debye` and
-`stress_gpa` on `MopacCResult`.
+ABI 2 added `epsilon` and `solver` on `MopacCParams`, and
+`dipole_debye` and `stress_gpa` on `MopacCResult`.
 A caller compares both versions, and `mopacc_result_size` and
 `mopacc_params_size` with its own sizes, before a call that returns
 `MopacCResult`.
@@ -31803,17 +31811,17 @@ The model codes are `MOPACC_MODEL_PM7` (0),
 - Outputs :: `charge`, `spin`, `model` (a `MOPACC_MODEL_*` code), `tolerance`,
   `max_time` (seconds; 0 uses 3600), `epsilon` (COSMO dielectric; 1.0 is vacuum
   and must be 1 when a cell is set) and `solver` (0 conventional, 1 MOZYME).
-  `MOPACPot::Config` defaults are charge 0, spin 0, model 4 (AM1), tolerance
-  1.0 and max_time 3600.
-  The constructor copies those into the packed struct and sets `epsilon` to
-  1.0 and `solver` to `MOPACC_SOLVER_MOPAC` (0).
+  `MOPACPot::Config` defaults are charge 0, spin 0, model 4 (AM1), tolerance 1.0
+  and max_time 3600.
+  The constructor copies those into the packed struct and sets `epsilon` to 1.0
+  and `solver` to `MOPACC_SOLVER_MOPAC` (0).
 - Errors :: none.
 
 #### `MopacCResult`
 
 - Inputs :: none; a struct returned by value.
-- Units :: `energy_h` is in Hartree, `dipole_debye` is in Debye and
-  `stress_gpa` is in GPa.
+- Units :: `energy_h` is in Hartree, `dipole_debye` is in Debye and `stress_gpa`
+  is in GPa.
 - Outputs :: `ok`, `energy_h`, `dipole_debye` (three components), `stress_gpa`
   (Voigt xx, yy, zz, yz, xz, xy; 0 if unavailable) and `message`, a
   NUL-terminated text of at most 512 bytes.
@@ -31953,8 +31961,8 @@ MopacCResult mopacc_energy_forces(int n_atoms, const double *positions_ang, cons
 
 - Inputs :: as `mopacc_energy`, plus `forces_h_bohr`, room for 3*n doubles.
 - Units :: Angstrom in.
-  The header reports the ABI in Hartree and Hartree/Bohr, and names this
-  buffer `forces_h_bohr`.
+  The header reports the ABI in Hartree and Hartree/Bohr, and names this buffer
+  `forces_h_bohr`.
 - Outputs :: a `MopacCResult` with the energy, and 3*n values in
   `forces_h_bohr`.
 - Errors :: `ok` equal to 0 with the reason in `message`.
@@ -32088,8 +32096,8 @@ int mopacc_last_charges(int n_atoms, double *charges);
 
 - Inputs :: `n_atoms` and `charges`, room for `n_atoms` doubles.
 - Units :: none stated by the header.
-- Outputs :: `n_atoms` values written into `charges`, and the status the
-  library returns.
+- Outputs :: `n_atoms` values written into `charges`, and the status the library
+  returns.
   The header does not say which charges.
 - Errors :: none stated by the header.
 
@@ -32101,8 +32109,8 @@ int mopacc_session_charges(const MopacCSession *session, int n_atoms, double *ch
 
 - Inputs :: `session`, `n_atoms` and `charges`, room for `n_atoms` doubles.
 - Units :: none stated by the header.
-- Outputs :: `n_atoms` values written into `charges`, and the status the
-  library returns.
+- Outputs :: `n_atoms` values written into `charges`, and the status the library
+  returns.
   The header does not say which charges.
 - Errors :: none stated by the header.
 
@@ -32115,8 +32123,8 @@ const char *mopacc_last_error(void);
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a C string.
-  The header does not say which error it names, or how long the pointer
-  stays valid.
+  The header does not say which error it names, or how long the pointer stays
+  valid.
 - Errors :: none.
 
 #### `mopacc_finalize`
@@ -32938,10 +32946,10 @@ SMD solvation parameters (rides on cosmo).
 
 | Enumerant | Ordinal | Description |
 |-
-| `NWChemPseudopotentialSpinRule.AngularMomentum.s` | 0 | The `s= value of =enum AngularMomentum`. |
-| `NWChemPseudopotentialSpinRule.AngularMomentum.p` | 1 | The `p= value of =enum AngularMomentum`. |
-| `NWChemPseudopotentialSpinRule.AngularMomentum.d` | 2 | The `d= value of =enum AngularMomentum`. |
-| `NWChemPseudopotentialSpinRule.AngularMomentum.f` | 3 | The `f= value of =enum AngularMomentum`. |
+| `NWChemPseudopotentialSpinRule.AngularMomentum.s` | 0 | The `s` value of `enum AngularMomentum`. |
+| `NWChemPseudopotentialSpinRule.AngularMomentum.p` | 1 | The `p` value of `enum AngularMomentum`. |
+| `NWChemPseudopotentialSpinRule.AngularMomentum.d` | 2 | The `d` value of `enum AngularMomentum`. |
+| `NWChemPseudopotentialSpinRule.AngularMomentum.f` | 3 | The `f` value of `enum AngularMomentum`. |
 
 #### struct NWChemPseudopotentialUtermRule
 
@@ -32956,10 +32964,10 @@ SMD solvation parameters (rides on cosmo).
 
 | Enumerant | Ordinal | Description |
 |-
-| `NWChemPseudopotentialUtermRule.AngularMomentum.s` | 0 | The `s= value of =enum AngularMomentum`. |
-| `NWChemPseudopotentialUtermRule.AngularMomentum.p` | 1 | The `p= value of =enum AngularMomentum`. |
-| `NWChemPseudopotentialUtermRule.AngularMomentum.d` | 2 | The `d= value of =enum AngularMomentum`. |
-| `NWChemPseudopotentialUtermRule.AngularMomentum.f` | 3 | The `f= value of =enum AngularMomentum`. |
+| `NWChemPseudopotentialUtermRule.AngularMomentum.s` | 0 | The `s` value of `enum AngularMomentum`. |
+| `NWChemPseudopotentialUtermRule.AngularMomentum.p` | 1 | The `p` value of `enum AngularMomentum`. |
+| `NWChemPseudopotentialUtermRule.AngularMomentum.d` | 2 | The `d` value of `enum AngularMomentum`. |
+| `NWChemPseudopotentialUtermRule.AngularMomentum.f` | 3 | The `f` value of `enum AngularMomentum`. |
 
 #### enum NWChemPseudopotentialBlockName
 
@@ -34350,7 +34358,7 @@ Constrained-DFT controls inside the dft block (cdft_inp.F).
 | `CPMDSystemSection.couplingsProductDisplacement` | 74 | `Float64` | `0.0` | COUPLINGS PROD=eps; 0 => omit. |
 | `CPMDSystemSection.couplingsLinres` | 75 | `Bool` | `false` | COUPLINGS LINRES. |
 | `CPMDSystemSection.couplingsLinresTolerance` | 76 | `Float64` | `0.0` | COUPLINGS LINRES TOL=; 0 => omit. |
-| `CPMDSystemSection.couplingsLinresNvects` | 77 | `Int32` | `0= | COUPLINGS LINRES NVECT`; 0 => omit. |
+| `CPMDSystemSection.couplingsLinresNvects` | 77 | `Int32` | `0` | COUPLINGS LINRES NVECT=; 0 => omit. |
 | `CPMDSystemSection.couplingsLinresSpecify` | 78 | `Bool` | `false` | COUPLINGS LINRES NVECT=... SPECIFY. |
 | `CPMDSystemSection.couplingsLinresBruteForce` | 79 | `Bool` | `false` | COUPLINGS LINRES BRUTE FORCE. |
 | `CPMDSystemSection.couplingsLinresThresholds` | 80 | `List(Float64)` |  | COUPLINGS LINRES THRESHOLDS low/med/high pairs. |
@@ -34572,7 +34580,7 @@ Constrained-DFT controls inside the dft block (cdft_inp.F).
 | `CPMDCpmdSection.bogoliubovCorrection` | 199 | `Text` |  | BOGOLIUBOV CORRECTION inline option. |
 | `CPMDCpmdSection.vibrationalAnalysisOptions` | 200 | `Text` |  | VIBRATIONAL ANALYSIS inline options. |
 | `CPMDCpmdSection.vibrationalAnalysisSample` | 201 | `Int32` | `0` | VIBRATIONAL ANALYSIS SAMPLE payload. |
-| `CPMDCpmdSection.vibrationalAnalysisMode` | 202 | `Int32` | `0= | VIBRATIONAL ANALYSIS MODE` value. |
+| `CPMDCpmdSection.vibrationalAnalysisMode` | 202 | `Int32` | `0` | VIBRATIONAL ANALYSIS MODE= value. |
 | `CPMDCpmdSection.electronicSpectra` | 203 | `Bool` | `false` | ELECTRONIC SPECTRA. |
 | `CPMDCpmdSection.spinOrbitCouplingStates` | 204 | `List(Int32)` |  | SPIN-ORBIT COUPLING state pair. |
 | `CPMDCpmdSection.propagationSpectra` | 205 | `Bool` | `false` | PROPAGATION SPECTRA. |
@@ -34587,7 +34595,7 @@ Constrained-DFT controls inside the dft block (cdft_inp.F).
 | `CPMDCpmdSection.langevinParameter` | 214 | `Text` |  | LANGEVIN payload line. |
 | `CPMDCpmdSection.qmmmEasy` | 215 | `Bool` | `false` | QMMMEASY. |
 | `CPMDCpmdSection.interfaceOptions` | 216 | `Text` |  | INTERFACE inline options. |
-| `CPMDCpmdSection.trotterFactorCount` | 217 | `Int32` | `0= | TROTTER FACTOR` count; 0 => omit. |
+| `CPMDCpmdSection.trotterFactorCount` | 217 | `Int32` | `0` | TROTTER FACTOR= count; 0 => omit. |
 | `CPMDCpmdSection.trotterFactorPayload` | 218 | `Text` |  | TROTTER FACTOR payload lines. |
 | `CPMDCpmdSection.linearResponse` | 219 | `Bool` | `false` | LINEAR RESPONSE. |
 | `CPMDCpmdSection.harmonicReference` | 220 | `Text` |  | HARMONIC REFERENCE option. |
@@ -34597,17 +34605,17 @@ Constrained-DFT controls inside the dft block (cdft_inp.F).
 | `CPMDCpmdSection.nonorthogonalOrbitalsOptions` | 224 | `Text` |  | NONORTHOGONAL ORBITALS option. |
 | `CPMDCpmdSection.nonorthogonalOrbitalsLimit` | 225 | `Float64` | `0.0` | NONORTHOGONAL ORBITALS payload. |
 | `CPMDCpmdSection.lanczosDiagonalizationOptions` | 226 | `Text` |  | LANCZOS DIAGONALIZATION inline options. |
-| `CPMDCpmdSection.lanczosParametersCount` | 227 | `Int32` | `0= | LANCZOS PARAMETERS N` count. |
+| `CPMDCpmdSection.lanczosParametersCount` | 227 | `Int32` | `0` | LANCZOS PARAMETERS N= count. |
 | `CPMDCpmdSection.lanczosParametersPayload` | 228 | `Text` |  | LANCZOS PARAMETERS payload lines. |
 | `CPMDCpmdSection.davidsonDiagonalization` | 229 | `Bool` | `false` | DAVIDSON DIAGONALIZATION. |
 | `CPMDCpmdSection.davidsonParameters` | 230 | `Text` |  | DAVIDSON PARAMETERS payload line. |
 | `CPMDCpmdSection.alexanderMixing` | 231 | `Float64` | `0.0` | ALEXANDER MIXING payload; 0 => omit. |
 | `CPMDCpmdSection.andersonMixingGspace` | 232 | `Bool` | `false` | ANDERSON MIXING G-SPACE. |
-| `CPMDCpmdSection.andersonMixingCount` | 233 | `Int32` | `0= | ANDERSON MIXING N` count. |
+| `CPMDCpmdSection.andersonMixingCount` | 233 | `Int32` | `0` | ANDERSON MIXING N= count. |
 | `CPMDCpmdSection.andersonMixingPayload` | 234 | `Text` |  | ANDERSON MIXING payload lines. |
 | `CPMDCpmdSection.broydenMixingOptions` | 235 | `Text` |  | BROYDEN MIXING inline options. |
 | `CPMDCpmdSection.broydenMixingPayload` | 236 | `Text` |  | BROYDEN MIXING payload line. |
-| `CPMDCpmdSection.diisMixingCount` | 237 | `Int32` | `0= | DIIS MIXING N` count. |
+| `CPMDCpmdSection.diisMixingCount` | 237 | `Int32` | `0` | DIIS MIXING N= count. |
 | `CPMDCpmdSection.diisMixingPayload` | 238 | `Text` |  | DIIS MIXING payload lines. |
 | `CPMDCpmdSection.moverhoMixing` | 239 | `Float64` | `0.0` | MOVERHO payload; 0 => omit. |
 | `CPMDCpmdSection.extrapolateWfnOptions` | 240 | `Text` |  | EXTRAPOLATE WFN inline options. |
@@ -34629,8 +34637,8 @@ Constrained-DFT controls inside the dft block (cdft_inp.F).
 | `CPMDCpmdSection.prfoPayload` | 256 | `Text` |  | PRFO payload line. |
 | `CPMDCpmdSection.hesscore` | 257 | `Bool` | `false` | HESSCORE. |
 | `CPMDCpmdSection.bfgs` | 258 | `Bool` | `false` | BFGS. |
-| `CPMDCpmdSection.rfoOrder` | 259 | `Int32` | `0= | RFO ORDER` value; 0 => omit. |
-| `CPMDCpmdSection.inrParametersCount` | 260 | `Int32` | `0= | INR PARAMETERS N` count. |
+| `CPMDCpmdSection.rfoOrder` | 259 | `Int32` | `0` | RFO ORDER= value; 0 => omit. |
+| `CPMDCpmdSection.inrParametersCount` | 260 | `Int32` | `0` | INR PARAMETERS N= count. |
 | `CPMDCpmdSection.inrParametersPayload` | 261 | `Text` |  | INR PARAMETERS payload lines. |
 | `CPMDCpmdSection.implicitNewtonOptions` | 262 | `Text` |  | IMPLICIT NEWTON inline options. |
 | `CPMDCpmdSection.implicitNewtonMaxIter` | 263 | `Int32` | `0` | IMPLICIT NEWTON payload; 0 => omit. |
@@ -35304,7 +35312,7 @@ One child of a composite potential: a weighted, switchable PotentialSpec.
 ORCA energy and gradient through the orca executable (orcac).
 Every field that shapes the calculation is the caller's: there is no default method or basis.
 The input is `! <method> <basis> <keywords> EnGrad`, `%pal nprocs` when nprocs is above 1, `%maxcore`, and the coordinates in Angstrom.
-Keywords that start with `!= or =%`, or span several lines, are copied verbatim after the generated header instead.
+Keywords that start with `!` or `%`, or span several lines, are copied verbatim after the generated header instead.
 
 | Member | Ordinal | Type | Default | Description |
 |-
@@ -35847,7 +35855,7 @@ Windows, default visibility elsewhere.
 
 The host side is in `CppCore/rgpot/plugin/`.
 `rgpot::plugin::PluginRegistry::discover` reads `RGPOT_PLUGIN_PATH`, a list of
-directories separated by `:= (`;= on Windows).
+directories separated by `:` (`;` on Windows).
 It opens every regular file with the platform's library suffix (`.so`, `.dylib`
 or `.dll`) in sorted order, with `RTLD_NOW | RTLD_LOCAL` on POSIX, and calls
 `rgpot_plugin_init`.
@@ -35862,10 +35870,10 @@ The registry always holds the built-in plugins `lennard-jones`,
 `classical-morse` and `sutton-chen`.
 When tabulated EAM is built it also holds `eam-funcfl` and `eam-setfl`.
 `lennard-jones` ignores its configuration string.
-`classical-morse` reads a flat JSON object whose keys are `De`, `a=, =re`,
+`classical-morse` reads a flat JSON object whose keys are `De`, `a`, `re`,
 `cutoff` and `switch_width`; a null string, an empty string or `"{}"` selects
 the potential's defaults.
-`sutton-chen` reads `epsilon`, `c=, =a`, `n=, =m`, `cutoff`, `periodic` and
+`sutton-chen` reads `epsilon`, `c`, `a`, `n`, `m`, `cutoff`, `periodic` and
 `stress`.
 Its default is periodic, unlike the C++ struct, because the plugin advertises
 `RGPOT_CAP_PERIODIC`; `"periodic": false` clears that capability and allows a
@@ -36347,7 +36355,7 @@ int rgpot_external_potential_energy_forces(
 ```
 
 - Inputs :: `pot`, `xyz` (`3 * n` doubles, row-major `x y z` per atom),
-  `atomic_numbers` (`n= ints), =box9` (nine doubles, lattice vectors as rows), `forces` (room for `3 * n` doubles), `energy`, `err` and `err_len`.
+  `atomic_numbers` (`n` ints), `box9` (nine doubles, lattice vectors as rows), `forces` (room for `3 * n` doubles), `energy`, `err` and `err_len`.
   `box9` must not be null, also when `n` is 0.
 - Units :: `xyz` and `box9` are Angstrom, `*energy` is eV and `forces`
   eV/Angstrom.
@@ -37016,7 +37024,7 @@ On the two-pass walks, one pass builds the densities and a second pass writes
 the forces.
 The density pass keeps the powers and `1/r^2` that the force of each pair takes
 in `PairTerms<3>` (24 bytes per pair), and the force pass reads them back
-instead of raising the distance to `n= and =m` in the second pass.
+instead of raising the distance to `n` and `m` in the second pass.
 With `a = 1` those are the density's own powers; otherwise the force's powers of
 `a^2 (1/r^2)` are kept, since they can differ from those of `a^2 / r^2` in the
 last bit.
@@ -37164,11 +37172,11 @@ atom count match.
 
 #### `rgpot_sc_config`
 
-- Inputs :: `epsilon`, `c=, =a`, `n=, =m`, `cutoff` and `periodic`.
+- Inputs :: `epsilon`, `c`, `a`, `n`, `m`, `cutoff` and `periodic`.
   Field order is part of the ABI.
 - Units :: `epsilon` sets the energy unit and `a` the length unit.
   `cutoff` is in the coordinate unit.
-  `c=, =n`, `m= and =periodic` are dimensionless.
+  `c`, `n`, `m` and `periodic` are dimensionless.
 - Outputs :: the parameter block of `rgpot_sutton_chen_energy_forces` and
   `rgpot_sutton_chen_scales`.
 - Errors :: none.
@@ -37249,7 +37257,7 @@ Every pair `i < j` is visited once, in that order.
 For one ordered species pair the repulsive term added to the energy is
 `2 A exp(-p (r/r0 - 1))` and each atom's density gains `xi^2 exp(-2 q (r/r0 - 1))`.
 The energy is that repulsion minus the sum of the square roots of the densities.
-`A=, =xi`, `p=, =q` and `r0` are row-major tables of `n_species * n_species`
+`A`, `xi`, `p`, `q` and `r0` are row-major tables of `n_species * n_species`
 entries.
 `slot[i]` selects the species of atom `i`.
 
@@ -37343,10 +37351,10 @@ void rgpot_gupta(const double *x, size_t n, const unsigned char *slot,
                  double *energy, double *gradient);
 ```
 
-- Inputs :: `x= (3 n coordinates), =n`, `slot` (one species index per atom),
-  `n_species`, and the species-pair tables `a=, =xi`, `p=, =q` and `r0`.
-- Units :: `x= and =r0` in the caller's length; `a= and =xi` in the caller's
-  energy; `p= and =q` dimensionless.
+- Inputs :: `x` (3 n coordinates), `n`, `slot` (one species index per atom),
+  `n_species`, and the species-pair tables `a`, `xi`, `p`, `q` and `r0`.
+- Units :: `x` and `r0` in the caller's length; `a` and `xi` in the caller's
+  energy; `p` and `q` dimensionless.
   The gradient is energy per length.
 - Outputs :: one energy and 3 n gradient components.
   For `n < 2` the pair loop does not run, so the energy is 0 and the gradient is
@@ -37384,9 +37392,9 @@ void rgpot_cambridge_morse(const double *x, size_t n, double rho,
                            double *energy, double *gradient);
 ```
 
-- Inputs :: `x= (3 n coordinates), =n` and `rho`.
+- Inputs :: `x` (3 n coordinates), `n` and `rho`.
   The well depth and the equilibrium distance are 1.
-- Units :: `x= in the reduced length; =rho` is the dimensionless range; energy
+- Units :: `x` in the reduced length; `rho` is the dimensionless range; energy
   in the reduced energy; gradient in energy per length.
 - Outputs :: one energy and 3 n gradient components.
   For `n < 2` the pair loop does not run, so the energy is 0 and the gradient is
@@ -37404,7 +37412,7 @@ void rgpot_cluster_lj(const double *x, size_t n, double *energy,
                       double *gradient);
 ```
 
-- Inputs :: `x= (3 n coordinates) and =n`.
+- Inputs :: `x` (3 n coordinates) and `n`.
   `epsilon` and `sigma` are 1, and there is no cutoff.
 - Units :: reduced length and reduced energy.
   The gradient is energy per length.
@@ -38172,7 +38180,7 @@ Source: docs/orgmode/reference/potential_names.org
 URL: https://rgpot.rgoswami.me/reference/potential_names.html
 
 `pair_style rgpot` in LAMMPS (`pair_coeff * * Name [key value ...] El ...`), the
-PLUMED action `RGPOT` (`POTENTIAL=Name OPTIONS`{key value ...}=) and the
+PLUMED action `RGPOT` (`POTENTIAL=Name OPTIONS={key value ...}`) and the
 `rgpot-eval` tool build a potential from the same name and options.
 `engines/pot_spec.hpp` does the parsing for all three.
 
@@ -38183,8 +38191,8 @@ Options come as `key value` pairs separated by spaces.
 | Name         | Options                                                                  | Stress |
 |--------------|--------------------------------------------------------------------------|--------|
 | `LJ`         | `u0`, `psi`, `cutoff`, `switch_width`                                    | yes    |
-| `Morse`      | `de`, `a=, =re`, `cutoff`, `switch_width`                                | yes    |
-| `SuttonChen` | `preset` (`platinum` or `gold`), `epsilon`, `c=, =a`, `n=, =m`, `cutoff` | yes    |
+| `Morse`      | `de`, `a`, `re`, `cutoff`, `switch_width`                                | yes    |
+| `SuttonChen` | `preset` (`platinum` or `gold`), `epsilon`, `c`, `a`, `n`, `m`, `cutoff` | yes    |
 | `EAMTable`   | `file`, `format` (`funcfl`, `setfl` or `fs`), `skin`                     | yes    |
 | `SWSi1985`   | none                                                                     | yes    |
 | `TersoffSi`  | none                                                                     | yes    |
@@ -38213,7 +38221,7 @@ PLUMED and `rgpot-eval` have none, so there the potential's own default is used
 (15 Angstrom for `LJ`, 9.5 for `Morse`, 40 for `SuttonChen`).
 An unknown name stops with a message that lists the names this build accepts.
 An option the potential does not take, an option given twice, or a value that is
-not a number (or not an integer, for `n= and =m`) stops with a message that
+not a number (or not an integer, for `n` and `m`) stops with a message that
 names the option.
 
 The stress column is what a periodic cell needs for the virial.
@@ -38833,7 +38841,7 @@ The checker is `python scripts/check_news_fragments.py` (or
 It fails when a fragment starts with a dash or an asterisk and a space.
 Leading whitespace before that marker does not change this.
 It fails on a line starting with `copyright` or `(c)` and a space.
-It fails on a line starting with `©=, =spdx-`, `[//]:` or `<!--`.
+It fails on a line starting with `©`, `spdx-`, `[//]:` or `<!--`.
 These prefixes match without regard to case.
 It fails on a fragment with no text.
 Add `--fix` to strip these from the files.
@@ -39135,7 +39143,7 @@ Do not copy a hash from another platform or from a local build.
 The stamp printer
 `CppCore/tests/print_cxx_layout_stamp.cc` prints one line: `RGPOT_CXX_LAYOUT_STAMP tag`...
 hash=...
-hash_dec=... features=... revision=...`. =features` is 1 for a cache build; ignore those lines. The workflow "C++ layout stamp" (`.github/workflows/cxx-layout-stamp.yml`) runs the printer on Linux x86_64,
+hash_dec=... features=... revision=...=. `features` is 1 for a cache build; ignore those lines. The workflow "C++ layout stamp" (`.github/workflows/cxx-layout-stamp.yml`) runs the printer on Linux x86_64,
 Linux aarch64, macOS arm64, macOS x86_64 and Windows MSVC.
 The Linux and macOS wheel builds run it too, from the compiler that builds the
 wheel, and so does the Meson test `CxxSoversion`.
@@ -39194,11 +39202,11 @@ When neither exists, it writes an empty stub module instead.
 
 ### How do I repin the schema?
 
-The schema is rgconf's `crates/rgconf-core/schema/potential.capnp`. Both
-vendored copies (`CppCore/rgpot/rpc/Potentials.capnp` and
-`rgpot-core/schema/Potentials.capnp`) are that file at the commit
-`CppCore/rgpot/rpc/schema.pin` names, byte for byte, each with rgconf's
-`common.capnp` beside it, because `potential.capnp` imports it.
+The schema is rgconf's `crates/rgconf-core/schema/potential.capnp`.
+Both vendored copies
+(`CppCore/rgpot/rpc/Potentials.capnp` and `rgpot-core/schema/Potentials.capnp`) are that file at the commit `CppCore/rgpot/rpc/schema.pin`
+names, byte for byte, each with rgconf's `common.capnp` beside it, because
+`potential.capnp` imports it.
 Change `revision` in `schema.pin` and copy both rgconf files over both copies.
 Then append the new ordinals to `CppCore/rgpot/rpc/Potentials.ordinals`:
 
@@ -39220,11 +39228,10 @@ The meson `schema` suite runs it without the network.
 
 ### How do I add a schema field?
 
-Add it to rgconf's `potential.capnp` first, then repin.
-rgpot carries no local schema members any more: the fields it used to add
-through a local diff series are in rgconf at the ordinals rgpot gave them,
-and the ledger records each of them as `local` followed by the line that
-retired it, now `upstream`.
+Add it to rgconf's `potential.capnp` first, then repin. rgpot carries no local
+schema members any more: the fields it used to add through a local diff series
+are in rgconf at the ordinals rgpot gave them, and the ledger records each of
+them as `local` followed by the line that retired it, now `upstream`.
 
 ### Why is the crate README in org-mode?
 
@@ -39302,7 +39309,7 @@ We use the `@` character for all Doxygen commands.
 - Multiple words :: Use standard Markdown syntax.
 
 #### Structure
-- Headings :: Use Markdown style (`#=, =##`).
+- Headings :: Use Markdown style (`#`, `##`).
 - HTML :: Strict prohibition on HTML tags.
 
 ### License and Copyright
@@ -39374,7 +39381,7 @@ Required directives order:
 
 `docs/source/Doxyfile_potlib.cfg` does not read `.capnp` files.
 Schema comments still use Doxygen commands after the Cap'n Proto comment
-character `#=, as in =CppCore/rgpot/rpc/Potentials.capnp`.
+character `#`, as in `CppCore/rgpot/rpc/Potentials.capnp`.
 
 ```capnp
 # @struct ForceInput
@@ -40798,8 +40805,9 @@ for pot in sc lj ljcluster morse zbl eam sw tersoff; do
 done
 ```
 
-`--sizes 100000` gives the second table, and `--mode stream --sizes
-10000` the third. Each line also counts, against the first thread count,
+`--sizes 100000` gives the second table, and
+`--mode stream --sizes 10000` the third.
+Each line also counts, against the first thread count,
 the frames whose energy bits differ and the force components whose bits
 differ, and hashes the bits of every energy and force, so two builds can
 be compared.

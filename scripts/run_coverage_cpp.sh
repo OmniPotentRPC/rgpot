@@ -46,6 +46,11 @@ fi
 
 meson compile -C "$BUILD"
 
+# MdProjectedLangevinTest shortens its long samples when this is set, which
+# keeps that binary inside the coverage timeout. The same build also passes
+# -DRGPOT_COVERAGE, so a later meson test without this variable still shortens.
+export RGPOT_COVERAGE=1
+
 # The workflow sets RGPOT_COV_TIMEOUT_MULTIPLIER once for every job that
 # runs this script. NeighbourLayerTest's registry timeout is 360s. The
 # shared multiplier is four, and this test gets one extra multiple so its
