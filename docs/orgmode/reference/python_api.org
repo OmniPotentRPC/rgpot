@@ -2029,9 +2029,12 @@ rgpot.ase.RgpotRpcCalculator(host="localhost", port=12345, *, server_proc=None, 
 - Units :: the =ForceInput= defaults, Angstrom and eV, which are ASE's units.
   A =Atoms= without a full cell is sent in a 100 Angstrom cubic box.
 - Outputs :: a calculator whose
-  =implemented_properties= are =energy= and =forces=; =free_energy= equals
-  =energy=.
-  The constructor retries the connection 120 times, 0.25 s apart.
+  =implemented_properties= are =energy=, =free_energy= and =forces=, plus
+  =stress= when the server potential reports that capability; =free_energy=
+  equals =energy=.
+  The constructor reads the server capabilities once connected, and =calculate=
+  reads them again.
+  It retries the connection 120 times, 0.25 s apart.
 - Errors :: a server that cannot be reached raises =RuntimeError= naming the
   address; a missing =pycapnp= raises its import error.
   A second thread that enters =calculate= or =close= while the first is inside
@@ -2077,8 +2080,33 @@ calculate(atoms=None, properties=("energy",), system_changes=all_changes)
 - Inputs :: the =Atoms=, properties and change flags, as ASE passes them.
 - Units :: Angstrom in, eV and eV/Angstrom out.
 - Outputs :: nothing; =self.results= holds =energy=, =free_energy= and =forces=.
+  A request that includes =stress= on a server potential that reports it calls
+  =calculateStress=, and =self.results= also holds =stress= in ASE Voigt order,
+  in eV/Angstrom^3.
+  The one reply fills energy, forces and stress together.
 - Errors :: =RuntimeError= when another thread is inside the calculator; an RPC
   failure propagates.
+  A request for =stress= raises =PropertyNotImplementedError= when the cell is
+  not fully periodic and three-dimensional, or when the server potential does
+  not report stress.
+
+*** =rgpot.ase.RgpotRpcCalculator.get_property=
+
+#+attr_rgpot: signature
+#+begin_src python
+get_property(name, atoms=None, allow_calculation=True)
+#+end_src
+
+- Inputs :: the property =name=, the =Atoms= and the ASE =allow_calculation=
+  flag.
+- Units :: the units of the property: eV for energies,
+  eV/Angstrom for forces, eV/Angstrom^3 for stress.
+- Outputs :: the cached or newly calculated property, as ASE returns it.
+  For =stress= the call first reads the server capabilities again, so a server
+  potential that no longer reports stress is detected before ASE consults its
+  cache.
+- Errors :: =PropertyNotImplementedError= for =stress= when the server potential
+  does not report it; the errors of =calculate= otherwise.
 
 *** =rgpot.ase.RgpotRpcCalculator.close=
 
