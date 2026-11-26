@@ -253,16 +253,13 @@ bool same_path(const fs::path &a, const fs::path &b) {
 }
 
 // Wine's ntdll exports wine_get_version. A native ntdll does not.
-// WINEPREFIX and WINELOADERNOEXEC are set when wine starts the process.
+// WINEPREFIX and WINELOADERNOEXEC are not evidence of Wine.
 bool running_under_wine() {
 #ifndef _WIN32
   return false;
 #else
-  const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-  if (ntdll && GetProcAddress(ntdll, "wine_get_version"))
-    return true;
-  return std::getenv("WINEPREFIX") != nullptr ||
-         std::getenv("WINELOADERNOEXEC") != nullptr;
+  const HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+  return ntdll && GetProcAddress(ntdll, "wine_get_version");
 #endif
 }
 
