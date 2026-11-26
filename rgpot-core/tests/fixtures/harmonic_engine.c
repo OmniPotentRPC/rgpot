@@ -8,9 +8,13 @@
  * before the header forbade it might. FIXTURE_UNLOAD_POLICY exports
  * rgpot_engine_unload_policy returning that value. REPLACE_SELF_IN_CREATE
  * makes the first create call rename "<its own file>.next" over its own file,
- * as a build that rewrites the plugin while it loads would. REENTER_IN_FINALIZER
- * calls the function whose address is in RGPOT_FIXTURE_FINI_CALLBACK from the
- * library destructor, which runs when the library is unloaded. */
+ * as a build that rewrites the plugin while it loads would.
+ * REENTER_IN_FINALIZER calls the function whose address is in
+ * RGPOT_FIXTURE_FINI_CALLBACK from the library destructor, which runs when the
+ * library is unloaded. From ABI minor 12, unless NO_EVAL_FLAGS is defined, an
+ * atomic number of 1000 stands for an SCC that converges only through the
+ * rescue (flagged, or a recoverable failure with the rescue off) and 1001 for
+ * one that converges on a retry. */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
 #endif
@@ -55,6 +59,10 @@
 #ifndef FIXTURE_REENTRANCY
 #define FIXTURE_REENTRANCY 0
 #endif
+#if !defined(NO_EVAL_FLAGS) && (FIXTURE_ABI_MINOR >= 12)
+#define FIXTURE_EVAL_FLAGS 1
+#endif
+#define FIXTURE_MAX_FLAGS 16
 
 struct RgpotEnginePot {
   double k;
@@ -66,6 +74,11 @@ struct RgpotEnginePot {
   int cache_attached;
 #endif
   int active;
+  int scc_rescue_off;
+  int in_batch;
+  uint64_t current_flags;
+  uint64_t flags[FIXTURE_MAX_FLAGS];
+  long n_flags;
   char error[128];
 };
 
@@ -294,6 +307,9 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
   double scratch_box[9];
   count_native_call();
   (void)variance;
+  pot->current_flags = 0;
+  if (!pot->in_batch)
+    pot->n_flags = 0;
   if (transform != NULL) {
     int rc;
     scratch = malloc((size_t)(3 * n) * sizeof(double));
@@ -338,6 +354,20 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
       leave_call(pot);
       return -1;
     }
+#ifdef FIXTURE_EVAL_FLAGS
+    if (atomic_nrs[i] == 1000) {
+      if (pot->scc_rescue_off) {
+        snprintf(pot->error, sizeof pot->error,
+                 "SCC did not converge (SCC rescue disabled)");
+        free(scratch);
+        leave_call(pot);
+        return RGPOT_ENGINE_ERR_EVAL;
+      }
+      pot->current_flags |= RGPOT_ENGINE_EVAL_SCC_RESCUED;
+    }
+    if (atomic_nrs[i] == 1001)
+      pot->current_flags |= RGPOT_ENGINE_EVAL_SCC_RETRIED;
+#endif
   }
   if (pot->callbacks.oracle != NULL) {
     int rc;
@@ -389,6 +419,13 @@ int rgpot_engine_force(RgpotEnginePot *pot, long n, const double *positions,
   pot->last_energy = e;
   pot->evaluated = 1;
   pot->error[0] = '\0';
+  if (pot->in_batch) {
+    if (pot->n_flags < FIXTURE_MAX_FLAGS)
+      pot->flags[pot->n_flags++] = pot->current_flags;
+  } else {
+    pot->flags[0] = pot->current_flags;
+    pot->n_flags = 1;
+  }
   free(scratch);
   leave_call(pot);
   return 0;
@@ -407,6 +444,8 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long n_systems, long n,
   count_native_call();
   batch_calls += 1;
   (void)variances;
+  pot->n_flags = 0;
+  pot->in_batch = 1;
   for (s = 0; s < n_systems; s++) {
     int rc = rgpot_engine_force(pot, n, positions + 3 * n * s, atomic_nrs,
                                 forces + 3 * n * s, energies + s, NULL,
@@ -414,9 +453,16 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long n_systems, long n,
 #ifdef BATCH_ALL_SYSTEMS
     if (rc != 0 && first == 0) first = rc;
 #else
-    if (rc != 0) return rc;
+    if (rc != 0) {
+      pot->in_batch = 0;
+      pot->n_flags = 0;
+      return rc;
+    }
 #endif
   }
+  pot->in_batch = 0;
+  if (first != 0)
+    pot->n_flags = 0;
   return first;
 }
 #endif
@@ -646,6 +692,27 @@ size_t rgpot_engine_component_name(const RgpotEnginePot *pot, long index,
 
 #ifdef FIXTURE_UNLOAD_POLICY
 int rgpot_engine_unload_policy(void) { return FIXTURE_UNLOAD_POLICY; }
+#endif
+
+#ifdef FIXTURE_EVAL_FLAGS
+long rgpot_engine_last_eval_flags(const RgpotEnginePot *pot, uint64_t *out,
+                                  long capacity) {
+  long i;
+  if (!pot)
+    return -1;
+  for (i = 0; out && i < capacity && i < pot->n_flags; i++)
+    out[i] = pot->flags[i];
+  return pot->n_flags;
+}
+
+int rgpot_engine_set_scc_rescue(RgpotEnginePot *pot, int enabled) {
+  if (!pot)
+    return RGPOT_ENGINE_ERR_INVALID;
+  pot->scc_rescue_off = !enabled;
+  return RGPOT_ENGINE_OK;
+}
+
+const char *rgpot_engine_source_revision(void) { return "fixture-rev"; }
 #endif
 
 #if !defined(NO_JET) && (FIXTURE_ABI_MINOR >= 11)

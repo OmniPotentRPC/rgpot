@@ -238,6 +238,39 @@ LJPot force is undefined for coincident atoms
   The constructor prints the RocksDB status to standard error and the object
   holds no database.
 
+*** =rgpot.SccNotConverged=
+
+- Inputs :: the message string.
+- Units :: none.
+- Outputs :: an exception class, a subclass of =RuntimeError=.
+  =rgpot.XTBDlopen= raises it when the SCC does not converge and the rescue is
+  off.
+- Errors :: none.
+
+*** =rgpot.EVAL_SCC_RESCUED=
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the integer 1, the bit of =rgpot.XTBDlopen.last_eval_flags= that
+  marks an energy from the smeared-occupation SCC rescue.
+- Errors :: none.
+
+*** =rgpot.EVAL_SCC_RETRIED=
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the integer 2, the bit that marks an SCC that converged on a
+  second attempt from xtb's own guess.
+- Errors :: none.
+
+*** =rgpot.EVAL_CACHED=
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the integer 4, the bit that marks an answer a result cache served.
+  =rgpot.XTBDlopen= has no cache and never sets it.
+- Errors :: none.
+
 *** =rgpot.NumericalError=
 
 - Inputs :: the message string.
@@ -1897,3 +1930,83 @@ fields_from_density(chi, dchi, density, lapl_chi=None, hess_chi=None)
 - Errors :: =density= not =(nbf, nbf)= raises =ValueError=; the shape errors of
   =contract= apply to the other arrays.
   =chi= or =density= of the wrong dtype or order raises =TypeError=.
+
+*** =rgpot.XTBDlopen=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.XTBDlopen(engine_path='', method='GFN2-xTB', accuracy=1.0, electronic_temperature=300.0, max_iterations=250, charge=0.0, uhf=0, scc_rescue=True)
+#+end_src
+
+- Inputs :: =engine_path=, as =rgpot::XTBDlopenConfig=: when empty the frontend
+  searches =RGPOT_XTB_ENGINE=, =XTB_ENGINE=, the bare soname, then
+  =EON_POTENTIALS_PATH= and =RGPOT_ENGINE_PATH=.
+  =method= is ="GFN2-xTB"=, ="GFN1-xTB"=, ="GFN0-xTB"= or ="GFN-FF"=.
+  The other arguments are the =rgpot::XTBConfig= fields of the same name.
+- Units :: =electronic_temperature= K; =charge= elementary charges.
+- Outputs :: a GFN-xTB potential over =libxtb_engine= opened with =dlopen=.
+  Calling it with =positions=, =atom_types= and =box= returns
+  =(energy, forces, variance)= as in the conventions.
+  Calls on one object are serialized.
+- Errors :: an unknown =method= raises =ValueError=.
+  No engine library, an ABI mismatch, a failed create, or =scc_rescue= false
+  with an engine that cannot switch the rescue off raise =RuntimeError=.
+  A call whose SCC does not converge with the rescue off raises
+  =rgpot.SccNotConverged=; any other failed call raises =RuntimeError=.
+
+*** =rgpot.XTBDlopen.__call__=
+
+#+attr_rgpot: signature
+#+begin_src python
+__call__(positions, atom_types, box)
+#+end_src
+
+- Inputs :: =positions=, =atom_types= and =box= as in the conventions.
+- Units :: energy eV; forces eV/Angstrom.
+- Outputs :: =(energy, forces, variance)=; the variance is 0.0.
+- Errors :: as =rgpot.XTBDlopen=.
+
+*** =rgpot.XTBDlopen.last_eval_flags=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: the =rgpot.EVAL_*= bits of the last successful call, 0 for a plain
+  SCC, before the first call and after a failed one.
+- Errors :: none.
+
+*** =rgpot.XTBDlopen.last_scc_rescued=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: true when =last_eval_flags= has =rgpot.EVAL_SCC_RESCUED=.
+- Errors :: none.
+
+*** =rgpot.XTBDlopen.scc_rescue=
+
+#+attr_rgpot: signature
+#+begin_src python
+scc_rescue(arg, /)
+#+end_src
+
+- Inputs :: a bool to set; a read-write property.
+- Units :: none.
+- Outputs :: whether the engine retries a nonconverged SCC with a smeared
+  occupation.
+- Errors :: setting it on an engine without =rgpot_xtb_set_scc_rescue= raises
+  =RuntimeError=.
+
+*** =rgpot.XTBDlopen.reports_eval_flags=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: false for an engine that predates evaluation flags, whose
+  =last_eval_flags= is always 0.
+- Errors :: none.
+
+*** =rgpot.XTBDlopen.engine_revision=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: the source revision the engine was built from, or the empty string
+  when the engine does not say.
+- Errors :: none.

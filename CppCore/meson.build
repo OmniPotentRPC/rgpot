@@ -2967,6 +2967,9 @@ if get_option('with_tests')
                 engine_table_expect += ['XTB']
                 engine_table_depends += [xtb_engine]
                 engine_table_env.set('RGPOT_ENGINE_XTB', xtb_engine.full_path())
+                # As for XTBtest: spinning OpenMP threads slow each rescued
+                # SCC case about tenfold, past the default test timeout.
+                engine_table_env.set('OMP_NUM_THREADS', '1')
             endif
             if has_metatomic
                 engine_table_expect += ['METATOMIC']

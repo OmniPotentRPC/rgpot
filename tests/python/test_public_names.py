@@ -10,6 +10,8 @@ def _exported(name, value):
         return False
     if value is None or isinstance(value, (bool, str)):
         return True
+    if isinstance(value, int) and name.isupper():
+        return True
     return getattr(value, "__module__", "").startswith("rgpot")
 
 

@@ -2,10 +2,12 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/XTBPot/XTBPot.hpp"
+#include "rgpot/ParamHash.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/units.hpp"
 
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -56,6 +58,12 @@ bool sccUnconverged(const std::string &message) {
          message.find("Self consistent") != std::string::npos;
 }
 
+std::string kelvin(double t) {
+  char text[32];
+  std::snprintf(text, sizeof text, "%g K", t);
+  return text;
+}
+
 // Reading the log is what clears an xtb environment.
 void clearError(xtb_TEnvironment env) {
   char ignored[512];
@@ -78,7 +86,14 @@ void XTBPot::reset() {
   m_previous.clear();
   m_has_wavefunction = false;
   m_last_reused = false;
+  m_last_flags = 0;
 }
+
+void XTBPot::setSccRescue(bool enabled) { m_config.scc_rescue = enabled; }
+
+bool XTBPot::sccRescue() const noexcept { return m_config.scc_rescue; }
+
+std::uint64_t XTBPot::lastEvalFlags() const noexcept { return m_last_flags; }
 
 void XTBPot::setWarmMove(double angstrom) { m_warm_move = angstrom; }
 
@@ -252,6 +267,7 @@ void XTBPot::discardAfterFailure() const {
   m_initialized = false;
   m_has_wavefunction = false;
   m_last_reused = false;
+  m_last_flags = 0;
   m_previous.clear();
   m_numbers.clear();
   m_pos_bohr.clear();
@@ -284,7 +300,22 @@ FusedSettingsSpec XTBPot::fusedSettings() const {
   spec.sccMixer = "xtb";
   spec.engineBuild = "libxtb-api-" + std::to_string(xtb_getAPIVersion()) +
                      "-method-" + std::to_string(static_cast<int>(m_config.method));
+  if (!m_config.scc_rescue)
+    spec.engineBuild += "-scc-rescue-off";
   return spec;
+}
+
+uint64_t XTBPot::paramsKey() const noexcept {
+  Fnv1a h;
+  h.str("rgpot::XTBPot");
+  h.i64(static_cast<int64_t>(m_config.method));
+  h.f64(m_config.charge);
+  h.i64(m_config.uhf);
+  h.f64(m_config.accuracy);
+  h.f64(m_config.electronic_temperature);
+  h.i64(m_config.max_iterations);
+  h.b8(m_config.scc_rescue);
+  return h.h;
 }
 
 void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
@@ -322,6 +353,11 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
                !(m_gap < m_warm_min_gap);
 
   if (composition_changed) {
+    // Until the new molecule exists the next call must build one, not
+    // update a molecule that is gone.
+    m_initialized = false;
+    m_numbers.clear();
+    m_previous.clear();
     if (m_mol) {
       xtb_delMolecule(&m_mol);
       m_mol = nullptr;
@@ -332,8 +368,12 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     int uhf = m_config.uhf;
     m_mol = xtb_newMolecule(m_env, &intN, in.atmnrs, m_pos_bohr.data(), &charge,
                             &uhf, box_bohr, periodicity);
-    if (!m_mol)
+    if (!m_mol) {
+      // The refusal leaves the environment in an error state that shifts
+      // the forces of the next single point.
+      discardAfterFailure();
       throw std::runtime_error("xTB Error: xtb_newMolecule failed");
+    }
     loadParametrisation();
     m_initialized = true;
   } else {
@@ -345,27 +385,39 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   // A bound cluster converges in about ten iterations. One that has
   // not done so by a few times that is the near-zero-gap case, and
   // spending the rest of the iteration budget only delays the rescue.
-  const int first_pass =
-      m_config.max_iterations < 48 ? m_config.max_iterations : 48;
+  // Without the rescue there is nothing to hurry to.
+  const int first_pass = m_config.scc_rescue && m_config.max_iterations > 48
+                             ? 48
+                             : m_config.max_iterations;
   xtb_setMaxIter(m_env, m_calc, first_pass);
   xtb_setAccuracy(m_env, m_calc, m_config.accuracy);
   xtb_setElectronicTemp(m_env, m_calc, m_config.electronic_temperature);
+  std::uint64_t flags = 0;
   std::string message;
   bool converged = singlepoint(&message);
   if (reuse && (!converged || frontierGap() < m_warm_min_gap)) {
     // What follows is a fresh call.
     reuse = false;
     freshResults();
+    const bool first_failed = !converged;
     converged = singlepoint(&message);
+    if (first_failed && converged)
+      flags |= eval_flags::SccRetried;
   }
   if (!converged) {
     const bool scc = sccUnconverged(message);
-    if (!(scc && rescueUnconvergedScc())) {
+    if (!(scc && m_config.scc_rescue && rescueUnconvergedScc())) {
       discardAfterFailure();
+      if (scc && !m_config.scc_rescue)
+        throw SccNotConverged(message + " (SCC rescue disabled; " +
+                              std::to_string(m_config.max_iterations) +
+                              " iterations at " +
+                              kelvin(m_config.electronic_temperature) + ")");
       if (scc)
         throw SccNotConverged(message);
       throw std::runtime_error(message);
     }
+    flags |= eval_flags::SccRescued;
   }
   m_gap = frontierGap();
 
@@ -411,6 +463,7 @@ void XTBPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     m_numbers.assign(in.atmnrs, in.atmnrs + in.nAtoms);
   m_has_wavefunction = true;
   m_last_reused = reuse;
+  m_last_flags = flags;
 }
 
 } // namespace rgpot

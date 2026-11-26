@@ -8,6 +8,7 @@
 #include "rgpot/types/AtomMatrix.hpp"
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -55,8 +56,8 @@ public:
   void forceImpl(const ForceInput &in, ForceOut *out) const;
 
   /// Settings of the loaded engine that change its answer. They are fixed
-  /// at construction: the engine ABI has no setter, so another setting
-  /// means another @c XTBDlopen.
+  /// at construction, except the SCC rescue: the engine ABI has no other
+  /// setter, so another setting means another @c XTBDlopen.
   [[nodiscard]] FusedSettingsSpec fusedSettings() const;
 
   /// Drop the stored SCC wavefunction. The calculator stays.
@@ -74,6 +75,28 @@ public:
 
   /// True when the last successful force reused the previous wavefunction.
   [[nodiscard]] bool reusedWavefunction() const;
+
+  /// Turn the smeared-occupation SCC rescue of the engine on or off.
+  /// Throws when the engine predates @c rgpot_xtb_set_scc_rescue.
+  void setSccRescue(bool enabled);
+
+  /// True when the engine rescues a nonconverged SCC. An engine without
+  /// @c rgpot_xtb_scc_rescue always does.
+  [[nodiscard]] bool sccRescue() const;
+
+  /// @c eval_flags bits of the last successful force. An engine without
+  /// @c rgpot_xtb_last_eval_flags reports nothing; see
+  /// @c reportsEvalFlags().
+  [[nodiscard]] std::uint64_t lastEvalFlags() const;
+
+  /// True when the loaded engine reports evaluation flags.
+  [[nodiscard]] bool reportsEvalFlags() const noexcept {
+    return m_last_flags != nullptr;
+  }
+
+  /// Source revision the engine was built from, empty when it does not
+  /// say.
+  [[nodiscard]] std::string engineRevision() const;
 
   /// Convenience operator matching Potential interface shape.
   std::tuple<double, types::AtomMatrix, double>
@@ -102,6 +125,13 @@ private:
   set_warm_fn m_set_min_gap{nullptr};
   warm_move_fn m_min_gap{nullptr};
   reused_fn m_reused{nullptr};
+  using last_flags_fn = unsigned long long (*)(const RgpotXtbPot *);
+  using set_rescue_fn = void (*)(RgpotXtbPot *, int);
+  using revision_fn = const char *(*)(void);
+  last_flags_fn m_last_flags{nullptr};
+  set_rescue_fn m_set_rescue{nullptr};
+  reused_fn m_rescue{nullptr};
+  revision_fn m_revision{nullptr};
 };
 
 } // namespace rgpot

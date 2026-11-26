@@ -15,6 +15,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -29,6 +30,11 @@
 #include "rgpot/types/AtomMatrix.hpp"
 
 #include "XtbHotClusters.hpp"
+
+#ifdef RGPOT_HAS_CACHE
+#include "TestTempDir.hpp"
+#include "rgpot/PotentialCache.hpp"
+#endif
 
 using rgpot::types::AtomMatrix;
 using Catch::Matchers::WithinAbs;
@@ -484,10 +490,15 @@ TEST_CASE("XTBDlopen reuses the GFN2 wavefunction inside the move guard",
 }
 
 // A dissociated ammonia tetramer. One nitrogen has no hydrogen inside
-// 1.3 Å. GFN2 at 300 K does not converge the SCC; the gap is 0.29 eV.
-// The rescue smears the occupation and returns the cooled 300 K energy.
-TEST_CASE("XTBPot cools a nonconverged SCC back to the configured temperature",
-          "[xtb][linked][scc]") {
+// 1.3 Å. GFN2 at 300 K does not converge the SCC; the gap is 0.29 eV,
+// and 500 iterations are not enough either.
+struct AmmoniaTetramer {
+  AtomMatrix positions{16, 3};
+  std::vector<int> atmtypes;
+  std::array<std::array<double, 3>, 3> box{};
+};
+
+static AmmoniaTetramer ammonia_tetramer() {
   const int z[16] = {7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1, 7, 1, 1, 1};
   const double xyz[16][3] = {
       {-1.66532428, 0.54889027, -2.03940010},
@@ -507,25 +518,305 @@ TEST_CASE("XTBPot cools a nonconverged SCC back to the configured temperature",
       {-1.69113306, -6.08127583, -0.32892162},
       {-2.20633610, -6.61433582, 0.61469530},
   };
+  AmmoniaTetramer out;
+  out.atmtypes.assign(z, z + 16);
+  for (int i = 0; i < 16; ++i)
+    for (int j = 0; j < 3; ++j)
+      out.positions(i, j) = xyz[i][j];
+  out.box[0][0] = out.box[1][1] = out.box[2][2] = 60.0;
+  return out;
+}
+
+static rgpot::XTBConfig ammonia_cfg() {
   rgpot::XTBConfig cfg;
   cfg.method = rgpot::GFNMethod::GFN2xTB;
   cfg.accuracy = 0.01;
   cfg.electronic_temperature = 300.0;
   cfg.max_iterations = 500;
-  rgpot::XTBPot pot(cfg);
-  AtomMatrix positions(16, 3);
-  std::vector<int> atmtypes(z, z + 16);
-  for (int i = 0; i < 16; ++i)
-    for (int j = 0; j < 3; ++j)
-      positions(i, j) = xyz[i][j];
-  std::array<std::array<double, 3>, 3> box{};
-  box[0][0] = box[1][1] = box[2][2] = 60.0;
+  return cfg;
+}
 
-  auto [energy, forces, variance] = pot(positions, atmtypes, box);
+// Cooled 300 K result, not the 1000 K single point (−448.36 eV).
+static constexpr double kAmmoniaRescued = -447.8814;
+
+// The rescue smears the occupation and returns the cooled 300 K energy.
+TEST_CASE("XTBPot cools a nonconverged SCC back to the configured temperature",
+          "[xtb][linked][scc]") {
+  const auto system = ammonia_tetramer();
+  rgpot::XTBPot pot(ammonia_cfg());
+  auto [energy, forces, variance] =
+      pot(system.positions, system.atmtypes, system.box);
   (void)variance;
-  // Cooled 300 K result, not the 1000 K single point (−448.36 eV).
-  REQUIRE_THAT(energy, WithinAbs(-447.8814, 1.0e-3));
+  REQUIRE_THAT(energy, WithinAbs(kAmmoniaRescued, 1.0e-3));
   require_finite_forces(forces, 16);
+}
+
+// Each evaluation says whether the rescue produced it, and with the
+// rescue off the same geometry is a typed SCC failure.
+template <typename Factory> static void check_scc_rescue_flag(Factory make) {
+  const auto system = ammonia_tetramer();
+  AtomMatrix water(3, 3);
+  std::vector<int> water_z;
+  std::array<std::array<double, 3>, 3> water_box{};
+  fill_water(water, water_z, water_box);
+
+  auto pot = make(ammonia_cfg());
+  REQUIRE(pot->sccRescue());
+  REQUIRE(pot->lastEvalFlags() == 0);
+  auto [energy, forces, variance] =
+      (*pot)(system.positions, system.atmtypes, system.box);
+  (void)variance;
+  REQUIRE_THAT(energy, WithinAbs(kAmmoniaRescued, 1.0e-3));
+  require_finite_forces(forces, 16);
+  REQUIRE(pot->lastEvalFlags() == rgpot::eval_flags::SccRescued);
+
+  auto [e_water, f_water, v_water] = (*pot)(water, water_z, water_box);
+  (void)f_water;
+  (void)v_water;
+  REQUIRE(std::isfinite(e_water));
+  REQUIRE(pot->lastEvalFlags() == 0);
+
+  pot->setSccRescue(false);
+  REQUIRE_FALSE(pot->sccRescue());
+  REQUIRE_THROWS_AS((*pot)(system.positions, system.atmtypes, system.box),
+                    rgpot::SccNotConverged);
+  // A converging geometry is unaffected by the switch.
+  auto [e_again, f_again, v_again] = (*pot)(water, water_z, water_box);
+  (void)f_again;
+  (void)v_again;
+  REQUIRE_THAT(e_again, WithinAbs(e_water, 1.0e-8));
+  REQUIRE(pot->lastEvalFlags() == 0);
+
+  pot->setSccRescue(true);
+  auto [e_back, f_back, v_back] =
+      (*pot)(system.positions, system.atmtypes, system.box);
+  (void)f_back;
+  (void)v_back;
+  REQUIRE_THAT(e_back, WithinAbs(kAmmoniaRescued, 1.0e-3));
+  REQUIRE(pot->lastEvalFlags() == rgpot::eval_flags::SccRescued);
+  pot->reset();
+  REQUIRE(pot->lastEvalFlags() == 0);
+
+  rgpot::XTBConfig off = ammonia_cfg();
+  off.scc_rescue = false;
+  auto strict = make(off);
+  REQUIRE_FALSE(strict->sccRescue());
+  REQUIRE(strict->fusedSettings().engineBuild.ends_with("-scc-rescue-off"));
+  REQUIRE_FALSE(pot->fusedSettings().engineBuild.ends_with("-scc-rescue-off"));
+  try {
+    (void)(*strict)(system.positions, system.atmtypes, system.box);
+    FAIL("a nonconverged SCC with the rescue off must throw");
+  } catch (const rgpot::SccNotConverged &ex) {
+    UNSCOPED_INFO(ex.what());
+    REQUIRE(std::string(ex.what()).find("SCC") != std::string::npos);
+  }
+  REQUIRE(strict->lastEvalFlags() == 0);
+}
+
+TEST_CASE("XTBPot flags a rescued SCC and fails it with the rescue off",
+          "[xtb][linked][scc]") {
+  check_scc_rescue_flag([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBPot>(cfg);
+  });
+  rgpot::XTBConfig off = ammonia_cfg();
+  off.scc_rescue = false;
+  rgpot::XTBPot strict(off);
+  const auto system = ammonia_tetramer();
+  try {
+    (void)strict(system.positions, system.atmtypes, system.box);
+    FAIL("a nonconverged SCC with the rescue off must throw");
+  } catch (const rgpot::SccNotConverged &ex) {
+    REQUIRE(std::string(ex.what()).find("SCC rescue disabled; 500 iterations "
+                                        "at 300 K") != std::string::npos);
+  }
+}
+
+// A result cached with one setting must not answer for another, so each
+// setter that changes the answer changes the cache key.
+TEST_CASE("XTBPot settings change the result-cache key",
+          "[xtb][linked][scc][cache]") {
+  rgpot::XTBPot pot(ammonia_cfg());
+  const uint64_t key = pot.paramsKey();
+  REQUIRE(key == rgpot::XTBPot(ammonia_cfg()).paramsKey());
+  pot.setSccRescue(false);
+  REQUIRE(pot.paramsKey() != key);
+  pot.setSccRescue(true);
+  REQUIRE(pot.paramsKey() == key);
+  pot.setAccuracy(1.0);
+  REQUIRE(pot.paramsKey() != key);
+  pot.setAccuracy(0.01);
+  pot.setElectronicTemperature(600.0);
+  REQUIRE(pot.paramsKey() != key);
+  pot.setElectronicTemperature(300.0);
+  pot.setMaxIterations(250);
+  REQUIRE(pot.paramsKey() != key);
+  pot.setMaxIterations(500);
+  REQUIRE(pot.paramsKey() == key);
+}
+
+// Compiled only with the cache. The cache-on xTB CI job selects [cache-db],
+// and Catch2 fails a filter that matches no case.
+#ifdef RGPOT_HAS_CACHE
+TEST_CASE("XTBPot result cache never serves across an SCC rescue switch",
+          "[xtb][linked][scc][cache][cache-db]") {
+  rgpot::XTBPot pot(ammonia_cfg());
+  const auto system = ammonia_tetramer();
+  rgpot::tests::TestTempDir directory("rgpot-xtb-rescue-cache");
+  {
+    rgpot::cache::PotentialCache cache((directory.path() / "results").string());
+    pot.setCache(&cache);
+    auto [rescued, f_rescued, v_rescued] =
+        pot(system.positions, system.atmtypes, system.box);
+    (void)f_rescued;
+    (void)v_rescued;
+    REQUIRE_THAT(rescued, WithinAbs(kAmmoniaRescued, 1.0e-3));
+    (void)pot(system.positions, system.atmtypes, system.box);
+    REQUIRE(cache.counts().computed == 1);
+    REQUIRE(cache.counts().served == 1);
+
+    // A stale hit would answer the rescued energy here.
+    pot.setSccRescue(false);
+    REQUIRE_THROWS_AS(pot(system.positions, system.atmtypes, system.box),
+                      rgpot::SccNotConverged);
+    REQUIRE(cache.counts().served == 1);
+
+    pot.setSccRescue(true);
+    (void)pot(system.positions, system.atmtypes, system.box);
+    REQUIRE(cache.counts().computed == 1);
+    REQUIRE(cache.counts().served == 2);
+    pot.setCache(nullptr);
+  }
+}
+#endif
+
+TEST_CASE("XTBPot clears the flags when xtb_newMolecule fails",
+          "[xtb][linked][scc]") {
+  const auto system = ammonia_tetramer();
+  rgpot::XTBPot pot(ammonia_cfg());
+  (void)pot(system.positions, system.atmtypes, system.box);
+  REQUIRE(pot.lastEvalFlags() == rgpot::eval_flags::SccRescued);
+
+  // xtb has no parameters for element 200, so the molecule is refused.
+  AtomMatrix positions(1, 3);
+  positions(0, 0) = positions(0, 1) = positions(0, 2) = 0.0;
+  const std::vector<int> atmtypes = {200};
+  try {
+    (void)pot(positions, atmtypes, system.box);
+    FAIL("an unknown element must throw");
+  } catch (const std::runtime_error &ex) {
+    REQUIRE(std::string(ex.what()).find("xtb_newMolecule") !=
+            std::string::npos);
+  }
+  REQUIRE(pot.lastEvalFlags() == 0);
+}
+
+// A refused molecule leaves no molecule behind, so the next call must
+// build one even when its composition matches the call before the failure.
+template <class Make>
+static void check_recreate_after_failed_molecule(Make make) {
+  auto pot = make(rgpot::XTBConfig{});
+  AtomMatrix positions(3, 3);
+  std::vector<int> atmtypes;
+  std::array<std::array<double, 3>, 3> box{};
+  fill_water(positions, atmtypes, box);
+  auto [before, f_before, v_before] = (*pot)(positions, atmtypes, box);
+  (void)v_before;
+
+  AtomMatrix unknown(1, 3);
+  unknown(0, 0) = unknown(0, 1) = unknown(0, 2) = 0.0;
+  const std::vector<int> refused = {200};
+  REQUIRE_THROWS_AS((*pot)(unknown, refused, box), std::runtime_error);
+
+  auto [after, f_after, v_after] = (*pot)(positions, atmtypes, box);
+  (void)v_after;
+  REQUIRE(std::isfinite(after));
+  REQUIRE_THAT(after, WithinAbs(before, 1.0e-9));
+  for (size_t i = 0; i < 3; ++i)
+    for (size_t j = 0; j < 3; ++j)
+      REQUIRE_THAT(f_after(i, j), WithinAbs(f_before(i, j), 1.0e-9));
+}
+
+TEST_CASE("XTBPot builds a new molecule after xtb_newMolecule fails",
+          "[xtb][linked][capi]") {
+  check_recreate_after_failed_molecule([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBPot>(cfg);
+  });
+}
+
+TEST_CASE("XTBDlopen builds a new molecule after xtb_newMolecule fails",
+          "[xtb][dlopen][capi]") {
+  check_recreate_after_failed_molecule([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
+  });
+}
+
+TEST_CASE("XTBDlopen flags a rescued SCC and fails it with the rescue off",
+          "[xtb][dlopen][scc]") {
+  check_scc_rescue_flag([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
+  });
+  rgpot::XTBDlopen pot(dlopen_cfg(rgpot::XTBConfig{}));
+  REQUIRE(pot.reportsEvalFlags());
+  const std::string revision = pot.engineRevision();
+  UNSCOPED_INFO("engine revision " << revision);
+  for (char c : revision)
+    REQUIRE(std::isalnum(static_cast<unsigned char>(c)));
+}
+
+// The wavefunction of equilibrium water is a worse guess for water with
+// both bonds doubled than xtb's own guess: GFN2 at accuracy 1 converges
+// from xtb's guess within 10 iterations but not from the carried-over one
+// (the window is 8 to 11 with xtb 6.7.1). The fresh retry converges, so
+// the call succeeds with SccRetried and the energy of a fresh start.
+template <typename Factory> static void check_scc_retry_flag(Factory make) {
+  AtomMatrix water(3, 3);
+  std::vector<int> water_z;
+  std::array<std::array<double, 3>, 3> box{};
+  fill_water(water, water_z, box);
+  AtomMatrix stretched = water;
+  for (size_t i = 1; i < 3; ++i)
+    for (size_t j = 0; j < 3; ++j)
+      stretched(i, j) = water(0, j) + 2.0 * (water(i, j) - water(0, j));
+
+  rgpot::XTBConfig cfg;
+  cfg.accuracy = 1.0;
+  cfg.electronic_temperature = 300.0;
+  cfg.max_iterations = 10;
+  cfg.warm_move = 100.0;
+  cfg.warm_min_gap = 0.0;
+
+  auto fresh = make(cfg);
+  auto [e_fresh, f_fresh, v_fresh] = (*fresh)(stretched, water_z, box);
+  (void)v_fresh;
+  REQUIRE(fresh->lastEvalFlags() == 0);
+
+  auto pot = make(cfg);
+  (void)(*pot)(water, water_z, box);
+  REQUIRE(pot->lastEvalFlags() == 0);
+  auto [energy, forces, variance] = (*pot)(stretched, water_z, box);
+  (void)variance;
+  REQUIRE(pot->lastEvalFlags() == rgpot::eval_flags::SccRetried);
+  REQUIRE_FALSE(pot->reusedWavefunction());
+  REQUIRE_THAT(energy, WithinAbs(e_fresh, 1.0e-9));
+  require_close_forces(forces, f_fresh, 1.0e-9);
+
+  // The flag belongs to that call only.
+  (void)(*pot)(stretched, water_z, box);
+  REQUIRE(pot->lastEvalFlags() == 0);
+}
+
+TEST_CASE("XTBPot flags an SCC that converged only from a fresh guess",
+          "[xtb][linked][scc][warm]") {
+  check_scc_retry_flag([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBPot>(cfg);
+  });
+}
+
+TEST_CASE("XTBDlopen flags an SCC that converged only from a fresh guess",
+          "[xtb][dlopen][scc][warm]") {
+  check_scc_retry_flag([](const rgpot::XTBConfig &cfg) {
+    return std::make_unique<rgpot::XTBDlopen>(dlopen_cfg(cfg));
+  });
 }
 
 // ---------------------------------------------------------------------------

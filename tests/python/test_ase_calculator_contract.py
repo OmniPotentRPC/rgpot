@@ -550,3 +550,12 @@ def test_rpc_calculator_contract_when_potserv_exists(potserv_server) -> None:
         assert calc.results == {}
     finally:
         calc.close()
+
+
+def test_thread_note_excepts_the_shared_xtb_handle() -> None:
+    from rgpot.ase import calculator
+
+    doc = " ".join((calculator.__doc__ or "").split())
+    assert "The potential object underneath keeps one workspace" not in doc
+    assert ":class:`rgpot.XTBDlopen` has a single engine handle" in doc
+    assert "run one at a time" in doc

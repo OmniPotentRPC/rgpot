@@ -77,6 +77,10 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   m_set_min_gap = lib.sym_optional<set_warm_fn>("rgpot_xtb_set_warm_min_gap");
   m_min_gap = lib.sym_optional<warm_move_fn>("rgpot_xtb_warm_min_gap");
   m_reused = lib.sym_optional<reused_fn>("rgpot_xtb_reused_wavefunction");
+  m_last_flags = lib.sym_optional<last_flags_fn>("rgpot_xtb_last_eval_flags");
+  m_set_rescue = lib.sym_optional<set_rescue_fn>("rgpot_xtb_set_scc_rescue");
+  m_rescue = lib.sym_optional<reused_fn>("rgpot_xtb_scc_rescue");
+  m_revision = lib.sym_optional<revision_fn>("rgpot_xtb_source_revision");
   if (!abi_fn || !m_create || !m_destroy || !m_force || !m_reset ||
       !m_set_warm || !m_warm_move || !m_set_min_gap || !m_min_gap ||
       !m_reused) {
@@ -88,6 +92,11 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   }
   if (abi_fn() != RGPOT_XTB_ABI_VERSION) {
     throw std::runtime_error("XTBDlopen: ABI version mismatch");
+  }
+  if (!config.xtb.scc_rescue && !m_set_rescue) {
+    throw std::runtime_error(
+        "XTBDlopen: scc_rescue = false needs an engine that exports "
+        "rgpot_xtb_set_scc_rescue");
   }
   char err[1024]{};
   RgpotXtbConfig cfg{};
@@ -103,6 +112,8 @@ XTBDlopen::XTBDlopen(const XTBDlopenConfig &config) : m_config(config.xtb) {
   }
   m_set_warm(m_pot, config.xtb.warm_move);
   m_set_min_gap(m_pot, config.xtb.warm_min_gap);
+  if (!config.xtb.scc_rescue)
+    m_set_rescue(m_pot, 0);
   m_lib = lib.native_handle();
   lib.release();
 }
@@ -143,6 +154,33 @@ bool XTBDlopen::reusedWavefunction() const {
   return m_reused(m_pot) != 0;
 }
 
+void XTBDlopen::setSccRescue(bool enabled) {
+  if (!m_pot)
+    throw std::runtime_error("XTBDlopen: engine not available");
+  if (!m_set_rescue)
+    throw std::runtime_error(
+        "XTBDlopen: the engine does not export rgpot_xtb_set_scc_rescue");
+  m_set_rescue(m_pot, enabled ? 1 : 0);
+  m_config.scc_rescue = enabled;
+}
+
+bool XTBDlopen::sccRescue() const {
+  if (!m_pot)
+    throw std::runtime_error("XTBDlopen: engine not available");
+  return m_rescue ? m_rescue(m_pot) != 0 : true;
+}
+
+std::uint64_t XTBDlopen::lastEvalFlags() const {
+  if (!m_pot)
+    throw std::runtime_error("XTBDlopen: engine not available");
+  return m_last_flags ? m_last_flags(m_pot) : 0;
+}
+
+std::string XTBDlopen::engineRevision() const {
+  const char *revision = m_revision ? m_revision() : nullptr;
+  return revision ? revision : "";
+}
+
 XTBDlopen::~XTBDlopen() {
   if (m_pot && m_destroy)
     m_destroy(m_pot);
@@ -163,6 +201,8 @@ FusedSettingsSpec XTBDlopen::fusedSettings() const {
   spec.sccMixer = "xtb";
   spec.engineBuild = "xtb-engine-abi-" + std::to_string(RGPOT_XTB_ABI_VERSION) +
                      "-method-" + std::to_string(method_to_c(m_config.method));
+  if (!sccRescue())
+    spec.engineBuild += "-scc-rescue-off";
   return spec;
 }
 
@@ -173,8 +213,9 @@ void XTBDlopen::forceImpl(const ForceInput &in, ForceOut *out) const {
   int rc = m_force(m_pot, static_cast<long>(in.nAtoms), in.pos, in.atmnrs,
                    out->F, &out->energy, &var, in.box);
   if (rc == RGPOT_XTB_RC_SCC_NOT_CONVERGED)
-    throw SccNotConverged("XTBDlopen: SCC did not converge (rc=" +
-                          std::to_string(rc) + ")");
+    throw SccNotConverged(
+        "XTBDlopen: SCC did not converge (rc=" + std::to_string(rc) +
+        (sccRescue() ? ")" : "; SCC rescue disabled)"));
   if (rc != 0)
     throw std::runtime_error(
         "XTBDlopen: force evaluation failed (rc=" + std::to_string(rc) + ")");

@@ -84,7 +84,7 @@ pub const ENGINE_ERR_LOCK: c_int = -2;
 /// The ABI major this loader speaks, `RGPOT_ENGINE_ABI_VERSION` of the header.
 pub const ENGINE_ABI_VERSION: c_int = 1;
 /// The ABI minor this loader advertises, `RGPOT_ENGINE_ABI_MINOR` of the header.
-pub const ENGINE_ABI_MINOR: u16 = 11;
+pub const ENGINE_ABI_MINOR: u16 = 12;
 /// The struct layout revision this loader expects, `RGPOT_ENGINE_ABI_LAYOUT_REVISION` of the header.
 pub const ENGINE_ABI_LAYOUT_REVISION: u16 = 1;
 /// Engine code meaning an argument is invalid.
@@ -98,6 +98,17 @@ pub const ENGINE_UNLOAD_RESIDENT: c_int = 0;
 pub const ENGINE_UNLOAD_SAFE: c_int = 1;
 /// The first ABI minor that defines `rgpot_engine_unload_policy`.
 pub const ENGINE_UNLOAD_POLICY_MINOR: u16 = 7;
+/// The first ABI minor that defines `rgpot_engine_last_eval_flags`,
+/// `rgpot_engine_set_scc_rescue` and `rgpot_engine_source_revision`.
+pub const ENGINE_EVAL_FLAGS_MINOR: u16 = 12;
+/// `RGPOT_ENGINE_EVAL_SCC_RESCUED`: the SCC converged only after the
+/// engine's smeared-occupation rescue.
+pub const ENGINE_EVAL_SCC_RESCUED: u64 = 0x1;
+/// `RGPOT_ENGINE_EVAL_SCC_RETRIED`: the first SCC attempt failed and a
+/// second one from the engine's own guess converged.
+pub const ENGINE_EVAL_SCC_RETRIED: u64 = 0x2;
+/// `RGPOT_ENGINE_EVAL_CACHED`: the attached result cache served the answer.
+pub const ENGINE_EVAL_CACHED: u64 = 0x4;
 
 const ERROR_CAPACITY: usize = 1024;
 const REENTRANCY_END: usize =
@@ -747,6 +758,82 @@ pub type ComponentNameFn =
     unsafe extern "C" fn(*const RgpotEnginePot, c_long, *mut c_char, usize) -> usize;
 /// `rgpot_engine_unload_policy`.
 pub type UnloadPolicyFn = unsafe extern "C" fn() -> c_int;
+/// `rgpot_engine_last_eval_flags`.
+pub type LastEvalFlagsFn = unsafe extern "C" fn(*const RgpotEnginePot, *mut u64, c_long) -> c_long;
+/// `rgpot_engine_set_scc_rescue`.
+pub type SetSccRescueFn = unsafe extern "C" fn(*mut RgpotEnginePot, c_int) -> c_int;
+/// `rgpot_engine_source_revision`.
+pub type SourceRevisionFn = unsafe extern "C" fn() -> *const c_char;
+
+/// What an engine says about one successful evaluation, from
+/// `rgpot_engine_last_eval_flags`. Empty is a plain evaluation.
+///
+/// ```
+/// use rgpot_core::engine::EvalFlags;
+///
+/// let flags = EvalFlags::from_bits(0x1);
+/// assert!(flags.scc_rescued());
+/// assert!(!flags.is_plain());
+/// assert!(EvalFlags::NONE.is_plain());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct EvalFlags(u64);
+
+impl EvalFlags {
+    /// A plain evaluation.
+    pub const NONE: Self = Self(0);
+    /// [`ENGINE_EVAL_SCC_RESCUED`].
+    pub const SCC_RESCUED: Self = Self(ENGINE_EVAL_SCC_RESCUED);
+    /// [`ENGINE_EVAL_SCC_RETRIED`].
+    pub const SCC_RETRIED: Self = Self(ENGINE_EVAL_SCC_RETRIED);
+    /// [`ENGINE_EVAL_CACHED`].
+    pub const CACHED: Self = Self(ENGINE_EVAL_CACHED);
+
+    /// The flags of these bits, unknown ones included.
+    pub const fn from_bits(bits: u64) -> Self {
+        Self(bits)
+    }
+
+    /// The raw bits.
+    pub const fn bits(self) -> u64 {
+        self.0
+    }
+
+    /// Whether every bit of `other` is set.
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Whether no bit is set.
+    pub const fn is_plain(self) -> bool {
+        self.0 == 0
+    }
+
+    /// The SCC converged only after the engine's rescue. Such an energy can
+    /// belong to another self-consistent state than a plain SCC reaches.
+    pub const fn scc_rescued(self) -> bool {
+        self.contains(Self::SCC_RESCUED)
+    }
+
+    /// A second SCC attempt from the engine's own guess converged.
+    pub const fn scc_retried(self) -> bool {
+        self.contains(Self::SCC_RETRIED)
+    }
+
+    /// The result cache served the answer; the flags of the evaluation that
+    /// stored it are unknown.
+    pub const fn cached(self) -> bool {
+        self.contains(Self::CACHED)
+    }
+}
+
+impl std::ops::BitOr for EvalFlags {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
 
 /// Raw `RgpotEngineComponent` from `rgpot/engine_c_abi.h`.
 #[repr(C)]
@@ -999,6 +1086,12 @@ pub struct EngineSymbols {
     pub set_callbacks: Option<SetCallbacksFn>,
     /// Optional symbol `rgpot_engine_hint`.
     pub hint: Option<HintFn>,
+    /// Optional symbol `rgpot_engine_last_eval_flags`.
+    pub last_eval_flags: Option<LastEvalFlagsFn>,
+    /// Optional symbol `rgpot_engine_set_scc_rescue`.
+    pub set_scc_rescue: Option<SetSccRescueFn>,
+    /// Optional symbol `rgpot_engine_source_revision`.
+    pub source_revision: Option<SourceRevisionFn>,
 }
 
 impl EngineSymbols {
@@ -1028,6 +1121,9 @@ impl EngineSymbols {
             model_state: None,
             set_callbacks: None,
             hint: None,
+            last_eval_flags: None,
+            set_scc_rescue: None,
+            source_revision: None,
         }
     }
 
@@ -1112,6 +1208,27 @@ impl EngineSymbols {
     #[must_use]
     pub fn with_hint(mut self, hint: HintFn) -> Self {
         self.hint = Some(hint);
+        self
+    }
+
+    /// Provide the optional symbol `rgpot_engine_last_eval_flags`.
+    #[must_use]
+    pub fn with_last_eval_flags(mut self, last_eval_flags: LastEvalFlagsFn) -> Self {
+        self.last_eval_flags = Some(last_eval_flags);
+        self
+    }
+
+    /// Provide the optional symbol `rgpot_engine_set_scc_rescue`.
+    #[must_use]
+    pub fn with_set_scc_rescue(mut self, set_scc_rescue: SetSccRescueFn) -> Self {
+        self.set_scc_rescue = Some(set_scc_rescue);
+        self
+    }
+
+    /// Provide the optional symbol `rgpot_engine_source_revision`.
+    #[must_use]
+    pub fn with_source_revision(mut self, source_revision: SourceRevisionFn) -> Self {
+        self.source_revision = Some(source_revision);
         self
     }
 }
@@ -2305,6 +2422,98 @@ impl EnginePotential {
         Ok(text_of(&buf))
     }
 
+    /// Flags of each system of the last force or force batch, from
+    /// `rgpot_engine_last_eval_flags`: one entry after [`Self::force`], one
+    /// per system after [`Self::force_batch`], none before the first call
+    /// and after a failed one. Returns [`EngineError::Unsupported`] when the
+    /// plugin does not export the symbol, so a caller cannot mistake an
+    /// engine that tells nothing for one that reports plain evaluations.
+    pub fn last_eval_flags(&self) -> Result<Vec<EvalFlags>, EngineError> {
+        self.check_alive()?;
+        let operation = "rgpot_engine_last_eval_flags";
+        let read = self
+            .symbols
+            .last_eval_flags
+            .ok_or_else(|| unsupported_symbol(operation))?;
+        let total = unsafe { read(self.handle.as_ptr(), std::ptr::null_mut(), 0) };
+        let total = usize::try_from(total).map_err(|_| {
+            EngineError::Invalid(format!("{operation} returned negative count {total}"))
+        })?;
+        if total == 0 {
+            return Ok(Vec::new());
+        }
+        let mut bits = vec![0_u64; total];
+        let written = unsafe { read(self.handle.as_ptr(), bits.as_mut_ptr(), total as c_long) };
+        let written = usize::try_from(written).map_err(|_| {
+            EngineError::Invalid(format!("{operation} returned negative count {written}"))
+        })?;
+        bits.truncate(written.min(total));
+        Ok(bits.into_iter().map(EvalFlags::from_bits).collect())
+    }
+
+    /// Energy and forces of one geometry with the flags the engine records
+    /// for it. The flags are `None` for an engine that does not export
+    /// `rgpot_engine_last_eval_flags`.
+    pub fn force_flagged(
+        &mut self,
+        request: &EngineRequest<'_>,
+    ) -> Result<(EngineEvaluation, Option<EvalFlags>), EngineError> {
+        let evaluation = self.force(request)?;
+        let flags = self.flags_of_one()?;
+        Ok((evaluation, flags))
+    }
+
+    fn flags_of_one(&self) -> Result<Option<EvalFlags>, EngineError> {
+        if self.symbols.last_eval_flags.is_none() {
+            return Ok(None);
+        }
+        match self.last_eval_flags()?.as_slice() {
+            [flags] => Ok(Some(*flags)),
+            other => Err(EngineError::Invalid(format!(
+                "rgpot_engine_last_eval_flags reported {} systems after one force call",
+                other.len()
+            ))),
+        }
+    }
+
+    /// Turn the engine's SCC rescue on or off through
+    /// `rgpot_engine_set_scc_rescue`. With it off, an SCC that does not
+    /// converge is a [`EngineError::Recoverable`] failure instead of a rescued
+    /// answer. Returns [`EngineError::Unsupported`] when the plugin does not
+    /// export the symbol or the backend has no SCC rescue.
+    pub fn set_scc_rescue(&mut self, enabled: bool) -> Result<(), EngineError> {
+        self.check_alive()?;
+        let operation = "rgpot_engine_set_scc_rescue";
+        let set = self
+            .symbols
+            .set_scc_rescue
+            .ok_or_else(|| unsupported_symbol(operation))?;
+        let code = unsafe { set(self.handle.as_ptr(), c_int::from(enabled)) };
+        if code == ENGINE_ERR_UNSUPPORTED {
+            return Err(EngineError::Unsupported {
+                operation,
+                message: self.last_error_text(code),
+            });
+        }
+        self.settle(code, operation, None)
+    }
+
+    /// Source revision the engine library was built from, through
+    /// `rgpot_engine_source_revision`. `None` when the plugin does not export
+    /// it, and an empty string when its build recorded none.
+    pub fn source_revision(&self) -> Option<String> {
+        let revision = self.symbols.source_revision?;
+        let text = unsafe { revision() };
+        if text.is_null() {
+            return Some(String::new());
+        }
+        Some(
+            unsafe { std::ffi::CStr::from_ptr(text) }
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+
     /// Directional derivatives of the gradient up to `order` along the
     /// directions (Angstrom) of a uniform batch, in one engine call, with the
     /// engine's roundoff report when it tracks one.
@@ -2985,6 +3194,25 @@ impl EngineSession {
         self.finish(self.engine.cache_counts())
     }
 
+    /// Flags of each system of the last force or force batch; see
+    /// [`EnginePotential::last_eval_flags`].
+    pub fn last_eval_flags(&self) -> Result<Vec<EvalFlags>, EngineError> {
+        self.finish(self.engine.last_eval_flags())
+    }
+
+    /// Turn the engine's SCC rescue on or off; see
+    /// [`EnginePotential::set_scc_rescue`].
+    pub fn set_scc_rescue(&mut self, enabled: bool) -> Result<(), EngineError> {
+        let answer = self.engine.set_scc_rescue(enabled);
+        self.finish(answer)
+    }
+
+    /// Source revision of the engine build; see
+    /// [`EnginePotential::source_revision`].
+    pub fn source_revision(&self) -> Option<String> {
+        self.engine.source_revision()
+    }
+
     /// Monotone model state, or zero for a static engine.
     pub fn model_state(&self) -> Result<u64, EngineError> {
         self.engine.check_alive()?;
@@ -3244,6 +3472,9 @@ unsafe fn resolve(library: &Library) -> Result<EngineSymbols, EngineError> {
         model_state: unsafe { optional(library, "rgpot_engine_model_state") },
         set_callbacks: unsafe { optional(library, "rgpot_engine_set_callbacks") },
         hint: unsafe { optional(library, "rgpot_engine_hint") },
+        last_eval_flags: unsafe { optional(library, "rgpot_engine_last_eval_flags") },
+        set_scc_rescue: unsafe { optional(library, "rgpot_engine_set_scc_rescue") },
+        source_revision: unsafe { optional(library, "rgpot_engine_source_revision") },
     })
 }
 

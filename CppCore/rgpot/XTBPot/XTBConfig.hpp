@@ -35,6 +35,14 @@ struct XTBConfig {
    * or a negative value reuses the wavefunction at any gap.
    */
   double warm_min_gap = 1.0;
+  /**
+   * Retry an SCC that does not converge with a smeared occupation at
+   * 1000, 3000 and 5000 K, then cool back to the configured temperature.
+   * A rescued call reports @c eval_flags::SccRescued. False makes such a
+   * call throw @c SccNotConverged, and the first attempt then gets the
+   * whole iteration budget.
+   */
+  bool scc_rescue = true;
 };
 
 /** Optional engine path for the dlopen frontend (also RGPOT_XTB_ENGINE). */

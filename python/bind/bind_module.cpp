@@ -12,6 +12,7 @@
 #include <cstring>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -33,7 +34,9 @@
 #include "rgpot/D2Pot/D2CpmdPot.hpp"
 #include "rgpot/D2Pot/D2Pot.hpp"
 #include "rgpot/EMT/EMTPot.hpp"
+#include "rgpot/EvalFlags.hpp"
 #include "rgpot/ExternalPot/ExternalPot.hpp"
+#include "rgpot/FusedSettings.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Models/ModelPots.hpp"
@@ -41,6 +44,7 @@
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SumPot/SumPot.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
+#include "rgpot/XTBPot/XTBDlopen.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
 #include "rgpot/elements.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
@@ -676,6 +680,34 @@ void bind_md_native_pot(nb::module_ &m, const char *name,
               .c_str());
 }
 
+rgpot::GFNMethod gfn_method(const std::string &name) {
+  if (name == "GFN2-xTB" || name == "gfn2") {
+    return rgpot::GFNMethod::GFN2xTB;
+  }
+  if (name == "GFN1-xTB" || name == "gfn1") {
+    return rgpot::GFNMethod::GFN1xTB;
+  }
+  if (name == "GFN0-xTB" || name == "gfn0") {
+    return rgpot::GFNMethod::GFN0xTB;
+  }
+  if (name == "GFN-FF" || name == "gfnff") {
+    return rgpot::GFNMethod::GFNFF;
+  }
+  throw std::invalid_argument(
+      "method must be GFN2-xTB, GFN1-xTB, GFN0-xTB or GFN-FF, got '" + name +
+      "'");
+}
+
+// One engine handle; the lock keeps an evaluation and the flags it leaves
+// together when threads share the object.
+struct XtbHandle {
+  /// Taken only with the GIL released; holding it while the GIL is
+  /// acquired deadlocks against a thread that holds the GIL and waits here.
+  std::mutex mutex;
+  std::unique_ptr<rgpot::XTBDlopen> pot;
+  std::uint64_t flags = 0;
+};
+
 } // namespace
 
 NB_MODULE(_core, m) {
@@ -809,6 +841,106 @@ NB_MODULE(_core, m) {
       "the directories in EON_POTENTIALS_PATH and RGPOT_ENGINE_PATH. "
       "rgpot.evaluate_metatomic also tries the engines bundled with the "
       "package. Each call builds its own frontend.");
+
+  m.attr("EVAL_SCC_RESCUED") = rgpot::eval_flags::SccRescued;
+  m.attr("EVAL_SCC_RETRIED") = rgpot::eval_flags::SccRetried;
+  m.attr("EVAL_CACHED") = rgpot::eval_flags::Cached;
+  nb::exception<rgpot::SccNotConverged>(m, "SccNotConverged",
+                                        PyExc_RuntimeError);
+
+  nb::class_<XtbHandle>(m, "XTBDlopen")
+      .def(
+          "__init__",
+          [](XtbHandle *self, const std::string &engine_path,
+             const std::string &method, double accuracy,
+             double electronic_temperature, int max_iterations, double charge,
+             int uhf, bool scc_rescue) {
+            rgpot::XTBDlopenConfig cfg;
+            cfg.engine_path = engine_path;
+            cfg.xtb.method = gfn_method(method);
+            cfg.xtb.accuracy = accuracy;
+            cfg.xtb.electronic_temperature = electronic_temperature;
+            cfg.xtb.max_iterations = max_iterations;
+            cfg.xtb.charge = charge;
+            cfg.xtb.uhf = uhf;
+            cfg.xtb.scc_rescue = scc_rescue;
+            auto *handle = new (self) XtbHandle();
+            handle->pot = std::make_unique<rgpot::XTBDlopen>(cfg);
+          },
+          nb::arg("engine_path") = "", nb::arg("method") = "GFN2-xTB",
+          nb::arg("accuracy") = 1.0, nb::arg("electronic_temperature") = 300.0,
+          nb::arg("max_iterations") = 250, nb::arg("charge") = 0.0,
+          nb::arg("uhf") = 0, nb::arg("scc_rescue") = true,
+          "GFN-xTB through libxtb_engine opened with dlopen. With an empty "
+          "engine_path the search is RGPOT_XTB_ENGINE, XTB_ENGINE, the bare "
+          "soname, then EON_POTENTIALS_PATH and RGPOT_ENGINE_PATH. "
+          "scc_rescue=False makes an SCC that does not converge raise "
+          "SccNotConverged instead of retrying with a smeared occupation; an "
+          "engine too old to switch it off refuses construction.")
+      .def(
+          "__call__",
+          [](XtbHandle &self, const F64 &positions, nb::handle atom_types,
+             const F64 &box) {
+            auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+            auto [energy, forces, variance] = rgpot::pybind::run_detached([&] {
+              std::lock_guard<std::mutex> lock(self.mutex);
+              self.flags = 0;
+              auto result = (*self.pot)(geom.pos, geom.types, geom.box);
+              self.flags = self.pot->lastEvalFlags();
+              return result;
+            });
+            if (!std::isfinite(energy)) {
+              throw rgbind::NumericalError("energy is not finite");
+            }
+            return nb::make_tuple(
+                energy, rgpot::pybind::matrix_to_numpy(forces), variance);
+          },
+          nb::arg("positions").noconvert(), nb::arg("atom_types"),
+          nb::arg("box").noconvert(),
+          "Energy (eV), forces (eV/Angstrom) and variance. Raises "
+          "SccNotConverged when the SCC fails and the rescue is off.")
+      .def_prop_ro(
+          "last_eval_flags",
+          [](XtbHandle &self) {
+            nb::gil_scoped_release release;
+            std::lock_guard<std::mutex> lock(self.mutex);
+            return self.flags;
+          },
+          "EVAL_* bits of the last successful call, zero after a failed one. "
+          "EVAL_SCC_RESCUED marks an energy from the smeared-occupation "
+          "rescue.")
+      .def_prop_ro(
+          "last_scc_rescued",
+          [](XtbHandle &self) {
+            nb::gil_scoped_release release;
+            std::lock_guard<std::mutex> lock(self.mutex);
+            return (self.flags & rgpot::eval_flags::SccRescued) != 0;
+          },
+          "True when the last successful call needed the SCC rescue.")
+      .def_prop_rw(
+          "scc_rescue",
+          [](XtbHandle &self) {
+            nb::gil_scoped_release release;
+            std::lock_guard<std::mutex> lock(self.mutex);
+            return self.pot->sccRescue();
+          },
+          [](XtbHandle &self, bool enabled) {
+            nb::gil_scoped_release release;
+            std::lock_guard<std::mutex> lock(self.mutex);
+            self.pot->setSccRescue(enabled);
+          },
+          "Whether the engine retries a nonconverged SCC with a smeared "
+          "occupation.")
+      .def_prop_ro(
+          "reports_eval_flags",
+          [](XtbHandle &self) { return self.pot->reportsEvalFlags(); },
+          "False for an engine that predates evaluation flags; "
+          "last_eval_flags is then always zero.")
+      .def_prop_ro(
+          "engine_revision",
+          [](XtbHandle &self) { return self.pot->engineRevision(); },
+          "Source revision the engine was built from, empty when it does "
+          "not say.");
 
 #ifdef RGPOT_HAS_CACHE
   nb::class_<rgpot::cache::PotentialCache>(m, "PotentialCache")
