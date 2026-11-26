@@ -42,6 +42,24 @@ struct FakeEngineCounter {
 
 using rgpot::test_support::RestoreEnv;
 
+double eval_atoms(rgpot::CPMDPot &pot, const std::vector<int> &atomic_numbers,
+                  const std::vector<double> &coords, double cell) {
+  const int n = static_cast<int>(atomic_numbers.size());
+  REQUIRE(coords.size() == static_cast<size_t>(n) * 3u);
+  rgpot::types::AtomMatrix positions(n, 3);
+  for (int i = 0; i < n; ++i) {
+    positions(i, 0) = coords[static_cast<size_t>(i) * 3u];
+    positions(i, 1) = coords[static_cast<size_t>(i) * 3u + 1u];
+    positions(i, 2) = coords[static_cast<size_t>(i) * 3u + 2u];
+  }
+  const std::array<std::array<double, 3>, 3> box = {
+      {{cell, 0.0, 0.0}, {0.0, cell, 0.0}, {0.0, 0.0, cell}}};
+  auto [energy, forces, variance] = pot(positions, atomic_numbers, box);
+  (void)forces;
+  (void)variance;
+  return energy;
+}
+
 } // namespace
 
 TEST_CASE("CPMDPot passes serialized CPMDParams to cpmdc engine",
@@ -131,6 +149,64 @@ TEST_CASE("CPMDPot keeps its engine session across identical setParams",
   REQUIRE(pot.setParams(p.asReader()));
   REQUIRE(pot.available());
   REQUIRE(counter.sessions() == before + 2);
+}
+
+// cpmdc fixes the atom count and the element counts on a session.
+// Adding an atom, or swapping an element, needs a new session before
+// the evaluation. A move, a reorder, or a new cell does not.
+TEST_CASE("CPMDPot rebuilds its session when the topology changes",
+          "[cpmd][abi]") {
+  FakeEngineCounter counter;
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  p.setCharge(0);
+  p.setMultiplicity(1);
+
+  rgpot::CPMDPot pot(p.asReader());
+  REQUIRE(pot.available());
+  const int baseline = counter.sessions();
+
+  const double cell = 23.0;
+  const auto energy_of = [](double zz) { return 0.75 + 0.001 * zz; };
+
+  double energy = eval_atoms(pot, {8}, {0.0, 0.0, 0.0}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline);
+
+  energy = eval_atoms(pot, {8}, {0.2, 0.0, 0.0}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline);
+
+  energy = eval_atoms(pot, {8, 1}, {0.0, 0.0, 0.0, 0.9, 0.0, 0.0}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 1);
+
+  energy = eval_atoms(pot, {1, 8}, {0.9, 0.0, 0.0, 0.0, 0.0, 0.0}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 1);
+
+  const double moved_cell = 24.0;
+  energy = eval_atoms(pot, {1, 8}, {1.1, 0.1, 0.0, 0.1, 0.0, 0.2}, moved_cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(moved_cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 1);
+
+  energy = eval_atoms(pot, {8, 1, 1},
+                      {0.0, 0.0, 0.1, 0.8, 0.0, -0.4, -0.8, 0.0, -0.4}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 2);
+
+  energy = eval_atoms(pot, {8, 1, 1},
+                      {0.0, 0.0, 0.2, 0.7, 0.1, -0.4, -0.7, -0.1, -0.4}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 2);
+
+  energy = eval_atoms(pot, {8, 6, 1},
+                      {0.0, 0.0, 0.2, 0.7, 0.1, -0.4, -0.7, -0.1, -0.4}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 3);
 }
 
 // paramsKey feeds the result-cache key: equal params hash equal, any

@@ -65,6 +65,16 @@ uses the session-result ABI when available:
 `cpmdc_session_calculate_result`. Older engines can fall back to the one-shot
 energy-gradient ABI if they expose it.
 
+The session-result path keeps one engine session while the parameters
+are unchanged and the topology is unchanged. The topology is the atom
+count together with the count of each element. The engine fixes that
+topology on the first evaluation of a session and refuses a later
+change. When the next force call has a different atom count or
+different element counts, `CPMDPot` destroys the session and creates a
+new one with the same parameters before the call. That evaluation is a
+cold SCF. A move, a reordering of the same elements, or a different
+cell keeps the session and its converged wavefunction.
+
 The box passed to a force call is the cell CPMD uses. With a cpmdc newer
 than 0.3.0 a non-zero box replaces the `CELL` and `SYMMETRY` of the deck
 (`SYMMETRY 1` for a cubic deck and box, `SYMMETRY 8` for another

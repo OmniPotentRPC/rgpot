@@ -18,6 +18,7 @@
 #include "rgpot/units.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -223,6 +224,22 @@ bool same_words(const std::vector<::capnp::word> &w,
           std::memcmp(view.data, bytes.data(), view.size) == 0);
 }
 
+// cpmdc latches a session to the atom count and the element counts.
+// Slots 1..118 are the atomic numbers; slot 0 is unused.
+constexpr int kElementCountSlots = 119;
+
+bool element_counts(const ForceInput &in,
+                    std::array<int, kElementCountSlots> *counts) {
+  counts->fill(0);
+  for (size_t i = 0; i < in.nAtoms; ++i) {
+    const int z = in.atmnrs[i];
+    if (z < 1 || z > 118)
+      return false;
+    (*counts)[static_cast<size_t>(z)] += 1;
+  }
+  return true;
+}
+
 std::mutex g_probe_mu;
 bool g_probe_done = false;
 bool g_probe_ok = false;
@@ -247,12 +264,19 @@ struct CPMDPot::Impl {
   int64_t orbital_key = 0;
   // Set when configure leaves the engine loaded but no live session.
   std::string unavailable_reason;
+  // Topology the live session has been asked to evaluate. cpmdc refuses
+  // a later change of atom count or element counts.
+  bool accepted_topology = false;
+  size_t accepted_n_atoms = 0;
+  std::array<int, kElementCountSlots> accepted_counts{};
 
   void destroySession();
   bool configure();
   void recomputeParamsKey();
   void forceSession(const ForceInput &in, ForceOut *out);
   bool applySelectedOrbitalKey();
+  bool topologyDiffers(const ForceInput &in) const;
+  void acceptTopology(const ForceInput &in);
 };
 
 void CPMDPot::Impl::recomputeParamsKey() {
@@ -272,6 +296,27 @@ void CPMDPot::Impl::destroySession() {
   session = nullptr;
   session_params.clear();
   session_engine_path.clear();
+  accepted_topology = false;
+  accepted_n_atoms = 0;
+  accepted_counts.fill(0);
+}
+
+bool CPMDPot::Impl::topologyDiffers(const ForceInput &in) const {
+  if (!session || !accepted_topology)
+    return false;
+  std::array<int, kElementCountSlots> counts{};
+  if (!element_counts(in, &counts))
+    return false;
+  return in.nAtoms != accepted_n_atoms || counts != accepted_counts;
+}
+
+void CPMDPot::Impl::acceptTopology(const ForceInput &in) {
+  std::array<int, kElementCountSlots> counts{};
+  if (!element_counts(in, &counts))
+    return;
+  accepted_n_atoms = in.nAtoms;
+  accepted_counts = counts;
+  accepted_topology = true;
 }
 
 bool CPMDPot::Impl::configure() {
@@ -520,6 +565,19 @@ void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
   ::rgpot::finalizeMpiAtExit();
 
   if (has_session_result_abi(impl_->bundle) && impl_->session) {
+    // A different atom count or element counts is refused on this
+    // session. Drop it and open another with the same parameters
+    // before the call. That next SCF is cold. The same counts keep
+    // the converged wavefunction.
+    if (impl_->topologyDiffers(in)) {
+      impl_->destroySession();
+      if (!impl_->configure() || !impl_->session) {
+        if (!impl_->unavailable_reason.empty())
+          fail_force(impl_->unavailable_reason);
+        fail_force("CPMD engine session not ready");
+      }
+    }
+    impl_->acceptTopology(in);
     impl_->forceSession(in, out);
     return;
   }
