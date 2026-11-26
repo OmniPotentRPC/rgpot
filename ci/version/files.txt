@@ -2,6 +2,7 @@
 # the root Cargo.toml by ci/version/rgpot_version.py.
 # Regenerate: pixi r -e version release-cog
 # Check:      pixi r -e version version-drift
+# JSON entries have no cog markers; rgpot_version.py json writes them.
 meson.build
 CMakeLists.txt
 pyproject.toml
@@ -11,4 +12,9 @@ docs/source/conf.py
 rgpot-core/include/rgpot.h
 rgpot-core/README.md
 rgpot-core/README.org
+docs/orgmode/howto/coupled-well-engine.org
+docs/orgmode/howto/potlibc-engine.org
 rgpot-bundle/Cargo.lock
+CITATION.cff
+codemeta.json
+.zenodo.json

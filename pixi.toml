@@ -133,7 +133,7 @@ python = ">=3.11,<3.14"
 cogapp = "==3.6.0"
 
 [feature.version.tasks]
-release-cog = { cmd = "python -m cogapp -I ci/version -r @ci/version/files.txt", description = "Regenerate every version copy from Cargo.toml (ci/version/files.txt)" }
+release-cog = { cmd = "python -m cogapp -I ci/version -r @ci/version/files.txt && python ci/version/rgpot_version.py json", description = "Regenerate every version copy from Cargo.toml (ci/version/files.txt); release dates come from the CHANGELOG.md heading" }
 version-drift = { cmd = "python ci/version/check_drift.py", description = "Fail if a version copy differs from Cargo.toml, or the bundle lock lost its cog markers (prek version-drift hook)" }
 
 [feature.cigen]
