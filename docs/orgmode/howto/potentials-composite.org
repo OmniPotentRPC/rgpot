@@ -363,7 +363,10 @@ energy and one derivative per term once.
 - Forces: =F = sum_i (df/dE_i) F_i=, with the analytic derivatives =df/dE_i=
   that Lepton differentiates at construction.
   There is no finite-difference path.
-- Variance: =sum_i (df/dE_i) var_i=, or 0 when any child variance is not finite.
+- Variance: \(\sum_i (\partial f/\partial E_i)^2 \, v_i\), where \(v_i\) is the
+  variance of child \(i\) and each derivative is evaluated at the child
+  energies.
+  It is 0 when any child variance is not finite.
 - No stress is written, and =caps()= is the least reentrant of the children.
 - The grammar is Lepton's: =+ - * / ^=, and the functions =sqrt=, =exp=, =log=,
   =sin=, =cos=, =tan=, =asin=, =acos=, =atan=, =atan2=, =sinh=, =cosh=, =tanh=,
