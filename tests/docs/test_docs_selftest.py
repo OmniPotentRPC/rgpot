@@ -168,12 +168,12 @@ class PlantedReferenceMistakes(unittest.TestCase):
         )
 
     def test_local_schema_field_that_no_page_names(self):
-        members = [m for m, _ in doccheck.local_schema_fields(ROOT)]
+        members = doccheck.local_schema_fields(ROOT)
         self.assertIn("UmaParams.cacheDir", members)
         named = "\n".join(f"| ={m}= | x |" for m in members if m != "UmaParams.cacheDir")
         errors = doccheck.local_schema_errors(ROOT, [_page(f"* Page\n\n{named}\n")])
         self.assertEqual(len(errors), 1, errors)
-        self.assertIn("adds UmaParams.cacheDir, which no reference page names", errors[0])
+        self.assertIn("added UmaParams.cacheDir, which no reference page names", errors[0])
 
 
 class PlantedFactMistakes(unittest.TestCase):
