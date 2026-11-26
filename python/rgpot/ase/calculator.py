@@ -678,8 +678,11 @@ class RgpotCalculator(Calculator):
             raise ValueError("build a new calculator to change the potential kind")
         changed = Calculator.set(self, **kwargs)
         if "numerical_stress" in changed or "stress_step" in changed:
-            self._numerical_stress = bool(self.parameters["numerical_stress"])
-            self._stress_step = float(self.parameters["stress_step"])
+            parameters = self.parameters
+            if parameters is None:
+                raise TypeError("calculator parameters are unset")
+            self._numerical_stress = bool(parameters["numerical_stress"])
+            self._stress_step = float(parameters["stress_step"])
             self._configure()
             self.reset()
         if pot_kw and any(k in changed for k in pot_kw):

@@ -17,9 +17,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import rgpot._core as _core
+
+if TYPE_CHECKING:
+    from . import ase as ase
+    from . import lammps as lammps
 
 __version__: str = str(getattr(_core, "__version__", "0"))
 LJPot = _core.LJPot
