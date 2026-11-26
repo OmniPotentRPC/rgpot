@@ -158,8 +158,8 @@ with the same energy as the infinite system:
 
 Stress is the virial over the caller's cell volume, which is the cell
 =calculate_numerical_stress= strains.
-That stress is defined when the cell has three nonzero lattice vectors,
-periodic or not.
+That stress is defined when the cell has three nonzero lattice vectors, periodic
+or not.
 A cell with fewer nonzero vectors raises =PropertyNotImplementedError= for
 =stress= and =stresses=, as ASE's =LennardJones= and =EMT= do.
 Energy and forces are unchanged.
@@ -261,8 +261,8 @@ The default properties are energy and forces.
 Pass =attach=True= to store a =SinglePointCalculator= on each structure.
 The inputs are not modified.
 Stress follows =calculate=.
-A cell with fewer than three nonzero lattice vectors omits it, and a request
-for stress or stresses raises =PropertyNotImplementedError=.
+A cell with fewer than three nonzero lattice vectors omits it, and a request for
+stress or stresses raises =PropertyNotImplementedError=.
 
 ** Conformance checks
 
