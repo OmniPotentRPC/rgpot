@@ -8,7 +8,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from ase import Atoms
 from ase.build import bulk
+from ase.calculators.calculator import PropertyNotImplementedError
 from ase.calculators.lj import LennardJones
 from ase.db import connect
 
@@ -153,3 +155,35 @@ def test_empty_system_changes_replaces_results() -> None:
     assert calc.results["energy"] == pytest.approx(
         fresh.get_potential_energy(), abs=ATOL
     )
+
+
+def _rank0_cluster() -> Atoms:
+    """Two atoms and no lattice vectors. The cell rank is 0."""
+    return Atoms("Ar2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 3.8]])
+
+
+def test_default_calculate_on_a_cluster_omits_stress() -> None:
+    """calculate(atoms) with no properties succeeds and leaves stress out."""
+    atoms = _rank0_cluster()
+    assert int(atoms.cell.rank) < 3
+    calc = RgpotCalculator("lj", **LJ)
+    calc.calculate(atoms)
+    assert "energy" in calc.results
+    assert "stress" not in calc.results
+
+
+def test_explicit_stress_on_a_cluster_raises() -> None:
+    """An explicit stress request on rank below 3 still raises."""
+    atoms = _rank0_cluster()
+    calc = RgpotCalculator("lj", **LJ)
+    with pytest.raises(PropertyNotImplementedError):
+        calc.calculate(atoms, properties=["stress"])
+
+
+def test_default_calculate_on_a_periodic_cell_includes_stress() -> None:
+    """The periodic default still asks for stress and stores it."""
+    atoms = _argon()
+    assert int(atoms.cell.rank) == 3
+    calc = RgpotCalculator("lj", **LJ)
+    calc.calculate(atoms)
+    assert "stress" in calc.results

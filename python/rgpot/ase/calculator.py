@@ -728,7 +728,8 @@ class RgpotCalculator(Calculator):
         """Fill ``self.results``. ``free_energy`` equals ``energy``.
 
         A missing ``properties`` list means every implemented property,
-        as in ASE's Lennard-Jones calculator. ``get_property`` still
+        as in ASE's Lennard-Jones calculator. ``stress`` and ``stresses``
+        are added only when the cell rank is 3. ``get_property`` still
         passes only the name it was asked for, so an energy request does
         not add per-atom or numerical stress work.
 
@@ -740,7 +741,15 @@ class RgpotCalculator(Calculator):
         ``PropertyNotImplementedError``.
         """
         if properties is None:
-            properties = list(self.implemented_properties)
+            # Stress joins the default list only for a three-vector cell.
+            # An explicit request still reaches the rank check below.
+            system = atoms if atoms is not None else self.atoms
+            rank = int(system.cell.rank) if system is not None else 0
+            properties = [
+                name
+                for name in self.implemented_properties
+                if rank == 3 or name not in {"stress", "stresses"}
+            ]
         Calculator.calculate(self, atoms, properties, system_changes)
         assert self.atoms is not None
         wanted = set(properties)
