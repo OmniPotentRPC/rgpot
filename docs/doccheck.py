@@ -41,7 +41,8 @@ Six checks, each a subcommand:
     (``docs/gen_capnp_reference.py``), ``llms.txt`` and ``llms-full.txt``
     (``scripts/gen_llms.py``), and the DOI manifest ``docs/dois.json``
     (``scripts/verify_dois.py``). ``llms-full.txt`` also fails when a
-    backtick sits inside inline math or a line has an unbalanced backtick.
+    backtick sits inside inline math, a line has an unbalanced backtick,
+    or an inline code span from the sources was changed.
 
 The module uses the standard library only, so meson can run it without
 pytest.  ``tests/docs`` wraps the same functions for pytest.

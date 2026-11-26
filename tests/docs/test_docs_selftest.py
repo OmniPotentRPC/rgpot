@@ -561,6 +561,61 @@ class GeneratedFiles(unittest.TestCase):
         self.assertIn("`grompp`", rendered)
         self.assertNotIn("`x`", rendered)
 
+    def test_delimiters_inside_code_stay_in_the_span(self):
+        gen = _load("rgpot_gen_llms_code_span", "scripts/gen_llms.py")
+        self.assertEqual(
+            gen._inline("=rgpot_engine_abi_version() == ENGINE_ABI_VERSION=", "k"),
+            "`rgpot_engine_abi_version() == ENGINE_ABI_VERSION`",
+        )
+        self.assertEqual(gen._inline("and =err=/=err_len=.", "k"), "and `err`/`err_len`.")
+        self.assertEqual(
+            gen._inline("*Kinds from ~rgpot_kinds~* (~wp~, ~ip~, ~lp~).", "k"),
+            "*Kinds from `rgpot_kinds`* (`wp`, `ip`, `lp`).",
+        )
+        self.assertEqual(gen._inline("=potctl=+=cog=", "k"), "`potctl`+`cog`")
+        self.assertEqual(gen._inline("a name containing =/=.", "k"), "a name containing `/`.")
+        self.assertEqual(gen._inline("writes =*energy= here", "k"), "writes `*energy` here")
+        self.assertEqual(gen._inline("=+INFINITY=", "k"), "`+INFINITY`")
+        self.assertEqual(
+            gen._inline("`a == b` and =c= and ``fmt>=12``", "k"),
+            "`a == b` and `c` and ``fmt>=12``",
+        )
+        self.assertEqual(
+            gen._inline("=Commit type `merge` not allowed=", "k"),
+            "`Commit type `merge` not allowed`",
+        )
+        self.assertEqual(gen._inline("=De=, =a=, =re=", "k"), "`De`, `a`, `re`")
+        kept = '=RgpotCalculator("morse", switch_width=(c2-c1)*r0)='
+        self.assertEqual(
+            gen._inline(kept, "k"),
+            '`RgpotCalculator("morse", switch_width=(c2-c1)*r0)`',
+        )
+
+    def test_inline_code_round_trip(self):
+        gen = _load("rgpot_gen_llms_round_trip", "scripts/gen_llms.py")
+        tree = self._tree()
+        page = tree / "docs" / "orgmode" / "guide.org"
+        page.write_text(
+            "\n".join(
+                [
+                    "#+TITLE: Guide",
+                    "",
+                    "* Guide",
+                    "Use `a == b` and =rgpot_engine_abi_version() == ENGINE_ABI_VERSION=.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        full = gen.generate(tree)["llms-full.txt"]
+        self.assertIn("`a == b`", full)
+        self.assertIn("`rgpot_engine_abi_version() == ENGINE_ABI_VERSION`", full)
+        self.assertEqual(gen.inline_code_errors(tree, full), [])
+        broken = full.replace("`a == b`", "a == b")
+        errors = gen.inline_code_errors(tree, broken)
+        self.assertTrue(any("`a == b`" in error for error in errors), errors)
+        self.assertEqual(gen.inline_code_errors(ROOT), [])
+
     def test_full_text_backticks_are_balanced_outside_math(self):
         gen = _load("rgpot_gen_llms_markup_lint", "scripts/gen_llms.py")
         broken = r"\(\epsilon_{rf}`1\). =grompp`"

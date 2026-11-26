@@ -31236,7 +31236,7 @@ a host that does call `dlclose` on them leaves them mapped.
   `EnginePotential::from_symbols(symbols, config)` :: `load` takes the resident
   registry entry for `path`, opening the file on first use.
   Both verify
-  `rgpot_engine_abi_version() =` ENGINE_ABI_VERSION=, resolve the optional `rgpot_engine_abi_stamp`
+  `rgpot_engine_abi_version() == ENGINE_ABI_VERSION`, resolve the optional `rgpot_engine_abi_stamp`
   (treating an engine without it as minor 0, layout 1) and require
   `stamp.serves(RgpotEngineAbiStamp::HOST)`, copy `config` into an
   8-byte-aligned `Vec<u64>` buffer (so engines that cast `config` to
@@ -36515,7 +36515,7 @@ rgpot_md_session *rgpot_md_session_create(const char *engine,
 
 - Inputs :: `engine` name (such as `"openmm"`), optional explicit
   `engine_path`, opaque `spec` buffer of length `spec_len`, optional `options`,
-  and `err=/=err_len`.
+  and `err`/`err_len`.
 - Units :: the returned session speaks rgpot units (Angstrom, eV, ps, amu).
 - Outputs :: opens the engine plugin
   (`engine_path`, else `RGPOT_<ENGINE>_ENGINE`, else `<ENGINE>_ENGINE`, else
@@ -36542,7 +36542,7 @@ int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
 ```
 
 - Inputs :: `session`, output buffer `masses` of length
-  `n_atoms`, and `err=/=err_len`.
+  `n_atoms`, and `err`/`err_len`.
 - Units :: amu.
 - Outputs :: returns 0 and writes `n_atoms` particle masses.
 - Errors :: returns 1 and writes `err` on null pointers or size mismatch.
@@ -36556,7 +36556,7 @@ int rgpot_md_session_set_positions(rgpot_md_session *session,
 ```
 
 - Inputs :: `session`, flat xyz `positions` of length
-  `n3 = 3 * n_atoms`, and `err=/=err_len`.
+  `n3 = 3 * n_atoms`, and `err`/`err_len`.
 - Units :: Angstrom.
 - Outputs :: returns 0 on success.
 - Errors :: returns 1 and writes `err` on null pointers, wrong length, or
@@ -36571,7 +36571,7 @@ int rgpot_md_session_set_velocities(rgpot_md_session *session,
 ```
 
 - Inputs :: `session`, flat xyz `velocities` of length
-  `n3 = 3 * n_atoms`, and `err=/=err_len`.
+  `n3 = 3 * n_atoms`, and `err`/`err_len`.
 - Units :: Angstrom/ps.
 - Outputs :: returns 0 on success.
 - Errors :: returns 1 and writes `err` on null pointers, wrong length, or
@@ -36593,7 +36593,7 @@ int rgpot_md_session_step_langevin(
   `plane_normal` of length `n3`, `n_walls` flat wall pairs
   `wall_points` and `wall_normals` each of length
   `n_walls * n3`, step count `steps`, 64-bit `seed` naming the random stream, optional `wall_hits`
-  output, and `err=/=err_len`.
+  output, and `err`/`err_len`.
   It reflects at walls and reports no constraint force;
   `rgpot_md_session_run_langevin` does both.
 - Units :: `kT` in eV, `friction` in ps^-1, `time_step` in ps, positions and
@@ -36610,7 +36610,7 @@ int rgpot_md_session_step_nve(rgpot_md_session *session, double time_step,
                               size_t steps, char *err, size_t err_len);
 ```
 
-- Inputs :: `session`, `time_step`, `steps`, and `err=/=err_len`.
+- Inputs :: `session`, `time_step`, `steps`, and `err`/`err_len`.
 - Units :: `time_step` in ps.
 - Outputs :: returns 0 after advancing unconstrained velocity-Verlet dynamics.
 - Errors :: returns 1 and writes `err` on null session, invalid `time_step`, or
@@ -36627,7 +36627,7 @@ int rgpot_md_session_get_state(rgpot_md_session *session, double *positions,
 
 - Inputs :: `session`, optional flat xyz output arrays `positions`,
   `velocities`, and `forces` of length `n3`, optional scalar pointers
-  `potential_energy` and `kinetic_energy`, and `err=/=err_len`.
+  `potential_energy` and `kinetic_energy`, and `err`/`err_len`.
 - Units :: `positions` in Angstrom, `velocities` in
   Angstrom/ps, `forces` in eV/Angstrom, energies in eV.
 - Outputs :: returns 0 and fills any non-null output buffers.
@@ -36643,7 +36643,7 @@ int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
 ```
 
 - Inputs :: `session`, nine finite doubles `box9` (the lattice vectors as rows),
-  and `err=/=err_len`.
+  and `err`/`err_len`.
 - Units :: Angstrom.
 - Outputs :: returns 0 after the backend stores the box.
 - Errors :: returns 1 and writes `err` on a null session or box, non-finite
@@ -36656,7 +36656,7 @@ int rgpot_md_session_get_periodic_box(rgpot_md_session *session, double *box9,
                                       char *err, size_t err_len);
 ```
 
-- Inputs :: `session`, a buffer `box9` of nine doubles, and `err=/=err_len`.
+- Inputs :: `session`, a buffer `box9` of nine doubles, and `err`/`err_len`.
 - Units :: Angstrom.
 - Outputs :: returns 0 and writes the lattice vectors as rows.
 - Errors :: returns 1 and writes `err` on null pointers, a backend without the
@@ -36669,7 +36669,7 @@ int rgpot_md_session_initialize(rgpot_md_session *session, char *err,
                                 size_t err_len);
 ```
 
-- Inputs :: `session` and `err=/=err_len`.
+- Inputs :: `session` and `err`/`err_len`.
 - Units :: none.
 - Outputs :: returns 0 once the backend has evaluated its first forces at the
   box and positions set.
@@ -36687,7 +36687,7 @@ int rgpot_md_session_run_langevin(rgpot_md_session *session,
 ```
 
 - Inputs :: `session`, a `request` and a `result` (see above), and
-  `err=/=err_len`.
+  `err`/`err_len`.
 - Units :: `kT` in eV, `friction` in ps^-1,
   `time_step` in ps, positions and wall points in Angstrom, `constraint_force`
   in eV/Angstrom.
@@ -36708,7 +36708,7 @@ int rgpot_md_session_reseed_velocities(rgpot_md_session *session, double kT,
 ```
 
 - Inputs :: `session`, `kT`, `seed`, an optional
-  `plane_normal` of length `n3`, and `err=/=err_len`.
+  `plane_normal` of length `n3`, and `err`/`err_len`.
 - Units :: `kT` in eV; the velocities set are in Angstrom/ps.
 - Outputs :: returns 0 after setting Maxwell-Boltzmann velocities of variance
   `kT/m` per coordinate, conditioned on `n . v = 0` when a normal is given.
@@ -36726,7 +36726,7 @@ int rgpot_md_session_get_positions(rgpot_md_session *session,
 ```
 
 - Inputs :: `session`, an output array `positions` of length `n3`, and
-  `err=/=err_len`.
+  `err`/`err_len`.
 - Units :: Angstrom.
 - Outputs :: returns 0 and fills the positions.
 - Errors :: returns 1 and writes `err` on a null buffer, length mismatch, or
@@ -36741,7 +36741,7 @@ int rgpot_md_session_get_velocities(rgpot_md_session *session,
 ```
 
 - Inputs :: `session`, an output array `velocities` of length `n3`, and
-  `err=/=err_len`.
+  `err`/`err_len`.
 - Units :: Angstrom/ps.
 - Outputs :: returns 0 and fills the velocities.
 - Errors :: returns 1 and writes `err` on a null buffer, length mismatch, or
@@ -36756,7 +36756,7 @@ int rgpot_md_session_get_forces(rgpot_md_session *session, double *forces,
 ```
 
 - Inputs :: `session`, an output array `forces` of length `n3`, an optional
-  `potential_energy` pointer, and `err=/=err_len`.
+  `potential_energy` pointer, and `err`/`err_len`.
 - Units :: eV/Angstrom and eV.
 - Outputs :: returns 0 and fills the forces at the current positions and, if
   given, the potential energy.
@@ -36773,7 +36773,7 @@ int rgpot_md_session_get_energy(rgpot_md_session *session,
 ```
 
 - Inputs :: `session`, optional `potential_energy` and `kinetic_energy`
-  pointers, and `err=/=err_len`.
+  pointers, and `err`/`err_len`.
 - Units :: eV.
 - Outputs :: returns 0 and writes the non-null energies.
 - Errors :: returns 1 and writes `err` on a null session or backend failure.
@@ -36789,7 +36789,7 @@ int rgpot_md_session_get_neighbors(rgpot_md_session *session,
 
 - Inputs :: `session`, neighbour `request` in the shared `rgpot_nlist_request`
   shape, optional output `out` (`rgpot_nlist_soa`), optional `count` and
-  `needed`, and `err=/=err_len`.
+  `needed`, and `err`/`err_len`.
 - Units :: position and cell units follow the session ABI (Angstrom).
 - Outputs :: returns `RGPOT_MD_NLIST_OK` and forwards the engine's pair list
   using the shared neighbour columns and semantics.
@@ -36807,7 +36807,7 @@ int rgpot_md_session_set_neighbors(rgpot_md_session *session,
 ```
 
 - Inputs :: `session`, neighbour `request`, shared neighbour columns `pairs`
-  containing `count` rows, and `err=/=err_len`.
+  containing `count` rows, and `err`/`err_len`.
 - Units :: pair geometry is Angstrom in the same shared neighbour convention.
 - Outputs :: returns `RGPOT_MD_NLIST_OK` when the engine accepted the supplied
   pair list.
@@ -38020,7 +38020,7 @@ Why kernels are ported and why they gather are explained in
 1. *Module, `implicit none`, `private` by default.* Export the physics entry
    points
 and the parameter type; nothing else.
-2. *Kinds from `rgpot_kinds~* (~wp`, `ip`, `lp`).
+2. *Kinds from `rgpot_kinds`* (`wp`, `ip`, `lp`).
 No `real*8`, no `double precision`, no kind literals spelled out at use sites.
 The module asserts `wp == c_double` at compile time.
 3. *No COMMON, no `save` state in the physics.* Parameters live in a derived
@@ -38033,12 +38033,12 @@ Per-caller neighbour tables live in workspaces from `rgpot_workspace`.
 block is read-only after that.
 The handle-free entry's legacy workspace is process-serial and is not on the
 Python path.
-4. *Every dummy argument gets ~intent~*, and arrays that cross into kernels are
+4. *Every dummy argument gets `intent`*, and arrays that cross into kernels are
 `contiguous` where the caller can guarantee it.
 5. *No `goto`, no arithmetic `if`, no labelled `do`.* Structured control flow
    only.
 `cycle` and `exit` replace jump targets.
-6. *Kernels are `pure~* (or ~elemental`) wherever the algorithm allows, which is
+6. *Kernels are `pure`* (or `elemental`) wherever the algorithm allows, which is
 also what `do concurrent` requires of anything it calls.
 7. *Failures return a status.* No `stop`, no `write(6,*)` diagnostics from a
 library kernel: set a message (in the workspace for a
@@ -38764,7 +38764,7 @@ Tooling:
 | `.github/actions/restore-ci-tools` | Later jobs/runners: download `ci-tools` artifact, put `bin/` on `PATH` (no second cargo build) |
 | `.github/workflows/release.yml` | Staged on `v*`: `tools` → `gate` → (`cpp-smoke` ∥ `rust-test`) → `publish` (stable) or `publish-skip-rc` (pre-release) → `gh-release` |
 | `.github/workflows/publish.yml` | On `v*` tags: `cargo publish --locked --no-verify -p rgpot-core` with a crates.io trusted-publishing token |
-| `.github/workflows/release-prepare.yml` | Pull requests that touch release files, and `workflow_dispatch`: `tools` (`potctl=+=cog` artifact) → `prepare` (lockstep, towncrier draft, `cargo check`, cog dry-run, cog check) |
+| `.github/workflows/release-prepare.yml` | Pull requests that touch release files, and `workflow_dispatch`: `tools` (`potctl`+`cog` artifact) → `prepare` (lockstep, towncrier draft, `cargo check`, cog dry-run, cog check) |
 | `CI (orchestrator)` / `towncrier` | `towncrier check` on PRs (orchestrator job) |
 | `CI (orchestrator)` / potentials | Feature-gated C++ backends (xtb+tblite, tblite 0.6, metatomic/vesin, engine plugins, plugins) on PRs |
 | `SECURITY.md` | Supported versions + private report path |
