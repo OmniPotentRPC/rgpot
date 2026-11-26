@@ -98,7 +98,7 @@ The pages below are the documentation of the repository at https://github.com/Om
 - [Tabulated EAM and Finnis-Sinclair potentials](https://rgpot.rgoswami.me/reference/eam_table.html): EAMTablePot reads an embedded atom method (EAM) potential from a DYNAMO table and evaluates
 - [Modified embedded-atom method](https://rgpot.rgoswami.me/reference/meam.html): MEAMPot is the modified embedded-atom method of Baskes, Physical Review B 46, 2727 (1992).
 - [Fortran potentials: porting rules](https://rgpot.rgoswami.me/reference/fortran_potentials.html): Why kernels are ported and why they gather are explained in Fortran kernels: port, not wrap.
-- [Potential names and options](https://rgpot.rgoswami.me/reference/potential_names.html): pair_style rgpot in LAMMPS (pair_coeff * * Name [key value ...] El ...), the PLUMED action RGPOT (POTENTIAL=Name OPTIONS{key value ...}=) and the rgpot-eval tool build a potential from the same name and options....
+- [Potential names and options](https://rgpot.rgoswami.me/reference/potential_names.html): pair_style rgpot in LAMMPS (pair_coeff * * Name [key value ...] El ...), the PLUMED action RGPOT (POTENTIAL=Name OPTIONS={key value ...}) and the rgpot-eval tool build a potential from the same name and options....
 - [Changelog](https://rgpot.rgoswami.me/changelog.html): Canonical user-facing changelog is the repo-root CHANGELOG.md (Keep a Changelog, maintained by towncrier + cog bump hooks).
 - [Developer Guide](https://rgpot.rgoswami.me/contributing/developer/index.html): This section covers the day-to-day development workflow for rgpot.
 - [Code of Conduct](https://rgpot.rgoswami.me/contributing/../code_of_conduct.html)

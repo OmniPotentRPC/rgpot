@@ -543,6 +543,44 @@ class GeneratedFiles(unittest.TestCase):
         page.write_text(page.read_text() + "More text.\n", encoding="utf-8")
         self.assertEqual(len(gen.stale(tree)), 1)
 
+    def test_verbatim_keeps_math_and_follows_org_rules(self):
+        gen = _load("rgpot_gen_llms_markup", "scripts/gen_llms.py")
+        exact = r"\(\epsilon_{rf}=1\). =grompp= warns that \(\epsilon_{rf}=\epsilon_r\);"
+        self.assertEqual(
+            gen._inline(exact, "howto/engine-nblib"),
+            r"\(\epsilon_{rf}=1\). `grompp` warns that \(\epsilon_{rf}=\epsilon_r\);",
+        )
+        self.assertEqual(gen._inline(r"\(=x=\)", "k"), r"\(=x=\)")
+        self.assertEqual(gen._inline(r"$$=x=$$", "k"), r"$$=x=$$")
+        self.assertEqual(gen._inline("a=b in prose", "k"), "a=b in prose")
+        self.assertEqual(gen._inline("(=rgpot=)", "k"), "(`rgpot`)")
+        self.assertEqual(gen._inline("(~code~)", "k"), "(`code`)")
+        spanned = "See \\(a =x= b\n+ c\\) and =grompp=.\n"
+        rendered = gen.org_to_markdown(spanned, "k")
+        self.assertIn(r"\(a =x= b", rendered)
+        self.assertIn("`grompp`", rendered)
+        self.assertNotIn("`x`", rendered)
+
+    def test_full_text_backticks_are_balanced_outside_math(self):
+        gen = _load("rgpot_gen_llms_markup_lint", "scripts/gen_llms.py")
+        broken = r"\(\epsilon_{rf}`1\). =grompp`"
+        errors = gen.markup_errors(broken)
+        self.assertTrue(any("inline math" in error for error in errors), errors)
+        self.assertTrue(gen.markup_errors("a lone ` backtick"))
+        self.assertEqual(gen.markup_errors(r"\(\epsilon_{rf}=1\). `grompp`"), [])
+        self.assertEqual(gen.markup_errors("```\nodd ` inside\n```\n"), [])
+        tree = self._tree()
+        for name, text in gen.generate(tree).items():
+            (tree / name).write_text(text, encoding="utf-8")
+        full = tree / "llms-full.txt"
+        full.write_text(
+            full.read_text(encoding="utf-8").replace("Use `rgpot`", broken),
+            encoding="utf-8",
+        )
+        stale = gen.stale(tree)
+        self.assertTrue(any("inline math" in error for error in stale), stale)
+        self.assertEqual(gen.markup_errors((ROOT / "llms-full.txt").read_text(encoding="utf-8")), [])
+
     def test_doi_missing_from_the_manifest_is_reported(self):
         dois = _load("rgpot_verify_dois_test", "scripts/verify_dois.py")
         tree = self._tree()
