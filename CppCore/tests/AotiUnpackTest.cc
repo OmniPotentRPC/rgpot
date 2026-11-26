@@ -220,6 +220,42 @@ std::vector<uint8_t> read_file(const fs::path &path) {
   return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
 }
 
+// Wine reports two paths of one directory as distinct, and a trailing
+// separator from GetTempPath makes that worse. Canonical paths agree.
+bool same_path(const fs::path &a, const fs::path &b) {
+  std::error_code ec;
+  if (fs::equivalent(a, b, ec))
+    return true;
+  auto key = [](const fs::path &path) {
+    std::error_code local;
+    fs::path out = fs::weakly_canonical(path, local);
+    if (local)
+      out = fs::absolute(path, local).lexically_normal();
+    std::string text = out.generic_string();
+    while (text.size() > 1 && text.back() == '/')
+      text.pop_back();
+#ifdef _WIN32
+    for (char &ch : text)
+      if (ch >= 'A' && ch <= 'Z')
+        ch = static_cast<char>(ch - 'A' + 'a');
+#endif
+    return text;
+  };
+  return key(a) == key(b);
+}
+
+// Setting a directory's modification time is denied under wine. Reading it
+// still works, which is what the sweep does. Real Windows can set it, so
+// the sweep stays tested there.
+bool age_directory(const fs::path &dir) {
+  std::error_code ec;
+  fs::last_write_time(dir,
+                      fs::file_time_type::clock::now() - unpack::kLeftoverAge -
+                          std::chrono::minutes(5),
+                      ec);
+  return !ec;
+}
+
 std::set<std::string> listing(const fs::path &dir) {
   std::set<std::string> out;
   std::error_code ec;
@@ -554,18 +590,16 @@ TEST_CASE("stale build directories older than an hour are swept",
   const auto new_tmp = aoti / ("." + sha + ".model.tmp-running");
   fs::create_directories(old_tmp / "pkg");
   fs::create_directories(new_tmp / "pkg");
-  fs::last_write_time(old_tmp, fs::file_time_type::clock::now() -
-                                   unpack::kLeftoverAge -
-                                   std::chrono::minutes(5));
+  if (!age_directory(old_tmp))
+    SKIP("this platform refuses to set a directory modification time");
   unpack::unpack(pkg, root);
   REQUIRE_FALSE(fs::exists(old_tmp));
   REQUIRE(fs::exists(new_tmp));
 
   // A reused unpack sweeps too.
   fs::create_directories(old_tmp / "pkg");
-  fs::last_write_time(old_tmp, fs::file_time_type::clock::now() -
-                                   unpack::kLeftoverAge -
-                                   std::chrono::minutes(5));
+  if (!age_directory(old_tmp))
+    SKIP("this platform refuses to set a directory modification time");
   REQUIRE(unpack::unpack(pkg, root).reused);
   REQUIRE_FALSE(fs::exists(old_tmp));
   REQUIRE(fs::exists(new_tmp));
@@ -577,7 +611,7 @@ TEST_CASE("RGPOT_CACHE_DIR unpacks without touching the temporary directory",
   EnvGuard xdg("XDG_CACHE_HOME");
   Scratch s;
   const PrivateTemp temp(s.path / "tmp");
-  REQUIRE(fs::equivalent(fs::temp_directory_path(), temp.path));
+  REQUIRE(same_path(fs::temp_directory_path(), temp.path));
   const auto tmp_before = listing(temp.path);
   const auto data = zip(fake_members("w0"));
   const auto pkg = write_package(s.path, "fake.pt2", data);

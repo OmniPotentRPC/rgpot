@@ -53,4 +53,40 @@ meson setup "$build" "$root" \
   -Dcmake_prefix_path="$deps" \
   "$@"
 meson compile -C "$build"
-meson test -C "$build" --print-errorlogs
+
+# AotiPublicationStressTest holds model.pt2 open and replaces it.
+# Wine's unix drive returns access denied for that replace: it has no
+# POSIX rename. NTFS accepts it, and the native Windows job still runs
+# the test.
+wine_only=(
+  AotiPublicationStressTest
+)
+mapfile -t wine_tests < <(meson test -C "$build" --list --no-rebuild)
+run=()
+for name in "${wine_tests[@]}"; do
+  short="${name##*:}"
+  skip=0
+  for held in "${wine_only[@]}"; do
+    if [[ "$short" == "$held" ]]; then
+      skip=1
+      break
+    fi
+  done
+  if [[ "$skip" -eq 0 ]]; then
+    run+=("$short")
+  fi
+done
+echo "==> skipping under wine: ${wine_only[*]}"
+if [[ ${#run[@]} -eq 0 ]]; then
+  echo "wine test list is empty" >&2
+  exit 1
+fi
+for held in "${wine_only[@]}"; do
+  for name in "${run[@]}"; do
+    if [[ "$name" == "$held" ]]; then
+      echo "wine skip list did not remove ${held}" >&2
+      exit 1
+    fi
+  done
+done
+meson test -C "$build" --print-errorlogs "${run[@]}"
