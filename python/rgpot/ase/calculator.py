@@ -605,6 +605,10 @@ class RgpotCalculator(Calculator):
     # reentrant".
     protocol_reentrant = True
 
+    def _get_name(self) -> str:
+        """Name ``ase.db`` stores. Matches :func:`register_calculator`."""
+        return "rgpot"
+
     def __init__(
         self,
         potential: Any,

@@ -124,3 +124,12 @@ def test_omitted_properties_match_ase_lj_and_energy_stays_cheap() -> None:
     assert emt_count.per_atom_calls == 0
 
 
+def test_ase_db_stores_the_registry_name(tmp_path: Path) -> None:
+    atoms = _argon()
+    atoms.calc = RgpotCalculator("lj", **LJ)
+    atoms.get_potential_energy()
+    database = connect(tmp_path / "argon.db")
+    database.write(atoms)
+    assert database.get(1).calculator == "rgpot"
+
+
