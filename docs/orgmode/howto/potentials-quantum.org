@@ -48,7 +48,7 @@ A force is minus the gradient, so a gradient in Hartree/bohr is multiplied by
 | =XTB=         | =XTBPot=      | libxtb                     | =-Dwith_xtb=true=     |
 | =TBLite=      | =TBLitePot=   | libtblite                  | =-Dwith_tblite=true=  |
 | =Metatomic=   | =MetatomicPot= | libtorch, metatomic model | =-Dwith_metatomic=true= |
-| =Uma=         | =UmaPot=      | libtorch, UMA =.pt2=       | =-Dwith_metatomic=true= |
+| =Uma=         | =UmaPot=      | libtorch, UMA =.pt2=       | =-Dwith_uma=true= or =-Dwith_metatomic=true= |
 | =NWChem=      | =NWChemPot=   | =libnwchemc=               | =-Dwith_rpc=true=     |
 | =Skala=       | =SkalaPot=    | =libnwchemc= with Skala    | =-Dwith_skala=true=   |
 | =CPMD=        | =CPMDPot=     | =libcpmdc=                 | =-Dwith_rpc=true=     |
@@ -57,8 +57,10 @@ A force is minus the gradient, so a gradient in Hartree/bohr is multiplied by
 | =ORCA=        | =ORCAPot=     | the =orca= executable      | =-Dwith_orca=true=    |
 
 The defaults in =meson_options.txt= are false for =with_xtb=,
-=with_tblite=, =with_metatomic=, =with_skala=, =with_orca= and
-=with_rpc=, and =disabled= for =with_cp2k=.
+=with_tblite=, =with_metatomic=, =with_uma=, =with_skala=,
+=with_orca= and =with_rpc=, and =disabled= for =with_cp2k=.
+=with_uma= builds =UmaPot= and the UMA plugin against torch alone without the metatensor and metatomic packages, while =with_metatomic=
+enables both.
 =with_skala= and =with_cp2k= also need =with_rpc=.
 =MOPACPot= is always built and opens =libmopacc= at run time.
 
@@ -612,8 +614,9 @@ then =.rgpot-cache= in the working directory.
 
 *** Example
 
-Building =UmaPot= needs libtorch and vesin, as for =Metatomic=, with the same
-option.
+Building =UmaPot= needs libtorch and vesin, via
+=-Dwith_uma=true= (torch alone) or =-Dwith_metatomic=true= (with the metatensor
+and metatomic packages).
 Exporting a package needs the =umaexport= environment and a UMA checkpoint, as
 in [[file:uma-export.org][Export a UMA model with dynamic shapes]].
 
@@ -628,7 +631,7 @@ The program evaluates a hydrogen cyanide molecule with a package exported for
 the =omol= task, charge 0 and spin multiplicity 1.
 The package must have been exported for this composition.
 It needs libtorch to build the class, so it compiles here only in a build with
-=with_metatomic= on.
+=with_uma= or =with_metatomic= on.
 
 #+attr_rgpot: compile link=rgpot requires=has_uma
 #+begin_src cpp
