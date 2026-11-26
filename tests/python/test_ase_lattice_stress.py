@@ -148,3 +148,34 @@ def test_emt_refuses_stress_when_the_cell_has_no_lattice() -> None:
         ref.get_stress()
     with pytest.raises(PropertyNotImplementedError):
         ours.get_stress()
+
+
+def test_calculate_many_refuses_stress_below_rank_3() -> None:
+    """A batch uses the same rank gate as one calculate call."""
+    bare = _pair()
+    assert bare.cell.rank < 3
+    calc = _lj_ours()
+    rows = calc.calculate_many([bare])
+    assert "stress" not in rows[0]
+    ref = bare.copy()
+    ref.calc = _lj_ase()
+    assert rows[0]["energy"] == pytest.approx(ref.get_potential_energy(), abs=ATOL)
+    np.testing.assert_allclose(rows[0]["forces"], ref.get_forces(), atol=ATOL, rtol=0.0)
+    with pytest.raises(PropertyNotImplementedError):
+        ref.get_stress()
+    with pytest.raises(PropertyNotImplementedError):
+        calc.calculate_many([bare], properties=["energy", "forces", "stress"])
+
+    boxed = _pair()
+    boxed.set_cell([20.0, 21.0, 22.0])
+    boxed.pbc = False
+    assert boxed.cell.rank == 3
+    ref_box = boxed.copy()
+    ref_box.calc = _lj_ase()
+    boxed_rows = calc.calculate_many(
+        [boxed], properties=["energy", "forces", "stress"]
+    )
+    assert boxed_rows[0]["stress"].shape == (6,)
+    np.testing.assert_allclose(
+        boxed_rows[0]["stress"], ref_box.get_stress(), atol=ATOL, rtol=0.0
+    )

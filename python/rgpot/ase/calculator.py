@@ -811,8 +811,11 @@ class RgpotCalculator(Calculator):
         """Evaluate many structures in one detached batch.
 
         Results match N single :meth:`calculate` calls, bit for bit, for
-        energy and forces. Inputs are not mutated. ``attach=True`` writes
-        a :class:`~ase.calculators.singlepoint.SinglePointCalculator` onto
+        energy and forces. A cell with fewer than three nonzero lattice
+        vectors omits stress. Requesting stress or stresses for that cell
+        raises ``PropertyNotImplementedError``, as :meth:`calculate` does.
+        Inputs are not mutated. ``attach=True`` writes a
+        :class:`~ase.calculators.singlepoint.SinglePointCalculator` onto
         each :class:`~ase.Atoms`.
 
         ``threads`` is the BatchEvaluator worker count. 0 selects the
@@ -849,7 +852,14 @@ class RgpotCalculator(Calculator):
                 row["free_energy"] = done["energy"]
             if "forces" in wanted:
                 row["forces"] = done["forces"]
-            if "stress" in wanted and self._analytic_stress:
+            if int(atoms.cell.rank) != 3:
+                # Same gate as calculate. The padded kernel box is not the
+                # caller's cell, so its virial is not an ASE stress.
+                if "stress" in wanted or "stresses" in wanted:
+                    raise PropertyNotImplementedError(
+                        "stress requires a cell with three nonzero lattice vectors"
+                    )
+            elif "stress" in wanted and self._analytic_stress:
                 # BatchEvaluator returns energy and forces. Stress comes
                 # from the same kernel on the copied geometry.
                 stress_eval = _call(self._potential, geom.positions, geom.numbers, geom.box)
