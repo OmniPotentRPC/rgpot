@@ -3873,6 +3873,9 @@ It starts the `orca` executable as a child process, so rgpot links no ORCA
 library and carries no ORCA code.
 You install ORCA yourself and accept its license.
 
+ORCA is in-process only for now.
+`potserv` has no ORCA backend selector.
+
 ORCA is described in Neese, WIREs Computational Molecular Science 2, 73-78
 (2012),
 doi:10.1002/wcms.81. The program paper is Neese, Wennmohs, Becker and Riplinger, J. Chem. Phys. 152, 224108 (2020), doi:10.1063/5.0004608.
@@ -4055,7 +4058,9 @@ and multiplicity that the electron count cannot hold.
 - Each call starts a process, so a call costs the ORCA start-up time on top of
   the SCF.
   The class suits a few hundred to a few thousand single points.
-- There is no `potserv` backend, engine plugin or Python class for it yet.
+- ORCA is in-process only for now.
+  `potserv` has no ORCA backend selector.
+  There is no engine plugin or Python class for it yet.
 
 ### Tests
 
