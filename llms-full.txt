@@ -3186,7 +3186,7 @@ Enable only what the host project needs:
 
 `NWChemPot` is a pure consumer: the frontend `dlopen=s =libnwchemc.so` from
 [nwchemc](https://github.com/OmniPotentRPC/nwchemc) (stable
-`nwchemc_*` C symbols). rgpot builds no in-process NWChem embed of its own and has no `-Dwith_nwchem`
+`nwchemc_*` C symbols). rgpot builds no in-process NWChem embed of its own and has no `with_nwchem`
 option.
 No `nwchem` CLI/subprocess path.
 Build `libnwchemc.so` from the `nwchemc` project, then set
@@ -3198,7 +3198,7 @@ See `CppCore/rgpot/NWChemPot/README.md`.
 Both frontends use the Cap'n Proto parameter structs, so they are compiled only
 when `with_rpc` or `with_rpc_client_only` is on (CMake: `RGPOT_WITH_RPC`).
 The engine is documented at [cpmdc.rgoswami.me](https://cpmdc.rgoswami.me).
-rgpot builds no in-process OpenCPMD embed of its own and has no `-Dwith_cpmd`
+rgpot builds no in-process OpenCPMD embed of its own and has no `with_cpmd`
 option.
 Build `libcpmdc.so` from the `cpmdc` project, then set
 `CPMDC_LIBRARY`, `RGPOT_CPMDC_ENGINE`, or `RGPOT_CPMD_ENGINE`.
