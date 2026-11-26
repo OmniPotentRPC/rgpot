@@ -224,6 +224,54 @@ entry says otherwise.
   =std::invalid_argument= for a malformed request and =std::domain_error= when
   the kernel returns a non-finite value.
 
+*** =rgpot::DerivativeReport=
+
+- Inputs :: none; a struct returned by =GradientJet::gradientJet=.
+- Units :: =operations= is a count; =scale= is in the units of the returned jet,
+  eV/Angstrom for a direction in Angstrom.
+- Outputs :: =tracked=, =operations= and =scale=.
+  When =tracked= is true, =operations= times the machine epsilon times =scale=
+  is a first-order estimate of the roundoff of the returned derivatives, not a
+  rigorous bound.
+  For a batch =operations= is the sum and =scale= the largest value over the
+  systems.
+  The engine table copies it into =RgpotEngineDerivativeReport= and writes zero
+  =operations= and =scale= when =tracked= is false; =rgpot_core::engine= reads
+  it back as =DerivativeReport= with an unsigned =operations=.
+- Errors :: none.
+
+*** =rgpot::GradientJet=
+
+- Inputs :: an abstract interface that a potential derives next to
+  =Potential<Derived>=, declared in =rgpot/GradientJet.hpp=.
+  =gradientJet(systems, nAtoms, positions, atomicNrs, boxes, directions, order, jet)=
+  takes =systems= systems that share =nAtoms= atoms and =atomicNrs=, with
+  =positions= and =directions= of =systems * 3 * nAtoms= values, =boxes= of
+  =systems * 9= values and an =order= from 1 to =maxJetOrder()=; the buffers
+  must not overlap.
+- Units :: positions, directions and cells in Angstrom; every block of =jet= is
+  eV/Angstrom.
+- Outputs :: =maxJetOrder()= returns the highest order the potential serves, at
+  least 1.
+  =gradientJet= writes =order * systems * 3 * nAtoms= values to =jet=, laid out
+  =[order][system][3 * nAtoms]=: block =k - 1= of a system is the =k=-th
+  derivative with respect to =t= of the gradient of the energy at
+  =positions + t * direction=, at =t = 0=.
+  Order 1 is the Hessian-vector product.
+  It returns a =DerivativeReport= for the whole call.
+  The engine table finds the interface with =dynamic_cast=.
+  =PotentialBase= and its layout stamp therefore do not change.
+  The table serves =rgpot_engine_taylor_jet= through the interface.
+  It reports =maxJetOrder()= as =RgpotEngineCaps.jet_order=, which is 0 for a
+  potential without the interface.
+  =rgpot::CBEPot= implements it.
+- Errors :: =maxJetOrder= is =noexcept=.
+  =gradientJet= may throw; the engine table holds the jet in a scratch buffer
+  and returns =RGPOT_ENGINE_ERR_EVAL= with the message, leaving the caller's jet
+  and report untouched.
+  The engine table refuses an order above =maxJetOrder()= with
+  =RGPOT_ENGINE_ERR_UNSUPPORTED= before it calls the potential.
+
 ** Fused engine calls and kept potentials
 
 *** =rgpot::FusedSource=
