@@ -35,9 +35,13 @@ reproduces the infinite system:
   them, padded the same way as the cluster box.
 
 Energy and forces of a cluster or a slab do not depend on the caller's
-cell along a non-periodic axis. Stress does: it is the virial divided by
-the caller's cell volume, which is what ``calculate_numerical_stress``
-differentiates. A caller with no volume keeps the padded box's stress.
+cell along a non-periodic axis. Stress is the virial divided by the
+caller's cell volume, which is what ``calculate_numerical_stress``
+differentiates. That result exists only when the cell has three nonzero
+lattice vectors (``Atoms.cell.rank`` is 3), periodic or not. A shorter
+cell omits ``stress`` and ``stresses`` and raises
+``PropertyNotImplementedError`` when either was requested, matching
+ASE's Lennard-Jones and EMT calculators.
 """
 
 from __future__ import annotations
@@ -49,7 +53,11 @@ from typing import Any, Iterable, Sequence, SupportsFloat, SupportsIndex
 
 import numpy as np
 from ase.atoms import Atoms
-from ase.calculators.calculator import Calculator, all_changes
+from ase.calculators.calculator import (
+    Calculator,
+    PropertyNotImplementedError,
+    all_changes,
+)
 from ase.calculators.singlepoint import SinglePointCalculator
 
 from rgpot.ase._registry import register_calculator as _register_calculator
@@ -680,7 +688,12 @@ class RgpotCalculator(Calculator):
         properties: Sequence[str] = ("energy",),
         system_changes: Any = all_changes,
     ) -> None:
-        """Fill ``self.results``. ``free_energy`` equals ``energy``."""
+        """Fill ``self.results``. ``free_energy`` equals ``energy``.
+
+        ``stress`` and ``stresses`` are omitted when the cell has fewer
+        than three nonzero lattice vectors. Requesting either then raises
+        ``PropertyNotImplementedError``.
+        """
         Calculator.calculate(self, atoms, properties, system_changes)
         if system_changes:
             self.results = {}
@@ -695,7 +708,20 @@ class RgpotCalculator(Calculator):
             per_atom=per_atom,
         )
         self.results.update(evaluated)
-        if "stress" not in evaluated and self._numerical_stress and "stress" in wanted:
+        if int(self.atoms.cell.rank) != 3:
+            # ASE reports stress only for a three-vector cell. A padded
+            # kernel box is not that cell, so drop its virial.
+            self.results.pop("stress", None)
+            self.results.pop("stresses", None)
+            if {"stress", "stresses"} & wanted:
+                raise PropertyNotImplementedError(
+                    "stress requires a cell with three nonzero lattice vectors"
+                )
+        elif (
+            "stress" not in evaluated
+            and self._numerical_stress
+            and "stress" in wanted
+        ):
             self.results["stress"] = self._finite_difference_stress(self.atoms)
 
     def __rg_evaluate__(
@@ -735,6 +761,10 @@ class RgpotCalculator(Calculator):
 
     def _finite_difference_stress(self, atoms: Atoms) -> np.ndarray:
         """Central difference of the energy under cell strain, ASE Voigt."""
+        if int(atoms.cell.rank) != 3:
+            raise PropertyNotImplementedError(
+                "stress requires a cell with three nonzero lattice vectors"
+            )
         cell = np.asarray(atoms.cell.array, dtype=np.float64)
         volume = _cell_volume(cell)
         if volume == 0.0:

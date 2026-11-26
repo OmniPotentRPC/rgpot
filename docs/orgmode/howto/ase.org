@@ -116,6 +116,8 @@ Voigt order (xx, yy, zz, yz, xz, xy) with the ASE sign, \(\sigma = V^{-1}
 A pair term goes half to each atom in =energies=.
 =stresses= is the per-atom virial over the cell volume, the convention of ASE's
 =LennardJones=; it sums to =stress=.
+Both exist only when the cell has three nonzero lattice vectors.
+A shorter cell raises =PropertyNotImplementedError= and keeps the energy.
 Per-atom values are computed only when asked for, so the first
 =get_potential_energies()= after =get_potential_energy()= costs one more kernel
 call.
@@ -151,7 +153,11 @@ with the same energy as the infinite system:
 
 Stress is the virial over the caller's cell volume, which is the cell
 =calculate_numerical_stress= strains.
-A cluster or slab with no volume keeps the padded box's stress.
+That stress is defined when the cell has three nonzero lattice vectors,
+periodic or not.
+A cell with fewer nonzero vectors raises =PropertyNotImplementedError= for
+=stress= and =stresses=, as ASE's =LennardJones= and =EMT= do.
+Energy and forces are unchanged.
 
 The cutoff is the =native_cutoff()= of a GROMACS or OpenMM engine, the =cutoff=
 property of =EAMTablePot=, =ExprPot= and =SumPot=, or =config()["cutoff"]=.
