@@ -359,6 +359,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from a checkout that is present fails the test.
 - `schema_ledger.py` pins `Potentials.ordinals` to the rgconf commit in `CppCore/rgpot/rpc/schema.pin`: `check --fetch` compares both vendored copies of `Potentials.capnp` and `common.capnp` with it, and `append` retired the former local entries by recording them again as upstream. The `apply` command, the series checks and the `schema-sync-canonical-*` meson tests are gone.
 - `tools/check_header_drift.sh`, run by the `rust_tests` job and by `pixi r check-header-drift`, fails when `rgpot-core/include/rgpot.h` differs from the cbindgen output. The `gen-header` build now reruns when the Rust source changes, and the header carries the `# Safety` notes of the RPC client functions.
+- Coverage builds shorten the projected Langevin free-energy samples so
+  the run finishes inside the registry timeout. Release runs keep the
+  full trajectory. The documentation self-test reads schema member names
+  and the ledger wording of a missing member.
+- Org pages that failed the snapper width check are wrapped to that
+  width. The wording is unchanged.
+- The MinGW Wine job skips AotiPublicationStressTest, which replaces a
+  file that is still open. Wine is detected only from the ntdll export
+  wine_get_version. A directory clock Wine will not move no longer fails
+  the stale-directory sweep, and path checks accept two spellings of one
+  directory.
+- The documentation now covers every public potential, C and C++ header,
+  Rust item, Cap'n Proto field, Python name and command line program. Each
+  potential has a how-to with its functional form, parameter sources, units,
+  a runnable example and its literature citation. `llms.txt` and
+  `llms-full.txt` are generated from the sources by `scripts/gen_llms.py`,
+  and `doccheck` fails when a public item has no entry or those files are
+  stale.
+- The plain text builder treats = and ~ as verbatim only when the
+  characters around them match org rules, and it leaves \( \) and $$
+  math unchanged. llms-full.txt is checked for a backtick inside inline
+  math and for an unbalanced backtick on a line.
 
 ### Changed
 
@@ -767,6 +789,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/run_coverage_fortran.sh` again enables branch coverage with `lcov_branch_coverage=1` on lcov 1.x and `branch_coverage=1` on 2.x, matching `scripts/run_coverage_cpp.sh`, so the Fortran Codecov upload on Ubuntu 22.04 keeps BRDA data instead of line hits only.
 - lammpc and LAMMPS engine loading errors now omit an empty engine path prefix,
   so wrapped failures read `lammpc: ...` instead of `lammpc: : ...`.
+- RgpotCalculator raises PropertyNotImplementedError for stress and per-atom
+  stresses when the cell has fewer than three nonzero lattice vectors, matching
+  ASE's LennardJones and EMT calculators. Energy and forces are unchanged.
+- The in-process ASE calculator follows the ASE calculator contract on five
+  points. calculate_many omits stress when the cell has fewer than three
+  nonzero lattice vectors, and raises PropertyNotImplementedError if stress
+  was requested. numerical_stress and stress_step are calculator parameters:
+  set updates them and todict round-trips a non-default value. calculate
+  with no properties list fills every implemented property. ase.db stores
+  the name rgpot. An empty system_changes list replaces results, so a key
+  this call did not produce does not remain.
+- The plain text builder copies backtick code through unchanged and
+  keeps a marker that belongs inside a code span. A slash, a plus or a
+  star still ends a span, and math is left unchanged. The check reports
+  an inline code span from the sources that the plain text changed.
 
 ### Miscellaneous
 
