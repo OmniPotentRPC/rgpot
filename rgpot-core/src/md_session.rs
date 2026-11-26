@@ -141,8 +141,14 @@ pub struct MdLangevinOutcome {
     /// the unit normal `n` over the `3N` coordinates, the mean of the two force
     /// kicks of step `k`. The constraint force is `lambda n`, and its mean
     /// over the constrained ensemble is `dF/dc` for the plane offset
-    /// `c = n . p`.
+    /// `c = n . p`. With distance constraints in the engine the multiplier is
+    /// the plane entry of the joint solve, rotation included.
     pub constraint_force: Vec<f64>,
+    /// The plane metric `Z = 1 / [(J M^-1 J^T)^-1]_plane` at the end of each
+    /// step in 1/amu, recorded with [`Self::constraint_force`]. The free energy
+    /// along the plane offset is the integral of the mean multiplier minus
+    /// `kT ln <Z^(-1/2)>`. Empty when the engine does not report it.
+    pub constraint_metric: Vec<f64>,
 }
 
 impl MdLangevinConfig {
@@ -835,6 +841,10 @@ pub struct MdLangevinResult {
     pub constraint_force: *mut f64,
     /// Entries in `constraint_force`.
     pub constraint_force_len: usize,
+    /// Buffer for the plane metric per step, or null.
+    pub constraint_metric: *mut f64,
+    /// Entries in `constraint_metric`.
+    pub constraint_metric_len: usize,
 }
 
 /// The `step_langevin` callback of [`MdSessionOps`].
@@ -1516,6 +1526,8 @@ impl MdSession for CAbiMdSession {
         let n_walls = wall_points.len() / self.n3;
         let record = config.record_constraint_force && plane.is_some();
         let mut constraint_force = vec![0.0; if record { steps } else { 0 }];
+        // An engine that predates the metric writes nothing.
+        let mut constraint_metric = vec![f64::NAN; constraint_force.len()];
         let request = MdLangevinRequest {
             struct_size: std::mem::size_of::<MdLangevinRequest>(),
             k_t: config.k_t,
@@ -1548,6 +1560,12 @@ impl MdSession for CAbiMdSession {
                 std::ptr::null_mut()
             },
             constraint_force_len: constraint_force.len(),
+            constraint_metric: if record {
+                constraint_metric.as_mut_ptr()
+            } else {
+                std::ptr::null_mut()
+            },
+            constraint_metric_len: constraint_metric.len(),
         };
         let mut error = [0 as c_char; 1024];
         let status = unsafe {
@@ -1566,6 +1584,11 @@ impl MdSession for CAbiMdSession {
             wall_hits: usize::try_from(result.wall_hits)
                 .map_err(|_| MdSessionError::new("wall hit count exceeds usize"))?,
             constraint_force,
+            constraint_metric: if constraint_metric.iter().all(|z| z.is_nan()) {
+                Vec::new()
+            } else {
+                constraint_metric
+            },
         })
     }
 
@@ -2383,6 +2406,8 @@ mod tests {
             .unwrap();
         assert_eq!(out.wall_hits, 3);
         assert_eq!(out.constraint_force, vec![0.5, 1.0, 1.5]);
+        // The mock predates the metric and leaves the buffer alone.
+        assert!(out.constraint_metric.is_empty());
         unsafe {
             assert_eq!((&*ctx).last_seed, 5);
             assert_eq!((&*ctx).last_wall_mode, 1);
