@@ -1,0 +1,29 @@
+{
+  "title": "rgpot",
+  "version": "3.8.0",
+  "upload_type": "software",
+  "publication_date": "2026-11-26",
+  "description": "rgpot is a potential-energy library and Cap'n Proto RPC server for atomistic simulation codes. It gives clients one geometry carrier, one result carrier, and one extensible backend-configuration carrier.",
+  "creators": [
+    {
+      "name": "Goswami, Rohit",
+      "orcid": "0000-0002-2393-8056",
+      "affiliation": "TurtleTech ehf"
+    }
+  ],
+  "keywords": [
+    "potential-energy",
+    "rpc",
+    "molecular-dynamics",
+    "dlpack",
+    "ffi"
+  ],
+  "license": "MIT",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/OmniPotentRPC/rgpot",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}

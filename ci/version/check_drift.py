@@ -5,7 +5,9 @@ cogapp ``--check`` compares the text between ``[[[cog`` and ``[[[end`` with
 what the generator would write. A lock that has lost those two lines has
 nothing to compare, so ``--check`` succeeds and the next release leaves
 ``rgpot-core`` at the old version. ``cargo`` without ``--locked`` on
-``rgpot-bundle`` rewrites the lock and drops the lines.
+``rgpot-bundle`` rewrites the lock and drops the lines. The JSON entries of
+files.txt have no markers for the same reason, so their version and release
+date are compared here.
 """
 
 from __future__ import annotations
@@ -56,6 +58,21 @@ def main() -> None:
     if proc.returncode != 0:
         sys.exit(proc.returncode)
     require_bundle_markers(BUNDLE_LOCK.read_text(encoding="utf-8"))
+    require_json_in_step()
+
+
+def require_json_in_step() -> None:
+    """The JSON entries of files.txt carry the Cargo.toml version and date."""
+    sys.path.insert(0, str(ROOT / "ci" / "version"))
+    import rgpot_version
+
+    stale = rgpot_version.stale_json()
+    if stale:
+        raise SystemExit(
+            "version or release date drifted in "
+            + ", ".join(stale)
+            + "; run pixi r -e version release-cog"
+        )
 
 
 if __name__ == "__main__":
