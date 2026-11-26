@@ -159,48 +159,56 @@ pub struct FusedSettings {
 }
 
 impl FusedSettings {
+    /// Sets the periodicity.
     #[must_use]
     pub fn with_periodic(mut self, periodic: [bool; 3]) -> Self {
         self.periodic = periodic;
         self
     }
 
+    /// Sets the total charge, in elementary charges.
     #[must_use]
     pub fn with_charge(mut self, charge: f64) -> Self {
         self.charge = charge;
         self
     }
 
+    /// Sets the number of unpaired electrons.
     #[must_use]
     pub fn with_spin(mut self, spin: i32) -> Self {
         self.spin = spin;
         self
     }
 
+    /// Sets the numerical accuracy level of the engine.
     #[must_use]
     pub fn with_accuracy(mut self, accuracy: f64) -> Self {
         self.accuracy = accuracy;
         self
     }
 
+    /// Sets the electronic temperature, in kelvin.
     #[must_use]
     pub fn with_electronic_temperature(mut self, kelvin: f64) -> Self {
         self.electronic_temperature = kelvin;
         self
     }
 
+    /// Sets the SCC iteration budget.
     #[must_use]
     pub fn with_scc_max_iterations(mut self, iterations: u32) -> Self {
         self.scc_max_iterations = iterations;
         self
     }
 
+    /// Sets the name of the SCC mixer.
     #[must_use]
     pub fn with_scc_mixer(mut self, mixer: impl Into<String>) -> Self {
         self.scc_mixer = mixer.into();
         self
     }
 
+    /// Sets the build or version string of the engine.
     #[must_use]
     pub fn with_engine_build(mut self, build: impl Into<String>) -> Self {
         self.engine_build = build.into();
@@ -259,6 +267,8 @@ pub struct FusedKey {
 }
 
 impl FusedKey {
+    /// The key of a request at `positions` with the given fingerprint.
+    /// Positions are kept by bit pattern.
     pub fn new(positions: &[f64], fingerprint: FusedFingerprint) -> Self {
         Self {
             positions: bit_pattern(positions),
@@ -308,6 +318,7 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl<V: Clone> FusedCache<V> {
+    /// An empty cache with default settings and zeroed counters.
     pub fn new() -> Self {
         Self::default()
     }
@@ -391,6 +402,7 @@ impl<V: Clone> FusedCache<V> {
         self.served.load(Ordering::Relaxed)
     }
 
+    /// Zeroes the computed and served counters. Stored entries stay.
     pub fn reset_counts(&self) {
         self.computed.store(0, Ordering::Relaxed);
         self.served.store(0, Ordering::Relaxed);

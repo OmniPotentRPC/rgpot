@@ -122,6 +122,7 @@ pub struct TaylorExponential<C> {
 }
 
 impl<C: TaylorCoefficient> TaylorExponential<C> {
+    /// Start the recurrence at order 0, with `u_0 = 0` and `exp(u_0) = 1`.
     pub fn new() -> Self {
         Self {
             input: vec![C::zero()],
@@ -150,10 +151,12 @@ impl<C: TaylorCoefficient> TaylorExponential<C> {
         &self.output[k]
     }
 
+    /// Borrow the coefficients of `exp(u)` accumulated so far.
     pub fn coefficients(&self) -> &[C] {
         &self.output
     }
 
+    /// Consume the recurrence state and return the computed coefficients.
     pub fn into_coefficients(self) -> Vec<C> {
         self.output
     }

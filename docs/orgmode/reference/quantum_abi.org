@@ -1,0 +1,697 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Quantum engine C ABIs
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Quantum engine C ABIs
+
+NWChem, CPMD, MOPAC and CP2K run outside =librgpot=.
+Each frontend (=NWChemPot=, =CPMDPot=, =MOPACPot=, =CP2KPot=) opens an engine
+library with =dlopen= and calls the symbols declared in the headers below.
+The four ABIs keep their own prefixes: =nwchemc_=, =cpmdc_=,
+=mopacc_= and =cp2kc_=.
+The generic engine table of [[file:engine_abi.org][Engine plugin ABI]] is a
+separate interface with its own units.
+
+Every engine library ships with a stub that the repository builds: the stub
+exports the same symbols, reports =*_available= as 0, fails every evaluation and
+returns the version string =nwchemc-stub/1.0.0=, =cpmdc-stub/0.1.0= or
+=mopacc-stub/1.0.0=.
+A frontend that finds only the stub reports that the embed is not available.
+The behaviour of a real engine beyond what the headers state is documented by
+its own project; this page states what the headers promise and what the stubs
+do.
+
+Units at these ABIs are not the units of =librgpot=.
+Geometry is in Angstrom (Bohr for CP2K), energy in Hartree and gradients in
+Hartree/Bohr; the frontends convert to Angstrom, eV and eV/Angstrom.
+Options cross the ABI as an unpacked flat Cap'n Proto message for NWChem and
+CPMD (root =NWChemParams= or =CPMDParams=, see
+[[file:capnp_schema.org][the schema]]), as the packed struct =MopacCParams= for
+MOPAC, and as input-deck text for CP2K.
+
+** NWChem: =nwchem_c_abi.h=
+
+The header is =CppCore/rgpot/NWChemPot/nwchem_c_abi.h=.
+=RGPOT_NWCHEMC_API= expands to
+=__declspec(dllexport)= when =RGPOT_NWCHEMC_BUILD= is defined on Windows and to
+nothing elsewhere.
+
+*** =NWChemCResult=
+
+- Inputs :: none; a struct returned by value.
+- Units :: =energy_h= is in Hartree.
+- Outputs :: =ok= (1 on success, 0 on failure), =energy_h= (total energy), and
+  =message=, a NUL-terminated status or error text of at most 512 bytes.
+- Errors :: none; a failure is =ok= equal to 0 with the reason in =message=.
+
+*** =nwchemc_set_params=
+
+#+attr_rgpot: signature
+#+begin_src c
+int nwchemc_set_params(const void *params_capnp, size_t params_capnp_size_bytes);
+#+end_src
+
+- Inputs :: =params_capnp=, an unpacked flat =NWChemParams= message, and its
+  size in bytes.
+- Units :: none.
+- Outputs :: 0 on success.
+  The method options are kept for later calls.
+- Errors :: non-zero when the embed is unavailable or the parameters are
+  invalid; the stub always returns -1.
+
+*** =nwchemc_energy_gradient=
+
+#+attr_rgpot: signature
+#+begin_src c
+NWChemCResult nwchemc_energy_gradient(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params_capnp, size_t params_capnp_size_bytes, double *grad_h_bohr);
+#+end_src
+
+- Inputs :: =n_atoms=; =positions_ang=,
+  3*n doubles, row-major xyz; =atomic_numbers=, n atomic numbers; =params_capnp= and its size, as for =nwchemc_set_params=; =grad_h_bohr=, room for 3*n
+  doubles.
+- Units :: positions in Angstrom, energy in Hartree, gradient in Hartree/Bohr.
+- Outputs :: an =NWChemCResult= with the energy, and the gradient written to
+  =grad_h_bohr= row-major.
+- Errors :: =ok= equal to 0 with the reason in =message=.
+  The stub returns that with the text "NWChem embed not available (stub)" and
+  the hint to provide =libnwchemc.so= on the dlopen path.
+
+*** =nwchemc_version=
+
+#+attr_rgpot: signature
+#+begin_src c
+const char *nwchemc_version(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the engine version string, in static storage.
+  Do not free it.
+- Errors :: none.
+
+*** =nwchemc_available=
+
+#+attr_rgpot: signature
+#+begin_src c
+int nwchemc_available(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: 1 when the library embeds NWChem (=RGPOT_HAS_NWCHEM= in the engine
+  build), 0 for the stub.
+- Errors :: none.
+
+** CPMD: =cpmd_c_abi.h=
+
+The header is =CppCore/rgpot/CPMDPot/cpmd_c_abi.h=.
+The engine is =libcpmdc=, documented at
+[[https://cpmdc.rgoswami.me][cpmdc.rgoswami.me]].
+Two call styles exist.
+The one-shot calls take the parameter message on every call.
+A session holds the parameters once, and each step then passes a serialized
+=ForceInput= and receives an unpacked flat =PotentialResult=.
+Positions are in Angstrom and energies in Hartree.
+A gradient is in Hartree/Bohr; a force is the negative of a gradient.
+The result-message calls convert to =ForceInput.energyUnit= and
+=energyUnit / lengthUnit=.
+
+*** =CPMDCResult=
+
+- Inputs :: none; a struct returned by value.
+- Units :: =energy_h= is in Hartree (the CPMD native energy).
+- Outputs :: =ok= (non-zero on success), =energy_h=, and =message=, a
+  NUL-terminated status or error text of at most 512 bytes.
+- Errors :: none; a failure is =ok= equal to 0 with the reason in =message=.
+
+*** =CPMDCSession=
+
+- Inputs :: none; an opaque type, created by =cpmdc_session_create=.
+- Units :: none.
+- Outputs :: a handle for repeated evaluations with one parameter set.
+  It owns a copy of the serialized parameters, so the caller may free its buffer
+  after creation.
+- Errors :: none.
+  Destroy it with =cpmdc_session_destroy=.
+
+*** =CPMDCFeatureKind=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =CPMDC_FEATURE_SECTION= (1), =CPMDC_FEATURE_PARAMS= (2),
+  =CPMDC_FEATURE_ABI= (3) and =CPMDC_FEATURE_KEYWORD= (4).
+- Errors :: none.
+
+*** =CPMDCFeatureEntry=
+
+- Inputs :: none; a struct.
+- Units :: none.
+- Outputs ::
+  =feature_id=, a string such as =section.dft= or =catalog.section.DFT=; =kind=, a =CPMDCFeatureKind=; =stub_applicable=
+  and =embed_applicable=, non-zero when the feature applies to the stub and to
+  the real embed.
+- Errors :: none.
+
+*** =cpmdc_set_params=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cpmdc_set_params(const void *params_capnp, size_t params_capnp_size_bytes);
+#+end_src
+
+- Inputs :: =params_capnp=, an unpacked flat =CPMDParams= message, and its size
+  in bytes.
+- Units :: none.
+- Outputs :: 0 on success.
+- Errors :: -1 on a parse or configuration failure; the stub always returns -1.
+
+*** =cpmdc_energy_gradient=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCResult cpmdc_energy_gradient(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params_capnp, size_t params_capnp_size_bytes, double *grad_h_bohr);
+#+end_src
+
+- Inputs :: =n_atoms=; =positions_ang=,
+  3*n doubles; =atomic_numbers=, n values; the parameter message and its size; =grad_h_bohr=, room for 3*n
+  doubles.
+- Units :: Angstrom in, Hartree and Hartree/Bohr out.
+  CPMD's ionic forces are negated into a nuclear gradient, as =nwchemc= does.
+- Outputs :: a =CPMDCResult= with the energy; the gradient is written to
+  =grad_h_bohr=.
+- Errors :: =ok= equal to 0 with the reason in =message=.
+  The stub returns "CPMD embed not available in cpmdc stub".
+
+*** =cpmdc_energy=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCResult cpmdc_energy(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params_capnp, size_t params_capnp_size_bytes);
+#+end_src
+
+- Inputs :: as =cpmdc_energy_gradient=, without the gradient buffer.
+- Units :: Angstrom in, Hartree out.
+- Outputs :: a =CPMDCResult= with the total energy; no gradient is allocated.
+- Errors :: as =cpmdc_energy_gradient=.
+
+*** =cpmdc_energy_forces=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCResult cpmdc_energy_forces(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params_capnp, size_t params_capnp_size_bytes, double *forces_h_bohr);
+#+end_src
+
+- Inputs :: as =cpmdc_energy_gradient=, with =forces_h_bohr= for the forces.
+- Units :: Angstrom in, Hartree and Hartree/Bohr out.
+- Outputs :: a =CPMDCResult= with the energy, and the negative gradient written
+  to =forces_h_bohr=.
+- Errors :: as =cpmdc_energy_gradient=.
+
+*** =cpmdc_session_create=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCSession *cpmdc_session_create(const void *params_capnp, size_t params_capnp_size_bytes);
+#+end_src
+
+- Inputs :: the unpacked flat =CPMDParams= message and its size.
+- Units :: none.
+- Outputs :: a new session that holds a copy of the message.
+- Errors :: the stub returns NULL.
+
+*** =cpmdc_session_set_params=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cpmdc_session_set_params(CPMDCSession *session, const void *params_capnp, size_t params_capnp_size_bytes);
+#+end_src
+
+- Inputs :: =session=, a parameter message and its size.
+- Units :: none.
+- Outputs :: 0 on success.
+  Call it before the session accepts a topology.
+- Errors :: non-zero on failure; the stub returns -1.
+
+*** =cpmdc_session_destroy=
+
+#+attr_rgpot: signature
+#+begin_src c
+void cpmdc_session_destroy(CPMDCSession *session);
+#+end_src
+
+- Inputs :: =session=, a handle from =cpmdc_session_create=.
+- Units :: none.
+- Outputs :: nothing; the session is released.
+- Errors :: none; the call cannot fail.
+  The stub ignores its argument.
+
+*** =cpmdc_session_select_orbitals=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cpmdc_session_select_orbitals(CPMDCSession *session, long long key);
+#+end_src
+
+- Inputs :: =session= and =key=, the name of the calculation the next
+  evaluations belong to.
+  The engine keeps the converged orbitals per key, so a calculator that
+  evaluates several images or beads in turn starts each SCF from that image's or
+  bead's own previous orbitals.
+  The symbol is optional: an engine without it keeps one stored copy.
+- Units :: none.
+- Outputs :: 0 when =session= is non-null and the runtime accepts =key=.
+  A new key is seeded from the session's current orbitals, and a key with a
+  stored copy gets those orbitals back.
+- Errors :: -1 when =session= is NULL, =key= is refused, or the library is the
+  stub; the session's active key and orbitals are then unchanged.
+
+*** =cpmdc_session_copy_orbitals=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cpmdc_session_copy_orbitals(CPMDCSession *session, long long from_key, long long to_key);
+#+end_src
+
+- Inputs :: =session=, and the two keys.
+- Units :: none.
+- Outputs :: 0 after the orbitals stored under
+  =from_key= are copied to =to_key=.
+- Errors :: -1 when either key is invalid or unsupported; the stub returns -1.
+
+*** =cpmdc_session_energy_gradient=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCResult cpmdc_session_energy_gradient(CPMDCSession *session, int n_atoms, const double *positions_ang, const int *atomic_numbers, double *grad_h_bohr);
+#+end_src
+
+- Inputs :: =session=; the geometry as for =cpmdc_energy_gradient=; the gradient
+  buffer.
+- Units :: Angstrom in, Hartree and Hartree/Bohr out.
+- Outputs :: a =CPMDCResult= with the energy; the gradient in =grad_h_bohr=.
+- Errors :: =ok= equal to 0 with the reason in =message=; the stub returns the
+  not-available text.
+
+*** =cpmdc_session_energy=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCResult cpmdc_session_energy(CPMDCSession *session, int n_atoms, const double *positions_ang, const int *atomic_numbers);
+#+end_src
+
+- Inputs :: =session= and the geometry.
+- Units :: Angstrom in, Hartree out.
+- Outputs :: a =CPMDCResult= with the total energy.
+- Errors :: as =cpmdc_session_energy_gradient=.
+
+*** =cpmdc_session_energy_forces=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCResult cpmdc_session_energy_forces(CPMDCSession *session, int n_atoms, const double *positions_ang, const int *atomic_numbers, double *forces_h_bohr);
+#+end_src
+
+- Inputs :: =session=, the geometry and a force buffer.
+- Units :: Angstrom in, Hartree and Hartree/Bohr out.
+- Outputs :: a =CPMDCResult= with the energy; the forces in =forces_h_bohr=.
+- Errors :: as =cpmdc_session_energy_gradient=.
+
+*** =cpmdc_session_calculate_forces=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCResult cpmdc_session_calculate_forces(CPMDCSession *session, const void *force_input_capnp, size_t force_input_capnp_size_bytes, double *forces_h_bohr, size_t forces_len);
+#+end_src
+
+- Inputs :: =session=; =force_input_capnp=, a serialized =ForceInput= for one
+  step, and its size; =forces_h_bohr= with room for =forces_len= doubles.
+- Units :: the session keeps the =CPMDParams=; the call returns CPMD native
+  units, Hartree and Hartree/Bohr.
+- Outputs :: a =CPMDCResult= with the energy; the forces in =forces_h_bohr=.
+- Errors :: =ok= equal to 0 with the reason in =message=; the stub returns the
+  not-available text.
+
+*** =cpmdc_session_calculate_result=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCResult cpmdc_session_calculate_result(CPMDCSession *session, const void *force_input_capnp, size_t force_input_capnp_size_bytes, void *potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t *potential_result_capnp_size_bytes);
+#+end_src
+
+- Inputs :: =session=; a serialized =ForceInput= and its size; an output buffer
+  with its capacity in bytes; a pointer for the number of bytes written.
+- Units :: the energy and forces leave in =ForceInput.energyUnit= and
+  =energyUnit / lengthUnit=.
+- Outputs :: a =CPMDCResult=, and an unpacked flat =PotentialResult= written to
+  the buffer.
+- Errors :: when the capacity is too small the call returns =ok= equal to 0,
+  writes the required size to =potential_result_capnp_size_bytes= and does not
+  evaluate CPMD; =cpmdc_potential_result_size_for_force_input= gives the size
+  beforehand.
+  The stub returns the not-available text.
+
+*** =cpmdc_calculate_result=
+
+#+attr_rgpot: signature
+#+begin_src c
+CPMDCResult cpmdc_calculate_result(const void *params_capnp, size_t params_capnp_size_bytes, const void *force_input_capnp, size_t force_input_capnp_size_bytes, void *potential_result_capnp, size_t potential_result_capnp_capacity_bytes, size_t *potential_result_capnp_size_bytes);
+#+end_src
+
+- Inputs :: the parameter message and its size, then the arguments of
+  =cpmdc_session_calculate_result= without the session.
+  A caller that takes many steps creates one session instead.
+- Units :: as =cpmdc_session_calculate_result=.
+- Outputs :: a =CPMDCResult= and the =PotentialResult= bytes.
+- Errors :: as =cpmdc_session_calculate_result=.
+
+*** =cpmdc_potential_result_size_for_force_input=
+
+#+attr_rgpot: signature
+#+begin_src c
+size_t cpmdc_potential_result_size_for_force_input(const void *force_input_capnp, size_t force_input_capnp_size_bytes);
+#+end_src
+
+- Inputs :: a serialized =ForceInput= and its size.
+- Units :: the result is a byte count.
+- Outputs :: the number of bytes a =PotentialResult= for this input needs.
+  The call parses the geometry only; it neither initializes nor evaluates CPMD.
+- Errors :: returns 0 when the message is invalid or too large for the ABI; the
+  stub always returns 0.
+
+*** =cpmdc_version=
+
+#+attr_rgpot: signature
+#+begin_src c
+const char *cpmdc_version(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the compiled library version string.
+- Errors :: none.
+
+*** =cpmdc_available=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cpmdc_available(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: 1 when the embedded OpenCPMD runtime is available, 0 for the stub.
+- Errors :: none.
+
+*** =cpmdc_finalize=
+
+#+attr_rgpot: signature
+#+begin_src c
+void cpmdc_finalize(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: nothing; an embedded CPMD runtime that the library owns is
+  finalized.
+- Errors :: none; the stub does nothing.
+
+*** =cpmdc_feature_count=
+
+#+attr_rgpot: signature
+#+begin_src c
+size_t cpmdc_feature_count(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the number of entries in the feature table.
+- Errors :: none.
+
+*** =cpmdc_feature_table=
+
+#+attr_rgpot: signature
+#+begin_src c
+const CPMDCFeatureEntry *cpmdc_feature_table(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a pointer to the first of =cpmdc_feature_count()= entries, in
+  static storage.
+  Each entry carries a =CPMDCFeatureKind=; the stub's table is the compiled
+  =cpmd_feature_table.inc=.
+- Errors :: none.
+
+*** =cpmdc_feature_find=
+
+#+attr_rgpot: signature
+#+begin_src c
+const CPMDCFeatureEntry *cpmdc_feature_find(const char *feature_id);
+#+end_src
+
+- Inputs :: =feature_id=, such as =section.dft=.
+- Units :: none.
+- Outputs :: the entry whose =feature_id= equals the argument.
+- Errors :: NULL when no entry matches, or when =feature_id= is NULL.
+
+** MOPAC: =mopac_c_abi.h=
+
+The header is =CppCore/rgpot/MOPACPot/mopac_c_abi.h=; it must stay in lockstep
+with =mopacc.h= of the =mopacc= project.
+Options are the packed struct =MopacCParams=, not Cap'n Proto.
+The version macro =RGPOT_MOPACC_C_ABI_VERSION= is 1.
+The model codes are =MOPACC_MODEL_PM7= (0),
+=MOPACC_MODEL_PM6_D3H4= (1), =MOPACC_MODEL_PM6_ORG= (2), =MOPACC_MODEL_PM6= (3),
+=MOPACC_MODEL_AM1= (4) and =MOPACC_MODEL_RM1= (5).
+
+*** =MopacCParams=
+
+- Inputs :: none; a struct.
+- Units :: none stated by the header; the fields are those of
+  =MOPACPot::Config=.
+- Outputs :: =charge= (an int), =spin= (an int), =model= (a =MOPACC_MODEL_*=
+  code), =tolerance= (a double) and =max_time= (an int).
+  =MOPACPot= defaults are 0, 0, 4 (AM1), 1.0 and 3600.
+- Errors :: none.
+
+*** =MopacCResult=
+
+- Inputs :: none; a struct returned by value.
+- Units :: =energy_h= is in Hartree.
+- Outputs :: =ok=, =energy_h= and =message=, a NUL-terminated text of at most
+  512 bytes.
+- Errors :: none; a failure is =ok= equal to 0 with the reason in =message=.
+
+*** =mopacc_set_params=
+
+#+attr_rgpot: signature
+#+begin_src c
+int mopacc_set_params(const void *params, size_t params_size_bytes);
+#+end_src
+
+- Inputs :: =params=, a =MopacCParams=, and its size in bytes.
+- Units :: none.
+- Outputs :: 0 on success.
+  =MOPACPot= calls it once when the symbol exists and ignores the status.
+- Errors :: the stub returns -1.
+
+*** =mopacc_energy_gradient=
+
+#+attr_rgpot: signature
+#+begin_src c
+MopacCResult mopacc_energy_gradient(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params, size_t params_size_bytes, double *grad_h_bohr);
+#+end_src
+
+- Inputs :: =n_atoms=; positions in Angstrom, 3*n doubles; =atomic_numbers=;
+  =params= and its size; =grad_h_bohr=, room for 3*n doubles.
+- Units :: Angstrom in, Hartree and Hartree/Bohr out.
+- Outputs :: a =MopacCResult= with the energy; the gradient in =grad_h_bohr=.
+- Errors :: =ok= equal to 0 with the reason in =message=.
+  The stub returns "mopacc embed not available (stub)" and the hint to provide
+  =libmopacc.so= on the dlopen path.
+
+*** =mopacc_c_abi_version=
+
+#+attr_rgpot: signature
+#+begin_src c
+int mopacc_c_abi_version(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the ABI version the library was built against.
+  =MOPACPot= refuses a library whose value differs from
+  =RGPOT_MOPACC_C_ABI_VERSION=.
+- Errors :: none.
+
+*** =mopacc_available=
+
+#+attr_rgpot: signature
+#+begin_src c
+int mopacc_available(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: non-zero when the library can run OpenMOPAC, 0 for the stub.
+- Errors :: none.
+
+*** =mopacc_version=
+
+#+attr_rgpot: signature
+#+begin_src c
+const char *mopacc_version(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the library version string, in static storage.
+- Errors :: none.
+
+** CP2K: =cp2kc_abi.h=
+
+The header is =CppCore/rgpot/CP2KPot/cp2kc_abi.h=.
+The shim =libcp2kc_rgpot= owns the libcp2k state: initialisation, the MPI
+communicator, one force environment per orbital key, and the SCF convergence
+check.
+It speaks CP2K's atomic units and takes no Cap'n Proto.
+Positions and cell vectors arrive in Bohr, the energy leaves in Hartree and the
+forces in Hartree/Bohr.
+Every rank of a calculator calls the session functions together, in the same
+order and with the same arguments.
+The macro =CP2KC_ABI_VERSION= is 1.
+The return codes of =cp2kc_session_calculate= are
+=CP2KC_OK= (0), =CP2KC_BAD_ARGUMENT= (1), =CP2KC_SCF_NOT_CONVERGED= (2) and
+=CP2KC_FATAL= (-1, and any other negative value).
+
+*** =CP2KCSession=
+
+- Inputs :: none; an opaque type, created by =cp2kc_session_create=.
+- Units :: none.
+- Outputs :: a handle that owns every force environment of the session.
+- Errors :: none.
+  Destroy it with =cp2kc_session_destroy=.
+
+*** =cp2kc_abi_version=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cp2kc_abi_version(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the =CP2KC_ABI_VERSION= the shim was built with.
+  =CP2KPot= refuses a shim that reports another.
+- Errors :: none.
+
+*** =cp2kc_version=
+
+#+attr_rgpot: signature
+#+begin_src c
+const char *cp2kc_version(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the shim and CP2K version text.
+  The pointer stays valid.
+- Errors :: none.
+
+*** =cp2kc_available=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cp2kc_available(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: non-zero when the shim can run CP2K.
+- Errors :: none.
+
+*** =cp2kc_adopt_calculator_comm=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cp2kc_adopt_calculator_comm(const void *comm, size_t comm_bytes, int ranks_per_calc);
+#+end_src
+
+- Inputs :: =comm=, a pointer to an =MPI_Comm= of =comm_bytes= bytes, and
+  =ranks_per_calc=.
+- Units :: none.
+- Outputs :: the calculator index.
+  The shim keeps the handle, converts it to the Fortran handle libcp2k takes,
+  and never frees it.
+  Without this call the shim runs every force environment on =MPI_COMM_WORLD=.
+- Errors :: -1 when the shim refuses the communicator.
+
+*** =cp2kc_session_create=
+
+#+attr_rgpot: signature
+#+begin_src c
+CP2KCSession *cp2kc_session_create(const char *deck, const char *dir, char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =deck=, the complete CP2K input text; =dir=, an existing directory;
+  =err=, a buffer of =err_len= bytes for a message.
+  The shim writes the deck to
+  =dir/input.inp=; CP2K writes its output to =dir/cp2k.out= for the first force
+  environment and =dir/cp2k-<n>.out= for later ones.
+- Units :: none.
+- Outputs :: a new session.
+  The first session initialises libcp2k, with
+  =cp2k_init_without_mpi= when MPI is already initialised and =cp2k_init=
+  otherwise; in that second case the shim finalises CP2K and MPI at exit.
+- Errors :: NULL, with the reason in =err=.
+
+*** =cp2kc_session_select_orbitals=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cp2kc_session_select_orbitals(CP2KCSession *session, long long key);
+#+end_src
+
+- Inputs :: =session= and =key=, the name of the calculation the following
+  evaluations belong to.
+  The shim creates one force environment per key on the key's first evaluation,
+  so each band image or ring-polymer bead keeps its own wavefunction and
+  extrapolation history.
+  Before the first call the key is 0.
+- Units :: none.
+- Outputs :: 0.
+- Errors :: none.
+
+*** =cp2kc_session_calculate=
+
+#+attr_rgpot: signature
+#+begin_src c
+int cp2kc_session_calculate(CP2KCSession *session, int n_atoms, const double *pos_bohr, const double *cell_bohr9, double *e_ha, double *f_ha_bohr, char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=; =n_atoms=, which must match the deck; =pos_bohr=, 3*n
+  Cartesian positions;
+  =cell_bohr9=, the cell vectors a, b and c as the rows of a row-major 3x3 matrix (the shim calls =cp2k_set_cell= only when the cell differs from the one the key's force environment last saw); =e_ha=
+  and =f_ha_bohr=, the outputs; =err= and =err_len=, a message buffer.
+- Units :: positions and cell in Bohr, energy in Hartree, forces (not gradients)
+  in Hartree/Bohr.
+- Outputs :: 0 with the potential energy in
+  =e_ha= and 3*n forces in =f_ha_bohr=.
+- Errors :: =CP2KC_BAD_ARGUMENT= for a null argument or an atom count that
+  differs from the deck; =CP2KC_SCF_NOT_CONVERGED= when the SCF failed, returned
+  on every rank for the same call with the energy and forces not valid; a
+  negative value when the failure is fatal.
+
+*** =cp2kc_session_destroy=
+
+#+attr_rgpot: signature
+#+begin_src c
+void cp2kc_session_destroy(CP2KCSession *session);
+#+end_src
+
+- Inputs :: =session=, a handle from =cp2kc_session_create=.
+- Units :: none.
+- Outputs :: nothing; every force environment of the session is destroyed and
+  the session is freed.
+- Errors :: none.

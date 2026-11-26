@@ -129,7 +129,7 @@ The C++ classes are in =FortranPots.hpp=, in the namespace =rgpot::fortranpots=:
 | =LenoskyPot= | =LenoskySi= | Cubic-spline MEAM silicon force-matched to LDA                |
 | =EAMAlPot=   | =EAMAl=     | EAM aluminium                                                 |
 | =FeHePot=    | =FeHe=      | Fe-He embedded atom                                           |
-| =WaterHPot=  | =WaterH=    | Andersson's =potH-H2O= surface for H among water molecules    |
+| =WaterHPot=  | =WaterH=    | Andersson's =potH-H2O= surface for one H among water molecules |
 | =SWPot=      | =SWSi=      | Stillinger-Weber silicon with eOn's epsilon                   |
 | =TersoffPot= | =TersoffSi= | Tersoff silicon: Fortran gather, or =TersoffSiC= for other Z |
 
@@ -158,7 +158,7 @@ See [[file:eam_table.org][Tabulated EAM and Finnis-Sinclair potentials]].
 See [[file:meam.org][Modified embedded-atom method]].
 
 - =TIP4PPot=, =SPCEPot=, =TIP4PPtPot= (=-Dwith_water=true=) :: Flexible TIP4P,
-  SPC/E and TIP4P on platinum, in =CppCore/rgpot/Water/=.
+  SPC/E and SPC/E on platinum, in =CppCore/rgpot/Water/=.
 
 - =XTBPot= (=-Dwith_xtb=true=) :: GFN tight-binding methods (GFN-FF, GFN0-xTB,
   GFN1-xTB, GFN2-xTB) via the [[https://github.com/grimme-lab/xtb][xtb]] C API.

@@ -1,0 +1,1486 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Quantum and machine-learned potentials
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Quantum and machine-learned potentials
+
+The potentials on this page do not evaluate a formula that rgpot owns.
+Each one hands the atoms to a tight-binding library, a quantum-chemistry engine
+or a machine-learned model, and converts the answer to the rgpot units:
+positions in Angstrom, energy in eV and forces in eV/Angstrom.
+The "functional form" part of each section therefore says which method runs,
+what rgpot does around it (unit conversion, wavefunction reuse, neighbour
+lists), and where the method's own parameters live.
+
+The per-class entries are in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]].
+The C ABIs of the engines that are opened with =dlopen= are in
+[[file:../reference/quantum_abi.org][Quantum engine C ABIs]] and
+[[file:../reference/engine_abi.org][Engine C ABI]].
+The names that =rgpot-eval=,
+=pair_style rgpot= and the PLUMED action accept are in [[file:../reference/potential_names.org][Potential
+names and options]].
+None of the potentials below has such a name, so none is reachable from those
+three tools.
+
+None of xtb, tblite, libtorch, NWChem, CPMD, CP2K, MOPAC or ORCA is installed on
+the machine that builds this page.
+Most examples therefore compile against the rgpot headers but do not run, and
+each section says what to install to run them.
+The blocks that do run print the error a missing engine gives.
+Every program that needs a build feature carries a =requires= marker, so a build
+without that feature skips it.
+
+Energies are converted with the constants in =CppCore/rgpot/units.hpp=:
+
+| Constant                | Value             | Meaning                   |
+|-------------------------+-------------------+---------------------------|
+| =BOHR_TO_ANGSTROM=      | 0.529177210903    | Angstrom per bohr         |
+| =HARTREE_TO_EV=         | 27.211386245988   | eV per Hartree            |
+| =KB_HARTREE=            | 3.1668115634556e-6 | Hartree per kelvin       |
+
+A force is minus the gradient, so a gradient in Hartree/bohr is multiplied by
+=NEG_GRAD_TO_FORCE=, which is minus =HARTREE_TO_EV= over =BOHR_TO_ANGSTROM=.
+
+| Enumerator    | Class         | Needs at run time          | Meson option          |
+|---------------+---------------+----------------------------+-----------------------|
+| =XTB=         | =XTBPot=      | libxtb                     | =-Dwith_xtb=true=     |
+| =TBLite=      | =TBLitePot=   | libtblite                  | =-Dwith_tblite=true=  |
+| =Metatomic=   | =MetatomicPot= | libtorch, metatomic model | =-Dwith_metatomic=true= |
+| =Uma=         | =UmaPot=      | libtorch, UMA =.pt2=       | =-Dwith_metatomic=true= |
+| =NWChem=      | =NWChemPot=   | =libnwchemc=               | =-Dwith_rpc=true=     |
+| =Skala=       | =SkalaPot=    | =libnwchemc= with Skala    | =-Dwith_skala=true=   |
+| =CPMD=        | =CPMDPot=     | =libcpmdc=                 | =-Dwith_rpc=true=     |
+| =CP2K=        | =CP2KPot=     | =libcp2kc_rgpot=, libcp2k  | =-Dwith_cp2k=enabled= |
+| =MOPAC=       | =MOPACPot=    | =libmopacc=                | none                  |
+| =ORCA=        | =ORCAPot=     | the =orca= executable      | =-Dwith_orca=true=    |
+
+The defaults in =meson_options.txt= are false for =with_xtb=,
+=with_tblite=, =with_metatomic=, =with_skala=, =with_orca= and
+=with_rpc=, and =disabled= for =with_cp2k=.
+=with_skala= and =with_cp2k= also need =with_rpc=.
+=MOPACPot= is always built and opens =libmopacc= at run time.
+
+** =XTB= GFN tight binding through libxtb
+
+*** What it is
+
+=XTBPot= (=CppCore/rgpot/XTBPot/XTBPot.hpp=) runs GFN0-xTB, GFN1-xTB, GFN2-xTB
+or GFN-FF from the xtb library, which it links at build time.
+Use it for molecules and clusters when a quantum surface is needed at a cost of
+milliseconds per atom set.
+=XTBDlopen= (=CppCore/rgpot/XTBPot/XTBDlopen.hpp=) runs the same method through
+=libxtb_engine.so=, so a host does not link libxtb.
+=XTBDlopen= is always built, and the engine library is built by the same
+=-Dwith_xtb=true= build.
+There is no Python class, no =rgpot-eval= or =pair_coeff= name, and the
+=potserv= type names are =XTB= (GFN2-xTB), =GFNFF=, =GFN1xTB= and =GFN0xTB=.
+=potserv= knows them only in a build with xtb.
+The class entries are under "xtb" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]], and the
+engine ABI is in [[file:../reference/engine_abi.org][Engine C ABI]].
+
+*** Functional form
+
+xtb returns the total energy of the chosen method at the geometry, and its
+gradient.
+The method papers below define that energy, and the parameter files are part of
+xtb. rgpot adds no term and applies no cutoff, shift or species rule of its own.
+Every element the method is parametrized for is accepted, by atomic number.
+These are the steps the source takes in =CppCore/rgpot/XTBPot/XTBPot.cc=:
+
+- Positions and the cell are multiplied by =ANGSTROM_TO_BOHR=.
+  The molecule is built with all three periodicity flags false, so the cell does
+  not enter the energy.
+- Energy in eV is the Hartree energy times =HARTREE_TO_EV=.
+- Forces are the gradient times =NEG_GRAD_TO_FORCE=.
+- When the cell volume is positive, the stress is the xtb virial in Hartree
+  times =HARTREE_TO_EV= divided by the volume, in eV/Angstrom^3.
+  Otherwise =has_stress= is 0.
+- The first force builds the molecule and loads the parametrization.
+  A later force with the same atomic numbers only updates the geometry.
+  A change of composition builds the molecule again.
+- The previous self-consistent wavefunction is the next guess while no atom
+  moved by more than
+  =warm_move= and the HOMO-LUMO gap is at least =warm_min_gap=.
+  Otherwise the results object is replaced, so the energy does not depend on the
+  call history.
+- The first pass is capped at the smaller of =max_iterations= and 48 iterations.
+  After an unconverged pass the source tries 1000 K, 3000 K and 5000 K in turn,
+  skipping a rung that is not above =electronic_temperature=.
+  Each rung starts from fresh results and is followed by a pass at the
+  configured temperature, and the first rung that converges ends the ladder.
+  When none converges the call throws =rgpot::SccNotConverged=.
+  The energy returned is that of the configured temperature.
+
+*** Parameters
+
+Every row is a field of =XTBConfig= in =CppCore/rgpot/XTBPot/XTBConfig.hpp=.
+
+| Parameter                | Value     | Unit     | Set in                          |
+|--------------------------+-----------+----------+---------------------------------|
+| =method=                 | =GFN2xTB= | none     | =XTBConfig::method=             |
+| =accuracy=               | 1.0       | none     | =XTBConfig::accuracy=           |
+| =electronic_temperature= | 300.0     | K        | =XTBConfig::electronic_temperature= |
+| =max_iterations=         | 250       | none     | =XTBConfig::max_iterations=     |
+| =charge=                 | 0.0       | e        | =XTBConfig::charge=             |
+| =uhf=                    | 0         | unpaired electrons | =XTBConfig::uhf=      |
+| =warm_move=              | 1.0       | Angstrom | =XTBConfig::warm_move=          |
+| =warm_min_gap=           | 1.0       | eV       | =XTBConfig::warm_min_gap=       |
+
+=method= takes =GFNFF=, =GFN0xTB=, =GFN1xTB= or =GFN2xTB=.
+=XTBDlopenConfig= adds =engine_path=, empty by default.
+The 48-iteration cap and the 1000, 3000 and 5000 K ladder are constants in
+=XTBPot::forceImpl= and =XTBPot::rescueUnconvergedScc=.
+The GFN parameters have no copy in rgpot.
+
+*** Example
+
+Build with libxtb 6.6 or newer (=xtb= in =pixi.toml= is pinned to =>=6.6.0,<7=)
+and turn the option on:
+
+#+attr_rgpot: syntax
+#+begin_src bash
+pixi shell -e xtbbld
+meson setup bbdir -Dwith_xtb=true
+meson compile -C bbdir
+#+end_src
+
+The program below evaluates water with GFN2-xTB in a 100 Angstrom cell.
+It needs libxtb, so it compiles here only in a build with =with_xtb= on.
+
+#+attr_rgpot: compile link=rgpot requires=has_xtb
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/XTBPot/XTBPot.hpp"
+
+int main() {
+  rgpot::XTBConfig cfg;
+  cfg.method = rgpot::GFNMethod::GFN2xTB;
+  rgpot::XTBPot pot(cfg);
+
+  const double pos[9] = {0.0, 0.0,      0.11779,  //
+                         0.0, 0.75545,  -0.47116, //
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {100.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 100.0};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("energy %.6f eV, has_stress %d\n", out.energy, out.has_stress);
+  std::printf("force on O, z: %.6f eV/Angstrom\n", forces[2]);
+  return 0;
+}
+#+end_src
+
+The geometry is the one =TBLitePotTest= uses.
+No energy is printed here, because this machine has no libxtb.
+This repository does not pin a GFN2 energy for it either.
+
+The dlopen frontend builds without libxtb.
+The next program runs here, and shows what a host sees when no
+=libxtb_engine.so= can be found:
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cstdio>
+#include <exception>
+
+#include "rgpot/XTBPot/XTBDlopen.hpp"
+
+int main() {
+  rgpot::XTBConfig cfg;
+  cfg.method = rgpot::GFNMethod::GFN1xTB;
+  try {
+    rgpot::XTBDlopen pot(cfg);
+    std::printf("engine loaded\n");
+  } catch (const std::exception &e) {
+    std::printf("no engine: %s\n", e.what());
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+no engine: XTBDlopen: libxtb_engine.so not found (set RGPOT_XTB_ENGINE / engine_path / EON_POTENTIALS_PATH); last dlerror: libxtb_engine.so: cannot open shared object file: No such file or directory
+#+end_example
+
+=XTBDlopen= throws from its constructor, so an object that exists is loaded.
+
+*** Literature
+
+- Goswami and Jónsson, ChemPhysChem 27, e202500730 (2026),
+  doi:10.1002/cphc.202500730: the Gaussian-process dimer paper that sets the
+  initial dimer orientation with a GFN2-xTB calculation (xtb with tblite under
+  ASE, not through rgpot).
+- Bannwarth, Ehlert and Grimme, J. Chem.
+  Theory Comput. 15, 1652-1671 (2019), doi:10.1021/acs.jctc.8b01176: GFN2-xTB,
+  the default method.
+- Grimme, Bannwarth and Shushkov, J. Chem.
+  Theory Comput. 13, 1989-2009 (2017), doi:10.1021/acs.jctc.7b00118: GFN1-xTB.
+- Pracht, Caldeweyher, Ehlert and Grimme, ChemRxiv (2019),
+  doi:10.26434/chemrxiv.8326202.v1: GFN0-xTB, a preprint.
+- Spicher and Grimme, Angew.
+  Chem.
+  Int.
+  Ed. 59, 15665-15673 (2020), doi:10.1002/anie.202004239: GFN-FF.
+- Bannwarth and coauthors, WIREs Comput.
+  Mol.
+  Sci. 11, e1493 (2020), doi:10.1002/wcms.1493: the xtb program and its methods.
+
+The parameters of each method are the ones shipped with xtb. rgpot holds no
+copy, so there is no separate table to cite for them.
+
+** =TBLite= GFN tight binding through libtblite
+
+*** What it is
+
+=TBLitePot= (=CppCore/rgpot/TBLitePot/TBLitePot.hpp=) runs GFN1-xTB, GFN2-xTB or
+IPEA1-xTB from the tblite library, which it links at build time.
+Use it where xtb is not available or where a tblite-based stack is already in
+place.
+The potential has no dlopen frontend, no Python class and no =rgpot-eval= or
+=pair_coeff= name.
+The =potserv= type names are =TBLite= and =TBLiteGFN2= (GFN2-xTB), =TBLiteGFN1=
+and =TBLiteIPEA1=, in a build with tblite.
+The class entry is under "tblite" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]].
+
+*** Functional form
+
+tblite returns the total energy of the method and its gradient.
+The method papers define the energy, and tblite holds the parameters.
+There is no cutoff, shift or species rule in rgpot.
+The source in =CppCore/rgpot/TBLitePot/TBLitePot.cc= does this:
+
+- Positions and the cell go to tblite in bohr.
+  The periodicity argument is null, so the structure is not periodic.
+- The temperature goes to tblite in Hartree, as
+  =electronic_temperature= times =KB_HARTREE=.
+- Energy in eV is the Hartree energy times =HARTREE_TO_EV=.
+  Forces are the gradient times =NEG_GRAD_TO_FORCE=.
+- With a positive cell volume, the stress is the tblite virial in Hartree times
+  =HARTREE_TO_EV= divided by the volume, in eV/Angstrom^3.
+  Otherwise =has_stress= is 0.
+- The first force builds the structure and the calculator from that call's
+  atoms, including =charge= and =uhf=.
+  Later forces only update the geometry, and do not check the composition, so
+  use one =TBLitePot= for each composition.
+- A failed SCF replaces the result object, so the next call does not start from
+  the failed wavefunction.
+
+*** Parameters
+
+Every row is a field of =TBLiteConfig=, declared in
+=CppCore/rgpot/TBLitePot/TBLitePot.hpp=.
+
+| Parameter                | Value  | Unit               | Set in                               |
+|--------------------------+--------+--------------------+--------------------------------------|
+| =method=                 | =GFN2= | none               | =TBLiteConfig::method=               |
+| =accuracy=               | 1.0    | none               | =TBLiteConfig::accuracy=             |
+| =electronic_temperature= | 300.0  | K                  | =TBLiteConfig::electronic_temperature= |
+| =max_iterations=         | 250    | none               | =TBLiteConfig::max_iterations=       |
+| =charge=                 | 0.0    | e                  | =TBLiteConfig::charge=               |
+| =uhf=                    | 0      | unpaired electrons | =TBLiteConfig::uhf=                  |
+
+=method= takes =GFN1=, =GFN2= or =IPEA1=.
+The method parameters are the ones shipped with tblite, and rgpot holds no copy.
+
+*** Example
+
+Build with tblite 0.3 or newer (=tblite= in =pixi.toml= is pinned to
+=>=0.3.0,<1=):
+
+#+attr_rgpot: syntax
+#+begin_src bash
+pixi shell -e tblitebld
+meson setup bbdir -Dwith_tblite=true
+meson compile -C bbdir
+#+end_src
+
+The program evaluates the same water geometry with GFN1-xTB.
+It needs libtblite, so it compiles here only in a build with =with_tblite= on.
+
+#+attr_rgpot: compile link=rgpot requires=has_tblite
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/TBLitePot/TBLitePot.hpp"
+
+int main() {
+  rgpot::TBLiteConfig cfg;
+  cfg.method = rgpot::TBLiteMethod::GFN1;
+  rgpot::TBLitePot pot(cfg);
+
+  const double pos[9] = {0.0, 0.0,      0.11779,  //
+                         0.0, 0.75545,  -0.47116, //
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {100.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 100.0};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("energy %.6f eV, has_stress %d\n", out.energy, out.has_stress);
+  return 0;
+}
+#+end_src
+
+There is no output here, because this machine has no libtblite.
+=TBLitePotTest= requires the GFN2 energy of this geometry to lie within 1 eV of
+-137.9 eV; it does not pin a GFN1 energy.
+
+*** Literature
+
+- Goswami and Jónsson, ChemPhysChem 27, e202500730 (2026),
+  doi:10.1002/cphc.202500730: the Gaussian-process dimer paper; it computes
+  GFN2-xTB bond orders with the tblite package (under ASE, not through rgpot).
+- Bannwarth and coauthors, WIREs Comput.
+  Mol.
+  Sci. 11, e1493 (2020), doi:10.1002/wcms.1493: the extended tight-binding
+  methods that tblite implements.
+- Grimme, Bannwarth and Shushkov, J. Chem.
+  Theory Comput. 13, 1989-2009 (2017), doi:10.1021/acs.jctc.7b00118: GFN1-xTB.
+- Bannwarth, Ehlert and Grimme, J. Chem.
+  Theory Comput. 15, 1652-1671 (2019), doi:10.1021/acs.jctc.8b01176: GFN2-xTB,
+  the default.
+- Asgeirsson, Bauer and Grimme, Chem.
+  Sci. 8, 4879-4895 (2017), doi:10.1039/c7sc00601b: the IPEA1-xTB
+  parametrization, introduced for electron ionization mass spectra.
+
+** =Metatomic= machine-learned models through metatomic
+
+*** What it is
+
+=MetatomicPot= (=CppCore/rgpot/MetatomicPot/MetatomicPot.hpp=) loads a metatomic
+TorchScript model and evaluates it in process with libtorch.
+Use it for any model exported in the metatomic format, for example a
+machine-learned interatomic potential.
+=MetatomicDlopen= (=CppCore/rgpot/MetatomicPot/MetatomicDlopen.hpp=) reaches the
+same model through =libmetatomic_engine.so=, so a host does not link libtorch.
+In Python, =rgpot.evaluate_metatomic= and =rgpot.evaluate_metatomic_dlopen= are
+functions on that engine; there is no Python potential class.
+The =potserv= type name is =Metatomic:<model_path>[:<device>]=, in a build with
+metatomic.
+There is no =rgpot-eval= or =pair_coeff= name.
+The class entries are under "Metatomic" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]], the Python
+functions are in [[file:../reference/python_api.org][the Python API]], and the
+engine route is in [[file:engine-metatomic.org][Metatomic and the engine ABI]].
+
+*** Functional form
+
+The model defines the surface, and rgpot only differentiates it.
+The source in =CppCore/rgpot/MetatomicPot/MetatomicPot.cc= does this:
+
+- Positions are in Angstrom, converted to the model dtype, with gradients
+  required.
+  The cell is passed as given, and an axis whose cell vector has length of at
+  most 1e-9 is not periodic.
+- The neighbour lists the model requests are built with vesin.
+- The model's =energy= output is summed over atoms, or over the batch entry for
+  a per-system output.
+- Forces are minus the autograd gradient of that energy with respect to the
+  positions.
+  No stress is written.
+- With =random_rotation= or =n_symmetry_rotations= above 0, the energy and
+  forces are averaged over rotated copies, and the variance is the RMS force
+  spread over the copies.
+  A model
+  =energy_uncertainty= output replaces that variance when =uncertainty_threshold=
+  is above 0.
+- =charge= and =spin= are attached as system data named =rgpot::charge=,
+  =rgpot::spin_multiplicity= and =rgpot::spin= when the model lists them in =requested_inputs=.
+  =attach_system_extras= attaches all three whatever the model lists.
+
+No cutoff, shift or species rule is applied by rgpot.
+The cutoffs and the species are those of the model.
+
+*** Parameters
+
+Every row is a field of =MetatomicConfig= in
+=CppCore/rgpot/MetatomicPot/MetatomicConfig.hpp=.
+
+| Parameter               | Value                  | Unit      | Set in                              |
+|-------------------------+------------------------+-----------+-------------------------------------|
+| =model_path=            | empty                  | path      | =MetatomicConfig::model_path=       |
+| =device=                | empty                  | none      | =MetatomicConfig::device=           |
+| =length_unit=           | =angstrom=             | none      | =MetatomicConfig::length_unit=      |
+| =extensions_directory=  | empty                  | path      | =MetatomicConfig::extensions_directory= |
+| =check_consistency=     | false                  | none      | =MetatomicConfig::check_consistency= |
+| =uncertainty_threshold= | -1.0                   | none      | =MetatomicConfig::uncertainty_threshold= |
+| =dtype_override=        | empty                  | none      | =MetatomicConfig::dtype_override=   |
+| =random_rotation=       | false                  | none      | =MetatomicConfig::random_rotation=  |
+| =n_symmetry_rotations=  | 0                      | none      | =MetatomicConfig::n_symmetry_rotations= |
+| =so3_probe_scatter=     | false                  | none      | =MetatomicConfig::so3_probe_scatter= |
+| =torch_determinism=     | =TorchDeterminismPolicy::Fast= | none | =MetatomicConfig::torch_determinism= |
+| =engine_path=           | empty                  | path      | =MetatomicConfig::engine_path=      |
+| =task_name=             | empty                  | none      | =MetatomicConfig::task_name=        |
+| =charge=                | 0                      | e         | =MetatomicConfig::charge=           |
+| =spin=                  | 1                      | multiplicity | =MetatomicConfig::spin=          |
+| =attach_system_extras=  | false                  | none      | =MetatomicConfig::attach_system_extras= |
+
+The model weights and the species it supports are in the exported model file,
+not in rgpot.
+The repository carries one test model,
+=CppCore/tests/data/lj38/lennard-jones.pt=.
+=MetatomicPotTest= evaluates it on hydrogen atoms (atomic number 1).
+=MetatomicDlopen= uses =engine_path= only to find the library.
+It passes the other fields to the engine except
+=task_name=, =charge=, =spin= and =attach_system_extras=.
+
+*** Example
+
+The linked class needs libtorch, metatensor-torch and metatomic-torch, which the
+=metatomicbld= pixi environment provides:
+
+#+attr_rgpot: syntax
+#+begin_src bash
+pixi shell -e metatomicbld
+meson setup bbdir -Dwith_metatomic=true
+meson compile -C bbdir
+#+end_src
+
+The dlopen frontend builds without torch.
+The next program configures it for the test model, and runs here.
+Without an engine library it prints the error a missing engine gives:
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cstdio>
+#include <exception>
+
+#include "rgpot/MetatomicPot/MetatomicDlopen.hpp"
+
+int main() {
+  rgpot::MetatomicConfig cfg;
+  cfg.model_path = "CppCore/tests/data/lj38/lennard-jones.pt";
+  cfg.device = "cpu";
+  try {
+    rgpot::MetatomicDlopen pot(cfg);
+    std::printf("engine loaded\n");
+  } catch (const std::exception &e) {
+    std::printf("no engine: %s\n", e.what());
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+no engine: MetatomicDlopen: libmetatomic_engine.so not found (set RGPOT_METATOMIC_ENGINE / engine_path / EON_POTENTIALS_PATH); last dlerror: libmetatomic_engine.so: cannot open shared object file: No such file or directory
+#+end_example
+
+With =libmetatomic_engine.so= on the search path, the same configuration loads
+the engine, and =forceImpl= evaluates a hydrogen dimer on the test model:
+
+#+attr_rgpot: compile link=rgpot
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/MetatomicPot/MetatomicDlopen.hpp"
+
+int main() {
+  rgpot::MetatomicConfig cfg;
+  cfg.model_path = "CppCore/tests/data/lj38/lennard-jones.pt";
+  cfg.device = "cpu";
+  rgpot::MetatomicDlopen pot(cfg);
+
+  const double pos[6] = {50.0, 50.0, 50.0, 51.5, 50.0, 50.0};
+  const int z[2] = {1, 1};
+  const double box[9] = {100.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 100.0};
+  double forces[6] = {};
+  rgpot::ForceInput in{2, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("energy %.6f eV\n", out.energy);
+  return 0;
+}
+#+end_src
+
+That program only compiles here, because the engine library and torch are
+absent.
+Linking =MetatomicPot= instead of =MetatomicDlopen= needs
+=-Dwith_metatomic=true= and the torch headers.
+
+*** Literature
+
+- Goswami, Gunde and Jónsson, Front.
+  Chem. 14, 1807063 (2026), doi:10.3389/fchem.2026.1807063: enhanced climbing
+  image NEB, whose calculations use the metatomic interface of eOn to the
+  PET-MAD-S v1.5.0 potential.
+- Goswami, ACS Phys.
+  Chem.
+  Au 6, 633-664 (2026), doi:10.1021/acsphyschemau.6c00038: the tutorial review;
+  its molecular examples use the PET-MAD potential, and one benchmark row is
+  labelled as a metatomic run.
+- Bigi and coauthors (Goswami is among them), J. Chem.
+  Phys. 164, 064113 (2026), doi:10.1063/5.0304911: the metatensor and metatomic
+  libraries that define the model format.
+
+A metatomic model carries its own training data and parameters. rgpot has no
+parameter set for it, so there is no table or paper to cite for one.
+
+** =Uma= UMA models through AOTInductor packages
+
+*** What it is
+
+=UmaPot=
+(=CppCore/rgpot/UmaPot/UmaPot.hpp=) evaluates a UMA (Universal Model for Atoms) checkpoint that =scripts/export_uma_aoti.py=
+has exported to an AOTInductor package (=.pt2=).
+Use it when a UMA surface is needed for a molecule or a periodic cell, for
+example along a NEB band, since the class evaluates a band in one call. rgpot
+builds the neighbour list with its own pair search and passes it to the compiled
+graph, which does not call fairchem.
+There is no Python class, no =rgpot-eval= or =pair_coeff= name, and no dlopen
+frontend in =librgpot=.
+The =potserv= type names are =Uma:<model_path>= and =Uma:<model_path>:<task>=,
+where =<task>= is one of =omol=, =omat=, =oc20=, =oc22=, =oc25=, =odac= and
+=omc=, in a build with metatomic.
+The class entry is under "UMA" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]], and the
+export is in [[file:uma-export.org][Export a UMA model with dynamic shapes]].
+
+*** Functional form
+
+The package defines the surface.
+It returns the energy and the forces, and rgpot copies both unchanged: the
+package must return eV and eV/Angstrom, which the exporter's packages do.
+No stress is written.
+What rgpot does in =CppCore/rgpot/UmaPot/UmaPot.cc= is the graph input:
+
+- The neighbour list is a full pair list with periodic images along all three
+  cell vectors and a strict cutoff.
+  Zero-distance pairs are dropped.
+  Each atom keeps its =max_neighbors= nearest neighbours.
+  Edges are sorted by center, distance, neighbour and cell shift, so a run is
+  reproducible.
+- The cutoff is =cutoff= unless the package carries its own, which wins.
+  A cutoff that is not positive and finite becomes 6.0 Angstrom.
+- Charge and spin go to the graph as per-call integer tensors.
+  The spin is the multiplicity.
+- A package is exported for one task, charge and spin, and for a composition or
+  a range of compositions.
+  A force call compares the config and the input with the package metadata and
+  throws =rgpot::UmaContractError= or =rgpot::UmaShapeError= on a mismatch.
+
+*** Parameters
+
+Every row is a field of =UmaConfig= in =CppCore/rgpot/UmaPot/UmaConfig.hpp=.
+
+| Parameter        | Value  | Unit     | Set in                      |
+|------------------+--------+----------+-----------------------------|
+| =model_path=     | empty  | path     | =UmaConfig::model_path=     |
+| =task_name=      | =omol= | none     | =UmaConfig::task_name=      |
+| =device=         | =cpu=  | none     | =UmaConfig::device=         |
+| =charge=         | 0      | e        | =UmaConfig::charge=         |
+| =spin=           | 1      | multiplicity | =UmaConfig::spin=       |
+| =cutoff=         | 6.0    | Angstrom | =UmaConfig::cutoff=         |
+| =max_neighbors=  | 300    | none     | =UmaConfig::max_neighbors=  |
+| =cache_dir=      | empty  | path     | =UmaConfig::cache_dir=      |
+
+The weights are in the checkpoint, and the package records which checkpoint it
+came from (=UmaPot::checkpointProvenance=). rgpot holds no copy of them.
+An empty =cache_dir= means =$RGPOT_CACHE_DIR=, then =$XDG_CACHE_HOME/rgpot=,
+then =.rgpot-cache= in the working directory.
+
+*** Example
+
+Building =UmaPot= needs libtorch and vesin, as for =Metatomic=, with the same
+option.
+Exporting a package needs the =umaexport= environment and a UMA checkpoint, as
+in [[file:uma-export.org][Export a UMA model with dynamic shapes]].
+
+#+attr_rgpot: syntax
+#+begin_src bash
+pixi shell -e metatomicbld
+meson setup bbdir -Dwith_metatomic=true
+meson compile -C bbdir
+#+end_src
+
+The program evaluates a hydrogen cyanide molecule with a package exported for
+the =omol= task, charge 0 and spin multiplicity 1.
+The package must have been exported for this composition.
+It needs libtorch to build the class, so it compiles here only in a build with
+=with_metatomic= on.
+
+#+attr_rgpot: compile link=rgpot requires=has_uma
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/UmaPot/UmaPot.hpp"
+
+int main() {
+  rgpot::UmaConfig cfg;
+  cfg.model_path = "uma-omol.pt2";
+  cfg.task_name = "omol";
+  cfg.charge = 0;
+  cfg.spin = 1;
+  rgpot::UmaPot pot(cfg);
+
+  const double pos[9] = {0.0, 0.0, 0.0,  //
+                         0.0, 0.0, 1.07, //
+                         0.0, 0.0, -1.16};
+  const int z[3] = {6, 1, 7};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("energy %.6f eV\n", out.energy);
+  return 0;
+}
+#+end_src
+
+There is no output here, because there is no package and no libtorch.
+=UmaPotTest= pins the ASE =FAIRChemCalculator= energy of its own HCN geometry
+(uma-s-1p1, task =omol=); that geometry is not the one above, and the figure is
+listed in [[file:../reference/cpp_backends.org][C++ engine-backed potentials]].
+
+*** Literature
+
+- Wood and coauthors, Advances in Neural Information Processing Systems 38,
+  143528-143564 (2025), doi:10.52202/085713-4310: the UMA model family, which
+  defines the architecture and the training data of the checkpoints.
+
+No Goswami paper listed for this page uses UMA through rgpot, so none is cited.
+The weights are the checkpoint's, so rgpot has no parameter set to cite.
+
+** =NWChem= quantum chemistry through libnwchemc
+
+*** What it is
+
+=NWChemPot= (=CppCore/rgpot/NWChemPot/NWChemPot.hpp=) evaluates Hartree-Fock or
+density functional theory with NWChem.
+Use it for molecules at a first-principles level.
+The class opens =libnwchemc=, the split engine of the nwchemc project, with
+=dlopen=. rgpot builds no NWChem engine of its own.
+The options travel as the =NWChemParams= message.
+There is no Python class and no =rgpot-eval= or =pair_coeff= name.
+The =potserv= type name is =NWChem[:basis[:theory[:xc]]]=.
+The class entries are under "NWChem" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]], and the
+ABI is in [[file:../reference/quantum_abi.org][Quantum engine C ABIs]].
+
+*** Functional form
+
+The surface is the NWChem total energy for the theory, basis and charge in
+=NWChemParams=.
+=theory= =scf= with =scfType= =rhf= or =uhf= is Hartree-Fock, and =theory= =dft=
+takes the exchange-correlation functional from =scfType= or from a typed =dft=
+stanza. rgpot applies no cutoff, shift or species rule.
+The source in =CppCore/rgpot/NWChemPot/NWChemPot.cc= does this:
+
+- Positions go to the engine in Angstrom, and the energy comes back in Hartree.
+  The gradient comes back in Hartree/bohr.
+- Energy in eV is the Hartree energy times =HARTREE_TO_EV=.
+  Forces are the gradient times =NEG_GRAD_TO_FORCE=.
+- The cell is not sent, and the class reports =periodic = false=.
+  No stress is written.
+- =potserv= turns =NWChem:<basis>:<theory>:<xc>= into those fields.
+  When =<xc>= is given it adds one raw input block: a =dft= block with =xc <xc>=
+  and =iterations 60=, with each comma of =<xc>= replaced by a space.
+
+*** Parameters
+
+The rows are the fields of =NWChemParams= in
+=CppCore/rgpot/rpc/Potentials.capnp=, with the schema defaults.
+=NWChemPot= sends them unchanged unless the caller sets them.
+
+| Parameter      | Value        | Unit | Set in                         |
+|----------------+--------------+------+--------------------------------|
+| =basis=        | =sto-3g=     | none | =NWChemParams.basis=           |
+| =theory=       | =scf=        | none | =NWChemParams.theory=          |
+| =scfType=      | =rhf=        | none | =NWChemParams.scfType=         |
+| =charge=       | 0            | e    | =NWChemParams.charge=          |
+| =multiplicity= | 1            | 2S+1 | =NWChemParams.multiplicity=    |
+| =enginePath=   | empty        | path | =NWChemParams.enginePath=      |
+| =nwchemRoot=   | empty        | path | =NWChemParams.nwchemRoot=      |
+| =task=         | =gradient=   | none | =NWChemParams.task=            |
+| =title=        | empty        | none | =NWChemParams.title=           |
+| =memoryMb=     | 0            | MB   | =NWChemParams.memoryMb=        |
+| =scratchDir=   | empty        | path | =NWChemParams.scratchDir=      |
+| =permanentDir= | empty        | path | =NWChemParams.permanentDir=    |
+| =inputBlocks=  | empty list   | text | =NWChemParams.inputBlocks=     |
+| =inputStanzas= | empty list   | none | =NWChemParams.inputStanzas=    |
+
+Basis sets and functionals are NWChem's own libraries. rgpot holds no copy of
+them.
+
+*** Example
+
+Build rgpot with the schema support that the frontend needs, and build
+=libnwchemc= from the nwchemc project against an NWChem source tree
+(=NWCHEM_TOP=).
+The conda-forge =nwchem= packages ship the driver and not the embed SDK, so they
+do not provide =libnwchemc=.
+
+#+attr_rgpot: syntax
+#+begin_src bash
+pixi shell -e rpctest
+meson setup bbdir -Dwith_rpc=true
+meson compile -C bbdir
+export NWCHEMC_LIBRARY=/path/to/libnwchemc.so
+#+end_src
+
+The program asks for B3LYP in the 6-31G* basis on water.
+It needs the generated schema header, so it compiles here only in a build with
+RPC on.
+
+#+attr_rgpot: compile link=rgpot requires=has_rpc
+#+begin_src cpp
+#include <cstdio>
+
+#include <capnp/message.h>
+
+#include "rgpot/NWChemPot/NWChemPot.hpp"
+
+int main() {
+  capnp::MallocMessageBuilder msg;
+  auto params = msg.initRoot<NWChemParams>();
+  params.setTheory("dft");
+  params.setScfType("b3lyp");
+  params.setBasis("6-31g*");
+  rgpot::NWChemPot pot(params.asReader());
+
+  const double pos[9] = {0.0, 0.0,      0.11779,  //
+                         0.0, 0.75545,  -0.47116, //
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("energy %.6f eV\n", out.energy);
+  return 0;
+}
+#+end_src
+
+There is no energy here, because this machine has no =libnwchemc=.
+=NWChemPotTest= requires a water B3LYP/6-31G* energy below -2070.0 eV.
+
+Without the engine, the default constructor still works, and the first force
+reports why it cannot run:
+
+#+attr_rgpot: run link=rgpot requires=has_rpc
+#+begin_src cpp
+#include <cstdio>
+#include <exception>
+
+#include "rgpot/NWChemPot/NWChemPot.hpp"
+
+int main() {
+  rgpot::NWChemPot pot;
+  std::printf("available: %d\n", pot.available() ? 1 : 0);
+
+  const double pos[9] = {0.0, 0.0,      0.11779,  //
+                         0.0, 0.75545,  -0.47116, //
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  try {
+    pot.forceImpl(in, &out);
+  } catch (const std::exception &e) {
+    std::printf("force failed: %s\n", e.what());
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+available: 0
+force failed: NWChem engine (libnwchemc) not loaded: libnwchemc not loaded: dlopen failed: nwchemc.dll: nwchemc.dll: cannot open shared object file: No such file or directory
+#+end_example
+
+*** Literature
+
+- Goswami, Masterov, Kamath, Peña-Torres and Jónsson, J. Chem.
+  Theory Comput. 21, 7935-7943 (2025), doi:10.1021/acs.jctc.5c00866:
+  Gaussian-process accelerated saddle searches on molecular reactions; the
+  surfaces are Hartree-Fock energies and forces with a 3-21G basis from NWChem,
+  driven through eOn and ASE.
+- Goswami and Jónsson, ChemPhysChem 27, e202500730 (2026),
+  doi:10.1002/cphc.202500730: adaptive pruning for the same searches; its
+  molecular surfaces are NWChem Hartree-Fock calculations with a 3-21G basis.
+- Goswami, AIP Adv. 15, 085210 (2025), doi:10.1063/5.0283639: Bayesian
+  hierarchical models for saddle search performance; the saddle searches use eOn
+  with NWChem at the Hartree-Fock level and a 3-21G basis.
+- Valiev and coauthors, Comput.
+  Phys.
+  Commun. 181, 1477-1489 (2010), doi:10.1016/j.cpc.2010.04.018: the NWChem
+  program.
+- Aprà and coauthors, J. Chem.
+  Phys. 152, 184102 (2020), doi:10.1063/5.0004997: NWChem, past, present and
+  future.
+
+Those three papers do not use =NWChemPot=.
+The same level of theory is =theory= =scf= with =scfType= =rhf= for singlets and
+=uhf= for doublets, and =basis= =3-21g=.
+The basis sets and functionals are NWChem's, so rgpot has no parameter set to
+cite for them.
+
+** =Skala= the Skala functional on NWChem
+
+*** What it is
+
+=SkalaPot= (=CppCore/rgpot/SkalaPot/SkalaPot.hpp=) is Kohn-Sham DFT in NWChem
+with the Skala exchange-correlation functional, a neural-network functional.
+Use it when a deep-learned XC functional is wanted on molecules.
+It is not a separate surface: =SkalaPot= builds an =NWChemParams= message with
+=theory= =dft= and the Skala keyword, and evaluates it through =NWChemPot= and
+=libnwchemc=.
+The =potserv= type names are =Skala= and =Skala:<basis>=, in a build with
+=with_skala=.
+There is no Python class and no =rgpot-eval= or =pair_coeff= name.
+The class entries are under "Skala" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]].
+
+*** Functional form
+
+The energy is the NWChem Kohn-Sham energy with Skala as the exchange-correlation
+term.
+The functional itself is defined in the paper below, and the engine evaluates
+it. rgpot only writes the keyword.
+The source in =CppCore/rgpot/SkalaPot/SkalaPot.cc= does this:
+
+- It sets =theory= to =dft=, =task= to =gradient=, and the basis, charge and
+  multiplicity from the config.
+- It adds one typed =dft= stanza whose =xc= is the config's =xc= keyword.
+- Units, signs and the missing cell and stress are those of =NWChemPot=.
+- The constructor throws =std::runtime_error= when =basis= or =xc= is empty or
+  =multiplicity= is below 1.
+  A =setParams= failure of the inner =NWChemPot= is ignored.
+- The generic engine route for Skala reads only the basis, charge, multiplicity,
+  engine path and NWChem root, and keeps the default =xc=.
+
+The engine has to be an NWChem build that accepts the =skala-1.1= keyword. rgpot
+does not check that.
+
+*** Parameters
+
+Every row is a field of =SkalaConfig= in
+=CppCore/rgpot/SkalaPot/SkalaConfig.hpp=.
+
+| Parameter      | Value        | Unit | Set in                      |
+|----------------+--------------+------+-----------------------------|
+| =xc=           | =skala-1.1=  | none | =SkalaConfig::xc=           |
+| =basis=        | =def2-tzvp=  | none | =SkalaConfig::basis=        |
+| =charge=       | 0            | e    | =SkalaConfig::charge=       |
+| =multiplicity= | 1            | 2S+1 | =SkalaConfig::multiplicity= |
+| =engine_path=  | empty        | path | =SkalaConfig::engine_path=  |
+| =nwchem_root=  | empty        | path | =SkalaConfig::nwchem_root=  |
+
+The weights of the functional belong to the Skala release that the engine uses.
+rgpot holds no copy.
+
+*** Example
+
+=SkalaPot= is built only with
+=-Dwith_skala=true=, which needs =-Dwith_rpc=true=, and it needs the same
+=libnwchemc= as =NWChem=.
+
+#+attr_rgpot: syntax
+#+begin_src bash
+pixi shell -e rpctest
+meson setup bbdir -Dwith_rpc=true -Dwith_skala=true
+meson compile -C bbdir
+export NWCHEMC_LIBRARY=/path/to/libnwchemc.so
+#+end_src
+
+The program evaluates water with the default functional and basis.
+It compiles here only in a build with =with_skala= on.
+
+#+attr_rgpot: compile link=rgpot requires=has_skala
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/SkalaPot/SkalaPot.hpp"
+
+int main() {
+  rgpot::SkalaConfig cfg;
+  cfg.xc = "skala-1.1";
+  cfg.basis = "def2-tzvp";
+  cfg.charge = 0;
+  cfg.multiplicity = 1;
+  rgpot::SkalaPot pot(cfg);
+
+  const double pos[9] = {0.0, 0.0,      0.11779,  //
+                         0.0, 0.75545,  -0.47116, //
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("energy %.6f eV\n", out.energy);
+  return 0;
+}
+#+end_src
+
+There is no output here, because there is no engine.
+=SkalaPotTest= checks that the keyword is written and that the energy is finite
+when an engine is present; this repository pins no Skala energy.
+
+*** Literature
+
+- Luise and coauthors, arXiv:2506.14665 (2025), "Accurate and scalable
+  exchange-correlation with deep learning": the Skala functional.
+  This is an arXiv preprint, and it has no DOI in Crossref.
+  Its abstract reports an error of 2.8 kcal/mol on GMTKN55.
+- Weigend and Ahlrichs, Phys.
+  Chem.
+  Chem.
+  Phys. 7, 3297 (2005), doi:10.1039/b508541a: the def2 basis sets, of which
+  =def2-tzvp= is the default here.
+- Valiev and coauthors, Comput.
+  Phys.
+  Commun. 181, 1477-1489 (2010), doi:10.1016/j.cpc.2010.04.018: the NWChem
+  program that runs the Kohn-Sham calculation.
+
+No Goswami paper listed for this page uses Skala, so none is cited.
+
+** =CPMD= plane-wave density functional theory through libcpmdc
+
+*** What it is
+
+=CPMDPot= (=CppCore/rgpot/CPMDPot/CPMDPot.hpp=) evaluates plane-wave DFT with
+CPMD.
+Use it for periodic or isolated systems where plane waves and norm-conserving
+pseudopotentials are wanted.
+The class opens =libcpmdc=, the split engine of the cpmdc project, with
+=dlopen=, and sends the =CPMDParams= message.
+It does not write CPMD decks itself.
+There is no Python class and no =rgpot-eval= or =pair_coeff= name.
+The =potserv= type name is =CPMD=.
+The class entries are under "CPMD" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]], and the
+ABI is in [[file:../reference/quantum_abi.org][Quantum engine C ABIs]].
+The walk-through with a stand-in engine is in
+[[file:../tutorials/cpmd.org][Evaluate a water geometry with CPMD]].
+
+*** Functional form
+
+The energy is the CPMD Kohn-Sham total energy for the functional, plane-wave
+cutoff and pseudopotentials in =CPMDParams=.
+The default functional is BLYP, which is Becke exchange with Lee-Yang-Parr
+correlation. rgpot applies no cutoff, shift or species rule of its own.
+In =CppCore/rgpot/CPMDPot/CPMDPot.cc=:
+
+- Positions go to the engine in Angstrom and the energy comes back in Hartree,
+  so the energy in eV is that times =HARTREE_TO_EV=.
+  The gradient in Hartree/bohr is converted with =NEG_GRAD_TO_FORCE=.
+- The box of the call is the cell CPMD uses when it is not all zero.
+  An all-zero box keeps the cell of the deck.
+  The README in =CppCore/rgpot/CPMDPot/README.md= gives the details.
+- The stress is copied when the engine reports one, and then =has_stress= is 1.
+  An engine tensor in Hartree/bohr^3 is multiplied by
+  =HARTREE_PER_BOHR3_TO_EV_PER_ANGSTROM3=.
+- Every rank of a calculator group enters a force call together.
+  A failure is printed on every rank, and then =MPI_Abort= runs on the world.
+- The typed =atoms= section carries the pseudopotentials by element symbol.
+  Without it the engine's built-in BLYP defaults cover hydrogen and oxygen only.
+
+*** Parameters
+
+The rows are the fields of =CPMDParams= in =CppCore/rgpot/rpc/Potentials.capnp=,
+with the schema defaults.
+
+| Parameter       | Value      | Unit | Set in                       |
+|-----------------+------------+------+------------------------------|
+| =functional=    | =BLYP=     | none | =CPMDParams.functional=      |
+| =cutOffRy=      | 70.0       | Ry   | =CPMDParams.cutOffRy=        |
+| =charge=        | 0          | e    | =CPMDParams.charge=          |
+| =multiplicity=  | 1          | 2S+1 | =CPMDParams.multiplicity=    |
+| =task=          | =gradient= | none | =CPMDParams.task=            |
+| =title=         | empty      | none | =CPMDParams.title=           |
+| =memoryMb=      | 0          | MB   | =CPMDParams.memoryMb=        |
+| =scratchDir=    | empty      | path | =CPMDParams.scratchDir=      |
+| =permanentDir=  | empty      | path | =CPMDParams.permanentDir=    |
+| =cpmdRoot=      | empty      | path | =CPMDParams.cpmdRoot=        |
+| =enginePath=    | empty      | path | =CPMDParams.enginePath=      |
+| =inputBlocks=   | empty list | text | =CPMDParams.inputBlocks=     |
+| =inputSections= | empty list | none | =CPMDParams.inputSections=   |
+
+Pseudopotential files and their parameters are CPMD's own, and rgpot holds no
+copy.
+
+*** Example
+
+Build =libcpmdc= from the cpmdc project (documented at cpmdc.rgoswami.me)
+against a CPMD tree, then point rgpot at it:
+
+#+attr_rgpot: syntax
+#+begin_src bash
+pixi shell -e rpctest
+meson setup bbdir -Dwith_rpc=true
+meson compile -C bbdir
+export CPMDC_LIBRARY=/path/to/libcpmdc.so
+#+end_src
+
+The program evaluates water in a 20 Angstrom cube with BLYP and a 70 Ry cutoff.
+It compiles here only in a build with RPC on.
+Do not run it without an engine: a failed force ends in =MPI_Abort= on an MPI
+build.
+
+#+attr_rgpot: compile link=rgpot requires=has_rpc
+#+begin_src cpp
+#include <cstdio>
+
+#include <capnp/message.h>
+
+#include "rgpot/CPMDPot/CPMDPot.hpp"
+
+int main() {
+  capnp::MallocMessageBuilder msg;
+  auto params = msg.initRoot<CPMDParams>();
+  params.setFunctional("BLYP");
+  params.setCutOffRy(70.0);
+  rgpot::CPMDPot pot(params.asReader());
+
+  const double pos[9] = {0.0, 0.0,      0.11779,  //
+                         0.0, 0.75545,  -0.47116, //
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("energy %.6f eV, has_stress %d\n", out.energy, out.has_stress);
+  return 0;
+}
+#+end_src
+
+There is no output here, because this machine has no =libcpmdc= and no CPMD.
+
+*** Literature
+
+- Car and Parrinello, Phys.
+  Rev. Lett. 55, 2471-2474 (1985), doi:10.1103/PhysRevLett.55.2471: the unified
+  density-functional and molecular dynamics scheme that CPMD implements.
+- Becke, Phys.
+  Rev. A 38, 3098-3100 (1988), doi:10.1103/PhysRevA.38.3098: the exchange part
+  of BLYP, the default functional.
+- Lee, Yang and Parr, Phys.
+  Rev. B 37, 785-789 (1988), doi:10.1103/PhysRevB.37.785: the correlation part
+  of BLYP.
+
+No Goswami paper listed for this page uses CPMD, so none is cited.
+The pseudopotentials are the ones the user supplies in the =atoms= section, so
+rgpot has no pseudopotential set to cite.
+
+** =CP2K= Quickstep through the libcp2k shim
+
+*** What it is
+
+=CP2KPot= (=CppCore/rgpot/CP2KPot/CP2KPot.hpp=) evaluates Gaussian and plane
+wave (GPW) DFT with CP2K Quickstep.
+Use it for periodic cells and larger systems than the Gaussian-basis engines
+reach.
+It renders a CP2K input deck from =CP2KParams= and the first geometry, then
+loads =libcp2kc_rgpot=, a thin shim over libcp2k, with =dlopen=.
+There is no Python class and no =rgpot-eval= or =pair_coeff= name.
+The =potserv= type name is =CP2K=, in a build with =with_cp2k=.
+The class entries are under "CP2K" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]].
+The walk-through is in
+[[file:../tutorials/cp2k.org][Evaluate diamond silicon with CP2K]].
+
+*** Functional form
+
+The energy is the Quickstep total energy of the deck.
+With an empty =inputTemplate=, =CppCore/rgpot/CP2KPot/CP2KDeck.cc= writes a GPW
+deck from the typed fields:
+
+- =&MGRID= with =CUTOFF= and =REL_CUTOFF=.
+- =CHARGE=, =MULTIPLICITY=, and =UKS= when =uks= is set.
+- =&SCF= with =SCF_GUESS ATOMIC=, =EPS_SCF=,
+  =MAX_SCF= and =IGNORE_CONVERGENCE_FAILURE=, an =&OT= block with the DIIS minimizer and the =FULL_SINGLE_INVERSE= preconditioner when =ot= is set, and an =&OUTER_SCF=
+  block when =outerMaxScf= is above 0.
+- =&XC_FUNCTIONAL= named by =functional=.
+- One =&KIND= for each element, with =basisSet= and =pseudopotential=.
+- A =&CELL= with the =PERIODIC= setting from =periodic=.
+
+A non-empty =inputTemplate= is used as written, apart from the
+=@RGPOT_COORD@= and =@RGPOT_CELL@= tokens, which =setParams= requires. rgpot
+applies no cutoff or species rule outside the deck.
+In =CppCore/rgpot/CP2KPot/CP2KPot.cc=:
+
+- Positions and the cell go to the shim in bohr.
+  The energy in eV is the Hartree energy times =HARTREE_TO_EV=.
+- libcp2k returns forces and not gradients, so the force is the shim's value in
+  Hartree/bohr times =HARTREE_TO_EV= over =BOHR_TO_ANGSTROM= with no sign
+  change.
+- No stress is written.
+- An unconverged SCF throws =rgpot::CP2KScfError= on every rank without
+  aborting; another failure ends in =MPI_Abort=.
+- The session is created at the first force, and again only when the atomic
+  numbers or the parameters change.
+
+*** Parameters
+
+The rows are the fields of =CP2KParams= in =CppCore/rgpot/rpc/Potentials.capnp=,
+with the schema defaults.
+
+| Parameter                | Value                  | Unit | Set in                          |
+|--------------------------+------------------------+------+---------------------------------|
+| =inputTemplate=          | empty                  | text | =CP2KParams.inputTemplate=      |
+| =functional=             | =PBE=                  | none | =CP2KParams.functional=         |
+| =basisSet=               | =DZVP-MOLOPT-SR-GTH=   | none | =CP2KParams.basisSet=           |
+| =pseudopotential=        | =GTH-PBE=              | none | =CP2KParams.pseudopotential=    |
+| =basisSetFile=           | =BASIS_MOLOPT=         | none | =CP2KParams.basisSetFile=       |
+| =potentialFile=          | =GTH_POTENTIALS=       | none | =CP2KParams.potentialFile=      |
+| =cutoffRy=               | 650.0                  | Ry   | =CP2KParams.cutoffRy=           |
+| =relCutoffRy=            | 70.0                   | Ry   | =CP2KParams.relCutoffRy=        |
+| =charge=                 | 0                      | e    | =CP2KParams.charge=             |
+| =multiplicity=           | 1                      | 2S+1 | =CP2KParams.multiplicity=       |
+| =uks=                    | false                  | none | =CP2KParams.uks=                |
+| =periodic=               | =XYZ=                  | none | =CP2KParams.periodic=           |
+| =epsScf=                 | 1.0e-6                 | none | =CP2KParams.epsScf=             |
+| =maxScf=                 | 50                     | none | =CP2KParams.maxScf=             |
+| =outerMaxScf=            | 0                      | none | =CP2KParams.outerMaxScf=        |
+| =ot=                     | true                   | none | =CP2KParams.ot=                 |
+| =dataDir=                | empty                  | path | =CP2KParams.dataDir=            |
+| =workDir=                | empty                  | path | =CP2KParams.workDir=            |
+| =keepWorkDir=            | false                  | none | =CP2KParams.keepWorkDir=        |
+| =enginePath=             | empty                  | path | =CP2KParams.enginePath=         |
+| =extraDftSections=       | empty list             | text | =CP2KParams.extraDftSections=   |
+| =extraForceEvalSections= | empty list             | text | =CP2KParams.extraForceEvalSections= |
+
+The basis and pseudopotential files are CP2K's own, found through
+=CP2K_DATA_DIR= or =dataDir=, and rgpot holds no copy.
+
+*** Example
+
+Build the shim against a libcp2k that ships =libcp2k.pc=, such as the
+conda-forge =cp2k= package.
+The option is a feature, and it needs RPC:
+
+#+attr_rgpot: syntax
+#+begin_src bash
+pixi shell -e mpibld
+meson setup bbdir -Dwith_rpc=true -Dwith_mpi=enabled -Dwith_cp2k=enabled
+meson compile -C bbdir
+#+end_src
+
+The program evaluates water in a 12 Angstrom cube with PBE.
+It compiles here only in a build with =with_cp2k= on.
+
+#+attr_rgpot: compile link=rgpot requires=has_cp2k
+#+begin_src cpp
+#include <cstdio>
+
+#include <capnp/message.h>
+
+#include "rgpot/CP2KPot/CP2KPot.hpp"
+
+int main() {
+  capnp::MallocMessageBuilder msg;
+  auto params = msg.initRoot<CP2KParams>();
+  params.setFunctional("PBE");
+  params.setCutoffRy(650.0);
+  params.setRelCutoffRy(70.0);
+  rgpot::CP2KPot pot(params.asReader());
+
+  const double pos[9] = {0.0, 0.0,      0.11779,  //
+                         0.0, 0.75545,  -0.47116, //
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {12.0, 0.0, 0.0, 0.0, 12.0, 0.0, 0.0, 0.0, 12.0};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("energy %.6f eV\n", out.energy);
+  return 0;
+}
+#+end_src
+
+There is no output here, because this machine has no libcp2k.
+
+*** Literature
+
+- Kühne and coauthors, J. Chem.
+  Phys. 152, 194103 (2020), doi:10.1063/5.0007045: the CP2K package.
+- VandeVondele and coauthors, Comput.
+  Phys.
+  Commun. 167, 103-128 (2005), doi:10.1016/j.cpc.2004.12.014: Quickstep, the
+  mixed Gaussian and plane wave method.
+- Perdew, Burke and Ernzerhof, Phys.
+  Rev. Lett. 77, 3865-3868 (1996), doi:10.1103/PhysRevLett.77.3865: the default
+  functional, PBE.
+- VandeVondele and Hutter, J. Chem.
+  Phys. 127, 114105 (2007), doi:10.1063/1.2770708: the MOLOPT Gaussian basis
+  sets of =BASIS_MOLOPT=.
+- Goedecker, Teter and Hutter, Phys.
+  Rev. B 54, 1703-1710 (1996), doi:10.1103/PhysRevB.54.1703: the dual-space
+  Gaussian pseudopotential form of =GTH_POTENTIALS=.
+- Krack, Theor.
+  Chem.
+  Acc. 114, 145-152 (2005), doi:10.1007/s00214-005-0655-y: the GTH
+  pseudopotentials optimized for gradient-corrected functionals, which are the
+  =GTH-PBE= set.
+
+No Goswami paper listed for this page uses CP2K, so none is cited.
+
+** =MOPAC= semiempirical models through libmopacc
+
+*** What it is
+
+=MOPACPot= (=CppCore/rgpot/MOPACPot/MOPACPot.hpp=) evaluates a semiempirical
+NDDO model with OpenMOPAC.
+Use it for fast, rough quantum energies of molecules.
+The class opens =libmopacc=, the split engine of the mopacc project, with
+=dlopen=, and always builds.
+There is no Python class, no =rgpot-eval= or =pair_coeff= name, and no =potserv=
+type name.
+The class entries are under "MOPAC" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]], and the
+ABI is in [[file:../reference/quantum_abi.org][Quantum engine C ABIs]].
+
+*** Functional form
+
+The energy is the one OpenMOPAC reports for the model, converted by rgpot.
+=model= picks the Hamiltonian, by the number of the =MOPACC_MODEL_*= constants
+in =CppCore/rgpot/MOPACPot/mopac_c_abi.h=: 0 is PM7, 1 PM6-D3H4, 2 PM6-ORG, 3
+PM6, 4 AM1 and 5 RM1. rgpot applies no cutoff, shift or species rule, and the
+model parameters are those of libmopac.
+In =CppCore/rgpot/MOPACPot/MOPACPot.cc=:
+
+- Positions go to the engine in Angstrom unchanged.
+  The energy comes back in Hartree and the gradient in Hartree/bohr.
+- Energy in eV is the Hartree energy times =HARTREE_TO_EV=.
+  Forces are the gradient times =NEG_GRAD_TO_FORCE=.
+- The cell is not sent, the class reports =periodic = false=, and no stress is
+  written.
+- A force throws =std::runtime_error= when the engine is not loaded, =nAtoms= is
+  not positive, a buffer is null, or the engine reports failure.
+  The failure text always begins with "mopacc AM1 failed", whatever =model= is.
+
+*** Parameters
+
+Every row is a field of =MOPACPot::Config= in
+=CppCore/rgpot/MOPACPot/MOPACPot.hpp=.
+
+| Parameter     | Value | Unit                | Set in                  |
+|---------------+-------+---------------------+-------------------------|
+| =charge=      | 0     | e                   | =MOPACPot::Config::charge= |
+| =spin=        | 0     | not stated in source | =MOPACPot::Config::spin=  |
+| =model=       | 4     | model number (AM1)  | =MOPACPot::Config::model= |
+| =tolerance=   | 1.0   | not stated in source | =MOPACPot::Config::tolerance= |
+| =max_time=    | 3600  | not stated in source | =MOPACPot::Config::max_time= |
+| =engine_path= | empty | path                | =MOPACPot::Config::engine_path= |
+
+The header gives no unit for =spin=, =tolerance= or =max_time=, and they reach
+=libmopacc= in the packed =MopacCParams= struct, which is also where their
+meaning is defined.
+The model parameters are not in rgpot.
+
+*** Example
+
+OpenMOPAC has to be built as =libmopacc= from the mopacc project, which this
+repository does not do.
+There is no meson option for it. rgpot finds the library by =enginePath=,
+=MOPACC_LIBRARY=, =RGPOT_MOPACC_ENGINE= or the name =libmopacc.so= on the loader
+path.
+
+The program below runs here.
+It selects PM6, and shows what a host sees when no engine is installed:
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cstdio>
+#include <exception>
+
+#include "rgpot/MOPACPot/MOPACPot.hpp"
+
+int main() {
+  rgpot::MOPACPot::Config cfg;
+  cfg.model = 3;
+  rgpot::MOPACPot pot(cfg);
+  std::printf("available: %d\n", pot.available() ? 1 : 0);
+
+  const double pos[9] = {0.0, 0.0,      0.11779,  //
+                         0.0, 0.75545,  -0.47116, //
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  try {
+    pot.forceImpl(in, &out);
+  } catch (const std::exception &e) {
+    std::printf("force failed: %s\n", e.what());
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+available: 0
+force failed: MOPAC engine (libmopacc) not loaded: libmopacc not loaded: dlopen failed: mopacc.dll: mopacc.dll: cannot open shared object file: No such file or directory
+#+end_example
+
+With =libmopacc= installed, the same program prints no failure line and =forces=
+holds the PM6 forces; this machine cannot show that.
+
+*** Literature
+
+- Dewar, Zoebisch, Healy and Stewart, J. Am.
+  Chem.
+  Soc. 107, 3902-3909 (1985), doi:10.1021/ja00299a024: AM1, the default model.
+- Stewart, J. Mol.
+  Model. 13, 1173-1213 (2007), doi:10.1007/s00894-007-0233-4: PM6.
+- Stewart, J. Mol.
+  Model. 19, 1-32 (2012), doi:10.1007/s00894-012-1667-x: PM7.
+- Rocha, Freire, Simas and Stewart, J. Comput.
+  Chem. 27, 1101-1111 (2006), doi:10.1002/jcc.20425: RM1.
+
+PM6-D3H4 and PM6-ORG are also selectable, and are not cited here.
+No Goswami paper listed for this page uses MOPAC, so none is cited.
+The model parameters belong to OpenMOPAC, so rgpot has no table to cite.
+
+** =ORCA= quantum chemistry through the orca executable
+
+*** What it is
+
+=ORCAPot= (=CppCore/rgpot/ORCAPot/ORCAPot.hpp=) runs one ORCA energy and
+gradient per force call.
+Use it for molecular single points with any method ORCA offers, from DFT to
+coupled cluster.
+The class starts the =orca= executable as a child process and reads back the
+=.engrad= file, so rgpot links no ORCA library and carries no ORCA code.
+It is built with =-Dwith_orca=true=, which needs =fork= and =exec= and so is not
+available on Windows.
+There is no Python class, no =rgpot-eval= or =pair_coeff= name, and no =potserv=
+type name.
+The class entries are under "ORCA" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]], and the
+walk-through is [[file:orca.org][ORCA single points]].
+
+*** Functional form
+
+The energy is the one ORCA reports for the method, basis and keywords of the
+config, converted by rgpot.
+In =CppCore/rgpot/ORCAPot/ORCAFiles.cc= and =CppCore/rgpot/ORCAPot/ORCAPot.cc=:
+
+- The input carries =method=, =basis= and =keywords= on the =!= line followed by
+  =EnGrad=, =%maxcore=, =%pal nprocs= when =nprocs= is above 1, and the atoms in
+  a =* xyz= block with =charge= and =multiplicity=.
+- Positions go to ORCA in Angstrom unchanged, the unit of a =* xyz= block.
+  The =.engrad= energy comes back in Hartree and the gradient in Hartree/bohr.
+- Energy in eV is the Hartree energy times =HARTREE_TO_EV=.
+  Forces are the gradient times =NEG_GRAD_TO_FORCE=.
+- With =restart= on, the orbitals of a successful call start the next one with
+  the same atomic numbers, through =%moinp= and =MORead=.
+- The class reports =periodic = false=, a force with a non-zero box entry throws
+  =std::invalid_argument=, and no stress is written.
+- A failed run throws =rgpot::ORCAError=, whose message ends with the tail of
+  ORCA's standard error and output file.
+
+*** Parameters
+
+Every row is a field of =ORCAConfig= in =CppCore/rgpot/ORCAPot/ORCAPot.hpp=.
+
+| Parameter      | Value | Unit         | Set in                       |
+|----------------+-------+--------------+------------------------------|
+| =executable=   | empty | path         | =ORCAConfig::executable=     |
+| =method=       | empty | none         | =ORCAConfig::method=         |
+| =basis=        | empty | none         | =ORCAConfig::basis=          |
+| =keywords=     | empty | none         | =ORCAConfig::keywords=       |
+| =charge=       | 0     | e            | =ORCAConfig::charge=         |
+| =multiplicity= | 1     | 2S+1         | =ORCAConfig::multiplicity=   |
+| =nprocs=       | 1     | processes    | =ORCAConfig::nprocs=         |
+| =maxcore_mb=   | 1024  | MB / process | =ORCAConfig::maxcore_mb=     |
+| =restart=      | true  | none         | =ORCAConfig::restart=        |
+| =scratch_dir=  | empty | path         | =ORCAConfig::scratch_dir=    |
+| =keep_files=   | false | none         | =ORCAConfig::keep_files=     |
+| =timeout_s=    | 3600  | s            | =ORCAConfig::timeout_s=      |
+
+=method= is required, and the constructor throws =std::invalid_argument= when it
+is empty.
+An empty =executable= looks up =orca= on =PATH=, and an empty =basis= suits a
+composite method that carries its own.
+A =timeout_s= of 0 waits with no limit.
+The method and basis parameters are ORCA's own, and rgpot holds no copy.
+
+*** Example
+
+ORCA is installed separately under its own license; this repository does not
+build or fetch it.
+The option only compiles the class:
+
+#+attr_rgpot: syntax
+#+begin_src bash
+meson setup bbdir -Dwith_orca=true
+meson compile -C bbdir
+#+end_src
+
+The program evaluates water with PBE in the def2-SVP basis.
+It compiles here only in a build with =with_orca= on.
+
+#+attr_rgpot: compile link=rgpot requires=has_orca
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/ORCAPot/ORCAPot.hpp"
+
+int main() {
+  rgpot::ORCAConfig cfg;
+  cfg.method = "PBE";
+  cfg.basis = "def2-SVP";
+  cfg.keywords = "TightSCF";
+  rgpot::ORCAPot pot(cfg);
+
+  const double pos[9] = {0.0, 0.0,      0.11779,  //
+                         0.0, 0.75545,  -0.47116, //
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, nullptr};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("energy %.6f eV\n", out.energy);
+  return 0;
+}
+#+end_src
+
+There is no output here, because this machine has no ORCA.
+
+*** Literature
+
+- Neese, WIREs Computational Molecular Science 2, 73-78 (2012),
+  doi:10.1002/wcms.81: the ORCA program system.
+- Neese, Wennmohs, Becker and Riplinger, J. Chem.
+  Phys. 152, 224108 (2020), doi:10.1063/5.0004608: the ORCA quantum chemistry
+  program package.
+- Neese, WIREs Computational Molecular Science 12, e1606 (2022),
+  doi:10.1002/wcms.1606: the version 5 update.
+- Neese, WIREs Computational Molecular Science 15, e70019 (2025),
+  doi:10.1002/wcms.70019: the version 6 update.
+
+No Goswami paper listed for this page uses ORCA, so none is cited.
+The method and basis parameters belong to ORCA, so rgpot has no table to cite.
