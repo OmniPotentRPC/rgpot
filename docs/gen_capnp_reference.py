@@ -165,6 +165,24 @@ NOTES = {
     "ExprTerm.pot": "The potential that evaluates the term.",
     "ExprParams.expression": "Expression over the term names, evaluated by the Lepton parser.",
     "ExprParams.terms": "The named terms the expression refers to.",
+    "PotentialConfig.rpcEndpoint": "Reserved and unused. The server does not read this field.",
+    "RpcEndpointConfig.host": "Reserved and unused. The server does not read this field.",
+    "RpcEndpointConfig.port": "Reserved and unused. The server does not read this field.",
+    "RpcEndpointConfig.unixSocketPath": "Reserved and unused. The server does not read this field.",
+    "RpcEndpointConfig.timeoutMilliseconds": "Reserved and unused. The server does not read this field.",
+    "RpcEndpointConfig.autoSpawnEngine": "Reserved and unused. The server does not read this field.",
+    "RpcEndpointConfig.engineBinaryPath": "Reserved and unused. The server does not read this field.",
+    "RpcEndpointConfig.engineLibraryPath": "Reserved and unused. The server does not read this field.",
+    "RpcEndpointConfig.engineRootDir": "Reserved and unused. The server does not read this field.",
+}
+
+# Prose for a struct the schema does not comment, and that the server does not read.
+SCOPE_NOTES = {
+    "RpcEndpointConfig": (
+        "Reserved and unused. "
+        "The server never reads PotentialConfig.rpcEndpoint or any field here. "
+        "The schema file is the pinned copy, so this page records that."
+    ),
 }
 
 
@@ -235,6 +253,10 @@ def render(root: Path = ROOT) -> str:
         "A union arm is written =name @N :Type=; exactly one arm is set.",
         "A row that reads \"No comment in the schema\" has none upstream, so the",
         "comment has to be added to the pinned schema before this page can say more.",
+        "RpcEndpointConfig is reserved and unused.",
+        "The server does not read PotentialConfig.rpcEndpoint or any field of that",
+        "struct. The schema file is the pinned copy, so this page records that",
+        "instead of a schema comment.",
         "The meaning of each =PotentialConfig= arm and the ordering of the overlay are",
         "in :doc:`potential_config`.",
         "",
@@ -251,6 +273,9 @@ def render(root: Path = ROOT) -> str:
             kind = _scope_kind([e for e, _ in entries])
             decl = _scope_decl_line(lines, scope, entries[0][1])
             summary = _prose(_leading_comments(lines, decl)) if decl else ""
+            if scope in SCOPE_NOTES:
+                extra = SCOPE_NOTES[scope]
+                summary = (summary + " " + extra).strip() if summary else extra
             out.append(f"*** {kind} {scope}")
             out.append("")
             if summary:

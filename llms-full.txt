@@ -32332,6 +32332,10 @@ when the schema gives none (zero, empty or false by the Cap'n Proto rule).
 A union arm is written `name @N :Type`; exactly one arm is set.
 A row that reads "No comment in the schema" has none upstream, so the
 comment has to be added to the pinned schema before this page can say more.
+RpcEndpointConfig is reserved and unused.
+The server does not read PotentialConfig.rpcEndpoint or any field of that
+struct. The schema file is the pinned copy, so this page records that
+instead of a schema comment.
 The meaning of each `PotentialConfig` arm and the ordering of the overlay are
 in `potential_config`.
 
@@ -32592,7 +32596,7 @@ Add new arms as new potentials gain runtime knobs (e.g. metatomic @2 :MetatomicP
 | `PotentialConfig.common` | 3 | `CommonMethodSpec` |  | Normalized overlay applied BEFORE the native arm; native settings win. |
 | `PotentialConfig.commonPatch` | 22 | `CommonMethodPatch` |  | No comment in the schema. |
 | `PotentialConfig.neighborList` | 23 | `Common.NeighborListConfig` |  | No comment in the schema. |
-| `PotentialConfig.rpcEndpoint` | 24 | `RpcEndpointConfig` |  | No comment in the schema. |
+| `PotentialConfig.rpcEndpoint` | 24 | `RpcEndpointConfig` |  | Reserved and unused. The server does not read this field. |
 | `PotentialConfig.logPotentialCalls` | 25 | `Bool` | `false` | No comment in the schema. |
 | `PotentialConfig.emtRasmussenParameters` | 26 | `Bool` | `true` | No comment in the schema. |
 
@@ -35518,16 +35522,20 @@ Presence-aware patch version of CommonMethodSpec using `unset / value` unions, s
 
 #### struct RpcEndpointConfig
 
+Reserved and unused.
+The server never reads PotentialConfig.rpcEndpoint or any field here.
+The schema file is the pinned copy, so this page records that.
+
 | Member | Ordinal | Type | Default | Description |
 |-
-| `RpcEndpointConfig.host` | 0 | `Text` | `"127.0.0.1"` | No comment in the schema. |
-| `RpcEndpointConfig.port` | 1 | `UInt16` | `0` | No comment in the schema. |
-| `RpcEndpointConfig.unixSocketPath` | 2 | `Text` | `""` | No comment in the schema. |
-| `RpcEndpointConfig.timeoutMilliseconds` | 3 | `UInt32` | `30000` | No comment in the schema. |
-| `RpcEndpointConfig.autoSpawnEngine` | 4 | `Bool` | `true` | No comment in the schema. |
-| `RpcEndpointConfig.engineBinaryPath` | 5 | `Text` | `""` | No comment in the schema. |
-| `RpcEndpointConfig.engineLibraryPath` | 6 | `Text` | `""` | No comment in the schema. |
-| `RpcEndpointConfig.engineRootDir` | 7 | `Text` | `""` | No comment in the schema. |
+| `RpcEndpointConfig.host` | 0 | `Text` | `"127.0.0.1"` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.port` | 1 | `UInt16` | `0` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.unixSocketPath` | 2 | `Text` | `""` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.timeoutMilliseconds` | 3 | `UInt32` | `30000` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.autoSpawnEngine` | 4 | `Bool` | `true` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.engineBinaryPath` | 5 | `Text` | `""` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.engineLibraryPath` | 6 | `Text` | `""` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.engineRootDir` | 7 | `Text` | `""` | Reserved and unused. The server does not read this field. |
 
 #### struct PotentialPatch
 
