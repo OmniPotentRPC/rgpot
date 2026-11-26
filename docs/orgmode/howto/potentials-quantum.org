@@ -1506,3 +1506,86 @@ There is no output here, because this machine has no ORCA.
 
 No Goswami paper listed for this page uses ORCA, so none is cited.
 The method and basis parameters belong to ORCA, so rgpot has no table to cite.
+
+** =ORCAC= ORCA through liborcac
+
+*** What it is
+
+=ORCACPot= (=CppCore/rgpot/ORCACPot/ORCACPot.hpp=) dlopens =liborcac= and keeps
+one orcac session.
+=rgpot::makePotential= builds it for the =orca= arm of a =PotentialConfig=.
+=ORCAPot=, under =ORCA= above, is the separate child-process frontend.
+The class is in every =librgpot=.
+It needs neither ORCA nor =liborcac= at build time.
+The C ABI is version 1 (=RGPOT_ORCAC_C_ABI_VERSION= and =ORCAC_ABI_VERSION=),
+and =CppCore/rgpot/ORCACPot/orcac.h= declares the thirteen functions from
+=orcac_config_init= to =orcac_probe_executable=.
+The class entries are under "ORCA through liborcac" in
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]].
+
+*** Functional form
+
+The energy is the one ORCA reports for the session.
+=liborcac= writes the input, runs ORCA and reads the =.engrad=.
+In =CppCore/rgpot/ORCACPot/ORCACPot.cc= the Hartree energy is multiplied by
+=units::HARTREE_TO_EV=, and each Hartree/Bohr gradient component is multiplied
+by the negative of =units::HARTREE_BOHR_TO_EV_ANGSTROM=.
+ORCA has no periodic cell.
+The box is unused, =caps()= reports =Reentrancy::PerInstance= and
+=periodic = false=, and the call writes no stress.
+
+*** Parameters
+
+The C++ config is =ORCACConfig=, filled by the =orca= arm from =ORCAParams=.
+=orcac_config_init= sets the C defaults that fit in the caller's
+=struct_size=: multiplicity 1, nprocs 1, maxcore_mb 0, timeout_s 0 and
+=ORCAC_GUESS_FRESH=.
+A null =method= is ="HF"= and a null =basis= is ="STO-3G"=, from the comments
+on =OrcaCConfig= in =orcac.h=.
+There is no runnable example on this page: a force needs =liborcac= and an
+ORCA executable, and this tree does not ship a numerical ORCA result.
+
+*** Literature
+
+The program is the same ORCA package cited under =ORCA=.
+No further paper is cited here.
+
+** =Engine= an engine library over the generic C ABI
+
+*** What it is
+
+=EnginePot= (=CppCore/rgpot/EnginePot/EnginePot.hpp=) is =PotType::Engine=.
+It opens the first candidate library that exports =rgpot_engine_create=,
+=rgpot_engine_destroy= and =rgpot_engine_force=, and creates one engine
+instance from the configuration bytes the caller passes.
+=rgpot::makePotential= returns it for the =metatomic=, =uma= and =plugin= arms,
+and for =xtb= in a build without =-Dwith_xtb=.
+The search order for each arm is in the =makePotential= entry of
+[[file:../reference/cpp_backends.org][C++ engine-backed potentials]].
+Calls on one instance are serialised.
+The library stays mapped for the life of the process.
+
+*** Functional form
+
+There is no formula in rgpot.
+=rgpot_engine_force= supplies the energy and forces.
+The =makePotential= entry states those units as Angstrom, eV and eV/Angstrom.
+The constructor throws =std::runtime_error= when no candidate opens, the
+library reports itself unavailable or another ABI major, or
+=rgpot_engine_create= fails.
+The message names every path tried.
+
+*** Parameters
+
+The parameters are the configuration message handed to =rgpot_engine_create=,
+not fields of this class.
+For the in-tree engines that message is a word-aligned Cap'n Proto flat array
+whose root is the backend's params struct.
+=label= is the name used in messages.
+There is no single geometry on this page: the energy belongs to the library
+the caller opened.
+
+*** Literature
+
+The class is a loader.
+It adds no potential of its own, so no paper is cited.

@@ -17,7 +17,7 @@ The surfaces are
     Every name of ``rgpot`` and ``rgpot.ase``, with the members of its classes.
 ``capnp``
     Every struct, interface, enum, field, union arm, enumerant and method of
-    the effective Cap'n Proto schema (the vendored file plus the local diffs).
+    the vendored Cap'n Proto schema the build compiles.
     The generated page ``reference/capnp_schema.org`` lists each.
 ``rust``
     Every ``pub`` item of ``rgpot-core`` and ``rgpot-pair``, which the
@@ -55,7 +55,6 @@ POT_TYPES_HEADER = "CppCore/rgpot/pot_types.hpp"
 POTENTIAL_PAGES = "docs/orgmode/howto/potentials-*.org"
 CAPNP_PAGE = "docs/orgmode/reference/capnp_schema.org"
 CAPNP_SCHEMA = "CppCore/rgpot/rpc/Potentials.capnp"
-CAPNP_SERIES = "CppCore/rgpot/rpc/local"
 RUST_CRATES = ("rgpot-core", "rgpot-pair")
 SPHINX_CONF = "docs/source/conf.py"
 POTCTL_MAIN = "potctl/src/main.rs"
@@ -176,11 +175,7 @@ def _reference_covered(root: Path) -> set[str]:
 
 
 def capnp_effective(root: Path = ROOT) -> str:
-    import schema_ledger
-
-    text = _read(root / CAPNP_SCHEMA)
-    diffs = schema_ledger.read_series(root / CAPNP_SERIES)
-    return schema_ledger.apply_series(text, diffs)
+    return _read(root / CAPNP_SCHEMA)
 
 
 def capnp_entries(root: Path = ROOT):
