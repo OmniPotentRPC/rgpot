@@ -20,6 +20,14 @@
 #ifndef _WIN32
 #include <sys/wait.h>
 #include <unistd.h>
+#else
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 #endif
 
 #include <catch2/catch_all.hpp>
@@ -242,6 +250,20 @@ bool same_path(const fs::path &a, const fs::path &b) {
     return text;
   };
   return key(a) == key(b);
+}
+
+// Wine's ntdll exports wine_get_version. A native ntdll does not.
+// WINEPREFIX and WINELOADERNOEXEC are set when wine starts the process.
+bool running_under_wine() {
+#ifndef _WIN32
+  return false;
+#else
+  const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+  if (ntdll && GetProcAddress(ntdll, "wine_get_version"))
+    return true;
+  return std::getenv("WINEPREFIX") != nullptr ||
+         std::getenv("WINELOADERNOEXEC") != nullptr;
+#endif
 }
 
 // Setting a directory's modification time is denied under wine. Reading
@@ -590,10 +612,17 @@ TEST_CASE("stale build directories older than an hour are swept",
   const auto new_tmp = aoti / ("." + sha + ".model.tmp-running");
   fs::create_directories(old_tmp / "pkg");
   fs::create_directories(new_tmp / "pkg");
-  // SKIP ends the whole Catch2 case. Wine cannot move a directory
-  // clock, so the removed-directory checks run only when it can.
-  // The sweep always runs: a young directory stays, an old one goes.
+  // A native clock that will not move is a failure. Wine may refuse
+  // the clock; only then are the deletion checks skipped, and the
+  // case keeps running. A young directory always stays.
   const bool aged = age_directory(old_tmp);
+  if (!aged) {
+    if (running_under_wine())
+      WARN("wine refused to age a directory; "
+           "stale-directory deletion checks skipped");
+    else
+      REQUIRE(aged);
+  }
   unpack::unpack(pkg, root);
   if (aged)
     REQUIRE_FALSE(fs::exists(old_tmp));
@@ -603,9 +632,16 @@ TEST_CASE("stale build directories older than an hour are swept",
 
   // A reused unpack sweeps too.
   fs::create_directories(old_tmp / "pkg");
-  REQUIRE(age_directory(old_tmp) == aged);
+  const bool aged_again = age_directory(old_tmp);
+  if (!aged_again) {
+    if (running_under_wine())
+      WARN("wine refused to age a directory; "
+           "stale-directory deletion checks skipped");
+    else
+      REQUIRE(aged_again);
+  }
   REQUIRE(unpack::unpack(pkg, root).reused);
-  if (aged)
+  if (aged_again)
     REQUIRE_FALSE(fs::exists(old_tmp));
   else
     REQUIRE(fs::exists(old_tmp));
