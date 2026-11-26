@@ -70,6 +70,12 @@ _ASE_KEYS = {
     "directory",
 }
 
+# Calculator parameters. They are not arguments of the potential constructor.
+_CALCULATOR_PARAMETERS = {
+    "numerical_stress",
+    "stress_step",
+}
+
 # Names that are not derived from a class name. Every bound potential
 # class is also reachable by its own name, lower case, with or without
 # the "Pot" suffix and with "_", "-", "." and spaces ignored.
@@ -584,10 +590,16 @@ class RgpotCalculator(Calculator):
         For a potential whose kernel writes no stress, add ``stress``
         from a central difference of the energy under six cell strains
         of ``stress_step``. Off by default: each stress then costs twelve
-        energy calls.
+        energy calls. Both are calculator parameters
+        (``default_parameters``, ``set`` and ``todict``). ``set`` does
+        not forward them to the potential constructor.
     """
 
     implemented_properties = ["energy", "free_energy", "forces"]
+    default_parameters = {
+        "numerical_stress": False,
+        "stress_step": 1e-6,
+    }
     # The pure protocol may run concurrently. calculate() writes
     # self.atoms and self.results, so this name is not "calculate is
     # reentrant".
@@ -607,9 +619,14 @@ class RgpotCalculator(Calculator):
         self._numerical_stress = bool(numerical_stress)
         self._stress_step = float(stress_step)
         Calculator.__init__(self, **ase_kw)
-        if self._spec is not None and self.parameters is not None:
-            self.parameters.update(self._spec[1])
-            self.parameters["potential"] = self._spec[0]
+        if self.parameters is not None:
+            if self._spec is not None:
+                self.parameters.update(self._spec[1])
+                self.parameters["potential"] = self._spec[0]
+            # Constructor values win over default_parameters. Kept after the
+            # potential spec so a config key cannot hide them.
+            self.parameters["numerical_stress"] = self._numerical_stress
+            self.parameters["stress_step"] = self._stress_step
         self._configure()
 
     def _configure(self) -> None:
@@ -635,8 +652,19 @@ class RgpotCalculator(Calculator):
         return self._potential
 
     def set(self, **kwargs: Any) -> dict[str, Any]:
-        """ASE ``set``. A changed potential parameter rebuilds the potential."""
-        pot_kw = {k: v for k, v in kwargs.items() if k not in _ASE_KEYS}
+        """ASE ``set``. A changed potential parameter rebuilds the potential.
+
+        ``numerical_stress`` and ``stress_step`` stay on the calculator.
+        """
+        if "numerical_stress" in kwargs:
+            kwargs["numerical_stress"] = bool(kwargs["numerical_stress"])
+        if "stress_step" in kwargs:
+            kwargs["stress_step"] = float(kwargs["stress_step"])
+        pot_kw = {
+            key: value
+            for key, value in kwargs.items()
+            if key not in _ASE_KEYS and key not in _CALCULATOR_PARAMETERS
+        }
         if pot_kw and self._spec is None:
             raise ValueError(
                 "potential parameters can be set only on a calculator built "
@@ -645,6 +673,11 @@ class RgpotCalculator(Calculator):
         if "potential" in pot_kw:
             raise ValueError("build a new calculator to change the potential kind")
         changed = Calculator.set(self, **kwargs)
+        if "numerical_stress" in changed or "stress_step" in changed:
+            self._numerical_stress = bool(self.parameters["numerical_stress"])
+            self._stress_step = float(self.parameters["stress_step"])
+            self._configure()
+            self.reset()
         if pot_kw and any(k in changed for k in pot_kw):
             assert self._spec is not None
             name, params = self._spec
