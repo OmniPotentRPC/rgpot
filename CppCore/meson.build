@@ -2321,6 +2321,83 @@ if get_option('with_tests')
             depends: mopacc_fake_engine,
             kwargs: _rt_kw['MOPACPotEmptyVariable'],
         )
+        mopacc_upstream_stub = shared_library(
+            'mopacc_upstream_stub',
+            sources: ['tests/mopacc_upstream_stub.c'],
+            install: false,
+        )
+        mopacc_upstream_env = environment(
+            {'RGPOT_MOPACC_ENGINE': mopacc_upstream_stub.full_path()},
+        )
+        mopac_upstream_abi_test = executable(
+            'mopac_upstream_abi_test',
+            sources: ['tests/MOPACUpstreamAbiTest.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'MOPACUpstreamAbiTest',
+            mopac_upstream_abi_test,
+            env: mopacc_upstream_env,
+            depends: mopacc_upstream_stub,
+            kwargs: _rt_kw['MOPACUpstreamAbiTest'],
+        )
+        mopacc_gate_env = environment()
+        mopacc_gate_libs = []
+        # name, c abi, lib abi, new layout, result size, params size,
+        # set_params status; see tests/mopacc_abi_gate_engine.c.
+        foreach gate : [
+            ['ABI1', '1', '1', '0', '0', '0', '0'],
+            ['NO_C_ABI', '0', '2', '1', '1', '1', '0'],
+            ['C_ABI1', '1', '2', '1', '1', '1', '0'],
+            ['ABI2_NO_LIB_ABI', '2', '0', '1', '1', '1', '0'],
+            ['ABI2_LIB_ABI1', '2', '1', '1', '1', '1', '0'],
+            ['ABI2_OLD_LAYOUT', '2', '2', '0', '1', '1', '0'],
+            ['ABI2_NO_RESULT_SIZE', '2', '2', '1', '0', '1', '0'],
+            ['ABI2_BAD_RESULT_SIZE', '2', '2', '1', '2', '1', '0'],
+            ['ABI2_NO_PARAMS_SIZE', '2', '2', '1', '1', '0', '0'],
+            ['ABI2_BAD_PARAMS_SIZE', '2', '2', '1', '1', '2', '0'],
+            ['ABI2_SET_PARAMS_FAILS', '2', '2', '1', '1', '1', '7'],
+            ['ABI2_OK', '2', '2', '1', '1', '1', '0'],
+        ]
+            gate_lib = shared_library(
+                'mopacc_gate_' + gate[0].to_lower(),
+                sources: ['tests/mopacc_abi_gate_engine.c'],
+                c_args: [
+                    '-DGATE_C_ABI=' + gate[1],
+                    '-DGATE_LIB_ABI=' + gate[2],
+                    '-DGATE_NEW_LAYOUT=' + gate[3],
+                    '-DGATE_RESULT_SIZE=' + gate[4],
+                    '-DGATE_PARAMS_SIZE=' + gate[5],
+                    '-DGATE_SET_PARAMS_STATUS=' + gate[6],
+                ],
+                install: false,
+            )
+            mopacc_gate_libs += gate_lib
+            mopacc_gate_env.set(
+                'RGPOT_MOPACC_GATE_' + gate[0],
+                gate_lib.full_path(),
+            )
+        endforeach
+        mopac_abi_gate_test = executable(
+            'mopac_abi_gate_test',
+            sources: ['tests/MOPACAbiGateTest.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'MOPACAbiGateTest',
+            mopac_abi_gate_test,
+            env: mopacc_gate_env,
+            depends: mopacc_gate_libs,
+            kwargs: _rt_kw['MOPACAbiGateTest'],
+        )
         test(
             'test_mopac_abi',
             executable(
