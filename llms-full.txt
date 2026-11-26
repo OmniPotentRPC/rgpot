@@ -12210,9 +12210,10 @@ The class entries are under "ORCA through liborcac" in
 
 The energy is the one ORCA reports for the session.
 `liborcac` writes the input, runs ORCA and reads the `.engrad`.
-In `CppCore/rgpot/ORCACPot/ORCACPot.cc` the Hartree energy is multiplied by
-`units::HARTREE_TO_EV`, and each Hartree/Bohr gradient component is multiplied
-by the negative of `units::HARTREE_BOHR_TO_EV_ANGSTROM`.
+In
+`CppCore/rgpot/ORCACPot/ORCACPot.cc` the Hartree energy is multiplied by `units::HARTREE_TO_EV`, and each Hartree/Bohr
+gradient component is multiplied by the negative of
+`units::HARTREE_BOHR_TO_EV_ANGSTROM`.
 ORCA has no periodic cell.
 The box is unused, `caps()` reports `Reentrancy::PerInstance` and
 `periodic = false`, and the call writes no stress.
@@ -12221,12 +12222,12 @@ The box is unused, `caps()` reports `Reentrancy::PerInstance` and
 
 The C++ config is `ORCACConfig`, filled by the `orca` arm from `ORCAParams`.
 `orcac_config_init` sets the C defaults that fit in the caller's
-`struct_size`: multiplicity 1, nprocs 1, maxcore_mb 0, timeout_s 0 and
-`ORCAC_GUESS_FRESH`.
-A null `method` is `"HF"` and a null `basis` is `"STO-3G"`, from the comments
-on `OrcaCConfig` in `orcac.h`.
-There is no runnable example on this page: a force needs `liborcac` and an
-ORCA executable, and this tree does not ship a numerical ORCA result.
+`struct_size`: multiplicity 1, nprocs 1, maxcore_mb 0,
+timeout_s 0 and `ORCAC_GUESS_FRESH`.
+A null `method` is `"HF"` and a null `basis` is `"STO-3G"`, from the comments on
+`OrcaCConfig` in `orcac.h`.
+There is no runnable example on this page: a force needs `liborcac` and an ORCA
+executable, and this tree does not ship a numerical ORCA result.
 
 #### Literature
 
@@ -12239,8 +12240,8 @@ No further paper is cited here.
 
 `EnginePot` (`CppCore/rgpot/EnginePot/EnginePot.hpp`) is `PotType::Engine`.
 It opens the first candidate library that exports `rgpot_engine_create`,
-`rgpot_engine_destroy` and `rgpot_engine_force`, and creates one engine
-instance from the configuration bytes the caller passes.
+`rgpot_engine_destroy` and `rgpot_engine_force`, and creates one engine instance
+from the configuration bytes the caller passes.
 `rgpot::makePotential` returns it for the `metatomic`, `uma` and `plugin` arms,
 and for `xtb` in a build without `-Dwith_xtb`.
 The search order for each arm is in the `makePotential` entry of
@@ -12253,9 +12254,9 @@ The library stays mapped for the life of the process.
 There is no formula in rgpot.
 `rgpot_engine_force` supplies the energy and forces.
 The `makePotential` entry states those units as Angstrom, eV and eV/Angstrom.
-The constructor throws `std::runtime_error` when no candidate opens, the
-library reports itself unavailable or another ABI major, or
-`rgpot_engine_create` fails.
+The constructor throws
+`std::runtime_error` when no candidate opens, the library reports itself unavailable or another ABI major, or `rgpot_engine_create`
+fails.
 The message names every path tried.
 
 #### Parameters
@@ -12265,8 +12266,8 @@ not fields of this class.
 For the in-tree engines that message is a word-aligned Cap'n Proto flat array
 whose root is the backend's params struct.
 `label` is the name used in messages.
-There is no single geometry on this page: the energy belongs to the library
-the caller opened.
+There is no single geometry on this page: the energy belongs to the library the
+caller opened.
 
 #### Literature
 
@@ -31772,8 +31773,8 @@ The header is `CppCore/rgpot/MOPACPot/mopac_c_abi.h`; it must stay in lockstep
 with `mopacc.h` of the `mopacc` project.
 Options are the packed struct `MopacCParams`, not Cap'n Proto.
 The version macros `RGPOT_MOPACC_C_ABI_VERSION` and `MOPACC_ABI_VERSION` are 2.
-ABI 2 added `epsilon` and `solver` on `MopacCParams`, and `dipole_debye` and
-`stress_gpa` on `MopacCResult`.
+ABI 2 added `epsilon` and `solver` on `MopacCParams`, and
+`dipole_debye` and `stress_gpa` on `MopacCResult`.
 A caller compares both versions, and `mopacc_result_size` and
 `mopacc_params_size` with its own sizes, before a call that returns
 `MopacCResult`.
@@ -31789,17 +31790,17 @@ The model codes are `MOPACC_MODEL_PM7` (0),
 - Outputs :: `charge`, `spin`, `model` (a `MOPACC_MODEL_*` code), `tolerance`,
   `max_time` (seconds; 0 uses 3600), `epsilon` (COSMO dielectric; 1.0 is vacuum
   and must be 1 when a cell is set) and `solver` (0 conventional, 1 MOZYME).
-  `MOPACPot::Config` defaults are charge 0, spin 0, model 4 (AM1), tolerance
-  1.0 and max_time 3600.
-  The constructor copies those into the packed struct and sets `epsilon` to
-  1.0 and `solver` to `MOPACC_SOLVER_MOPAC` (0).
+  `MOPACPot::Config` defaults are charge 0, spin 0, model 4 (AM1), tolerance 1.0
+  and max_time 3600.
+  The constructor copies those into the packed struct and sets `epsilon` to 1.0
+  and `solver` to `MOPACC_SOLVER_MOPAC` (0).
 - Errors :: none.
 
 #### `MopacCResult`
 
 - Inputs :: none; a struct returned by value.
-- Units :: `energy_h` is in Hartree, `dipole_debye` is in Debye and
-  `stress_gpa` is in GPa.
+- Units :: `energy_h` is in Hartree, `dipole_debye` is in Debye and `stress_gpa`
+  is in GPa.
 - Outputs :: `ok`, `energy_h`, `dipole_debye` (three components), `stress_gpa`
   (Voigt xx, yy, zz, yz, xz, xy; 0 if unavailable) and `message`, a
   NUL-terminated text of at most 512 bytes.
@@ -31939,8 +31940,8 @@ MopacCResult mopacc_energy_forces(int n_atoms, const double *positions_ang, cons
 
 - Inputs :: as `mopacc_energy`, plus `forces_h_bohr`, room for 3*n doubles.
 - Units :: Angstrom in.
-  The header reports the ABI in Hartree and Hartree/Bohr, and names this
-  buffer `forces_h_bohr`.
+  The header reports the ABI in Hartree and Hartree/Bohr, and names this buffer
+  `forces_h_bohr`.
 - Outputs :: a `MopacCResult` with the energy, and 3*n values in
   `forces_h_bohr`.
 - Errors :: `ok` equal to 0 with the reason in `message`.
@@ -32074,8 +32075,8 @@ int mopacc_last_charges(int n_atoms, double *charges);
 
 - Inputs :: `n_atoms` and `charges`, room for `n_atoms` doubles.
 - Units :: none stated by the header.
-- Outputs :: `n_atoms` values written into `charges`, and the status the
-  library returns.
+- Outputs :: `n_atoms` values written into `charges`, and the status the library
+  returns.
   The header does not say which charges.
 - Errors :: none stated by the header.
 
@@ -32087,8 +32088,8 @@ int mopacc_session_charges(const MopacCSession *session, int n_atoms, double *ch
 
 - Inputs :: `session`, `n_atoms` and `charges`, room for `n_atoms` doubles.
 - Units :: none stated by the header.
-- Outputs :: `n_atoms` values written into `charges`, and the status the
-  library returns.
+- Outputs :: `n_atoms` values written into `charges`, and the status the library
+  returns.
   The header does not say which charges.
 - Errors :: none stated by the header.
 
@@ -32101,8 +32102,8 @@ const char *mopacc_last_error(void);
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a C string.
-  The header does not say which error it names, or how long the pointer
-  stays valid.
+  The header does not say which error it names, or how long the pointer stays
+  valid.
 - Errors :: none.
 
 #### `mopacc_finalize`
