@@ -244,9 +244,9 @@ bool same_path(const fs::path &a, const fs::path &b) {
   return key(a) == key(b);
 }
 
-// Setting a directory's modification time is denied under wine. Reading it
-// still works, which is what the sweep does. Real Windows can set it, so
-// the sweep stays tested there.
+// Setting a directory's modification time is denied under wine. Reading
+// it still works, which is what the sweep does. False leaves the
+// directory young, so the sweep must keep it. Real Windows can set it.
 bool age_directory(const fs::path &dir) {
   std::error_code ec;
   fs::last_write_time(dir,
@@ -590,18 +590,25 @@ TEST_CASE("stale build directories older than an hour are swept",
   const auto new_tmp = aoti / ("." + sha + ".model.tmp-running");
   fs::create_directories(old_tmp / "pkg");
   fs::create_directories(new_tmp / "pkg");
-  if (!age_directory(old_tmp))
-    SKIP("this platform refuses to set a directory modification time");
+  // SKIP ends the whole Catch2 case. Wine cannot move a directory
+  // clock, so the removed-directory checks run only when it can.
+  // The sweep always runs: a young directory stays, an old one goes.
+  const bool aged = age_directory(old_tmp);
   unpack::unpack(pkg, root);
-  REQUIRE_FALSE(fs::exists(old_tmp));
+  if (aged)
+    REQUIRE_FALSE(fs::exists(old_tmp));
+  else
+    REQUIRE(fs::exists(old_tmp));
   REQUIRE(fs::exists(new_tmp));
 
   // A reused unpack sweeps too.
   fs::create_directories(old_tmp / "pkg");
-  if (!age_directory(old_tmp))
-    SKIP("this platform refuses to set a directory modification time");
+  REQUIRE(age_directory(old_tmp) == aged);
   REQUIRE(unpack::unpack(pkg, root).reused);
-  REQUIRE_FALSE(fs::exists(old_tmp));
+  if (aged)
+    REQUIRE_FALSE(fs::exists(old_tmp));
+  else
+    REQUIRE(fs::exists(old_tmp));
   REQUIRE(fs::exists(new_tmp));
 }
 
