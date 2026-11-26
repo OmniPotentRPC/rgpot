@@ -40,9 +40,9 @@ Examples: "angstrom", "bohr", "eV", "hartree", "kJ/mol", "kcal/mol".
 | =ForceInput.charge= | 6 | =Int32= | =0= | Per-step charge when hasCharge is true. |
 | =ForceInput.hasMultiplicity= | 7 | =Bool= | =false= | Override NWChemParams.multiplicity for this step. |
 | =ForceInput.multiplicity= | 8 | =Int32= | =1= | Per-step spin multiplicity when hasMultiplicity is true. |
-| =ForceInput.neighbors= | 9 | =NeighborRequest= |  | Optional. Old clients leave it unset and no neighbour list is returned. |
-| =ForceInput.hasOrbitalKey= | 10 | =Bool= | =false= | Select keyed orbitals for this image or bead. |
-| =ForceInput.orbitalKey= | 11 | =Int64= | =0= | Per-step orbital key when hasOrbitalKey is true. |
+| =ForceInput.neighbors= | 9 | =NeighborRequest= |  | Present from protocol minor 0. Clients that leave it unset receive no neighbour list. |
+| =ForceInput.hasOrbitalKey= | 10 | =Bool= | =false= | Protocol minor 2: select keyed orbitals. |
+| =ForceInput.orbitalKey= | 11 | =Int64= | =0= | Protocol minor 2: image or bead key. |
 
 *** struct PotentialResult
 
