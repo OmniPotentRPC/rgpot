@@ -88,7 +88,7 @@ positions = np.array([[0.0, 0.0, 0.0], [1.1, 0.0, 0.0]])
 box = np.eye(3) * 20.0
 energy, forces, variance = pot(positions, [1, 1], box)
 print(f"{energy:.10f}", forces.shape, forces.dtype, variance)
-result = pot.evaluate(positions, [1, 1], box)
+result = pot.evaluate(positions, [1, 1], box, compute_stress=True)
 print(sorted(result), result["stress"].shape)
 #+end_src
 
@@ -1163,7 +1163,8 @@ caps()
   ="per_instance"= or ="process_serial"=),
   =per_image=, =batched=, =periodic=, =group_collective= and =stress=
   (booleans).
-  =stress= true means =evaluate= returns a stress tensor.
+  =stress= true means =evaluate(..., compute_stress=True)= returns a stress
+  tensor.
 - Errors :: none.
 
 *** =.config=
@@ -1192,7 +1193,7 @@ config()
 
 #+attr_rgpot: signature
 #+begin_src python
-evaluate(positions, atom_types, box)
+evaluate(positions, atom_types, box, compute_stress=False)
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
@@ -1201,13 +1202,17 @@ evaluate(positions, atom_types, box)
   rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
   rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.StillingerWeberSi,
   rgpot.TersoffSiC, rgpot.EMTPot
-- Inputs :: =positions=, =atom_types= and =box= as in the conventions.
+- Inputs :: =positions=,
+  =atom_types= and =box= as in the conventions; =compute_stress=, true to
+  request the Cauchy stress.
 - Units :: energy eV; forces eV/Angstrom; variance eV^2; stress eV/Angstrom^3,
   the Cauchy stress (1/V) dE/dε.
 - Outputs :: a dict with =energy= (float), =forces= (=(N, 3)= float64),
   =variance= (float), =stress= and =energies=.
-  =stress= is a =(3, 3)= float64 array when the kernel wrote one and =None=
-  otherwise; =caps()["stress"]= says which.
+  =stress= is a =(3, 3)= float64 array when =compute_stress= was true and the
+  kernel computed one, and =None= otherwise; =caps()["stress"]= says whether the
+  kernel can.
+  A force-only call returns the same energy and forces.
   =energies= is always =None=.
   The kernel runs with the interpreter released.
 - Errors :: the conventions list; a non-finite energy raises
@@ -1230,12 +1235,12 @@ cutoff
 
 #+attr_rgpot: signature
 #+begin_src python
-evaluate_per_atom(positions, atom_types, box)
+evaluate_per_atom(positions, atom_types, box, compute_stress=False)
 #+end_src
 
 - Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
   rgpot.EAMTablePot
-- Inputs :: =positions=, =atom_types= and =box= as in the conventions.
+- Inputs :: as =evaluate=.
 - Units :: as =evaluate=; =energies= and =virials= eV.
 - Outputs :: the dict of =evaluate=, with =energies= a =(N,)= float64 array,
   plus =virials=, a =(N, 6)= float64 array in the Voigt order
@@ -1255,7 +1260,7 @@ import rgpot
 pot = rgpot.LJPot(u0=0.0104, cutoff=8.5, psi=3.4)
 positions = np.array([[0.0, 0.0, 0.0], [3.8, 0.0, 0.0], [0.0, 3.8, 0.4]])
 box = np.eye(3) * 20.0
-out = pot.evaluate_per_atom(positions, [18, 18, 18], box)
+out = pot.evaluate_per_atom(positions, [18, 18, 18], box, compute_stress=True)
 s = out["stress"]
 voigt = np.array([s[0, 0], s[1, 1], s[2, 2], s[1, 2], s[0, 2], s[0, 1]])
 volume = np.linalg.det(box)

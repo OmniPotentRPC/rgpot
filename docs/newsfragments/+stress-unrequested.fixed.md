@@ -1,0 +1,2 @@
+The RPC client and server, and the C++ trampoline of `PotentialHandle`, no longer pass an unrequested stress through: a force-only request never carries one, and a stress request to a potential that cannot compute it fails with a clear message.
+A refused `rgpot_potential_calculate_stress` also clears the caller's stress block. `XTBPot` and `CPMDPot` zero the stress of a reused `ForceOut` on a force-only call, and the CPMD session request carries the stress flag.

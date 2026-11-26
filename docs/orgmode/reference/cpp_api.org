@@ -115,6 +115,31 @@ size_t n_atoms() const;
 - Outputs :: the atom count given at construction.
 - Errors :: none.
 
+*** =rgpot::InputSpec::with_stress=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+InputSpec &with_stress(bool compute = true) noexcept;
+#+end_src
+
+- Inputs :: =compute=, true to request Cauchy stress; false to keep the
+  force-only path.
+- Units :: none.
+- Outputs :: a reference to the input object for setter chaining.
+- Errors :: none.
+
+*** =rgpot::InputSpec::computes_stress=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+bool computes_stress() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when this input requests Cauchy stress.
+- Errors :: none.
+
 *** =rgpot::CalcResult=
 
 #+attr_rgpot: signature
@@ -207,6 +232,46 @@ bool has_forces() const;
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =true= when a forces tensor is set.
+- Errors :: none.
+
+*** =rgpot::CalcResult::has_stress=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+bool has_stress() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true only when all nine stress components were computed.
+- Errors :: none.
+
+*** =rgpot::CalcResult::stress_struct=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+rgpot_stress_out_t &stress_struct();
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the stress block that the stress entry points of the C API write.
+  It is created with
+  =struct_size= set, and it is the only place a stress is stored; =rgpot_force_out_t=
+  carries none.
+- Errors :: none.
+
+*** =rgpot::CalcResult::stress_data=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+const double *stress_data() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: eV/Angstrom^3 for built-in potentials.
+- Outputs :: a pointer to nine row-major Cauchy-stress components.
+  Inspect =has_stress()= before using them.
 - Errors :: none.
 
 ** include/rgpot/potential.hpp
@@ -320,9 +385,41 @@ CalcResult calculate(const InputSpec &input);
 - Units :: those of the wrapped potential.
 - Outputs :: a =CalcResult= with energy, variance and the =[n, 3]= forces tensor
   set by the callback.
+  An =InputSpec= that did not call
+  =with_stress= takes the force-only entry point and never sees a stress; one that did takes =rgpot_potential_calculate_stress=,
+  and =has_stress()= tells whether the potential produced all nine components.
 - Errors :: throws =rgpot::Error= when =rgpot_potential_calculate= returns a
   non-success status: a NULL handle gives "invalid parameter", and a failing
   callback gives the category of its status.
+
+*** =rgpot::PotentialHandle::supports_stress=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool supports_stress() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when a stress callback is registered on the handle.
+- Errors :: none.
+
+*** =rgpot::PotentialHandle::set_stress_callback=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void set_stress_callback(rgpot_status_t (*callback)(
+    void *, const rgpot_force_input_t *, rgpot_force_out_t *,
+    rgpot_stress_out_t *)) const;
+#+end_src
+
+- Inputs :: =callback=, a function that fills the force output and the stress
+  block, or =nullptr= to clear it.
+- Units :: none.
+- Outputs :: the callback is stored on the handle.
+  =PotentialHandle::calculate= uses it only for an =InputSpec= that asked for
+  stress; a potential whose =caps().stress= is false registers none.
+- Errors :: throws =rgpot::Error= for a NULL handle.
 
 *** =rgpot::PotentialHandle::hvp=
 

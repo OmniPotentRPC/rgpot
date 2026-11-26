@@ -460,9 +460,9 @@ private:
    * Shared by the single and batched entry points so the two can never
    * disagree about what identifies a result. Mixes the geometry, the
    * species, the cell (with a null box hashed as a non-periodic marker
-   * distinct from any 9-double box), the potential type and the parameter
-   * fingerprint, so neither a different config nor a different kernel can
-   * collide.
+   * distinct from any 9-double box), the stress request, the potential type
+   * and the parameter fingerprint, so neither a different config nor a
+   * different kernel can collide.
    */
   [[nodiscard]] rgpot::cache::KeyHash cacheKey(const ForceInput &fi) const {
     return rgpot::cache::result_key(fi, m_type, paramsKey());

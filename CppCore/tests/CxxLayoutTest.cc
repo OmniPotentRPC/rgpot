@@ -5,11 +5,13 @@
 // exports, the constants describe the types they claim to, and a library
 // built from a header with a changed structure is refused.
 
+#include <cstddef>
 #include <cstdlib>
 #include <string>
 
 #include <catch2/catch_all.hpp>
 
+#include "rgpot/ForceStructs.hpp"
 #include "rgpot/abi/CxxLayout.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/plugin/DynLib.hpp"
@@ -145,3 +147,26 @@ TEST_CASE("Neighbours generations share one counter across shared objects",
 
   rgpot::plugin::dynlib::close(handle);
 }
+
+#if defined(__LP64__) || defined(_WIN64)
+// The stress request is the only field soversion 9 adds to ForceInput. It sits
+// after the four members older callers fill, so their offsets stay put, and
+// ForceOut keeps the layout it had before the request existed.
+TEST_CASE("ForceInput only appends the stress request", "[abi][layout]") {
+  using rgpot::ForceInput;
+  using rgpot::ForceOut;
+  STATIC_REQUIRE(offsetof(ForceInput, nAtoms) == 0);
+  STATIC_REQUIRE(offsetof(ForceInput, pos) == 8);
+  STATIC_REQUIRE(offsetof(ForceInput, atmnrs) == 16);
+  STATIC_REQUIRE(offsetof(ForceInput, box) == 24);
+  STATIC_REQUIRE(offsetof(ForceInput, compute_stress) == 32);
+  STATIC_REQUIRE(sizeof(ForceInput) == 40);
+  STATIC_REQUIRE(offsetof(ForceOut, F) == 0);
+  STATIC_REQUIRE(offsetof(ForceOut, energy) == 8);
+  STATIC_REQUIRE(offsetof(ForceOut, variance) == 16);
+  STATIC_REQUIRE(offsetof(ForceOut, stress) == 24);
+  STATIC_REQUIRE(offsetof(ForceOut, has_stress) == 96);
+  STATIC_REQUIRE(sizeof(ForceOut) == 104);
+  REQUIRE_FALSE(ForceInput{0, nullptr, nullptr, nullptr}.compute_stress);
+}
+#endif

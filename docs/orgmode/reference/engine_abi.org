@@ -709,6 +709,9 @@ Optional symbol.
 - Outputs :: =double weight=, =double energy=, =double stress[9]=, =int enabled=
   (0 for a term switched off), =int evaluated= (0 for a disabled term and before
   the first call) and =int has_stress=.
+  =rgpot_engine_force= requests no stress, so a term that computes stress only
+  on request, as the built-in potentials do, reports =has_stress= 0 and a zero
+  =stress=.
 - Errors :: none.
 
 *** =rgpot_engine_last_components=

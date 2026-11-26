@@ -53,7 +53,8 @@ int rgpot_lj_eval(const double *xyz, const int *atomic_numbers, size_t n,
         },
         [&](const rgpot::LJPot &pot) {
           rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
-          const rgpot::ForceInput in{n, xyz, atomic_numbers, box9};
+          rgpot::ForceInput in{n, xyz, atomic_numbers, box9};
+          in.compute_stress = true;
           pot.forceImpl(in, &out);
           *energy = out.energy;
           *has_stress = out.has_stress;

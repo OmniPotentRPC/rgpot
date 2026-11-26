@@ -8,8 +8,10 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -157,14 +159,16 @@ struct StressEval {
 
 /// forceImpl with the stress slots preset to 7, so an untouched tensor shows.
 StressEval eval_stress(const rgpot::SuttonChenPot &pot,
-                       const std::vector<double> &pos, const double *box) {
+                       const std::vector<double> &pos, const double *box,
+                       bool request_stress = false) {
   StressEval e;
   e.forces.assign(pos.size(), 0.0);
   rgpot::ForceOut out{};
   out.F = e.forces.data();
   std::fill(out.stress, out.stress + 9, 7.0);
-  pot.forceImpl(rgpot::ForceInput{pos.size() / 3, pos.data(), nullptr, box},
-                &out);
+  rgpot::ForceInput in{pos.size() / 3, pos.data(), nullptr, box};
+  in.compute_stress = request_stress;
+  pot.forceImpl(in, &out);
   e.energy = out.energy;
   std::copy(out.stress, out.stress + 9, e.stress);
   e.has_stress = out.has_stress;
@@ -1086,21 +1090,24 @@ TEST_CASE("Sutton-Chen stress is opt-in and keeps the energy and force bits",
   const auto ref = load_lammps_ref("pt_sheared");
   const auto plain = platinum_periodic(ref.cutoff, false);
   const auto with = platinum_periodic(ref.cutoff, true);
-  REQUIRE_FALSE(plain.caps().stress);
+  REQUIRE(plain.caps().stress);
   REQUIRE(with.caps().stress);
   REQUIRE(plain.paramsKey() != with.paramsKey());
   const StressEval a = eval_stress(plain, ref.pos, ref.box);
-  const StressEval b = eval_stress(with, ref.pos, ref.box);
+  const StressEval b = eval_stress(plain, ref.pos, ref.box, true);
+  const StressEval legacy = eval_stress(with, ref.pos, ref.box);
   REQUIRE(a.has_stress == 0);
   REQUIRE(
-      std::all_of(a.stress, a.stress + 9, [](double v) { return v == 7.0; }));
+      std::all_of(a.stress, a.stress + 9, [](double v) { return v == 0.0; }));
   REQUIRE(b.has_stress == 1);
+  REQUIRE(legacy.has_stress == 1);
   REQUIRE(std::memcmp(&a.energy, &b.energy, sizeof(double)) == 0);
   REQUIRE(std::memcmp(a.forces.data(), b.forces.data(),
                       a.forces.size() * sizeof(double)) == 0);
   // A cluster with no cell has no volume, so no stress is reported.
   const rgpot::SuttonChenPot cluster({.cutoff = 0.0, .stress = true});
-  const StressEval c = eval_stress(cluster, {0, 0, 0, 0.8, 0.1, 0}, nullptr);
+  const StressEval c =
+      eval_stress(cluster, {0, 0, 0, 0.8, 0.1, 0}, nullptr, true);
   REQUIRE(c.has_stress == 0);
   REQUIRE(
       std::all_of(c.stress, c.stress + 9, [](double v) { return v == 0.0; }));
@@ -1112,6 +1119,8 @@ TEST_CASE("Sutton-Chen stress is the strain derivative of the energy",
   const auto pot = platinum_periodic(ref.cutoff, true);
   const StressEval here = eval_stress(pot, ref.pos, ref.box);
   const double h = 1.0e-6;
+  double max_error = 0.0;
+  double max_stress = 0.0;
   for (const auto &ab : kVoigt) {
     const int a = ab[0];
     const int b = ab[1];
@@ -1134,10 +1143,15 @@ TEST_CASE("Sutton-Chen stress is the strain derivative of the energy",
     }
     const double numeric =
         (energy[0] - energy[1]) / (2.0 * h * rgpot::cellVolume(ref.box));
+    max_error =
+        std::max(max_error, std::abs(here.stress[3 * a + b] - numeric));
+    max_stress = std::max(max_stress, std::abs(here.stress[3 * a + b]));
     INFO("component " << a << b);
     REQUIRE_THAT(here.stress[3 * a + b], WithinAbs(numeric, 1.0e-9));
     REQUIRE(here.stress[3 * b + a] == here.stress[3 * a + b]);
   }
+  std::cout << "STRESS_ERROR Sutton-Chen "
+            << max_error / std::max(max_stress, 1e-8) << '\n';
 }
 
 TEST_CASE("Sutton-Chen stress matches LAMMPS eam/fs", "[SuttonChen][stress]") {
@@ -1627,4 +1641,51 @@ TEST_CASE("SuttonChenPot workspace invalidates when a new potential reuses a "
   CHECK(rgpot::teamsOpened() == 0);
 #endif
   CHECK(count_sc_bit_diffs(got_inplace, want) == 0);
+}
+
+std::uint64_t force_fnv(const std::vector<double> &values) {
+  std::uint64_t hash = 14695981039346656037ull;
+  const auto *bytes = reinterpret_cast<const unsigned char *>(values.data());
+  for (std::size_t i = 0; i < values.size() * sizeof(double); ++i) {
+    hash ^= bytes[i];
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
+// Recorded from a one-thread develop evaluation of this cell: platinum,
+// cutoff 6 Angstrom, 5^3 conventional fcc cells (500 atoms).
+constexpr double kDevelopBulkEnergy = -0x1.6c826c0f03317p+11;
+constexpr std::uint64_t kDevelopBulkForceFnv = 1749047001324545355ull;
+constexpr double kDevelopBulkStress[9] = {
+    -0x1.f5205b7077578p-10,  0x1.4e02af6550a7fp-61, -0x1.835254fae7f3fp-62,
+    0x1.4e02af6550a7fp-61,  -0x1.f5205b7077572p-10,  0x1.e76a7c331e24ap-66,
+    -0x1.835254fae7f3fp-62,  0x1.e76a7c331e24ap-66, -0x1.f5205b707756fp-10,
+};
+
+TEST_CASE("Sutton-Chen bulk stress matches develop and skips the virial",
+          "[SuttonChen][stress]") {
+  setThreads("1");
+  double box[9] = {};
+  const std::vector<double> pos = fcc_cell(5, 3.92, box);
+  REQUIRE(pos.size() == 3 * 500);
+  const auto plain = platinum_periodic(6.0, false);
+  const auto legacy = platinum_periodic(6.0, true);
+  const StressEval off = eval_stress(plain, pos, box);
+  const StressEval on = eval_stress(plain, pos, box, true);
+  const StressEval old = eval_stress(legacy, pos, box);
+  REQUIRE(off.has_stress == 0);
+  REQUIRE(on.has_stress == 1);
+  REQUIRE(old.has_stress == 1);
+  REQUIRE(std::memcmp(&off.energy, &kDevelopBulkEnergy, sizeof(double)) == 0);
+  REQUIRE(std::memcmp(&on.energy, &kDevelopBulkEnergy, sizeof(double)) == 0);
+  REQUIRE(std::memcmp(&old.energy, &kDevelopBulkEnergy, sizeof(double)) == 0);
+  REQUIRE(force_fnv(off.forces) == kDevelopBulkForceFnv);
+  REQUIRE(force_fnv(on.forces) == kDevelopBulkForceFnv);
+  REQUIRE(same_bits(off.forces, on.forces));
+  REQUIRE(same_bits(off.forces, old.forces));
+  for (int i = 0; i < 9; ++i) {
+    REQUIRE_THAT(on.stress[i], WithinAbs(kDevelopBulkStress[i], 1.0e-9));
+    REQUIRE_THAT(old.stress[i], WithinAbs(kDevelopBulkStress[i], 1.0e-9));
+  }
 }

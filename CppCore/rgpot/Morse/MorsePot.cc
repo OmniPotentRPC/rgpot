@@ -378,15 +378,15 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
   const auto N = static_cast<long>(in.nAtoms);
   double *F = out->F;
   double *U = &out->energy;
-  double strain[6] = {};
-  const double volume = cellVolume(in.box);
-  publishCauchyStress(out, strain, volume);
+  StressAccumulator stress(in, out);
+  double *strain = stress.data();
   *U = 0.0;
   if (N < 2 || cuttOffR <= 0.0) {
     releaseWorkspaceTo(ws, {});
     for (long k = 0; k < 3 * N; ++k) {
       F[k] = 0.0;
     }
+    stress.publish(in.box);
     return;
   }
 
@@ -447,7 +447,9 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
       F[3 * jj] -= fx;
       F[3 * jj + 1] -= fy;
       F[3 * jj + 2] -= fz;
-      accumulatePairStrain(strain, fscale, dx, dy, dz);
+      if (strain != nullptr) {
+        accumulatePairStrain(strain, fscale, dx, dy, dz);
+      }
       if (atoms != nullptr) {
         tallyPair(*atoms, static_cast<std::size_t>(ii), static_cast<std::size_t>(jj), pair_e,
                   fscale, dx, dy, dz);
@@ -474,7 +476,7 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
                         });
     flushBatch(batch, emit);
     *U = energy;
-    publishCauchyStress(out, strain, volume);
+    stress.publish(in.box);
     return;
   }
 
@@ -503,7 +505,7 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
                                    .pair_he = want_he ? total_up : 0,
                                    .pair_hv = want_hv ? 6 * total_up : 0,
                                    .row_e = n_atoms,
-                                   .row_s = 6 * n_atoms,
+                                   .row_s = strain != nullptr ? 6 * n_atoms : 0,
                                });
         assignBuffer(ws.active_bits, nwords, std::uint64_t{0});
 
@@ -538,7 +540,7 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
         double *pair_he = want_he ? ws.pair_he.data() : nullptr;
         double *pair_hv = want_hv ? ws.pair_hv.data() : nullptr;
         double *row_e = ws.row_e.data();
-        double *row_s = ws.row_s.data();
+        double *row_s = strain != nullptr ? ws.row_s.data() : nullptr;
         const std::int32_t *up_off = ws.up_off.data();
         const std::int32_t *lo_off = ws.lo_off.data();
         const std::int32_t *lo_u = ws.lo_u.data();
@@ -552,7 +554,9 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
               return;
             }
             std::fill(row_e + i0, row_e + i1, 0.0);
-            std::fill(row_s + 6 * i0, row_s + 6 * i1, 0.0);
+            if (row_s != nullptr) {
+              std::fill(row_s + 6 * i0, row_s + 6 * i1, 0.0);
+            }
             const std::int32_t u_begin = up_off[i0];
             const std::int32_t u_end = up_off[i1];
             if (u_begin == u_end) {
@@ -571,7 +575,9 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
               const double dz = batch.dz[k];
               row_e[ai] += pair_e;
               pair_forces[u] = PairForce{fscale * dx, fscale * dy, fscale * dz};
-              accumulatePairStrain(row_s + 6 * ai, fscale, dx, dy, dz);
+              if (row_s != nullptr) {
+                accumulatePairStrain(row_s + 6 * ai, fscale, dx, dy, dz);
+              }
               if (want_he) {
                 pair_he[u] = 0.5 * pair_e;
               }
@@ -697,12 +703,14 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
         double energy = 0.0;
         for (std::size_t a_idx = 0; a_idx < n_atoms; ++a_idx) {
           energy += row_e[a_idx];
-          for (std::size_t c = 0; c < 6; ++c) {
-            strain[c] += row_s[6 * a_idx + c];
+          if (row_s != nullptr) {
+            for (std::size_t c = 0; c < 6; ++c) {
+              strain[c] += row_s[6 * a_idx + c];
+            }
           }
         }
         *U = energy;
-        publishCauchyStress(out, strain, volume);
+        stress.publish(in.box);
         return;
       }
     }
@@ -711,12 +719,14 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
   // Serial and sparse evaluations do not use the transpose index or the
   // pair scratch. Release those buffers through the same helper as the
   // parallel path so a previous high water mark cannot stick.
-  releaseWorkspaceTo(ws, WorkspaceUse{.row_e = n_atoms, .row_s = 6 * n_atoms});
+  releaseWorkspaceTo(
+      ws, WorkspaceUse{.row_e = n_atoms,
+                       .row_s = strain != nullptr ? 6 * n_atoms : 0});
   std::fill_n(F, 3 * n_atoms, 0.0);
   assignBuffer(ws.row_e, n_atoms, 0.0);
-  assignBuffer(ws.row_s, 6 * n_atoms, 0.0);
+  assignBuffer(ws.row_s, strain != nullptr ? 6 * n_atoms : 0, 0.0);
   double *row_e = ws.row_e.data();
-  double *row_s = ws.row_s.data();
+  double *row_s = strain != nullptr ? ws.row_s.data() : nullptr;
 
   if (!neighbours_.streaming() || slices == 1) {
     ws.serial_half_walk = true;
@@ -738,7 +748,9 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
       F[3 * jj] -= fx;
       F[3 * jj + 1] -= fy;
       F[3 * jj + 2] -= fz;
-      accumulatePairStrain(row_s + 6 * ai, fscale, dx, dy, dz);
+      if (row_s != nullptr) {
+        accumulatePairStrain(row_s + 6 * ai, fscale, dx, dy, dz);
+      }
       if (atoms != nullptr) {
         tallyPair(*atoms, ai, static_cast<std::size_t>(jj), pair_e, fscale, dx, dy, dz);
       }
@@ -782,7 +794,9 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
         F[3 * ai + 2] += fz;
         if (ii < jj) {
           row_e[ai] += pair_e;
-          accumulatePairStrain(row_s + 6 * ai, fscale, dx, dy, dz);
+          if (row_s != nullptr) {
+            accumulatePairStrain(row_s + 6 * ai, fscale, dx, dy, dz);
+          }
         }
         if (atoms != nullptr) {
           if (atoms->energy != nullptr) {
@@ -820,12 +834,14 @@ void MorsePot::compute(const ForceInput &in, ForceOut *out, const PerAtomOut *at
   double energy = 0.0;
   for (std::size_t a_idx = 0; a_idx < n_atoms; ++a_idx) {
     energy += row_e[a_idx];
-    for (std::size_t c = 0; c < 6; ++c) {
-      strain[c] += row_s[6 * a_idx + c];
+    if (row_s != nullptr) {
+      for (std::size_t c = 0; c < 6; ++c) {
+        strain[c] += row_s[6 * a_idx + c];
+      }
     }
   }
   *U = energy;
-  publishCauchyStress(out, strain, volume);
+  stress.publish(in.box);
 }
 
 void MorsePot::forceStage(const HalfList &list, const double *, double *forces,

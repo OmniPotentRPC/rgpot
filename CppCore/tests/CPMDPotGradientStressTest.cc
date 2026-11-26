@@ -31,8 +31,11 @@ TEST_CASE("CPMDPot gradient fallback keeps nine stress components",
   std::array<double, 3> forces{};
   rgpot::ForceOut out{};
   out.F = forces.data();
-  const rgpot::ForceInput in{
-      .nAtoms = 1, .pos = pos, .atmnrs = &atm, .box = box};
+  const rgpot::ForceInput in{.nAtoms = 1,
+                             .pos = pos,
+                             .atmnrs = &atm,
+                             .box = box,
+                             .compute_stress = true};
   pot.forceImpl(in, &out);
 
   const double hartree = cpmd_stress_oracle::kGradientHartree;
@@ -49,4 +52,26 @@ TEST_CASE("CPMDPot gradient fallback keeps nine stress components",
                WithinAbs(0.021 * rgpot::units::NEG_GRAD_TO_FORCE, 1e-9));
   REQUIRE_THAT(forces[2],
                WithinAbs(0.022 * rgpot::units::NEG_GRAD_TO_FORCE, 1e-9));
+
+  // The same call without the request is force-only: no stress, no zeros
+  // dressed up as one.
+  std::array<double, 3> plain_forces{};
+  rgpot::ForceOut plain{};
+  plain.F = plain_forces.data();
+  const rgpot::ForceInput force_only{
+      .nAtoms = 1, .pos = pos, .atmnrs = &atm, .box = box};
+  pot.forceImpl(force_only, &plain);
+  REQUIRE(plain.has_stress == 0);
+  for (int i = 0; i < 9; ++i) {
+    REQUIRE(plain.stress[i] == 0.0);
+  }
+  REQUIRE(plain.energy == out.energy);
+  REQUIRE(plain_forces == forces);
+
+  // A ForceOut reused from the stress call must not keep its stress.
+  pot.forceImpl(force_only, &out);
+  REQUIRE(out.has_stress == 0);
+  for (int i = 0; i < 9; ++i) {
+    REQUIRE(out.stress[i] == 0.0);
+  }
 }

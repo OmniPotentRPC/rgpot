@@ -821,6 +821,23 @@ def _struct_fields(body: str) -> list[str]:
     return fields
 
 
+def c_struct_fields(root: Path = ROOT) -> dict[str, set[str]]:
+    """Struct tag -> data members of each struct the public C headers define."""
+    out: dict[str, set[str]] = {}
+    for header in C_HEADERS:
+        text = strip_c_comments((root / header).read_text(encoding="utf-8"))
+        for m in re.finditer(r"\bstruct\s+(\w+)\s*\{", text):
+            end = _match_brace(text, m.end() - 1)
+            body = text[m.end() : end]
+            fields = out.setdefault(m.group(1), set())
+            fields.update(_struct_fields(body))
+            fields.update(re.findall(r"\(\s*\*\s*(\w+)\s*\)\s*\(", body))
+    return out
+
+
+_C_FIELD_REF = re.compile(r"\b(rgpot_\w+_t)\.(\w+)")
+
+
 def cpp_config_fields(root: Path = ROOT) -> dict[str, tuple[str, list[str]]]:
     """Qualified name -> (header, data members) of each public *Config struct."""
     out: dict[str, tuple[str, list[str]]] = {}
@@ -1495,6 +1512,7 @@ def facts_errors(root: Path = ROOT, pages: list[Path] | None = None) -> list[str
     cmake_vars = cmake_variables(root)
     envs, tasks = pixi_manifest(root)
     source_text = _source_identifiers(root, tracked)
+    c_fields = c_struct_fields(root)
     errors = []
     for page in pages:
         text = _strip_urls(_doc_text(page))
@@ -1513,6 +1531,10 @@ def facts_errors(root: Path = ROOT, pages: list[Path] | None = None) -> list[str
             for m in _RGPOT_TOKEN.finditer(line):
                 if m.group(0) not in source_text:
                     errors.append(f"{loc}: {m.group(0)} does not occur in the source")
+            for m in _C_FIELD_REF.finditer(line):
+                struct, field = m.groups()
+                if struct in c_fields and field not in c_fields[struct]:
+                    errors.append(f"{loc}: {struct} has no field {field}")
             for m in _MESON_D.finditer(line):
                 name, value = m.group(1), (m.group(2) or "").rstrip(".") or None
                 if name.startswith("RGPOT") or name.isupper() or name in MESON_BUILTIN:

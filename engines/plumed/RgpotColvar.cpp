@@ -195,6 +195,9 @@ void Rgpot::calculate() {
 
   std::vector<double> forces(3 * n, 0.0);
   rgpot::ForceInput in{n, xyz.data(), z_.data(), box};
+  // The box derivatives come from the stress, so a periodic cell asks for
+  // it. A cell-free run stays force-only.
+  in.compute_stress = periodic;
   rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
   try {
     built_.eval(in, &out);

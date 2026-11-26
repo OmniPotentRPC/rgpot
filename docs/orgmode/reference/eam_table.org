@@ -129,13 +129,16 @@ fit in an =int= lattice index.
 
 * Stress
 
-=EAMTableConfig::stress= is off by default.
-When it is set, =forceImpl= writes the Cauchy stress ~sigma = (1/V) dE/dstrain~
-of =stress.hpp= and sets =has_stress=.
+=caps().stress= is true.
+=ForceInput::compute_stress= asks =forceImpl= for the stress of =stress.hpp=.
+It then sets =has_stress= to 1.
+The stress is ~sigma = (1/V) dE/dstrain~.
+=EAMTableConfig::stress=, off by default, is the older request and makes every
+call compute the stress.
 The force pass adds ~-fscale * d d^T~ for each pair, as =SuttonChenPot= does,
 because the embedding term enters fscale through F'.
-With the flag clear, the stress slots and =has_stress= are left as the caller
-set them, and the energy and forces are the same bits.
+Without either request, =has_stress= is 0, the stress slots are zero, and the
+energy and forces are the same bits.
 Setting the flag changes =paramsKey()=.
 
 * Pair list

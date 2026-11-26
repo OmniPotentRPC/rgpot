@@ -121,7 +121,8 @@ TEST_CASE("Plugin forceBatch failures leave no earlier results in a reused buffe
   const std::vector<double> pos={0,0,0,1.1,0,0};
   const std::vector<int> types={18,18};
   std::vector<double> forces(6,0.0);
-  const rgpot::ForceInput periodic{.nAtoms=2,.pos=pos.data(),.atmnrs=types.data(),.box=cell};
+  const rgpot::ForceInput periodic{.nAtoms=2,.pos=pos.data(),.atmnrs=types.data(),.box=cell,
+                                   .compute_stress=true};
   rgpot::ForceOut out{.F=forces.data(),.energy=0.0,.variance=0.0,.stress={},.has_stress=0};
   const auto nonzero=[](double value) { return value!=0.0; };
   rgpot::LJPot lj;

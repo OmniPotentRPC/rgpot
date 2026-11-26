@@ -713,8 +713,8 @@ if not get_option('with_rpc_client_only')
         kwargs: fastnlist_umbrella_kwargs,
     )
 
-    # 73 rgpot_* exports when the rust archive is linked normally, 127 when
-    # the bundle is whole-archived. The extra 54 are the public C ABI.
+    # 73 rgpot_* exports when the rust archive is linked normally, 131 when
+    # the bundle is whole-archived. The extra 58 are the public C ABI.
     # Two of the umbrella exports are the Muller-Brown entry points and 21 are
     # the MD session entry points.
     if get_option('with_rust_core') and host_machine.system() == 'linux'
@@ -3368,6 +3368,23 @@ if get_option('with_tests')
             sw_si_bench,
             workdir: meson.source_root(),
             timeout: 120,
+        )
+        force_only_bench = executable(
+            'force_only_bench',
+            sources: ['tests/force_only_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'force_only_bench',
+            force_only_bench,
+            workdir: meson.source_root(),
+            timeout: 600,
         )
         tersoff_sic_bench = executable(
             'tersoff_sic_bench',

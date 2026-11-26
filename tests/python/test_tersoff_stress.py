@@ -92,7 +92,7 @@ def _subprocess_pythonpath() -> str:
 def test_tersoff_sic_python_stress_matches_fd(species: str) -> None:
     pos, numbers, box = _silicon_cell() if species == "si" else _sic_cell()
     pot = rgpot.TersoffSiC()
-    res = pot.evaluate(pos, numbers, box)
+    res = pot.evaluate(pos, numbers, box, compute_stress=True)
     stress = res["stress"]
     assert stress is not None and stress.shape == (3, 3)
     np.testing.assert_allclose(stress, stress.T, atol=1e-13, rtol=0.0)
@@ -107,7 +107,7 @@ def test_tersoff_sic_python_stress_matches_fd(species: str) -> None:
 def test_tersoff_pot_python_stress_matches_fd(species: str) -> None:
     pos, numbers, box = _silicon_cell() if species == "si" else _sic_cell()
     pot = rgpot.TersoffPot()
-    res = pot.evaluate(pos, numbers, box)
+    res = pot.evaluate(pos, numbers, box, compute_stress=True)
     stress = res["stress"]
     assert stress is not None and stress.shape == (3, 3)
     np.testing.assert_allclose(stress, stress.T, atol=1e-13, rtol=0.0)
@@ -145,12 +145,12 @@ def test_tersoff_ase_calculator_stress_matches_fd(kind: str) -> None:
 def test_tersoff_negative_det_and_zero_volume_box(species: str) -> None:
     pos, numbers, box = _silicon_cell() if species == "si" else _sic_cell()
     pot = rgpot.TersoffPot()
-    ref = pot.evaluate(pos, numbers, box)
+    ref = pot.evaluate(pos, numbers, box, compute_stress=True)
 
     flipped_box = box.copy()
     flipped_box[0] = -flipped_box[0]
     assert np.linalg.det(flipped_box) < 0.0
-    lh = pot.evaluate(pos, numbers, flipped_box)
+    lh = pot.evaluate(pos, numbers, flipped_box, compute_stress=True)
     assert lh["energy"] == pytest.approx(ref["energy"], abs=1e-12)
     np.testing.assert_allclose(lh["forces"], ref["forces"], atol=1e-12, rtol=0.0)
     np.testing.assert_allclose(lh["stress"], ref["stress"], atol=1e-12, rtol=0.0)
@@ -158,9 +158,9 @@ def test_tersoff_negative_det_and_zero_volume_box(species: str) -> None:
     zero_ortho = np.diag([10.0, 0.0, 10.0])
     if species == "si":
         with pytest.raises(RuntimeError, match="positive volume"):
-            pot.evaluate(pos, numbers, zero_ortho)
+            pot.evaluate(pos, numbers, zero_ortho, compute_stress=True)
     else:
-        zero_res = pot.evaluate(pos, numbers, zero_ortho)
+        zero_res = pot.evaluate(pos, numbers, zero_ortho, compute_stress=True)
         assert zero_res["stress"] is None
 
 
@@ -256,7 +256,7 @@ def test_tersoff_stress_one_vs_n_threads(kind: str) -> None:
     def eval_one(idx: int):
         p, n, b = _silicon_cell(100 + idx) if idx % 2 else _sic_cell(100 + idx)
         pot = rgpot.TersoffPot() if kind == "tersoff" else rgpot.TersoffSiC()
-        return pot.evaluate(p, n, b)
+        return pot.evaluate(p, n, b, compute_stress=True)
 
     serial = [eval_one(i) for i in range(4)]
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -283,7 +283,7 @@ def test_tersoff_stress_thread_setting_determinism_smoke() -> None:
         "pot = rgpot.TersoffPot()\n"
         "h = hashlib.sha256()\n"
         "for nums in (si.numbers.astype(np.int32), np.where((np.arange(len(si)) % 8) < 4, 6, 14).astype(np.int32)):\n"
-        "    res = pot.evaluate(pos, nums, box)\n"
+        "    res = pot.evaluate(pos, nums, box, compute_stress=True)\n"
         "    h.update(np.asarray([res['energy']], dtype=np.float64).tobytes())\n"
         "    h.update(np.ascontiguousarray(res['forces'], dtype=np.float64).tobytes())\n"
         "    h.update(np.ascontiguousarray(res['stress'], dtype=np.float64).tobytes())\n"

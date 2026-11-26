@@ -14,6 +14,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <random>
 #include <vector>
 
@@ -454,4 +455,23 @@ TEST_CASE("Many-body forces need the exchanged densities", "[Staged]") {
     }
   }
   CHECK(gap > 1e-3 * max_abs(whole.forces));
+}
+
+TEST_CASE("A tally that declines stress skips the virial", "[Staged][stress]") {
+  double with_stress[6] = {};
+  double without[6] = {};
+  rgpot::StageTally asked;
+  rgpot::StageTally declined;
+  declined.stress = false;
+  rgpot::staged::addPair(std::true_type{}, with_stress, &asked, 0, 1, true, 1.25,
+                         0.5, 1.0, 2.0, 3.0);
+  rgpot::staged::addPair(std::true_type{}, without, &declined, 0, 1, true, 1.25,
+                         0.5, 1.0, 2.0, 3.0);
+  REQUIRE(asked.energy == 1.25);
+  REQUIRE(declined.energy == 1.25);
+  REQUIRE(asked.virial[0] != 0.0);
+  for (double w : declined.virial) {
+    REQUIRE(w == 0.0);
+  }
+  REQUIRE(std::memcmp(with_stress, without, sizeof with_stress) == 0);
 }

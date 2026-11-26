@@ -8,6 +8,7 @@ rgpot_force_input_free
 rgpot_force_out_create
 rgpot_last_error
 rgpot_potential_calculate
+rgpot_potential_calculate_stress
 rgpot_potential_eval_counts
 rgpot_potential_free
 rgpot_potential_free_eindir
@@ -20,7 +21,9 @@ rgpot_potential_new_eindir
 rgpot_potential_reset_eval_counts
 rgpot_potential_reset_hvp_counts
 rgpot_potential_set_hvp_callback
+rgpot_potential_set_stress_callback
 rgpot_potential_set_taylor_jet
+rgpot_potential_supports_stress
 rgpot_potential_taylor_jet
 rgpot_source_revision
 rgpot_tensor_cpu_f64_2d
@@ -48,3 +51,4 @@ rgpot_potential_hessian
 rgpot_potential_derivative_caps
 rgpot_potential_derivative_counts
 rgpot_mdi_server_start
+rgpot_stress_out_create

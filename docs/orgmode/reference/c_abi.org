@@ -598,6 +598,87 @@ enum rgpot_status_t rgpot_potential_calculate(const struct rgpot_potential_t *po
   The pointer stays the message of the last failure until a later call stores a
   new one.
 
+*** =rgpot_stress_out_t=
+
+- Inputs :: none; a struct.
+- Units :: stress in energy per volume of the potential.
+- Outputs :: =struct_size=, =has_stress= and =stress[9]=.
+  =struct_size= is the version field: the caller sets it to =sizeof(rgpot_stress_out_t)=
+  of the header it was built with, and the library refuses a smaller value
+  instead of writing past the storage.
+  =stress= is the row-major Cauchy stress of the cell =h=.
+  It is \(\sigma = \lvert\det h\rvert^{-1}\,\partial E/\partial\epsilon\).
+  =has_stress= is nonzero only when all nine components were computed.
+- Errors :: none.
+
+*** =rgpot_stress_out_create=
+
+#+attr_rgpot: signature
+#+begin_src c
+struct rgpot_stress_out_t rgpot_stress_out_create(void);
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a zeroed block with =struct_size= set for this build.
+- Errors :: none.
+
+*** =rgpot_potential_set_stress_callback=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_potential_set_stress_callback(
+    const struct rgpot_potential_t *pot,
+    enum rgpot_status_t (*callback)(void *user_data,
+                                    const struct rgpot_force_input_t *input,
+                                    struct rgpot_force_out_t *output,
+                                    struct rgpot_stress_out_t *stress));
+#+end_src
+
+- Inputs :: =pot= a live handle; =callback= NULL or a function that fills
+  =output= and =stress= for one geometry and is called with the handle's
+  =user_data=.
+- Units :: none.
+- Outputs :: the callback is stored; NULL clears it.
+  A potential that computes no stress registers none.
+- Errors :: =RGPOT_INVALID_PARAMETER= for a NULL =pot=.
+
+*** =rgpot_potential_supports_stress=
+
+#+attr_rgpot: signature
+#+begin_src c
+int32_t rgpot_potential_supports_stress(const struct rgpot_potential_t *pot);
+#+end_src
+
+- Inputs :: =pot= NULL or a live handle.
+- Units :: none.
+- Outputs :: nonzero when a stress callback is registered, else 0.
+- Errors :: none.
+  A NULL =pot= returns 0.
+
+*** =rgpot_potential_calculate_stress=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_potential_calculate_stress(
+    const struct rgpot_potential_t *pot, const struct rgpot_force_input_t *input,
+    struct rgpot_force_out_t *output, struct rgpot_stress_out_t *stress);
+#+end_src
+
+- Inputs :: as for =rgpot_potential_calculate=, plus =stress= writable storage
+  whose =struct_size= is at least =sizeof(rgpot_stress_out_t)=.
+- Units :: those of the potential; the stress is in energy per volume.
+- Outputs :: the outputs of =rgpot_potential_calculate=, and the stress block.
+  =stress->has_stress= stays 0 when a component could not be computed, for
+  example for a singular cell or a cell the potential does not support.
+  =rgpot_potential_calculate= never computes stress.
+- Errors :: =RGPOT_INVALID_PARAMETER= for a NULL argument, a =struct_size= that
+  is too small (the block is not touched), or a potential with no stress
+  callback, with a message that names the missing capability.
+  A refusal after the size check leaves =has_stress= 0 and =stress= zeroed.
+  Otherwise the callback's status, unchanged.
+  =RGPOT_INTERNAL_ERROR= for a caught panic.
+
 *** =rgpot_potential_free=
 
 #+attr_rgpot: signature
@@ -1614,6 +1695,29 @@ enum rgpot_status_t rgpot_rpc_calculate(rgpot_rpc_client_t *client,
   =3 * n_atoms= forces.
   =RGPOT_INTERNAL_ERROR= for a caught panic.
 
+*** =rgpot_rpc_calculate_stress=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_rpc_calculate_stress(
+    rgpot_rpc_client_t *client, const struct rgpot_force_input_t *input,
+    struct rgpot_force_out_t *output, struct rgpot_stress_out_t *stress);
+#+end_src
+
+- Inputs :: as for =rgpot_rpc_calculate=, plus =stress= writable storage whose
+  =struct_size= is at least =sizeof(rgpot_stress_out_t)=.
+- Units :: those of the remote potential; the stress is in energy per volume.
+- Outputs :: the outputs of =rgpot_rpc_calculate=, and the nine components of
+  the Cauchy stress, row-major, in =stress->stress=.
+  =stress->has_stress= is nonzero only when the reply carried all nine.
+  =rgpot_rpc_calculate= never asks the server for stress, and a stress that
+  arrives anyway is discarded.
+- Errors :: those of =rgpot_rpc_calculate=.
+  =RGPOT_INVALID_PARAMETER= when =stress= is NULL or its =struct_size= is too
+  small.
+  =RGPOT_RPC_ERROR= when the server does not advertise the stress operation or
+  its potential cannot compute stress.
+
 *** =rgpot_rpc_calculate_hvp=
 
 #+attr_rgpot: signature
@@ -1738,7 +1842,7 @@ enum rgpot_status_t rgpot_mdi_server_start(
 
 The macros =RGPOT_ABI_VERSION_MAJOR=, =RGPOT_ABI_VERSION_MINOR= and
 =RGPOT_ABI_LAYOUT_REVISION= hold the stamp of the header the caller compiled
-against: 1, 10 and 1.
+against: 1, 12 and 1.
 Minor 9 added =rgpot_mdi_server_start=.
 Minor 10 added =rgpot_rpc_client_select_orbitals=.
 The molecular-dynamics session entry points, including the neighbour-query and

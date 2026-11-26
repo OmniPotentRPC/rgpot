@@ -126,10 +126,28 @@ public:
    */
   CalcResult calculate(const InputSpec &input) {
     CalcResult result;
+    if (input.computes_stress()) {
+      detail::check_status(rgpot_potential_calculate_stress(
+          handle_, &input.c_struct(), &result.c_struct(),
+          &result.stress_struct()));
+      return result;
+    }
     auto status = rgpot_potential_calculate(handle_, &input.c_struct(),
                                             &result.c_struct());
     detail::check_status(status);
     return result;
+  }
+
+  /// True when the potential registered a stress callback.
+  [[nodiscard]] bool supports_stress() const {
+    return rgpot_potential_supports_stress(handle_) != 0;
+  }
+
+  /// Register or clear (@c nullptr) the stress callback of this handle.
+  void set_stress_callback(rgpot_status_t (*callback)(
+      void *, const rgpot_force_input_t *, rgpot_force_out_t *,
+      rgpot_stress_out_t *)) const {
+    detail::check_status(rgpot_potential_set_stress_callback(handle_, callback));
   }
 
   /**
@@ -310,8 +328,10 @@ public:
     auto *handle = rgpot_potential_new_eindir(
         &trampoline_callback<Impl>, static_cast<void *>(&impl), nullptr, 0,
         nullptr, nullptr, nullptr, nullptr);
-    return with_derivatives<Impl>(
-        with_fused_settings<Impl>(PotentialHandle(handle), impl), impl);
+    return with_stress<Impl>(
+        with_derivatives<Impl>(
+            with_fused_settings<Impl>(PotentialHandle(handle), impl), impl),
+        impl);
   }
 
   /**
@@ -330,8 +350,10 @@ public:
     auto *handle = rgpot_potential_new_eindir(
         &trampoline_callback<Impl>, static_cast<void *>(&impl), nullptr,
         n_atoms, atomic_numbers, box_matrix, bounds_low, bounds_high);
-    return with_derivatives<Impl>(
-        with_fused_settings<Impl>(PotentialHandle(handle), impl), impl);
+    return with_stress<Impl>(
+        with_derivatives<Impl>(
+            with_fused_settings<Impl>(PotentialHandle(handle), impl), impl),
+        impl);
   }
 
   /**
@@ -438,7 +460,8 @@ private:
   /// Raw CPU pointers of the DLPack tensors in @a input, as a legacy
   /// @c ForceInput. The positions tensor and its shape must be present.
   /// A non-positive row count is zero atoms, not a wrapped size.
-  static ::rgpot::ForceInput legacy_input(const rgpot_force_input_t *input) {
+  static ::rgpot::ForceInput legacy_input(const rgpot_force_input_t *input,
+                                          bool compute_stress = false) {
     auto *pos_tensor = &input->positions->dl_tensor;
     const auto rows = pos_tensor->shape[0];
     const size_t n_atoms = rows > 0 ? static_cast<size_t>(rows) : 0;
@@ -451,7 +474,8 @@ private:
                       : nullptr,
         .box = input->box_matrix ? static_cast<const double *>(
                                        input->box_matrix->dl_tensor.data)
-                                 : nullptr};
+                                 : nullptr,
+        .compute_stress = compute_stress};
   }
 
   /**
@@ -526,6 +550,70 @@ private:
       rgpot_set_last_error("unknown exception in the potential");
       return RGPOT_INTERNAL_ERROR;
     }
+  }
+
+  /**
+   * @brief Stress counterpart of @c trampoline_callback.
+   *
+   * Registered only for an @a Impl whose @c caps().stress is true, and run
+   * only by @c rgpot_potential_calculate_stress. The force-only trampoline
+   * above never asks the potential for stress and never copies one. A
+   * potential that refuses the input with @c std::invalid_argument returns
+   * @c RGPOT_INVALID_PARAMETER and its message.
+   */
+  template <typename Impl>
+  static rgpot_status_t
+  stress_trampoline(void *user_data, const rgpot_force_input_t *input,
+                    rgpot_force_out_t *output, rgpot_stress_out_t *stress) {
+    try {
+      auto *self = static_cast<Impl *>(user_data);
+      if (!input->positions) {
+        return RGPOT_INVALID_PARAMETER;
+      }
+      const ::rgpot::ForceInput fi = legacy_input(input, true);
+      const size_t n_atoms = fi.nAtoms;
+      std::vector<double> forces(n_atoms * 3, 0.0);
+      ::rgpot::ForceOut fo{.F = forces.data(),
+                           .energy = 0.0,
+                           .variance = 0.0,
+                           .stress = {},
+                           .has_stress = 0};
+
+      self->forceImpl(fi, &fo);
+
+      output->energy = fo.energy;
+      output->variance = fo.variance;
+      std::copy(std::begin(fo.stress), std::end(fo.stress),
+                std::begin(stress->stress));
+      stress->has_stress = fo.has_stress;
+      output->forces = rgpot_tensor_owned_cpu_f64_2d(
+          forces.data(), static_cast<int64_t>(n_atoms), 3);
+      return RGPOT_SUCCESS;
+    } catch (const ::rgpot::SccNotConverged &e) {
+      rgpot_set_last_error(e.what());
+      return RGPOT_SCC_NOT_CONVERGED;
+    } catch (const std::invalid_argument &e) {
+      rgpot_set_last_error(e.what());
+      return RGPOT_INVALID_PARAMETER;
+    } catch (const std::exception &e) {
+      rgpot_set_last_error(e.what());
+      return RGPOT_INTERNAL_ERROR;
+    } catch (...) {
+      rgpot_set_last_error("unknown exception in the potential");
+      return RGPOT_INTERNAL_ERROR;
+    }
+  }
+
+  /// Register the stress trampoline when this instance advertises stress.
+  template <typename Impl>
+  static PotentialHandle with_stress(PotentialHandle handle,
+                                     const Impl &impl) {
+    if constexpr (requires { impl.caps().stress; }) {
+      if (handle.raw() != nullptr && impl.caps().stress) {
+        handle.set_stress_callback(&stress_trampoline<Impl>);
+      }
+    }
+    return handle;
   }
 
   /// Run @a body on the legacy input of @a input, with the exceptions of a

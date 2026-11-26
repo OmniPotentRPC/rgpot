@@ -64,15 +64,15 @@ void NlhPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   std::fill(out->F, out->F + 3 * n, 0.0);
   out->energy = 0.0;
   out->variance = 0.0;
-  out->has_stress = 0;
+  StressAccumulator stress(in, out);
   if (n < 2) {
+    stress.publish(in.box);
     return;
   }
   if (in.atmnrs == nullptr) {
     throw std::invalid_argument("NLH needs atomic numbers");
   }
   lists_->update(in.pos, n, in.box, false);
-  double strain[6] = {};
   for (const Pair &pr : lists_->short_pairs()) {
     if (!(pr.r > 0.0) || pr.r >= cfg_.cutoff) {
       continue;
@@ -112,12 +112,9 @@ void NlhPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     out->F[3 * pr.j] -= fx;
     out->F[3 * pr.j + 1] -= dedr * pr.y * invr;
     out->F[3 * pr.j + 2] -= dedr * pr.z * invr;
-    accumulatePairStrain(strain, -dedr * invr, -pr.x, -pr.y, -pr.z);
+    stress.pair(-dedr * invr, -pr.x, -pr.y, -pr.z);
   }
-  const double volume = cellVolume(in.box);
-  if (volume > 0.0) {
-    publishCauchyStress(out, strain, volume);
-  }
+  stress.publish(in.box);
 }
 
 } // namespace rgpot::lr

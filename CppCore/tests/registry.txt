@@ -414,7 +414,10 @@ PotentialHessianTest | tests core rust_core | unit potential_hessian_test Potent
 abi_core_symbols | rust_core linux | custom | @rust_core
 rgpot_so_exports | so_exports | custom | @rust_core
 EAMTableCAbiTest | tests rust_core | custom | @rust_core
+StressCAbiTest | tests rust_core | custom | @rust_core
 EAMTableHandleTest | tests core rust_core | unit eam_table_handle_test EAMTableHandleTest.cc | @rust_core
+PotentialStressHandleTest | tests core rust_core | unit potential_stress_handle_test PotentialStressHandleTest.cc | @rust_core
+TersoffStressHandleTest | tests core fortran rust_core | unit tersoff_stress_handle_test TersoffStressHandleTest.cc | @rust_core
 EngineTableTest | tests core rpc posix | custom workdir=. | @engine_plugins
 PotentialFactoryTest | tests core rpc posix | custom suite=factory workdir=. | @engine_plugins
 lj_eval | core | custom timeout=60 | @engines

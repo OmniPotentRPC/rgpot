@@ -128,6 +128,8 @@ struct StageTally {
   double energy = 0.0;
   double virial[6] = {};
   PerAtomOut atoms{};
+  /// When false, pair stages still add energy and forces and skip the virial.
+  bool stress = true;
 };
 
 template <typename P>
@@ -200,14 +202,6 @@ inline void addPair(std::bool_constant<Tally>, double *forces, StageTally *tally
   if constexpr (Tally) {
     const double share = both ? 1.0 : 0.5;
     tally->energy += share * energy;
-    const double c = share * fscale;
-    double *w = tally->virial;
-    w[0] += c * dx * dx;
-    w[1] += c * dy * dy;
-    w[2] += c * dz * dz;
-    w[3] += c * dy * dz;
-    w[4] += c * dx * dz;
-    w[5] += c * dx * dy;
     const PerAtomOut &atoms = tally->atoms;
     if (atoms.energy != nullptr) {
       atoms.energy[i] += 0.5 * energy;
@@ -215,9 +209,19 @@ inline void addPair(std::bool_constant<Tally>, double *forces, StageTally *tally
         atoms.energy[j] += 0.5 * energy;
       }
     }
-    tallyAtomVirial(atoms, static_cast<std::size_t>(i), 0.5, fscale, dx, dy, dz);
-    if (both) {
-      tallyAtomVirial(atoms, static_cast<std::size_t>(j), 0.5, fscale, dx, dy, dz);
+    if (tally->stress) {
+      const double c = share * fscale;
+      double *w = tally->virial;
+      w[0] += c * dx * dx;
+      w[1] += c * dy * dy;
+      w[2] += c * dz * dz;
+      w[3] += c * dy * dz;
+      w[4] += c * dx * dz;
+      w[5] += c * dx * dy;
+      tallyAtomVirial(atoms, static_cast<std::size_t>(i), 0.5, fscale, dx, dy, dz);
+      if (both) {
+        tallyAtomVirial(atoms, static_cast<std::size_t>(j), 0.5, fscale, dx, dy, dz);
+      }
     }
   }
 }

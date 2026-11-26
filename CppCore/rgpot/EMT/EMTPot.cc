@@ -6,6 +6,7 @@
 #include "Exception.h"
 #include "SuperCell.h"
 #include "Vec.h"
+#include "rgpot/stress.hpp"
 
 #include <algorithm>
 #include <array>
@@ -84,9 +85,9 @@ void EMTPot::reset() const {
 EMTPot::~EMTPot() { reset(); }
 
 void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  StressAccumulator stress(in, out);
   const long n = static_cast<long>(in.nAtoms);
   out->variance = 0.0;
-  out->has_stress = 0;
   if (n == 0) {
     throw std::invalid_argument("invalid parameter: nAtoms must be positive");
   }
@@ -147,8 +148,29 @@ void EMTPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         }
       }
     }
+    double native[6]{};
+    if (stress.enabled()) {
+      // The cached calculator, not a fresh one, so the strain matches the
+      // cell and species its neighbour list was built for.
+      emt->GetStress(native);
+      for (const double component : native) {
+        if (!std::isfinite(component)) {
+          throw std::domain_error("EMTPot: the stress is not finite");
+        }
+      }
+    }
     out->energy = energy;
     std::memcpy(out->F, forces, static_cast<size_t>(n) * sizeof(Vec));
+    if (stress.enabled()) {
+      double *strain = stress.data();
+      const double volume = cellVolume(in.box);
+      for (int k = 0; k < 6; ++k) {
+        // ASAP has already divided dE/d epsilon by the cell volume. Convert
+        // it back to the common accumulator before publishing.
+        strain[k] = native[k] * volume;
+      }
+      stress.publish(in.box);
+    }
   } catch (const Exception &error) {
     reset();
     refuse(error.GetMessage());

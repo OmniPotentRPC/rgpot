@@ -260,7 +260,8 @@ Built make(const std::string &key, Reader &r, double fallback) {
     c.m = r.integer("m", c.m);
     c.cutoff = r.real("cutoff", fallback > 0.0 ? fallback : c.cutoff);
     c.periodic = true;
-    c.stress = true;
+    // The call flag asks. This one would run the virial on every call.
+    c.stress = false;
     return ownCut<SuttonChenPot>(c);
   }
 #ifdef RGPOT_HAS_EAM_TABLE
@@ -273,7 +274,8 @@ Built make(const std::string &key, Reader &r, double fallback) {
     c.format = tableFormat(r.text("format", ""), c.path);
     c.skin = r.real("skin", c.skin);
     c.periodic = true;
-    c.stress = true;
+    // The call flag asks. This one would run the virial on every call.
+    c.stress = false;
     return own<EAMTablePot>(c);
   }
 #endif
