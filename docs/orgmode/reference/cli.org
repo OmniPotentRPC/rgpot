@@ -27,11 +27,11 @@ potserv <port> <PotentialType>
   name.
   =LJ=, =LJCluster=, =Morse=, =ZBL=, =Eckart=, =MullerBrown=,
   =ModifiedMullerBrown=, =LEPS-HH2=, =LEPS-HCl2=, =LEPS-FH2=, =DoubleWell=,
-  =CoupledProtonWell=, =NWChem[:basis[:theory[:xc]]]= and =CPMD= are always
-  offered.
-  The rest depend on the build: =CuH2=, =CBE=, =IPI:unix:<path>=,
-  =IPI:tcp:<host>:<port>=, =XTB=, =GFNFF=, =GFN0xTB=, =GFN1xTB=, =TBLite=,
-  =TBLiteGFN2=, =TBLiteGFN1=, =TBLiteIPEA1=, =D3=, =D4=,
+  =CoupledProtonWell=, =Composite=, =D2=, =D2Cpmd=,
+  =NWChem[:basis[:theory[:xc]]]= and =CPMD= are always offered.
+  The rest depend on the build: =CuH2= and =EAMAl= (the Fortran potentials),
+  =CBE=, =IPI:unix:<path>=, =IPI:tcp:<host>:<port>=, =XTB=, =GFNFF=, =GFN0xTB=,
+  =GFN1xTB=, =TBLite=, =TBLiteGFN2=, =TBLiteGFN1=, =TBLiteIPEA1=, =D3=, =D4=,
   =Metatomic:<model_path>[:<device>]=, =Uma:<model_path>[:<task>]=,
   =Skala[:<basis>]= and =CP2K=.
   The program is built only with the RPC stack and not with
