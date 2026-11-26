@@ -2522,6 +2522,194 @@ int main(void) {
 
 ---
 
+# GROMACS nblib
+
+Source: docs/orgmode/howto/engine-nblib.org
+URL: https://rgpot.rgoswami.me/howto/engine-nblib.html
+
+GROMACS ships a small C++ library, nblib, that builds a topology and evaluates
+its nonbonded and listed forces without running `mdrun`.
+rgpot can load it in process.
+The optional backend builds as `libnblib_engine` with
+`-Dwith_nblib=enabled`. It provides an engine-generic MD session whose forces
+come from nblib. Langevin dynamics, the hyperplane, the walls, the constraint
+force and the random stream are the driver OpenMM runs, so the two engines
+differ only in their forces.
+
+GROMACS is linked into `libnblib_engine` only.
+`librgpot` loads that library with `dlopen`, so a program that links rgpot does
+not link GROMACS.
+
+### Build
+
+nblib is an optional part of GROMACS.
+It needs the installed nblib and legacy headers and shared libraries, and a
+double-precision build, because a consumer that does not define `GMX_DOUBLE`
+disagrees with the library about the size of `real`.
+`engines/nblib/build_gromacs.sh` builds the pinned release (2025.5, checked
+against the tarball's sha256) into a prefix:
+
+```bash
+engines/nblib/build_gromacs.sh "$HOME/gmx/install"
+meson setup build -Dwith_nblib=enabled -Dnblib_prefix="$HOME/gmx/install"
+meson compile -C build
+```
+
+`nblib_prefix` is the GROMACS install prefix.
+The library found there is `libnblib_gmx`.
+
+The meson tests are `nblib_session` (argon forces and energy against the
+shifted 12-6 closed form and the rgpot Lennard-Jones, the box round trip, and
+the typed neighbour status), `nblib_analytic` (the harmonic chain below),
+`md_engine_agreement` and `md_engine_analytic` (nblib against OpenMM). The
+last two need the OpenMM engine as well.
+
+### Topology text
+
+A topology is a line-oriented text.
+Blank lines and everything after `#` are ignored.
+An error names the line.
+
+| Line | Meaning |
+|------|---------|
+| `nblib 1` | format version, first line |
+| `cutoff <nm>` | nonbonded cutoff |
+| `coulomb none` or `coulomb cutoff` | no Coulomb, or GROMACS' reaction field with \(\epsilon_{rf}=1\) |
+| `atomtype <name> <mass> <c6> <c12>` | amu; kJ mol^-1 nm^6 and nm^12 |
+| `pair <A> <B> <c6> <c12>` | explicit cross term; otherwise geometric combination |
+| `molecule <name> <count>` ... `end` | a molecule, repeated `count` times |
+
+Inside a molecule:
+
+| Line | Parameters |
+|------|------------|
+| `atom <name> <type> <charge>` | charge in e |
+| `exclude <a> <b>` | atom names or indices |
+| `bond harmonic` or `g96 <a> <b> <k> <r0>` | kJ mol^-1 nm^-2 (g96: nm^-4), nm |
+| `bond morse <a> <b> <depth> <beta> <r0>` | kJ/mol, nm^-1, nm |
+| `angle harmonic` or `g96 <a> <b> <c> <k> <theta0>` | kJ mol^-1 rad^-2, degrees |
+| `dihedral proper <a> <b> <c> <d> <phi0> <k> <mult>` | degrees, kJ/mol |
+| `dihedral improper <a> <b> <c> <d> <phi0> <k>` | degrees, kJ mol^-1 rad^-2 |
+| `dihedral rb <a> <b> <c> <d> <c0> ... <c5>` | kJ/mol |
+| `pair14 <a> <b> <c6> <c12>` | 1-4 Lennard-Jones |
+
+The argon box of the tests is
+
+```text
+nblib 1
+cutoff 0.7
+coulomb none
+atomtype Ar 39.948 0.0061551187151104025 9.508454572106801e-06
+molecule argon 108
+  atom Ar Ar 0.0
+end
+```
+
+### MD session
+
+The session uses the canonical `rgpot_md_session_*` C ABI in
+`CppCore/rgpot/ExternalPot/external_potentials.h`. nblib and OpenMM export the
+same vtable ABI from separate engine libraries. Use
+`rgpot_md_session_create("nblib", ..., topology, ..., ...)`; its loader uses
+the generic engine environment-variable lookup before its default library
+name.
+
+| Call | Purpose |
+|------|---------|
+| `rgpot_md_session_create`, `destroy` | a session from the topology text |
+| `set_periodic_box`, `get_periodic_box`, `set_positions`, `set_velocities` | state in and the box back |
+| `rgpot_md_session_initialize` | evaluate the first forces |
+| `rgpot_md_session_get_state`, `get_positions`, `get_velocities`, `get_forces`, `get_energy` | state out |
+| `rgpot_md_session_step_nve` | plain NVE steps, nblib's leap-frog |
+| `rgpot_md_session_run_langevin` | Langevin steps on a hyperplane, reflecting or rejecting walls, and the constraint force of every step |
+| `rgpot_md_session_reseed_velocities` | Maxwell-Boltzmann velocities, drawn in rgpot from the masses |
+
+The units at the boundary are Angstrom, eV, ps and amu.
+`get_state` reports the force of the potential at the positions.
+Positions are never folded into the box.
+The box is rectangular, because nblib takes no other; a box with off-diagonal
+entries is an error.
+Velocities are \(v(t)\) at the time of the positions; nblib's leap-frog
+integrator keeps them half a step away, and the session converts, so a plain
+step is the velocity Verlet map and `set_velocities` with \(-v\) reverses a
+trajectory.
+
+`run_langevin` restricts the dynamics to the plane \(n\cdot(x-p)=0\) with the
+projected BAOAB scheme of `rgpot/MDSession/ProjectedLangevin.hpp`. The step
+reports \(\lambda=-(n^T M^{-1}F)/(n^T M^{-1}n)\), whose mean on the plane is
+\(dF/dc\). A drift that ends outside a wall \(n_w\cdot x\le o_w\) is reflected in
+the mass-weighted metric, which conserves the kinetic energy, or rejected.
+The seed names a stream: the same seed continues it, a new seed starts one, and
+setting the positions or the velocities ends it, so the same seed after a new
+state replays.
+
+#### Neighbour lists and walls
+
+The OpenMM session serves `rgpot_md_session_get_neighbors` from the rgpot
+neighbour builder. nblib has no neighbour callbacks: it builds its own pair
+list inside the force calculator and does not expose it, and it has no wall
+map, so a caller cannot pass the same neighbour list or wall set to both
+engines through a callback. The session therefore reports
+`RGPOT_MD_NLIST_UNSUPPORTED` for `get_neighbors` and `set_neighbors`, with a
+message that names the slot; `nblib_session` asserts that status. The planar
+walls of `run_langevin` are the shared mechanism and are the same on both
+engines, because they travel in the request and not in a callback.
+
+### nblib behaviours the backend works around
+
+- nblib 2025.5 integrates with leap-frog only, in a rectangular box, without
+  constraints.
+  Water is therefore flexible: a bond and an angle replace SETTLE.
+- The nonbonded Lennard-Jones is potential-shifted and the Coulomb cut-off is
+  reaction field with \(\epsilon_{rf}=1\).
+  `grompp` warns that \(\epsilon_{rf}=\epsilon_r\); the reference test passes
+  `-maxwarn 1` for that warning only.
+- The CPU nonbonded calculator adds the energies of each call to those of the
+  last; the library takes the difference, and recreates the calculator every
+  256 calls so the running sum stays small.
+- The improper-dihedral forces of nblib have the wrong sign.
+  The library puts impropers in a separate calculator and subtracts its forces.
+- The listed virial assumes whole molecules; the library unwraps each molecule
+  sequentially, so a chain longer than half the box is right.
+
+### Checks
+
+`nblib_session` compares the forces and the energy of an argon pair with the
+closed form to a few thousand ulp, the Lennard-Jones evaluator of rgpot, and
+reads the box back.
+`nblib_analytic` and `md_engine_analytic` run a chain of three atoms with
+harmonic bonds of rest length zero on a hyperplane. The kinetic energy
+\(4kT\), the potential energy \(5kT/2+c^2/2s\) and the mean constraint force
+\(dF/dc=c/s\) are known in closed form; each sampled mean, with its
+batch-means standard error, must lie within five standard errors of the closed
+form, and the OpenMM and nblib means must agree within their pooled error.
+`md_engine_agreement` compares argon energies and forces between the engines,
+including a periodic image and a reseed, and a harmonic dimer's temperature
+and mean constraint force.
+
+## Run a GROMACS run input file
+
+A spec of one line, `tpr PATH`, opens a TPR instead of a topology text.
+The session evaluates the forces of the file in process: nbnxm, PME, listed terms and position restraints, in its triclinic cell.
+Virtual sites are built from the atoms that carry mass and their forces are spread back, so the session exposes the massive atoms in TPR order.
+The SETTLE and LINCS distances of the file hold in every run.
+
+The option string `threads=N` sets the OpenMP threads.
+The thermostat, the time step and the integrator come from each call and not from the file.
+The cell is fixed to the cell of the file.
+Positions must keep the atoms of one constrained group in one periodic image.
+
+A file that uses free-energy perturbation, pulling, AWH, walls, freeze groups, pressure coupling, LJ-PME, an Ewald surface term, shells or NMR restraints is refused with a message naming the feature.
+
+The TPR session calls libgromacs directly and needs the headers of the trees that built `nblib_prefix`:
+
+```bash
+meson setup build -Dwith_nblib=enabled -Dnblib_prefix=$PREFIX \
+  -Dnblib_source=$GROMACS_SOURCE -Dnblib_build=$GROMACS_BUILD
+```
+
+---
+
 # PLUMED
 
 Source: docs/orgmode/howto/engine-plumed.org
@@ -4658,10 +4846,12 @@ A nonzero catalog atomic number must match exactly.
 
 Enable the generic loader, not a potlibc-specific feature.
 
+# [[cog import rgpot_version as v; cog.outl("#+attr_rgpot: syntax"); cog.outl(v.readme_org("engine"))]([cog import rgpot_version as v; cog.outl("#+attr_rgpot: syntax"); cog.outl(v.readme_org("engine")))]
 ```toml
 [dependencies]
 rgpot-core = { version = "3.8.0", features = ["engine"] }
 ```
+# [[end]([end)]
 
 `rgpot_core::engine::PotlibcConfig` is the typed create message.
 It is
@@ -4857,10 +5047,12 @@ It does not export the model digest, thread-setting or charge-and-spin symbols.
 
 Enable the generic loader, not an engine-specific feature.
 
+# [[cog import rgpot_version as v; cog.outl("#+attr_rgpot: syntax"); cog.outl(v.readme_org("engine"))]([cog import rgpot_version as v; cog.outl("#+attr_rgpot: syntax"); cog.outl(v.readme_org("engine")))]
 ```toml
 [dependencies]
 rgpot-core = { version = "3.8.0", features = ["engine"] }
 ```
+# [[end]([end)]
 
 `rgpot_core::engine::CoupledWellConfig` is the typed create message.
 It is
@@ -5073,9 +5265,9 @@ in-process `[RgpotPot]` configuration.
 and `scripts/rgpot_nwchem_vs_socket.sh` compare `RgpotPot` against eOn's
 `SocketNWChem` on a fixed deck class.
 4. **rgpot ergonomics** (this repo): typed
-   NWChem/CPMD arms and the metatomic outputs surface in `Potentials.capnp` (from the potentials-schema v1.12.0 pin), the schema-sync tests (Meson suite `schema`), and the in-process CPMD timing harness (`scripts/cpmd_inprocess_vs_subprocess_timing.sh`).
-`subprojects/potentials-schema.wrap` now pins potentials-schema at commit
-`190fee6`.
+   NWChem/CPMD arms and the metatomic outputs surface in `Potentials.capnp`, the schema ledger tests (Meson suite `schema`), and the in-process CPMD timing harness (`scripts/cpmd_inprocess_vs_subprocess_timing.sh`).
+`Potentials.capnp` is rgconf's `potential.capnp` at the commit
+`CppCore/rgpot/rpc/schema.pin` names.
 
 ## Operator Cheatsheet (rgpot side)
 
@@ -11990,6 +12182,89 @@ There is no output here, because this machine has no ORCA.
 No Goswami paper listed for this page uses ORCA, so none is cited.
 The method and basis parameters belong to ORCA, so rgpot has no table to cite.
 
+### `ORCAC` ORCA through liborcac
+
+#### What it is
+
+`ORCACPot` (`CppCore/rgpot/ORCACPot/ORCACPot.hpp`) dlopens `liborcac` and keeps
+one orcac session.
+`rgpot::makePotential` builds it for the `orca` arm of a `PotentialConfig`.
+`ORCAPot`, under `ORCA` above, is the separate child-process frontend.
+The class is in every `librgpot`.
+It needs neither ORCA nor `liborcac` at build time.
+The C ABI is version 1 (`RGPOT_ORCAC_C_ABI_VERSION` and `ORCAC_ABI_VERSION`),
+and `CppCore/rgpot/ORCACPot/orcac.h` declares the thirteen functions from
+`orcac_config_init` to `orcac_probe_executable`.
+The class entries are under "ORCA through liborcac" in
+[C++ engine-backed potentials](https://rgpot.rgoswami.me/reference/cpp_backends.html).
+
+#### Functional form
+
+The energy is the one ORCA reports for the session.
+`liborcac` writes the input, runs ORCA and reads the `.engrad`.
+In `CppCore/rgpot/ORCACPot/ORCACPot.cc` the Hartree energy is multiplied by
+`units::HARTREE_TO_EV`, and each Hartree/Bohr gradient component is multiplied
+by the negative of `units::HARTREE_BOHR_TO_EV_ANGSTROM`.
+ORCA has no periodic cell.
+The box is unused, `caps()` reports `Reentrancy::PerInstance` and
+`periodic = false`, and the call writes no stress.
+
+#### Parameters
+
+The C++ config is `ORCACConfig`, filled by the `orca` arm from `ORCAParams`.
+`orcac_config_init` sets the C defaults that fit in the caller's
+`struct_size`: multiplicity 1, nprocs 1, maxcore_mb 0, timeout_s 0 and
+`ORCAC_GUESS_FRESH`.
+A null `method` is `"HF"` and a null `basis` is `"STO-3G"`, from the comments
+on `OrcaCConfig` in `orcac.h`.
+There is no runnable example on this page: a force needs `liborcac` and an
+ORCA executable, and this tree does not ship a numerical ORCA result.
+
+#### Literature
+
+The program is the same ORCA package cited under `ORCA`.
+No further paper is cited here.
+
+### `Engine` an engine library over the generic C ABI
+
+#### What it is
+
+`EnginePot` (`CppCore/rgpot/EnginePot/EnginePot.hpp`) is `PotType::Engine`.
+It opens the first candidate library that exports `rgpot_engine_create`,
+`rgpot_engine_destroy` and `rgpot_engine_force`, and creates one engine
+instance from the configuration bytes the caller passes.
+`rgpot::makePotential` returns it for the `metatomic`, `uma` and `plugin` arms,
+and for `xtb` in a build without `-Dwith_xtb`.
+The search order for each arm is in the `makePotential` entry of
+[C++ engine-backed potentials](https://rgpot.rgoswami.me/reference/cpp_backends.html).
+Calls on one instance are serialised.
+The library stays mapped for the life of the process.
+
+#### Functional form
+
+There is no formula in rgpot.
+`rgpot_engine_force` supplies the energy and forces.
+The `makePotential` entry states those units as Angstrom, eV and eV/Angstrom.
+The constructor throws `std::runtime_error` when no candidate opens, the
+library reports itself unavailable or another ABI major, or
+`rgpot_engine_create` fails.
+The message names every path tried.
+
+#### Parameters
+
+The parameters are the configuration message handed to `rgpot_engine_create`,
+not fields of this class.
+For the in-tree engines that message is a word-aligned Cap'n Proto flat array
+whose root is the backend's params struct.
+`label` is the name used in messages.
+There is no single geometry on this page: the energy belongs to the library
+the caller opened.
+
+#### Literature
+
+The class is a loader.
+It adds no potential of its own, so no paper is cited.
+
 ---
 
 # Dispersion, long-range and composite potentials
@@ -15326,9 +15601,9 @@ The C entry point is listed in [C ABI of rgpot-core](https://rgpot.rgoswami.me/r
 | `CppCore/rgpot/`                       | C++ potentials, neighbour lists, the RPC server and helpers.                                         |
 | `CppCore/rgpot/fortran/`               | Fortran 2018 potential kernels and their C entry points.                                             |
 | `engines/`                             | Engine plugins and `pot_spec.hpp`, which builds a potential from a name and options.                 |
-| `subprojects/potentials-schema.wrap`   | Pinned canonical Cap'n Proto schema, plus the local `neighbour-chunk.diff`.                          |
-| `rgpot-core/schema/Potentials.capnp`   | Vendored schema copy; `build.rs` prefers it (works on crates.io).                                     |
-| `CppCore/rgpot/rpc/Potentials.capnp`   | Vendored schema copy used by Meson; `build.rs` falls back to it. Both copies must equal the pinned one. |
+| `CppCore/rgpot/rpc/schema.pin`         | The rgconf commit whose `potential.capnp` and `common.capnp` rgpot vendors.                           |
+| `rgpot-core/schema/Potentials.capnp`   | Vendored schema copy, with `common.capnp`; `build.rs` prefers it (works on crates.io).                |
+| `CppCore/rgpot/rpc/Potentials.capnp`   | Vendored schema copy, with `common.capnp`, used by Meson and CMake; `build.rs` falls back to it. Both copies must equal the pinned files. |
 | `CppCore/rgpot/rpc/Potentials.ordinals` | Append-only ledger of schema ordinals.                                                              |
 
 ---
@@ -21491,12 +21766,19 @@ explicit MOPACPot(const Config &cfg);
   A force throws `std::runtime_error` when the engine is not loaded, `nAtoms` is
   zero, a buffer is null, or the engine reports failure.
 
-The library must export `mopacc_energy_gradient`.
-When it exports
-`mopacc_c_abi_version`, the version must equal `RGPOT_MOPACC_C_ABI_VERSION`, and when it exports `mopacc_available`,
-that must be nonzero.
-The constructor passes the params once through `mopacc_set_params` when present
-and ignores its status.
+The library must export `mopacc_energy_gradient`, `mopacc_c_abi_version`,
+`mopacc_abi_version`, `mopacc_result_size` and `mopacc_params_size`.
+Both versions must equal 2 (`RGPOT_MOPACC_C_ABI_VERSION` and
+`MOPACC_ABI_VERSION`), `mopacc_result_size` must equal `sizeof(MopacCResult)`,
+and `mopacc_params_size` must equal `sizeof(MopacCParams)`.
+A later ABI may change the layout without changing the sizes, so a library
+reporting version 3 is refused even when its sizes match.
+These checks run before any call that returns a `MopacCResult`; a library
+that fails one stays unloaded, and the load error names the missing symbol or
+the expected and found values.
+When the library exports `mopacc_available`, that must be nonzero.
+The constructor passes the params once through `mopacc_set_params` when
+present; a nonzero status leaves the engine unloaded.
 
 #### `rgpot::MOPACPot::available`
 
@@ -21506,8 +21788,8 @@ bool available() const;
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: true when `libmopacc` is loaded and exports
-  `mopacc_energy_gradient`.
+- Outputs :: true when `libmopacc` passed the load check above and
+  `mopacc_set_params`, when exported, returned 0.
 - Errors :: none.
 
 ### NWChem
@@ -21822,6 +22104,163 @@ void reset();
 - Errors :: none on the struct.
   `renderInput` throws `std::invalid_argument` when `method`, `basis`,
   `keywords` or `moinp` holds a line break, or an atomic number is outside 1 to 118.
+
+### ORCA through liborcac
+
+`ORCACPot` (`CppCore/rgpot/ORCACPot/`) is the frontend of the split orcac shim
+(`liborcac`), on the pattern of `MOPACPot`: it dlopens the library and keeps one
+orcac session, which owns one run directory and one set of stored orbitals.
+`liborcac` writes the ORCA input, runs ORCA and reads the `.engrad`; see the
+rgpot integration guide in the orcac repository.
+It is in every `librgpot` and needs neither ORCA nor `liborcac` to build.
+`rgpot::makePotential` builds it for the `orca` arm.
+`ORCAPot` is the separate in-process frontend.
+
+`ORCACPot` speaks C ABI 1 of `liborcac`: plain C structs (`OrcaCConfig` and
+`OrcaCResult`, each with a
+`struct_size`), integer status codes, and thirteen exported functions, from `orcac_config_init` to `orcac_probe_executable`.
+The header it builds against,
+`CppCore/rgpot/ORCACPot/orcac.h`, is a vendored copy of the public `orcac.h` of the orcac repository, pinned with its orcac commit and SHA-256 in `CppCore/rgpot/ORCACPot/orcac.h.pin`.
+The `OrcacHeaderPin` test checks the copy against the pin and checks that
+`subprojects/orcac.wrap` fetches the pinned commit.
+`CppCore/tests/orcac_abi1_exports.txt` lists the thirteen functions.
+
+#### `rgpot::ORCACConfig`
+
+- Inputs :: one field for each `OrcaCConfig` field: `method` (one simple-input
+  token, required), `basis` (one token; empty for a composite method),
+  `keywords` (further simple-input words on one line), `blocks` (verbatim `%`
+  blocks), `executable` (empty lets `liborcac` search
+  `$ORCAC_ORCA`, then `PATH`), `scratch_dir` (empty uses `$TMPDIR`), `charge`,
+  `multiplicity`, `nprocs`, `maxcore_mb`, `timeout_s` and `restart` (true
+  selects `ORCAC_GUESS_CHAIN`, false `ORCAC_GUESS_FRESH`); `engine_path`, the
+  library to open.
+- Units :: `maxcore_mb` in MB per process, `timeout_s` in seconds per ORCA run
+  (0 waits with no limit).
+- Outputs :: a plain struct read by `rgpot::ORCACPot`.
+- Errors :: none; `liborcac` checks the fields when the session is created.
+
+The `orca` arm of `rgpot::makePotential` fills it from `ORCAParams` alone; the
+shared fields of `PotentialConfig`, such as `common`, are not read. orcac takes
+the method as one token, so the first word of `ORCAParams.method` is the method
+and the others join `keywords` (`UKS PBE0` gives the method `UKS` and the
+keyword `PBE0`, the same `!` line for ORCA).
+`ORCAParams.keywords` on one line that does not start with `%= stays =keywords`,
+without a leading `!=; otherwise each line that starts with =!` joins `keywords`
+and the other lines are `blocks`.
+`keepFiles` is refused with `std::invalid_argument`, since ABI 1 always removes
+the run directory.
+
+#### `rgpot::ORCACPot`
+
+```cpp
+explicit ORCACPot(ORCACConfig config);
+```
+
+- Inputs :: `config`, an `rgpot::ORCACConfig`.
+  A non-empty `engine_path` is the only library tried.
+  Otherwise the search is `ORCAC_LIBRARY` and `RGPOT_ORCAC_ENGINE` when set,
+  then `liborcac.so.1` (Linux), `liborcac.so`, `./liborcac.so`, the `.dylib`
+  names and `orcac.dll`.
+- Units :: positions in Angstrom, energy in eV, forces in
+  eV/Angstrom. `liborcac` returns the energy in Hartree and the gradient `dE/dx`
+  in Hartree/Bohr; the force is the negative gradient, converted with
+  `units::HARTREE_TO_EV` and `units::HARTREE_BOHR_TO_EV_ANGSTROM`.
+  ORCA has no periodic cell, and the box is not used.
+- Outputs :: a potential that runs one ORCA energy and gradient per force call
+  through `orcac_energy_gradient`.
+  `caps()` reports `Reentrancy::PerInstance` and `periodic = false`; calls on
+  one instance are serialised.
+  The destructor calls `orcac_destroy`.
+- Errors :: the constructor does not throw when `liborcac` is missing, lacks any
+  of the thirteen ABI 1 functions, reports another
+  `orcac_c_abi_version` or `orcac_abi_version` than 1, or refuses the session in `orcac_create`;
+  it records the reason in `loadError()` and the first force throws
+  `std::runtime_error` with it.
+  A force throws `std::invalid_argument` for no atoms and `std::runtime_error`
+  with the status name and `orcac_last_error` when the evaluation fails.
+
+#### `rgpot::ORCACPot::available`
+
+```cpp
+[[nodiscard]] bool available() const noexcept;
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when `liborcac` loaded, speaks ABI 1 and the session was
+  created.
+- Errors :: none.
+
+#### `rgpot::ORCACPot::loadError`
+
+```cpp
+[[nodiscard]] const std::string &loadError() const noexcept;
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: why `available()` is false, naming every library tried or the first
+  missing function; empty when it is true.
+- Errors :: none.
+
+#### `rgpot::ORCACPot::libraryPath`
+
+```cpp
+[[nodiscard]] const std::string &libraryPath() const noexcept;
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the candidate `liborcac` was opened from; empty when none opened.
+- Errors :: none.
+
+#### `rgpot::ORCACPot::engineVersion`
+
+```cpp
+[[nodiscard]] std::string engineVersion() const;
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: `orcac_version()` of the loaded library; empty when none loaded.
+- Errors :: none.
+
+#### `rgpot::ORCACPot::config`
+
+```cpp
+[[nodiscard]] const ORCACConfig &config() const noexcept;
+```
+
+- Inputs :: none.
+- Units :: as `rgpot::ORCACConfig`.
+- Outputs :: the configuration the instance was built with.
+- Errors :: none.
+
+#### `rgpot::ORCACPot::paramsKey`
+
+```cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a hash of the ABI generation, the library path, the method, basis,
+  keywords, blocks and executable, the charge, the multiplicity and `restart`.
+- Errors :: none.
+
+#### Testing against orcac main
+
+`PotentialFactoryTest` runs the `orca` arm against
+`CppCore/tests/orcac_fake_engine.c`, a stand-in that exports exactly the
+thirteen ABI 1 functions; `OrcacFakeExports` checks that list.
+With `-Dorcac_main=enabled` the test build also compiles `liborcac` at the orcac
+commit of `subprojects/orcac.wrap`.
+`OrcacMainExports` checks its exports.
+`PotentialFactoryTest` then runs the `orca` arm against it, with the
+`fake_orca.sh` replay of the orcac test data as the ORCA executable.
+That replay gives -75.5 Hartree for a water molecule, and the test requires the
+energy and forces to within 1e-9 in Hartree units on two calls.
 
 ### Skala
 
@@ -23110,9 +23549,10 @@ int main() {
 - Units :: `constraint_force` in kJ/(mol nm).
 - Outputs ::
   `wall_hits`, the wall reflections of the run, and `constraint_force`, one
-  Lagrange multiplier `lambda = -(n . M^-1 F) / (n M^-1 n)` per step for the
+  Lagrange multiplier `lambda = -(n . M^-1 F) / (n . M^-1 n)` per step for the
   unit normal over the 3N coordinates when recording was requested and a plane
-  is set, the mean of the two force kicks of the step.
+  is set, the mean of the two force kicks of the step, and `constraint_metric`,
+  Z per step in 1/amu.
 - Errors :: none.
 
 #### `rgpot::OpenMMState`
@@ -23121,6 +23561,128 @@ int main() {
 - Units :: nm, nm/ps, kJ/(mol nm) and kJ/mol.
 - Outputs :: `positions`, `velocities` and `forces`, one `OpenMM::Vec3` per
   particle, and `potential_energy` and `kinetic_energy`.
+- Errors :: none.
+
+### Construction from a PotentialConfig
+
+`rgpot::makePotential` (`CppCore/rgpot/PotentialFactory.hpp`) is the one entry
+point from a `PotentialConfig` to a potential. It is in every `librgpot` built
+with the Cap'n Proto stack. A consumer includes `rgpot/PotentialFactory.hpp`
+with the directory that holds the generated `rgpot/rpc/Potentials.capnp.h` and
+`rgpot/rpc/common.capnp.h` on its include path (the installation's
+include directory, or `CppCore` of a meson build tree): the schema
+imports `common.capnp`, so `Potentials.capnp.h` includes `common.capnp.h`.
+
+#### `rgpot::makePotential`
+
+```cpp
+[[nodiscard]] std::unique_ptr<PotentialBase>
+makePotential(const ::PotentialConfig::Reader &config);
+[[nodiscard]] std::unique_ptr<PotentialBase>
+makePotential(const void *bytes, std::size_t size);
+```
+
+- Inputs :: a `PotentialConfig` reader, or the flat-array bytes of one
+  (`size` a non-zero multiple of 8). Only the union arm is read; the shared
+  fields (`common`, `commonPatch`, `neighborList`, `rpcEndpoint`,
+  `logPotentialCalls`, `emtRasmussenParameters`) are not, as no
+  `setPotentialConfig` method reads them either.
+- Units :: those of the potential returned.
+- Outputs :: the potential the arm configures, owned by the returned pointer.
+  `lj`, `morse` (with `switchWidth`), `zbl`, `d2`, `d2cpmd`, `mullerBrown` and
+  `composite` build the in-process kernels; `cpmd`, `nwchem`, `mopac` and
+  `lammps` build `CPMDPot`, `NWChemPot`, `MOPACPot` and the lammpc profile of
+  `LammpsPot`; `d3`, `d4`, `xtb`, `tblite`, `skala`, `cp2k` and `expr` build
+  `D3Pot`, `D4Pot`, `XTBPot`, `TBLitePot`, `SkalaPot`, `CP2KPot` and `ExprPot`
+  when the build has them.
+  `orca` builds an `rgpot::ORCACPot` from `ORCAParams` alone, lowered onto the
+  `OrcaCConfig` of `liborcac` C ABI 1.
+  `metatomic`, `uma`, `plugin`, and `xtb` in a build without
+  `-Dwith_xtb`, return an `rgpot::EnginePot` over an engine library whose
+  configuration message is the arm's params struct (`BuiltinParams` naming `xtb`
+  for `libxtb_engine`, the `opaquePayload` bytes for `plugin`):
+
+  | Arm         | Library                 | Search order                                                                 |
+  |-------------+-------------------------+------------------------------------------------------------------------------|
+  | `metatomic` | `libmetatomic_engine`   | `enginePath` alone when set; else `RGPOT_METATOMIC_ENGINE`, `METATOMIC_ENGINE` |
+  | `uma`       | `libuma_engine`         | `RGPOT_UMA_ENGINE`                                                           |
+  | `xtb`       | `libxtb_engine`         | `RGPOT_XTB_ENGINE`, `XTB_ENGINE`                                             |
+  | `plugin`    | `lib<pluginName>_engine` | `libraryPath` alone when set; else `RGPOT_<PLUGINNAME>_ENGINE`              |
+
+  After the variables each search tries `lib<stem>.so`, `./lib<stem>.so`, the
+  `.dylib` names and `<stem>.dll`, then the directories of
+  `EON_POTENTIALS_PATH` and `RGPOT_ENGINE_PATH`.
+- Errors :: `std::invalid_argument` for bytes that are not a `PotentialConfig`
+  message, for the `none`, `gpr`, `potlib` and `external` arms (rgpot has no
+  backend for them), for `d3`, `d4`, `tblite`, `skala`, `cp2k` and `expr` in a
+  build without `-Dwith_dftd3`, `-Dwith_dftd4`, `-Dwith_tblite`,
+  `-Dwith_skala`, `-Dwith_cp2k` or `-Dwith_expr` (the message names the
+  option), for a `mopac` arm that sets `epsilon`, `solver`, `extraKeywords` or
+  `cell` (`MOPACPot` takes none of them), for an `xtb`, `tblite` or `d3` method
+  or damping it does not know, for a `plugin` arm with neither `pluginName` nor
+  `libraryPath`, and for an arm newer than the compiled schema. The
+  constructors of the potentials throw as their entries say, and
+  `rgpot::EnginePot` throws `std::runtime_error` as below.
+
+#### `rgpot::EnginePot`
+
+```cpp
+EnginePot(const std::vector<std::string> &candidates, const void *config,
+          std::size_t config_len, std::string label);
+```
+
+- Inputs :: `candidates`, library paths tried in order; `config` and
+  `config_len`, the configuration message handed to `rgpot_engine_create`
+  (for the in-tree engines a word-aligned Cap'n Proto flat array whose root is
+  the backend's params struct); `label`, the name used in messages.
+- Units :: positions in Angstrom, energy in eV and forces in eV/Angstrom, the
+  units of `rgpot_engine_force`.
+- Outputs :: one engine instance, destroyed with the potential, from the first
+  candidate that opens and exports `rgpot_engine_create`,
+  `rgpot_engine_destroy` and `rgpot_engine_force`. `caps()` reports
+  `Reentrancy::PerInstance`, and calls on one instance are serialised. The
+  library stays mapped for the life of the process. `getType()` is
+  `PotType::Engine`.
+- Errors :: `std::runtime_error` when no candidate opens or exports the three
+  symbols (the message names every path tried), when the library's
+  `rgpot_engine_abi_version` is not `RGPOT_ENGINE_ABI_VERSION`, when its
+  `rgpot_engine_available` returns 0, or when `rgpot_engine_create` fails (the
+  message carries the engine's reason). A force call throws
+  `std::runtime_error` with the code `rgpot_engine_force` returned and the
+  engine's `rgpot_engine_last_error`.
+
+#### `rgpot::EnginePot::libraryPath`
+
+```cpp
+[[nodiscard]] const std::string &libraryPath() const noexcept;
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the candidate the library was opened from.
+- Errors :: none.
+
+#### `rgpot::EnginePot::label`
+
+```cpp
+[[nodiscard]] const std::string &label() const noexcept;
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the label given to the constructor (`uma`, `plugin <name>`).
+- Errors :: none.
+
+#### `rgpot::EnginePot::paramsKey`
+
+```cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a hash of the library path and the configuration bytes, so cached
+  results never cross engines or configurations.
 - Errors :: none.
 
 ### Members common to several classes
@@ -23307,8 +23869,10 @@ static bool probeAvailable();
 - Inputs :: none.
 - Units :: none.
 - Outputs :: true when the environment and default-name search, without an
-  explicit path, finds a library that has `mopacc_energy_gradient`, the ABI
-  version and a nonzero `mopacc_available`, when exported.
+  explicit path, finds a library that passes the `MOPACPot` load check
+  (`mopacc_energy_gradient`, both ABI versions equal to 2, and
+  `mopacc_result_size` and `mopacc_params_size` equal to this build's struct
+  sizes) and has a nonzero `mopacc_available`, when exported.
   The first result is cached for the process.
 - Errors :: none; a load failure gives false.
 
@@ -25777,6 +26341,7 @@ A `feature` option takes `enabled`, `disabled` or `auto`.
 | `with_water` | boolean | `false` | Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option. |
 | `with_eam_table` | boolean | `false` | EAM and Finnis-Sinclair potentials read from LAMMPS funcfl, setfl and eam/fs tables. |
 | `with_orca` | boolean | `false` | ORCAPot: ORCA energy and gradient through the orca executable run as a child process (POSIX). The executable is found at run time. |
+| `orcac_main` | feature | `disabled` | Tests: build liborcac from the orcac commit pinned in `subprojects/orcac.wrap` and run the orca arm of `makePotential` against it (`PotentialFactoryTest`, `OrcacMainExports`). |
 | `with_cbe` | feature | `disabled` | Link `potlibc` and build the CBE (CH5 2008) H + CH4 frontend. potlibc must provide `potlibc_gradient_jet`. |
 | `with_lammps` | feature | `auto` | LAMMPS pair_style rgpot and the lj/cut comparison. Needs the lammps Python module. pair_style rgpot also needs lammps_src. |
 | `lammps_src` | string | `(empty)` | LAMMPS src directory that contains pair.h, matching the liblammps that will load the plugin. |
@@ -25785,6 +26350,10 @@ A `feature` option takes `enabled`, `disabled` or `auto`.
 | `with_gromacs_dropin` | feature | `disabled` | librgpot_gromacs, the libcp2k API that GROMACS built with `-DGMX_CP2K=ON` links, so mdrun takes QM/MM energies and forces from any rgpot potential. |
 | `gromacs_dropin_gmx` | string | `(empty)` | gmx of a double-precision GROMACS linked against librgpot_gromacs. Empty looks for gmx_d on PATH and skips the mdrun tests without it. |
 | `with_openmm` | feature | `auto` | OpenMM shifted Lennard-Jones comparison. |
+| `with_nblib` | feature | `auto` | GROMACS nblib MD session engine. |
+| `nblib_prefix` | string | `(empty)` | Prefix of GROMACS built with the installed nblib API. |
+| `nblib_source` | string | `(empty)` | GROMACS source tree of nblib_prefix, for the TPR session. |
+| `nblib_build` | string | `(empty)` | GROMACS build tree of nblib_prefix, for the TPR session. |
 | `with_plumed` | feature | `auto` | PLUMED RGPOT collective variable. |
 | `with_long_range` | boolean | `false` | Build the Ewald, PME, dispersion and NLH summands (`CppCore/rgpot/LongRange`). |
 | `with_cuda` | boolean | `false` | Compile the long-range CUDA path with nvcc and link cudart. Used only with `with_long_range`. |
@@ -25824,16 +26393,21 @@ This page lists the arms of the Cap'n Proto `PotentialConfig` union and what
 ### rgpot user parameters (`PotentialConfig`) over RPC
 
 Backend options for a live `Potential` go in `PotentialConfig`
-(`CppCore/rgpot/rpc/Potentials.capnp`, a copy of the pinned potentials-schema).
+(`CppCore/rgpot/rpc/Potentials.capnp`, rgpot's copy of rgconf's
+`potential.capnp` at the commit `CppCore/rgpot/rpc/schema.pin` names).
 It is a union whose arms and ordinals are `none` @0, `nwchem` @1, `cpmd` @2,
 `metatomic` @4, `lammps` @5, `xtb` @6, `tblite` @7, `uma` @8, `lj` @9, `morse`
 @10, `zbl` @11, `d3` @12, `d4` @13, `mopac` @14, `skala` @15, `expr` @16, `cp2k`
-@17, `composite` @18, `d2` @19, `d2cpmd` @20 and `mullerBrown` @21.
-`composite`, `d2`, `d2cpmd` and `mullerBrown` are local additions
-(`CppCore/rgpot/rpc/local/composite.diff`, `d2.diff`, `d2cpmd.diff` and
-`muller-brown.diff`) to the pinned schema, as are `D4Params.periodic`
-(`d4-periodic.diff`) and `D2CpmdParams.symmetry` (`d2cpmd-symmetry.diff`).
-Outside the union, `common` @3 is a `CommonMethodSpec` overlay.
+@17, `composite` @18, `d2` @19, `d2cpmd` @20, `mullerBrown` @21, `gpr` @27,
+`potlib` @28, `external` @29, `plugin` @30 and `orca` @31.
+rgpot added `composite`, `d2`, `d2cpmd` and `mullerBrown`, `D4Params.periodic`
+and `D2CpmdParams.symmetry` before rgconf adopted them at the same ordinals;
+`gpr`, `potlib`, `external`, `plugin` and `orca` are rgconf's.
+Outside the union, `common` @3 is a `CommonMethodSpec` overlay, and rgconf's
+`commonPatch` @22, `neighborList` @23, `rpcEndpoint` @24,
+`logPotentialCalls` @25 and `emtRasmussenParameters` @26 follow it.
+`rgpot::makePotential` builds the potential an arm names (see
+[C++ engine-backed potentials](https://rgpot.rgoswami.me/reference/cpp_backends.html)).
 Geometry stays on `ForceInput`; `configure(config)` applies method and backend
 setup only.
 `potserv` applies `nwchem`, `cpmd`, `morse`, `composite`, `d2`, `d2cpmd` and
@@ -28737,10 +29311,11 @@ positions it was given.
 
 ### Cap'n Proto messages
 
-`CppCore/rgpot/rpc/local/neighbour-chunk.diff` adds the query to the
-`Potentials.capnp` that rgpot compiles and installs.
-The pinned potentials-schema file does not have it;
-`CppCore/rgpot/rpc/local/series` lists the rgpot-local diffs.
+`Potentials.capnp` carries the query: `NeighborRequest`, `NeighborList`,
+`ForceInput.neighbors`, `PotentialResult.neighborList` and
+`Potential.neighbours`.
+rgpot added them first, through a local diff, and rgconf's schema adopted them
+at the same ordinals.
 The messages carry the columns of `rgpot_nlist_request` and `rgpot_nlist_soa`.
 Lengths are in the unit of the positions, `ForceInput.lengthUnit` on the wire.
 
@@ -31189,7 +31764,12 @@ const CPMDCFeatureEntry *cpmdc_feature_find(const char *feature_id);
 The header is `CppCore/rgpot/MOPACPot/mopac_c_abi.h`; it must stay in lockstep
 with `mopacc.h` of the `mopacc` project.
 Options are the packed struct `MopacCParams`, not Cap'n Proto.
-The version macro `RGPOT_MOPACC_C_ABI_VERSION` is 1.
+The version macros `RGPOT_MOPACC_C_ABI_VERSION` and `MOPACC_ABI_VERSION` are 2.
+ABI 2 added `epsilon` and `solver` on `MopacCParams`, and `dipole_debye` and
+`stress_gpa` on `MopacCResult`.
+A caller compares both versions, and `mopacc_result_size` and
+`mopacc_params_size` with its own sizes, before a call that returns
+`MopacCResult`.
 The model codes are `MOPACC_MODEL_PM7` (0),
 `MOPACC_MODEL_PM6_D3H4` (1), `MOPACC_MODEL_PM6_ORG` (2), `MOPACC_MODEL_PM6` (3),
 `MOPACC_MODEL_AM1` (4) and `MOPACC_MODEL_RM1` (5).
@@ -31199,17 +31779,23 @@ The model codes are `MOPACC_MODEL_PM7` (0),
 - Inputs :: none; a struct.
 - Units :: none stated by the header; the fields are those of
   `MOPACPot::Config`.
-- Outputs :: `charge` (an int), `spin` (an int), `model` (a `MOPACC_MODEL_*`
-  code), `tolerance` (a double) and `max_time` (an int).
-  `MOPACPot` defaults are 0, 0, 4 (AM1), 1.0 and 3600.
+- Outputs :: `charge`, `spin`, `model` (a `MOPACC_MODEL_*` code), `tolerance`,
+  `max_time` (seconds; 0 uses 3600), `epsilon` (COSMO dielectric; 1.0 is vacuum
+  and must be 1 when a cell is set) and `solver` (0 conventional, 1 MOZYME).
+  `MOPACPot::Config` defaults are charge 0, spin 0, model 4 (AM1), tolerance
+  1.0 and max_time 3600.
+  The constructor copies those into the packed struct and sets `epsilon` to
+  1.0 and `solver` to `MOPACC_SOLVER_MOPAC` (0).
 - Errors :: none.
 
 #### `MopacCResult`
 
 - Inputs :: none; a struct returned by value.
-- Units :: `energy_h` is in Hartree.
-- Outputs :: `ok`, `energy_h` and `message`, a NUL-terminated text of at most
-  512 bytes.
+- Units :: `energy_h` is in Hartree, `dipole_debye` is in Debye and
+  `stress_gpa` is in GPa.
+- Outputs :: `ok`, `energy_h`, `dipole_debye` (three components), `stress_gpa`
+  (Voigt xx, yy, zz, yz, xz, xy; 0 if unavailable) and `message`, a
+  NUL-terminated text of at most 512 bytes.
 - Errors :: none; a failure is `ok` equal to 0 with the reason in `message`.
 
 #### `mopacc_set_params`
@@ -31221,8 +31807,9 @@ int mopacc_set_params(const void *params, size_t params_size_bytes);
 - Inputs :: `params`, a `MopacCParams`, and its size in bytes.
 - Units :: none.
 - Outputs :: 0 on success.
-  `MOPACPot` calls it once when the symbol exists and ignores the status.
-- Errors :: the stub returns -1.
+  `MOPACPot` calls it once when the symbol is present.
+- Errors :: a nonzero status leaves the engine unloaded.
+  The in-tree stub returns -1.
 
 #### `mopacc_energy_gradient`
 
@@ -31271,6 +31858,256 @@ const char *mopacc_version(void);
 - Inputs :: none.
 - Units :: none.
 - Outputs :: the library version string, in static storage.
+- Errors :: none.
+
+#### `MopacCSession`
+
+- Inputs :: none; an opaque session created by `mopacc_session_create`.
+- Units :: none.
+- Outputs :: a handle for the session calls below.
+  The header says the API is not thread-safe, because OpenMOPAC is
+  process-global.
+- Errors :: none on the type.
+  Free it with `mopacc_session_destroy`.
+
+#### `mopacc_abi_version`
+
+```c
+int mopacc_abi_version(void);
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: `MOPACC_ABI_VERSION`, which is 2 in this header.
+  `MOPACPot` refuses a library that reports another value.
+- Errors :: none.
+  The in-tree stub returns `MOPACC_ABI_VERSION`.
+
+#### `mopacc_result_size`
+
+```c
+size_t mopacc_result_size(void);
+```
+
+- Inputs :: none.
+- Units :: bytes.
+- Outputs :: `sizeof(MopacCResult)` in the library.
+  New in ABI 2.
+  `MOPACPot` refuses a library whose value differs from its own.
+- Errors :: none.
+  The in-tree stub returns `sizeof(MopacCResult)`.
+
+#### `mopacc_params_size`
+
+```c
+size_t mopacc_params_size(void);
+```
+
+- Inputs :: none.
+- Units :: bytes.
+- Outputs :: `sizeof(MopacCParams)` in the library.
+  New in ABI 2.
+  `MOPACPot` refuses a library whose value differs from its own.
+- Errors :: none.
+  The in-tree stub returns `sizeof(MopacCParams)`.
+
+#### `mopacc_energy`
+
+```c
+MopacCResult mopacc_energy(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params, size_t params_size_bytes);
+```
+
+- Inputs :: `n_atoms`; positions in Angstrom, 3*n doubles; `atomic_numbers`;
+  `params` and its size.
+  A null `params` selects the header's vacuum defaults.
+- Units :: Angstrom in, energy in Hartree.
+- Outputs :: a `MopacCResult` with the energy.
+- Errors :: `ok` equal to 0 with the reason in `message`.
+
+#### `mopacc_energy_forces`
+
+```c
+MopacCResult mopacc_energy_forces(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params, size_t params_size_bytes, double *forces_h_bohr);
+```
+
+- Inputs :: as `mopacc_energy`, plus `forces_h_bohr`, room for 3*n doubles.
+- Units :: Angstrom in.
+  The header reports the ABI in Hartree and Hartree/Bohr, and names this
+  buffer `forces_h_bohr`.
+- Outputs :: a `MopacCResult` with the energy, and 3*n values in
+  `forces_h_bohr`.
+- Errors :: `ok` equal to 0 with the reason in `message`.
+
+#### `mopacc_set_cell`
+
+```c
+int mopacc_set_cell(const double *lattice_ang, int nlattice, int nlattice_move, double pressure_gpa);
+```
+
+- Inputs :: `lattice_ang`, the lattice vectors; `nlattice`; `nlattice_move`;
+  `pressure_gpa`.
+  The header says the cell is sticky.
+- Units :: lattice vectors in Angstrom, pressure in GPa.
+- Outputs :: the status the library returns.
+  The header does not list the codes.
+- Errors :: none stated by the header.
+
+#### `mopacc_relax`
+
+```c
+MopacCResult mopacc_relax(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params, size_t params_size_bytes, double *coord_update_ang, double *grad_h_bohr);
+```
+
+- Inputs :: as `mopacc_energy_gradient`, plus `coord_update_ang`, room for 3*n
+  doubles.
+- Units :: positions and the coordinate update in Angstrom, the gradient in
+  Hartree/Bohr, the energy in Hartree.
+- Outputs :: a `MopacCResult`, the coordinate update and the gradient.
+- Errors :: `ok` equal to 0 with the reason in `message`.
+
+#### `mopacc_vibe`
+
+```c
+MopacCResult mopacc_vibe(int n_atoms, const double *positions_ang, const int *atomic_numbers, const void *params, size_t params_size_bytes, double *freq_cm, double *disp);
+```
+
+- Inputs :: as `mopacc_energy`, plus `freq_cm` and `disp`.
+- Units :: positions in Angstrom, frequencies in cm^-1.
+  The header does not state the layout of `disp`.
+- Outputs :: a `MopacCResult`, the frequencies and the displacements.
+- Errors :: `ok` equal to 0 with the reason in `message`.
+
+#### `mopacc_session_create`
+
+```c
+MopacCSession *mopacc_session_create(const void *params, size_t params_size_bytes);
+```
+
+- Inputs :: `params` and its size, as `mopacc_set_params`.
+- Units :: none.
+- Outputs :: a new `MopacCSession`.
+- Errors :: the header does not state the failure value.
+
+#### `mopacc_session_destroy`
+
+```c
+void mopacc_session_destroy(MopacCSession *session);
+```
+
+- Inputs :: `session`, a handle from `mopacc_session_create`.
+- Units :: none.
+- Outputs :: nothing; the session is released.
+- Errors :: none.
+
+#### `mopacc_session_set_params`
+
+```c
+int mopacc_session_set_params(MopacCSession *session, const void *params, size_t params_size_bytes);
+```
+
+- Inputs :: `session`, and `params` with its size as `mopacc_set_params`.
+- Units :: none.
+- Outputs :: the status the library returns.
+  The header does not list the codes.
+- Errors :: none stated by the header.
+
+#### `mopacc_session_set_cell`
+
+```c
+int mopacc_session_set_cell(MopacCSession *session, const double *lattice_ang, int nlattice, int nlattice_move, double pressure_gpa);
+```
+
+- Inputs :: `session`, and the cell arguments of `mopacc_set_cell`.
+- Units :: lattice vectors in Angstrom, pressure in GPa.
+- Outputs :: the status the library returns.
+  The header does not list the codes.
+- Errors :: none stated by the header.
+
+#### `mopacc_session_energy_gradient`
+
+```c
+MopacCResult mopacc_session_energy_gradient(MopacCSession *session, int n_atoms, const double *positions_ang, const int *atomic_numbers, double *grad_h_bohr);
+```
+
+- Inputs :: `session`; `n_atoms`; positions in Angstrom; `atomic_numbers`;
+  `grad_h_bohr`, room for 3*n doubles.
+  The method knobs are the ones stored on the session.
+- Units :: Angstrom in, Hartree and Hartree/Bohr out.
+- Outputs :: a `MopacCResult` with the energy, and the gradient in
+  `grad_h_bohr`.
+- Errors :: `ok` equal to 0 with the reason in `message`.
+
+#### `mopacc_session_relax`
+
+```c
+MopacCResult mopacc_session_relax(MopacCSession *session, int n_atoms, const double *positions_ang, const int *atomic_numbers, double *coord_update_ang, double *grad_h_bohr);
+```
+
+- Inputs :: `session`, and the geometry arguments of `mopacc_relax`.
+- Units :: as `mopacc_relax`.
+- Outputs :: a `MopacCResult`, the coordinate update and the gradient.
+- Errors :: `ok` equal to 0 with the reason in `message`.
+
+#### `mopacc_session_vibe`
+
+```c
+MopacCResult mopacc_session_vibe(MopacCSession *session, int n_atoms, const double *positions_ang, const int *atomic_numbers, double *freq_cm, double *disp);
+```
+
+- Inputs :: `session`, and the geometry arguments of `mopacc_vibe`.
+- Units :: as `mopacc_vibe`.
+- Outputs :: a `MopacCResult`, the frequencies and the displacements.
+- Errors :: `ok` equal to 0 with the reason in `message`.
+
+#### `mopacc_last_charges`
+
+```c
+int mopacc_last_charges(int n_atoms, double *charges);
+```
+
+- Inputs :: `n_atoms` and `charges`, room for `n_atoms` doubles.
+- Units :: none stated by the header.
+- Outputs :: `n_atoms` values written into `charges`, and the status the
+  library returns.
+  The header does not say which charges.
+- Errors :: none stated by the header.
+
+#### `mopacc_session_charges`
+
+```c
+int mopacc_session_charges(const MopacCSession *session, int n_atoms, double *charges);
+```
+
+- Inputs :: `session`, `n_atoms` and `charges`, room for `n_atoms` doubles.
+- Units :: none stated by the header.
+- Outputs :: `n_atoms` values written into `charges`, and the status the
+  library returns.
+  The header does not say which charges.
+- Errors :: none stated by the header.
+
+#### `mopacc_last_error`
+
+```c
+const char *mopacc_last_error(void);
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a C string.
+  The header does not say which error it names, or how long the pointer
+  stays valid.
+- Errors :: none.
+
+#### `mopacc_finalize`
+
+```c
+void mopacc_finalize(void);
+```
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: nothing.
+  The header gives the function no further contract.
 - Errors :: none.
 
 ### CP2K: `cp2kc_abi.h`
@@ -31419,9 +32256,9 @@ void cp2kc_session_destroy(CP2KCSession *session);
 Source: docs/orgmode/reference/capnp_schema.org
 URL: https://rgpot.rgoswami.me/reference/capnp_schema.html
 
-This page is generated by `docs/gen_capnp_reference.py` from the schema the
-build compiles, which is `CppCore/rgpot/rpc/Potentials.capnp` with the
-diffs of `CppCore/rgpot/rpc/local/series` applied.
+This page is generated by `docs/gen_capnp_reference.py` from
+`CppCore/rgpot/rpc/Potentials.capnp`, the pinned rgconf schema the build
+compiles. `common.capnp` sits beside it and is imported by that file.
 Change a comment in the schema, then run the script again; do not edit this
 page.
 
@@ -31454,9 +32291,12 @@ Examples: "angstrom", "bohr", "eV", "hartree", "kJ/mol", "kcal/mol".
 | `ForceInput.charge` | 6 | `Int32` | `0` | Per-step charge when hasCharge is true. |
 | `ForceInput.hasMultiplicity` | 7 | `Bool` | `false` | Override NWChemParams.multiplicity for this step. |
 | `ForceInput.multiplicity` | 8 | `Int32` | `1` | Per-step spin multiplicity when hasMultiplicity is true. |
-| `ForceInput.neighbors` | 9 | `NeighborRequest` |  | Present from protocol minor 0. Clients that leave it unset receive no neighbour list. |
+| `ForceInput.neighbors` | 9 | `NeighborRequest` |  | No comment in the schema. |
 | `ForceInput.hasOrbitalKey` | 10 | `Bool` | `false` | Protocol minor 2: select keyed orbitals. |
 | `ForceInput.orbitalKey` | 11 | `Int64` | `0` | Protocol minor 2: image or bead key. |
+| `ForceInput.hessianDisplacement` | 12 | `List(Float64)` |  | Ordinals 12 to 14 were 10 to 12 in rgconf 0.1.0; 10 and 11 belong to the orbital key that rgpot shipped first. |
+| `ForceInput.wantStress` | 13 | `Bool` | `false` | No comment in the schema. |
+| `ForceInput.wantHessianVector` | 14 | `Bool` | `false` | No comment in the schema. |
 
 #### struct PotentialResult
 
@@ -31492,7 +32332,11 @@ Results returned from a potential energy evaluation.
 | `PotentialResult.mdTrajectoryRow` | 25 | `List(Float64)` |  | MD ENERGY row incl. EKINC when MD ran |
 | `PotentialResult.mdTrajectoryValid` | 26 | `Bool` | `false` | True when mdTrajectoryRow holds a harvested row. |
 | `PotentialResult.embedMdPropsSkipped` | 27 | `Bool` | `true` | true when MD/PROP not harvested this eval (honest skip) |
-| `PotentialResult.neighborList` | 28 | `NeighborList` |  | Present only when ForceInput.neighbors was set. A stream is one chunk; more is true when the client should ask again with the same query. |
+| `PotentialResult.neighborList` | 28 | `NeighborList` |  | No comment in the schema. |
+| `PotentialResult.hessianVector` | 29 | `List(Float64)` |  | No comment in the schema. |
+| `PotentialResult.perAtomEnergies` | 30 | `List(Float64)` |  | No comment in the schema. |
+| `PotentialResult.perAtomUncertainties` | 31 | `List(Float64)` |  | No comment in the schema. |
+| `PotentialResult.forceEvalCount` | 32 | `UInt64` | `1` | No comment in the schema. |
 
 #### struct Capabilities
 
@@ -31553,13 +32397,13 @@ The RPC interface for remote calculations.
 | `Potential.calculateDipole` | 5 | `(fip:ForceInput)->(result:PotentialResult)` | Compute the total electric dipole vector for this geometry. PotentialResult.dipole in atomic units. |
 | `Potential.calculateQuadrupole` | 6 | `(fip:ForceInput)->(result:PotentialResult)` | Compute the total traceless electric quadrupole tensor. PotentialResult.quadrupole in atomic units as xx, xy, xz, yy, yz, zz. |
 | `Potential.calculateStress` | 7 | `(fip:ForceInput)->(result:PotentialResult)` | Compute the periodic stress tensor for this geometry. PotentialResult.stress in energyUnit / lengthUnit^3. |
-| `Potential.calculateHvp` | 14 | `(fip:ForceInput,direction:List(Float64))->(product:List(Float64))` | Exact Cartesian energy-Hessian product for one direction. |
 | `Potential.calculateOptimize` | 8 | `(fip:ForceInput)->(result:PotentialResult)` | Optimize this geometry and return final coordinates. PotentialResult.optimizedPos in ForceInput.lengthUnit. |
 | `Potential.calculateFrequencies` | 9 | `(fip:ForceInput)->(result:PotentialResult)` | Compute harmonic vibrational frequencies and IR intensities. PotentialResult.frequencies in cm^-1 and intensities in atomic units. |
 | `Potential.calculatePolarizability` | 10 | `(fip:ForceInput)->(result:PotentialResult)` | Compute the electric polarizability response vector. PotentialResult.polarizability stores NWChem aoresponse:alpha. |
 | `Potential.calculateGradient` | 11 | `(fip:ForceInput)->(result:PotentialResult)` | Compute potential energy and nuclear gradient for this geometry. PotentialResult.energy and PotentialResult.gradient. |
 | `Potential.getCapabilities` | 12 | `()->(capabilities:Capabilities)` | Capabilities of this server, read before any calculate call. The protocol, schema, eindir bridge, DLPack and build identity. buildVersion and buildRevision are empty when the build does not know them. |
-| `Potential.neighbours` | 13 | `(fip:ForceInput,request:NeighborRequest)->(neighbors:NeighborList)` | One chunk of a neighbour query. The whole list is not required on the wire. The client sends NeighborRequest.cursor and repeats the call while NeighborList.more is true, passing NeighborList.next back as the next cursor. |
+| `Potential.neighbours` | 13 | `(fip:ForceInput,request:NeighborRequest)->(neighbors:NeighborList)` | One chunk of a neighbour query. |
+| `Potential.calculateHvp` | 14 | `(fip:ForceInput,direction:List(Float64))->(product:List(Float64))` | Exact Cartesian energy-Hessian product for one direction. |
 
 ### Configuration carrier
 
@@ -31584,6 +32428,7 @@ It never replaces the arms -- the long tail of code-specific options stays code-
 | `CommonMethodSpec.vanDerWaalsMethod` | 9 | `Text` | `""` | e.g. "DFT-D3", "DFT-D3(BJ)". |
 | `CommonMethodSpec.relativityMethod` | 10 | `Text` | `""` | e.g. "ZORA", "DKH". |
 | `CommonMethodSpec.vanDerWaalsS6` | 11 | `Float64` | `0.0` | Global dispersion scaling s6; 0 = engine default. |
+| `CommonMethodSpec.hasCharge` | 12 | `Bool` | `false` | Mark CommonMethodSpec.charge as explicit, including zero. |
 
 #### struct CommonMethodSpec.Smearing
 
@@ -31618,6 +32463,7 @@ Purely additive: no existing field is renumbered, so a reader that does not know
 | `PotentialSpec.lammps` | 4 | `arm LammpsParams` |  | Selects this arm of the union, which carries a `LammpsParams`. |
 | `PotentialSpec.builtin` | 5 | `arm BuiltinParams` |  | Backends whose configuration is entirely a library path plus the geometry on ForceInput carry no params struct of their own. |
 | `PotentialSpec.cp2k` | 6 | `arm CP2KParams` |  | Selects this arm of the union, which carries a `CP2KParams`. |
+| `PotentialSpec.orca` | 7 | `arm ORCAParams` |  | Selects this arm of the union, which carries a `ORCAParams`. |
 
 #### struct ExprTerm
 
@@ -31675,7 +32521,17 @@ Add new arms as new potentials gain runtime knobs (e.g. metatomic @2 :MetatomicP
 | `PotentialConfig.d2` | 19 | `arm D2Params` |  | rgpot::D2Pot, Grimme 2006 lattice sum |
 | `PotentialConfig.d2cpmd` | 20 | `arm D2CpmdParams` |  | rgpot::D2CpmdPot, CPMD's minimum-image D2 |
 | `PotentialConfig.mullerBrown` | 21 | `arm MullerBrownParams` |  | Selects this arm of the union, which carries a `MullerBrownParams`. |
+| `PotentialConfig.gpr` | 27 | `arm GprParams` |  | Ordinals 27 to 30 were 18 to 21 in rgconf 0.1.0; 18 to 21 belong to the arms rgpot shipped first. |
+| `PotentialConfig.potlib` | 28 | `arm PotlibParams` |  | Selects this arm of the union, which carries a `PotlibParams`. |
+| `PotentialConfig.external` | 29 | `arm ExternalPotParams` |  | Selects this arm of the union, which carries a `ExternalPotParams`. |
+| `PotentialConfig.plugin` | 30 | `arm PluginPotentialParams` |  | Selects this arm of the union, which carries a `PluginPotentialParams`. |
+| `PotentialConfig.orca` | 31 | `arm ORCAParams` |  | orcac engine shim (ORCA through a child process) |
 | `PotentialConfig.common` | 3 | `CommonMethodSpec` |  | Normalized overlay applied BEFORE the native arm; native settings win. |
+| `PotentialConfig.commonPatch` | 22 | `CommonMethodPatch` |  | No comment in the schema. |
+| `PotentialConfig.neighborList` | 23 | `Common.NeighborListConfig` |  | No comment in the schema. |
+| `PotentialConfig.rpcEndpoint` | 24 | `RpcEndpointConfig` |  | No comment in the schema. |
+| `PotentialConfig.logPotentialCalls` | 25 | `Bool` | `false` | No comment in the schema. |
+| `PotentialConfig.emtRasmussenParameters` | 26 | `Bool` | `true` | No comment in the schema. |
 
 ### NWChem input
 
@@ -33487,6 +34343,7 @@ Constrained-DFT controls inside the dft block (cdft_inp.F).
 | `CPMDSystemSection.classicalCellDegree` | 88 | `Bool` | `false` | CLASSICAL CELL DEGREE. |
 | `CPMDSystemSection.cellVectors` | 89 | `Bool` | `false` | CELL VECTORS. |
 | `CPMDSystemSection.referenceCellVectors` | 90 | `Bool` | `false` | REFERENCE CELL VECTORS. |
+| `CPMDSystemSection.hasCharge` | 91 | `Bool` | `false` | Mark CPMDSystemSection.charge as explicit, including zero. |
 
 #### struct CPMDCpmdSection
 
@@ -34028,7 +34885,7 @@ Per-species DFT+U entry (structured replacement for the hubbard Text blob).
 #### struct CPMDParams
 
 CPMD-specific knobs (backend arm inside PotentialConfig / rgpot params).
-Not a standalone config language — only used when the active potential is CPMD.
+Not a standalone config language : only used when the active potential is CPMD.
 Same fields in/out via Cap'n Proto.
 Geometry for each evaluation is ForceInput.
 
@@ -34047,6 +34904,7 @@ Geometry for each evaluation is ForceInput.
 | `CPMDParams.enginePath` | 10 | `Text` | `""` | Frontend engine selection hint. |
 | `CPMDParams.inputBlocks` | 11 | `List(Text)` |  | Raw &SECTION blocks applied before generated ones. |
 | `CPMDParams.inputSections` | 12 | `List(CPMDInputSection)` |  | Structured CPMD input sections. |
+| `CPMDParams.hasCharge` | 13 | `Bool` | `false` | Mark CPMDParams.charge as explicit, including zero. |
 
 #### struct CPMDPropSection
 
@@ -34237,7 +35095,8 @@ The package is a per-composition .pt2 export carrying its runtime contract (mole
 | `UmaParams.intraopThreads` | 7 | `Int32` | `1` | torch intra-op worker threads. |
 | `UmaParams.interopThreads` | 8 | `Int32` | `1` | torch inter-op worker threads (settable once per process). |
 | `UmaParams.deterministicAlgorithms` | 9 | `Bool` | `false` | Request deterministic torch algorithms. |
-| `UmaParams.cacheDir` | 10 | `Text` |  | Root of the persistent cache the .pt2 is unpacked into. Unset uses RGPOT_CACHE_DIR, then XDG_CACHE_HOME/rgpot, then .rgpot-cache in the working directory. |
+| `UmaParams.cacheDir` | 10 | `Text` | `""` | No comment in the schema. |
+| `UmaParams.checkpointSha256` | 11 | `Text` | `""` | No comment in the schema. |
 
 #### struct BuiltinParams
 
@@ -34282,6 +35141,10 @@ Geometry arrives per step via ForceInput; these fields fix the interaction model
 | `LammpsParams.boundary` | 7 | `Text` | `"p p p"` | boundary keyword args. |
 | `LammpsParams.extraSetup` | 8 | `List(Text)` |  | Escape hatch: raw commands after the pair block. |
 | `LammpsParams.suffix` | 9 | `Text` | `""` | Accelerator suffix (omp/gpu/kk) when compiled in. |
+| `LammpsParams.mdConfig` | 10 | `LammpcMdConfig` |  | No comment in the schema. |
+| `LammpsParams.boundaryConstraint` | 11 | `LammpcBoundaryConfig` |  | No comment in the schema. |
+| `LammpsParams.openmpThreads` | 12 | `UInt32` | `1` | No comment in the schema. |
+| `LammpsParams.enableLogging` | 13 | `Bool` | `false` | No comment in the schema. |
 
 #### struct LennardJonesParams
 
@@ -34293,6 +35156,7 @@ Geometry, species and units remain on ForceInput.
 | `LennardJonesParams.u0` | 0 | `Float64` | `1.0` | No comment in the schema. |
 | `LennardJonesParams.psi` | 1 | `Float64` | `1.0` | No comment in the schema. |
 | `LennardJonesParams.cutoff` | 2 | `Float64` | `15.0` | No comment in the schema. |
+| `LennardJonesParams.switchWidth` | 3 | `Float64` | `0.0` | No comment in the schema. |
 
 #### struct MorseParams
 
@@ -34302,20 +35166,7 @@ Geometry, species and units remain on ForceInput.
 | `MorseParams.a` | 1 | `Float64` | `1.6047` | No comment in the schema. |
 | `MorseParams.re` | 2 | `Float64` | `2.897` | No comment in the schema. |
 | `MorseParams.cutoff` | 3 | `Float64` | `9.5` | No comment in the schema. |
-
-#### struct MullerBrownParams
-
-Four entries per list, or none.
-The PotentialConfig arms page has the rule.
-
-| Member | Ordinal | Type | Default | Description |
-|-
-| `MullerBrownParams.amplitude` | 0 | `List(Float64)` |  | No comment in the schema. |
-| `MullerBrownParams.a` | 1 | `List(Float64)` |  | No comment in the schema. |
-| `MullerBrownParams.b` | 2 | `List(Float64)` |  | No comment in the schema. |
-| `MullerBrownParams.c` | 3 | `List(Float64)` |  | No comment in the schema. |
-| `MullerBrownParams.x0` | 4 | `List(Float64)` |  | No comment in the schema. |
-| `MullerBrownParams.y0` | 5 | `List(Float64)` |  | No comment in the schema. |
+| `MorseParams.switchWidth` | 4 | `Float64` | `0.0` | No comment in the schema. |
 
 #### struct ZBLParams
 
@@ -34363,52 +35214,8 @@ The PotentialConfig arms page has the rule.
 | `D4Params.atm` | 2 | `Bool` | `true` | No comment in the schema. |
 | `D4Params.periodic` | 3 | `Bool` | `false` | Box as a 3D lattice; dftd4 adds the virial. |
 
-#### struct MOPACParams
-
-| Member | Ordinal | Type | Default | Description |
-|-
-| `MOPACParams.charge` | 0 | `Int32` | `0` | No comment in the schema. |
-| `MOPACParams.spin` | 1 | `Int32` | `0` | Spin excitations, not multiplicity. |
-| `MOPACParams.model` | 2 | `Int32` | `4` | AM1. |
-| `MOPACParams.tolerance` | 3 | `Float64` | `1.0` | No comment in the schema. |
-| `MOPACParams.maxTime` | 4 | `Int32` | `3600` | No comment in the schema. |
-| `MOPACParams.enginePath` | 5 | `Text` |  | No comment in the schema. |
-
-#### struct SkalaParams
-
-| Member | Ordinal | Type | Default | Description |
-|-
-| `SkalaParams.xc` | 0 | `Text` | `"skala-1.1"` | No comment in the schema. |
-| `SkalaParams.basis` | 1 | `Text` | `"def2-tzvp"` | No comment in the schema. |
-| `SkalaParams.charge` | 2 | `Int32` | `0` | No comment in the schema. |
-| `SkalaParams.multiplicity` | 3 | `Int32` | `1` | No comment in the schema. |
-| `SkalaParams.enginePath` | 4 | `Text` |  | No comment in the schema. |
-| `SkalaParams.nwchemRoot` | 5 | `Text` |  | No comment in the schema. |
-
-#### struct CompositeTerm
-
-One child of a composite potential: a weighted, switchable PotentialSpec.
-
-| Member | Ordinal | Type | Default | Description |
-|-
-| `CompositeTerm.name` | 0 | `Text` |  | Label in the component record and the log. |
-| `CompositeTerm.enabled` | 1 | `Bool` | `true` | A disabled term is recorded and never evaluated. |
-| `CompositeTerm.weight` | 2 | `Float64` | `1.0` | Any finite value; -1 subtracts the term. |
-| `CompositeTerm.pot` | 3 | `PotentialSpec` |  | The child backend and its settings. |
-
-#### struct CompositeParams
-
-A weighted sum of child potentials (rgpot::SumPot).
-Energy, forces and stress are sum_i weight_i * term_i over the enabled terms.
-A DFT engine with its own dispersion off plus a dispersion term is one use; subtracting an engine's built-in correction is another.
-
-| Member | Ordinal | Type | Default | Description |
-|-
-| `CompositeParams.terms` | 0 | `List(CompositeTerm)` |  | No comment in the schema. |
-
 #### struct D2Params
 
-Grimme's DFT-D2 as a lattice sum (rgpot::D2Pot).
 S.
 Grimme, J.
 Comput.
@@ -34426,7 +35233,6 @@ A non-empty functional takes s6 and d from dftd3's D2 table instead of the field
 
 #### struct D2CpmdParams
 
-CPMD's built-in empirical D2, minimum image (rgpot::D2CpmdPot).
 The term OpenCPMD adds with EMPIRICAL CORRECTION / ALL DFT-D2, with its tables, damping and truncation, so a composite can subtract it from a run that had it on.
 A non-empty functional takes s6 from CPMD's set_s6.
 
@@ -34438,13 +35244,89 @@ A non-empty functional takes s6 from CPMD's set_s6.
 | `D2CpmdParams.functional` | 3 | `Text` |  | CPMD functional name; empty keeps s6. |
 | `D2CpmdParams.symmetry` | 4 | `Int32` | `-1` | CPMD SYMMETRY code (ibrav); -1 reads it from the box. |
 
-#### struct NeighborRequest
+#### struct MullerBrownParams
 
-Neighbour query.
-The same columns as rgpot::nlist::Query and rgpot_nlist_soa. format: 0 half pairs, 1 full pairs, 2 cluster of four.
-A cluster is the full interaction set.
-There is no half cluster, because format is one field. cut: 0 strict (distance < cutoff), 1 loose (distance < cutoff + skin, or distance <= cutoff when skin is 0). mode: 1 one stored chunk, 2 a stream that honours cursor and limit. 0 is not a mode. cursor is the pair index this chunk starts at. limit is the maximum pairs in the reply. 0 means 4096 on a stream. periodic empty means every axis is periodic.
-Box rows are the lattice vectors.
+Four entries per list, or none.
+The PotentialConfig arms page has the rule.
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `MullerBrownParams.amplitude` | 0 | `List(Float64)` |  | No comment in the schema. |
+| `MullerBrownParams.a` | 1 | `List(Float64)` |  | No comment in the schema. |
+| `MullerBrownParams.b` | 2 | `List(Float64)` |  | No comment in the schema. |
+| `MullerBrownParams.c` | 3 | `List(Float64)` |  | No comment in the schema. |
+| `MullerBrownParams.x0` | 4 | `List(Float64)` |  | No comment in the schema. |
+| `MullerBrownParams.y0` | 5 | `List(Float64)` |  | No comment in the schema. |
+
+#### struct CompositeParams
+
+Energy, forces and stress are sum_i weight_i * term_i over the enabled terms.
+A DFT engine with its own dispersion off plus a dispersion term is one use; subtracting an engine's built-in correction is another.
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `CompositeParams.terms` | 0 | `List(CompositeTerm)` |  | No comment in the schema. |
+
+#### struct CompositeTerm
+
+One child of a composite potential: a weighted, switchable PotentialSpec.
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `CompositeTerm.name` | 0 | `Text` |  | Label in the component record and the log. |
+| `CompositeTerm.enabled` | 1 | `Bool` | `true` | A disabled term is recorded and never evaluated. |
+| `CompositeTerm.weight` | 2 | `Float64` | `1.0` | Any finite value; -1 subtracts the term. |
+| `CompositeTerm.pot` | 3 | `PotentialSpec` |  | The child backend and its settings. |
+
+#### struct ORCAParams
+
+ORCA energy and gradient through the orca executable (orcac).
+Every field that shapes the calculation is the caller's: there is no default method or basis.
+The input is `! <method> <basis> <keywords> EnGrad`, `%pal nprocs` when nprocs is above 1, `%maxcore`, and the coordinates in Angstrom.
+Keywords that start with `!= or =%`, or span several lines, are copied verbatim after the generated header instead.
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `ORCAParams.executable` | 0 | `Text` |  | Path or bare name of orca; empty looks up orca on PATH. |
+| `ORCAParams.method` | 1 | `Text` |  | Method keyword, e.g. "PBE0", "UKS PBE0", "r2SCAN-3c". Required. |
+| `ORCAParams.basis` | 2 | `Text` |  | Basis keyword; empty for a composite method. |
+| `ORCAParams.keywords` | 3 | `Text` |  | Further simple-input keywords or a verbatim block. |
+| `ORCAParams.charge` | 4 | `Int32` | `0` | No comment in the schema. |
+| `ORCAParams.multiplicity` | 5 | `Int32` | `1` | 2S + 1. |
+| `ORCAParams.nprocs` | 6 | `Int32` | `1` | %pal nprocs; above 1 ORCA starts its own MPI ranks. |
+| `ORCAParams.maxcoreMb` | 7 | `Int32` | `1024` | %maxcore, MB per process. |
+| `ORCAParams.restart` | 8 | `Bool` | `true` | Start each call from the previous orbitals (MORead). |
+| `ORCAParams.scratchDir` | 9 | `Text` |  | Parent of the per-instance working directory; empty uses the temporary directory. |
+| `ORCAParams.keepFiles` | 10 | `Bool` | `false` | Keep the working directory after the instance ends. |
+| `ORCAParams.timeoutS` | 11 | `Float64` | `3600.0` | Seconds for one orca run; 0 waits without a limit. |
+
+#### struct MOPACParams
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `MOPACParams.charge` | 0 | `Int32` | `0` | No comment in the schema. |
+| `MOPACParams.spin` | 1 | `Int32` | `0` | Spin excitations, not multiplicity. |
+| `MOPACParams.model` | 2 | `Int32` | `4` | AM1 (0 PM7, 1 PM6-D3H4, 2 PM6-ORG, 3 PM6, 4 AM1, 5 RM1). |
+| `MOPACParams.tolerance` | 3 | `Float64` | `1.0` | No comment in the schema. |
+| `MOPACParams.maxTime` | 4 | `Int32` | `3600` | No comment in the schema. |
+| `MOPACParams.enginePath` | 5 | `Text` |  | No comment in the schema. |
+| `MOPACParams.epsilon` | 6 | `Float64` | `1.0` | COSMO dielectric; 1.0 is vacuum. |
+| `MOPACParams.solver` | 7 | `Int32` | `0` | 0 conventional MOPACC_SOLVER_MOPAC, 1 MOPACC_SOLVER_MOZYME. |
+| `MOPACParams.extraKeywords` | 8 | `Text` | `""` | No comment in the schema. |
+| `MOPACParams.cell` | 9 | `MopacCellParams` |  | No comment in the schema. |
+
+#### struct SkalaParams
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `SkalaParams.xc` | 0 | `Text` | `"skala-1.1"` | No comment in the schema. |
+| `SkalaParams.basis` | 1 | `Text` | `"def2-tzvp"` | No comment in the schema. |
+| `SkalaParams.charge` | 2 | `Int32` | `0` | No comment in the schema. |
+| `SkalaParams.multiplicity` | 3 | `Int32` | `1` | No comment in the schema. |
+| `SkalaParams.enginePath` | 4 | `Text` |  | No comment in the schema. |
+| `SkalaParams.nwchemRoot` | 5 | `Text` |  | No comment in the schema. |
+
+#### struct NeighborRequest
 
 | Member | Ordinal | Type | Default | Description |
 |-
@@ -34459,7 +35341,7 @@ Box rows are the lattice vectors.
 | `NeighborRequest.mode` | 8 | `UInt8` | `1` | No comment in the schema. |
 | `NeighborRequest.cursor` | 9 | `UInt64` | `0` | No comment in the schema. |
 | `NeighborRequest.limit` | 10 | `UInt32` | `0` | No comment in the schema. |
-| `NeighborRequest.systems` | 11 | `List(NeighborSystem)` |  | Empty for one system. Each entry is a system that does not interact with the others. Positions are concatenated in the same order, and NeighborList.first indexes that concatenation. NeighborList.system is the system of each pair. |
+| `NeighborRequest.systems` | 11 | `List(NeighborSystem)` |  | No comment in the schema. |
 
 #### struct NeighborSystem
 
@@ -34469,9 +35351,6 @@ Box rows are the lattice vectors.
 | `NeighborSystem.box` | 1 | `List(Float64)` |  | No comment in the schema. |
 
 #### struct NeighborList
-
-One chunk. first and second have the same length. shift has 3 times that length when shifts were requested, vector has 3 times that length, distance has that length. mask is one byte per pair, 0xff for a pair list and the low four bits for a cluster. more is true when a later chunk exists. next is the cursor to send for that chunk. status 0 is success. message is a sentence when status is not 0.
-The lists are empty in that case.
 
 | Member | Ordinal | Type | Default | Description |
 |-
@@ -34485,7 +35364,118 @@ The lists are empty in that case.
 | `NeighborList.next` | 7 | `UInt64` | `0` | No comment in the schema. |
 | `NeighborList.status` | 8 | `Int32` | `0` | No comment in the schema. |
 | `NeighborList.message` | 9 | `Text` |  | No comment in the schema. |
-| `NeighborList.system` | 10 | `List(Int32)` |  | System id of each pair. Empty when the request named one system. |
+| `NeighborList.system` | 10 | `List(Int32)` |  | No comment in the schema. |
+
+#### struct MopacCellParams
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `MopacCellParams.nlattice` | 0 | `Int32` | `0` | 0..3 periodic lattice vectors |
+| `MopacCellParams.nlatticeMove` | 1 | `Int32` | `0` | number of movable lattice vectors during mopacc_relax |
+| `MopacCellParams.pressureGpa` | 2 | `Float64` | `0.0` | No comment in the schema. |
+| `MopacCellParams.latticeAngstrom` | 3 | `List(Float64)` |  | 9 elements row-major in Angstrom |
+
+#### enum LammpcPlaneCoordinates
+
+| Enumerant | Ordinal | Description |
+|-
+| `LammpcPlaneCoordinates.massWeighted` | 0 | The `massWeighted` value of `enum LammpcPlaneCoordinates`. |
+| `LammpcPlaneCoordinates.cartesian` | 1 | The `cartesian` value of `enum LammpcPlaneCoordinates`. |
+
+#### struct LammpcMdConfig
+
+Mirrors LammpcMdConfig in lammpc/include/lammpc.h:53-59.
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `LammpcMdConfig.timeStepPs` | 0 | `Float64` | `0.001` | No comment in the schema. |
+| `LammpcMdConfig.thermalEnergyEv` | 1 | `Float64` | `0.02585` | No comment in the schema. |
+| `LammpcMdConfig.frictionPerPs` | 2 | `Float64` | `1.0` | No comment in the schema. |
+| `LammpcMdConfig.seed` | 3 | `UInt64` | `0` | No comment in the schema. |
+| `LammpcMdConfig.coordinates` | 4 | `LammpcPlaneCoordinates` | `massWeighted` | No comment in the schema. |
+
+#### struct LammpcBoundaryConfig
+
+Mirrors lammpc_boundary.h hyperplane / hard-boundary controls.
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `LammpcBoundaryConfig.enabled` | 0 | `Bool` | `false` | No comment in the schema. |
+| `LammpcBoundaryConfig.planePoint` | 1 | `List(Float64)` |  | No comment in the schema. |
+| `LammpcBoundaryConfig.planeNormal` | 2 | `List(Float64)` |  | No comment in the schema. |
+| `LammpcBoundaryConfig.reflectVelocities` | 3 | `Bool` | `true` | No comment in the schema. |
+
+#### struct PotlibParams
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `PotlibParams.surfaceId` | 0 | `Text` | `""` | No comment in the schema. |
+| `PotlibParams.parameterSetIndex` | 1 | `UInt16` | `0` | No comment in the schema. |
+
+#### struct ExternalPotParams
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `ExternalPotParams.executablePath` | 0 | `Text` | `"ext_pot"` | No comment in the schema. |
+| `ExternalPotParams.potentialsDirectory` | 1 | `Text` | `"."` | No comment in the schema. |
+| `ExternalPotParams.mpiPollPeriodSeconds` | 2 | `Float64` | `0.0` | No comment in the schema. |
+| `ExternalPotParams.mpiRank` | 3 | `Int32` | `0` | No comment in the schema. |
+
+#### struct PluginPotentialParams
+
+Explicit union arm for third-party / runtime-loaded plugin potentials.
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `PluginPotentialParams.pluginName` | 0 | `Text` |  | No comment in the schema. |
+| `PluginPotentialParams.pluginVersion` | 1 | `Text` | `""` | No comment in the schema. |
+| `PluginPotentialParams.libraryPath` | 2 | `Text` | `""` | No comment in the schema. |
+| `PluginPotentialParams.schemaId` | 3 | `Text` | `""` | No comment in the schema. |
+| `PluginPotentialParams.opaquePayload` | 4 | `Data` |  | No comment in the schema. |
+
+#### struct CommonMethodPatch
+
+Presence-aware patch version of CommonMethodSpec using `unset / value` unions, so explicit arm values equal to schema defaults ("BLYP", 70.0 Ry, charge 0, multiplicity 1) are never misidentified as unset.
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `CommonMethodPatch.xcFunctionals` | 0 | `Common.OptTextList` |  | No comment in the schema. |
+| `CommonMethodPatch.basisSet` | 1 | `Common.OptText` |  | No comment in the schema. |
+| `CommonMethodPatch.planewaveCutoffEv` | 2 | `Common.OptFloat64` |  | No comment in the schema. |
+| `CommonMethodPatch.charge` | 3 | `Common.OptInt32` |  | No comment in the schema. |
+| `CommonMethodPatch.spinMultiplicity` | 4 | `Common.OptInt32` |  | No comment in the schema. |
+| `CommonMethodPatch.scfEnergyToleranceEv` | 5 | `Common.OptFloat64` |  | No comment in the schema. |
+| `CommonMethodPatch.scfMaxIterations` | 6 | `Common.OptInt32` |  | No comment in the schema. |
+| `CommonMethodPatch.kMesh` | 7 | `Common.OptInt32List` |  | No comment in the schema. |
+| `CommonMethodPatch.smearingKind` | 8 | `Common.OptUInt8` |  | No comment in the schema. |
+| `CommonMethodPatch.smearingWidthEv` | 9 | `Common.OptFloat64` |  | No comment in the schema. |
+| `CommonMethodPatch.vanDerWaalsMethod` | 10 | `Common.OptText` |  | No comment in the schema. |
+| `CommonMethodPatch.relativityMethod` | 11 | `Common.OptText` |  | No comment in the schema. |
+| `CommonMethodPatch.vanDerWaalsS6` | 12 | `Common.OptFloat64` |  | No comment in the schema. |
+
+#### struct RpcEndpointConfig
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `RpcEndpointConfig.host` | 0 | `Text` | `"127.0.0.1"` | No comment in the schema. |
+| `RpcEndpointConfig.port` | 1 | `UInt16` | `0` | No comment in the schema. |
+| `RpcEndpointConfig.unixSocketPath` | 2 | `Text` | `""` | No comment in the schema. |
+| `RpcEndpointConfig.timeoutMilliseconds` | 3 | `UInt32` | `30000` | No comment in the schema. |
+| `RpcEndpointConfig.autoSpawnEngine` | 4 | `Bool` | `true` | No comment in the schema. |
+| `RpcEndpointConfig.engineBinaryPath` | 5 | `Text` | `""` | No comment in the schema. |
+| `RpcEndpointConfig.engineLibraryPath` | 6 | `Text` | `""` | No comment in the schema. |
+| `RpcEndpointConfig.engineRootDir` | 7 | `Text` | `""` | No comment in the schema. |
+
+#### struct PotentialPatch
+
+| Member | Ordinal | Type | Default | Description |
+|-
+| `PotentialPatch.hasBackendOverride` | 0 | `Bool` | `false` | No comment in the schema. |
+| `PotentialPatch.backendConfig` | 1 | `PotentialConfig` |  | No comment in the schema. |
+| `PotentialPatch.commonPatch` | 2 | `CommonMethodPatch` |  | No comment in the schema. |
+| `PotentialPatch.neighborList` | 3 | `Common.NeighborListPatch` |  | No comment in the schema. |
+| `PotentialPatch.logPotentialCalls` | 4 | `Common.OptBool` |  | No comment in the schema. |
+| `PotentialPatch.emtRasmussenParameters` | 5 | `Common.OptBool` |  | No comment in the schema. |
 
 ---
 
@@ -37707,9 +38697,15 @@ Every other copy sits between cogapp markers in a file listed in
 `pixi.toml` (the workspace key only), `towncrier.toml`, `docs/source/conf.py`
 (Sphinx `version` and `release`), the `RGPOT_VERSION` macros of
 `rgpot-core/include/rgpot.h` and the dependency snippets of
-`rgpot-core/README.md` and `rgpot-core/README.org`.
+`rgpot-core/README.md`, `rgpot-core/README.org`,
+`docs/orgmode/howto/coupled-well-engine.org` and `docs/orgmode/howto/potlibc-engine.org`.
 `ci/version/rgpot_version.py` reads the version from `Cargo.toml` for those
 snippets.
+`CITATION.cff` keeps `version` and `date-released` between cogapp markers too.
+The date is the one in the `CHANGELOG.md` heading of the version.
+JSON has no comments, so `codemeta.json` and `.zenodo.json` carry no markers.
+`rgpot_version.py json` writes their version and date.
+`version-drift` checks both files.
 Regenerate the copies, or check them, with the cogapp tasks of the `version`
 pixi environment, which pins cogapp 3.6.0:
 
@@ -37891,10 +38887,11 @@ The prepare check ignores that subject as well.
 
    - `cargo run -q -p potctl --bin potctl -- release sync {{version}}` writes
      `[workspace.package] version` in `Cargo.toml` and nothing else
-   - `pixi r -e version release-cog` regenerates the copies
-   - `cargo update --workspace --offline` rewrites the `Cargo.lock` entries
    - `uvx towncrier build --yes --version {{version}}` updates `CHANGELOG.md`
      and clears the fragments
+   - `pixi r -e version release-cog` regenerates the copies, and takes the
+     `date-released` of the citation files from the new `CHANGELOG.md` heading
+   - `cargo update --workspace --offline` rewrites the `Cargo.lock` entries
    - `cargo run -q -p potctl --bin potctl -- release assert --require-changelog {{version}}`
      is the gate
 
@@ -38174,59 +39171,39 @@ The `build.rs` tries the bundled copy first, then falls back to
 `CppCore/rgpot/rpc/Potentials.capnp` in the monorepo.
 When neither exists, it writes an empty stub module instead.
 
-### How do I repin potentials-schema?
+### How do I repin the schema?
 
-Both vendored copies
-(`CppCore/rgpot/rpc/Potentials.capnp` and `rgpot-core/schema/Potentials.capnp`)
-are the pinned upstream `Potentials.capnp` byte for byte.
-A parent project such as gpridge resolves `potentials-schema` from its own wrap
-and compares the copies with that file, so the wrap carries no `diff_files`.
-Change `revision` and `directory` in `subprojects/potentials-schema.wrap` and
-copy the upstream file over both copies.
+The schema is rgconf's `crates/rgconf-core/schema/potential.capnp`. Both
+vendored copies (`CppCore/rgpot/rpc/Potentials.capnp` and
+`rgpot-core/schema/Potentials.capnp`) are that file at the commit
+`CppCore/rgpot/rpc/schema.pin` names, byte for byte, each with rgconf's
+`common.capnp` beside it, because `potential.capnp` imports it.
+Change `revision` in `schema.pin` and copy both rgconf files over both copies.
 Then append the new ordinals to `CppCore/rgpot/rpc/Potentials.ordinals`:
 
 ```bash
-python3 CppCore/rgpot/rpc/schema_ledger.py append
+python3 CppCore/rgpot/rpc/schema_ledger.py append --fetch
 python3 CppCore/rgpot/rpc/schema_ledger.py check --fetch --base origin/develop
 ```
 
 The ledger is append only.
 `check` fails when a line changes, moves or disappears relative to `--base`,
 when the pinned schema renumbers, retypes or drops a recorded ordinal, when a
-vendored copy is not the pinned file, and when the effective schema disagrees
-with the ledger.
-Ordinals belong to potentials-schema: add a new field or arm there first, then
-repin.
+vendored file is not the pinned file, when the two copies differ, and when a
+copy disagrees with the ledger.
+Without `--fetch` (or `--upstream` naming a local `potential.capnp`) it skips
+the comparison with the pin and checks the rest.
 The `schema_ledger` job of `CI (orchestrator)` runs this check with `--fetch`
 and, when the base commit is available, `--base` set to the pull request base.
-The meson `schema` suite runs it too, and with the `potentials-schema`
-subproject also `schema-sync-canonical-rpc` and `schema-sync-canonical-core`
-against that checkout.
+The meson `schema` suite runs it without the network.
 
-### How do I add an rgpot-local schema field?
+### How do I add a schema field?
 
-Only when upstream cannot take it yet.
-Write a diff against the vendored copy that only adds lines, put it in
-`CppCore/rgpot/rpc/local/`, append its name to
-`local/series`, and copy both files to `rgpot-core/schema/local/`.
-Leave the vendored copies alone.
-`schema_ledger.py append` then records each new ordinal as `local`:
-
-```bash
-python3 CppCore/rgpot/rpc/schema_ledger.py append
-python3 CppCore/rgpot/rpc/schema_ledger.py check --fetch --base origin/develop
-python3 CppCore/rgpot/rpc/schema_ledger.py apply --out build/Potentials.capnp
-```
-
-A series diff may not remove or rewrite a line that carries an `@N` ordinal, and
-every ordinal it adds must be a `local` ledger entry that upstream does not
-declare.
-Meson, CMake and `rgpot-core/build.rs` compile, install and serve the effective
-schema, the vendored copy with the series applied; `apply` writes the same file.
-When upstream later adopts the field unchanged, repin, drop it from the series
-and run `append`: the `local` line stays and a later `upstream` line for the
-same ordinal retires it.
-`check` refuses the repin until that is done.
+Add it to rgconf's `potential.capnp` first, then repin.
+rgpot carries no local schema members any more: the fields it used to add
+through a local diff series are in rgconf at the ordinals rgpot gave them,
+and the ledger records each of them as `local` followed by the line that
+retired it, now `upstream`.
 
 ### Why is the crate README in org-mode?
 
@@ -38905,11 +39882,11 @@ fills a half pair list, periodic boundaries and every geometry column.
 structure-of-arrays buffers. `rgpot_nlist_strerror` names a code. A
 cluster with a half shell is `RGPOT_NLIST_SHAPE`.
 
-The rgpot-local schema diff `CppCore/rgpot/rpc/local/neighbour-chunk.diff`
-adds `NeighborRequest`, `NeighborList`, an optional `ForceInput.neighbors` at
-ordinal 9, an optional `PotentialResult.neighborList` at ordinal 28, and
-`Potential.neighbours` at ordinal 13 to the `Potentials.capnp` that rgpot
-compiles and installs; the vendored copy is the pinned upstream file. Older fields are
+`Potentials.capnp` has `NeighborRequest`, `NeighborList`, an optional
+`ForceInput.neighbors` at ordinal 9, an optional `PotentialResult.neighborList`
+at ordinal 28, and `Potential.neighbours` at ordinal 13; rgpot added them
+through a local schema diff before rgconf's schema adopted them at the same
+ordinals. Older fields are
 unchanged. `NeighborRequest.mode = 2` asks for a stream: a chunk sets
 `NeighborList.more` and `next`, and the client repeats the call with
 `cursor` instead of receiving every pair in one message. `mode = 1` is
@@ -40159,9 +41136,8 @@ URL: https://rgpot.rgoswami.me/notes/neighbour_api_design.html
 
 The public surface is `rgpot::nlist::Query`, `Builder` and `Walk`, the C
 ABI in `CppCore/rgpot/nlist/rgpot_nlist.h`, and `NeighborRequest` /
-`NeighborList`, which the rgpot-local schema diff
-`CppCore/rgpot/rpc/local/neighbour-chunk.diff` adds to the
-`Potentials.capnp` that rgpot compiles and installs. The classical
+`NeighborList` in `Potentials.capnp`, which rgpot added through a local
+schema diff before rgconf's schema adopted them at the same ordinals. The classical
 kernels keep `rgpot::nlist::Neighbours`. This log is the design of the
 public surface. Each pass below was written against the API as it stood,
 then the API moved. A code block inside a pass shows the API at that
