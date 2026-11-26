@@ -6538,7 +6538,8 @@ The kernel does not read the atomic numbers; every atom is aluminium.
 - Python: `rgpot.EAMAlPot`.
 - `rgpot-eval`, LAMMPS
   `pair_coeff` and PLUMED name: `EAMAl` (a build with the Fortran potentials), as in `pair_coeff * * EAMAl Al`.
-- `potserv`: no type name.
+- `potserv`: type `EAMAl` (a build with the Fortran potentials), as in
+  `potserv 12345 EAMAl`.
 - Reference: [C++ potentials](https://rgpot.rgoswami.me/reference/cpp_potentials.html),
   [Fortran potentials](https://rgpot.rgoswami.me/reference/fortran_potentials.html) and
   [Python API](https://rgpot.rgoswami.me/reference/python_api.html).
@@ -10884,12 +10885,31 @@ The source in `CppCore/rgpot/MetatomicPot/MetatomicPot.cc` does this:
 - Forces are minus the autograd gradient of that energy with respect to the
   positions.
   No stress is written.
-- With `random_rotation` or `n_symmetry_rotations` above 0, the energy and
-  forces are averaged over rotated copies, and the variance is the RMS force
-  spread over the copies.
-  A model
-  `energy_uncertainty` output replaces that variance when `uncertainty_threshold`
-  is above 0.
+- With `n_symmetry_rotations` above 0, the model runs on that many rotated
+  copies of the geometry, rotated about the centroid, and the energy and forces
+  are averaged over them.
+  With `random_rotation` alone there is one rotated copy and no average.
+- The variance is the mean-square residual of the force.
+  It sums the squared difference between each copy's force and the returned
+  force over every copy, atom and Cartesian component, and divides by the number
+  of those terms.
+  Its unit is (eV/Angstrom)^2, and it is not the RMS spread, so take one square
+  root to get a force scale.
+  It is 0 when there is a single pass.
+  With `so3_probe_scatter` the unrotated copy gives the energy and forces, and
+  the residuals of the rotated copies are measured from that force.
+- With `uncertainty_threshold` above 0 and a per-atom `energy_uncertainty`
+  output in the model, the variance is instead `energy_uncertainty_mean`
+  squared.
+  Here `energy_uncertainty_mean` is the mean of that output over the atoms of
+  the first pass, in eV.
+  Its unit is eV^2, and one square root recovers the mean.
+  The threshold only switches the output on; its value is never compared with
+  anything.
+  A model without a per-atom `energy_uncertainty` output turns the switch off
+  and the force residual above is reported.
+- Two or more systems evaluated together without rotation in one model call
+  report a variance of 0.
 - `charge` and `spin` are attached as system data named `rgpot::charge`,
   `rgpot::spin_multiplicity` and `rgpot::spin` when the model lists them in `requested_inputs`.
   `attach_system_extras` attaches all three whatever the model lists.
@@ -12320,7 +12340,10 @@ energy and one derivative per term once.
 - Forces: `F = sum_i (df/dE_i) F_i`, with the analytic derivatives `df/dE_i`
   that Lepton differentiates at construction.
   There is no finite-difference path.
-- Variance: `sum_i (df/dE_i) var_i`, or 0 when any child variance is not finite.
+- Variance: \(\sum_i (\partial f/\partial E_i)^2 \, v_i\), where \(v_i\) is the
+  variance of child \(i\) and each derivative is evaluated at the child
+  energies.
+  It is 0 when any child variance is not finite.
 - No stress is written, and `caps()` is the least reentrant of the children.
 - The grammar is Lepton's: `+ - * / ^`, and the functions `sqrt`, `exp`, `log`,
   `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`,
@@ -13322,8 +13345,11 @@ combination.
 #### Functional form
 
 - `E = sum_t E_t`, `F = sum_t F_t`, variance `sum_t var_t`.
-- The stress is the sum of the stresses of the terms that report one, and
-  `has_stress` is 1 when any term does.
+- The stress is the sum of the stresses of the terms, and `has_stress` is 1 only
+  when at least one term is evaluated and every evaluated term reports a stress.
+  When any evaluated term reports none, `has_stress` is 0 and the stress entries
+  are zero.
+  An empty sum reports no stress.
 - Each term is called through `forceBatch` with one system.
 - `shareNeighbours(lists)` hands one `DualList` to every `CoulombPot`,
   `DispersionPot` and `NlhPot` added so far, so those terms build one pair list.
@@ -13345,6 +13371,7 @@ The program sums a Coulomb term (default `Ewald`, 20 Angstrom cell), the default
 the energy of the sum with the three terms evaluated one by one.
 The charges (-0.8 on oxygen, 0.4 on hydrogen) are illustrative, and the Coulomb
 term has no bonded exclusions, so its energy includes the intramolecular part.
+All three terms report a stress, so the sum does too.
 
 ```cpp
 #include <cstdio>
@@ -13414,9 +13441,9 @@ int main() {
 terms in the sum: 3
 Coulomb    -15.909851 eV
 dispersion -0.067983 eV
-NLH        0.513246 eV
-sum of the three  -15.464588 eV
-SumPot energy     -15.464588 eV
+NLH        0.759529 eV
+sum of the three  -15.218305 eV
+SumPot energy     -15.218305 eV
 SumPot stress reported: yes
 ```
 
@@ -17228,16 +17255,20 @@ calculate_many(frames, properties=("energy", "forces"), *, attach=False, threads
 rgpot.ase.RgpotRpcCalculator(host="localhost", port=12345, *, server_proc=None, orbital_key=None, **kwargs)
 ```
 
-- Inputs :: `host` and `port` of a running `potserv`; `server_proc`, an optional
-  managed process this calculator stops on `close` (prefer `spawn`);
-  `orbital_key`, the optional image or bead key sent with each calculation;
-  other keywords are ASE calculator arguments.
+- Inputs :: `host` and `port` of a running `potserv`.
+  `server_proc` is an optional managed process this calculator stops on `close`
+  (prefer `spawn`).
+  `orbital_key` is the optional image or bead key sent with each calculation.
+  Other keywords are ASE calculator arguments.
 - Units :: the `ForceInput` defaults, Angstrom and eV, which are ASE's units.
   A `Atoms` without a full cell is sent in a 100 Angstrom cubic box.
 - Outputs :: a calculator whose
-  `implemented_properties` are `energy` and `forces`; `free_energy` equals
-  `energy`.
-  The constructor retries the connection 120 times, 0.25 s apart.
+  `implemented_properties` are `energy`, `free_energy` and `forces`, plus
+  `stress` when the server potential reports that capability; `free_energy`
+  equals `energy`.
+  The constructor reads the server capabilities once connected, and `calculate`
+  reads them again.
+  It retries the connection 120 times, 0.25 s apart.
 - Errors :: a server that cannot be reached raises `RuntimeError` naming the
   address; a missing `pycapnp` raises its import error.
   A second thread that enters `calculate` or `close` while the first is inside
@@ -17268,8 +17299,8 @@ select_orbitals(key)
 - Units :: none.
 - Outputs :: nothing; the key is sent with each later `ForceInput`.
   `atoms.info["rgpot_orbital_key"]` overrides it for that calculation.
-- Errors :: conversion of a value that is not integer-like raises `TypeError`
-  or `ValueError`.
+- Errors :: conversion of a value that is not integer-like raises `TypeError` or
+  `ValueError`.
 
 #### `rgpot.ase.RgpotRpcCalculator.calculate`
 
@@ -17280,8 +17311,32 @@ calculate(atoms=None, properties=("energy",), system_changes=all_changes)
 - Inputs :: the `Atoms`, properties and change flags, as ASE passes them.
 - Units :: Angstrom in, eV and eV/Angstrom out.
 - Outputs :: nothing; `self.results` holds `energy`, `free_energy` and `forces`.
+  A request that includes `stress` on a server potential that reports it calls
+  `calculateStress`, and `self.results` also holds `stress` in ASE Voigt order,
+  in eV/Angstrom^3.
+  The one reply fills energy, forces and stress together.
 - Errors :: `RuntimeError` when another thread is inside the calculator; an RPC
   failure propagates.
+  A request for `stress` raises `PropertyNotImplementedError` when the cell is
+  not fully periodic and three-dimensional, or when the server potential does
+  not report stress.
+
+#### `rgpot.ase.RgpotRpcCalculator.get_property`
+
+```python
+get_property(name, atoms=None, allow_calculation=True)
+```
+
+- Inputs :: the property `name`, the `Atoms` and the ASE `allow_calculation`
+  flag.
+- Units :: the units of the property: eV for energies,
+  eV/Angstrom for forces, eV/Angstrom^3 for stress.
+- Outputs :: the cached or newly calculated property, as ASE returns it.
+  For `stress` the call first reads the server capabilities again, so a server
+  potential that no longer reports stress is detected before ASE consults its
+  cache.
+- Errors :: `PropertyNotImplementedError` for `stress` when the server potential
+  does not report it; the errors of `calculate` otherwise.
 
 #### `rgpot.ase.RgpotRpcCalculator.close`
 
@@ -22994,6 +23049,70 @@ int main() {
   `std::invalid_argument` if `platform` is empty, `time_step` or `temperature`
   is not positive and finite, or `friction` is negative or non-finite.
 
+#### `rgpot::OpenMMSession`
+
+- Inputs :: `OpenMMSession(system, config)` with an owned
+  `std::unique_ptr<OpenMM::System>` and an `OpenMMSessionConfig`.
+  The session is move-only.
+  `setPositions` and `setVelocities` take one `OpenMM::Vec3` per particle;
+  `stepLangevin` and `runLangevin` take `kT`, `friction`, `time_step`, a plane
+  point and normal and the wall points and normals, each one `OpenMM::Vec3` per
+  particle, a step count and a seed, and `runLangevin` also an `OpenMMWallMode`
+  and whether to record the constraint force.
+- Units :: OpenMM native units: nm, nm/ps, kJ/mol,
+  kJ/(mol nm), amu and ps; `kT` in kJ/mol and `friction` in ps^-1.
+- Outputs :: `numParticles()` and `masses()` describe the System.
+  `stepNVE` advances unconstrained Verlet dynamics with the configured or an
+  explicit step.
+  `stepLangevin` and `runLangevin` run the `rgpot::md::ProjectedLangevin` driver
+  on the Context: projected BAOAB on the 3N hyperplane in the inverse-mass
+  metric, with the System's distance constraints held in every step and planar
+  walls.
+  The first force of a call is evaluated on the hyperplane.
+  `stepLangevin` returns the number of wall reflections and `runLangevin` an
+  `OpenMMLangevinResult`; an empty plane point and normal run `runLangevin`
+  without the hyperplane.
+  A call with the seed of the previous call continues its stream, and setting
+  positions or velocities ends it.
+  `state()` returns an `OpenMMState`; `boxVectors`, `geometry`,
+  `setPeriodicBox`, `usesPeriodicBoundaryConditions` and `initialize` read and
+  set the cell and evaluate the forces once so a failure shows early.
+- Errors :: the constructor throws `std::invalid_argument` for a null System,
+  bad settings, an empty platform, a System with no particles or no massive
+  particle, a negative mass, or a virtual site.
+  The setters and steppers throw `std::invalid_argument` for a vector count that
+  differs from the System, a non-finite entry, a negative NVE step count, or a
+  wall point list and normal list of different lengths; errors of
+  `rgpot::md::ProjectedLangevin` and of OpenMM pass through.
+
+#### `rgpot::OpenMMWallMode`
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: `Reflect` or `Reject`, the treatment of a drift that ends outside a
+  wall, mapped onto `rgpot::md::WallMode`.
+  `stepLangevin` always reflects.
+- Errors :: none.
+
+#### `rgpot::OpenMMLangevinResult`
+
+- Inputs :: none; a struct returned by `OpenMMSession::runLangevin`.
+- Units :: `constraint_force` in kJ/(mol nm).
+- Outputs ::
+  `wall_hits`, the wall reflections of the run, and `constraint_force`, one
+  Lagrange multiplier `lambda = -(n . M^-1 F) / (n M^-1 n)` per step for the
+  unit normal over the 3N coordinates when recording was requested and a plane
+  is set, the mean of the two force kicks of the step.
+- Errors :: none.
+
+#### `rgpot::OpenMMState`
+
+- Inputs :: none; a struct returned by `OpenMMSession::state`.
+- Units :: nm, nm/ps, kJ/(mol nm) and kJ/mol.
+- Outputs :: `positions`, `velocities` and `forces`, one `OpenMM::Vec3` per
+  particle, and `potential_energy` and `kinetic_energy`.
+- Errors :: none.
+
 ### Members common to several classes
 
 These members have the same declaration in each class that has them.
@@ -23549,10 +23668,11 @@ entry says otherwise.
 
 #### `rgpot::cache::KeyHash`
 
-- Inputs :: a `size_t` hash.
+- Inputs :: a `uint64_t` hash, which is 64 bits on every platform.
 - Units :: none.
-- Outputs :: the numeric key of a configuration, with `slice()`, which returns
-  the raw bytes of the hash as a `rocksdb::Slice`.
+- Outputs :: the numeric key of a configuration, in the public member `hash`.
+  The cache stores it under a key of one version byte and the eight bytes of the
+  hash in little-endian order.
 - Errors :: none.
 
 #### `rgpot::cache::PotentialCache`
@@ -23624,6 +23744,54 @@ entry says otherwise.
 - Errors ::
   `std::invalid_argument` for a malformed request and `std::domain_error` when
   the kernel returns a non-finite value.
+
+#### `rgpot::DerivativeReport`
+
+- Inputs :: none; a struct returned by `GradientJet::gradientJet`.
+- Units :: `operations` is a count; `scale` is in the units of the returned jet,
+  eV/Angstrom for a direction in Angstrom.
+- Outputs :: `tracked`, `operations` and `scale`.
+  When `tracked` is true, `operations` times the machine epsilon times `scale`
+  is a first-order estimate of the roundoff of the returned derivatives, not a
+  rigorous bound.
+  For a batch `operations` is the sum and `scale` the largest value over the
+  systems.
+  The engine table copies it into `RgpotEngineDerivativeReport` and writes zero
+  `operations` and `scale` when `tracked` is false; `rgpot_core::engine` reads
+  it back as `DerivativeReport` with an unsigned `operations`.
+- Errors :: none.
+
+#### `rgpot::GradientJet`
+
+- Inputs :: an abstract interface that a potential derives next to
+  `Potential<Derived>`, declared in `rgpot/GradientJet.hpp`.
+  `gradientJet(systems, nAtoms, positions, atomicNrs, boxes, directions, order, jet)`
+  takes `systems` systems that share `nAtoms` atoms and `atomicNrs`, with
+  `positions` and `directions` of `systems * 3 * nAtoms` values, `boxes` of
+  `systems * 9` values and an `order` from 1 to `maxJetOrder()`; the buffers
+  must not overlap.
+- Units :: positions, directions and cells in Angstrom; every block of `jet` is
+  eV/Angstrom.
+- Outputs :: `maxJetOrder()` returns the highest order the potential serves, at
+  least 1.
+  `gradientJet` writes `order * systems * 3 * nAtoms` values to `jet`, laid out
+  `[order][system][3 * nAtoms]`: block `k - 1` of a system is the `k`-th
+  derivative with respect to `t` of the gradient of the energy at
+  `positions + t * direction`, at `t = 0`.
+  Order 1 is the Hessian-vector product.
+  It returns a `DerivativeReport` for the whole call.
+  The engine table finds the interface with `dynamic_cast`.
+  `PotentialBase` and its layout stamp therefore do not change.
+  The table serves `rgpot_engine_taylor_jet` through the interface.
+  It reports `maxJetOrder()` as `RgpotEngineCaps.jet_order`, which is 0 for a
+  potential without the interface.
+  `rgpot::CBEPot` implements it.
+- Errors :: `maxJetOrder` is `noexcept`.
+  `gradientJet` may throw; the engine table holds the jet in a scratch buffer
+  and returns `RGPOT_ENGINE_ERR_EVAL` with the message, leaving the caller's jet
+  and report untouched.
+  The engine table refuses an order above `maxJetOrder()` with
+  `RGPOT_ENGINE_ERR_UNSUPPORTED` before it calls the potential.
 
 ### Fused engine calls and kept potentials
 
@@ -24658,6 +24826,142 @@ The C ABI of these types is in [Neighbour-list C ABI](https://rgpot.rgoswami.me/
 - Outputs :: one dense block in the pair Hessian assembly.
 - Errors :: none.
 
+### Projected Langevin dynamics
+
+`rgpot/MDSession/ProjectedLangevin.hpp` holds the BAOAB driver that every MD
+session engine shares, in the namespace `rgpot::md`.
+The driver knows no units: its arrays have one entry per coordinate, three per
+atom in atom-major order, `kT` is in mass times velocity squared of those
+arrays, the friction in inverse time and the time step in time.
+`rgpot::OpenMMSession` calls it in OpenMM native units.
+
+#### `rgpot::md::SplitMix64`
+
+- Inputs :: `SplitMix64(seed)` with a 64-bit seed.
+- Units :: none.
+- Outputs :: a generator whose stream is a pure function of the seed on every
+  platform.
+  `nextU64()` returns the next 64-bit word, `nextUniform()` a double in the open
+  interval (0, 1) from its top 53 bits, and `nextNormal()` a standard normal
+  from the Box-Muller pair, whose spare value is part of the state.
+- Errors :: none; every member is `noexcept`.
+
+#### `rgpot::md::SeededStream`
+
+- Inputs :: none to construct.
+  `forSeed(seed)` takes the seed of the stream wanted.
+- Units :: none.
+- Outputs :: `forSeed` returns the live `SplitMix64` when `seed` is the seed of
+  the previous call, with its state and spare as that call left them, and
+  otherwise starts the stream of `seed` from its beginning.
+  A run split in chunks with one seed therefore draws the same numbers as one
+  long run.
+  `reset()` ends the live stream, so the same seed after a new state replays the
+  same noise.
+- Errors :: none.
+
+#### `rgpot::md::WallMode`
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: `Reflect` mirrors a drift that ends outside a wall back inside and
+  reflects the velocity in the mass-weighted metric, as often as needed;
+  `Reject` undoes the drift and reflects the velocity.
+  Both keep the velocity on the constraint manifold.
+- Errors :: none.
+
+#### `rgpot::md::WallSpec`
+
+- Inputs :: none; a struct of `point` and `normal`, one entry per coordinate
+  each.
+- Units :: the length unit of the positions for `point`; `normal` need not be
+  unit length.
+- Outputs :: one planar hard wall `normal . (x - point) <` 0= over all
+  coordinates.
+- Errors :: `ProjectedLangevin::run` throws `std::invalid_argument` when either
+  vector has the wrong length or a non-finite entry, or the normal is zero.
+
+#### `rgpot::md::PlaneSpec`
+
+- Inputs :: none; a struct of `point` and `normal`, one entry per coordinate
+  each.
+- Units :: the length unit of the positions for `point`; `normal` need not be
+  unit length.
+- Outputs :: the hyperplane `normal . (x - point) = 0` that the dynamics stays
+  on.
+  The driver normalises the normal and corrects positions with `x -` M^-1 n
+  sigma / (n M^-1 n)= and velocities with `v -` M^-1 n (n . v) / (n M^-1 n)=.
+- Errors :: `ProjectedLangevin::run` throws `std::invalid_argument` when either
+  vector has the wrong length or a non-finite entry, the normal is zero, or it
+  acts on no massive coordinate.
+
+#### `rgpot::md::DistanceConstraint`
+
+- Inputs :: none; a struct of the atom indices `first` and `second` and the
+  `length` between them.
+  Atom `a= owns the coordinates =3a`, `3a + 1` and `3a + 2`.
+- Units :: the length unit of the positions.
+- Outputs :: one fixed distance that holds in every step, through the SHAKE
+  iteration on the positions and a conjugate gradient projection of the
+  velocities on all constraint gradients.
+- Errors :: the `ProjectedLangevin` constructor throws `std::invalid_argument`
+  for an index past the last atom, two equal atoms or a length that is not
+  positive and finite.
+
+#### `rgpot::md::LangevinSettings`
+
+- Inputs :: none; a struct of `kT`, `friction`, `timeStep`, `steps`, `seed`,
+  `wallMode` (default `WallMode::Reflect`) and `recordConstraintForce` (default
+  false).
+- Units :: `kT` in mass times velocity squared of the arrays, `friction` in
+  inverse time and `timeStep` in time.
+- Outputs :: the controls of one `ProjectedLangevin::run`.
+  `seed` starts the stream of the overload of `run` that takes no generator, and
+  `recordConstraintForce` asks for one plane multiplier per step in
+  `LangevinResult`.
+- Errors :: `run` throws `std::invalid_argument` unless `kT` and `timeStep` are
+  positive and finite and `friction` is finite and not negative.
+
+#### `rgpot::md::LangevinResult`
+
+- Inputs :: none; a struct returned by `ProjectedLangevin::run`.
+- Units :: the force and energy units of the caller's force function.
+- Outputs :: `wallHits`, the wall reflections of the run; `constraintForce`, one
+  entry per step when recorded and a plane is set, the mean of the plane
+  multipliers `lambda = -(n . M^-1 F) / (n M^-1 n)` of the two force kicks of
+  the step; `forces`, the forces at the final positions, and `potential`, the
+  energy there.
+  A run of zero steps returns it empty.
+- Errors :: none.
+
+#### `rgpot::md::ProjectedLangevin`
+
+- Inputs :: `ProjectedLangevin(masses, distances = {})` with one mass per
+  coordinate, where zero marks a coordinate that does not move, and the
+  `DistanceConstraint` list that holds in every run.
+  `run(settings, plane, walls, x, v, forces, rng)` takes a `LangevinSettings`, a
+  `PlaneSpec` pointer that may be null, a vector of `WallSpec`, the positions
+  and velocities, updated in place, a `ForceFunction` that returns the energy
+  and writes the forces, and a `SplitMix64`; the overload without `rng` starts
+  one from `settings.seed`.
+- Units :: those of the caller's arrays; the driver converts none.
+- Outputs :: `run` first moves the state onto the constraints, evaluates the
+  force there and integrates `settings.steps` steps of
+  `B(dt/2) A(dt/2) O(dt) A(dt/2) B(dt/2)`, with the walls applied after each
+  half drift.
+  It returns a `LangevinResult`.
+  `dimension()` returns the coordinate count.
+  The object holds no state between runs, so the stream lives in the caller's
+  generator.
+- Errors :: the constructor throws `std::invalid_argument` for a negative or
+  non-finite mass, no massive coordinate, distance constraints on a coordinate
+  count that is not a multiple of three, or a malformed constraint.
+  `run` throws `std::invalid_argument` for bad settings, plane or walls.
+  It throws the same for positions that start outside a wall.
+  It throws `std::runtime_error` when the constraints are degenerate, the
+  constraint solve or the position iteration does not converge, or the walls
+  cannot return the state inside.
+
 ---
 
 # i-PI driver client
@@ -24993,11 +25297,11 @@ potserv <port> <PotentialType>
   name.
   `LJ`, `LJCluster`, `Morse`, `ZBL`, `Eckart`, `MullerBrown`,
   `ModifiedMullerBrown`, `LEPS-HH2`, `LEPS-HCl2`, `LEPS-FH2`, `DoubleWell`,
-  `CoupledProtonWell`, `NWChem[:basis[:theory[:xc]]]` and `CPMD` are always
-  offered.
-  The rest depend on the build: `CuH2`, `CBE`, `IPI:unix:<path>`,
-  `IPI:tcp:<host>:<port>`, `XTB`, `GFNFF`, `GFN0xTB`, `GFN1xTB`, `TBLite`,
-  `TBLiteGFN2`, `TBLiteGFN1`, `TBLiteIPEA1`, `D3`, `D4`,
+  `CoupledProtonWell`, `Composite`, `D2`, `D2Cpmd`,
+  `NWChem[:basis[:theory[:xc]]]` and `CPMD` are always offered.
+  The rest depend on the build: `CuH2` and `EAMAl` (the Fortran potentials),
+  `CBE`, `IPI:unix:<path>`, `IPI:tcp:<host>:<port>`, `XTB`, `GFNFF`, `GFN0xTB`,
+  `GFN1xTB`, `TBLite`, `TBLiteGFN2`, `TBLiteGFN1`, `TBLiteIPEA1`, `D3`, `D4`,
   `Metatomic:<model_path>[:<device>]`, `Uma:<model_path>[:<task>]`,
   `Skala[:<basis>]` and `CP2K`.
   The program is built only with the RPC stack and not with
@@ -31132,9 +31436,9 @@ Examples: "angstrom", "bohr", "eV", "hartree", "kJ/mol", "kcal/mol".
 | `ForceInput.charge` | 6 | `Int32` | `0` | Per-step charge when hasCharge is true. |
 | `ForceInput.hasMultiplicity` | 7 | `Bool` | `false` | Override NWChemParams.multiplicity for this step. |
 | `ForceInput.multiplicity` | 8 | `Int32` | `1` | Per-step spin multiplicity when hasMultiplicity is true. |
-| `ForceInput.neighbors` | 9 | `NeighborRequest` |  | Optional. Old clients leave it unset and no neighbour list is returned. |
-| `ForceInput.hasOrbitalKey` | 10 | `Bool` | `false` | Select keyed orbitals for this image or bead. |
-| `ForceInput.orbitalKey` | 11 | `Int64` | `0` | Per-step orbital key when hasOrbitalKey is true. |
+| `ForceInput.neighbors` | 9 | `NeighborRequest` |  | Present from protocol minor 0. Clients that leave it unset receive no neighbour list. |
+| `ForceInput.hasOrbitalKey` | 10 | `Bool` | `false` | Protocol minor 2: select keyed orbitals. |
+| `ForceInput.orbitalKey` | 11 | `Int64` | `0` | Protocol minor 2: image or bead key. |
 
 #### struct PotentialResult
 
