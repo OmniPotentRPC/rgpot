@@ -1897,3 +1897,307 @@ fields_from_density(chi, dchi, density, lapl_chi=None, hess_chi=None)
 - Errors :: =density= not =(nbf, nbf)= raises =ValueError=; the shape errors of
   =contract= apply to the other arrays.
   =chi= or =density= of the wrong dtype or order raises =TypeError=.
+
+** ASE module
+
+=rgpot.ase= imports ASE; =import rgpot= does not.
+=RgpotRpcCalculator= is resolved on first access, so the package imports without
+=pycapnp=.
+Units are ASE units: energy in eV, forces in
+eV/Angstrom and stress in eV/Angstrom^3.
+The how-to is [[file:../howto/ase.org][ASE how-to]].
+
+*** =rgpot.ase.RgpotCalculator=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.RgpotCalculator(potential, *, numerical_stress=False, stress_step=1e-6, **kwargs)
+#+end_src
+
+- Inputs :: =potential=, an rgpot potential object or a kind string naming a
+  potential class of this build (see
+  =available_kinds=); other keyword arguments are ASE calculator arguments (=label=, =directory=, ...) or, for a kind string, the constructor arguments of the potential class, for example =u0=, =cutoff=, =psi=, =switch_width=
+  for ="lj"=.
+  =numerical_stress= adds =stress= for a kernel that writes none, from a central difference of the energy under six cell strains of =stress_step=;
+  each stress then costs twelve energy calls.
+- Units :: eV, eV/Angstrom, eV/Angstrom^3; =stress= is ASE Voigt order
+  =(xx, yy, zz, yz, xz, xy)= with ASE's sign, and the per-atom =stresses= sum to
+  =stress=.
+  =free_energy= equals =energy=.
+- Outputs :: an ASE calculator over the potential.
+  =implemented_properties= is =energy=, =free_energy= and =forces=, plus
+  =stress= when the kernel reports one or
+  =numerical_stress= is set, plus =energies= when the potential has =evaluate_per_atom=
+  and =stresses= when it also reports stress.
+  The bound kernels are fully periodic, so the calculator tiles a cell narrower
+  than twice the kernel cutoff, pads an open cell to a cubic box of at least 100
+  Angstrom and orthogonalises a slab or wire cell.
+  The calculator pickles and copies when it was built from a kind string or a
+  bound rgpot potential.
+- Errors :: an unknown kind raises =ValueError= listing the kinds of the build;
+  a constructor argument the class does not accept raises =ValueError= listing
+  the accepted names; keyword arguments with a potential object raise
+  =ValueError=; an object that is neither a potential nor a kind string raises
+  =TypeError=.
+  A non-periodic kernel with a periodic =pbc= raises =ValueError= asking for
+  =pbc=False=.
+  Pickling a calculator over a potential it cannot rebuild raises =TypeError=.
+  =calculate= is not reentrant; only =__rg_evaluate__= may run on several
+  threads.
+
+*** =rgpot.ase.RgpotCalculator.potential=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: the rgpot potential object the calculator evaluates.
+- Errors :: none.
+
+*** =rgpot.ase.RgpotCalculator.set=
+
+#+attr_rgpot: signature
+#+begin_src python
+set(**kwargs)
+#+end_src
+
+- Inputs :: ASE calculator keywords, or constructor arguments of the potential.
+- Units :: those of the argument.
+- Outputs :: the dict of changed parameters, as ASE returns.
+  A changed potential argument rebuilds the potential and resets the stored
+  results.
+- Errors :: a potential argument on a calculator that cannot rebuild its
+  potential raises =ValueError=, and so does a new =potential= (build a new
+  calculator to change the kind).
+
+*** =rgpot.ase.RgpotCalculator.calculate=
+
+#+attr_rgpot: signature
+#+begin_src python
+calculate(atoms=None, properties=("energy",), system_changes=all_changes)
+#+end_src
+
+- Inputs :: the =Atoms=, the requested properties and the ASE change flags.
+- Units :: eV, eV/Angstrom, eV/Angstrom^3.
+- Outputs :: nothing; =self.results= holds =energy=, =free_energy= and =forces=
+  and, when reported, =stress=, =energies= and =stresses=.
+- Errors :: a request through
+  =get_property= for =stress= on a kernel without one, with =numerical_stress=
+  off, raises ASE's =PropertyNotImplementedError=.
+  Numerical stress on a cell of zero volume raises =ValueError=.
+
+*** =rgpot.ase.RgpotCalculator.get_hessian=
+
+#+attr_rgpot: signature
+#+begin_src python
+get_hessian(atoms)
+#+end_src
+
+- Inputs :: =atoms=, ignored.
+- Units :: none.
+- Outputs :: nothing; no bound potential reports an analytic Hessian.
+- Errors :: always raises =NotImplementedError= naming the potential class.
+
+*** =rgpot.ase.RgpotCalculator.calculate_many=
+
+#+attr_rgpot: signature
+#+begin_src python
+calculate_many(frames, properties=("energy", "forces"), *, attach=False, threads=0)
+#+end_src
+
+- Inputs :: =frames=, an iterable of =Atoms=; =properties=; =attach=, which
+  writes a =SinglePointCalculator= onto each =Atoms=; =threads=, the
+  =BatchEvaluator= worker count, where 0 selects the hardware concurrency.
+- Units :: eV, eV/Angstrom, eV/Angstrom^3.
+- Outputs :: a list with one dict per frame holding the requested =energy=,
+  =free_energy=, =forces= and, on an analytic kernel, =stress=.
+  Energy and forces match one =calculate= call per frame bit for bit, and the
+  worker count is not part of the result.
+  The frames are not mutated.
+- Errors :: the geometry errors of the constructor, per frame.
+
+*** =rgpot.ase.RgpotRpcCalculator=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.RgpotRpcCalculator(host="localhost", port=12345, *, server_proc=None, orbital_key=None, **kwargs)
+#+end_src
+
+- Inputs :: =host= and =port= of a running =potserv=.
+  =server_proc= is an optional managed process this calculator stops on =close=
+  (prefer =spawn=).
+  =orbital_key= is the optional image or bead key sent with each calculation.
+  Other keywords are ASE calculator arguments.
+- Units :: the =ForceInput= defaults, Angstrom and eV, which are ASE's units.
+  A =Atoms= without a full cell is sent in a 100 Angstrom cubic box.
+- Outputs :: a calculator whose
+  =implemented_properties= are =energy=, =free_energy= and =forces=, plus
+  =stress= when the server potential reports that capability; =free_energy=
+  equals =energy=.
+  The constructor reads the server capabilities once connected, and =calculate=
+  reads them again.
+  It retries the connection 120 times, 0.25 s apart.
+- Errors :: a server that cannot be reached raises =RuntimeError= naming the
+  address; a missing =pycapnp= raises its import error.
+  A second thread that enters =calculate= or =close= while the first is inside
+  raises =RuntimeError=.
+
+*** =rgpot.ase.RgpotRpcCalculator.spawn=
+
+#+attr_rgpot: signature
+#+begin_src python
+spawn(server_bin, potential="CuH2", port=None, *, startup_timeout=30.0, **kwargs)
+#+end_src
+
+- Inputs ::
+  =server_bin=, the =potserv= path, or =None= to read =RGPOT_POTSERV_BIN=; =potential=, the name passed to =potserv=; =port=, or =None= for a free one; =startup_timeout=,
+  accepted and ignored.
+- Units :: none.
+- Outputs :: a calculator bound to a =potserv= it launched; a class method.
+  Closing the calculator kills that process.
+- Errors :: a missing binary raises =FileNotFoundError=; a failed connection
+  kills the process and re-raises.
+
+*** =rgpot.ase.RgpotRpcCalculator.select_orbitals=
+
+#+attr_rgpot: signature
+#+begin_src python
+select_orbitals(key)
+#+end_src
+
+- Inputs :: =key=, the image or bead whose orbitals later calculations use.
+- Units :: none.
+- Outputs :: nothing; the key is sent with each later =ForceInput=.
+  =atoms.info["rgpot_orbital_key"]= overrides it for that calculation.
+- Errors :: conversion of a value that is not integer-like raises =TypeError= or
+  =ValueError=.
+
+*** =rgpot.ase.RgpotRpcCalculator.calculate=
+
+#+attr_rgpot: signature
+#+begin_src python
+calculate(atoms=None, properties=("energy",), system_changes=all_changes)
+#+end_src
+
+- Inputs :: the =Atoms=, properties and change flags, as ASE passes them.
+- Units :: Angstrom in, eV and eV/Angstrom out.
+- Outputs :: nothing; =self.results= holds =energy=, =free_energy= and =forces=.
+  A request that includes =stress= on a server potential that reports it calls
+  =calculateStress=, and =self.results= also holds =stress= in ASE Voigt order,
+  in eV/Angstrom^3.
+  The one reply fills energy, forces and stress together.
+- Errors :: =RuntimeError= when another thread is inside the calculator; an RPC
+  failure propagates.
+  A request for =stress= raises =PropertyNotImplementedError= when the cell is
+  not fully periodic and three-dimensional, or when the server potential does
+  not report stress.
+
+*** =rgpot.ase.RgpotRpcCalculator.get_property=
+
+#+attr_rgpot: signature
+#+begin_src python
+get_property(name, atoms=None, allow_calculation=True)
+#+end_src
+
+- Inputs :: the property =name=, the =Atoms= and the ASE =allow_calculation=
+  flag.
+- Units :: the units of the property: eV for energies,
+  eV/Angstrom for forces, eV/Angstrom^3 for stress.
+- Outputs :: the cached or newly calculated property, as ASE returns it.
+  For =stress= the call first reads the server capabilities again, so a server
+  potential that no longer reports stress is detected before ASE consults its
+  cache.
+- Errors :: =PropertyNotImplementedError= for =stress= when the server potential
+  does not report it; the errors of =calculate= otherwise.
+
+*** =rgpot.ase.RgpotRpcCalculator.close=
+
+#+attr_rgpot: signature
+#+begin_src python
+close()
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: nothing; the connection closes and a managed server is killed.
+  A second call does nothing to the connection.
+  The calculator is also a context manager that calls =close= on exit.
+- Errors :: =RuntimeError= when another thread is inside the calculator.
+
+*** =rgpot.ase.AnnealRunner=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.AnnealRunner(atoms, *, budget=20000, seed=0, pad=3.0, use_forces=True)
+#+end_src
+
+- Inputs :: =atoms=, with a calculator attached; =budget=, the combined
+  objective and gradient evaluation budget; =seed=, the RNG seed; =pad=, the
+  search-box half-width around the starting coordinates in Angstrom;
+  =use_forces=, which passes the calculator forces to the optimizer as the
+  analytic gradient.
+- Units :: =pad= in Angstrom; energies in eV.
+- Outputs :: a runner that relaxes the =Atoms= with the global optimizer of the
+  =anneal= package.
+  It is not an =ase.optimize.Optimizer=.
+  =result= holds the optimizer's result dict after =run=, and is =None= before.
+- Errors :: atoms without a calculator raise =ValueError=.
+
+*** =rgpot.ase.AnnealRunner.run=
+
+#+attr_rgpot: signature
+#+begin_src python
+run()
+#+end_src
+
+- Inputs :: none.
+- Units :: Angstrom positions, eV energies.
+- Outputs :: the =Atoms=, with the best geometry found written back in place.
+- Errors :: a missing =anneal= package raises =ImportError=.
+
+*** =rgpot.ase.AnnealRunner.get_potential_energy=
+
+#+attr_rgpot: signature
+#+begin_src python
+get_potential_energy()
+#+end_src
+
+- Inputs :: none.
+- Units :: eV.
+- Outputs :: the best energy found, a float.
+- Errors :: =RuntimeError= (=call run() first=) before =run=.
+
+*** =rgpot.ase.AnnealRunner.nevals=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: the number of objective plus gradient evaluations of the last
+  =run=, and 0 before it.
+- Errors :: none.
+
+*** =rgpot.ase.AnnealOptimizer=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.AnnealOptimizer(atoms, *, budget=20000, seed=0, pad=3.0, use_forces=True)
+#+end_src
+
+- Inputs :: those of =AnnealRunner=.
+- Units :: those of =AnnealRunner=.
+- Outputs :: an =AnnealRunner= under its deprecated name, with the same methods.
+- Errors :: emits =DeprecationWarning= on construction; the errors of
+  =AnnealRunner= otherwise.
+
+*** =rgpot.ase.available_kinds=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.available_kinds()
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the sorted list of kind strings =RgpotCalculator= accepts in this
+  build.
+  Each potential class that is callable is reachable by its lower-case name with
+  or without the =Pot= suffix, ignoring =_=, =-=, =.= and spaces, and
+  =lennardjones= names =LJPot=.
+- Errors :: none.

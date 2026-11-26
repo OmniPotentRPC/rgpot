@@ -1,0 +1,1491 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Dispersion, long-range and composite potentials
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Dispersion, long-range and composite potentials
+
+This page covers eight =PotType= enumerators that add a term to another
+potential, build one potential out of others, or hand the evaluation to another
+program.
+=D3= and =D4= wrap the s-dftd3 and dftd4 libraries.
+=Expr= combines named child potentials with a Lepton expression.
+=IPI= asks an i-PI driver for the energy and forces over a socket.
+=LrCoulomb=, =LrDispersion=, =LrNlh= and =LrSum= are the classes of namespace
+=rgpot::lr=.
+They need =-Dwith_long_range=true=.
+=D3= needs =-Dwith_dftd3=true=, =D4= needs =-Dwith_dftd4=true=, =Expr= needs
+=-Dwith_expr=true= and =IPI= needs =-Dwith_ipi=enabled= (or =auto= on a POSIX
+host).
+None of them has a name for =rgpot-eval= or =pair_coeff=: =engines/pot_spec.cpp=
+does not build them.
+[[file:../reference/potential_names.org][Potential names and options]] lists the
+names it does accept.
+
+Every C++ example below was compiled and run against the headers of this tree.
+The Python snippet is only compiled, because the build used here has no Python
+module.
+The long-range examples need a build with =-Dwith_long_range=true=.
+The library examples also need =-Dwith_dftd3=true= and =-Dwith_dftd4=true=
+(s-dftd3 and dftd4 from conda-forge).
+All energies are in eV, forces in eV/Angstrom and stresses in eV/Angstrom^3.
+Atomic units appear only where a formula says bohr or hartree.
+
+** =D2= Grimme DFT-D2
+
+=rgpot::D2Pot= is the in-tree DFT-D2 implementation.
+It belongs with the additive terms on this page because it is typically paired
+with an electronic-structure backend or another short-range potential.
+
+The constructor takes =rgpot::D2Config= and defaults to the BLYP set.
+The complete signatures, parameters and error cases are documented in
+[[file:../reference/cpp_potentials.org][C++ potentials]] under the D2 entries.
+
+** =D2Cpmd= CPMD-compatible D2
+
+=rgpot::D2CpmdPot= is the CPMD-compatible D2 variant.
+It mirrors CPMD's historical =VDW CORRECTION ON= behaviour and is mainly used as
+a correction term in mixed setups.
+
+The constructor takes =rgpot::D2CpmdConfig=.
+Its parameter tables, equations and tests are documented in
+[[file:../reference/cpp_potentials.org][C++ potentials]] under the D2Cpmd
+entries.
+
+** =D3= Grimme DFT-D3 through s-dftd3
+
+*** What it is and how to reach it
+
+=rgpot::D3Pot= evaluates the DFT-D3 dispersion energy of a molecule with the
+s-dftd3 C API (=dftd3.h=).
+Use it as the dispersion summand next to a method that has none, for example
+inside an =ExprPot=.
+The C++ class is =rgpot::D3Pot= with =rgpot::D3Config=.
+Python has =rgpot.D3Pot(damping="bj", functional="pbe", atm=True)=.
+=potserv= (a =-Dwith_rpc=true= build) accepts the type name =D3=, which runs the
+default =D3Config= (rational damping, PBE, three-body term on).
+The signature and the error list are in
+[[file:../reference/cpp_potentials.org][C++ potentials]], under Dispersion
+libraries.
+The class converts positions to bohr and the result back to eV and eV/Angstrom.
+It evaluates the structure without periodicity, needs a non-null cell, writes no
+stress and does not share an instance between threads.
+
+*** Functional form
+
+The library holds the kernel, so the form below is read from the in-tree
+neighbour-list D3(BJ) kernel in =CppCore/rgpot/LongRange/FastD3.cc=.
+That kernel reproduces the library energy for the water molecule below to the
+printed digits, with the same parameters as the table.
+Distances are in bohr and the dispersion energy is negative.
+
+- Total: =E = E2 + E3=, converted from hartree to eV.
+- Two-body with rational (Becke-Johnson) damping:
+  =E2 = - sum_{i<j} C6_ij (s6 / (r^6 + R0^6) + s8 Q_ij / (r^8 + R0^8))=.
+- =Q_ij = 3 r4r2_i r4r2_j= and =R0 = a1 sqrt(Q_ij) + a2=.
+  =r4r2_i = sqrt(0.5 t_Z sqrt(Z))= where =t_Z= is the tabulated ratio of
+  expectation values of =r^4= and =r^2= for element =Z= (=kD3R4OverR2= in
+  =CppCore/rgpot/LongRange/D3Tables.inc=).
+- Reference weighting:
+  =C6_ij = sum_{ab} w_a(CN_i) w_b(CN_j) C6ref(Z_i a, Z_j b)=, with
+  =w_a(CN) = exp(-4 (CN - CN_a)^2)= normalised over the reference systems =a= of
+  the element.
+- Coordination number: =CN_i = sum_j 1 / (1 + exp(-16 (Rc_ij / r_ij - 1)))=,
+  where =Rc_ij= is the sum of the two covalent radii, each scaled by 4/3.
+- Three-body (Axilrod-Teller-Muto), only when =atm= is true:
+  =E3 = sum_{i<j<k} c9 f_damp ang=, with
+  =c9 = - s9 sqrt(|C6_ij C6_ik C6_jk|)= and =ang = (3 cos(a) cos(b) cos(c) + 1) / (r_ij r_ik r_jk)^3=.
+  =f_damp = 1 / (1 + 6 (R0_ij R0_ik R0_jk / (r_ij r_ik r_jk))^((alp + 2) / 3))=
+  where the =R0= of this term are 4/3 times the tabulated pair radii.
+- Zero damping (=D3Damping::Zero=) is the other form the class offers.
+  Its parameters come from the library and are not in this tree.
+
+*** Parameters
+
+=D3Config= has three fields.
+The damping parameters are chosen by the library from =functional=.
+The row for the PBE rational-damping set is the in-tree copy (=D3BjParam= in
+=CppCore/rgpot/LongRange/FastD3.hpp=), which agrees with the library for the
+water molecule below.
+
+| Parameter    | Value      | Unit      | Set in                             |
+|--------------+------------+-----------+------------------------------------|
+| =damping=    | =BJ=       | none      | =D3Config::damping=                |
+| =functional= | ="pbe"=    | method key | =D3Config::functional=            |
+| =atm=        | =true=     | none      | =D3Config::atm=                    |
+| =s6=         | 1.0        | none      | =D3BjParam::s6=, =FastD3.hpp=      |
+| =s8=         | 0.7875     | none      | =D3BjParam::s8=, =FastD3.hpp=      |
+| =s9=         | 1.0        | none      | =D3BjParam::s9=, =FastD3.hpp=      |
+| =a1=         | 0.4289     | none      | =D3BjParam::a1=, =FastD3.hpp=      |
+| =a2=         | 4.4407     | bohr      | =D3BjParam::a2=, =FastD3.hpp=      |
+| =alp=        | 14.0       | none      | =D3BjParam::alp=, =FastD3.hpp=     |
+
+The reference coefficients (=C6ref=, =CN_a=, the radii) are not copied here.
+They are in =CppCore/rgpot/LongRange/D3Tables.inc=, copied from simple-dftd3,
+and in the library the class links.
+The constructor throws
+=std::invalid_argument= for an empty =functional= and =std::runtime_error= when
+the library has no damping parameters for it.
+
+*** Example
+
+The program evaluates one water molecule with rational and zero damping, with
+and without the three-body term.
+It needs s-dftd3 to run.
+
+#+attr_rgpot: run requires=has_dftd3 link=rgpot
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/D3Pot/D3Pot.hpp"
+
+int main() {
+  const double pos[9] = {0.0, 0.0,      0.11779,  0.0,  0.75545,
+                         -0.47116, 0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+  const rgpot::D3Damping dampings[2] = {rgpot::D3Damping::BJ,
+                                        rgpot::D3Damping::Zero};
+  const char *names[2] = {"BJ", "zero"};
+  for (int d = 0; d < 2; ++d) {
+    for (int atm = 1; atm >= 0; --atm) {
+      rgpot::D3Config cfg;
+      cfg.damping = dampings[d];
+      cfg.functional = "pbe";
+      cfg.atm = atm != 0;
+      rgpot::D3Pot pot(cfg);
+      double forces[9] = {};
+      rgpot::ForceInput in{3, pos, z, box};
+      rgpot::ForceOut out{};
+      out.F = forces;
+      pot.forceImpl(in, &out);
+      std::printf("%-4s atm=%d energy %.6e eV, force on O z %.6e eV/Angstrom\n",
+                  names[d], atm, out.energy, forces[2]);
+    }
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+BJ   atm=1 energy -9.781987e-03 eV, force on O z 7.430807e-05 eV/Angstrom
+BJ   atm=0 energy -9.781993e-03 eV, force on O z 7.436929e-05 eV/Angstrom
+zero atm=1 energy -9.729176e-05 eV, force on O z 5.472821e-05 eV/Angstrom
+zero atm=0 energy -9.729817e-05 eV, force on O z 5.478943e-05 eV/Angstrom
+#+end_example
+
+The three-body term of a water molecule is of the order of 1e-8 eV, so it moves
+the sixth digit of the energy.
+From Python the same potential is one line.
+
+#+attr_rgpot: compile requires=has_dftd3
+#+begin_src python
+import numpy as np
+import rgpot
+
+pot = rgpot.D3Pot(damping="bj", functional="pbe", atm=True)
+positions = np.array([[0.0, 0.0, 0.11779],
+                      [0.0, 0.75545, -0.47116],
+                      [0.0, -0.75545, -0.47116]])
+energy, forces, variance = pot(positions, [8, 1, 1], np.diag([40.0] * 3))
+#+end_src
+
+*** Literature
+
+No paper of Rohit Goswami that was checked for this page uses the D3 surface.
+
+- Grimme, Antony, Ehrlich, Krieg, J. Chem.
+  Phys. 132, 154104 (2010), doi:10.1063/1.3382344.
+  Defines DFT-D3: the coordination-number dependent =C6= and the zero-damping
+  form.
+- Grimme, Ehrlich, Goerigk, J. Comput.
+  Chem. 32, 1456-1465 (2011), doi:10.1002/jcc.21759.
+  Defines the Becke-Johnson rational damping that =D3Damping::BJ= selects.
+- Axilrod, Teller, J. Chem.
+  Phys. 11, 299-300 (1943), doi:10.1063/1.1723844.
+  Defines the three-body triple-dipole term that =atm= switches.
+- The per-functional damping parameters are held by the s-dftd3 library.
+  This tree names no table for them.
+
+** =D4= Grimme DFT-D4 through dftd4
+
+*** What it is and how to reach it
+
+=rgpot::D4Pot= evaluates the DFT-D4 dispersion energy of a molecule with the
+dftd4 C API (=dftd4.h=).
+D4 makes the reference polarizabilities depend on the atomic charge as well as
+on the coordination number, so use it where the charge state matters.
+The C++ class is =rgpot::D4Pot= with =rgpot::D4Config=.
+Python has =rgpot.D4Pot(functional="pbe", charge=0.0, atm=True)=.
+=potserv= accepts the type name =D4=, which runs the default =D4Config= (PBE,
+many-body term on, charge 0).
+The reference entry is under Dispersion libraries in
+[[file:../reference/cpp_potentials.org][C++ potentials]].
+The conversions and limits are those of =D3=: bohr inside, eV out, no
+periodicity, a non-null cell, no stress, one instance per thread.
+The damping is always the rational form.
+The charge is the total molecular charge passed to the library.
+
+*** Functional form
+
+The kernel is in the library.
+The in-tree neighbour-list D4 kernel in =CppCore/rgpot/LongRange/FastD4.cc= (the
+large-system path of =rgpot::lr::DispersionPot=) shows the structure.
+Its tables are "reference data from dftd4 4.3.1" and the EEQ-2019 parameters of
+multicharge 0.6.0 (=CppCore/rgpot/LongRange/D4Tables.inc=).
+
+- The two-body and three-body terms have the =D3= form above, with =alp = 16= in
+  the three-body damping and the parameters of the table below.
+- Reference weights:
+  =C6_ij = sum_{ab} w_a(i) w_b(j) C6ref_ab=, where =C6ref_ab = (3 / pi) sum_f alpha_a(i omega_f) alpha_b(i omega_f) W_f=
+  over 23 imaginary frequencies.
+- The weight of reference =a= is a sum of Gaussians in the coordination number,
+  =exp(-k (CN - CN_a)^2)= with =k = 6, 12, ...= up to the number of Gaussians of that reference, times a charge factor =zeta = exp(3 (1 - exp(2 eta (1 - q_ref / q))))=,
+  where =eta= is the chemical hardness of the element and =q= comes from the
+  atomic charges of the electronegativity-equalisation (EEQ) model.
+  The polarizabilities already contain this scaling.
+- The charge enters only through the total charge of the EEQ solve, which is
+  =D4Config::charge=.
+
+*** Parameters
+
+| Parameter    | Value        | Unit      | Set in                           |
+|--------------+--------------+-----------+----------------------------------|
+| =functional= | ="pbe"=      | method key | =D4Config::functional=          |
+| =charge=     | 0.0          | e         | =D4Config::charge=               |
+| =atm=        | =true=       | none      | =D4Config::atm=                  |
+| =s6=         | 1.0          | none      | =D4BjParam::s6=, =FastD4.hpp=    |
+| =s8=         | 0.95948085   | none      | =D4BjParam::s8=, =FastD4.hpp=    |
+| =s9=         | 1.0          | none      | =D4BjParam::s9=, =FastD4.hpp=    |
+| =a1=         | 0.38574991   | none      | =D4BjParam::a1=, =FastD4.hpp=    |
+| =a2=         | 4.80688534   | bohr      | =D4BjParam::a2=, =FastD4.hpp=    |
+| =alp=        | 16.0         | none      | =D4BjParam::alp=, =FastD4.hpp=   |
+
+The library picks the damping set from =functional=.
+The rows from =s6= on are the in-tree PBE set in
+=CppCore/rgpot/LongRange/FastD4.hpp=, which is the only functional that kernel
+knows.
+The reference tables (hundreds of values per element) are in
+=CppCore/rgpot/LongRange/D4Tables.inc= and in the library.
+=charge= is not checked.
+The constructor throws
+=std::invalid_argument= for an empty =functional= and =std::runtime_error= when
+the library cannot load parameters for it.
+
+*** Example
+
+The program evaluates the same water molecule as the =D3= example, with and
+without the many-body term.
+It needs dftd4 to run.
+
+#+attr_rgpot: run requires=has_dftd4 link=rgpot
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/D4Pot/D4Pot.hpp"
+
+int main() {
+  const double pos[9] = {0.0, 0.0,      0.11779,  0.0,  0.75545,
+                         -0.47116, 0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+  for (int atm = 1; atm >= 0; --atm) {
+    rgpot::D4Config cfg;
+    cfg.functional = "pbe";
+    cfg.charge = 0.0;
+    cfg.atm = atm != 0;
+    rgpot::D4Pot pot(cfg);
+    double forces[9] = {};
+    rgpot::ForceInput in{3, pos, z, box};
+    rgpot::ForceOut out{};
+    out.F = forces;
+    pot.forceImpl(in, &out);
+    std::printf("atm=%d energy %.6e eV, force on O z %.6e eV/Angstrom\n", atm,
+                out.energy, forces[2]);
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+atm=1 energy -5.317648e-03 eV, force on O z 3.036082e-03 eV/Angstrom
+atm=0 energy -5.317649e-03 eV, force on O z 3.036091e-03 eV/Angstrom
+#+end_example
+
+*** Literature
+
+No paper of Rohit Goswami that was checked for this page uses the D4 surface.
+
+- Caldeweyher, Ehlert, Hansen, Neugebauer, J. Chem.
+  Phys. 150, 154122 (2019), doi:10.1063/1.5090222.
+  Defines the charge-dependent D4 model and its reference data.
+- Caldeweyher, Bannwarth, Grimme, J. Chem.
+  Phys. 147, 034112 (2017), doi:10.1063/1.4993215.
+  The coordination-number model that D4 extends.
+- Caldeweyher, Mewes, Ehlert, Grimme, Phys.
+  Chem.
+  Chem.
+  Phys. 22, 8499-8512 (2020), doi:10.1039/d0cp00502a.
+  D4 for periodic systems, the setting of the in-tree periodic kernel.
+- Grimme, Ehrlich, Goerigk, J. Comput.
+  Chem. 32, 1456-1465 (2011), doi:10.1002/jcc.21759 (the rational damping form).
+- The damping parameters per functional are held by the dftd4 library.
+  This tree names no table for them.
+
+** =Expr= Lepton expression over named child potentials
+
+*** What it is and how to reach it
+
+=rgpot::ExprPot= is one potential whose energy is an algebraic function of the
+energies of other potentials.
+Use it to scale, mix or switch between surfaces, or to add a dispersion
+correction to a method, without writing a new class.
+The C++ class is =rgpot::ExprPot= (header =CppCore/rgpot/ExprPot/ExprPot.hpp=,
+built with =-Dwith_expr=true=).
+Python has =rgpot.ExprPot(expression, terms)=.
+There is no =potserv= type and no =rgpot-eval= name: =potserv= refuses the
+=expr= arm of the schema.
+[[file:exprpot.org][Compose potentials with ExprPot]] covers the Python class,
+eindir use and timing, and
+[[file:../reference/cpp_potentials.org][C++ potentials]] lists every constructor
+error under Expression of potentials.
+
+*** Functional form
+
+The constructor parses the string with OpenMM Lepton (vendored in
+=third_party/lepton=, pinned in =third_party/lepton/PIN=) and compiles the
+energy and one derivative per term once.
+
+- Energy: =E = f(E_0, E_1, ...)=, where each name in the string is the energy of
+  the child of that name, in eV.
+- Forces: =F = sum_i (df/dE_i) F_i=, with the analytic derivatives =df/dE_i=
+  that Lepton differentiates at construction.
+  There is no finite-difference path.
+- Variance: \(\sum_i (\partial f/\partial E_i)^2 \, v_i\), where \(v_i\) is the
+  variance of child \(i\) and each derivative is evaluated at the child
+  energies.
+  It is 0 when any child variance is not finite.
+- No stress is written, and =caps()= is the least reentrant of the children.
+- The grammar is Lepton's: =+ - * / ^=, and the functions =sqrt=, =exp=, =log=,
+  =sin=, =cos=, =tan=, =asin=, =acos=, =atan=, =atan2=, =sinh=, =cosh=, =tanh=,
+  =erf=, =erfc=, =step=, =delta=, =square=, =cube=, =recip=, =min=, =max=,
+  =abs=, =floor=, =ceil= and =select= (=third_party/lepton/src/Parser.cpp=).
+
+*** Parameters
+
+=ExprPot= has no numeric defaults.
+It takes two arguments.
+Each term name must be a Lepton identifier, and the expression may use only
+those names.
+
+| Parameter    | Value                | Unit | Set in                |
+|--------------+----------------------+------+-----------------------|
+| =expression= | string, no default   | eV   | =ExprPot= constructor |
+| =terms=      | name and child pairs | eV   | =ExprPot::Term=       |
+
+*** Example
+
+Two argon-like pair terms, a Lennard-Jones and a Morse potential, combined as
+=lj + 0.5*morse^2=.
+The expression is a demonstration of the chain rule, not a model.
+The program checks the force against =F_lj + E_morse F_morse=, which is the
+chain rule written out.
+
+#+attr_rgpot: run requires=has_expr link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+#include <memory>
+#include <vector>
+
+#include "rgpot/ExprPot/ExprPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Morse/MorsePot.hpp"
+
+int main() {
+  const double pos[6] = {0.0, 0.0, 0.0, 3.2, 0.0, 0.0};
+  const int z[2] = {18, 18};
+  const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+  rgpot::ForceInput in{2, pos, z, box};
+
+  const rgpot::LJConfig lj_cfg{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.40};
+  double f_lj[6] = {};
+  rgpot::ForceOut o_lj{};
+  o_lj.F = f_lj;
+  rgpot::LJPot(lj_cfg).forceImpl(in, &o_lj);
+
+  double f_morse[6] = {};
+  rgpot::ForceOut o_morse{};
+  o_morse.F = f_morse;
+  rgpot::MorsePot().forceImpl(in, &o_morse);
+
+  std::vector<rgpot::ExprPot::Term> terms;
+  terms.emplace_back("lj", std::make_unique<rgpot::LJPot>(lj_cfg));
+  terms.emplace_back("morse", std::make_unique<rgpot::MorsePot>());
+  rgpot::ExprPot pot("lj + 0.5*morse^2", std::move(terms));
+
+  double forces[6] = {};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+
+  std::printf("E_lj    %.6f eV\n", o_lj.energy);
+  std::printf("E_morse %.6f eV\n", o_morse.energy);
+  std::printf("E_expr  %.6f eV (lj + 0.5*morse^2 = %.6f eV)\n", out.energy,
+              o_lj.energy + 0.5 * o_morse.energy * o_morse.energy);
+  std::printf("dE/dE_lj    %.6f\n", pot.dEnergyDTerm("lj"));
+  std::printf("dE/dE_morse %.6f (E_morse = %.6f)\n",
+              pot.dEnergyDTerm("morse"), o_morse.energy);
+  const double chain = f_lj[3] + o_morse.energy * f_morse[3];
+  std::printf("F_x on atom 1: %.6f eV/Angstrom (chain rule %.6f)\n", forces[3],
+              chain);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+E_lj    0.026427 eV
+E_morse -0.604864 eV
+E_expr  0.209357 eV (lj + 0.5*morse^2 = 0.209357 eV)
+dE/dE_lj    1.000000
+dE/dE_morse -0.604864 (E_morse = -0.604864)
+F_x on atom 1: 0.537137 eV/Angstrom (chain rule 0.537137)
+#+end_example
+
+A dispersion correction is the same pattern with a library child:
+=ExprPot("method + d3", terms)=, where =d3= is a =D3Pot= and =method= any other
+=PotentialBase=.
+The Lennard-Jones and Morse parameters above are the defaults of =LJConfig=
+(with the values shown) and =MorseConfig= (=De= 0.7102, =a= 1.6047, =re= 2.8970,
+=cutoff= 9.5).
+
+*** Literature
+
+No paper of Rohit Goswami that was checked for this page uses ExprPot.
+No paper defines the expression form: it is the arbitrary function the user
+writes.
+The parser is OpenMM Lepton, pinned to OpenMM 8.6.0 in =third_party/lepton/PIN=.
+
+** =IPI= i-PI socket server
+
+*** What it is and how to reach it
+
+=rgpot::IPIPot= is the server side of the i-PI socket protocol.
+It binds a UNIX or TCP socket, waits for one driver (CP2K, Quantum ESPRESSO,
+FHI-aims, LAMMPS, =i-pi-py_driver= or =rgpot-ipi-driver=), sends each geometry
+and reads back the energy, forces and virial.
+Use it to run any engine that already speaks the protocol as an ordinary rgpot
+potential.
+The C++ class is =rgpot::IPIPot= with =rgpot::IPIConfig=, built with
+=-Dwith_ipi= (POSIX only).
+Python has =rgpot.IPIPot(address, timeout_s=30.0)=.
+=potserv= accepts the type name =IPI:<address>=, for example
+=IPI:tcp:127.0.0.1:31415= (=CppCore/rgpot/rpc/server.cpp=).
+There is no =rgpot-eval= name for the server.
+The opposite direction, answering a server with an rgpot potential, is
+=rgpot-ipi-driver=.
+[[file:ipi.org][The i-PI how-to]] and
+[[file:../reference/ipi_driver.org][the driver reference]] describe the
+protocol, the addresses and the driver.
+
+*** Functional form
+
+=IPIPot= has no energy function of its own.
+It sends =STATUS= until the driver says =READY= (at most eight tries), answers
+=NEEDINIT= with =INIT=, then writes =POSDATA= and =GETFORCE= and reads
+=FORCEREADY= (=CppCore/rgpot/IPIPot/IPIPot.cc=).
+The wire units are bohr, hartree and hartree/bohr, with the cell and its inverse
+as 3x3 matrices that hold the lattice vectors in columns. rgpot converts as
+follows.
+
+- Positions: =pos_bohr = pos / BOHR_TO_ANGSTROM=.
+- Energy: =E = E_hartree * HARTREE_TO_EV=.
+- Forces: =F = F_hartree_bohr * HARTREE_BOHR_TO_EV_ANGSTROM=.
+- Stress: the driver returns the extensive virial =W= in hartree, and the Cauchy
+  stress is =sigma = -W / V= in eV/Angstrom^3 with =V= in Angstrom^3.
+- The variance is 0.
+- Atomic numbers are not sent.
+  The driver keeps its own species list in the order of the geometry.
+
+*** Parameters
+
+| Parameter     | Value        | Unit    | Set in                           |
+|---------------+--------------+---------+----------------------------------|
+| =address=     | no default   | none    | =IPIConfig::address=             |
+| =timeout_s=   | 30.0         | seconds | =IPIConfig::timeout_s=           |
+| =STATUS= tries | 8           | count   | =IPIPot.cc=                      |
+
+All fields are in =CppCore/rgpot/IPIPot/IPIPot.hpp=.
+The address is =unix:/absolute/path=, =unix:<name>= (which binds
+=/tmp/ipi_<name>=), =tcp:<host>:<port>= or =tcp:<port>= on 127.0.0.1.
+Port 0 lets the kernel choose, and =endpoint()= reports it.
+=timeout_s= is one budget per force call, including the wait for the driver to
+connect.
+The constructor throws
+=std::invalid_argument= for a malformed address or a =timeout_s= that is
+negative or not finite.
+
+*** Example
+
+The program starts an =IPIPot= on a free TCP port, connects an =IPIDriver= in a
+second thread that answers with Lennard-Jones argon, and compares one force call
+through the socket with a direct call.
+It needs no external software, and it uses POSIX sockets.
+
+#+attr_rgpot: run requires=has_ipi link=rgpot,pthread
+#+begin_src cpp
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <memory>
+#include <thread>
+
+#include "rgpot/IPIPot/IPIDriver.hpp"
+#include "rgpot/IPIPot/IPIPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+
+int main() {
+  const rgpot::LJConfig lj_cfg{.u0 = 0.0104, .cutoff = 8.5, .psi = 3.40};
+  const double pos[9] = {0.0, 0.0, 0.0, 3.8, 0.0, 0.0, 1.9, 3.3, 0.0};
+  const int z[3] = {18, 18, 18};
+  const double box[9] = {30.0, 0.0, 0.0, 0.0, 30.0, 0.0, 0.0, 0.0, 30.0};
+  rgpot::ForceInput in{3, pos, z, box};
+
+  rgpot::IPIConfig server_cfg;
+  server_cfg.address = "tcp:0";
+  server_cfg.timeout_s = 10.0;
+  auto server = std::make_unique<rgpot::IPIPot>(server_cfg);
+
+  rgpot::LJPot lj(lj_cfg);
+  rgpot::IPIDriverConfig driver_cfg;
+  driver_cfg.address = server->endpoint();
+  driver_cfg.species.assign(z, z + 3);
+  driver_cfg.cutoff = lj_cfg.cutoff;
+  rgpot::IPIDriver driver(
+      driver_cfg, [&lj](const rgpot::ForceInput &fi, rgpot::ForceOut *fo) {
+        lj.forceImpl(fi, fo);
+      });
+  std::thread client([&driver] { driver.run(); });
+
+  double f_socket[9] = {};
+  rgpot::ForceOut out{};
+  out.F = f_socket;
+  server->forceImpl(in, &out);
+
+  double f_direct[9] = {};
+  rgpot::ForceOut ref{};
+  ref.F = f_direct;
+  lj.forceImpl(in, &ref);
+
+  double worst = 0.0;
+  for (int k = 0; k < 9; ++k) {
+    worst = std::max(worst, std::fabs(f_socket[k] - f_direct[k]));
+  }
+  std::printf("socket energy %.9f eV\n", out.energy);
+  std::printf("direct energy %.9f eV\n", ref.energy);
+  std::printf("energy difference below 1e-12 eV: %s\n",
+              std::fabs(out.energy - ref.energy) < 1e-12 ? "yes" : "no");
+  std::printf("force difference below 1e-12 eV/Angstrom: %s\n",
+              worst < 1e-12 ? "yes" : "no");
+  std::printf("stress reported: %s\n", server->hasStress() ? "yes" : "no");
+
+  server.reset();
+  client.join();
+  std::printf("driver served %llu geometry\n",
+              static_cast<unsigned long long>(driver.evaluations()));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+socket energy -0.030680054 eV
+direct energy -0.030680054 eV
+energy difference below 1e-12 eV: yes
+force difference below 1e-12 eV/Angstrom: yes
+stress reported: yes
+driver served 1 geometry
+#+end_example
+
+Destroying the server sends =EXIT=, which ends =driver.run()=.
+With a real engine, replace the driver thread by the engine started with the
+address, for example =i-pi-py_driver -u -a <name>= for =unix:<name>=.
+The engine, not rgpot, must be installed for that.
+
+*** Literature
+
+No paper of Rohit Goswami that was checked for this page uses the i-PI socket
+surface.
+
+- Litman, Kapil, Feldman, Tisi, and coauthors, J. Chem.
+  Phys. 161, 062504 (2024), doi:10.1063/5.0215869.
+  The i-PI 3.0 paper, which the headers of =IPIPot=, =IPIDriver= and =IPIWire=
+  cite.
+- Ceriotti, More, Manolopoulos, Comput.
+  Phys.
+  Commun. 185, 1019-1026 (2014), doi:10.1016/j.cpc.2013.10.027.
+  Defines the socket protocol that =IPIPot= speaks.
+- The wire contract (native endianness, 12-byte headers) follows the i-PI
+  reference C wrappers, as the header of =IPIPot= says.
+  No table or parameter set is involved.
+
+** =LrCoulomb= Ewald, smooth PME and damped shifted force
+
+*** What it is and how to reach it
+
+=rgpot::lr::CoulombPot= computes the electrostatic energy of point charges.
+Use =Ewald= for a periodic cell of up to a few hundred atoms, =SPME= for more
+atoms, and =DSF= for a molecule or cluster in vacuum.
+The C++ class is =rgpot::lr::CoulombPot= with =rgpot::lr::CoulombConfig= and a
+=rgpot::lr::ChargeSource= (=FixedCharges= or a callback in =FnCharges=), in
+=CppCore/rgpot/LongRange/Electro.hpp=.
+It is built with =-Dwith_long_range=true=.
+Python has no class for it, and there is no =potserv= type and no =rgpot-eval=
+name.
+[[file:../reference/cpp_potentials.org][C++ potentials]] lists the fields and
+errors of =rgpot::lr::CoulombConfig= and =rgpot::lr::CoulombPot=.
+The charges are in elementary charges, per atom, with the net charge given
+separately and equal to their sum.
+The class adds no bonded exclusions.
+
+*** Functional form
+
+All three methods use the Coulomb constant
+=ke = HARTREE_TO_EV * BOHR_TO_ANGSTROM=, which is 14.3996... eV Angstrom per
+elementary charge squared (=CppCore/rgpot/units.hpp=).
+The code is in =CppCore/rgpot/LongRange/Electro.cc=.
+
+- =Ewald= (conducting boundary, any triclinic cell) is
+  =E = E_real + E_recip + E_self + E_bg=.
+- =E_real = ke sum_{pairs, r < cutoff} q_i q_j erfc(alpha r) / r=, over a half
+  list with periodic images and a hard truncation at =cutoff= (no shift).
+  The kernel samples =erfc(alpha r)/r= and its derivative at 8192 points and
+  interpolates them with cubic Hermite polynomials.
+- =E_recip = (2 pi ke / V) sum_{m nonzero}=
+  =exp(-k^2 / (4 alpha^2)) / k^2 |S(k)|^2= with =S(k) = sum_i q_i exp(i k.r_i)=
+  and =k = 2 pi m.b=, where =b= are the reciprocal vectors and each component of
+  the integer vector =m= runs over =-kmax= to =kmax=.
+- =E_self = - ke alpha / sqrt(pi) sum_i q_i^2=.
+- =E_bg = - ke pi Q^2 / (2 V alpha^2)= for the net charge =Q=.
+- =SPME= has the same real-space, self and background terms.
+  The reciprocal part spreads the charges on a mesh of =grid= points with
+  B-splines of order =spline_order=, uses a fast Fourier transform, and gathers
+  the forces back.
+  A =grid= entry below 4 is raised to 4.
+  With =stress= false the mesh runs in single precision.
+- =DSF= (gas phase, no cell, no images) shifts the pair function so that value
+  and slope vanish at the cutoff:
+  =phi(r) = erfc(alpha r)/r - erfc(alpha rc)/rc - phi'(rc) (r - rc)= for
+  =r < rc=, with
+  =phi'(rc) = -erfc(alpha rc)/rc^2 - (2 alpha/sqrt(pi)) exp(-alpha^2 rc^2)/rc=.
+  The pair energy is =ke q_i q_j phi(r)=, and the self term is
+  =- ke (erfc(alpha rc)/(2 rc) + alpha/sqrt(pi)) q_i^2=.
+- =CoulombConfig::stress= defaults to true.
+  It keeps the real-space pair strain, and for =SPME= it selects the
+  double-precision mesh.
+  With =stress= false that pair strain is skipped and the =SPME= mesh runs in
+  single precision.
+  =Ewald= and =SPME= do not support stress.
+  =ewald_reciprocal= and =spme_reciprocal= set =has_stress= whether or not
+  =stress= is set, so the flag is not a switch for a Cauchy stress.
+  =DSF= has no cell, and the force call writes no stress.
+- The header also has the free function =so3lr_erf_pair=, which is not a
+  =PotType=.
+  It gives the SO3LR real-space pair term
+  =ke q_i q_j [f (g(r) - g(rc)) + (1 - f) (g(r) - g(rc) - g'(rc) (r - rc))]=
+  with =g(x) = erf(x / sigma) / x= and a smooth switch =f= that is 1 below
+  =cuton=, 0 above =cutoff=, and =s(1-c) / (s(1-c) + s(c))= between, where
+  =s(x) = exp(-1/x)= and =c = (r - cuton) / (cutoff - cuton)=.
+
+*** Parameters
+
+All fields are in =rgpot::lr::CoulombConfig=
+(=CppCore/rgpot/LongRange/Electro.hpp=).
+The defaults are conventions of the code, and no paper names them.
+
+| Parameter      | Value        | Unit       | Set in                        |
+|----------------+--------------+------------+-------------------------------|
+| =method=       | =Ewald=      | none       | =CoulombConfig::method=       |
+| =cutoff=       | 9.0          | Angstrom   | =CoulombConfig::cutoff=       |
+| =alpha=        | 0.30         | 1/Angstrom | =CoulombConfig::alpha=        |
+| =kmax=         | 8            | count      | =CoulombConfig::kmax=         |
+| =grid=         | 32 32 32     | count      | =CoulombConfig::grid=         |
+| =spline_order= | 6            | count      | =CoulombConfig::spline_order= |
+| =short_cutoff= | 4.0          | Angstrom   | =CoulombConfig::short_cutoff= |
+| =skin=         | 1.0          | Angstrom   | =CoulombConfig::skin=         |
+| =periodic=     | =true=       | none       | =CoulombConfig::periodic=     |
+| =stress=       | =true=       | none       | =CoulombConfig::stress=       |
+
+=cutoff= is the real-space cutoff for =Ewald= and =SPME= and the shift radius
+for =DSF=.
+=alpha= is the splitting parameter.
+=kmax= applies to =Ewald= only, and =grid= and =spline_order= to =SPME= only
+(order 3 to 16).
+=short_cutoff= and =skin= set the pair list.
+=periodic= is ignored by =DSF=.
+Keep =cutoff= below the shortest lattice vector of a periodic cell.
+With a shorter cell the pair list holds each atom with both of its own images,
+and the real-space loop counts each listed pair once.
+A rock-salt cell of 8 ions (edge 5.64 Angstrom) with =alpha= 0.30 and =cutoff=
+12 gave -34.606 eV, whereas the 64-ion cell of the example below gives the
+Madelung energy of the same crystal, -35.694 eV per 8 ions.
+The force call throws
+=std::invalid_argument= for a =cutoff= or =alpha= that is not positive, for =kmax= below 1 with =Ewald=, and for =spline_order=
+outside 3 to 16 with =SPME=.
+
+*** Example
+
+The program builds rock-salt NaCl, 2 x 2 x 2 conventional cells (64 ions, edge
+11.28 Angstrom), evaluates it with the default =Ewald=, the default =SPME= and a
+tighter =Ewald= reference (=alpha= 0.45, =cutoff= 11, =kmax= 14), and then
+evaluates an eight-ion cube in vacuum with =DSF= against the bare Coulomb sum.
+The Madelung constant of rock salt is 1.7476, and the program derives it from
+the energy of the tight run.
+
+#+attr_rgpot: run requires=has_long_range link=rgpot
+#+begin_src cpp
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <memory>
+#include <vector>
+
+#include "rgpot/LongRange/Electro.hpp"
+#include "rgpot/units.hpp"
+
+namespace {
+
+struct Result {
+  double energy;
+  double max_force;
+};
+
+// Rock-salt NaCl, 2 x 2 x 2 conventional cells (64 ions), a = 5.64 Angstrom.
+Result evaluate(const rgpot::lr::CoulombConfig &cfg) {
+  const double a = 5.64;
+  const int reps = 2;
+  const double basis[8][3] = {{0.0, 0.0, 0.0}, {0.5, 0.5, 0.0},
+                              {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5},
+                              {0.5, 0.0, 0.0}, {0.0, 0.5, 0.0},
+                              {0.0, 0.0, 0.5}, {0.5, 0.5, 0.5}};
+  std::vector<double> pos;
+  std::vector<double> q;
+  std::vector<int> z;
+  for (int i = 0; i < reps; ++i) {
+    for (int j = 0; j < reps; ++j) {
+      for (int k = 0; k < reps; ++k) {
+        for (int b = 0; b < 8; ++b) {
+          pos.push_back((basis[b][0] + i) * a);
+          pos.push_back((basis[b][1] + j) * a);
+          pos.push_back((basis[b][2] + k) * a);
+          q.push_back(b < 4 ? 1.0 : -1.0);
+          z.push_back(b < 4 ? 11 : 17);
+        }
+      }
+    }
+  }
+  const double edge = reps * a;
+  const double box[9] = {edge, 0.0, 0.0, 0.0, edge, 0.0, 0.0, 0.0, edge};
+  rgpot::lr::CoulombPot pot(
+      cfg, std::make_shared<rgpot::lr::FixedCharges>(q, 0.0));
+  std::vector<double> forces(pos.size(), 0.0);
+  rgpot::ForceInput in{q.size(), pos.data(), z.data(), box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  pot.forceImpl(in, &out);
+  double fmax = 0.0;
+  for (double f : forces) {
+    fmax = std::max(fmax, std::fabs(f));
+  }
+  return {out.energy, fmax};
+}
+
+double madelung(double energy) {
+  const double ke =
+      rgpot::units::HARTREE_TO_EV * rgpot::units::BOHR_TO_ANGSTROM;
+  const double nearest = 5.64 / 2.0;
+  return -energy * nearest / (ke * 32.0);
+}
+
+// Eight ions on the corners of a cube with alternating charges, in vacuum.
+void cluster() {
+  const double d = 2.82;
+  std::vector<double> pos;
+  std::vector<double> q;
+  std::vector<int> z;
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      for (int k = 0; k < 2; ++k) {
+        pos.insert(pos.end(), {i * d, j * d, k * d});
+        const bool cation = (i + j + k) % 2 == 0;
+        q.push_back(cation ? 1.0 : -1.0);
+        z.push_back(cation ? 11 : 17);
+      }
+    }
+  }
+  const double ke =
+      rgpot::units::HARTREE_TO_EV * rgpot::units::BOHR_TO_ANGSTROM;
+  double bare = 0.0;
+  for (std::size_t i = 0; i < q.size(); ++i) {
+    for (std::size_t j = i + 1; j < q.size(); ++j) {
+      const double dx = pos[3 * i] - pos[3 * j];
+      const double dy = pos[3 * i + 1] - pos[3 * j + 1];
+      const double dz = pos[3 * i + 2] - pos[3 * j + 2];
+      bare += ke * q[i] * q[j] / std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+  }
+  rgpot::lr::CoulombConfig dsf;
+  dsf.method = rgpot::lr::CoulombMethod::DSF;
+  dsf.periodic = false;
+  const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+  rgpot::lr::CoulombPot pot(
+      dsf, std::make_shared<rgpot::lr::FixedCharges>(q, 0.0));
+  std::vector<double> forces(pos.size(), 0.0);
+  rgpot::ForceInput in{q.size(), pos.data(), z.data(), box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  pot.forceImpl(in, &out);
+  std::printf("cluster bare Coulomb %.6f eV, DSF %.6f eV\n", bare, out.energy);
+}
+
+} // namespace
+
+int main() {
+  rgpot::lr::CoulombConfig ewald;
+  rgpot::lr::CoulombConfig tight;
+  tight.alpha = 0.45;
+  tight.cutoff = 11.0;
+  tight.kmax = 14;
+  rgpot::lr::CoulombConfig spme;
+  spme.method = rgpot::lr::CoulombMethod::SPME;
+
+  const Result ref = evaluate(tight);
+  const Result e = evaluate(ewald);
+  const Result s = evaluate(spme);
+  std::printf("tight Ewald   %.6f eV, Madelung constant %.6f\n", ref.energy,
+              madelung(ref.energy));
+  std::printf("default Ewald %.6f eV, difference %.1e eV\n", e.energy,
+              e.energy - ref.energy);
+  std::printf("default SPME  %.6f eV, difference %.1e eV\n", s.energy,
+              s.energy - ref.energy);
+  std::printf("largest force below 1e-9 eV/Angstrom: %s\n",
+              e.max_force < 1e-9 ? "yes" : "no");
+  cluster();
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+tight Ewald   -285.552461 eV, Madelung constant 1.747565
+default Ewald -285.477356 eV, difference 7.5e-02 eV
+default SPME  -285.477356 eV, difference 7.5e-02 eV
+largest force below 1e-9 eV/Angstrom: yes
+cluster bare Coulomb -29.739454 eV, DSF -30.196430 eV
+#+end_example
+
+The default =Ewald= and =SPME= agree to the printed digits and differ from the
+tight run by 7.5e-2 eV out of 285.55 eV.
+That difference is the real-space truncation at 9 Angstrom with =alpha= 0.30, so
+a production run raises =alpha= or =cutoff= until the energy stops moving.
+
+*** Literature
+
+No paper of Rohit Goswami that was checked for this page uses this surface.
+
+- Ewald, Ann.
+  Phys. 369, 253-287 (1921), doi:10.1002/andp.19213690304.
+  Defines the real-space and reciprocal-space split of =Ewald=.
+- Essmann, Perera, Berkowitz, Darden, J. Chem.
+  Phys. 103, 8577-8593 (1995), doi:10.1063/1.470117.
+  Defines the smooth particle-mesh Ewald method that =SPME= follows.
+- Fennell, Gezelter, J. Chem.
+  Phys. 124, 234104 (2006), doi:10.1063/1.2206581.
+  The damped shifted force electrostatics that =DSF= implements (the header
+  names it the Fennell-Gezelter form).
+- Kabylda, Frank, Suárez-Dou, Khabibrakhmanov, Medrano Sandonas, Unke, Chmiela,
+  Müller, Tkatchenko, J. Am.
+  Chem.
+  Soc. 147, 33723-33734 (2025), doi:10.1021/jacs.5c09558.
+  The SO3LR method, whose real-space electrostatic pair term =so3lr_erf_pair=
+  reproduces.
+- The default =alpha=, =cutoff=, =kmax= and =grid= are conventions of the code
+  and have no source.
+
+** =LrDispersion= D3(BJ), D4, MBD and SO3LR QDO dispersion
+
+*** What it is and how to reach it
+
+=rgpot::lr::DispersionPot= is one pairwise or many-body dispersion model chosen
+by =DispersionConfig::kind=.
+Use =QDO= for the SO3LR dispersion term, =MBD= for the many-body dispersion of
+Tkatchenko and coauthors on small systems, and =D3BJ= or =D4= to get the library
+energies through the same class and the same pair list.
+The C++ class is =rgpot::lr::DispersionPot= with =rgpot::lr::DispersionConfig=
+in =CppCore/rgpot/LongRange/Dispersion.hpp=, built with
+=-Dwith_long_range=true=.
+=D3BJ= additionally needs
+=-Dwith_dftd3=true= and =D4= needs =-Dwith_dftd4=true=, and the call throws
+=std::runtime_error= ("not linked") without them.
+Python has no class for it, and there is no =potserv= type and no =rgpot-eval=
+name.
+[[file:../reference/cpp_potentials.org][C++ potentials]] lists the fields and
+errors.
+The model reads per-atom ratios from a =rgpot::lr::RatioSource= (=UnitRatios= by
+default, or =FixedRatios=) and sums over every pair of the long list, bonded
+pairs included.
+
+*** Functional form
+
+Energies are computed in hartree with distances in bohr and converted to eV.
+=alpha_i = alpha_free(Z_i) h_i= and =C6_i = C6_free(Z_i) c_i=, where
+=h_i= is the Hirshfeld volume ratio and =c_i= the =C6= ratio of the
+=RatioSource=.
+When the source gives no =C6= ratio, =c_i = h_i^2=.
+=UnitRatios= gives 1 for both.
+
+- =QDO= (the default kind, in =Dispersion.cc=): per pair,
+  =alpha_ij = (alpha_i + alpha_j) / 2= and =C6_ij = 2 C6_i C6_j alpha_i alpha_j / (alpha_i^2 C6_j + alpha_j^2 C6_i)=.
+  =C8 = 5 C6_ij / gamma= and =C10 = 245 C6_ij / (8 gamma^2)=.
+  =gamma = 1 / (2 sigma^2)= with =sigma = b3 R^3 + b2 R^2 + b1 R + b0= and
+  =R = fs^(-4/21) alpha_ij^(1/7)=, where =fs= is the fine-structure constant.
+  =V(r) = - C6/(r^6 + p^6) - C8/(r^8 + p^8) - C10/(r^10 + p^10)= with =p = qdo_scale * 2 * 2.54 * alpha_ij^(1/7)=.
+  With =qdo_damped= false the three terms are the bare inverse powers.
+- =MBD= (MBD@rsSCS, in =Dispersion.cc=): Tkatchenko-Scheffler free-atom
+  parameters scaled by the ratios,
+  =alpha_i= as above and =R_vdw,i = R_vdw_free h_i^(1/3)=.
+  The polarizability at each of 16 imaginary frequencies is screened with a
+  Gaussian-smeared dipole tensor damped by the Fermi function
+  =f = 1 / (1 + exp(-a (r / (beta (R_i + R_j)) - 1)))= with =beta=
+  =mbd_beta= and =a= =mbd_a=.
+  The screened values give =alpha=, =C6=, =R_vdw= and
+  =omega = 4 C6 / (3 alpha^2)= per atom.
+  The energy is
+  =E = 1/2 sum sqrt(lambda) - 3/2 sum omega_i=, with =lambda= the eigenvalues of the matrix with =omega_i^2=
+  on the diagonal and =omega_i omega_j sqrt(alpha_i alpha_j) T_ij= off the
+  diagonal (=T= the bare dipole tensor times =f=).
+  A gas-phase system uses all pairs, ignoring the list.
+  Forces are central differences of the energy with a step of 1e-5 Angstrom, and
+  no stress is written.
+  A periodic system averages over the =mbd_k= Monkhorst-Pack mesh, with the
+  Ewald split of pymbd, as the source comment says.
+- =D3BJ=: the in-tree neighbour-list kernel of the =D3= section, with the
+  functional looked up in a table of three entries (below).
+  The default cutoffs are 60 bohr for the two-body term, 40 bohr for the
+  three-body term and 40 bohr for the coordination number, unless
+  =lib_disp2=, =lib_disp3= and =lib_cn= (bohr) are positive.
+  The three-body term is dropped when =atm= is false.
+- =D4=: for a gas-phase system of 256 atoms or fewer, the dftd4 library with
+  =functional=, =atm= and =charge=; for a periodic system or more than 256
+  atoms, the in-tree kernel of the =D4= section with PBE parameters only.
+  The in-tree cutoffs are 60, 40 and 30 bohr.
+- A pair is kept when =r < cutoff=.
+  With
+  =switch_width= above zero the =QDO= energy of a pair is multiplied by =s(1-c) / (s(1-c) + s(c))= with =s(x) = exp(-1/x)= and =c = (r - (cutoff - switch_width)) / switch_width=,
+  and pairs beyond =cutoff= are dropped.
+- The stress is the Cauchy stress and is written for every kind except =MBD=.
+
+*** Parameters
+
+All fields are in =rgpot::lr::DispersionConfig=
+(=CppCore/rgpot/LongRange/Dispersion.hpp=).
+
+| Parameter       | Value      | Unit     | Set in                      |
+|-----------------+------------+----------+-----------------------------|
+| =kind=          | =QDO=      | none     | =DispersionConfig::kind=    |
+| =functional=    | ="pbe"=    | key      | =DispersionConfig::functional= |
+| =atm=           | =true=     | none     | =DispersionConfig::atm=     |
+| =charge=        | 0.0        | e        | =DispersionConfig::charge=  |
+| =mbd_beta=      | 0.83       | none     | =DispersionConfig::mbd_beta= |
+| =mbd_a=         | 6.0        | none     | =DispersionConfig::mbd_a=   |
+| =mbd_k=         | 4 4 4      | count    | =DispersionConfig::mbd_k=   |
+| =mbd_gamma=     | =false=    | none     | =DispersionConfig::mbd_gamma= |
+| =qdo_scale=     | 1.0        | none     | =DispersionConfig::qdo_scale= |
+| =qdo_legacy=    | =false=    | none     | =DispersionConfig::qdo_legacy= |
+| =qdo_damped=    | =true=     | none     | =DispersionConfig::qdo_damped= |
+| =cutoff=        | 15.0       | Angstrom | =DispersionConfig::cutoff=  |
+| =lib_disp2=     | 0.0        | bohr     | =DispersionConfig::lib_disp2= |
+| =lib_disp3=     | 0.0        | bohr     | =DispersionConfig::lib_disp3= |
+| =lib_cn=        | 0.0        | bohr     | =DispersionConfig::lib_cn=  |
+| =switch_width=  | 0.0        | Angstrom | =DispersionConfig::switch_width= |
+| =short_cutoff=  | 4.0        | Angstrom | =DispersionConfig::short_cutoff= |
+| =skin=          | 1.0        | Angstrom | =DispersionConfig::skin=    |
+| =periodic=      | =false=    | none     | =DispersionConfig::periodic= |
+
+An unsupported =functional= throws
+=std::runtime_error= for =D3BJ= and for the dftd4 library path of =D4=, and =std::invalid_argument=
+for the in-tree =D4= kernel.
+Zero for =lib_disp2=, =lib_disp3= and =lib_cn= keeps the library or in-tree
+default.
+=periodic= must be true for a periodic cell, and as for =LrCoulomb= the =cutoff=
+must stay below the shortest lattice vector: for a one-species fcc argon cell of
+edge 5.26 Angstrom with =cutoff= 7, =QDO= gave -0.0907 eV per atom, while the 2
+x 2 x 2 and 3 x 3 x 3 supercells gave -0.0842 eV per atom.
+
+The constants of the models are in the source, not in a config field.
+
+| Constant                  | Value                        | Where        |
+|---------------------------+------------------------------+--------------|
+| D3 BJ =pbe=               | 1, 0.7875, 1, 0.4289,        | =FastD3.hpp= |
+| (=s6 s8 s9 a1 a2 alp=)    | 4.4407, 14                   |              |
+| D3 BJ =blyp=              | 1, 2.6996, 1, 0.4298,        | =FastD3.cc=  |
+|                           | 4.2359, 14                   |              |
+| D3 BJ =b3lyp=             | 1, 1.9889, 1, 0.3981,        | =FastD3.cc=  |
+|                           | 4.4211, 14                   |              |
+| D4 BJ =pbe=               | 1, 0.95948085, 1,            | =FastD4.hpp= |
+|                           | 0.38574991, 4.80688534, 16   |              |
+| =gamma= fit =b0 b1 b2 b3= | -0.00433008, 0.24428889,     | =Dispersion.cc= |
+|                           | 0.04125273, -0.00078893      |              |
+| =fs=                      | 7.2973525693e-3              | =Dispersion.cc= |
+| QDO H, alpha and C6       | 4.6013, 6.916624             | =QdoTable.inc= |
+| QDO C, alpha and C6       | 11.205754, 50.583488         | =QdoTable.inc= |
+| QDO O, alpha and C6       | 5.269107, 18.739491          | =QdoTable.inc= |
+| legacy H, alpha and C6    | 4.5, 6.5                     | =QdoTable.inc= |
+| legacy C, alpha and C6    | 12.0, 46.6                   | =QdoTable.inc= |
+| legacy O, alpha and C6    | 5.4, 15.6                    | =QdoTable.inc= |
+| TS H, alpha, C6, R_vdw    | 4.5, 6.5, 3.1                | =TsTable.inc=  |
+| TS C, alpha, C6, R_vdw    | 12.0, 46.6, 3.59             | =TsTable.inc=  |
+| TS O, alpha, C6, R_vdw    | 5.4, 15.6, 3.19              | =TsTable.inc=  |
+
+The alpha and C6 values are in atomic units, and R_vdw is in bohr.
+
+The tables are
+=CppCore/rgpot/LongRange/QdoTable.inc= (86 elements, or 102 with =qdo_legacy=) and =CppCore/rgpot/LongRange/TsTable.inc=
+(102 elements, "the neutral rows of the CC0 compilation shipped with libmbd").
+=CppCore/rgpot/LongRange/FastD3.cc= holds the =blyp= and =b3lyp= sets and =CppCore/rgpot/LongRange/FastD4.cc=
+the =pbe= check.
+The anchor values above are read from those files.
+The remaining entries are in the files, and the 16 frequencies and weights of
+=MBD= are the arrays =kMbdFreq= and =kMbdWeight= in =Dispersion.cc=.
+The default =QDO= tables are the refitted free-atom values of the SO3LR Tauri
+models and the legacy tables are those of the original SO3LR, according to the
+SO3LR code the tables were taken from.
+This tree does not say so itself.
+
+*** Example
+
+The first program uses the kinds that have no external library.
+It evaluates a water molecule with the default =QDO=, with a Hirshfeld ratio of
+0.8 on the hydrogen atoms, with the legacy tables, and with =MBD=.
+
+#+attr_rgpot: run requires=has_long_range link=rgpot
+#+begin_src cpp
+#include <cstdio>
+#include <memory>
+
+#include "rgpot/LongRange/Dispersion.hpp"
+
+namespace {
+
+const double kPos[9] = {0.0, 0.0,      0.11779,  0.0,  0.75545,
+                        -0.47116, 0.0, -0.75545, -0.47116};
+const int kZ[3] = {8, 1, 1};
+const double kBox[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+
+void report(const char *label, const rgpot::lr::DispersionPot &pot) {
+  double forces[9] = {};
+  rgpot::ForceInput in{3, kPos, kZ, kBox};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  std::printf("%-18s E %.6e eV, F_z(O) %.6e eV/Angstrom\n", label,
+              out.energy, forces[2]);
+}
+
+} // namespace
+
+int main() {
+  using rgpot::lr::DispersionConfig;
+  using rgpot::lr::DispersionKind;
+  using rgpot::lr::DispersionPot;
+  using rgpot::lr::FixedRatios;
+
+  DispersionConfig qdo;
+  report("QDO damped", DispersionPot(qdo));
+
+  report("QDO, h(H) = 0.8",
+         DispersionPot(qdo, std::make_shared<FixedRatios>(
+                                std::vector<double>{1.0, 0.8, 0.8},
+                                std::vector<double>{})));
+
+  DispersionConfig qdo_legacy;
+  qdo_legacy.qdo_legacy = true;
+  report("QDO legacy tables", DispersionPot(qdo_legacy));
+
+  DispersionConfig mbd;
+  mbd.kind = DispersionKind::MBD;
+  report("MBD@rsSCS", DispersionPot(mbd));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+QDO damped         E -1.709645e-02 eV, F_z(O) -1.790260e-05 eV/Angstrom
+QDO, h(H) = 0.8    E -1.438619e-02 eV, F_z(O) -1.694932e-05 eV/Angstrom
+QDO legacy tables  E -1.577670e-02 eV, F_z(O) -1.626814e-05 eV/Angstrom
+MBD@rsSCS          E -7.315791e-03 eV, F_z(O) -5.995445e-03 eV/Angstrom
+#+end_example
+
+The second program compares =D3BJ= and =D4= of this class with =D3Pot= and
+=D4Pot= on the same molecule.
+It needs s-dftd3 and dftd4 to run.
+
+#+attr_rgpot: run requires=has_long_range,has_dftd3,has_dftd4 link=rgpot
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/D3Pot/D3Pot.hpp"
+#include "rgpot/D4Pot/D4Pot.hpp"
+#include "rgpot/LongRange/Dispersion.hpp"
+
+namespace {
+
+const double kPos[9] = {0.0, 0.0,      0.11779,  0.0,  0.75545,
+                        -0.47116, 0.0, -0.75545, -0.47116};
+const int kZ[3] = {8, 1, 1};
+const double kBox[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+
+template <class Pot> double energy(const Pot &pot) {
+  double forces[9] = {};
+  rgpot::ForceInput in{3, kPos, kZ, kBox};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  return out.energy;
+}
+
+} // namespace
+
+int main() {
+  using rgpot::lr::DispersionConfig;
+  using rgpot::lr::DispersionKind;
+  using rgpot::lr::DispersionPot;
+
+  DispersionConfig cfg;
+  cfg.functional = "pbe";
+  cfg.kind = DispersionKind::D3BJ;
+  std::printf("lr D3BJ %.6e eV, D3Pot %.6e eV\n", energy(DispersionPot(cfg)),
+              energy(rgpot::D3Pot()));
+  cfg.kind = DispersionKind::D4;
+  std::printf("lr D4   %.6e eV, D4Pot %.6e eV\n", energy(DispersionPot(cfg)),
+              energy(rgpot::D4Pot()));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+lr D3BJ -9.781987e-03 eV, D3Pot -9.781987e-03 eV
+lr D4   -5.317648e-03 eV, D4Pot -5.317648e-03 eV
+#+end_example
+
+*** Literature
+
+No paper of Rohit Goswami that was checked for this page uses this surface.
+
+- Kabylda, Brünig, Gallegos, Frank, Moerman, Unke, Chmiela, Müller, Tkatchenko,
+  SO3LR Tauri, arXiv (2026), doi:10.48550/arXiv.2611.06237.
+  The SO3LR variant whose models use the refitted free-atom tables that
+  =qdo_legacy= false selects.
+- Kabylda, Frank, Suárez-Dou, Khabibrakhmanov, Medrano Sandonas, Unke, Chmiela,
+  Müller, Tkatchenko, J. Am.
+  Chem.
+  Soc. 147, 33723-33734 (2025), doi:10.1021/jacs.5c09558.
+  The original SO3LR, whose free-atom tables =qdo_legacy= true selects.
+- Tkatchenko, Scheffler, Phys.
+  Rev. Lett. 102, 073005 (2009), doi:10.1103/PhysRevLett.102.073005.
+  The Hirshfeld scaling of free-atom polarizabilities, =C6= and radii used by
+  =MBD= and =QDO=.
+- Tkatchenko, DiStasio, Car, Scheffler, Phys.
+  Rev. Lett. 108, 236402 (2012), doi:10.1103/PhysRevLett.108.236402.
+  The many-body dispersion method.
+- Ambrosetti, Reilly, DiStasio, Tkatchenko, J. Chem.
+  Phys.
+  140, 18A508 (2014), doi:10.1063/1.4865104.
+  The range-separated self-consistently screened form (MBD@rsSCS).
+- Grimme, Antony, Ehrlich, Krieg, J. Chem.
+  Phys. 132, 154104 (2010),
+  doi:10.1063/1.3382344, and Grimme, Ehrlich, Goerigk, J. Comput. Chem. 32, 1456-1465 (2011), doi:10.1002/jcc.21759.
+  These define D3 and its rational damping.
+- Caldeweyher, Ehlert, Hansen, Neugebauer, J. Chem.
+  Phys. 150, 154122 (2019), doi:10.1063/1.5090222.
+  This defines D4.
+- The =QDO= functional form (the =C6=, =C8=, =C10= series with a power-law
+  regularisation) is the one of the SO3LR code that the source names.
+  The per-functional BJ sets in =FastD3.cc= and =FastD4.cc= carry no table
+  reference in this tree.
+
+** =LrNlh= SO3LR short-range repulsion
+
+*** What it is and how to reach it
+
+=rgpot::lr::NlhPot= is a short-range repulsion between atoms, a screened Coulomb
+term fitted per element pair and switched off beyond 1.5 Angstrom.
+Use it with a smooth dispersion and electrostatics model that has no repulsive
+wall of its own, as in SO3LR.
+The C++ class is =rgpot::lr::NlhPot= with =rgpot::lr::NlhConfig= in
+=CppCore/rgpot/LongRange/Nlh.hpp=, built with =-Dwith_long_range=true=.
+Python has no class for it, and there is no =potserv= type and no =rgpot-eval=
+name.
+[[file:../reference/cpp_potentials.org][C++ potentials]] lists the fields and
+errors.
+It accepts atomic numbers 1 to 92, builds its pair list without periodicity (the
+cell is used only for the volume of the stress), and gives zero energy for fewer
+than two atoms.
+
+*** Functional form
+
+The kernel is =CppCore/rgpot/LongRange/Nlh.cc=.
+For each pair with =0 < r < cutoff=, with atomic numbers =Z_i <= Z_j= used for
+the table lookup and =ke= as for =LrCoulomb=:
+
+- =E_pair = w(r) * ke * Z_i Z_j / r * phi(r)=.
+- =phi(r) = sum_{k=1..3} a_k exp(-b_k r)=, with =a_k= and
+  =b_k= taken from the table row of the element pair (=r= in Angstrom, =b_k= in
+  1/Angstrom).
+- =w(r) = s(1 - c) / (s(1 - c) + s(c))= with =c = r / switch_off= and
+  =s(x) = exp(-1/x)= for =x > 0= (and 0 otherwise).
+  =w= is 1 at =r = 0=, falls smoothly, and is 0 for =r >= switch_off=.
+- Forces are the analytic derivative, and the Cauchy stress is written when the
+  cell volume is positive.
+
+*** Parameters
+
+All fields are in =rgpot::lr::NlhConfig=.
+
+| Parameter    | Value | Unit     | Set in                   |
+|--------------+-------+----------+--------------------------|
+| =cutoff=     | 2.0   | Angstrom | =NlhConfig::cutoff=      |
+| =skin=       | 0.5   | Angstrom | =NlhConfig::skin=        |
+| =switch_off= | 1.5   | Angstrom | =NlhConfig::switch_off=  |
+
+The constructor throws =std::invalid_argument= unless =cutoff > switch_off > 0=.
+The coefficients are in =CppCore/rgpot/LongRange/NlhTable.inc=: 92 x 92 pairs
+with three =(a_k, b_k)= each, "from SO3LR nlh_ref.npz (MIT)", indexed by the
+smaller atomic number first.
+The file is not copied here.
+These anchor values are read from it, as
+=(a_1, a_2, a_3)= and =(b_1, b_2, b_3)=.
+
+| Pair | =a_1=    | =a_2=   | =a_3= | =b_1=    | =b_2=   | =b_3= |
+|------+----------+---------+-------+----------+---------+-------|
+| H-H  | -8.99999 | 9.99999 | 0     | 9.55658  | 8.89086 | 0     |
+| H-C  | 0.04216  | 0.95784 | 0     | 52.55236 | 4.02649 | 0     |
+| H-O  | 0.00153  | 0.99847 | 0     | 999.99999 | 4.93687 | 0    |
+| C-C  | 0.15875  | 0.84125 | 0     | 20.65075 | 4.29817 | 0     |
+| O-O  | 0.0409   | 0.9591  | 0     | 81.70265 | 5.09515 | 0     |
+
+*** Example
+
+The program evaluates an O-H pair at six distances and checks the analytic force
+against a central difference at 1.2 Angstrom.
+Beyond 1.5 Angstrom the table values are exactly zero.
+
+#+attr_rgpot: run requires=has_long_range link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/LongRange/Nlh.hpp"
+
+int main() {
+  const rgpot::lr::NlhPot pot;
+  const int z[2] = {8, 1};
+  const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+  const double distances[6] = {0.7, 0.96, 1.2, 1.4, 1.6, 2.1};
+
+  auto energy_and_force = [&](double r, double *fx) {
+    const double pos[6] = {0.0, 0.0, 0.0, r, 0.0, 0.0};
+    double forces[6] = {};
+    rgpot::ForceInput in{2, pos, z, box};
+    rgpot::ForceOut out{};
+    out.F = forces;
+    pot.forceImpl(in, &out);
+    *fx = forces[3];
+    return out.energy;
+  };
+
+  std::printf("O-H distance (Angstrom), energy (eV), "
+              "force on H (eV/Angstrom)\n");
+  for (double r : distances) {
+    double fx = 0.0;
+    const double e = energy_and_force(r, &fx);
+    std::printf("%.2f  %.6e  %.6e\n", r, e, fx);
+  }
+
+  double fx = 0.0;
+  const double h = 1e-5;
+  double unused = 0.0;
+  const double ep = energy_and_force(1.2 + h, &unused);
+  const double em = energy_and_force(1.2 - h, &unused);
+  energy_and_force(1.2, &fx);
+  std::printf("analytic force %.6e, central difference %.6e\n", fx,
+              -(ep - em) / (2.0 * h));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+O-H distance (Angstrom), energy (eV), force on H (eV/Angstrom)
+0.70  2.938266e+00  2.558682e+01
+0.96  2.396673e-01  2.684522e+00
+1.20  5.888835e-03  1.358651e-01
+1.40  7.309188e-08  1.143276e-05
+1.60  0.000000e+00  0.000000e+00
+2.10  0.000000e+00  0.000000e+00
+analytic force 1.358651e-01, central difference 1.358651e-01
+#+end_example
+
+*** Literature
+
+No paper of Rohit Goswami that was checked for this page uses this surface.
+
+- Kabylda, Brünig, Gallegos, Frank, Moerman, Unke, Chmiela, Müller, Tkatchenko,
+  SO3LR Tauri, arXiv (2026), doi:10.48550/arXiv.2611.06237.
+  The SO3LR variant whose models use the NLH repulsion: the SO3LR code that the
+  header names (=NLHRepulsionSparse=) is the one "used by the newer so3lr-tauri
+  models".
+- Kabylda, Frank, Suárez-Dou, Khabibrakhmanov, Medrano Sandonas, Unke, Chmiela,
+  Müller, Tkatchenko, J. Am.
+  Chem.
+  Soc. 147, 33723-33734 (2025), doi:10.1021/jacs.5c09558.
+  The original SO3LR, which describes the pairwise short-range repulsion,
+  electrostatics and dispersion terms that this family of potentials reproduces.
+- The coefficient table comes from the SO3LR file named in
+  =CppCore/rgpot/LongRange/NlhTable.inc=.
+  This tree does not name a table of the paper for it.
+
+** =LrSum= Sum of potential summands
+
+*** What it is and how to reach it
+
+=rgpot::lr::SumPot= adds the energies, forces and stresses of any number of
+child potentials evaluated on the same =ForceInput=.
+Use it to put electrostatics, dispersion and repulsion next to each other, or to
+add any of them to another potential such as a neural network.
+The C++ class is =rgpot::lr::SumPot= in =CppCore/rgpot/LongRange/SumPot.hpp=,
+built with =-Dwith_long_range=true=.
+Python has no class for it, and there is no =potserv= type and no =rgpot-eval=
+name.
+[[file:../reference/cpp_potentials.org][C++ potentials]] lists =add=,
+=shareNeighbours= and =size=.
+=ExprPot= is the alternative when the terms need weights or a nonlinear
+combination.
+
+*** Functional form
+
+- =E = sum_t E_t=, =F = sum_t F_t=, variance =sum_t var_t=.
+- The stress is the sum of the stresses of the terms, and =has_stress= is 1 only
+  when at least one term is evaluated and every evaluated term reports a stress.
+  When any evaluated term reports none, =has_stress= is 0 and the stress entries
+  are zero.
+  An empty sum reports no stress.
+- Each term is called through =forceBatch= with one system.
+- =shareNeighbours(lists)= hands one =DualList= to every =CoulombPot=,
+  =DispersionPot= and =NlhPot= added so far, so those terms build one pair list.
+  Other terms, and terms added later, keep their own lists.
+- An empty sum has zero energy and forces.
+
+*** Parameters
+
+=SumPot= has no numeric parameters.
+The terms are added with
+=add(std::unique_ptr<PotentialBase>)=, which throws =std::invalid_argument= for
+a null term.
+Units are those of the terms: eV, eV/Angstrom and eV/Angstrom^3.
+
+*** Example
+
+The program sums a Coulomb term (default =Ewald=, 20 Angstrom cell), the default
+=QDO= dispersion and the =NLH= repulsion for two water molecules, and compares
+the energy of the sum with the three terms evaluated one by one.
+The charges (-0.8 on oxygen, 0.4 on hydrogen) are illustrative, and the Coulomb
+term has no bonded exclusions, so its energy includes the intramolecular part.
+All three terms report a stress, so the sum does too.
+
+#+attr_rgpot: run requires=has_long_range link=rgpot
+#+begin_src cpp
+#include <cstdio>
+#include <memory>
+#include <vector>
+
+#include "rgpot/LongRange/Dispersion.hpp"
+#include "rgpot/LongRange/Electro.hpp"
+#include "rgpot/LongRange/Nlh.hpp"
+#include "rgpot/LongRange/SumPot.hpp"
+
+namespace {
+
+// Two water molecules in a 20 Angstrom cell. The charges are illustrative.
+const double kPos[18] = {0.000, 0.000, 0.000, 0.958,  0.000, 0.000,
+                         -0.240, 0.927, 0.000, 2.900, 0.100, 0.050,
+                         3.350, 0.850, -0.450, 3.350, -0.620, -0.500};
+const int kZ[6] = {8, 1, 1, 8, 1, 1};
+const double kBox[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+const std::vector<double> kCharges = {-0.8, 0.4, 0.4, -0.8, 0.4, 0.4};
+
+template <class Pot> double energy_of(const Pot &pot) {
+  double forces[18] = {};
+  rgpot::ForceInput in{6, kPos, kZ, kBox};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  return out.energy;
+}
+
+} // namespace
+
+int main() {
+  rgpot::lr::CoulombConfig coulomb;
+  rgpot::lr::DispersionConfig dispersion;
+  rgpot::lr::NlhConfig nlh;
+
+  const double e_coulomb = energy_of(rgpot::lr::CoulombPot(
+      coulomb, std::make_shared<rgpot::lr::FixedCharges>(kCharges, 0.0)));
+  const double e_dispersion = energy_of(rgpot::lr::DispersionPot(dispersion));
+  const double e_nlh = energy_of(rgpot::lr::NlhPot(nlh));
+
+  rgpot::lr::SumPot sum;
+  sum.add(std::make_unique<rgpot::lr::CoulombPot>(
+      coulomb, std::make_shared<rgpot::lr::FixedCharges>(kCharges, 0.0)));
+  sum.add(std::make_unique<rgpot::lr::DispersionPot>(dispersion));
+  sum.add(std::make_unique<rgpot::lr::NlhPot>(nlh));
+
+  double forces[18] = {};
+  rgpot::ForceInput in{6, kPos, kZ, kBox};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  sum.forceImpl(in, &out);
+
+  std::printf("terms in the sum: %zu\n", sum.size());
+  std::printf("Coulomb    %.6f eV\n", e_coulomb);
+  std::printf("dispersion %.6f eV\n", e_dispersion);
+  std::printf("NLH        %.6f eV\n", e_nlh);
+  std::printf("sum of the three  %.6f eV\n", e_coulomb + e_dispersion + e_nlh);
+  std::printf("SumPot energy     %.6f eV\n", out.energy);
+  std::printf("SumPot stress reported: %s\n", out.has_stress ? "yes" : "no");
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+terms in the sum: 3
+Coulomb    -15.909851 eV
+dispersion -0.067983 eV
+NLH        0.759529 eV
+sum of the three  -15.218305 eV
+SumPot energy     -15.218305 eV
+SumPot stress reported: yes
+#+end_example
+
+*** Literature
+
+No paper of Rohit Goswami that was checked for this page uses this surface.
+The sum is a software construct with no parameter set, and no paper defines it.
+The terms it combines are cited under =LrCoulomb=, =LrDispersion= and =LrNlh=.

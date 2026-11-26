@@ -310,6 +310,20 @@ class PlantedBrokenExamples(unittest.TestCase):
         [block] = self._blocks(text)
         self.assertEqual(doccheck.run_block(block, info, ROOT), ("skip", "build lacks has_expr"))
 
+    def test_meson_options_supply_features_without_defines(self):
+        with tempfile.TemporaryDirectory(prefix="doccheck-build-") as tmp:
+            build = Path(tmp)
+            info = build / "meson-info"
+            info.mkdir()
+            options = [
+                {"name": "with_rpc", "value": False},
+                {"name": "with_rpc_client_only", "value": True},
+                {"name": "with_long_range", "value": True},
+            ]
+            (info / "intro-buildoptions.json").write_text(json.dumps(options), encoding="utf-8")
+            features = doccheck._option_features(build)
+        self.assertEqual(features, {"has_rpc": True, "has_long_range": True})
+
     def test_cpp_flags_come_from_a_test(self):
         with tempfile.TemporaryDirectory(prefix="doccheck-build-") as tmp:
             build = Path(tmp)
@@ -459,6 +473,97 @@ class Coverage(unittest.TestCase):
         with mock.patch.object(doccheck, "COVERAGE_MARKERS", planted):
             errors = "\n".join(doccheck.coverage_errors(ROOT))
         self.assertIn("not-a-real-marker", errors)
+
+
+def _load(name: str, relpath: str):
+    return doccheck._load_module(name, relpath, ROOT)
+
+
+class Inventory(unittest.TestCase):
+    def test_every_public_item_is_documented(self):
+        self.assertEqual(doccheck.inventory_errors(ROOT), [])
+
+    def test_potential_without_a_how_to_is_reported(self):
+        inventory = _load("rgpot_inventory_test", "docs/inventory.py")
+        planted = "docs/orgmode/howto/potentials-silicon.org"
+        with mock.patch.object(inventory, "POTENTIAL_PAGES", planted):
+            errors = "\n".join(inventory.errors(ROOT))
+        self.assertIn("potential LJ ", errors)
+        self.assertNotIn("potential EDIP ", errors)
+
+    def test_program_without_a_heading_is_reported(self):
+        inventory = _load("rgpot_inventory_test", "docs/inventory.py")
+        planted = {"potserv": "docs/orgmode/reference/mpi.org"}
+        with mock.patch.object(inventory, "TOOLS", planted):
+            errors = "\n".join(inventory.errors(ROOT))
+        self.assertIn("tool potserv ", errors)
+
+
+class GeneratedFiles(unittest.TestCase):
+    def _tree(self) -> Path:
+        tmp = Path(tempfile.mkdtemp(prefix="doccheck-gen-"))
+        org = tmp / "docs" / "orgmode"
+        org.mkdir(parents=True)
+        (org / "index.org").write_text(
+            textwrap.dedent(
+                """\
+                #+TITLE: Index
+
+                * Overview
+                A summary line.
+
+                #+begin_export rst
+                .. toctree::
+                   :caption: Guides
+
+                   guide
+                #+end_export
+                """
+            ),
+            encoding="utf-8",
+        )
+        (org / "guide.org").write_text(
+            "#+TITLE: Guide\n\n* Guide\nUse =rgpot= like this.\n", encoding="utf-8"
+        )
+        return tmp
+
+    def test_the_tree_is_current(self):
+        self.assertEqual(doccheck.generated_errors(ROOT), [])
+
+    def test_llms_files_follow_the_pages(self):
+        gen = _load("rgpot_gen_llms_test", "scripts/gen_llms.py")
+        tree = self._tree()
+        self.assertEqual(len(gen.stale(tree)), 2)
+        for name, text in gen.generate(tree).items():
+            (tree / name).write_text(text, encoding="utf-8")
+        self.assertEqual(gen.stale(tree), [])
+        self.assertIn("[Guide](https://rgpot.rgoswami.me/guide.html)", (tree / "llms.txt").read_text())
+        self.assertIn("Use `rgpot` like this.", (tree / "llms-full.txt").read_text())
+        page = tree / "docs" / "orgmode" / "guide.org"
+        page.write_text(page.read_text() + "More text.\n", encoding="utf-8")
+        self.assertEqual(len(gen.stale(tree)), 1)
+
+    def test_doi_missing_from_the_manifest_is_reported(self):
+        dois = _load("rgpot_verify_dois_test", "scripts/verify_dois.py")
+        tree = self._tree()
+        page = tree / "docs" / "orgmode" / "guide.org"
+        page.write_text(page.read_text() + "See doi:10.1000/182.\n", encoding="utf-8")
+        self.assertEqual(dois.cited_dois(tree), {"10.1000/182": ["docs/orgmode/guide.org"]})
+        self.assertIn("10.1000/182 is not in docs/dois.json", "\n".join(dois.check(tree)))
+        (tree / "docs" / "dois.json").write_text("{}", encoding="utf-8")
+        self.assertIn("10.1000/182", "\n".join(dois.check(tree)))
+        (tree / "docs" / "dois.json").write_text(json.dumps({"10.1000/182": {}}), encoding="utf-8")
+        self.assertEqual(dois.check(tree), [])
+        (tree / "docs" / "dois.json").write_text(json.dumps({"10.1000/999": {}}), encoding="utf-8")
+        self.assertEqual(len(dois.check(tree)), 2)
+
+    def test_doi_extraction_drops_sentence_punctuation(self):
+        dois = _load("rgpot_verify_dois_test", "scripts/verify_dois.py")
+        text = "(doi:10.1016/0010-4655(90)90007-N). Also doi:10.1063/1.2841941: and 10.1000/182."
+        self.assertEqual(
+            dois.dois_in(text),
+            {"10.1016/0010-4655(90)90007-N", "10.1063/1.2841941", "10.1000/182"},
+        )
 
 
 if __name__ == "__main__":

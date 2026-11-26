@@ -613,6 +613,52 @@ void reset();
   A test that needs ORCA calls this and skips when it is false.
 - Errors :: none.
 
+*** =rgpot::ORCAError=
+
+- Inputs :: a message; the class inherits the constructors of
+  =std::runtime_error=.
+- Units :: none.
+- Outputs :: the exception =rgpot::ORCAPot= throws when a run fails: no
+  executable, a working directory that cannot be made, a stale =.engrad= or
+  =.gbw= that cannot be removed, an input that cannot be written, a process that
+  cannot start, is ended by a signal, passes =timeout_s= or exits with a
+  non-zero status, and a missing, malformed or non-finite =.engrad=.
+  The message names the input file and ends with the last 2048 bytes of the
+  standard error and of the ORCA output file.
+  Input the caller got wrong throws =std::invalid_argument= instead.
+- Errors :: none.
+
+*** =rgpot::orca::Engrad=
+
+- Inputs :: none; a struct that =rgpot::orca::parseEngrad= fills from the text
+  of a =.engrad= file (=CppCore/rgpot/ORCAPot/ORCAFiles.hpp=).
+- Units :: ORCA's own:
+  =energy_hartree= in Hartree and =gradient_hartree_per_bohr= in Hartree/bohr.
+- Outputs :: =energy_hartree=, =gradient_hartree_per_bohr= (3 * =nAtoms= entries
+  of dE/dR, atom-major) and =atomic_numbers= (one per atom).
+  The Bohr coordinates of the file are read past and not kept.
+  The parser does not check that the numbers are finite; =rgpot::ORCAPot= does.
+- Errors :: none on the struct.
+  =parseEngrad= throws =std::runtime_error= naming the first value that does not
+  fit, including an atom count other than the one asked for.
+
+*** =rgpot::orca::InputSpec=
+
+- Inputs :: none; a struct that =rgpot::ORCAPot= fills from its
+  =rgpot::ORCAConfig= for =rgpot::orca::renderInput=.
+- Units :: =maxcore_mb= in MB per process; =charge= in elementary charges; the
+  other fields have no unit.
+- Outputs :: everything the input of one single point depends on: =method=,
+  =basis= and =keywords= (joined on the =!= line, followed by =EnGrad=),
+  =charge= and =multiplicity= (the =* xyz= line), =nprocs= (=%pal nprocs= above
+  1), =maxcore_mb= (=%maxcore=) and =moinp=, the =.gbw= the orbitals are read
+  from relative to the run directory.
+  A non-empty =moinp= adds =%moinp= and =MORead=; an empty one starts from
+  ORCA's own guess.
+- Errors :: none on the struct.
+  =renderInput= throws =std::invalid_argument= when =method=, =basis=,
+  =keywords= or =moinp= holds a line break, or an atomic number is outside 1 to 118.
+
 ** ORCA through liborcac
 
 =ORCACPot= (=CppCore/rgpot/ORCACPot/=) is the frontend of the split orcac shim
@@ -2071,6 +2117,71 @@ int main() {
 - Errors :: =OpenMMSession= throws
   =std::invalid_argument= if =platform= is empty, =time_step= or =temperature=
   is not positive and finite, or =friction= is negative or non-finite.
+
+*** =rgpot::OpenMMSession=
+
+- Inputs :: =OpenMMSession(system, config)= with an owned
+  =std::unique_ptr<OpenMM::System>= and an =OpenMMSessionConfig=.
+  The session is move-only.
+  =setPositions= and =setVelocities= take one =OpenMM::Vec3= per particle;
+  =stepLangevin= and =runLangevin= take =kT=, =friction=, =time_step=, a plane
+  point and normal and the wall points and normals, each one =OpenMM::Vec3= per
+  particle, a step count and a seed, and =runLangevin= also an =OpenMMWallMode=
+  and whether to record the constraint force.
+- Units :: OpenMM native units: nm, nm/ps, kJ/mol,
+  kJ/(mol nm), amu and ps; =kT= in kJ/mol and =friction= in ps^-1.
+- Outputs :: =numParticles()= and =masses()= describe the System.
+  =stepNVE= advances unconstrained Verlet dynamics with the configured or an
+  explicit step.
+  =stepLangevin= and =runLangevin= run the =rgpot::md::ProjectedLangevin= driver
+  on the Context: projected BAOAB on the 3N hyperplane in the inverse-mass
+  metric, with the System's distance constraints held in every step and planar
+  walls.
+  The first force of a call is evaluated on the hyperplane.
+  =stepLangevin= returns the number of wall reflections and =runLangevin= an
+  =OpenMMLangevinResult=; an empty plane point and normal run =runLangevin=
+  without the hyperplane.
+  A call with the seed of the previous call continues its stream, and setting
+  positions or velocities ends it.
+  =state()= returns an =OpenMMState=; =boxVectors=, =geometry=,
+  =setPeriodicBox=, =usesPeriodicBoundaryConditions= and =initialize= read and
+  set the cell and evaluate the forces once so a failure shows early.
+- Errors :: the constructor throws =std::invalid_argument= for a null System,
+  bad settings, an empty platform, a System with no particles or no massive
+  particle, a negative mass, or a virtual site.
+  The setters and steppers throw =std::invalid_argument= for a vector count that
+  differs from the System, a non-finite entry, a negative NVE step count, or a
+  wall point list and normal list of different lengths; errors of
+  =rgpot::md::ProjectedLangevin= and of OpenMM pass through.
+
+*** =rgpot::OpenMMWallMode=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Reflect= or =Reject=, the treatment of a drift that ends outside a
+  wall, mapped onto =rgpot::md::WallMode=.
+  =stepLangevin= always reflects.
+- Errors :: none.
+
+*** =rgpot::OpenMMLangevinResult=
+
+- Inputs :: none; a struct returned by =OpenMMSession::runLangevin=.
+- Units :: =constraint_force= in kJ/(mol nm).
+- Outputs ::
+  =wall_hits=, the wall reflections of the run, and =constraint_force=, one
+  Lagrange multiplier =lambda = -(n . M^-1 F) / (n . M^-1 n)= per step for the
+  unit normal over the 3N coordinates when recording was requested and a plane
+  is set, the mean of the two force kicks of the step, and =constraint_metric=,
+  Z per step in 1/amu.
+- Errors :: none.
+
+*** =rgpot::OpenMMState=
+
+- Inputs :: none; a struct returned by =OpenMMSession::state=.
+- Units :: nm, nm/ps, kJ/(mol nm) and kJ/mol.
+- Outputs :: =positions=, =velocities= and =forces=, one =OpenMM::Vec3= per
+  particle, and =potential_energy= and =kinetic_energy=.
+- Errors :: none.
 
 ** Construction from a PotentialConfig
 

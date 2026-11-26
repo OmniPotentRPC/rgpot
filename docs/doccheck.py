@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the documentation against the source tree.
 
-Three checks, each a subcommand:
+Six checks, each a subcommand:
 
 ``blocks``
     Every code block in ``readme_src.org``, ``CONTRIBUTING.md``,
@@ -28,6 +28,19 @@ Three checks, each a subcommand:
     Every org page under ``docs/orgmode`` is reachable from
     ``docs/orgmode/index.org``, every design note named there exists, and
     the pinned citations and reference values are still on their pages.
+
+``inventory``
+    Every public item has documentation: each potential has a section under
+    ``docs/orgmode/howto/potentials-*.org``, each public C, C++ and Python
+    name a reference entry, each Cap'n Proto field a row, each Rust item a
+    doc comment, each program and ``potctl`` command a heading.  See
+    ``docs/inventory.py``, which also prints the coverage table.
+
+``generated``
+    The generated files are current: the Cap'n Proto reference page
+    (``docs/gen_capnp_reference.py``), ``llms.txt`` and ``llms-full.txt``
+    (``scripts/gen_llms.py``), and the DOI manifest ``docs/dois.json``
+    (``scripts/verify_dois.py``).
 
 The module uses the standard library only, so meson can run it without
 pytest.  ``tests/docs`` wraps the same functions for pytest.
@@ -424,10 +437,21 @@ C_HEADERS = (
     "CppCore/rgpot/MetatomicPot/metatomic_c_abi.h",
     "CppCore/rgpot/XTBPot/xtb_c_abi.h",
     "engines/gromacs/libcp2k.h",
+    "CppCore/rgpot/NWChemPot/nwchem_c_abi.h",
+    "CppCore/rgpot/CPMDPot/cpmd_c_abi.h",
+    "CppCore/rgpot/MOPACPot/mopac_c_abi.h",
+    "CppCore/rgpot/CP2KPot/cp2kc_abi.h",
 )
 # Function prefix of a header when it is not rgpot_: librgpot_gromacs serves
-# the CP2K library's API under CP2K's names.
-C_PREFIXES = {"engines/gromacs/libcp2k.h": "cp2k_"}
+# the CP2K library's API under CP2K's names, and each quantum engine library
+# exports its own prefix.
+C_PREFIXES = {
+    "engines/gromacs/libcp2k.h": "cp2k_",
+    "CppCore/rgpot/NWChemPot/nwchem_c_abi.h": "nwchemc_",
+    "CppCore/rgpot/CPMDPot/cpmd_c_abi.h": "cpmdc_",
+    "CppCore/rgpot/MOPACPot/mopac_c_abi.h": "mopacc_",
+    "CppCore/rgpot/CP2KPot/cp2kc_abi.h": "cp2kc_",
+}
 # DLPack and eindir declare these; rgpot only forwards them.
 C_FOREIGN = {"DLManagedTensorVersioned", "DLDevice", "eindir_abi_stamp_t", "eindir_objective_t"}
 
@@ -683,6 +707,8 @@ def cpp_public_names(root: Path = ROOT) -> dict[str, CppName]:
     out.update(cpp_potential_classes(root))
     out.update(cpp_support_names(root))
     out.update(cpp_member_classes(root))
+    for key, value in cpp_installed_types(root).items():
+        out.setdefault(key, value)
     return out
 
 
@@ -722,6 +748,83 @@ def _blank_bodies(text: str) -> str:
         for i in range(start, end + 1):
             out[i] = " "
     return "".join(out)
+
+
+# Headers whose types are not public: vendored sources, SIMD kernels,
+# metaprogramming traits and the UMA package unpacking helpers, which the
+# installed tree carries only because the libraries are header-only.
+# Programs the build produces; their reference entries describe a command line.
+PROGRAMS = ("potserv", "potserv_mpi", "rgpot-eval", "rgpot-lj", "rgpot-ipi-driver")
+
+CPP_INTERNAL_HEADERS = (
+    "CppCore/rgpot/EMT/Asap/",
+    "CppCore/rgpot/LongRange/pocketfft.hpp",
+    "CppCore/rgpot/MetatomicPot/vesin_compat.hpp",
+    "CppCore/rgpot/nlist/HalfShellDetail.hpp",
+    "CppCore/rgpot/UmaPot/aoti_unpack.hpp",
+    "CppCore/rgpot/UmaPot/aoti_execstack.hpp",
+)
+
+
+def _type_spans(text: str) -> list[tuple[int, int]]:
+    """Body spans of every class, struct, union and function in a header."""
+    spans = []
+    for m in re.finditer(
+        r"\b(class|struct|union)\s+(?:[A-Z][A-Z0-9_]+\s+)*\w+\s*(?:final\s*)?(?::[^{;]*)?\{", text
+    ):
+        spans.append((m.end() - 1, _match_brace(text, m.end() - 1)))
+    return spans
+
+
+def cpp_installed_types(root: Path = ROOT) -> dict[str, CppName]:
+    """Namespace-scope classes, structs and enums of the installed headers.
+
+    ``meson.build`` installs every header under ``CppCore/rgpot``; each type
+    declared at namespace scope there is part of the C++ surface.  Nested
+    types are described with the type that holds them.
+    """
+    out: dict[str, CppName] = {}
+    for path in sorted((root / "CppCore/rgpot").rglob("*.hpp")):
+        header = path.relative_to(root).as_posix()
+        if header.startswith(CPP_SKIP_DIRS + CPP_INTERNAL_HEADERS) or "/simd/" in header:
+            continue
+        if "/detail/" in header:
+            continue
+        text = strip_c_comments(_expand_class_macros(path.read_text(encoding="utf-8", errors="replace")))
+        spans = _namespaces_at(text)
+        bodies = _type_spans(text)
+        anonymous = [
+            (a.start(), _match_brace(text, a.end() - 1))
+            for a in re.finditer(r"\bnamespace\s*\{", text)
+        ]
+        for m in re.finditer(
+            r"\b(class|struct|enum\s+class|enum\s+struct|enum)\s+(\w+)\s*(?:final\s*)?(?::[^{;]*)?\{", text
+        ):
+            if any(s < m.start() < e for s, e in bodies):
+                continue
+            if any(s < m.start() < e for s, e in anonymous):
+                continue
+            qual = _qualifier(spans, m.start())
+            parts = set(qual.split("::"))
+            if not qual.startswith("rgpot") or parts & CPP_PRIVATE_NS or "anonymous" in parts:
+                continue
+            if re.search(r"template\s*<[^>]*>\s*$", text[max(0, m.start() - 200) : m.start()]):
+                continue
+            full = f"{qual}::{m.group(2)}"
+            ctors: list[str] = []
+            if m.group(1).startswith(("class", "struct")):
+                end = _match_brace(text, m.end() - 1)
+                for name, head, access in _class_members(
+                    m.group(2), text[m.end() : end], m.group(1).startswith("struct")
+                ):
+                    if (
+                        access == "public"
+                        and name == m.group(2)
+                        and not re.search(rf"\(\s*(const\s+)?{m.group(2)}\s*&", head)
+                    ):
+                        ctors.append(head)
+            out.setdefault(full, CppName(full, "class", ctors, header))
+    return out
 
 
 def cpp_support_names(root: Path = ROOT) -> dict[str, CppName]:
@@ -1051,6 +1154,69 @@ def py_public_names(root: Path = ROOT) -> dict[str, PyName]:
             out[full] = PyName(full, "function", overloads[0] if overloads else None, overloads)
         else:
             out[full] = PyName(full, "variable", None)
+    out.update(py_ase_names(root))
+    return out
+
+
+PY_ASE_DIR = "python/rgpot/ase"
+
+
+def py_ase_names(root: Path = ROOT) -> dict[str, PyName]:
+    """The names ``rgpot.ase.__all__`` exports, from the module sources."""
+    package = root / PY_ASE_DIR
+    init = package / "__init__.py"
+    if not init.is_file():
+        return {}
+    exported: list[str] = []
+    for node in ast.parse(init.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets
+        ):
+            exported = list(ast.literal_eval(node.value))
+    defs: dict[str, ast.AST] = {}
+    for module in sorted(package.glob("*.py")):
+        if module.name == "__init__.py":
+            continue
+        for node in ast.parse(module.read_text(encoding="utf-8")).body:
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                defs.setdefault(node.name, node)
+    out: dict[str, PyName] = {}
+    for name in exported:
+        node = defs.get(name)
+        full = f"rgpot.ase.{name}"
+        if isinstance(node, ast.FunctionDef):
+            out[full] = PyName(full, "function", _params(node, False))
+        elif isinstance(node, ast.ClassDef):
+            init_fn = next(
+                (i for i in node.body if isinstance(i, ast.FunctionDef) and i.name == "__init__"),
+                None,
+            )
+            if init_fn is None:
+                base = next(
+                    (defs.get(ast.unparse(b)) for b in node.bases if ast.unparse(b) in defs),
+                    None,
+                )
+                init_fn = next(
+                    (
+                        i
+                        for i in getattr(base, "body", [])
+                        if isinstance(i, ast.FunctionDef) and i.name == "__init__"
+                    ),
+                    None,
+                )
+            out[full] = PyName(full, "class", _params(init_fn, True) if init_fn else None)
+            for item in node.body:
+                if not isinstance(item, ast.FunctionDef) or item.name.startswith("_"):
+                    continue
+                decos = {ast.unparse(d) for d in item.decorator_list}
+                kind = "property" if "property" in decos else "method"
+                out[f"{full}.{item.name}"] = PyName(
+                    f"{full}.{item.name}",
+                    kind,
+                    _params(item, "staticmethod" not in decos) if kind == "method" else None,
+                )
+        else:
+            out[full] = PyName(full, "variable", None)
     return out
 
 
@@ -1229,6 +1395,9 @@ def reference_errors(root: Path = ROOT, pages: list[Path] | None = None) -> list
         if entry.name.startswith("."):
             continue
         name = entry.name
+        if name in PROGRAMS:
+            covered.add(name)
+            continue
         if name not in c_names and name not in cpp_names and name not in py_names:
             errors.append(f"{entry.where()}: {name} is not a public name in the source")
             continue
@@ -2098,14 +2267,19 @@ def _flag_features(flags: list[str]) -> dict[str, bool]:
 
 
 def _option_features(build_dir: Path) -> dict[str, bool]:
-    """``has_rpc`` when the build has RPC on, as ``rpc_enabled`` in meson.build.
+    """Feature requirements represented by Meson options rather than defines.
 
-    Only a ``with_rust_core`` build also defines ``RGPOT_HAS_RPC``.
+    Only a ``with_rust_core`` build also defines ``RGPOT_HAS_RPC``, and the
+    long-range library has no corresponding ``RGPOT_HAS_LONG_RANGE`` define.
     """
     options = _build_options(build_dir)
     if not options:
         return {}
-    return {"has_rpc": options.get("with_rpc") is True or options.get("with_rpc_client_only") is True}
+    return {
+        "has_rpc": options.get("with_rpc") is True
+        or options.get("with_rpc_client_only") is True,
+        "has_long_range": options.get("with_long_range") is True,
+    }
 
 
 def _build_options(build_dir: Path) -> dict:
@@ -2185,6 +2359,17 @@ def _tool_env(*tools: str) -> dict[str, str] | None:
     return env
 
 
+def _runtime_env(info: BuildInfo) -> dict[str, str]:
+    env = dict(os.environ)
+    key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
+    current = [p for p in env.get(key, "").split(os.pathsep) if p]
+    for lib_dir in info.lib_dirs:
+        if lib_dir not in current:
+            current.insert(0, lib_dir)
+    env[key] = os.pathsep.join(current)
+    return env
+
+
 def _compile_c(block: Block, info: BuildInfo, root: Path) -> tuple[str, str]:
     cpp = block.lang == "cpp"
     env_key = "CXX" if cpp else "CC"
@@ -2226,7 +2411,7 @@ def _compile_c(block: Block, info: BuildInfo, root: Path) -> tuple[str, str]:
         status, detail = _run([*linker, str(obj), "-o", str(exe), *args, *rpath], "", _tool_env(compiler, resolved_linker), info.build_dir)
         if status != "ok":
             return status, detail
-        return _run([str(exe)], "", None, root)
+        return _run([str(exe)], "", _runtime_env(info), root)
 
 
 def _meson_link(info: BuildInfo, names: list[str], lang: str) -> tuple[list[str], list[str]] | None:
@@ -2301,7 +2486,7 @@ COVERAGE_MARKERS = (
     ("docs/orgmode/reference/cpp_potentials.org", "-0.710164462003"),
     ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.29.6443"),
     ("docs/orgmode/reference/cpp_potentials.org", "3.63262"),
-    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.35.7423"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1016/0039-6028(96)00816-3"),
     ("docs/orgmode/reference/cpp_potentials.org", "5.129167"),
     ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.445869"),
     ("docs/orgmode/reference/cpp_potentials.org", "10.1021/j100308a038"),
@@ -2434,11 +2619,42 @@ def coverage_errors(root: Path = ROOT) -> list[str]:
     return errors
 
 
+def _load_module(name: str, relpath: str, root: Path):
+    import importlib.util
+
+    path = root / relpath
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def inventory_errors(root: Path = ROOT) -> list[str]:
+    """One message per public item with no documentation."""
+    return _load_module("rgpot_inventory", "docs/inventory.py", root).errors(root)
+
+
+def generated_errors(root: Path = ROOT) -> list[str]:
+    """Generated files that no longer match their sources."""
+    errors = []
+    capnp = _load_module("rgpot_gen_capnp", "docs/gen_capnp_reference.py", root)
+    page = root / capnp.PAGE
+    if not page.is_file() or page.read_text(encoding="utf-8") != capnp.render(root):
+        errors.append(f"{capnp.PAGE} is stale; run python docs/gen_capnp_reference.py")
+    errors.extend(_load_module("rgpot_gen_llms", "scripts/gen_llms.py", root).stale(root))
+    errors.extend(_load_module("rgpot_verify_dois", "scripts/verify_dois.py", root).check(root))
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("check", choices=("blocks", "reference", "facts", "coverage", "all"))
+    parser.add_argument(
+        "check",
+        choices=("blocks", "reference", "facts", "coverage", "inventory", "generated", "all"),
+    )
     parser.add_argument("--build-dir", type=Path, default=None)
     parser.add_argument("--root", type=lambda p: Path(p).resolve(), default=ROOT)
     parser.add_argument(
@@ -2467,6 +2683,10 @@ def main(argv: list[str] | None = None) -> int:
         errors.extend(facts_errors(args.root))
     if args.check in ("coverage", "all"):
         errors.extend(coverage_errors(args.root))
+    if args.check in ("inventory", "all"):
+        errors.extend(inventory_errors(args.root))
+    if args.check in ("generated", "all"):
+        errors.extend(generated_errors(args.root))
     if pages:
         errors = [e for e in errors if wanted(e)]
     for error in errors:

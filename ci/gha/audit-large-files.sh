@@ -10,7 +10,7 @@ THRESHOLD_BYTES="${THRESHOLD_BYTES:-$((1024 * 1024))}"
 
 allowlisted() {
   case "$1" in
-    CppCore/tests/data/* | third_party/* | pixi.lock) return 0 ;;
+    CppCore/tests/data/* | third_party/* | llms-full.txt | pixi.lock) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -31,7 +31,7 @@ while IFS= read -r line; do
 done < <(git ls-tree -r -l HEAD)
 
 if ((fail)); then
-  echo "error: tracked files at or above ${THRESHOLD_BYTES} bytes (allowlist: CppCore/tests/data/, third_party/, pixi.lock)" >&2
+  echo "error: tracked files at or above ${THRESHOLD_BYTES} bytes (allowlist: CppCore/tests/data/, third_party/, llms-full.txt, pixi.lock)" >&2
   exit 1
 fi
 echo "OK: no unexpected tracked file at or above ${THRESHOLD_BYTES} bytes"

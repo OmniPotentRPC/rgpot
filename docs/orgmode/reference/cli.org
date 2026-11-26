@@ -1,0 +1,468 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Command-line programs
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Command-line programs
+
+The build installs up to six programs (=potserv=,
+=potserv_mpi=, =nwchem_mpi_force_host=, =rgpot-lj=, =rgpot-ipi-driver= and
+=rgpot-mdi=) when their build options are enabled, and the repository carries
+one project tool, =potctl=.
+Each entry lists the arguments, the units on the wire or on the pipe, and how
+the program fails.
+
+** Potential programs
+
+=potserv=, =potserv_mpi=, =nwchem_mpi_force_host=, =rgpot-lj=,
+=rgpot-ipi-driver= and =rgpot-mdi= are installed unless rgpot is built as a
+Meson subproject, each gated by its build options (=rgpot-mdi= is described in
+=docs/mdi.md= and =nwchem_mpi_force_host= in =CppCore/tools/nwchem_mpi_force_host.cc=).
+=rgpot-eval= is built for the tests and the how-to pages and is not installed.
+
+*** =potserv=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potserv <port> <PotentialType>
+#+end_src
+
+- Inputs :: =port=, the TCP port to listen on, and =PotentialType=, the backend
+  name.
+  =LJ=, =LJCluster=, =Morse=, =SWSi=, =ZBL=, =Eckart=, =MullerBrown=,
+  =ModifiedMullerBrown=, =LEPS-HH2=, =LEPS-HCl2=, =LEPS-FH2=, =DoubleWell=,
+  =CoupledProtonWell=, =Composite=, =D2=, =D2Cpmd=,
+  =NWChem[:basis[:theory[:xc]]]= and =CPMD= are always offered.
+  The rest depend on the build: =CuH2= and =EAMAl= (the Fortran potentials),
+  =CBE=, =IPI:unix:<path>=, =IPI:tcp:<host>:<port>=, =XTB=, =GFNFF=, =GFN0xTB=,
+  =GFN1xTB=, =TBLite=, =TBLiteGFN2=, =TBLiteGFN1=, =TBLiteIPEA1=, =D3=, =D4=,
+  =Metatomic:<model_path>[:<device>]=, =Uma:<model_path>[:<task>]=,
+  =Skala[:<basis>]= and =CP2K=.
+  The program is built only with the RPC stack and not with
+  =with_rpc_client_only=.
+- Units :: those of the =ForceInput= of [[file:capnp_schema.org][the schema]],
+  which default to Angstrom and eV.
+- Outputs :: a server on =localhost= that prints "Server running on port N with
+  TYPE potential." and serves the =Potential= interface until it is stopped.
+- Errors :: fewer than two arguments print the usage with the names of this
+  build and exit with 1.
+  A port that is not an integer prints a notice and falls back to 12345.
+  An unknown type, a type this build lacks, or an =IPI= type without an address
+  exits with 1.
+  =CP2K= in a build without it exits with 1 and names the build option.
+
+*** =potserv_mpi=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+mpirun -n N potserv_mpi <port> <PotentialType>
+#+end_src
+
+- Inputs :: the arguments of =potserv=.
+- Units :: as =potserv=.
+- Outputs :: the same source as =potserv=, built with =RGPOT_POTSERV_MPI= and
+  linked to MPI.
+  Rank 0 serves the RPC and the other ranks work for it.
+  It is built only when MPI is found; see [[file:mpi.org][the MPI page]].
+- Errors :: as =potserv=; more than one rank with a type other than =NWChem=,
+  =CPMD= or =CP2K= is refused, because only those backends are collective.
+
+*** =rgpot-eval=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+rgpot-eval Name [key value ...] < geometry
+#+end_src
+
+- Inputs :: =Name= and key value options, built the way a LAMMPS
+  =pair_coeff * * Name ...= line builds them (see [[file:potential_names.org][Potential
+  names]]), and a geometry on standard input: the atom count, nine cell values
+  (one vector per row) and one =z x y z= line per atom.
+  The argument count must be even and at least two.
+- Units :: positions in Angstrom; the stress is in eV/Angstrom^3.
+- Outputs :: =energy E=, one =force i fx fy fz= line per atom and, when the
+  kernel reports a stress, a =stress= line with nine row-major values.
+  Numbers carry 17 significant digits.
+- Errors :: exit status 2 for a usage error or a malformed geometry, with the
+  missing item named on standard error; 1 when the potential cannot be built or
+  throws, with its message on standard error.
+
+*** =rgpot-lj=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+rgpot-lj < input
+rgpot-lj --kJ-per-eV
+#+end_src
+
+- Inputs :: standard input holds =u0 cutoff psi=, the atom count, nine cell
+  values and one =z x y z= line per atom.
+  =--kJ-per-eV= prints a factor and exits without reading input.
+- Units :: as =LJPot=; the factor is the library's kJ/mol per eV.
+- Outputs :: =energy E= and one =force i fx fy fz= line per atom, in =%.16e=
+  form.
+  No stress is printed.
+- Errors :: exit status 2 for a malformed input, and 1 with the text "evaluation
+  rejected the geometry" when the kernel returns a non-zero status.
+
+*** =rgpot-ipi-driver=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+rgpot-ipi-driver --pot "Name [key value ...]" (--species LIST | --species-from FILE) [options]
+#+end_src
+
+- Inputs :: exactly one of =--pot SPEC= (a name and key value options in one
+  string) and =-m, --mode NAME= with =-o, --param LIST= (=key=value= pairs
+  separated by commas); exactly one of =--species LIST= (symbols or atomic
+  numbers separated by commas, with =Sym*N= repeating a symbol) and
+  =--species-from FILE= (an =.xyz=, =.extxyz= or eOn =.con= file).
+  The i-PI protocol carries no species, so the list has one entry per atom in
+  server order.
+  Socket options follow
+  =i-pi-py_driver=: =-u, --unix=, =-a, --address= (default =localhost=), =-p, --port= (default 12345, ignored with =-u=) and =-S, --sockets-prefix= (default =/tmp/ipi_=).
+  Other options are =--cutoff A=, =--preserve-open-cell= (pass a singular cell
+  to the potential unchanged instead of padding it with a finite open box),
+  =--stress-step H=, =--timeout S= (0 waits forever), =--connect-timeout S=
+  (default 30), =--no-extras= (send an empty extra string instead of JSON),
+  =-v, --verbose=, =--list= (print the names of this build and exit) and
+  =-h, --help=.
+- Units :: =--cutoff= is in Angstrom: the cutoff of a potential whose spec names
+  none, and the range used to tile thin periodic cells and pad open boxes.
+  =--stress-step= is the strain step of a central-difference virial for a
+  potential that reports no stress; 0 sends a zero virial.
+- Outputs :: a client that connects to an i-PI server and answers it with an
+  rgpot potential.
+  It is built only with i-PI support.
+  See [[file:ipi_driver.org][the i-PI driver page]].
+- Errors :: a usage error prints the synopsis and exits with 2: a flag without a
+  value, both or neither of =--pot= and =-m=, =-o= without =-m=, both or neither
+  of the species options, a negative =--cutoff=, a value that is not a number,
+  or an unknown argument.
+
+** Project tool
+
+=potctl= is the repository's project control plane.
+It lives beside =rgpot-core= in the Cargo workspace, is not published, and is
+run as =cargo run -q -p potctl -- <command>= from inside the checkout, which it
+locates by =meson.build=, =pixi.toml= and =rgpot-core/=.
+A failure prints =error: potctl: <message>= and exits with a non-zero status.
+
+*** =potctl release sync=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl release sync VERSION
+#+end_src
+
+- Inputs :: =VERSION=, a semantic version with an optional leading =v=.
+- Units :: none.
+- Outputs :: writes the version into =[workspace.package]= of the root
+  =Cargo.toml=, the one hand-written copy.
+  =cog= then rewrites the other copies from it.
+- Errors :: a string that is not a semantic version is refused, as is a
+  =Cargo.toml= with no version under =[workspace.package]=.
+
+*** =potctl release assert=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl release assert [VERSION] [--require-changelog]
+#+end_src
+
+- Inputs :: an optional =VERSION=, usually the tag without the =v=, and
+  =--require-changelog= (or the environment variable =REQUIRE_CHANGELOG=), which
+  also demands a =## [version]= section in =CHANGELOG.md=.
+- Units :: none.
+- Outputs :: nothing on success.
+  Every version copy, among them =meson.build=, =CMakeLists.txt=,
+  =towncrier.toml=, =pixi.toml= and the C header, agrees with =Cargo.toml=.
+- Errors :: a copy that differs, a release version that is not semver, a version
+  that differs from =VERSION=, or a missing changelog section when one is
+  required.
+
+*** =potctl release notes=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl release notes VERSION [-o PATH]
+#+end_src
+
+- Inputs :: =VERSION= and =-o, --out PATH=.
+- Units :: none.
+- Outputs :: the =CHANGELOG.md= section of the version, on standard output or in
+  the file, for the body of a release.
+- Errors :: a version that has no section.
+
+*** =potctl ci preflight=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci preflight [--no-lockstep]
+#+end_src
+
+- Inputs :: =--no-lockstep=, which skips the version agreement check.
+- Units :: none.
+- Outputs :: "preflight ok" when =meson.build=, =CMakeLists.txt=, =pixi.toml=,
+  the =Cargo.toml= of =rgpot-core= and of =potctl=, =towncrier.toml=,
+  =pyproject.toml= and =cog.toml= exist and, by default, the versions agree.
+  With =--no-lockstep= it prints the release version instead.
+- Errors :: a list of the missing files, or the lockstep error.
+
+*** =potctl ci darwin-env=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+eval "$(potctl ci darwin-env [--force] [--conda-prefix DIR] [--sdkroot DIR])"
+#+end_src
+
+- Inputs :: =--force=, which emits the macOS plan even when the runner is not
+  macOS; =--conda-prefix=, which overrides =CONDA_PREFIX=; =--sdkroot=, which
+  overrides =SDKROOT=.
+- Units :: none.
+- Outputs :: =export= and =unset= lines that use the host Apple clang and SDK
+  while keeping the conda search paths on macOS under pixi, and a no-op on
+  Linux.
+  Meson then takes =$POTCTL_MESON_EXTRA=.
+  The build commands below apply the same plan themselves.
+- Errors :: none beyond a failure to read the environment.
+
+*** =potctl ci meson-test=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci meson-test --rpc true|false --cache true|false [--build-dir DIR] [--no-darwin]
+#+end_src
+
+- Inputs :: =--rpc= and =--cache=, the feature switches of a matrix leg, each
+  =true=, =false=, =1=, =0=, =yes=, =no=, =on= or =off=; =--build-dir= (default
+  =bbdir=); =--no-darwin=, which skips the macOS plan.
+  The environment variables =POTCTL_MESON_EXTRA= (extra setup arguments) and
+  =POTCTL_WITH_MPI=enabled= (turns MPI on) are read.
+- Units :: none.
+- Outputs :: =meson setup=, =meson compile= and =meson test --print-errorlogs=.
+- Errors :: a switch that is not a boolean, and the failure of the first step
+  that fails.
+
+*** =potctl ci cmake-test=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci cmake-test --rpc true|false --cache true|false [--build-dir DIR] [--no-darwin]
+#+end_src
+
+- Inputs :: the arguments of =meson-test=, with =--build-dir= defaulting to
+  =build=.
+- Units :: none.
+- Outputs :: CMake configure, build and =ctest --output-on-failure=.
+- Errors :: as =meson-test=.
+
+*** =potctl ci build-test=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci build-test --sys meson|cmake --rpc true|false --cache true|false [--build-dir DIR] [--no-darwin]
+#+end_src
+
+- Inputs :: =--sys=, which selects =meson= or =cmake=, and the arguments of the
+  two commands above; the build directory defaults to =bbdir= for Meson and
+  =build= for CMake.
+- Units :: none.
+- Outputs :: the run of =meson-test= or =cmake-test=.
+- Errors :: "unknown build sys" for another =--sys= value, and the errors of the
+  chosen command.
+
+*** =potctl ci release-assert=
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the lockstep check of =release assert=, a read of =cog.toml=, and
+  =cog --version=.
+- Errors :: a failed assertion, an empty or invalid =cog.toml=, or a missing or
+  failing =cog=.
+
+*** =potctl ci towncrier-draft=
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =towncrier build --draft= when =docs/newsfragments= holds a =.md=
+  file; otherwise a note that the draft is skipped.
+- Errors :: no usable =towncrier=, or its failure.
+
+*** =potctl ci cog-bump-dry-run=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci cog-bump-dry-run [--bump auto|patch|minor|major]
+#+end_src
+
+- Inputs :: =--bump=; without it the workspace version is used.
+- Units :: none.
+- Outputs :: a =cog bump --dry-run=.
+  Without =--bump= a non-zero =cog= status is reported as a note and does not
+  fail the command.
+- Errors :: a =--bump= value other than the four listed, and, with =--bump=, the
+  failure of =cog=.
+
+*** =potctl ci cog-check=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci cog-check [--from BASE]
+#+end_src
+
+- Inputs :: =--from=, the base commit of a pull request.
+  Without it the check covers the whole repository and is advisory.
+- Units :: none.
+- Outputs :: =cog check= over =BASE..HEAD=, followed by a check that every
+  commit subject in the range is a conventional subject.
+- Errors :: "cog check failed" when =cog= rejects the range, and the first
+  commit subject that is not conventional.
+
+*** =potctl ci towncrier-check=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci towncrier-check --compare-with BASE
+#+end_src
+
+- Inputs :: =--compare-with=, the base commit.
+- Units :: none.
+- Outputs :: =towncrier check --compare-with BASE=.
+- Errors :: an empty base, no usable =towncrier=, or its failure.
+
+*** =potctl ci ensure-torch-metatomic=
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: CPU Torch and the metatensor, metatomic and vesin layout under the
+  =purelib= of the active Python for the metatomic leg.
+  A missing or CUDA Torch is replaced by a CPU one.
+  The Torch and CMake paths are appended to =GITHUB_ENV=.
+- Errors :: a missing Python or a failed install step.
+
+*** =potctl ci metatomic-test=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci metatomic-test [--build-dir DIR] [--rpc]
+#+end_src
+
+- Inputs :: =--build-dir= (default =bbdir-mta=) and =--rpc=, which builds with
+  the RPC stack and so turns on the =libuma_engine= plugin.
+- Units :: none.
+- Outputs :: the Meson metatomic and vesin build and test.
+- Errors :: the failure of the first step that fails.
+
+*** =potctl ci plugin-test=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci plugin-test [--build-dir DIR] [--no-darwin]
+#+end_src
+
+- Inputs :: =--build-dir= (default =bbdir-plugin=) and =--no-darwin=.
+- Units :: none.
+- Outputs :: a Meson build with the plugin host, then =PluginTest=,
+  =PluginContractTest=, =ExternalPluginTest= and the rest of the plugin suite.
+- Errors :: the failure of the first step that fails.
+
+*** =potctl ci xtb-tblite-test=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci xtb-tblite-test [--build-dir DIR]
+#+end_src
+
+- Inputs :: =--build-dir= (default =bbdir-tb=).
+- Units :: none.
+- Outputs :: the xtb and tblite potentials leg.
+- Errors :: the failure of the first step that fails.
+
+*** =potctl ci xckernel-test=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci xckernel-test [--build-dir DIR]
+#+end_src
+
+- Inputs :: =--build-dir= (default =bbdir-xck=).
+- Units :: none.
+- Outputs :: a Meson build with =-Dwith_xckernel=true= and the =xckernel= test
+  suite.
+  The default matrix leaves =with_xckernel= off.
+- Errors :: the failure of the first step that fails, or a build whose tests
+  lack =XcKernelGoldens=.
+
+*** =potctl ci rpc-integ=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci rpc-integ [--server-bin PATH]
+#+end_src
+
+- Inputs :: =--server-bin= (default =bbdir/CppCore/potserv=).
+- Units :: none.
+- Outputs :: =tests/rpc_integ.py= run against that server with =python=, or
+  =python3= when =python= is missing.
+- Errors :: a missing script, or the failure of the test.
+
+*** =potctl ci bridge-server-build=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci bridge-server-build [--build-dir DIR]
+#+end_src
+
+- Inputs :: =--build-dir= (default =bbdir_server=).
+- Units :: none.
+- Outputs :: the Meson RPC server build of the client bridge stress leg.
+- Errors :: the failure of the build.
+
+*** =potctl ci bridge-client-build=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci bridge-client-build [--build-dir DIR]
+#+end_src
+
+- Inputs :: =--build-dir= (default =build_client=).
+- Units :: none.
+- Outputs :: the CMake RPC client-only build of the same leg.
+- Errors :: the failure of the build.
+
+*** =potctl ci bridge-stress=
+
+#+attr_rgpot: skip usage synopsis, not code to run
+#+begin_src bash
+potctl ci bridge-stress [--server-build-dir DIR] [--client-build-dir DIR] [--port N] [--potential NAME]
+#+end_src
+
+- Inputs :: the two build directories (defaults
+  =bbdir_server= and =build_client=), =--port= (default 12345) and =--potential=
+  (default =LJ=).
+- Units :: none.
+- Outputs :: starts =potserv= from the server build, waits two seconds, runs
+  =ctest= in the client build against it, then stops the server.
+- Errors :: "missing potserv" when the server build has not run, and the failure
+  of =ctest=.
+
+*** =potctl ci bridge-stress-full=
+
+- Inputs :: the options of =bridge-stress=.
+- Units :: none.
+- Outputs :: the whole leg in one call: the server build, the client build, then
+  the stress run.
+- Errors :: the failure of the first step that fails.
+
+*** =potctl cosmo build=
+
+- Inputs :: none; the environment variables =COSMO=, =POTCTL_COSMO_OUT=,
+  =POTCTL_COSMO_ARCHS=, =COSMO_CC= and =COSMOCC_ARCHES= configure the build.
+- Units :: none.
+- Outputs :: builds =potctl= as a Cosmopolitan APE binary with a nightly =rustc=
+  and a =cosmocc= linker shim, and builds the host =potctl-cosmo-ld= when it is
+  missing.
+  The command exists only in a build with the =cosmo-host= feature and is not
+  compiled into the APE binary itself.
+- Errors :: a missing toolchain or an unset =COSMO=.
