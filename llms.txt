@@ -76,7 +76,7 @@ The pages below are the documentation of the repository at https://github.com/Om
 - [C++ engine-backed potentials](https://rgpot.rgoswami.me/reference/cpp_backends.html): These potentials call an external program or library: a quantum-chemistry engine, a tight-binding library, a machine-learned model or a socket peer.
 - [C++ support types](https://rgpot.rgoswami.me/reference/cpp_support.html): meson.build installs every header under CppCore/rgpot, so each type declared there at namespace scope is part of the C++ surface.
 - [i-PI driver client](https://rgpot.rgoswami.me/reference/ipi_driver.html): IPIDriver is the client side of the i-PI socket protocol.
-- [Command-line programs](https://rgpot.rgoswami.me/reference/cli.html): The build installs five programs for users, and the repository carries one project tool, potctl.
+- [Command-line programs](https://rgpot.rgoswami.me/reference/cli.html): The build installs up to six programs (potserv, potserv_mpi, nwchem_mpi_force_host, rgpot-lj, rgpot-ipi-driver and rgpot-mdi) when their build options are enabled, and the repository carries one project tool, potctl.
 - [Build options](https://rgpot.rgoswami.me/reference/build_options.html): Meson is the primary build.
 - [PotentialConfig arms](https://rgpot.rgoswami.me/reference/potential_config.html): This page lists the arms of the Cap'n Proto PotentialConfig union and what potserv does with each.
 - [Stillinger-Weber silicon (1985)](https://rgpot.rgoswami.me/reference/sw_si.html): StillingerWeberSi (PotType::SWSi1985) evaluates the silicon potential of F.
