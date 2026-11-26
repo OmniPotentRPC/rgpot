@@ -16,9 +16,8 @@ from pathlib import Path
 import numpy as np
 from ase import Atoms
 from ase.optimize import LBFGS
-from scipy.optimize import dual_annealing
-
 from rgpot.ase import RgpotCalculator
+from scipy.optimize import dual_annealing
 
 _TUTORIAL = (
     Path(__file__).resolve().parents[2]
