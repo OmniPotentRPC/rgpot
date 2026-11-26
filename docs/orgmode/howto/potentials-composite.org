@@ -1380,8 +1380,11 @@ combination.
 *** Functional form
 
 - =E = sum_t E_t=, =F = sum_t F_t=, variance =sum_t var_t=.
-- The stress is the sum of the stresses of the terms that report one, and
-  =has_stress= is 1 when any term does.
+- The stress is the sum of the stresses of the terms, and =has_stress= is 1 only
+  when at least one term is evaluated and every evaluated term reports a stress.
+  When any evaluated term reports none, =has_stress= is 0 and the stress entries
+  are zero.
+  An empty sum reports no stress.
 - Each term is called through =forceBatch= with one system.
 - =shareNeighbours(lists)= hands one =DualList= to every =CoulombPot=,
   =DispersionPot= and =NlhPot= added so far, so those terms build one pair list.
@@ -1403,6 +1406,7 @@ The program sums a Coulomb term (default =Ewald=, 20 Angstrom cell), the default
 the energy of the sum with the three terms evaluated one by one.
 The charges (-0.8 on oxygen, 0.4 on hydrogen) are illustrative, and the Coulomb
 term has no bonded exclusions, so its energy includes the intramolecular part.
+All three terms report a stress, so the sum does too.
 
 #+attr_rgpot: run requires=has_long_range link=rgpot
 #+begin_src cpp
