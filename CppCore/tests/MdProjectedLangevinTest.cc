@@ -641,3 +641,34 @@ TEST_CASE("the plane multiplier accounts for distance constraints",
   const double lambda = (b1 * a22 - b2 * a12) / (a11 * a22 - a12 * a12);
   CHECK(result.constraintForce[0] == Catch::Approx(lambda).epsilon(1.0e-6));
 }
+
+TEST_CASE("a rigid rotor keeps its energy without friction",
+          "[md][session]") {
+  // A free dumbbell turns by 0.01 rad per step. Dropping the constraint
+  // impulse of the drift would shorten its velocity on every step.
+  const std::vector<double> masses{1.0, 1.0, 1.0, 16.0, 16.0, 16.0};
+  const double length = 0.1;
+  const ProjectedLangevin driver(
+      masses, {rgpot::md::DistanceConstraint{0, 1, length}});
+  const ForceFunction none = [](const double *, double *f) {
+    std::fill(f, f + 6, 0.0);
+    return 0.0;
+  };
+  std::vector<double> x{length, 0.0, 0.0, 0.0, 0.0, 0.0};
+  std::vector<double> v{0.0, 16.0, 0.0, 0.0, -1.0, 0.0};
+  const auto kinetic = [&] {
+    double sum = 0.0;
+    for (std::size_t k = 0; k < 6; ++k) {
+      sum += 0.5 * masses[k] * v[k] * v[k];
+    }
+    return sum;
+  };
+  LangevinSettings settings;
+  settings.kT = kT;
+  settings.friction = 0.0;
+  settings.timeStep = 0.01 * length / 17.0;
+  settings.steps = 2000;
+  const double start = kinetic();
+  driver.run(settings, nullptr, {}, x.data(), v.data(), none);
+  CHECK(kinetic() == Catch::Approx(start).epsilon(1.0e-4));
+}
