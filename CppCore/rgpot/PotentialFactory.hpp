@@ -11,15 +11,14 @@
  * everything; the shared fields (common, commonPatch, neighborList,
  * rpcEndpoint, logPotentialCalls, emtRasmussenParameters) are not read,
  * matching the setPotentialConfig methods and the rpc/ *Configure helpers,
- * none of which reads them either. The orca arm is the exception: liborcac
- * receives the whole PotentialConfig and lowers common.
+ * none of which reads them either.
  *
  * In-process arms: lj, morse, zbl, d2, d2cpmd, mullerBrown, composite (its
  * PotentialSpec terms as rgpot::rpc::potentialFromSpec builds them), cpmd and
  * nwchem (their frontends, which dlopen the split cpmdc and nwchemc engines),
- * mopac (MOPACPot), orca (ORCACPot over the split liborcac shim, created
- * from the whole PotentialConfig so liborcac lowers common itself; library
- * from ORCAC_LIBRARY, RGPOT_ORCAC_ENGINE, liborcac.so.1, liborcac.so),
+ * mopac (MOPACPot), orca (ORCACPot over liborcac C ABI 1, ORCAParams
+ * lowered onto its OrcaCConfig; keepFiles is refused; library from
+ * ORCAC_LIBRARY, RGPOT_ORCAC_ENGINE, liborcac.so.1, liborcac.so),
  * lammps (the lammpc profile of LammpsPot), and, when the
  * build has them, d3 (-Dwith_dftd3), d4 (-Dwith_dftd4), xtb (-Dwith_xtb),
  * tblite (-Dwith_tblite), skala (-Dwith_skala), cp2k (-Dwith_cp2k) and expr

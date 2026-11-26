@@ -184,6 +184,68 @@ std::unique_ptr<PotentialBase> mopacFrom(const ::MOPACParams::Reader &p) {
   return std::make_unique<MOPACPot>(c);
 }
 
+std::string trimmed(const std::string &s) {
+  const auto first = s.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos)
+    return {};
+  return s.substr(first, s.find_last_not_of(" \t\r\n") - first + 1);
+}
+
+void appendWords(std::string &to, const std::string &words) {
+  if (words.empty())
+    return;
+  to += (to.empty() ? "" : " ") + words;
+}
+
+/// ORCAParams lowered onto the OrcaCConfig fields of liborcac ABI 1. orcac
+/// takes the method as one token, so words after the first join keywords
+/// ("UKS PBE0" is method UKS, keyword PBE0, the same `!` line for ORCA).
+/// Keywords on one line that does not start with '%' stay keywords, without
+/// a leading '!'. Otherwise each line starting with '!' joins keywords and
+/// the other lines are the verbatim blocks.
+ORCACConfig orcacFrom(const ::ORCAParams::Reader &p) {
+  if (p.getKeepFiles()) {
+    throw std::invalid_argument("makePotential: ORCACPot does not take ORCAParams "
+                                "keepFiles; liborcac ABI 1 always removes its "
+                                "run directory");
+  }
+  ORCACConfig c;
+  const std::string method = trimmed(p.getMethod().cStr());
+  const auto split = method.find_first_of(" \t");
+  c.method = method.substr(0, split);
+  if (split != std::string::npos)
+    appendWords(c.keywords, trimmed(method.substr(split)));
+  c.basis = trimmed(p.getBasis().cStr());
+  const std::string keywords = trimmed(p.getKeywords().cStr());
+  if (keywords.find('\n') == std::string::npos && keywords.rfind('%', 0) != 0) {
+    appendWords(c.keywords, trimmed(keywords.rfind('!', 0) == 0 ? keywords.substr(1)
+                                                                 : keywords));
+  } else {
+    std::size_t start = 0;
+    while (start <= keywords.size()) {
+      auto end = keywords.find('\n', start);
+      if (end == std::string::npos)
+        end = keywords.size();
+      const std::string line = keywords.substr(start, end - start);
+      const std::string word = trimmed(line);
+      if (word.rfind('!', 0) == 0)
+        appendWords(c.keywords, trimmed(word.substr(1)));
+      else if (!word.empty())
+        c.blocks += line + "\n";
+      start = end + 1;
+    }
+  }
+  c.executable = p.getExecutable().cStr();
+  c.scratch_dir = p.getScratchDir().cStr();
+  c.charge = p.getCharge();
+  c.multiplicity = p.getMultiplicity();
+  c.nprocs = p.getNprocs();
+  c.maxcore_mb = p.getMaxcoreMb();
+  c.timeout_s = p.getTimeoutS();
+  c.restart = p.getRestart();
+  return c;
+}
+
 } // namespace
 
 std::unique_ptr<PotentialBase> makePotential(const ::PotentialConfig::Reader &cfg) {
@@ -343,15 +405,8 @@ std::unique_ptr<PotentialBase> makePotential(const ::PotentialConfig::Reader &cf
   case ::PotentialConfig::UMA:
     return enginePot(engineCandidates("uma_engine", "", {"RGPOT_UMA_ENGINE"}),
                      flatMessage(cfg.getUma()), "uma");
-  case ::PotentialConfig::ORCA: {
-    // liborcac reads the whole PotentialConfig, so it lowers common itself.
-    const auto words = flatMessage(cfg);
-    ORCACConfig c;
-    const auto *bytes = reinterpret_cast<const unsigned char *>(words.data());
-    c.message.assign(bytes, bytes + words.size() * sizeof(capnp::word));
-    c.potential_config = true;
-    return std::make_unique<ORCACPot>(std::move(c));
-  }
+  case ::PotentialConfig::ORCA:
+    return std::make_unique<ORCACPot>(orcacFrom(cfg.getOrca()));
   case ::PotentialConfig::PLUGIN: {
     const auto p = cfg.getPlugin();
     const std::string name = p.getPluginName().cStr();

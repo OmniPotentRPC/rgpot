@@ -118,6 +118,12 @@ option(
     description: 'ORCAPot: ORCA energy and gradient through the orca executable run as a child process (POSIX). The executable is found at run time.',
 )
 option(
+    'orcac_main',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Tests: build liborcac from the orcac commit pinned in subprojects/orcac.wrap and run the orca arm of makePotential against it (PotentialFactoryTest, OrcacMainExports)',
+)
+option(
     'with_cbe',
     type: 'feature',
     value: 'disabled',

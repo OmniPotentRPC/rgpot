@@ -12,7 +12,10 @@
 #include <cstdlib>
 #include <mutex>
 #include <stdexcept>
+#include <string>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace rgpot {
 
@@ -42,6 +45,9 @@ std::vector<std::string> orcacCandidates(const std::string &engine_path) {
   return out;
 }
 
+/// NULL for an empty string, which orcac reads as "use the default".
+const char *orNull(const std::string &s) { return s.empty() ? nullptr : s.c_str(); }
+
 } // namespace
 
 struct ORCACPot::Impl {
@@ -49,66 +55,114 @@ struct ORCACPot::Impl {
   DynLib lib;
   std::string path;
   std::string load_error;
-  orcac_session_destroy_fn destroy = nullptr;
-  orcac_session_energy_forces_fn energy_forces = nullptr;
-  orcac_session_last_error_fn session_last_error = nullptr;
-  orcac_session_run_directory_fn run_directory = nullptr;
+  orcac_config_init_fn config_init = nullptr;
+  orcac_create_fn create = nullptr;
+  orcac_configure_fn configure = nullptr;
+  orcac_energy_gradient_fn energy_gradient = nullptr;
+  orcac_cancel_fn cancel = nullptr;
+  orcac_last_error_fn last_error = nullptr;
+  orcac_destroy_fn destroy = nullptr;
+  orcac_status_name_fn status_name = nullptr;
+  orcac_version_fn version = nullptr;
+  orcac_c_abi_version_fn c_abi_version = nullptr;
+  orcac_abi_version_fn abi_version = nullptr;
+  orcac_available_fn available = nullptr;
+  orcac_probe_executable_fn probe_executable = nullptr;
   OrcaCSession *session = nullptr;
   mutable std::mutex mutex;
-  mutable std::vector<double> forces;
+  mutable std::vector<double> gradient;
+
+  /// Resolves the thirteen ABI 1 functions; returns the first one missing.
+  const char *resolve() {
+    const char *missing = nullptr;
+    auto get = [&](auto &fn, const char *name) {
+      fn = lib.sym_optional<std::remove_reference_t<decltype(fn)>>(name);
+      if (fn == nullptr && missing == nullptr) {
+        missing = name;
+      }
+    };
+    get(config_init, "orcac_config_init");
+    get(create, "orcac_create");
+    get(configure, "orcac_configure");
+    get(energy_gradient, "orcac_energy_gradient");
+    get(cancel, "orcac_cancel");
+    get(last_error, "orcac_last_error");
+    get(destroy, "orcac_destroy");
+    get(status_name, "orcac_status_name");
+    get(version, "orcac_version");
+    get(c_abi_version, "orcac_c_abi_version");
+    get(abi_version, "orcac_abi_version");
+    get(available, "orcac_available");
+    get(probe_executable, "orcac_probe_executable");
+    return missing;
+  }
+
+  std::string statusText(int st) const {
+    const char *name = status_name(st);
+    return name != nullptr ? name : "status " + std::to_string(st);
+  }
 };
 
 ORCACPot::ORCACPot(ORCACConfig config)
     : Potential(PotType::ORCAC), impl_(new Impl) {
   impl_->config = std::move(config);
-  const auto candidates = orcacCandidates(impl_->config.engine_path);
+  const ORCACConfig &c = impl_->config;
+  const auto candidates = orcacCandidates(c.engine_path);
   std::string open_error;
   if (!abi::open_first_candidate(impl_->lib, candidates, &impl_->path,
                                  &open_error, /*global=*/false)) {
     impl_->load_error = "liborcac not loaded (tried";
-    for (const auto &c : candidates) {
-      impl_->load_error += " " + c;
+    for (const auto &cand : candidates) {
+      impl_->load_error += " " + cand;
     }
     impl_->load_error += "): " + open_error;
     return;
   }
-  auto &lib = impl_->lib;
-  const auto abi_version = lib.sym_optional<orcac_c_abi_version_fn>("orcac_c_abi_version");
-  const auto create = lib.sym_optional<orcac_session_create_fn>("orcac_session_create");
-  const auto create_from_config =
-      lib.sym_optional<orcac_session_create_from_config_fn>("orcac_session_create_from_config");
-  const auto last_error = lib.sym_optional<orcac_last_error_fn>("orcac_last_error");
-  impl_->destroy = lib.sym_optional<orcac_session_destroy_fn>("orcac_session_destroy");
-  impl_->energy_forces =
-      lib.sym_optional<orcac_session_energy_forces_fn>("orcac_session_energy_forces");
-  impl_->session_last_error =
-      lib.sym_optional<orcac_session_last_error_fn>("orcac_session_last_error");
-  impl_->run_directory =
-      lib.sym_optional<orcac_session_run_directory_fn>("orcac_session_run_directory");
   const std::string where = impl_->path + ": ";
-  if (abi_version == nullptr || create == nullptr || create_from_config == nullptr ||
-      impl_->destroy == nullptr || impl_->energy_forces == nullptr) {
-    impl_->load_error = where + "not a liborcac (missing orcac_c_abi_version, "
-                                "orcac_session_create, orcac_session_create_from_config, "
-                                "orcac_session_destroy or orcac_session_energy_forces)";
+  if (const char *missing = impl_->resolve(); missing != nullptr) {
+    impl_->load_error =
+        where + "not an orcac C ABI " + std::to_string(RGPOT_ORCAC_C_ABI_VERSION) +
+        " library (missing " + missing + ")";
     return;
   }
-  if (abi_version() != RGPOT_ORCAC_C_ABI_VERSION) {
-    impl_->load_error = where + "orcac C ABI " + std::to_string(abi_version()) +
-                        ", this rgpot speaks " +
+  if (impl_->c_abi_version() != RGPOT_ORCAC_C_ABI_VERSION ||
+      impl_->abi_version() != ORCAC_ABI_VERSION) {
+    impl_->load_error = where + "orcac C ABI " +
+                        std::to_string(impl_->c_abi_version()) + " (ABI " +
+                        std::to_string(impl_->abi_version()) + "), this rgpot speaks " +
                         std::to_string(RGPOT_ORCAC_C_ABI_VERSION);
     return;
   }
-  // FlatArrayMessageReader in liborcac wants word alignment; vector storage
-  // from operator new has it.
-  const auto &msg = impl_->config.message;
-  impl_->session = impl_->config.potential_config
-                       ? create_from_config(msg.data(), msg.size())
-                       : create(msg.data(), msg.size());
-  if (impl_->session == nullptr) {
-    impl_->load_error = where + "orcac session refused: " +
-                        (last_error != nullptr ? last_error() : "no reason given");
+  if (c.method.empty()) {
+    impl_->load_error = where + "ORCACConfig::method is required";
+    return;
   }
+  OrcaCConfig cfg;
+  if (const int st = impl_->config_init(&cfg, sizeof(cfg)); st != ORCAC_OK) {
+    impl_->load_error = where + "orcac_config_init: " + impl_->statusText(st);
+    return;
+  }
+  cfg.method = c.method.c_str();
+  cfg.basis = c.basis.c_str();
+  cfg.keywords = orNull(c.keywords);
+  cfg.blocks = orNull(c.blocks);
+  cfg.executable = orNull(c.executable);
+  cfg.scratch_dir = orNull(c.scratch_dir);
+  cfg.charge = c.charge;
+  cfg.multiplicity = c.multiplicity;
+  cfg.nprocs = c.nprocs;
+  cfg.maxcore_mb = c.maxcore_mb;
+  cfg.timeout_s = c.timeout_s;
+  cfg.guess_policy = c.restart ? ORCAC_GUESS_CHAIN : ORCAC_GUESS_FRESH;
+  char errbuf[ORCAC_MESSAGE_SIZE] = "";
+  OrcaCSession *session = nullptr;
+  const int st = impl_->create(&cfg, &session, errbuf, sizeof(errbuf));
+  if (st != ORCAC_OK || session == nullptr) {
+    impl_->load_error = where + "orcac_create: " + impl_->statusText(st) + ": " +
+                        (errbuf[0] != '\0' ? errbuf : "no reason given");
+    return;
+  }
+  impl_->session = session;
 }
 
 ORCACPot::~ORCACPot() {
@@ -124,21 +178,28 @@ const std::string &ORCACPot::loadError() const noexcept { return impl_->load_err
 
 const std::string &ORCACPot::libraryPath() const noexcept { return impl_->path; }
 
-std::string ORCACPot::runDirectory() const {
-  if (impl_->session == nullptr || impl_->run_directory == nullptr) {
+std::string ORCACPot::engineVersion() const {
+  if (impl_->version == nullptr) {
     return {};
   }
-  const char *dir = impl_->run_directory(impl_->session);
-  return dir != nullptr ? dir : "";
+  const char *v = impl_->version();
+  return v != nullptr ? v : "";
 }
 
+const ORCACConfig &ORCACPot::config() const noexcept { return impl_->config; }
+
 uint64_t ORCACPot::paramsKey() const noexcept {
+  const ORCACConfig &c = impl_->config;
   Fnv1a fp;
-  fp.str("orcac-1");
+  fp.str("orcac-abi-1");
   fp.str(impl_->path);
-  fp.b8(impl_->config.potential_config);
-  fp.u64(impl_->config.message.size());
-  fp.bytes(impl_->config.message.data(), impl_->config.message.size());
+  for (const std::string *s : {&c.method, &c.basis, &c.keywords, &c.blocks, &c.executable}) {
+    fp.u64(s->size());
+    fp.str(*s);
+  }
+  fp.i64(c.charge);
+  fp.i64(c.multiplicity);
+  fp.b8(c.restart);
   return fp.h;
 }
 
@@ -152,21 +213,24 @@ void ORCACPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   // ORCA has no periodic cell: liborcac takes no box, and the box is unused.
   std::lock_guard<std::mutex> lock(impl_->mutex);
-  std::vector<double> &f = impl_->forces;
-  f.assign(static_cast<std::size_t>(n) * 3u, 0.0);
-  const OrcaCResult res =
-      impl_->energy_forces(impl_->session, n, in.pos, in.atmnrs, f.data());
-  if (res.ok == 0) {
-    const char *full = impl_->session_last_error != nullptr
-                           ? impl_->session_last_error(impl_->session)
-                           : nullptr;
-    throw std::runtime_error(std::string("ORCACPot: orcac failed: ") +
-                             (full != nullptr && *full != '\0' ? full : res.message));
+  std::vector<double> &g = impl_->gradient;
+  g.assign(static_cast<std::size_t>(n) * 3u, 0.0);
+  double energy_h = 0.0;
+  OrcaCResult meta{};
+  meta.struct_size = sizeof(meta);
+  const int st = impl_->energy_gradient(impl_->session, n, in.pos, in.atmnrs,
+                                        ORCAC_WANT_ENERGY | ORCAC_WANT_GRADIENT,
+                                        &energy_h, g.data(), &meta);
+  if (st != ORCAC_OK) {
+    const char *full = impl_->last_error(impl_->session);
+    throw std::runtime_error("ORCACPot: orcac failed: " + impl_->statusText(st) + ": " +
+                             (full != nullptr && *full != '\0' ? full : meta.message));
   }
-  out->energy = res.energy_h * HARTREE_TO_EV;
+  out->energy = energy_h * HARTREE_TO_EV;
   out->variance = 0.0;
-  for (std::size_t i = 0; i < f.size(); ++i) {
-    out->F[i] = f[i] * HARTREE_BOHR_TO_EV_ANGSTROM;
+  // orcac returns dE/dx; the force is its negative.
+  for (std::size_t i = 0; i < g.size(); ++i) {
+    out->F[i] = -g[i] * HARTREE_BOHR_TO_EV_ANGSTROM;
   }
 }
 

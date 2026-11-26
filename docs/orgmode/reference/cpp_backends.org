@@ -617,21 +617,47 @@ void reset();
 
 =ORCACPot= (=CppCore/rgpot/ORCACPot/=) is the frontend of the split orcac shim
 (=liborcac=), on the pattern of =MOPACPot=: it dlopens the library and keeps one
-orcac session, which owns one working directory and one set of stored
-orbitals. =liborcac= writes the ORCA input, runs ORCA and reads the =.engrad=;
-see the rgpot integration guide in the orcac repository. It is in every =librgpot= and needs
-neither ORCA nor =liborcac= to build. =rgpot::makePotential= builds it for the
-=orca= arm. =ORCAPot= is the separate in-process frontend.
+orcac session, which owns one run directory and one set of stored orbitals.
+=liborcac= writes the ORCA input, runs ORCA and reads the =.engrad=; see the
+rgpot integration guide in the orcac repository.
+It is in every =librgpot= and needs neither ORCA nor =liborcac= to build.
+=rgpot::makePotential= builds it for the =orca= arm.
+=ORCAPot= is the separate in-process frontend.
+
+=ORCACPot= speaks C ABI 1 of =liborcac=: plain C structs (=OrcaCConfig= and
+=OrcaCResult=, each with a
+=struct_size=), integer status codes, and thirteen exported functions, from =orcac_config_init= to =orcac_probe_executable=.
+The header it builds against,
+=CppCore/rgpot/ORCACPot/orcac.h=, is a vendored copy of the public =orcac.h= of the orcac repository, pinned with its orcac commit and SHA-256 in =CppCore/rgpot/ORCACPot/orcac.h.pin=.
+The =OrcacHeaderPin= test checks the copy against the pin and checks that
+=subprojects/orcac.wrap= fetches the pinned commit.
+=CppCore/tests/orcac_abi1_exports.txt= lists the thirteen functions.
 
 *** =rgpot::ORCACConfig=
 
-- Inputs :: =message=, an unpacked flat Cap'n Proto message of the rgconf
-  schema; =potential_config=, true when =message= is a =PotentialConfig= with
-  the =orca= arm (=liborcac= then lowers its =common= overlay) and false when it
-  is =ORCAParams=; =engine_path=, the library to open.
-- Units :: as =ORCAParams= (=maxcoreMb= in MB, =timeoutS= in seconds).
+- Inputs :: one field for each =OrcaCConfig= field: =method= (one simple-input
+  token, required), =basis= (one token; empty for a composite method),
+  =keywords= (further simple-input words on one line), =blocks= (verbatim =%=
+  blocks), =executable= (empty lets =liborcac= search
+  =$ORCAC_ORCA=, then =PATH=), =scratch_dir= (empty uses =$TMPDIR=), =charge=,
+  =multiplicity=, =nprocs=, =maxcore_mb=, =timeout_s= and =restart= (true
+  selects =ORCAC_GUESS_CHAIN=, false =ORCAC_GUESS_FRESH=); =engine_path=, the
+  library to open.
+- Units :: =maxcore_mb= in MB per process, =timeout_s= in seconds per ORCA run
+  (0 waits with no limit).
 - Outputs :: a plain struct read by =rgpot::ORCACPot=.
-- Errors :: none; =liborcac= checks the message when the session is created.
+- Errors :: none; =liborcac= checks the fields when the session is created.
+
+The =orca= arm of =rgpot::makePotential= fills it from =ORCAParams= alone; the
+shared fields of =PotentialConfig=, such as =common=, are not read. orcac takes
+the method as one token, so the first word of =ORCAParams.method= is the method
+and the others join =keywords= (=UKS PBE0= gives the method =UKS= and the
+keyword =PBE0=, the same =!= line for ORCA).
+=ORCAParams.keywords= on one line that does not start with =%= stays =keywords=,
+without a leading =!=; otherwise each line that starts with =!= joins =keywords=
+and the other lines are =blocks=.
+=keepFiles= is refused with =std::invalid_argument=, since ABI 1 always removes
+the run directory.
 
 *** =rgpot::ORCACPot=
 
@@ -641,23 +667,27 @@ explicit ORCACPot(ORCACConfig config);
 #+end_src
 
 - Inputs :: =config=, an =rgpot::ORCACConfig=.
-  A non-empty =engine_path= is the only library tried. Otherwise the search is
-  =ORCAC_LIBRARY= and =RGPOT_ORCAC_ENGINE= when set, then =liborcac.so.1=
-  (Linux), =liborcac.so=, =./liborcac.so=, the =.dylib= names and =orcac.dll=.
-- Units :: positions in Angstrom, energy in eV, forces in eV/Angstrom.
-  =liborcac= returns Hartree and Hartree/Bohr forces, converted with
+  A non-empty =engine_path= is the only library tried.
+  Otherwise the search is =ORCAC_LIBRARY= and =RGPOT_ORCAC_ENGINE= when set,
+  then =liborcac.so.1= (Linux), =liborcac.so=, =./liborcac.so=, the =.dylib=
+  names and =orcac.dll=.
+- Units :: positions in Angstrom, energy in eV, forces in
+  eV/Angstrom. =liborcac= returns the energy in Hartree and the gradient =dE/dx=
+  in Hartree/Bohr; the force is the negative gradient, converted with
   =units::HARTREE_TO_EV= and =units::HARTREE_BOHR_TO_EV_ANGSTROM=.
   ORCA has no periodic cell, and the box is not used.
 - Outputs :: a potential that runs one ORCA energy and gradient per force call
-  through =orcac_session_energy_forces=. =caps()= reports
-  =Reentrancy::PerInstance= and =periodic = false=; calls on one instance are
-  serialised. The destructor destroys the session.
-- Errors :: the constructor does not throw when =liborcac= is missing, lacks
-  the session symbols, reports another =orcac_c_abi_version= than 1, or refuses
-  the session; it records the reason in =loadError()= and the first force throws
-  =std::runtime_error= with it. A force throws =std::invalid_argument= for no
-  atoms and =std::runtime_error= with =orcac_session_last_error= when the
-  evaluation fails.
+  through =orcac_energy_gradient=.
+  =caps()= reports =Reentrancy::PerInstance= and =periodic = false=; calls on
+  one instance are serialised.
+  The destructor calls =orcac_destroy=.
+- Errors :: the constructor does not throw when =liborcac= is missing, lacks any
+  of the thirteen ABI 1 functions, reports another
+  =orcac_c_abi_version= or =orcac_abi_version= than 1, or refuses the session in =orcac_create=;
+  it records the reason in =loadError()= and the first force throws
+  =std::runtime_error= with it.
+  A force throws =std::invalid_argument= for no atoms and =std::runtime_error=
+  with the status name and =orcac_last_error= when the evaluation fails.
 
 *** =rgpot::ORCACPot::available=
 
@@ -668,7 +698,8 @@ explicit ORCACPot(ORCACConfig config);
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: true when =liborcac= loaded and the session was created.
+- Outputs :: true when =liborcac= loaded, speaks ABI 1 and the session was
+  created.
 - Errors :: none.
 
 *** =rgpot::ORCACPot::loadError=
@@ -680,8 +711,8 @@ explicit ORCACPot(ORCACConfig config);
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: why =available()= is false, naming every library tried; empty when
-  it is true.
+- Outputs :: why =available()= is false, naming every library tried or the first
+  missing function; empty when it is true.
 - Errors :: none.
 
 *** =rgpot::ORCACPot::libraryPath=
@@ -696,17 +727,28 @@ explicit ORCACPot(ORCACConfig config);
 - Outputs :: the candidate =liborcac= was opened from; empty when none opened.
 - Errors :: none.
 
-*** =rgpot::ORCACPot::runDirectory=
+*** =rgpot::ORCACPot::engineVersion=
 
 #+attr_rgpot: signature
 #+begin_src cpp
-[[nodiscard]] std::string runDirectory() const;
+[[nodiscard]] std::string engineVersion() const;
 #+end_src
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: the session's working directory, from
-  =orcac_session_run_directory=; empty without a session.
+- Outputs :: =orcac_version()= of the loaded library; empty when none loaded.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::config=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const ORCACConfig &config() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: as =rgpot::ORCACConfig=.
+- Outputs :: the configuration the instance was built with.
 - Errors :: none.
 
 *** =rgpot::ORCACPot::paramsKey=
@@ -718,9 +760,22 @@ explicit ORCACPot(ORCACConfig config);
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: a hash of the library path, the message kind and the message
-  bytes.
+- Outputs :: a hash of the ABI generation, the library path, the method, basis,
+  keywords, blocks and executable, the charge, the multiplicity and =restart=.
 - Errors :: none.
+
+*** Testing against orcac main
+
+=PotentialFactoryTest= runs the =orca= arm against
+=CppCore/tests/orcac_fake_engine.c=, a stand-in that exports exactly the
+thirteen ABI 1 functions; =OrcacFakeExports= checks that list.
+With =-Dorcac_main=enabled= the test build also compiles =liborcac= at the orcac
+commit of =subprojects/orcac.wrap=.
+=OrcacMainExports= checks its exports.
+=PotentialFactoryTest= then runs the =orca= arm against it, with the
+=fake_orca.sh= replay of the orcac test data as the ORCA executable.
+That replay gives -75.5 Hartree for a water molecule, and the test requires the
+energy and forces to within 1e-9 in Hartree units on two calls.
 
 ** Skala
 
@@ -2050,8 +2105,8 @@ makePotential(const void *bytes, std::size_t size);
   =LammpsPot=; =d3=, =d4=, =xtb=, =tblite=, =skala=, =cp2k= and =expr= build
   =D3Pot=, =D4Pot=, =XTBPot=, =TBLitePot=, =SkalaPot=, =CP2KPot= and =ExprPot=
   when the build has them.
-  =orca= builds an =rgpot::ORCACPot= from the whole =PotentialConfig=, so
-  =liborcac= lowers =common= itself.
+  =orca= builds an =rgpot::ORCACPot= from =ORCAParams= alone, lowered onto the
+  =OrcaCConfig= of =liborcac= C ABI 1.
   =metatomic=, =uma=, =plugin=, and =xtb= in a build without
   =-Dwith_xtb=, return an =rgpot::EnginePot= over an engine library whose
   configuration message is the arm's params struct (=BuiltinParams= naming =xtb=

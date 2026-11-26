@@ -1,0 +1,17 @@
+# Copyright 2023--present rgpot developers
+# The dynamic symbols of liborcac C ABI 1 (orcac include/orcac.h at the
+# commit of CppCore/rgpot/ORCACPot/orcac.h.pin), and of the stand-in
+# tests/orcac_fake_engine.c. ORCACPot resolves every one of them.
+orcac_config_init
+orcac_create
+orcac_configure
+orcac_energy_gradient
+orcac_cancel
+orcac_last_error
+orcac_destroy
+orcac_status_name
+orcac_version
+orcac_c_abi_version
+orcac_abi_version
+orcac_available
+orcac_probe_executable

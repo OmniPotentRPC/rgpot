@@ -1,0 +1,5 @@
+# Copyright 2023--present rgpot developers
+[wrap-git]
+directory = orcac-ffa953c2834b
+url = https://github.com/OmniPotentRPC/orcac.git
+revision = ffa953c2834b48bb8773eadf838b64df4afcc5b2
