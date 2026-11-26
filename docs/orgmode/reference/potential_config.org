@@ -10,19 +10,19 @@ This page lists the arms of the Cap'n Proto =PotentialConfig= union and what
 ** rgpot user parameters (=PotentialConfig=) over RPC
 
 Backend options for a live =Potential= go in =PotentialConfig=
-(=CppCore/rgpot/rpc/Potentials.capnp=, rgpot's copy of rgconf's
-=potential.capnp= at the commit =CppCore/rgpot/rpc/schema.pin= names).
+(=CppCore/rgpot/rpc/Potentials.capnp=, rgpot's copy of rgconf's =potential.capnp= at the commit =CppCore/rgpot/rpc/schema.pin=
+names).
 It is a union whose arms and ordinals are =none= @0, =nwchem= @1, =cpmd= @2,
 =metatomic= @4, =lammps= @5, =xtb= @6, =tblite= @7, =uma= @8, =lj= @9, =morse=
 @10, =zbl= @11, =d3= @12, =d4= @13, =mopac= @14, =skala= @15, =expr= @16, =cp2k=
 @17, =composite= @18, =d2= @19, =d2cpmd= @20, =mullerBrown= @21, =gpr= @27,
-=potlib= @28, =external= @29, =plugin= @30 and =orca= @31.
-rgpot added =composite=, =d2=, =d2cpmd= and =mullerBrown=, =D4Params.periodic=
-and =D2CpmdParams.symmetry= before rgconf adopted them at the same ordinals;
-=gpr=, =potlib=, =external=, =plugin= and =orca= are rgconf's.
+=potlib= @28, =external= @29, =plugin= @30 and =orca= @31. rgpot added
+=composite=, =d2=, =d2cpmd= and =mullerBrown=, =D4Params.periodic= and
+=D2CpmdParams.symmetry= before rgconf adopted them at the same ordinals; =gpr=,
+=potlib=, =external=, =plugin= and =orca= are rgconf's.
 Outside the union, =common= @3 is a =CommonMethodSpec= overlay, and rgconf's
-=commonPatch= @22, =neighborList= @23, =rpcEndpoint= @24,
-=logPotentialCalls= @25 and =emtRasmussenParameters= @26 follow it.
+=commonPatch= @22, =neighborList= @23, =rpcEndpoint= @24, =logPotentialCalls=
+@25 and =emtRasmussenParameters= @26 follow it.
 =rgpot::makePotential= builds the potential an arm names (see
 [[file:cpp_backends.org][C++ engine-backed potentials]]).
 Geometry stays on =ForceInput=; =configure(config)= applies method and backend
