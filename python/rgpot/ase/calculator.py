@@ -732,6 +732,9 @@ class RgpotCalculator(Calculator):
         passes only the name it was asked for, so an energy request does
         not add per-atom or numerical stress work.
 
+        Results are replaced on every call. An empty ``system_changes``
+        list must not keep a key this call did not produce.
+
         ``stress`` and ``stresses`` are omitted when the cell has fewer
         than three nonzero lattice vectors. Requesting either then raises
         ``PropertyNotImplementedError``.
@@ -739,8 +742,6 @@ class RgpotCalculator(Calculator):
         if properties is None:
             properties = list(self.implemented_properties)
         Calculator.calculate(self, atoms, properties, system_changes)
-        if system_changes:
-            self.results = {}
         assert self.atoms is not None
         wanted = set(properties)
         per_atom = self._per_atom and bool(wanted & {"energies", "stresses"})
@@ -751,22 +752,24 @@ class RgpotCalculator(Calculator):
             self.atoms.pbc,
             per_atom=per_atom,
         )
-        self.results.update(evaluated)
         if int(self.atoms.cell.rank) != 3:
             # ASE reports stress only for a three-vector cell. A padded
             # kernel box is not that cell, so drop its virial.
-            self.results.pop("stress", None)
-            self.results.pop("stresses", None)
+            evaluated.pop("stress", None)
+            evaluated.pop("stresses", None)
+            self.results = evaluated
             if {"stress", "stresses"} & wanted:
                 raise PropertyNotImplementedError(
                     "stress requires a cell with three nonzero lattice vectors"
                 )
-        elif (
+            return
+        if (
             "stress" not in evaluated
             and self._numerical_stress
             and "stress" in wanted
         ):
-            self.results["stress"] = self._finite_difference_stress(self.atoms)
+            evaluated["stress"] = self._finite_difference_stress(self.atoms)
+        self.results = evaluated
 
     def __rg_evaluate__(
         self,

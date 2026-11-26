@@ -133,3 +133,23 @@ def test_ase_db_stores_the_registry_name(tmp_path: Path) -> None:
     assert database.get(1).calculator == "rgpot"
 
 
+def test_empty_system_changes_replaces_results() -> None:
+    """A lying empty change list must not keep a per-atom key."""
+    atoms = _argon()
+    calc = RgpotCalculator("lj", **LJ)
+    calc.calculate(
+        atoms,
+        properties=["energy", "forces", "energies", "stress", "stresses"],
+        system_changes=["positions"],
+    )
+    assert "stresses" in calc.results
+    atoms.positions[0, 0] += 0.15
+    calc.calculate(atoms, properties=["energy"], system_changes=[])
+    assert "energy" in calc.results
+    assert "energies" not in calc.results
+    assert "stresses" not in calc.results
+    fresh = atoms.copy()
+    fresh.calc = RgpotCalculator("lj", **LJ)
+    assert calc.results["energy"] == pytest.approx(
+        fresh.get_potential_energy(), abs=ATOL
+    )
