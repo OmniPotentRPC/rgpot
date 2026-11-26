@@ -16,12 +16,12 @@ Wheels bundle engines for torch 2.7 and newer.
 from __future__ import annotations
 
 import os
+import typing
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 
 import rgpot._core as _core
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     from . import ase as ase
     from . import lammps as lammps
 
@@ -57,23 +57,25 @@ has_ipi = _core.has_ipi
 
 # Absent when the matching meson flag was off. getattr keeps import rgpot
 # working for a reduced build and for the full wheel.
-evaluate_metatomic_dlopen: Any = getattr(_core, "evaluate_metatomic_dlopen", None)
-PotentialCache: Any = getattr(_core, "PotentialCache", None)
-D3Pot: Any = getattr(_core, "D3Pot", None)
-D4Pot: Any = getattr(_core, "D4Pot", None)
-ExprPot: Any = getattr(_core, "ExprPot", None)
-XcKernel: Any = getattr(_core, "XcKernel", None)
-StillingerWeberSi: Any = getattr(_core, "StillingerWeberSi", None)
-TersoffSiC: Any = getattr(_core, "TersoffSiC", None)
-SWPot: Any = getattr(_core, "SWPot", None)
-EDIPPot: Any = getattr(_core, "EDIPPot", None)
-LenoskyPot: Any = getattr(_core, "LenoskyPot", None)
-TersoffPot: Any = getattr(_core, "TersoffPot", None)
-EAMAlPot: Any = getattr(_core, "EAMAlPot", None)
-EAMTablePot: Any = getattr(_core, "EAMTablePot", None)
-FeHePot: Any = getattr(_core, "FeHePot", None)
-CuH2Pot: Any = getattr(_core, "CuH2Pot", None)
-WaterHPot: Any = getattr(_core, "WaterHPot", None)
+evaluate_metatomic_dlopen: typing.Any = getattr(
+    _core, "evaluate_metatomic_dlopen", None
+)
+PotentialCache: typing.Any = getattr(_core, "PotentialCache", None)
+D3Pot: typing.Any = getattr(_core, "D3Pot", None)
+D4Pot: typing.Any = getattr(_core, "D4Pot", None)
+ExprPot: typing.Any = getattr(_core, "ExprPot", None)
+XcKernel: typing.Any = getattr(_core, "XcKernel", None)
+StillingerWeberSi: typing.Any = getattr(_core, "StillingerWeberSi", None)
+TersoffSiC: typing.Any = getattr(_core, "TersoffSiC", None)
+SWPot: typing.Any = getattr(_core, "SWPot", None)
+EDIPPot: typing.Any = getattr(_core, "EDIPPot", None)
+LenoskyPot: typing.Any = getattr(_core, "LenoskyPot", None)
+TersoffPot: typing.Any = getattr(_core, "TersoffPot", None)
+EAMAlPot: typing.Any = getattr(_core, "EAMAlPot", None)
+EAMTablePot: typing.Any = getattr(_core, "EAMTablePot", None)
+FeHePot: typing.Any = getattr(_core, "FeHePot", None)
+CuH2Pot: typing.Any = getattr(_core, "CuH2Pot", None)
+WaterHPot: typing.Any = getattr(_core, "WaterHPot", None)
 
 try:
     from rgpot._core import IPIPot
@@ -154,7 +156,7 @@ def available_metatomic_engine_abis() -> list[str]:
     return out
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> typing.Any:
     """Lazy frontend exports."""
     if name in {"ase", "lammps"}:
         import importlib
@@ -170,14 +172,14 @@ def __dir__() -> list[str]:
 
 
 def evaluate_metatomic(
-    positions: Any,
-    atom_types: Any,
-    box: Any,
+    positions: typing.Any,
+    atom_types: typing.Any,
+    box: typing.Any,
     *,
     model_path: str,
     engine_path: str | None = None,
     device: str = "cpu",
-) -> Any:
+) -> typing.Any:
     """Evaluate a Metatomic model through the dlopen engine.
 
     The frontend is part of every build. The engine library is opened
