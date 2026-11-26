@@ -222,6 +222,14 @@ coordinates into =&ATOMS=, requires entries for every atomic number present in a
 step, and without an =atoms= section has built-in BLYP defaults for H and O
 only.
 
+The =Potential= interface has no session open, close or reset method.
+Restart =potserv= to drop the session: the process owns the =CPMDPot=, and exit
+destroys it.
+=configure= with changed =CPMDParams= forces a new session when the loaded
+engine has the session result ABI.
+The same serialized params and engine path keep the live session.
+The =none= arm does not reset it.
+
 The =cpmd= configure result is =ok=false= when no usable =libcpmdc= engine can
 be loaded or when the engine rejects the params.
 The integration script exercises RPC =configure()= with the =cpmd= arm:

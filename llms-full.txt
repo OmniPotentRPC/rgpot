@@ -11709,6 +11709,13 @@ ABI is in [Quantum engine C ABIs](https://rgpot.rgoswami.me/reference/quantum_ab
 The walk-through with a stand-in engine is in
 [Evaluate a water geometry with CPMD](https://rgpot.rgoswami.me/tutorials/cpmd.html).
 
+The `Potential` interface has no session open, close or reset method.
+Restart `potserv` to drop the engine session with the process.
+`configure` with changed `CPMDParams` forces a new session when the engine has
+the session result ABI.
+The same serialized params and the same engine path keep the live session.
+The `none` arm does not reset it.
+
 #### Functional form
 
 The energy is the CPMD Kohn-Sham total energy for the functional, plane-wave
@@ -14237,14 +14244,30 @@ one Cap'n Proto schema (`Potentials.capnp`).
   Optional fields, such as a Hessian, a dipole or a stress tensor, are filled in
   by the backends that compute them.
 - `PotentialConfig` carries backend setup, and only setup.
-  A client sends it once through `configure`, then sends a new `ForceInput` for
-  every geometry.
+  A client sends it through `configure`, then sends a new `ForceInput` for every
+  geometry.
 
 Geometry stays off the configuration message.
 A change of method does not reshape the coordinates, and a change of coordinates
 does not repeat the method.
 The `libcpmdc` C ABI that `CPMDPot` loads uses the same split: a session takes
-the Cap'n Proto `CPMDParams` once, and each step takes a `ForceInput`.
+the Cap'n Proto `CPMDParams`, and each step takes a `ForceInput`.
+
+### Resetting the CPMD engine
+
+The `Potential` interface has no session open, close or reset method.
+The session lives in the `potserv` process, on the `CPMDPot` that process holds.
+
+Restart `potserv` to drop it.
+Process exit destroys that potential, and the next server starts a new one.
+
+A client can also send `configure` with changed `CPMDParams`.
+When the engine has the session result ABI, `CPMDPot` keeps the live session
+only if the engine path and the serialized params are unchanged.
+Any other params destroy that session and create one from the new message.
+`configure` with the `none` arm does not do this.
+An engine on the one-shot ABI has no session to keep, and the new params are
+pushed through `cpmdc_set_params`.
 
 ### One schema, many languages
 
@@ -21743,6 +21766,9 @@ A live session is kept when the engine path and the serialized params are
 unchanged.
 A refused orbital key drops the session just created, so the same params are
 applied again on the next call.
+The `Potential` RPC interface has no session open, close or reset method.
+An RPC client restarts `potserv`, which destroys the potential with the process,
+or sends `configure` with changed `CPMDParams`, which calls `setParams`.
 
 #### `rgpot::CPMDPot::getParams`
 
@@ -26634,6 +26660,14 @@ Per `CppCore/rgpot/CPMDPot/README.md`, the engine groups `ForceInput`
 coordinates into `&ATOMS`, requires entries for every atomic number present in a
 step, and without an `atoms` section has built-in BLYP defaults for H and O
 only.
+
+The `Potential` interface has no session open, close or reset method.
+Restart `potserv` to drop the session: the process owns the `CPMDPot`, and exit
+destroys it.
+`configure` with changed `CPMDParams` forces a new session when the loaded
+engine has the session result ABI.
+The same serialized params and engine path keep the live session.
+The `none` arm does not reset it.
 
 The `cpmd` configure result is `ok=false` when no usable `libcpmdc` engine can
 be loaded or when the engine rejects the params.

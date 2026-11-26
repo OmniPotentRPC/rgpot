@@ -997,6 +997,13 @@ ABI is in [[file:../reference/quantum_abi.org][Quantum engine C ABIs]].
 The walk-through with a stand-in engine is in
 [[file:../tutorials/cpmd.org][Evaluate a water geometry with CPMD]].
 
+The =Potential= interface has no session open, close or reset method.
+Restart =potserv= to drop the engine session with the process.
+=configure= with changed =CPMDParams= forces a new session when the engine has
+the session result ABI.
+The same serialized params and the same engine path keep the live session.
+The =none= arm does not reset it.
+
 *** Functional form
 
 The energy is the CPMD Kohn-Sham total energy for the functional, plane-wave

@@ -217,6 +217,13 @@ result = await pot.configure(cfg)
 loaded or when the engine rejects the params. `configure(none)` is a no-op and
 does not prove that CPMD evaluation is available.
 
+There is no session open, close or reset RPC method.
+Restart `potserv` to drop the engine session with the process.
+`configure` with changed `CPMDParams` forces a new session when the engine
+has the session result ABI.
+The same serialized params keep the live session.
+`configure(none)` does not reset it.
+
 ## Local Checks
 
 ```bash
