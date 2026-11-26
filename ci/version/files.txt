@@ -11,4 +11,6 @@ docs/source/conf.py
 rgpot-core/include/rgpot.h
 rgpot-core/README.md
 rgpot-core/README.org
+docs/orgmode/howto/coupled-well-engine.org
+docs/orgmode/howto/potlibc-engine.org
 rgpot-bundle/Cargo.lock

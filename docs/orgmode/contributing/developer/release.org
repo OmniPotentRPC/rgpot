@@ -13,7 +13,8 @@ Every other copy sits between cogapp markers in a file listed in
 =pixi.toml= (the workspace key only), =towncrier.toml=, =docs/source/conf.py=
 (Sphinx =version= and =release=), the =RGPOT_VERSION= macros of
 =rgpot-core/include/rgpot.h= and the dependency snippets of
-=rgpot-core/README.md= and =rgpot-core/README.org=.
+=rgpot-core/README.md=, =rgpot-core/README.org=,
+=docs/orgmode/howto/coupled-well-engine.org= and =docs/orgmode/howto/potlibc-engine.org=.
 =ci/version/rgpot_version.py= reads the version from =Cargo.toml= for those
 snippets.
 Regenerate the copies, or check them, with the cogapp tasks of the =version=
