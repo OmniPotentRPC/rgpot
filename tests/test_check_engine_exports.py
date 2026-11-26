@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-import check_engine_exports as exports  # noqa: E402
+import check_engine_exports as exports
 
 
 def test_gcov_runtime_names():
