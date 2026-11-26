@@ -58,6 +58,8 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_gromacs_dropin= | feature | =disabled= | librgpot_gromacs, the libcp2k API that GROMACS built with =-DGMX_CP2K=ON= links, so mdrun takes QM/MM energies and forces from any rgpot potential. |
 | =gromacs_dropin_gmx= | string | =(empty)= | gmx of a double-precision GROMACS linked against librgpot_gromacs. Empty looks for gmx_d on PATH and skips the mdrun tests without it. |
 | =with_openmm= | feature | =auto= | OpenMM shifted Lennard-Jones comparison. |
+| =with_nblib= | feature | =auto= | GROMACS nblib MD session engine. |
+| =nblib_prefix= | string | =(empty)= | Prefix of GROMACS built with the installed nblib API. |
 | =with_plumed= | feature | =auto= | PLUMED RGPOT collective variable. |
 | =with_long_range= | boolean | =false= | Build the Ewald, PME, dispersion and NLH summands (=CppCore/rgpot/LongRange=). |
 | =with_cuda= | boolean | =false= | Compile the long-range CUDA path with nvcc and link cudart. Used only with =with_long_range=. |

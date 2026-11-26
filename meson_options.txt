@@ -190,6 +190,18 @@ option(
     description: 'OpenMM shifted Lennard-Jones comparison.',
 )
 option(
+    'with_nblib',
+    type: 'feature',
+    value: 'auto',
+    description: 'GROMACS nblib MD session engine.',
+)
+option(
+    'nblib_prefix',
+    type: 'string',
+    value: '',
+    description: 'Prefix of GROMACS built with the installed nblib API.',
+)
+option(
     'with_plumed',
     type: 'feature',
     value: 'auto',

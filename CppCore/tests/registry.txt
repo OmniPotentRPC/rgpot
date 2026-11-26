@@ -454,6 +454,10 @@ openmm_review_seed-chunking | core posix probe | custom timeout=180 | @engines
 openmm_review_wall-multi-bounce | core posix probe | custom timeout=180 | @engines
 openmm_review_off-plane-force | core posix probe | custom timeout=180 | @engines
 openmm_review_openmm-constraints | core posix probe | custom timeout=180 | @engines
+nblib_session | core posix probe | custom timeout=120 | @engines
+nblib_analytic | core posix probe | custom timeout=300 | @engines
+md_engine_agreement | core posix probe | custom timeout=300 | @engines
+md_engine_analytic | core posix probe | custom timeout=600 | @engines
 optional_engine_install | tests core posix python toplevel | custom timeout=300 | @meson
 installed_sources | tests python toplevel | custom timeout=180 | @meson
 installed_sources_selftest | tests python | py CppCore/tests/test_installed_sources.py |

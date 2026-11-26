@@ -904,6 +904,13 @@ external_pot_test = executable(
     include_directories: rgpot_inc,
     cpp_args: rgpot_consumer_args,
 )
+have_nblib_engine = false
+nblib_rpath_dirs = []
+nblib_opt = get_option('with_nblib')
+if nblib_opt.allowed()
+    subdir('nblib')
+endif
+
 external_env = environment()
 if openmm_opt.allowed() and python3_engines.found()
     _openmm_where = run_command(
@@ -1019,6 +1026,53 @@ if openmm_opt.allowed() and python3_engines.found()
                 env: external_env,
                 timeout: 120,
             )
+            if have_nblib_engine
+                foreach dir : nblib_rpath_dirs
+                    external_env.prepend('LD_LIBRARY_PATH', dir)
+                endforeach
+                engine_agreement = executable(
+                    'test_engine_agreement',
+                    files('nblib/test_engine_agreement.cpp'),
+                    dependencies: [openmm_lib, engines_rgpot],
+                    include_directories: [rgpot_inc, openmm_inc],
+                    cpp_args: rgpot_consumer_args,
+                    build_rpath: openmm_libdir,
+                )
+                test(
+                    'md_engine_agreement',
+                    engine_agreement,
+                    args: [
+                        nblib_engine.full_path(),
+                        openmm_engine.full_path(),
+                    ],
+                    depends: [nblib_engine, openmm_engine],
+                    env: external_env,
+                    timeout: 300,
+                )
+                engine_analytic = executable(
+                    'test_engine_analytic',
+                    files('nblib/test_engine_analytic.cpp'),
+                    dependencies: [openmm_lib, engines_rgpot],
+                    include_directories: [
+                        rgpot_inc,
+                        openmm_inc,
+                        include_directories('..'),
+                    ],
+                    cpp_args: rgpot_consumer_args,
+                    build_rpath: openmm_libdir,
+                )
+                test(
+                    'md_engine_analytic',
+                    engine_analytic,
+                    args: [
+                        nblib_engine.full_path(),
+                        openmm_engine.full_path(),
+                    ],
+                    depends: [nblib_engine, openmm_engine],
+                    env: external_env,
+                    timeout: 600,
+                )
+            endif
             foreach review_case : [
                 'equipartition',
                 'mean-force',
