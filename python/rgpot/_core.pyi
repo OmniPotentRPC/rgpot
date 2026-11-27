@@ -74,12 +74,12 @@ class LJPot:
 
     def hvp(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> Annotated[NDArray[numpy.float64], dict(order='C')]:
         """
-        Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product and 'ad' its dual-number product; 'exact' is analytic, else ad, and never differences; 'auto' is analytic where the kernel has one, otherwise forward. hvp_resolved() also returns the scheme that ran. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
+        Hessian-vector product H @ direction, shape (N, 3). 'forward' reuses the forces of the last geometry this object evaluated, so k products at one geometry cost k + 1 force calls; 'central' costs 2 a product and is second order in step; 'analytic' uses the kernel's own product and 'ad' its dual-number product; 'exact' is analytic, else ad, and never differences; 'auto' is analytic only where the kernel has an analytic Hessian-vector callback, otherwise forward. hvp_resolved() also returns the scheme that ran. step 0 is 1e-3 Angstrom. The kernel runs with the interpreter released.
         """
 
     def hvp_resolved(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], direction: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], step: float = 0.0, scheme: str = 'auto') -> tuple:
         """
-        hvp() as (product, scheme): scheme is the one that ran, so 'auto' reports 'analytic' or 'forward' and 'exact' reports 'analytic' or 'ad'.
+        hvp() as (product, scheme): scheme is the one that ran, so 'auto' reports 'analytic' only with an analytic Hessian-vector callback, else 'forward', and 'exact' reports 'analytic' or 'ad'.
         """
 
     def hessian(self, positions: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], atom_types: object, box: Annotated[NDArray[numpy.float64], dict(order='C', device='cpu', writable=False)], scheme: str, step: float = 0.0) -> tuple:

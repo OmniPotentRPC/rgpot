@@ -798,8 +798,8 @@ bits.
 
 - Inputs :: none; an enum passed as =int32_t=.
 - Units :: none.
-- Outputs :: =RGPOT_HVP_AUTO= (0): the analytic callback when one is registered,
-  else forward; =rgpot_potential_hvp_resolved= reports which ran.
+- Outputs :: =RGPOT_HVP_AUTO= (0): the analytic Hessian-vector callback when one
+  is registered, else forward; =rgpot_potential_hvp_resolved= reports which ran.
   =RGPOT_HVP_FORWARD= (1): =(F(x) - F(x + h u)) |v| / h= with =u = v / |v|=,
   =F(x)= from the cached centre.
   =RGPOT_HVP_CENTRAL= (2): =(F(x - h u) - F(x + h u)) |v| / (2 h)=, two force
@@ -924,8 +924,9 @@ enum rgpot_status_t rgpot_potential_hvp_resolved(const struct rgpot_potential_t 
 - Inputs :: those of =rgpot_potential_hvp=, and =scheme_used= writable.
 - Units :: those of =rgpot_potential_hvp=.
 - Outputs :: =hv_out= as for =rgpot_potential_hvp=, and =*scheme_used= the
-  scheme that computed it: =RGPOT_HVP_AUTO= reports =RGPOT_HVP_ANALYTIC= or
-  =RGPOT_HVP_FORWARD=, =RGPOT_HVP_EXACT= reports =RGPOT_HVP_ANALYTIC= or
+  scheme that computed it: =RGPOT_HVP_AUTO= reports =RGPOT_HVP_ANALYTIC= only
+  when an analytic Hessian-vector callback is registered, else
+  =RGPOT_HVP_FORWARD=; =RGPOT_HVP_EXACT= reports =RGPOT_HVP_ANALYTIC= or
   =RGPOT_HVP_AD=, and any other scheme reports itself.
   =*scheme_used= is written only on success.
 - Errors :: those of =rgpot_potential_hvp=, the messages naming
@@ -1103,8 +1104,15 @@ enum rgpot_status_t rgpot_potential_set_hessian_callback(const struct rgpot_pote
 - Inputs :: =pot= a live handle; =callback= a =HessianCallback=, or NULL to
   clear the registered one.
 - Units :: none.
-- Outputs :: the callback is stored on the handle and called with the handle's
+- Outputs :: =callback= is stored on the handle and called with the handle's
   =user_data= by =RGPOT_HESSIAN_ANALYTIC= and =RGPOT_HESSIAN_EXACT=.
+  Replacing or clearing returns only after every call of the previous callback
+  that was already running has returned, and the previous callback is not
+  started again.
+  The caller may therefore release the old callback and its state as soon as
+  this function returns.
+  The callback must not call this function or any Hessian entry point of the
+  same handle, and no thread inside such an entry point may call this function.
 - Errors :: =RGPOT_INVALID_PARAMETER= with
   =rgpot_potential_set_hessian_callback: pot is NULL= for a NULL =pot=.
 
@@ -1125,8 +1133,31 @@ enum rgpot_status_t rgpot_potential_set_ad_hessian_callback(const struct rgpot_p
 - Outputs :: the callback is stored on the handle and called with the handle's
   =user_data= by =RGPOT_HESSIAN_AD=, and by =RGPOT_HESSIAN_EXACT= when no
   analytic Hessian callback is registered.
+  Replacing or clearing waits for in-flight calls of the previous callback to
+  finish, as for =rgpot_potential_set_hessian_callback=.
 - Errors :: =RGPOT_INVALID_PARAMETER= with
   =rgpot_potential_set_ad_hessian_callback: pot is NULL= for a NULL =pot=.
+
+*** =rgpot_potential_set_hessian_byte_budget=
+
+#+attr_rgpot: signature
+#+begin_src c
+enum rgpot_status_t rgpot_potential_set_hessian_byte_budget(const struct rgpot_potential_t *pot,
+                                                            const uint64_t *max_bytes);
+#+end_src
+
+- Inputs :: =pot= a live handle; =max_bytes= NULL to clear the budget, or a
+  pointer to the largest matrix, in bytes, that a request may require.
+- Units :: bytes.
+- Outputs :: the budget is stored; the pointer is read once and need not stay
+  alive.
+  There is no default: with no budget a request is refused only when its byte
+  count overflows.
+  A budget of zero refuses every matrix with a positive size.
+  =rgpot_potential_hessian= checks the budget before it reads the geometry or
+  invokes a callback.
+- Errors :: =RGPOT_INVALID_PARAMETER= with
+  =rgpot_potential_set_hessian_byte_budget: pot is NULL= for a NULL =pot=.
 
 *** =rgpot_potential_hessian=
 
@@ -1158,12 +1189,15 @@ enum rgpot_status_t rgpot_potential_hessian(const struct rgpot_potential_t *pot,
 - Errors :: =RGPOT_INVALID_PARAMETER=, with a message naming the problem and
   before any call, for: a NULL =pot=, =input=, =hessian_out= or =scheme_used=; a
   =scheme= outside 2 to 5; a NULL =positions= tensor, or one whose
-  =(3 * n_atoms)^2= doubles exceed =PTRDIFF_MAX= bytes; a refused peer; a
-  =positions=, =atomic_numbers= or =box_matrix= tensor that fails the checks of
-  =rgpot_potential_hvp=;
-  =hessian_out= overlapping the =positions=, =atomic_numbers= or
-  =box_matrix= data; a negative or non-finite =step=; =RGPOT_HESSIAN_ANALYTIC= with no Hessian callback registered, =RGPOT_HESSIAN_AD= with no dual-number Hessian callback registered, or =RGPOT_HESSIAN_EXACT=
-  with neither.
+  =(3 * n_atoms)^2= doubles exceed =PTRDIFF_MAX= bytes; a byte count that
+  exceeds the caller budget installed with
+  =rgpot_potential_set_hessian_byte_budget=; a refused peer; a =positions=, =atomic_numbers=
+  or
+  =box_matrix= tensor that fails the checks of =rgpot_potential_hvp=; =hessian_out=
+  overlapping the =positions=, =atomic_numbers= or =box_matrix= data; a negative
+  or non-finite =step=; =RGPOT_HESSIAN_ANALYTIC= with no Hessian callback
+  registered, =RGPOT_HESSIAN_AD= with no dual-number Hessian callback
+  registered, or =RGPOT_HESSIAN_EXACT= with neither.
   =RGPOT_INVALID_PARAMETER= for a non-finite callback output, a non-finite
   central difference (=central Hessian: non-finite value at element <i>=) or a
   force callback output that fails the checks of =PotentialCallback=.
@@ -1738,12 +1772,13 @@ enum rgpot_status_t rgpot_mdi_server_start(
 
 The macros =RGPOT_ABI_VERSION_MAJOR=, =RGPOT_ABI_VERSION_MINOR= and
 =RGPOT_ABI_LAYOUT_REVISION= hold the stamp of the header the caller compiled
-against: 1, 10 and 1.
+against: 1, 11 and 1.
 Minor 9 added =rgpot_mdi_server_start=.
 Minor 10 added =rgpot_rpc_client_select_orbitals=.
 The molecular-dynamics session entry points, including the neighbour-query and
 neighbour-setter slots, are exports of the C++ library.
-They are not in this header, so they do not move this minor.
+They are not in this header, so they did not move this minor.
+Minor 11 added =rgpot_potential_set_hessian_byte_budget=.
 
 *** =rgpot_abi_stamp_t=
 

@@ -37,6 +37,8 @@ struct Stub {
                rgpot_engine_coord_transform, void *) = nullptr;
   int (*hvp)(RgpotEnginePot *, long, const double *, const int *,
              const double *, double *, const double *) = nullptr;
+  int (*hessian)(RgpotEnginePot *, long, const double *, const int *, double *,
+                 const double *) = nullptr;
   int (*force_batch)(RgpotEnginePot *, long, long, const double *, const int *,
                      double *, double *, double *, const double *,
                      rgpot_engine_coord_transform, void *) = nullptr;
@@ -61,6 +63,8 @@ struct Stub {
   void (*reset)() = nullptr;
   int (*charge)() = nullptr;
   int (*spin)() = nullptr;
+  long long (*hessian_calls)() = nullptr;
+  long long (*hvp_calls)() = nullptr;
 };
 
 template <typename Fn> Fn sym(void *h, const char *name) {
@@ -84,6 +88,7 @@ Stub &stub() {
     out.destroy = sym<decltype(out.destroy)>(h, "rgpot_engine_destroy");
     out.force = sym<decltype(out.force)>(h, "rgpot_engine_force");
     out.hvp = sym<decltype(out.hvp)>(h, "rgpot_engine_hvp");
+    out.hessian = sym<decltype(out.hessian)>(h, "rgpot_engine_hessian");
     out.force_batch = sym<decltype(out.force_batch)>(h, "rgpot_engine_force_batch");
     out.taylor_jet = sym<decltype(out.taylor_jet)>(h, "rgpot_engine_taylor_jet");
     out.stamp = sym<decltype(out.stamp)>(h, "rgpot_engine_abi_stamp");
@@ -109,6 +114,8 @@ Stub &stub() {
     out.reset = sym<void (*)()>(h, "stub_reset");
     out.charge = sym<int (*)()>(h, "stub_charge");
     out.spin = sym<int (*)()>(h, "stub_spin");
+    out.hessian_calls = sym<long long (*)()>(h, "stub_hessian_calls");
+    out.hvp_calls = sym<long long (*)()>(h, "stub_hvp_calls");
     return out;
   }();
   return s;
@@ -160,6 +167,89 @@ void hammer(Stub &s, const std::vector<RgpotEnginePot *> &pots, int threads,
     t.join();
   }
   REQUIRE(failures == 0);
+}
+
+constexpr unsigned char kDenseOnly = 1;
+constexpr unsigned char kHvpOnly = 2;
+constexpr unsigned char kDenseAndHvp = 3;
+constexpr unsigned char kNoCurvature = 4;
+
+/// The anharmonic stub backend with the curvature hooks `mode` names.
+RgpotEnginePot *make_curved(Stub &s, unsigned char mode) {
+  alignas(8) unsigned char cfg[8] = {1, 0, 0, 0, 0, 0, mode, 0};
+  char err[256] = {0};
+  RgpotEnginePot *pot = s.create(cfg, sizeof(cfg), err, sizeof(err));
+  INFO(err);
+  REQUIRE(pot != nullptr);
+  return pot;
+}
+
+// Two atoms, Angstrom, away from the origin so the coupling term matters.
+const std::array<double, 6> kCurvedPos = {0.3, -0.2, 0.5, -0.4, 0.1, 0.25};
+constexpr std::size_t kCurvedDim = 6;
+
+/// The Hessian of E = sum_k (1 + k/4) p_k^2 / 2 + 0.3 (sum_k p_k^2)^2 / 4,
+/// worked out by hand rather than taken from the backend.
+std::vector<double> curved_reference(const std::array<double, 6> &p) {
+  constexpr double lambda = 0.3;
+  double s = 0.0;
+  for (double x : p) {
+    s += x * x;
+  }
+  std::vector<double> h(kCurvedDim * kCurvedDim);
+  for (std::size_t k = 0; k < kCurvedDim; ++k) {
+    for (std::size_t l = 0; l < kCurvedDim; ++l) {
+      const double diagonal =
+          k == l ? 1.0 + 0.25 * static_cast<double>(k) + lambda * s : 0.0;
+      h[k * kCurvedDim + l] = diagonal + 2.0 * lambda * p[k] * p[l];
+    }
+  }
+  return h;
+}
+
+/// Checks a dense Hessian from the engine against the closed form and
+/// against central differences of the engine's own forces.
+void require_curved_hessian(Stub &s, RgpotEnginePot *pot,
+                            const std::vector<double> &dense) {
+  const std::vector<double> exact = curved_reference(kCurvedPos);
+  for (std::size_t i = 0; i < dense.size(); ++i) {
+    INFO("entry " << i);
+    REQUIRE(dense[i] ==
+            Catch::Approx(exact[i]).epsilon(1e-12).margin(1e-12));
+  }
+  const double h = 1.0e-5;
+  for (std::size_t j = 0; j < kCurvedDim; ++j) {
+    std::array<double, 6> plus = kCurvedPos, minus = kCurvedPos;
+    plus[j] += h;
+    minus[j] -= h;
+    std::array<double, 6> f_plus{}, f_minus{};
+    double energy = 0.0;
+    REQUIRE(s.force(pot, 2, plus.data(), kZ.data(), f_plus.data(), &energy,
+                    nullptr, kBox.data(), nullptr, nullptr) == 0);
+    REQUIRE(s.force(pot, 2, minus.data(), kZ.data(), f_minus.data(), &energy,
+                    nullptr, kBox.data(), nullptr, nullptr) == 0);
+    for (std::size_t i = 0; i < kCurvedDim; ++i) {
+      INFO("row " << i << " column " << j);
+      const double numeric = -(f_plus[i] - f_minus[i]) / (2.0 * h);
+      REQUIRE(dense[i * kCurvedDim + j] ==
+              Catch::Approx(numeric).epsilon(1e-6).margin(1e-6));
+    }
+  }
+}
+
+std::vector<double> curved_hessian(Stub &s, RgpotEnginePot *pot) {
+  std::vector<double> dense(kCurvedDim * kCurvedDim, -7.0);
+  REQUIRE(s.hessian(pot, 2, kCurvedPos.data(), kZ.data(), dense.data(),
+                    kBox.data()) == RGPOT_ENGINE_OK);
+  REQUIRE(error_of(s, pot).empty());
+  return dense;
+}
+
+RgpotEngineCaps caps_of(Stub &s, RgpotEnginePot *pot) {
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(s.caps(pot, &caps) == 0);
+  return caps;
 }
 
 } // namespace
@@ -338,6 +428,95 @@ TEST_CASE("analytic HVP is capability-gated", "[engine][adapter]") {
           RGPOT_ENGINE_ERR_UNSUPPORTED);
   REQUIRE(error_of(s, pot).find("analytic Hessian-vector") !=
           std::string::npos);
+  s.destroy(pot);
+}
+
+TEST_CASE("a dense-only backend serves the Hessian from its dense hook",
+          "[engine][adapter][hessian]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make_curved(s, kDenseOnly);
+  const RgpotEngineCaps caps = caps_of(s, pot);
+  REQUIRE(caps.analytic_hessian == 1);
+  REQUIRE(caps.analytic_hvp == 0);
+
+  s.reset();
+  const std::vector<double> dense = curved_hessian(s, pot);
+  REQUIRE(s.hessian_calls() == 1);
+  REQUIRE(s.hvp_calls() == 0);
+  require_curved_hessian(s, pot, dense);
+
+  const double direction[6] = {0.2, -0.3, 0.4, 0.1, -0.5, 0.7};
+  double product[6] = {};
+  REQUIRE(s.hvp(pot, 2, kCurvedPos.data(), kZ.data(), direction, product,
+                kBox.data()) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(s.hvp_calls() == 0);
+  s.destroy(pot);
+}
+
+TEST_CASE("an HVP-only backend serves the Hessian column by column",
+          "[engine][adapter][hessian]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make_curved(s, kHvpOnly);
+  const RgpotEngineCaps caps = caps_of(s, pot);
+  REQUIRE(caps.analytic_hessian == 0);
+  REQUIRE(caps.analytic_hvp == 1);
+
+  s.reset();
+  const std::vector<double> dense = curved_hessian(s, pot);
+  REQUIRE(s.hessian_calls() == 0);
+  REQUIRE(s.hvp_calls() == static_cast<long long>(kCurvedDim));
+  require_curved_hessian(s, pot, dense);
+  s.destroy(pot);
+}
+
+TEST_CASE("a backend with both hooks serves the Hessian from the dense one",
+          "[engine][adapter][hessian]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make_curved(s, kDenseAndHvp);
+  const RgpotEngineCaps caps = caps_of(s, pot);
+  REQUIRE(caps.analytic_hessian == 1);
+  REQUIRE(caps.analytic_hvp == 1);
+
+  s.reset();
+  const std::vector<double> dense = curved_hessian(s, pot);
+  REQUIRE(s.hessian_calls() == 1);
+  REQUIRE(s.hvp_calls() == 0);
+  require_curved_hessian(s, pot, dense);
+
+  // The two hooks are separate code; the product must match H v.
+  const double direction[6] = {0.2, -0.3, 0.4, 0.1, -0.5, 0.7};
+  double product[6] = {};
+  REQUIRE(s.hvp(pot, 2, kCurvedPos.data(), kZ.data(), direction, product,
+                kBox.data()) == RGPOT_ENGINE_OK);
+  REQUIRE(s.hvp_calls() == 1);
+  for (std::size_t i = 0; i < kCurvedDim; ++i) {
+    double expected = 0.0;
+    for (std::size_t j = 0; j < kCurvedDim; ++j) {
+      expected += dense[i * kCurvedDim + j] * direction[j];
+    }
+    REQUIRE(product[i] == Catch::Approx(expected).epsilon(1e-12).margin(1e-12));
+  }
+  s.destroy(pot);
+}
+
+TEST_CASE("a backend with neither curvature hook refuses the Hessian",
+          "[engine][adapter][hessian]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make_curved(s, kNoCurvature);
+  const RgpotEngineCaps caps = caps_of(s, pot);
+  REQUIRE(caps.analytic_hessian == 0);
+  REQUIRE(caps.analytic_hvp == 0);
+
+  s.reset();
+  std::vector<double> dense(kCurvedDim * kCurvedDim, -7.0);
+  REQUIRE(s.hessian(pot, 2, kCurvedPos.data(), kZ.data(), dense.data(),
+                    kBox.data()) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  const std::string reason = error_of(s, pot);
+  REQUIRE(reason.find("no analytic Hessian") != std::string::npos);
+  REQUIRE(reason.find("Hessian-vector product") != std::string::npos);
+  REQUIRE(dense == std::vector<double>(kCurvedDim * kCurvedDim, -7.0));
+  REQUIRE(s.hessian_calls() == 0);
+  REQUIRE(s.hvp_calls() == 0);
   s.destroy(pot);
 }
 

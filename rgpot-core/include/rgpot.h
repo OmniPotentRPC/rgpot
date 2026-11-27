@@ -63,7 +63,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * ABI minor of this build.
  */
-#define RGPOT_ABI_VERSION_MINOR 10
+#define RGPOT_ABI_VERSION_MINOR 11
 
 /**
  * Layout revision of this build.
@@ -100,7 +100,7 @@ typedef struct DLManagedTensorVersioned DLManagedTensorVersioned;
 /**
  * The ABI minor this loader advertises, `RGPOT_ENGINE_ABI_MINOR` of the header.
  */
-#define ENGINE_ABI_MINOR 11
+#define ENGINE_ABI_MINOR 12
 
 /**
  * The struct layout revision this loader expects,
@@ -694,7 +694,9 @@ typedef enum rgpot_status_t (*HessianVectorCallback)(
  * The callback receives the `user_data` of the potential handle, the
  * geometry and room for `(3 * n_atoms)^2` doubles. It writes the Hessian,
  * row-major, to `hessian_out` and returns `RGPOT_SUCCESS`, or an error
- * status code.
+ * status code. It must not call back into this handle's Hessian entry
+ * points, and must not replace or clear the callback: the call holds the
+ * registration, and replacement waits for it to finish.
  */
 typedef enum rgpot_status_t (*HessianCallback)(
     void *user_data, const struct rgpot_force_input_t *input,
@@ -764,11 +766,20 @@ rgpot_potential_new_eam_table(const char *path, int format, bool periodic);
  * writes `(3 * n_atoms)^2` doubles, row-major. `RGPOT_HESSIAN_ANALYTIC`
  * calls it, and so does `RGPOT_HESSIAN_EXACT`.
  *
+ * Replacing or clearing the callback returns only after every call of the
+ * previous callback that was already running has returned, and the previous
+ * callback is never called after this function returns. The caller may
+ * release the old callback and its state as soon as this function returns.
+ * Because it waits for those calls, this function must not be called from
+ * inside a Hessian callback, nor from a thread that is inside this handle's
+ * Hessian entry points: it would wait for itself.
+ *
  * # Safety
  *
  * `pot` must be NULL or a live handle. A NULL `pot` returns
  * `RGPOT_INVALID_PARAMETER`. `callback` must be safe to call with the
- * handle's `user_data` for as long as it stays registered.
+ * handle's `user_data` for as long as it stays registered, and must not
+ * re-enter this handle's Hessian entry points or replace the callback.
  */
 enum rgpot_status_t rgpot_potential_set_hessian_callback(
     const struct rgpot_potential_t *pot,
@@ -793,6 +804,25 @@ enum rgpot_status_t rgpot_potential_set_ad_hessian_callback(
     enum rgpot_status_t (*callback)(void *user_data,
                                     const struct rgpot_force_input_t *input,
                                     double *hessian_out));
+
+/**
+ * Install or clear the caller's dense-Hessian byte budget.
+ *
+ * A NULL `max_bytes` clears the budget. No component count or byte size is
+ * assumed in its place: a request is then refused only when the byte count
+ * does not fit in `size_t`, or when the allocation itself fails. A non-NULL
+ * pointer installs that many bytes, and zero is a budget that refuses every
+ * positive matrix. The pointer is read once; it need not stay alive.
+ *
+ * # Safety
+ *
+ * `pot` must be NULL or a live handle. A NULL `pot` returns
+ * `RGPOT_INVALID_PARAMETER`. A non-NULL `max_bytes` must point at a readable
+ * `uint64_t`.
+ */
+enum rgpot_status_t
+rgpot_potential_set_hessian_byte_budget(const struct rgpot_potential_t *pot,
+                                        const uint64_t *max_bytes);
 
 /**
  * Write the dense Hessian of the energy at the geometry of `input` to
@@ -826,10 +856,14 @@ enum rgpot_status_t rgpot_potential_set_ad_hessian_callback(
  *
  * NULL pointers, an unknown scheme, a negative or non-finite step and a
  * `hessian_out` that overlaps the positions, atomic numbers or box
- * return `RGPOT_INVALID_PARAMETER` without a call. Otherwise `pot` must be a
- * live handle, `input` must point to a valid `rgpot_force_input_t` whose
- * tensors stay alive for the call, `hessian_out` must point to `(3 *
- * n_atoms)^2` writable doubles and `scheme_used` must be writable.
+ * return `RGPOT_INVALID_PARAMETER` without a call. So does a matrix whose
+ * byte count `(3 * n_atoms)^2 * sizeof(double)` overflows or exceeds the
+ * budget set by `rgpot_potential_set_hessian_byte_budget`, before
+ * `hessian_out` is touched: a caller whose buffer may be short installs its
+ * length in bytes as the budget. Otherwise `pot` must be a live handle,
+ * `input` must point to a valid `rgpot_force_input_t` whose tensors stay
+ * alive for the call, `hessian_out` must point to `(3 * n_atoms)^2`
+ * writable doubles and `scheme_used` must be writable.
  */
 enum rgpot_status_t
 rgpot_potential_hessian(const struct rgpot_potential_t *pot,
@@ -914,8 +948,9 @@ enum rgpot_status_t rgpot_potential_set_ad_hvp_callback(
  * like the positions and must not overlap. `scheme` is a
  * `rgpot_hvp_scheme_t` value:
  *
- * - `RGPOT_HVP_AUTO`: the analytic callback when one is registered,
- *   otherwise `RGPOT_HVP_FORWARD`.
+ * - `RGPOT_HVP_AUTO`: the analytic Hessian-vector callback when one is
+ *   registered, otherwise `RGPOT_HVP_FORWARD`. A dense-Hessian callback
+ *   is never used for a product.
  * - `RGPOT_HVP_FORWARD`: `(F(x) - F(x + h u)) |v| / h` with `u = v / |v|`.
  *   `F(x)` comes from the handle's cached centre when the positions,
  *   atomic numbers and cell carry the same bits as the last centre, so

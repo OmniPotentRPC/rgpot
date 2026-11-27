@@ -21,6 +21,7 @@ use rgpot_core::engine::{
     POTLIBC_CONFIG_V1_SIZE, POTLIBC_CONFIG_VERSION, POTLIBC_CONFIG_VERSION_V1,
     POTLIBC_SURFACE_ID_CAPACITY,
 };
+use rgpot_core::hessian::rgpot_hessian_scheme_t;
 use rgpot_core::hvp::rgpot_hvp_scheme_t;
 use rgpot_core::status::rgpot_status_t;
 use rgpot_core::tensor::{
@@ -416,7 +417,7 @@ fn configured_external_engine_passes_the_abi_check() {
         RgpotEngineAbiStamp::HOST,
         RgpotEngineAbiStamp {
             abi_major: 1,
-            abi_minor: 11,
+            abi_minor: 12,
             layout_revision: 1,
         }
     );
@@ -1555,6 +1556,7 @@ fn fatal_status_poisons_the_handle_and_makes_zero_later_native_calls() {
         expected
     );
     assert_eq!(engine.hvp(&valid, &[1.0, 0.0, 0.0]).unwrap_err(), expected);
+    assert_eq!(engine.hessian(&valid).unwrap_err(), expected);
     assert_eq!(engine.caps().unwrap_err(), expected);
     assert_eq!(observer.native_calls(), after_fatal);
 
@@ -1786,8 +1788,8 @@ fn a_missing_abi_stamp_symbol_is_served_as_minor_zero() {
 }
 
 #[test]
-fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected() {
-    assert_eq!(ENGINE_ABI_MINOR, 11);
+fn older_minors_lack_later_capabilities_and_a_newer_minor_is_rejected() {
+    assert_eq!(ENGINE_ABI_MINOR, 12);
 
     // A minor-4 plugin omits rgpot_engine_last_components and
     // rgpot_engine_component_name; the host serves it, resolves those symbols
@@ -1875,12 +1877,20 @@ fn minor_4_lacks_components_minor_5_lacks_the_jet_and_a_newer_minor_is_rejected(
         }]
     );
 
-    // A minor-11 plugin is the current minor and also exports the jet.
+    // A minor-11 plugin exports the jet but predates the Hessian capability.
     let minor11_path = build("harmonic_stamp_minor11", &["FIXTURE_ABI_MINOR=11"]);
     let minor11 = load(&minor11_path);
-    assert_eq!(minor11.abi_stamp(), RgpotEngineAbiStamp::HOST);
+    assert_eq!(
+        minor11.abi_stamp(),
+        RgpotEngineAbiStamp {
+            abi_minor: 11,
+            ..RgpotEngineAbiStamp::HOST
+        }
+    );
     assert!(minor11.symbols().taylor_jet.is_some());
-    assert_eq!(minor11.caps().expect("caps").jet_order, 3);
+    let minor11_caps = minor11.caps().expect("caps");
+    assert_eq!(minor11_caps.jet_order, 3);
+    assert!(!minor11_caps.analytic_hessian);
 
     // A plugin whose minor is newer than the host's is rejected.
     let newer_define = format!("FIXTURE_ABI_MINOR={}", ENGINE_ABI_MINOR + 1);
@@ -2005,6 +2015,27 @@ fn a_request_that_does_not_fit_is_refused_before_the_engine() {
         })
         .unwrap_err();
     assert!(matches!(empty, EngineError::Invalid(_)), "{empty}");
+}
+
+#[test]
+fn a_prefix_caps_layout_leaves_the_trailing_bit_clear() {
+    let path = build(
+        "harmonic_short_caps",
+        &["SHORT_CAPS", "FIXTURE_ABI_MINOR=4"],
+    );
+    let mut engine = load(&path);
+    let caps = engine.caps().expect("prefix caps");
+    assert!(caps.periodic);
+    assert!(caps.analytic_hvp);
+    assert!(!caps.analytic_hessian);
+    let req = EngineRequest {
+        positions: &[1.0, -2.0, 0.5],
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+    let answer = engine.force(&req).expect("force on a prefix-caps plugin");
+    let sum: f64 = req.positions.iter().map(|x| x * x).sum();
+    assert!(within_roundoff(answer.energy, 0.5 * SPRING * sum, 9));
 }
 
 #[test]
@@ -2569,6 +2600,7 @@ fn the_potential_handle_evaluates_and_destroys_the_engine() {
     let before = observer.destroyed();
     let potential = load(&path).into_potential();
     assert!(potential.as_handle().has_hessian_vector_callback());
+    assert!(potential.as_handle().derivative_caps().hessian_analytic);
     let mut positions = vec![0.5, -1.0, 2.0, 0.0, 3.0, -0.25];
     let mut numbers = vec![1, 8];
     let mut cell = CELL;
@@ -2613,6 +2645,25 @@ fn the_potential_handle_evaluates_and_destroys_the_engine() {
     let counts = potential.as_handle().hvp_counts();
     assert_eq!(counts.force_calls, 0);
     assert_eq!(counts.analytic, 1);
+    let mut matrix = [0.0; 36];
+    let used = unsafe {
+        potential
+            .as_handle()
+            .hessian(
+                &input,
+                0.0,
+                rgpot_hessian_scheme_t::RGPOT_HESSIAN_ANALYTIC,
+                &mut matrix,
+            )
+            .expect("analytic Hessian through the potential handle")
+    };
+    assert_eq!(used, rgpot_hessian_scheme_t::RGPOT_HESSIAN_ANALYTIC);
+    for i in 0..6 {
+        for j in 0..6 {
+            let want = if i == j { SPRING } else { 0.0 };
+            assert!(within_roundoff(matrix[i * 6 + j], want, 1));
+        }
+    }
     unsafe {
         rgpot_tensor_free(output.forces);
         rgpot_tensor_free(input.positions);
@@ -2690,6 +2741,19 @@ fn hvp_returns_the_harmonic_hessian_product() {
         .expect("hvp");
     let expected: Vec<f64> = direction.iter().map(|d| SPRING * d).collect();
     assert!(all_within_roundoff(&hv, &expected));
+    assert!(engine.caps().expect("caps").analytic_hessian);
+    let matrix = engine
+        .hessian(&EngineRequest {
+            positions: &positions,
+            atomic_numbers: &[1, 8],
+            box_matrix: &CELL,
+        })
+        .expect("hessian");
+    let mut expected_matrix = vec![0.0; direction.len() * direction.len()];
+    for i in 0..direction.len() {
+        expected_matrix[i * direction.len() + i] = SPRING;
+    }
+    assert!(all_within_roundoff(&matrix, &expected_matrix));
 }
 
 #[test]
@@ -2769,6 +2833,53 @@ fn hvp_without_the_symbol_or_capability_is_unsupported() {
     ));
     let potential = load(&no_caps).into_potential();
     assert!(!potential.as_handle().has_hessian_vector_callback());
+}
+
+#[test]
+fn hessian_without_the_symbol_or_capability_is_unsupported() {
+    let req = EngineRequest {
+        positions: &[0.0; 3],
+        atomic_numbers: &[1],
+        box_matrix: &CELL,
+    };
+
+    let no_sym = build("harmonic_nohessian", &["NO_HESSIAN"]);
+    let mut engine = load(&no_sym);
+    let err = engine.hessian(&req).unwrap_err();
+    assert!(matches!(
+        err,
+        EngineError::Unsupported {
+            operation: "rgpot_engine_hessian",
+            ..
+        }
+    ));
+    let potential = load(&no_sym).into_potential();
+    assert!(!potential.as_handle().derivative_caps().hessian_analytic);
+
+    let no_cap = build("harmonic_nohessiancap", &["NO_HVP_CAP"]);
+    let mut engine = load(&no_cap);
+    assert!(!engine.caps().expect("caps").analytic_hessian);
+    let err = engine.hessian(&req).unwrap_err();
+    assert!(matches!(
+        err,
+        EngineError::Unsupported {
+            operation: "rgpot_engine_hessian",
+            ..
+        }
+    ));
+    let potential = load(&no_cap).into_potential();
+    assert!(!potential.as_handle().derivative_caps().hessian_analytic);
+
+    let unsupported = build("harmonic_hessianunsupported", &["HESSIAN_UNSUPPORTED"]);
+    let mut engine = load(&unsupported);
+    let err = engine.hessian(&req).unwrap_err();
+    assert!(matches!(
+        err,
+        EngineError::Unsupported {
+            operation: "rgpot_engine_hessian",
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -2944,6 +3055,10 @@ fn engine_caps_layout_is_the_c_header_layout() {
         ("orbital_copy", offset_of!(RgpotEngineCaps, orbital_copy)),
         ("analytic_hvp", offset_of!(RgpotEngineCaps, analytic_hvp)),
         ("jet_order", offset_of!(RgpotEngineCaps, jet_order)),
+        (
+            "analytic_hessian",
+            offset_of!(RgpotEngineCaps, analytic_hessian),
+        ),
     ];
     let names: Vec<&str> = loader.iter().map(|(name, _)| *name).collect();
     assert_eq!(names, declared, "field order differs from engine_c_abi.h");
@@ -5515,6 +5630,7 @@ fn caps_carry_every_field_and_ignore_bytes_past_the_reported_size() {
             group_collective: false,
             analytic_hvp: true,
             jet_order: 3,
+            analytic_hessian: true,
         }
     );
 
@@ -5527,7 +5643,9 @@ fn caps_carry_every_field_and_ignore_bytes_past_the_reported_size() {
         ],
     );
     let mut engine = load(&dirty);
-    assert_eq!(engine.caps().expect("caps").jet_order, 0);
+    let dirty_caps = engine.caps().expect("caps");
+    assert_eq!(dirty_caps.jet_order, 0);
+    assert!(!dirty_caps.analytic_hessian);
     assert!(matches!(
         jet_call(&mut engine, &[0.0; 3], &[1], &[1.0, 0.0, 0.0], 1),
         Err(EngineError::Unsupported {

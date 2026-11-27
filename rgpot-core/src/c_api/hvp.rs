@@ -156,8 +156,9 @@ unsafe fn hvp_call(
 /// like the positions and must not overlap. `scheme` is a
 /// `rgpot_hvp_scheme_t` value:
 ///
-/// - `RGPOT_HVP_AUTO`: the analytic callback when one is registered,
-///   otherwise `RGPOT_HVP_FORWARD`.
+/// - `RGPOT_HVP_AUTO`: the analytic Hessian-vector callback when one is
+///   registered, otherwise `RGPOT_HVP_FORWARD`. A dense-Hessian callback
+///   is never used for a product.
 /// - `RGPOT_HVP_FORWARD`: `(F(x) - F(x + h u)) |v| / h` with `u = v / |v|`.
 ///   `F(x)` comes from the handle's cached centre when the positions,
 ///   atomic numbers and cell carry the same bits as the last centre, so

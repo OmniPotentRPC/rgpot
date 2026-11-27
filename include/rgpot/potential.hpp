@@ -141,7 +141,9 @@ public:
    *
    * @param step Displacement length; 0 selects @c RGPOT_HVP_DEFAULT_STEP.
    * @return The scheme that computed the product: @c RGPOT_HVP_AUTO
-   *         reports @c RGPOT_HVP_ANALYTIC or @c RGPOT_HVP_FORWARD, and
+   *         reports @c RGPOT_HVP_ANALYTIC only when an analytic
+   *         Hessian-vector callback is registered, else
+   *         @c RGPOT_HVP_FORWARD, and
    *         @c RGPOT_HVP_EXACT reports @c RGPOT_HVP_ANALYTIC or
    *         @c RGPOT_HVP_AD.
    * @throws rgpot::Error on a malformed request, a refused scheme or a
