@@ -2728,6 +2728,31 @@ Virtual sites are built from the atoms that carry mass and their forces are
 spread back, so the session exposes the massive atoms in TPR order.
 The SETTLE and LINCS distances of the file hold in every run.
 
+The session builds the pair list itself.
+The buffer is `rlist` minus the cutoffs: `rlist` is the larger of `rcoulomb` and
+`rvdw`, plus a skin of 0.1 nm.
+`kSkin` is that skin, `engines/nblib/TprEngine.cc` line 63, and the assignment
+is line 144.
+`verletbuf_tol` is -1 at line 143, so the buffer does not depend on an estimate
+of how far atoms diffuse.
+The nonbonded kernel still cuts at `rcoulomb` and `rvdw`.
+
+The list is rebuilt when any atom has moved more than half the skin from the
+search that built the list.
+Half of 0.1 nm is 0.05 nm.
+`moved()` uses `limit2 = 0.25 * kSkin * kSkin` at line 378, which is that 0.05
+nm squared, and returns at line 388.
+Lines 217 to 221 drop the list when `moved()` is true and call `rebuild()`,
+which starts at line 391.
+
+The rule misses a pair of atoms that each move just under 0.05 nm toward each
+other.
+Each one stays inside the trigger, so the list is kept.
+The gap between them can close by almost the whole 0.1 nm skin.
+A pair that was just outside `rlist` can then lie just outside the cutoff, and
+the next motion toward each other puts inside the cutoff a pair the list does
+not hold.
+
 The option string `threads=N` sets the OpenMP threads.
 The thermostat, the time step and the integrator come from each call and not
 from the file.
