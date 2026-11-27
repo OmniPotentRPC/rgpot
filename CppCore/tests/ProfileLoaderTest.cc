@@ -10,8 +10,11 @@
 #include <kj/array.h>
 
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "rgpot/abi/Compat.hpp"
@@ -101,6 +104,40 @@ private:
                                             "RGPOT_CPMDC_ENGINE"};
   bool had_[2] = {false, false};
   std::string old_[2];
+};
+
+// Two copies of one engine, reached through a symlink that the test
+// retargets while the first ProfileLoader is still alive.
+struct EngineLink {
+  std::filesystem::path path;
+
+  EngineLink() {
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch();
+    path = std::filesystem::temp_directory_path() /
+           ("rgpot_profile_link_" + std::to_string(stamp.count()));
+    std::filesystem::create_directories(path);
+  }
+  ~EngineLink() {
+    std::error_code ignored;
+    std::filesystem::remove_all(path, ignored);
+  }
+  EngineLink(const EngineLink &) = delete;
+  EngineLink &operator=(const EngineLink &) = delete;
+
+  std::string copy_as(const std::string &name,
+                      const std::string &source) const {
+    const auto at = path / name;
+    std::filesystem::copy_file(source, at);
+    return at.string();
+  }
+
+  std::string link(const std::string &name, const std::string &target) const {
+    const auto at = path / name;
+    std::error_code ignored;
+    std::filesystem::remove(at, ignored);
+    std::filesystem::create_symlink(target, at);
+    return at.string();
+  }
 };
 
 } // namespace
@@ -237,6 +274,32 @@ TEST_CASE("ProfileLoader rejects a library missing the profile symbols",
   rgpot::abi::ProfileLoader loader;
   REQUIRE_THROWS_AS(loader.load("nwchemc", fake_engine_path()),
                     std::runtime_error);
+}
+
+TEST_CASE("ProfileLoader open_candidates follows a retargeted link",
+          "[abi][profile]") {
+  // NWChem and CPMD open through ProfileLoader::open_candidates. held stays
+  // alive across the retarget, so the first mapping is still resident.
+  EngineLink dir;
+  const std::string first = dir.copy_as("first.so", fake_engine_path());
+  const std::string second = dir.copy_as("second.so", fake_engine_path());
+  const std::string moving = dir.link("moving.so", first);
+
+  rgpot::abi::ProfileLoader held;
+  std::string err;
+  REQUIRE(held.open_candidates("cpmdc", {moving}, &err));
+  REQUIRE(held.version != nullptr);
+  const void *const held_handle = held.lib().native_handle();
+  REQUIRE(held_handle != nullptr);
+
+  dir.link("moving.so", second);
+  rgpot::abi::ProfileLoader moved;
+  REQUIRE(moved.open_candidates("cpmdc", {moving}, &err));
+  REQUIRE(moved.lib().native_handle() != held_handle);
+  REQUIRE(moved.loaded_path() ==
+          std::filesystem::canonical(second).string());
+  REQUIRE(held.lib().native_handle() == held_handle);
+  REQUIRE(std::string(held.version()) == std::string(moved.version()));
 }
 
 namespace {
