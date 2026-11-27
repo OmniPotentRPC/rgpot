@@ -10,10 +10,12 @@ which are ASE's units.
 
 from __future__ import annotations
 
+import atexit
 import asyncio
 import os
 import socket
 import subprocess
+import weakref
 from pathlib import Path
 from typing import Any
 
@@ -128,6 +130,9 @@ class RgpotRpcCalculator(Calculator):
         self._kj = _capnp().kj_loop()
         self._closed = False
         self._pot: Any = None
+        self._client: Any = None
+        self._connection: Any = None
+        self._exit_hook: Any = None
         self._server_has_stress = False
         self._loop.run_until_complete(self._kj.__aenter__())
         try:
@@ -135,6 +140,10 @@ class RgpotRpcCalculator(Calculator):
         except BaseException:
             self.close()
             raise
+        # Interpreter exit must run close() while this object is still
+        # intact. The hook holds a weak reference so a dropped calculator
+        # can still be collected and shut down from __del__.
+        self._register_exit_hook()
 
     @staticmethod
     def _stop_server_proc(proc: subprocess.Popen[bytes]) -> None:
@@ -178,14 +187,48 @@ class RgpotRpcCalculator(Calculator):
             cls._stop_server_proc(proc)
             raise
 
+    def _register_exit_hook(self) -> None:
+        ref = weakref.ref(self)
+
+        def hook() -> None:
+            calc = ref()
+            if calc is None:
+                return
+            try:
+                calc.close()
+            except BaseException:
+                return
+
+        self._exit_hook = hook
+        atexit.register(hook)
+
+    def _unregister_exit_hook(self) -> None:
+        hook = getattr(self, "_exit_hook", None)
+        if hook is None:
+            return
+        atexit.unregister(hook)
+        self._exit_hook = None
+
+    def _drop_rpc_clients(self) -> None:
+        """Drop capability clients while the KJ loop object still exists."""
+        self._pot = None
+        if hasattr(self, "_client"):
+            self._client = None
+        if hasattr(self, "_connection"):
+            self._connection = None
+
     def close(self) -> None:
         """Disconnect and stop a managed server, if any."""
+        if not hasattr(self, "_claim") or not hasattr(self, "_closed"):
+            self._unregister_exit_hook()
+            return
         with self._claim:
             try:
                 if not self._closed:
                     self._closed = True
                     # Drop Python-side capability references before kj teardown.
-                    self._pot = None
+                    # A client destroyed after the KJ loop aborts the process.
+                    self._drop_rpc_clients()
                     if not self._loop.is_closed():
                         exit_coro: Any = None
                         try:
@@ -209,6 +252,20 @@ class RgpotRpcCalculator(Calculator):
                 if proc is not None:
                     self._server_proc = None
                     self._stop_server_proc(proc)
+        self._unregister_exit_hook()
+
+    def __del__(self) -> None:
+        # Collection can run after the asyncio loop's finalizer has closed
+        # that loop and before the KJ loop object is cleared. Drop clients
+        # first, then use the same shutdown as an explicit close().
+        try:
+            self._drop_rpc_clients()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.close()
+        except BaseException:
+            return
 
     def __enter__(self) -> "RgpotRpcCalculator":
         return self
@@ -230,6 +287,8 @@ class RgpotRpcCalculator(Calculator):
                     host=self._host, port=self._port
                 )
                 client = _capnp().TwoPartyClient(connection)
+                self._connection = connection
+                self._client = client
                 self._pot = client.bootstrap().cast_as(self._schema.Potential)
                 await self._refresh_capabilities_async()
                 return
