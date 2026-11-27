@@ -124,6 +124,10 @@ public:
       : hardware_(std::make_unique<gmx::CpuInfo>(gmx::CpuInfo::detect()),
                   std::make_unique<gmx::HardwareTopology>(
                       gmx::HardwareTopology::detect())) {
+    // The constructor leaves the scalars unset. The nonbonded kernel
+    // adds haveAmdZen1Cpu, which is 0 or 1, to the kernel id. A leftover
+    // byte selects a kernel that does not exist.
+    hardware_.haveAmdZen1Cpu = gmx::cpuIsAmdZen1(*hardware_.cpuInfo);
     if (threads < 1) {
       throw std::invalid_argument("the TPR session needs at least one thread");
     }
