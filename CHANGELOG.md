@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [3.8.0]: https://github.com/OmniPotentRPC/rgpot/tree/v3.8.0
 
+The shipped C ABI minor is 10, the engine ABI minor is 11, and the
+C++ soversion is 9.
+
 ### Breaking
 
 - `Potentials.capnp` is now rgconf's `potential.capnp`, vendored byte for byte at the commit `CppCore/rgpot/rpc/schema.pin` names, with the `common.capnp` it imports beside it in both `CppCore/rgpot/rpc` and `rgpot-core/schema`. The `potentials-schema` wrap and the local diff series are gone: rgconf declares every member rgpot compiled from them at the same ordinal, so rgpot's own ordinals are unchanged and a message an earlier rgpot wrote decodes the same. The generated `Potentials.capnp.h` now includes `common.capnp.h`, which meson and CMake generate and install next to it in `include/rgpot/rpc`; a consumer that compiles the schema itself needs `common.capnp` beside `Potentials.capnp`, and `rgpot-core` gains a `common_capnp` module. The schema adds rgconf's `gpr` (27), `potlib` (28), `external` (29), `plugin` (30) and `orca` (31) arms, `PotentialSpec.orca` (7), `ORCAParams`, and the shared `PotentialConfig` fields `commonPatch` to `emtRasmussenParameters` (22 to 26). rgconf renumbered its own members to make room: its `gpr`, `potlib`, `external` and `plugin` arms moved from 18 to 21 to 27 to 30, and its `ForceInput` `hessianDisplacement`, `wantStress` and `wantHessianVector` from 10 to 12 to 12 to 14. A peer built against rgconf 0.1.0's numbering does not interoperate with this schema for those members; peers built against earlier rgpot or potentials-schema numbering do.
@@ -21,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A how-to, "Add dispersion to a DFT engine", walks through running a DFT engine such as cpmdc BLYP with its own dispersion off beside a `d2` or `d4` composite term from Python, `potserv` and `libcomposite_engine`, and through correcting existing CPMD BLYP-D2 data with `d2cpmd` at weight -1.
 - A potential handle answers validated Taylor jets along a line: `rgpot_potential_taylor_jet` writes enclosures `lo_k <= D^k V(x)[v^k] / k! <= hi_k` from a jet registered with `rgpot_potential_set_taylor_jet` (`TaylorJet` and `serve_taylor_jet` on the Rust side).
   A handle without a jet answers the new status `RGPOT_NO_JET` (6), and a jet that meets an undecided branch or leaves a function's domain answers `RGPOT_JET_BRANCH` (7) or `RGPOT_JET_DOMAIN` (8); nothing is differenced in their place.
-  The ABI minor is 4.
+  This adds the Taylor jet to the C ABI; no existing call changes.
 - Add a lammpc-backed constructor path for `LammpsPot` so rgpot can evaluate full
   LAMMPS `pair_style` setups from `PotentialConfig.lammps` (`LammpsParams`), while
   preserving the existing LJ plugin constructor.
@@ -104,7 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DoubleWell` and `CoupledProtonWell`, clients can call `calculateHvp` over
   RPC for their analytic Hessian-vector products, and the C model API
   documents constructor and evaluation usage.
-- An opt-in MDI compatibility frontend now serves every `rgpot_potential_t` to drivers such as LAMMPS `fix mdi/qm`, with atomic-unit wire conversion, shared energy/force evaluations, and TCP low-latency mode. Direct in-process calls and Cap'n Proto RPC remain the default paths. Meson `-Dwith_mdi=true` and CMake `-DRGPOT_WITH_MDI=ON` build it, TCP is refused with an error where POSIX sockets are missing, and `rgpot_mdi_server_start` is exported by every build, so the C ABI minor of 9 is true of each library; a build without the `mdi` feature returns `RGPOT_RPC_ERROR`.
+- An opt-in MDI compatibility frontend now serves every `rgpot_potential_t` to drivers such as LAMMPS `fix mdi/qm`, with atomic-unit wire conversion, shared energy/force evaluations, and TCP low-latency mode. Direct in-process calls and Cap'n Proto RPC remain the default paths. Meson `-Dwith_mdi=true` and CMake `-DRGPOT_WITH_MDI=ON` build it, TCP is refused with an error where POSIX sockets are missing, and `rgpot_mdi_server_start` is exported by every build, which adds that call to the C ABI; a build without the `mdi` feature returns `RGPOT_RPC_ERROR`.
 - CPMD engine and RPC callers can select a stable orbital key per image or bead, including through the Python RPC calculator.
 - Engine plugins expose optional C calls to attach an rgpot result cache and report how many geometry results the kernel computed and how many the cache served.
 - Load the optional `rgpot_engine_hvp` and `analytic_hvp` capability through
@@ -150,9 +153,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The default-disabled `with_potlibc` option builds `libpotlibc_engine.so`, which selects fixed-size and variable-size POTLIB surfaces through a versioned engine create message.
   The plugin converts the engine ABI units, accepts species where potlibc metadata marks them unspecified, and exposes analytic forces and Hessian-vector products reported by the selected surface.
   The plugin refuses an atom count whose coordinate buffers would not fit in `size_t`, at create and at every force or HVP call, instead of letting the buffer size wrap.
-- The generic engine C ABI adds `RgpotEngineComponent`, `rgpot_engine_last_components` and `rgpot_engine_component_name` for the per-term record of a composite engine, and bumps `RGPOT_ENGINE_ABI_MINOR` to 5.
-- The generic engine C ABI adds rgpot_engine_select_orbitals and rgpot_engine_copy_orbitals, bumps RGPOT_ENGINE_ABI_MINOR to 3, and reports orbital capabilities through RgpotEngineCaps.
-- The generic engine C ABI adds the optional `rgpot_engine_unload_policy` export with `RGPOT_ENGINE_UNLOAD_RESIDENT` and `RGPOT_ENGINE_UNLOAD_SAFE`. This is an additive change to the engine ABI, so `RGPOT_ENGINE_ABI_MINOR` and `ENGINE_ABI_MINOR` are now 7. No existing layout or call changes, a host of minor 7 still loads plugins of minor 0 to 6, and a host older than minor 7 refuses a plugin that reports minor 7. A plugin of minor 7 or later that returns `RGPOT_ENGINE_UNLOAD_SAFE` can be unloaded with the new `unsafe` `EnginePotential::unload(path)` once no instance uses it, and the unload closes the library after it releases the registry lock. Every other plugin stays loaded, and `unload` refuses it with `EngineError::Unsupported`. The C++ library soversion stays 9.
+- The generic engine C ABI adds `RgpotEngineComponent`,
+  `rgpot_engine_last_components` and `rgpot_engine_component_name`
+  for the per-term record of a composite engine; no existing call
+  changes.
+- The generic engine C ABI adds rgpot_engine_select_orbitals and
+  rgpot_engine_copy_orbitals and reports orbital capabilities through
+  RgpotEngineCaps; no existing call changes.
+- The generic engine C ABI adds the optional
+  `rgpot_engine_unload_policy` export with
+  `RGPOT_ENGINE_UNLOAD_RESIDENT` and `RGPOT_ENGINE_UNLOAD_SAFE`.
+  This adds that export to the engine ABI; no existing layout or call
+  changes. A plugin of minor 7 or later that returns
+  `RGPOT_ENGINE_UNLOAD_SAFE`, and whose ABI stamp serves this host,
+  can be unloaded with the new `unsafe` `EnginePotential::unload(path)`
+  once no instance uses it, and the unload closes the library after it
+  releases the registry lock. The loader ignores
+  `rgpot_engine_unload_policy` unless the plugin stamp serves this host
+  at `abi_minor` 7 or later, so a lower minor or no stamp is refused
+  with `EngineError::Unsupported` and the library stays loaded. A
+  plugin that does not export the policy, or whose policy returns any
+  value other than `RGPOT_ENGINE_UNLOAD_SAFE`, stays loaded, and
+  `unload` refuses it with `EngineError::Unsupported`. A path that was
+  not loaded or is still loading, or that still has a live
+  `EnginePotential` or a `PotentialImpl` built from one, returns
+  `EngineError::Invalid`. A path whose file was replaced after it was
+  loaded returns `EngineError::Load`. The C++ library soversion stays 9.
 - The in-process and RPC ASE calculators are discoverable as `rgpot` and `rgpot_rpc` through ASE's calculator registry, and installed wheels expose lazy ASE 3.29 calculator plugins without breaking ASE 3.23–3.28.
 - The nblib session engine opens a GROMACS run input file. The spec `tpr PATH`
   evaluates the nbnxm, PME, listed and position-restraint forces of the file in
@@ -194,7 +220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `analyticHessian`. It is symmetric to the last bit. Morse has no
   dual-number path; its `hessianAdImpl` and `hessianVectorAdImpl` throw.
 - `ORCAPot` (`PotType::ORCA`) runs ORCA single-point energies and gradients behind the normal `Potential` interface, built with `-Dwith_orca=true` (CMake `RGPOT_WITH_ORCA`). Each call writes an input with `! EnGrad`, runs the `orca` executable (including symlinks to executables) found by `ORCAConfig::executable` or on `PATH` in a working directory of its own with extra file descriptors closed before `exec`, and parses the `.engrad` energy and gradient in the C locale using `units.hpp`. Stale `.engrad` and `.gbw` files are removed before each run, treating any removal failure other than a missing file as `ORCAError`. The converged `.gbw` is passed to the next call through `%moinp` and `! MORead` unless `restart` is turned off, and a call without one starts from ORCA's own guess. The potential is per instance and non-periodic, and a box with a non-zero entry is refused. A failed run throws `ORCAError` with the tail of ORCA's standard error. One run is bounded by `ORCAConfig::timeout_s` (one hour by default; 0 waits with no limit): past that limit the process group is sent SIGTERM and then SIGKILL if any process in the group is still alive two seconds later (even if the leader has exited), the child is reaped, and the call throws `ORCAError`. ORCA is described in Neese, WIREs Comput. Mol. Sci. 2, 73 (2012), doi:10.1002/wcms.81, and Neese, WIREs Comput. Mol. Sci. 12, e1606 (2022), doi:10.1002/wcms.1606. The tests run a fake `orca` script, and a test against a real ORCA skips when `orca` is not on `PATH`.
-- `RGPOT_SCC_NOT_CONVERGED` (5) is a new `rgpot_status_t` for an engine whose self-consistent field did not converge, `rgpot_set_last_error` lets a callback store the message that goes with its status, and `rgpot_potential_fused_error_kind` tells an SCC failure from another failure on the eindir path. The ABI minor is 3; no existing call changes.
+- `RGPOT_SCC_NOT_CONVERGED` (5) is a new `rgpot_status_t` for an engine whose self-consistent field did not converge, `rgpot_set_last_error` lets a callback store the message that goes with its status, and `rgpot_potential_fused_error_kind` tells an SCC failure from another failure on the eindir path. This adds that status to the C ABI; no existing call changes.
   `rgpot::SccNotConverged` is the exception a C++ potential throws for it: `XTBPot` and `XTBDlopen` do, `PotentialHandle::from_impl` returns the new status with the message, and `rgpot::Error::status()` carries it. The xtb engine ABI returns `RGPOT_XTB_RC_SCC_NOT_CONVERGED` (-4) from `rgpot_xtb_force`.
   `rgpot_fused_settings_t` with `rgpot_fused_settings_default` and `rgpot_potential_set_fused_settings` install the engine settings that key the fused cache. `XTBPot` gains `setAccuracy`, `setElectronicTemperature`, `setMaxIterations` and `fusedSettings()`.
 - `StillingerWeberSi` and `TersoffSiC` can be evaluated on a local region plus ghost atoms. Each declares a full neighbour list and a ghost reach of twice its cutoff. A driver sums the energy of the owned atoms and adds the forces written on ghost atoms back to their owners. Results for a whole cell are unchanged.
@@ -391,20 +417,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   additive `rgpot_rpc_client_select_orbitals` RPC export. A caller built against
   minor 0 to 9 still matches; a caller built against minor 10 is refused by an
   older library.
-- The C ABI minor of `rgpot-core` is now 5, in `RGPOT_ABI_VERSION_MINOR`, for
-  the additive engine and RPC Hessian-vector exports. A caller built against
-  minor 0, 1, 2, 3 or 4 still matches; a caller built against minor 5 is refused
-  by an older library.
-- The C ABI minor of `rgpot-core` is now 6, in `RGPOT_ABI_VERSION_MINOR`, for the
-  additive `rgpot_potential_new_eam_table` constructor and the four
-  `RGPOT_EAM_TABLE_*` format codes. A caller built against minor 0 to 5 still
-  matches; a caller built against minor 6 is refused by an older library.
-- The C ABI minor of `rgpot-core` is now 8, in `RGPOT_ABI_VERSION_MINOR`, for the
-  additive dense-Hessian, dual-number and derivative-capability functions, the
-  `rgpot_hessian_scheme_t` enum, the `rgpot_derivative_caps_t` and
-  `rgpot_derivative_counts_t` structs, and the `RGPOT_HVP_AD` and
-  `RGPOT_HVP_EXACT` values. A caller built against minor 0 to 7 still matches; a
-  caller built against minor 8 is refused by an older library.
+- The C ABI of `rgpot-core` adds the engine and RPC Hessian-vector
+  exports; no existing call changes.
+- The C ABI of `rgpot-core` adds `rgpot_potential_new_eam_table` and
+  the four `RGPOT_EAM_TABLE_*` format codes; no existing call changes.
+- The C ABI of `rgpot-core` adds the dense-Hessian, dual-number and
+  derivative-capability functions, the `rgpot_hessian_scheme_t` enum,
+  the `rgpot_derivative_caps_t` and `rgpot_derivative_counts_t`
+  structs, and the `RGPOT_HVP_AD` and `RGPOT_HVP_EXACT` values; no
+  existing call changes.
 - The OpenMP team activation threshold of calls without one of their own, such as
   a neighbour-list build or `EMTPot`, can now be configured with Meson's
   `team_min_atoms` option or the `RGPOT_TEAM_MIN_ATOMS` compile definition while
@@ -419,15 +440,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same major and layout whose minor is at most its own, so an engine of minor 10
   or earlier without the jet still loads and reports `EngineError::Unsupported`
   only when the jet is requested.
-- The generic engine C ABI minor is now 4, in `RGPOT_ENGINE_ABI_MINOR` and
-  `ENGINE_ABI_MINOR`, for the additive `rgpot_engine_hvp` entry point and the
-  trailing `RgpotEngineCaps.analytic_hvp` capability flag. An engine at minor 4
-  serves a host built against minor 4 or newer; a host built against minor 3
-  refuses that newer engine.
-- The generic engine C ABI minor is now 8, in `RGPOT_ENGINE_ABI_MINOR` and
-  `ENGINE_ABI_MINOR`, for the additive return code `RGPOT_ENGINE_ERR_LOCK` (-2).
-  An engine at minor 8 serves a host built against minor 8 or newer; a host built
-  against minor 7 refuses that newer engine.
+- The generic engine C ABI adds `rgpot_engine_hvp` and the
+  `RgpotEngineCaps.analytic_hvp` capability flag, which `jet_order`
+  follows; no existing call changes.
+- The generic engine C ABI adds the return code
+  `RGPOT_ENGINE_ERR_LOCK` (-2); no existing call changes.
 - The molecular-dynamics session entry points and operation tables add optional
   neighbour-query and neighbour-setter tail slots while preserving compatibility
   with older callers. The slots are on the C++ session operation table. They are
@@ -750,7 +767,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SuttonChenPot` keys its stored-pair workspace on `Neighbours::generation()`
   instead of the neighbour-list object's address, so a potential constructed at a
   recycled address does not reuse another object's pair index or slice splits.
-- `SuttonChenPot` now requires both `total_up <= term_limit` (from `setPairTermLimit(pairs)`) and `pairScratchFits` before entering the three-phase stored OpenMP region, skips `buildStoredHalfIndex` up front when `est_half_pairs > term_limit`, falls back to the threaded two-pass row walk with `PairTerms<3>` capped at `term_limit / lanes` per lane when the three-phase path is skipped, releases the per-call three-phase scratch vectors from the thread-local workspace when the call returns, and includes `SuttonChenConfig`, `PotType::SuttonChen`, and `SuttonChenPot` in the `CxxLayout.hpp` ABI layout stamp (`kCxxSoversion` 8).
+- `SuttonChenPot` now requires both `total_up <= term_limit` (from `setPairTermLimit(pairs)`) and `pairScratchFits` before entering the three-phase stored OpenMP region, skips `buildStoredHalfIndex` up front when `est_half_pairs > term_limit`, falls back to the threaded two-pass row walk with `PairTerms<3>` capped at `term_limit / lanes` per lane when the three-phase path is skipped, except when a stored list would open a team, the term limit is positive, and `est_half_pairs` or `total_up` is below `kMinParallelHalfPairs` (4096), where the walk is single-lane. It releases the per-call three-phase scratch vectors from the thread-local workspace when the call returns, and includes `SuttonChenConfig`, `PotType::SuttonChen`, and `SuttonChenPot` in the `CxxLayout.hpp` ABI layout stamp.
 - `SuttonChenPot` on a stored neighbour list no longer evaluates each pair from both ends or runs serial embedding and reduction loops between separate OpenMP regions, which made 2 threads slower than 1 thread and capped multi-core scaling.
   When `SuttonChenPot::kTeamFrom` opens a team for the requested thread count, from 2048 atoms on three threads and from 64 (`SuttonChenPot::kTeamMinAtoms`) on four or more but never on two, and the stored list holds at least 4096 candidate upper pairs, `SuttonChenPot` evaluates each upper pair once in a single three-phase `forEachSlicePhase` region over work-balanced atom slices rounded to 8-atom boundaries, computing pair terms once, accumulating densities and embedding weights in parallel, and reducing forces, stress, and per-atom virials in one-thread summation order so every thread count keeps the exact one-thread bits.
 - `TersoffSiC` names a missing atomic-number array as a missing species buffer. A null position buffer, cell or force buffer is reported on its own.
@@ -804,6 +821,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps a marker that belongs inside a code span. A slash, a plus or a
   star still ends a span, and math is left unchanged. The check reports
   an inline code span from the sources that the plain text changed.
+- A CPMD calculation that adds an atom, or changes which elements are
+  present, now gets a new engine session and a cold SCF instead of an
+  error. The same atom count and element counts still reuse the
+  converged wavefunction.
 
 ### Miscellaneous
 

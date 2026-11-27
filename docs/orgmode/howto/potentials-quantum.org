@@ -1011,13 +1011,11 @@ In =CppCore/rgpot/CPMDPot/CPMDPot.cc=:
 - The box of the call is the cell CPMD uses when it is not all zero.
   An all-zero box keeps the cell of the deck.
   The README in =CppCore/rgpot/CPMDPot/README.md= gives the details.
-- A session keeps the converged wavefunction
-  while the atom count and the element counts stay the same.
-  The engine fixes both on the first evaluation
-  and refuses a later change.
-  A call whose counts differ destroys that session
-  and creates a new one with the same parameters before the force,
-  so the next SCF is cold.
+- A session keeps the converged wavefunction while the atom count and the
+  element counts stay the same.
+  The engine fixes both on the first evaluation and refuses a later change.
+  A call whose counts differ destroys that session and creates a new one with
+  the same parameters before the force, so the next SCF is cold.
   Positions, the order of the atoms, and the cell keep the session.
 - The stress is copied when the engine reports one, and then =has_stress= is 1.
   An engine tensor in Hartree/bohr^3 is multiplied by
