@@ -302,6 +302,27 @@ mod tests {
     }
 
     #[test]
+    fn gupta_coincident_dimer_is_infinite() {
+        let x = [0.0; 6];
+        let mut energy = 0.0;
+        let mut gradient = [0.0; 6];
+        gupta(
+            &x,
+            &[0, 0],
+            1,
+            &[0.2061],
+            &[1.790],
+            &[10.229],
+            &[4.036],
+            &[2.884],
+            &mut energy,
+            &mut gradient,
+        );
+        assert!(energy.is_infinite() && energy.is_sign_positive());
+        assert_eq!(gradient, [0.0; 6]);
+    }
+
+    #[test]
     fn lj_dimer_at_one_has_force_24() {
         let x = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0];
         let mut energy = 0.0;

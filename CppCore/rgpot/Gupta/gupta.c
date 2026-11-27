@@ -32,7 +32,9 @@ static RGPOT_THREAD_LOCAL size_t pack_cap;
 // buffer to that many doubles. A null return there leaves pack_buf and
 // pack_cap unchanged and keeps the density pointer and capacity already
 // stored, including a growth from this call. A capacity is replaced only by
-// a larger count.
+// a larger count. One stored pair is 6 doubles: the separation (dx, dy, dz)
+// and its length r, then d(phi)/dr of the repulsive term and d(psi)/dr of the
+// density term. Every pair is stored; there is no cap.
 static int rgpot_gupta_ensure(size_t n, size_t pairs) {
   if (rho_cap < n) {
     double *next = (double *)realloc(rho_buf, n * sizeof(double));

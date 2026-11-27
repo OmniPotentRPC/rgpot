@@ -262,10 +262,9 @@ def _spec_of(potential: Any) -> tuple[str, dict[str, Any]] | None:
 
 def _checked_cutoff(name: str, value: Any) -> float:
     cutoff = float(value)
-    if not math.isfinite(cutoff) or cutoff < 0.0:
+    if not math.isfinite(cutoff):
         raise ValueError(
-            f"{name} reports the cutoff {cutoff!r}; it must be finite and not "
-            "negative"
+            f"{name} reports the cutoff {cutoff!r}; it must be finite"
         )
     return cutoff
 
@@ -276,8 +275,10 @@ def _kernel_cutoff(potential: Any) -> float:
     The potential publishes it as ``native_cutoff()`` (nanometres), a
     ``cutoff`` property (``EAMTablePot``, ``ExprPot``, ``SumPot``) or
     ``config()["cutoff"]``. A kernel that has none of these is looked up in
-    ``_KERNEL_CUTOFF_ANGSTROM``. A kernel in no source raises ``ValueError``:
-    a cutoff of 0 would skip the tiling a minimum-image kernel needs and
+    ``_KERNEL_CUTOFF_ANGSTROM``. A non-positive cutoff means an unbounded
+    search, so no replica tiling is needed. A kernel in no source raises
+    ``ValueError``:
+    a missing cutoff would skip the tiling a minimum-image kernel needs and
     return the wrong energy in a short cell, without a message.
     """
     name = type(potential).__name__
@@ -340,11 +341,13 @@ def _open_side(extent: float, cutoff: float) -> float:
 
     At least 100 Angstrom and at least the extent plus twice the kernel
     cutoff. It is also longer than twice the extent, so a minimum-image
-    kernel does not fold the structure.
+    kernel does not fold the structure. A non-positive cutoff means an
+    unbounded search and counts as zero here.
     """
-    side = max(_OPEN_BOX_FLOOR_ANGSTROM, extent + 2.0 * float(cutoff))
+    reach = max(0.0, float(cutoff))
+    side = max(_OPEN_BOX_FLOOR_ANGSTROM, extent + 2.0 * reach)
     if side <= 2.0 * extent:
-        side = 2.0 * extent + 2.0 * float(cutoff)
+        side = 2.0 * extent + 2.0 * reach
     return side
 
 
@@ -581,11 +584,13 @@ class RgpotCalculator(Calculator):
     ----------
     potential:
         An rgpot potential object, or a kind string naming any potential
-        class of this build (``"lj"``, ``"morse"``, ``"eam_al"``, ``"sw"``,
-        ...; :func:`available_kinds` lists them). Keyword arguments that
-        are not ASE calculator arguments are the constructor arguments of
+        class of this build (``"lj"``, ``"morse"``, ``"gupta"``, ``"eam_al"``,
+        ``"sw"``, ...; :func:`available_kinds` lists them). Keyword arguments
+        that are not ASE calculator arguments are the constructor arguments of
         that class (``u0``, ``cutoff``, ``psi``, ``switch_width`` for LJ;
-        ``De``, ``a``, ``re``, ``cutoff``, ``switch_width`` for Morse).
+        ``De``, ``a``, ``re``, ``cutoff``, ``switch_width`` for Morse;
+        ``A``, ``xi``, ``p``, ``q``, ``r0``, ``cutoff``, ``periodic``,
+        ``stress`` for Gupta).
     numerical_stress:
         For a potential whose kernel writes no stress, add ``stress``
         from a central difference of the energy under six cell strains

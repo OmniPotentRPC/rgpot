@@ -1386,6 +1386,50 @@ model potentials exposed by =librgpot=.
 The API evaluates row-major batches in rgpot native units (eV and angstrom) and
 reports failures as status integers plus a thread-local error string.
 
+*** Gupta C API
+
+=CppCore/rgpot/Gupta/GuptaPot.hpp= declares a C entry point for the Cleri-Rosato
+Gupta potential.
+
+**** =rgpot_gupta_config=
+
+- Inputs :: =A=, =xi=, =p=, =q=, =r0=, =cutoff= and =periodic=.
+- Units :: =A= and =xi= in eV; =p= and =q= dimensionless; =r0= and =cutoff= in
+  the coordinate length unit.
+- Outputs :: parameter block for =rgpot_gupta_energy_forces=.
+  Field order is part of the ABI.
+- Errors :: none.
+
+**** =rgpot_gupta_energy_forces=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_gupta_energy_forces(const rgpot_gupta_config *cfg, int32_t natoms,
+                              const double *positions, const double *box,
+                              double *energy, double *forces);
+#+end_src
+
+- Inputs :: =cfg= parameter block; =natoms= atom count; =positions= as a
+  row-major =(natoms, 3)= array; =box= as a row-major 3x3 cell when
+  =cfg->periodic= is nonzero (it may be NULL for non-periodic calls); writable
+  =energy= and =forces= buffers with =3 * natoms= doubles in =forces=.
+- Units :: positions and box in the coordinate length unit of =r0= and =cutoff=,
+  energy in eV and forces in eV per coordinate length unit.
+- Outputs :: returns 0 and writes the total energy and forces.
+- Errors :: returns 1 for a NULL =cfg= or =energy=, a negative =natoms=, or,
+  when =natoms= is positive, a NULL =positions= or =forces=, with a message such
+  as =invalid parameter: cfg is null=.
+  Returns 1 for =natoms= of 0 with =invalid parameter: nAtoms must be positive=.
+  Returns 1 with the exception text when the constructor refuses the
+  configuration, for example =Gupta r0 must be positive and finite=, or when the
+  evaluation throws, for example for a NULL =box= on a periodic call.
+  Every failure stores its message with =rgpot::setForceLastError=, which
+  =rgpot::forceLastError()= returns.
+  A build with the Rust core on an ELF target also stores it with
+  =rgpot_set_last_error=, so =rgpot_last_error()= returns it when the process
+  links that core.
+  A successful call leaves the stored message as it was.
+
 *** =rgpot_builtin_model=
 
 - Inputs :: none; an opaque handle type.

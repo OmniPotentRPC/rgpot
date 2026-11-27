@@ -14,6 +14,7 @@
 #include <span>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -1862,6 +1863,45 @@ TEST_CASE("a non-finite box element is rejected", "[nlist][api][edge]") {
     rgpot::nlist::build(table, pos, 2, nan_box, query);
   } catch (const rgpot::nlist::Error &err) {
     REQUIRE(err.code() == rgpot::nlist::Code::Box);
+  }
+}
+
+TEST_CASE("a non-finite position in an open sheared box keeps the other pairs",
+          "[nlist][api][edge]") {
+  // Past the direct pair loop the build walks the cells, whose sheared
+  // fold refuses a non-finite separation.
+  constexpr std::size_t n = 600;
+  std::vector<double> pos(3 * n);
+  for (std::size_t a = 0; a < n; ++a) {
+    pos[3 * a] = 2.0 * static_cast<double>(a % 10);
+    pos[3 * a + 1] = 2.0 * static_cast<double>((a / 10) % 10);
+    pos[3 * a + 2] = 2.0 * static_cast<double>(a / 100);
+  }
+  const double box[9] = {1000, 0, 0, 100, 1000, 0, 0, 0, 1000};
+  rgpot::nlist::Query query;
+  query.cutoff = 2.5;
+  query.periodic = {{false, false, false}};
+
+  std::vector<double> away = pos;
+  away[0] = 1.0e6;
+  const auto pairSet = [](const rgpot::nlist::Table &t) {
+    std::set<std::pair<std::int32_t, std::int32_t>> out;
+    for (std::size_t p = 0; p < t.size(); ++p) {
+      out.emplace(t.first[p], t.second[p]);
+    }
+    return out;
+  };
+  rgpot::nlist::Table expected;
+  rgpot::nlist::build(expected, away.data(), n, box, query);
+  REQUIRE(expected.size() > 0);
+
+  for (const double bad : {std::numeric_limits<double>::quiet_NaN(),
+                           -std::numeric_limits<double>::infinity()}) {
+    std::vector<double> poisoned = pos;
+    poisoned[0] = bad;
+    rgpot::nlist::Table table;
+    REQUIRE_NOTHROW(rgpot::nlist::build(table, poisoned.data(), n, box, query));
+    REQUIRE(pairSet(table) == pairSet(expected));
   }
 }
 

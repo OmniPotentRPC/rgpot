@@ -20,7 +20,7 @@ from ase.build import bulk
 
 import rgpot
 from rgpot.ase import RgpotCalculator
-from rgpot.ase.calculator import _call, _kernel_cutoff
+from rgpot.ase.calculator import _call, _kernel_cutoff, _open_side
 
 needs_expr = pytest.mark.skipif(
     not rgpot.has_expr,
@@ -278,10 +278,26 @@ def test_potential_without_a_cutoff_is_refused() -> None:
         _kernel_cutoff(_NoCutoff())
 
 
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), -1.0])
-def test_unusable_cutoff_is_refused(value: float) -> None:
-    with pytest.raises(ValueError, match="must be finite and not negative"):
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_non_finite_cutoff_is_refused(value: float) -> None:
+    with pytest.raises(ValueError, match="must be finite"):
         RgpotCalculator(_BadCutoff(value))
+
+
+def test_negative_cutoff_means_unbounded() -> None:
+    calc = RgpotCalculator(_BadCutoff(-1.0))
+    assert calc._cutoff == -1.0
+
+
+@pytest.mark.parametrize("cutoff", [-1.0, -1.0e6])
+@pytest.mark.parametrize("extent", [10.0, 60.0, 5.0e5])
+def test_open_box_treats_a_negative_cutoff_as_zero(
+    cutoff: float, extent: float
+) -> None:
+    side = _open_side(extent, cutoff)
+    assert side == _open_side(extent, 0.0)
+    assert side >= 100.0
+    assert side >= 2.0 * extent
 
 
 def test_every_advertised_kind_resolves_a_cutoff() -> None:
@@ -295,6 +311,6 @@ def test_every_advertised_kind_resolves_a_cutoff() -> None:
             if "cannot determine the cutoff" in str(err):
                 raise
             continue  # a kind that needs constructor arguments
-        assert math.isfinite(calc._cutoff) and calc._cutoff >= 0.0
+        assert math.isfinite(calc._cutoff)
         seen += 1
     assert seen > 0

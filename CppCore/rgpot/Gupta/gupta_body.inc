@@ -75,7 +75,7 @@
   }
   m = 0;
   for (size_t i = 0; i < n; i++) {
-    const double inv_i = 1.0 / sqrt(rho[i]);
+    const double inv_i = rho[i] == 0.0 ? 0.0 : 1.0 / sqrt(rho[i]);
     for (size_t j = i + 1; j < n; j++) {
       const double d0 = pack[6 * m];
       const double d1 = pack[6 * m + 1];
@@ -83,7 +83,8 @@
       const double r = pack[6 * m + 3];
       const double dphi = pack[6 * m + 4];
       const double dpsi = pack[6 * m + 5];
-      const double embed = -0.5 * (inv_i + 1.0 / sqrt(rho[j]));
+      const double inv_j = rho[j] == 0.0 ? 0.0 : 1.0 / sqrt(rho[j]);
+      const double embed = -0.5 * (inv_i + inv_j);
       const double coef = (dphi + embed * dpsi) / r;
       gradient[3 * i] += coef * d0;
       gradient[3 * i + 1] += coef * d1;

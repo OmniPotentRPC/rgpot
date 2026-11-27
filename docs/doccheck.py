@@ -425,6 +425,7 @@ C_HEADERS = (
     "CppCore/rgpot/nlist/rgpot_nlist.h",
     "CppCore/rgpot/nlist/fastnlist.h",
     "CppCore/rgpot/Gupta/gupta.h",
+    "CppCore/rgpot/Gupta/GuptaPot.hpp",
     "CppCore/rgpot/Morse/cambridge_morse.h",
     "CppCore/rgpot/ReducedPair/ReducedPair.hpp",
     "CppCore/rgpot/SuttonChen/SuttonChenPot.hpp",

@@ -16,6 +16,7 @@
 
 #include "TestFixtures.hpp"
 #include "lsan_libomp.hpp"
+#include "rgpot/Gupta/GuptaPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
@@ -208,6 +209,20 @@ TEST_CASE("forcePerAtom gives Sutton-Chen atoms their embedding", "[PerAtom]") {
   c.periodic = true;
   c.stress = true;
   check(rgpot::SuttonChenPot(c), fcc(3.92, 4, triclinic, 78, 78));
+}
+
+TEST_CASE("forcePerAtom gives Gupta atoms their embedding", "[PerAtom]") {
+  const bool triclinic = GENERATE(false, true);
+  const double a = 4.08;
+  const rgpot::GuptaConfig c{.A = 0.2061,
+                             .xi = 1.790,
+                             .p = 10.229,
+                             .q = 4.036,
+                             .r0 = a / std::sqrt(2.0),
+                             .cutoff = 6.5,
+                             .periodic = true,
+                             .stress = true};
+  check(rgpot::GuptaPot(c), fcc(a, 4, triclinic, 79, 79));
 }
 
 #ifdef RGPOT_HAS_EAM_TABLE
