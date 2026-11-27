@@ -9,6 +9,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -70,12 +71,36 @@ std::string upper(std::string s) {
                               ", which this rgpot was not configured with");
 }
 
+/// Owns a word-aligned copy of @p words.
+///
+/// capnp::word deletes its copy constructor on MSVC and Clang. A range
+/// constructor of std::vector<capnp::word> copy-constructs each element,
+/// and a library that places them with std::construct_at rejects that.
+/// GCC leaves the constructor available, so the same range construction
+/// compiles there. The count constructor value-initializes storage
+/// aligned as capnp::word, and memcpy fills those bytes. The vector owns
+/// the same words either way.
+template <typename Words>
+std::vector<capnp::word> copyWords(const Words &words) {
+  // GCC 8 and later keeps the copy constructor. MSVC and Clang delete it.
+#if !defined(__GNUC__) || defined(__clang__)
+  static_assert(!std::is_copy_constructible<capnp::word>::value,
+                "capnp::word is copied as bytes");
+#endif
+  static_assert(sizeof(capnp::word) == sizeof(std::uint64_t));
+  static_assert(alignof(capnp::word) == alignof(std::uint64_t));
+  std::vector<capnp::word> out(words.size());
+  if (words.size() != 0) {
+    std::memcpy(out.data(), words.begin(), words.size() * sizeof(capnp::word));
+  }
+  return out;
+}
+
 /// A word-aligned flat-array message whose root is @p root.
 template <typename Reader> std::vector<capnp::word> flatMessage(Reader root) {
   capnp::MallocMessageBuilder message;
   message.setRoot(root);
-  const auto words = capnp::messageToFlatArray(message);
-  return std::vector<capnp::word>(words.begin(), words.end());
+  return copyWords(capnp::messageToFlatArray(message));
 }
 
 std::unique_ptr<PotentialBase>
@@ -340,7 +365,7 @@ std::unique_ptr<PotentialBase> makePotential(const ::PotentialConfig::Reader &cf
     builtin.initConfig().setXtb(cfg.getXtb());
     const auto words = capnp::messageToFlatArray(message);
     return enginePot(engineCandidates("xtb_engine", "", {"RGPOT_XTB_ENGINE", "XTB_ENGINE"}),
-                     std::vector<capnp::word>(words.begin(), words.end()), "xtb");
+                     copyWords(words), "xtb");
 #endif
   }
   case ::PotentialConfig::TBLITE: {

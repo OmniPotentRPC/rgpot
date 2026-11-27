@@ -50,7 +50,13 @@ const std::array<std::array<double, 3>, 3> kBox{
 
 std::vector<capnp::word> flat(capnp::MessageBuilder &message) {
   const auto words = capnp::messageToFlatArray(message);
-  return {words.begin(), words.end()};
+  // capnp::word deletes its copy constructor. Copy the bytes into
+  // value-initialized, word-aligned storage, as PotentialFactory does.
+  std::vector<capnp::word> out(words.size());
+  if (words.size() != 0) {
+    std::memcpy(out.data(), words.begin(), words.size() * sizeof(capnp::word));
+  }
+  return out;
 }
 
 void requireSame(rgpot::PotentialBase &got, rgpot::PotentialBase &want) {
