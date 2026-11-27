@@ -164,12 +164,21 @@ C++ soversion is 9.
   `rgpot_engine_unload_policy` export with
   `RGPOT_ENGINE_UNLOAD_RESIDENT` and `RGPOT_ENGINE_UNLOAD_SAFE`.
   This adds that export to the engine ABI; no existing layout or call
-  changes. A plugin that returns `RGPOT_ENGINE_UNLOAD_SAFE` can be
-  unloaded with the new `unsafe` `EnginePotential::unload(path)` once
-  no instance uses it, and the unload closes the library after it
-  releases the registry lock. Every other plugin stays loaded, and
-  `unload` refuses it with `EngineError::Unsupported`. The C++ library
-  soversion stays 9.
+  changes. A plugin of minor 7 or later that returns
+  `RGPOT_ENGINE_UNLOAD_SAFE`, and whose ABI stamp serves this host,
+  can be unloaded with the new `unsafe` `EnginePotential::unload(path)`
+  once no instance uses it, and the unload closes the library after it
+  releases the registry lock. The loader ignores
+  `rgpot_engine_unload_policy` unless the plugin stamp serves this host
+  at `abi_minor` 7 or later, so a lower minor or no stamp is refused
+  with `EngineError::Unsupported` and the library stays loaded. A
+  plugin that does not export the policy, or whose policy returns any
+  value other than `RGPOT_ENGINE_UNLOAD_SAFE`, stays loaded, and
+  `unload` refuses it with `EngineError::Unsupported`. A path that was
+  not loaded or is still loading, or that still has a live
+  `EnginePotential` or a `PotentialImpl` built from one, returns
+  `EngineError::Invalid`. A path whose file was replaced after it was
+  loaded returns `EngineError::Load`. The C++ library soversion stays 9.
 - The in-process and RPC ASE calculators are discoverable as `rgpot` and `rgpot_rpc` through ASE's calculator registry, and installed wheels expose lazy ASE 3.29 calculator plugins without breaking ASE 3.23–3.28.
 - The nblib session engine opens a GROMACS run input file. The spec `tpr PATH`
   evaluates the nbnxm, PME, listed and position-restraint forces of the file in
@@ -431,9 +440,9 @@ C++ soversion is 9.
   same major and layout whose minor is at most its own, so an engine of minor 10
   or earlier without the jet still loads and reports `EngineError::Unsupported`
   only when the jet is requested.
-- The generic engine C ABI adds `rgpot_engine_hvp` and the trailing
-  `RgpotEngineCaps.analytic_hvp` capability flag; no existing call
-  changes.
+- The generic engine C ABI adds `rgpot_engine_hvp` and the
+  `RgpotEngineCaps.analytic_hvp` capability flag, which `jet_order`
+  follows; no existing call changes.
 - The generic engine C ABI adds the return code
   `RGPOT_ENGINE_ERR_LOCK` (-2); no existing call changes.
 - The molecular-dynamics session entry points and operation tables add optional
@@ -758,7 +767,7 @@ C++ soversion is 9.
 - `SuttonChenPot` keys its stored-pair workspace on `Neighbours::generation()`
   instead of the neighbour-list object's address, so a potential constructed at a
   recycled address does not reuse another object's pair index or slice splits.
-- `SuttonChenPot` now requires both `total_up <= term_limit` (from `setPairTermLimit(pairs)`) and `pairScratchFits` before entering the three-phase stored OpenMP region, skips `buildStoredHalfIndex` up front when `est_half_pairs > term_limit`, falls back to the threaded two-pass row walk with `PairTerms<3>` capped at `term_limit / lanes` per lane when the three-phase path is skipped, releases the per-call three-phase scratch vectors from the thread-local workspace when the call returns, and includes `SuttonChenConfig`, `PotType::SuttonChen`, and `SuttonChenPot` in the `CxxLayout.hpp` ABI layout stamp.
+- `SuttonChenPot` now requires both `total_up <= term_limit` (from `setPairTermLimit(pairs)`) and `pairScratchFits` before entering the three-phase stored OpenMP region, skips `buildStoredHalfIndex` up front when `est_half_pairs > term_limit`, falls back to the threaded two-pass row walk with `PairTerms<3>` capped at `term_limit / lanes` per lane when the three-phase path is skipped, except when a stored list would open a team, the term limit is positive, and `est_half_pairs` or `total_up` is below `kMinParallelHalfPairs` (4096), where the walk is single-lane. It releases the per-call three-phase scratch vectors from the thread-local workspace when the call returns, and includes `SuttonChenConfig`, `PotType::SuttonChen`, and `SuttonChenPot` in the `CxxLayout.hpp` ABI layout stamp.
 - `SuttonChenPot` on a stored neighbour list no longer evaluates each pair from both ends or runs serial embedding and reduction loops between separate OpenMP regions, which made 2 threads slower than 1 thread and capped multi-core scaling.
   When `SuttonChenPot::kTeamFrom` opens a team for the requested thread count, from 2048 atoms on three threads and from 64 (`SuttonChenPot::kTeamMinAtoms`) on four or more but never on two, and the stored list holds at least 4096 candidate upper pairs, `SuttonChenPot` evaluates each upper pair once in a single three-phase `forEachSlicePhase` region over work-balanced atom slices rounded to 8-atom boundaries, computing pair terms once, accumulating densities and embedding weights in parallel, and reducing forces, stress, and per-atom virials in one-thread summation order so every thread count keeps the exact one-thread bits.
 - `TersoffSiC` names a missing atomic-number array as a missing species buffer. A null position buffer, cell or force buffer is reported on its own.
