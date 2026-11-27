@@ -66,3 +66,42 @@ def test_schema_loads_from_staged_package(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
     staged = Path(proc.stdout.strip())
     assert stage in staged.parents
+
+
+def test_already_loaded_schema_id_is_reused() -> None:
+    """A source-tree load of the same schema id must not abort the client."""
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "CppCore"
+        / "rgpot"
+        / "rpc"
+        / "Potentials.capnp"
+    )
+    if not source.is_file():
+        pytest.skip("source schema is not in this tree")
+    script = textwrap.dedent(
+        """
+        import sys
+
+        import capnp
+
+        capnp.load(sys.argv[1])
+        from rgpot._schema import load_potentials_schema
+
+        schema = load_potentials_schema()
+        assert schema.Potential is not None
+        print("ok")
+        """
+    )
+    env = os.environ.copy()
+    proc = subprocess.run(
+        [sys.executable, "-c", script, str(source)],
+        cwd="/tmp",
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stdout.strip() == "ok"

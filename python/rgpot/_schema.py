@@ -28,6 +28,41 @@ def schema_path() -> Path:
     raise FileNotFoundError("Potentials.capnp is not installed with rgpot.ase")
 
 
+def _declared_schema_id(path: Path) -> int | None:
+    """Return the file id, the ``@0x...;`` declaration at the top of a schema."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("@0x") and stripped.endswith(";"):
+            try:
+                return int(stripped[3:-1], 16)
+            except ValueError:
+                return None
+    return None
+
+
+def _schema_already_loaded(schema_id: int) -> Any:
+    """Return a schema module this process already loaded for ``schema_id``.
+
+    Loading the same id from a second path aborts the interpreter. The
+    installed copy and the source copy share that id, so a caller that
+    loaded either one first has to be reused.
+    """
+    import capnp.lib.capnp as capnp_impl  # pyright: ignore[reportMissingImports]
+
+    parser = getattr(capnp_impl, "_global_schema_parser", None)
+    modules = getattr(parser, "modules_by_id", None)
+    if modules is None:
+        return None
+    loaded = modules.get(schema_id)
+    if loaded is None or getattr(loaded, "Potential", None) is None:
+        return None
+    return loaded
+
+
 def load_potentials_schema() -> Any:
     """Load ``Potentials.capnp`` once per process and return the schema."""
     global _SCHEMA
@@ -35,5 +70,8 @@ def load_potentials_schema() -> Any:
         if _SCHEMA is None:
             import capnp  # pyright: ignore[reportMissingImports]
 
-            _SCHEMA = capnp.load(str(schema_path()))
+            path = schema_path()
+            schema_id = _declared_schema_id(path)
+            loaded = None if schema_id is None else _schema_already_loaded(schema_id)
+            _SCHEMA = loaded if loaded is not None else capnp.load(str(path))
         return _SCHEMA

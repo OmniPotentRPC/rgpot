@@ -19,9 +19,9 @@ from ase.calculators.calculator import (
 
 pytest.importorskip("capnp")
 
+from rgpot._schema import load_potentials_schema
 from rgpot.ase import RgpotRpcCalculator
 from rgpot.ase.claim import ConnectionClaim
-from rgpot.ase.rpc import _capnp, _schema_path
 
 
 class _FakePotential:
@@ -54,7 +54,7 @@ class _OfflineCalculator(RgpotRpcCalculator):
     def __init__(self, pot: _FakePotential) -> None:
         Calculator.__init__(self)
         self._claim = ConnectionClaim("RgpotRpcCalculator")
-        self._schema = _capnp().load(str(_schema_path()))
+        self._schema = load_potentials_schema()
         self._loop = asyncio.new_event_loop()
         self._closed = False
         self._pot = pot
