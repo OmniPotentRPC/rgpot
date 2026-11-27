@@ -44,6 +44,53 @@ That smoke covers RPC startup and `configure(PotentialConfig.cpmd)`. A real
 calculation still sends geometry through `calculate(ForceInput)`; coordinates do
 not belong in `CPMDParams`.
 
+## In-process
+
+`rgpot::makePotential` builds a `CPMDPot` from the `cpmd` arm of a
+`PotentialConfig`. The call does not start `potserv`.
+
+`try_load_engine` in `CppCore/rgpot/CPMDPot/CPMDPot.cc` loads `libcpmdc`
+at run time. It opens the library and resolves `cpmdc_session_create`
+when that symbol is present. Set `CPMDC_LIBRARY`, or
+`CPMDParams.enginePath`, before the process starts, as in the RPC smoke
+above.
+
+```cpp
+#include <cstdio>
+
+#include <capnp/message.h>
+
+#include "rgpot/ForceStructs.hpp"
+#include "rgpot/PotentialFactory.hpp"
+
+int main() {
+  capnp::MallocMessageBuilder msg;
+  auto cfg = msg.initRoot<PotentialConfig>();
+  auto params = cfg.initCpmd();
+  params.setFunctional("BLYP");
+  params.setCutOffRy(70.0);
+  auto pot = rgpot::makePotential(cfg.asReader());
+
+  const double pos[9] = {0.0, 0.0,      0.11779,
+                         0.0, 0.75545,  -0.47116,
+                         0.0, -0.75545, -0.47116};
+  const int z[3] = {8, 1, 1};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double forces[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot->forceBatch(rgpot::ForceBatch{1, &in, &out});
+  std::printf("energy %.6f eV\n", out.energy);
+  return 0;
+}
+```
+
+The geometry is the water example from the CPMD how-to, in a 20 Angstrom
+cube, with BLYP and a 70 Ry cutoff. The program needs a build with RPC
+on, because the frontend and `makePotential` use the Cap'n Proto schema.
+A force with no `libcpmdc` ends in `MPI_Abort` on an MPI build.
+
 ## Engine Loading
 
 `CPMDPot` probes engine paths in this order:
@@ -226,6 +273,13 @@ result = await pot.configure(cfg)
 `configure(cpmd)` returns `ok=false` when no usable `libcpmdc` engine can be
 loaded or when the engine rejects the params. `configure(none)` is a no-op and
 does not prove that CPMD evaluation is available.
+
+There is no session open, close or reset RPC method.
+Restart `potserv` to drop the engine session with the process.
+`configure` with changed `CPMDParams` forces a new session when the engine
+has the session result ABI.
+The same serialized params keep the live session.
+`configure(none)` does not reset it.
 
 ## Local Checks
 

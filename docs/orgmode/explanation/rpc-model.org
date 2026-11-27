@@ -22,14 +22,30 @@ one Cap'n Proto schema (~Potentials.capnp~).
   Optional fields, such as a Hessian, a dipole or a stress tensor, are filled in
   by the backends that compute them.
 - ~PotentialConfig~ carries backend setup, and only setup.
-  A client sends it once through ~configure~, then sends a new ~ForceInput~ for
-  every geometry.
+  A client sends it through ~configure~, then sends a new ~ForceInput~ for every
+  geometry.
 
 Geometry stays off the configuration message.
 A change of method does not reshape the coordinates, and a change of coordinates
 does not repeat the method.
 The ~libcpmdc~ C ABI that ~CPMDPot~ loads uses the same split: a session takes
-the Cap'n Proto ~CPMDParams~ once, and each step takes a ~ForceInput~.
+the Cap'n Proto ~CPMDParams~, and each step takes a ~ForceInput~.
+
+** Resetting the CPMD engine
+
+The ~Potential~ interface has no session open, close or reset method.
+The session lives in the ~potserv~ process, on the ~CPMDPot~ that process holds.
+
+Restart ~potserv~ to drop it.
+Process exit destroys that potential, and the next server starts a new one.
+
+A client can also send ~configure~ with changed ~CPMDParams~.
+When the engine has the session result ABI, ~CPMDPot~ keeps the live session
+only if the engine path and the serialized params are unchanged.
+Any other params destroy that session and create one from the new message.
+~configure~ with the ~none~ arm does not do this.
+An engine on the one-shot ABI has no session to keep, and the new params are
+pushed through ~cpmdc_set_params~.
 
 ** One schema, many languages
 

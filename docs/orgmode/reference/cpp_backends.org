@@ -251,6 +251,9 @@ A live session is kept when the engine path and the serialized params are
 unchanged.
 A refused orbital key drops the session just created, so the same params are
 applied again on the next call.
+The =Potential= RPC interface has no session open, close or reset method.
+An RPC client restarts =potserv=, which destroys the potential with the process,
+or sends =configure= with changed =CPMDParams=, which calls =setParams=.
 
 *** =rgpot::CPMDPot::getParams=
 

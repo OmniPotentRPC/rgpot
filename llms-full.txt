@@ -3186,7 +3186,7 @@ Enable only what the host project needs:
 
 `NWChemPot` is a pure consumer: the frontend `dlopen=s =libnwchemc.so` from
 [nwchemc](https://github.com/OmniPotentRPC/nwchemc) (stable
-`nwchemc_*` C symbols). rgpot builds no in-process NWChem embed of its own and has no `-Dwith_nwchem`
+`nwchemc_*` C symbols). rgpot builds no in-process NWChem embed of its own and has no `with_nwchem`
 option.
 No `nwchem` CLI/subprocess path.
 Build `libnwchemc.so` from the `nwchemc` project, then set
@@ -3198,7 +3198,7 @@ See `CppCore/rgpot/NWChemPot/README.md`.
 Both frontends use the Cap'n Proto parameter structs, so they are compiled only
 when `with_rpc` or `with_rpc_client_only` is on (CMake: `RGPOT_WITH_RPC`).
 The engine is documented at [cpmdc.rgoswami.me](https://cpmdc.rgoswami.me).
-rgpot builds no in-process OpenCPMD embed of its own and has no `-Dwith_cpmd`
+rgpot builds no in-process OpenCPMD embed of its own and has no `with_cpmd`
 option.
 Build `libcpmdc.so` from the `cpmdc` project, then set
 `CPMDC_LIBRARY`, `RGPOT_CPMDC_ENGINE`, or `RGPOT_CPMD_ENGINE`.
@@ -3873,6 +3873,9 @@ It starts the `orca` executable as a child process, so rgpot links no ORCA
 library and carries no ORCA code.
 You install ORCA yourself and accept its license.
 
+ORCA is in-process only for now.
+`potserv` has no ORCA backend selector.
+
 ORCA is described in Neese, WIREs Computational Molecular Science 2, 73-78
 (2012),
 doi:10.1002/wcms.81. The program paper is Neese, Wennmohs, Becker and Riplinger, J. Chem. Phys. 152, 224108 (2020), doi:10.1063/5.0004608.
@@ -4055,7 +4058,9 @@ and multiplicity that the electron count cannot hold.
 - Each call starts a process, so a call costs the ORCA start-up time on top of
   the SCF.
   The class suits a few hundred to a few thousand single points.
-- There is no `potserv` backend, engine plugin or Python class for it yet.
+- ORCA is in-process only for now.
+  `potserv` has no ORCA backend selector.
+  There is no engine plugin or Python class for it yet.
 
 ### Tests
 
@@ -11709,6 +11714,13 @@ ABI is in [Quantum engine C ABIs](https://rgpot.rgoswami.me/reference/quantum_ab
 The walk-through with a stand-in engine is in
 [Evaluate a water geometry with CPMD](https://rgpot.rgoswami.me/tutorials/cpmd.html).
 
+The `Potential` interface has no session open, close or reset method.
+Restart `potserv` to drop the engine session with the process.
+`configure` with changed `CPMDParams` forces a new session when the engine has
+the session result ABI.
+The same serialized params and the same engine path keep the live session.
+The `none` arm does not reset it.
+
 #### Functional form
 
 The energy is the CPMD Kohn-Sham total energy for the functional, plane-wave
@@ -14243,14 +14255,30 @@ one Cap'n Proto schema (`Potentials.capnp`).
   Optional fields, such as a Hessian, a dipole or a stress tensor, are filled in
   by the backends that compute them.
 - `PotentialConfig` carries backend setup, and only setup.
-  A client sends it once through `configure`, then sends a new `ForceInput` for
-  every geometry.
+  A client sends it through `configure`, then sends a new `ForceInput` for every
+  geometry.
 
 Geometry stays off the configuration message.
 A change of method does not reshape the coordinates, and a change of coordinates
 does not repeat the method.
 The `libcpmdc` C ABI that `CPMDPot` loads uses the same split: a session takes
-the Cap'n Proto `CPMDParams` once, and each step takes a `ForceInput`.
+the Cap'n Proto `CPMDParams`, and each step takes a `ForceInput`.
+
+### Resetting the CPMD engine
+
+The `Potential` interface has no session open, close or reset method.
+The session lives in the `potserv` process, on the `CPMDPot` that process holds.
+
+Restart `potserv` to drop it.
+Process exit destroys that potential, and the next server starts a new one.
+
+A client can also send `configure` with changed `CPMDParams`.
+When the engine has the session result ABI, `CPMDPot` keeps the live session
+only if the engine path and the serialized params are unchanged.
+Any other params destroy that session and create one from the new message.
+`configure` with the `none` arm does not do this.
+An engine on the one-shot ABI has no session to keep, and the new params are
+pushed through `cpmdc_set_params`.
 
 ### One schema, many languages
 
@@ -21749,6 +21777,9 @@ A live session is kept when the engine path and the serialized params are
 unchanged.
 A refused orbital key drops the session just created, so the same params are
 applied again on the next call.
+The `Potential` RPC interface has no session open, close or reset method.
+An RPC client restarts `potserv`, which destroys the potential with the process,
+or sends `configure` with changed `CPMDParams`, which calls `setParams`.
 
 #### `rgpot::CPMDPot::getParams`
 
@@ -26640,6 +26671,14 @@ Per `CppCore/rgpot/CPMDPot/README.md`, the engine groups `ForceInput`
 coordinates into `&ATOMS`, requires entries for every atomic number present in a
 step, and without an `atoms` section has built-in BLYP defaults for H and O
 only.
+
+The `Potential` interface has no session open, close or reset method.
+Restart `potserv` to drop the session: the process owns the `CPMDPot`, and exit
+destroys it.
+`configure` with changed `CPMDParams` forces a new session when the loaded
+engine has the session result ABI.
+The same serialized params and engine path keep the live session.
+The `none` arm does not reset it.
 
 The `cpmd` configure result is `ok=false` when no usable `libcpmdc` engine can
 be loaded or when the engine rejects the params.
@@ -32304,6 +32343,10 @@ when the schema gives none (zero, empty or false by the Cap'n Proto rule).
 A union arm is written `name @N :Type`; exactly one arm is set.
 A row that reads "No comment in the schema" has none upstream, so the
 comment has to be added to the pinned schema before this page can say more.
+RpcEndpointConfig is reserved and unused.
+The server does not read PotentialConfig.rpcEndpoint or any field of that
+struct. The schema file is the pinned copy, so this page records that
+instead of a schema comment.
 The meaning of each `PotentialConfig` arm and the ordering of the overlay are
 in `potential_config`.
 
@@ -32564,7 +32607,7 @@ Add new arms as new potentials gain runtime knobs (e.g. metatomic @2 :MetatomicP
 | `PotentialConfig.common` | 3 | `CommonMethodSpec` |  | Normalized overlay applied BEFORE the native arm; native settings win. |
 | `PotentialConfig.commonPatch` | 22 | `CommonMethodPatch` |  | No comment in the schema. |
 | `PotentialConfig.neighborList` | 23 | `Common.NeighborListConfig` |  | No comment in the schema. |
-| `PotentialConfig.rpcEndpoint` | 24 | `RpcEndpointConfig` |  | No comment in the schema. |
+| `PotentialConfig.rpcEndpoint` | 24 | `RpcEndpointConfig` |  | Reserved and unused. The server does not read this field. |
 | `PotentialConfig.logPotentialCalls` | 25 | `Bool` | `false` | No comment in the schema. |
 | `PotentialConfig.emtRasmussenParameters` | 26 | `Bool` | `true` | No comment in the schema. |
 
@@ -35490,16 +35533,20 @@ Presence-aware patch version of CommonMethodSpec using `unset / value` unions, s
 
 #### struct RpcEndpointConfig
 
+Reserved and unused.
+The server never reads PotentialConfig.rpcEndpoint or any field here.
+The schema file is the pinned copy, so this page records that.
+
 | Member | Ordinal | Type | Default | Description |
 |-
-| `RpcEndpointConfig.host` | 0 | `Text` | `"127.0.0.1"` | No comment in the schema. |
-| `RpcEndpointConfig.port` | 1 | `UInt16` | `0` | No comment in the schema. |
-| `RpcEndpointConfig.unixSocketPath` | 2 | `Text` | `""` | No comment in the schema. |
-| `RpcEndpointConfig.timeoutMilliseconds` | 3 | `UInt32` | `30000` | No comment in the schema. |
-| `RpcEndpointConfig.autoSpawnEngine` | 4 | `Bool` | `true` | No comment in the schema. |
-| `RpcEndpointConfig.engineBinaryPath` | 5 | `Text` | `""` | No comment in the schema. |
-| `RpcEndpointConfig.engineLibraryPath` | 6 | `Text` | `""` | No comment in the schema. |
-| `RpcEndpointConfig.engineRootDir` | 7 | `Text` | `""` | No comment in the schema. |
+| `RpcEndpointConfig.host` | 0 | `Text` | `"127.0.0.1"` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.port` | 1 | `UInt16` | `0` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.unixSocketPath` | 2 | `Text` | `""` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.timeoutMilliseconds` | 3 | `UInt32` | `30000` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.autoSpawnEngine` | 4 | `Bool` | `true` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.engineBinaryPath` | 5 | `Text` | `""` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.engineLibraryPath` | 6 | `Text` | `""` | Reserved and unused. The server does not read this field. |
+| `RpcEndpointConfig.engineRootDir` | 7 | `Text` | `""` | Reserved and unused. The server does not read this field. |
 
 #### struct PotentialPatch
 
