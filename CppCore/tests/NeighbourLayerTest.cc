@@ -12,6 +12,7 @@
 #include <limits>
 #include <map>
 #include <new>
+#include <unordered_map>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -1261,6 +1262,144 @@ void cellPoint(const double cell[9], double f0, double f1, double f2,
   out[2] = f0 * cell[2] + f1 * cell[5] + f2 * cell[8];
 }
 
+// Pairs whose minimum image is within cutoff. Each atom is inserted at the
+// 27 images of shifts -1, 0 and 1, and a search reads the bins within two
+// steps of the atom. A pair inside the cutoff is in that stencil only when
+// both checks below pass. The cutoff is shorter than half of every cell
+// height, so the close image is one of those 27 shifts. The stored
+// positions span less than one lattice step on every axis, so that shift
+// is taken from the stored coordinates and not from a farther copy. A
+// common translation does not change the span. The span is measured from
+// the first atom, where the displacements stay small. The extra bin covers
+// a rounding step. The fold is the same one an all-pairs scan would apply.
+std::vector<std::pair<std::int32_t, std::int32_t>>
+foldedPairsWithin(const std::vector<double> &pos, const double cell[9],
+                  double cutoff) {
+  const rgpot::nlist::MinimumImage mi(cell, {true, true, true});
+  const auto &inv = mi.inverse();
+  for (int axis = 0; axis < 3; ++axis) {
+    const double dual =
+        std::hypot(inv[static_cast<std::size_t>(axis)],
+                   std::hypot(inv[static_cast<std::size_t>(3 + axis)],
+                              inv[static_cast<std::size_t>(6 + axis)]));
+    REQUIRE(dual > 0.0);
+    REQUIRE(cutoff * dual < 0.5);
+  }
+  // Span of the fractional coordinates. Height alone is not enough: a
+  // side-10 cell and cutoff 3 still drop atoms at 0 and 20, whose
+  // minimum-image distance is 0, because the close copy is two steps away.
+  const std::size_t n = pos.size() / 3;
+  REQUIRE(n > 0);
+  const double x0 = pos[0];
+  const double y0 = pos[1];
+  const double z0 = pos[2];
+  const auto frac = [&](double x, double y, double z, int axis) {
+    return x * inv[static_cast<std::size_t>(axis)] +
+           y * inv[static_cast<std::size_t>(3 + axis)] +
+           z * inv[static_cast<std::size_t>(6 + axis)];
+  };
+  double lo[3];
+  double hi[3];
+  for (int axis = 0; axis < 3; ++axis) {
+    const double f = frac(0.0, 0.0, 0.0, axis);
+    REQUIRE(std::isfinite(f));
+    lo[axis] = f;
+    hi[axis] = f;
+  }
+  for (std::size_t i = 1; i < n; ++i) {
+    const double dx = pos[3 * i] - x0;
+    const double dy = pos[3 * i + 1] - y0;
+    const double dz = pos[3 * i + 2] - z0;
+    for (int axis = 0; axis < 3; ++axis) {
+      const double f = frac(dx, dy, dz, axis);
+      REQUIRE(std::isfinite(f));
+      if (f < lo[axis]) {
+        lo[axis] = f;
+      }
+      if (f > hi[axis]) {
+        hi[axis] = f;
+      }
+    }
+  }
+  for (int axis = 0; axis < 3; ++axis) {
+    REQUIRE(hi[axis] - lo[axis] < 1.0);
+  }
+  const double cut2 = cutoff * cutoff;
+  struct Key {
+    std::int64_t x;
+    std::int64_t y;
+    std::int64_t z;
+    bool operator==(const Key &other) const {
+      return x == other.x && y == other.y && z == other.z;
+    }
+  };
+  struct KeyHash {
+    std::size_t operator()(const Key &key) const {
+      std::size_t h = static_cast<std::size_t>(key.x) * 1315423911u;
+      h ^= static_cast<std::size_t>(key.y) + 0x9e3779b97f4a7c15ULL + (h << 6) +
+           (h >> 2);
+      h ^= static_cast<std::size_t>(key.z) + 0x9e3779b97f4a7c15ULL + (h << 6) +
+           (h >> 2);
+      return h;
+    }
+  };
+  const auto bin_of = [&](double x, double y, double z) {
+    return Key{static_cast<std::int64_t>(std::floor(x / cutoff)),
+               static_cast<std::int64_t>(std::floor(y / cutoff)),
+               static_cast<std::int64_t>(std::floor(z / cutoff))};
+  };
+  std::unordered_map<Key, std::vector<std::int32_t>, KeyHash> bins;
+  bins.reserve(n * 2);
+  for (std::size_t i = 0; i < n; ++i) {
+    for (int a = -1; a <= 1; ++a) {
+      for (int b = -1; b <= 1; ++b) {
+        for (int c = -1; c <= 1; ++c) {
+          double shift[3];
+          cellPoint(cell, static_cast<double>(a), static_cast<double>(b),
+                    static_cast<double>(c), shift);
+          const Key key =
+              bin_of(pos[3 * i] + shift[0], pos[3 * i + 1] + shift[1],
+                     pos[3 * i + 2] + shift[2]);
+          bins[key].push_back(static_cast<std::int32_t>(i));
+        }
+      }
+    }
+  }
+  std::vector<std::pair<std::int32_t, std::int32_t>> out;
+  for (std::size_t i = 0; i < n; ++i) {
+    const Key origin =
+        bin_of(pos[3 * i], pos[3 * i + 1], pos[3 * i + 2]);
+    for (int ox = -2; ox <= 2; ++ox) {
+      for (int oy = -2; oy <= 2; ++oy) {
+        for (int oz = -2; oz <= 2; ++oz) {
+          const auto found =
+              bins.find(Key{origin.x + ox, origin.y + oy, origin.z + oz});
+          if (found == bins.end()) {
+            continue;
+          }
+          for (const std::int32_t j : found->second) {
+            if (j <= static_cast<std::int32_t>(i)) {
+              continue;
+            }
+            double dx = pos[3 * i] - pos[3 * static_cast<std::size_t>(j)];
+            double dy =
+                pos[3 * i + 1] - pos[3 * static_cast<std::size_t>(j) + 1];
+            double dz =
+                pos[3 * i + 2] - pos[3 * static_cast<std::size_t>(j) + 2];
+            mi.fold(dx, dy, dz);
+            if (dx * dx + dy * dy + dz * dz <= cut2) {
+              out.emplace_back(static_cast<std::int32_t>(i), j);
+            }
+          }
+        }
+      }
+    }
+  }
+  std::sort(out.begin(), out.end());
+  out.erase(std::unique(out.begin(), out.end()), out.end());
+  return out;
+}
+
 void tiltedCell(double scale, double cell[9]) {
   const double side = 10.0 * scale;
   const double tilt = 6.0 * scale;
@@ -2368,7 +2507,8 @@ TEST_CASE("skewed-cell large translations match brute force on serial and "
   }
 
   // 3. Large system (n >= kTeamMinAtoms) exercising buildStored's OpenMP
-  // gather path as well as forCellTeam and forRowTeam under 1e6, 1e9, and
+  // gather path. The serial walk, the threaded walk, forCellTeam, and
+  // forRowTeam are each compared with the reference under 1e6, 1e9, and
   // near-lattice-vector translations.
   {
     const double L = 42.0;
@@ -2438,6 +2578,23 @@ TEST_CASE("skewed-cell large translations match brute force on serial and "
       std::sort(out.begin(), out.end());
       return out;
     };
+    auto collect_rows = [&](const rgpot::nlist::Neighbours &nb) {
+      std::vector<PairVec> slices(4);
+      nb.forRowTeam(4, [&](int s, std::int32_t i, std::int32_t j, double,
+                           double, double, double r2) {
+        if (r2 <= cutoff * cutoff) {
+          slices[static_cast<std::size_t>(s)].emplace_back(std::min(i, j),
+                                                           std::max(i, j));
+        }
+      });
+      PairVec out;
+      for (const auto &part : slices) {
+        out.insert(out.end(), part.begin(), part.end());
+      }
+      std::sort(out.begin(), out.end());
+      out.erase(std::unique(out.begin(), out.end()), out.end());
+      return out;
+    };
 
     const std::vector<std::array<double, 3>> big_offsets = {
         {0.0, 0.0, 0.0},
@@ -2447,20 +2604,7 @@ TEST_CASE("skewed-cell large translations match brute force on serial and "
     };
     for (const auto &off : big_offsets) {
       const auto pos = translateCoords(base, off);
-      const rgpot::nlist::MinimumImage mi(cell, {true, true, true});
-      PairVec brute;
-      for (std::size_t i = 0; i < n; ++i) {
-        for (std::size_t j = i + 1; j < n; ++j) {
-          double dx = pos[3 * i] - pos[3 * j];
-          double dy = pos[3 * i + 1] - pos[3 * j + 1];
-          double dz = pos[3 * i + 2] - pos[3 * j + 2];
-          mi.fold(dx, dy, dz);
-          if (dx * dx + dy * dy + dz * dz <= cutoff * cutoff) {
-            brute.emplace_back(static_cast<std::int32_t>(i),
-                               static_cast<std::int32_t>(j));
-          }
-        }
-      }
+      const PairVec brute = foldedPairsWithin(pos, cell, cutoff);
       REQUIRE_FALSE(brute.empty());
 
       rgpot::nlist::Spec spec;
@@ -2483,6 +2627,7 @@ TEST_CASE("skewed-cell large translations match brute force on serial and "
       REQUIRE(omp_nb.slots() == serial_nb.slots());
       REQUIRE(collect_sorted(omp_nb, false) == brute);
       REQUIRE(collect_sorted(omp_nb, true) == brute);
+      REQUIRE(collect_rows(omp_nb) == brute);
     }
   }
   setThreads("");
