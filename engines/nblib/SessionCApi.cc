@@ -209,6 +209,17 @@ int get_masses(void *context, double *masses, size_t n_atoms, char *buffer,
   });
 }
 
+int get_source_indices(void *context, int *indices, size_t n_atoms,
+                       char *buffer, size_t length) {
+  return guarded(buffer, length, [&] {
+    const auto &values = static_cast<Session *>(context)->sourceIndices();
+    if (indices == nullptr || values.size() != n_atoms) {
+      throw std::invalid_argument("MD source index output has wrong length");
+    }
+    std::copy(values.begin(), values.end(), indices);
+  });
+}
+
 int initialize(void *context, char *buffer, size_t length) {
   return guarded(buffer, length,
                  [&] { static_cast<Session *>(context)->initialize(); });
@@ -309,6 +320,7 @@ extern "C" int rgpot_md_session_engine_create(
     ops->get_periodic_box = get_periodic_box;
     ops->initialize = initialize;
     ops->run_langevin = run_langevin;
+    ops->get_source_indices = get_source_indices;
     *context = session.release();
   });
 }

@@ -543,6 +543,9 @@ TprEngine::TprEngine(const std::string &path, int threads)
 TprEngine::~TprEngine() = default;
 std::size_t TprEngine::atoms() const { return impl_->massive_.size(); }
 const std::vector<double> &TprEngine::masses() const { return impl_->masses_; }
+const std::vector<int> &TprEngine::sourceIndices() const {
+  return impl_->massive_;
+}
 const std::vector<md::DistanceConstraint> &TprEngine::constraints() const {
   return impl_->constraints_;
 }

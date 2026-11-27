@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -38,6 +39,8 @@ Session::Session(TopologyDesc description)
   x_.assign(dim, 0.0);
   v_.assign(dim, 0.0);
   force_.assign(dim, 0.0);
+  sourceIndices_.resize(engine_.atoms());
+  std::iota(sourceIndices_.begin(), sourceIndices_.end(), 0);
 }
 
 Session::~Session() = default;

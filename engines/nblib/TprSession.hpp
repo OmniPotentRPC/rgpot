@@ -39,6 +39,10 @@ public:
   /// Terms of the forces in state(), kJ/mol.
   [[nodiscard]] TprEngine::Terms terms();
 
+  [[nodiscard]] const std::vector<int> &sourceIndices() const override {
+    return engine_.sourceIndices();
+  }
+
 private:
   void ensureForces();
   md::LangevinResult run(const md::LangevinSettings &settings,

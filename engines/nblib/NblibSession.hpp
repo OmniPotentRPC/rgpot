@@ -52,6 +52,12 @@ public:
                                       const std::vector<md::WallSpec> &walls) = 0;
   virtual void state(double *positions, double *velocities, double *forces,
                      std::size_t dimension, SessionInfo *info) = 0;
+  /// Source index of each packed site, same order as masses().
+  /// A TPR session reports the 0-based topology atom index. The first atom
+  /// in the file is 0. A selected index that is not in this list is a
+  /// virtual site and has no packed slot. A text topology has no virtual
+  /// sites, so the indices are 0, 1, 2, ... in topology order.
+  [[nodiscard]] virtual const std::vector<int> &sourceIndices() const = 0;
 };
 
 class Session final : public SessionBase {
@@ -84,6 +90,9 @@ public:
                               const std::vector<md::WallSpec> &walls) override;
   void state(double *positions, double *velocities, double *forces,
              std::size_t dimension, SessionInfo *info) override;
+  [[nodiscard]] const std::vector<int> &sourceIndices() const override {
+    return sourceIndices_;
+  }
 
 private:
   void requireReady() const;
@@ -106,6 +115,8 @@ private:
   std::uint64_t evaluations_ = 0;
   md::ProjectedLangevin driver_;
   md::SeededStream stream_;
+  /// Topology index of each packed site. Text topologies drop nothing.
+  std::vector<int> sourceIndices_;
 
   std::unique_ptr<nblib::SimulationState> simulation_;
   std::unique_ptr<nblib::LeapFrog> integrator_;

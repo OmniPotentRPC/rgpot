@@ -111,6 +111,13 @@ RGPOT_API int rgpot_external_potential_energy_forces(
  * written, *needed is the full count the caller must provide, and the error
  * text names that required count. The OpenMM session and the in-tree mock
  * follow this rule.
+ *
+ * get_source_indices writes one 0-based source atom index per packed site,
+ * in the same order as the positions and the masses. For a TPR the index is
+ * the topology atom index, and the first atom in the file is 0. A selected
+ * index that is not among the values written is a virtual site and has no
+ * packed slot. A backend with no separate index space leaves the callback
+ * null.
  */
 typedef struct rgpot_md_session rgpot_md_session;
 
@@ -220,6 +227,11 @@ typedef struct rgpot_md_session_ops {
   int (*set_neighbors)(void *ctx, const rgpot_nlist_request *request,
                        const rgpot_nlist_soa *pairs, size_t count, char *err,
                        size_t err_len);
+  /* Optional. 0-based source atom index of each packed site, n_atoms ints,
+   * same order as get_masses. For a TPR this is the topology index. An
+   * index that does not appear is a virtual site. */
+  int (*get_source_indices)(void *ctx, int *indices, size_t n_atoms, char *err,
+                            size_t err_len);
 } rgpot_md_session_ops;
 
 enum {
@@ -251,6 +263,17 @@ RGPOT_API size_t rgpot_md_session_n_atoms(const rgpot_md_session *session);
 RGPOT_API int rgpot_md_session_get_masses(rgpot_md_session *session,
                                           double *masses, size_t n_atoms,
                                           char *err, size_t err_len);
+/*
+ * Source atom index of each packed site, same order as the positions and
+ * the masses. indices holds n_atoms ints. A TPR session writes the 0-based
+ * topology index: the first atom in the TPR is 0. A selected index that is
+ * not among the values written is a virtual site and has no packed slot.
+ * A backend with no separate index space leaves the callback null, and this
+ * call returns 1.
+ */
+RGPOT_API int rgpot_md_session_get_source_indices(rgpot_md_session *session,
+                                                  int *indices, size_t n_atoms,
+                                                  char *err, size_t err_len);
 RGPOT_API int rgpot_md_session_set_periodic_box(rgpot_md_session *session,
                                                 const double *box9, char *err,
                                                 size_t err_len);

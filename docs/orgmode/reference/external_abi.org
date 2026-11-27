@@ -316,7 +316,8 @@ the plane, and the multiplier of the plane accounts for them.
   =set_positions=, =set_velocities=, =step_langevin=, =step_nve=,
   =get_state=, =get_masses=, and =destroy=, followed by the optional
   =set_periodic_box=, =get_periodic_box=, =initialize=,
-  =run_langevin=, =get_neighbors=, and =set_neighbors=.
+  =run_langevin=, =get_neighbors=, =set_neighbors=, and
+  =get_source_indices=.
   The macro =RGPOT_MD_OPS_HAS(ops, member)= tests that a vtable carries an
   optional member.
 - Units :: rgpot host units (Angstrom, eV, ps, amu).
@@ -428,6 +429,28 @@ int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
 - Units :: amu.
 - Outputs :: returns 0 and writes =n_atoms= particle masses.
 - Errors :: returns 1 and writes =err= on null pointers or size mismatch.
+
+*** =rgpot_md_session_get_source_indices=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_md_session_get_source_indices(rgpot_md_session *session,
+                                        int *indices, size_t n_atoms,
+                                        char *err, size_t err_len);
+#+end_src
+
+- Inputs :: =session=, output buffer =indices= of length
+  =n_atoms=, and =err=/=err_len=.
+- Units :: none.
+  Each entry is a 0-based source atom index.
+  For a TPR the index is the topology atom index, and the first atom in
+  the file is 0.
+  The entries follow the same order as the positions and the masses.
+- Outputs :: returns 0 and writes one source index per packed site.
+  A selected index that is not among the values written is a virtual site
+  and has no packed slot.
+- Errors :: returns 1 and writes =err= on null pointers, a size mismatch,
+  a backend without the callback, or backend failure.
 
 *** =rgpot_md_session_set_positions=
 

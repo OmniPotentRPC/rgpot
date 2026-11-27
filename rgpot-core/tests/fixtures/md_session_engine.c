@@ -194,6 +194,7 @@ int rgpot_md_session_engine_create(const void *spec, size_t spec_len,
   ops->get_masses = get_masses;
   ops->destroy = destroy;
   ops->get_neighbors = get_neighbors;
+  ops->get_source_indices = NULL;
   if (strcmp(mode, "short_size") == 0) {
     ops->struct_size = offsetof(rgpot_md_session_ops, destroy);
   } else if (strcmp(mode, "null_callback") == 0) {

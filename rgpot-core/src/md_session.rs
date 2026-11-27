@@ -9,7 +9,7 @@
 //! ps, friction in inverse ps, and masses in amu. Flat arrays contain
 //! `3 * n_atoms` entries in row-major `(x, y, z)` order.
 
-use std::ffi::{c_char, c_void, CStr};
+use std::ffi::{c_char, c_int, c_void, CStr};
 use std::fmt;
 use std::ptr::NonNull;
 
@@ -795,6 +795,18 @@ pub trait MdSession {
             "MD engine does not accept supplied neighbors",
         ))
     }
+
+    /// Source atom index of each packed site, same order as [`Self::masses`].
+    ///
+    /// Indices are 0-based. A TPR session reports the topology atom index,
+    /// and the first atom in the file is 0. A selected index that does not
+    /// appear is a virtual site and has no packed position or mass. An
+    /// engine with no separate index space returns an error.
+    fn source_indices(&mut self) -> Result<Vec<c_int>, MdSessionError> {
+        Err(MdSessionError::new(
+            "MD engine does not support get_source_indices",
+        ))
+    }
 }
 
 /// C ABI request matching `rgpot_md_langevin_request`.
@@ -974,6 +986,20 @@ pub struct MdSessionOps {
             err_len: usize,
         ) -> i32,
     >,
+    /// Optional source-index callback.
+    ///
+    /// One 0-based source atom index per packed site, same order as the
+    /// masses. For a TPR this is the topology index. An index that does not
+    /// appear is a virtual site.
+    pub get_source_indices: Option<
+        unsafe extern "C" fn(
+            ctx: *mut c_void,
+            indices: *mut c_int,
+            n_atoms: usize,
+            err: *mut c_char,
+            err_len: usize,
+        ) -> i32,
+    >,
 }
 
 /// The callbacks every [`MdSessionOps`] must hold, by name and offset.
@@ -1069,6 +1095,12 @@ impl CAbiMdSession {
             std::mem::size_of_val(&ops.set_neighbors),
         ) {
             ops.set_neighbors = None;
+        }
+        if !holds(
+            std::mem::offset_of!(MdSessionOps, get_source_indices),
+            std::mem::size_of_val(&ops.get_source_indices),
+        ) {
+            ops.get_source_indices = None;
         }
         let Some(n3) = n_atoms.checked_mul(3) else {
             return Err(MdSessionError::new("MD session atom count overflows"));
@@ -1245,6 +1277,30 @@ fn check_finite_slice(values: &[f64], label: &str) -> Result<(), MdSessionError>
 impl MdSession for CAbiMdSession {
     fn dof(&self) -> usize {
         self.n3
+    }
+
+    fn source_indices(&mut self) -> Result<Vec<c_int>, MdSessionError> {
+        let Some(get_source_indices) = self.ops.get_source_indices else {
+            return Err(MdSessionError::new(
+                "MD engine does not support get_source_indices",
+            ));
+        };
+        let mut indices = vec![0; self.n_atoms];
+        let mut error = [0 as c_char; 1024];
+        let status = unsafe {
+            get_source_indices(
+                self.ctx.as_ptr(),
+                indices.as_mut_ptr(),
+                self.n_atoms,
+                error.as_mut_ptr(),
+                error.len(),
+            )
+        };
+        if status == 0 {
+            Ok(indices)
+        } else {
+            Err(MdSessionError::new(error_message(&error)))
+        }
     }
 
     fn masses(&self) -> Result<Vec<f64>, MdSessionError> {
@@ -1996,6 +2052,7 @@ mod tests {
             run_langevin: None,
             get_neighbors: Some(mock_get_neighbors),
             set_neighbors: Some(mock_set_neighbors),
+            get_source_indices: None,
         }
     }
 
@@ -2299,6 +2356,47 @@ mod tests {
             unsafe { CAbiMdSession::from_ops(NonNull::new_unchecked(ctx.cast()), tiny, 2) };
         assert!(refused.is_err());
         drop(unsafe { Box::from_raw(ctx) });
+    }
+
+    #[test]
+    fn source_indices_follow_the_optional_callback() {
+        unsafe extern "C" fn indices(
+            _ctx: *mut c_void,
+            out: *mut c_int,
+            n_atoms: usize,
+            _err: *mut c_char,
+            _err_len: usize,
+        ) -> i32 {
+            let slots = unsafe { std::slice::from_raw_parts_mut(out, n_atoms) };
+            for (k, slot) in slots.iter_mut().enumerate() {
+                *slot = (k as c_int) * 2 + 1;
+            }
+            0
+        }
+
+        let destroyed = Arc::new(AtomicBool::new(false));
+        let (mut absent, _ctx) = mock_session(mock_ops(), &destroyed);
+        assert!(absent
+            .source_indices()
+            .unwrap_err()
+            .to_string()
+            .contains("get_source_indices"));
+
+        let mut ops = mock_ops();
+        ops.get_source_indices = Some(indices);
+        let (mut session, _ctx) = mock_session(ops, &destroyed);
+        assert_eq!(session.source_indices().unwrap(), vec![1, 3]);
+
+        // A table built before this slot existed does not carry the pointer.
+        let mut short = mock_ops();
+        short.get_source_indices = Some(indices);
+        short.struct_size = REQUIRED_OPS_SIZE;
+        let (mut hidden, _ctx) = mock_session(short, &destroyed);
+        assert!(hidden
+            .source_indices()
+            .unwrap_err()
+            .to_string()
+            .contains("get_source_indices"));
     }
 
     fn mock_ctx(destroyed: &Arc<AtomicBool>) -> *mut MockCtx {

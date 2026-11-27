@@ -101,6 +101,7 @@ the generic engine environment-variable lookup before its default library name.
 | =rgpot_md_session_step_nve= | plain NVE steps, nblib's leap-frog |
 | =rgpot_md_session_run_langevin= | Langevin steps on a hyperplane, reflecting or rejecting walls, and the constraint force of every step |
 | =rgpot_md_session_reseed_velocities= | Maxwell-Boltzmann velocities, drawn in rgpot from the masses |
+| =rgpot_md_session_get_source_indices= | 0-based source index of each packed site |
 
 The units at the boundary are Angstrom, eV, ps and amu.
 =get_state= reports the force of the potential at the positions.
@@ -184,6 +185,14 @@ tensor and records the pressure apart from the potential.
 The session returns neither a virial nor a pressure, and does not apply them.
 Virtual sites are built from the atoms that carry mass and their forces are
 spread back, so the session exposes the massive atoms in TPR order.
+=rgpot_md_session_get_source_indices= writes one 0-based TPR atom index per
+packed site, in the same order as the positions and the masses.
+The first atom in the file is 0.
+A caller that selected atoms in that order detects a virtual site when the
+selected index is not among the values written.
+That site has no packed position and no mass.
+A text topology drops no sites, so its indices are 0, 1, 2, and so on.
+An engine with no separate index space leaves the callback null.
 The SETTLE and LINCS distances of the file hold in every run.
 
 The session builds the pair list itself.

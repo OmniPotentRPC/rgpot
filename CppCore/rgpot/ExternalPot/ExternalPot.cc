@@ -1289,6 +1289,31 @@ int rgpot_md_session_get_masses(rgpot_md_session *session, double *masses,
   }
 }
 
+int rgpot_md_session_get_source_indices(rgpot_md_session *session, int *indices,
+                                        size_t n_atoms, char *err,
+                                        size_t err_len) {
+  clear_err(err, err_len);
+  try {
+    if (session == nullptr || indices == nullptr ||
+        n_atoms != session->n_atoms) {
+      throw std::invalid_argument(
+          "MD source index output buffer has wrong length");
+    }
+    if (!RGPOT_MD_OPS_HAS(&session->ops, get_source_indices)) {
+      throw std::runtime_error(
+          "MD engine does not support get_source_indices");
+    }
+    return session->ops.get_source_indices(session->ctx, indices, n_atoms, err,
+                                           err_len);
+  } catch (const std::exception &ex) {
+    write_err(err, err_len, ex.what());
+    return 1;
+  } catch (...) {
+    write_err(err, err_len, "unknown C++ exception");
+    return 1;
+  }
+}
+
 int rgpot_md_session_set_positions(rgpot_md_session *session,
                                    const double *positions, size_t n3,
                                    char *err, size_t err_len) {

@@ -747,6 +747,7 @@ int openmm_md_session_init(const char *system_xml, const char *platform,
     ops->run_langevin = c_run_langevin;
     ops->get_neighbors = c_get_neighbors;
     ops->set_neighbors = c_set_neighbors;
+    ops->get_source_indices = nullptr;
     *ctx = session.release();
     return 0;
   } catch (const std::exception &ex) {

@@ -44,6 +44,10 @@ public:
   /// Massive atoms.
   [[nodiscard]] std::size_t atoms() const;
   [[nodiscard]] const std::vector<double> &masses() const;
+  /// TPR topology index of each packed site, 0-based, same order as
+  /// masses() and initialPositions(). The first atom in the file is 0.
+  /// An index that does not appear is a virtual site and has no packed slot.
+  [[nodiscard]] const std::vector<int> &sourceIndices() const;
   /// The distances SETTLE and LINCS hold in mdrun, nm, massive-atom indices.
   [[nodiscard]] const std::vector<md::DistanceConstraint> &constraints() const;
   /// Positions (nm), velocities (nm/ps) and box (nm, rows) of the TPR. Atoms
