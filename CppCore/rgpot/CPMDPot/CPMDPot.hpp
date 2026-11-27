@@ -50,10 +50,11 @@ public:
 
   /// Names the active orbital key in the engine session at call time.
   /// The key is applied eagerly to a live session and re-applied when a
-  /// session is recreated by setParams, so the selected key is never
-  /// deferred to the next force call. When a live session refuses the
-  /// key, throws std::runtime_error and leaves the previous orbital key
-  /// in place.
+  /// session is recreated, so the selected key is never deferred to the
+  /// next force call. A session is recreated when the parameters change
+  /// and when the next force call changes the atom count or the element
+  /// counts. When a live session refuses the key, throws
+  /// std::runtime_error and leaves the previous orbital key in place.
   void selectOrbitals(int64_t key);
 
   /// True when the loaded engine keeps orbitals per key.
