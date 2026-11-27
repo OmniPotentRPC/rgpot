@@ -100,8 +100,11 @@ TEST_CASE("CPMDPot passes serialized CPMDParams to cpmdc engine",
   std::array<double, 3> raw_forces{};
   rgpot::ForceOut raw{};
   raw.F = raw_forces.data();
-  const rgpot::ForceInput in{
-      .nAtoms = 1, .pos = pos, .atmnrs = &atm, .box = flat_box};
+  const rgpot::ForceInput in{.nAtoms = 1,
+                             .pos = pos,
+                             .atmnrs = &atm,
+                             .box = flat_box,
+                             .compute_stress = true};
   pot.forceImpl(in, &raw);
   REQUIRE_THAT(raw.energy,
                WithinAbs(hartree * rgpot::units::HARTREE_TO_EV, 1e-12));
@@ -110,6 +113,15 @@ TEST_CASE("CPMDPot passes serialized CPMDParams to cpmdc engine",
     REQUIRE_THAT(raw.stress[i],
                  WithinAbs(cpmd_stress_oracle::stressEvPerAngstrom3(i), 1e-9));
   }
+
+  std::array<double, 3> plain_forces{};
+  rgpot::ForceOut plain{};
+  plain.F = plain_forces.data();
+  const rgpot::ForceInput force_only{
+      .nAtoms = 1, .pos = pos, .atmnrs = &atm, .box = flat_box};
+  pot.forceImpl(force_only, &plain);
+  REQUIRE(plain.has_stress == 0);
+  REQUIRE(plain.energy == raw.energy);
 }
 
 // A session carries the engine's converged wavefunction. Identical

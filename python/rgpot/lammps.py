@@ -276,15 +276,22 @@ class FixExternal:
         return xu
 
     def _raw(
-        self, positions: np.ndarray, numbers: np.ndarray, rows: np.ndarray
+        self,
+        positions: np.ndarray,
+        numbers: np.ndarray,
+        rows: np.ndarray,
+        want_stress: bool,
     ) -> tuple[float, np.ndarray, np.ndarray | None]:
         evaluate = getattr(self.potential, "evaluate", None)
         if callable(evaluate):
             eval_fn = cast(
-                Callable[[np.ndarray, np.ndarray, np.ndarray], Mapping[str, Any]],
+                Callable[..., Mapping[str, Any]],
                 evaluate,
             )
-            result = eval_fn(positions, numbers, rows)
+            if want_stress:
+                result = eval_fn(positions, numbers, rows, compute_stress=True)
+            else:
+                result = eval_fn(positions, numbers, rows)
             energy = float(result["energy"])
             forces = np.asarray(result["forces"], dtype=float)
             stress = result.get("stress")
@@ -353,7 +360,12 @@ class FixExternal:
         # determinant is the product of the diagonal.
         volume = abs(float(native_rows[0, 0] * native_rows[1, 1] * native_rows[2, 2]))
 
-        energy, forces, stress = self._raw(positions, ordered, native_rows)
+        energy, forces, stress = self._raw(
+            positions,
+            ordered,
+            native_rows,
+            self.periodic and self.virial != "none",
+        )
         if not self.periodic or self.virial == "none":
             virial = np.zeros((3, 3))
         elif stress is None:

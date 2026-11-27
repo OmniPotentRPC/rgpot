@@ -959,9 +959,16 @@ explicit TBLitePot(const TBLiteConfig &config);
 - Units :: positions in Angstrom, energy in eV, forces in
   eV/Angstrom, stress in eV/Angstrom^3.
   The class sends positions and cell in bohr and the electronic temperature in
-  Hartree (times =KB_HARTREE=), and converts the Hartree energy, the
-  Hartree/bohr gradient and the Hartree virial divided by the cell volume.
+  Hartree (times =KB_HARTREE=), and converts the Hartree energy and the
+  Hartree/bohr gradient.
+  A stress request is answered for GFN1 only, as the central difference of the
+  energy under each of the six strains (a step of 5e-4), divided by the cell
+  volume; it costs twelve extra single points and only when requested.
+  The virial of tblite 0.4 is not used: for a periodic cell it disagrees with
+  the derivative of its own energy.
   Stress is set only when the cell volume is positive.
+  =caps().stress= is false for GFN2 and IPEA1, whose energies are not smooth
+  under strain, and a request for either throws =std::invalid_argument=.
 - Outputs :: a potential that calls the linked tblite C API.
 - Errors :: =std::runtime_error= from the constructor when the tblite context or
   result cannot be created.
@@ -1026,10 +1033,12 @@ explicit XTBPot(const XTBConfig &config);
   there is one, uses its defaults.
 - Units :: positions in Angstrom, energy in eV, forces in
   eV/Angstrom, stress in eV/Angstrom^3.
-  The class sends positions and cell in bohr and converts the Hartree energy,
-  the Hartree/bohr gradient and the Hartree virial divided by the cell volume.
-  The molecule is created non-periodic in all three directions; stress is set
-  when the cell volume is positive.
+  The class sends positions and cell in bohr and converts the Hartree energy and
+  the Hartree/bohr gradient.
+  The molecule is created non-periodic in all three directions, so libxtb
+  returns a zero virial.
+  =caps().stress= is false, and a force call that requests stress throws
+  =std::invalid_argument= instead of reporting that zero.
 - Outputs :: a potential that calls the linked libxtb C API.
 - Errors :: =std::runtime_error= from the constructor when the xtb environment,
   calculator or results cannot be created.

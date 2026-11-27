@@ -53,7 +53,7 @@ def fixture(name):
 def test_d2_matches_dftd3(name):
     pos, z, box, energy, grad, cellgrad = fixture(name)
     pot = rgpot.D2Pot(s6=S6_DFTD3, cutoff=DFTD3_CUTOFF)
-    out = pot.evaluate(pos, z, box)
+    out = pot.evaluate(pos, z, box, compute_stress=True)
     assert out["energy"] == pytest.approx(energy * HARTREE_TO_EV, rel=0, abs=1e-11)
     np.testing.assert_allclose(
         out["forces"], -grad * HARTREE_TO_EV / BOHR_TO_ANGSTROM, rtol=0, atol=1e-9
@@ -139,7 +139,7 @@ def cpmd_fixture(name):
 @pytest.mark.parametrize("name", CPMD_SYSTEMS)
 def test_d2cpmd_matches_opencpmd(name):
     pos, z, box, energy, force = cpmd_fixture(name)
-    out = rgpot.D2CpmdPot().evaluate(pos, z, box)
+    out = rgpot.D2CpmdPot().evaluate(pos, z, box, compute_stress=True)
     assert out["energy"] == pytest.approx(energy * HARTREE_TO_EV, rel=0, abs=1e-11)
     np.testing.assert_allclose(
         out["forces"], force * HARTREE_TO_EV / CPMD_BOHR, rtol=0, atol=1e-14

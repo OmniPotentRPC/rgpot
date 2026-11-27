@@ -101,7 +101,7 @@ public:
     // The pair list is scratch rewritten by every force call.
     return {.reentrancy = Reentrancy::PerInstance,
             .periodic = m_periodic,
-            .stress = m_stress};
+            .stress = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {

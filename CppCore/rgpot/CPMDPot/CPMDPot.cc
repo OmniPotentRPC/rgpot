@@ -159,7 +159,6 @@ std::string read_engine_last_error(const EngineBundle &b) {
   return msg;
 }
 
-
 std::string params_summary(const ::CPMDParams::Reader &params) {
   std::string out = "functional=" + std::string(params.getFunctional().cStr()) +
                     " cutoffRy=" + std::to_string(params.getCutOffRy()) +
@@ -594,10 +593,11 @@ void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
   out->energy = res.energy_h * HARTREE_TO_EV;
   out->variance = 0.0;
   out->has_stress = 0;
+  std::fill(out->stress, out->stress + 9, 0.0);
   for (int i = 0; i < n * 3; ++i)
     out->F[static_cast<size_t>(i)] =
         grad[static_cast<size_t>(i)] * NEG_GRAD_TO_FORCE;
-  if (impl_->bundle.last_stress) {
+  if (in.compute_stress && impl_->bundle.last_stress) {
     CPMDCStressTensor tensor{};
     if (impl_->bundle.last_stress(&tensor) == 0 && tensor.valid) {
       for (int i = 0; i < 9; ++i)
@@ -646,8 +646,9 @@ void CPMDPot::Impl::forceSession(const ForceInput &in, ForceOut *out) {
   for (unsigned int i = 0; i < forces.size(); ++i)
     out->F[i] = forces[i];
   out->has_stress = 0;
+  std::fill(out->stress, out->stress + 9, 0.0);
   const auto stress = result.getStress();
-  if (stress.size() == 9) {
+  if (in.compute_stress && stress.size() == 9) {
     for (unsigned int i = 0; i < 9; ++i)
       out->stress[i] = stress[i];
     out->has_stress = 1;

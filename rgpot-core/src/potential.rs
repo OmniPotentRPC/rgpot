@@ -32,7 +32,7 @@ use std::ptr::NonNull;
 
 use crate::eindir::{rgpot_potential_free_eindir, rgpot_potential_new_eindir};
 use crate::status::rgpot_status_t;
-use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+use crate::types::{rgpot_force_input_t, rgpot_force_out_t, rgpot_stress_out_t};
 
 /// Function pointer type for a potential energy calculation.
 ///
@@ -46,6 +46,21 @@ pub type PotentialCallback = unsafe extern "C" fn(
     user_data: *mut c_void,
     input: *const rgpot_force_input_t,
     output: *mut rgpot_force_out_t,
+) -> rgpot_status_t;
+
+/// Callback that evaluates energy and forces and also fills the Cauchy
+/// stress.
+///
+/// It has the contract of [`PotentialCallback`] and additionally writes
+/// `stress`, which points to a block whose `struct_size` the caller has
+/// already validated and whose fields are zero. It sets `has_stress` to
+/// nonzero only when it computed every component, in eV/Angstrom^3 and
+/// row-major order. A potential registers one only when it computes stress.
+pub type PotentialStressCallback = unsafe extern "C" fn(
+    user_data: *mut c_void,
+    input: *const rgpot_force_input_t,
+    output: *mut rgpot_force_out_t,
+    stress: *mut rgpot_stress_out_t,
 ) -> rgpot_status_t;
 
 /// Destructor for the user_data pointer.
@@ -88,6 +103,11 @@ impl PotentialImpl {
     /// The full potential handle used by HVP and RPC capability dispatch.
     pub fn as_handle(&self) -> &rgpot_potential_t {
         unsafe { self.handle.as_ref() }
+    }
+
+    /// Register the stress callback of this potential.
+    pub fn set_stress_callback(&self, callback: Option<PotentialStressCallback>) {
+        self.as_handle().set_stress_callback(callback);
     }
 
     /// Invoke the underlying callback.
@@ -205,11 +225,7 @@ mod tests {
 
         let mut io = TestIO::new(3);
         let input = io.make_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
 
         let status = unsafe { pot.calculate(&input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
@@ -226,11 +242,7 @@ mod tests {
         let pot = PotentialImpl::new(error_callback, std::ptr::null_mut(), None);
         let mut io = TestIO::new(1);
         let input = io.make_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
         let status = unsafe { pot.calculate(&input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { io.free_input(&input) };
@@ -241,11 +253,7 @@ mod tests {
         let pot = PotentialImpl::new(writing_callback, std::ptr::null_mut(), None);
         let mut io = TestIO::new(2);
         let input = io.make_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
 
         let status = unsafe { pot.calculate(&input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
@@ -317,11 +325,7 @@ mod tests {
 
         let mut io = TestIO::new(1);
         let input = io.make_input();
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut output = rgpot_force_out_t::default();
 
         unsafe { pot.calculate(&input, &mut output) };
         assert_eq!(CALL_COUNT.load(Ordering::SeqCst), 1);

@@ -331,11 +331,7 @@ impl Handle {
 
     /// Forces from a plain `rgpot_potential_calculate`.
     fn forces(&self, input: &rgpot_force_input_t) -> Vec<f64> {
-        let mut out = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
-        };
+        let mut out = rgpot_force_out_t::default();
         let status = unsafe { rgpot_potential_calculate(self.pot, input, &mut out) };
         assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
         let n = unsafe { input.n_atoms() }.unwrap();
@@ -442,11 +438,7 @@ fn the_centre_entry_shares_its_evaluation_with_the_products() {
     let mut input = system.input();
     let handle = Handle::new();
 
-    let mut out = rgpot_force_out_t {
-        forces: std::ptr::null_mut(),
-        energy: 0.0,
-        variance: 0.0,
-    };
+    let mut out = rgpot_force_out_t::default();
     let status = unsafe { rgpot_potential_hvp_centre(handle.pot, &input, &mut out) };
     assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
     let (energy, forces) = handle.morse.energy_forces(&system.frame());

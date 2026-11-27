@@ -126,14 +126,21 @@ TEST_CASE("LammpsPot lammpc constructor evaluates energy and forces",
   std::array<double, 6> forces{};
   rgpot::ForceOut out{};
   out.F = forces.data();
-  const rgpot::ForceInput in{.nAtoms = 2,
-                             .pos = d.pos.data(),
-                             .atmnrs = d.atmnrs.data(),
-                             .box = d.box.data()};
-  pot.forceImpl(in, &out);
+  const rgpot::ForceInput plain{.nAtoms = 2,
+                                .pos = d.pos.data(),
+                                .atmnrs = d.atmnrs.data(),
+                                .box = d.box.data()};
+  pot.forceImpl(plain, &out);
 
   REQUIRE_THAT(out.energy, WithinAbs(lj_energy(kSeparation), 1e-12));
   REQUIRE(out.variance == 0.0);
+  require_dimer_forces(forces.data());
+  REQUIRE(out.has_stress == 0);
+
+  rgpot::ForceInput stressed = plain;
+  stressed.compute_stress = true;
+  pot.forceImpl(stressed, &out);
+  REQUIRE_THAT(out.energy, WithinAbs(lj_energy(kSeparation), 1e-12));
   require_dimer_forces(forces.data());
   REQUIRE(out.has_stress == 1);
   for (int i = 0; i < 9; ++i)
@@ -141,7 +148,7 @@ TEST_CASE("LammpsPot lammpc constructor evaluates energy and forces",
 
   const double moved = kSeparation + 0.25;
   d.pos[3] = moved;
-  pot.forceImpl(in, &out);
+  pot.forceImpl(plain, &out);
   REQUIRE_THAT(out.energy, WithinAbs(lj_energy(moved), 1e-12));
   REQUIRE_THAT(forces[3], WithinAbs(lj_force_on_second(moved), 1e-12));
 }

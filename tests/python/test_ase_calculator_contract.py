@@ -66,9 +66,29 @@ class _CountingPotential:
     def config(self):
         return self._inner.config()
 
-    def evaluate(self, positions, numbers, box):
+    def evaluate(self, positions, numbers, box, compute_stress: bool = False):
         self.calls += 1
-        return self._inner.evaluate(positions, numbers, box)
+        return self._inner.evaluate(
+            positions, numbers, box, compute_stress=compute_stress
+        )
+
+
+class _LegacyStressPotential:
+    """Custom potential without a compute_stress keyword on evaluate()."""
+
+    cutoff = 0.0
+
+    def caps(self):
+        return {"periodic": True, "stress": True}
+
+    def evaluate(self, positions, numbers, box):
+        del numbers, box
+        zeros = np.zeros_like(positions, dtype=np.float64)
+        return {
+            "energy": 0.0,
+            "forces": zeros,
+            "stress": np.zeros((3, 3), dtype=np.float64),
+        }
 
 
 def _argon_bulk(repeat: int = 2, seed: int = 11) -> Atoms:
@@ -374,6 +394,13 @@ def test_todict_json_roundtrip_and_custom_potential() -> None:
 
     custom = RgpotCalculator(_CallablePot())
     assert custom.todict() == {}
+
+
+def test_custom_potential_without_compute_stress_keyword() -> None:
+    atoms = _argon_bulk(repeat=1)
+    atoms.calc = RgpotCalculator(_LegacyStressPotential())
+    stress = atoms.get_stress()
+    np.testing.assert_allclose(stress, 0.0, atol=EXACT_MATCH_ATOL)
 
 
 def test_property_not_implemented_error() -> None:

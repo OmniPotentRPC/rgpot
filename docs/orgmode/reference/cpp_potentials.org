@@ -270,9 +270,62 @@ A force call takes a =rgpot::ForceInput=: =nAtoms=, =pos= (3 * nAtoms doubles, x
 y z per atom, Angstrom), =atmnrs= (one atomic number per atom) and =box= (nine
 doubles, one cell vector per row, Angstrom).
 It writes a =rgpot::ForceOut=: =F= (3 * nAtoms doubles, same layout as =pos=,
-eV/Angstrom), =energy= (eV), =variance=, and =stress= with =has_stress=. =stress= is the Cauchy stress in eV/Angstrom^3,
-nine entries row-major. A potential that writes it sets =has_stress= to 1, and
-to 0 when the cell volume is not positive.
+eV/Angstrom), =energy= (eV), =variance=, and optional =stress= with
+=has_stress=.
+
+** Opt-in stress
+
+Set =ForceInput::compute_stress= to true to request the row-major 3 by 3 Cauchy
+stress.
+The default is false.
+The C struct =rgpot_force_input_t= keeps its minor-6 layout and carries no
+request.
+A C caller requests the stress with
+=rgpot_potential_calculate_stress= or =rgpot_rpc_calculate_stress=, which write
+it to an =rgpot_stress_out_t=.
+The C++ wrapper does the same for an =InputSpec= after =with_stress()=.
+In Rust, =rpc::RpcClient::calculate_stress= asks a server for it.
+The Python =evaluate(..., compute_stress=True)= keyword makes the same request.
+On the RPC wire, =ForceInput.wantStress= requests the same tensor in
+=PotentialResult.stress=.
+The ASE calculator requests it only for a =stress= property.
+
+The convention is
+
+#+attr_rgpot: skip stress convention, not code
+#+begin_example
+sigma = (1 / abs(det(box))) dE / d epsilon
+#+end_example
+
+for the homogeneous right strain that maps both Cartesian positions and the cell
+rows as =r -> r (I + epsilon)=.
+Energy is in eV, lengths and cell volume are in Angstrom and Angstrom^3, and
+stress is in eV/Angstrom^3.
+Positive diagonal stress is tension; static pressure is =-trace(sigma)/3=.
+The reported tensor contains no kinetic contribution.
+
+When requested and computed, =ForceOut::has_stress= is 1 and all nine tensor
+entries are filled.
+Otherwise it is 0 and the tensor is zero.
+In particular, a missing or singular cell and an enabled term that cannot
+provide stress leave =has_stress= at 0.
+Turning the request on does not change the energy or forces.
+
+Native support is available for Lennard-Jones (periodic and cluster), Morse,
+ZBL, EAM, tabulated
+EAM/Finnis--Sinclair, EMT, Sutton--Chen, Stillinger--Weber, Tersoff Si/C, D2,
+CPMD's D2, D3, periodic D4, QDO and NLH dispersion, and DSF, Ewald and SPME
+electrostatics.
+A sum reports stress only when every summand does.
+TBLite reports it for GFN1 only, from the strain derivative of its energy.
+XTB does not: a request throws, because its molecule is not periodic and the
+library returns no virial.
+CPMD and i-PI report it only when their backend returned a complete virial.
+MBD, other external, plugin, water and analytic-coordinate potentials currently
+leave =has_stress= at 0.
+Coulomb and dispersion terms with a geometry-dependent charge or ratio response
+also leave it at 0 until that response supplies its chain-rule strain
+derivative.
 
 The program below evaluates a Lennard-Jones dimer with the default parameters.
 It links against =librgpot=.
@@ -290,6 +343,7 @@ int main() {
   const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
   double forces[6] = {};
   rgpot::ForceInput in{2, pos, z, box};
+  in.compute_stress = true;
   rgpot::ForceOut out{};
   out.F = forces;
   pot.forceImpl(in, &out);
@@ -354,7 +408,8 @@ class.
 - Inputs :: =epsilon= (default 1.0), =c= (default 34.408), =a= (default 1.0),
   =n= (repulsive exponent, default 10), =m= (density exponent, default 8),
   =cutoff= (default 40.0; 0 or less keeps every pair), =periodic= (minimum
-  image, default false), =stress= (write the stress, default false).
+  image, default false), =stress= (legacy compatibility request, default false;
+  new callers use =ForceInput::compute_stress=).
   The defaults are the reduced platinum and gold 10-8 potential.
 - Units :: =epsilon= sets the energy unit and =a= the length unit; =cutoff= is
   in the coordinate unit; =c=, =n= and =m= are dimensionless.
@@ -375,9 +430,10 @@ class.
 
 - Inputs :: =path= (the table file, no default), =format=
   (=EAMTableFormat::Funcfl=, =Setfl= or =FinnisSinclair=, default =Setfl=),
-  =periodic= (sum over periodic images, default true), =stress= (write the
-  stress, default false), =skin= (Verlet skin of the potential's own pair list,
-  default 1.0).
+  =periodic= (sum over periodic images, default true), =stress= (legacy
+  compatibility request, default false; new callers use
+  =ForceInput::compute_stress=), =skin= (Verlet skin of the potential's own pair
+  list, default 1.0).
 - Units :: none; the table carries its own units, eV and Angstrom for the LAMMPS
   metal files.
   =skin= is in the length unit of the table.
@@ -391,9 +447,7 @@ class.
 - Inputs :: =library= (the LAMMPS meam library file, no default), =parameters=
   (the parameter file, empty for none), =elements= (the library entries to use,
   in the order the parameter file indexes them; empty takes the whole library),
-  =atomic_numbers= (one per entry; empty reads each from the leading symbol of
-  the entry name), =periodic= (count every image within reach, default true),
-  =stress= (write the stress, default false).
+  =atomic_numbers= (one per entry; empty reads each from the leading symbol of the entry name), =periodic= (count every image within reach, default true), =stress= (write the stress on every call, default false; new callers use =ForceInput::compute_stress=).
 - Units :: eV and Angstrom, as the files.
 - Outputs :: the parameters of =rgpot::MEAMPot=.
   See [[file:meam.org][Modified embedded-atom method]].
@@ -490,12 +544,14 @@ class.
   (SPME mesh, default 32 32 32),
   =spline_order= (SPME B-spline order, default 6), =short_cutoff= (short list,
   default 4.0), =skin= (default 1.0), =periodic= (default true), =stress=
-  (default true).
+  (legacy compatibility request, default false; new callers use
+  =ForceInput::compute_stress=).
 - Units :: =cutoff=, =short_cutoff= and =skin= in Angstrom; =alpha= in
   1/Angstrom; the others are counts or flags.
 - Outputs :: the parameters of =rgpot::lr::CoulombPot=.
-  =stress= false skips the strain and lets the SPME mesh run in single
-  precision.
+  =stress= true makes a direct =evaluate_electrostatics= call compute the
+  strain.
+  The SPME mesh runs in double precision either way.
 - Errors :: the constructor checks no field.
   The force call throws
   =std::invalid_argument= when =cutoff= or =alpha= is not positive, when =kmax= is below 1 with =Ewald=, and when =spline_order=
@@ -913,7 +969,7 @@ explicit LJPot(const LJConfig &c);
   Pairs use the minimum image in every direction, so the call needs a cell.
   Atomic numbers are not read.
   A cutoff of 0 or less gives zero energy and forces.
-  The force call writes the stress.
+  A call writes the stress when =ForceInput::compute_stress= is true.
 - Errors :: the errors of =rgpot::LJConfig=.
   The force call does not check its pointers.
 
@@ -1007,7 +1063,7 @@ explicit MorsePot(const MorseConfig &c);
   A narrower cell lists every image through =nlist::build=.
   A cutoff of 0 or less gives zero energy and forces.
   Atomic numbers are not read.
-  The force call writes the stress.
+  A call writes the stress when =ForceInput::compute_stress= is true.
 - Errors :: the errors of =rgpot::MorseConfig=.
   On a sheared cell =nlist::MinimumImage= throws
   =std::invalid_argument= when the cell is singular or not finite and =std::overflow_error=
@@ -1078,7 +1134,8 @@ explicit ZBLPot(const ZBLConfig &c);
   accepted.
   Boundaries are free: =caps().periodic= is false and the cell is not used to
   fold pairs.
-  The force call writes the stress when the cell volume is positive.
+  A call writes the stress when =ForceInput::compute_stress= is true and the
+  cell volume is positive.
 - Errors :: the errors of =rgpot::ZBLConfig=.
 
 Parameter source: Ziegler, Biersack and Littmark, The Stopping and Range of Ions
@@ -1119,7 +1176,12 @@ explicit EAMPot(const EAMCellConfig &);
   The cell is periodic in every direction and only its diagonal (=box[0]=,
   =box[4]=, =box[8]=) is used.
   A stored list adds a skin of one fifth of the widest cutoff.
-  The force call does not write a stress.
+  A force-only call gives the same bits as before stress existed, on every cell.
+  A stress request is answered for an orthorhombic cell (every off-diagonal
+  entry of the box zero): the stress is the strain derivative of that model, and
+  =has_stress= is 1.
+  For any other cell the kernel does not model the tilt, so =has_stress= stays 0
+  and the tensor is zero.
 - Errors :: the force call throws =std::invalid_argument= when a diagonal entry
   of the box is not positive.
   An atomic number outside the table throws =std::invalid_argument=.
@@ -1198,7 +1260,8 @@ EAMTablePot(const EAMTable &table, bool periodic, bool stress,
   Each atom picks its element by its atomic number, matched against the first
   field of each element line.
   A pair counts when r is below the cutoff on the grid line of the table.
-  With =stress= set the force call writes the stress.
+  A call writes the stress when =ForceInput::compute_stress= is true or the
+  legacy =stress= flag is set.
   The force calls keep a list of the pairs within the cutoff plus =skin= while
   every atom stays within half of it, so =caps().reentrancy= is
   =Reentrancy::PerInstance=.
@@ -1262,8 +1325,8 @@ MEAMPot(MEAMModel model, bool periodic, bool stress,
   Stress in eV/Angstrom^3.
 - Outputs :: the MEAM or 2NN MEAM energy and its exact analytic forces.
   Each atom picks its element by its atomic number.
-  With =stress= set and a cell of positive volume the force call writes the
-  Cauchy stress.
+  With =ForceInput::compute_stress= true or the legacy =stress= flag set and a
+  cell of positive volume the force call writes the Cauchy stress.
   The instance keeps nothing between calls, so one instance serves concurrent
   callers.
   See [[file:meam.org][Modified embedded-atom method]].
@@ -1317,7 +1380,8 @@ explicit SuttonChenPot(const SuttonChenConfig &c);
   the cutoff.
   Atomic numbers are not read.
   With =periodic= false the cell is not used to fold pairs.
-  With =stress= set the force call writes the stress.
+  A call writes the stress when =ForceInput::compute_stress= is true or the
+  legacy =stress= flag is set.
   See [[file:sutton_chen.org][Sutton-Chen]].
 - Errors :: the errors of =rgpot::SuttonChenConfig=.
   The force call throws =std::invalid_argument= when =periodic= is set and the
@@ -1396,7 +1460,9 @@ explicit EMTPot(const EMTConfig &config);
   From =rgpot::kTeamMinAtoms= up it uses OpenMP with per-atom row ownership and
   a second incoming-partner reduction pass, so energies and forces match the
   one-thread bits at 1, 2, 4 and 8 threads.
-  The force call does not write a stress.
+  =caps().stress= is true, and a request writes the Cauchy stress from the
+  cached =EMT= calculator.
+  A call without =ForceInput::compute_stress= leaves =has_stress= clear.
 - Errors :: an element the provider does not cover, and a cell too thin for the
   kernel, throw =std::invalid_argument= with a message that starts =EMTPot:= and
   drop the cached kernel.
@@ -1407,9 +1473,12 @@ explicit EMTPot(const EMTConfig &config);
   runs, and keep a kernel cached by an earlier successful call.
   Zero atoms throw =std::invalid_argument=
   (=invalid parameter: nAtoms must be positive=) and keep that kernel too.
-  An energy or a force that is not finite, which two atoms at one point cause,
-  throws =std::domain_error= and keeps the cached kernel.
+  An energy, a force or a stress that is not finite, which two atoms at one
+  point cause, throws =std::domain_error= and keeps the cached kernel.
   Any other exception from the kernel drops the cached kernel and propagates.
+  A stress request follows the same rules as a force-only call.
+  A call that threw leaves =has_stress= clear and the stress tensor zero, and
+  writes no energy or forces.
 
 Parameter source: Jacobsen, Stoltze and Norskov, Surf.
 Sci. 366, 394 (1996), doi:10.1016/0039-6028(96)00816-3.
@@ -1447,7 +1516,7 @@ StillingerWeberSi();
   The cutoff is =kCut * kSigma=.
   Atomic numbers are not read.
   The cell is periodic in every direction.
-  The force call writes the stress.
+  A call writes the stress when =ForceInput::compute_stress= is true.
   =locality=, =densityStage= and =forceStage= evaluate one host's owned atoms on
   a full neighbour list; see those entries.
   This is not the kernel behind =PotType::SWSi=; see =rgpot::fortranpots::SWPot=
@@ -1518,7 +1587,7 @@ TersoffSiC();
   The taper runs from 2.7 to 3.0 Angstrom for silicon and from 1.8 to 2.1
   Angstrom for carbon; a mixed pair takes the geometric mean of each.
   The cell is periodic in every direction.
-  The force call writes the stress.
+  A call writes the stress when =ForceInput::compute_stress= is true.
   =locality=, =densityStage= and =forceStage= evaluate one host's owned atoms on
   a full neighbour list; see those entries.
   See [[file:tersoff_sic.org][Tersoff Si-C]].
@@ -1677,8 +1746,8 @@ In a cell, \(\mathbf T\) runs over every lattice vector that brings a pair
 within =cutoff=, including the images of an atom with itself at weight one half,
 so the sum is the periodic energy of any cell, sheared or not.
 An all-zero box sums the pairs of the molecule.
-The force call writes the stress, \(\sigma = V^{-1}\,\partial
-E/\partial \varepsilon\) in eV/Angstrom^3.
+When =ForceInput::compute_stress= is true the force call writes the stress,
+\(\sigma = V^{-1}\,\partial E/\partial \varepsilon\) in eV/Angstrom^3.
 
 The pair energy falls as \(r^{-6}\), so the lattice sum beyond \(r_c\) falls as
 \(r_c^{-3}\).
@@ -2188,9 +2257,9 @@ CoulombPot(CoulombConfig cfg, std::shared_ptr<ChargeSource> charges,
   eV/Angstrom, stress in eV/Angstrom^3.
 - Outputs :: electrostatics: Ewald with a conducting boundary, smooth
   particle-mesh Ewald, or the damped shifted force in the gas phase.
-  =DSF= always runs without a cell and writes no stress.
-  With =Ewald= or =SPME= the force call writes the stress when the cell volume
-  is positive.
+  =DSF= sums the pairs inside the cutoff without periodic images.
+  A call writes the stress when =ForceInput::compute_stress= is true, or the
+  legacy =stress= flag is set, and the cell volume is positive.
 - Errors :: the constructor throws =std::invalid_argument= for a null =charges=.
   The force call throws =std::invalid_argument= in the cases of
   =rgpot::lr::CoulombConfig=, when a charge, the net charge or a position is not
@@ -2229,8 +2298,8 @@ explicit DispersionPot(DispersionConfig cfg, std::shared_ptr<RatioSource> ratios
   =D3BJ= and =D4= need s-dftd3 and dftd4 linked into the build.
   =MBD= accepts atomic numbers 1 to 102.
   =QDO= accepts 1 to 86, or 1 to 102 with =qdo_legacy=.
-  The force call writes the stress when the model reports one and the cell
-  volume is positive.
+  A call writes the stress when =ForceInput::compute_stress= is true, the model
+  reports one and the cell volume is positive.
 - Errors :: the force call throws =std::invalid_argument= for null atomic
   numbers, for an atomic number outside the model's table, and for MBD
   parameters that are not positive.
@@ -2377,7 +2446,8 @@ Eight silicon atoms in a 20 Angstrom cube give -17.284558 eV within a relative
   This is =PotType::SWSi=; =rgpot::StillingerWeberSi= carries the published
   epsilon.
   Atomic numbers are not read.
-  =forceImpl= writes the stress; the batch call does not.
+  =forceImpl= writes the stress when =ForceInput::compute_stress= is true; the
+  batch call does not.
 - Errors :: =std::runtime_error= when the kernel or the neighbour table reports
   a failure.
 

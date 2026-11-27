@@ -153,18 +153,14 @@ void StillingerWeberSi::forceImpl(const ForceInput &in, ForceOut *out) const {
     throw std::invalid_argument("StillingerWeberSi: null ForceOut");
   }
   out->variance = 0.0;
-  out->has_stress = 0;
-  for (double &s : out->stress) {
-    s = 0.0;
-  }
+  StressAccumulator stress(in, out);
   if (in.nAtoms > 0 &&
       (in.pos == nullptr || in.box == nullptr || out->F == nullptr)) {
     throw std::invalid_argument("StillingerWeberSi: null force buffer");
   }
-  double strain[6] = {};
   evaluate(in.pos, in.box, in.nAtoms, &out->energy, out->F, 1.0, nullptr,
-           strain, neighbours_);
-  publishCauchyStress(out, strain, cellVolume(in.box));
+           stress.data(), neighbours_);
+  stress.publish(in.box);
 }
 
 void StillingerWeberSi::energyAndGradient(
@@ -289,7 +285,8 @@ void StillingerWeberSi::forceStage(const HalfList &list, const double *, double 
   const double cut2 = cut * cut;
   const auto owned = static_cast<int>(list.nOwned);
   double energy = 0.0;
-  double strain[6] = {};
+  double strain_storage[6] = {};
+  double *strain = tally != nullptr && tally->stress ? strain_storage : nullptr;
   std::vector<Bond> nb;
   for (std::size_t k = 0; k < list.nRows; ++k) {
     const int i = list.rows[k];
@@ -331,8 +328,10 @@ void StillingerWeberSi::forceStage(const HalfList &list, const double *, double 
     return;
   }
   tally->energy += energy;
-  for (int c = 0; c < 6; ++c) {
-    tally->virial[c] -= strain[c];
+  if (strain != nullptr) {
+    for (int c = 0; c < 6; ++c) {
+      tally->virial[c] -= strain[c];
+    }
   }
 }
 

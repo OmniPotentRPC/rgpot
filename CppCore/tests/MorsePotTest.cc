@@ -228,7 +228,8 @@ FullEval runFullEval(rgpot::MorsePot &pot, const std::vector<double> &pos,
                      const std::array<double, 9> &box,
                      bool *first_reused = nullptr) {
   const std::size_t n = z.size();
-  const rgpot::ForceInput in{n, pos.data(), z.data(), box.data()};
+  rgpot::ForceInput in{n, pos.data(), z.data(), box.data()};
+  in.compute_stress = true;
   FullEval res;
   res.forces.assign(3 * n, 0.0);
   rgpot::ForceOut out{};

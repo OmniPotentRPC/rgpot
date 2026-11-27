@@ -15,7 +15,7 @@ use crate::rpc::client::RpcClient;
 #[cfg(feature = "rpc")]
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
 #[cfg(feature = "rpc")]
-use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+use crate::types::{rgpot_force_input_t, rgpot_force_out_t, rgpot_stress_out_t};
 
 /// Opaque RPC client handle.
 #[cfg(feature = "rpc")]
@@ -102,6 +102,60 @@ pub unsafe extern "C" fn rgpot_rpc_calculate(
             Ok(()) => rgpot_status_t::RGPOT_SUCCESS,
             Err(e) => {
                 set_last_error(&format!("rgpot_rpc_calculate: {e}"));
+                rgpot_status_t::RGPOT_RPC_ERROR
+            }
+        }
+    }))
+}
+
+/// Perform a remote force/energy calculation that also returns the Cauchy
+/// stress.
+///
+/// This is `rgpot_rpc_calculate` plus the stress block of
+/// `rgpot_potential_calculate_stress`; `stress->struct_size` is checked the
+/// same way. The request asks the server for stress. A server that does not
+/// advertise the stress operation, or whose potential cannot compute it,
+/// fails the call with `RGPOT_RPC_ERROR` and a message; the block stays
+/// zero. `stress->has_stress` is nonzero only when the reply carried all nine
+/// components.
+///
+/// # Safety
+///
+/// As for `rgpot_rpc_calculate`, and `stress` must point to writable storage
+/// of `stress->struct_size` bytes.
+#[cfg(feature = "rpc")]
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_rpc_calculate_stress(
+    client: *mut rgpot_rpc_client_t,
+    input: *const rgpot_force_input_t,
+    output: *mut rgpot_force_out_t,
+    stress: *mut rgpot_stress_out_t,
+) -> rgpot_status_t {
+    catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if client.is_null() || input.is_null() || output.is_null() || stress.is_null() {
+            set_last_error("rgpot_rpc_calculate_stress: NULL argument");
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let size = unsafe { std::ptr::addr_of!((*stress).struct_size).read() };
+        if size < rgpot_stress_out_t::SIZE {
+            set_last_error(&format!(
+                "rgpot_rpc_calculate_stress: stress block of {size} bytes is smaller than the \
+                 {} bytes this library writes; set struct_size = sizeof(rgpot_stress_out_t)",
+                rgpot_stress_out_t::SIZE
+            ));
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
+        let block = unsafe { &mut *stress };
+        block.has_stress = 0;
+        block.stress = [0.0; 9];
+        match unsafe { &mut *client }.calculate_stress(
+            unsafe { &*input },
+            unsafe { &mut *output },
+            block,
+        ) {
+            Ok(()) => rgpot_status_t::RGPOT_SUCCESS,
+            Err(e) => {
+                set_last_error(&format!("rgpot_rpc_calculate_stress: {e}"));
                 rgpot_status_t::RGPOT_RPC_ERROR
             }
         }

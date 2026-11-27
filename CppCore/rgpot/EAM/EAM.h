@@ -58,7 +58,8 @@ public:
 
   void cleanMemory();
   void force(long N, const double *R, const int *atomicNrs, double *F,
-             double *U, double *variance, const double *fullbox)
+             double *U, double *variance, const double *fullbox,
+             double *strain = nullptr)
 #ifndef EAM_STANDALONE
       override
 #endif
@@ -165,6 +166,7 @@ private:
   void ensureRev();
   void ensureParts(long N, int nt);
   void evaluate(long N, const int *atomicNrs, double *F, double *U);
+  void virial(long N, const int *atomicNrs, double strain[6]);
   void evaluateStoredParallel(long N, const int *atomicNrs, double *F,
                               double *U);
   void evaluateDensityStream(long N, const int *atomicNrs, double *F,

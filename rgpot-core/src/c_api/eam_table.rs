@@ -18,7 +18,8 @@ use std::os::raw::{c_char, c_int};
 use std::path::PathBuf;
 
 use crate::eam_table::{
-    drop_eam_table, eam_table_callback, EamTableError, EamTableFormat, EamTablePotential,
+    drop_eam_table, eam_table_callback, eam_table_stress_callback, EamTableError, EamTableFormat,
+    EamTablePotential,
 };
 use crate::eindir::rgpot_potential_t;
 use crate::status::{catch_unwind, rgpot_status_t, set_last_error};
@@ -137,7 +138,12 @@ unsafe fn make_handle(user_data: *mut std::ffi::c_void) -> *mut rgpot_potential_
         unsafe { drop_eam_table(user_data) };
         panic!("handle construction panicked after parsing");
     }
-    unsafe { rgpot_potential_new(eam_table_callback, user_data, Some(drop_eam_table)) }
+    let handle =
+        unsafe { rgpot_potential_new(eam_table_callback, user_data, Some(drop_eam_table)) };
+    if !handle.is_null() {
+        unsafe { &*handle }.set_stress_callback(Some(eam_table_stress_callback));
+    }
+    handle
 }
 
 #[cfg(test)]

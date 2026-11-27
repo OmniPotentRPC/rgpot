@@ -195,6 +195,15 @@ class PlantedFactMistakes(unittest.TestCase):
     def test_missing_path(self):
         self.assertIn("path CppCore/rgpot/NoSuch.hpp does not exist", self._facts("See =CppCore/rgpot/NoSuch.hpp=.\n"))
 
+    def test_unknown_c_struct_field(self):
+        self.assertIn(
+            "rgpot_force_input_t has no field compute_stress",
+            self._facts("Set =rgpot_force_input_t.compute_stress=.\n"),
+        )
+
+    def test_known_c_struct_field_passes(self):
+        self.assertEqual(self._facts("Read =rgpot_stress_out_t.has_stress=.\n"), "")
+
     def test_unknown_pixi_task(self):
         self.assertIn("pixi task no-such-task does not exist", self._facts("Run =pixi r no-such-task=.\n"))
 

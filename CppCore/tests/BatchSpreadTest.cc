@@ -224,6 +224,7 @@ TEST_CASE("small default-path batches match across thread counts", "[batch]") {
           .pos = coordinates.data() + s * kAtoms * 3,
           .atmnrs = species.data(),
           .box = box.data(),
+          .compute_stress = true,
       });
       outputs[s] = rgpot::ForceOut{
           .F = forces.data() + s * kAtoms * 3,

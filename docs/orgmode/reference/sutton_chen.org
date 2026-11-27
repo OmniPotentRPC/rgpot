@@ -134,10 +134,12 @@ off, so a search sees the same rounding as that expression.
 
 * Stress
 
-=SuttonChenConfig::stress= is off by default.
-When it is set, =forceImpl= writes the Cauchy stress ~sigma = (1/V) dE/dstrain~
-into =ForceOut::stress= in row-major order.
-It also sets =has_stress= to 1, and =caps().stress= is true.
+=caps().stress= is true.
+=ForceInput::compute_stress= asks =forceImpl= for the Cauchy stress.
+It writes =ForceOut::stress= row-major and sets =has_stress= to 1.
+The stress is ~sigma = (1/V) dE/dstrain~.
+=SuttonChenConfig::stress=, off by default, is the older request and makes every
+call compute the stress.
 The units are energy over length cubed, eV/Angstrom^3 for the
 =sutton_chen_platinum= and =sutton_chen_gold= rows.
 The sign is that of =stress.hpp=: a compressed crystal has negative diagonal
@@ -145,8 +147,8 @@ entries, and the pressure is minus a third of the trace.
 A cell with no positive volume, such as a cluster with a null box, leaves
 =has_stress= at 0.
 
-The force pass writes the stress as well, because the energy depends on
-positions only through pair distances.
+A stress request adds the stress to the force pass, because the energy depends
+on positions only through pair distances.
 With ~d = r_i - r_j~ and a force ~fscale * d~ on atom i, each pair adds
 ~-fscale * d d^T~ to dE/dstrain.
 That fscale already includes the embedding term, so the stress needs no third
@@ -155,10 +157,8 @@ Thompson, Plimpton and Mattson give the many-body virial under periodic
 boundaries.
 Their paper is in the Journal of Chemical Physics 131, 154107 (2009).
 
-With the flag clear, =forceImpl= leaves the stress slots and =has_stress= as the
-caller set them.
-=caps()=, =paramsKey()=, the energy and the forces are then the same bits as
-before the flag existed.
+Without either request, =forceImpl= sets =has_stress= to 0 and the stress slots
+to zero, and the energy and the forces are the same bits as with a request.
 Setting the flag changes =paramsKey()=, so a cached result without stress is not
 served to a caller that asked for one.
 The C entry point =rgpot_sutton_chen_energy_forces= and =rgpot_sc_config= do not

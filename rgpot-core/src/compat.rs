@@ -18,10 +18,15 @@ pub const PROTOCOL_FAMILY: &str = "rgpot.potentials";
 /// Wire-incompatible protocol revision.
 pub const PROTOCOL_MAJOR: u16 = 1;
 /// Additive protocol revision.
+/// Minor 2's schema carries `ForceInput.wantStress`. A minor-1 peer never sets it
+/// and never reads it, so the stress is treated as not requested.
 pub const PROTOCOL_MINOR: u16 = 2;
 /// Protocol minor that introduced the orbital-key ForceInput fields.
 /// It is fixed and does not follow later bumps of `PROTOCOL_MINOR`.
 pub const ORBITAL_KEY_INTRODUCED_MINOR: u16 = 2;
+/// First protocol minor whose servers honour `ForceInput.wantStress`.
+/// A client that asks for stress requires at least this minor.
+pub const STRESS_PROTOCOL_MINOR: u16 = 2;
 /// Cap'n Proto identity of `Potentials.capnp`.
 pub const SCHEMA_ID: &str = "0xbd1f89fa17369103";
 
@@ -221,16 +226,27 @@ pub fn fill_compatibility(mut caps: Builder<'_>) {
 }
 
 /// Fill `caps` as the self-description of an rgpot RPC server.
-pub fn describe_server(mut caps: Builder<'_>, analytic_hvp: bool) {
+pub fn describe_server(caps: Builder<'_>, analytic_hvp: bool) {
+    describe_server_with(caps, analytic_hvp, false);
+}
+
+/// Like [`describe_server`], and also advertises `Operation::Stress` when
+/// `stress` is true, that is when the potential behind the server computes
+/// Cauchy stress.
+pub fn describe_server_with(mut caps: Builder<'_>, analytic_hvp: bool, stress: bool) {
     caps.set_backend_name("rgpot");
     caps.set_backend_version(env!("CARGO_PKG_VERSION"));
     caps.set_available(true);
-    let count = if analytic_hvp { 3 } else { 2 };
-    let mut ops = caps.reborrow().init_operations(count);
-    ops.set(0, Operation::Energy);
-    ops.set(1, Operation::Forces);
+    let mut served = vec![Operation::Energy, Operation::Forces];
     if analytic_hvp {
-        ops.set(2, Operation::HessianVector);
+        served.push(Operation::HessianVector);
+    }
+    if stress {
+        served.push(Operation::Stress);
+    }
+    let mut ops = caps.reborrow().init_operations(served.len() as u32);
+    for (i, op) in served.into_iter().enumerate() {
+        ops.set(i as u32, op);
     }
     fill_compatibility(caps);
 }
@@ -423,12 +439,38 @@ mod tests {
     #[test]
     fn protocol_minor_below_requirement_is_rejected() {
         let want = Expectation {
-            protocol_minor_min: 2,
+            protocol_minor_min: PROTOCOL_MINOR + 1,
             ..Expectation::default()
         };
         let err = verdict(|c| c.set_protocol_minor(1), &want).unwrap_err();
         assert!(err.contains("protocol minor"), "{err}");
-        assert_eq!(verdict(|c| c.set_protocol_minor(2), &want), Ok(()));
+        assert_eq!(
+            verdict(|c| c.set_protocol_minor(PROTOCOL_MINOR + 1), &want),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn this_build_speaks_protocol_minor_2() {
+        assert_eq!(PROTOCOL_MINOR, 2);
+        assert_eq!(STRESS_PROTOCOL_MINOR, 2);
+        let msg = message(|_| {});
+        let caps = msg.get_root_as_reader::<Reader<'_>>().unwrap();
+        assert_eq!(caps.get_protocol_minor(), 2);
+    }
+
+    #[test]
+    fn minor_1_and_minor_2_peers_differ_only_when_stress_is_requested() {
+        let force_only = Expectation::default();
+        let stress = Expectation {
+            protocol_minor_min: STRESS_PROTOCOL_MINOR,
+            ..Expectation::default()
+        };
+        assert_eq!(verdict(|c| c.set_protocol_minor(1), &force_only), Ok(()));
+        assert_eq!(verdict(|c| c.set_protocol_minor(2), &force_only), Ok(()));
+        assert_eq!(verdict(|c| c.set_protocol_minor(2), &stress), Ok(()));
+        let err = verdict(|c| c.set_protocol_minor(1), &stress).unwrap_err();
+        assert_eq!(err, "protocol minor 1 is below the required 2");
     }
 
     #[test]

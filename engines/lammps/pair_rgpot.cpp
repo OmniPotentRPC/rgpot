@@ -153,7 +153,7 @@ class PairRgpot : public Pair {
   void use_potential(const char *name, const rgpot::spec::Options &options);
   int evaluate(std::size_t n, const double *xyz, const int *z, const double *box, double *forces,
                double *energy, double *stress, int *has_stress, char *why,
-               const rgpot::PerAtomOut *atoms = nullptr);
+               const rgpot::PerAtomOut *atoms = nullptr, bool want_stress = false);
   int strain_virial(std::size_t n, const double *xyz, const int *z, const double *box, double *w,
                     char *why);
   // Empty when the domain path can be used, else why not.
@@ -407,7 +407,7 @@ double PairRgpot::init_one(int, int) {
 
 int PairRgpot::evaluate(std::size_t n, const double *xyz, const int *z, const double *box,
                         double *forces, double *energy, double *stress, int *has_stress,
-                        char *why, const rgpot::PerAtomOut *atoms) {
+                        char *why, const rgpot::PerAtomOut *atoms, bool want_stress) {
   *has_stress = 0;
   switch (backend) {
   case Backend::Engine:
@@ -416,6 +416,10 @@ int PairRgpot::evaluate(std::size_t n, const double *xyz, const int *z, const do
   case Backend::Potential: {
     std::fill(forces, forces + 3 * n, 0.0);
     rgpot::ForceInput in{n, xyz, z, box};
+    // Stress is opt-in. It is asked for only when LAMMPS wants the global
+    // virial and the potential says it computes one; otherwise the step is
+    // force-only and the virial comes from the strain difference.
+    in.compute_stress = want_stress && built.pot->caps().stress;
     rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
     try {
       if (atoms != nullptr) {
@@ -531,6 +535,9 @@ void PairRgpot::compute_domain() {
         comm->reverse_comm(this);
       }
       comm->forward_comm(this);
+    }
+    if (want_e || want_v) {
+      tally.stress = want_v;
     }
     built.forceStage(half, densities.data(), nall > 0 ? atom->f[0] : nullptr,
                      (want_e || want_v) ? &tally : nullptr);
@@ -691,7 +698,7 @@ void PairRgpot::compute_gather() {
     double stress[9] = {};
     int has_stress = 0;
     status = evaluate(n, xyz.data(), z.data(), box, forces.data(), &energy, stress, &has_stress,
-                      why, want_atoms ? &atoms : nullptr);
+                      why, want_atoms ? &atoms : nullptr, vflag_global && !virial_fd);
     if (status == 0 && vflag_global) {
       if (has_stress != 0 && !virial_fd) {
         // W = -dE/d(strain) = -V sigma, LAMMPS order xx yy zz xy xz yz.

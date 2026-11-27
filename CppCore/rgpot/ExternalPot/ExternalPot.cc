@@ -530,6 +530,7 @@ std::vector<::capnp::word> serialize_force_input(const ForceInput &in) {
     box.set(i, in.box[i]);
   force_input.setLengthUnit("angstrom");
   force_input.setEnergyUnit("eV");
+  force_input.setWantStress(in.compute_stress);
   auto words = ::capnp::messageToFlatArray(msg);
   std::vector<::capnp::word> out(words.size());
   std::memcpy(out.data(), words.begin(), words.asBytes().size());
@@ -797,7 +798,10 @@ void LammpsPot::forceImpl(const ForceInput &in, ForceOut *out) const {
     throw std::runtime_error("lammpc returned " +
                              std::to_string(stress.size()) +
                              " stress values, not 9");
-  if (impl_->profile_stress) {
+  if (in.compute_stress) {
+    if (!impl_->profile_stress) {
+      throw std::runtime_error("lammpc does not provide stress");
+    }
     if (stress.size() != 9)
       throw std::runtime_error(
           "lammpc declared the stress operation but returned no stress");
