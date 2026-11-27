@@ -473,8 +473,49 @@ if has_fortran
                 if _rt_path != _cand and _fs_rt.is_absolute(_rt_path) and _fs_rt.exists(
                     _rt_path,
                 )
-                    fortran_rt_deps += declare_dependency(link_args: [_rt_path])
-                    message('fortran runtime (compiler file): ' + _rt_path)
+                    _rt_link = [_rt_path]
+                    # MinGW has no libgfortran.so, so the search above
+                    # selects the static archive. libgfortran.a(write.o)
+                    # calls quadmath_snprintf, and ld resolves that only
+                    # when libquadmath follows libgfortran. The shared
+                    # runtime used on Linux and macOS is unchanged.
+                    _want_quad = host_system == 'windows' and _cand == 'libgfortran.a'
+                    if _want_quad
+                        _pq = run_command(
+                            _fc.cmd_array() + ['-print-file-name=libquadmath.a'],
+                            check: false,
+                        )
+                        if _pq.returncode() == 0
+                            _qp = _pq.stdout().strip()
+                            if (
+                                _qp != 'libquadmath.a'
+                                and _fs_rt.is_absolute(_qp)
+                                and _fs_rt.exists(_qp)
+                            )
+                                _rt_link += [_qp]
+                                _want_quad = false
+                            endif
+                        endif
+                    endif
+                    fortran_rt_deps += declare_dependency(link_args: _rt_link)
+                    foreach _shown : _rt_link
+                        message('fortran runtime (compiler file): ' + _shown)
+                    endforeach
+                    if _want_quad
+                        _quad = cc.find_library(
+                            'quadmath',
+                            static: true,
+                            required: false,
+                        )
+                        if _quad.found()
+                            fortran_rt_deps += _quad
+                            message('fortran runtime: quadmath')
+                        else
+                            warning(
+                                'static libgfortran on MinGW needs libquadmath after it',
+                            )
+                        endif
+                    endif
                     break
                 endif
             endif

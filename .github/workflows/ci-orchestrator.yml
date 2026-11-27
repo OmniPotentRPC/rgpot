@@ -459,9 +459,12 @@ jobs:
           # gcc lists libgomp as optional. -fopenmp still asks ld for
           # -lgomp. The openmp package is LLVM's runtime and does not
           # provide that library.
+          # gcc also lists libquadmath as optional. gcc-libs depends on
+          # that runtime, and gcc-fortran is already requested here.
+          # The static archive itself ships in the gcc package.
           pacboy: >-
-            gcc:p gcc-fortran:p libgomp:p meson:p ninja:p cmake:p pkgconf:p
-            catch:p eigen3:p rust:p python:p
+            gcc:p gcc-fortran:p gcc-libs:p libgomp:p meson:p ninja:p
+            cmake:p pkgconf:p catch:p eigen3:p rust:p python:p
       - name: Build and test
         run: |
           set -euo pipefail
