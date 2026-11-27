@@ -49,7 +49,9 @@ if nblib_lib.found() and nblib_gmx_core.found()
     # the prefix supply them.
     nblib_source = get_option('nblib_source')
     nblib_build = get_option('nblib_build')
+    nblib_have_tpr = false
     if nblib_source != '' and nblib_build != ''
+        nblib_have_tpr = true
         nblib_sources += files('TprEngine.cc', 'TprSession.cc')
         nblib_deps += dependency('openmp', language: 'cpp')
         nblib_compile += ['-DRGPOT_NBLIB_HAS_TPR', '-DHAVE_CONFIG_H']
@@ -141,6 +143,19 @@ if nblib_lib.found() and nblib_gmx_core.found()
         args: [nblib_engine.full_path()],
         timeout: 120,
     )
+    if nblib_have_tpr
+        test(
+            'nblib_tpr_dispersion',
+            python3_runner,
+            args: [
+                files('test_tpr_dispersion.py'),
+                nblib_engine.full_path(),
+                nblib_prefix / 'bin' / 'gmx_d',
+                meson.current_source_dir() / 'data' / 'tip4p_dispcorr',
+            ],
+            timeout: 120,
+        )
+    endif
 
 else
     message('nblib engine skipped: GROMACS nblib libraries were not found')
