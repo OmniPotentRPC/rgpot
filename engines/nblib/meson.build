@@ -156,6 +156,20 @@ if nblib_lib.found() and nblib_gmx_core.found()
             timeout: 120,
         )
     endif
+    if nblib_have_tpr
+        test(
+            'nblib_tpr_source_index',
+            find_program('python3'),
+            args: [
+                files('test_tpr_source_index.py'),
+                nblib_engine.full_path(),
+                nblib_prefix,
+                rgpot.full_path(),
+            ],
+            depends: [nblib_engine, rgpot],
+            timeout: 180,
+        )
+    endif
 
 else
     message('nblib engine skipped: GROMACS nblib libraries were not found')

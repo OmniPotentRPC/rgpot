@@ -457,6 +457,7 @@ openmm_abi | core posix probe | custom timeout=120 | @engines
 nblib_session | core posix probe | custom timeout=120 | @engines
 nblib_analytic | core posix probe | custom timeout=300 | @engines
 nblib_tpr_dispersion | core posix probe | custom timeout=120 | @engines
+nblib_tpr_source_index | core posix probe | custom timeout=180 | @engines
 md_engine_agreement | core posix probe | custom timeout=300 | @engines
 md_engine_analytic | core posix probe | custom timeout=600 | @engines
 openmm_review_equipartition | core posix probe | custom timeout=180 | @engines
