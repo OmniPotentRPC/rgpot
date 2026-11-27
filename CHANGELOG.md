@@ -804,6 +804,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps a marker that belongs inside a code span. A slash, a plus or a
   star still ends a span, and math is left unchanged. The check reports
   an inline code span from the sources that the plain text changed.
+- A CPMD calculation that adds an atom, or changes which elements are
+  present, now gets a new engine session and a cold SCF instead of an
+  error. The same atom count and element counts still reuse the
+  converged wavefunction.
 
 ### Miscellaneous
 
