@@ -6,29 +6,32 @@
 //! cluster whose Hessian is known in closed form.
 
 use std::os::raw::c_void;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use dlpk::sys::DLManagedTensorVersioned;
 
 use rgpot_core::c_api::hessian::{
     rgpot_potential_derivative_caps, rgpot_potential_derivative_counts, rgpot_potential_hessian,
-    rgpot_potential_set_ad_hessian_callback, rgpot_potential_set_hessian_callback,
+    rgpot_potential_set_ad_hessian_callback, rgpot_potential_set_hessian_byte_budget,
+    rgpot_potential_set_hessian_callback,
 };
 use rgpot_core::c_api::hvp::{
     rgpot_potential_hvp, rgpot_potential_hvp_counts, rgpot_potential_hvp_resolved,
     rgpot_potential_reset_hvp_counts, rgpot_potential_set_ad_hvp_callback,
     rgpot_potential_set_hvp_callback,
 };
-use rgpot_core::c_api::potential::{rgpot_potential_free, rgpot_potential_new};
-use rgpot_core::c_api::types::rgpot_force_input_create;
+use rgpot_core::c_api::potential::{
+    rgpot_potential_calculate, rgpot_potential_free, rgpot_potential_new,
+};
+use rgpot_core::c_api::types::{rgpot_force_input_create, rgpot_force_input_free};
 use rgpot_core::hessian::{
     rgpot_derivative_caps_t, rgpot_derivative_counts_t, rgpot_hessian_scheme_t,
 };
 use rgpot_core::hvp::{rgpot_hvp_counts_t, rgpot_hvp_scheme_t};
 use rgpot_core::potential::{rgpot_potential_t, PotentialCallback};
 use rgpot_core::status::{rgpot_last_error, rgpot_set_last_error, rgpot_status_t};
-use rgpot_core::tensor::rgpot_tensor_owned_cpu_f64_2d;
+use rgpot_core::tensor::{rgpot_tensor_free, rgpot_tensor_owned_cpu_f64_2d};
 use rgpot_core::types::{rgpot_force_input_t, rgpot_force_out_t};
 
 use rgpot_hessian_scheme_t::*;
@@ -579,6 +582,55 @@ fn auto_reports_its_fallback_to_forward() {
 }
 
 #[test]
+fn auto_uses_forward_even_with_a_dense_hessian_callback() {
+    let mut system = System::octahedron();
+    let input = system.input();
+    let v = direction(system.dim());
+    let handle = Handle::new();
+    unsafe { rgpot_potential_set_hessian_callback(handle.pot, Some(analytic_hessian)) };
+    let budget = 8u64;
+    assert_eq!(
+        unsafe { rgpot_potential_set_hessian_byte_budget(handle.pot, &budget) },
+        rgpot_status_t::RGPOT_SUCCESS
+    );
+
+    let (hv, used) = handle.try_hvp(&input, &v, RGPOT_HVP_AUTO as i32).unwrap();
+    assert_eq!(used, RGPOT_HVP_FORWARD);
+    let (forward, forward_used) = handle
+        .try_hvp(&input, &v, RGPOT_HVP_FORWARD as i32)
+        .unwrap();
+    assert_eq!(forward_used, RGPOT_HVP_FORWARD);
+    assert_eq!(hv, forward);
+    assert_eq!(handle.force_calls(), 3);
+    assert_eq!(Handle::calls(&handle.morse.analytic_calls), 0);
+    let counts = handle.counts();
+    assert_eq!(
+        (
+            counts.hvp_analytic,
+            counts.hvp_forward,
+            counts.hvp_central,
+            counts.hvp_ad
+        ),
+        (0, 2, 0, 0)
+    );
+    assert_eq!(
+        handle.hvp_counts(),
+        rgpot_hvp_counts_t {
+            products: 2,
+            force_calls: 3,
+            centre_reused: 1,
+            analytic: 0,
+        }
+    );
+    assert_eq!(
+        handle
+            .try_hvp(&input, &v, RGPOT_HVP_ANALYTIC as i32)
+            .unwrap_err(),
+        rgpot_status_t::RGPOT_INVALID_PARAMETER
+    );
+}
+
+#[test]
 fn exact_and_ad_refuse_without_a_call() {
     let mut system = System::octahedron();
     let input = system.input();
@@ -1122,7 +1174,8 @@ fn reset_zeros_every_derivative_count() {
     unsafe { rgpot_potential_reset_hvp_counts(handle.pot) };
     assert_eq!(handle.counts(), rgpot_derivative_counts_t::default());
     assert_eq!(handle.hvp_counts(), rgpot_hvp_counts_t::default());
-    // The centre survives the reset, as for the other counters.
+    // The reset keeps the centre, and AUTO has created one by taking the
+    // forward-difference path.
     handle
         .try_hvp(&input, &v, RGPOT_HVP_FORWARD as i32)
         .unwrap();
@@ -1144,4 +1197,418 @@ fn a_zero_direction_counts_under_its_resolved_scheme() {
     assert_eq!(handle.counts().hvp_ad, 1);
     assert_eq!(Handle::calls(&handle.morse.ad_calls), 0);
     assert_eq!(handle.force_calls(), 0);
+}
+
+struct Gate {
+    entered: AtomicBool,
+    release: AtomicBool,
+    finished: AtomicBool,
+}
+
+unsafe extern "C" fn idle_force(
+    _user_data: *mut c_void,
+    _input: *const rgpot_force_input_t,
+    _out: *mut rgpot_force_out_t,
+) -> rgpot_status_t {
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+unsafe extern "C" fn gated_hessian(
+    user_data: *mut c_void,
+    _input: *const rgpot_force_input_t,
+    hessian_out: *mut f64,
+) -> rgpot_status_t {
+    let gate = unsafe { &*(user_data as *const Gate) };
+    gate.entered.store(true, Ordering::Release);
+    while !gate.release.load(Ordering::Acquire) {
+        std::thread::yield_now();
+    }
+    for value in unsafe { std::slice::from_raw_parts_mut(hessian_out, 9) } {
+        *value = 1.0;
+    }
+    gate.finished.store(true, Ordering::Release);
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+unsafe extern "C" fn second_hessian(
+    _user_data: *mut c_void,
+    _input: *const rgpot_force_input_t,
+    hessian_out: *mut f64,
+) -> rgpot_status_t {
+    for value in unsafe { std::slice::from_raw_parts_mut(hessian_out, 9) } {
+        *value = 2.0;
+    }
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+type DenseCallback =
+    unsafe extern "C" fn(*mut c_void, *const rgpot_force_input_t, *mut f64) -> rgpot_status_t;
+
+fn retire_while_in_flight(
+    replacement: Option<DenseCallback>,
+) -> (*mut rgpot_potential_t, [f64; 9], bool) {
+    let gate = Arc::new(Gate {
+        entered: AtomicBool::new(false),
+        release: AtomicBool::new(false),
+        finished: AtomicBool::new(false),
+    });
+    let pot = unsafe {
+        rgpot_potential_new(
+            idle_force as PotentialCallback,
+            Arc::as_ptr(&gate) as *mut c_void,
+            None,
+        )
+    };
+    assert!(!pot.is_null());
+    unsafe { rgpot_potential_set_hessian_callback(pot, Some(gated_hessian)) };
+    let pot_addr = pot as usize;
+    let worker = std::thread::spawn(move || {
+        let mut pos = [0.1, 0.2, -0.3];
+        let mut z = [1i32];
+        let mut cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        let mut input = unsafe {
+            rgpot_force_input_create(1, pos.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr())
+        };
+        let mut matrix = [0.0; 9];
+        let mut used = RGPOT_HESSIAN_CENTRAL;
+        let status = unsafe {
+            rgpot_potential_hessian(
+                pot_addr as *mut rgpot_potential_t,
+                &input,
+                0.0,
+                RGPOT_HESSIAN_ANALYTIC as i32,
+                matrix.as_mut_ptr(),
+                &mut used,
+            )
+        };
+        unsafe { rgpot_force_input_free(&mut input) };
+        (status, matrix)
+    });
+    while !gate.entered.load(Ordering::Acquire) {
+        std::thread::yield_now();
+    }
+
+    let retiring = Arc::new(AtomicBool::new(false));
+    let returned = Arc::new(AtomicBool::new(false));
+    let retirer = {
+        let gate = Arc::clone(&gate);
+        let retiring = Arc::clone(&retiring);
+        let returned = Arc::clone(&returned);
+        std::thread::spawn(move || {
+            retiring.store(true, Ordering::Release);
+            let status = unsafe {
+                rgpot_potential_set_hessian_callback(
+                    pot_addr as *mut rgpot_potential_t,
+                    replacement,
+                )
+            };
+            assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+            let old_call_finished = gate.finished.load(Ordering::Acquire);
+            returned.store(true, Ordering::Release);
+            old_call_finished
+        })
+    };
+    while !retiring.load(Ordering::Acquire) {
+        std::thread::yield_now();
+    }
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    assert!(
+        !returned.load(Ordering::Acquire),
+        "retiring the callback returned while the old callback was still running"
+    );
+
+    gate.release.store(true, Ordering::Release);
+    let (status, first_matrix) = worker.join().expect("hessian thread");
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    let old_call_finished = retirer.join().expect("retiring thread");
+    (pot, first_matrix, old_call_finished)
+}
+
+#[test]
+fn replacing_the_callback_waits_for_the_call_in_flight() {
+    let (pot, first_matrix, old_call_finished) = retire_while_in_flight(Some(second_hessian));
+    assert!(
+        old_call_finished,
+        "replacement returned before the old call ended"
+    );
+    assert_eq!(first_matrix, [1.0; 9]);
+    let mut pos = [0.1, 0.2, -0.3];
+    let mut z = [1i32];
+    let mut cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+    let mut input =
+        unsafe { rgpot_force_input_create(1, pos.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr()) };
+    let mut matrix = [0.0; 9];
+    let mut used = RGPOT_HESSIAN_CENTRAL;
+    let status = unsafe {
+        rgpot_potential_hessian(
+            pot,
+            &input,
+            0.0,
+            RGPOT_HESSIAN_ANALYTIC as i32,
+            matrix.as_mut_ptr(),
+            &mut used,
+        )
+    };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_eq!(matrix, [2.0; 9]);
+    unsafe {
+        rgpot_force_input_free(&mut input);
+        rgpot_potential_free(pot);
+    }
+}
+
+#[test]
+fn clearing_the_callback_waits_for_the_call_in_flight() {
+    let (pot, first_matrix, old_call_finished) = retire_while_in_flight(None);
+    assert!(
+        old_call_finished,
+        "clearing returned before the old call ended"
+    );
+    assert_eq!(first_matrix, [1.0; 9]);
+    let mut pos = [0.1, 0.2, -0.3];
+    let mut z = [1i32];
+    let mut cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+    let mut input =
+        unsafe { rgpot_force_input_create(1, pos.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr()) };
+    let mut matrix = [0.0; 9];
+    let mut used = RGPOT_HESSIAN_CENTRAL;
+    let status = unsafe {
+        rgpot_potential_hessian(
+            pot,
+            &input,
+            0.0,
+            RGPOT_HESSIAN_ANALYTIC as i32,
+            matrix.as_mut_ptr(),
+            &mut used,
+        )
+    };
+    assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+    unsafe {
+        rgpot_force_input_free(&mut input);
+        rgpot_potential_free(pot);
+    }
+}
+
+#[test]
+fn a_caller_byte_budget_refuses_before_the_callback() {
+    let mut system = System::octahedron();
+    let input = system.input();
+    let handle = Handle::new();
+    unsafe { rgpot_potential_set_hessian_callback(handle.pot, Some(analytic_hessian)) };
+
+    let budget = 8u64;
+    let status = unsafe { rgpot_potential_set_hessian_byte_budget(handle.pot, &budget) };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_eq!(
+        handle
+            .try_hessian(&input, 0.0, RGPOT_HESSIAN_ANALYTIC as i32)
+            .unwrap_err(),
+        rgpot_status_t::RGPOT_INVALID_PARAMETER
+    );
+    assert!(last_error().contains("caller budget"), "{}", last_error());
+    assert_eq!(Handle::calls(&handle.morse.analytic_calls), 0);
+    assert_eq!(handle.force_calls(), 0);
+
+    let zero_budget = 0u64;
+    assert_eq!(
+        unsafe { rgpot_potential_set_hessian_byte_budget(handle.pot, &zero_budget) },
+        rgpot_status_t::RGPOT_SUCCESS
+    );
+    assert_eq!(
+        handle
+            .try_hessian(&input, 0.0, RGPOT_HESSIAN_CENTRAL as i32)
+            .unwrap_err(),
+        rgpot_status_t::RGPOT_INVALID_PARAMETER
+    );
+    assert_eq!(handle.force_calls(), 0);
+
+    assert_eq!(
+        unsafe { rgpot_potential_set_hessian_byte_budget(handle.pot, std::ptr::null()) },
+        rgpot_status_t::RGPOT_SUCCESS
+    );
+    assert_eq!(
+        unsafe { rgpot_potential_set_hessian_byte_budget(std::ptr::null(), std::ptr::null()) },
+        rgpot_status_t::RGPOT_INVALID_PARAMETER
+    );
+    assert!(handle
+        .try_hessian(&input, 0.0, RGPOT_HESSIAN_ANALYTIC as i32)
+        .is_ok());
+    assert_eq!(Handle::calls(&handle.morse.analytic_calls), 1);
+}
+
+const COUPLED_DIM: usize = 6;
+
+/// Symmetric, non-diagonal, with terms between the two atoms.
+const COUPLED_K: [f64; 36] = [
+    2.0, 0.5, -0.2, 0.3, 0.0, 0.1, //
+    0.5, 3.0, 0.4, 0.0, -0.6, 0.2, //
+    -0.2, 0.4, 2.5, 0.2, 0.1, -0.3, //
+    0.3, 0.0, 0.2, 1.8, 0.7, 0.0, //
+    0.0, -0.6, 0.1, 0.7, 2.2, -0.4, //
+    0.1, 0.2, -0.3, 0.0, -0.4, 3.1,
+];
+
+fn matvec(matrix: &[f64], vector: &[f64]) -> Vec<f64> {
+    let n = vector.len();
+    (0..n)
+        .map(|row| {
+            matrix[row * n..(row + 1) * n]
+                .iter()
+                .zip(vector)
+                .map(|(a, b)| a * b)
+                .sum()
+        })
+        .collect()
+}
+
+fn read_positions(input: &rgpot_force_input_t) -> Vec<f64> {
+    let n_atoms = unsafe { input.n_atoms() }.expect("positions tensor");
+    let data = unsafe { (*input.positions).dl_tensor.data } as *const f64;
+    unsafe { std::slice::from_raw_parts(data, 3 * n_atoms) }.to_vec()
+}
+
+fn coupled_gradient(x: &[f64]) -> Vec<f64> {
+    let mut gradient = matvec(&COUPLED_K, x);
+    gradient[0] += 0.6 * x[0] * x[3] * x[3];
+    gradient[3] += 0.6 * x[0] * x[0] * x[3];
+    gradient[1] += 0.2 * x[4] * x[5];
+    gradient[4] += 0.2 * x[1] * x[5];
+    gradient[5] += 0.2 * x[1] * x[4];
+    gradient
+}
+
+fn coupled_hessian(x: &[f64]) -> Vec<f64> {
+    let mut h = COUPLED_K.to_vec();
+    let mut add = |i: usize, j: usize, value: f64| {
+        h[i * COUPLED_DIM + j] += value;
+        if i != j {
+            h[j * COUPLED_DIM + i] += value;
+        }
+    };
+    add(0, 0, 0.6 * x[3] * x[3]);
+    add(0, 3, 1.2 * x[0] * x[3]);
+    add(3, 3, 0.6 * x[0] * x[0]);
+    add(1, 4, 0.2 * x[5]);
+    add(1, 5, 0.2 * x[4]);
+    add(4, 5, 0.2 * x[1]);
+    h
+}
+
+unsafe extern "C" fn coupled_force(
+    _user_data: *mut c_void,
+    input: *const rgpot_force_input_t,
+    output: *mut rgpot_force_out_t,
+) -> rgpot_status_t {
+    let x = read_positions(unsafe { &*input });
+    let gradient = coupled_gradient(&x);
+    let forces: Vec<f64> = gradient.iter().map(|g| -g).collect();
+    let mut energy = 0.5
+        * matvec(&COUPLED_K, &x)
+            .iter()
+            .zip(&x)
+            .map(|(a, b)| a * b)
+            .sum::<f64>();
+    energy += 0.3 * (x[0] * x[3]).powi(2) + 0.2 * x[1] * x[4] * x[5];
+    let out = unsafe { &mut *output };
+    out.energy = energy;
+    out.variance = 0.0;
+    out.forces = unsafe { rgpot_tensor_owned_cpu_f64_2d(forces.as_ptr(), 2, 3) };
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+unsafe extern "C" fn coupled_hessian_callback(
+    _user_data: *mut c_void,
+    input: *const rgpot_force_input_t,
+    hessian_out: *mut f64,
+) -> rgpot_status_t {
+    let x = read_positions(unsafe { &*input });
+    let h = coupled_hessian(&x);
+    unsafe { std::ptr::copy_nonoverlapping(h.as_ptr(), hessian_out, h.len()) };
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
+fn coupled_forces(pot: *const rgpot_potential_t, x: &[f64; COUPLED_DIM]) -> Vec<f64> {
+    let mut x = *x;
+    let mut z = [1, 1];
+    let mut cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+    let mut input =
+        unsafe { rgpot_force_input_create(2, x.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr()) };
+    let mut out = rgpot_force_out_t {
+        forces: std::ptr::null_mut(),
+        energy: 0.0,
+        variance: 0.0,
+    };
+    let status = unsafe { rgpot_potential_calculate(pot, &input, &mut out) };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    let forces = unsafe {
+        std::slice::from_raw_parts((*out.forces).dl_tensor.data as *const f64, COUPLED_DIM)
+    }
+    .to_vec();
+    unsafe {
+        rgpot_tensor_free(out.forces);
+        rgpot_force_input_free(&mut input);
+    }
+    forces
+}
+
+#[test]
+fn the_dense_hessian_matches_a_finite_difference_of_forces_in_every_direction() {
+    let pot = unsafe {
+        rgpot_potential_new(
+            coupled_force as PotentialCallback,
+            std::ptr::null_mut(),
+            None,
+        )
+    };
+    assert!(!pot.is_null());
+    assert_eq!(
+        unsafe { rgpot_potential_set_hessian_callback(pot, Some(coupled_hessian_callback)) },
+        rgpot_status_t::RGPOT_SUCCESS
+    );
+
+    let centre = [0.4, -0.7, 0.9, 1.1, 0.6, -0.5];
+    let mut positions = centre;
+    let mut z = [1, 1];
+    let mut cell = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+    let mut input = unsafe {
+        rgpot_force_input_create(2, positions.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr())
+    };
+    let mut dense = [0.0; COUPLED_DIM * COUPLED_DIM];
+    let mut used = RGPOT_HESSIAN_CENTRAL;
+    let status = unsafe {
+        rgpot_potential_hessian(
+            pot,
+            &input,
+            0.0,
+            RGPOT_HESSIAN_ANALYTIC as i32,
+            dense.as_mut_ptr(),
+            &mut used,
+        )
+    };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS, "{}", last_error());
+    assert_eq!(used, RGPOT_HESSIAN_ANALYTIC);
+    unsafe { rgpot_force_input_free(&mut input) };
+
+    let step = 1.0e-5;
+    let mut largest = 0.0f64;
+    let mut off_diagonal = 0.0f64;
+    for j in 0..COUPLED_DIM {
+        let mut plus = centre;
+        let mut minus = centre;
+        plus[j] += step;
+        minus[j] -= step;
+        let f_plus = coupled_forces(pot, &plus);
+        let f_minus = coupled_forces(pot, &minus);
+        for i in 0..COUPLED_DIM {
+            let numeric = -(f_plus[i] - f_minus[i]) / (2.0 * step);
+            let analytic = dense[i * COUPLED_DIM + j];
+            largest = largest.max((numeric - analytic).abs());
+            if i != j {
+                off_diagonal = off_diagonal.max(analytic.abs());
+            }
+        }
+    }
+    assert!(off_diagonal > 0.5, "the test potential must be coupled");
+    assert!(largest < 1.0e-7, "max |H - FD(-F)| = {largest:e}");
+    unsafe { rgpot_potential_free(pot) };
 }

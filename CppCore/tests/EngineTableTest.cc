@@ -59,6 +59,8 @@ struct Engine {
                rgpot_engine_coord_transform, void *) = nullptr;
   int (*hvp)(RgpotEnginePot *, long, const double *, const int *,
              const double *, double *, const double *) = nullptr;
+  int (*hessian)(RgpotEnginePot *, long, const double *, const int *, double *,
+                 const double *) = nullptr;
   int (*force_batch)(RgpotEnginePot *, long, long, const double *, const int *,
                      double *, double *, double *, const double *,
                      rgpot_engine_coord_transform, void *) = nullptr;
@@ -127,7 +129,9 @@ bool open_engine(const std::string &key, Engine &out) {
       sym<decltype(out.select_orbitals)>(h, "rgpot_engine_select_orbitals");
   out.copy_orbitals =
       sym<decltype(out.copy_orbitals)>(h, "rgpot_engine_copy_orbitals");
-  // Minor 5 symbols are optional: a host finds them with dlsym.
+  // Minor 5 and minor 6 symbols are optional: a host finds them with dlsym.
+  out.hessian = reinterpret_cast<decltype(out.hessian)>(
+      dlsym(h, "rgpot_engine_hessian"));
   out.last_components = reinterpret_cast<decltype(out.last_components)>(
       dlsym(h, "rgpot_engine_last_components"));
   out.component_name = reinterpret_cast<decltype(out.component_name)>(
@@ -911,6 +915,117 @@ TEST_CASE("classical engine names its potentials", "[engine][classical]") {
       e.destroy(pot);
     }
   }
+}
+
+TEST_CASE("classical engine dense Hessian matches a finite difference of forces",
+          "[engine][classical][hessian]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  REQUIRE(e.hessian != nullptr);
+  const long n = 5;
+  const std::size_t dim = 3 * static_cast<std::size_t>(n);
+
+  for (const char *name : {"lj", "morse"}) {
+    INFO(name);
+    RgpotEnginePot *pot = create(e, builtin_params(name));
+    REQUIRE(pot != nullptr);
+    RgpotEngineCaps caps;
+    caps.size = sizeof(caps);
+    REQUIRE(e.caps(pot, &caps) == 0);
+    REQUIRE(caps.analytic_hessian == 1);
+
+    std::vector<double> dense(dim * dim, 0.0);
+    REQUIRE(e.hessian(pot, n, kCluster.data(), kZ.data(), dense.data(),
+                      kBox.data()) == RGPOT_ENGINE_OK);
+    for (std::size_t row = 0; row < dim; ++row) {
+      for (std::size_t col = row + 1; col < dim; ++col) {
+        const double a = dense[row * dim + col];
+        const double b = dense[col * dim + row];
+        const double tol = 64.0 * std::numeric_limits<double>::epsilon() *
+                           std::max({1.0, std::abs(a), std::abs(b)});
+        REQUIRE(std::abs(a - b) <= tol);
+      }
+    }
+
+    // H[i,j] = -(F_i(x + h e_j) - F_i(x - h e_j)) / (2 h)
+    const double h = 1.0e-6;
+    double largest = 0.0;
+    double scale = 1.0;
+    for (std::size_t j = 0; j < dim; ++j) {
+      std::vector<double> plus = kCluster;
+      std::vector<double> minus = kCluster;
+      plus[j] += h;
+      minus[j] -= h;
+      std::vector<double> f_plus(dim, 0.0), f_minus(dim, 0.0);
+      double energy = 0.0;
+      REQUIRE(e.force(pot, n, plus.data(), kZ.data(), f_plus.data(), &energy,
+                      nullptr, kBox.data(), nullptr, nullptr) == 0);
+      REQUIRE(e.force(pot, n, minus.data(), kZ.data(), f_minus.data(), &energy,
+                      nullptr, kBox.data(), nullptr, nullptr) == 0);
+      for (std::size_t i = 0; i < dim; ++i) {
+        const double numeric = -(f_plus[i] - f_minus[i]) / (2.0 * h);
+        const double analytic = dense[i * dim + j];
+        largest = std::max(largest, std::abs(numeric - analytic));
+        scale = std::max(scale, std::abs(analytic));
+      }
+    }
+    INFO("largest deviation " << largest << " at scale " << scale);
+    REQUIRE(largest < 1.0e-6 * scale);
+
+    // The dense hook and the product hook are separate code paths, so each
+    // unit-direction product must agree with its column to rounding.
+    for (std::size_t j = 0; j < dim; ++j) {
+      std::vector<double> direction(dim, 0.0), column(dim, 0.0);
+      direction[j] = 1.0;
+      REQUIRE(e.hvp(pot, n, kCluster.data(), kZ.data(), direction.data(),
+                    column.data(), kBox.data()) == RGPOT_ENGINE_OK);
+      for (std::size_t i = 0; i < dim; ++i) {
+        REQUIRE(std::abs(dense[i * dim + j] - column[i]) <= 1.0e-12 * scale);
+      }
+    }
+
+    std::vector<double> aliased(dim * dim, 0.0);
+    std::copy(kCluster.begin(), kCluster.end(), aliased.begin());
+    REQUIRE(e.hessian(pot, n, aliased.data(), kZ.data(), aliased.data(),
+                      kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+    REQUIRE(error_of(e, pot).find("overlap") != std::string::npos);
+
+    REQUIRE(e.hessian(pot, 0, kCluster.data(), kZ.data(), dense.data(),
+                      kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+    // dim * dim fits in size_t but dim * dim * sizeof(double) does not.
+    const long wrapping_atoms = 715827883;
+    REQUIRE(e.hessian(pot, wrapping_atoms, kCluster.data(), kZ.data(),
+                      dense.data(), kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+    REQUIRE(error_of(e, pot).find("byte count overflows") !=
+            std::string::npos);
+    REQUIRE(e.hessian(pot, n, kCluster.data(), kZ.data(), nullptr,
+                      kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+    e.destroy(pot);
+  }
+}
+
+TEST_CASE("classical engine refuses a Hessian for a potential without one",
+          "[engine][classical][hessian]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  REQUIRE(e.hessian != nullptr);
+  RgpotEnginePot *pot = create(e, builtin_params("zbl"));
+  REQUIRE(pot != nullptr);
+  RgpotEngineCaps caps;
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.analytic_hessian == 0);
+  const std::array<double, 6> positions{0.0, 0.0, 0.0, 1.5, 0.0, 0.0};
+  const std::array<int, 2> z{6, 6};
+  std::array<double, 36> dense{};
+  REQUIRE(e.hessian(pot, 2, positions.data(), z.data(), dense.data(),
+                    kBox.data()) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(error_of(e, pot).find("no analytic Hessian") != std::string::npos);
+  e.destroy(pot);
 }
 
 #ifdef RGPOT_HAS_WATER

@@ -476,8 +476,30 @@ size_t rgpot_engine_last_error(const RgpotEnginePot *pot, char *buf, size_t len)
 #endif
 
 #ifndef NO_CAPS
+#ifdef SHORT_CAPS
+/* The layout before analytic_hessian was appended. The host must keep a
+ * field it did not receive as the zero it wrote, not as a bit this plugin
+ * never stored. */
+typedef struct {
+  unsigned size;
+  int reentrancy;
+  int per_image_instances;
+  int batched;
+  int periodic;
+  int stress;
+  int group_collective;
+  int orbital_selection;
+  int orbital_copy;
+  int analytic_hvp;
+} RgpotEngineCapsPrefix;
+#endif
+
 int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
+#ifdef SHORT_CAPS
+  RgpotEngineCapsPrefix filled;
+#else
   RgpotEngineCaps filled;
+#endif
   unsigned room;
   count_native_call();
 #ifdef CAPS_LOCK_ERROR
@@ -498,6 +520,9 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   filled.periodic = 1;
 #if !defined(NO_HVP) && !defined(NO_HVP_CAP)
   filled.analytic_hvp = 1;
+#if !defined(SHORT_CAPS) && (FIXTURE_ABI_MINOR >= 12)
+  filled.analytic_hessian = 1;
+#endif
 #endif
 #if !defined(NO_JET) && !defined(NO_JET_CAP) && (FIXTURE_ABI_MINOR >= 11)
   filled.jet_order = FIXTURE_JET_ORDER;
@@ -506,6 +531,11 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 #endif
 #endif
   room = out->size < sizeof filled ? out->size : sizeof filled;
+#if FIXTURE_ABI_MINOR < 12
+  if (room > offsetof(RgpotEngineCaps, analytic_hessian)) {
+    room = (unsigned)offsetof(RgpotEngineCaps, analytic_hessian);
+  }
+#endif
 #ifdef FIXTURE_CAPS_MINOR4
   /* A minor-4 engine's caps struct ends before jet_order. */
   if (room > offsetof(RgpotEngineCaps, jet_order)) {
@@ -516,6 +546,7 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
 #ifdef FIXTURE_CAPS_DIRTY_TAIL
   /* Bytes past the size the engine reports are not part of the answer. */
   out->jet_order = FIXTURE_JET_ORDER;
+  out->analytic_hessian = 1;
 #endif
   out->size = room;
   return 0;
@@ -603,6 +634,46 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long n, const double *positions,
 #else
     hv_out[i] = pot->k * direction[i];
 #endif
+  }
+  pot->error[0] = '\0';
+  leave_call(pot);
+  return 0;
+#endif
+}
+#endif
+
+#ifndef NO_HESSIAN
+int rgpot_engine_hessian(RgpotEnginePot *pot, long n, const double *positions,
+                         const int *atomic_nrs, double *hessian_out,
+                         const double *box) {
+  count_native_call();
+  (void)positions;
+  (void)box;
+#if defined(NO_HVP) || defined(NO_HVP_CAP) || defined(HESSIAN_UNSUPPORTED)
+  (void)n;
+  (void)atomic_nrs;
+  (void)hessian_out;
+  if (pot) {
+    snprintf(pot->error, sizeof pot->error,
+             "harmonic engine built without analytic Hessian");
+  }
+  return RGPOT_ENGINE_ERR_UNSUPPORTED;
+#else
+  long i;
+  long dim;
+  if (!pot || !positions || !atomic_nrs || !hessian_out || !box || n <= 0) {
+    if (pot) {
+      snprintf(pot->error, sizeof pot->error, "invalid Hessian argument");
+    }
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  enter_call(pot);
+  dim = 3 * n;
+  for (i = 0; i < dim * dim; i++) {
+    hessian_out[i] = 0.0;
+  }
+  for (i = 0; i < dim; i++) {
+    hessian_out[i * dim + i] = pot->k;
   }
   pot->error[0] = '\0';
   leave_call(pot);

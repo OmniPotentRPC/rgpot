@@ -20,8 +20,8 @@ use std::os::raw::c_void;
 use crate::c_api::hvp::{fail, refuse};
 use crate::eindir::rgpot_potential_t;
 use crate::hessian::{
-    refuse_overlap, rgpot_derivative_caps_t, rgpot_derivative_counts_t, rgpot_hessian_scheme_t,
-    HessianCallback,
+    hessian_len, refuse_overlap, rgpot_derivative_caps_t, rgpot_derivative_counts_t,
+    rgpot_hessian_scheme_t, HessianCallback,
 };
 use crate::status::{catch_unwind, rgpot_status_t};
 use crate::types::rgpot_force_input_t;
@@ -33,11 +33,20 @@ use crate::types::rgpot_force_input_t;
 /// writes `(3 * n_atoms)^2` doubles, row-major. `RGPOT_HESSIAN_ANALYTIC`
 /// calls it, and so does `RGPOT_HESSIAN_EXACT`.
 ///
+/// Replacing or clearing the callback returns only after every call of the
+/// previous callback that was already running has returned, and the previous
+/// callback is never called after this function returns. The caller may
+/// release the old callback and its state as soon as this function returns.
+/// Because it waits for those calls, this function must not be called from
+/// inside a Hessian callback, nor from a thread that is inside this handle's
+/// Hessian entry points: it would wait for itself.
+///
 /// # Safety
 ///
 /// `pot` must be NULL or a live handle. A NULL `pot` returns
 /// `RGPOT_INVALID_PARAMETER`. `callback` must be safe to call with the
-/// handle's `user_data` for as long as it stays registered.
+/// handle's `user_data` for as long as it stays registered, and must not
+/// re-enter this handle's Hessian entry points or replace the callback.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_set_hessian_callback(
     pot: *const rgpot_potential_t,
@@ -86,6 +95,36 @@ pub unsafe extern "C" fn rgpot_potential_set_ad_hessian_callback(
     rgpot_status_t::RGPOT_SUCCESS
 }
 
+/// Install or clear the caller's dense-Hessian byte budget.
+///
+/// A NULL `max_bytes` clears the budget. No component count or byte size is
+/// assumed in its place: a request is then refused only when the byte count
+/// does not fit in `size_t`, or when the allocation itself fails. A non-NULL
+/// pointer installs that many bytes, and zero is a budget that refuses every
+/// positive matrix. The pointer is read once; it need not stay alive.
+///
+/// # Safety
+///
+/// `pot` must be NULL or a live handle. A NULL `pot` returns
+/// `RGPOT_INVALID_PARAMETER`. A non-NULL `max_bytes` must point at a readable
+/// `uint64_t`.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_potential_set_hessian_byte_budget(
+    pot: *const rgpot_potential_t,
+    max_bytes: *const u64,
+) -> rgpot_status_t {
+    if pot.is_null() {
+        return refuse("rgpot_potential_set_hessian_byte_budget: pot is NULL");
+    }
+    let budget = if max_bytes.is_null() {
+        None
+    } else {
+        Some(unsafe { *max_bytes })
+    };
+    unsafe { &*pot }.set_hessian_byte_budget(budget);
+    rgpot_status_t::RGPOT_SUCCESS
+}
+
 /// Write the dense Hessian of the energy at the geometry of `input` to
 /// `hessian_out` and the scheme that computed it to `scheme_used`.
 ///
@@ -117,9 +156,13 @@ pub unsafe extern "C" fn rgpot_potential_set_ad_hessian_callback(
 ///
 /// NULL pointers, an unknown scheme, a negative or non-finite step and a
 /// `hessian_out` that overlaps the positions, atomic numbers or box
-/// return `RGPOT_INVALID_PARAMETER` without a call. Otherwise `pot` must be a live
-/// handle, `input` must point to a valid `rgpot_force_input_t` whose tensors
-/// stay alive for the call, `hessian_out` must point to `(3 * n_atoms)^2`
+/// return `RGPOT_INVALID_PARAMETER` without a call. So does a matrix whose
+/// byte count `(3 * n_atoms)^2 * sizeof(double)` overflows or exceeds the
+/// budget set by `rgpot_potential_set_hessian_byte_budget`, before
+/// `hessian_out` is touched: a caller whose buffer may be short installs its
+/// length in bytes as the budget. Otherwise `pot` must be a live handle,
+/// `input` must point to a valid `rgpot_force_input_t` whose tensors stay
+/// alive for the call, `hessian_out` must point to `(3 * n_atoms)^2`
 /// writable doubles and `scheme_used` must be writable.
 #[no_mangle]
 pub unsafe extern "C" fn rgpot_potential_hessian(
@@ -141,13 +184,18 @@ pub unsafe extern "C" fn rgpot_potential_hessian(
             return refuse(&format!("rgpot_potential_hessian: unknown scheme {scheme}"));
         };
         let input = unsafe { &*input };
-        let Some(entries) = unsafe { input.n_atoms() }
+        let Some((dim, entries)) = unsafe { input.n_atoms() }
             .and_then(|n| n.checked_mul(3))
-            .and_then(|dim| dim.checked_mul(dim))
-            .filter(|&entries| entries <= isize::MAX as usize / std::mem::size_of::<f64>())
+            .and_then(|dim| Some((dim, dim.checked_mul(dim)?)))
+            .filter(|&(_, entries)| entries <= isize::MAX as usize / std::mem::size_of::<f64>())
         else {
             return refuse("rgpot_potential_hessian: positions tensor is NULL or too large");
         };
+        // The budget is the only length the caller states for hessian_out,
+        // so a short buffer must be refused before the slice is formed.
+        if let Err(err) = hessian_len(dim, unsafe { (*pot).hessian_byte_budget() }) {
+            return fail(err);
+        }
         if let Err(err) = unsafe { refuse_overlap(input, hessian_out, entries) } {
             return fail(err);
         }
@@ -201,4 +249,151 @@ pub unsafe extern "C" fn rgpot_potential_derivative_counts(
     }
     unsafe { out.write((*pot).derivative_counts()) };
     rgpot_status_t::RGPOT_SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::c_api::potential::{rgpot_potential_free, rgpot_potential_new};
+    use crate::c_api::types::{rgpot_force_input_create, rgpot_force_input_free};
+    use crate::tensor::create_owned_f64_tensor;
+    use crate::types::rgpot_force_out_t;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    unsafe extern "C" fn counted_forces(
+        user_data: *mut c_void,
+        input: *const rgpot_force_input_t,
+        output: *mut rgpot_force_out_t,
+    ) -> rgpot_status_t {
+        unsafe { &*(user_data as *const AtomicUsize) }.fetch_add(1, Ordering::SeqCst);
+        let n = unsafe { (*input).n_atoms() }.unwrap_or(0);
+        let out = unsafe { &mut *output };
+        out.energy = 0.0;
+        out.variance = 0.0;
+        out.forces = create_owned_f64_tensor(vec![0.0; 3 * n], vec![n as i64, 3]);
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+
+    unsafe extern "C" fn counted_hessian(
+        user_data: *mut c_void,
+        input: *const rgpot_force_input_t,
+        hessian_out: *mut f64,
+    ) -> rgpot_status_t {
+        unsafe { &*(user_data as *const AtomicUsize) }.fetch_add(1, Ordering::SeqCst);
+        let dim = 3 * unsafe { (*input).n_atoms() }.unwrap_or(0);
+        unsafe { std::slice::from_raw_parts_mut(hessian_out, dim * dim) }.fill(0.0);
+        rgpot_status_t::RGPOT_SUCCESS
+    }
+
+    #[test]
+    fn a_buffer_shorter_than_the_matrix_is_refused_before_any_write() {
+        let calls = AtomicUsize::new(0);
+        let user_data = &calls as *const AtomicUsize as *mut c_void;
+        let pot = unsafe { rgpot_potential_new(counted_forces, user_data, None) };
+        unsafe { rgpot_potential_set_hessian_callback(pot, Some(counted_hessian)) };
+        let mut pos = vec![0.0, 0.0, 0.0, 1.1, 0.0, 0.0];
+        let mut atmnrs = vec![1, 1];
+        let mut box_ = vec![10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        let mut input = unsafe {
+            rgpot_force_input_create(2, pos.as_mut_ptr(), atmnrs.as_mut_ptr(), box_.as_mut_ptr())
+        };
+
+        // Two atoms need 36 doubles; the caller owns only three.
+        let mut short = [7.0_f64; 3];
+        let budget = std::mem::size_of_val(&short) as u64;
+        assert_eq!(
+            unsafe { rgpot_potential_set_hessian_byte_budget(pot, &budget) },
+            rgpot_status_t::RGPOT_SUCCESS
+        );
+        for scheme in [
+            rgpot_hessian_scheme_t::RGPOT_HESSIAN_ANALYTIC,
+            rgpot_hessian_scheme_t::RGPOT_HESSIAN_CENTRAL,
+        ] {
+            let mut used = rgpot_hessian_scheme_t::RGPOT_HESSIAN_EXACT;
+            let status = unsafe {
+                rgpot_potential_hessian(
+                    pot,
+                    &input,
+                    0.0,
+                    scheme as i32,
+                    short.as_mut_ptr(),
+                    &mut used,
+                )
+            };
+            assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+            assert!(crate::status::last_error_message().contains("caller budget"));
+            assert_eq!(used, rgpot_hessian_scheme_t::RGPOT_HESSIAN_EXACT);
+        }
+        assert_eq!(short, [7.0; 3]);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        let mut full = vec![7.0_f64; 36];
+        let budget = std::mem::size_of_val(full.as_slice()) as u64;
+        unsafe { rgpot_potential_set_hessian_byte_budget(pot, &budget) };
+        let mut used = rgpot_hessian_scheme_t::RGPOT_HESSIAN_EXACT;
+        let status = unsafe {
+            rgpot_potential_hessian(
+                pot,
+                &input,
+                0.0,
+                rgpot_hessian_scheme_t::RGPOT_HESSIAN_ANALYTIC as i32,
+                full.as_mut_ptr(),
+                &mut used,
+            )
+        };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(used, rgpot_hessian_scheme_t::RGPOT_HESSIAN_ANALYTIC);
+        assert!(full.iter().all(|&h| h == 0.0));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        unsafe {
+            rgpot_force_input_free(&mut input);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
+    fn a_byte_count_that_overflows_is_refused_without_a_call() {
+        let calls = AtomicUsize::new(0);
+        let user_data = &calls as *const AtomicUsize as *mut c_void;
+        let pot = unsafe { rgpot_potential_new(counted_forces, user_data, None) };
+        unsafe { rgpot_potential_set_hessian_callback(pot, Some(counted_hessian)) };
+        let mut pos = [0.0_f64; 3];
+        let mut atmnrs = [1];
+        let mut box_ = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        // Only the shape is read: (3 n)^2 overflows usize, and its byte
+        // count passes isize::MAX for a smaller n, before any tensor data is
+        // used.
+        for n_atoms in [1_usize << 31, 1_usize << 30] {
+            let mut input = unsafe {
+                rgpot_force_input_create(
+                    n_atoms,
+                    pos.as_mut_ptr(),
+                    atmnrs.as_mut_ptr(),
+                    box_.as_mut_ptr(),
+                )
+            };
+            let mut out = [7.0_f64; 1];
+            let mut used = rgpot_hessian_scheme_t::RGPOT_HESSIAN_EXACT;
+            let status = unsafe {
+                rgpot_potential_hessian(
+                    pot,
+                    &input,
+                    0.0,
+                    rgpot_hessian_scheme_t::RGPOT_HESSIAN_ANALYTIC as i32,
+                    out.as_mut_ptr(),
+                    &mut used,
+                )
+            };
+            assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+            assert_eq!(
+                crate::status::last_error_message(),
+                "rgpot_potential_hessian: positions tensor is NULL or too large"
+            );
+            assert_eq!(out, [7.0]);
+            unsafe { rgpot_force_input_free(&mut input) };
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        unsafe { rgpot_potential_free(pot) };
+    }
 }
