@@ -240,6 +240,28 @@ int threadCount(const char *options) {
 
 void destroy(void *context) { delete static_cast<Session *>(context); }
 
+#ifdef RGPOT_NBLIB_HAS_TPR
+// kJ/mol of the last evaluation, for the dispersion comparison:
+// LJ (SR), Coulomb (SR), Coul. recip., Disper. corr., Potential.
+extern "C" int rgpot_nblib_tpr_terms(void *context, double *out, size_t count) {
+  if (context == nullptr || out == nullptr || count < 5) {
+    return 1;
+  }
+  auto *session = dynamic_cast<rgpot::nblibpot::TprSession *>(
+      static_cast<rgpot::nblibpot::SessionBase *>(context));
+  if (session == nullptr) {
+    return 1;
+  }
+  const auto terms = session->terms();
+  out[0] = terms.ljSr;
+  out[1] = terms.coulombSr;
+  out[2] = terms.coulombReciprocal;
+  out[3] = terms.dispersionCorrection;
+  out[4] = terms.potential;
+  return 0;
+}
+#endif
+
 } // namespace
 
 extern "C" int rgpot_md_session_engine_create(

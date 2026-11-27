@@ -85,6 +85,11 @@ void TprSession::ensureForces() {
   }
 }
 
+TprEngine::Terms TprSession::terms() {
+  ensureForces();
+  return engine_.terms();
+}
+
 md::LangevinResult TprSession::run(const md::LangevinSettings &settings,
                                    const md::PlaneSpec *plane,
                                    const std::vector<md::WallSpec> &walls,

@@ -9,14 +9,19 @@
  * nblib's own topology covers rectangular cells, cutoff electrostatics and
  * flexible molecules. A run input file (TPR) can hold more: triclinic cells,
  * PME, modified Lennard-Jones, position restraints, rigid water and virtual
- * sites. This engine opens the TPR and evaluates the same nbnxm, PME and
- * listed kernels mdrun uses.
+ * sites. This engine opens the TPR and evaluates the same nbnxm, PME,
+ * listed kernels and dispersion correction mdrun uses.
  *
  * Virtual sites have no equation of motion. The engine builds them from the
  * atoms that carry mass and spreads their forces back, so callers see the
  * massive atoms only, in TPR order.
  *
  * A TPR that uses a feature the engine does not evaluate is refused.
+ *
+ * Dispersion correction (DispCorr Ener or EnerPres) is part of the
+ * potential. It has no per-atom force. Its virial and its pressure are
+ * not returned: Ener leaves both at zero, and EnerPres computes both
+ * without this engine applying them.
  */
 
 #include "rgpot/MDSession/ProjectedLangevin.hpp"
@@ -52,6 +57,17 @@ public:
   /// Potential energy (kJ/mol); forces (kJ/mol/nm) go to the second argument.
   /// Positions may be in any periodic image.
   double evaluate(const double *positions, double *forces);
+
+  /// Terms of the last evaluation, kJ/mol. The dispersion correction is
+  /// included in the potential and has no per-atom force.
+  struct Terms {
+    double ljSr = 0;
+    double coulombSr = 0;
+    double coulombReciprocal = 0;
+    double dispersionCorrection = 0;
+    double potential = 0;
+  };
+  [[nodiscard]] Terms terms() const;
 
 private:
   class Impl;

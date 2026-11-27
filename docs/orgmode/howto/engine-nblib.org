@@ -172,7 +172,16 @@ mean constraint force.
 
 A spec of one line, =tpr PATH=, opens a TPR instead of a topology text.
 The session evaluates the forces of the file in process: nbnxm, PME, listed
-terms and position restraints, in its triclinic cell.
+terms, position restraints and the dispersion correction, in its triclinic cell.
+The correction is an energy of the density.
+It has no per-atom force, so =DispCorr= =Ener= or =EnerPres= does not change the
+forces the session returns.
+Both settings add that energy to the potential.
+The same calculation produces a scalar virial and a pressure.
+=Ener= leaves those two at zero.
+=EnerPres= computes both. mdrun adds the virial to the diagonal of the virial
+tensor and records the pressure apart from the potential.
+The session returns neither a virial nor a pressure, and does not apply them.
 Virtual sites are built from the atoms that carry mass and their forces are
 spread back, so the session exposes the massive atoms in TPR order.
 The SETTLE and LINCS distances of the file hold in every run.

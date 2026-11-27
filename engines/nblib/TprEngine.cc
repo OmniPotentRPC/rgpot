@@ -23,6 +23,7 @@
 #include "gromacs/math/arrayrefwithpadding.h"
 #include "gromacs/math/paddedvector.h"
 #include "gromacs/math/vec.h"
+#include "gromacs/mdlib/dispersioncorrection.h"
 #include "gromacs/mdlib/enerdata_utils.h"
 #include "gromacs/mdlib/force.h"
 #include "gromacs/mdlib/forcerec.h"
@@ -142,8 +143,12 @@ public:
 
     commrec_.duty = DUTY_PP | DUTY_PME;
     forcerec_.forceProviders = &providers_;
+    // mdrun passes this name even when the file is never opened.
+    // Dispersion correction aborts on a null name. A cutoff or a
+    // modifier builds the table in memory; only a user table reads
+    // the file.
     init_forcerec(nullptr, logger_, simulationWork_, &forcerec_, ir_, mtop_,
-                  &commrec_, box_, nullptr, nullptr,
+                  &commrec_, box_, "table.xvg", nullptr,
                   gmx::ArrayRef<const std::string>{}, -1);
     disres_ = std::make_unique<t_disresdata>();
     disres_->nres = 0;
@@ -262,7 +267,29 @@ public:
           gmx::VirtualSitesHandler::VirialHandling::None, {}, unused, &nrnb_,
           box_, nullptr);
     }
+    // The correction is a function of the density. It has no per-atom
+    // force. calculate() also returns a scalar virial and a pressure.
+    // mdrun adds that virial to the diagonal of the virial tensor and
+    // stores the pressure in F_PDISPCORR, which sits outside the
+    // potential sum. This session returns energy and forces only, so
+    // the virial is not applied and the pressure is not returned.
+    // Ener leaves both at zero. EnerPres fills both, and they are
+    // still unused here. F_DISPCORR is inside the sum, so the
+    // potential below includes it.
+    if (forcerec_.dispersionCorrection) {
+      const DispersionCorrection::Correction correction =
+          forcerec_.dispersionCorrection->calculate(
+              box_, lambda_[static_cast<int>(
+                        FreeEnergyPerturbationCouplingType::Vdw)]);
+      enerd_->term[F_DISPCORR] = correction.energy;
+      enerd_->term[F_PDISPCORR] = correction.pressure;
+    }
     accumulatePotentialEnergies(enerd_.get(), lambda_, ir_.fepvals.get());
+    terms_.ljSr = enerd_->term[F_LJ];
+    terms_.coulombSr = enerd_->term[F_COUL_SR];
+    terms_.coulombReciprocal = enerd_->term[F_COUL_RECIP];
+    terms_.dispersionCorrection = enerd_->term[F_DISPCORR];
+    terms_.potential = enerd_->term[F_EPOT];
 
     for (std::size_t k = 0; k < massive_.size(); ++k) {
       for (int d = 0; d < DIM; ++d) {
@@ -308,6 +335,7 @@ public:
   std::vector<double> initialX_;
   std::vector<double> initialV_;
   std::vector<md::DistanceConstraint> constraints_;
+  Terms terms() const { return terms_; }
 
 private:
   void requireCutoff() const {
@@ -503,6 +531,7 @@ private:
   std::vector<gmx::RVec> imageShift_;
   bool listValid_ = false;
   int total_ = 0;
+  Terms terms_{};
 };
 
 TprEngine::TprEngine(const std::string &path, int threads)
@@ -524,5 +553,6 @@ void TprEngine::setBox(const std::array<double, 9> &box) { impl_->setBox(box); }
 double TprEngine::evaluate(const double *positions, double *forces) {
   return impl_->evaluate(positions, forces);
 }
+TprEngine::Terms TprEngine::terms() const { return impl_->terms(); }
 
 } // namespace rgpot::nblibpot

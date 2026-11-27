@@ -36,6 +36,8 @@ public:
                               const std::vector<md::WallSpec> &walls) override;
   void state(double *positions, double *velocities, double *forces,
              std::size_t dimension, SessionInfo *info) override;
+  /// Terms of the forces in state(), kJ/mol.
+  [[nodiscard]] TprEngine::Terms terms();
 
 private:
   void ensureForces();
