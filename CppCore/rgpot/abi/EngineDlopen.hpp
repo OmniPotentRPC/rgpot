@@ -11,6 +11,7 @@
 
 #include <cstdlib>
 #include <initializer_list>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -109,6 +110,34 @@ engine_candidates(const std::string &stem, const std::string &explicit_path,
     append_env_dirs(out, "RGPOT_ENGINE_PATH", stem);
   }
   return out;
+}
+
+// Path to pass to dlopen. glibc remembers a mapped object by the name it
+// was opened with and returns that object for the same name, without
+// reading the file again. A symlink that later points at another file
+// would keep the first library. The resolved path is the file the name
+// points at now, and two names that resolve to one file open that file.
+// A name with no directory separator is a soname search, not a file, and
+// a path that does not exist is left unchanged so the open reports it.
+struct RealpathFree {
+  void operator()(char *p) const noexcept { std::free(p); }
+};
+
+inline std::string resolved_library_path(const std::string &path) {
+#if defined(_WIN32) || defined(_WIN64)
+  return path;
+#else
+  if (path.empty() || !has_directory_separator(path)) {
+    return path;
+  }
+  // Own the buffer so a throw while copying the path still frees it.
+  std::unique_ptr<char, RealpathFree> resolved(
+      ::realpath(path.c_str(), nullptr));
+  if (!resolved) {
+    return path;
+  }
+  return std::string(resolved.get());
+#endif
 }
 
 inline bool open_first_candidate(DynLib &lib,

@@ -448,16 +448,26 @@ TEST_CASE("LammpsPot lammpc a re-pointed path gets a new key",
   const ScratchDir dir;
   const std::string moving = dir.link("moving.so", stress);
 
-  const uint64_t before = key_for(config, moving);
+  // held stays alive across the retarget, so the first mapping is still
+  // resident when the path is opened again.
+  const rgpot::LammpsPot held(config.data(), config.size(), moving);
+  const uint64_t before = held.paramsKey();
   REQUIRE(before == key_for(config, stress));
+  REQUIRE(held.caps().stress);
 
   dir.link("moving.so", nostress);
-  const uint64_t after = key_for(config, moving);
+  const rgpot::LammpsPot moved(config.data(), config.size(), moving);
+  const uint64_t after = moved.paramsKey();
   REQUIRE(after != before);
   REQUIRE(after == key_for(config, nostress));
+  REQUIRE_FALSE(moved.caps().stress);
+  REQUIRE(held.paramsKey() == before);
+  REQUIRE(held.caps().stress);
 
   dir.link("moving.so", stress);
-  REQUIRE(key_for(config, moving) == before);
+  const rgpot::LammpsPot restored(config.data(), config.size(), moving);
+  REQUIRE(restored.paramsKey() == before);
+  REQUIRE(restored.caps().stress);
 }
 
 namespace {

@@ -101,7 +101,13 @@ public:
                        std::string *open_error = nullptr) {
     clear();
     prefix_ = prefix;
-    if (!open_first_candidate(lib_, cands, &loaded_path_, open_error, true)) {
+    // Same resolved open as load(). The shared helper does not resolve.
+    std::vector<std::string> opened;
+    opened.reserve(cands.size());
+    for (const auto &cand : cands) {
+      opened.push_back(resolved_library_path(cand));
+    }
+    if (!open_first_candidate(lib_, opened, &loaded_path_, open_error, true)) {
       return false;
     }
     resolve_profile_symbols(nullptr);
@@ -120,9 +126,11 @@ public:
     std::string open_error;
     std::string failures;
     for (const auto &cand : cands) {
+      // Open the file the path names now. See resolved_library_path.
+      const std::string opened = resolved_library_path(cand);
       try {
-        lib_.open(cand);
-        loaded_path_ = cand;
+        lib_.open(opened);
+        loaded_path_ = opened;
         open_error.clear();
         break;
       } catch (const std::exception &ex) {
