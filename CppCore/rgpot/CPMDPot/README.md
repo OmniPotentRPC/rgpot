@@ -60,6 +60,7 @@ above.
 
 #include <capnp/message.h>
 
+#include "rgpot/ForceStructs.hpp"
 #include "rgpot/PotentialFactory.hpp"
 
 int main() {
@@ -79,7 +80,7 @@ int main() {
   rgpot::ForceInput in{3, pos, z, box};
   rgpot::ForceOut out{};
   out.F = forces;
-  pot->forceImpl(in, &out);
+  pot->forceBatch(rgpot::ForceBatch{1, &in, &out});
   std::printf("energy %.6f eV\n", out.energy);
   return 0;
 }
