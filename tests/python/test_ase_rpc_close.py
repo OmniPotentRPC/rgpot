@@ -414,6 +414,60 @@ def test_rpc_spawned_server_stops_on_close(potserv_server) -> None:
                     pipe.close()
 
 
+def test_rpc_teardown_exits_clean_under_dev_mode(potserv_bin: Path) -> None:
+    """Dropping the calculator, and exiting with one still alive, must not abort."""
+    script = textwrap.dedent(
+        """
+        import gc
+        import sys
+
+        from ase import Atoms
+
+        from rgpot.ase import RgpotRpcCalculator
+
+        binary = sys.argv[1]
+
+
+        def evaluate():
+            calc = RgpotRpcCalculator.spawn(binary, potential="LJ")
+            atoms = Atoms(
+                "Ar2",
+                positions=[[0.0, 0.0, 0.0], [3.8, 0.0, 0.0]],
+                cell=[30.0, 30.0, 30.0],
+                pbc=False,
+            )
+            atoms.calc = calc
+            atoms.get_potential_energy()
+            return calc, atoms
+
+
+        calc, atoms = evaluate()
+        atoms.calc = None
+        del calc
+        del atoms
+        gc.collect()
+        gc.collect()
+
+        calc, atoms = evaluate()
+        print("done")
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-X", "dev", "-c", script, str(potserv_bin)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    output = proc.stdout + proc.stderr
+    assert proc.returncode == 0, output
+    assert proc.stdout.strip().endswith("done"), output
+    assert "Exception ignored" not in output
+    assert "terminate" not in output
+    assert "Fatal Python error" not in output
+    assert "No event loop is running" not in output
+
+
 def test_rpc_spawn_handles_noisy_stdio_without_blocking_or_warning(
     tmp_path: Path, potserv_bin: Path
 ) -> None:
