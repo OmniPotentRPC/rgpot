@@ -456,8 +456,11 @@ jobs:
           msystem: MINGW64
           update: true
           install: git
+          # gcc lists libgomp as optional. -fopenmp still asks ld for
+          # -lgomp. The openmp package is LLVM's runtime and does not
+          # provide that library.
           pacboy: >-
-            gcc:p gcc-fortran:p meson:p ninja:p cmake:p pkgconf:p
+            gcc:p gcc-fortran:p libgomp:p meson:p ninja:p cmake:p pkgconf:p
             catch:p eigen3:p rust:p python:p
       - name: Build and test
         run: |
