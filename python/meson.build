@@ -202,6 +202,9 @@ py.install_sources(
 py.install_sources(
     rgpot_schema_files,
     pure: false,
+    # schema_path() loads these basenames from rgpot/ase. Keeping the
+    # CppCore relative path would hide them from a wheel or staged tree.
+    preserve_path: false,
     subdir: 'rgpot' / 'ase',
 )
 py.install_sources(
