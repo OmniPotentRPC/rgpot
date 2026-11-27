@@ -9,6 +9,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#if defined(_MSC_VER)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 static void record_lifecycle(const char *event) {
   const char *path = getenv("RGPOT_EXTERNAL_LIFECYCLE_LOG");
   if (path == NULL || path[0] == '\0') {
@@ -21,6 +31,28 @@ static void record_lifecycle(const char *event) {
   }
 }
 
+#if defined(_MSC_VER)
+/* cl.exe rejects constructor and destructor attributes. The DLL
+   entry records the same load and unload events. */
+static void engine_load(void) {
+  record_lifecycle("engine load");
+}
+
+static void engine_unload(void) {
+  record_lifecycle("engine unload");
+}
+
+BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved) {
+  (void)instance;
+  (void)reserved;
+  if (reason == DLL_PROCESS_ATTACH) {
+    engine_load();
+  } else if (reason == DLL_PROCESS_DETACH) {
+    engine_unload();
+  }
+  return TRUE;
+}
+#else
 __attribute__((constructor)) static void engine_load(void) {
   record_lifecycle("engine load");
 }
@@ -28,6 +60,7 @@ __attribute__((constructor)) static void engine_load(void) {
 __attribute__((destructor)) static void engine_unload(void) {
   record_lifecycle("engine unload");
 }
+#endif
 
 RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
                                     char *errbuf, size_t errlen) {
