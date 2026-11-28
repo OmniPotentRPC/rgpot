@@ -41,6 +41,7 @@
 #   metatomic skala
 #   mdi           with_mdi / RGPOT_WITH_MDI
 #   pymdi         mdi is on and python can import mdi, the MDI driver
+#   dxtb          meson-only feature (meson option of the same name)
 #   rust_core     meson-only features (meson options of the same name)
 #   so_exports    rgpot_so_exports is registered: Linux, the Rust core, the
 #                 full library, and not a static fast-list object
@@ -85,6 +86,7 @@
 @cmake_package CMake does not install its own package and build a consumer of it from inside its own build.
 @water CMake has no option for the water potentials.
 @xtb CMake has no option for xtb.
+@dxtb CMake has no option for dxtb.
 @tblite CMake has no option for tblite.
 @dftd CMake has no option for s-dftd3 or dftd4.
 @xckernel CMake has no option for the XC kernel.
@@ -395,6 +397,7 @@ D4BlypTest | tests dftd4 | unit d4_blyp_test D4BlypTest.cc env=OMP_NUM_THREADS=1
 DftdGoldens | tests dftd3,dftd4 | custom suite=dftd workdir=. | @dftd
 XcKernelGoldens | tests xckernel | custom suite=xckernel workdir=. | @xckernel
 XTBtest | tests xtb | custom timeout=120 suite=xtb workdir=. | @xtb
+DxtbEngineTest | tests dxtb rpc | custom timeout=1800 suite=dxtb workdir=. | @dxtb
 FusedXtbTest | tests core xtb rust_core | custom timeout=120 suite=xtb workdir=. | @rust_core
 # Finishes in under half a minute alone. Its OpenMP teams run long
 # when the suite shares the machine.

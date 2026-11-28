@@ -128,6 +128,7 @@ prek ∥ docs_snapper ∥ docs_lychee ∥ towncrier(PR) ∥ ci-tools
     ↓ (after ci-tools; skipped on schedule except docs_*)
 build_and_test ∥ rust_tests ∥ client_bridge_stress
   ∥ potentials_metatomic ∥ potentials_uma_engine ∥ potentials_tight_binding
+  ∥ potentials_dxtb
   ∥ potentials_tblite_06 ∥ potentials_plugins (plugin-test) ∥ xckernel_goldens
   ∥ build_windows_meson ∥ nodownload_rehearsal ∥ build_fast_nlist_off ∥ thread_limit
   ∥ test_parity ∥ eonviz_pins   (need `prepare` only; no potctl)
@@ -169,6 +170,7 @@ jobs, matrix legs pooled: the last 100 completed orchestrator runs and the last
 
 | Jobs | p95 (min) | Longest test timeout | `timeout-minutes` |
 |------|-----------|----------------------|-------------------|
+| `potentials_dxtb` | new | 1800 s, `DxtbEngineTest` | 35 |
 | `potentials_uma_engine` | 10.9 | 1200 s, `doccheck_examples` | 35 |
 | `build_and_test`, `thread_limit`, `potentials_metatomic` | 7.2, 5.2, 8.4 | 1200 s | 30 |
 | `coverage-cpp`, `coverage-fortran` (`coverage.yml`) | 6.3, 6.1 | 3600 s, `StreamParityTest` at registry 900 s times the coverage multiplier of 4 (`D2PotTest` 2400 s, `NeighbourLayerTest` 1800 s with its extra multiple) | 70 |

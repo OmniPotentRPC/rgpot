@@ -4,6 +4,7 @@
 #include "rgpot/engine_c_abi.h"
 
 #include "rgpot/GradientJet.hpp"
+#include "rgpot/engine/EngineError.hpp"
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine/Sha256.hpp"
 
@@ -107,7 +108,9 @@ struct RgpotEnginePot {
     error.clear();
   }
 
-  /// Holds the locks the backend's reentrancy asks for.
+  /// Holds the locks the backend's reentrancy asks for. Take it only after
+  /// SoftGilRelease: a thread that blocks here holding the GIL would keep the
+  /// owner from taking the GIL back when its call returns.
   struct CallGuard {
     std::unique_lock<std::mutex> handle;
     std::unique_lock<std::mutex> process;
@@ -145,13 +148,24 @@ extern "C" {
 
 int rgpot_engine_abi_version(void) { return RGPOT_ENGINE_ABI_VERSION; }
 
-int rgpot_engine_available(void) { return 1; }
+int rgpot_engine_available(void) {
+#ifdef RGPOT_ENGINE_PROBES_RUNTIME
+  try {
+    return rgpot::engine::available() ? 1 : 0;
+  } catch (...) {
+    return 0;
+  }
+#else
+  return 1;
+#endif
+}
 
 const char *rgpot_engine_name(void) { return rgpot::engine::backend_name(); }
 
 const char *rgpot_engine_version(void) {
-  static const std::string version = std::string(rgpot::engine::backend_name()) +
-                                     "/" RGPOT_ENGINE_PROJECT_VERSION;
+  static const std::string version =
+      std::string(rgpot::engine::backend_name()) +
+      "/" RGPOT_ENGINE_PROJECT_VERSION;
   return version.c_str();
 }
 
@@ -243,13 +257,13 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
                        const double *box,
                        rgpot_engine_coord_transform transform,
                        void *transform_user) {
-  if (!pot || !pot->backend || !positions || !atomicNrs || !forces ||
-      !energy || !box || nAtoms <= 0) {
+  if (!pot || !pot->backend || !positions || !atomicNrs || !forces || !energy ||
+      !box || nAtoms <= 0) {
     return fail(pot, 1, "invalid argument");
   }
   try {
-    RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    RgpotEnginePot::CallGuard guard(*pot);
     // Scratch copies: a host transform must never mutate caller buffers.
     std::vector<double> R(positions, positions + 3 * nAtoms);
     std::vector<double> cell(box, box + 9);
@@ -275,6 +289,8 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
     pot->last_atoms = nAtoms;
     pot->clear_error();
     return 0;
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {
@@ -282,10 +298,9 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
   }
 }
 
-int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
-                     const double *positions, const int *atomicNrs,
-                     const double *direction, double *hv_out,
-                     const double *box) {
+int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms, const double *positions,
+                     const int *atomicNrs, const double *direction,
+                     double *hv_out, const double *box) {
   if (!pot || !pot->backend) {
     return RGPOT_ENGINE_ERR_INVALID;
   }
@@ -299,7 +314,6 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
           std::numeric_limits<size_t>::max() / (3 * sizeof(double))) {
     return fail(pot, RGPOT_ENGINE_ERR_INVALID, "invalid HVP argument");
   }
-  const auto db = reinterpret_cast<std::uintptr_t>(direction);
   const auto hb = reinterpret_cast<std::uintptr_t>(hv_out);
   const std::uintptr_t bytes =
       static_cast<std::uintptr_t>(nAtoms) * 3 * sizeof(double);
@@ -315,13 +329,15 @@ int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
                 "HVP output overlaps an input buffer");
   }
   try {
-    RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
-    const rgpot::ForceInput in{static_cast<size_t>(nAtoms),
-                               positions, atomicNrs, box};
+    RgpotEnginePot::CallGuard guard(*pot);
+    const rgpot::ForceInput in{static_cast<size_t>(nAtoms), positions,
+                               atomicNrs, box};
     pot->backend->pot->hessianVectorImpl(in, direction, hv_out);
     pot->clear_error();
     return RGPOT_ENGINE_OK;
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, RGPOT_ENGINE_ERR_EVAL, e.what());
   } catch (...) {
@@ -377,8 +393,8 @@ int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long nSystems, long nAtoms,
                 "jet output overlaps an input buffer");
   }
   try {
-    RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    RgpotEnginePot::CallGuard guard(*pot);
     // A backend may write part of its buffer and then throw. Hold the jet
     // until the call returns, so jet_out and report stay byte-identical on
     // any failure.
@@ -412,8 +428,8 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
     return fail(pot, 1, "invalid argument (batch)");
   }
   try {
-    RgpotEnginePot::CallGuard guard(*pot);
     SoftGilRelease no_gil;
+    RgpotEnginePot::CallGuard guard(*pot);
     const size_t B = static_cast<size_t>(nSystems);
     const size_t stride = static_cast<size_t>(nAtoms) * 3;
     std::vector<double> R(positions, positions + stride * B);
@@ -449,6 +465,8 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
     pot->last_atoms = nAtoms;
     pot->clear_error();
     return 0;
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {
@@ -537,6 +555,8 @@ int rgpot_engine_set_num_threads(RgpotEnginePot *pot, int intra_op,
     pot->backend->set_num_threads(intra_op, inter_op);
     pot->clear_error();
     return 0;
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {
@@ -557,6 +577,8 @@ int rgpot_engine_set_charge_spin(RgpotEnginePot *pot, int charge, int spin) {
     return 0;
   } catch (const rgpot::engine::Unsupported &e) {
     return fail(pot, 3, e.what());
+  } catch (const rgpot::engine::BackendError &e) {
+    return fail(pot, e.code(), e.what());
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {
@@ -614,6 +636,7 @@ long rgpot_engine_last_components(const RgpotEnginePot *pot,
   if (!pot->backend->components) {
     return 0;
   }
+  SoftGilRelease no_gil;
   std::lock_guard<std::mutex> lock(const_cast<RgpotEnginePot *>(pot)->call_mutex);
   const auto &components = pot->backend->components();
   const long total = static_cast<long>(components.size());
@@ -649,6 +672,7 @@ size_t rgpot_engine_component_name(const RgpotEnginePot *pot, long index,
     copy_message("", buf, len);
     return 0;
   }
+  SoftGilRelease no_gil;
   std::lock_guard<std::mutex> lock(const_cast<RgpotEnginePot *>(pot)->call_mutex);
   const auto &components = pot->backend->components();
   if (static_cast<std::size_t>(index) >= components.size()) {

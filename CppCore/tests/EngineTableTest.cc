@@ -3,7 +3,7 @@
 //
 // The generic engine table of each backend library this build produces:
 // classical (lj, ljcluster, morse, zbl and the Fortran potentials), metatomic,
-// mopac, nwchem, skala and xtb. Each library is opened the way a host opens
+// mopac, nwchem, skala, xtb and dxtb. Each library is opened the way a host opens
 // it: dlopen of the path in RGPOT_ENGINE_<NAME> and dlsym of each symbol.
 // RGPOT_ENGINE_EXPECT lists the engines the build made; one of them without a
 // path fails the test instead of skipping it. The metatomic cases load the
@@ -91,8 +91,11 @@ template <typename Fn> Fn sym(void *h, const char *name) {
 bool open_engine(const std::string &key, Engine &out) {
   const char *path = std::getenv(("RGPOT_ENGINE_" + key).c_str());
   const char *expect = std::getenv("RGPOT_ENGINE_EXPECT");
-  std::string expected = expect ? expect : "";
-  const bool listed = expected.find(key) != std::string::npos;
+  std::stringstream expected(expect ? expect : "");
+  bool listed = false;
+  for (std::string token; std::getline(expected, token, ',');) {
+    listed = listed || token == key;
+  }
   if (path == nullptr) {
     INFO(key << " is listed in RGPOT_ENGINE_EXPECT but has no path");
     REQUIRE(!listed);
@@ -142,10 +145,11 @@ kj::Array<capnp::word> builtin_params(const std::string &name) {
   return capnp::messageToFlatArray(msg);
 }
 
-kj::Array<capnp::word> xtb_params(const std::string &method) {
+kj::Array<capnp::word> xtb_params(const std::string &method,
+                                  const std::string &name = "xtb") {
   capnp::MallocMessageBuilder msg;
   auto p = msg.initRoot<::BuiltinParams>();
-  p.setName("xtb");
+  p.setName(name);
   auto x = p.initConfig().initXtb();
   x.setMethod(method);
   x.setAccuracy(0.1);
@@ -1354,6 +1358,55 @@ TEST_CASE("xtb engine matches the generic table contract", "[engine][xtb]") {
                   box.data(), nullptr, nullptr) == 0);
   REQUIRE(gfn1_energy != energy);
   e.destroy(gfn1);
+}
+
+TEST_CASE("dxtb engine matches the generic table contract", "[engine][dxtb]") {
+  Engine e;
+  if (!open_engine("DXTB", e)) {
+    SKIP("no dxtb engine in this build");
+  }
+  check_identity(e, "dxtb");
+  // The test environment selects a Python with the dxtb runtime.
+  REQUIRE(sym<int (*)()>(e.handle, "rgpot_engine_available")() == 1);
+  std::string error;
+  RgpotEnginePot *pot = create(e, builtin_params("dxtb"), &error);
+  INFO(error);
+  REQUIRE(pot != nullptr);
+  RgpotEngineCaps caps;
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.reentrancy == 1);
+  REQUIRE(caps.periodic == 0);
+  REQUIRE(caps.analytic_hvp == 1);
+
+  // H2, Angstrom.
+  const double pos[6] = {0.0, 0.0, -0.37, 0.0, 0.0, 0.37};
+  const int z[2] = {1, 1};
+  std::vector<double> forces(6, 0.0);
+  double energy = 0.0;
+  REQUIRE(e.force(pot, 2, pos, z, forces.data(), &energy, nullptr, kBox.data(),
+                  nullptr, nullptr) == 0);
+  REQUIRE(energy < 0.0);
+  REQUIRE(forces[2] == Catch::Approx(-forces[5]));
+
+  REQUIRE(e.set_charge_spin(pot, 0, 0) == 3);
+  REQUIRE(error_of(e, pot).find(">= 1") != std::string::npos);
+  double again = 0.0;
+  REQUIRE(e.force(pot, 2, pos, z, forces.data(), &again, nullptr, kBox.data(),
+                  nullptr, nullptr) == 0);
+  REQUIRE(again == energy);
+  REQUIRE(e.set_charge_spin(pot, 1, 2) == 0);
+  e.destroy(pot);
+
+  REQUIRE(create(e, xtb_params("gfn0", "dxtb"), &error) == nullptr);
+  REQUIRE(error.find("gfn1 or gfn2") != std::string::npos);
+  for (const char *method : {"gfn1-xtb", "gfn2-xtb"}) {
+    INFO(method);
+    RgpotEnginePot *named = create(e, xtb_params(method, "dxtb"), &error);
+    INFO(error);
+    REQUIRE(named != nullptr);
+    e.destroy(named);
+  }
 }
 
 TEST_CASE("metatomic engine keeps its own table and adds the generic one",

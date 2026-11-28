@@ -25,6 +25,11 @@ evaluation or the setting failed (the reason is in =rgpot_engine_last_error=),
 and 3 when the backend does not support the operation.
 They return -2 (=RGPOT_ENGINE_ERR_LOCK=, minor 8) when acquiring an engine or
 handle lock fails.
+The dxtb engine returns -1 when its worker process is lost: the worker exited,
+or sent a malformed reply or one larger than its limit.
+That status is fatal; destroy the instance and create a new one.
+A worker that cannot be started fails creation with the reason in the error
+buffer.
 =rgpot_engine_force= and =rgpot_engine_force_batch= also return the nonzero code
 of the host's coordinate transform.
 
@@ -47,6 +52,7 @@ potential from the params message) and =rgpot::engine::backend_name=.
 | =libuma_engine= | =UmaParams= | =uma= | the UMA package at =modelPath= |
 | =libmetatomic_engine= | =MetatomicParams= | =metatomic= | the metatomic model at =modelPath= |
 | =libxtb_engine= | =BuiltinParams= | =xtb= | GFN2-xTB with the =XTBConfig= defaults; =name= is empty or =xtb= |
+| =libdxtb_engine= | =BuiltinParams= | =dxtb= | dxtb 0.4.0 GFN1/GFN2-xTB; =config.xtb= supplies method (=gfn1=, =gfn1-xtb=, =gfn2= or =gfn2-xtb=), charge, unpaired electrons, SCF iterations, accuracy and electronic temperature; =set_charge_spin= returns 3 for a spin below 1 |
 | =libclassical_engine= | =BuiltinParams= | =classical= | =name= =lj=, =ljcluster=, =morse=, =zbl=, =eckart=, =muller_brown=, =modified_muller_brown=, =leps_hh2=, =leps_hcl2=, =leps_fh2=, =double_well=, =coupled_proton_well= and (when built with CBE) =cbe=; with the water kernels =tip4p=, =spce=, =tip4p_pt=; with the Fortran kernels =sw=, =edip=, =lenosky=, =tersoff=, =eamal=, =fehe=, =cuh2=, =waterh=; defaults except that =muller_brown= reads =BuiltinParams.config.mullerBrown=, where an empty list keeps that parameter's default |
 | =libcomposite_engine= | =CompositeParams= | =composite= | a weighted sum: each =CompositeTerm= names its child with a =PotentialSpec=, the =builtin= arm for =lj=, =morse=, =zbl=, =d2=, =d2cpmd=, =d4= (on a build with dftd4) and a nested =composite= (with their config arms) or the =cpmd= arm; a disabled term is not built |
 | =libmopac_engine= | =BuiltinParams= | =mopac= | MOPAC; =name= is empty or =mopac=, =library= is the path of =libmopacc= |
@@ -57,6 +63,14 @@ potential from the params message) and =rgpot::engine::backend_name=.
 | =libcoupled_well_engine= | =RgpotCoupledWellConfigV1= or =RgpotCoupledWellConfigV2= | =coupled-well= | one atom on the analytic two-coordinate coupled well; the message carries the atomic number and the four parameters |
 
 =BuiltinParams.name= is compared in lower case.
+For dxtb, =BuiltinParams.library= may name the Python executable; otherwise
+=RGPOT_DXTB_PYTHON= and then =python3= select it.
+The first of these that is set is the only one tried.
+Creation starts one worker process and imports Python, Torch and dxtb once.
+Force and HVP calls use a typed binary stream to that same process, so each call
+pays pipe serialization and two process crossings but no Python startup.
+The worker rebuilds its calculator only when the element sequence or
+configuration changes.
 The Metatomic and XTB libraries also export their own tables
 (=rgpot_mta_*=, =rgpot_xtb_*=).
 NWChem and CPMD keep the prefix-parameterized profile ABI that =NWChemPot= and
@@ -190,8 +204,11 @@ int rgpot_engine_available(void);
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: nonzero when the engine can create instances; the engines in this
-  repository return 1.
+- Outputs :: nonzero when the engine can create instances.
+  =libdxtb_engine= returns 1 only when the Python that =RGPOT_DXTB_PYTHON=, or
+  =python3= when it is unset, selects imports Torch, dxtb 0.4.0 and tad-libcint
+  0.1.2 or newer, and caches that verdict for each executable; the other engines
+  in this repository return 1.
 - Errors :: none; the call cannot fail.
 
 Optional symbol.
@@ -238,6 +255,8 @@ Minor 7 adds =rgpot_engine_unload_policy=, =RGPOT_ENGINE_UNLOAD_RESIDENT= and
 Minor 11 adds
 =rgpot_engine_taylor_jet=, =RgpotEngineDerivativeReport= and the trailing =RgpotEngineCaps.jet_order=
 field.
+The persistent dxtb engine exports the shared stamp, so it reports the current
+=RGPOT_ENGINE_ABI_MINOR=, and it adds no field to =RgpotEngineCaps=.
 The version does not cover the Cap'n Proto params schema, the tensor runtime the
 engine links, or the model.
 

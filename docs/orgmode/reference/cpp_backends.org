@@ -922,6 +922,123 @@ void getParams(::NWChemParams::Builder out) const;
 - Outputs :: the =NWChemParams= the class built and passed to the engine.
 - Errors :: none.
 
+** dxtb
+
+*** =rgpot::DxtbConfig=
+
+- Inputs :: =method= (=DxtbMethod::GFN1= or =GFN2=; default =GFN2=), =accuracy=
+  (default 1.0), =electronic_temperature= (default 300.0), =max_iterations=
+  (default 250), =charge= (default 0.0), =uhf= (unpaired electrons, default 0)
+  and =python= (an optional Python executable).
+- Units :: =electronic_temperature= is K and =charge= is in elementary charges.
+- Outputs :: the plain configuration used to start one persistent dxtb worker.
+- Errors :: invalid values return =RGPOT_ENGINE_ERR_INVALID= during engine
+  creation; only GFN1 and GFN2 are accepted.
+  The engine reads =BuiltinParams.config.xtb.method= as =gfn1=, =gfn1-xtb=,
+  =gfn2= or =gfn2-xtb=, in any letter case, and refuses every other name.
+  =python= is tried first, then =RGPOT_DXTB_PYTHON=, then =python3=; an
+  executable that cannot start is an error, not a reason to try the next.
+
+*** =rgpot::DxtbPot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+explicit DxtbPot(const DxtbConfig &config);
+#+end_src
+
+- Inputs :: one =DxtbConfig=.
+- Units :: positions and directions are Angstrom; energies are eV; forces and
+  Hessian-vector products are eV/Angstrom.
+- Outputs :: a non-periodic, per-instance potential whose =caps().analyticHvp=
+  is true.
+- Errors :: throws =DxtbError= with the typed engine return code when worker
+  startup, protocol, validation or evaluation fails.
+
+Construction starts Python once.
+Before it serves a request, the worker imports Torch, tad-libcint and dxtb and
+checks that dxtb is 0.4.0 and tad-libcint is 0.1.2 or newer, the lowest release
+dxtb 0.4.0 accepts.
+A Python that fails either check makes construction throw =DxtbError= with code
+-1 and a message naming the executable and what it lacks, instead of reporting
+that the worker exited.
+Calls thereafter use a binary socket stream to that process.
+The worker keeps one calculator and rebuilds it when the atomic-number sequence
+changes.
+=forceImpl= differentiates the float64 dxtb energy once.
+=hessianVectorImpl= uses Torch double backward, not finite differences.
+
+*** =rgpot::DxtbPot::runtimeAvailable=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+static bool runtimeAvailable();
+#+end_src
+
+- Inputs :: none; the Python is the one a worker without =DxtbConfig::python=
+  would run: =RGPOT_DXTB_PYTHON= when it is set and not empty, otherwise
+  =python3=.
+- Units :: none.
+- Outputs :: true when that Python passes the worker's runtime check: it imports
+  Torch, tad-libcint and dxtb, dxtb is 0.4.0 and tad-libcint is 0.1.2 or newer.
+  False when the check fails or the executable cannot be started.
+- Errors :: none.
+
+The check runs once per executable name in a process, with its output discarded,
+and the verdict is cached; a later value of =RGPOT_DXTB_PYTHON= gets its own
+check.
+A check that does not finish within 120 s, or whose exit status cannot be read,
+is not cached and reports true, so creation gives the verdict.
+=rgpot_engine_available= of =libdxtb_engine= returns this.
+It cannot see =BuiltinParams.library=; an instance that names its own Python
+gets the same checks when its worker starts.
+
+*** =rgpot::DxtbPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a hash of the method, charge, unpaired-electron
+  count, accuracy, electronic temperature and iteration limit, together with a
+  kernel version.
+  Instances that differ in these values get different result-cache keys.
+- Errors :: none.
+
+*** =rgpot::DxtbPot::setChargeSpin=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setChargeSpin(int charge, int multiplicity);
+#+end_src
+
+- Inputs :: integral =charge= and positive =multiplicity=; dxtb receives
+  =multiplicity - 1= as its unpaired-electron count.
+- Units :: charge is in elementary charges.
+- Outputs :: reconfigures the persistent worker, drops its calculator and
+  refreshes =paramsKey=.
+- Errors :: =engine::Unsupported= for a multiplicity below one, which the engine
+  reports as return code 3 as the Skala and Metatomic engines do, or =DxtbError=
+  with the worker's typed failure code.
+  Neither leaves the charge and spin it holds changed: a refused or failed call
+  keeps the previous values.
+
+*** =rgpot::DxtbPot::setNumThreads=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setNumThreads(int intra_op, int inter_op);
+#+end_src
+
+- Inputs :: Torch intra-op and inter-op thread counts; a value below one leaves
+  that setting unchanged.
+- Units :: none.
+- Outputs :: applies the counts in the worker process.
+- Errors :: =DxtbError= with the worker's typed failure code, including Torch's
+  refusal to change inter-op threads after parallel work has started.
+
 ** tblite
 
 The library is the extended tight-binding implementation of Bannwarth and

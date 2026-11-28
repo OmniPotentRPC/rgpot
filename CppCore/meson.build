@@ -49,6 +49,7 @@ _rt_atoms = {
     'python': find_program('python3', required: false).found(),
     'water': has_water,
     'tblite': has_tblite,
+    'dxtb': has_dxtb,
     'dftd3': has_dftd3,
     'dftd4': has_dftd4,
     'long_range': has_long_range,
@@ -579,6 +580,10 @@ if not get_option('with_rpc_client_only')
     _linkto += [xtb_dlopen]
     if has_xtb
         rgpotentials += [xtbpot]
+    endif
+
+    if has_dxtb
+        subdir('rgpot/DxtbPot')
     endif
 
     if has_xckernel
@@ -2974,6 +2979,18 @@ if get_option('with_tests')
                 engine_table_depends += [xtb_engine]
                 engine_table_env.set('RGPOT_ENGINE_XTB', xtb_engine.full_path())
             endif
+            if has_dxtb
+                engine_table_expect += ['DXTB']
+                engine_table_depends += [dxtb_engine]
+                engine_table_env.set(
+                    'RGPOT_ENGINE_DXTB',
+                    dxtb_engine.full_path(),
+                )
+                engine_table_env.set(
+                    'RGPOT_DXTB_PYTHON',
+                    dxtb_python.full_path(),
+                )
+            endif
             if has_metatomic
                 engine_table_expect += ['METATOMIC']
                 engine_table_depends += [metatomic_engine]
@@ -3122,6 +3139,33 @@ if get_option('with_tests')
                 env: potential_factory_env,
                 depends: potential_factory_depends,
                 kwargs: _rt_kw['PotentialFactoryTest'],
+            )
+        endif
+        if has_dxtb
+            dxtb_test_env = environment()
+            dxtb_test_env.set(
+                'RGPOT_ENGINE_DXTB',
+                dxtb_engine.full_path(),
+            )
+            dxtb_test_env.set(
+                'RGPOT_DXTB_PYTHON',
+                dxtb_python.full_path(),
+            )
+            dxtb_test_depends = [dxtb_engine]
+            if has_xtb
+                dxtb_test_env.set(
+                    'RGPOT_ENGINE_XTB',
+                    xtb_engine.full_path(),
+                )
+                dxtb_test_depends += [xtb_engine]
+            endif
+            test(
+                'DxtbEngineTest',
+                dxtb_python,
+                args: ['-m', 'pytest', '-s', files('tests/test_dxtb_engine.py')],
+                env: dxtb_test_env,
+                depends: dxtb_test_depends,
+                kwargs: _rt_kw['DxtbEngineTest'],
             )
         endif
         python3_prog = find_program('python3', required: false)
