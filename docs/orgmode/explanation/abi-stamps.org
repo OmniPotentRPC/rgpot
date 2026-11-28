@@ -217,10 +217,9 @@ and neighbour-setter slots are symbols of the C++ library, not of the core C
 ABI, so this minor stays at 10.
 The session operation table carries its byte size and the new slots follow
 =destroy=, so an older table still loads.
-=rgpot_md_session_get_source_indices= is one of those slots, after
-=set_neighbors=.
-An engine that leaves it null, or whose table ends before it, does not
-report a separate source index.
+=rgpot_md_session_get_source_indices= is one of those slots, after =set_neighbors=.
+An engine that leaves it null, or whose table ends before it, does not report a
+separate source index.
 The C++ layout revision stays 2 and =kCxxSoversion= stays 9, because the session
 vtable is not one of the covered potential types.
 
