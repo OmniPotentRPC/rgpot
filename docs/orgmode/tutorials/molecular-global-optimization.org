@@ -23,8 +23,8 @@ With anneal 0.11.1 from PyPI, =tests/ase_vs_anneal.py= gives:
 
 | Minimizer                       | Final energy | Evaluations                       |
 |---------------------------------+--------------+-----------------------------------|
-| ASE L-BFGS (local), 500 steps   |   -10.751101 | 500 force steps                   |
-| scipy ~dual_annealing~ (global) |   -16.505377 | 17003                             |
+| ASE L-BFGS (local), 500 steps   |    -8.432741 | 500 force steps                   |
+| scipy ~dual_annealing~ (global) |   -16.505377 | 16995                             |
 | ~anneal~ portfolio (global)     |   -15.593204 | 10911 evaluations, 2222 gradients |
 
 L-BFGS stops at its step limit in a basin above the global minimum. scipy's
@@ -100,7 +100,7 @@ LBFGS(atoms).run(fmax=1e-3)
 print("local L-BFGS energy:", atoms.get_potential_energy())   # -12.3029
 #+end_src
 
-Without a step limit, L-BFGS converges in 721 steps to a minimum at -12.3029,
+Without a step limit, L-BFGS converges in 29620 steps to a minimum at -12.3029,
 not the global one.
 The LJ7 global minimum, the pentagonal bipyramid at =-16.505384=, sits in a
 different basin; from this start a local minimizer does not cross into it.
