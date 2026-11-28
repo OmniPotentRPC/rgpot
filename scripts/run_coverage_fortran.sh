@@ -19,10 +19,10 @@ if [[ ! -d "$BUILD" ]]; then
   exit 1
 fi
 
-# Same lcov 2 ignore-errors classes as scripts/run_coverage_cpp.sh; lcov 1.15
-# does not accept those names. Branch coverage rc names also differ by major
-# version, matching the C++ capture script so Codecov keeps BRDA on Ubuntu's
-# lcov 1.15 (inconsistent/mismatch/negative only on 2.x):
+# lcov 2 accepts ignore-errors classes that keep this Fortran capture resilient
+# to toolchain/header noise and OpenMP arc-counter underflow reports. lcov 1.15
+# does not accept those names, so only the branch-coverage rc knob is set
+# there; the rc name also differs by major version to keep BRDA for Codecov:
 #   inconsistent: template instances in toolchain headers
 #   mismatch: mismatched exception tag, bits/vector.tcc
 #   negative: non-atomic OpenMP arc counters
