@@ -213,12 +213,79 @@ void run(const char *engine) {
           "nblib Langevin seed is not deterministic");
 }
 
+// This atom has no interaction, so the plane multiplier is 0.
+// The buffer starts at -1, and every slot must hold that zero.
+void check_recorded_multiplier(const char *engine) {
+  require(setenv("RGPOT_NBLIB_ENGINE", engine, 1) == 0,
+          "could not set nblib engine path");
+  const std::string topology =
+      "nblib 1\ncutoff 0.4\ncoulomb none\natomtype X 1 0 0\n"
+      "molecule one 1\natom A X 0\nend\n";
+  char error[1024] = {};
+  rgpot_md_session *session = rgpot_md_session_create(
+      "nblib", nullptr, topology.data(), topology.size(), nullptr, error,
+      sizeof(error));
+  if (session == nullptr) {
+    throw std::runtime_error(error);
+  }
+  struct SessionGuard {
+    rgpot_md_session *session;
+    ~SessionGuard() { rgpot_md_session_destroy(session); }
+  } guard{session};
+
+  const std::array<double, 9> box{20.0, 0.0, 0.0, 0.0, 20.0,
+                                  0.0, 0.0, 0.0, 20.0};
+  const std::array<double, 3> positions{1.0, 2.0, 3.0};
+  const std::array<double, 3> velocities{};
+  require(rgpot_md_session_set_periodic_box(session, box.data(), error,
+                                             sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_set_positions(session, positions.data(),
+                                          positions.size(), error,
+                                          sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_set_velocities(session, velocities.data(),
+                                           velocities.size(), error,
+                                           sizeof(error)) == 0,
+          error);
+  require(rgpot_md_session_initialize(session, error, sizeof(error)) == 0,
+          error);
+
+  const double plane_point[3] = {};
+  const double plane_normal[3] = {1.0, 0.0, 0.0};
+  double recorded[2];
+  recorded[0] = -1.0;
+  recorded[1] = -1.0;
+  rgpot_md_langevin_request request{};
+  request.struct_size = sizeof(request);
+  request.kT = 0.025;
+  request.friction = 1.0;
+  request.time_step = 0.001;
+  request.steps = 2;
+  request.seed = 1;
+  request.n3 = positions.size();
+  request.plane_point = plane_point;
+  request.plane_normal = plane_normal;
+  request.wall_mode = RGPOT_MD_WALL_REFLECT;
+  rgpot_md_langevin_result result{};
+  result.struct_size = sizeof(result);
+  result.constraint_force = recorded;
+  result.constraint_force_len = 2;
+  require(rgpot_md_session_run_langevin(session, &request, &result, error,
+                                        sizeof(error)) == 0,
+          error);
+  for (const double value : recorded) {
+    require_near(value, 0.0, "nblib recording constraint force");
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   try {
     require(argc == 2, "usage: test_nblib_session <engine>");
     run(argv[1]);
+    check_recorded_multiplier(argv[1]);
     return 0;
   } catch (const std::exception &exception) {
     std::cerr << exception.what() << '\n';
