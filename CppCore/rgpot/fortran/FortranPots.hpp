@@ -68,12 +68,17 @@ RGPOT_FORTRAN_POT_CLASS(WaterHPot, WaterH);
 #undef RGPOT_FORTRAN_POT_CLASS
 
 /// Environment-dependent interatomic potential for silicon (PotType::EDIP).
-/// Periodic calls write the Cauchy stress sigma = (1/V) dE/dε in
-/// eV/Angstrom^3, the convention of stress.hpp.
+/// A periodic forceImpl writes the Cauchy stress sigma = (1/V) dE/dε in
+/// eV/Angstrom^3, the convention of stress.hpp. forceBatch skips the virial.
 class EDIPPot : public Potential<EDIPPot> {
 public:
   EDIPPot() : Potential(PotType::EDIP) {}
+  /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
+  /// eV/Angstrom^3, the convention of stress.hpp.
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
+  /// Forces and energy only. eOn's engine calls arrive here and discard
+  /// the stress, so the kernel skips the virial and has_stress stays 0.
+  void forceBatchImpl(const ForceBatch &batch) const override;
   [[nodiscard]] PotCaps caps() const noexcept override {
     return {.reentrancy = Reentrancy::PerInstance,
             .perImageInstances = true,

@@ -347,6 +347,7 @@ diamond crystal, defects and disordered phases.
 Use it for silicon defects and disordered phases, the cases its parameterization
 paper targets.
 The class writes the Cauchy stress.
+=forceBatch= skips the virial.
 
 - C++: =rgpot::fortranpots::EDIPPot= in =CppCore/rgpot/fortran/FortranPots.hpp=,
   built with =-Dwith_fortran_pots=enabled=.
@@ -391,6 +392,9 @@ The energy is =E = sum_i E_i= with
   =FortranPotsTest= checks all nine entries against a fourth-order central
   difference of the energy in the strain, step 2e-4, to 5e-10 eV/Angstrom^3.
   The cells are a compressed cubic diamond and a sheared, rattled diamond.
+  =forceBatch= skips the virial.
+  =FortranPotsTest= checks that its energies and forces match those of
+  =forceImpl= bit for bit, and that =has_stress= stays 0 with a zero tensor.
 
 *** Parameters
 

@@ -981,6 +981,51 @@ TEST_CASE("EDIP stress is zero for an isolated atom", "[fortran][edip][stress]")
   }
 }
 
+TEST_CASE("EDIP batch returns the forceImpl energies and forces without stress",
+          "[fortran][edip][stress]") {
+  rgpot::fortranpots::EDIPPot pot;
+  const double l = 3 * 5.431;
+  const std::array<double, 9> compressed{0.98 * l, 0, 0, 0, 0.98 * l,
+                                         0,        0, 0, 0.98 * l};
+  const std::array<double, 9> sheared{l, 0,        0,         0.10 * l, l,
+                                      0, 0.05 * l, -0.07 * l, l};
+  const std::array<std::array<double, 9>, 2> boxes{compressed, sheared};
+  const std::array<std::vector<double>, 2> R{siBlock(compressed, 0.0),
+                                             siBlock(sheared, 0.1)};
+  const std::vector<int> types(R[0].size() / 3, 14);
+
+  std::array<std::vector<double>, 2> refF, gotF;
+  std::vector<rgpot::ForceInput> in;
+  std::array<rgpot::ForceOut, 2> ref{}, got{};
+  for (std::size_t s = 0; s < 2; ++s) {
+    refF[s].assign(R[s].size(), 0.0);
+    gotF[s].assign(R[s].size(), 0.0);
+    in.push_back({.nAtoms = R[s].size() / 3,
+                  .pos = R[s].data(),
+                  .atmnrs = types.data(),
+                  .box = boxes[s].data()});
+    ref[s].F = refF[s].data();
+    got[s].F = gotF[s].data();
+    std::fill(got[s].stress, got[s].stress + 9, 1.0);
+    got[s].has_stress = 1;
+    pot.forceImpl(in[s], &ref[s]);
+    REQUIRE(ref[s].has_stress == 1);
+  }
+
+  pot.forceBatch({.nSystems = 2, .in = in.data(), .out = got.data()});
+  for (std::size_t s = 0; s < 2; ++s) {
+    CAPTURE(s);
+    REQUIRE(std::memcmp(&got[s].energy, &ref[s].energy, sizeof(double)) == 0);
+    REQUIRE(std::memcmp(gotF[s].data(), refF[s].data(),
+                        gotF[s].size() * sizeof(double)) == 0);
+    REQUIRE(got[s].variance == 0.0);
+    REQUIRE(got[s].has_stress == 0);
+    for (const double v : got[s].stress) {
+      REQUIRE(v == 0.0);
+    }
+  }
+}
+
 TEST_CASE("Lenosky silicon matches the eOn reference", "[fortran][lenosky]") {
   rgpot::fortranpots::LenoskyPot pot;
   const std::vector<int> types(8, 14);
