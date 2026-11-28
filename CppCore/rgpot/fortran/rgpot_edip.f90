@@ -30,13 +30,22 @@
 !!   * three-body, `i` as the centre of `(j, i, k)` and as an end of every
 !!     triplet centred on a neighbour `m`, the two roles of `rgpot_sw`.
 !!
-!! Evaluation is therefore two `do concurrent` passes: one over the
-!! per-atom scalars (`Z`, energy, `dE/dZ`), one over forces. Neither writes
-!! outside the atom it is indexed by.
+!! Evaluation is three `do concurrent` passes when the caller asks for the
+!! strain derivative, and two otherwise: one over the per-atom scalars
+!! (`Z`, energy, `dE/dZ`), one over forces, and, when asked, one over the
+!! virial. None of them writes outside the atom it is indexed by.
 !!
 !! A triplet whose two ends are the same atom reached through different
 !! periodic images is dropped, in the centre role and the end role alike,
 !! so the force stays the exact gradient of the energy reported here.
+!!
+!! The strain derivative follows that energy. Atom `i` adds d ⊗ dE/dd
+!! for the folded bond vectors of the pair term and the coordination
+!! term it owns, and for both bonds of each triplet it centres. The
+!! end-atom role contributes force only: the triplet energy belongs to
+!! the neighbour that centres it. The sum is the many-body virial of
+!! Thompson, Plimpton and Mattson, J. Chem. Phys. 131, 154107 (2009),
+!! doi:10.1063/1.3245303.
 module rgpot_edip
    use rgpot_kinds, only: wp, ip
    use rgpot_neighbors, only: neighbor_table_t
@@ -403,6 +412,93 @@ contains
       end do
    end subroutine atom_force
 
+   !> Add d ⊗ g to the six strain entries `w`, upper triangle d_a g_b.
+   pure subroutine add_bond_strain(w, d, g)
+      real(wp), intent(inout) :: w(6)
+      real(wp), intent(in) :: d(3), g(3)
+
+      w(1) = w(1) + d(1)*g(1)
+      w(2) = w(2) + d(2)*g(2)
+      w(3) = w(3) + d(3)*g(3)
+      w(4) = w(4) + d(2)*g(3)
+      w(5) = w(5) + d(1)*g(3)
+      w(6) = w(6) + d(1)*g(2)
+   end subroutine add_bond_strain
+
+   !> Strain derivative of the energy atom `i` owns.
+   !!
+   !! That energy is the pair term at the atom's own coordination, the
+   !! part of every coordination derivative carried by `dedz(i)`, and the
+   !! triplets centred on `i`. `w_i` is dE/dε in eV, order xx, yy, zz,
+   !! yz, xz, xy.
+   pure subroutine atom_strain(par, cst, table, i, maxnbr, z, dedz, w_i)
+      type(edip_params_t), intent(in) :: par
+      type(edip_const_t), intent(in) :: cst
+      type(neighbor_table_t), intent(in) :: table
+      integer(ip), intent(in) :: i, maxnbr
+      real(wp), intent(in) :: z(:), dedz(:)
+      real(wp), intent(out) :: w_i(6)
+
+      real(wp) :: gl(maxnbr), dg(maxnbr), u(3, maxnbr), rinv(maxnbr)
+      real(wp) :: bond(3, maxnbr)
+      integer(ip) :: who(maxnbr)
+      integer(ip) :: s, nleg, nj, nk
+      real(wp) :: r, d(3), uij(3), grad(3), w(6)
+      real(wp) :: t0, t1, t2, t3, fz, dfz, pz_i, dp_i, radial
+      real(wp) :: winv, dwinv, tau, dtau, lcos, h, dhdx
+
+      w = 0.0_wp
+      call bond_order(par, z(i), pz_i, dp_i)
+
+      ! Pair term at fixed Z, then the coordination channel of dedz(i).
+      ! The neighbour's pair and its dedz are owned by that neighbour.
+      do s = table%row(i), table%row(i + 1_ip) - 1_ip
+         r = table%dist(s)
+         d = table%vec(:, s)
+         uij = d/r
+
+         if (r < par%a) then
+            call pair_radial(par, r, t0, t1, t2, t3)
+            radial = -t0*(t1*t2 + (t1 - pz_i)*t3)
+            call add_bond_strain(w, d, radial*uij)
+         end if
+
+         call coord_term(par, cst, r, fz, dfz)
+         call add_bond_strain(w, d, (dedz(i)*dfz)*uij)
+      end do
+
+      ! Three-body, i at the centre. Same legs as atom_force, and the
+      ! stored bond vector rather than a rebuilt one.
+      nleg = 0_ip
+      do s = table%row(i), table%row(i + 1_ip) - 1_ip
+         r = table%dist(s)
+         if (r >= cst%bg) cycle
+         nleg = nleg + 1_ip
+         call leg_radial(par, cst, r, gl(nleg), dg(nleg))
+         bond(:, nleg) = table%vec(:, s)
+         u(:, nleg) = bond(:, nleg)/r
+         rinv(nleg) = 1.0_wp/r
+         who(nleg) = table%idx(s)
+      end do
+      call angular_shape(par, cst, z(i), winv, dwinv, tau, dtau)
+
+      do nj = 1_ip, nleg - 1_ip
+         do nk = nj + 1_ip, nleg
+            if (who(nj) == who(nk)) cycle
+            lcos = dot_product(u(:, nj), u(:, nk))
+            call angular_term(par, cst, winv, tau, lcos, h, dhdx)
+            grad = leg_gradient(gl(nj), dg(nj), u(:, nj), rinv(nj), &
+                                gl(nk), u(:, nk), lcos, h, dhdx*winv)
+            call add_bond_strain(w, bond(:, nj), grad)
+            grad = leg_gradient(gl(nk), dg(nk), u(:, nk), rinv(nk), &
+                                gl(nj), u(:, nj), lcos, h, dhdx*winv)
+            call add_bond_strain(w, bond(:, nk), grad)
+         end do
+      end do
+
+      w_i = w
+   end subroutine atom_strain
+
    !> Perpendicular width of the cell along each lattice vector.
    pure function cell_widths(cell) result(w)
       real(wp), intent(in) :: cell(3, 3)
@@ -434,8 +530,12 @@ contains
    end function cross
 
    !> Energy and forces for `positions` (3 x natoms) in `cell`.
+   !!
+   !! `strain`, when present, receives dE/dε in eV for the right strain
+   !! that sends each position and cell vector r to r (I + ε). The order
+   !! is xx, yy, zz, yz, xz, xy. A missing `strain` skips the virial.
    subroutine edip_energy_forces(positions, cell, par, table, energy, forces, &
-                                 status, errmsg)
+                                 status, errmsg, strain)
       real(wp), intent(in), contiguous :: positions(:, :)
       real(wp), intent(in) :: cell(3, 3)
       type(edip_params_t), intent(in) :: par
@@ -444,15 +544,17 @@ contains
       real(wp), intent(out), contiguous :: forces(:, :)
       integer, intent(out) :: status
       character(len=:), allocatable, intent(out) :: errmsg
+      real(wp), intent(out), optional :: strain(6)
 
       type(edip_const_t) :: cst
       integer(ip) :: natoms, i, maxnbr
       real(wp) :: rcut, widths(3)
-      real(wp), allocatable :: e_atom(:), z(:), dedz(:)
+      real(wp), allocatable :: e_atom(:), z(:), dedz(:), w_atom(:, :)
 
       natoms = int(size(positions, 2), ip)
       energy = 0.0_wp
       forces = 0.0_wp
+      if (present(strain)) strain = 0.0_wp
       status = 0
       errmsg = ""
       rcut = par%cutoff()
@@ -491,6 +593,16 @@ contains
       do concurrent(i=1:natoms)
          call atom_force(par, cst, table, i, maxnbr, z, dedz, forces(:, i))
       end do
+
+      ! Pass three: virial of the energy each atom owns. Separate from the
+      ! force loop so that loop's arithmetic stays the force-only form.
+      if (present(strain)) then
+         allocate (w_atom(6, natoms), source=0.0_wp)
+         do concurrent(i=1:natoms)
+            call atom_strain(par, cst, table, i, maxnbr, z, dedz, w_atom(:, i))
+         end do
+         strain = sum(w_atom, dim=2)
+      end if
 
       energy = sum(e_atom)
    end subroutine edip_energy_forces

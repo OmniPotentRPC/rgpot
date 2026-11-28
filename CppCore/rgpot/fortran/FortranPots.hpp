@@ -60,13 +60,29 @@ private:
     FortranWorkspace m_ws;                                                     \
   }
 
-RGPOT_FORTRAN_POT_CLASS(EDIPPot, EDIP);
 RGPOT_FORTRAN_POT_CLASS(LenoskyPot, LenoskySi);
 RGPOT_FORTRAN_POT_CLASS(EAMAlPot, EAMAl);
 RGPOT_FORTRAN_POT_CLASS(FeHePot, FeHe);
 RGPOT_FORTRAN_POT_CLASS(WaterHPot, WaterH);
 
 #undef RGPOT_FORTRAN_POT_CLASS
+
+/// Environment-dependent interatomic potential for silicon (PotType::EDIP).
+/// Periodic calls write the Cauchy stress sigma = (1/V) dE/dε in
+/// eV/Angstrom^3, the convention of stress.hpp.
+class EDIPPot : public Potential<EDIPPot> {
+public:
+  EDIPPot() : Potential(PotType::EDIP) {}
+  void forceImpl(const ForceInput &in, ForceOut *out) const override;
+  [[nodiscard]] PotCaps caps() const noexcept override {
+    return {.reentrancy = Reentrancy::PerInstance,
+            .perImageInstances = true,
+            .stress = true};
+  }
+
+private:
+  FortranWorkspace m_ws;
+};
 
 /// Copper-hydrogen EAM (PotType::CuH2), with the analytic Hessian-vector
 /// product of rgpot_cuh2.f90.

@@ -756,7 +756,7 @@ rgpot.EDIPPot()
 - Units :: energy eV, lengths Angstrom.
 - Outputs :: the Fortran environment-dependent interatomic potential for
   silicon.
-  No stress.
+  =evaluate= returns the stress.
 - Errors :: =RuntimeError= =EDIP potential failed (status K): ...=, for example
   when the cell is thinner than the interaction cutoff or the box has zero
   volume.

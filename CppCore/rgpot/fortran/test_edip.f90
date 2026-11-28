@@ -23,6 +23,7 @@ program test_edip
    real(wp), parameter :: lattice = 5.431_wp
    real(wp), parameter :: rattle = 0.08_wp
    real(wp), parameter :: tol_force = 1.0e-6_wp
+   real(wp), parameter :: strain_step = 2.0e-4_wp
    real(wp), parameter :: tol_sum = 1.0e-9_wp
    real(wp), parameter :: tol_shift = 1.0e-9_wp
    real(wp), parameter :: delta = 1.0e-5_wp
@@ -80,6 +81,42 @@ program test_edip
    end do
    call require(worst < tol_force, "forces disagree with finite differences", &
                 failed)
+
+   ! The virial is optional. Requesting it leaves the energy and the
+   ! forces bit for bit what the force-only call returned, and the
+   ! stress agrees with a fourth-order difference of the energy.
+   block
+      real(wp), allocatable :: forces_only(:, :)
+      real(wp) :: energy_only, strain(6), vol, worst_stress
+      integer :: v
+
+      allocate (forces_only(3, natoms))
+      call edip_energy_forces(positions, cell, par, table, energy_only, &
+                              forces_only, status, errmsg)
+      call require(status == 0, "force-only evaluation failed", failed)
+      call edip_energy_forces(positions, cell, par, table, energy, forces, &
+                              status, errmsg, strain)
+      call require(status == 0, "strain evaluation failed", failed)
+      call require(energy == energy_only, &
+                   "strain call changed the energy", failed)
+      call require(all(forces == forces_only), &
+                   "strain call changed a force", failed)
+
+      vol = abs(cell(1, 1)*(cell(2, 2)*cell(3, 3) - cell(3, 2)*cell(2, 3)) &
+                - cell(2, 1)*(cell(1, 2)*cell(3, 3) - cell(3, 2)*cell(1, 3)) &
+                + cell(3, 1)*(cell(1, 2)*cell(2, 3) - cell(2, 2)*cell(1, 3)))
+      worst_stress = 0.0_wp
+      do v = 1, 6
+         worst_stress = max(worst_stress, &
+                            abs(strain_component(par, table, positions, cell, &
+                                                 v, vol) - strain(v)/vol))
+      end do
+      call require(worst_stress < 5.0e-10_wp, &
+                   "analytic stress disagrees with a strain difference", failed)
+      if (.not. failed) then
+         print *, "test_edip: worst stress deviation ", worst_stress
+      end if
+   end block
 
    call table%release()
    deallocate (positions, forces, moved)
@@ -146,6 +183,64 @@ contains
          end do
       end do
    end subroutine displace
+
+   !> (1/V) dE/dε for one right-strain component, fourth-order difference.
+   !! `voigt` is 1=xx, 2=yy, 3=zz, 4=yz, 5=xz, 6=xy. A failed evaluation
+   !! returns a value far outside the stress tolerance.
+   function strain_component(par, table, pos, box, voigt, vol) result(sigma)
+      type(edip_params_t), intent(in) :: par
+      type(neighbor_table_t), intent(inout) :: table
+      real(wp), intent(in) :: pos(:, :), box(3, 3), vol
+      integer, intent(in) :: voigt
+      real(wp) :: sigma
+
+      integer, parameter :: row_of(6) = [1, 2, 3, 2, 1, 1]
+      integer, parameter :: col_of(6) = [1, 2, 3, 3, 3, 2]
+      real(wp), allocatable :: shifted(:, :), scratch(:, :)
+      real(wp) :: cell(3, 3), ep1, em1, ep2, em2
+      integer :: status, row, col
+      character(len=:), allocatable :: errmsg
+
+      allocate (shifted(3, size(pos, 2)), scratch(3, size(pos, 2)))
+      row = row_of(voigt)
+      col = col_of(voigt)
+      sigma = 1.0e6_wp
+
+      call strained(pos, box, row, col, strain_step, shifted, cell)
+      call edip_energy_forces(shifted, cell, par, table, ep1, scratch, &
+                              status, errmsg)
+      if (status /= 0) return
+      call strained(pos, box, row, col, -strain_step, shifted, cell)
+      call edip_energy_forces(shifted, cell, par, table, em1, scratch, &
+                              status, errmsg)
+      if (status /= 0) return
+      call strained(pos, box, row, col, 2.0_wp*strain_step, shifted, cell)
+      call edip_energy_forces(shifted, cell, par, table, ep2, scratch, &
+                              status, errmsg)
+      if (status /= 0) return
+      call strained(pos, box, row, col, -2.0_wp*strain_step, shifted, cell)
+      call edip_energy_forces(shifted, cell, par, table, em2, scratch, &
+                              status, errmsg)
+      if (status /= 0) return
+
+      sigma = (8.0_wp*(ep1 - em1) - (ep2 - em2))/(12.0_wp*strain_step*vol)
+   end function strain_component
+
+   !> Apply ε with one entry `eps` at (row, col): r -> r (I + ε).
+   subroutine strained(pos, box, row, col, eps, pos_out, box_out)
+      real(wp), intent(in) :: pos(:, :), box(3, 3), eps
+      integer, intent(in) :: row, col
+      real(wp), intent(out) :: pos_out(:, :), box_out(3, 3)
+
+      integer :: atom
+
+      pos_out = pos
+      box_out = box
+      do atom = 1, size(pos, 2)
+         pos_out(col, atom) = pos(col, atom) + eps*pos(row, atom)
+      end do
+      box_out(col, :) = box(col, :) + eps*box(row, :)
+   end subroutine strained
 
    subroutine require(condition, what, failed_flag)
       logical, intent(in) :: condition

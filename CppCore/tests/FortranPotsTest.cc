@@ -25,6 +25,8 @@
 #include <atomic>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <random>
 #include <vector>
 
@@ -849,6 +851,134 @@ TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {
   REQUIRE_THAT(energy, WithinRel(-18.838135, 1e-4));
   REQUIRE_THAT(maxForceNorm(forces), WithinRel(0.730971, 1e-3));
   requireNoNetForce(forces);
+}
+
+namespace {
+
+/// Diamond supercell `nx` by `ny` by `nz`, each atom moved by `amp`.
+std::vector<double> edipDiamond(int nx, int ny, int nz, double a, double amp) {
+  static const double basis[8][3] = {
+      {0.00, 0.00, 0.00}, {0.00, 0.50, 0.50}, {0.50, 0.00, 0.50},
+      {0.50, 0.50, 0.00}, {0.25, 0.25, 0.25}, {0.25, 0.75, 0.75},
+      {0.75, 0.25, 0.75}, {0.75, 0.75, 0.25}};
+  std::vector<double> pos;
+  for (int ix = 0; ix < nx; ++ix) {
+    for (int iy = 0; iy < ny; ++iy) {
+      for (int iz = 0; iz < nz; ++iz) {
+        for (const auto &b : basis) {
+          const auto k = static_cast<double>(pos.size() / 3);
+          pos.push_back((ix + b[0]) * a + amp * std::sin(1.3 * k));
+          pos.push_back((iy + b[1]) * a + amp * std::sin(1.7 * k + 0.4));
+          pos.push_back((iz + b[2]) * a + amp * std::sin(2.1 * k + 0.8));
+        }
+      }
+    }
+  }
+  return pos;
+}
+
+double bitsToDouble(std::uint64_t bits) {
+  double value = 0.0;
+  static_assert(sizeof(value) == sizeof(bits));
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+/// (1/V) dE/d(eps_row,col) by the fourth-order central difference, step
+/// 2e-4. The strain maps every position and cell row r to r (I + eps).
+double edipStrainDifference(const std::vector<double> &R,
+                            const std::array<double, 9> &box, int row,
+                            int col) {
+  constexpr double h = 2e-4;
+  const rgpot::fortranpots::EDIPPot pot;
+  auto energyAt = [&](double eps) {
+    std::vector<double> p = R;
+    std::array<double, 9> cell = box;
+    for (std::size_t a = 0; a < R.size() / 3; ++a) {
+      p[3 * a + col] += eps * R[3 * a + row];
+    }
+    for (int k = 0; k < 3; ++k) {
+      cell[3 * k + col] += eps * box[3 * k + row];
+    }
+    return swStress(pot, p, cell).energy;
+  };
+  return (8.0 * (energyAt(h) - energyAt(-h)) -
+          (energyAt(2 * h) - energyAt(-2 * h))) /
+         (12.0 * h * rgpot::cellVolume(box.data()));
+}
+
+} // namespace
+
+TEST_CASE("EDIP stress matches a strain difference", "[fortran][edip][stress]") {
+  rgpot::fortranpots::EDIPPot pot;
+  REQUIRE(pot.caps().stress);
+  // 216 atoms, the cell the Stillinger-Weber stress test uses. Both edges
+  // stay well above the EDIP cutoff.
+  const double l = 3 * 5.431;
+  const std::array<double, 9> compressed{0.98 * l, 0, 0, 0, 0.98 * l,
+                                         0,        0, 0, 0.98 * l};
+  const std::array<double, 9> sheared{l, 0,        0,         0.10 * l, l,
+                                      0, 0.05 * l, -0.07 * l, l};
+  for (const auto &[box, wobble] :
+       {std::pair{compressed, 0.0}, std::pair{sheared, 0.1}}) {
+    const std::vector<double> R = siBlock(box, wobble);
+    const SwStress got = swStress(pot, R, box);
+    REQUIRE(got.stress[1] == got.stress[3]);
+    REQUIRE(got.stress[2] == got.stress[6]);
+    REQUIRE(got.stress[5] == got.stress[7]);
+    for (int k = 0; k < 9; ++k) {
+      CAPTURE(wobble, k, got.stress[k]);
+      REQUIRE_THAT(got.stress[k],
+                   WithinAbs(edipStrainDifference(R, box, k / 3, k % 3), 5e-10));
+    }
+    if (wobble == 0.0) {
+      for (int k : {0, 4, 8}) {
+        REQUIRE(got.stress[k] < -1e-2);
+      }
+    } else {
+      for (int k : {1, 2, 5}) {
+        REQUIRE(std::abs(got.stress[k]) > 1e-3);
+      }
+    }
+  }
+}
+
+TEST_CASE("EDIP energies and forces stay at the recorded bits",
+          "[fortran][edip][stress]") {
+  // 4 x 4 x 2 conventional cells, 256 atoms, rattled by 0.05 Angstrom.
+  // Recorded from the force path before the virial was added.
+  const double a = 5.431;
+  const double box[9] = {4 * a, 0, 0, 0, 4 * a, 0, 0, 0, 2 * a};
+  const std::vector<double> pos = edipDiamond(4, 4, 2, a, 0.05);
+  std::vector<double> forces(pos.size(), 0.0);
+  const std::vector<int> types(pos.size() / 3, 14);
+  rgpot::ForceOut out{.F = forces.data(),
+                      .energy = 0.0,
+                      .variance = 0.0,
+                      .stress = {},
+                      .has_stress = 0};
+  rgpot::fortranpots::EDIPPot{}.forceImpl(
+      {pos.size() / 3, pos.data(), types.data(), box}, &out);
+  REQUIRE(out.has_stress == 1);
+  REQUIRE(out.energy == bitsToDouble(0xc0927763b2663a0aULL));
+  REQUIRE(forces[0] == bitsToDouble(0xbfbb1698545b0c6fULL));
+}
+
+TEST_CASE("EDIP stress is zero for an isolated atom", "[fortran][edip][stress]") {
+  const double position[3] = {1.0, 2.0, 3.0};
+  const int type = 14;
+  const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
+  double forces[3] = {};
+  rgpot::ForceOut out{forces, 1.0, 0.0, {1, 2, 3, 4, 5, 6, 7, 8, 9}, 0};
+  rgpot::fortranpots::EDIPPot{}.forceImpl({1, position, &type, box}, &out);
+  REQUIRE(out.has_stress == 1);
+  REQUIRE(out.energy == 0.0);
+  for (double component : out.stress) {
+    REQUIRE(component == 0.0);
+  }
+  for (double component : forces) {
+    REQUIRE(component == 0.0);
+  }
 }
 
 TEST_CASE("Lenosky silicon matches the eOn reference", "[fortran][lenosky]") {
