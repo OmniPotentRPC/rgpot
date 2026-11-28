@@ -87,9 +87,21 @@ typedef struct {
 #ifdef __cplusplus
 #define RGPOT_COUPLED_WELL_STATIC_ASSERT(condition, message)                   \
   static_assert(condition, message)
-#else
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 #define RGPOT_COUPLED_WELL_STATIC_ASSERT(condition, message)                   \
   _Static_assert(condition, message)
+#else
+/* MSVC, compiling this header as C, does not treat _Static_assert as a
+ * keyword and reports a syntax error on each check. A char array of
+ * bound 1 is a valid type when the condition is true. A bound of -1 is
+ * a constraint violation when it is false, so the same checks still
+ * fail the translation. */
+#define RGPOT_COUPLED_WELL_SA_JOIN(left, right) left##right
+#define RGPOT_COUPLED_WELL_SA_JOIN2(left, right)                               \
+  RGPOT_COUPLED_WELL_SA_JOIN(left, right)
+#define RGPOT_COUPLED_WELL_STATIC_ASSERT(condition, message)                   \
+  typedef char RGPOT_COUPLED_WELL_SA_JOIN2(rgpot_coupled_well_static_assert_,  \
+                                           __LINE__)[((condition) ? 1 : -1)]
 #endif
 
 RGPOT_COUPLED_WELL_STATIC_ASSERT(sizeof(RgpotCoupledWellConfigV1) == 48,
@@ -149,6 +161,8 @@ RGPOT_COUPLED_WELL_STATIC_ASSERT(
     "RgpotCoupledWellConfigV2.coupling is at offset 48");
 
 #undef RGPOT_COUPLED_WELL_STATIC_ASSERT
+#undef RGPOT_COUPLED_WELL_SA_JOIN
+#undef RGPOT_COUPLED_WELL_SA_JOIN2
 
 #ifdef __cplusplus
 }
