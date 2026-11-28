@@ -38323,6 +38323,45 @@ must not diverge as a second source of truth.
 Edit `docs/newsfragments/`, never hand-write `## [X.Y.Z]` sections above the
 towncrier marker.
 
+## Unreleased
+
+A MinGW link of the shared library follows static libgfortran with
+libquadmath, so quadmath_snprintf is resolved. The MSYS2 CI job
+installs the gcc-libs package that depends on that runtime.
+
+A Windows build with MSVC can construct a potential from a flat
+Cap'n Proto message again. The message words are copied as bytes into
+an aligned buffer, and the message itself is unchanged.
+
+The MSVC build compiles the legacy LAMMPS engine test plugin. Its
+load and unload hooks are registered from the DLL entry, because
+cl.exe rejects GNU constructor attributes.
+
+The native MSYS2 build installs GCC's OpenMP runtime, so the shared
+library links with OpenMP.
+
+A TPR with dispersion correction (`DispCorr` of `Ener` or `EnerPres`)
+includes that energy in the potential the session returns. The correction
+has no per-atom force. Its virial and its pressure are not applied: the
+session does not return either.
+
+The TPR session is compared with `gmx_d mdrun -rerun` on two TIP4P waters
+in a triclinic cell, with PME, force-switch and dispersion correction.
+
+The TPR session sets the CPU flag the nonbonded kernel reads. An
+allocation that is not zeroed no longer selects a kernel that does not
+exist.
+
+The nblib how-to states the TPR session pair-list buffer, the
+displacement that rebuilds the list, and the two-atom limit of that
+rule.
+
+The vendored brute-force neighbour list no longer hangs when asked for a full list. An empty list grew to one row on every attempt, and a full list writes two rows per pair, so the first pair never fitted. The metatomic potential is the caller that can request a full list from it.
+
+A TPR session reports the 0-based topology atom index of each packed
+site, in the same order as the positions and the masses. An index that
+is not in that list is a virtual site and has no packed slot.
+
 ---
 
 # Contributing to ~rgpot~

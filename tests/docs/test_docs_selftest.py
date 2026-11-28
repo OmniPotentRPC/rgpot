@@ -543,6 +543,45 @@ class GeneratedFiles(unittest.TestCase):
         page.write_text(page.read_text() + "More text.\n", encoding="utf-8")
         self.assertEqual(len(gen.stale(tree)), 1)
 
+    def test_unreleased_notes_are_copied(self):
+        gen = _load("rgpot_gen_llms_notes", "scripts/gen_llms.py")
+        tree = self._tree()
+        org = tree / "docs" / "orgmode"
+        index = org / "index.org"
+        index.write_text(
+            index.read_text(encoding="utf-8")
+            + "\n".join(
+                [
+                    "",
+                    "#+begin_export rst",
+                    ".. toctree::",
+                    "   :caption: Notes",
+                    "",
+                    "   changelog",
+                    "#+end_export",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (org / "changelog.org").write_text(
+            "#+TITLE: Changelog\n\nThe notes live with the fragments.\n",
+            encoding="utf-8",
+        )
+        fragments = tree / "docs" / "newsfragments"
+        fragments.mkdir()
+        (fragments / "+note.fixed.md").write_text(
+            "The metatomic potential is the caller.\n",
+            encoding="utf-8",
+        )
+        (fragments / "README.md").write_text(
+            "Towncrier news fragments\n",
+            encoding="utf-8",
+        )
+        full = gen.generate(tree)["llms-full.txt"]
+        self.assertIn("The metatomic potential is the caller.", full)
+        self.assertNotIn("Towncrier news fragments", full)
+
     def test_verbatim_keeps_math_and_follows_org_rules(self):
         gen = _load("rgpot_gen_llms_markup", "scripts/gen_llms.py")
         exact = r"\(\epsilon_{rf}=1\). =grompp= warns that \(\epsilon_{rf}=\epsilon_r\);"

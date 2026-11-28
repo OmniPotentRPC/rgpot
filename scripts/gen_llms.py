@@ -377,8 +377,31 @@ def markdown_page(text: str, fallback: str) -> tuple[str, str]:
     return title, body
 
 
+def unreleased_notes(root: Path) -> str:
+    """Text of each news fragment, in file name order.
+
+    The changelog page is where those notes belong. README.md explains
+    the directory and is not a note.
+    """
+    directory = root / "docs" / "newsfragments"
+    if not directory.is_dir():
+        return ""
+    skip = {"README.md", ".gitkeep"}
+    chunks = []
+    for path in sorted(directory.iterdir()):
+        if not path.is_file() or path.suffix != ".md" or path.name in skip:
+            continue
+        text = _read(path).strip()
+        if text:
+            chunks.append(text)
+    if not chunks:
+        return ""
+    return "## Unreleased\n\n" + "\n\n".join(chunks)
+
+
 def load_pages(root: Path = ROOT) -> list[Page]:
     pages = []
+    notes = unreleased_notes(root)
     for caption, key, path in collect(root):
         text = _read(path)
         if path.suffix == ".org":
@@ -388,6 +411,8 @@ def load_pages(root: Path = ROOT) -> list[Page]:
                 first, _, rest = body.partition("\n")
                 if first[3:].strip() == title.strip():
                     body = rest.strip("\n")
+            if key == "changelog" and notes:
+                body = (body + "\n\n" + notes).strip("\n") if body else notes
         else:
             title, body = markdown_page(text, key)
         pages.append(Page(caption, key, path, title, _first_paragraph(body), body))
