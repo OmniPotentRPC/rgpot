@@ -2320,11 +2320,13 @@ energy -5.217864006173226 eV within 1e-12.
 *** =rgpot::fortranpots::EDIPPot=
 
 - Inputs :: none.
-- Units :: energy in eV, forces in eV/Angstrom.
+- Units :: energy in eV, forces in eV/Angstrom, stress in eV/Angstrom^3.
 - Outputs :: the environment-dependent interatomic potential for silicon, with a
   cutoff of 3.1213820 Angstrom.
   Atomic numbers are not read.
-  The force call does not write a stress.
+  =forceImpl= writes the Cauchy stress sigma = (1/V) dE/dε for a positive cell
+  volume, the convention of =stress.hpp=.
+  The batch call does not.
 - Errors :: =std::runtime_error= when the cell is thinner than the cutoff, and
   when the neighbour table reports a failure.
 

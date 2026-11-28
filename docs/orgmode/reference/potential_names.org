@@ -25,8 +25,8 @@ Options come as =key value= pairs separated by spaces.
 | =EAMCell=    | none                                                                     | no     |
 | =CPMD=       | =params=, a serialized =CPMDParams= file                                 | engine |
 
-A build with the Fortran potentials also accepts =SWSi= (with a stress), and
-=EDIP=, =LenoskySi=, =EAMAl=, =FeHe= and =CuH2= (without one).
+A build with the Fortran potentials also accepts =SWSi= and =EDIP= (with a
+stress), and =LenoskySi=, =EAMAl=, =FeHe= and =CuH2= (without one).
 =SWSi1985= is =StillingerWeberSi= and =SWSi= is the Fortran =SWPot=.
 =TersoffSi= is =TersoffSiC=, which runs the 1989 kernel on every call, including
 an all-silicon one.

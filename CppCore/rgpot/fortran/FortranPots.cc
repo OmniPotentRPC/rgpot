@@ -29,7 +29,8 @@ int rgpot_sw_force_ws(void *ws, int32_t natoms, const double *positions,
                       const double *cell, double *forces, double *energy,
                       double *strain);
 int rgpot_edip_force_ws(void *ws, int32_t natoms, const double *positions,
-                        const double *cell, double *forces, double *energy);
+                        const double *cell, double *forces, double *energy,
+                        double *strain);
 int rgpot_lenosky_force_ws(void *ws, int32_t natoms, const double *positions,
                            const double *cell, double *forces,
                            double *energy);
@@ -140,11 +141,38 @@ FortranWorkspace &FortranWorkspace::operator=(const FortranWorkspace &) {
     out->variance = 0.0;                                                       \
   }
 
-RGPOT_FORTRAN_POT_IMPL(EDIPPot, rgpot_edip_force_ws, "EDIP")
 RGPOT_FORTRAN_POT_IMPL(LenoskyPot, rgpot_lenosky_force_ws, "Lenosky")
 RGPOT_FORTRAN_POT_IMPL(EAMAlPot, rgpot_eam_al_force_ws, "EAM-Al")
 
 #undef RGPOT_FORTRAN_POT_IMPL
+
+void EDIPPot::forceImpl(const ForceInput &in, ForceOut *out) const {
+  ensure_fortran_params();
+  double strain[6] = {};
+  const int status =
+      rgpot_edip_force_ws(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos,
+                          in.box, out->F, &out->energy, strain);
+  if (status != 0) {
+    raise("EDIP", status, m_ws.get());
+  }
+  out->variance = 0.0;
+  publishCauchyStress(out, strain, cellVolume(in.box));
+}
+
+void EDIPPot::forceBatchImpl(const ForceBatch &batch) const {
+  ensure_fortran_params();
+  for (size_t i = 0; i < batch.nSystems; ++i) {
+    const ForceInput &in = batch.in[i];
+    ForceOut &out = batch.out[i];
+    const int status =
+        rgpot_edip_force_ws(m_ws.get(), static_cast<int32_t>(in.nAtoms), in.pos,
+                            in.box, out.F, &out.energy, nullptr);
+    if (status != 0) {
+      raise("EDIP", status, m_ws.get());
+    }
+    out.variance = 0.0;
+  }
+}
 
 void SWPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   ensure_fortran_params();
